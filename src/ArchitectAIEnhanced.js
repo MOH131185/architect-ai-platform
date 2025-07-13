@@ -1,0 +1,983 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  MapPin, Upload, Building, Sun, Wind, Compass, FileText, 
+  Download, Palette, Square, Loader2, Sparkles, ArrowRight,
+  Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
+  Users, Shield, Zap, Globe, BarChart3, Eye
+} from 'lucide-react';
+
+const ArchitectAIEnhanced = () => {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [locationData, setLocationData] = useState(null);
+  const [portfolioFiles, setPortfolioFiles] = useState([]);
+  const [styleChoice, setStyleChoice] = useState('blend');
+  const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
+  const [generatedDesigns, setGeneratedDesigns] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showModification, setShowModification] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Landing page animation
+  useEffect(() => {
+    if (currentStep === 0) {
+      const timer = setTimeout(() => {
+        document.getElementById('hero-content')?.classList.add('opacity-100');
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
+
+  // Simulated location analysis with richer data
+  const analyzeLocation = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+      setLocationData({
+        address: "123 Main Street, San Francisco, CA 94105",
+        coordinates: { lat: 37.7749, lng: -122.4194 },
+        climate: {
+          type: "Mediterranean",
+          avgTemp: "15°C - 20°C",
+          rainfall: "500mm/year",
+          windPattern: "Westerly 15-25 km/h"
+        },
+        sunPath: {
+          summer: "NE to NW (14 hours daylight)",
+          winter: "SE to SW (9.5 hours daylight)",
+          optimalOrientation: "South-facing with 15° tilt"
+        },
+        zoning: {
+          type: "Mixed-Use Commercial",
+          maxHeight: "85 feet",
+          setbacks: "Front: 10ft, Sides: 5ft"
+        },
+        recommendedStyle: "Modern Mediterranean with sustainable features",
+        localStyles: ["California Modern", "Bay Area Contemporary", "Eco-Minimalist"],
+        sustainabilityScore: 92,
+        marketContext: {
+          avgConstructionCost: "$350-450/sqft",
+          demandIndex: "High (8.5/10)",
+          roi: "12-15% annually"
+        }
+      });
+      setIsLoading(false);
+      setCurrentStep(2);
+    }, 2500);
+  };
+
+  // Handle portfolio upload
+  const handlePortfolioUpload = (e) => {
+    const files = Array.from(e.target.files);
+    setPortfolioFiles(files.map(file => ({
+      name: file.name,
+      size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+      type: file.type,
+      preview: URL.createObjectURL(file)
+    })));
+  };
+
+  // Generate AI designs with more detail
+  const generateDesigns = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+      setGeneratedDesigns({
+        floorPlan: {
+          rooms: [
+            { name: "Reception", area: "25m²" },
+            { name: "Waiting Area", area: "40m²" },
+            { name: "Consultation Room 1", area: "20m²" },
+            { name: "Consultation Room 2", area: "20m²" },
+            { name: "Consultation Room 3", area: "20m²" },
+            { name: "Consultation Room 4", area: "20m²" },
+            { name: "Staff Room", area: "30m²" },
+            { name: "Bathrooms", area: "20m²" },
+            { name: "Storage", area: "15m²" }
+          ],
+          efficiency: "85%",
+          circulation: "Optimal patient flow with separate staff access"
+        },
+        model3D: {
+          style: styleChoice === 'blend' ? "Modern Mediterranean Medical Center" : "Contemporary Healthcare Facility",
+          features: [
+            "Floor-to-ceiling windows for natural lighting",
+            "Green roof with solar panels",
+            "Universal accessibility design",
+            "Healing garden courtyard"
+          ],
+          materials: ["Local limestone", "Cross-laminated timber", "Low-E triple glazing", "Living wall systems"],
+          sustainabilityFeatures: [
+            "LEED Platinum targeted",
+            "Net-zero energy design",
+            "Rainwater harvesting",
+            "Natural ventilation"
+          ]
+        },
+        technical: {
+          structural: "Hybrid steel-timber frame with seismic resilience",
+          foundation: "Mat foundation with waterproofing",
+          mep: {
+            hvac: "VRF system with heat recovery",
+            electrical: "100% LED with daylight sensors",
+            plumbing: "Low-flow fixtures, greywater recycling"
+          },
+          compliance: ["ADA", "Title 24", "OSHPD 3", "WELL Building Standard"]
+        },
+        cost: {
+          construction: "$2.1M - $2.4M",
+          timeline: "12-14 months",
+          energySavings: "$45,000/year"
+        }
+      });
+      setIsLoading(false);
+      setCurrentStep(5);
+    }, 3500);
+  };
+
+  const renderLandingPage = () => (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0">
+        <div className="absolute top-20 left-20 w-72 h-72 bg-blue-500 rounded-full opacity-10 blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full opacity-10 blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 py-16">
+        <div id="hero-content" className="opacity-0 transition-opacity duration-1000">
+          {/* Header */}
+          <div className="text-center mb-16">
+            <div className="flex justify-center items-center mb-6">
+              <Building className="w-12 h-12 text-blue-400 mr-3" />
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                ArchitectAI Platform
+              </h1>
+            </div>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Transform any location into intelligent architectural designs in minutes, not months.
+              AI-powered design generation with full technical documentation.
+            </p>
+          </div>
+
+          {/* Key Metrics */}
+          <div className="grid md:grid-cols-4 gap-6 mb-16">
+            {[
+              { icon: Clock, label: "Design Time", value: "5 minutes", subtext: "vs 2-3 weeks traditional" },
+              { icon: TrendingUp, label: "Cost Reduction", value: "85%", subtext: "in design phase costs" },
+              { icon: Users, label: "Active Architects", value: "2,450+", subtext: "using our platform" },
+              { icon: BarChart3, label: "Projects Created", value: "12,000+", subtext: "successful designs" }
+            ].map((metric, idx) => (
+              <div key={idx} className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+                <metric.icon className="w-8 h-8 text-blue-400 mb-3" />
+                <h3 className="text-3xl font-bold mb-1">{metric.value}</h3>
+                <p className="text-sm text-gray-300">{metric.label}</p>
+                <p className="text-xs text-gray-400 mt-1">{metric.subtext}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Feature Grid */}
+          <div className="grid md:grid-cols-3 gap-8 mb-16">
+            {[
+              {
+                icon: MapPin,
+                title: "Location Intelligence",
+                description: "Analyze climate, zoning, and local architecture to inform optimal design decisions"
+              },
+              {
+                icon: Sparkles,
+                title: "AI Design Generation",
+                description: "Create complete 2D/3D designs from requirements in minutes with style synthesis"
+              },
+              {
+                icon: FileCode,
+                title: "Technical Documentation",
+                description: "Auto-generate all structural and MEP drawings with code compliance"
+              },
+              {
+                icon: Palette,
+                title: "Style Blending",
+                description: "Seamlessly blend architect portfolios with location-appropriate styles"
+              },
+              {
+                icon: Zap,
+                title: "Real-time Modifications",
+                description: "Use natural language to instantly modify designs and see results"
+              },
+              {
+                icon: Shield,
+                title: "Industry Standards",
+                description: "Export to all major CAD formats: DWG, RVT, IFC with full compatibility"
+              }
+            ].map((feature, idx) => (
+              <div key={idx} className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all duration-300">
+                <feature.icon className="w-10 h-10 text-blue-400 mb-4" />
+                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                <p className="text-sm text-gray-300">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA Section */}
+          <div className="text-center">
+            <button
+              onClick={() => setCurrentStep(1)}
+              className="group bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-4 rounded-full font-semibold text-lg hover:shadow-2xl hover:shadow-blue-500/25 transition-all duration-300 flex items-center mx-auto"
+            >
+              <span>Start Live Demo</span>
+              <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
+            </button>
+            <p className="text-sm text-gray-400 mt-4">No login required • 5-minute walkthrough</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep = () => {
+    switch(currentStep) {
+      case 0:
+        return renderLandingPage();
+
+      case 1:
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white rounded-2xl shadow-xl p-8">
+              <div className="flex items-center mb-6">
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mr-4">
+                  <MapPin className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Location Analysis</h2>
+                  <p className="text-gray-600">Enter the project address to begin intelligent site analysis</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Project Address</label>
+                  <input
+                    type="text"
+                    placeholder="Enter full address..."
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                    defaultValue="123 Main Street, San Francisco, CA 94105"
+                  />
+                </div>
+
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <h4 className="font-medium text-blue-900 mb-2 flex items-center">
+                    <Cpu className="w-4 h-4 mr-2" />
+                    AI will analyze:
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm text-blue-800">
+                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Climate patterns</div>
+                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Solar orientation</div>
+                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Local architecture</div>
+                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Zoning regulations</div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={analyzeLocation}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-300 flex items-center justify-center font-medium"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 animate-spin" />
+                      Analyzing Location Data...
+                    </>
+                  ) : (
+                    <>
+                      <Compass className="mr-2" />
+                      Analyze Location
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 2:
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white rounded-2xl shadow-xl p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">Location Intelligence Report</h2>
+                <div className="flex items-center bg-green-100 px-4 py-2 rounded-full">
+                  <Check className="w-5 h-5 text-green-600 mr-2" />
+                  <span className="text-green-700 font-medium">Analysis Complete</span>
+                </div>
+              </div>
+              
+              <div className="grid lg:grid-cols-3 gap-6">
+                {/* Climate & Environment */}
+                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6">
+                  <div className="flex items-center mb-4">
+                    <Sun className="w-6 h-6 text-orange-500 mr-2" />
+                    <h3 className="font-semibold text-gray-800">Solar & Climate Analysis</h3>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-gray-600">Optimal Orientation</p>
+                      <p className="font-medium">{locationData?.sunPath.optimalOrientation}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Climate Type</p>
+                      <p className="font-medium">{locationData?.climate.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Annual Temperature</p>
+                      <p className="font-medium">{locationData?.climate.avgTemp}</p>
+                    </div>
+                    <div className="pt-2 border-t border-blue-100">
+                      <p className="text-sm text-gray-600">Sustainability Score</p>
+                      <div className="flex items-center mt-1">
+                        <div className="flex-1 bg-gray-200 rounded-full h-2">
+                          <div className="bg-green-500 h-2 rounded-full" style={{width: `${locationData?.sustainabilityScore}%`}}></div>
+                        </div>
+                        <span className="ml-2 font-bold text-green-600">{locationData?.sustainabilityScore}/100</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zoning & Regulations */}
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+                  <div className="flex items-center mb-4">
+                    <Building className="w-6 h-6 text-purple-600 mr-2" />
+                    <h3 className="font-semibold text-gray-800">Zoning & Architecture</h3>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-gray-600">Zoning Type</p>
+                      <p className="font-medium">{locationData?.zoning.type}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Max Height Allowed</p>
+                      <p className="font-medium">{locationData?.zoning.maxHeight}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Recommended Style</p>
+                      <p className="font-medium text-sm">{locationData?.recommendedStyle}</p>
+                    </div>
+                    <div className="pt-2">
+                      <p className="text-sm text-gray-600 mb-2">Local Styles</p>
+                      <div className="flex flex-wrap gap-2">
+                        {locationData?.localStyles.map((style, idx) => (
+                          <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
+                            {style}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Market Context */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6">
+                  <div className="flex items-center mb-4">
+                    <TrendingUp className="w-6 h-6 text-green-600 mr-2" />
+                    <h3 className="font-semibold text-gray-800">Market Analysis</h3>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm text-gray-600">Construction Cost</p>
+                      <p className="font-medium">{locationData?.marketContext.avgConstructionCost}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Market Demand</p>
+                      <p className="font-medium">{locationData?.marketContext.demandIndex}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Expected ROI</p>
+                      <p className="font-medium text-green-600">{locationData?.marketContext.roi}</p>
+                    </div>
+                    <div className="pt-2 border-t border-green-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Investment Grade</span>
+                        <div className="flex">
+                          {[1,2,3,4,5].map((star) => (
+                            <div key={star} className={`w-5 h-5 ${star <= 4 ? 'text-yellow-400' : 'text-gray-300'}`}>★</div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Map Preview */}
+              <div className="mt-6 bg-gray-100 rounded-xl h-64 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-green-400/20"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Globe className="w-16 h-16 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-600 font-medium">Interactive 3D Site Map</p>
+                    <p className="text-sm text-gray-500">{locationData?.address}</p>
+                    <div className="mt-4">
+                      <div className="w-32 h-32 border-4 border-blue-500 rounded-full mx-auto relative">
+                        <div className="absolute inset-2 border-2 border-dashed border-blue-300 rounded-full animate-spin-slow"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <MapPin className="w-8 h-8 text-blue-600" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setCurrentStep(3)}
+                className="mt-6 w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-4 rounded-xl hover:from-purple-700 hover:to-purple-800 transition-all duration-300 font-medium"
+              >
+                Continue to Portfolio Upload
+              </button>
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white rounded-2xl shadow-xl p-8">
+              <div className="flex items-center mb-6">
+                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mr-4">
+                  <Palette className="w-6 h-6 text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Portfolio & Style Selection</h2>
+                  <p className="text-gray-600">Upload your portfolio to personalize the AI design generation</p>
+                </div>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Portfolio Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Upload Portfolio Files</label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf"
+                    onChange={handlePortfolioUpload}
+                    className="hidden"
+                  />
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-purple-500 hover:bg-purple-50 transition-all duration-300 cursor-pointer"
+                  >
+                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-700 font-medium">Click to upload portfolio files</p>
+                    <p className="text-sm text-gray-500 mt-1">Support: JPG, PNG, PDF (Max 50MB)</p>
+                  </div>
+                  
+                  {portfolioFiles.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {portfolioFiles.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                          <div className="flex items-center">
+                            <FileText className="w-5 h-5 text-purple-600 mr-3" />
+                            <div>
+                              <p className="font-medium text-gray-800">{file.name}</p>
+                              <p className="text-xs text-gray-600">{file.size}</p>
+                            </div>
+                          </div>
+                          <Check className="w-5 h-5 text-green-600" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Style Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Style Generation Preference</label>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <label className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 ${
+                      styleChoice === 'blend' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="radio"
+                        value="blend"
+                        checked={styleChoice === 'blend'}
+                        onChange={(e) => setStyleChoice(e.target.value)}
+                        className="sr-only"
+                      />
+                      <div className="flex items-center mb-3">
+                        <Layers className="w-6 h-6 text-purple-600 mr-3" />
+                        <span className="font-semibold text-gray-800">Adaptive Blend</span>
+                      </div>
+                      <p className="text-sm text-gray-600">AI blends your style with location-appropriate architecture for optimal contextual design</p>
+                      {styleChoice === 'blend' && (
+                        <div className="absolute top-3 right-3">
+                          <Check className="w-5 h-5 text-purple-600" />
+                        </div>
+                      )}
+                    </label>
+                    
+                    <label className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 ${
+                      styleChoice === 'portfolio' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="radio"
+                        value="portfolio"
+                        checked={styleChoice === 'portfolio'}
+                        onChange={(e) => setStyleChoice(e.target.value)}
+                        className="sr-only"
+                      />
+                      <div className="flex items-center mb-3">
+                        <Home className="w-6 h-6 text-purple-600 mr-3" />
+                        <span className="font-semibold text-gray-800">Signature Style</span>
+                      </div>
+                      <p className="text-sm text-gray-600">Apply your unique architectural style exclusively, maintaining your design language</p>
+                      {styleChoice === 'portfolio' && (
+                        <div className="absolute top-3 right-3">
+                          <Check className="w-5 h-5 text-purple-600" />
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                {/* AI Analysis Preview */}
+                {portfolioFiles.length > 0 && (
+                  <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-6">
+                    <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
+                      <Sparkles className="w-5 h-5 text-purple-600 mr-2" />
+                      AI Portfolio Analysis Preview
+                    </h4>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div className="bg-white/70 rounded-lg p-3">
+                        <p className="text-gray-600 text-xs">Detected Style</p>
+                        <p className="font-medium">Contemporary</p>
+                      </div>
+                      <div className="bg-white/70 rounded-lg p-3">
+                        <p className="text-gray-600 text-xs">Color Palette</p>
+                        <p className="font-medium">Neutral Tones</p>
+                      </div>
+                      <div className="bg-white/70 rounded-lg p-3">
+                        <p className="text-gray-600 text-xs">Signature Elements</p>
+                        <p className="font-medium">Clean Lines</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={() => setCurrentStep(4)}
+                className="mt-6 w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-4 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 font-medium disabled:opacity-50"
+                disabled={portfolioFiles.length === 0}
+              >
+                Continue to Project Details
+              </button>
+            </div>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white rounded-2xl shadow-xl p-8">
+              <div className="flex items-center mb-6">
+                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mr-4">
+                  <Square className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Project Specifications</h2>
+                  <p className="text-gray-600">Define your project requirements for AI generation</p>
+                </div>
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Total Surface Area</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      placeholder="500"
+                      value={projectDetails.area}
+                      onChange={(e) => setProjectDetails({...projectDetails, area: e.target.value})}
+                      className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">m²</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Building Program</label>
+                  <select
+                    value={projectDetails.program}
+                    onChange={(e) => setProjectDetails({...projectDetails, program: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                  >
+                    <option value="">Select program type...</option>
+                    <option value="clinic">Medical Clinic</option>
+                    <option value="office">Office Building</option>
+                    <option value="residential">Residential Complex</option>
+                    <option value="retail">Retail Space</option>
+                    <option value="educational">Educational Facility</option>
+                    <option value="hospitality">Hospitality</option>
+                  </select>
+                </div>
+              </div>
+              
+              {projectDetails.program && (
+                <div className="mt-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6">
+                  <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
+                    <Building className="w-5 h-5 text-green-600 mr-2" />
+                    {projectDetails.program === 'clinic' ? 'Medical Clinic' : 'Program'} Requirements
+                  </h4>
+                  
+                  {projectDetails.program === 'clinic' && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-3">
+                        <h5 className="font-medium text-gray-700">Spatial Requirements</h5>
+                        <ul className="space-y-2 text-sm text-gray-600">
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            Reception area with waiting space (60-80m²)
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            4-6 consultation/examination rooms (15-20m² each)
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            Staff areas and administration (30-40m²)
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            Accessible restrooms and utility spaces
+                          </li>
+                        </ul>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <h5 className="font-medium text-gray-700">Design Considerations</h5>
+                        <ul className="space-y-2 text-sm text-gray-600">
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            Patient privacy and acoustic separation
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            Natural lighting for healing environment
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            Separate staff and patient circulation
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            ADA compliance and universal design
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Generation Preview */}
+              <div className="mt-6 bg-gray-100 rounded-xl p-6">
+                <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
+                  <Cpu className="w-5 h-5 text-blue-600 mr-2" />
+                  AI Generation Parameters
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-gray-600 text-xs">Location Style</p>
+                    <p className="font-medium">{styleChoice === 'blend' ? 'Adaptive' : 'Portfolio'}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-gray-600 text-xs">Climate Optimized</p>
+                    <p className="font-medium">Yes</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-gray-600 text-xs">Sustainability</p>
+                    <p className="font-medium">LEED Gold+</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3">
+                    <p className="text-gray-600 text-xs">Code Compliance</p>
+                    <p className="font-medium">Auto-verified</p>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={generateDesigns}
+                className="mt-6 w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-medium flex items-center justify-center disabled:opacity-50"
+                disabled={!projectDetails.area || !projectDetails.program || isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 animate-spin" />
+                    AI is generating your designs...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2" />
+                    Generate AI Designs
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        );
+
+      case 5:
+        return (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="bg-white rounded-2xl shadow-xl p-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-3xl font-bold text-gray-800">AI-Generated Designs</h2>
+                  <p className="text-gray-600 mt-1">Complete architectural solution ready for export</p>
+                </div>
+                <div className="flex items-center bg-green-100 px-4 py-2 rounded-full">
+                  <Sparkles className="w-5 h-5 text-green-600 mr-2" />
+                  <span className="text-green-700 font-medium">Generation Complete</span>
+                </div>
+              </div>
+              
+              {/* Design Overview Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-blue-50 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-blue-600">{projectDetails.area}m²</p>
+                  <p className="text-sm text-gray-600">Total Area</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-green-600">{generatedDesigns?.floorPlan.efficiency}</p>
+                  <p className="text-sm text-gray-600">Space Efficiency</p>
+                </div>
+                <div className="bg-purple-50 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-purple-600">4.8/5</p>
+                  <p className="text-sm text-gray-600">Design Score</p>
+                </div>
+                <div className="bg-orange-50 rounded-xl p-4 text-center">
+                  <p className="text-3xl font-bold text-orange-600">A+</p>
+                  <p className="text-sm text-gray-600">Energy Rating</p>
+                </div>
+              </div>
+
+              {/* Main Design Display */}
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* 2D Floor Plan */}
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6">
+                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+                    <FileText className="w-5 h-5 text-gray-600 mr-2" />
+                    2D Floor Plan
+                  </h3>
+                  <div className="bg-white rounded-lg h-96 flex items-center justify-center relative overflow-hidden">
+                    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 gap-2 p-4">
+                      {generatedDesigns?.floorPlan.rooms.map((room, idx) => (
+                        <div key={idx} className={`
+                          ${idx === 0 ? 'col-span-2' : ''} 
+                          ${idx === 1 ? 'col-span-1 row-span-2' : ''}
+                          ${idx >= 2 && idx <= 5 ? 'col-span-1' : ''}
+                          ${idx === 6 ? 'col-span-2' : ''}
+                          bg-gradient-to-br ${idx % 2 === 0 ? 'from-blue-100 to-blue-200' : 'from-green-100 to-green-200'}
+                          rounded-lg p-3 flex flex-col justify-center items-center border-2 border-white shadow-sm
+                        `}>
+                          <p className="text-xs font-medium text-gray-700">{room.name}</p>
+                          <p className="text-xs text-gray-600">{room.area}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
+                      Scale 1:100
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-sm">
+                    <p className="text-gray-600">{generatedDesigns?.floorPlan.circulation}</p>
+                    <button className="text-blue-600 hover:text-blue-700 font-medium">View Details</button>
+                  </div>
+                </div>
+                
+                {/* 3D Model */}
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
+                    <Building className="w-5 h-5 text-purple-600 mr-2" />
+                    3D Model Visualization
+                  </h3>
+                  <div className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-96 flex items-center justify-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-black/10"></div>
+                    {/* 3D Building Representation */}
+                    <div className="relative">
+                      <div className="w-48 h-64 bg-white/20 backdrop-blur-sm rounded-lg transform perspective-1000 rotate-y-12 shadow-2xl">
+                        <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-white/30 to-transparent"></div>
+                        <div className="grid grid-cols-3 gap-2 p-3">
+                          {[...Array(12)].map((_, i) => (
+                            <div key={i} className="bg-blue-300/50 rounded-sm h-4"></div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-64 h-12 bg-black/20 blur-xl rounded-full"></div>
+                    </div>
+                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
+                      <Eye className="w-3 h-3 mr-1" />
+                      Interactive 3D View
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-gray-700">{generatedDesigns?.model3D.style}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {generatedDesigns?.model3D.materials.map((material, idx) => (
+                        <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                          {material}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Technical Specifications */}
+              <div className="mt-8 grid md:grid-cols-3 gap-6">
+                <div className="bg-blue-50 rounded-xl p-6">
+                  <h4 className="font-semibold text-gray-800 mb-3">Structural System</h4>
+                  <p className="text-sm text-gray-700 mb-2">{generatedDesigns?.technical.structural}</p>
+                  <p className="text-sm text-gray-600">{generatedDesigns?.technical.foundation}</p>
+                </div>
+                
+                <div className="bg-green-50 rounded-xl p-6">
+                  <h4 className="font-semibold text-gray-800 mb-3">MEP Systems</h4>
+                  <ul className="space-y-1 text-sm text-gray-700">
+                    <li><span className="font-medium">HVAC:</span> {generatedDesigns?.technical.mep.hvac}</li>
+                    <li><span className="font-medium">Electrical:</span> {generatedDesigns?.technical.mep.electrical}</li>
+                    <li><span className="font-medium">Plumbing:</span> {generatedDesigns?.technical.mep.plumbing}</li>
+                  </ul>
+                </div>
+                
+                <div className="bg-purple-50 rounded-xl p-6">
+                  <h4 className="font-semibold text-gray-800 mb-3">Sustainability Features</h4>
+                  <ul className="space-y-1 text-sm text-gray-700">
+                    {generatedDesigns?.model3D.sustainabilityFeatures.map((feature, idx) => (
+                      <li key={idx} className="flex items-start">
+                        <Check className="w-4 h-4 text-green-600 mr-1 mt-0.5 flex-shrink-0" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Cost & Timeline */}
+              <div className="mt-6 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl p-6">
+                <h4 className="font-semibold text-gray-800 mb-4">Project Economics</h4>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-sm text-gray-600">Estimated Construction Cost</p>
+                    <p className="text-2xl font-bold text-gray-800">{generatedDesigns?.cost.construction}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Construction Timeline</p>
+                    <p className="text-2xl font-bold text-gray-800">{generatedDesigns?.cost.timeline}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Annual Energy Savings</p>
+                    <p className="text-2xl font-bold text-green-600">{generatedDesigns?.cost.energySavings}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Export Options */}
+              <div className="mt-8">
+                <h4 className="font-semibold text-gray-800 mb-4">Export Options</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[
+                    { format: 'DWG', icon: FileCode, desc: 'AutoCAD 2D Drawings' },
+                    { format: 'RVT', icon: Building, desc: 'Revit 3D Model' },
+                    { format: 'IFC', icon: Layers, desc: 'BIM Standard' },
+                    { format: 'PDF', icon: FileText, desc: 'Documentation Set' }
+                  ].map((exp, idx) => (
+                    <button key={idx} className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                      <exp.icon className="w-8 h-8 text-gray-600 mb-2" />
+                      <span className="font-semibold text-gray-800">{exp.format}</span>
+                      <span className="text-xs text-gray-600 mt-1">{exp.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Modification */}
+              <div className="mt-8 border-t pt-8">
+                <button
+                  onClick={() => setShowModification(!showModification)}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-medium flex items-center justify-center"
+                >
+                  <Sparkles className="mr-2" />
+                  Modify Design with AI
+                </button>
+                
+                {showModification && (
+                  <div className="mt-4 space-y-4 animate-fadeIn">
+                    <textarea
+                      placeholder="Describe your modifications... (e.g., 'Make the waiting area 20% larger', 'Add a healing garden courtyard', 'Include more natural lighting in consultation rooms')"
+                      className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors h-32"
+                    />
+                    <button className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 transition-colors">
+                      Apply Modifications
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
+      {currentStep > 0 && (
+        <div className="sticky top-0 bg-white shadow-sm z-40">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Building className="w-8 h-8 text-blue-600 mr-3" />
+                <h1 className="text-2xl font-bold text-gray-800">ArchitectAI Platform</h1>
+              </div>
+              
+              {/* Progress Indicator */}
+              <div className="hidden md:flex items-center space-x-2">
+                {[
+                  { step: 1, label: 'Location' },
+                  { step: 2, label: 'Analysis' },
+                  { step: 3, label: 'Portfolio' },
+                  { step: 4, label: 'Details' },
+                  { step: 5, label: 'Results' }
+                ].map((item, idx) => (
+                  <div key={idx} className="flex items-center">
+                    <div className={`
+                      flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium
+                      ${currentStep >= item.step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}
+                    `}>
+                      {currentStep > item.step ? <Check className="w-4 h-4" /> : item.step}
+                    </div>
+                    {idx < 4 && (
+                      <div className={`w-12 h-0.5 mx-1 ${currentStep > item.step ? 'bg-blue-600' : 'bg-gray-300'}`} />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="text-sm text-gray-600">
+                Time: <span className="font-medium">3:45</span> elapsed
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className={currentStep > 0 ? 'max-w-7xl mx-auto px-4 py-8' : ''}>
+        {renderStep()}
+      </div>
+    </div>
+  );
+};
+
+export default ArchitectAIEnhanced;
