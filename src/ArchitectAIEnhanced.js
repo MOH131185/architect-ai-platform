@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
 import { 
   MapPin, Upload, Building, Sun, Wind, Compass, FileText, 
   Download, Palette, Square, Loader2, Sparkles, ArrowRight,
@@ -171,6 +172,7 @@ const showToast = (message) => {
 const ArchitectAIEnhanced = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [locationData, setLocationData] = useState(null);
+  const [address, setAddress] = useState("123 Main Street, San Francisco, CA 94105");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
   const [styleChoice, setStyleChoice] = useState('blend');
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
@@ -190,41 +192,90 @@ const ArchitectAIEnhanced = () => {
     }
   }, [currentStep]);
 
-  // Simulated location analysis with richer data
-  const analyzeLocation = () => {
+  // In a real-world app, these keys would be in a .env file.
+  // Due to environment constraints, they are placed here directly.
+  const GOOGLE_MAPS_API_KEY = "AIzaSyA34NLQcrMsBNWG5CPTZjprRPnHH30EdyY";
+  const OPENWEATHER_API_KEY = "7ea7e1baf4df528844f255bdeb84642e";
+
+  const analyzeLocation = async () => {
     setIsLoading(true);
-    setTimeout(() => {
-      setLocationData({
-        address: "123 Main Street, San Francisco, CA 94105",
-        coordinates: { lat: 37.7749, lng: -122.4194 },
-        climate: {
-          type: "Mediterranean",
-          avgTemp: "15°C - 20°C",
-          rainfall: "500mm/year",
-          windPattern: "Westerly 15-25 km/h"
+    try {
+      // Step 1: Geocode address to get coordinates
+      const geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+        params: {
+          address: address,
+          key: GOOGLE_MAPS_API_KEY,
         },
+      });
+
+      if (geocodeResponse.data.status !== 'OK' || geocodeResponse.data.results.length === 0) {
+        throw new Error("Could not find location. Please check the address.");
+      }
+
+      const locationResult = geocodeResponse.data.results[0];
+      const { lat, lng } = locationResult.geometry.location;
+      const formattedAddress = locationResult.formatted_address;
+
+      // Step 2: Get weather data for the coordinates
+      const weatherResponse = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
+        params: {
+          lat: lat,
+          lon: lng,
+          appid: OPENWEATHER_API_KEY,
+          units: 'metric', // Use metric units
+        },
+      });
+
+      const weatherData = weatherResponse.data;
+
+      // Step 3: Combine API data with our template for a full report
+      const newLocationData = {
+        address: formattedAddress,
+        coordinates: { lat, lng },
+        climate: {
+          type: weatherData.weather[0]?.description || "N/A",
+          avgTemp: `${weatherData.main?.temp}°C` || "N/A",
+          rainfall: "N/A", // Not available in basic weather API
+          windPattern: `${weatherData.wind?.speed} m/s` || "N/A"
+        },
+        // Static data that isn't available from the APIs
         sunPath: {
-          summer: "NE to NW (14 hours daylight)",
-          winter: "SE to SW (9.5 hours daylight)",
-          optimalOrientation: "South-facing with 15° tilt"
+          summer: "Varies by location",
+          winter: "Varies by location",
+          optimalOrientation: "South-facing (general)"
         },
         zoning: {
-          type: "Mixed-Use Commercial",
-          maxHeight: "85 feet",
-          setbacks: "Front: 10ft, Sides: 5ft"
+          type: "Unavailable via API",
+          maxHeight: "Check local regulations",
+          setbacks: "Check local regulations"
         },
-        recommendedStyle: "Modern Mediterranean with sustainable features",
-        localStyles: ["California Modern", "Bay Area Contemporary", "Eco-Minimalist"],
-        sustainabilityScore: 92,
+        recommendedStyle: "Consult with local architects",
+        localStyles: ["Varies by region"],
+        sustainabilityScore: Math.round(60 + Math.random() * 30), // Random score for demo
         marketContext: {
-          avgConstructionCost: "$350-450/sqft",
-          demandIndex: "High (8.5/10)",
-          roi: "12-15% annually"
+          avgConstructionCost: "Varies greatly",
+          demandIndex: "Check local market reports",
+          roi: "Consult financial advisor"
         }
-      });
-      setIsLoading(false);
+      };
+
+      setLocationData(newLocationData);
       setCurrentStep(2);
-    }, 2500);
+
+    } catch (error) {
+      console.error("Error analyzing location:", error);
+      let errorMessage = "An error occurred during analysis.";
+      if (error.response) {
+        errorMessage = `Error: ${error.response.data.message || 'Failed to fetch data.'}`;
+      } else if (error.request) {
+        errorMessage = "Could not connect to the server. Please check your network.";
+      } else {
+        errorMessage = error.message;
+      }
+      alert(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle portfolio upload
@@ -420,7 +471,8 @@ const ArchitectAIEnhanced = () => {
                     type="text"
                     placeholder="Enter full address..."
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                    defaultValue="123 Main Street, San Francisco, CA 94105"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
                   />
                 </div>
 
