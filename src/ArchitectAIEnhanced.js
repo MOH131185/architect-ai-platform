@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
 import { 
   MapPin, Upload, Building, Sun, Wind, Compass, FileText, 
   Download, Palette, Square, Loader2, Sparkles, ArrowRight,
@@ -87,7 +88,7 @@ ENDSEC;
 END-ISO-10303-21;`;
 };
 
-const generatePDFContent = (projectDetails, styleChoice) => {
+const generatePDFContent = (projectDetails, styleChoice, locationData) => {
   const htmlContent = `
     <html>
     <head>
@@ -113,7 +114,7 @@ const generatePDFContent = (projectDetails, styleChoice) => {
       <div class="section">
         <p><strong>Project Type:</strong> ${projectDetails?.program === 'clinic' ? 'Medical Clinic' : projectDetails?.program || 'Commercial Building'}</p>
         <p><strong>Total Area:</strong> ${projectDetails?.area || '500'}m²</p>
-        <p><strong>Location:</strong> 123 Main Street, San Francisco, CA 94105</p>
+        <p><strong>Location:</strong> ${locationData?.address || '123 Main Street, San Francisco, CA 94105'}</p>
         <p><strong>Design Style:</strong> ${styleChoice === 'blend' ? 'Adaptive Blend with Local Architecture' : 'Portfolio Signature Style'}</p>
       </div>
 
@@ -178,6 +179,7 @@ const ArchitectAIEnhanced = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
   const [downloadCount, setDownloadCount] = useState(0);
+  const [address, setAddress] = useState('123 Main Street, San Francisco, CA 94105');
   const fileInputRef = useRef(null);
 
   // Landing page animation
@@ -190,41 +192,78 @@ const ArchitectAIEnhanced = () => {
     }
   }, [currentStep]);
 
-  // Simulated location analysis with richer data
-  const analyzeLocation = () => {
+  // Real location analysis with Google Maps and OpenWeather
+  const analyzeLocation = async () => {
+    if (!address) {
+      showToast("Please enter an address.");
+      return;
+    }
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      // Step 1: Geocode address to get coordinates
+      const geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+        params: {
+          address: address,
+          key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+        },
+      });
+
+      if (geocodeResponse.data.status !== 'OK' || geocodeResponse.data.results.length === 0) {
+        throw new Error(`Geocoding failed: ${geocodeResponse.data.status}`);
+      }
+
+      const { lat, lng } = geocodeResponse.data.results[0].geometry.location;
+      const formattedAddress = geocodeResponse.data.results[0].formatted_address;
+
+      // Step 2: Get weather data from OpenWeatherMap
+      const weatherResponse = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
+        params: {
+          lat: lat,
+          lon: lng,
+          appid: process.env.REACT_APP_OPENWEATHER_API_KEY,
+          units: 'metric',
+        },
+      });
+
+      const weatherData = weatherResponse.data;
+
+      // Step 3: Populate location data
       setLocationData({
-        address: "123 Main Street, San Francisco, CA 94105",
-        coordinates: { lat: 37.7749, lng: -122.4194 },
+        address: formattedAddress,
+        coordinates: { lat, lng },
         climate: {
-          type: "Mediterranean",
-          avgTemp: "15°C - 20°C",
-          rainfall: "500mm/year",
-          windPattern: "Westerly 15-25 km/h"
+          type: weatherData.weather[0].main,
+          avgTemp: `${weatherData.main.temp}°C`,
+          rainfall: weatherData.rain ? `${weatherData.rain['1h']}mm/hr` : "Not available",
+          windPattern: `${weatherData.wind.speed} m/s at ${weatherData.wind.deg}°`
         },
         sunPath: {
-          summer: "NE to NW (14 hours daylight)",
-          winter: "SE to SW (9.5 hours daylight)",
-          optimalOrientation: "South-facing with 15° tilt"
+          summer: `Sunrise: ${new Date(weatherData.sys.sunrise * 1000).toLocaleTimeString()}`,
+          winter: `Sunset: ${new Date(weatherData.sys.sunset * 1000).toLocaleTimeString()}`,
+          optimalOrientation: "South-facing (general recommendation)"
         },
+        // Keep mocked data for features not covered by these APIs
         zoning: {
           type: "Mixed-Use Commercial",
           maxHeight: "85 feet",
           setbacks: "Front: 10ft, Sides: 5ft"
         },
-        recommendedStyle: "Modern Mediterranean with sustainable features",
-        localStyles: ["California Modern", "Bay Area Contemporary", "Eco-Minimalist"],
-        sustainabilityScore: 92,
+        recommendedStyle: "Modern with sustainable features",
+        localStyles: ["Contemporary", "Minimalist", "Eco-friendly"],
+        sustainabilityScore: 85, // Could be calculated based on weather
         marketContext: {
-          avgConstructionCost: "$350-450/sqft",
-          demandIndex: "High (8.5/10)",
-          roi: "12-15% annually"
+          avgConstructionCost: "$300-500/sqft (varies)",
+          demandIndex: "High (8/10)",
+          roi: "10-14% annually (estimated)"
         }
       });
-      setIsLoading(false);
       setCurrentStep(2);
-    }, 2500);
+    } catch (error) {
+      console.error("Error analyzing location:", error);
+      showToast(`Error: ${error.message}. Check API keys and address.`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle portfolio upload
@@ -420,7 +459,8 @@ const ArchitectAIEnhanced = () => {
                     type="text"
                     placeholder="Enter full address..."
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                    defaultValue="123 Main Street, San Francisco, CA 94105"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
                   />
                 </div>
 
@@ -480,25 +520,24 @@ const ArchitectAIEnhanced = () => {
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-gray-600">Optimal Orientation</p>
-                      <p className="font-medium">{locationData?.sunPath.optimalOrientation}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Climate Type</p>
+                      <p className="text-sm text-gray-600">Climate</p>
                       <p className="font-medium">{locationData?.climate.type}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Annual Temperature</p>
+                      <p className="text-sm text-gray-600">Temperature</p>
                       <p className="font-medium">{locationData?.climate.avgTemp}</p>
                     </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Wind</p>
+                      <p className="font-medium">{locationData?.climate.windPattern}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Rainfall (last hour)</p>
+                      <p className="font-medium">{locationData?.climate.rainfall}</p>
+                    </div>
                     <div className="pt-2 border-t border-blue-100">
-                      <p className="text-sm text-gray-600">Sustainability Score</p>
-                      <div className="flex items-center mt-1">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2">
-                          <div className="bg-green-500 h-2 rounded-full" style={{width: `${locationData?.sustainabilityScore}%`}}></div>
-                        </div>
-                        <span className="ml-2 font-bold text-green-600">{locationData?.sustainabilityScore}/100</span>
-                      </div>
+                      <p className="text-sm text-gray-600">Sunrise / Sunset</p>
+                      <p className="font-medium">{locationData?.sunPath.summer} / {locationData?.sunPath.winter}</p>
                     </div>
                   </div>
                 </div>
@@ -1092,7 +1131,7 @@ const ArchitectAIEnhanced = () => {
                   
                   <button 
                     onClick={() => {
-                      const pdfContent = generatePDFContent(projectDetails, styleChoice);
+                      const pdfContent = generatePDFContent(projectDetails, styleChoice, locationData);
                       const newWindow = window.open('', '_blank');
                       newWindow.document.write(pdfContent);
                       newWindow.document.close();
