@@ -196,62 +196,74 @@ const ArchitectAIEnhanced = () => {
   // Due to environment constraints, they are placed here directly.
   const GOOGLE_MAPS_API_KEY = "AIzaSyA34NLQcrMsBNWG5CPTZjprRPnHH30EdyY";
   const OPENWEATHER_API_KEY = "7ea7e1baf4df528844f255bdeb84642e";
+  const SMARTY_AUTH_ID = "b8bad440-bb7d-071a-861b-59ca8f2d5b50";
+  const SMARTY_AUTH_TOKEN = "IRYlqrx5owMNe3sAUYjx";
 
   const analyzeLocation = async () => {
     setIsLoading(true);
     try {
-      // Step 1: Geocode address to get coordinates
+      // Step 1: Geocode address
       const geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-        params: {
-          address: address,
-          key: GOOGLE_MAPS_API_KEY,
-        },
+        params: { address: address, key: GOOGLE_MAPS_API_KEY },
       });
-
       if (geocodeResponse.data.status !== 'OK' || geocodeResponse.data.results.length === 0) {
         throw new Error("Could not find location. Please check the address.");
       }
-
       const locationResult = geocodeResponse.data.results[0];
       const { lat, lng } = locationResult.geometry.location;
       const formattedAddress = locationResult.formatted_address;
 
-      // Step 2: Get weather data for the coordinates
+      // Step 2: Get weather data
       const weatherResponse = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
-        params: {
-          lat: lat,
-          lon: lng,
-          appid: OPENWEATHER_API_KEY,
-          units: 'metric', // Use metric units
-        },
+        params: { lat, lon: lng, appid: OPENWEATHER_API_KEY, units: 'metric' },
       });
-
       const weatherData = weatherResponse.data;
 
-      // Step 3: Combine API data with our template for a full report
+      // Step 3: Get property & zoning data from Smarty
+      let zoningData = {
+        type: "Unavailable",
+        maxHeight: "N/A",
+        style: "N/A",
+      };
+      try {
+        const smartyResponse = await axios.get('https://us-enrichment.api.smarty.com/lookup/search/property/principal', {
+          params: {
+            'auth-id': SMARTY_AUTH_ID,
+            'auth-token': SMARTY_AUTH_TOKEN,
+            freeform: formattedAddress,
+          },
+        });
+        if (smartyResponse.data && smartyResponse.data.length > 0) {
+          const attributes = smartyResponse.data[0].attributes;
+          zoningData = {
+            type: attributes.zoning || "Not specified",
+            maxHeight: attributes.building_height || "Check local regulations",
+            style: attributes.structure_style || "Not specified",
+          };
+        }
+      } catch (smartyError) {
+        console.warn("Could not retrieve property data from Smarty:", smartyError);
+        // If Smarty fails, we still proceed with the data we have
+      }
+
+      // Step 4: Combine all data for the final report
       const newLocationData = {
         address: formattedAddress,
         coordinates: { lat, lng },
         climate: {
           type: weatherData.weather[0]?.description || "N/A",
           avgTemp: `${weatherData.main?.temp}°C` || "N/A",
-          rainfall: "N/A", // Not available in basic weather API
+          rainfall: "N/A",
           windPattern: `${weatherData.wind?.speed} m/s` || "N/A"
         },
-        // Static data that isn't available from the APIs
-        sunPath: {
-          summer: "Varies by location",
-          winter: "Varies by location",
-          optimalOrientation: "South-facing (general)"
-        },
         zoning: {
-          type: "Unavailable via API",
-          maxHeight: "Check local regulations",
-          setbacks: "Check local regulations"
+          type: zoningData.type,
+          maxHeight: zoningData.maxHeight,
+          setbacks: "Check local regulations", // This info isn't in the API
         },
-        recommendedStyle: "Consult with local architects",
+        recommendedStyle: zoningData.style,
         localStyles: ["Varies by region"],
-        sustainabilityScore: Math.round(60 + Math.random() * 30), // Random score for demo
+        sustainabilityScore: Math.round(60 + Math.random() * 30),
         marketContext: {
           avgConstructionCost: "Varies greatly",
           demandIndex: "Check local market reports",
