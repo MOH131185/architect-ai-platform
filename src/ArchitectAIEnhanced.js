@@ -234,11 +234,11 @@ const ArchitectAIEnhanced = () => {
           },
         });
         if (smartyResponse.data && smartyResponse.data.length > 0) {
-          const attributes = smartyResponse.data[0].attributes;
+          const attributes = smartyResponse.data[0]?.attributes;
           zoningData = {
-            type: attributes.zoning || "Not specified",
-            maxHeight: attributes.building_height || "Check local regulations",
-            style: attributes.structure_style || "Not specified",
+            type: attributes?.zoning || "Not specified",
+            maxHeight: attributes?.building_height || "Check local regulations",
+            style: attributes?.structure_style || "Not specified",
           };
         }
       } catch (smartyError) {
@@ -251,10 +251,10 @@ const ArchitectAIEnhanced = () => {
         address: formattedAddress,
         coordinates: { lat, lng },
         climate: {
-          type: weatherData.weather[0]?.description || "N/A",
-          avgTemp: `${weatherData.main?.temp}°C` || "N/A",
+          type: weatherData?.weather?.[0]?.description || "N/A",
+          avgTemp: `${weatherData?.main?.temp}°C` || "N/A",
           rainfall: "N/A",
-          windPattern: `${weatherData.wind?.speed} m/s` || "N/A"
+          windPattern: `${weatherData?.wind?.speed} m/s` || "N/A"
         },
         sunPath: {
           summer: "Varies by location",
