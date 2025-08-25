@@ -1289,12 +1289,6 @@ const addDebugLog = (log) => {
 
   return (
     <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
-      {debugInfo.length > 0 && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.8)', color: 'white', padding: '10px', maxHeight: '200px', overflowY: 'scroll', zIndex: 9999, fontSize: '12px' }}>
-          <h3>Debug Log:</h3>
-          <pre>{debugInfo.join('\n')}</pre>
-        </div>
-      )}
       {currentStep > 0 && (
         <div className="sticky top-0 bg-white shadow-sm z-40">
           <div className="max-w-7xl mx-auto px-4 py-4">
