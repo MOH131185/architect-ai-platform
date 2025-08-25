@@ -286,6 +286,23 @@ const ArchitectAIEnhanced = () => {
       } catch (smartyError) {
         addDebugLog(`Could not retrieve property data from Smarty: ${smartyError.message}`);
         console.warn("Could not retrieve property data from Smarty:", smartyError);
+let errorMsg = "Service unavailable";
+if (smartyError.response) {
+    if (smartyError.response.status === 401) {
+        errorMsg = "Invalid credentials (401)";
+    } else {
+        errorMsg = `API Error: ${smartyError.response.status}`;
+    }
+} else if (smartyError.request) {
+    errorMsg = "Network error";
+} else {
+    errorMsg = "An error occurred";
+}
+zoningData = {
+    type: errorMsg,
+    maxHeight: errorMsg,
+    style: errorMsg,
+};
       }
 
       // Step 4: Combine all data for the final report
