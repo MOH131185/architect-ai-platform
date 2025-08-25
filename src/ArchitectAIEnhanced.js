@@ -256,6 +256,11 @@ const ArchitectAIEnhanced = () => {
           rainfall: "N/A",
           windPattern: `${weatherData.wind?.speed} m/s` || "N/A"
         },
+        sunPath: {
+          summer: "Varies by location",
+          winter: "Varies by location",
+          optimalOrientation: "South-facing (general)"
+        },
         zoning: {
           type: zoningData.type,
           maxHeight: zoningData.maxHeight,
