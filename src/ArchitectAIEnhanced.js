@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
+import { Wrapper } from "@googlemaps/react-wrapper";
 import { 
   MapPin, Upload, Building, Sun, Wind, Compass, FileText, 
   Download, Palette, Square, Loader2, Sparkles, ArrowRight,
@@ -175,6 +176,33 @@ const generatePDFContent = (projectDetails, styleChoice, locationData) => {
   return htmlContent;
 };
 
+const MapView = ({ center, zoom }) => {
+  const ref = useRef(null);
+  const [map, setMap] = useState(null);
+
+  useEffect(() => {
+    if (ref.current && !map && window.google) {
+      const newMap = new window.google.maps.Map(ref.current, {
+        center,
+        zoom: zoom || 18,
+        mapTypeId: 'satellite',
+        tilt: 45,
+        disableDefaultUI: true,
+      });
+      setMap(newMap);
+    }
+  }, [ref, map, center, zoom]);
+
+  useEffect(() => {
+    if (map) {
+      map.setCenter(center);
+      map.setTilt(45);
+    }
+  }, [map, center]);
+
+  return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
+};
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -251,6 +279,85 @@ const addDebugLog = (log) => {
     setDebugInfo(prev => [...prev, `${new Date().toISOString()}: ${log}`]);
   };
 
+  const getSeasonalClimateData = async (lat, lon) => {
+    addDebugLog("Fetching seasonal climate data...");
+    const lastYear = new Date().getFullYear() - 1;
+    const seasons = {
+      winter: `${lastYear}-01-15`,
+      spring: `${lastYear}-04-15`,
+      summer: `${lastYear}-07-15`,
+      fall: `${lastYear}-10-15`,
+    };
+
+    try {
+      const requests = Object.values(seasons).map(date => {
+        const url = 'https://api.openweathermap.org/data/3.0/onecall/day_summary';
+        return axios.get(url, {
+          params: {
+            lat,
+            lon,
+            date,
+            units: 'metric',
+            appid: process.env.REACT_APP_OPENWEATHER_API_KEY,
+          },
+        });
+      });
+
+      const responses = await Promise.all(requests);
+      const seasonalData = {
+        winter: responses[0].data,
+        spring: responses[1].data,
+        summer: responses[2].data,
+        fall: responses[3].data,
+      };
+
+      addDebugLog(`Seasonal data received for: ${Object.keys(seasons).join(', ')}`);
+
+      const finalProcessedData = {
+        climate: {
+          type: "Varied (Seasonal Avg.)",
+          seasonal: {
+            winter: {
+              avgTemp: `${seasonalData.winter.temperature.afternoon.toFixed(1)}°C`,
+              precipitation: `${seasonalData.winter.precipitation.total}mm`,
+              solar: `${(100 - seasonalData.winter.cloud_cover.afternoon)}%`,
+            },
+            spring: {
+              avgTemp: `${seasonalData.spring.temperature.afternoon.toFixed(1)}°C`,
+              precipitation: `${seasonalData.spring.precipitation.total}mm`,
+              solar: `${(100 - seasonalData.spring.cloud_cover.afternoon)}%`,
+            },
+            summer: {
+              avgTemp: `${seasonalData.summer.temperature.afternoon.toFixed(1)}°C`,
+              precipitation: `${seasonalData.summer.precipitation.total}mm`,
+              solar: `${(100 - seasonalData.summer.cloud_cover.afternoon)}%`,
+            },
+            fall: {
+              avgTemp: `${seasonalData.fall.temperature.afternoon.toFixed(1)}°C`,
+              precipitation: `${seasonalData.fall.precipitation.total}mm`,
+              solar: `${(100 - seasonalData.fall.cloud_cover.afternoon)}%`,
+            },
+          }
+        },
+        sunPath: {
+            summer: `Sunrise: ~6:00 AM`,
+            winter: `Sunset: ~5:00 PM`,
+            optimalOrientation: "South-facing (general recommendation)"
+        }
+      };
+
+      return finalProcessedData;
+
+    } catch (error) {
+      addDebugLog(`Could not retrieve seasonal climate data: ${error.message}`);
+      console.warn("Could not retrieve seasonal climate data:", error);
+      return {
+        climate: { type: 'Error fetching seasonal data', seasonal: {} },
+        sunPath: { summer: 'N/A', winter: 'N/A', optimalOrientation: 'N/A' }
+      };
+    }
+  };
+
   // Real location analysis with Google Maps and OpenWeather
   const analyzeLocation = async () => {
     if (!address) {
@@ -304,19 +411,8 @@ const addDebugLog = (log) => {
       const formattedAddress = locationResult.formatted_address;
       addDebugLog(`Geocoding successful. Lat: ${lat}, Lng: ${lng}`);
 
-      // Step 2: Get weather data from OpenWeatherMap
-      addDebugLog("Fetching weather data...");
-      const weatherResponse = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
-        params: {
-          lat: lat,
-          lon: lng,
-          appid: process.env.REACT_APP_OPENWEATHER_API_KEY,
-          units: 'metric',
-        },
-      });
-
-      const weatherData = weatherResponse.data;
-      addDebugLog(`Weather data received: ${JSON.stringify(weatherData, null, 2)}`);
+      // Step 2: Get seasonal climate data
+      const seasonalClimateData = await getSeasonalClimateData(lat, lng);
 
       // Step 3: Get property & zoning data from Smarty (optional enhancement)
       addDebugLog("Fetching property data from Smarty...");
@@ -357,17 +453,8 @@ const addDebugLog = (log) => {
       const newLocationData = {
         address: formattedAddress,
         coordinates: { lat, lng },
-        climate: {
-          type: weatherData.weather[0].main,
-          avgTemp: `${weatherData.main.temp}°C`,
-          rainfall: weatherData.rain ? `${weatherData.rain['1h']}mm/hr` : "Not available",
-          windPattern: `${weatherData.wind.speed} m/s at ${weatherData.wind.deg}°`
-        },
-        sunPath: {
-          summer: `Sunrise: ${new Date(weatherData.sys.sunrise * 1000).toLocaleTimeString()}`,
-          winter: `Sunset: ${new Date(weatherData.sys.sunset * 1000).toLocaleTimeString()}`,
-          optimalOrientation: "South-facing (general recommendation)"
-        },
+        climate: seasonalClimateData.climate,
+        sunPath: seasonalClimateData.sunPath,
         zoning: zoningData,
         recommendedStyle: "Modern with sustainable features",
         localStyles: ["Contemporary", "Minimalist", "Eco-friendly"],
@@ -607,6 +694,11 @@ const addDebugLog = (log) => {
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        analyzeLocation();
+                      }
+                    }}
                   />
                 </div>
 
@@ -667,24 +759,38 @@ const addDebugLog = (log) => {
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <p className="text-sm text-gray-600">Climate</p>
+                      <p className="text-sm text-gray-600">Climate Type</p>
                       <p className="font-medium">{locationData?.climate.type}</p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Temperature</p>
-                      <p className="font-medium">{locationData?.climate.avgTemp}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Wind</p>
-                      <p className="font-medium">{locationData?.climate.windPattern}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Rainfall (last hour)</p>
-                      <p className="font-medium">{locationData?.climate.rainfall}</p>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      {locationData?.climate.seasonal.winter && <div className="bg-white/60 rounded-lg p-3">
+                        <h4 className="font-semibold text-sm text-blue-800">Winter</h4>
+                        <p className="text-xs text-gray-600 mt-1">Temp: {locationData.climate.seasonal.winter.avgTemp}</p>
+                        <p className="text-xs text-gray-600">Precip: {locationData.climate.seasonal.winter.precipitation}</p>
+                        <p className="text-xs text-gray-600">Solar: {locationData.climate.seasonal.winter.solar}</p>
+                      </div>}
+                      {locationData?.climate.seasonal.spring && <div className="bg-white/60 rounded-lg p-3">
+                        <h4 className="font-semibold text-sm text-green-800">Spring</h4>
+                        <p className="text-xs text-gray-600 mt-1">Temp: {locationData.climate.seasonal.spring.avgTemp}</p>
+                        <p className="text-xs text-gray-600">Precip: {locationData.climate.seasonal.spring.precipitation}</p>
+                        <p className="text-xs text-gray-600">Solar: {locationData.climate.seasonal.spring.solar}</p>
+                      </div>}
+                      {locationData?.climate.seasonal.summer && <div className="bg-white/60 rounded-lg p-3">
+                        <h4 className="font-semibold text-sm text-red-800">Summer</h4>
+                        <p className="text-xs text-gray-600 mt-1">Temp: {locationData.climate.seasonal.summer.avgTemp}</p>
+                        <p className="text-xs text-gray-600">Precip: {locationData.climate.seasonal.summer.precipitation}</p>
+                        <p className="text-xs text-gray-600">Solar: {locationData.climate.seasonal.summer.solar}</p>
+                      </div>}
+                      {locationData?.climate.seasonal.fall && <div className="bg-white/60 rounded-lg p-3">
+                        <h4 className="font-semibold text-sm text-orange-800">Fall</h4>
+                        <p className="text-xs text-gray-600 mt-1">Temp: {locationData.climate.seasonal.fall.avgTemp}</p>
+                        <p className="text-xs text-gray-600">Precip: {locationData.climate.seasonal.fall.precipitation}</p>
+                        <p className="text-xs text-gray-600">Solar: {locationData.climate.seasonal.fall.solar}</p>
+                      </div>}
                     </div>
                     <div className="pt-2 border-t border-blue-100">
-                      <p className="text-sm text-gray-600">Sunrise / Sunset</p>
-                      <p className="font-medium">{locationData?.sunPath.summer} / {locationData?.sunPath.winter}</p>
+                      <p className="text-sm text-gray-600">Est. Sunrise / Sunset</p>
+                      <p className="font-medium text-sm">Summer: {locationData?.sunPath.summer}, Winter: {locationData?.sunPath.winter}</p>
                     </div>
                   </div>
                 </div>
@@ -756,22 +862,13 @@ const addDebugLog = (log) => {
 
               {/* Interactive Map Preview */}
               <div className="mt-6 bg-gray-100 rounded-xl h-64 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-green-400/20"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <Globe className="w-16 h-16 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-600 font-medium">Interactive 3D Site Map</p>
-                    <p className="text-sm text-gray-500">{locationData?.address}</p>
-                    <div className="mt-4">
-                      <div className="w-32 h-32 border-4 border-blue-500 rounded-full mx-auto relative">
-                        <div className="absolute inset-2 border-2 border-dashed border-blue-300 rounded-full animate-spin-slow"></div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <MapPin className="w-8 h-8 text-blue-600" />
-                        </div>
-                      </div>
-                    </div>
+                {locationData?.coordinates ? (
+                  <MapView center={locationData.coordinates} />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <p>Map data is not available.</p>
                   </div>
-                </div>
+                )}
               </div>
               
               <button
@@ -1356,56 +1453,58 @@ const addDebugLog = (log) => {
   };
 
   return (
-    <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
-      {toastMessage && (
-        <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
-          {toastMessage}
-        </div>
-      )}
-      {currentStep > 0 && (
-        <div className="sticky top-0 bg-white shadow-sm z-40">
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Building className="w-8 h-8 text-blue-600 mr-3" />
-                <h1 className="text-2xl font-bold text-gray-800">ArchitectAI Platform</h1>
-              </div>
-              
-              {/* Progress Indicator */}
-              <div className="hidden md:flex items-center space-x-2">
-                {[
-                  { step: 1, label: 'Location' },
-                  { step: 2, label: 'Analysis' },
-                  { step: 3, label: 'Portfolio' },
-                  { step: 4, label: 'Details' },
-                  { step: 5, label: 'Results' }
-                ].map((item, idx) => (
-                  <div key={idx} className="flex items-center">
-                    <div className={`
-                      flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium
-                      ${currentStep >= item.step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}
-                    `}>
-                      {currentStep > item.step ? <Check className="w-4 h-4" /> : item.step}
-                    </div>
-                    {idx < 4 && (
-                      <div className={`w-12 h-0.5 mx-1 ${currentStep > item.step ? 'bg-blue-600' : 'bg-gray-300'}`} />
-                    )}
-                  </div>
-                ))}
-              </div>
+    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+      <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
+        {toastMessage && (
+          <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
+            {toastMessage}
+          </div>
+        )}
+        {currentStep > 0 && (
+          <div className="sticky top-0 bg-white shadow-sm z-40">
+            <div className="max-w-7xl mx-auto px-4 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <Building className="w-8 h-8 text-blue-600 mr-3" />
+                  <h1 className="text-2xl font-bold text-gray-800">ArchitectAI Platform</h1>
+                </div>
 
-              <div className="text-sm text-gray-600">
-                Time: <span className="font-medium">3:45</span> elapsed
+                {/* Progress Indicator */}
+                <div className="hidden md:flex items-center space-x-2">
+                  {[
+                    { step: 1, label: 'Location' },
+                    { step: 2, label: 'Analysis' },
+                    { step: 3, label: 'Portfolio' },
+                    { step: 4, label: 'Details' },
+                    { step: 5, label: 'Results' }
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex items-center">
+                      <div className={`
+                        flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium
+                        ${currentStep >= item.step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}
+                      `}>
+                        {currentStep > item.step ? <Check className="w-4 h-4" /> : item.step}
+                      </div>
+                      {idx < 4 && (
+                        <div className={`w-12 h-0.5 mx-1 ${currentStep > item.step ? 'bg-blue-600' : 'bg-gray-300'}`} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  Time: <span className="font-medium">3:45</span> elapsed
+                </div>
               </div>
             </div>
           </div>
+        )}
+
+        <div className={currentStep > 0 ? 'max-w-7xl mx-auto px-4 py-8' : ''}>
+          {renderStep()}
         </div>
-      )}
-      
-      <div className={currentStep > 0 ? 'max-w-7xl mx-auto px-4 py-8' : ''}>
-        {renderStep()}
       </div>
-    </div>
+    </Wrapper>
   );
 };
 
