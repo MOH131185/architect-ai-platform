@@ -169,10 +169,44 @@ const showToast = (message) => {
   setTimeout(() => toast.remove(), 3000);
 };
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    this.setState({ error: error, errorInfo: errorInfo });
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', backgroundColor: '#fff0f0', border: '1px solid red', borderRadius: '8px' }}>
+          <h2>Something went wrong. Please provide the following information to support:</h2>
+          <details style={{ whiteSpace: 'pre-wrap', marginTop: '10px' }}>
+            {this.state.error && this.state.error.toString()}
+            <br />
+            {this.state.errorInfo && this.state.errorInfo.componentStack}
+          </details>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const ArchitectAIEnhanced = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [locationData, setLocationData] = useState(null);
   const [address, setAddress] = useState("123 Main Street, San Francisco, CA 94105");
+  const [debugInfo, setDebugInfo] = useState([]);
   const [portfolioFiles, setPortfolioFiles] = useState([]);
   const [styleChoice, setStyleChoice] = useState('blend');
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
@@ -192,6 +226,10 @@ const ArchitectAIEnhanced = () => {
     }
   }, [currentStep]);
 
+  const addDebugLog = (log) => {
+    setDebugInfo(prev => [...prev, `${new Date().toISOString()}: ${log}`]);
+  };
+
   // In a real-world app, these keys would be in a .env file.
   // Due to environment constraints, they are placed here directly.
   const GOOGLE_MAPS_API_KEY = "AIzaSyA34NLQcrMsBNWG5CPTZjprRPnHH30EdyY";
@@ -200,53 +238,58 @@ const ArchitectAIEnhanced = () => {
   const SMARTY_AUTH_TOKEN = "IRYlqrx5owMNe3sAUYjx";
 
   const analyzeLocation = async () => {
+    setDebugInfo([]); // Reset debug info on new analysis
+    addDebugLog("Starting analysis...");
     setIsLoading(true);
     try {
       // Step 1: Geocode address
+      addDebugLog(`Geocoding for address: "${address}"`);
       const geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
         params: { address: address, key: GOOGLE_MAPS_API_KEY },
       });
+      addDebugLog(`Geocode response status: ${geocodeResponse.data.status}`);
       if (geocodeResponse.data.status !== 'OK' || geocodeResponse.data.results.length === 0) {
         throw new Error("Could not find location. Please check the address.");
       }
       const locationResult = geocodeResponse.data.results[0];
       const { lat, lng } = locationResult.geometry.location;
       const formattedAddress = locationResult.formatted_address;
+      addDebugLog(`Geocoding successful. Lat: ${lat}, Lng: ${lng}`);
 
       // Step 2: Get weather data
+      addDebugLog("Fetching weather data...");
       const weatherResponse = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
         params: { lat, lon: lng, appid: OPENWEATHER_API_KEY, units: 'metric' },
       });
       const weatherData = weatherResponse.data;
+      addDebugLog(`Weather data received: ${JSON.stringify(weatherData, null, 2)}`);
 
       // Step 3: Get property & zoning data from Smarty
-      let zoningData = {
-        type: "Unavailable",
-        maxHeight: "N/A",
-        style: "N/A",
-      };
+      addDebugLog("Fetching property data from Smarty...");
+      let zoningData = { type: "Unavailable", maxHeight: "N/A", style: "N/A" };
       try {
         const smartyResponse = await axios.get('https://us-enrichment.api.smarty.com/lookup/search/property/principal', {
-          params: {
-            'auth-id': SMARTY_AUTH_ID,
-            'auth-token': SMARTY_AUTH_TOKEN,
-            freeform: formattedAddress,
-          },
+          params: { 'auth-id': SMARTY_AUTH_ID, 'auth-token': SMARTY_AUTH_TOKEN, freeform: formattedAddress },
         });
+        addDebugLog(`Smarty response received. Status: ${smartyResponse.status}`);
         if (smartyResponse.data && smartyResponse.data.length > 0) {
           const attributes = smartyResponse.data[0]?.attributes;
+          addDebugLog(`Smarty attributes found: ${JSON.stringify(attributes, null, 2)}`);
           zoningData = {
             type: attributes?.zoning || "Not specified",
             maxHeight: attributes?.building_height || "Check local regulations",
             style: attributes?.structure_style || "Not specified",
           };
+        } else {
+          addDebugLog("No property data found in Smarty response.");
         }
       } catch (smartyError) {
+        addDebugLog(`Could not retrieve property data from Smarty: ${smartyError.message}`);
         console.warn("Could not retrieve property data from Smarty:", smartyError);
-        // If Smarty fails, we still proceed with the data we have
       }
 
       // Step 4: Combine all data for the final report
+      addDebugLog("Constructing final locationData object...");
       const newLocationData = {
         address: formattedAddress,
         coordinates: { lat, lng },
@@ -256,30 +299,21 @@ const ArchitectAIEnhanced = () => {
           rainfall: "N/A",
           windPattern: `${weatherData?.wind?.speed} m/s` || "N/A"
         },
-        sunPath: {
-          summer: "Varies by location",
-          winter: "Varies by location",
-          optimalOrientation: "South-facing (general)"
-        },
-        zoning: {
-          type: zoningData.type,
-          maxHeight: zoningData.maxHeight,
-          setbacks: "Check local regulations", // This info isn't in the API
-        },
+        sunPath: { summer: "Varies by location", winter: "Varies by location", optimalOrientation: "South-facing (general)" },
+        zoning: { type: zoningData.type, maxHeight: zoningData.maxHeight, setbacks: "Check local regulations" },
         recommendedStyle: zoningData.style,
         localStyles: ["Varies by region"],
         sustainabilityScore: Math.round(60 + Math.random() * 30),
-        marketContext: {
-          avgConstructionCost: "Varies greatly",
-          demandIndex: "Check local market reports",
-          roi: "Consult financial advisor"
-        }
+        marketContext: { avgConstructionCost: "Varies greatly", demandIndex: "Check local market reports", roi: "Consult financial advisor" }
       };
+      addDebugLog(`Final locationData: ${JSON.stringify(newLocationData, null, 2)}`);
 
       setLocationData(newLocationData);
+      addDebugLog("Setting state and moving to next step...");
       setCurrentStep(2);
 
     } catch (error) {
+      addDebugLog(`CRITICAL ERROR in analyzeLocation: ${error.message}`);
       console.error("Error analyzing location:", error);
       let errorMessage = "An error occurred during analysis.";
       if (error.response) {
@@ -292,6 +326,7 @@ const ArchitectAIEnhanced = () => {
       alert(errorMessage);
     } finally {
       setIsLoading(false);
+      addDebugLog("Analysis function finished.");
     }
   };
 
@@ -530,9 +565,10 @@ const ArchitectAIEnhanced = () => {
 
       case 2:
         return (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              <div className="flex items-center justify-between mb-6">
+          <ErrorBoundary>
+            <div className="space-y-6 animate-fadeIn">
+              <div className="bg-white rounded-2xl shadow-xl p-8">
+                <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Location Intelligence Report</h2>
                 <div className="flex items-center bg-green-100 px-4 py-2 rounded-full">
                   <Check className="w-5 h-5 text-green-600 mr-2" />
@@ -665,6 +701,7 @@ const ArchitectAIEnhanced = () => {
               </button>
             </div>
           </div>
+        </ErrorBoundary>
         );
 
       case 3:
@@ -1222,6 +1259,12 @@ const ArchitectAIEnhanced = () => {
 
   return (
     <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
+      {debugInfo.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.8)', color: 'white', padding: '10px', maxHeight: '200px', overflowY: 'scroll', zIndex: 9999, fontSize: '12px' }}>
+          <h3>Debug Log:</h3>
+          <pre>{debugInfo.join('\n')}</pre>
+        </div>
+      )}
       {currentStep > 0 && (
         <div className="sticky top-0 bg-white shadow-sm z-40">
           <div className="max-w-7xl mx-auto px-4 py-4">
