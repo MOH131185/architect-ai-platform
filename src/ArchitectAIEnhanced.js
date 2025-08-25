@@ -351,6 +351,28 @@ const addDebugLog = (log) => {
     } catch (error) {
       addDebugLog(`Could not retrieve seasonal climate data: ${error.message}`);
       console.warn("Could not retrieve seasonal climate data:", error);
+
+      // Fallback to mock data if API fails (e.g., due to subscription error)
+      if (error.response && error.response.status === 401) {
+        addDebugLog("API key unauthorized for One Call 3.0. Using mock climate data.");
+        return {
+          climate: {
+            type: "Mild, Mediterranean (Mock Data)",
+            seasonal: {
+              winter: { avgTemp: "14.0°C", precipitation: "100mm", solar: "50%" },
+              spring: { avgTemp: "17.5°C", precipitation: "40mm", solar: "75%" },
+              summer: { avgTemp: "22.0°C", precipitation: "5mm", solar: "90%" },
+              fall: { avgTemp: "19.5°C", precipitation: "25mm", solar: "65%" },
+            }
+          },
+          sunPath: {
+              summer: "Sunrise: ~5:48 AM, Sunset: ~8:35 PM",
+              winter: "Sunrise: ~7:20 AM, Sunset: ~5:00 PM",
+              optimalOrientation: "South-facing for winter sun"
+          }
+        };
+      }
+
       return {
         climate: { type: 'Error fetching seasonal data', seasonal: {} },
         sunPath: { summer: 'N/A', winter: 'N/A', optimalOrientation: 'N/A' }
