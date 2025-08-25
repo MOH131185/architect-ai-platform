@@ -214,7 +214,6 @@ const ArchitectAIEnhanced = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
   const [downloadCount, setDownloadCount] = useState(0);
-  const [address, setAddress] = useState('123 Main Street, San Francisco, CA 94105');
   const fileInputRef = useRef(null);
 
   // Landing page animation
@@ -359,8 +358,6 @@ const addDebugLog = (log) => {
     } finally {
       setIsLoading(false);
       addDebugLog("Analysis function finished.");
-    }
-  };
     }
   };
 
