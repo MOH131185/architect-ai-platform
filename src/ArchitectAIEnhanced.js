@@ -244,12 +244,34 @@ const addDebugLog = (log) => {
     try {
       // Step 1: Geocode address to get coordinates
       addDebugLog(`Geocoding for address: "${address}"`);
-      const geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-        params: {
-          address: address,
-          key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-        },
-      });
+
+      // MOCK API FOR DEMO PURPOSES - REMOVE FOR PRODUCTION
+      // A real Google Maps API key is required for this to work with addresses other than the default.
+      // The .env.example file shows how to set this up.
+      let geocodeResponse;
+      if (address === "123 Main Street, San Francisco, CA 94105" || !process.env.REACT_APP_GOOGLE_MAPS_API_KEY) {
+          addDebugLog("Using mock geocoding data for demo.");
+          geocodeResponse = {
+              data: {
+                  status: 'OK',
+                  results: [
+                      {
+                          formatted_address: "123 Main Street, San Francisco, CA 94105, USA",
+                          geometry: {
+                              location: { lat: 37.795, lng: -122.394 }
+                          }
+                      }
+                  ]
+              }
+          };
+      } else {
+          geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+            params: {
+              address: address,
+              key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+            },
+          });
+      }
 
       addDebugLog(`Geocode response status: ${geocodeResponse.data.status}`);
       if (geocodeResponse.data.status !== 'OK' || geocodeResponse.data.results.length === 0) {
