@@ -250,6 +250,7 @@ const ArchitectAIEnhanced = () => {
   const [downloadCount, setDownloadCount] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [apiWarning, setApiWarning] = useState(null);
   const fileInputRef = useRef(null);
 
   const showToast = (message) => {
@@ -349,12 +350,9 @@ const addDebugLog = (log) => {
       return finalProcessedData;
 
     } catch (error) {
-      addDebugLog(`Could not retrieve seasonal climate data: ${error.message}`);
-      console.warn("Could not retrieve seasonal climate data:", error);
-      return {
-        climate: { type: 'Error fetching seasonal data', seasonal: {} },
-        sunPath: { summer: 'N/A', winter: 'N/A', optimalOrientation: 'N/A' }
-      };
+      addDebugLog(`Error in getSeasonalClimateData: ${error.message}`);
+      console.error("Error fetching seasonal climate data:", error);
+      throw error; // Re-throw the error to be caught by the caller
     }
   };
 
@@ -365,7 +363,8 @@ const addDebugLog = (log) => {
       return;
     }
     
-    setDebugInfo([]); // Reset debug info on new analysis
+    setDebugInfo([]);
+    setApiWarning(null); // Reset warning on new analysis
     addDebugLog("Starting analysis...");
     setIsLoading(true);
     
@@ -374,8 +373,6 @@ const addDebugLog = (log) => {
       addDebugLog(`Geocoding for address: "${address}"`);
 
       // MOCK API FOR DEMO PURPOSES - REMOVE FOR PRODUCTION
-      // A real Google Maps API key is required for this to work with addresses other than the default.
-      // The .env.example file shows how to set this up.
       let geocodeResponse;
       if (address === "123 Main Street, San Francisco, CA 94105" || !process.env.REACT_APP_GOOGLE_MAPS_API_KEY) {
           addDebugLog("Using mock geocoding data for demo.");
@@ -411,8 +408,36 @@ const addDebugLog = (log) => {
       const formattedAddress = locationResult.formatted_address;
       addDebugLog(`Geocoding successful. Lat: ${lat}, Lng: ${lng}`);
 
-      // Step 2: Get seasonal climate data
-      const seasonalClimateData = await getSeasonalClimateData(lat, lng);
+      let climateData, sunPathData;
+
+      try {
+        // Step 2, New Method: Try to get seasonal data
+        addDebugLog("Attempting to fetch seasonal climate data...");
+        const seasonalData = await getSeasonalClimateData(lat, lng);
+        climateData = seasonalData.climate;
+        sunPathData = seasonalData.sunPath;
+        addDebugLog("Successfully fetched seasonal climate data.");
+      } catch (seasonalError) {
+        addDebugLog(`Seasonal data fetch failed: ${seasonalError.message}. Falling back to current weather.`);
+        setApiWarning("Could not load seasonal data. Displaying current weather instead. Please check your OpenWeatherMap API key subscription.");
+
+        // Fallback to old method: Get current weather
+        const weatherResponse = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
+          params: { lat, lon: lng, appid: process.env.REACT_APP_OPENWEATHER_API_KEY, units: 'metric' },
+        });
+        const weatherData = weatherResponse.data;
+        climateData = {
+          type: weatherData.weather[0].main,
+          avgTemp: `${weatherData.main.temp}°C`,
+          rainfall: weatherData.rain ? `${weatherData.rain['1h']}mm/hr` : "Not available",
+          windPattern: `${weatherData.wind.speed} m/s at ${weatherData.wind.deg}°`
+        };
+        sunPathData = {
+          summer: `Sunrise: ${new Date(weatherData.sys.sunrise * 1000).toLocaleTimeString()}`,
+          winter: `Sunset: ${new Date(weatherData.sys.sunset * 1000).toLocaleTimeString()}`,
+          optimalOrientation: "South-facing (general recommendation)"
+        };
+      }
 
       // Step 3: Get property & zoning data from Smarty (optional enhancement)
       addDebugLog("Fetching property data from Smarty...");
@@ -453,8 +478,8 @@ const addDebugLog = (log) => {
       const newLocationData = {
         address: formattedAddress,
         coordinates: { lat, lng },
-        climate: seasonalClimateData.climate,
-        sunPath: seasonalClimateData.sunPath,
+        climate: climateData,
+        sunPath: sunPathData,
         zoning: zoningData,
         recommendedStyle: "Modern with sustainable features",
         localStyles: ["Contemporary", "Minimalist", "Eco-friendly"],
@@ -741,6 +766,12 @@ const addDebugLog = (log) => {
         return (
           <ErrorBoundary>
             <div className="space-y-6 animate-fadeIn">
+              {apiWarning && (
+                <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6 rounded-md" role="alert">
+                  <p className="font-bold">Warning</p>
+                  <p>{apiWarning}</p>
+                </div>
+              )}
               <div className="bg-white rounded-2xl shadow-xl p-8">
                 <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">Location Intelligence Report</h2>
