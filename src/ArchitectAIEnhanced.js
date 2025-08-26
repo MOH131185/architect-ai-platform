@@ -1287,7 +1287,7 @@ const ArchitectAIEnhanced = () => {
                   <ul className="space-y-1 text-sm text-gray-700">
                     <li><span className="font-medium">HVAC:</span> {generatedDesigns?.technical.mep.hvac}</li>
                     <li><span className="font-medium">Electrical:</span> {generatedDesigns?.technical.mep.electrical}</li>
-                    <li><p className="font-medium">Plumbing:</span> {generatedDesigns?.technical.mep.plumbing}</li>
+                    <li><span className="font-medium">Plumbing:</span> {generatedDesigns?.technical.mep.plumbing}</li>
                   </ul>
                 </div>
                 
