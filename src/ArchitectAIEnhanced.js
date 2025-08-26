@@ -428,7 +428,7 @@ const ArchitectAIEnhanced = () => {
       const zoningData = locationIntelligence.analyzeZoning(
         addressComponents,
         locationResult.types,
-        locationResult.population // if available from API
+        locationResult.geometry.location
       );
 
       // Analyze market dynamically
@@ -790,32 +790,32 @@ const ArchitectAIEnhanced = () => {
                     <div>
                       <p className="text-sm text-gray-600">Zoning Type</p>
                       <p className="font-medium">{locationData?.zoning.type}</p>
+                      {locationData?.zoning.note && (
+                        <p className="text-xs text-gray-500 italic mt-1">{locationData.zoning.note}</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Max Height Allowed</p>
                       <p className="font-medium">{locationData?.zoning.maxHeight}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Recommended Style</p>
-                      <p className="font-medium text-sm">{locationData?.recommendedStyle}</p>
+                      <p className="text-sm text-gray-600">Density</p>
+                      <p className="font-medium">{locationData?.zoning.density}</p>
                     </div>
-                    <div className="pt-2">
-                      <p className="text-sm text-gray-600 mb-2">Local Styles</p>
-                      <div className="flex flex-wrap gap-2">
-                        {locationData?.localStyles.map((style, idx) => (
-                          <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
-                            {style}
-                          </span>
-                        ))}
+                    <div>
+                      <p className="text-sm text-gray-600">Setbacks</p>
+                      <p className="font-medium text-sm">{locationData?.zoning.setbacks}</p>
+                    </div>
+                    {locationData?.zoning.characteristics && (
+                      <div>
+                        <p className="text-sm text-gray-600">Characteristics</p>
+                        <p className="font-medium text-sm">{locationData.zoning.characteristics}</p>
                       </div>
-                    </div>
-                    {locationData?.architecturalProfile && (
-                      <div className="pt-3 mt-3 border-t border-purple-200">
-                        <p className="text-sm font-medium text-gray-700">{locationData.architecturalProfile.historicalContext}</p>
-                        <div className="mt-2 text-xs">
-                          <p className="font-semibold">Characteristics: <span className="font-normal">{locationData.architecturalProfile.characteristics.join(', ')}</span></p>
-                          <p className="font-semibold">Materials: <span className="font-normal">{locationData.architecturalProfile.materials.join(', ')}</span></p>
-                        </div>
+                    )}
+                    {locationData?.zoning.materials && (
+                      <div>
+                        <p className="text-sm text-gray-600">Typical Materials</p>
+                        <p className="font-medium text-sm">{locationData.zoning.materials}</p>
                       </div>
                     )}
                   </div>
