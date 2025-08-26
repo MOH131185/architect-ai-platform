@@ -1,6 +1,34 @@
 // src/services/locationIntelligence.js
+import { architecturalStylesDatabase } from '../data/architecturalStylesDatabase';
 
 export const locationIntelligence = {
+  recommendArchitecturalStyle(addressComponents) {
+    const countryComponent = addressComponents.find(c => c.types.includes('country'));
+    const country = countryComponent?.short_name;
+    const city = addressComponents.find(c => c.types.includes('locality'))?.long_name;
+    const state = addressComponents.find(c => c.types.includes('administrative_area_level_1'))?.long_name;
+    const postcodeComponent = addressComponents.find(c => c.types.includes('postal_code'));
+
+    if (country === 'GB') {
+      const postcode = postcodeComponent?.long_name;
+      if (postcode) {
+        const prefix = postcode.substring(0, 2).toUpperCase();
+        return architecturalStylesDatabase.uk[prefix] || architecturalStylesDatabase.uk.default;
+      }
+      return architecturalStylesDatabase.uk.default;
+    }
+
+    if (country === 'US') {
+      const location = city || state;
+      if (location && architecturalStylesDatabase.us[location]) {
+        return architecturalStylesDatabase.us[location];
+      }
+      return architecturalStylesDatabase.us.default;
+    }
+
+    return architecturalStylesDatabase.default;
+  },
+
   analyzeZoning(addressComponents, placeTypes, population) {
     const country = addressComponents.find(c => c.types.includes('country'))?.long_name || '';
     const city = addressComponents.find(c => c.types.includes('locality'))?.long_name || '';
