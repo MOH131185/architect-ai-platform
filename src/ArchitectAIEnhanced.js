@@ -411,7 +411,7 @@ const ArchitectAIEnhanced = () => {
           });
       }
 
-      if (geocodeResponse.data.status !== 'OK' || geocodeResponse.data.results.length === 0) {
+      if (geocodeResponse.data.status !== 'OK' || !geocodeResponse.data.results || geocodeResponse.data.results.length === 0) {
         throw new Error(`Geocoding failed: ${geocodeResponse.data.status}`);
       }
 
@@ -439,7 +439,7 @@ const ArchitectAIEnhanced = () => {
       );
 
       // Recommend architectural style
-      const architecturalStyle = locationIntelligence.recommendArchitecturalStyle(addressComponents);
+      const architecturalStyle = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
 
       // Step 4: Populate location data
       const newLocationData = {
