@@ -7,6 +7,7 @@ import {
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
   Users, Shield, Zap, BarChart3, Eye
 } from 'lucide-react';
+import { locationIntelligence } from './services/locationIntelligence';
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -419,48 +420,23 @@ const ArchitectAIEnhanced = () => {
       const formattedAddress = locationResult.formatted_address;
 
       const addressComponents = locationResult.address_components;
-      const city = addressComponents.find(c => c.types.includes('locality'))?.long_name || '';
-      const state = addressComponents.find(c => c.types.includes('administrative_area_level_1'))?.long_name || '';
-      const country = addressComponents.find(c => c.types.includes('country'))?.long_name || '';
 
       // Step 2: Get seasonal climate data
       const seasonalClimateData = await getSeasonalClimateData(lat, lng);
 
-      // Dynamic zoning based on location
-      let zoningType = "R-1 Residential";
-      let maxHeight = "35 feet";
+      // Analyze zoning dynamically
+      const zoningData = locationIntelligence.analyzeZoning(
+        addressComponents,
+        locationResult.types,
+        locationResult.population // if available from API
+      );
 
-      if (city === "New York" || city === "Manhattan") {
-        zoningType = "C4-6 High Density Commercial";
-        maxHeight = "120-200 feet";
-      } else if (city === "San Francisco") {
-        zoningType = "NC-3 Neighborhood Commercial";
-        maxHeight = "65-85 feet";
-      } else if (formattedAddress.toLowerCase().includes('downtown')) {
-        zoningType = "CBD - Central Business District";
-        maxHeight = "100+ feet";
-      }
-
-      let zoningData = {
-        type: zoningType,
-        maxHeight: maxHeight,
-        setbacks: maxHeight.includes('100') ? "Minimal" : "Front: 10ft, Sides: 5ft"
-      };
-      
-      // Dynamic market data based on location
-      const marketData = {
-        'New York': { cost: "$500-800/sqft", demand: "Very High (9.5/10)", roi: "12-18%" },
-        'San Francisco': { cost: "$450-750/sqft", demand: "Very High (9.2/10)", roi: "15-20%" },
-        'Los Angeles': { cost: "$400-650/sqft", demand: "High (8.8/10)", roi: "14-19%" },
-        'Chicago': { cost: "$350-550/sqft", demand: "High (8.2/10)", roi: "10-15%" },
-        'Austin': { cost: "$325-500/sqft", demand: "Very High (9.0/10)", roi: "16-22%" }
-      };
-
-      const cityMarket = marketData[city] || {
-        cost: "$250-400/sqft",
-        demand: "Moderate (7.0/10)",
-        roi: "8-12%"
-      };
+      // Analyze market dynamically
+      const marketContext = locationIntelligence.analyzeMarket(
+        addressComponents,
+        { lat, lng },
+        zoningData
+      );
 
       // Step 4: Populate location data
       const newLocationData = {
@@ -471,12 +447,8 @@ const ArchitectAIEnhanced = () => {
         zoning: zoningData,
         recommendedStyle: "Modern with sustainable features",
         localStyles: ["Contemporary", "Minimalist", "Eco-friendly"],
-        sustainabilityScore: 85, // Could be calculated based on weather
-        marketContext: {
-          avgConstructionCost: cityMarket.cost,
-          demandIndex: cityMarket.demand,
-          roi: cityMarket.roi + " annually"
-        }
+        sustainabilityScore: 85,
+        marketContext: marketContext
       };
       
       setLocationData(newLocationData);
