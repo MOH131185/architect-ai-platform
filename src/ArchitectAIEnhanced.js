@@ -438,6 +438,9 @@ const ArchitectAIEnhanced = () => {
         zoningData
       );
 
+      // Recommend architectural style
+      const architecturalStyle = locationIntelligence.recommendArchitecturalStyle(addressComponents);
+
       // Step 4: Populate location data
       const newLocationData = {
         address: formattedAddress,
@@ -445,10 +448,11 @@ const ArchitectAIEnhanced = () => {
         climate: seasonalClimateData.climate,
         sunPath: seasonalClimateData.sunPath,
         zoning: zoningData,
-        recommendedStyle: "Modern with sustainable features",
-        localStyles: ["Contemporary", "Minimalist", "Eco-friendly"],
-        sustainabilityScore: 85,
-        marketContext: marketContext
+        recommendedStyle: architecturalStyle.primary,
+        localStyles: architecturalStyle.alternatives,
+        sustainabilityScore: 85, // This can be dynamic later
+        marketContext: marketContext,
+        architecturalProfile: architecturalStyle
       };
       
       setLocationData(newLocationData);
@@ -805,6 +809,15 @@ const ArchitectAIEnhanced = () => {
                         ))}
                       </div>
                     </div>
+                    {locationData?.architecturalProfile && (
+                      <div className="pt-3 mt-3 border-t border-purple-200">
+                        <p className="text-sm font-medium text-gray-700">{locationData.architecturalProfile.historicalContext}</p>
+                        <div className="mt-2 text-xs">
+                          <p className="font-semibold">Characteristics: <span className="font-normal">{locationData.architecturalProfile.characteristics.join(', ')}</span></p>
+                          <p className="font-semibold">Materials: <span className="font-normal">{locationData.architecturalProfile.materials.join(', ')}</span></p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
