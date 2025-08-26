@@ -1,32 +1,34 @@
 // src/services/locationIntelligence.js
-import { architecturalStylesDatabase } from '../data/architecturalStylesDatabase';
+import { architecturalStyleService } from '../data/globalArchitecturalDatabase';
 
 export const locationIntelligence = {
-  recommendArchitecturalStyle(addressComponents) {
-    const countryComponent = addressComponents.find(c => c.types.includes('country'));
-    const country = countryComponent?.short_name;
-    const city = addressComponents.find(c => c.types.includes('locality'))?.long_name;
-    const state = addressComponents.find(c => c.types.includes('administrative_area_level_1'))?.long_name;
-    const postcodeComponent = addressComponents.find(c => c.types.includes('postal_code'));
+  recommendArchitecturalStyle(location, climate) {
+    const components = location.address_components;
+    const country = components.find(c => c.types.includes('country'))?.long_name || '';
+    const state = components.find(c => c.types.includes('administrative_area_level_1'))?.long_name || '';
+    const city = components.find(c => c.types.includes('locality') || c.types.includes('postal_town'))?.long_name || '';
+    const postcode = components.find(c => c.types.includes('postal_code'))?.long_name || '';
 
-    if (country === 'GB') {
-      const postcode = postcodeComponent?.long_name;
-      if (postcode) {
-        const prefix = postcode.substring(0, 2).toUpperCase();
-        return architecturalStylesDatabase.uk[prefix] || architecturalStylesDatabase.uk.default;
-      }
-      return architecturalStylesDatabase.uk.default;
-    }
+    // Get location-specific styles from database
+    const locationStyles = architecturalStyleService.getStylesByLocation(country, state, city, postcode);
 
-    if (country === 'US') {
-      const location = city || state;
-      if (location && architecturalStylesDatabase.us[location]) {
-        return architecturalStylesDatabase.us[location];
-      }
-      return architecturalStylesDatabase.us.default;
-    }
+    // Get climate adaptations
+    const climateFeatures = architecturalStyleService.getClimateAdaptations(climate.type);
 
-    return architecturalStylesDatabase.default;
+    // Get local regulations
+    const regulations = architecturalStyleService.getRegulations(country);
+
+    // Combine all data
+    return {
+      primary: locationStyles.styles?.contemporary[0] || 'Contemporary Local',
+      alternatives: locationStyles.styles?.contemporary.slice(1) || [],
+      historical: locationStyles.styles?.historical || [],
+      vernacular: locationStyles.styles?.vernacular || [],
+      materials: locationStyles.materials || [],
+      characteristics: [...(locationStyles.characteristics || []), ...(climateFeatures.features || [])],
+      regulations: regulations,
+      climateAdaptations: climateFeatures
+    };
   },
 
   analyzeZoning(addressComponents, placeTypes, population) {
