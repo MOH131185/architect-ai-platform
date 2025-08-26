@@ -1,0 +1,12 @@
+
+> architect-ai-platform@0.1.0 test
+> react-scripts test
+
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+In /app
+  3 files checked.
+  testMatch: /app/src/**/__tests__/**/*.{js,jsx,ts,tsx}, /app/src/**/*.{spec,test}.{js,jsx,ts,tsx} - 0 matches
+  testPathIgnorePatterns: /node_modules/ - 3 matches
+  testRegex:  - 0 matches
+Pattern:  - 0 matches
