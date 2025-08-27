@@ -22,7 +22,7 @@ describe('enhancedLocationIntelligence', () => {
       const result = await enhancedLocationIntelligence.getAuthorativeZoningData(address, coords);
 
       expect(window.fetch).toHaveBeenCalledWith(
-        'https://planning.data.gov.uk/api/v1/constraints?lat=51.5034&lon=-0.1278'
+        '/api/planning/api/v1/constraints?lat=51.5034&lon=-0.1278'
       );
       expect(result.dataQuality).toBe('high');
       expect(result.zoning.features[0].properties.name).toBe('Conservation Area');

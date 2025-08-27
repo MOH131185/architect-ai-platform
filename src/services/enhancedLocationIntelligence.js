@@ -17,8 +17,8 @@ export const enhancedLocationIntelligence = {
     let dataQuality = 'unknown';
 
     try {
-      // Fetch UK planning constraints near the coordinate
-      const url = `https://planning.data.gov.uk/api/v1/constraints?lat=${lat}&lon=${lng}`;
+      // Fetch UK planning constraints near the coordinate via the proxy
+      const url = `/api/planning/api/v1/constraints?lat=${lat}&lon=${lng}`;
       const resp = await fetch(url);
       if (!resp.ok) {
         throw new Error(`API request failed with status ${resp.status}`);

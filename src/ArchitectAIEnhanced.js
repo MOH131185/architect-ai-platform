@@ -431,17 +431,25 @@ const ArchitectAIEnhanced = () => {
 
       if (country === 'United Kingdom') {
         const enhancedData = await enhancedLocationIntelligence.getAuthorativeZoningData(formattedAddress, { lat, lng });
-        zoningData = {
+        if (enhancedData.dataQuality === 'low') {
+          zoningData = {
             type: 'UK Planning Data',
-            maxHeight: 'See constraints',
-            density: 'See constraints',
-            setbacks: 'See constraints',
-            note: `Data from planning.data.gov.uk. Quality: ${enhancedData.dataQuality}`,
-            characteristics: 'See constraints',
-            materials: 'See constraints',
-            raw: enhancedData.zoning,
-            citations: enhancedData.citations
-        };
+            error: 'Could not retrieve planning data. The service may be temporarily unavailable. Please try again later.',
+            note: 'Attempted to fetch data from planning.data.gov.uk.'
+          };
+        } else {
+          zoningData = {
+              type: 'UK Planning Data',
+              maxHeight: 'See constraints',
+              density: 'See constraints',
+              setbacks: 'See constraints',
+              note: `Data from planning.data.gov.uk. Quality: ${enhancedData.dataQuality}`,
+              characteristics: 'See constraints',
+              materials: 'See constraints',
+              raw: enhancedData.zoning,
+              citations: enhancedData.citations
+          };
+        }
         architecturalProfile = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
       } else {
         zoningData = locationIntelligence.analyzeZoning(
@@ -806,59 +814,68 @@ const ArchitectAIEnhanced = () => {
                     <h3 className="font-semibold text-gray-800">Zoning & Architecture</h3>
                   </div>
                   <div className="space-y-3">
-                    <div>
-                      <p className="text-sm text-gray-600">Zoning Type</p>
-                      <p className="font-medium">{locationData?.zoning.type}</p>
-                      {locationData?.zoning.note && (
-                        <p className="text-xs text-gray-500 italic mt-1">{locationData.zoning.note}</p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Max Height Allowed</p>
-                      <p className="font-medium">{locationData?.zoning.maxHeight}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Density</p>
-                      <p className="font-medium">{locationData?.zoning.density}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Setbacks</p>
-                      <p className="font-medium text-sm">{locationData?.zoning.setbacks}</p>
-                    </div>
-                    {locationData?.zoning.characteristics && (
-                      <div>
-                        <p className="text-sm text-gray-600">Characteristics</p>
-                        <p className="font-medium text-sm">{locationData.zoning.characteristics}</p>
+                    {locationData?.zoning.error ? (
+                      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
+                        <p className="font-bold">Error Fetching Planning Data</p>
+                        <p className="text-sm">{locationData.zoning.error}</p>
                       </div>
-                    )}
-                    {locationData?.zoning.materials && (
-                      <div>
-                        <p className="text-sm text-gray-600">Typical Materials</p>
-                        <p className="font-medium text-sm">{locationData.zoning.materials}</p>
-                      </div>
-                    )}
-                    {locationData?.zoning.raw && (
-                      <div className="mt-4 pt-4 border-t border-purple-200">
-                        <h4 className="font-semibold text-gray-800 mb-2">UK Planning Constraints</h4>
-                        {locationData.zoning.raw?.features && locationData.zoning.raw.features.length > 0 && (
-                          <div className="mt-2">
-                            <h5 className="font-semibold text-gray-700 text-sm mb-1">Planning Designations</h5>
-                            <ul className="space-y-1 text-sm text-gray-600 list-disc list-inside">
-                              {locationData.zoning.raw.features.map((feature, idx) => (
-                                <li key={idx}>{feature.properties.name}</li>
-                              ))}
-                            </ul>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="text-sm text-gray-600">Zoning Type</p>
+                          <p className="font-medium">{locationData?.zoning.type}</p>
+                          {locationData?.zoning.note && (
+                            <p className="text-xs text-gray-500 italic mt-1">{locationData.zoning.note}</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Max Height Allowed</p>
+                          <p className="font-medium">{locationData?.zoning.maxHeight}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Density</p>
+                          <p className="font-medium">{locationData?.zoning.density}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Setbacks</p>
+                          <p className="font-medium text-sm">{locationData?.zoning.setbacks}</p>
+                        </div>
+                        {locationData?.zoning.characteristics && (
+                          <div>
+                            <p className="text-sm text-gray-600">Characteristics</p>
+                            <p className="font-medium text-sm">{locationData.zoning.characteristics}</p>
                           </div>
                         )}
-                        <pre className="bg-white/60 rounded-lg p-3 text-xs overflow-x-auto mt-2">
-                          {JSON.stringify(locationData.zoning.raw, null, 2)}
-                        </pre>
-                        {locationData.zoning.citations && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            Source: {locationData.zoning.citations.join(', ')}
-                          </p>
+                        {locationData?.zoning.materials && (
+                          <div>
+                            <p className="text-sm text-gray-600">Typical Materials</p>
+                            <p className="font-medium text-sm">{locationData.zoning.materials}</p>
+                          </div>
                         )}
-                      </div>
+                        {locationData?.zoning.raw && (
+                          <div className="mt-4 pt-4 border-t border-purple-200">
+                            <h4 className="font-semibold text-gray-800 mb-2">UK Planning Constraints</h4>
+                            {locationData.zoning.raw?.features && locationData.zoning.raw.features.length > 0 && (
+                              <div className="mt-2">
+                                <h5 className="font-semibold text-gray-700 text-sm mb-1">Planning Designations</h5>
+                                <ul className="space-y-1 text-sm text-gray-600 list-disc list-inside">
+                                  {locationData.zoning.raw.features.map((feature, idx) => (
+                                    <li key={idx}>{feature.properties.name}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <pre className="bg-white/60 rounded-lg p-3 text-xs overflow-x-auto mt-2">
+                              {JSON.stringify(locationData.zoning.raw, null, 2)}
+                            </pre>
+                            {locationData.zoning.citations && (
+                              <p className="text-xs text-gray-500 mt-2">
+                                Source: {locationData.zoning.citations.join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
