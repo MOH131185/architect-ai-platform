@@ -8,6 +8,7 @@ import {
   Users, Shield, Zap, BarChart3, Eye
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
+import { enhancedLocationIntelligence } from './services/enhancedLocationIntelligencejs';
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -425,17 +426,16 @@ const ArchitectAIEnhanced = () => {
       const seasonalClimateData = await getSeasonalClimateData(lat, lng);
 
       // Analyze zoning dynamically
-      const zoningData = locationIntelligence.analyzeZoning(
-        addressComponents,
-        locationResult.types,
-        locationResult.geometry.location
+      const zoningData = await enhancedLocationIntelligence.getAuthorativeZoningData(
+        formattedAddress,
+        { lat, lng }
       );
 
       // Analyze market dynamically
       const marketContext = locationIntelligence.analyzeMarket(
         addressComponents,
         { lat, lng },
-        zoningData
+        zoningData.zoning || {}
       );
 
       // Recommend architectural style
@@ -447,10 +447,13 @@ const ArchitectAIEnhanced = () => {
         coordinates: { lat, lng },
         climate: seasonalClimateData.climate,
         sunPath: seasonalClimateData.sunPath,
-        zoning: zoningData,
+        zoning: zoningData.zoning,
+        designGuidelines: zoningData.designGuidelines,
+        dataSource: zoningData.dataQuality,
+        citations: zoningData.citations,
         recommendedStyle: architecturalStyle.primary,
         localStyles: architecturalStyle.alternatives,
-        sustainabilityScore: 85, // This can be dynamic later
+        sustainabilityScore: 85,
         marketContext: marketContext,
         architecturalProfile: architecturalStyle
       };
