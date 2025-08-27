@@ -431,17 +431,7 @@ const ArchitectAIEnhanced = () => {
 
       if (country === 'United Kingdom') {
         const enhancedData = await enhancedLocationIntelligence.getAuthorativeZoningData(formattedAddress, { lat, lng });
-        zoningData = {
-            type: 'UK Planning Data',
-            maxHeight: 'See constraints',
-            density: 'See constraints',
-            setbacks: 'See constraints',
-            note: `Data from planning.data.gov.uk. Quality: ${enhancedData.dataQuality}`,
-            characteristics: 'See constraints',
-            materials: 'See constraints',
-            raw: enhancedData.zoning,
-            citations: enhancedData.citations
-        };
+        zoningData = { ...enhancedData.zoning, citations: enhancedData.citations };
         architecturalProfile = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
       } else {
         zoningData = locationIntelligence.analyzeZoning(
@@ -813,18 +803,24 @@ const ArchitectAIEnhanced = () => {
                         <p className="text-xs text-gray-500 italic mt-1">{locationData.zoning.note}</p>
                       )}
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Max Height Allowed</p>
-                      <p className="font-medium">{locationData?.zoning.maxHeight}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Density</p>
-                      <p className="font-medium">{locationData?.zoning.density}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Setbacks</p>
-                      <p className="font-medium text-sm">{locationData?.zoning.setbacks}</p>
-                    </div>
+                    {locationData?.zoning.maxHeight && (
+                      <div>
+                        <p className="text-sm text-gray-600">Max Height Allowed</p>
+                        <p className="font-medium">{locationData.zoning.maxHeight}</p>
+                      </div>
+                    )}
+                    {locationData?.zoning.density && (
+                      <div>
+                        <p className="text-sm text-gray-600">Density</p>
+                        <p className="font-medium">{locationData.zoning.density}</p>
+                      </div>
+                    )}
+                    {locationData?.zoning.setbacks && (
+                      <div>
+                        <p className="text-sm text-gray-600">Setbacks</p>
+                        <p className="font-medium text-sm">{locationData.zoning.setbacks}</p>
+                      </div>
+                    )}
                     {locationData?.zoning.characteristics && (
                       <div>
                         <p className="text-sm text-gray-600">Characteristics</p>
