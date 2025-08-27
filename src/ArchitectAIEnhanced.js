@@ -8,7 +8,6 @@ import {
   Users, Shield, Zap, BarChart3, Eye
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
-import { enhancedLocationIntelligence } from './services/enhancedLocationIntelligence';
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -419,46 +418,28 @@ const ArchitectAIEnhanced = () => {
       const locationResult = geocodeResponse.data.results[0];
       const { lat, lng } = locationResult.geometry.location;
       const formattedAddress = locationResult.formatted_address;
+
       const addressComponents = locationResult.address_components;
-      const countryComponent = addressComponents.find(c => c.types.includes('country'));
-      const country = countryComponent?.long_name;
 
       // Step 2: Get seasonal climate data
       const seasonalClimateData = await getSeasonalClimateData(lat, lng);
 
-      let zoningData;
-      let architecturalProfile;
-
-      if (country === 'United Kingdom') {
-        const enhancedData = await enhancedLocationIntelligence.getAuthorativeZoningData(formattedAddress, { lat, lng });
-        zoningData = {
-            type: 'UK Planning Data',
-            maxHeight: 'See constraints',
-            density: 'See constraints',
-            setbacks: 'See constraints',
-            note: `Data from planning.data.gov.uk. Quality: ${enhancedData.dataQuality}`,
-            characteristics: 'See constraints',
-            materials: 'See constraints',
-            raw: enhancedData.zoning,
-            citations: enhancedData.citations
-        };
-        architecturalProfile = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
-      } else {
-        zoningData = locationIntelligence.analyzeZoning(
-          addressComponents,
-          locationResult.types,
-          locationResult.geometry.location
-        );
-        architecturalProfile = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
-      }
+      // Analyze zoning dynamically
+      const zoningData = locationIntelligence.analyzeZoning(
+        addressComponents,
+        locationResult.types,
+        locationResult.geometry.location
+      );
 
       // Analyze market dynamically
       const marketContext = locationIntelligence.analyzeMarket(
         addressComponents,
         { lat, lng },
-        zoningData,
-        locationResult.types
+        zoningData
       );
+
+      // Recommend architectural style
+      const architecturalStyle = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
 
       // Step 4: Populate location data
       const newLocationData = {
@@ -467,11 +448,11 @@ const ArchitectAIEnhanced = () => {
         climate: seasonalClimateData.climate,
         sunPath: seasonalClimateData.sunPath,
         zoning: zoningData,
-        recommendedStyle: architecturalProfile.primary,
-        localStyles: architecturalProfile.alternatives,
+        recommendedStyle: architecturalStyle.primary,
+        localStyles: architecturalStyle.alternatives,
         sustainabilityScore: 85, // This can be dynamic later
         marketContext: marketContext,
-        architecturalProfile: architecturalProfile
+        architecturalProfile: architecturalStyle
       };
       
       setLocationData(newLocationData);
@@ -835,29 +816,6 @@ const ArchitectAIEnhanced = () => {
                       <div>
                         <p className="text-sm text-gray-600">Typical Materials</p>
                         <p className="font-medium text-sm">{locationData.zoning.materials}</p>
-                      </div>
-                    )}
-                    {locationData?.zoning.raw && (
-                      <div className="mt-4 pt-4 border-t border-purple-200">
-                        <h4 className="font-semibold text-gray-800 mb-2">UK Planning Constraints</h4>
-                        {locationData.zoning.raw?.features && locationData.zoning.raw.features.length > 0 && (
-                          <div className="mt-2">
-                            <h5 className="font-semibold text-gray-700 text-sm mb-1">Planning Designations</h5>
-                            <ul className="space-y-1 text-sm text-gray-600 list-disc list-inside">
-                              {locationData.zoning.raw.features.map((feature, idx) => (
-                                <li key={idx}>{feature.properties.name}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <pre className="bg-white/60 rounded-lg p-3 text-xs overflow-x-auto mt-2">
-                          {JSON.stringify(locationData.zoning.raw, null, 2)}
-                        </pre>
-                        {locationData.zoning.citations && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            Source: {locationData.zoning.citations.join(', ')}
-                          </p>
-                        )}
                       </div>
                     )}
                   </div>
