@@ -19,21 +19,13 @@ describe('enhancedLocationIntelligence', () => {
       const address = '10 Downing Street, London, UK';
       const coords = { lat: 51.5034, lng: -0.1278 }; // UK coordinates
 
-      // Mock the fetch call to the proxy
-      window.fetch.mockResolvedValue({
-        ok: true,
-        json: jest.fn().mockResolvedValue([
-          { label: 'Conservation Area' }
-        ]),
-      });
-
       const result = await enhancedLocationIntelligence.getAuthorativeZoningData(address, coords);
 
       expect(window.fetch).toHaveBeenCalledWith(
-        `/api/proxy-planning?lat=${coords.lat}&lon=${coords.lng}`
+        'https://planning.data.gov.uk/api/v1/constraints?lat=51.5034&lon=-0.1278'
       );
       expect(result.dataQuality).toBe('high');
-      expect(result.zoning.type).toBe('Conservation Area');
+      expect(result.zoning.features[0].properties.name).toBe('Conservation Area');
       expect(result.citations).toContain(
         'UK Planning Data Portal. Contains public sector information licensed under OGL v3.0'
       );
