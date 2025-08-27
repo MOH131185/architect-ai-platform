@@ -22,9 +22,9 @@ describe('enhancedLocationIntelligence', () => {
       // Mock the fetch call to the proxy
       window.fetch.mockResolvedValue({
         ok: true,
-        json: jest.fn().mockResolvedValue([
-          { label: 'Conservation Area' }
-        ]),
+        json: jest.fn().mockResolvedValue({
+          features: [{ properties: { name: 'Conservation Area' } }],
+        }),
       });
 
       const result = await enhancedLocationIntelligence.getAuthorativeZoningData(address, coords);
