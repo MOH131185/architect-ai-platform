@@ -232,14 +232,15 @@ export const locationIntelligence = {
     return materials[zoneType] || 'Locally sourced materials, Sustainable options';
   },
 
-  analyzeMarket(addressComponents, coordinates, zoning) {
+  analyzeMarket(addressComponents, coordinates, zoning, placeTypes = []) {
     const country = addressComponents.find(c => c.types.includes('country'))?.long_name || '';
     const city = addressComponents.find(c => c.types.includes('locality'))?.long_name || '';
     const state = addressComponents.find(c => c.types.includes('administrative_area_level_1'))?.long_name || '';
 
     // Get country economic data
     const countryData = this.getCountryEconomicData(country);
-    const citySize = this.estimateCitySize(city);
+    const isUrban = placeTypes.includes('locality') || placeTypes.includes('sublocality') || placeTypes.includes('postal_town');
+    const citySize = this.estimateCitySize(city, null, isUrban);
 
     // Base construction costs by country and city size
     let constructionCost = this.calculateConstructionCost(countryData, citySize, zoning.density);
