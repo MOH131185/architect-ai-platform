@@ -219,8 +219,6 @@ export const globalArchitecturalDatabase = {
 export const architecturalStyleService = {
   getStylesByLocation(country, region, city, postcode) {
     // Implementation to traverse the hierarchy and return relevant styles
-    let styles = {};
-
     // Start with continent level
     const continent = this.detectContinent(country);
     const continentData = globalArchitecturalDatabase.regions[continent];

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Wrapper } from "@googlemaps/react-wrapper";
 import { 
@@ -288,9 +288,9 @@ const ArchitectAIEnhanced = () => {
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const fileInputRef = useRef(null);
 
-  const showToast = (message) => {
+  const showToast = useCallback((message) => {
     setToastMessage(message);
-  };
+  }, []);
 
   useEffect(() => {
     if (toastMessage) {
@@ -312,13 +312,14 @@ const ArchitectAIEnhanced = () => {
   }, [currentStep]);
 
   // Auto-detect location on step 1
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (currentStep === 1 && !address) {
       detectUserLocation();
     }
-  }, [currentStep]);
+  }, [currentStep, address]); // Simplified dependencies
 
-  const detectUserLocation = async () => {
+  const detectUserLocation = useCallback(async () => {
     if (!navigator.geolocation) {
       setAddress("123 Main Street, San Francisco, CA 94105");
       showToast("Geolocation not supported. Using default location.");
@@ -376,7 +377,7 @@ const ArchitectAIEnhanced = () => {
         maximumAge: 300000, // 5 minutes
       }
     );
-  };
+  }, [showToast]); // Added dependency for showToast
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
