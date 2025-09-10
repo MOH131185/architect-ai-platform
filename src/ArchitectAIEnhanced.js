@@ -180,28 +180,63 @@ const generatePDFContent = (projectDetails, styleChoice, locationData) => {
 const MapView = ({ center, zoom }) => {
   const ref = useRef(null);
   const [map, setMap] = useState(null);
+  const [marker, setMarker] = useState(null);
 
   useEffect(() => {
     if (ref.current && !map && window.google) {
       const newMap = new window.google.maps.Map(ref.current, {
         center,
         zoom: zoom || 18,
-        mapTypeId: 'satellite',
+        mapTypeId: 'hybrid', // Changed to hybrid for better 3D view
         tilt: 45,
-        disableDefaultUI: true,
+        disableDefaultUI: false,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+        zoomControl: true,
+        gestureHandling: 'cooperative',
+        styles: [
+          {
+            featureType: 'all',
+            stylers: [{ saturation: 20 }, { lightness: -10 }]
+          }
+        ]
       });
+
+      // Add marker at the center
+      const newMarker = new window.google.maps.Marker({
+        position: center,
+        map: newMap,
+        title: 'Project Location',
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+              <circle cx="16" cy="16" r="6" fill="#ffffff"/>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(32, 32),
+          anchor: new window.google.maps.Point(16, 16),
+        }
+      });
+
       setMap(newMap);
+      setMarker(newMarker);
     }
   }, [ref, map, center, zoom]);
 
   useEffect(() => {
-    if (map) {
+    if (map && marker) {
       map.setCenter(center);
+      marker.setPosition(center);
       map.setTilt(45);
+      
+      // Animate to new position
+      map.panTo(center);
     }
-  }, [map, center]);
+  }, [map, marker, center]);
 
-  return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
+  return <div ref={ref} style={{ width: '100%', height: '100%', borderRadius: '12px' }} />;
 };
 
 class ErrorBoundary extends React.Component {
@@ -240,7 +275,7 @@ class ErrorBoundary extends React.Component {
 const ArchitectAIEnhanced = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [locationData, setLocationData] = useState(null);
-  const [address, setAddress] = useState("123 Main Street, San Francisco, CA 94105");
+  const [address, setAddress] = useState("");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
   const [styleChoice, setStyleChoice] = useState('blend');
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
@@ -250,6 +285,7 @@ const ArchitectAIEnhanced = () => {
   const [downloadCount, setDownloadCount] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const fileInputRef = useRef(null);
 
   const showToast = (message) => {
@@ -274,6 +310,73 @@ const ArchitectAIEnhanced = () => {
       return () => clearTimeout(timer);
     }
   }, [currentStep]);
+
+  // Auto-detect location on step 1
+  useEffect(() => {
+    if (currentStep === 1 && !address) {
+      detectUserLocation();
+    }
+  }, [currentStep]);
+
+  const detectUserLocation = async () => {
+    if (!navigator.geolocation) {
+      setAddress("123 Main Street, San Francisco, CA 94105");
+      showToast("Geolocation not supported. Using default location.");
+      return;
+    }
+
+    setIsDetectingLocation(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude: lat, longitude: lng } = position.coords;
+          
+          // Reverse geocode to get address
+          const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+            params: {
+              latlng: `${lat},${lng}`,
+              key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+            },
+          });
+
+          if (response.data.status === 'OK' && response.data.results.length > 0) {
+            const detectedAddress = response.data.results[0].formatted_address;
+            setAddress(detectedAddress);
+            showToast(`📍 Location detected: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
+          } else {
+            setAddress("123 Main Street, San Francisco, CA 94105");
+            showToast("Could not detect address. Using default location.");
+          }
+        } catch (error) {
+          console.error('Reverse geocoding failed:', error);
+          setAddress("123 Main Street, San Francisco, CA 94105");
+          showToast("Location detection failed. Using default location.");
+        } finally {
+          setIsDetectingLocation(false);
+        }
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        setAddress("123 Main Street, San Francisco, CA 94105");
+        setIsDetectingLocation(false);
+        
+        let errorMessage = "Location access denied. Using default location.";
+        if (error.code === error.TIMEOUT) {
+          errorMessage = "Location detection timed out. Using default location.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = "Location unavailable. Using default location.";
+        }
+        
+        showToast(errorMessage);
+      },
+      {
+        timeout: 10000,
+        enableHighAccuracy: true,
+        maximumAge: 300000, // 5 minutes
+      }
+    );
+  };
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
@@ -383,13 +486,14 @@ const ArchitectAIEnhanced = () => {
     try {
       // Step 1: Geocode address to get coordinates
       let geocodeResponse;
-      if (address === "123 Main Street, San Francisco, CA 94105" || !process.env.REACT_APP_GOOGLE_MAPS_API_KEY) {
+      if (!process.env.REACT_APP_GOOGLE_MAPS_API_KEY) {
+          // Fallback data if no API key
           geocodeResponse = {
               data: {
                   status: 'OK',
                   results: [
                       {
-                          formatted_address: "123 Main Street, San Francisco, CA 94105, USA",
+                          formatted_address: address || "123 Main Street, San Francisco, CA 94105, USA",
                           geometry: {
                               location: { lat: 37.795, lng: -122.394 }
                           },
@@ -673,18 +777,38 @@ const ArchitectAIEnhanced = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Project Address</label>
-                  <input
-                    type="text"
-                    placeholder="Enter full address..."
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        analyzeLocation();
-                      }
-                    }}
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder={isDetectingLocation ? "Detecting your location..." : "Enter full address or let us detect your location..."}
+                      className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          analyzeLocation();
+                        }
+                      }}
+                      disabled={isDetectingLocation}
+                    />
+                    {isDetectingLocation && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                      </div>
+                    )}
+                  </div>
+                  {!address && !isDetectingLocation && (
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-sm text-gray-500">We'll automatically detect your location when you start</p>
+                      <button
+                        onClick={detectUserLocation}
+                        className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center"
+                      >
+                        <MapPin className="w-4 h-4 mr-1" />
+                        Detect Location
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-blue-50 rounded-xl p-4">
@@ -854,15 +978,41 @@ const ArchitectAIEnhanced = () => {
                 </div>
               </div>
 
-              {/* Interactive Map Preview */}
-              <div className="mt-6 bg-gray-100 rounded-xl h-64 relative overflow-hidden">
-                {locationData?.coordinates ? (
-                  <MapView center={locationData.coordinates} />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <p>Map data is not available.</p>
-                  </div>
-                )}
+              {/* Interactive 3D Map Preview */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800 flex items-center">
+                    <MapPin className="w-5 h-5 text-blue-600 mr-2" />
+                    3D Location View
+                  </h3>
+                  <div className="text-sm text-gray-600">{locationData?.address}</div>
+                </div>
+                <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
+                  {locationData?.coordinates ? (
+                    <>
+                      <MapView center={locationData.coordinates} zoom={19} />
+                      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
+                        <div className="flex items-center text-sm font-medium text-gray-700">
+                          <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
+                          Project Site
+                        </div>
+                      </div>
+                      <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
+                        <div className="text-xs text-gray-600">
+                          Lat: {locationData.coordinates.lat.toFixed(6)}<br/>
+                          Lng: {locationData.coordinates.lng.toFixed(6)}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100">
+                      <div className="text-center">
+                        <MapPin className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-600">3D map will appear after location analysis</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               
               <button
