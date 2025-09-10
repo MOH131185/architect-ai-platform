@@ -311,15 +311,15 @@ const ArchitectAIEnhanced = () => {
     }
   }, [currentStep]);
 
-  // Auto-detect location on step 1
+  // Auto-detect location on step 1 (only run once when step changes to 1)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (currentStep === 1 && !address) {
+    if (currentStep === 1 && !address && !isDetectingLocation) {
       detectUserLocation();
     }
-  }, [currentStep, address]); // Simplified dependencies
+  }, [currentStep]); // Only depend on currentStep to prevent infinite loops
 
-  const detectUserLocation = useCallback(async () => {
+  const detectUserLocation = async () => {
     if (!navigator.geolocation) {
       setAddress("123 Main Street, San Francisco, CA 94105");
       showToast("Geolocation not supported. Using default location.");
@@ -377,7 +377,7 @@ const ArchitectAIEnhanced = () => {
         maximumAge: 300000, // 5 minutes
       }
     );
-  }, [showToast]); // Added dependency for showToast
+  };
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
