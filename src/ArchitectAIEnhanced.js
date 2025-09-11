@@ -376,32 +376,69 @@ const ArchitectAIEnhanced = () => {
     }
 
     setIsDetectingLocation(true);
+    showToast("📍 Detecting your precise location...");
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         try {
-          const { latitude: lat, longitude: lng } = position.coords;
+          const { latitude: lat, longitude: lng, accuracy } = position.coords;
           
-          // Reverse geocode to get address
+          console.log(`Location detected: ${lat}, ${lng} (accuracy: ${accuracy}m)`);
+          
+          // Enhanced reverse geocoding with multiple result types for better accuracy
           const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
               latlng: `${lat},${lng}`,
               key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+              result_type: 'street_address|premise|subpremise|neighborhood', // Prioritize specific addresses
+              location_type: 'ROOFTOP|RANGE_INTERPOLATED', // High accuracy locations
             },
           });
 
+          console.log('Geocoding response:', response.data);
+
           if (response.data.status === 'OK' && response.data.results.length > 0) {
-            const detectedAddress = response.data.results[0].formatted_address;
+            // Find the most specific address (prefer street addresses)
+            let bestResult = response.data.results[0];
+            
+            // Look for street address first
+            for (let result of response.data.results) {
+              if (result.types.includes('street_address') || result.types.includes('premise')) {
+                bestResult = result;
+                break;
+              }
+            }
+            
+            const detectedAddress = bestResult.formatted_address;
             setAddress(detectedAddress);
-            showToast(`📍 Location detected: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
+            
+            // Show more detailed success message
+            const accuracyText = accuracy < 10 ? 'High accuracy' : 
+                               accuracy < 50 ? 'Good accuracy' : 
+                               accuracy < 100 ? 'Moderate accuracy' : 'Low accuracy';
+            
+            showToast(`✅ Location found with ${accuracyText}: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
           } else {
-            setAddress("123 Main Street, San Francisco, CA 94105");
-            showToast("Could not detect address. Using default location.");
+            // Try a broader search if specific address fails
+            const fallbackResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+              params: {
+                latlng: `${lat},${lng}`,
+                key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
+              },
+            });
+            
+            if (fallbackResponse.data.status === 'OK' && fallbackResponse.data.results.length > 0) {
+              const detectedAddress = fallbackResponse.data.results[0].formatted_address;
+              setAddress(detectedAddress);
+              showToast(`📍 Approximate location: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
+            } else {
+              throw new Error('No geocoding results found');
+            }
           }
         } catch (error) {
           console.error('Reverse geocoding failed:', error);
           setAddress("123 Main Street, San Francisco, CA 94105");
-          showToast("Location detection failed. Using default location.");
+          showToast("⚠️ Could not determine precise address. Using default location.");
         } finally {
           setIsDetectingLocation(false);
         }
@@ -411,19 +448,21 @@ const ArchitectAIEnhanced = () => {
         setAddress("123 Main Street, San Francisco, CA 94105");
         setIsDetectingLocation(false);
         
-        let errorMessage = "Location access denied. Using default location.";
-        if (error.code === error.TIMEOUT) {
-          errorMessage = "Location detection timed out. Using default location.";
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMessage = "Location unavailable. Using default location.";
+        let errorMessage = "🚫 Location access denied. Using default location.";
+        if (error.code === 1) { // PERMISSION_DENIED
+          errorMessage = "🚫 Location access denied. Please enable location permissions.";
+        } else if (error.code === 2) { // POSITION_UNAVAILABLE
+          errorMessage = "📡 GPS signal unavailable. Using default location.";
+        } else if (error.code === 3) { // TIMEOUT
+          errorMessage = "⏱️ Location detection timed out. Using default location.";
         }
         
         showToast(errorMessage);
       },
       {
-        timeout: 10000,
-        enableHighAccuracy: true,
-        maximumAge: 300000, // 5 minutes
+        timeout: 15000, // Increased timeout for better accuracy
+        enableHighAccuracy: true, // Use GPS for highest accuracy
+        maximumAge: 60000, // Use cached location only if less than 1 minute old
       }
     );
   }, [showToast]);
