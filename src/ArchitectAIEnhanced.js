@@ -315,18 +315,6 @@ const ArchitectAIEnhanced = () => {
     }
   }, [currentStep]);
 
-  // Auto-detect location on step 1 (only run once when step changes to 1)
-  useEffect(() => {
-    if (currentStep === 1 && !address && !isDetectingLocation && !hasDetectedLocation.current) {
-      hasDetectedLocation.current = true;
-      detectUserLocation();
-    }
-    // Reset detection flag when step changes away from 1
-    if (currentStep !== 1) {
-      hasDetectedLocation.current = false;
-    }
-  }, [currentStep, address, isDetectingLocation, detectUserLocation]);
-
   const detectUserLocation = useCallback(async () => {
     if (!navigator.geolocation) {
       setAddress("123 Main Street, San Francisco, CA 94105");
@@ -386,6 +374,18 @@ const ArchitectAIEnhanced = () => {
       }
     );
   }, [showToast]);
+
+  // Auto-detect location on step 1 (only run once when step changes to 1)
+  useEffect(() => {
+    if (currentStep === 1 && !address && !isDetectingLocation && !hasDetectedLocation.current) {
+      hasDetectedLocation.current = true;
+      detectUserLocation();
+    }
+    // Reset detection flag when step changes away from 1
+    if (currentStep !== 1) {
+      hasDetectedLocation.current = false;
+    }
+  }, [currentStep, address, isDetectingLocation, detectUserLocation]);
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
