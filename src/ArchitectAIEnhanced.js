@@ -301,25 +301,7 @@ const ArchitectAIEnhanced = () => {
     }
   }, [toastMessage]);
 
-  // Landing page animation
-  useEffect(() => {
-    if (currentStep === 0) {
-      const timer = setTimeout(() => {
-        document.getElementById('hero-content')?.classList.add('opacity-100');
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [currentStep]);
-
-  // Auto-detect location on step 1 (only run once when step changes to 1)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (currentStep === 1 && !address && !isDetectingLocation) {
-      detectUserLocation();
-    }
-  }, [currentStep]); // Only depend on currentStep to prevent infinite loops
-
-  const detectUserLocation = async () => {
+  const detectUserLocation = useCallback(async () => {
     if (!navigator.geolocation) {
       setAddress("123 Main Street, San Francisco, CA 94105");
       showToast("Geolocation not supported. Using default location.");
@@ -377,7 +359,24 @@ const ArchitectAIEnhanced = () => {
         maximumAge: 300000, // 5 minutes
       }
     );
-  };
+  }, [showToast]);
+
+  // Landing page animation
+  useEffect(() => {
+    if (currentStep === 0) {
+      const timer = setTimeout(() => {
+        document.getElementById('hero-content')?.classList.add('opacity-100');
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep]);
+
+  // Auto-detect location on step 1
+  useEffect(() => {
+    if (currentStep === 1 && !address && !isDetectingLocation) {
+      detectUserLocation();
+    }
+  }, [currentStep, address, isDetectingLocation, detectUserLocation]);
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
