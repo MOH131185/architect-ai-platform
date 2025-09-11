@@ -225,17 +225,11 @@ const MapView = ({ center, zoom }) => {
     }
   }, [center, zoom]); // Removed ref and map from dependencies
 
+  // Simplified map update to prevent re-render issues
   useEffect(() => {
     if (map && marker && center) {
-      const currentCenter = map.getCenter();
-      // Only update if center has actually changed to prevent unnecessary renders
-      if (!currentCenter || 
-          Math.abs(currentCenter.lat() - center.lat) > 0.0001 || 
-          Math.abs(currentCenter.lng() - center.lng) > 0.0001) {
-        marker.setPosition(center);
-        map.panTo(center);
-        map.setTilt(45);
-      }
+      marker.setPosition(center);
+      map.setCenter(center);
     }
   }, [map, marker, center]);
 
@@ -290,7 +284,7 @@ const ArchitectAIEnhanced = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const fileInputRef = useRef(null);
-  const hasDetectedLocation = useRef(false);
+  // const hasDetectedLocation = useRef(false); // Temporarily disabled
 
   const showToast = useCallback((message) => {
     setToastMessage(message);
@@ -375,17 +369,17 @@ const ArchitectAIEnhanced = () => {
     );
   }, [showToast]);
 
-  // Auto-detect location on step 1 (only run once when step changes to 1)
-  useEffect(() => {
-    if (currentStep === 1 && !address && !isDetectingLocation && !hasDetectedLocation.current) {
-      hasDetectedLocation.current = true;
-      detectUserLocation();
-    }
-    // Reset detection flag when step changes away from 1
-    if (currentStep !== 1) {
-      hasDetectedLocation.current = false;
-    }
-  }, [currentStep, address, isDetectingLocation, detectUserLocation]);
+  // Auto-detect location disabled temporarily to debug freezing issues
+  // useEffect(() => {
+  //   if (currentStep === 1 && !address && !isDetectingLocation && !hasDetectedLocation.current) {
+  //     hasDetectedLocation.current = true;
+  //     detectUserLocation();
+  //   }
+  //   // Reset detection flag when step changes away from 1
+  //   if (currentStep !== 1) {
+  //     hasDetectedLocation.current = false;
+  //   }
+  // }, [currentStep, address, isDetectingLocation, detectUserLocation]);
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
@@ -999,7 +993,15 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      <MapView center={locationData.coordinates} zoom={19} />
+                      {/* <MapView center={locationData.coordinates} zoom={19} /> */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100">
+                        <div className="text-center">
+                          <MapPin className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+                          <p className="text-gray-700 font-medium">3D Map View</p>
+                          <p className="text-gray-600 text-sm">Maps disabled to prevent freezing</p>
+                          <p className="text-gray-500 text-xs mt-2">Location coordinates: {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}</p>
+                        </div>
+                      </div>
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
                         <div className="flex items-center text-sm font-medium text-gray-700">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
@@ -1606,7 +1608,7 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+    // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
           <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
@@ -1657,7 +1659,7 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    </Wrapper>
+    // </Wrapper>
   );
 };
 
