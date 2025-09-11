@@ -181,60 +181,92 @@ const MapView = ({ center, zoom }) => {
   const ref = useRef(null);
   const [map, setMap] = useState(null);
   const [marker, setMarker] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const mapInitialized = useRef(false);
 
   useEffect(() => {
-    if (ref.current && !mapInitialized.current && window.google && center) {
-      mapInitialized.current = true;
-      
-      const newMap = new window.google.maps.Map(ref.current, {
-        center,
-        zoom: zoom || 18,
-        mapTypeId: 'hybrid',
-        tilt: 45,
-        disableDefaultUI: false,
-        mapTypeControl: true,
-        streetViewControl: true,
-        fullscreenControl: true,
-        zoomControl: true,
-        gestureHandling: 'cooperative',
-        styles: [
-          {
-            featureType: 'all',
-            stylers: [{ saturation: 20 }, { lightness: -10 }]
-          }
-        ]
-      });
+    const initializeMap = () => {
+      if (ref.current && !mapInitialized.current && window.google && center) {
+        try {
+          mapInitialized.current = true;
+          
+          const newMap = new window.google.maps.Map(ref.current, {
+            center,
+            zoom: zoom || 18,
+            mapTypeId: 'hybrid',
+            tilt: 45,
+            disableDefaultUI: false,
+            mapTypeControl: true,
+            streetViewControl: true,
+            fullscreenControl: true,
+            zoomControl: true,
+            gestureHandling: 'cooperative',
+            styles: [
+              {
+                featureType: 'all',
+                stylers: [{ saturation: 20 }, { lightness: -10 }]
+              }
+            ]
+          });
 
-      // Add marker at the center
-      const newMarker = new window.google.maps.Marker({
-        position: center,
-        map: newMap,
-        title: 'Project Location',
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-              <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
-              <circle cx="16" cy="16" r="6" fill="#ffffff"/>
-            </svg>
-          `),
-          scaledSize: new window.google.maps.Size(32, 32),
-          anchor: new window.google.maps.Point(16, 16),
+          // Add marker at the center
+          const newMarker = new window.google.maps.Marker({
+            position: center,
+            map: newMap,
+            title: 'Project Location',
+            icon: {
+              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                  <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+                  <circle cx="16" cy="16" r="6" fill="#ffffff"/>
+                </svg>
+              `),
+              scaledSize: new window.google.maps.Size(32, 32),
+              anchor: new window.google.maps.Point(16, 16),
+            }
+          });
+
+          // Wait for map to be fully loaded
+          newMap.addListener('tilesloaded', () => {
+            setIsLoading(false);
+          });
+
+          setMap(newMap);
+          setMarker(newMarker);
+        } catch (error) {
+          console.error('Error initializing Google Maps:', error);
+          setIsLoading(false);
         }
-      });
+      }
+    };
 
-      setMap(newMap);
-      setMarker(newMarker);
-    }
+    // Small delay to ensure Google Maps API is fully loaded
+    const timer = setTimeout(initializeMap, 100);
+    return () => clearTimeout(timer);
   }, [center, zoom]); // Include dependencies but use ref to prevent re-initialization
 
   // Update map position when center changes (but only after initial creation)
   useEffect(() => {
     if (map && marker && center && mapInitialized.current) {
-      marker.setPosition(center);
-      map.setCenter(center);
+      try {
+        marker.setPosition(center);
+        map.setCenter(center);
+      } catch (error) {
+        console.error('Error updating map position:', error);
+      }
     }
   }, [map, marker, center]); // Include all dependencies
+
+  if (isLoading && !map) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100 rounded-xl">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-600 mx-auto mb-2 animate-spin" />
+          <p className="text-gray-600 text-sm">Loading 3D Map...</p>
+        </div>
+      </div>
+    );
+  }
 
   return <div ref={ref} style={{ width: '100%', height: '100%', borderRadius: '12px' }} />;
 };
@@ -996,15 +1028,14 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      {/* <MapView center={locationData.coordinates} zoom={19} /> */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100">
+                      <ErrorBoundary fallback={<div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100 rounded-xl">
                         <div className="text-center">
-                          <MapPin className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-                          <p className="text-gray-700 font-medium">3D Map View</p>
-                          <p className="text-gray-600 text-sm">Maps disabled to prevent freezing</p>
-                          <p className="text-gray-500 text-xs mt-2">Location coordinates: {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}</p>
+                          <MapPin className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+                          <p className="text-gray-600 text-sm">Map temporarily unavailable</p>
                         </div>
-                      </div>
+                      </div>}>
+                        <MapView center={locationData.coordinates} zoom={19} />
+                      </ErrorBoundary>
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
                         <div className="flex items-center text-sm font-medium text-gray-700">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
@@ -1611,7 +1642,7 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
           <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
@@ -1662,7 +1693,7 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    // </Wrapper>
+    </Wrapper>
   );
 };
 
