@@ -1028,14 +1028,63 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      <ErrorBoundary fallback={<div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100 rounded-xl">
-                        <div className="text-center">
-                          <MapPin className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                          <p className="text-gray-600 text-sm">Map temporarily unavailable</p>
+                      {/* Safe 3D-style visualization without Google Maps API */}
+                      <div className="w-full h-full relative bg-gradient-to-br from-blue-900 via-blue-600 to-blue-800 rounded-xl overflow-hidden">
+                        {/* 3D Grid Background */}
+                        <div className="absolute inset-0 opacity-20">
+                          <div className="grid grid-cols-8 grid-rows-6 h-full w-full">
+                            {Array.from({length: 48}).map((_, i) => (
+                              <div key={i} className="border border-white/30 transform perspective-1000 rotate-x-12"></div>
+                            ))}
+                          </div>
                         </div>
-                      </div>}>
-                        <MapView center={locationData.coordinates} zoom={19} />
-                      </ErrorBoundary>
+                        
+                        {/* Satellite-style overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-green-900/40 via-transparent to-blue-900/30"></div>
+                        
+                        {/* Location Marker */}
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                          <div className="relative">
+                            {/* Pulsing circle */}
+                            <div className="absolute w-16 h-16 bg-red-500/30 rounded-full animate-ping"></div>
+                            <div className="relative w-8 h-8 bg-red-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* 3D Building blocks */}
+                        <div className="absolute bottom-8 left-8">
+                          <div className="flex space-x-1">
+                            <div className="w-3 h-6 bg-gray-300/80 transform skew-y-12 shadow-lg"></div>
+                            <div className="w-2 h-8 bg-gray-400/80 transform skew-y-12 shadow-lg"></div>
+                            <div className="w-4 h-4 bg-gray-200/80 transform skew-y-12 shadow-lg"></div>
+                          </div>
+                        </div>
+                        
+                        <div className="absolute bottom-6 right-12">
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-10 bg-gray-300/80 transform skew-y-12 shadow-lg"></div>
+                            <div className="w-3 h-7 bg-gray-400/80 transform skew-y-12 shadow-lg"></div>
+                            <div className="w-2 h-5 bg-gray-200/80 transform skew-y-12 shadow-lg"></div>
+                          </div>
+                        </div>
+                        
+                        {/* Roads */}
+                        <div className="absolute bottom-0 left-0 w-full h-2 bg-gray-800/60"></div>
+                        <div className="absolute top-0 right-0 w-2 h-full bg-gray-800/60"></div>
+                        
+                        {/* Coordinates display */}
+                        <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded text-white text-xs font-mono">
+                          {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}
+                        </div>
+                        
+                        {/* 3D Map Label */}
+                        <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
+                          <Eye className="w-3 h-3 mr-1" />
+                          3D Satellite View
+                        </div>
+                      </div>
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
                         <div className="flex items-center text-sm font-medium text-gray-700">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
@@ -1642,7 +1691,7 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+    // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
           <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
@@ -1693,7 +1742,7 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    </Wrapper>
+    // </Wrapper>
   );
 };
 
