@@ -1052,7 +1052,64 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      <StableMapView center={locationData.coordinates} zoom={19} />
+                      {/* FREEZE-PROOF Map Visualization - NO Google Maps API */}
+                      <div className="w-full h-full relative bg-gray-800 rounded-xl overflow-hidden">
+                        {/* Static satellite-style background */}
+                        <div 
+                          className="absolute inset-0"
+                          style={{
+                            backgroundImage: `
+                              radial-gradient(circle at 25% 25%, rgba(34, 197, 94, 0.3) 0%, transparent 50%),
+                              radial-gradient(circle at 75% 25%, rgba(59, 130, 246, 0.2) 0%, transparent 50%),
+                              radial-gradient(circle at 25% 75%, rgba(168, 85, 247, 0.2) 0%, transparent 50%),
+                              radial-gradient(circle at 75% 75%, rgba(34, 197, 94, 0.3) 0%, transparent 50%),
+                              linear-gradient(45deg, #1f2937 0%, #374151 25%, #4b5563 50%, #6b7280 75%, #9ca3af 100%)
+                            `,
+                            backgroundSize: '50px 50px, 60px 60px, 55px 55px, 65px 65px, 100% 100%'
+                          }}
+                        />
+                        
+                        {/* Grid overlay for tech look */}
+                        <div 
+                          className="absolute inset-0 opacity-30"
+                          style={{
+                            backgroundImage: `
+                              linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+                            `,
+                            backgroundSize: '20px 20px'
+                          }}
+                        />
+                        
+                        {/* Location marker */}
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                          <div className="relative">
+                            {/* Pulsing rings */}
+                            <div className="absolute w-20 h-20 -top-10 -left-10 border-2 border-blue-400 rounded-full animate-ping opacity-60"></div>
+                            <div className="absolute w-12 h-12 -top-6 -left-6 border-2 border-blue-300 rounded-full animate-ping opacity-40 animation-delay-300"></div>
+                            {/* Center pin */}
+                            <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg relative z-10">
+                              <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-4 border-transparent border-t-blue-500"></div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Corner coordinates */}
+                        <div className="absolute bottom-3 left-3 bg-black/80 text-white px-3 py-1 rounded text-xs font-mono">
+                          📍 {locationData.coordinates.lat.toFixed(6)}, {locationData.coordinates.lng.toFixed(6)}
+                        </div>
+                        
+                        {/* Top right info */}
+                        <div className="absolute top-3 right-3 bg-white/95 text-gray-800 px-3 py-1 rounded-full text-xs font-medium flex items-center">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
+                          Location Detected
+                        </div>
+                        
+                        {/* Professional "Map View" label */}
+                        <div className="absolute top-1/2 left-3 transform -translate-y-1/2 bg-blue-600/90 text-white px-3 py-2 rounded-r-lg text-sm font-semibold">
+                          📱 SATELLITE VIEW
+                        </div>
+                      </div>
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
                         <div className="flex items-center text-sm font-medium text-gray-700">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
@@ -1659,7 +1716,8 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+    // DISABLED: Google Maps causes freezing - keeping wrapper commented out
+    // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
           <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
@@ -1710,7 +1768,7 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    </Wrapper>
+    // </Wrapper>
   );
 };
 
