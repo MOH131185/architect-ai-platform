@@ -177,98 +177,122 @@ const generatePDFContent = (projectDetails, styleChoice, locationData) => {
   return htmlContent;
 };
 
-const MapView = ({ center, zoom }) => {
-  const ref = useRef(null);
-  const [map, setMap] = useState(null);
-  const [marker, setMarker] = useState(null);
+const StableMapView = ({ center, zoom }) => {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
-  const mapInitialized = useRef(false);
+  const [error, setError] = useState(null);
+  
+  // Stable center reference to prevent unnecessary re-renders
+  const stableCenterRef = useRef(center);
+  const isInitializedRef = useRef(false);
 
+  // Only update stable center if coordinates actually changed significantly
   useEffect(() => {
-    const initializeMap = () => {
-      if (ref.current && !mapInitialized.current && window.google && center) {
-        try {
-          mapInitialized.current = true;
-          
-          const newMap = new window.google.maps.Map(ref.current, {
-            center,
-            zoom: zoom || 18,
-            mapTypeId: 'hybrid',
-            tilt: 45,
-            disableDefaultUI: false,
-            mapTypeControl: true,
-            streetViewControl: true,
-            fullscreenControl: true,
-            zoomControl: true,
-            gestureHandling: 'cooperative',
-            styles: [
-              {
-                featureType: 'all',
-                stylers: [{ saturation: 20 }, { lightness: -10 }]
-              }
-            ]
-          });
+    if (center && 
+        (!stableCenterRef.current || 
+         Math.abs(stableCenterRef.current.lat - center.lat) > 0.0001 ||
+         Math.abs(stableCenterRef.current.lng - center.lng) > 0.0001)) {
+      stableCenterRef.current = center;
+    }
+  }, [center]);
 
-          // Add marker at the center
-          const newMarker = new window.google.maps.Marker({
-            position: center,
-            map: newMap,
-            title: 'Project Location',
-            icon: {
-              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-                  <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
-                  <circle cx="16" cy="16" r="6" fill="#ffffff"/>
-                </svg>
-              `),
-              scaledSize: new window.google.maps.Size(32, 32),
-              anchor: new window.google.maps.Point(16, 16),
-            }
-          });
+  // Initialize map only once
+  useEffect(() => {
+    if (!mapRef.current || isInitializedRef.current || !window.google || !stableCenterRef.current) {
+      return;
+    }
 
-          // Wait for map to be fully loaded
-          newMap.addListener('tilesloaded', () => {
-            setIsLoading(false);
-          });
+    try {
+      isInitializedRef.current = true;
+      
+      // Create map with 3D settings
+      const mapInstance = new window.google.maps.Map(mapRef.current, {
+        center: stableCenterRef.current,
+        zoom: zoom || 19,
+        mapTypeId: 'hybrid',
+        tilt: 45, // 3D tilt
+        heading: 0,
+        disableDefaultUI: true,
+        zoomControl: true,
+        mapTypeControl: true,
+        fullscreenControl: true,
+        streetViewControl: true,
+        gestureHandling: 'greedy'
+      });
 
-          setMap(newMap);
-          setMarker(newMarker);
-        } catch (error) {
-          console.error('Error initializing Google Maps:', error);
-          setIsLoading(false);
+      // Create custom marker
+      const marker = new window.google.maps.Marker({
+        position: stableCenterRef.current,
+        map: mapInstance,
+        title: 'Project Location',
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 0C5.373 0 0 5.373 0 12c0 8 12 24 12 24s12-16 12-24c0-6.627-5.373-12-12-12z" fill="#EA4335"/>
+              <circle cx="12" cy="12" r="7" fill="#fff"/>
+              <circle cx="12" cy="12" r="3" fill="#EA4335"/>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(24, 36),
+          anchor: new window.google.maps.Point(12, 36)
         }
+      });
+
+      // Store references
+      mapInstanceRef.current = mapInstance;
+      markerRef.current = marker;
+
+      // Set loading false when map is ready
+      const idleListener = mapInstance.addListener('idle', () => {
+        setIsLoading(false);
+        window.google.maps.event.removeListener(idleListener);
+      });
+
+    } catch (err) {
+      console.error('Google Maps initialization error:', err);
+      setError('Failed to load map');
+      setIsLoading(false);
+    }
+
+    // Cleanup function
+    return () => {
+      if (mapInstanceRef.current && window.google) {
+        window.google.maps.event.clearInstanceListeners(mapInstanceRef.current);
       }
     };
+  }, []); // Empty dependency array - initialize only once
 
-    // Small delay to ensure Google Maps API is fully loaded
-    const timer = setTimeout(initializeMap, 100);
-    return () => clearTimeout(timer);
-  }, [center, zoom]); // Include dependencies but use ref to prevent re-initialization
-
-  // Update map position when center changes (but only after initial creation)
-  useEffect(() => {
-    if (map && marker && center && mapInitialized.current) {
-      try {
-        marker.setPosition(center);
-        map.setCenter(center);
-      } catch (error) {
-        console.error('Error updating map position:', error);
-      }
-    }
-  }, [map, marker, center]); // Include all dependencies
-
-  if (isLoading && !map) {
+  if (error) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100 rounded-xl">
+      <div className="w-full h-full flex items-center justify-center bg-gray-100 rounded-xl">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 text-blue-600 mx-auto mb-2 animate-spin" />
-          <p className="text-gray-600 text-sm">Loading 3D Map...</p>
+          <MapPin className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-gray-600 text-sm">Map unavailable</p>
         </div>
       </div>
     );
   }
 
-  return <div ref={ref} style={{ width: '100%', height: '100%', borderRadius: '12px' }} />;
+  if (isLoading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-spin" />
+          <p className="text-blue-700 text-sm font-medium">Loading 3D Satellite View...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      ref={mapRef} 
+      className="w-full h-full rounded-xl"
+      style={{ minHeight: '300px' }}
+    />
+  );
 };
 
 class ErrorBoundary extends React.Component {
@@ -1028,99 +1052,7 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      {/* Realistic 3D Satellite View */}
-                      <div className="w-full h-full relative rounded-xl overflow-hidden transform perspective-1000 rotate-x-12" 
-                           style={{
-                             background: `
-                               radial-gradient(ellipse at 70% 30%, rgba(34, 197, 94, 0.8) 0%, transparent 50%),
-                               radial-gradient(ellipse at 30% 70%, rgba(22, 163, 74, 0.6) 0%, transparent 50%),
-                               radial-gradient(ellipse at 80% 80%, rgba(34, 197, 94, 0.4) 0%, transparent 40%),
-                               linear-gradient(135deg, 
-                                 #65a30d 0%, 
-                                 #84cc16 15%, 
-                                 #a3e635 30%, 
-                                 #bef264 45%, 
-                                 #d9f99d 60%, 
-                                 #ecfccb 75%, 
-                                 #f7fee7 85%, 
-                                 #fefce8 100%
-                               )
-                             `
-                           }}>
-                        
-                        {/* Terrain texture pattern */}
-                        <div className="absolute inset-0" 
-                             style={{
-                               backgroundImage: `
-                                 repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
-                                 repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.02) 3px, rgba(255,255,255,0.02) 6px)
-                               `
-                             }}>
-                        </div>
-                        
-                        {/* Forest/Park areas */}
-                        <div className="absolute top-4 left-8 w-16 h-12 bg-green-700 rounded-full opacity-70 transform rotate-12"></div>
-                        <div className="absolute top-12 right-12 w-20 h-8 bg-green-600 rounded-full opacity-60 transform -rotate-6"></div>
-                        <div className="absolute bottom-16 left-4 w-12 h-16 bg-green-800 rounded-full opacity-80 transform rotate-45"></div>
-                        
-                        {/* Urban areas / Building blocks */}
-                        <div className="absolute top-8 left-1/3 w-8 h-12 bg-gray-400 shadow-lg transform skew-y-6 rotate-12 opacity-90"></div>
-                        <div className="absolute top-16 left-1/2 w-6 h-10 bg-gray-500 shadow-md transform skew-y-12 rotate-6 opacity-85"></div>
-                        <div className="absolute top-12 right-1/3 w-10 h-8 bg-gray-300 shadow-lg transform skew-x-6 opacity-80"></div>
-                        
-                        {/* High-rise buildings */}
-                        <div className="absolute bottom-20 right-8 w-4 h-20 bg-gray-600 shadow-2xl transform skew-y-12 opacity-95"></div>
-                        <div className="absolute bottom-16 right-12 w-3 h-16 bg-gray-700 shadow-xl transform skew-y-6 opacity-90"></div>
-                        <div className="absolute bottom-24 left-1/2 w-5 h-12 bg-gray-500 shadow-lg transform skew-y-3 opacity-85"></div>
-                        
-                        {/* Roads and highways */}
-                        <div className="absolute top-1/3 left-0 w-full h-3 bg-gray-700 opacity-80 transform -skew-y-3 shadow-inner"></div>
-                        <div className="absolute top-2/3 left-0 w-full h-2 bg-gray-800 opacity-70 transform skew-y-2 shadow-inner"></div>
-                        <div className="absolute top-0 left-1/4 w-2 h-full bg-gray-750 opacity-60 transform skew-x-3 shadow-inner"></div>
-                        <div className="absolute top-0 right-1/3 w-3 h-full bg-gray-600 opacity-75 transform -skew-x-2 shadow-inner"></div>
-                        
-                        {/* Water bodies */}
-                        <div className="absolute bottom-4 right-4 w-16 h-8 bg-blue-500 opacity-60 rounded-full transform -rotate-12"></div>
-                        <div className="absolute top-1/4 left-2 w-8 h-20 bg-blue-400 opacity-50 rounded-full transform rotate-45"></div>
-                        
-                        {/* Parking lots / Open spaces */}
-                        <div className="absolute top-20 left-16 w-10 h-6 bg-gray-300 opacity-70 transform rotate-6"></div>
-                        <div className="absolute bottom-12 left-8 w-8 h-8 bg-gray-200 opacity-60 transform -rotate-12"></div>
-                        
-                        {/* Location Marker */}
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
-                          <div className="relative">
-                            {/* Pulsing circle */}
-                            <div className="absolute w-12 h-12 bg-red-500/40 rounded-full animate-ping"></div>
-                            <div className="relative w-6 h-6 bg-red-500 rounded-full border-3 border-white shadow-2xl flex items-center justify-center">
-                              <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
-                            </div>
-                            {/* Location pin shadow */}
-                            <div className="absolute top-6 left-1/2 w-8 h-2 bg-black/20 rounded-full blur-sm transform -translate-x-1/2"></div>
-                          </div>
-                        </div>
-                        
-                        {/* Coordinates display */}
-                        <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur px-2 py-1 rounded text-white text-xs font-mono">
-                          {locationData.coordinates.lat.toFixed(6)}°, {locationData.coordinates.lng.toFixed(6)}°
-                        </div>
-                        
-                        {/* Satellite View Label */}
-                        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur px-2 py-1 rounded-full text-xs font-medium text-gray-800 flex items-center shadow-sm">
-                          <Eye className="w-3 h-3 mr-1" />
-                          Satellite • 3D
-                        </div>
-                        
-                        {/* Scale indicator */}
-                        <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-mono text-gray-700">
-                          1:2000
-                        </div>
-                        
-                        {/* North arrow */}
-                        <div className="absolute top-12 left-3 w-6 h-6 bg-white/90 rounded-full flex items-center justify-center text-xs font-bold text-gray-800 shadow-sm">
-                          N
-                        </div>
-                      </div>
+                      <StableMapView center={locationData.coordinates} zoom={19} />
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
                         <div className="flex items-center text-sm font-medium text-gray-700">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
@@ -1727,7 +1659,7 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
           <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
@@ -1778,7 +1710,7 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    // </Wrapper>
+    </Wrapper>
   );
 };
 
