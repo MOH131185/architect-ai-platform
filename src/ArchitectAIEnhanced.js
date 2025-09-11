@@ -187,7 +187,7 @@ const MapView = ({ center, zoom }) => {
       const newMap = new window.google.maps.Map(ref.current, {
         center,
         zoom: zoom || 18,
-        mapTypeId: 'hybrid', // Changed to hybrid for better 3D view
+        mapTypeId: 'hybrid',
         tilt: 45,
         disableDefaultUI: false,
         mapTypeControl: true,
@@ -223,16 +223,19 @@ const MapView = ({ center, zoom }) => {
       setMap(newMap);
       setMarker(newMarker);
     }
-  }, [ref, map, center, zoom]);
+  }, [center, zoom]); // Removed ref and map from dependencies
 
   useEffect(() => {
-    if (map && marker) {
-      map.setCenter(center);
-      marker.setPosition(center);
-      map.setTilt(45);
-      
-      // Animate to new position
-      map.panTo(center);
+    if (map && marker && center) {
+      const currentCenter = map.getCenter();
+      // Only update if center has actually changed to prevent unnecessary renders
+      if (!currentCenter || 
+          Math.abs(currentCenter.lat() - center.lat) > 0.0001 || 
+          Math.abs(currentCenter.lng() - center.lng) > 0.0001) {
+        marker.setPosition(center);
+        map.panTo(center);
+        map.setTilt(45);
+      }
     }
   }, [map, marker, center]);
 
@@ -287,6 +290,7 @@ const ArchitectAIEnhanced = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const fileInputRef = useRef(null);
+  const hasDetectedLocation = useRef(false);
 
   const showToast = useCallback((message) => {
     setToastMessage(message);
@@ -312,14 +316,18 @@ const ArchitectAIEnhanced = () => {
   }, [currentStep]);
 
   // Auto-detect location on step 1 (only run once when step changes to 1)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (currentStep === 1 && !address && !isDetectingLocation) {
+    if (currentStep === 1 && !address && !isDetectingLocation && !hasDetectedLocation.current) {
+      hasDetectedLocation.current = true;
       detectUserLocation();
     }
-  }, [currentStep]); // Only depend on currentStep to prevent infinite loops
+    // Reset detection flag when step changes away from 1
+    if (currentStep !== 1) {
+      hasDetectedLocation.current = false;
+    }
+  }, [currentStep, address, isDetectingLocation, detectUserLocation]);
 
-  const detectUserLocation = async () => {
+  const detectUserLocation = useCallback(async () => {
     if (!navigator.geolocation) {
       setAddress("123 Main Street, San Francisco, CA 94105");
       showToast("Geolocation not supported. Using default location.");
@@ -377,7 +385,7 @@ const ArchitectAIEnhanced = () => {
         maximumAge: 300000, // 5 minutes
       }
     );
-  };
+  }, [showToast]);
 
   const getSeasonalClimateData = async (lat, lon) => {
     const lastYear = new Date().getFullYear() - 1;
