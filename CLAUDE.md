@@ -13,10 +13,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Deployment
 The repository auto-deploys to Vercel via GitHub integration. Push to main branch triggers automatic deployment to www.archiaisolution.pro.
 
-## Architecture Overview
+## Current Application State
 
-### Application Structure
-This is an AI-powered architectural design platform built as a single-page React application with a multi-step wizard interface. The core application is in `src/ArchitectAIEnhanced.js` which orchestrates the entire user journey from location analysis to 3D design generation.
+**IMPORTANT**: The main application (`src/ArchitectAIEnhanced.js`) has been temporarily replaced with a maintenance page (`src/App.js`) due to persistent freezing issues. The original application code is preserved in `src/ArchitectAIEnhanced.js.backup`.
+
+### Current Structure (Maintenance Mode)
+- `src/App.js` - Static maintenance page showing platform features
+- `src/ArchitectAIEnhanced.js.backup` - Original full application (81KB, complex React component)
+- The current App.js displays a maintenance message with feature overview cards
+
+### Original Architecture (when restored from backup)
+This was an AI-powered architectural design platform built as a single-page React application with a multi-step wizard interface. The core application was in `src/ArchitectAIEnhanced.js` which orchestrated the entire user journey from location analysis to 3D design generation.
 
 ### Key Components & Data Flow
 
@@ -80,12 +87,22 @@ Mock file generation for architectural deliverables:
 - Graceful degradation when geolocation is unavailable
 - Development vs production API key handling
 
+## Restoring Full Application
+
+To restore the full application from maintenance mode:
+
+1. **Backup current simple App.js**: `mv src/App.js src/App.maintenance.js`
+2. **Restore main application**: `mv src/ArchitectAIEnhanced.js.backup src/ArchitectAIEnhanced.js`
+3. **Update App.js to import ArchitectAIEnhanced**: Uncomment import and component usage in `src/App.js`
+4. **Test thoroughly**: The original app had React hooks warnings and infinite re-render issues that caused freezing
+
 ## Key Integration Points
 
-**When modifying location detection:**
+**When restoring/modifying location detection:**
 - Update `detectUserLocation()` function in `ArchitectAIEnhanced.js`
 - Consider fallback behavior in `analyzeLocation()` method
 - Test with various address formats and international locations
+- **CRITICAL**: Address infinite re-render loops that caused the original freeze
 
 **When extending architectural database:**
 - Add new regions/countries in `globalArchitecturalDatabase.js`
@@ -121,3 +138,26 @@ The location intelligence system expects and returns data in this structure:
 - Test international address formats and coordinate systems
 - Validate file generation downloads across browsers
 - Test 3D map rendering performance on various devices
+- **CRITICAL**: Monitor for infinite re-render loops in location detection and map components
+- Test React hooks dependencies to prevent warnings and performance issues
+
+## Known Issues & Recent Fixes
+
+### Recent Problem Resolution
+- **Main Issue**: Original `ArchitectAIEnhanced.js` component was causing persistent website freezing
+- **Root Cause**: Infinite re-render loops in MapView and location detection components
+- **Current Solution**: Temporarily replaced with static maintenance page
+- **Original Code**: Preserved in `src/ArchitectAIEnhanced.js.backup` (81KB file with complete functionality)
+
+### Git History Context
+Recent commits show progression of issues:
+- `d0a2b0e`: Main app replaced with maintenance page to resolve freezing
+- `a0407c7`: Function declaration order issue preventing initialization  
+- `f26a39f`: Infinite re-render loops in MapView and location detection
+- `0262bb1`: Infinite re-render loop causing website freeze
+- `afea1c4`: React hooks warnings resolution
+
+### File Structure Changes
+- `ArchitectAIEnhanced.js` was deleted from active codebase
+- `ArchitectAIEnhanced.js.backup` contains the original 2000+ line React component
+- Current `App.js` is a simple maintenance page (59 lines)
