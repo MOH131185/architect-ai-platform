@@ -1028,61 +1028,97 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      {/* Safe 3D-style visualization without Google Maps API */}
-                      <div className="w-full h-full relative bg-gradient-to-br from-blue-900 via-blue-600 to-blue-800 rounded-xl overflow-hidden">
-                        {/* 3D Grid Background */}
-                        <div className="absolute inset-0 opacity-20">
-                          <div className="grid grid-cols-8 grid-rows-6 h-full w-full">
-                            {Array.from({length: 48}).map((_, i) => (
-                              <div key={i} className="border border-white/30 transform perspective-1000 rotate-x-12"></div>
-                            ))}
-                          </div>
+                      {/* Realistic 3D Satellite View */}
+                      <div className="w-full h-full relative rounded-xl overflow-hidden transform perspective-1000 rotate-x-12" 
+                           style={{
+                             background: `
+                               radial-gradient(ellipse at 70% 30%, rgba(34, 197, 94, 0.8) 0%, transparent 50%),
+                               radial-gradient(ellipse at 30% 70%, rgba(22, 163, 74, 0.6) 0%, transparent 50%),
+                               radial-gradient(ellipse at 80% 80%, rgba(34, 197, 94, 0.4) 0%, transparent 40%),
+                               linear-gradient(135deg, 
+                                 #65a30d 0%, 
+                                 #84cc16 15%, 
+                                 #a3e635 30%, 
+                                 #bef264 45%, 
+                                 #d9f99d 60%, 
+                                 #ecfccb 75%, 
+                                 #f7fee7 85%, 
+                                 #fefce8 100%
+                               )
+                             `
+                           }}>
+                        
+                        {/* Terrain texture pattern */}
+                        <div className="absolute inset-0" 
+                             style={{
+                               backgroundImage: `
+                                 repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
+                                 repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.02) 3px, rgba(255,255,255,0.02) 6px)
+                               `
+                             }}>
                         </div>
                         
-                        {/* Satellite-style overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-green-900/40 via-transparent to-blue-900/30"></div>
+                        {/* Forest/Park areas */}
+                        <div className="absolute top-4 left-8 w-16 h-12 bg-green-700 rounded-full opacity-70 transform rotate-12"></div>
+                        <div className="absolute top-12 right-12 w-20 h-8 bg-green-600 rounded-full opacity-60 transform -rotate-6"></div>
+                        <div className="absolute bottom-16 left-4 w-12 h-16 bg-green-800 rounded-full opacity-80 transform rotate-45"></div>
+                        
+                        {/* Urban areas / Building blocks */}
+                        <div className="absolute top-8 left-1/3 w-8 h-12 bg-gray-400 shadow-lg transform skew-y-6 rotate-12 opacity-90"></div>
+                        <div className="absolute top-16 left-1/2 w-6 h-10 bg-gray-500 shadow-md transform skew-y-12 rotate-6 opacity-85"></div>
+                        <div className="absolute top-12 right-1/3 w-10 h-8 bg-gray-300 shadow-lg transform skew-x-6 opacity-80"></div>
+                        
+                        {/* High-rise buildings */}
+                        <div className="absolute bottom-20 right-8 w-4 h-20 bg-gray-600 shadow-2xl transform skew-y-12 opacity-95"></div>
+                        <div className="absolute bottom-16 right-12 w-3 h-16 bg-gray-700 shadow-xl transform skew-y-6 opacity-90"></div>
+                        <div className="absolute bottom-24 left-1/2 w-5 h-12 bg-gray-500 shadow-lg transform skew-y-3 opacity-85"></div>
+                        
+                        {/* Roads and highways */}
+                        <div className="absolute top-1/3 left-0 w-full h-3 bg-gray-700 opacity-80 transform -skew-y-3 shadow-inner"></div>
+                        <div className="absolute top-2/3 left-0 w-full h-2 bg-gray-800 opacity-70 transform skew-y-2 shadow-inner"></div>
+                        <div className="absolute top-0 left-1/4 w-2 h-full bg-gray-750 opacity-60 transform skew-x-3 shadow-inner"></div>
+                        <div className="absolute top-0 right-1/3 w-3 h-full bg-gray-600 opacity-75 transform -skew-x-2 shadow-inner"></div>
+                        
+                        {/* Water bodies */}
+                        <div className="absolute bottom-4 right-4 w-16 h-8 bg-blue-500 opacity-60 rounded-full transform -rotate-12"></div>
+                        <div className="absolute top-1/4 left-2 w-8 h-20 bg-blue-400 opacity-50 rounded-full transform rotate-45"></div>
+                        
+                        {/* Parking lots / Open spaces */}
+                        <div className="absolute top-20 left-16 w-10 h-6 bg-gray-300 opacity-70 transform rotate-6"></div>
+                        <div className="absolute bottom-12 left-8 w-8 h-8 bg-gray-200 opacity-60 transform -rotate-12"></div>
                         
                         {/* Location Marker */}
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
                           <div className="relative">
                             {/* Pulsing circle */}
-                            <div className="absolute w-16 h-16 bg-red-500/30 rounded-full animate-ping"></div>
-                            <div className="relative w-8 h-8 bg-red-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            <div className="absolute w-12 h-12 bg-red-500/40 rounded-full animate-ping"></div>
+                            <div className="relative w-6 h-6 bg-red-500 rounded-full border-3 border-white shadow-2xl flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                             </div>
+                            {/* Location pin shadow */}
+                            <div className="absolute top-6 left-1/2 w-8 h-2 bg-black/20 rounded-full blur-sm transform -translate-x-1/2"></div>
                           </div>
                         </div>
-                        
-                        {/* 3D Building blocks */}
-                        <div className="absolute bottom-8 left-8">
-                          <div className="flex space-x-1">
-                            <div className="w-3 h-6 bg-gray-300/80 transform skew-y-12 shadow-lg"></div>
-                            <div className="w-2 h-8 bg-gray-400/80 transform skew-y-12 shadow-lg"></div>
-                            <div className="w-4 h-4 bg-gray-200/80 transform skew-y-12 shadow-lg"></div>
-                          </div>
-                        </div>
-                        
-                        <div className="absolute bottom-6 right-12">
-                          <div className="flex space-x-1">
-                            <div className="w-2 h-10 bg-gray-300/80 transform skew-y-12 shadow-lg"></div>
-                            <div className="w-3 h-7 bg-gray-400/80 transform skew-y-12 shadow-lg"></div>
-                            <div className="w-2 h-5 bg-gray-200/80 transform skew-y-12 shadow-lg"></div>
-                          </div>
-                        </div>
-                        
-                        {/* Roads */}
-                        <div className="absolute bottom-0 left-0 w-full h-2 bg-gray-800/60"></div>
-                        <div className="absolute top-0 right-0 w-2 h-full bg-gray-800/60"></div>
                         
                         {/* Coordinates display */}
-                        <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded text-white text-xs font-mono">
-                          {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}
+                        <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur px-2 py-1 rounded text-white text-xs font-mono">
+                          {locationData.coordinates.lat.toFixed(6)}°, {locationData.coordinates.lng.toFixed(6)}°
                         </div>
                         
-                        {/* 3D Map Label */}
-                        <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
+                        {/* Satellite View Label */}
+                        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur px-2 py-1 rounded-full text-xs font-medium text-gray-800 flex items-center shadow-sm">
                           <Eye className="w-3 h-3 mr-1" />
-                          3D Satellite View
+                          Satellite • 3D
+                        </div>
+                        
+                        {/* Scale indicator */}
+                        <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-mono text-gray-700">
+                          1:2000
+                        </div>
+                        
+                        {/* North arrow */}
+                        <div className="absolute top-12 left-3 w-6 h-6 bg-white/90 rounded-full flex items-center justify-center text-xs font-bold text-gray-800 shadow-sm">
+                          N
                         </div>
                       </div>
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
