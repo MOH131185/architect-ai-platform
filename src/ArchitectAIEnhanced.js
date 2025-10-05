@@ -610,13 +610,13 @@ const ArchitectAIEnhanced = () => {
     try {
       // Prepare project context for AI
       const projectContext = {
-        buildingProgram: buildingType || 'mixed-use building',
+        buildingProgram: projectDetails?.program || 'mixed-use building',
         location: locationData || { address: 'Unknown location' },
         architecturalStyle: styleChoice === 'blend' ? 'Contemporary with local influences' : styleChoice || 'contemporary',
         materials: 'sustainable, local materials',
         siteConstraints: locationData?.zoning?.type || 'urban development',
-        userPreferences: `${buildingSpecs?.totalArea || '200'}m² total area, ${buildingSpecs?.floors || '2'} floors`,
-        specifications: buildingSpecs,
+        userPreferences: `${projectDetails?.area || '200'}m² total area`,
+        specifications: projectDetails,
         climateData: locationData?.climate
       };
 
@@ -633,10 +633,10 @@ const ArchitectAIEnhanced = () => {
           rooms: aiResult.reasoning?.spatialOrganization ?
             extractRoomsFromReasoning(aiResult.reasoning.spatialOrganization) :
             [
-              { name: "Main Space", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.4)}m²` },
-              { name: "Secondary Spaces", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.3)}m²` },
-              { name: "Support Areas", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.2)}m²` },
-              { name: "Circulation", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.1)}m²` }
+              { name: "Main Space", area: `${Math.floor((parseInt(projectDetails?.area) || 200) * 0.4)}m²` },
+              { name: "Secondary Spaces", area: `${Math.floor((parseInt(projectDetails?.area) || 200) * 0.3)}m²` },
+              { name: "Support Areas", area: `${Math.floor((parseInt(projectDetails?.area) || 200) * 0.2)}m²` },
+              { name: "Circulation", area: `${Math.floor((parseInt(projectDetails?.area) || 200) * 0.1)}m²` }
             ],
           efficiency: "85%",
           circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow"
@@ -726,11 +726,12 @@ const ArchitectAIEnhanced = () => {
   // Helper functions to extract data from AI responses
   const extractRoomsFromReasoning = (spatialText) => {
     // Simple extraction - can be enhanced
+    const totalArea = parseInt(projectDetails?.area) || 200;
     return [
-      { name: "Main Space", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.4)}m²` },
-      { name: "Secondary Spaces", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.3)}m²` },
-      { name: "Support Areas", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.2)}m²` },
-      { name: "Circulation", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.1)}m²` }
+      { name: "Main Space", area: `${Math.floor(totalArea * 0.4)}m²` },
+      { name: "Secondary Spaces", area: `${Math.floor(totalArea * 0.3)}m²` },
+      { name: "Support Areas", area: `${Math.floor(totalArea * 0.2)}m²` },
+      { name: "Circulation", area: `${Math.floor(totalArea * 0.1)}m²` }
     ];
   };
 
