@@ -4,9 +4,15 @@
  */
 
 const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
-const REPLICATE_API_PROXY_URL = process.env.REACT_APP_API_PROXY_URL
-  ? `${process.env.REACT_APP_API_PROXY_URL}/api/replicate/predictions`
-  : 'http://localhost:3001/api/replicate/predictions';  // Use local proxy by default
+
+// Use Vercel serverless functions in production, local proxy in development
+const REPLICATE_API_PROXY_URL = process.env.NODE_ENV === 'production'
+  ? '/api/replicate-predictions'  // Vercel serverless function
+  : 'http://localhost:3001/api/replicate/predictions';  // Local proxy server
+
+const REPLICATE_STATUS_URL = process.env.NODE_ENV === 'production'
+  ? '/api/replicate-status'  // Vercel serverless function
+  : 'http://localhost:3001/api/replicate/predictions';  // Local proxy server
 
 class ReplicateService {
   constructor() {
@@ -87,12 +93,13 @@ class ReplicateService {
    */
   async waitForCompletion(predictionId, maxWaitTime = 300000) { // 5 minutes max
     const startTime = Date.now();
-    const proxyUrl = process.env.REACT_APP_API_PROXY_URL
-      ? `${process.env.REACT_APP_API_PROXY_URL}/api/replicate/predictions`
-      : 'http://localhost:3001/api/replicate/predictions';
 
     while (Date.now() - startTime < maxWaitTime) {
-      const response = await fetch(`${proxyUrl}/${predictionId}`, {
+      const url = process.env.NODE_ENV === 'production'
+        ? `/api/replicate-status?id=${predictionId}`
+        : `http://localhost:3001/api/replicate/predictions/${predictionId}`;
+
+      const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json'
         }
@@ -334,11 +341,11 @@ class ReplicateService {
     }
 
     try {
-      const proxyUrl = process.env.REACT_APP_API_PROXY_URL
-        ? `${process.env.REACT_APP_API_PROXY_URL}/api/replicate/predictions`
-        : 'http://localhost:3001/api/replicate/predictions';
+      const url = process.env.NODE_ENV === 'production'
+        ? `/api/replicate-status?id=${predictionId}`
+        : `http://localhost:3001/api/replicate/predictions/${predictionId}`;
 
-      const response = await fetch(`${proxyUrl}/${predictionId}`, {
+      const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json'
         }
@@ -363,11 +370,11 @@ class ReplicateService {
     }
 
     try {
-      const proxyUrl = process.env.REACT_APP_API_PROXY_URL
-        ? `${process.env.REACT_APP_API_PROXY_URL}/api/replicate/predictions`
-        : 'http://localhost:3001/api/replicate/predictions';
+      const url = process.env.NODE_ENV === 'production'
+        ? `/api/replicate-status?id=${predictionId}` // Note: would need separate cancel endpoint
+        : `http://localhost:3001/api/replicate/predictions/${predictionId}/cancel`;
 
-      const response = await fetch(`${proxyUrl}/${predictionId}/cancel`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
