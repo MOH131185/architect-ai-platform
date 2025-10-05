@@ -25,7 +25,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.REACT_APP_REPLICATE_API_KEY;
+    // Support both REPLICATE_API_TOKEN and REACT_APP_REPLICATE_API_KEY
+    const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY;
     const { id } = req.query;
 
     if (!apiKey) {
