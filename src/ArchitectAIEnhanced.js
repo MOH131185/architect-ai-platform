@@ -180,11 +180,15 @@ const generatePDFContent = (projectDetails, styleChoice, locationData) => {
 
 const MapView = ({ center, zoom }) => {
   const ref = useRef(null);
-  const [map, setMap] = useState(null);
-  const [marker, setMarker] = useState(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
 
+  // Initialize map only once
   useEffect(() => {
-    if (ref.current && !map && window.google) {
+    if (!ref.current || mapRef.current || !window.google) return;
+
+    try {
       const newMap = new window.google.maps.Map(ref.current, {
         center,
         zoom: zoom || 18,
@@ -204,7 +208,6 @@ const MapView = ({ center, zoom }) => {
         ]
       });
 
-      // Add marker at the center
       const newMarker = new window.google.maps.Marker({
         position: center,
         map: newMap,
@@ -221,18 +224,25 @@ const MapView = ({ center, zoom }) => {
         }
       });
 
-      setMap(newMap);
-      setMarker(newMarker);
+      mapRef.current = newMap;
+      markerRef.current = newMarker;
+      setIsMapLoaded(true);
+    } catch (error) {
+      console.error('Map initialization error:', error);
     }
-  }, [center, zoom]); // Removed ref and map from dependencies
+  }, []); // Empty dependencies - initialize only once
 
-  // Simplified map update to prevent re-render issues
+  // Update map center and marker when coordinates change
   useEffect(() => {
-    if (map && marker && center) {
-      marker.setPosition(center);
-      map.setCenter(center);
+    if (!isMapLoaded || !mapRef.current || !markerRef.current) return;
+
+    try {
+      markerRef.current.setPosition(center);
+      mapRef.current.setCenter(center);
+    } catch (error) {
+      console.error('Map update error:', error);
     }
-  }, [map, marker, center]);
+  }, [center.lat, center.lng, isMapLoaded]); // Use specific lat/lng values to avoid object reference issues
 
   return <div ref={ref} style={{ width: '100%', height: '100%', borderRadius: '12px' }} />;
 };
