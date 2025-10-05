@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Environment Variables Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-card {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+        .success { border-left-color: #10b981; }
+        .error { border-left-color: #ef4444; }
+        code {
+            background: #1f2937;
+            color: #10b981;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        h1 { color: #1f2937; }
+        .status { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Environment Variables Diagnostics</h1>
+    <p>This page checks if your environment variables are loaded correctly.</p>
+
+    <div id="results"></div>
+
+    <script>
+        const envVars = {
+            'Google Maps API Key': 'REACT_APP_GOOGLE_MAPS_API_KEY',
+            'OpenWeather API Key': 'REACT_APP_OPENWEATHER_API_KEY',
+            'OpenAI API Key': 'REACT_APP_OPENAI_API_KEY',
+            'Replicate API Key': 'REACT_APP_REPLICATE_API_KEY'
+        };
+
+        const resultsDiv = document.getElementById('results');
+        let allPresent = true;
+
+        for (const [name, envKey] of Object.entries(envVars)) {
+            const value = process.env[envKey];
+            const isPresent = value && value.length > 0;
+            allPresent = allPresent && isPresent;
+
+            const card = document.createElement('div');
+            card.className = `test-card ${isPresent ? 'success' : 'error'}`;
+
+            const maskedValue = isPresent
+                ? value.substring(0, 8) + '...' + value.substring(value.length - 4)
+                : 'NOT SET';
+
+            card.innerHTML = `
+                <h3>${isPresent ? '✅' : '❌'} ${name}</h3>
+                <p class="status">${isPresent ? 'CONFIGURED' : 'MISSING'}</p>
+                <p>Variable: <code>${envKey}</code></p>
+                <p>Value: <code>${maskedValue}</code></p>
+            `;
+
+            resultsDiv.appendChild(card);
+        }
+
+        // Overall status
+        const summaryCard = document.createElement('div');
+        summaryCard.className = `test-card ${allPresent ? 'success' : 'error'}`;
+        summaryCard.innerHTML = `
+            <h2>${allPresent ? '✅ All Environment Variables Configured!' : '❌ Some Variables Missing'}</h2>
+            <p>${allPresent
+                ? 'Your deployment should work correctly.'
+                : 'Add missing variables in Vercel Dashboard → Settings → Environment Variables, then redeploy.'
+            }</p>
+        `;
+        resultsDiv.insertBefore(summaryCard, resultsDiv.firstChild);
+    </script>
+</body>
+</html>
