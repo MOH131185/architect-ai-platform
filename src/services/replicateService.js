@@ -183,6 +183,64 @@ class ReplicateService {
   }
 
   /**
+   * Generate 2D floor plan using specialized architectural models
+   */
+  async generateFloorPlan(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallbackFloorPlan(projectContext);
+    }
+
+    try {
+      const params = this.buildFloorPlanParameters(projectContext);
+      const result = await this.generateArchitecturalImage(params);
+      
+      return {
+        success: true,
+        floorPlan: result,
+        type: '2d_floor_plan',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Floor plan generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackFloorPlan(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Generate 3D architectural preview
+   */
+  async generate3DPreview(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallback3DPreview(projectContext);
+    }
+
+    try {
+      const params = this.build3DPreviewParameters(projectContext);
+      const result = await this.generateArchitecturalImage(params);
+      
+      return {
+        success: true,
+        preview3D: result,
+        type: '3d_preview',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('3D preview generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallback3DPreview(projectContext)
+      };
+    }
+  }
+
+  /**
    * Build parameters for specific view types
    */
   buildViewParameters(projectContext, viewType) {
@@ -310,6 +368,91 @@ class ReplicateService {
   }
 
   /**
+   * Build parameters for 2D floor plan generation
+   */
+  buildFloorPlanParameters(projectContext) {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      location = 'urban setting',
+      materials = 'glass and steel',
+      area = '1000 sq ft'
+    } = projectContext;
+
+    return {
+      prompt: `Professional architectural floor plan, ${architecturalStyle} ${buildingProgram}, ${area} area, technical drawing style, 2D plan view, detailed room layout, dimensions, doors, windows, furniture layout, professional architectural drafting, black and white line drawing, precise measurements, architectural blueprint style`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      location,
+      materials,
+      viewType: 'floor_plan',
+      width: 1024,
+      height: 1024,
+      steps: 40,
+      guidanceScale: 7.0,
+      negativePrompt: "3D, perspective, color, realistic, photorealistic, blurry, low quality"
+    };
+  }
+
+  /**
+   * Build parameters for 3D preview generation
+   */
+  build3DPreviewParameters(projectContext) {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      location = 'urban setting',
+      materials = 'glass and steel'
+    } = projectContext;
+
+    return {
+      prompt: `Professional 3D architectural visualization, ${architecturalStyle} ${buildingProgram} in ${location}, constructed with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed, 3D perspective view, modern design, clean lines, natural lighting, professional rendering`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      location,
+      materials,
+      viewType: '3d_preview',
+      width: 1024,
+      height: 768,
+      steps: 50,
+      guidanceScale: 8.0,
+      negativePrompt: "2D, floor plan, technical drawing, blueprint, black and white, line drawing, blurry, low quality"
+    };
+  }
+
+  /**
+   * Get fallback floor plan when API is unavailable
+   */
+  getFallbackFloorPlan(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      floorPlan: {
+        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
+        message: 'Using placeholder floor plan - API unavailable'
+      },
+      type: '2d_floor_plan',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback 3D preview when API is unavailable
+   */
+  getFallback3DPreview(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      preview3D: {
+        images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
+        message: 'Using placeholder 3D preview - API unavailable'
+      },
+      type: '3d_preview',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
    * Get fallback image when API is unavailable
    */
   getFallbackImage(params) {
@@ -320,7 +463,9 @@ class ReplicateService {
       exterior: 'https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder',
       interior: 'https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder',
       site_plan: 'https://via.placeholder.com/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder',
-      section: 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Section+View+Placeholder'
+      section: 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Section+View+Placeholder',
+      floor_plan: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder',
+      '3d_preview': 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'
     };
 
     return {

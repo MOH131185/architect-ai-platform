@@ -627,14 +627,25 @@ const ArchitectAIEnhanced = () => {
         siteConstraints: locationData?.zoning?.type || 'urban development',
         userPreferences: `${projectDetails?.area || '200'}m² total area`,
         specifications: projectDetails,
-        climateData: locationData?.climate
+        climateData: locationData?.climate,
+        area: projectDetails?.area || '200'
       };
 
       console.log('🎨 Starting AI design generation with:', projectContext);
 
-      // Use quick design mode for faster generation (within timeout limits)
-      // For full generation with all alternatives and visualizations, use generateCompleteDesign
-      const aiResult = await aiIntegrationService.quickDesign(projectContext);
+      // Check if portfolio images are available for style detection
+      const portfolioImages = uploadedFiles?.map(file => file.url).filter(Boolean) || [];
+      
+      let aiResult;
+      if (portfolioImages.length > 0) {
+        // Use style-optimized design generation with portfolio analysis
+        console.log('🎨 Using style-optimized design generation with portfolio analysis');
+        aiResult = await aiIntegrationService.generateStyleOptimizedDesign(projectContext, portfolioImages);
+      } else {
+        // Use floor plan and 3D preview generation
+        console.log('🎨 Using floor plan and 3D preview generation');
+        aiResult = await aiIntegrationService.generateFloorPlanAnd3DPreview(projectContext, portfolioImages);
+      }
 
       console.log('✅ AI design generation complete:', aiResult);
 
@@ -650,14 +661,17 @@ const ArchitectAIEnhanced = () => {
               { name: "Circulation", area: `${Math.floor((parseInt(projectDetails?.area) || 200) * 0.1)}m²` }
             ],
           efficiency: "85%",
-          circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow"
+          circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
+          // Add 2D floor plan images if available
+          images: aiResult.floorPlan?.floorPlan?.images || aiResult.visualizations?.floorPlan?.images || []
         },
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
           materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
-          images: aiResult.visualization?.images || []
+          // Add 3D preview images if available
+          images: aiResult.preview3D?.preview3D?.images || aiResult.visualizations?.preview3D?.images || aiResult.visualization?.images || []
         },
         technical: {
           structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
@@ -679,7 +693,11 @@ const ArchitectAIEnhanced = () => {
           timestamp: aiResult.timestamp,
           workflow: aiResult.workflow,
           isFallback: aiResult.isFallback
-        }
+        },
+        // Add new features
+        styleDetection: aiResult.styleDetection || null,
+        compatibilityAnalysis: aiResult.compatibilityAnalysis || null,
+        visualizations: aiResult.visualizations || null
       };
 
       setGeneratedDesigns(designData);

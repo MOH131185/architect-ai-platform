@@ -5,11 +5,13 @@
 
 import openaiService from './openaiService';
 import replicateService from './replicateService';
+import portfolioStyleDetection from './portfolioStyleDetection';
 
 class AIIntegrationService {
   constructor() {
     this.openai = openaiService;
     this.replicate = replicateService;
+    this.portfolioStyleDetection = portfolioStyleDetection;
   }
 
   /**
@@ -387,6 +389,318 @@ class AIIntegrationService {
         approach: 'traditional'
       }
     };
+  }
+
+  /**
+   * Get fallback floor plan and 3D preview
+   */
+  getFallbackFloorPlanAnd3D(projectContext) {
+    return {
+      floorPlan: {
+        success: false,
+        isFallback: true,
+        floorPlan: {
+          images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
+          message: 'Using placeholder floor plan - API unavailable'
+        },
+        type: '2d_floor_plan'
+      },
+      preview3D: {
+        success: false,
+        isFallback: true,
+        preview3D: {
+          images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
+          message: 'Using placeholder 3D preview - API unavailable'
+        },
+        type: '3d_preview'
+      },
+      styleDetection: null,
+      reasoning: this.getFallbackReasoning(projectContext),
+      isFallback: true,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback style-optimized design
+   */
+  getFallbackStyleOptimized(projectContext) {
+    return {
+      styleDetection: {
+        primaryStyle: { style: 'Contemporary', confidence: 'Medium' },
+        designElements: { materials: 'Glass, steel, concrete' },
+        isFallback: true
+      },
+      compatibilityAnalysis: {
+        compatibilityScore: '7/10',
+        isFallback: true
+      },
+      reasoning: this.getFallbackReasoning(projectContext),
+      visualizations: this.getFallbackVisualizations(),
+      isFallback: true,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback reasoning
+   */
+  getFallbackReasoning(projectContext) {
+    return {
+      designPhilosophy: 'Contextual and sustainable design approach',
+      spatialOrganization: 'Functional and flexible spatial arrangement',
+      materialRecommendations: 'Locally sourced, sustainable materials',
+      environmentalConsiderations: 'Passive design and renewable energy integration',
+      technicalSolutions: 'Efficient structural and MEP systems',
+      codeCompliance: 'Full compliance with local regulations',
+      costStrategies: 'Value engineering and lifecycle cost optimization',
+      futureProofing: 'Adaptable design for future needs',
+      isFallback: true,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback visualizations
+   */
+  getFallbackVisualizations() {
+    return {
+      floorPlan: {
+        success: false,
+        isFallback: true,
+        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder']
+      },
+      preview3D: {
+        success: false,
+        isFallback: true,
+        images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder']
+      },
+      styleVariations: {
+        contemporary: {
+          success: false,
+          isFallback: true,
+          images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Contemporary+Style+Placeholder']
+        },
+        sustainable: {
+          success: false,
+          isFallback: true,
+          images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
+        },
+        innovative: {
+          success: false,
+          isFallback: true,
+          images: ['https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Innovative+Style+Placeholder']
+        }
+      },
+      isFallback: true,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Generate 2D floor plan and 3D preview with style detection
+   */
+  async generateFloorPlanAnd3DPreview(projectContext, portfolioImages = []) {
+    try {
+      console.log('Starting floor plan and 3D preview generation...');
+      
+      // Step 1: Detect architectural style from portfolio if provided
+      let styleDetection = null;
+      if (portfolioImages && portfolioImages.length > 0) {
+        styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
+          portfolioImages, 
+          projectContext.location
+        );
+      }
+
+      // Step 2: Generate 2D floor plan
+      const floorPlan = await this.replicate.generateFloorPlan(projectContext);
+      
+      // Step 3: Generate 3D preview
+      const preview3D = await this.replicate.generate3DPreview(projectContext);
+      
+      // Step 4: Generate design reasoning with style context
+      const reasoning = await this.generateDesignReasoningWithStyle(
+        projectContext, 
+        styleDetection
+      );
+
+      return {
+        success: true,
+        floorPlan,
+        preview3D,
+        styleDetection,
+        reasoning,
+        projectContext,
+        timestamp: new Date().toISOString(),
+        workflow: 'floor_plan_3d_preview'
+      };
+
+    } catch (error) {
+      console.error('Floor plan and 3D preview generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackFloorPlanAnd3D(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Generate design reasoning with style detection context
+   */
+  async generateDesignReasoningWithStyle(projectContext, styleDetection) {
+    try {
+      // Enhance project context with style detection
+      const enhancedContext = {
+        ...projectContext,
+        detectedStyle: styleDetection?.primaryStyle?.style || 'contemporary',
+        styleCharacteristics: styleDetection?.designElements || {},
+        styleRecommendations: styleDetection?.recommendations || {}
+      };
+
+      return await this.openai.generateDesignReasoning(enhancedContext);
+    } catch (error) {
+      console.error('Style-enhanced reasoning error:', error);
+      return this.getFallbackReasoning(projectContext);
+    }
+  }
+
+  /**
+   * Analyze portfolio and generate style-optimized design
+   */
+  async generateStyleOptimizedDesign(projectContext, portfolioImages) {
+    try {
+      console.log('Starting style-optimized design generation...');
+      
+      // Step 1: Analyze portfolio for style detection
+      const styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
+        portfolioImages, 
+        projectContext.location
+      );
+
+      // Step 2: Analyze style-location compatibility
+      const compatibilityAnalysis = await this.portfolioStyleDetection.analyzeLocationStyleCompatibility(
+        styleDetection,
+        projectContext.location
+      );
+
+      // Step 3: Generate enhanced project context with style information
+      const enhancedContext = this.buildEnhancedProjectContext(
+        projectContext, 
+        styleDetection, 
+        compatibilityAnalysis
+      );
+
+      // Step 4: Generate design reasoning with style optimization
+      const reasoning = await this.generateDesignReasoningWithStyle(enhancedContext, styleDetection);
+      
+      // Step 5: Generate visualizations optimized for detected style
+      const visualizations = await this.generateStyleOptimizedVisualizations(
+        enhancedContext, 
+        styleDetection
+      );
+
+      return {
+        success: true,
+        styleDetection,
+        compatibilityAnalysis,
+        reasoning,
+        visualizations,
+        enhancedContext,
+        timestamp: new Date().toISOString(),
+        workflow: 'style_optimized'
+      };
+
+    } catch (error) {
+      console.error('Style-optimized design error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackStyleOptimized(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Build enhanced project context with style information
+   */
+  buildEnhancedProjectContext(projectContext, styleDetection, compatibilityAnalysis) {
+    return {
+      ...projectContext,
+      architecturalStyle: styleDetection?.primaryStyle?.style || 'contemporary',
+      styleCharacteristics: styleDetection?.designElements || {},
+      styleRecommendations: styleDetection?.recommendations || {},
+      compatibilityScore: compatibilityAnalysis?.compatibilityScore || '7/10',
+      recommendedAdaptations: compatibilityAnalysis?.recommendedAdaptations || [],
+      materials: this.extractMaterialsFromStyle(styleDetection),
+      designApproach: this.buildDesignApproachFromStyle(styleDetection)
+    };
+  }
+
+  /**
+   * Extract materials from style detection
+   */
+  extractMaterialsFromStyle(styleDetection) {
+    if (!styleDetection?.designElements?.materials) {
+      return 'glass and steel';
+    }
+    
+    const materials = styleDetection.designElements.materials;
+    const materialList = materials.split(',').map(m => m.trim());
+    return materialList.slice(0, 3).join(' and '); // Take first 3 materials
+  }
+
+  /**
+   * Build design approach from style detection
+   */
+  buildDesignApproachFromStyle(styleDetection) {
+    const style = styleDetection?.primaryStyle?.style || 'contemporary';
+    const characteristics = styleDetection?.designElements?.spatialOrganization || '';
+    
+    return `${style} design approach with ${characteristics}`;
+  }
+
+  /**
+   * Generate style-optimized visualizations
+   */
+  async generateStyleOptimizedVisualizations(enhancedContext, styleDetection) {
+    try {
+      const style = styleDetection?.primaryStyle?.style || 'contemporary';
+      const materials = this.extractMaterialsFromStyle(styleDetection);
+      
+      // Generate floor plan with style optimization
+      const floorPlan = await this.replicate.generateFloorPlan({
+        ...enhancedContext,
+        architecturalStyle: style,
+        materials
+      });
+      
+      // Generate 3D preview with style optimization
+      const preview3D = await this.replicate.generate3DPreview({
+        ...enhancedContext,
+        architecturalStyle: style,
+        materials
+      });
+
+      // Generate additional style variations
+      const styleVariations = await this.replicate.generateStyleVariations(
+        enhancedContext,
+        [style, 'sustainable', 'innovative']
+      );
+
+      return {
+        floorPlan,
+        preview3D,
+        styleVariations,
+        source: 'style_optimized',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Style-optimized visualization error:', error);
+      return this.getFallbackVisualizations();
+    }
   }
 
   /**
