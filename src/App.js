@@ -1,9 +1,9 @@
 import React from 'react';
-import AIMVP from './components/AIMVP';
+import ArchitectAIEnhanced from './ArchitectAIEnhanced';
 import './App.css';
 
 function App() {
-  return <AIMVP />;
+  return <ArchitectAIEnhanced />;
 }
 
 export default App;

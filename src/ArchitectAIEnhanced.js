@@ -177,122 +177,63 @@ const generatePDFContent = (projectDetails, styleChoice, locationData) => {
   return htmlContent;
 };
 
-const StableMapView = ({ center, zoom }) => {
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // Stable center reference to prevent unnecessary re-renders
-  const stableCenterRef = useRef(center);
-  const isInitializedRef = useRef(false);
+const MapView = ({ center, zoom }) => {
+  const ref = useRef(null);
+  const [map, setMap] = useState(null);
+  const [marker, setMarker] = useState(null);
 
-  // Only update stable center if coordinates actually changed significantly
   useEffect(() => {
-    if (center && 
-        (!stableCenterRef.current || 
-         Math.abs(stableCenterRef.current.lat - center.lat) > 0.0001 ||
-         Math.abs(stableCenterRef.current.lng - center.lng) > 0.0001)) {
-      stableCenterRef.current = center;
-    }
-  }, [center]);
-
-  // Initialize map only once
-  useEffect(() => {
-    if (!mapRef.current || isInitializedRef.current || !window.google || !stableCenterRef.current) {
-      return;
-    }
-
-    try {
-      isInitializedRef.current = true;
-      
-      // Create map with 3D settings
-      const mapInstance = new window.google.maps.Map(mapRef.current, {
-        center: stableCenterRef.current,
-        zoom: zoom || 19,
+    if (ref.current && !map && window.google) {
+      const newMap = new window.google.maps.Map(ref.current, {
+        center,
+        zoom: zoom || 18,
         mapTypeId: 'hybrid',
-        tilt: 45, // 3D tilt
-        heading: 0,
-        disableDefaultUI: true,
-        zoomControl: true,
+        tilt: 45,
+        disableDefaultUI: false,
         mapTypeControl: true,
-        fullscreenControl: true,
         streetViewControl: true,
-        gestureHandling: 'greedy'
+        fullscreenControl: true,
+        zoomControl: true,
+        gestureHandling: 'cooperative',
+        styles: [
+          {
+            featureType: 'all',
+            stylers: [{ saturation: 20 }, { lightness: -10 }]
+          }
+        ]
       });
 
-      // Create custom marker
-      const marker = new window.google.maps.Marker({
-        position: stableCenterRef.current,
-        map: mapInstance,
+      // Add marker at the center
+      const newMarker = new window.google.maps.Marker({
+        position: center,
+        map: newMap,
         title: 'Project Location',
         icon: {
           url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg width="24" height="36" viewBox="0 0 24 36" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 0C5.373 0 0 5.373 0 12c0 8 12 24 12 24s12-16 12-24c0-6.627-5.373-12-12-12z" fill="#EA4335"/>
-              <circle cx="12" cy="12" r="7" fill="#fff"/>
-              <circle cx="12" cy="12" r="3" fill="#EA4335"/>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+              <circle cx="16" cy="16" r="6" fill="#ffffff"/>
             </svg>
           `),
-          scaledSize: new window.google.maps.Size(24, 36),
-          anchor: new window.google.maps.Point(12, 36)
+          scaledSize: new window.google.maps.Size(32, 32),
+          anchor: new window.google.maps.Point(16, 16),
         }
       });
 
-      // Store references
-      mapInstanceRef.current = mapInstance;
-      markerRef.current = marker;
-
-      // Set loading false when map is ready
-      const idleListener = mapInstance.addListener('idle', () => {
-        setIsLoading(false);
-        window.google.maps.event.removeListener(idleListener);
-      });
-
-    } catch (err) {
-      console.error('Google Maps initialization error:', err);
-      setError('Failed to load map');
-      setIsLoading(false);
+      setMap(newMap);
+      setMarker(newMarker);
     }
+  }, [center, zoom]); // Removed ref and map from dependencies
 
-    // Cleanup function
-    return () => {
-      if (mapInstanceRef.current && window.google) {
-        window.google.maps.event.clearInstanceListeners(mapInstanceRef.current);
-      }
-    };
-  }, []); // Empty dependency array - initialize only once
+  // Simplified map update to prevent re-render issues
+  useEffect(() => {
+    if (map && marker && center) {
+      marker.setPosition(center);
+      map.setCenter(center);
+    }
+  }, [map, marker, center]);
 
-  if (error) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-100 rounded-xl">
-        <div className="text-center">
-          <MapPin className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-          <p className="text-gray-600 text-sm">Map unavailable</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 text-blue-500 mx-auto mb-2 animate-spin" />
-          <p className="text-blue-700 text-sm font-medium">Loading 3D Satellite View...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div 
-      ref={mapRef} 
-      className="w-full h-full rounded-xl"
-      style={{ minHeight: '300px' }}
-    />
-  );
+  return <div ref={ref} style={{ width: '100%', height: '100%', borderRadius: '12px' }} />;
 };
 
 class ErrorBoundary extends React.Component {
@@ -376,69 +317,32 @@ const ArchitectAIEnhanced = () => {
     }
 
     setIsDetectingLocation(true);
-    showToast("📍 Detecting your precise location...");
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         try {
-          const { latitude: lat, longitude: lng, accuracy } = position.coords;
+          const { latitude: lat, longitude: lng } = position.coords;
           
-          console.log(`Location detected: ${lat}, ${lng} (accuracy: ${accuracy}m)`);
-          
-          // Enhanced reverse geocoding with multiple result types for better accuracy
+          // Reverse geocode to get address
           const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
               latlng: `${lat},${lng}`,
               key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-              result_type: 'street_address|premise|subpremise|neighborhood', // Prioritize specific addresses
-              location_type: 'ROOFTOP|RANGE_INTERPOLATED', // High accuracy locations
             },
           });
 
-          console.log('Geocoding response:', response.data);
-
           if (response.data.status === 'OK' && response.data.results.length > 0) {
-            // Find the most specific address (prefer street addresses)
-            let bestResult = response.data.results[0];
-            
-            // Look for street address first
-            for (let result of response.data.results) {
-              if (result.types.includes('street_address') || result.types.includes('premise')) {
-                bestResult = result;
-                break;
-              }
-            }
-            
-            const detectedAddress = bestResult.formatted_address;
+            const detectedAddress = response.data.results[0].formatted_address;
             setAddress(detectedAddress);
-            
-            // Show more detailed success message
-            const accuracyText = accuracy < 10 ? 'High accuracy' : 
-                               accuracy < 50 ? 'Good accuracy' : 
-                               accuracy < 100 ? 'Moderate accuracy' : 'Low accuracy';
-            
-            showToast(`✅ Location found with ${accuracyText}: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
+            showToast(`📍 Location detected: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
           } else {
-            // Try a broader search if specific address fails
-            const fallbackResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-              params: {
-                latlng: `${lat},${lng}`,
-                key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-              },
-            });
-            
-            if (fallbackResponse.data.status === 'OK' && fallbackResponse.data.results.length > 0) {
-              const detectedAddress = fallbackResponse.data.results[0].formatted_address;
-              setAddress(detectedAddress);
-              showToast(`📍 Approximate location: ${detectedAddress.split(',').slice(0, 2).join(',')}`);
-            } else {
-              throw new Error('No geocoding results found');
-            }
+            setAddress("123 Main Street, San Francisco, CA 94105");
+            showToast("Could not detect address. Using default location.");
           }
         } catch (error) {
           console.error('Reverse geocoding failed:', error);
           setAddress("123 Main Street, San Francisco, CA 94105");
-          showToast("⚠️ Could not determine precise address. Using default location.");
+          showToast("Location detection failed. Using default location.");
         } finally {
           setIsDetectingLocation(false);
         }
@@ -448,21 +352,19 @@ const ArchitectAIEnhanced = () => {
         setAddress("123 Main Street, San Francisco, CA 94105");
         setIsDetectingLocation(false);
         
-        let errorMessage = "🚫 Location access denied. Using default location.";
-        if (error.code === 1) { // PERMISSION_DENIED
-          errorMessage = "🚫 Location access denied. Please enable location permissions.";
-        } else if (error.code === 2) { // POSITION_UNAVAILABLE
-          errorMessage = "📡 GPS signal unavailable. Using default location.";
-        } else if (error.code === 3) { // TIMEOUT
-          errorMessage = "⏱️ Location detection timed out. Using default location.";
+        let errorMessage = "Location access denied. Using default location.";
+        if (error.code === error.TIMEOUT) {
+          errorMessage = "Location detection timed out. Using default location.";
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          errorMessage = "Location unavailable. Using default location.";
         }
         
         showToast(errorMessage);
       },
       {
-        timeout: 15000, // Increased timeout for better accuracy
-        enableHighAccuracy: true, // Use GPS for highest accuracy
-        maximumAge: 60000, // Use cached location only if less than 1 minute old
+        timeout: 10000,
+        enableHighAccuracy: true,
+        maximumAge: 300000, // 5 minutes
       }
     );
   }, [showToast]);
@@ -1091,43 +993,13 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      {/* REAL SATELLITE VIEW - Static Image (No Freezing) */}
-                      <div className="w-full h-full relative rounded-xl overflow-hidden bg-gray-200">
-                        {/* Real Google Maps Static Satellite Image */}
-                        <img
-                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${locationData.coordinates.lat},${locationData.coordinates.lng}&zoom=18&size=600x400&maptype=hybrid&markers=color:red%7C${locationData.coordinates.lat},${locationData.coordinates.lng}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`}
-                          alt="Satellite View"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // Fallback if image fails to load
-                            e.target.style.display = 'none';
-                            e.target.nextElementSibling.style.display = 'block';
-                          }}
-                        />
-                        
-                        {/* Fallback view if image fails */}
-                        <div className="hidden w-full h-full bg-gradient-to-br from-green-600 via-green-700 to-green-800 flex items-center justify-center">
-                          <div className="text-center text-white">
-                            <MapPin className="w-12 h-12 mx-auto mb-4 opacity-80" />
-                            <p className="text-lg font-semibold">Satellite View</p>
-                            <p className="text-sm opacity-75">Location: {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}</p>
-                          </div>
-                        </div>
-                        
-                        {/* Coordinates overlay */}
-                        <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur text-white px-3 py-1 rounded text-xs font-mono">
-                          📍 {locationData.coordinates.lat.toFixed(6)}°, {locationData.coordinates.lng.toFixed(6)}°
-                        </div>
-                        
-                        {/* Satellite indicator */}
-                        <div className="absolute top-3 right-3 bg-white/95 backdrop-blur text-gray-800 px-3 py-1 rounded-full text-xs font-medium flex items-center shadow-sm">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                          Satellite View
-                        </div>
-                        
-                        {/* Scale indicator */}
-                        <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur text-gray-800 px-2 py-1 rounded text-xs">
-                          Zoom: 18
+                      {/* <MapView center={locationData.coordinates} zoom={19} /> */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100">
+                        <div className="text-center">
+                          <MapPin className="w-16 h-16 text-blue-600 mx-auto mb-4" />
+                          <p className="text-gray-700 font-medium">3D Map View</p>
+                          <p className="text-gray-600 text-sm">Maps disabled to prevent freezing</p>
+                          <p className="text-gray-500 text-xs mt-2">Location coordinates: {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}</p>
                         </div>
                       </div>
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
@@ -1736,7 +1608,6 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    // DISABLED: Google Maps causes freezing - keeping wrapper commented out
     // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
