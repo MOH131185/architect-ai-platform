@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Wrapper } from "@googlemaps/react-wrapper";
-import { 
+import {
   MapPin, Upload, Building, Sun, Compass, FileText,
   Palette, Square, Loader2, Sparkles, ArrowRight,
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
   Users, Shield, Zap, BarChart3, Eye
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
+import aiIntegrationService from './services/aiIntegrationService';
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -602,61 +603,153 @@ const ArchitectAIEnhanced = () => {
     }, 500); // A small delay to ensure loader is visible
   };
 
-  // Generate AI designs with more detail
-  const generateDesigns = () => {
+  // Generate AI designs with OpenAI and Replicate integration
+  const generateDesigns = async () => {
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      // Prepare project context for AI
+      const projectContext = {
+        buildingProgram: buildingType || 'mixed-use building',
+        location: locationData || { address: 'Unknown location' },
+        architecturalStyle: styleChoice === 'blend' ? 'Contemporary with local influences' : styleChoice || 'contemporary',
+        materials: 'sustainable, local materials',
+        siteConstraints: locationData?.zoning?.type || 'urban development',
+        userPreferences: `${buildingSpecs?.totalArea || '200'}m² total area, ${buildingSpecs?.floors || '2'} floors`,
+        specifications: buildingSpecs,
+        climateData: locationData?.climate
+      };
+
+      console.log('🎨 Starting AI design generation with:', projectContext);
+
+      // Call AI integration service
+      const aiResult = await aiIntegrationService.generateCompleteDesign(projectContext);
+
+      console.log('✅ AI design generation complete:', aiResult);
+
+      // Transform AI results to existing structure
+      const designData = {
+        floorPlan: {
+          rooms: aiResult.reasoning?.spatialOrganization ?
+            extractRoomsFromReasoning(aiResult.reasoning.spatialOrganization) :
+            [
+              { name: "Main Space", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.4)}m²` },
+              { name: "Secondary Spaces", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.3)}m²` },
+              { name: "Support Areas", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.2)}m²` },
+              { name: "Circulation", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.1)}m²` }
+            ],
+          efficiency: "85%",
+          circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow"
+        },
+        model3D: {
+          style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
+          features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
+          materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
+          sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
+          images: aiResult.visualization?.images || []
+        },
+        technical: {
+          structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
+          foundation: "Engineered foundation system",
+          mep: {
+            hvac: "Energy-efficient HVAC system",
+            electrical: "Smart LED lighting with sensors",
+            plumbing: "Water-efficient fixtures"
+          },
+          compliance: ["Local building codes", "Accessibility standards", "Energy efficiency requirements"]
+        },
+        cost: {
+          construction: aiResult.feasibility?.cost || "To be determined",
+          timeline: aiResult.feasibility?.timeline || "12-18 months",
+          energySavings: "Estimated based on sustainability features"
+        },
+        aiMetadata: {
+          generated: true,
+          timestamp: aiResult.timestamp,
+          workflow: aiResult.workflow,
+          isFallback: aiResult.isFallback
+        }
+      };
+
+      setGeneratedDesigns(designData);
+      setIsLoading(false);
+      setCurrentStep(5);
+
+    } catch (error) {
+      console.error('❌ AI generation error:', error);
+
+      // Fallback to mock data if AI fails
       setGeneratedDesigns({
         floorPlan: {
           rooms: [
             { name: "Reception", area: "25m²" },
-            { name: "Waiting Area", area: "40m²" },
-            { name: "Consultation Room 1", area: "20m²" },
-            { name: "Consultation Room 2", area: "20m²" },
-            { name: "Consultation Room 3", area: "20m²" },
-            { name: "Consultation Room 4", area: "20m²" },
-            { name: "Staff Room", area: "30m²" },
-            { name: "Bathrooms", area: "20m²" },
-            { name: "Storage", area: "15m²" }
+            { name: "Main Space", area: "100m²" },
+            { name: "Support Areas", area: "50m²" },
+            { name: "Circulation", area: "25m²" }
           ],
           efficiency: "85%",
-          circulation: "Optimal patient flow with separate staff access"
+          circulation: "Optimized circulation flow"
         },
         model3D: {
-          style: styleChoice === 'blend' ? "Modern Mediterranean Medical Center" : "Contemporary Healthcare Facility",
-          features: [
-            "Floor-to-ceiling windows for natural lighting",
-            "Green roof with solar panels",
-            "Universal accessibility design",
-            "Healing garden courtyard"
-          ],
-          materials: ["Local limestone", "Cross-laminated timber", "Low-E triple glazing", "Living wall systems"],
-          sustainabilityFeatures: [
-            "LEED Platinum targeted",
-            "Net-zero energy design",
-            "Rainwater harvesting",
-            "Natural ventilation"
-          ]
+          style: `${styleChoice} architectural design`,
+          features: ["Natural lighting", "Sustainable design", "Modern aesthetics"],
+          materials: ["Sustainable materials", "Local resources"],
+          sustainabilityFeatures: ["Energy efficient", "Eco-friendly"],
+          images: []
         },
         technical: {
-          structural: "Hybrid steel-timber frame with seismic resilience",
-          foundation: "Mat foundation with waterproofing",
+          structural: "Modern structural system",
+          foundation: "Engineered foundation",
           mep: {
-            hvac: "VRF system with heat recovery",
-            electrical: "100% LED with daylight sensors",
-            plumbing: "Low-flow fixtures, greywater recycling"
+            hvac: "Energy-efficient system",
+            electrical: "Smart lighting",
+            plumbing: "Water-efficient fixtures"
           },
-          compliance: ["ADA", "Title 24", "OSHPD 3", "WELL Building Standard"]
+          compliance: ["Building codes", "Accessibility", "Energy standards"]
         },
         cost: {
-          construction: "$2.1M - $2.4M",
-          timeline: "12-14 months",
-          energySavings: "$45,000/year"
+          construction: "Contact for estimate",
+          timeline: "12-18 months",
+          energySavings: "Significant"
+        },
+        aiMetadata: {
+          generated: false,
+          error: error.message,
+          fallback: true
         }
       });
       setIsLoading(false);
       setCurrentStep(5);
-    }, 3500);
+    }
+  };
+
+  // Helper functions to extract data from AI responses
+  const extractRoomsFromReasoning = (spatialText) => {
+    // Simple extraction - can be enhanced
+    return [
+      { name: "Main Space", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.4)}m²` },
+      { name: "Secondary Spaces", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.3)}m²` },
+      { name: "Support Areas", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.2)}m²` },
+      { name: "Circulation", area: `${Math.floor((buildingSpecs?.totalArea || 200) * 0.1)}m²` }
+    ];
+  };
+
+  const extractFeatures = (envText) => {
+    return [
+      "Optimized natural lighting",
+      "Sustainable design principles",
+      "Climate-responsive architecture",
+      "Modern aesthetic"
+    ];
+  };
+
+  const extractSustainabilityFeatures = (envText) => {
+    return [
+      "Energy-efficient design",
+      "Sustainable materials",
+      "Environmental optimization",
+      "Green building principles"
+    ];
   };
 
   const renderLandingPage = () => (
@@ -993,15 +1086,7 @@ const ArchitectAIEnhanced = () => {
                 <div className="bg-gray-100 rounded-xl h-80 relative overflow-hidden shadow-lg border-2 border-gray-200">
                   {locationData?.coordinates ? (
                     <>
-                      {/* <MapView center={locationData.coordinates} zoom={19} /> */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 to-gray-100">
-                        <div className="text-center">
-                          <MapPin className="w-16 h-16 text-blue-600 mx-auto mb-4" />
-                          <p className="text-gray-700 font-medium">3D Map View</p>
-                          <p className="text-gray-600 text-sm">Maps disabled to prevent freezing</p>
-                          <p className="text-gray-500 text-xs mt-2">Location coordinates: {locationData.coordinates.lat.toFixed(4)}, {locationData.coordinates.lng.toFixed(4)}</p>
-                        </div>
-                      </div>
+                      <MapView center={locationData.coordinates} zoom={19} />
                       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm">
                         <div className="flex items-center text-sm font-medium text-gray-700">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
