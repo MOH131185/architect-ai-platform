@@ -1724,15 +1724,17 @@ const ArchitectAIEnhanced = () => {
     }
   };
 
-  return (
-    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
-      <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
-        {toastMessage && (
-          <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
-            {toastMessage}
-          </div>
-        )}
-        {currentStep > 0 && (
+  // Conditionally wrap with Google Maps only when API key is available AND we're on step 2 (map view)
+  const shouldLoadMaps = process.env.REACT_APP_GOOGLE_MAPS_API_KEY && currentStep === 2;
+
+  const content = (
+    <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
+      {toastMessage && (
+        <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
+          {toastMessage}
+        </div>
+      )}
+      {currentStep > 0 && (
           <div className="sticky top-0 bg-white shadow-sm z-40">
             <div className="max-w-7xl mx-auto px-4 py-4">
               <div className="flex items-center justify-between">
@@ -1776,8 +1778,14 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    </Wrapper>
   );
+
+  // Only wrap with Google Maps Wrapper when necessary
+  return shouldLoadMaps ? (
+    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+      {content}
+    </Wrapper>
+  ) : content;
 };
 
 export default ArchitectAIEnhanced;
