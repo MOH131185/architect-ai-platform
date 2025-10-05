@@ -6,158 +6,243 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Development
 - `npm install` - Install dependencies (required after cloning)
-- `npm start` - Start development server on http://localhost:3000
+- `npm start` - Start React development server on http://localhost:3000
+- `npm run server` - Start Express API proxy server on http://localhost:3001
+- `npm run dev` - Run both React and Express servers concurrently
 - `npm run build` - Create production build in /build folder
 - `npm test` - Run test suite in interactive mode
 
 ### Deployment
 The repository auto-deploys to Vercel via GitHub integration. Push to main branch triggers automatic deployment to www.archiaisolution.pro.
 
-## Current Application State
+## Application Architecture
 
-**IMPORTANT**: The main application (`src/ArchitectAIEnhanced.js`) has been temporarily replaced with a maintenance page (`src/App.js`) due to persistent freezing issues. The original application code is preserved in `src/ArchitectAIEnhanced.js.backup`.
+This is an AI-powered architectural design platform built as a single-page React application. The system combines location intelligence, AI reasoning (OpenAI GPT-4), and AI image generation (Replicate SDXL) to produce complete architectural designs with technical documentation.
 
-### Current Structure (Maintenance Mode)
-- `src/App.js` - Static maintenance page showing platform features
-- `src/ArchitectAIEnhanced.js.backup` - Original full application (81KB, complex React component)
-- The current App.js displays a maintenance message with feature overview cards
+### Core Application Structure
 
-### Original Architecture (when restored from backup)
-This was an AI-powered architectural design platform built as a single-page React application with a multi-step wizard interface. The core application was in `src/ArchitectAIEnhanced.js` which orchestrated the entire user journey from location analysis to 3D design generation.
+**Main Application**: `src/ArchitectAIEnhanced.js` (2000+ lines)
+- Multi-step wizard interface orchestrating the complete design workflow
+- Handles state management for location, portfolio, specifications, and generated designs
+- Integrates all services: location intelligence, Google Maps, OpenAI, and Replicate
 
-### Key Components & Data Flow
+**Entry Point**: `src/App.js`
+- Simple wrapper that renders ArchitectAIEnhanced component
 
-**Location Intelligence System:**
-- `src/services/locationIntelligence.js` - Primary location analysis service with intelligent zoning detection
-- `src/services/enhancedLocationIntelligence.js` - Enhanced service for authoritative planning data from official APIs
-- `src/data/globalArchitecturalDatabase.js` - Comprehensive architectural style database organized by continent/country/region
+### User Workflow (6 Steps)
 
-**Core User Flow:**
-1. **Location Analysis** - Automatic geolocation detection + reverse geocoding via Google Maps API
-2. **Intelligence Report** - Climate data (OpenWeather API) + zoning analysis + architectural style recommendations
-3. **Portfolio Upload** - User architectural portfolio analysis for style synthesis
-4. **Project Specifications** - Building program and area requirements
-5. **AI Generation** - Mock architectural design generation with technical specifications
-6. **Export System** - Generate downloadable CAD files (DWG, RVT, IFC) and documentation
+1. **Landing Page** - Feature showcase with metrics and call-to-action
+2. **Location Analysis** - Address input with automatic geolocation detection
+3. **Intelligence Report** - Climate data, zoning analysis, architectural recommendations, and 3D map view
+4. **Portfolio Upload** - User uploads architectural portfolio for style learning
+5. **Project Specifications** - Building program and area requirements
+6. **AI Generation & Results** - Complete design with floor plans, 3D visualizations, technical specs, and export options
 
-### Location Intelligence Architecture
+### Service Layer Architecture
 
-The location intelligence system has a sophisticated hierarchy:
-- **Global Database**: `globalArchitecturalDatabase.js` contains architectural styles by region, organized as Continent → Country → Region/State → City, with specialized lookup patterns for UK postcodes, US states, and international cities
-- **Climate Integration**: Seasonal weather data from OpenWeather API feeds into architectural style recommendations
-- **Zoning Analysis**: Multi-tiered zoning detection using address components, with specialized handlers for UK (postcode-based), US (city/state-based), and international locations
+**Location Intelligence** (`src/services/`):
+- `locationIntelligence.js` - Primary service with intelligent zoning detection and architectural style recommendations
+- `enhancedLocationIntelligence.js` - Enhanced service for authoritative planning data from official APIs
+- `globalArchitecturalDatabase.js` - Comprehensive style database organized by Continent → Country → Region → City
 
-### API Dependencies & Environment Variables
+**AI Integration** (`src/services/`):
+- `aiIntegrationService.js` - Orchestrates complete AI workflow combining OpenAI reasoning and Replicate visualization
+- `openaiService.js` - GPT-4 integration for design reasoning, philosophy, spatial analysis, and feasibility
+- `replicateService.js` - SDXL integration for photorealistic architectural image generation
 
-**Required Environment Variables (.env):**
+### API Proxying Architecture
+
+**Development Environment**:
+- `server.js` - Express server proxies API calls to OpenAI and Replicate (runs on port 3001)
+- Avoids CORS issues and keeps API keys secure
+- Endpoints: `/api/openai/chat`, `/api/replicate/predictions`, `/api/replicate/predictions/:id`
+
+**Production Environment (Vercel)**:
+- `api/openai-chat.js` - Serverless function for OpenAI API proxy
+- `api/replicate-predictions.js` - Serverless function for Replicate prediction creation
+- `api/replicate-status.js` - Serverless function for Replicate prediction status checking
+- Automatically deployed when pushed to GitHub
+
+### Environment Variables
+
+**Required in `.env` (development) and Vercel (production)**:
 - `REACT_APP_GOOGLE_MAPS_API_KEY` - For geocoding, reverse geocoding, and 3D map display
 - `REACT_APP_OPENWEATHER_API_KEY` - For seasonal climate data analysis
+- `REACT_APP_OPENAI_API_KEY` - For GPT-4 design reasoning and analysis
+- `REACT_APP_REPLICATE_API_KEY` - For SDXL architectural image generation
 
-**Key External APIs:**
-- Google Maps JavaScript API - 3D mapping with hybrid satellite view
-- Google Geocoding API - Address to coordinates conversion
-- OpenWeather One Call API - Historical seasonal climate data
-- UK Planning Data Portal (optional) - Authoritative planning constraints
-- NYC Open Data (fallback example) - Zoning information
+**Important**: In Vercel dashboard, set variables for all environments (Production, Preview, Development)
 
-### Map System
-The `MapView` component renders interactive 3D maps using Google Maps API with:
-- Hybrid satellite/map view optimized for architectural site analysis
-- Custom location markers with project site indicators
-- 45-degree tilt for 3D building visualization
-- Coordinate display and enhanced map controls
+### Key Integration Points
 
-### Location Detection Logic
-Automatic location detection on application start:
-1. Browser geolocation API requests user coordinates
-2. Reverse geocoding via Google Maps API converts coordinates to address
-3. Fallback to San Francisco default if geolocation fails/denied
-4. Real-time user feedback via toast notifications
+**Google Maps Integration**:
+- `MapView` component in ArchitectAIEnhanced.js renders interactive 3D maps
+- Hybrid satellite/map view with 45-degree tilt for architectural context
+- Custom markers and coordinate display
+- Wrapped with `@googlemaps/react-wrapper` (currently commented out in production due to API key issues)
 
-### File Generation System
-Mock file generation for architectural deliverables:
-- DWG (AutoCAD) - 2D architectural drawings with project specifications
-- RVT (Revit) - 3D BIM model data with parametric information
-- IFC - Industry standard BIM exchange format
-- PDF - Complete project documentation with technical specifications
+**Location Intelligence Flow**:
+1. Browser geolocation API or manual address input
+2. Google Geocoding API converts address to coordinates
+3. OpenWeather API fetches seasonal climate data (4 seasons)
+4. `locationIntelligence.js` analyzes zoning based on address components
+5. Architectural style recommendations from `globalArchitecturalDatabase.js`
+6. Returns complete location profile with climate, zoning, styles, and market context
 
-### Error Handling & Fallbacks
-- Comprehensive error boundaries for React component failures
-- API failure fallbacks (default locations, mock climate data)
-- Graceful degradation when geolocation is unavailable
-- Development vs production API key handling
+**AI Generation Flow**:
+1. User clicks "Generate AI Designs" in step 4
+2. `aiIntegrationService.generateCompleteDesign()` orchestrates:
+   - OpenAI: Generate design reasoning (philosophy, spatial organization, materials, environmental considerations)
+   - Replicate: Generate multiple architectural visualizations (exterior, interior, site plan)
+   - OpenAI: Generate design alternatives (sustainable, cost-effective, innovative, traditional)
+   - OpenAI: Analyze feasibility (cost, timeline, constraints)
+3. Results displayed with images, reasoning, technical specs, and export options
 
-## Restoring Full Application
+### Data Flow & State Management
 
-To restore the full application from maintenance mode:
-
-1. **Backup current simple App.js**: `mv src/App.js src/App.maintenance.js`
-2. **Restore main application**: `mv src/ArchitectAIEnhanced.js.backup src/ArchitectAIEnhanced.js`
-3. **Update App.js to import ArchitectAIEnhanced**: Uncomment import and component usage in `src/App.js`
-4. **Test thoroughly**: The original app had React hooks warnings and infinite re-render issues that caused freezing
-
-## Key Integration Points
-
-**When restoring/modifying location detection:**
-- Update `detectUserLocation()` function in `ArchitectAIEnhanced.js`
-- Consider fallback behavior in `analyzeLocation()` method
-- Test with various address formats and international locations
-- **CRITICAL**: Address infinite re-render loops that caused the original freeze
-
-**When extending architectural database:**
-- Add new regions/countries in `globalArchitecturalDatabase.js`
-- Update `architecturalStyleService` query methods
-- Ensure proper continent detection in `detectContinent()`
-
-**When adding new APIs:**
-- Add environment variables to `.env`
-- Update error handling in respective service files
-- Consider rate limiting and quota management
-- Test API failures and implement appropriate fallbacks
-
-## Location Data Structure
-
-The location intelligence system expects and returns data in this structure:
+**Location Data Structure**:
 ```javascript
 {
   address: "Full formatted address",
   coordinates: { lat: number, lng: number },
-  climate: { type: string, seasonal: {...} },
+  climate: { type: string, seasonal: { winter, spring, summer, fall } },
   sunPath: { summer: string, winter: string, optimalOrientation: string },
   zoning: { type: string, maxHeight: string, density: string, setbacks: string },
   recommendedStyle: string,
   localStyles: array,
-  marketContext: { avgConstructionCost: string, demandIndex: string, roi: string }
+  sustainabilityScore: number,
+  marketContext: { avgConstructionCost, demandIndex, roi }
 }
 ```
 
-## Testing Considerations
+**AI Generation Result Structure**:
+```javascript
+{
+  reasoning: { designPhilosophy, spatialOrganization, materialRecommendations, ... },
+  visualizations: { views, styleVariations, reasoningBased },
+  alternatives: { sustainable, cost_effective, innovative, traditional },
+  feasibility: { cost, timeline, constraints, recommendations },
+  timestamp: string,
+  workflow: 'complete' | 'quick'
+}
+```
 
-- Test geolocation permission scenarios (granted, denied, unavailable)
-- Verify API key fallback behavior in development vs production
-- Test international address formats and coordinate systems
-- Validate file generation downloads across browsers
-- Test 3D map rendering performance on various devices
-- **CRITICAL**: Monitor for infinite re-render loops in location detection and map components
-- Test React hooks dependencies to prevent warnings and performance issues
+### File Generation & Export System
 
-## Known Issues & Recent Fixes
+Located in ArchitectAIEnhanced.js, functions generate downloadable files:
+- `generateDWGContent()` - AutoCAD 2D drawings with project specifications
+- `generateRVTContent()` - Revit 3D BIM model data
+- `generateIFCContent()` - Industry standard BIM exchange format (ISO-10303-21)
+- `generatePDFContent()` - Complete HTML-based project documentation
+- `downloadFile()` - Utility to trigger browser download with blob creation
 
-### Recent Problem Resolution
-- **Main Issue**: Original `ArchitectAIEnhanced.js` component was causing persistent website freezing
-- **Root Cause**: Infinite re-render loops in MapView and location detection components
-- **Current Solution**: Temporarily replaced with static maintenance page
-- **Original Code**: Preserved in `src/ArchitectAIEnhanced.js.backup` (81KB file with complete functionality)
+### Error Handling & Fallbacks
 
-### Git History Context
-Recent commits show progression of issues:
-- `d0a2b0e`: Main app replaced with maintenance page to resolve freezing
-- `a0407c7`: Function declaration order issue preventing initialization  
-- `f26a39f`: Infinite re-render loops in MapView and location detection
-- `0262bb1`: Infinite re-render loop causing website freeze
-- `afea1c4`: React hooks warnings resolution
+**React Error Boundaries**: ErrorBoundary class in ArchitectAIEnhanced.js catches component errors
 
-### File Structure Changes
-- `ArchitectAIEnhanced.js` was deleted from active codebase
-- `ArchitectAIEnhanced.js.backup` contains the original 2000+ line React component
-- Current `App.js` is a simple maintenance page (59 lines)
+**API Fallbacks**:
+- OpenAI failure: Returns mock reasoning with design philosophy and recommendations
+- Replicate failure: Returns placeholder images (via placeholder.com URLs)
+- Google Maps: Fallback to default San Francisco coordinates if geocoding fails
+- OpenWeather: Mock climate data if API call fails
+
+**Service Graceful Degradation**:
+- All AI services have `getFallback*()` methods returning reasonable defaults
+- `isFallback: true` flag indicates when fallback data is used
+- User experience continues even if external APIs are down
+
+### Testing & Debugging
+
+**Critical Areas to Test**:
+- Geolocation permission scenarios (granted, denied, unavailable)
+- API key presence and validity (check console logs)
+- International address formats and coordinate systems
+- 3D map rendering performance on various devices
+- AI generation with different building programs and locations
+- File download functionality across browsers
+
+**Known Performance Considerations**:
+- Google Maps API can cause re-render loops if dependencies not properly managed
+- MapView component uses careful `useEffect` dependency arrays to prevent infinite re-renders
+- AI generation typically takes 30-60 seconds (OpenAI: 5-10s, Replicate: 20-50s)
+- Multiple Replicate requests run sequentially to avoid rate limiting
+
+### Code Style & Patterns
+
+**State Management**: React hooks (`useState`, `useEffect`, `useCallback`, `useRef`)
+- Location to references that shouldn't trigger re-renders
+- Callbacks memoized with `useCallback` to prevent unnecessary child re-renders
+
+**Component Structure**:
+- Single-file component (ArchitectAIEnhanced.js) with multiple render functions
+- `renderStep()` function switches on `currentStep` state variable
+- Each step is a separate render function (e.g., `renderLandingPage()`)
+
+**Styling**: Tailwind-like utility classes embedded in JSX
+- Gradient backgrounds, rounded corners, shadow effects
+- Responsive grid layouts with `md:` and `lg:` breakpoints
+- Animation classes for fade-ins and transitions
+
+### API Cost Considerations
+
+**Per Complete Design Generation**:
+- OpenAI GPT-4: ~$0.10-$0.20 (reasoning + alternatives + feasibility)
+- Replicate SDXL: ~$0.15-$0.45 (3-5 images @ 30-60s each)
+- Total: ~$0.50-$1.00 per design
+
+**Optimization Strategies**:
+- `quickDesign()` method generates single view for faster/cheaper MVP testing
+- Fallback data prevents wasted API calls when errors occur
+- Sequential Replicate calls avoid concurrent rate limit issues
+
+### Development vs Production Behavior
+
+**Development** (`npm run dev`):
+- React app on localhost:3000
+- Express proxy on localhost:3001
+- API calls routed through Express
+- Hot reload for rapid development
+
+**Production** (Vercel):
+- React static site served from Vercel CDN
+- API calls routed through Vercel Serverless Functions
+- Environment variables configured in Vercel dashboard
+- Automatic HTTPS and global edge distribution
+
+### Common Development Tasks
+
+**Adding a New AI Service**:
+1. Create service file in `src/services/`
+2. Import in `aiIntegrationService.js`
+3. Add method to orchestration workflow
+4. Update fallback handlers
+
+**Extending Location Intelligence**:
+1. Add regional data to `globalArchitecturalDatabase.js`
+2. Update detection logic in `locationIntelligence.js`
+3. Test with addresses in new regions
+
+**Adding New Export Formats**:
+1. Create `generate[FORMAT]Content()` function in ArchitectAIEnhanced.js
+2. Add export button in step 5 render function
+3. Call `downloadFile()` with appropriate MIME type
+
+### Important Files to Understand
+
+**Core Application**:
+- `src/ArchitectAIEnhanced.js` - Main application logic
+- `src/services/aiIntegrationService.js` - AI workflow orchestration
+
+**Data & Intelligence**:
+- `src/data/globalArchitecturalDatabase.js` - Architectural style database
+- `src/services/locationIntelligence.js` - Location analysis logic
+
+**API Infrastructure**:
+- `server.js` - Development proxy server
+- `api/` - Production serverless functions
+
+**Documentation**:
+- `API_SETUP.md` - Complete AI integration guide
+- `DEPLOYMENT_STATUS.md` - Current deployment state and checklist
+- `VERCEL_DEPLOYMENT.md` - Production deployment instructions
+- `MVP_README.md` - Quick start guide

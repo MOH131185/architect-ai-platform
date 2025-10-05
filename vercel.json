@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "framework": "create-react-app",
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/openai-chat",
+      "destination": "/api/openai-chat.js"
+    },
+    {
+      "source": "/api/replicate-predictions",
+      "destination": "/api/replicate-predictions.js"
+    },
+    {
+      "source": "/api/replicate-status",
+      "destination": "/api/replicate-status.js"
+    }
+  ],
+  "env": {
+    "REACT_APP_GOOGLE_MAPS_API_KEY": "@react_app_google_maps_api_key",
+    "REACT_APP_OPENWEATHER_API_KEY": "@react_app_openweather_api_key",
+    "REACT_APP_OPENAI_API_KEY": "@react_app_openai_api_key",
+    "REACT_APP_REPLICATE_API_KEY": "@react_app_replicate_api_key"
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, Content-Type, Authorization"
+        }
+      ]
+    }
+  ]
+}

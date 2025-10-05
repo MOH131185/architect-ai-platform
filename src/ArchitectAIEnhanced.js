@@ -622,8 +622,9 @@ const ArchitectAIEnhanced = () => {
 
       console.log('🎨 Starting AI design generation with:', projectContext);
 
-      // Call AI integration service
-      const aiResult = await aiIntegrationService.generateCompleteDesign(projectContext);
+      // Use quick design mode for faster generation (within timeout limits)
+      // For full generation with all alternatives and visualizations, use generateCompleteDesign
+      const aiResult = await aiIntegrationService.quickDesign(projectContext);
 
       console.log('✅ AI design generation complete:', aiResult);
 
@@ -1694,7 +1695,7 @@ const ArchitectAIEnhanced = () => {
   };
 
   return (
-    // <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
+    <Wrapper apiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={['maps']}>
       <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
         {toastMessage && (
           <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
@@ -1745,7 +1746,7 @@ const ArchitectAIEnhanced = () => {
           {renderStep()}
         </div>
       </div>
-    // </Wrapper>
+    </Wrapper>
   );
 };
 
