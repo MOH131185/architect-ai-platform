@@ -651,6 +651,32 @@ const ArchitectAIEnhanced = () => {
 
       console.log('✅ AI design generation complete:', aiResult);
 
+      // Extract images from AI result with proper fallback handling
+      const extractFloorPlanImages = () => {
+        // Try multiple possible paths for floor plan images
+        if (aiResult.floorPlan?.floorPlan?.images) return aiResult.floorPlan.floorPlan.images;
+        if (aiResult.floorPlan?.images) return aiResult.floorPlan.images;
+        if (aiResult.visualizations?.floorPlan?.images) return aiResult.visualizations.floorPlan.images;
+        if (aiResult.visualizations?.floorPlan?.floorPlan?.images) return aiResult.visualizations.floorPlan.floorPlan.images;
+        return [];
+      };
+
+      const extract3DImages = () => {
+        // Try multiple possible paths for 3D preview images
+        if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
+        if (aiResult.preview3D?.images) return aiResult.preview3D.images;
+        if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
+        if (aiResult.visualizations?.preview3D?.preview3D?.images) return aiResult.visualizations.preview3D.preview3D.images;
+        if (aiResult.visualization?.images) return aiResult.visualization.images;
+        return [];
+      };
+
+      const floorPlanImages = extractFloorPlanImages();
+      const preview3DImages = extract3DImages();
+
+      console.log('📊 Extracted floor plan images:', floorPlanImages);
+      console.log('📊 Extracted 3D preview images:', preview3DImages);
+
       // Transform AI results to existing structure
       const designData = {
         floorPlan: {
@@ -665,7 +691,7 @@ const ArchitectAIEnhanced = () => {
           efficiency: "85%",
           circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
           // Add 2D floor plan images if available
-          images: aiResult.floorPlan?.floorPlan?.images || aiResult.visualizations?.floorPlan?.images || []
+          images: floorPlanImages
         },
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
@@ -673,7 +699,7 @@ const ArchitectAIEnhanced = () => {
           materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
           // Add 3D preview images if available
-          images: aiResult.preview3D?.preview3D?.images || aiResult.visualizations?.preview3D?.images || aiResult.visualization?.images || []
+          images: preview3DImages
         },
         technical: {
           structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
@@ -1502,23 +1528,33 @@ const ArchitectAIEnhanced = () => {
                     2D Floor Plan
                   </h3>
                   <div className="bg-white rounded-lg h-96 flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 gap-2 p-4">
-                      {generatedDesigns?.floorPlan.rooms.map((room, idx) => (
-                        <div key={idx} className={`
-                          ${idx === 0 ? 'col-span-2' : ''} 
-                          ${idx === 1 ? 'col-span-1 row-span-2' : ''}
-                          ${idx >= 2 && idx <= 5 ? 'col-span-1' : ''}
-                          ${idx === 6 ? 'col-span-2' : ''}
-                          bg-gradient-to-br ${idx % 2 === 0 ? 'from-blue-100 to-blue-200' : 'from-green-100 to-green-200'}
-                          rounded-lg p-3 flex flex-col justify-center items-center border-2 border-white shadow-sm
-                        `}>
-                          <p className="text-xs font-medium text-gray-700">{room.name}</p>
-                          <p className="text-xs text-gray-600">{room.area}</p>
-                        </div>
-                      ))}
-                    </div>
+                    {generatedDesigns?.floorPlan.images && generatedDesigns.floorPlan.images.length > 0 ? (
+                      // Display AI-generated floor plan image
+                      <img
+                        src={generatedDesigns.floorPlan.images[0]}
+                        alt="AI Generated Floor Plan"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      // Fallback to room grid visualization
+                      <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 gap-2 p-4">
+                        {generatedDesigns?.floorPlan.rooms.map((room, idx) => (
+                          <div key={idx} className={`
+                            ${idx === 0 ? 'col-span-2' : ''}
+                            ${idx === 1 ? 'col-span-1 row-span-2' : ''}
+                            ${idx >= 2 && idx <= 5 ? 'col-span-1' : ''}
+                            ${idx === 6 ? 'col-span-2' : ''}
+                            bg-gradient-to-br ${idx % 2 === 0 ? 'from-blue-100 to-blue-200' : 'from-green-100 to-green-200'}
+                            rounded-lg p-3 flex flex-col justify-center items-center border-2 border-white shadow-sm
+                          `}>
+                            <p className="text-xs font-medium text-gray-700">{room.name}</p>
+                            <p className="text-xs text-gray-600">{room.area}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
-                      Scale 1:100
+                      {generatedDesigns?.floorPlan.images && generatedDesigns.floorPlan.images.length > 0 ? 'AI Generated' : 'Scale 1:100'}
                     </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between text-sm">
@@ -1534,22 +1570,33 @@ const ArchitectAIEnhanced = () => {
                     3D Model Visualization
                   </h3>
                   <div className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-96 flex items-center justify-center relative overflow-hidden">
-                    <div className="absolute inset-0 bg-black/10"></div>
-                    {/* 3D Building Representation */}
-                    <div className="relative">
-                      <div className="w-48 h-64 bg-white/20 backdrop-blur-sm rounded-lg transform perspective-1000 rotate-y-12 shadow-2xl">
-                        <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-white/30 to-transparent"></div>
-                        <div className="grid grid-cols-3 gap-2 p-3">
-                          {[...Array(12)].map((_, i) => (
-                            <div key={i} className="bg-blue-300/50 rounded-sm h-4"></div>
-                          ))}
+                    {generatedDesigns?.model3D.images && generatedDesigns.model3D.images.length > 0 ? (
+                      // Display AI-generated 3D preview image
+                      <img
+                        src={generatedDesigns.model3D.images[0]}
+                        alt="AI Generated 3D Visualization"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      // Fallback to placeholder 3D visualization
+                      <>
+                        <div className="absolute inset-0 bg-black/10"></div>
+                        <div className="relative">
+                          <div className="w-48 h-64 bg-white/20 backdrop-blur-sm rounded-lg transform perspective-1000 rotate-y-12 shadow-2xl">
+                            <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-white/30 to-transparent"></div>
+                            <div className="grid grid-cols-3 gap-2 p-3">
+                              {[...Array(12)].map((_, i) => (
+                                <div key={i} className="bg-blue-300/50 rounded-sm h-4"></div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-64 h-12 bg-black/20 blur-xl rounded-full"></div>
                         </div>
-                      </div>
-                      <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-64 h-12 bg-black/20 blur-xl rounded-full"></div>
-                    </div>
+                      </>
+                    )}
                     <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
                       <Eye className="w-3 h-3 mr-1" />
-                      Interactive 3D View
+                      {generatedDesigns?.model3D.images && generatedDesigns.model3D.images.length > 0 ? 'AI Generated' : 'Preview Mode'}
                     </div>
                   </div>
                   <div className="mt-4 space-y-2">
