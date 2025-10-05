@@ -634,7 +634,9 @@ const ArchitectAIEnhanced = () => {
       console.log('🎨 Starting AI design generation with:', projectContext);
 
       // Check if portfolio images are available for style detection
-      const portfolioImages = uploadedFiles?.map(file => file.url).filter(Boolean) || [];
+      const portfolioImages = (portfolioFiles || [])
+        .map(file => file.url || file.preview)
+        .filter(Boolean);
       
       let aiResult;
       if (portfolioImages.length > 0) {
