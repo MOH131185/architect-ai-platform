@@ -11,6 +11,7 @@ import buildingProgramService from './buildingProgramService';
 import materialSelectionService from './materialSelectionService';
 import enhancedLocationService from './enhancedLocationService';
 import styleDetectionService from './styleDetectionService';
+import interactiveRefinementService from './interactiveRefinementService';
 
 class AIIntegrationService {
   constructor() {
@@ -22,6 +23,7 @@ class AIIntegrationService {
     this.materialSelection = materialSelectionService;
     this.enhancedLocation = enhancedLocationService;
     this.styleDetection = styleDetectionService;
+    this.refinement = interactiveRefinementService;
   }
 
   /**
@@ -1185,8 +1187,210 @@ class AIIntegrationService {
   buildQuickPrompt(reasoning, projectContext) {
     const philosophy = reasoning.designPhilosophy || 'contemporary design';
     const materials = this.extractMaterialsFromReasoning(reasoning);
-    
+
     return `Professional architectural visualization, ${philosophy}, ${projectContext.buildingProgram || 'building'} with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed`;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // STEP 8: INTERACTIVE REFINEMENT
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Step 8: Process user modification request and regenerate affected outputs
+   *
+   * @param {string} modificationPrompt - Natural language modification (e.g., "add skylight to living room")
+   * @param {Object} currentDesign - Current complete design result from generateCompleteDesign()
+   * @param {Object} projectContext - Current project context
+   * @returns {Promise<Object>} Refined design with updated outputs
+   */
+  async refineDesign(modificationPrompt, currentDesign, projectContext) {
+    try {
+      console.log('Step 8: Processing design refinement...');
+
+      // Validate modification compatibility
+      const validation = this.refinement.validateModification(modificationPrompt, currentDesign);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: 'Invalid modification',
+          warning: validation.warning,
+          severity: validation.severity,
+          originalPrompt: modificationPrompt
+        };
+      }
+
+      // Process modification and regenerate affected outputs
+      const refinementResult = await this.refinement.processModification(
+        modificationPrompt,
+        currentDesign,
+        projectContext
+      );
+
+      if (!refinementResult.success) {
+        return refinementResult;
+      }
+
+      // Merge regenerated outputs with existing design
+      const updatedDesign = this.mergeRefinementResults(
+        currentDesign,
+        refinementResult
+      );
+
+      return {
+        success: true,
+        modification: refinementResult.modification,
+        updatedDesign,
+        regeneratedOutputs: refinementResult.regeneratedOutputs,
+        affectedOutputs: refinementResult.affectedOutputs,
+        validation: validation.warning ? {
+          warning: validation.warning,
+          severity: validation.severity
+        } : null,
+        timestamp: new Date().toISOString(),
+        workflow: 'refinement'
+      };
+
+    } catch (error) {
+      console.error('Design refinement error:', error);
+      return {
+        success: false,
+        error: error.message,
+        originalPrompt: modificationPrompt
+      };
+    }
+  }
+
+  /**
+   * Merge refinement results with existing design
+   */
+  mergeRefinementResults(currentDesign, refinementResult) {
+    const updated = JSON.parse(JSON.stringify(currentDesign)); // Deep clone
+
+    // Update project context
+    updated.enhancedContext = refinementResult.updatedContext;
+
+    // Merge regenerated outputs
+    const { regeneratedOutputs } = refinementResult;
+
+    if (regeneratedOutputs.reasoning) {
+      updated.reasoning = regeneratedOutputs.reasoning;
+    }
+
+    if (regeneratedOutputs.floorPlans) {
+      updated.outputs.floorPlans = regeneratedOutputs.floorPlans;
+    }
+
+    if (regeneratedOutputs.sections) {
+      if (!updated.outputs.technicalDrawings) {
+        updated.outputs.technicalDrawings = { drawings: {} };
+      }
+      updated.outputs.technicalDrawings.drawings.section = regeneratedOutputs.sections;
+    }
+
+    if (regeneratedOutputs.elevations) {
+      if (!updated.outputs.technicalDrawings) {
+        updated.outputs.technicalDrawings = { drawings: {} };
+      }
+      Object.assign(updated.outputs.technicalDrawings.drawings, regeneratedOutputs.elevations);
+    }
+
+    if (regeneratedOutputs.exteriorViews) {
+      if (!updated.outputs.views) {
+        updated.outputs.views = { views: {} };
+      }
+      Object.assign(updated.outputs.views.views, regeneratedOutputs.exteriorViews);
+    }
+
+    if (regeneratedOutputs.interiorViews) {
+      if (!updated.outputs.views) {
+        updated.outputs.views = { views: {} };
+      }
+      Object.assign(updated.outputs.views.views, regeneratedOutputs.interiorViews);
+    }
+
+    if (regeneratedOutputs.structural) {
+      if (!updated.outputs.engineeringDiagrams) {
+        updated.outputs.engineeringDiagrams = { diagrams: {} };
+      }
+      updated.outputs.engineeringDiagrams.diagrams.structural = regeneratedOutputs.structural;
+    }
+
+    if (regeneratedOutputs.mep) {
+      if (!updated.outputs.engineeringDiagrams) {
+        updated.outputs.engineeringDiagrams = { diagrams: {} };
+      }
+      updated.outputs.engineeringDiagrams.diagrams.mep = regeneratedOutputs.mep;
+    }
+
+    // Add refinement metadata
+    updated.refinementHistory = updated.refinementHistory || [];
+    updated.refinementHistory.push({
+      modification: refinementResult.modification,
+      affectedOutputs: refinementResult.affectedOutputs,
+      timestamp: new Date().toISOString()
+    });
+
+    return updated;
+  }
+
+  /**
+   * Step 8.3: Generate refinement suggestions for the user
+   *
+   * @param {Object} currentDesign - Current design state
+   * @returns {Promise<Array>} List of suggested refinements
+   */
+  async generateRefinementSuggestions(currentDesign) {
+    try {
+      return await this.refinement.generateRefinementSuggestions(currentDesign);
+    } catch (error) {
+      console.error('Refinement suggestions error:', error);
+      return this.refinement.getDefaultSuggestions(currentDesign);
+    }
+  }
+
+  /**
+   * Batch refinement: Process multiple modifications sequentially
+   *
+   * @param {Array} modifications - Array of modification prompts
+   * @param {Object} initialDesign - Initial design state
+   * @param {Object} initialContext - Initial project context
+   * @returns {Promise<Object>} Final refined design
+   */
+  async batchRefineDesign(modifications, initialDesign, initialContext) {
+    let currentDesign = initialDesign;
+    let currentContext = initialContext;
+    const refinementResults = [];
+
+    for (const modification of modifications) {
+      console.log(`Processing batch modification: ${modification}`);
+
+      const result = await this.refineDesign(modification, currentDesign, currentContext);
+
+      if (result.success) {
+        currentDesign = result.updatedDesign;
+        currentContext = result.updatedDesign.enhancedContext;
+        refinementResults.push({
+          modification,
+          success: true,
+          affectedOutputs: result.affectedOutputs
+        });
+      } else {
+        refinementResults.push({
+          modification,
+          success: false,
+          error: result.error
+        });
+      }
+    }
+
+    return {
+      success: true,
+      finalDesign: currentDesign,
+      refinementResults,
+      totalModifications: modifications.length,
+      successfulModifications: refinementResults.filter(r => r.success).length,
+      timestamp: new Date().toISOString()
+    };
   }
 }
 
