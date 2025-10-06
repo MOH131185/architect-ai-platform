@@ -9,6 +9,7 @@ import portfolioStyleDetection from './portfolioStyleDetection';
 import solarOrientationService from './solarOrientationService';
 import buildingProgramService from './buildingProgramService';
 import materialSelectionService from './materialSelectionService';
+import enhancedLocationService from './enhancedLocationService';
 
 class AIIntegrationService {
   constructor() {
@@ -18,6 +19,7 @@ class AIIntegrationService {
     this.solarOrientation = solarOrientationService;
     this.buildingProgram = buildingProgramService;
     this.materialSelection = materialSelectionService;
+    this.enhancedLocation = enhancedLocationService;
   }
 
   /**
@@ -120,19 +122,69 @@ class AIIntegrationService {
   }
 
   /**
-   * Analyze site context (placeholder for future deep-learning integration)
+   * Analyze site context using enhanced location service
    */
   async analyzeSiteContext(projectContext) {
-    // Future: Integrate Street View imagery analysis and satellite image processing
-    // For now, return basic context from location data
-    return {
-      location: projectContext.location?.address || 'Unknown location',
-      coordinates: projectContext.location?.coordinates,
-      climate: projectContext.location?.climate?.type || 'Temperate',
-      zoning: projectContext.location?.zoning?.type || 'Mixed use',
-      localStyles: projectContext.location?.localStyles || [],
-      note: 'Site context from location intelligence service'
-    };
+    try {
+      // If address or coordinates are provided, use enhanced location service
+      const addressOrCoords = projectContext.location?.address ||
+                              (projectContext.location?.coordinates ?
+                                `${projectContext.location.coordinates.lat},${projectContext.location.coordinates.lng}` :
+                                null);
+
+      if (!addressOrCoords) {
+        console.warn('No location data provided, using fallback');
+        return {
+          location: 'Unknown location',
+          coordinates: { lat: 0, lng: 0 },
+          climate: { type: 'Temperate' },
+          zoning: { type: 'Mixed use' },
+          note: 'No location data provided'
+        };
+      }
+
+      // Use enhanced location service for comprehensive analysis
+      const locationAnalysis = await this.enhancedLocation.analyzeLocation(addressOrCoords);
+
+      if (!locationAnalysis.success) {
+        console.warn('Enhanced location analysis failed, using basic context');
+        return {
+          location: projectContext.location?.address || 'Unknown location',
+          coordinates: projectContext.location?.coordinates || { lat: 0, lng: 0 },
+          climate: projectContext.location?.climate || { type: 'Temperate' },
+          zoning: projectContext.location?.zoning || { type: 'Mixed use' },
+          note: 'Enhanced location analysis unavailable'
+        };
+      }
+
+      // Return enhanced analysis
+      return {
+        location: locationAnalysis.location.formattedAddress,
+        coordinates: locationAnalysis.location.coordinates,
+        addressComponents: locationAnalysis.location.addressComponents,
+        climate: {
+          type: locationAnalysis.climate.classification.description,
+          current: locationAnalysis.climate.current,
+          seasonal: locationAnalysis.climate.seasonal,
+          classification: locationAnalysis.climate.classification
+        },
+        solar: locationAnalysis.solar,
+        recommendations: locationAnalysis.recommendations,
+        zoning: projectContext.location?.zoning || { type: 'Mixed use', note: 'Zoning data not available from location service' },
+        localStyles: projectContext.location?.localStyles || [],
+        source: 'enhanced-location-service'
+      };
+
+    } catch (error) {
+      console.error('Site context analysis error:', error);
+      return {
+        location: projectContext.location?.address || 'Unknown location',
+        coordinates: projectContext.location?.coordinates || { lat: 0, lng: 0 },
+        climate: { type: 'Temperate' },
+        error: error.message,
+        note: 'Site context analysis failed, using fallback'
+      };
+    }
   }
 
   /**
