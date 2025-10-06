@@ -6,44 +6,107 @@
 import openaiService from './openaiService';
 import replicateService from './replicateService';
 import portfolioStyleDetection from './portfolioStyleDetection';
+import solarOrientationService from './solarOrientationService';
+import buildingProgramService from './buildingProgramService';
+import materialSelectionService from './materialSelectionService';
 
 class AIIntegrationService {
   constructor() {
     this.openai = openaiService;
     this.replicate = replicateService;
     this.portfolioStyleDetection = portfolioStyleDetection;
+    this.solarOrientation = solarOrientationService;
+    this.buildingProgram = buildingProgramService;
+    this.materialSelection = materialSelectionService;
   }
 
   /**
-   * Complete AI-powered architectural design workflow
+   * Enhanced AI-powered architectural design workflow with site analysis
    * @param {Object} projectContext - Complete project information
    * @returns {Promise<Object>} Combined reasoning and generation results
    */
   async generateCompleteDesign(projectContext) {
     try {
-      console.log('Starting complete AI design workflow...');
-      
-      // Step 1: Generate design reasoning
-      const reasoning = await this.generateDesignReasoning(projectContext);
-      
-      // Step 2: Generate architectural visualizations
-      const visualizations = await this.generateVisualizations(projectContext, reasoning);
-      
-      // Step 3: Generate design alternatives
-      const alternatives = await this.generateDesignAlternatives(projectContext, reasoning);
-      
-      // Step 4: Analyze feasibility
-      const feasibility = await this.analyzeFeasibility(projectContext);
-      
+      console.log('Starting enhanced AI design workflow...');
+      const startTime = Date.now();
+
+      // Step 1: Site context gathering and analysis
+      console.log('Step 1: Analyzing site context...');
+      const siteAnalysis = await this.analyzeSiteContext(projectContext);
+
+      // Step 2: Calculate solar orientation and passive design strategy
+      console.log('Step 2: Calculating solar orientation...');
+      const solarAnalysis = this.solarOrientation.calculateOptimalOrientation(
+        projectContext.location?.coordinates?.lat || 0,
+        projectContext.location?.coordinates?.lng || 0,
+        projectContext.location?.climate,
+        projectContext.entranceDirection
+      );
+
+      // Step 3: Determine building program and massing
+      console.log('Step 3: Calculating building program...');
+      const buildingProgram = this.buildingProgram.calculateBuildingProgram(
+        projectContext.buildingType || projectContext.buildingProgram,
+        projectContext.siteArea || 1000,
+        projectContext.location?.zoning,
+        projectContext.location
+      );
+
+      // Step 4: Material selection with thermal mass analysis
+      console.log('Step 4: Selecting materials...');
+      const materialAnalysis = this.materialSelection.recommendMaterials(
+        projectContext.location?.climate,
+        projectContext.location,
+        projectContext.buildingType || projectContext.buildingProgram,
+        solarAnalysis
+      );
+
+      // Step 5: Build enhanced project context with all analysis
+      const enhancedContext = {
+        ...projectContext,
+        siteAnalysis,
+        solarOrientation: solarAnalysis,
+        buildingProgram: buildingProgram,
+        materials: materialAnalysis.primaryMaterials,
+        materialAnalysis,
+        roomProgram: buildingProgram.roomProgram,
+        stories: buildingProgram.massing?.stories?.recommended || 2,
+        structuralSystem: buildingProgram.structuralConsiderations?.primarySystem
+      };
+
+      // Step 6: Generate comprehensive design reasoning
+      console.log('Step 5: Generating AI design reasoning...');
+      const reasoning = await this.generateEnhancedDesignReasoning(enhancedContext);
+
+      // Step 7: Generate complete architectural outputs
+      console.log('Step 6: Generating architectural visualizations...');
+      const outputs = await this.generateComprehensiveOutputs(enhancedContext, reasoning);
+
+      // Step 8: Generate design alternatives
+      console.log('Step 7: Generating design alternatives...');
+      const alternatives = await this.generateDesignAlternatives(enhancedContext, reasoning);
+
+      // Step 9: Analyze feasibility with enhanced context
+      console.log('Step 8: Analyzing project feasibility...');
+      const feasibility = await this.analyzeFeasibility(enhancedContext);
+
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`Complete design workflow finished in ${elapsedTime}s`);
+
       return {
         success: true,
+        siteAnalysis,
+        solarOrientation: solarAnalysis,
+        buildingProgram,
+        materialAnalysis,
         reasoning,
-        visualizations,
+        outputs,
         alternatives,
         feasibility,
-        projectContext,
+        enhancedContext,
+        elapsedTime: `${elapsedTime}s`,
         timestamp: new Date().toISOString(),
-        workflow: 'complete'
+        workflow: 'enhanced-complete'
       };
 
     } catch (error) {
@@ -54,6 +117,168 @@ class AIIntegrationService {
         fallback: this.getFallbackDesign(projectContext)
       };
     }
+  }
+
+  /**
+   * Analyze site context (placeholder for future deep-learning integration)
+   */
+  async analyzeSiteContext(projectContext) {
+    // Future: Integrate Street View imagery analysis and satellite image processing
+    // For now, return basic context from location data
+    return {
+      location: projectContext.location?.address || 'Unknown location',
+      coordinates: projectContext.location?.coordinates,
+      climate: projectContext.location?.climate?.type || 'Temperate',
+      zoning: projectContext.location?.zoning?.type || 'Mixed use',
+      localStyles: projectContext.location?.localStyles || [],
+      note: 'Site context from location intelligence service'
+    };
+  }
+
+  /**
+   * Generate enhanced design reasoning with all analysis integrated
+   */
+  async generateEnhancedDesignReasoning(enhancedContext) {
+    try {
+      console.log('Generating enhanced design reasoning with site analysis...');
+
+      // Build comprehensive context for OpenAI
+      const reasoningContext = {
+        ...enhancedContext,
+        siteContext: enhancedContext.siteAnalysis,
+        passiveSolarStrategy: enhancedContext.solarOrientation?.recommendations || [],
+        optimalOrientation: enhancedContext.solarOrientation?.optimalOrientation?.primaryOrientation?.direction,
+        thermalMassStrategy: enhancedContext.materialAnalysis?.thermalMassAnalysis?.requirement,
+        recommendedMaterials: this.extractMaterialSummary(enhancedContext.materialAnalysis),
+        buildingMassing: {
+          stories: enhancedContext.stories,
+          floorArea: enhancedContext.buildingProgram?.massing?.floorAreas?.totalGrossArea,
+          footprint: enhancedContext.buildingProgram?.massing?.footprint
+        },
+        roomProgram: enhancedContext.roomProgram
+      };
+
+      const reasoning = await this.openai.generateDesignReasoning(reasoningContext);
+
+      return {
+        ...reasoning,
+        siteIntegration: this.generateSiteIntegrationNarrative(enhancedContext),
+        passiveSolarDesign: this.generatePassiveSolarNarrative(enhancedContext.solarOrientation),
+        materialStrategy: this.generateMaterialNarrative(enhancedContext.materialAnalysis),
+        spatialProgram: this.generateSpatialProgramNarrative(enhancedContext.buildingProgram),
+        source: 'enhanced-openai',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Enhanced design reasoning error:', error);
+      return this.getFallbackReasoning(enhancedContext);
+    }
+  }
+
+  /**
+   * Generate comprehensive architectural outputs (2D and 3D)
+   */
+  async generateComprehensiveOutputs(enhancedContext, reasoning) {
+    try {
+      const outputs = {};
+
+      // Generate 2D floor plans
+      console.log('Generating 2D floor plans...');
+      outputs.floorPlans = await this.replicate.generateFloorPlan(enhancedContext);
+
+      // Generate 2D sections
+      console.log('Generating 2D sections...');
+      outputs.sections = await this.replicate.generateSection(enhancedContext);
+
+      // Generate 4 elevations
+      console.log('Generating 4 elevations...');
+      outputs.elevations = await this.replicate.generateElevations(enhancedContext);
+
+      // Generate 3D exterior views (4 views)
+      console.log('Generating 3D exterior views...');
+      outputs.exteriorViews = await this.replicate.generate3DExteriorViews(enhancedContext);
+
+      // Generate 3D interior views (2 views)
+      console.log('Generating 3D interior views...');
+      outputs.interiorViews = await this.replicate.generate3DInteriorViews(enhancedContext);
+
+      return {
+        ...outputs,
+        summary: {
+          floorPlans: outputs.floorPlans?.success ? 'Generated' : 'Fallback',
+          sections: outputs.sections?.success ? 'Generated' : 'Fallback',
+          elevations: outputs.elevations?.success ? 'Generated' : 'Fallback',
+          exteriorViews: outputs.exteriorViews?.success ? 'Generated' : 'Fallback',
+          interiorViews: outputs.interiorViews?.success ? 'Generated' : 'Fallback'
+        },
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Comprehensive outputs generation error:', error);
+      return {
+        error: error.message,
+        fallback: true
+      };
+    }
+  }
+
+  /**
+   * Extract material summary for reasoning context
+   */
+  extractMaterialSummary(materialAnalysis) {
+    if (!materialAnalysis) return 'Contemporary materials';
+
+    const structural = materialAnalysis.primaryMaterials?.structural?.primary || '';
+    const envelope = materialAnalysis.primaryMaterials?.envelope?.walls || '';
+    const thermalMass = materialAnalysis.thermalMassAnalysis?.requirement || 'Medium';
+
+    return `${structural}, ${envelope}, ${thermalMass} thermal mass`;
+  }
+
+  /**
+   * Generate site integration narrative
+   */
+  generateSiteIntegrationNarrative(enhancedContext) {
+    const { siteAnalysis, location } = enhancedContext;
+
+    return `The design responds to the ${location?.climate?.type || 'local'} climate and ${location?.zoning?.type || 'mixed-use'} zoning context. Site analysis reveals ${siteAnalysis?.note || 'contextual opportunities'} that inform the architectural approach. The building integrates with local architectural character while introducing contemporary sustainable design principles.`;
+  }
+
+  /**
+   * Generate passive solar design narrative
+   */
+  generatePassiveSolarNarrative(solarOrientation) {
+    if (!solarOrientation) return 'Standard solar orientation principles applied.';
+
+    const orientation = solarOrientation.optimalOrientation?.primaryOrientation?.direction || 'South';
+    const savings = solarOrientation.energySavingsEstimate?.annualSavings || '15-20%';
+
+    return `Building oriented with primary facade facing ${orientation} for optimal passive solar performance. This orientation, combined with calculated roof overhangs and strategic glazing placement, is projected to achieve ${savings} annual energy savings. ${solarOrientation.optimalOrientation?.reasoning || ''}`;
+  }
+
+  /**
+   * Generate material strategy narrative
+   */
+  generateMaterialNarrative(materialAnalysis) {
+    if (!materialAnalysis) return 'Contemporary sustainable materials specified.';
+
+    const thermalMass = materialAnalysis.thermalMassAnalysis?.requirement || 'Medium';
+    const benefit = materialAnalysis.thermalMassAnalysis?.performanceBenefit || 'Thermal comfort and energy efficiency';
+
+    return `Material strategy employs ${thermalMass.toLowerCase()} thermal mass construction: ${benefit} Primary structural system uses ${materialAnalysis.primaryMaterials?.structural?.primary || 'contemporary materials'} with ${materialAnalysis.primaryMaterials?.envelope?.walls || 'high-performance envelope'}.`;
+  }
+
+  /**
+   * Generate spatial program narrative
+   */
+  generateSpatialProgramNarrative(buildingProgram) {
+    if (!buildingProgram) return 'Efficient spatial organization.';
+
+    const stories = buildingProgram.massing?.stories?.recommended || 2;
+    const area = buildingProgram.massing?.floorAreas?.totalGrossArea || 0;
+    const efficiency = buildingProgram.efficiency?.netToGrossRatio || 80;
+
+    return `${stories}-story configuration provides ${area}m² total gross area with ${efficiency}% net-to-gross efficiency. ${buildingProgram.massing?.stories?.reasoning || ''} Spatial organization balances functional requirements with circulation efficiency and code compliance.`;
   }
 
   /**

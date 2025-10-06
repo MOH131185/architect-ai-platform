@@ -376,11 +376,19 @@ class ReplicateService {
       architecturalStyle = 'contemporary',
       location = 'urban setting',
       materials = 'glass and steel',
-      area = '1000 sq ft'
+      area = '1000 sq ft',
+      roomProgram = null
     } = projectContext;
 
+    // Build detailed room description from room program if available
+    let roomDescription = 'functional room layout';
+    if (roomProgram && roomProgram.spaces && roomProgram.spaces.length > 0) {
+      const majorSpaces = roomProgram.spaces.slice(0, 4).map(space => space.name).join(', ');
+      roomDescription = `with ${majorSpaces}`;
+    }
+
     return {
-      prompt: `Professional architectural floor plan, ${architecturalStyle} ${buildingProgram}, ${area} area, technical drawing style, 2D plan view, detailed room layout, dimensions, doors, windows, furniture layout, professional architectural drafting, black and white line drawing, precise measurements, architectural blueprint style`,
+      prompt: `Professional architectural floor plan, ${architecturalStyle} ${buildingProgram}, ${area} total area, ${roomDescription}, technical drawing style, 2D top-down plan view, detailed room layout with labeled spaces, dimension lines, door swings, window openings, wall thickness, furniture layout, professional architectural drafting, clean black and white line drawing, precise measurements, architectural blueprint style, high resolution, detailed annotations`,
       buildingType: buildingProgram,
       architecturalStyle,
       location,
@@ -388,9 +396,171 @@ class ReplicateService {
       viewType: 'floor_plan',
       width: 1024,
       height: 1024,
-      steps: 40,
-      guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color, realistic, photorealistic, blurry, low quality"
+      steps: 50,
+      guidanceScale: 7.5,
+      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, blurry, low quality, sketchy, incomplete, distorted"
+    };
+  }
+
+  /**
+   * Generate 2D section view
+   */
+  async generateSection(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallbackSection(projectContext);
+    }
+
+    try {
+      const params = this.buildSectionParameters(projectContext);
+      const result = await this.generateArchitecturalImage(params);
+
+      return {
+        success: true,
+        section: result,
+        type: '2d_section',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Section generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackSection(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Build parameters for 2D section view generation
+   */
+  buildSectionParameters(projectContext) {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      materials = 'glass and steel',
+      stories = 2,
+      structuralSystem = 'concrete frame'
+    } = projectContext;
+
+    return {
+      prompt: `Professional architectural section view, ${architecturalStyle} ${buildingProgram}, ${stories} stories, ${structuralSystem}, showing floor levels, roof structure, foundation, ceiling heights, vertical circulation, structural elements, technical drawing style, 2D cross-section, dimension lines, material annotations, professional architectural drafting, clean black and white line drawing, precise measurements, architectural blueprint style, high resolution, detailed construction details`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      materials,
+      viewType: 'section',
+      width: 1024,
+      height: 768,
+      steps: 50,
+      guidanceScale: 7.5,
+      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, floor plan, elevation, blurry, low quality, sketchy"
+    };
+  }
+
+  /**
+   * Generate four elevation views
+   */
+  async generateElevations(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallbackElevations(projectContext);
+    }
+
+    try {
+      const elevations = {};
+      const directions = ['north', 'south', 'east', 'west'];
+
+      for (const direction of directions) {
+        const params = this.buildElevationParameters(projectContext, direction);
+        const result = await this.generateArchitecturalImage(params);
+        elevations[direction] = result;
+      }
+
+      return {
+        success: true,
+        elevations,
+        type: '2d_elevations',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Elevation generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackElevations(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Build parameters for elevation view generation
+   */
+  buildElevationParameters(projectContext, direction) {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      materials = 'glass and steel',
+      stories = 2,
+      facadeFeatures = 'large windows, modern cladding'
+    } = projectContext;
+
+    return {
+      prompt: `Professional architectural ${direction} elevation view, ${architecturalStyle} ${buildingProgram}, ${stories} stories, ${materials} facade, ${facadeFeatures}, technical drawing style, 2D front view, dimension lines, window and door openings, material annotations, height measurements, professional architectural drafting, clean black and white line drawing, precise measurements, architectural blueprint style, high resolution, detailed facade composition`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      materials,
+      viewType: `${direction}_elevation`,
+      width: 1024,
+      height: 768,
+      steps: 50,
+      guidanceScale: 7.5,
+      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, floor plan, section, blurry, low quality, sketchy, distorted"
+    };
+  }
+
+  /**
+   * Get fallback section when API is unavailable
+   */
+  getFallbackSection(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      section: {
+        images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=2D+Section+Placeholder'],
+        message: 'Using placeholder section - API unavailable'
+      },
+      type: '2d_section',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback elevations when API is unavailable
+   */
+  getFallbackElevations(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      elevations: {
+        north: {
+          images: ['https://via.placeholder.com/1024x768/2C3E50/FFFFFF?text=North+Elevation+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        south: {
+          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=South+Elevation+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        east: {
+          images: ['https://via.placeholder.com/1024x768/5D6D7E/FFFFFF?text=East+Elevation+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        west: {
+          images: ['https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=West+Elevation+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        }
+      },
+      type: '2d_elevations',
+      timestamp: new Date().toISOString()
     };
   }
 
@@ -406,17 +576,207 @@ class ReplicateService {
     } = projectContext;
 
     return {
-      prompt: `Professional 3D architectural visualization, ${architecturalStyle} ${buildingProgram} in ${location}, constructed with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed, 3D perspective view, modern design, clean lines, natural lighting, professional rendering`,
+      prompt: `Professional 3D architectural visualization, ${architecturalStyle} ${buildingProgram} in ${location}, constructed with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed, 3D perspective view, modern design, clean lines, natural lighting, professional rendering, high resolution ≥1024×1024 pixels, medium to high detail, dramatic composition, contextual environment`,
       buildingType: buildingProgram,
       architecturalStyle,
       location,
       materials,
       viewType: '3d_preview',
       width: 1024,
-      height: 768,
-      steps: 50,
-      guidanceScale: 8.0,
-      negativePrompt: "2D, floor plan, technical drawing, blueprint, black and white, line drawing, blurry, low quality"
+      height: 1024,
+      steps: 60,
+      guidanceScale: 8.5,
+      negativePrompt: "2D, floor plan, technical drawing, blueprint, black and white, line drawing, blurry, low quality, low resolution, pixelated, distorted"
+    };
+  }
+
+  /**
+   * Generate multiple 3D exterior views from different angles
+   */
+  async generate3DExteriorViews(projectContext, viewAngles = ['front', 'rear', 'aerial', 'street']) {
+    if (!this.apiKey) {
+      return this.getFallback3DExteriorViews(projectContext);
+    }
+
+    try {
+      const views = {};
+
+      for (const angle of viewAngles) {
+        const params = this.build3DExteriorViewParameters(projectContext, angle);
+        const result = await this.generateArchitecturalImage(params);
+        views[angle] = result;
+      }
+
+      return {
+        success: true,
+        exteriorViews: views,
+        type: '3d_exterior_views',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('3D exterior views generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallback3DExteriorViews(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Build parameters for 3D exterior view from specific angle
+   */
+  build3DExteriorViewParameters(projectContext, angle) {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      location = 'urban setting',
+      materials = 'glass and steel',
+      context = 'urban context with landscaping'
+    } = projectContext;
+
+    const angleDescriptions = {
+      front: 'front perspective view at eye level, main entrance visible',
+      rear: 'rear perspective view showing back facade',
+      aerial: 'aerial perspective view from 45-degree angle showing roof and massing',
+      street: 'street-level perspective view showing building in urban context'
+    };
+
+    const angleDescription = angleDescriptions[angle] || 'perspective view';
+
+    return {
+      prompt: `Professional 3D architectural exterior visualization, ${angleDescription}, ${architecturalStyle} ${buildingProgram} in ${location}, constructed with ${materials}, ${context}, photorealistic rendering, professional architectural photography, high quality, detailed, natural daylight lighting, professional rendering, high resolution ≥1024×1024 pixels, medium to high detail, dramatic composition`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      location,
+      materials,
+      viewType: `3d_exterior_${angle}`,
+      width: 1024,
+      height: 1024,
+      steps: 60,
+      guidanceScale: 8.5,
+      negativePrompt: "2D, floor plan, technical drawing, blueprint, black and white, line drawing, blurry, low quality, low resolution, pixelated, distorted, interior view"
+    };
+  }
+
+  /**
+   * Generate multiple 3D interior views
+   */
+  async generate3DInteriorViews(projectContext, spaces = ['lobby', 'main-space']) {
+    if (!this.apiKey) {
+      return this.getFallback3DInteriorViews(projectContext);
+    }
+
+    try {
+      const views = {};
+
+      for (const space of spaces) {
+        const params = this.build3DInteriorViewParameters(projectContext, space);
+        const result = await this.generateArchitecturalImage(params);
+        views[space] = result;
+      }
+
+      return {
+        success: true,
+        interiorViews: views,
+        type: '3d_interior_views',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('3D interior views generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallback3DInteriorViews(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Build parameters for 3D interior view of specific space
+   */
+  build3DInteriorViewParameters(projectContext, space) {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      materials = 'glass and steel',
+      interiorFinishes = 'modern finishes with natural materials'
+    } = projectContext;
+
+    const spaceDescriptions = {
+      lobby: 'main lobby or entrance hall with reception area',
+      'main-space': 'primary functional space with furniture and fixtures',
+      office: 'open office space with workstations',
+      residential: 'residential living space with furniture'
+    };
+
+    const spaceDescription = spaceDescriptions[space] || 'interior space';
+
+    return {
+      prompt: `Professional 3D architectural interior visualization, ${spaceDescription}, ${architecturalStyle} design style, ${buildingProgram}, ${interiorFinishes}, photorealistic rendering, professional architectural photography, high quality, detailed, natural and artificial lighting, professional rendering, high resolution ≥1024×1024 pixels, medium to high detail, atmospheric composition, visible materials and textures`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      materials,
+      viewType: `3d_interior_${space}`,
+      width: 1024,
+      height: 1024,
+      steps: 60,
+      guidanceScale: 8.5,
+      negativePrompt: "2D, floor plan, technical drawing, blueprint, black and white, line drawing, blurry, low quality, low resolution, pixelated, distorted, exterior view"
+    };
+  }
+
+  /**
+   * Get fallback 3D exterior views
+   */
+  getFallback3DExteriorViews(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      exteriorViews: {
+        front: {
+          images: ['https://via.placeholder.com/1024x1024/3498DB/FFFFFF?text=Front+Exterior+View+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        rear: {
+          images: ['https://via.placeholder.com/1024x1024/2980B9/FFFFFF?text=Rear+Exterior+View+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        aerial: {
+          images: ['https://via.placeholder.com/1024x1024/5DADE2/FFFFFF?text=Aerial+View+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        street: {
+          images: ['https://via.placeholder.com/1024x1024/3498DB/FFFFFF?text=Street+View+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        }
+      },
+      type: '3d_exterior_views',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback 3D interior views
+   */
+  getFallback3DInteriorViews(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      interiorViews: {
+        lobby: {
+          images: ['https://via.placeholder.com/1024x1024/7ED321/FFFFFF?text=Lobby+Interior+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        },
+        'main-space': {
+          images: ['https://via.placeholder.com/1024x1024/50C878/FFFFFF?text=Main+Space+Interior+Placeholder'],
+          message: 'Using placeholder - API unavailable'
+        }
+      },
+      type: '3d_interior_views',
+      timestamp: new Date().toISOString()
     };
   }
 
