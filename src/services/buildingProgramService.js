@@ -1,20 +1,157 @@
 /**
  * Building Program and Massing Service
  * Calculates optimal building configuration based on site area, building type, and zoning
+ * Enhanced with Google Maps parcel data and user-specified floor area
  */
+
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
 class BuildingProgramService {
   /**
-   * Calculate building program and massing
-   * @param {string} buildingType - Type of building (residential-detached, residential-semi-detached, commercial, mixed-use, etc.)
-   * @param {number} siteArea - Site area in square meters
+   * Calculate building program and massing with enhanced parcel data
+   * @param {string} buildingType - Type of building (residential-detached, residential-semi-detached, medical-clinic, commercial-office, etc.)
+   * @param {number|null} siteArea - Site area in square meters (if null, will fetch from Google Maps)
    * @param {Object} zoning - Zoning information including height limits, setbacks, FAR
    * @param {Object} location - Location data with address and coordinates
-   * @returns {Object} Comprehensive building program with massing calculations
+   * @param {number|null} userDesiredFloorArea - Total desired floor area specified by user (optional)
+   * @returns {Promise<Object>} Comprehensive building program with massing calculations
    */
-  calculateBuildingProgram(buildingType, siteArea, zoning, location) {
+  async calculateBuildingProgram(buildingType, siteArea, zoning, location, userDesiredFloorArea = null) {
     try {
       console.log('Calculating building program for:', buildingType, siteArea, 'm²');
+
+      // Step 3.1: Fetch parcel data from Google Maps if siteArea not provided
+      let parcelData = null;
+      if (!siteArea && location?.coordinates) {
+        parcelData = await this.fetchParcelData(location.coordinates);
+        siteArea = parcelData?.area || 1000; // fallback to 1000m² if fetch fails
+      }
+
+      // Step 3.2: Use user-specified total floor area if provided
+      const targetFloorArea = userDesiredFloorArea || null;
+
+      return this.calculateBuildingProgramSync(
+        buildingType,
+        siteArea,
+        zoning,
+        location,
+        targetFloorArea,
+        parcelData
+      );
+    } catch (error) {
+      console.error('Building program calculation error:', error);
+      return this.getFallbackProgram(buildingType, siteArea || 1000);
+    }
+  }
+
+  /**
+   * Step 3.1: Fetch parcel surface area and shape from Google Maps
+   */
+  async fetchParcelData(coordinates) {
+    try {
+      const { lat, lng } = coordinates;
+
+      // Use Google Maps Places API to get nearby place details
+      const nearbyUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=50&key=${GOOGLE_MAPS_API_KEY}`;
+
+      const response = await fetch(nearbyUrl);
+      const data = await response.json();
+
+      if (data.status !== 'OK' || !data.results || data.results.length === 0) {
+        console.warn('No parcel data available from Places API');
+        return null;
+      }
+
+      // Get place details for the nearest result
+      const placeId = data.results[0].place_id;
+      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,address_components&key=${GOOGLE_MAPS_API_KEY}`;
+
+      const detailsResponse = await fetch(detailsUrl);
+      const detailsData = await detailsResponse.json();
+
+      if (detailsData.status !== 'OK') {
+        console.warn('Could not fetch place details');
+        return null;
+      }
+
+      // Estimate parcel area from viewport (rough approximation)
+      const viewport = detailsData.result?.geometry?.viewport;
+      if (viewport) {
+        const area = this.estimateAreaFromViewport(viewport);
+        const shape = this.estimateParcelShape(viewport);
+
+        return {
+          area,
+          shape,
+          source: 'google-places-api',
+          viewport,
+          note: 'Area estimated from viewport bounds'
+        };
+      }
+
+      return null;
+
+    } catch (error) {
+      console.error('Parcel data fetch error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Estimate parcel area from Google Maps viewport
+   */
+  estimateAreaFromViewport(viewport) {
+    const { northeast, southwest } = viewport;
+
+    // Calculate distances in meters
+    const latDiff = northeast.lat - southwest.lat;
+    const lngDiff = northeast.lng - southwest.lng;
+
+    // Rough conversion: 1 degree latitude ≈ 111km
+    const latMeters = latDiff * 111000;
+
+    // Longitude varies with latitude
+    const avgLat = (northeast.lat + southwest.lat) / 2;
+    const lngMeters = lngDiff * 111000 * Math.cos(avgLat * Math.PI / 180);
+
+    // Area in square meters
+    const area = Math.abs(latMeters * lngMeters);
+
+    return Math.round(area);
+  }
+
+  /**
+   * Estimate parcel shape from viewport aspect ratio
+   */
+  estimateParcelShape(viewport) {
+    const { northeast, southwest } = viewport;
+
+    const latDiff = Math.abs(northeast.lat - southwest.lat);
+    const lngDiff = Math.abs(northeast.lng - southwest.lng);
+
+    // Adjust longitude for latitude
+    const avgLat = (northeast.lat + southwest.lat) / 2;
+    const adjustedLngDiff = lngDiff * Math.cos(avgLat * Math.PI / 180);
+
+    const aspectRatio = latDiff / adjustedLngDiff;
+
+    if (aspectRatio > 0.8 && aspectRatio < 1.2) {
+      return 'square';
+    } else if (aspectRatio >= 1.2 && aspectRatio < 2.0) {
+      return 'rectangular (vertical)';
+    } else if (aspectRatio < 0.8 && aspectRatio > 0.5) {
+      return 'rectangular (horizontal)';
+    } else {
+      return 'irregular';
+    }
+  }
+
+  /**
+   * Calculate building program synchronously (called after async parcel fetch)
+   */
+  calculateBuildingProgramSync(buildingType, siteArea, zoning, location, userDesiredFloorArea, parcelData) {
+    try {
+      console.log('Calculating building program for:', buildingType, siteArea, 'm²', 'Desired area:', userDesiredFloorArea);
 
       // Parse building type and subtype
       const { primaryType, subType } = this.parseBuildingType(buildingType);
@@ -22,19 +159,52 @@ class BuildingProgramService {
       // Calculate buildable area considering setbacks
       const buildableArea = this.calculateBuildableArea(siteArea, zoning);
 
-      // Determine optimal number of stories
-      const storiesRecommendation = this.calculateOptimalStories(
-        buildableArea,
-        zoning,
-        primaryType,
-        subType
-      );
+      // Step 3.3: If user specified desired floor area, calculate required stories
+      let storiesRecommendation;
+      let floorAreas;
 
-      // Calculate floor areas
-      const floorAreas = this.calculateFloorAreas(
-        buildableArea,
+      if (userDesiredFloorArea) {
+        // Calculate required stories to achieve user's desired floor area
+        const requiredStories = Math.ceil(userDesiredFloorArea / buildableArea);
+
+        storiesRecommendation = this.calculateOptimalStories(
+          buildableArea,
+          zoning,
+          primaryType,
+          subType,
+          requiredStories
+        );
+
+        // Calculate floor areas based on user's desired total
+        floorAreas = this.calculateFloorAreasFromUserInput(
+          buildableArea,
+          userDesiredFloorArea,
+          storiesRecommendation.recommended,
+          primaryType
+        );
+      } else {
+        // Standard calculation (existing logic)
+        storiesRecommendation = this.calculateOptimalStories(
+          buildableArea,
+          zoning,
+          primaryType,
+          subType
+        );
+
+        floorAreas = this.calculateFloorAreas(
+          buildableArea,
+          storiesRecommendation.recommended,
+          primaryType
+        );
+      }
+
+      // Step 3.3: Generate per-level function allocation
+      const perLevelAllocation = this.allocateFunctionsPerLevel(
+        primaryType,
+        subType,
+        floorAreas.totalGrossArea,
         storiesRecommendation.recommended,
-        primaryType
+        buildableArea
       );
 
       // Generate room program based on building type
@@ -76,6 +246,8 @@ class BuildingProgramService {
             squareFeet: Math.round(buildableArea * 10.764),
             percentage: Math.round((buildableArea / siteArea) * 100)
           },
+          parcelShape: parcelData?.shape || 'unknown',
+          parcelDataSource: parcelData?.source || 'user-provided',
           setbacks: zoning?.setbacks || 'Standard setbacks apply'
         },
         massing: {
@@ -91,10 +263,15 @@ class BuildingProgramService {
           },
           coverageRatio: Math.round((floorAreas.groundFloorArea / siteArea) * 100)
         },
+        perLevelAllocation,  // NEW: Per-level functional allocation
         roomProgram,
         structuralConsiderations,
         parkingRequirements,
         efficiency: this.calculateEfficiency(floorAreas),
+        userInput: {
+          desiredFloorArea: userDesiredFloorArea,
+          wasUsed: !!userDesiredFloorArea
+        },
         recommendations: this.generateRecommendations(
           primaryType,
           subType,
@@ -108,6 +285,245 @@ class BuildingProgramService {
       console.error('Building program calculation error:', error);
       return this.getFallbackProgram(buildingType, siteArea);
     }
+  }
+
+  /**
+   * Calculate floor areas from user-specified total floor area
+   */
+  calculateFloorAreasFromUserInput(buildableArea, userDesiredFloorArea, stories, primaryType) {
+    // Circulation factor
+    let circulationFactor = 0.15; // 15% for residential
+    if (primaryType === 'commercial') circulationFactor = 0.20;
+    if (primaryType === 'mixed-use') circulationFactor = 0.18;
+
+    const totalGrossArea = userDesiredFloorArea;
+    const totalNetArea = totalGrossArea * (1 - circulationFactor);
+
+    // Calculate per-floor areas
+    const avgFloorArea = totalGrossArea / stories;
+    const groundFloorArea = Math.min(avgFloorArea, buildableArea * 0.85);
+    const typicalFloorArea = avgFloorArea;
+
+    return {
+      groundFloorArea: Math.round(groundFloorArea),
+      typicalFloorArea: Math.round(typicalFloorArea),
+      totalGrossArea: Math.round(totalGrossArea),
+      totalNetArea: Math.round(totalNetArea),
+      circulationArea: Math.round(totalGrossArea - totalNetArea),
+      circulationPercentage: Math.round(circulationFactor * 100),
+      note: 'Calculated from user-specified total floor area'
+    };
+  }
+
+  /**
+   * Step 3.3: Allocate functions per level based on building program
+   */
+  allocateFunctionsPerLevel(primaryType, subType, totalArea, stories, buildableArea) {
+    const levels = [];
+
+    if (primaryType === 'residential') {
+      levels.push(...this.allocateResidentialLevels(subType, totalArea, stories));
+    } else if (primaryType === 'commercial' && subType === 'medical-clinic') {
+      levels.push(...this.allocateMedicalClinicLevels(totalArea, stories, buildableArea));
+    } else if (primaryType === 'commercial' && subType === 'office') {
+      levels.push(...this.allocateOfficeLevels(totalArea, stories, buildableArea));
+    } else if (primaryType === 'mixed-use') {
+      levels.push(...this.allocateMixedUseLevels(totalArea, stories, buildableArea));
+    } else {
+      levels.push(...this.allocateGenericLevels(totalArea, stories, buildableArea));
+    }
+
+    return levels;
+  }
+
+  /**
+   * Allocate residential levels
+   */
+  allocateResidentialLevels(subType, totalArea, stories) {
+    const levels = [];
+    const perLevelArea = totalArea / stories;
+
+    if (stories === 1) {
+      levels.push({
+        level: 'Ground Floor',
+        surfaceArea: Math.round(totalArea),
+        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Bedrooms', 'Bathrooms', 'Laundry', 'Storage']
+      });
+    } else if (stories === 2) {
+      levels.push({
+        level: 'Ground Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room', 'Laundry']
+      });
+      levels.push({
+        level: 'Second Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Master Bedroom with En-suite', 'Bedrooms', 'Bathrooms', 'Storage']
+      });
+    } else if (stories >= 3) {
+      levels.push({
+        level: 'Ground Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room']
+      });
+      levels.push({
+        level: 'Second Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Master Bedroom with En-suite', 'Bedroom', 'Bathroom', 'Home Office/Study']
+      });
+      levels.push({
+        level: 'Third Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Bedrooms', 'Bathroom', 'Laundry', 'Storage', 'Bonus Room']
+      });
+    }
+
+    return levels;
+  }
+
+  /**
+   * Allocate medical clinic levels (standard space-planning guidelines)
+   */
+  allocateMedicalClinicLevels(totalArea, stories, buildableArea) {
+    const levels = [];
+    const perLevelArea = totalArea / stories;
+
+    if (stories === 1) {
+      levels.push({
+        level: 'Ground Floor',
+        surfaceArea: Math.round(totalArea),
+        functions: ['Reception/Waiting (30%)', 'Consultation Rooms (40%)', 'Treatment/Procedure Rooms (15%)', 'Staff/Admin (10%)', 'Restrooms/Utilities (5%)'],
+        spacePlanning: {
+          'Reception/Waiting': Math.round(totalArea * 0.30),
+          'Consultation Rooms': Math.round(totalArea * 0.40),
+          'Treatment/Procedure Rooms': Math.round(totalArea * 0.15),
+          'Staff/Admin': Math.round(totalArea * 0.10),
+          'Restrooms/Utilities': Math.round(totalArea * 0.05)
+        },
+        roomCounts: {
+          'Consultation Rooms': Math.floor((totalArea * 0.40) / 15), // 15m² per room
+          'Treatment Rooms': Math.floor((totalArea * 0.15) / 20), // 20m² per room
+          'Reception Desks': 1,
+          'Waiting Seats': Math.floor((totalArea * 0.30) / 1.5) // 1.5m² per seat
+        }
+      });
+    } else {
+      levels.push({
+        level: 'Ground Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Reception/Waiting (60%)', 'Consultation Rooms (30%)', 'Restrooms (10%)'],
+        spacePlanning: {
+          'Reception/Waiting': Math.round(perLevelArea * 0.60),
+          'Consultation Rooms': Math.round(perLevelArea * 0.30),
+          'Restrooms': Math.round(perLevelArea * 0.10)
+        }
+      });
+      levels.push({
+        level: 'Second Floor',
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Consultation Rooms (50%)', 'Treatment/Procedure Rooms (30%)', 'Staff/Admin (20%)'],
+        spacePlanning: {
+          'Consultation Rooms': Math.round(perLevelArea * 0.50),
+          'Treatment/Procedure Rooms': Math.round(perLevelArea * 0.30),
+          'Staff/Admin': Math.round(perLevelArea * 0.20)
+        }
+      });
+    }
+
+    return levels;
+  }
+
+  /**
+   * Allocate office levels
+   */
+  allocateOfficeLevels(totalArea, stories, buildableArea) {
+    const levels = [];
+    const perLevelArea = totalArea / stories;
+
+    for (let i = 0; i < stories; i++) {
+      const levelName = i === 0 ? 'Ground Floor' : `Floor ${i + 1}`;
+      const isGroundFloor = i === 0;
+
+      levels.push({
+        level: levelName,
+        surfaceArea: Math.round(perLevelArea),
+        functions: isGroundFloor
+          ? ['Lobby/Reception (15%)', 'Open Office (50%)', 'Meeting Rooms (15%)', 'Restrooms (10%)', 'Services (10%)']
+          : ['Open Office (60%)', 'Private Offices (15%)', 'Meeting Rooms (10%)', 'Break Room (5%)', 'Restrooms (10%)'],
+        spacePlanning: isGroundFloor
+          ? {
+              'Lobby/Reception': Math.round(perLevelArea * 0.15),
+              'Open Office': Math.round(perLevelArea * 0.50),
+              'Meeting Rooms': Math.round(perLevelArea * 0.15),
+              'Restrooms': Math.round(perLevelArea * 0.10),
+              'Services': Math.round(perLevelArea * 0.10)
+            }
+          : {
+              'Open Office': Math.round(perLevelArea * 0.60),
+              'Private Offices': Math.round(perLevelArea * 0.15),
+              'Meeting Rooms': Math.round(perLevelArea * 0.10),
+              'Break Room': Math.round(perLevelArea * 0.05),
+              'Restrooms': Math.round(perLevelArea * 0.10)
+            }
+      });
+    }
+
+    return levels;
+  }
+
+  /**
+   * Allocate mixed-use levels
+   */
+  allocateMixedUseLevels(totalArea, stories, buildableArea) {
+    const levels = [];
+    const perLevelArea = totalArea / stories;
+
+    levels.push({
+      level: 'Ground Floor',
+      surfaceArea: Math.round(perLevelArea),
+      functions: ['Retail/Commercial (70%)', 'Storage/BOH (20%)', 'Restrooms/Utilities (10%)'],
+      spacePlanning: {
+        'Retail/Commercial': Math.round(perLevelArea * 0.70),
+        'Storage/BOH': Math.round(perLevelArea * 0.20),
+        'Restrooms/Utilities': Math.round(perLevelArea * 0.10)
+      },
+      use: 'Commercial'
+    });
+
+    for (let i = 1; i < stories; i++) {
+      levels.push({
+        level: `Floor ${i + 1}`,
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Residential Units (80%)', 'Circulation/Corridors (15%)', 'Common Amenities (5%)'],
+        spacePlanning: {
+          'Residential Units': Math.round(perLevelArea * 0.80),
+          'Circulation/Corridors': Math.round(perLevelArea * 0.15),
+          'Common Amenities': Math.round(perLevelArea * 0.05)
+        },
+        use: 'Residential',
+        estimatedUnits: Math.floor((perLevelArea * 0.80) / 70) // 70m² per unit
+      });
+    }
+
+    return levels;
+  }
+
+  /**
+   * Allocate generic levels
+   */
+  allocateGenericLevels(totalArea, stories, buildableArea) {
+    const levels = [];
+    const perLevelArea = totalArea / stories;
+
+    for (let i = 0; i < stories; i++) {
+      levels.push({
+        level: i === 0 ? 'Ground Floor' : `Floor ${i + 1}`,
+        surfaceArea: Math.round(perLevelArea),
+        functions: ['Primary Function Spaces (60%)', 'Support Spaces (20%)', 'Circulation (15%)', 'Utilities/MEP (5%)']
+      });
+    }
+
+    return levels;
   }
 
   /**
@@ -128,6 +544,8 @@ class BuildingProgramService {
       } else {
         return { primaryType: 'residential', subType: 'detached' };
       }
+    } else if (type.includes('medical') || type.includes('clinic') || type.includes('health')) {
+      return { primaryType: 'commercial', subType: 'medical-clinic' };
     } else if (type.includes('commercial')) {
       if (type.includes('office')) {
         return { primaryType: 'commercial', subType: 'office' };
