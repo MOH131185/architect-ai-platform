@@ -294,6 +294,8 @@ const ArchitectAIEnhanced = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const fileInputRef = useRef(null);
   // const hasDetectedLocation = useRef(false); // Temporarily disabled
 
@@ -319,6 +321,32 @@ const ArchitectAIEnhanced = () => {
       return () => clearTimeout(timer);
     }
   }, [currentStep]);
+
+  // Start session timer when user moves past landing page
+  useEffect(() => {
+    if (currentStep > 0 && !sessionStartTime) {
+      setSessionStartTime(Date.now());
+    }
+  }, [currentStep, sessionStartTime]);
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!sessionStartTime) return;
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+      setElapsedTime(elapsed);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionStartTime]);
+
+  // Format elapsed time as MM:SS
+  const formatElapsedTime = useCallback((seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   const detectUserLocation = useCallback(async () => {
     if (!navigator.geolocation) {
@@ -1813,8 +1841,9 @@ const ArchitectAIEnhanced = () => {
                   ))}
                 </div>
 
-                <div className="text-sm text-gray-600">
-                  Time: <span className="font-medium">3:45</span> elapsed
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Clock className="w-4 h-4" />
+                  <span>Time: <span className="font-medium">{formatElapsedTime(elapsedTime)}</span> elapsed</span>
                 </div>
               </div>
             </div>
