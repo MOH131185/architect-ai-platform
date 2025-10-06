@@ -681,7 +681,16 @@ const ArchitectAIEnhanced = () => {
 
       // Extract images from AI result with proper fallback handling
       const extractFloorPlanImages = () => {
-        // Try multiple possible paths for floor plan images
+        // NEW: Step 6 comprehensive outputs structure
+        if (aiResult.outputs?.floorPlans?.floorPlans) {
+          // Extract all floor plan images from per-level generation
+          const allFloorPlans = Object.values(aiResult.outputs.floorPlans.floorPlans)
+            .filter(fp => fp.success && fp.image)
+            .map(fp => fp.image);
+          if (allFloorPlans.length > 0) return allFloorPlans;
+        }
+
+        // Legacy paths for backward compatibility
         if (aiResult.floorPlan?.floorPlan?.images) return aiResult.floorPlan.floorPlan.images;
         if (aiResult.floorPlan?.images) return aiResult.floorPlan.images;
         if (aiResult.visualizations?.floorPlan?.images) return aiResult.visualizations.floorPlan.images;
@@ -690,7 +699,16 @@ const ArchitectAIEnhanced = () => {
       };
 
       const extract3DImages = () => {
-        // Try multiple possible paths for 3D preview images
+        // NEW: Step 6 comprehensive views structure
+        if (aiResult.outputs?.views?.views) {
+          // Extract all exterior and interior 3D views
+          const allViews = Object.values(aiResult.outputs.views.views)
+            .filter(view => view.success && view.image)
+            .map(view => view.image);
+          if (allViews.length > 0) return allViews;
+        }
+
+        // Legacy paths for backward compatibility
         if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
         if (aiResult.preview3D?.images) return aiResult.preview3D.images;
         if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
@@ -699,11 +717,48 @@ const ArchitectAIEnhanced = () => {
         return [];
       };
 
+      // Extract additional Step 6 outputs (technical drawings and engineering diagrams)
+      const extractTechnicalDrawings = () => {
+        if (aiResult.outputs?.technicalDrawings?.drawings) {
+          const drawings = [];
+          const drawingsObj = aiResult.outputs.technicalDrawings.drawings;
+
+          // Add section
+          if (drawingsObj.section?.image) drawings.push(drawingsObj.section.image);
+
+          // Add elevations
+          ['elevation_north', 'elevation_south', 'elevation_east', 'elevation_west'].forEach(key => {
+            if (drawingsObj[key]?.image) drawings.push(drawingsObj[key].image);
+          });
+
+          return drawings;
+        }
+        return [];
+      };
+
+      const extractEngineeringDiagrams = () => {
+        if (aiResult.outputs?.engineeringDiagrams?.diagrams) {
+          const diagrams = [];
+          if (aiResult.outputs.engineeringDiagrams.diagrams.structural?.image) {
+            diagrams.push(aiResult.outputs.engineeringDiagrams.diagrams.structural.image);
+          }
+          if (aiResult.outputs.engineeringDiagrams.diagrams.mep?.image) {
+            diagrams.push(aiResult.outputs.engineeringDiagrams.diagrams.mep.image);
+          }
+          return diagrams;
+        }
+        return [];
+      };
+
       const floorPlanImages = extractFloorPlanImages();
       const preview3DImages = extract3DImages();
+      const technicalDrawingImages = extractTechnicalDrawings();
+      const engineeringDiagramImages = extractEngineeringDiagrams();
 
       console.log('📊 Extracted floor plan images:', floorPlanImages);
       console.log('📊 Extracted 3D preview images:', preview3DImages);
+      console.log('📊 Extracted technical drawings:', technicalDrawingImages);
+      console.log('📊 Extracted engineering diagrams:', engineeringDiagramImages);
 
       // Transform AI results to existing structure
       const designData = {
@@ -718,16 +773,20 @@ const ArchitectAIEnhanced = () => {
             ],
           efficiency: "85%",
           circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
-          // Add 2D floor plan images if available
-          images: floorPlanImages
+          // Add 2D floor plan images (Step 6: Per-level floor plans)
+          images: floorPlanImages,
+          // Include raw outputs data for detailed access
+          perLevelData: aiResult.outputs?.floorPlans?.floorPlans || null
         },
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
           materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
-          // Add 3D preview images if available
-          images: preview3DImages
+          // Add 3D preview images (Step 6: 4 exterior + 2 interior views)
+          images: preview3DImages,
+          // Include raw views data for detailed access
+          viewsData: aiResult.outputs?.views?.views || null
         },
         technical: {
           structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
@@ -737,7 +796,14 @@ const ArchitectAIEnhanced = () => {
             electrical: "Smart LED lighting with sensors",
             plumbing: "Water-efficient fixtures"
           },
-          compliance: ["Local building codes", "Accessibility standards", "Energy efficiency requirements"]
+          compliance: ["Local building codes", "Accessibility standards", "Energy efficiency requirements"],
+          // Add technical drawings (Step 6: Section + 4 elevations)
+          drawingImages: technicalDrawingImages,
+          // Add engineering diagrams (Step 6: Structural + MEP with UK Part A/L compliance)
+          engineeringImages: engineeringDiagramImages,
+          // Include raw data for detailed access
+          drawingsData: aiResult.outputs?.technicalDrawings?.drawings || null,
+          engineeringData: aiResult.outputs?.engineeringDiagrams?.diagrams || null
         },
         cost: {
           construction: aiResult.feasibility?.cost || "To be determined",
