@@ -4,10 +4,10 @@
  * for building footprint detection and architectural style classification
  */
 
-const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
-
 // Import architectural database for style cross-referencing
 import { architecturalStyleService } from '../data/globalArchitecturalDatabase';
+
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
 class StyleDetectionService {
   constructor() {
