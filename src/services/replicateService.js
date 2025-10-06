@@ -895,6 +895,644 @@ class ReplicateService {
       return { success: false, error: error.message };
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // STEP 6: HIGH-RESOLUTION 2D AND 3D GENERATION
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Step 6.1: Generate per-level floor plans with high resolution (1024×1024)
+   *
+   * @param {Object} buildingProgram - Building program with per-level allocation
+   * @param {Object} projectContext - Complete project context
+   * @returns {Promise<Object>} Floor plans for each level
+   */
+  async generatePerLevelFloorPlans(buildingProgram, projectContext) {
+    const perLevelAllocation = buildingProgram.perLevelAllocation || [];
+    const floorPlans = {};
+
+    for (const level of perLevelAllocation) {
+      try {
+        const floorPlanParams = this.buildPerLevelFloorPlanParams(level, buildingProgram, projectContext);
+        const result = await this.generateArchitecturalImage(floorPlanParams);
+
+        floorPlans[level.level] = {
+          success: true,
+          image: result.images?.[0] || result.images,
+          surfaceArea: level.surfaceArea,
+          functions: level.functions,
+          spacePlanning: level.spacePlanning,
+          timestamp: new Date().toISOString()
+        };
+
+      } catch (error) {
+        console.error(`Error generating floor plan for ${level.level}:`, error);
+        floorPlans[level.level] = {
+          success: false,
+          error: error.message,
+          fallback: `https://via.placeholder.com/1024x1024/ECF0F1/2C3E50?text=${encodeURIComponent(level.level + ' Floor Plan')}`
+        };
+      }
+    }
+
+    return {
+      success: true,
+      floorPlans,
+      totalLevels: perLevelAllocation.length,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Build per-level floor plan parameters with detailed room layout
+   */
+  buildPerLevelFloorPlanParams(level, buildingProgram, projectContext) {
+    const {
+      architecturalStyle = 'Contemporary',
+      blendedStyle,
+      materials = []
+    } = projectContext;
+
+    const style = blendedStyle?.dominantStyle || architecturalStyle;
+    const functions = level.functions?.join(', ') || 'Multi-functional spaces';
+    const surfaceArea = level.surfaceArea || 100;
+
+    // Build detailed space planning description
+    let spacePlanningDesc = '';
+    if (level.spacePlanning) {
+      spacePlanningDesc = Object.entries(level.spacePlanning)
+        .map(([space, area]) => `${space}: ${area}m²`)
+        .join(', ');
+    }
+
+    // Add dwelling type and shared wall info if available
+    let dwellingInfo = '';
+    if (level.dwellingType) {
+      dwellingInfo = `${level.dwellingType} dwelling`;
+      if (level.hasSharedWall) {
+        dwellingInfo += ', party wall on one side, windows on three sides';
+      }
+    }
+
+    const prompt = `Professional architectural floor plan, 2D top-down plan view, ${level.level}, ${dwellingInfo}, ${style} style, ${surfaceArea}m² total area, detailed room layout: ${functions}, space allocation: ${spacePlanningDesc}, dimension lines with measurements, door swings and door symbols, window openings with window symbols, wall thickness indicators (200mm-300mm), furniture layout suggestions (beds, tables, seating), scale 1:50 or 1:100, north arrow, room labels with areas, circulation paths highlighted, entrance marked, technical drawing style, clean black lines on white background, architectural blueprint precision, high resolution ≥1024×1024 pixels, detailed annotations`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 50,
+      guidanceScale: 7.5,
+      viewType: 'floor_plan',
+      level: level.level,
+      negativePrompt: "3D rendering, photorealistic, color photograph, perspective view, elevation, section, blurry, low quality, sketchy, hand-drawn, unclear dimensions, missing labels"
+    };
+  }
+
+  /**
+   * Step 6.2: Generate four exterior 3D views (North, South, East, West) + two interior views
+   *
+   * @param {Object} projectContext - Complete project context
+   * @returns {Promise<Object>} Exterior and interior views
+   */
+  async generateComprehensiveViews(projectContext) {
+    const {
+      buildingProgram,
+      blendedStyle,
+      materialAnalysis,
+      solarOrientation
+    } = projectContext;
+
+    const views = {};
+
+    // Step 6.2.1: Four exterior 3D views (cardinal directions)
+    const exteriorDirections = ['North', 'South', 'East', 'West'];
+
+    for (const direction of exteriorDirections) {
+      try {
+        const exteriorParams = this.buildExterior3DParams(direction, projectContext);
+        const result = await this.generateArchitecturalImage(exteriorParams);
+
+        views[`exterior_${direction.toLowerCase()}`] = {
+          success: true,
+          image: result.images?.[0] || result.images,
+          direction,
+          viewType: 'exterior_3d',
+          timestamp: new Date().toISOString()
+        };
+
+      } catch (error) {
+        console.error(`Error generating ${direction} exterior view:`, error);
+        views[`exterior_${direction.toLowerCase()}`] = {
+          success: false,
+          error: error.message,
+          fallback: `https://via.placeholder.com/1024x1024/3498DB/FFFFFF?text=${direction}+Exterior+View`
+        };
+      }
+    }
+
+    // Step 6.2.2: Two interior views
+    const interiorSpaces = this.determineInteriorSpaces(buildingProgram);
+
+    for (const space of interiorSpaces) {
+      try {
+        const interiorParams = this.buildInterior3DParams(space, projectContext);
+        const result = await this.generateArchitecturalImage(interiorParams);
+
+        views[`interior_${space.key}`] = {
+          success: true,
+          image: result.images?.[0] || result.images,
+          spaceName: space.name,
+          viewType: 'interior_3d',
+          timestamp: new Date().toISOString()
+        };
+
+      } catch (error) {
+        console.error(`Error generating ${space.name} interior view:`, error);
+        views[`interior_${space.key}`] = {
+          success: false,
+          error: error.message,
+          fallback: `https://via.placeholder.com/1024x1024/E74C3C/FFFFFF?text=${encodeURIComponent(space.name)}`
+        };
+      }
+    }
+
+    return {
+      success: true,
+      views,
+      exteriorCount: exteriorDirections.length,
+      interiorCount: interiorSpaces.length,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Build exterior 3D view parameters for cardinal directions
+   */
+  buildExterior3DParams(direction, projectContext) {
+    const {
+      buildingProgram,
+      blendedStyle,
+      materialAnalysis,
+      solarOrientation
+    } = projectContext;
+
+    const style = blendedStyle?.dominantStyle || 'Contemporary';
+    const materials = materialAnalysis?.primaryMaterials?.join(', ') || 'glass, steel, concrete';
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const buildingType = buildingProgram?.buildingType || 'residential building';
+
+    // Determine lighting based on solar orientation
+    const optimalDirection = solarOrientation?.optimalOrientation?.primaryOrientation?.direction || 'South';
+    const isOptimalSide = direction === optimalDirection;
+    const lighting = isOptimalSide
+      ? 'abundant natural light, south-facing facade, large windows'
+      : 'balanced lighting, secondary facade';
+
+    const prompt = `Professional 3D architectural exterior visualization, ${direction} facade view, ${style} ${buildingType}, ${stories} stories, photorealistic rendering, ${materials} construction materials, ${lighting}, atmospheric lighting with soft shadows, clear blue sky, landscape context with trees and surroundings, high quality architectural photography style, professional rendering, detailed facade composition, realistic materials and textures, ${direction}-facing elevation perspective, depth of field, cinematic composition, ultra-high resolution ≥1024×1024 pixels, architectural photography, sharp details`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 60, // Higher steps for photorealistic quality
+      guidanceScale: 8.5, // Higher guidance for detailed facades
+      viewType: `exterior_3d_${direction.toLowerCase()}`,
+      negativePrompt: "blurry, low quality, distorted, unrealistic, cartoon, sketch, 2D drawing, floor plan, section, low resolution, artifacts, noise"
+    };
+  }
+
+  /**
+   * Determine appropriate interior spaces based on building program
+   */
+  determineInteriorSpaces(buildingProgram) {
+    const buildingType = buildingProgram?.buildingType || '';
+    const perLevelAllocation = buildingProgram?.perLevelAllocation || [];
+
+    // Medical clinic: waiting area + exam room
+    if (buildingType.includes('medical') || buildingType.includes('clinic')) {
+      return [
+        { key: 'waiting_area', name: 'Waiting Area and Reception' },
+        { key: 'exam_room', name: 'Examination Room' }
+      ];
+    }
+
+    // Office: lobby + open office
+    if (buildingType.includes('office')) {
+      return [
+        { key: 'lobby', name: 'Lobby and Reception' },
+        { key: 'open_office', name: 'Open Office Space' }
+      ];
+    }
+
+    // Residential (default): living space + bedroom
+    return [
+      { key: 'living_space', name: 'Main Living Space' },
+      { key: 'bedroom', name: 'Master Bedroom' }
+    ];
+  }
+
+  /**
+   * Build interior 3D view parameters for specific spaces
+   */
+  buildInterior3DParams(space, projectContext) {
+    const {
+      blendedStyle,
+      materialAnalysis,
+      buildingProgram
+    } = projectContext;
+
+    const style = blendedStyle?.dominantStyle || 'Contemporary';
+    const materials = materialAnalysis?.primaryMaterials?.slice(0, 3).join(', ') || 'wood, stone, glass';
+    const colorPalette = blendedStyle?.colorPalette?.description || 'neutral tones with natural accents';
+
+    // Space-specific descriptions
+    const spaceDescriptions = {
+      'waiting_area': 'comfortable seating area, reception desk, modern furniture, calming atmosphere, natural light from large windows, plants and greenery, minimalist design',
+      'exam_room': 'medical examination table, clean white surfaces, medical equipment, task lighting, hygienic environment, professional medical interior',
+      'lobby': 'grand entrance, reception desk, seating area, corporate branding, professional atmosphere, high ceilings, impressive lighting',
+      'open_office': 'modern workstations, collaborative spaces, standing desks, natural light, productive environment, contemporary office furniture',
+      'living_space': 'comfortable seating, modern furniture, large windows with natural light, open-plan layout, entertainment area, stylish interior design',
+      'bedroom': 'comfortable bed, bedside tables, wardrobes, soft lighting, relaxing atmosphere, private sanctuary, elegant furnishings'
+    };
+
+    const spaceDesc = spaceDescriptions[space.key] || 'well-designed interior space, modern furnishings, natural lighting';
+
+    const prompt = `Professional 3D architectural interior visualization, ${space.name}, ${style} style, photorealistic rendering, ${spaceDesc}, ${materials} materials, ${colorPalette} color scheme, atmospheric lighting with soft shadows and highlights, depth of field, cinematic composition, architectural interior photography style, high quality professional rendering, detailed furnishings and textures, realistic materials, ultra-high resolution ≥1024×1024 pixels, interior design photography, sharp details, ambient occlusion`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 60,
+      guidanceScale: 8.5,
+      viewType: `interior_3d_${space.key}`,
+      negativePrompt: "blurry, low quality, distorted, unrealistic, cartoon, sketch, exterior view, floor plan, elevation, low resolution, artifacts, noise, dark, underexposed"
+    };
+  }
+
+  /**
+   * Step 6.3: Generate 2D sectional drawings and four elevations with dimensions
+   *
+   * @param {Object} buildingProgram - Building program with massing data
+   * @param {Object} projectContext - Complete project context
+   * @returns {Promise<Object>} Sections and elevations
+   */
+  async generateTechnicalDrawings(buildingProgram, projectContext) {
+    const drawings = {};
+
+    // Step 6.3.1: Generate 2D sectional drawing
+    try {
+      const sectionParams = this.buildSectionParams(buildingProgram, projectContext);
+      const sectionResult = await this.generateArchitecturalImage(sectionParams);
+
+      drawings.section = {
+        success: true,
+        image: sectionResult.images?.[0] || sectionResult.images,
+        viewType: '2d_section',
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Error generating section:', error);
+      drawings.section = {
+        success: false,
+        error: error.message,
+        fallback: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing'
+      };
+    }
+
+    // Step 6.3.2: Generate four elevations (North, South, East, West)
+    const elevationDirections = ['North', 'South', 'East', 'West'];
+
+    for (const direction of elevationDirections) {
+      try {
+        const elevationParams = this.buildElevationParams(direction, buildingProgram, projectContext);
+        const elevationResult = await this.generateArchitecturalImage(elevationParams);
+
+        drawings[`elevation_${direction.toLowerCase()}`] = {
+          success: true,
+          image: elevationResult.images?.[0] || elevationResult.images,
+          direction,
+          viewType: '2d_elevation',
+          timestamp: new Date().toISOString()
+        };
+
+      } catch (error) {
+        console.error(`Error generating ${direction} elevation:`, error);
+        drawings[`elevation_${direction.toLowerCase()}`] = {
+          success: false,
+          error: error.message,
+          fallback: `https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=${direction}+Elevation`
+        };
+      }
+    }
+
+    return {
+      success: true,
+      drawings,
+      sectionCount: 1,
+      elevationCount: elevationDirections.length,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Build 2D section parameters with dimensions and annotations
+   */
+  buildSectionParams(buildingProgram, projectContext) {
+    const {
+      blendedStyle,
+      materialAnalysis
+    } = projectContext;
+
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const totalHeight = stories * 3.0; // Assume 3m per floor
+    const buildingType = buildingProgram?.buildingType || 'building';
+    const perLevelAllocation = buildingProgram?.perLevelAllocation || [];
+
+    // Extract level heights and functions
+    const levelDescriptions = perLevelAllocation.map((level, idx) => {
+      const floorHeight = 3.0; // Standard 3m floor-to-floor
+      return `${level.level}: ${floorHeight}m floor-to-floor height, ${level.functions?.slice(0, 2).join(', ')}`;
+    }).join('; ');
+
+    const prompt = `Professional architectural cross-section drawing, 2D sectional view, ${buildingType}, ${stories} stories, total height ${totalHeight}m, technical drawing style, vertical section cut through building, floor levels clearly indicated: ${levelDescriptions}, dimension lines with height measurements (floor-to-floor heights, total height, room heights), foundation detail with ground line, roof structure detail (rafters, insulation), interior spaces labeled, wall thickness annotations (200mm-300mm), staircase section showing treads and risers, window and door heights marked, material indications (hatching for concrete, brick patterns), scale 1:100, clean black lines on white background, architectural blueprint precision, detailed annotations, dimension chains, construction details, high resolution ≥1024×768 pixels`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 768, // Wider aspect ratio for sections
+      steps: 50,
+      guidanceScale: 7.5,
+      viewType: '2d_section',
+      negativePrompt: "3D rendering, photorealistic, color photograph, perspective view, floor plan, elevation, blurry, low quality, sketchy, unclear dimensions, missing annotations"
+    };
+  }
+
+  /**
+   * Build 2D elevation parameters with dimensions and annotations
+   */
+  buildElevationParams(direction, buildingProgram, projectContext) {
+    const {
+      blendedStyle,
+      materialAnalysis,
+      solarOrientation
+    } = projectContext;
+
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const totalHeight = stories * 3.0;
+    const buildingType = buildingProgram?.buildingType || 'building';
+    const materials = materialAnalysis?.primaryMaterials?.join(', ') || 'brick, glass, concrete';
+    const style = blendedStyle?.dominantStyle || 'Contemporary';
+
+    // Determine facade features based on direction and solar orientation
+    const optimalDirection = solarOrientation?.optimalOrientation?.primaryOrientation?.direction || 'South';
+    const isOptimalSide = direction === optimalDirection;
+    const facadeFeatures = isOptimalSide
+      ? 'large window openings for solar gain, glazing ratio 35-40%, balconies'
+      : 'standard window openings, balanced glazing, secondary facade';
+
+    const prompt = `Professional architectural ${direction} elevation drawing, 2D front view, ${style} ${buildingType}, ${stories} stories, total height ${totalHeight}m, ${materials} facade materials, ${facadeFeatures}, technical drawing style, orthographic projection, dimension lines with measurements (total height, floor heights, window dimensions), window and door openings clearly indicated with dimensions (width × height), material annotations and hatching patterns, ground line and foundation indication, roof line with parapet or eaves detail, horizontal dimension chain showing building width, vertical dimension chain showing floor levels, scale 1:100, clean black and white line drawing, architectural blueprint style, precise measurements and annotations, construction details, high resolution ≥1024×768 pixels`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 768,
+      steps: 50,
+      guidanceScale: 7.5,
+      viewType: `2d_elevation_${direction.toLowerCase()}`,
+      negativePrompt: "3D rendering, photorealistic, color photograph, perspective view, floor plan, section, blurry, low quality, sketchy, unclear dimensions, missing labels, hand-drawn"
+    };
+  }
+
+  /**
+   * Step 6.4: Generate structural and MEP diagrams
+   *
+   * @param {Object} buildingProgram - Building program
+   * @param {Object} designReasoning - Design reasoning with structural/MEP notes
+   * @param {Object} projectContext - Complete project context
+   * @returns {Promise<Object>} Structural and MEP diagrams
+   */
+  async generateEngineeringDiagrams(buildingProgram, designReasoning, projectContext) {
+    const diagrams = {};
+
+    // Step 6.4.1: Generate structural diagram
+    try {
+      const structuralParams = this.buildStructuralDiagramParams(buildingProgram, designReasoning, projectContext);
+      const structuralResult = await this.generateArchitecturalImage(structuralParams);
+
+      diagrams.structural = {
+        success: true,
+        image: structuralResult.images?.[0] || structuralResult.images,
+        viewType: 'structural_diagram',
+        summary: this.generateStructuralSummary(buildingProgram, designReasoning, projectContext),
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Error generating structural diagram:', error);
+      diagrams.structural = {
+        success: false,
+        error: error.message,
+        fallback: 'https://via.placeholder.com/1024x1024/16A085/FFFFFF?text=Structural+Diagram',
+        summary: this.generateStructuralSummary(buildingProgram, designReasoning, projectContext)
+      };
+    }
+
+    // Step 6.4.2: Generate MEP diagram
+    try {
+      const mepParams = this.buildMEPDiagramParams(buildingProgram, designReasoning, projectContext);
+      const mepResult = await this.generateArchitecturalImage(mepParams);
+
+      diagrams.mep = {
+        success: true,
+        image: mepResult.images?.[0] || mepResult.images,
+        viewType: 'mep_diagram',
+        summary: this.generateMEPSummary(buildingProgram, designReasoning, projectContext),
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Error generating MEP diagram:', error);
+      diagrams.mep = {
+        success: false,
+        error: error.message,
+        fallback: 'https://via.placeholder.com/1024x1024/E67E22/FFFFFF?text=MEP+Diagram',
+        summary: this.generateMEPSummary(buildingProgram, designReasoning, projectContext)
+      };
+    }
+
+    return {
+      success: true,
+      diagrams,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Build structural diagram parameters
+   */
+  buildStructuralDiagramParams(buildingProgram, designReasoning, projectContext) {
+    const structuralSystem = buildingProgram?.structuralConsiderations?.primarySystem || 'reinforced concrete frame';
+    const foundationType = buildingProgram?.structuralConsiderations?.foundationType || 'strip footings';
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const buildingType = buildingProgram?.buildingType || 'building';
+
+    const prompt = `Professional structural engineering diagram, ${buildingType}, ${stories} stories, ${structuralSystem} structural system, ${foundationType} foundation, isometric or axonometric view showing structural grid, column locations and dimensions (e.g., 400mm × 400mm), beam spans and sizes (e.g., 300mm × 600mm), floor slab thickness (150mm-200mm), foundation details, lateral load resisting system (shear walls or braced frames), structural grid lines labeled (A, B, C... and 1, 2, 3...), dimension annotations, load paths indicated with arrows, connection details, technical drawing style, clean lines, color-coded structural elements (columns in blue, beams in red, slabs in gray), annotations and labels, engineering diagram precision, high resolution ≥1024×1024 pixels`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 50,
+      guidanceScale: 7.5,
+      viewType: 'structural_diagram',
+      negativePrompt: "photorealistic, 3D rendering, architectural elevation, floor plan without structure, blurry, low quality, unclear labels, missing dimensions"
+    };
+  }
+
+  /**
+   * Build MEP diagram parameters
+   */
+  buildMEPDiagramParams(buildingProgram, designReasoning, projectContext) {
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const buildingType = buildingProgram?.buildingType || 'building';
+    const climate = projectContext.siteAnalysis?.climate?.description || 'temperate climate';
+
+    const prompt = `Professional MEP (Mechanical, Electrical, Plumbing) engineering diagram, ${buildingType}, ${stories} stories, ${climate}, overlay floor plan showing MEP systems, HVAC ductwork in blue with supply and return air paths, plumbing risers and pipe runs in green (water supply) and brown (drainage), electrical conduits and panels in red, lighting fixture locations, vertical shafts for services, equipment rooms labeled (mechanical room, electrical room), fresh air intake and exhaust locations, sprinkler system in purple, ventilation grilles and diffusers, pipe and duct sizes annotated, flow directions indicated with arrows, legend showing all systems, color-coded systems for clarity, technical drawing style, clean lines and symbols, standard MEP symbols (ASHRAE/ISO), high resolution ≥1024×1024 pixels, detailed annotations`;
+
+    return {
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 50,
+      guidanceScale: 7.5,
+      viewType: 'mep_diagram',
+      negativePrompt: "photorealistic, 3D rendering, architectural rendering, floor plan without MEP, blurry, low quality, unclear symbols, missing legend"
+    };
+  }
+
+  /**
+   * Generate structural engineering summary based on local regulations (UK Part A example)
+   */
+  generateStructuralSummary(buildingProgram, designReasoning, projectContext) {
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const totalArea = buildingProgram?.massing?.floorAreas?.totalGrossArea || 200;
+    const buildingType = buildingProgram?.buildingType || 'residential';
+    const structuralSystem = buildingProgram?.structuralConsiderations?.primarySystem || 'reinforced concrete frame';
+
+    // Basic structural calculations (simplified)
+    const deadLoad = totalArea * 3.5; // kN (3.5 kN/m² typical)
+    const liveLoad = totalArea * (buildingType.includes('residential') ? 1.5 : 2.5); // kN
+    const totalLoad = deadLoad + liveLoad;
+
+    const columnCount = Math.ceil(totalArea / 25); // ~5m grid
+    const loadPerColumn = totalLoad / columnCount;
+
+    return {
+      structuralSystem,
+      stories,
+      totalFloorArea: `${totalArea}m²`,
+      foundationType: buildingProgram?.structuralConsiderations?.foundationType || 'Strip footings or raft slab',
+
+      loadings: {
+        deadLoad: `${Math.round(deadLoad)} kN (3.5 kN/m² - self-weight, finishes, partitions)`,
+        liveLoad: `${Math.round(liveLoad)} kN (${buildingType.includes('residential') ? '1.5' : '2.5'} kN/m² - occupancy, furniture)`,
+        totalLoad: `${Math.round(totalLoad)} kN`,
+        loadPerColumn: `${Math.round(loadPerColumn)} kN (estimated)`
+      },
+
+      design: {
+        columns: `${columnCount} columns, 400mm × 400mm reinforced concrete (estimated)`,
+        beams: 'Reinforced concrete beams, 300mm × 600mm typical spans 5-6m',
+        slabs: 'Reinforced concrete slabs, 200mm thickness with mesh reinforcement',
+        lateralSystem: stories > 2 ? 'Shear walls or braced frames for lateral stability' : 'Moment frames adequate for 2-story structure'
+      },
+
+      compliance: {
+        standard: 'UK Building Regulations Part A (Structure)',
+        references: [
+          'Part A: Structure - loading requirements (BS EN 1991)',
+          'Eurocode 2 (BS EN 1992) - concrete design',
+          'Eurocode 7 (BS EN 1997) - geotechnical design',
+          'Dead loads: BS EN 1991-1-1',
+          'Imposed loads: BS EN 1991-1-1 (residential: 1.5 kN/m², office: 2.5-3.0 kN/m²)',
+          'Wind loads: BS EN 1991-1-4 (if stories > 3)',
+          'Seismic design: BS EN 1998 (if applicable to region)'
+        ],
+        safetyCriteria: 'Ultimate Limit State (ULS) and Serviceability Limit State (SLS) checks required'
+      },
+
+      notes: `Preliminary calculations based on ${stories}-story ${buildingType} with ${totalArea}m² floor area. Detailed structural engineering analysis required with geotechnical investigation, material testing, and full load calculations per BS EN 1991. Professional structural engineer certification required for construction.`
+    };
+  }
+
+  /**
+   * Generate MEP engineering summary based on local regulations (UK Part L example)
+   */
+  generateMEPSummary(buildingProgram, designReasoning, projectContext) {
+    const stories = buildingProgram?.massing?.stories?.recommended || 2;
+    const totalArea = buildingProgram?.massing?.floorAreas?.totalGrossArea || 200;
+    const buildingType = buildingProgram?.buildingType || 'residential';
+    const climate = projectContext.siteAnalysis?.climate?.description || 'Temperate climate';
+    const insulationWalls = projectContext.materialAnalysis?.insulationStrategy?.walls || 'R-18 to R-27 (U-value: 0.18-0.26 W/m²K)';
+    const insulationRoof = projectContext.materialAnalysis?.insulationStrategy?.roof || 'R-38 to R-49 (U-value: 0.11-0.16 W/m²K)';
+
+    // Basic MEP calculations
+    const heatingLoad = totalArea * (buildingType.includes('residential') ? 50 : 60); // W (50-60 W/m²)
+    const coolingLoad = totalArea * (buildingType.includes('residential') ? 40 : 50); // W
+    const ventilationRate = totalArea * 1.0; // L/s (1.0 L/s/m²)
+    const electricalLoad = totalArea * (buildingType.includes('residential') ? 40 : 60); // W/m²
+
+    return {
+      mechanical: {
+        heatingSystem: buildingType.includes('residential')
+          ? 'Gas boiler or heat pump with radiators/underfloor heating'
+          : 'Central heating with VRF or fan coil units',
+        heatingLoad: `${Math.round(heatingLoad / 1000)} kW (${buildingType.includes('residential') ? '50' : '60'} W/m²)`,
+        coolingSystem: 'Air conditioning via split systems or VRF (Variable Refrigerant Flow)',
+        coolingLoad: `${Math.round(coolingLoad / 1000)} kW (${buildingType.includes('residential') ? '40' : '50'} W/m²)`,
+        ventilation: `Mechanical ventilation with heat recovery (MVHR), ${Math.round(ventilationRate)} L/s fresh air supply`,
+        ductwork: 'Insulated ductwork, supply and return air distribution, fresh air intake and exhaust'
+      },
+
+      electrical: {
+        mainSupply: buildingType.includes('residential') ? '230V single-phase (or 3-phase if load > 15kW)' : '400V 3-phase',
+        totalLoad: `${Math.round(electricalLoad * totalArea / 1000)} kW (${buildingType.includes('residential') ? '40' : '60'} W/m²)`,
+        distribution: 'Consumer unit(s) with RCDs, MCBs per circuit',
+        lighting: 'LED lighting throughout, daylight sensors, occupancy sensors in circulation areas',
+        powerOutlets: buildingType.includes('residential') ? 'Double sockets every 3m, dedicated circuits for kitchen appliances' : 'Floor boxes and wall outlets every 2-3m for workstations',
+        emergencyLighting: stories > 2 ? 'Emergency lighting and exit signage per BS 5266' : 'Not required for 2-story residential'
+      },
+
+      plumbing: {
+        waterSupply: 'Mains water supply, internal distribution via copper or PEX pipes',
+        hotWater: buildingType.includes('residential') ? 'Combi boiler or hot water cylinder (200-300L)' : 'Central hot water system',
+        drainage: 'Gravity drainage to sewer, soil and waste stack(s), vent pipes',
+        fixtures: buildingType.includes('residential')
+          ? 'Toilets (6L dual-flush), sinks, showers, kitchen sink'
+          : 'Toilets, urinals, sinks, accessible facilities per Part M',
+        waterDemand: `${Math.round(totalArea * 0.05)} L/s peak demand (estimated)`
+      },
+
+      energyCompliance: {
+        standard: 'UK Building Regulations Part L (Conservation of Fuel and Power)',
+        references: [
+          'Part L1A (New dwellings) or L2A (New buildings other than dwellings)',
+          'Target CO₂ emissions rate (TER) and Target Fabric Energy Efficiency (TFEE)',
+          'U-values: Walls ' + (insulationWalls.includes('U-value') ? insulationWalls.split('U-value: ')[1].split(')')[0] : '≤0.26 W/m²K') + ', Roof ' + (insulationRoof.includes('U-value') ? insulationRoof.split('U-value: ')[1].split(')')[0] : '≤0.16 W/m²K'),
+          'Air permeability: ≤8 m³/(h·m²) at 50 Pa (residential), ≤10 m³/(h·m²) (non-residential)',
+          'Heating efficiency: ≥90% for gas boilers, SCOP ≥2.8 for heat pumps',
+          'Lighting efficacy: ≥75 lumens/W (LED lighting)',
+          'Renewable energy: Consider solar PV or solar thermal to reduce emissions'
+        ],
+        estimatedEUI: buildingType.includes('residential') ? '80-120 kWh/m²/year' : '100-150 kWh/m²/year',
+        estimatedCO2: `${Math.round(totalArea * 0.025)} kg CO₂/m²/year (estimated, depends on fuel mix)`
+      },
+
+      notes: `Preliminary MEP design for ${stories}-story ${buildingType} with ${totalArea}m² floor area in ${climate}. Detailed mechanical, electrical, and plumbing engineering required with full load calculations, equipment sizing, and energy modeling per UK Building Regulations Part L. Professional MEP engineer certification and SAP/SBEM energy assessment required for compliance.`
+    };
+  }
 }
 
 export default new ReplicateService();

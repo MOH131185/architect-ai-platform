@@ -363,40 +363,54 @@ class AIIntegrationService {
   }
 
   /**
-   * Generate comprehensive architectural outputs (2D and 3D)
+   * Step 6: Generate comprehensive high-resolution 2D and 3D architectural outputs
    */
   async generateComprehensiveOutputs(enhancedContext, reasoning) {
     try {
       const outputs = {};
+      const { buildingProgram } = enhancedContext;
 
-      // Generate 2D floor plans
-      console.log('Generating 2D floor plans...');
-      outputs.floorPlans = await this.replicate.generateFloorPlan(enhancedContext);
+      // Step 6.1: Generate per-level floor plans (1024×1024)
+      console.log('Step 6.1: Generating per-level floor plans...');
+      outputs.floorPlans = await this.replicate.generatePerLevelFloorPlans(
+        buildingProgram,
+        enhancedContext
+      );
 
-      // Generate 2D sections
-      console.log('Generating 2D sections...');
-      outputs.sections = await this.replicate.generateSection(enhancedContext);
+      // Step 6.2: Generate comprehensive 3D views (4 exterior + 2 interior)
+      console.log('Step 6.2: Generating comprehensive 3D views...');
+      outputs.views = await this.replicate.generateComprehensiveViews(enhancedContext);
 
-      // Generate 4 elevations
-      console.log('Generating 4 elevations...');
-      outputs.elevations = await this.replicate.generateElevations(enhancedContext);
+      // Step 6.3: Generate 2D technical drawings (section + 4 elevations)
+      console.log('Step 6.3: Generating 2D technical drawings...');
+      outputs.technicalDrawings = await this.replicate.generateTechnicalDrawings(
+        buildingProgram,
+        enhancedContext
+      );
 
-      // Generate 3D exterior views (4 views)
-      console.log('Generating 3D exterior views...');
-      outputs.exteriorViews = await this.replicate.generate3DExteriorViews(enhancedContext);
-
-      // Generate 3D interior views (2 views)
-      console.log('Generating 3D interior views...');
-      outputs.interiorViews = await this.replicate.generate3DInteriorViews(enhancedContext);
+      // Step 6.4: Generate structural and MEP engineering diagrams
+      console.log('Step 6.4: Generating engineering diagrams...');
+      outputs.engineeringDiagrams = await this.replicate.generateEngineeringDiagrams(
+        buildingProgram,
+        reasoning,
+        enhancedContext
+      );
 
       return {
         ...outputs,
         summary: {
-          floorPlans: outputs.floorPlans?.success ? 'Generated' : 'Fallback',
-          sections: outputs.sections?.success ? 'Generated' : 'Fallback',
-          elevations: outputs.elevations?.success ? 'Generated' : 'Fallback',
-          exteriorViews: outputs.exteriorViews?.success ? 'Generated' : 'Fallback',
-          interiorViews: outputs.interiorViews?.success ? 'Generated' : 'Fallback'
+          perLevelFloorPlans: outputs.floorPlans?.totalLevels || 0,
+          exteriorViews: outputs.views?.exteriorCount || 0,
+          interiorViews: outputs.views?.interiorCount || 0,
+          sections: outputs.technicalDrawings?.sectionCount || 0,
+          elevations: outputs.technicalDrawings?.elevationCount || 0,
+          engineeringDiagrams: Object.keys(outputs.engineeringDiagrams?.diagrams || {}).length,
+          totalOutputs: (outputs.floorPlans?.totalLevels || 0) +
+                        (outputs.views?.exteriorCount || 0) +
+                        (outputs.views?.interiorCount || 0) +
+                        (outputs.technicalDrawings?.sectionCount || 0) +
+                        (outputs.technicalDrawings?.elevationCount || 0) +
+                        Object.keys(outputs.engineeringDiagrams?.diagrams || {}).length
         },
         timestamp: new Date().toISOString()
       };
