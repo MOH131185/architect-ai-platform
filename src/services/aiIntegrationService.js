@@ -10,6 +10,7 @@ import solarOrientationService from './solarOrientationService';
 import buildingProgramService from './buildingProgramService';
 import materialSelectionService from './materialSelectionService';
 import enhancedLocationService from './enhancedLocationService';
+import styleDetectionService from './styleDetectionService';
 
 class AIIntegrationService {
   constructor() {
@@ -20,6 +21,7 @@ class AIIntegrationService {
     this.buildingProgram = buildingProgramService;
     this.materialSelection = materialSelectionService;
     this.enhancedLocation = enhancedLocationService;
+    this.styleDetection = styleDetectionService;
   }
 
   /**
@@ -35,6 +37,11 @@ class AIIntegrationService {
       // Step 1: Site context gathering and analysis
       console.log('Step 1: Analyzing site context...');
       const siteAnalysis = await this.analyzeSiteContext(projectContext);
+
+      // Step 1.5: Local architecture style detection (using Street View + ML)
+      console.log('Step 1.5: Detecting local architectural styles...');
+      const styleDetection = await this.detectLocalStyles(siteAnalysis);
+      siteAnalysis.styleDetection = styleDetection;
 
       // Step 2: Calculate solar orientation and passive design strategy
       console.log('Step 2: Calculating solar orientation...');
@@ -98,6 +105,7 @@ class AIIntegrationService {
       return {
         success: true,
         siteAnalysis,
+        styleDetection,
         solarOrientation: solarAnalysis,
         buildingProgram,
         materialAnalysis,
@@ -117,6 +125,51 @@ class AIIntegrationService {
         success: false,
         error: error.message,
         fallback: this.getFallbackDesign(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Detect local architectural styles using Street View imagery + ML
+   */
+  async detectLocalStyles(siteAnalysis) {
+    try {
+      // Only run if we have valid location data
+      if (!siteAnalysis.coordinates || !siteAnalysis.addressComponents) {
+        console.warn('Insufficient location data for style detection');
+        return {
+          success: false,
+          note: 'Style detection skipped - insufficient location data',
+          fallback: this.styleDetection.getFallbackStyleDetection({ addressComponents: {} })
+        };
+      }
+
+      // Run style detection service
+      const styleResult = await this.styleDetection.detectLocalArchitectureStyle({
+        coordinates: siteAnalysis.coordinates,
+        addressComponents: siteAnalysis.addressComponents
+      });
+
+      if (!styleResult.success) {
+        console.warn('Style detection failed, using fallback');
+        return styleResult.fallback || {
+          primaryLocalStyles: ['Contemporary'],
+          materials: ['Brick', 'Concrete', 'Glass']
+        };
+      }
+
+      return styleResult.styleProfile;
+
+    } catch (error) {
+      console.error('Local style detection error:', error);
+      return {
+        success: false,
+        error: error.message,
+        note: 'Style detection failed',
+        fallback: {
+          primaryLocalStyles: ['Contemporary'],
+          materials: ['Brick', 'Concrete', 'Glass']
+        }
       };
     }
   }
