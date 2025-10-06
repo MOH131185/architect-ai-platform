@@ -337,44 +337,135 @@ class BuildingProgramService {
   }
 
   /**
-   * Allocate residential levels
+   * Allocate residential levels (Step 4.3: Differentiate detached vs semi-detached)
    */
   allocateResidentialLevels(subType, totalArea, stories) {
     const levels = [];
     const perLevelArea = totalArea / stories;
 
+    // Step 4.3: Adjust massing for detached vs semi-detached dwellings
+    const dwellingType = subType === 'semi-detached' ? 'Semi-detached' : 'Detached';
+    const hasSharedWall = subType === 'semi-detached';
+
     if (stories === 1) {
       levels.push({
         level: 'Ground Floor',
         surfaceArea: Math.round(totalArea),
-        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Bedrooms', 'Bathrooms', 'Laundry', 'Storage']
+        dwellingType,
+        hasSharedWall,
+        functions: hasSharedWall
+          ? ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Bedrooms (3)', 'Bathrooms (2)', 'Laundry', 'Storage', 'Note: One side wall shared with adjacent unit']
+          : ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Bedrooms (3-4)', 'Bathrooms (2-3)', 'Laundry', 'Storage', 'Garage (optional)'],
+        spacePlanning: hasSharedWall
+          ? {
+              'Entry/Foyer': Math.round(totalArea * 0.05),
+              'Living Room': Math.round(totalArea * 0.18),
+              'Dining Room': Math.round(totalArea * 0.10),
+              'Kitchen': Math.round(totalArea * 0.12),
+              'Bedrooms': Math.round(totalArea * 0.35),
+              'Bathrooms': Math.round(totalArea * 0.10),
+              'Laundry/Storage': Math.round(totalArea * 0.05),
+              'Circulation': Math.round(totalArea * 0.05)
+            }
+          : {
+              'Entry/Foyer': Math.round(totalArea * 0.06),
+              'Living Room': Math.round(totalArea * 0.20),
+              'Dining Room': Math.round(totalArea * 0.12),
+              'Kitchen': Math.round(totalArea * 0.12),
+              'Bedrooms': Math.round(totalArea * 0.30),
+              'Bathrooms': Math.round(totalArea * 0.10),
+              'Laundry/Storage': Math.round(totalArea * 0.05),
+              'Circulation': Math.round(totalArea * 0.05)
+            },
+        massingConsiderations: hasSharedWall
+          ? ['Shared wall on one side (party wall)', 'Windows on three sides only', 'Efficient linear layout', 'Reduced setbacks on shared side']
+          : ['Windows on all four sides', 'Flexible floor plan', 'Setbacks required on all sides', 'Potential for wraparound outdoor spaces']
       });
     } else if (stories === 2) {
       levels.push({
         level: 'Ground Floor',
         surfaceArea: Math.round(perLevelArea),
-        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room', 'Laundry']
+        dwellingType,
+        hasSharedWall,
+        functions: hasSharedWall
+          ? ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room', 'Laundry', 'Note: Shared wall on one side']
+          : ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room', 'Laundry', 'Home Office (optional)', 'Garage (optional)'],
+        spacePlanning: {
+          'Entry/Foyer': Math.round(perLevelArea * 0.08),
+          'Living/Dining': Math.round(perLevelArea * 0.45),
+          'Kitchen': Math.round(perLevelArea * 0.20),
+          'Powder Room': Math.round(perLevelArea * 0.04),
+          'Laundry/Storage': Math.round(perLevelArea * 0.08),
+          'Circulation': Math.round(perLevelArea * 0.15)
+        },
+        massingConsiderations: hasSharedWall
+          ? ['Shared wall on one side', 'Entry on front or side', 'Efficient circulation core']
+          : ['Separate entries possible', 'Flexible room placement', 'Natural light on all sides']
       });
       levels.push({
         level: 'Second Floor',
         surfaceArea: Math.round(perLevelArea),
-        functions: ['Master Bedroom with En-suite', 'Bedrooms', 'Bathrooms', 'Storage']
+        dwellingType,
+        hasSharedWall,
+        functions: hasSharedWall
+          ? ['Master Bedroom with En-suite', 'Bedrooms (2)', 'Bathroom', 'Storage']
+          : ['Master Bedroom with En-suite', 'Bedrooms (2-3)', 'Bathroom', 'Storage', 'Balcony (optional)'],
+        spacePlanning: {
+          'Master Bedroom + En-suite': Math.round(perLevelArea * 0.35),
+          'Bedrooms': Math.round(perLevelArea * 0.40),
+          'Bathroom': Math.round(perLevelArea * 0.10),
+          'Storage/Closets': Math.round(perLevelArea * 0.05),
+          'Circulation': Math.round(perLevelArea * 0.10)
+        },
+        massingConsiderations: hasSharedWall
+          ? ['Shared wall continues to upper floor', 'Windows on three sides', 'Privacy considerations on shared side']
+          : ['Windows on all sides', 'Cross-ventilation possible', 'Balconies on front/rear']
       });
     } else if (stories >= 3) {
       levels.push({
         level: 'Ground Floor',
         surfaceArea: Math.round(perLevelArea),
-        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room']
+        dwellingType,
+        hasSharedWall,
+        functions: ['Entry/Foyer', 'Living Room', 'Dining Room', 'Kitchen', 'Powder Room', hasSharedWall ? 'Note: Shared wall' : 'Garage (optional)'],
+        spacePlanning: {
+          'Entry/Foyer': Math.round(perLevelArea * 0.10),
+          'Living/Dining': Math.round(perLevelArea * 0.50),
+          'Kitchen': Math.round(perLevelArea * 0.20),
+          'Powder Room': Math.round(perLevelArea * 0.05),
+          'Circulation': Math.round(perLevelArea * 0.15)
+        }
       });
       levels.push({
         level: 'Second Floor',
         surfaceArea: Math.round(perLevelArea),
-        functions: ['Master Bedroom with En-suite', 'Bedroom', 'Bathroom', 'Home Office/Study']
+        dwellingType,
+        hasSharedWall,
+        functions: ['Master Bedroom with En-suite', 'Bedroom', 'Bathroom', 'Home Office/Study'],
+        spacePlanning: {
+          'Master Bedroom + En-suite': Math.round(perLevelArea * 0.40),
+          'Bedroom': Math.round(perLevelArea * 0.25),
+          'Bathroom': Math.round(perLevelArea * 0.10),
+          'Home Office': Math.round(perLevelArea * 0.15),
+          'Circulation': Math.round(perLevelArea * 0.10)
+        }
       });
       levels.push({
         level: 'Third Floor',
         surfaceArea: Math.round(perLevelArea),
-        functions: ['Bedrooms', 'Bathroom', 'Laundry', 'Storage', 'Bonus Room']
+        dwellingType,
+        hasSharedWall,
+        functions: ['Bedrooms (2)', 'Bathroom', 'Laundry', 'Storage', 'Bonus Room'],
+        spacePlanning: {
+          'Bedrooms': Math.round(perLevelArea * 0.50),
+          'Bathroom': Math.round(perLevelArea * 0.12),
+          'Laundry': Math.round(perLevelArea * 0.08),
+          'Bonus Room/Storage': Math.round(perLevelArea * 0.20),
+          'Circulation': Math.round(perLevelArea * 0.10)
+        },
+        massingConsiderations: hasSharedWall
+          ? ['Vertical circulation core on interior', 'Limited by shared wall placement']
+          : ['Flexible vertical circulation', 'Roof terraces possible']
       });
     }
 

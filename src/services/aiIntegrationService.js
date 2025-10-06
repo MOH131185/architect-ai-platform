@@ -54,15 +54,24 @@ class AIIntegrationService {
 
       // Step 3: Determine building program and massing
       console.log('Step 3: Calculating building program...');
-      const buildingProgram = this.buildingProgram.calculateBuildingProgram(
+      const buildingProgram = await this.buildingProgram.calculateBuildingProgram(
         projectContext.buildingType || projectContext.buildingProgram,
         projectContext.siteArea || 1000,
         projectContext.location?.zoning,
-        projectContext.location
+        projectContext.location,
+        projectContext.userDesiredFloorArea || null
       );
 
-      // Step 4: Material selection with thermal mass analysis
-      console.log('Step 4: Selecting materials...');
+      // Step 4: Portfolio style analysis and blending
+      console.log('Step 4: Analyzing portfolio style and blending...');
+      const portfolioAnalysis = await this.analyzePortfolioStyle(
+        projectContext.portfolioImages,
+        styleDetection,
+        projectContext.styleBlendingMode || 'mix'
+      );
+
+      // Step 5: Material selection with thermal mass analysis
+      console.log('Step 5: Selecting materials...');
       const materialAnalysis = this.materialSelection.recommendMaterials(
         projectContext.location?.climate,
         projectContext.location,
@@ -70,12 +79,14 @@ class AIIntegrationService {
         solarAnalysis
       );
 
-      // Step 5: Build enhanced project context with all analysis
+      // Step 6: Build enhanced project context with all analysis
       const enhancedContext = {
         ...projectContext,
         siteAnalysis,
         solarOrientation: solarAnalysis,
         buildingProgram: buildingProgram,
+        portfolioStyle: portfolioAnalysis.styleProfile,
+        blendedStyle: portfolioAnalysis.blendedStyle,
         materials: materialAnalysis.primaryMaterials,
         materialAnalysis,
         roomProgram: buildingProgram.roomProgram,
@@ -106,6 +117,7 @@ class AIIntegrationService {
         success: true,
         siteAnalysis,
         styleDetection,
+        portfolioAnalysis,
         solarOrientation: solarAnalysis,
         buildingProgram,
         materialAnalysis,
@@ -236,6 +248,76 @@ class AIIntegrationService {
         climate: { type: 'Temperate' },
         error: error.message,
         note: 'Site context analysis failed, using fallback'
+      };
+    }
+  }
+
+  /**
+   * Step 4: Analyze portfolio style and blend with local style
+   *
+   * @param {Array} portfolioImages - User-uploaded portfolio images
+   * @param {Object} localStyleDetection - Local style from Step 2
+   * @param {string} blendingMode - 'signature' (100% portfolio) or 'mix' (blend)
+   * @returns {Promise<Object>} Portfolio analysis and blended style recommendations
+   */
+  async analyzePortfolioStyle(portfolioImages, localStyleDetection, blendingMode = 'mix') {
+    try {
+      // Step 4.1: Analyze portfolio images to extract dominant style
+      const portfolioAnalysis = await this.portfolioStyleDetection.analyzePortfolioStyle(
+        portfolioImages || [],
+        { blendingMode }
+      );
+
+      if (!portfolioAnalysis.success) {
+        console.warn('Portfolio analysis failed, using default style profile');
+        return {
+          success: false,
+          styleProfile: portfolioAnalysis.styleProfile,
+          blendedStyle: null,
+          note: 'Portfolio analysis unavailable, using default Contemporary style'
+        };
+      }
+
+      const portfolioStyle = portfolioAnalysis.styleProfile;
+
+      // Step 4.2: Blend portfolio style with local style
+      const localStyle = localStyleDetection?.primaryLocalStyles?.[0]
+        ? {
+            primaryStyle: localStyleDetection.primaryLocalStyles[0],
+            materials: localStyleDetection.materials || [],
+            designElements: localStyleDetection.designElements || []
+          }
+        : {
+            primaryStyle: 'Contemporary',
+            materials: ['Brick', 'Concrete', 'Glass'],
+            designElements: ['Clean lines', 'Large windows']
+          };
+
+      const blendedStyle = this.portfolioStyleDetection.blendStyles(
+        portfolioStyle,
+        localStyle,
+        blendingMode
+      );
+
+      return {
+        success: true,
+        styleProfile: portfolioStyle,
+        blendedStyle,
+        blendingMode,
+        localStyle,
+        analysisMethod: portfolioAnalysis.analysisMethod,
+        imagesAnalyzed: portfolioAnalysis.imagesAnalyzed || 0,
+        timestamp: portfolioAnalysis.timestamp
+      };
+
+    } catch (error) {
+      console.error('Portfolio style analysis error:', error);
+      return {
+        success: false,
+        styleProfile: this.portfolioStyleDetection.getDefaultStyleProfile(),
+        blendedStyle: null,
+        error: error.message,
+        note: 'Portfolio analysis failed, using default Contemporary style'
       };
     }
   }
