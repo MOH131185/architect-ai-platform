@@ -290,6 +290,8 @@ const ArchitectAIEnhanced = () => {
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
+  const [modificationPrompt, setModificationPrompt] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
   const [downloadCount, setDownloadCount] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -649,6 +651,7 @@ const ArchitectAIEnhanced = () => {
       // Prepare project context for AI
       const projectContext = {
         buildingProgram: projectDetails?.program || 'mixed-use building',
+        buildingType: projectDetails?.program || 'mixed-use building',
         location: locationData || { address: 'Unknown location' },
         architecturalStyle: styleChoice === 'blend' ? 'Contemporary with local influences' : styleChoice || 'contemporary',
         materials: 'sustainable, local materials',
@@ -656,7 +659,9 @@ const ArchitectAIEnhanced = () => {
         userPreferences: `${projectDetails?.area || '200'}m² total area`,
         specifications: projectDetails,
         climateData: locationData?.climate,
-        area: projectDetails?.area || '200'
+        area: projectDetails?.area || '200',
+        entranceDirection: projectDetails?.entranceDirection || 'south', // Default to south for optimal solar access
+        portfolioImages: (portfolioFiles || []).map(file => file.url || file.preview).filter(Boolean)
       };
 
       console.log('🎨 Starting AI design generation with:', projectContext);
@@ -665,17 +670,10 @@ const ArchitectAIEnhanced = () => {
       const portfolioImages = (portfolioFiles || [])
         .map(file => file.url || file.preview)
         .filter(Boolean);
-      
-      let aiResult;
-      if (portfolioImages.length > 0) {
-        // Use style-optimized design generation with portfolio analysis
-        console.log('🎨 Using style-optimized design generation with portfolio analysis');
-        aiResult = await aiIntegrationService.generateStyleOptimizedDesign(projectContext, portfolioImages);
-      } else {
-        // Use floor plan and 3D preview generation
-        console.log('🎨 Using floor plan and 3D preview generation');
-        aiResult = await aiIntegrationService.generateFloorPlanAnd3DPreview(projectContext, portfolioImages);
-      }
+
+      // Always use generateCompleteDesign for consistent outputs structure
+      console.log('🎨 Using complete design generation with full outputs');
+      const aiResult = await aiIntegrationService.generateCompleteDesign(projectContext, portfolioImages);
 
       console.log('✅ AI design generation complete:', aiResult);
 
@@ -838,6 +836,73 @@ const ArchitectAIEnhanced = () => {
       });
       setIsLoading(false);
       setCurrentStep(5);
+    }
+  };
+
+  // Handle design refinement
+  const handleRefinement = async () => {
+    if (!modificationPrompt.trim()) {
+      showToast('⚠️ Please describe the modifications you want');
+      return;
+    }
+
+    setIsRefining(true);
+    try {
+      console.log('🔄 Starting design refinement:', modificationPrompt);
+
+      // Prepare current design state
+      const currentDesign = {
+        outputs: generatedDesigns.rawOutputs,
+        reasoning: generatedDesigns.reasoning,
+        enhancedContext: {
+          buildingProgram: projectDetails.program,
+          buildingType: projectDetails.program,
+          location: locationData,
+          area: projectDetails.area,
+          entranceDirection: projectDetails.entranceDirection
+        }
+      };
+
+      // Prepare project context
+      const projectContext = {
+        buildingProgram: projectDetails.program,
+        buildingType: projectDetails.program,
+        location: locationData,
+        area: projectDetails.area,
+        entranceDirection: projectDetails.entranceDirection,
+        specifications: projectDetails
+      };
+
+      // Call refinement service
+      const refinementResult = await aiIntegrationService.refineDesign(
+        modificationPrompt,
+        currentDesign,
+        projectContext
+      );
+
+      if (refinementResult.success) {
+        console.log('✅ Refinement successful:', refinementResult);
+
+        // Update the design with refined outputs
+        const updatedDesign = {
+          ...generatedDesigns,
+          rawOutputs: refinementResult.updatedDesign.outputs,
+          reasoning: refinementResult.updatedDesign.reasoning
+        };
+
+        setGeneratedDesigns(updatedDesign);
+        showToast('✓ Design refined successfully!');
+        setModificationPrompt('');
+        setShowModification(false);
+      } else {
+        console.error('❌ Refinement failed:', refinementResult.error);
+        showToast(`⚠️ Refinement failed: ${refinementResult.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('❌ Refinement error:', error);
+      showToast('❌ Error refining design. Please try again.');
+    } finally {
+      setIsRefining(false);
     }
   };
 
@@ -1408,7 +1473,46 @@ const ArchitectAIEnhanced = () => {
               
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="total-surface-area" className="block text-sm font-medium text-gray-700 mb-2">Total Surface Area</label>
+                  <label htmlFor="building-program" className="block text-sm font-medium text-gray-700 mb-2">Building Type</label>
+                  <select
+                    id="building-program"
+                    value={projectDetails.program}
+                    onChange={(e) => setProjectDetails({...projectDetails, program: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                  >
+                    <option value="">Select building type...</option>
+                    <optgroup label="Healthcare">
+                      <option value="clinic">Medical Clinic</option>
+                      <option value="hospital">Hospital</option>
+                      <option value="dental">Dental Office</option>
+                    </optgroup>
+                    <optgroup label="Residential">
+                      <option value="single-family">Single-Family House</option>
+                      <option value="detached-house">Detached House</option>
+                      <option value="semi-detached">Semi-Detached House</option>
+                      <option value="townhouse">Townhouse</option>
+                      <option value="apartment">Apartment Building</option>
+                    </optgroup>
+                    <optgroup label="Commercial">
+                      <option value="office">Office Building</option>
+                      <option value="retail">Retail Space</option>
+                      <option value="restaurant">Restaurant</option>
+                      <option value="mixed-use">Mixed-Use Development</option>
+                    </optgroup>
+                    <optgroup label="Institutional">
+                      <option value="educational">Educational Facility</option>
+                      <option value="library">Library</option>
+                      <option value="community-center">Community Center</option>
+                    </optgroup>
+                    <optgroup label="Hospitality">
+                      <option value="hotel">Hotel</option>
+                      <option value="resort">Resort</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="total-surface-area" className="block text-sm font-medium text-gray-700 mb-2">Total Floor Area</label>
                   <div className="relative">
                     <input
                       id="total-surface-area"
@@ -1421,24 +1525,37 @@ const ArchitectAIEnhanced = () => {
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">m²</span>
                   </div>
                 </div>
-                
-                <div>
-                  <label htmlFor="building-program" className="block text-sm font-medium text-gray-700 mb-2">Building Program</label>
-                  <select
-                    id="building-program"
-                    value={projectDetails.program}
-                    onChange={(e) => setProjectDetails({...projectDetails, program: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
-                  >
-                    <option value="">Select program type...</option>
-                    <option value="clinic">Medical Clinic</option>
-                    <option value="office">Office Building</option>
-                    <option value="residential">Residential Complex</option>
-                    <option value="retail">Retail Space</option>
-                    <option value="educational">Educational Facility</option>
-                    <option value="hospitality">Hospitality</option>
-                  </select>
+              </div>
+
+              {/* Entrance Orientation Selector */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-3">Principal Entrance Orientation</label>
+                <div className="grid grid-cols-4 gap-3">
+                  {['north', 'south', 'east', 'west'].map((direction) => (
+                    <button
+                      key={direction}
+                      type="button"
+                      onClick={() => setProjectDetails({...projectDetails, entranceDirection: direction})}
+                      className={`px-4 py-3 rounded-xl border-2 transition-all duration-200 ${
+                        projectDetails.entranceDirection === direction
+                          ? 'border-green-500 bg-green-50 text-green-700 font-semibold'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-green-300'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center">
+                        <span className="text-xl mb-1">
+                          {direction === 'north' ? '⬆️' : direction === 'south' ? '⬇️' : direction === 'east' ? '➡️' : '⬅️'}
+                        </span>
+                        <span className="text-sm capitalize">{direction}</span>
+                      </div>
+                    </button>
+                  ))}
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {projectDetails.entranceDirection
+                    ? `Building optimized for ${projectDetails.entranceDirection}-facing entrance with passive solar design`
+                    : 'Select entrance direction for optimal orientation and energy efficiency'}
+                </p>
               </div>
               
               {projectDetails.program && (
@@ -1806,35 +1923,48 @@ const ArchitectAIEnhanced = () => {
                     <Cpu className="w-6 h-6 text-green-600 mr-2" />
                     Engineering Diagrams ({Object.keys(generatedDesigns.technical.engineeringData).length} Diagrams)
                   </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Structural and MEP (Mechanical, Electrical, Plumbing) systems for construction planning
+                  </p>
                   <div className="grid md:grid-cols-2 gap-4">
-                    {Object.entries(generatedDesigns.technical.engineeringData).map(([key, diagram]) => (
-                      <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
-                          <span className="capitalize">{key} Diagram</span>
-                          {!diagram.success && (
-                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                              Fallback
+                    {Object.entries(generatedDesigns.technical.engineeringData).map(([key, diagram]) => {
+                      const descriptions = {
+                        structural: 'Load-bearing systems, columns, beams, and foundation details',
+                        mep: 'HVAC, electrical, and plumbing system layouts and specifications'
+                      };
+
+                      return (
+                        <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                          <h4 className="font-semibold text-gray-800 mb-1 flex items-center justify-between">
+                            <span className="capitalize">
+                              {key === 'structural' ? '🏗️ Structural System' : '⚡ MEP Systems'}
                             </span>
-                          )}
-                        </h4>
-                        <div className="relative bg-gray-100 rounded-lg overflow-hidden h-64">
-                          {diagram.image ? (
-                            <img
-                              src={diagram.image}
-                              alt={`${key} Engineering Diagram`}
-                              className="w-full h-full object-contain"
-                              onError={(e) => {
-                                e.target.src = 'https://via.placeholder.com/800x600/27AE60/FFFFFF?text=Diagram+Error';
-                              }}
-                            />
-                          ) : (
-                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-                              No image available
-                            </div>
-                          )}
+                            {!diagram.success && (
+                              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                                Fallback
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-xs text-gray-500 mb-3">{descriptions[key]}</p>
+                          <div className="relative bg-gray-100 rounded-lg overflow-hidden h-64">
+                            {diagram.image ? (
+                              <img
+                                src={diagram.image}
+                                alt={`${key} Engineering Diagram`}
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                  e.target.src = 'https://via.placeholder.com/800x600/27AE60/FFFFFF?text=Diagram+Error';
+                                }}
+                              />
+                            ) : (
+                              <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                                No image available
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1972,19 +2102,46 @@ const ArchitectAIEnhanced = () => {
                 <button
                   onClick={() => setShowModification(!showModification)}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-medium flex items-center justify-center"
+                  disabled={isRefining}
                 >
                   <Sparkles className="mr-2" />
-                  Modify Design with AI
+                  {isRefining ? 'Refining Design...' : 'Modify Design with AI'}
                 </button>
-                
+
                 {showModification && (
                   <div className="mt-4 space-y-4 animate-fadeIn">
+                    <div className="bg-purple-50 rounded-xl p-4 mb-3">
+                      <h5 className="font-semibold text-gray-800 mb-2">💡 Refinement Examples:</h5>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        <li>• "Rotate the building 15° for better solar orientation"</li>
+                        <li>• "Add a skylight to the main living area"</li>
+                        <li>• "Increase the master bedroom by 10m²"</li>
+                        <li>• "Change entrance to face east instead of south"</li>
+                      </ul>
+                    </div>
                     <textarea
-                      placeholder="Describe your modifications... (e.g., 'Make the waiting area 20% larger', 'Add a healing garden courtyard', 'Include more natural lighting in consultation rooms')"
+                      value={modificationPrompt}
+                      onChange={(e) => setModificationPrompt(e.target.value)}
+                      placeholder="Describe your modifications in natural language..."
                       className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors h-32"
+                      disabled={isRefining}
                     />
-                    <button className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 transition-colors">
-                      Apply Modifications
+                    <button
+                      onClick={handleRefinement}
+                      disabled={isRefining || !modificationPrompt.trim()}
+                      className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      {isRefining ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Refining Design...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-5 h-5 mr-2" />
+                          Apply Modifications
+                        </>
+                      )}
                     </button>
                   </div>
                 )}
