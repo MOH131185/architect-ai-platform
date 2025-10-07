@@ -3,7 +3,11 @@
  * Uses SDXL Multi-ControlNet LoRA for architectural visualization
  */
 
-const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
+// In production, we don't need the API key on client side - serverless functions handle it
+// This check is only for development
+const REPLICATE_API_KEY = typeof process !== 'undefined' && process.env
+  ? process.env.REACT_APP_REPLICATE_API_KEY
+  : null;
 
 // Use Vercel serverless functions in production, local proxy in development
 const REPLICATE_API_PROXY_URL = process.env.NODE_ENV === 'production'
@@ -964,20 +968,36 @@ class ReplicateService {
    */
   async generatePerLevelFloorPlans(buildingProgram, projectContext) {
     console.log('🏗️ STEP 6.1: Generating per-level floor plans...');
-    const perLevelAllocation = buildingProgram.perLevelAllocation || [];
-    console.log(`📊 Found ${perLevelAllocation.length} levels to generate`);
+    const perLevelAllocation = buildingProgram?.perLevelAllocation || [];
+
+    // If no levels allocated, create default levels
+    if (perLevelAllocation.length === 0) {
+      console.warn('⚠️ No per-level allocation found, creating default levels');
+      const defaultLevels = [
+        { level: 'Ground Floor', surfaceArea: 200, functions: ['entrance', 'lobby'] },
+        { level: 'Floor 2', surfaceArea: 200, functions: ['offices', 'meeting rooms'] }
+      ];
+      perLevelAllocation.push(...defaultLevels);
+    }
+
+    console.log(`📊 Processing ${perLevelAllocation.length} levels:`, perLevelAllocation);
     const floorPlans = {};
 
     for (const level of perLevelAllocation) {
-      console.log(`🎯 Generating floor plan for: ${level.level}`);
+      // Normalize level name for use as object key
+      const levelKey = level.level.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      console.log(`🎯 Generating floor plan for: ${level.level} (key: ${levelKey})`);
+
       try {
         const floorPlanParams = this.buildPerLevelFloorPlanParams(level, buildingProgram, projectContext);
+        console.log(`📝 Floor plan params:`, floorPlanParams);
         const result = await this.generateArchitecturalImage(floorPlanParams);
+        console.log(`📸 Generation result for ${level.level}:`, result);
 
         // Check if generation succeeded
         if (result.success && result.images) {
           const imageUrl = Array.isArray(result.images) ? result.images[0] : result.images;
-          floorPlans[level.level] = {
+          floorPlans[levelKey] = {
             success: true,
             image: imageUrl,
             surfaceArea: level.surfaceArea,
@@ -988,7 +1008,7 @@ class ReplicateService {
         } else {
           // Generation failed, use fallback
           console.warn(`Generation failed for ${level.level}, using fallback`);
-          floorPlans[level.level] = {
+          floorPlans[levelKey] = {
             success: false,
             error: result.error || 'Image generation failed',
             image: `https://via.placeholder.com/1024x1024/ECF0F1/2C3E50?text=${encodeURIComponent(level.level + ' Floor Plan')}`
@@ -997,7 +1017,7 @@ class ReplicateService {
 
       } catch (error) {
         console.error(`Error generating floor plan for ${level.level}:`, error);
-        floorPlans[level.level] = {
+        floorPlans[levelKey] = {
           success: false,
           error: error.message,
           image: `https://via.placeholder.com/1024x1024/ECF0F1/2C3E50?text=${encodeURIComponent(level.level + ' Floor Plan')}`
@@ -1005,12 +1025,20 @@ class ReplicateService {
       }
     }
 
-    return {
+    const result = {
       success: true,
       floorPlans,
       totalLevels: perLevelAllocation.length,
       timestamp: new Date().toISOString()
     };
+
+    console.log('✅ Floor plans generation complete:', {
+      levelsGenerated: Object.keys(floorPlans),
+      totalImages: Object.values(floorPlans).filter(fp => fp.image).length,
+      successfulGenerations: Object.values(floorPlans).filter(fp => fp.success).length
+    });
+
+    return result;
   }
 
   /**
