@@ -788,7 +788,9 @@ const ArchitectAIEnhanced = () => {
         .map(diagram => diagram.image);
 
       console.log('📊 Extracted floor plan images:', floorPlanImages.length, 'images', floorPlanImages);
+      console.log('📊 Floor plans data structure:', floorPlansData);
       console.log('📊 Extracted 3D preview images:', preview3DImages.length, 'images', preview3DImages);
+      console.log('📊 Views data structure:', viewsData);
       console.log('📊 Extracted technical drawings:', technicalDrawingImages.length, 'images');
       console.log('📊 Extracted engineering diagrams:', engineeringDiagramImages.length, 'images');
 
@@ -901,6 +903,15 @@ const ArchitectAIEnhanced = () => {
         // Store full outputs for advanced usage
         rawOutputs: outputs
       };
+
+      console.log('🎯 Final design data being set to state:', {
+        floorPlanImages: designData.floorPlan.images?.length,
+        perLevelDataKeys: Object.keys(designData.floorPlan.perLevelData || {}),
+        perLevelData: designData.floorPlan.perLevelData,
+        viewsDataKeys: Object.keys(designData.model3D.viewsData || {}),
+        viewsData: designData.model3D.viewsData,
+        technicalDrawings: Object.keys(designData.technical.drawingsData || {})
+      });
 
       setGeneratedDesigns(designData);
       setIsLoading(false);
