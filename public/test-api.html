@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Test - ArchitectAI Platform</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+    }
+    .test-section {
+      margin: 20px 0;
+      padding: 20px;
+      background: #f7f7f7;
+      border-radius: 8px;
+    }
+    .test-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #555;
+    }
+    .status {
+      padding: 5px 10px;
+      border-radius: 4px;
+      display: inline-block;
+      margin: 5px 0;
+    }
+    .success { background: #4caf50; color: white; }
+    .error { background: #f44336; color: white; }
+    .pending { background: #ff9800; color: white; }
+    .info { background: #2196f3; color: white; }
+    .output {
+      background: #333;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .image-preview {
+      max-width: 300px;
+      margin: 10px 0;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 ArchitectAI Platform - API Test Suite</h1>
+
+    <!-- Debug Info Test -->
+    <div class="test-section">
+      <div class="test-title">1. Debug Information</div>
+      <button onclick="testDebugInfo()">Check Environment</button>
+      <div id="debug-output" class="output" style="display:none;"></div>
+    </div>
+
+    <!-- Direct Replicate Test -->
+    <div class="test-section">
+      <div class="test-title">2. Replicate API Test (via Proxy)</div>
+      <button onclick="testReplicateProxy()">Test Image Generation</button>
+      <div id="replicate-output" class="output" style="display:none;"></div>
+      <div id="image-container"></div>
+    </div>
+
+    <!-- OpenAI Test -->
+    <div class="test-section">
+      <div class="test-title">3. OpenAI API Test (via Proxy)</div>
+      <button onclick="testOpenAIProxy()">Test Text Generation</button>
+      <div id="openai-output" class="output" style="display:none;"></div>
+    </div>
+
+    <!-- Full Generation Test -->
+    <div class="test-section">
+      <div class="test-title">4. Full Generation Flow Test</div>
+      <button onclick="testFullGeneration()">Test Complete Design Generation</button>
+      <div id="full-output" class="output" style="display:none;"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.hostname === 'localhost'
+      ? 'http://localhost:3001'
+      : '';
+
+    function log(elementId, message, type = 'info') {
+      const output = document.getElementById(elementId);
+      output.style.display = 'block';
+      const timestamp = new Date().toLocaleTimeString();
+      const badge = type === 'error' ? '❌' : type === 'success' ? '✅' : '📊';
+      output.textContent += `[${timestamp}] ${badge} ${message}\n`;
+      output.scrollTop = output.scrollHeight;
+    }
+
+    async function testDebugInfo() {
+      const output = 'debug-output';
+      document.getElementById(output).textContent = '';
+      log(output, 'Checking environment configuration...');
+
+      try {
+        const response = await fetch(`${API_BASE}/api/debug-info`);
+        const data = await response.json();
+
+        log(output, 'Environment: ' + data.environment);
+        log(output, 'Vercel Env: ' + data.vercelEnv);
+
+        log(output, '\nAPI Keys Status:');
+        log(output, `OpenAI: ${data.apiKeys.openai.exists ? '✅' : '❌'} (${data.apiKeys.openai.prefix}...)`);
+        log(output, `Replicate: ${data.apiKeys.replicate.exists ? '✅' : '❌'} (${data.apiKeys.replicate.prefix}...)`);
+        log(output, `Google Maps: ${data.apiKeys.googleMaps.exists ? '✅' : '❌'}`);
+        log(output, `OpenWeather: ${data.apiKeys.openWeather.exists ? '✅' : '❌'}`);
+
+        if (data.replicateTest) {
+          log(output, '\nReplicate API Test:');
+          log(output, `Success: ${data.replicateTest.success ? '✅' : '❌'}`);
+          if (data.replicateTest.modelInfo) {
+            log(output, `Model: ${data.replicateTest.modelInfo.owner}/${data.replicateTest.modelInfo.name}`);
+          }
+        }
+
+        log(output, '\nFull Response:', 'success');
+        log(output, JSON.stringify(data, null, 2));
+
+      } catch (error) {
+        log(output, 'Error: ' + error.message, 'error');
+      }
+    }
+
+    async function testReplicateProxy() {
+      const output = 'replicate-output';
+      document.getElementById(output).textContent = '';
+      document.getElementById('image-container').innerHTML = '';
+
+      log(output, 'Creating test prediction...');
+
+      try {
+        // Create prediction
+        const createResponse = await fetch(`${API_BASE}/api/replicate-predictions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+            input: {
+              prompt: "A modern architectural building with glass facade, professional photography",
+              width: 512,
+              height: 512,
+              num_inference_steps: 20
+            }
+          })
+        });
+
+        if (!createResponse.ok) {
+          const error = await createResponse.json();
+          throw new Error(`API Error: ${JSON.stringify(error)}`);
+        }
+
+        const prediction = await createResponse.json();
+        log(output, `Prediction created: ${prediction.id}`);
+        log(output, `Status: ${prediction.status}`);
+
+        // Poll for completion
+        let attempts = 0;
+        const maxAttempts = 30;
+
+        while (attempts < maxAttempts) {
+          log(output, `Checking status (attempt ${attempts + 1})...`);
+
+          const statusResponse = await fetch(`${API_BASE}/api/replicate-status?id=${prediction.id}`);
+          const status = await statusResponse.json();
+
+          log(output, `Status: ${status.status}`);
+
+          if (status.status === 'succeeded') {
+            log(output, 'SUCCESS! Image generated', 'success');
+            log(output, `Output: ${status.output}`);
+
+            // Display image
+            const imgUrl = Array.isArray(status.output) ? status.output[0] : status.output;
+            if (imgUrl) {
+              const img = document.createElement('img');
+              img.src = imgUrl;
+              img.className = 'image-preview';
+              document.getElementById('image-container').appendChild(img);
+            }
+            break;
+          } else if (status.status === 'failed') {
+            log(output, 'Generation failed: ' + status.error, 'error');
+            break;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          attempts++;
+        }
+
+        if (attempts >= maxAttempts) {
+          log(output, 'Timeout: Generation took too long', 'error');
+        }
+
+      } catch (error) {
+        log(output, 'Error: ' + error.message, 'error');
+      }
+    }
+
+    async function testOpenAIProxy() {
+      const output = 'openai-output';
+      document.getElementById(output).textContent = '';
+
+      log(output, 'Testing OpenAI API...');
+
+      try {
+        const response = await fetch(`${API_BASE}/api/openai-chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: 'user',
+                content: 'Say "API is working!" if you can read this.'
+              }
+            ],
+            model: 'gpt-4',
+            max_tokens: 50
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`API Error: ${JSON.stringify(error)}`);
+        }
+
+        const data = await response.json();
+        log(output, 'Response received:', 'success');
+        log(output, data.choices[0].message.content);
+
+      } catch (error) {
+        log(output, 'Error: ' + error.message, 'error');
+      }
+    }
+
+    async function testFullGeneration() {
+      const output = 'full-output';
+      document.getElementById(output).textContent = '';
+
+      log(output, 'This would test the full generation flow...');
+      log(output, 'Import aiIntegrationService and run generateCompleteDesign');
+      log(output, 'Not implemented in this HTML test page');
+      log(output, 'Use the main application to test full generation');
+    }
+
+    // Run debug info on page load
+    window.addEventListener('load', () => {
+      testDebugInfo();
+    });
+  </script>
+</body>
+</html>
