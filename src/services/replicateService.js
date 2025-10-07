@@ -61,8 +61,8 @@ class ReplicateService {
    */
   async createPrediction(params) {
     const requestBody = {
-      // Prefer explicit model for wider API compatibility
-      model: "stability-ai/sdxl",
+      // Use version field with full model version hash for Replicate API
+      version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
       input: {
         prompt: params.prompt || this.buildDefaultPrompt(params),
         negative_prompt: params.negativePrompt || "blurry, low quality, distorted, unrealistic",
@@ -84,11 +84,18 @@ class ReplicateService {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Replicate API error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Replicate API error details:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData
+      });
+      throw new Error(`Replicate API error: ${response.status} - ${errorData.detail || errorData.error || response.statusText}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+    console.log('✅ Replicate prediction created:', result.id);
+    return result;
   }
 
   /**
@@ -113,10 +120,14 @@ class ReplicateService {
       }
 
       const prediction = await response.json();
-      
+
+      console.log(`🔄 Prediction ${predictionId} status: ${prediction.status}`);
+
       if (prediction.status === 'succeeded') {
+        console.log('✅ Prediction succeeded! Output:', prediction.output);
         return prediction;
       } else if (prediction.status === 'failed') {
+        console.error('❌ Prediction failed:', prediction.error);
         throw new Error(`Prediction failed: ${prediction.error || 'Unknown error'}`);
       }
 
@@ -919,14 +930,26 @@ class ReplicateService {
         const floorPlanParams = this.buildPerLevelFloorPlanParams(level, buildingProgram, projectContext);
         const result = await this.generateArchitecturalImage(floorPlanParams);
 
-        floorPlans[level.level] = {
-          success: true,
-          image: result.images?.[0] || result.images,
-          surfaceArea: level.surfaceArea,
-          functions: level.functions,
-          spacePlanning: level.spacePlanning,
-          timestamp: new Date().toISOString()
-        };
+        // Check if generation succeeded
+        if (result.success && result.images) {
+          const imageUrl = Array.isArray(result.images) ? result.images[0] : result.images;
+          floorPlans[level.level] = {
+            success: true,
+            image: imageUrl,
+            surfaceArea: level.surfaceArea,
+            functions: level.functions,
+            spacePlanning: level.spacePlanning,
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          // Generation failed, use fallback
+          console.warn(`Generation failed for ${level.level}, using fallback`);
+          floorPlans[level.level] = {
+            success: false,
+            error: result.error || 'Image generation failed',
+            image: `https://via.placeholder.com/1024x1024/ECF0F1/2C3E50?text=${encodeURIComponent(level.level + ' Floor Plan')}`
+          };
+        }
 
       } catch (error) {
         console.error(`Error generating floor plan for ${level.level}:`, error);
@@ -1015,13 +1038,25 @@ class ReplicateService {
         const exteriorParams = this.buildExterior3DParams(direction, projectContext);
         const result = await this.generateArchitecturalImage(exteriorParams);
 
-        views[`exterior_${direction.toLowerCase()}`] = {
-          success: true,
-          image: result.images?.[0] || result.images,
-          direction,
-          viewType: 'exterior_3d',
-          timestamp: new Date().toISOString()
-        };
+        // Check if generation succeeded
+        if (result.success && result.images) {
+          const imageUrl = Array.isArray(result.images) ? result.images[0] : result.images;
+          views[`exterior_${direction.toLowerCase()}`] = {
+            success: true,
+            image: imageUrl,
+            direction,
+            viewType: 'exterior_3d',
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          // Generation failed, use fallback
+          console.warn(`Generation failed for ${direction} exterior view, using fallback`);
+          views[`exterior_${direction.toLowerCase()}`] = {
+            success: false,
+            error: result.error || 'Image generation failed',
+            image: `https://via.placeholder.com/1024x1024/3498DB/FFFFFF?text=${direction}+Exterior+View`
+          };
+        }
 
       } catch (error) {
         console.error(`Error generating ${direction} exterior view:`, error);
@@ -1041,13 +1076,25 @@ class ReplicateService {
         const interiorParams = this.buildInterior3DParams(space, projectContext);
         const result = await this.generateArchitecturalImage(interiorParams);
 
-        views[`interior_${space.key}`] = {
-          success: true,
-          image: result.images?.[0] || result.images,
-          spaceName: space.name,
-          viewType: 'interior_3d',
-          timestamp: new Date().toISOString()
-        };
+        // Check if generation succeeded
+        if (result.success && result.images) {
+          const imageUrl = Array.isArray(result.images) ? result.images[0] : result.images;
+          views[`interior_${space.key}`] = {
+            success: true,
+            image: imageUrl,
+            spaceName: space.name,
+            viewType: 'interior_3d',
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          // Generation failed, use fallback
+          console.warn(`Generation failed for ${space.name} interior view, using fallback`);
+          views[`interior_${space.key}`] = {
+            success: false,
+            error: result.error || 'Image generation failed',
+            image: `https://via.placeholder.com/1024x1024/E74C3C/FFFFFF?text=${encodeURIComponent(space.name)}`
+          };
+        }
 
       } catch (error) {
         console.error(`Error generating ${space.name} interior view:`, error);
@@ -1188,12 +1235,24 @@ class ReplicateService {
       const sectionParams = this.buildSectionParams(buildingProgram, projectContext);
       const sectionResult = await this.generateArchitecturalImage(sectionParams);
 
-      drawings.section = {
-        success: true,
-        image: sectionResult.images?.[0] || sectionResult.images,
-        viewType: '2d_section',
-        timestamp: new Date().toISOString()
-      };
+      // Check if generation succeeded
+      if (sectionResult.success && sectionResult.images) {
+        const imageUrl = Array.isArray(sectionResult.images) ? sectionResult.images[0] : sectionResult.images;
+        drawings.section = {
+          success: true,
+          image: imageUrl,
+          viewType: '2d_section',
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        // Generation failed, use fallback
+        console.warn('Generation failed for section drawing, using fallback');
+        drawings.section = {
+          success: false,
+          error: sectionResult.error || 'Image generation failed',
+          image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing'
+        };
+      }
 
     } catch (error) {
       console.error('Error generating section:', error);
@@ -1212,13 +1271,25 @@ class ReplicateService {
         const elevationParams = this.buildElevationParams(direction, buildingProgram, projectContext);
         const elevationResult = await this.generateArchitecturalImage(elevationParams);
 
-        drawings[`elevation_${direction.toLowerCase()}`] = {
-          success: true,
-          image: elevationResult.images?.[0] || elevationResult.images,
-          direction,
-          viewType: '2d_elevation',
-          timestamp: new Date().toISOString()
-        };
+        // Check if generation succeeded
+        if (elevationResult.success && elevationResult.images) {
+          const imageUrl = Array.isArray(elevationResult.images) ? elevationResult.images[0] : elevationResult.images;
+          drawings[`elevation_${direction.toLowerCase()}`] = {
+            success: true,
+            image: imageUrl,
+            direction,
+            viewType: '2d_elevation',
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          // Generation failed, use fallback
+          console.warn(`Generation failed for ${direction} elevation, using fallback`);
+          drawings[`elevation_${direction.toLowerCase()}`] = {
+            success: false,
+            error: elevationResult.error || 'Image generation failed',
+            image: `https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=${direction}+Elevation`
+          };
+        }
 
       } catch (error) {
         console.error(`Error generating ${direction} elevation:`, error);
@@ -1324,13 +1395,26 @@ class ReplicateService {
       const structuralParams = this.buildStructuralDiagramParams(buildingProgram, designReasoning, projectContext);
       const structuralResult = await this.generateArchitecturalImage(structuralParams);
 
-      diagrams.structural = {
-        success: true,
-        image: structuralResult.images?.[0] || structuralResult.images,
-        viewType: 'structural_diagram',
-        summary: this.generateStructuralSummary(buildingProgram, designReasoning, projectContext),
-        timestamp: new Date().toISOString()
-      };
+      // Check if generation succeeded
+      if (structuralResult.success && structuralResult.images) {
+        const imageUrl = Array.isArray(structuralResult.images) ? structuralResult.images[0] : structuralResult.images;
+        diagrams.structural = {
+          success: true,
+          image: imageUrl,
+          viewType: 'structural_diagram',
+          summary: this.generateStructuralSummary(buildingProgram, designReasoning, projectContext),
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        // Generation failed, use fallback
+        console.warn('Generation failed for structural diagram, using fallback');
+        diagrams.structural = {
+          success: false,
+          error: structuralResult.error || 'Image generation failed',
+          image: 'https://via.placeholder.com/1024x1024/16A085/FFFFFF?text=Structural+Diagram',
+          summary: this.generateStructuralSummary(buildingProgram, designReasoning, projectContext)
+        };
+      }
 
     } catch (error) {
       console.error('Error generating structural diagram:', error);
@@ -1347,13 +1431,26 @@ class ReplicateService {
       const mepParams = this.buildMEPDiagramParams(buildingProgram, designReasoning, projectContext);
       const mepResult = await this.generateArchitecturalImage(mepParams);
 
-      diagrams.mep = {
-        success: true,
-        image: mepResult.images?.[0] || mepResult.images,
-        viewType: 'mep_diagram',
-        summary: this.generateMEPSummary(buildingProgram, designReasoning, projectContext),
-        timestamp: new Date().toISOString()
-      };
+      // Check if generation succeeded
+      if (mepResult.success && mepResult.images) {
+        const imageUrl = Array.isArray(mepResult.images) ? mepResult.images[0] : mepResult.images;
+        diagrams.mep = {
+          success: true,
+          image: imageUrl,
+          viewType: 'mep_diagram',
+          summary: this.generateMEPSummary(buildingProgram, designReasoning, projectContext),
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        // Generation failed, use fallback
+        console.warn('Generation failed for MEP diagram, using fallback');
+        diagrams.mep = {
+          success: false,
+          error: mepResult.error || 'Image generation failed',
+          image: 'https://via.placeholder.com/1024x1024/E67E22/FFFFFF?text=MEP+Diagram',
+          summary: this.generateMEPSummary(buildingProgram, designReasoning, projectContext)
+        };
+      }
 
     } catch (error) {
       console.error('Error generating MEP diagram:', error);
