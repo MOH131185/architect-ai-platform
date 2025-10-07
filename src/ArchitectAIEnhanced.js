@@ -676,39 +676,58 @@ const ArchitectAIEnhanced = () => {
       const aiResult = await aiIntegrationService.generateCompleteDesign(projectContext, portfolioImages);
 
       console.log('✅ AI design generation complete:', aiResult);
+      console.log('🔍 Checking outputs structure:', aiResult.outputs);
 
       // SIMPLIFIED: Extract outputs from generateCompleteDesign result
       // Expected structure: aiResult.outputs.floorPlans.floorPlans, aiResult.outputs.views.views, etc.
       const { outputs } = aiResult;
 
+      // Validate outputs exists
+      if (!outputs) {
+        console.error('❌ No outputs object found in aiResult. Full result:', aiResult);
+        throw new Error('AI service did not return outputs. Check API keys and service configuration.');
+      }
+
       // Extract per-level floor plans with fallback handling
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
       const floorPlansData = outputs?.floorPlans?.floorPlans || {};
       const floorPlanImages = Object.values(floorPlansData)
-        .filter(fp => fp.success && fp.image)
+        .filter(fp => fp && fp.image) // Don't filter by success - show fallback images too
         .map(fp => fp.image);
 
       // Extract 3D views (exterior and interior) with fallback handling
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
       const viewsData = outputs?.views?.views || {};
       const preview3DImages = Object.values(viewsData)
-        .filter(view => view.success && view.image)
+        .filter(view => view && view.image) // Don't filter by success - show fallback images too
         .map(view => view.image);
 
       // Extract technical drawings (sections and elevations)
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
       const technicalDrawingsData = outputs?.technicalDrawings?.drawings || {};
       const technicalDrawingImages = Object.entries(technicalDrawingsData)
-        .filter(([key, drawing]) => drawing?.success && drawing?.image)
+        .filter(([key, drawing]) => drawing && drawing.image) // Don't filter by success
         .map(([key, drawing]) => drawing.image);
 
       // Extract engineering diagrams (structural and MEP)
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
       const engineeringDiagramsData = outputs?.engineeringDiagrams?.diagrams || {};
       const engineeringDiagramImages = Object.values(engineeringDiagramsData)
-        .filter(diagram => diagram?.success && diagram?.image)
+        .filter(diagram => diagram && diagram.image) // Don't filter by success
         .map(diagram => diagram.image);
 
-      console.log('📊 Extracted floor plan images:', floorPlanImages.length, 'images');
-      console.log('📊 Extracted 3D preview images:', preview3DImages.length, 'images');
+      console.log('📊 Extracted floor plan images:', floorPlanImages.length, 'images', floorPlanImages);
+      console.log('📊 Extracted 3D preview images:', preview3DImages.length, 'images', preview3DImages);
       console.log('📊 Extracted technical drawings:', technicalDrawingImages.length, 'images');
       console.log('📊 Extracted engineering diagrams:', engineeringDiagramImages.length, 'images');
+
+      // Debug: Log the raw data structures if images are missing
+      if (floorPlanImages.length === 0) {
+        console.warn('⚠️ No floor plan images found. Raw data:', floorPlansData);
+      }
+      if (preview3DImages.length === 0) {
+        console.warn('⚠️ No 3D images found. Raw data:', viewsData);
+      }
 
       // Transform AI results to structured design data with comprehensive outputs
       const designData = {
