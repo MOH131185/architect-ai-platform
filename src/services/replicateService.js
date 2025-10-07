@@ -61,7 +61,8 @@ class ReplicateService {
    */
   async createPrediction(params) {
     const requestBody = {
-      version: "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+      // Prefer explicit model for wider API compatibility
+      model: "stability-ai/sdxl",
       input: {
         prompt: params.prompt || this.buildDefaultPrompt(params),
         negative_prompt: params.negativePrompt || "blurry, low quality, distorted, unrealistic",
