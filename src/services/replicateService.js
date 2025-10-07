@@ -18,9 +18,23 @@ class ReplicateService {
   constructor() {
     this.apiKey = REPLICATE_API_KEY;
     this.isProduction = process.env.NODE_ENV === 'production';
+
+    // In production, we don't need the API key on client side - the serverless functions handle it
+    // Only check for API key in development
     if (!this.apiKey && !this.isProduction) {
       console.warn('Replicate API key not found in development. Image generation will use placeholder images.');
     }
+
+    // Log the environment for debugging
+    console.log('🔧 ReplicateService initialized:', {
+      isProduction: this.isProduction,
+      hasApiKey: !!this.apiKey,
+      apiKeyLength: this.apiKey?.length || 0,
+      urls: {
+        predictions: REPLICATE_API_PROXY_URL,
+        status: REPLICATE_STATUS_URL
+      }
+    });
   }
 
   /**
@@ -35,8 +49,9 @@ class ReplicateService {
       isProduction: this.isProduction
     });
 
-    // In production we rely on serverless proxy and should not require client key
-    if (!this.apiKey && !this.isProduction) {
+    // In production, serverless functions handle auth - no client-side key needed
+    // In development, we need the API key
+    if (!this.isProduction && !this.apiKey) {
       console.warn('⚠️ No API key in development, using fallback');
       return this.getFallbackImage(generationParams);
     }
@@ -95,6 +110,9 @@ class ReplicateService {
       }
     };
 
+    console.log('🌐 Sending request to:', REPLICATE_API_PROXY_URL);
+    console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
+
     const response = await fetch(REPLICATE_API_PROXY_URL, {
       method: 'POST',
       headers: {
@@ -103,12 +121,15 @@ class ReplicateService {
       body: JSON.stringify(requestBody)
     });
 
+    console.log('📨 Response status:', response.status, response.statusText);
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('Replicate API error details:', {
         status: response.status,
         statusText: response.statusText,
-        errorData
+        errorData,
+        url: REPLICATE_API_PROXY_URL
       });
       throw new Error(`Replicate API error: ${response.status} - ${errorData.detail || errorData.error || response.statusText}`);
     }
