@@ -50,7 +50,8 @@ class ReplicateService {
     console.log('🎨 Starting image generation:', {
       viewType: generationParams.viewType,
       hasApiKey: !!this.apiKey,
-      isProduction: this.isProduction
+      isProduction: this.isProduction,
+      apiProxyUrl: REPLICATE_API_PROXY_URL
     });
 
     // In production, serverless functions handle auth - no client-side key needed
@@ -63,6 +64,11 @@ class ReplicateService {
     try {
       console.log('📡 Creating prediction...');
       const prediction = await this.createPrediction(generationParams);
+
+      if (!prediction || !prediction.id) {
+        console.error('❌ No prediction ID returned!', prediction);
+        throw new Error('Failed to create prediction - no ID returned');
+      }
 
       console.log('⏳ Waiting for completion...');
       const result = await this.waitForCompletion(prediction.id);
@@ -145,18 +151,30 @@ class ReplicateService {
     console.log('📨 Response status:', response.status, response.statusText);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Replicate API error details:', {
+      const errorText = await response.text();
+      console.error('❌ Replicate API error details:', {
         status: response.status,
         statusText: response.statusText,
-        errorData,
-        url: REPLICATE_API_PROXY_URL
+        url: REPLICATE_API_PROXY_URL,
+        errorText: errorText
       });
-      throw new Error(`Replicate API error: ${response.status} - ${errorData.detail || errorData.error || response.statusText}`);
+
+      let errorData = {};
+      try {
+        errorData = JSON.parse(errorText);
+      } catch (e) {
+        errorData = { rawError: errorText };
+      }
+
+      throw new Error(`Replicate API error: ${response.status} - ${errorData.detail || errorData.error || errorText || response.statusText}`);
     }
 
     const result = await response.json();
-    console.log('✅ Replicate prediction created:', result.id);
+    console.log('✅ Replicate prediction created:', {
+      id: result.id,
+      status: result.status,
+      urls: result.urls
+    });
     return result;
   }
 
