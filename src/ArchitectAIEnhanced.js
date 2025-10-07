@@ -679,88 +679,40 @@ const ArchitectAIEnhanced = () => {
 
       console.log('✅ AI design generation complete:', aiResult);
 
-      // Extract images from AI result with proper fallback handling
-      const extractFloorPlanImages = () => {
-        // NEW: Step 6 comprehensive outputs structure
-        if (aiResult.outputs?.floorPlans?.floorPlans) {
-          // Extract all floor plan images from per-level generation
-          const allFloorPlans = Object.values(aiResult.outputs.floorPlans.floorPlans)
-            .filter(fp => fp.success && fp.image)
-            .map(fp => fp.image);
-          if (allFloorPlans.length > 0) return allFloorPlans;
-        }
+      // SIMPLIFIED: Extract outputs from generateCompleteDesign result
+      // Expected structure: aiResult.outputs.floorPlans.floorPlans, aiResult.outputs.views.views, etc.
+      const { outputs } = aiResult;
 
-        // Legacy paths for backward compatibility
-        if (aiResult.floorPlan?.floorPlan?.images) return aiResult.floorPlan.floorPlan.images;
-        if (aiResult.floorPlan?.images) return aiResult.floorPlan.images;
-        if (aiResult.visualizations?.floorPlan?.images) return aiResult.visualizations.floorPlan.images;
-        if (aiResult.visualizations?.floorPlan?.floorPlan?.images) return aiResult.visualizations.floorPlan.floorPlan.images;
-        return [];
-      };
+      // Extract per-level floor plans with fallback handling
+      const floorPlansData = outputs?.floorPlans?.floorPlans || {};
+      const floorPlanImages = Object.values(floorPlansData)
+        .filter(fp => fp.success && fp.image)
+        .map(fp => fp.image);
 
-      const extract3DImages = () => {
-        // NEW: Step 6 comprehensive views structure
-        if (aiResult.outputs?.views?.views) {
-          // Extract all exterior and interior 3D views
-          const allViews = Object.values(aiResult.outputs.views.views)
-            .filter(view => view.success && view.image)
-            .map(view => view.image);
-          if (allViews.length > 0) return allViews;
-        }
+      // Extract 3D views (exterior and interior) with fallback handling
+      const viewsData = outputs?.views?.views || {};
+      const preview3DImages = Object.values(viewsData)
+        .filter(view => view.success && view.image)
+        .map(view => view.image);
 
-        // Legacy paths for backward compatibility
-        if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
-        if (aiResult.preview3D?.images) return aiResult.preview3D.images;
-        if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
-        if (aiResult.visualizations?.preview3D?.preview3D?.images) return aiResult.visualizations.preview3D.preview3D.images;
-        if (aiResult.visualization?.images) return aiResult.visualization.images;
-        return [];
-      };
+      // Extract technical drawings (sections and elevations)
+      const technicalDrawingsData = outputs?.technicalDrawings?.drawings || {};
+      const technicalDrawingImages = Object.entries(technicalDrawingsData)
+        .filter(([key, drawing]) => drawing?.success && drawing?.image)
+        .map(([key, drawing]) => drawing.image);
 
-      // Extract additional Step 6 outputs (technical drawings and engineering diagrams)
-      const extractTechnicalDrawings = () => {
-        if (aiResult.outputs?.technicalDrawings?.drawings) {
-          const drawings = [];
-          const drawingsObj = aiResult.outputs.technicalDrawings.drawings;
+      // Extract engineering diagrams (structural and MEP)
+      const engineeringDiagramsData = outputs?.engineeringDiagrams?.diagrams || {};
+      const engineeringDiagramImages = Object.values(engineeringDiagramsData)
+        .filter(diagram => diagram?.success && diagram?.image)
+        .map(diagram => diagram.image);
 
-          // Add section
-          if (drawingsObj.section?.image) drawings.push(drawingsObj.section.image);
+      console.log('📊 Extracted floor plan images:', floorPlanImages.length, 'images');
+      console.log('📊 Extracted 3D preview images:', preview3DImages.length, 'images');
+      console.log('📊 Extracted technical drawings:', technicalDrawingImages.length, 'images');
+      console.log('📊 Extracted engineering diagrams:', engineeringDiagramImages.length, 'images');
 
-          // Add elevations
-          ['elevation_north', 'elevation_south', 'elevation_east', 'elevation_west'].forEach(key => {
-            if (drawingsObj[key]?.image) drawings.push(drawingsObj[key].image);
-          });
-
-          return drawings;
-        }
-        return [];
-      };
-
-      const extractEngineeringDiagrams = () => {
-        if (aiResult.outputs?.engineeringDiagrams?.diagrams) {
-          const diagrams = [];
-          if (aiResult.outputs.engineeringDiagrams.diagrams.structural?.image) {
-            diagrams.push(aiResult.outputs.engineeringDiagrams.diagrams.structural.image);
-          }
-          if (aiResult.outputs.engineeringDiagrams.diagrams.mep?.image) {
-            diagrams.push(aiResult.outputs.engineeringDiagrams.diagrams.mep.image);
-          }
-          return diagrams;
-        }
-        return [];
-      };
-
-      const floorPlanImages = extractFloorPlanImages();
-      const preview3DImages = extract3DImages();
-      const technicalDrawingImages = extractTechnicalDrawings();
-      const engineeringDiagramImages = extractEngineeringDiagrams();
-
-      console.log('📊 Extracted floor plan images:', floorPlanImages);
-      console.log('📊 Extracted 3D preview images:', preview3DImages);
-      console.log('📊 Extracted technical drawings:', technicalDrawingImages);
-      console.log('📊 Extracted engineering diagrams:', engineeringDiagramImages);
-
-      // Transform AI results to existing structure
+      // Transform AI results to structured design data with comprehensive outputs
       const designData = {
         floorPlan: {
           rooms: aiResult.reasoning?.spatialOrganization ?
@@ -773,20 +725,24 @@ const ArchitectAIEnhanced = () => {
             ],
           efficiency: "85%",
           circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
-          // Add 2D floor plan images (Step 6: Per-level floor plans)
+          // Simplified: Direct image array
           images: floorPlanImages,
-          // Include raw outputs data for detailed access
-          perLevelData: aiResult.outputs?.floorPlans?.floorPlans || null
+          // Structured per-level data for detailed rendering
+          perLevelData: floorPlansData,
+          // Check if we have actual generated images or fallbacks
+          hasFallback: Object.values(floorPlansData).some(fp => !fp.success)
         },
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
           materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
-          // Add 3D preview images (Step 6: 4 exterior + 2 interior views)
+          // Simplified: Direct image array
           images: preview3DImages,
-          // Include raw views data for detailed access
-          viewsData: aiResult.outputs?.views?.views || null
+          // Structured views data for detailed rendering
+          viewsData: viewsData,
+          // Check if we have actual generated images or fallbacks
+          hasFallback: Object.values(viewsData).some(view => !view.success)
         },
         technical: {
           structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
@@ -797,13 +753,15 @@ const ArchitectAIEnhanced = () => {
             plumbing: "Water-efficient fixtures"
           },
           compliance: ["Local building codes", "Accessibility standards", "Energy efficiency requirements"],
-          // Add technical drawings (Step 6: Section + 4 elevations)
+          // Simplified: Direct image arrays
           drawingImages: technicalDrawingImages,
-          // Add engineering diagrams (Step 6: Structural + MEP with UK Part A/L compliance)
           engineeringImages: engineeringDiagramImages,
-          // Include raw data for detailed access
-          drawingsData: aiResult.outputs?.technicalDrawings?.drawings || null,
-          engineeringData: aiResult.outputs?.engineeringDiagrams?.diagrams || null
+          // Structured data for detailed rendering
+          drawingsData: technicalDrawingsData,
+          engineeringData: engineeringDiagramsData,
+          // Check if we have actual generated images or fallbacks
+          hasDrawingFallback: Object.values(technicalDrawingsData).some(d => !d?.success),
+          hasEngineeringFallback: Object.values(engineeringDiagramsData).some(d => !d?.success)
         },
         cost: {
           construction: aiResult.feasibility?.cost || "To be determined",
@@ -814,12 +772,21 @@ const ArchitectAIEnhanced = () => {
           generated: true,
           timestamp: aiResult.timestamp,
           workflow: aiResult.workflow,
-          isFallback: aiResult.isFallback
+          isFallback: aiResult.isFallback || false,
+          // Add summary of what was generated
+          summary: {
+            floorPlansCount: floorPlanImages.length,
+            viewsCount: preview3DImages.length,
+            technicalDrawingsCount: technicalDrawingImages.length,
+            engineeringDiagramsCount: engineeringDiagramImages.length
+          }
         },
-        // Add new features
+        // Preserve additional data
         styleDetection: aiResult.styleDetection || null,
         compatibilityAnalysis: aiResult.compatibilityAnalysis || null,
-        visualizations: aiResult.visualizations || null
+        reasoning: aiResult.reasoning || null,
+        // Store full outputs for advanced usage
+        rawOutputs: outputs
       };
 
       setGeneratedDesigns(designData);
@@ -1705,6 +1672,172 @@ const ArchitectAIEnhanced = () => {
                   </div>
                 </div>
               </div>
+
+              {/* COMPREHENSIVE 2D/3D OUTPUTS - Per-Level Floor Plans and All Views */}
+              {(generatedDesigns?.floorPlan.perLevelData && Object.keys(generatedDesigns.floorPlan.perLevelData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <Layers className="w-6 h-6 text-blue-600 mr-2" />
+                    Per-Level Floor Plans ({Object.keys(generatedDesigns.floorPlan.perLevelData).length} Levels)
+                  </h3>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(generatedDesigns.floorPlan.perLevelData).map(([level, plan]) => (
+                      <div key={level} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span>{level}</span>
+                          {!plan.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gray-100 rounded-lg overflow-hidden h-48">
+                          {plan.image ? (
+                            <img
+                              src={plan.image}
+                              alt={`${level} Floor Plan`}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/400x300/ECF0F1/2C3E50?text=Floor+Plan+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                        {plan.surfaceArea && (
+                          <p className="text-xs text-gray-600 mt-2">Area: {plan.surfaceArea}m²</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All 3D Views - Exterior and Interior */}
+              {(generatedDesigns?.model3D.viewsData && Object.keys(generatedDesigns.model3D.viewsData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <Eye className="w-6 h-6 text-purple-600 mr-2" />
+                    3D Architectural Views ({Object.keys(generatedDesigns.model3D.viewsData).length} Views)
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {Object.entries(generatedDesigns.model3D.viewsData).map(([key, view]) => (
+                      <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span>{view.direction || view.spaceName || key.replace(/_/g, ' ').toUpperCase()}</span>
+                          {!view.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg overflow-hidden h-64">
+                          {view.image ? (
+                            <img
+                              src={view.image}
+                              alt={`${view.direction || view.spaceName || key} View`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/800x600/3498DB/FFFFFF?text=3D+View+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-white text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600 mt-2 capitalize">
+                          {key.includes('exterior') ? '🏢 Exterior View' : '🏠 Interior View'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Technical Drawings - Sections and Elevations */}
+              {(generatedDesigns?.technical.drawingsData && Object.keys(generatedDesigns.technical.drawingsData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-gray-50 to-slate-100 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <FileText className="w-6 h-6 text-gray-600 mr-2" />
+                    Technical Drawings ({Object.keys(generatedDesigns.technical.drawingsData).length} Drawings)
+                  </h3>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(generatedDesigns.technical.drawingsData).map(([key, drawing]) => (
+                      <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                          {!drawing.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gray-100 rounded-lg overflow-hidden h-48">
+                          {drawing.image ? (
+                            <img
+                              src={drawing.image}
+                              alt={`${key.replace(/_/g, ' ')} Drawing`}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/400x300/95A5A6/2C3E50?text=Drawing+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Engineering Diagrams - Structural and MEP */}
+              {(generatedDesigns?.technical.engineeringData && Object.keys(generatedDesigns.technical.engineeringData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <Cpu className="w-6 h-6 text-green-600 mr-2" />
+                    Engineering Diagrams ({Object.keys(generatedDesigns.technical.engineeringData).length} Diagrams)
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {Object.entries(generatedDesigns.technical.engineeringData).map(([key, diagram]) => (
+                      <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span className="capitalize">{key} Diagram</span>
+                          {!diagram.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gray-100 rounded-lg overflow-hidden h-64">
+                          {diagram.image ? (
+                            <img
+                              src={diagram.image}
+                              alt={`${key} Engineering Diagram`}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/800x600/27AE60/FFFFFF?text=Diagram+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Technical Specifications */}
               <div className="mt-8 grid md:grid-cols-3 gap-6">
