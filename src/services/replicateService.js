@@ -126,7 +126,7 @@ class ReplicateService {
       version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
       input: {
         prompt: params.prompt || this.buildDefaultPrompt(params),
-        negative_prompt: params.negativePrompt || "blurry, low quality, distorted, unrealistic",
+        negative_prompt: params.negativePrompt || "blurry, low quality, distorted, unrealistic, inappropriate content, NSFW, adult content, explicit content",
         width: params.width || 1024,
         height: params.height || 1024,
         num_inference_steps: params.steps || 50,
@@ -232,7 +232,7 @@ class ReplicateService {
       perspective = 'exterior view'
     } = params;
 
-    return `Professional architectural visualization, ${perspective} of a ${architecturalStyle} ${buildingType} in ${location}, constructed with ${materials}, ${timeOfDay} lighting, ${weather}, photorealistic, high quality, detailed, architectural photography style, professional rendering`;
+    return `Professional architectural visualization, ${perspective} of a ${architecturalStyle} ${buildingType} in ${location}, constructed with ${materials}, ${timeOfDay} lighting, ${weather}, photorealistic, high quality, detailed, architectural photography style, professional rendering, safe for work, professional content, educational architectural visualization`;
   }
 
   /**
@@ -349,7 +349,7 @@ class ReplicateService {
       case 'exterior':
         return {
           ...baseParams,
-          prompt: `${baseParams.architecturalStyle} ${baseParams.buildingType} exterior view, ${baseParams.materials}, professional architectural photography, daylight, clear sky, photorealistic`,
+          prompt: `${baseParams.architecturalStyle} ${baseParams.buildingType} exterior view, ${baseParams.materials}, professional architectural photography, daylight, clear sky, photorealistic, safe for work, professional content, educational architectural visualization`,
           perspective: 'exterior view',
           width: 1024,
           height: 768
@@ -358,7 +358,7 @@ class ReplicateService {
       case 'interior':
         return {
           ...baseParams,
-          prompt: `Interior view of ${baseParams.buildingType}, modern ${baseParams.architecturalStyle} design, spacious, well-lit, professional architectural photography, photorealistic`,
+          prompt: `Interior view of ${baseParams.buildingType}, modern ${baseParams.architecturalStyle} design, spacious, well-lit, professional architectural photography, photorealistic, safe for work, professional content, educational architectural visualization`,
           perspective: 'interior view',
           width: 1024,
           height: 768
@@ -367,7 +367,7 @@ class ReplicateService {
       case 'site_plan':
         return {
           ...baseParams,
-          prompt: `Aerial view, site plan, ${baseParams.buildingType} in ${baseParams.location}, urban context, professional architectural drawing style, technical illustration`,
+          prompt: `Aerial view, site plan, ${baseParams.buildingType} in ${baseParams.location}, urban context, professional architectural drawing style, technical illustration, safe for work, professional content, educational architectural visualization`,
           perspective: 'aerial view',
           width: 1024,
           height: 1024
@@ -376,7 +376,7 @@ class ReplicateService {
       case 'section':
         return {
           ...baseParams,
-          prompt: `Architectural section view, ${baseParams.buildingType}, technical drawing style, professional architectural illustration, detailed, precise`,
+          prompt: `Architectural section view, ${baseParams.buildingType}, technical drawing style, professional architectural illustration, detailed, precise, safe for work, professional content, educational architectural visualization`,
           perspective: 'section view',
           width: 1024,
           height: 768
@@ -482,7 +482,7 @@ class ReplicateService {
     }
 
     return {
-      prompt: `Professional architectural floor plan, ${architecturalStyle} ${buildingProgram}, ${area} total area, ${roomDescription}, technical drawing style, 2D top-down plan view, detailed room layout with labeled spaces, dimension lines, door swings, window openings, wall thickness, furniture layout, professional architectural drafting, clean black and white line drawing, precise measurements, architectural blueprint style, high resolution, detailed annotations`,
+      prompt: `Professional architectural floor plan, ${architecturalStyle} ${buildingProgram}, ${area} total area, ${roomDescription}, technical drawing style, 2D top-down plan view, detailed room layout with labeled spaces, dimension lines, door swings, window openings, wall thickness, furniture layout, professional architectural drafting, clean black and white line drawing, precise measurements, architectural blueprint style, high resolution, detailed annotations, safe for work, professional content, educational architectural visualization`,
       buildingType: buildingProgram,
       architecturalStyle,
       location,
@@ -492,7 +492,7 @@ class ReplicateService {
       height: 1024,
       steps: 50,
       guidanceScale: 7.5,
-      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, blurry, low quality, sketchy, incomplete, distorted"
+      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, blurry, low quality, sketchy, incomplete, distorted, inappropriate content, NSFW, adult content, explicit content"
     };
   }
 
@@ -547,7 +547,7 @@ class ReplicateService {
       height: 768,
       steps: 50,
       guidanceScale: 7.5,
-      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, floor plan, elevation, blurry, low quality, sketchy"
+      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, floor plan, elevation, blurry, low quality, sketchy, inappropriate content, NSFW, adult content, explicit content"
     };
   }
 
@@ -608,7 +608,7 @@ class ReplicateService {
       height: 768,
       steps: 50,
       guidanceScale: 7.5,
-      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, floor plan, section, blurry, low quality, sketchy, distorted"
+      negativePrompt: "3D, perspective, color photograph, realistic rendering, photorealistic, floor plan, section, blurry, low quality, sketchy, distorted, inappropriate content, NSFW, adult content, explicit content"
     };
   }
 
@@ -1107,7 +1107,7 @@ class ReplicateService {
       }
     }
 
-    const prompt = `Professional architectural floor plan, 2D top-down plan view, ${level.level}, ${dwellingInfo}, ${style} style, ${surfaceArea}m² total area, detailed room layout: ${functions}, space allocation: ${spacePlanningDesc}, dimension lines with measurements, door swings and door symbols, window openings with window symbols, wall thickness indicators (200mm-300mm), furniture layout suggestions (beds, tables, seating), scale 1:50 or 1:100, north arrow, room labels with areas, circulation paths highlighted, entrance marked, technical drawing style, clean black lines on white background, architectural blueprint precision, high resolution ≥1024×1024 pixels, detailed annotations`;
+    const prompt = `Professional architectural floor plan, 2D top-down plan view, ${level.level}, ${dwellingInfo}, ${style} style, ${surfaceArea}m² total area, detailed room layout: ${functions}, space allocation: ${spacePlanningDesc}, dimension lines with measurements, door swings and door symbols, window openings with window symbols, wall thickness indicators (200mm-300mm), furniture layout suggestions (beds, tables, seating), scale 1:50 or 1:100, north arrow, room labels with areas, circulation paths highlighted, entrance marked, technical drawing style, clean black lines on white background, architectural blueprint precision, high resolution ≥1024×1024 pixels, detailed annotations, safe for work, professional content, educational architectural visualization`;
 
     return {
       prompt,
