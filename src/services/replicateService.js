@@ -933,7 +933,7 @@ class ReplicateService {
         floorPlans[level.level] = {
           success: false,
           error: error.message,
-          fallback: `https://via.placeholder.com/1024x1024/ECF0F1/2C3E50?text=${encodeURIComponent(level.level + ' Floor Plan')}`
+          image: `https://via.placeholder.com/1024x1024/ECF0F1/2C3E50?text=${encodeURIComponent(level.level + ' Floor Plan')}`
         };
       }
     }
@@ -1028,7 +1028,7 @@ class ReplicateService {
         views[`exterior_${direction.toLowerCase()}`] = {
           success: false,
           error: error.message,
-          fallback: `https://via.placeholder.com/1024x1024/3498DB/FFFFFF?text=${direction}+Exterior+View`
+          image: `https://via.placeholder.com/1024x1024/3498DB/FFFFFF?text=${direction}+Exterior+View`
         };
       }
     }
@@ -1054,7 +1054,7 @@ class ReplicateService {
         views[`interior_${space.key}`] = {
           success: false,
           error: error.message,
-          fallback: `https://via.placeholder.com/1024x1024/E74C3C/FFFFFF?text=${encodeURIComponent(space.name)}`
+          image: `https://via.placeholder.com/1024x1024/E74C3C/FFFFFF?text=${encodeURIComponent(space.name)}`
         };
       }
     }
@@ -1200,7 +1200,7 @@ class ReplicateService {
       drawings.section = {
         success: false,
         error: error.message,
-        fallback: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing'
+        image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing'
       };
     }
 
@@ -1225,7 +1225,7 @@ class ReplicateService {
         drawings[`elevation_${direction.toLowerCase()}`] = {
           success: false,
           error: error.message,
-          fallback: `https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=${direction}+Elevation`
+          image: `https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=${direction}+Elevation`
         };
       }
     }
@@ -1337,7 +1337,7 @@ class ReplicateService {
       diagrams.structural = {
         success: false,
         error: error.message,
-        fallback: 'https://via.placeholder.com/1024x1024/16A085/FFFFFF?text=Structural+Diagram',
+        image: 'https://via.placeholder.com/1024x1024/16A085/FFFFFF?text=Structural+Diagram',
         summary: this.generateStructuralSummary(buildingProgram, designReasoning, projectContext)
       };
     }
@@ -1360,7 +1360,7 @@ class ReplicateService {
       diagrams.mep = {
         success: false,
         error: error.message,
-        fallback: 'https://via.placeholder.com/1024x1024/E67E22/FFFFFF?text=MEP+Diagram',
+        image: 'https://via.placeholder.com/1024x1024/E67E22/FFFFFF?text=MEP+Diagram',
         summary: this.generateMEPSummary(buildingProgram, designReasoning, projectContext)
       };
     }
