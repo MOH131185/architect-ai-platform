@@ -75,9 +75,24 @@ class ReplicateService {
         output: result.output
       });
 
+      // Extract image URL from various possible output formats
+      let imageUrl = null;
+      if (Array.isArray(result.output) && result.output.length > 0) {
+        imageUrl = result.output[0];
+      } else if (typeof result.output === 'string') {
+        imageUrl = result.output;
+      } else if (result.output?.image) {
+        imageUrl = result.output.image;
+      } else if (result.output?.url) {
+        imageUrl = result.output.url;
+      }
+
+      console.log('📸 Extracted image URL:', imageUrl);
+
       return {
         success: true,
-        images: result.output,
+        images: imageUrl ? [imageUrl] : result.output,
+        image: imageUrl,
         predictionId: prediction.id,
         parameters: generationParams,
         timestamp: new Date().toISOString()
@@ -100,7 +115,8 @@ class ReplicateService {
    */
   async createPrediction(params) {
     const requestBody = {
-      // Use version field with full model version hash for Replicate API
+      // Use stable-diffusion-xl (SDXL) model - more reliable
+      // Model: stability-ai/sdxl
       version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
       input: {
         prompt: params.prompt || this.buildDefaultPrompt(params),
@@ -109,6 +125,7 @@ class ReplicateService {
         height: params.height || 1024,
         num_inference_steps: params.steps || 50,
         guidance_scale: params.guidanceScale || 7.5,
+        num_outputs: 1,
         seed: params.seed || Math.floor(Math.random() * 1000000),
         ...this.buildControlNetParams(params)
       }
