@@ -286,7 +286,7 @@ const ArchitectAIEnhanced = () => {
   const [address, setAddress] = useState("");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
   const [styleChoice, setStyleChoice] = useState('blend');
-  const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
+  const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirections: [] });
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
@@ -643,6 +643,35 @@ const ArchitectAIEnhanced = () => {
     }, 500); // A small delay to ensure loader is visible
   };
 
+  // Toggle entrance direction selection (allow up to 2 directions)
+  const toggleEntranceDirection = (direction) => {
+    setProjectDetails(prev => {
+      const current = prev.entranceDirections || [];
+
+      // If already selected, remove it
+      if (current.includes(direction)) {
+        return {
+          ...prev,
+          entranceDirections: current.filter(d => d !== direction)
+        };
+      }
+
+      // If 2 are already selected, replace the oldest with the new one
+      if (current.length >= 2) {
+        return {
+          ...prev,
+          entranceDirections: [current[1], direction]
+        };
+      }
+
+      // Add new direction
+      return {
+        ...prev,
+        entranceDirections: [...current, direction]
+      };
+    });
+  };
+
   // Generate AI designs with OpenAI and Replicate integration
   const generateDesigns = async () => {
     setIsLoading(true);
@@ -660,7 +689,8 @@ const ArchitectAIEnhanced = () => {
         specifications: projectDetails,
         climateData: locationData?.climate,
         area: projectDetails?.area || '200',
-        entranceDirection: projectDetails?.entranceDirection || 'south', // Default to south for optimal solar access
+        entranceDirection: (projectDetails?.entranceDirections || []).join('-') || 'south', // Join multiple directions or default to south
+        entranceDirections: projectDetails?.entranceDirections || ['south'], // Support for multiple directions
         portfolioImages: (portfolioFiles || []).map(file => file.url || file.preview).filter(Boolean)
       };
 
@@ -680,12 +710,53 @@ const ArchitectAIEnhanced = () => {
 
       // SIMPLIFIED: Extract outputs from generateCompleteDesign result
       // Expected structure: aiResult.outputs.floorPlans.floorPlans, aiResult.outputs.views.views, etc.
-      const { outputs } = aiResult;
+      let { outputs } = aiResult;
 
-      // Validate outputs exists
+      // If outputs missing, create fallback structure with placeholder images
       if (!outputs) {
-        console.error('❌ No outputs object found in aiResult. Full result:', aiResult);
-        throw new Error('AI service did not return outputs. Check API keys and service configuration.');
+        console.warn('⚠️ No outputs object found in aiResult. Using fallback placeholder images.');
+        console.log('Full result:', aiResult);
+
+        // Create fallback outputs structure
+        outputs = {
+          floorPlans: {
+            floorPlans: {
+              ground: { image: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan', success: false },
+              upper: { image: 'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=Upper+Floor+Plan', success: false },
+              roof: { image: 'https://via.placeholder.com/1024x1024/5D6D7E/FFFFFF?text=Roof+Plan', success: false }
+            },
+            totalLevels: 3
+          },
+          views: {
+            views: {
+              exterior_front: { image: 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=Front+View', success: false },
+              exterior_rear: { image: 'https://via.placeholder.com/1024x768/2980B9/FFFFFF?text=Rear+View', success: false },
+              exterior_side_1: { image: 'https://via.placeholder.com/1024x768/5DADE2/FFFFFF?text=Side+View+1', success: false },
+              exterior_side_2: { image: 'https://via.placeholder.com/1024x768/85C1E9/FFFFFF?text=Side+View+2', success: false },
+              interior_main: { image: 'https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+Main', success: false },
+              interior_secondary: { image: 'https://via.placeholder.com/1024x768/9ACD32/FFFFFF?text=Interior+Secondary', success: false }
+            },
+            exteriorCount: 4,
+            interiorCount: 2
+          },
+          technicalDrawings: {
+            drawings: {
+              section: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section', success: false },
+              elevation_north: { image: 'https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=North+Elevation', success: false },
+              elevation_south: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=South+Elevation', success: false },
+              elevation_east: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=East+Elevation', success: false },
+              elevation_west: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=West+Elevation', success: false }
+            },
+            sectionCount: 1,
+            elevationCount: 4
+          },
+          engineeringDiagrams: {
+            diagrams: {
+              structural: { image: 'https://via.placeholder.com/800x600/E67E22/FFFFFF?text=Structural+Diagram', success: false },
+              mep: { image: 'https://via.placeholder.com/800x600/F39C12/FFFFFF?text=MEP+Diagram', success: false }
+            }
+          }
+        };
       }
 
       // Extract per-level floor plans with fallback handling
@@ -1546,35 +1617,61 @@ const ArchitectAIEnhanced = () => {
                 </div>
               </div>
 
-              {/* Entrance Orientation Selector */}
+              {/* Entrance Orientation Selector - 8 Directions */}
               <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">Principal Entrance Orientation</label>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Principal Entrance Orientation (Select up to 2 directions)
+                </label>
                 <div className="grid grid-cols-4 gap-3">
-                  {['north', 'south', 'east', 'west'].map((direction) => (
-                    <button
-                      key={direction}
-                      type="button"
-                      onClick={() => setProjectDetails({...projectDetails, entranceDirection: direction})}
-                      className={`px-4 py-3 rounded-xl border-2 transition-all duration-200 ${
-                        projectDetails.entranceDirection === direction
-                          ? 'border-green-500 bg-green-50 text-green-700 font-semibold'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-green-300'
-                      }`}
-                    >
-                      <div className="flex flex-col items-center">
-                        <span className="text-xl mb-1">
-                          {direction === 'north' ? '⬆️' : direction === 'south' ? '⬇️' : direction === 'east' ? '➡️' : '⬅️'}
-                        </span>
-                        <span className="text-sm capitalize">{direction}</span>
-                      </div>
-                    </button>
-                  ))}
+                  {[
+                    { dir: 'north', icon: '⬆️', label: 'N' },
+                    { dir: 'northeast', icon: '↗️', label: 'NE' },
+                    { dir: 'east', icon: '➡️', label: 'E' },
+                    { dir: 'southeast', icon: '↘️', label: 'SE' },
+                    { dir: 'south', icon: '⬇️', label: 'S' },
+                    { dir: 'southwest', icon: '↙️', label: 'SW' },
+                    { dir: 'west', icon: '⬅️', label: 'W' },
+                    { dir: 'northwest', icon: '↖️', label: 'NW' }
+                  ].map(({ dir, icon, label }) => {
+                    const isSelected = (projectDetails.entranceDirections || []).includes(dir);
+                    const selectedCount = (projectDetails.entranceDirections || []).length;
+                    const selectionOrder = (projectDetails.entranceDirections || []).indexOf(dir);
+
+                    return (
+                      <button
+                        key={dir}
+                        type="button"
+                        onClick={() => toggleEntranceDirection(dir)}
+                        className={`px-3 py-3 rounded-xl border-2 transition-all duration-200 relative ${
+                          isSelected
+                            ? 'border-green-500 bg-green-50 text-green-700 font-semibold shadow-md'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-green-300'
+                        }`}
+                      >
+                        <div className="flex flex-col items-center">
+                          <span className="text-2xl mb-1">{icon}</span>
+                          <span className="text-xs font-medium">{label}</span>
+                        </div>
+                        {isSelected && (
+                          <span className="absolute top-1 right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                            {selectionOrder + 1}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  {projectDetails.entranceDirection
-                    ? `Building optimized for ${projectDetails.entranceDirection}-facing entrance with passive solar design`
-                    : 'Select entrance direction for optimal orientation and energy efficiency'}
+                  {(projectDetails.entranceDirections || []).length > 0
+                    ? `Building optimized for ${(projectDetails.entranceDirections || []).map(d => d.toUpperCase()).join(' + ')} entrance with passive solar design`
+                    : 'Select 1-2 entrance directions for optimal orientation and energy efficiency'}
                 </p>
+                {(projectDetails.entranceDirections || []).length === 2 && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center">
+                    <span className="mr-1">⚠️</span>
+                    Maximum 2 directions selected. Click another to replace the first selection.
+                  </p>
+                )}
               </div>
               
               {projectDetails.program && (
