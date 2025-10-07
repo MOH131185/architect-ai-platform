@@ -920,39 +920,77 @@ const ArchitectAIEnhanced = () => {
     } catch (error) {
       console.error('❌ AI generation error:', error);
 
-      // Fallback to mock data if AI fails
+      // Robust fallback with placeholder images so 2D/3D always render
+      const fallbackPerLevelData = {
+        ground: { image: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan', success: false, surfaceArea: 200 },
+        first_floor: { image: 'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=First+Floor+Plan', success: false, surfaceArea: 200 },
+        roof: { image: 'https://via.placeholder.com/1024x1024/5D6D7E/FFFFFF?text=Roof+Plan', success: false, surfaceArea: 200 }
+      };
+      const fallbackViewsData = {
+        exterior_north: { image: 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=North+Exterior+View', success: false, direction: 'North' },
+        exterior_south: { image: 'https://via.placeholder.com/1024x768/2980B9/FFFFFF?text=South+Exterior+View', success: false, direction: 'South' },
+        exterior_east: { image: 'https://via.placeholder.com/1024x768/5DADE2/FFFFFF?text=East+Exterior+View', success: false, direction: 'East' },
+        exterior_west: { image: 'https://via.placeholder.com/1024x768/85C1E9/FFFFFF?text=West+Exterior+View', success: false, direction: 'West' },
+        interior_living_space: { image: 'https://via.placeholder.com/1024x768/E74C3C/FFFFFF?text=Main+Living+Space', success: false, spaceName: 'Main Living Space' },
+        interior_bedroom: { image: 'https://via.placeholder.com/1024x768/C0392B/FFFFFF?text=Master+Bedroom', success: false, spaceName: 'Master Bedroom' }
+      };
+      const fallbackTechnicalDrawings = {
+        section: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing', success: false },
+        elevation_north: { image: 'https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=North+Elevation', success: false },
+        elevation_south: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=South+Elevation', success: false },
+        elevation_east: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=East+Elevation', success: false },
+        elevation_west: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=West+Elevation', success: false }
+      };
+      const fallbackEngineeringDiagrams = {
+        structural: { image: 'https://via.placeholder.com/1024x1024/16A085/FFFFFF?text=Structural+Diagram', success: false },
+        mep: { image: 'https://via.placeholder.com/1024x1024/E67E22/FFFFFF?text=MEP+Diagram', success: false }
+      };
+
       setGeneratedDesigns({
         floorPlan: {
           rooms: [
-            { name: "Reception", area: "25m²" },
-            { name: "Main Space", area: "100m²" },
-            { name: "Support Areas", area: "50m²" },
-            { name: "Circulation", area: "25m²" }
+            { name: 'Reception', area: '25m²' },
+            { name: 'Main Space', area: '100m²' },
+            { name: 'Support Areas', area: '50m²' },
+            { name: 'Circulation', area: '25m²' }
           ],
-          efficiency: "85%",
-          circulation: "Optimized circulation flow"
+          efficiency: '85%',
+          circulation: 'Optimized circulation flow',
+          images: Object.values(fallbackPerLevelData).map(fp => fp.image),
+          perLevelData: fallbackPerLevelData,
+          hasFallback: true
         },
         model3D: {
           style: `${styleChoice} architectural design`,
-          features: ["Natural lighting", "Sustainable design", "Modern aesthetics"],
-          materials: ["Sustainable materials", "Local resources"],
-          sustainabilityFeatures: ["Energy efficient", "Eco-friendly"],
-          images: []
+          features: ['Natural lighting', 'Sustainable design', 'Modern aesthetics'],
+          materials: ['Sustainable materials', 'Local resources'],
+          sustainabilityFeatures: ['Energy efficient', 'Eco-friendly'],
+          images: Object.values(fallbackViewsData)
+            .filter(v => v && v.image && String(v.image).includes('Exterior'))
+            .map(v => v.image),
+          viewsData: fallbackViewsData,
+          hasFallback: true
         },
         technical: {
-          structural: "Modern structural system",
-          foundation: "Engineered foundation",
+          structural: 'Modern structural system',
+          foundation: 'Engineered foundation',
           mep: {
-            hvac: "Energy-efficient system",
-            electrical: "Smart lighting",
-            plumbing: "Water-efficient fixtures"
+            hvac: 'Energy-efficient system',
+            electrical: 'Smart lighting',
+            plumbing: 'Water-efficient fixtures'
           },
-          compliance: ["Building codes", "Accessibility", "Energy standards"]
+          compliance: ['Building codes', 'Accessibility', 'Energy standards'],
+          drawingImages: Object.values(fallbackTechnicalDrawings).map(d => d.image),
+          engineeringImages: Object.values(fallbackEngineeringDiagrams).map(d => d.image),
+          drawingsData: fallbackTechnicalDrawings,
+          engineeringData: fallbackEngineeringDiagrams,
+          hasDrawingFallback: true,
+          hasEngineeringFallback: true
         },
         cost: {
-          construction: "Contact for estimate",
-          timeline: "12-18 months",
-          energySavings: "Significant"
+          construction: 'Contact for estimate',
+          timeline: '12-18 months',
+          energySavings: 'Significant'
         },
         aiMetadata: {
           generated: false,
@@ -1864,6 +1902,9 @@ const ArchitectAIEnhanced = () => {
                         src={generatedDesigns.floorPlan.images[0]}
                         alt="AI Generated Floor Plan"
                         className="w-full h-full object-contain"
+                        onError={(e) => {
+                          e.target.src = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Error';
+                        }}
                       />
                     ) : (
                       // Fallback to room grid visualization
@@ -1906,6 +1947,9 @@ const ArchitectAIEnhanced = () => {
                         src={generatedDesigns.model3D.images[0]}
                         alt="AI Generated 3D Visualization"
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.src = 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+View+Error';
+                        }}
                       />
                     ) : (
                       // Fallback to placeholder 3D visualization

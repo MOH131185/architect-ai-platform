@@ -28,9 +28,11 @@ export default async function handler(req, res) {
     // Check API keys (show only existence, not values)
     apiKeys: {
       openai: {
-        exists: !!process.env.REACT_APP_OPENAI_API_KEY,
-        length: process.env.REACT_APP_OPENAI_API_KEY?.length || 0,
-        prefix: process.env.REACT_APP_OPENAI_API_KEY?.substring(0, 10) || 'NOT_SET'
+        exists: !!(process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY),
+        length: (process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY)?.length || 0,
+        prefix: (process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY)?.substring(0, 10) || 'NOT_SET',
+        alternativeExists: !!process.env.OPENAI_API_KEY,
+        alternativeLength: process.env.OPENAI_API_KEY?.length || 0
       },
       replicate: {
         exists: !!process.env.REACT_APP_REPLICATE_API_KEY,

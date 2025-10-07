@@ -19,15 +19,24 @@ REACT_APP_OPENWEATHER_API_KEY=your_openweather_api_key_here
 **Your actual key**: See your local `.env` file
 
 ### 3. OpenAI API Key
+Recommended (serverless reads this):
+```
+OPENAI_API_KEY=your_openai_api_key_here
+```
+Optional (kept for compatibility with local dev):
 ```
 REACT_APP_OPENAI_API_KEY=your_openai_api_key_here
 ```
-**Your actual key**: Starts with `sk-svcacct-` or `sk-proj-` - check your local `.env` file
+**Your actual key**: Starts with `sk-` (e.g., `sk-proj-...`). Either variable works; `OPENAI_API_KEY` is preferred in production.
 
 ### 4. Replicate API Token (Set BOTH for compatibility)
+Recommended (serverless reads this):
+```
+REPLICATE_API_TOKEN=your_replicate_api_token_here
+```
+Optional (kept for compatibility with local dev):
 ```
 REACT_APP_REPLICATE_API_KEY=your_replicate_api_token_here
-REPLICATE_API_TOKEN=your_replicate_api_token_here
 ```
 **Your actual token**: Starts with `r8_` - check your local `.env` file
 
@@ -57,13 +66,17 @@ REPLICATE_API_TOKEN=your_replicate_api_token_here
 
 After redeployment completes (2-3 minutes):
 
-1. Visit https://www.archiaisolution.pro/
-2. Complete the workflow:
+1. Visit your deployed site (e.g., https://your-project.vercel.app/)
+2. Open https://your-project.vercel.app/api/debug-info
+   - Check `apiKeys.openai.exists` is `true`
+   - Check `apiKeys.replicate.alternativeExists` or `exists` is `true`
+   - Check `replicateTest.success` is `true` (status 200)
+3. Return to the app and complete the workflow:
    - Enter an address (or detect location)
    - Upload portfolio files
    - Enter project specifications (e.g., Medical Clinic, 500m²)
    - Click "Generate AI Designs"
-3. You should see:
+You should see:
    - 2D Floor Plan generated (not placeholder)
    - 3D Model Visualization generated (not placeholder)
    - AI reasoning and feasibility analysis

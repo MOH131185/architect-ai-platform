@@ -5,13 +5,13 @@
 
 require('dotenv').config();
 
-const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
+const REPLICATE_API_KEY = process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY;
 
 console.log('🔍 Testing Replicate API Configuration...\n');
 
 // Check if API key exists
 if (!REPLICATE_API_KEY) {
-  console.error('❌ REPLICATE_API_KEY is not set in .env file');
+  console.error('❌ REPLICATE_API_KEY / REPLICATE_API_TOKEN is not set in .env file');
   process.exit(1);
 }
 
