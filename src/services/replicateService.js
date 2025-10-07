@@ -17,8 +17,9 @@ const REPLICATE_STATUS_URL = process.env.NODE_ENV === 'production'
 class ReplicateService {
   constructor() {
     this.apiKey = REPLICATE_API_KEY;
-    if (!this.apiKey) {
-      console.warn('Replicate API key not found. Image generation will use placeholder images.');
+    this.isProduction = process.env.NODE_ENV === 'production';
+    if (!this.apiKey && !this.isProduction) {
+      console.warn('Replicate API key not found in development. Image generation will use placeholder images.');
     }
   }
 
@@ -28,7 +29,8 @@ class ReplicateService {
    * @returns {Promise<Object>} Generation result with image URLs
    */
   async generateArchitecturalImage(generationParams) {
-    if (!this.apiKey) {
+    // In production we rely on serverless proxy and should not require client key
+    if (!this.apiKey && !this.isProduction) {
       return this.getFallbackImage(generationParams);
     }
 
@@ -186,7 +188,7 @@ class ReplicateService {
    * Generate 2D floor plan using specialized architectural models
    */
   async generateFloorPlan(projectContext) {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return this.getFallbackFloorPlan(projectContext);
     }
 
@@ -215,7 +217,7 @@ class ReplicateService {
    * Generate 3D architectural preview
    */
   async generate3DPreview(projectContext) {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return this.getFallback3DPreview(projectContext);
     }
 
@@ -406,7 +408,7 @@ class ReplicateService {
    * Generate 2D section view
    */
   async generateSection(projectContext) {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return this.getFallbackSection(projectContext);
     }
 
@@ -461,7 +463,7 @@ class ReplicateService {
    * Generate four elevation views
    */
   async generateElevations(projectContext) {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return this.getFallbackElevations(projectContext);
     }
 
@@ -841,7 +843,7 @@ class ReplicateService {
    * Get generation status
    */
   async getGenerationStatus(predictionId) {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return { status: 'unavailable', message: 'API key not configured' };
     }
 
@@ -870,7 +872,7 @@ class ReplicateService {
    * Cancel generation
    */
   async cancelGeneration(predictionId) {
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return { success: false, message: 'API key not configured' };
     }
 

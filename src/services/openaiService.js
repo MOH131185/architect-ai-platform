@@ -13,8 +13,9 @@ const OPENAI_API_URL = process.env.NODE_ENV === 'production'
 class OpenAIService {
   constructor() {
     this.apiKey = OPENAI_API_KEY;
-    if (!this.apiKey) {
-      console.warn('OpenAI API key not found. Design reasoning will use fallback responses.');
+    this.isProduction = process.env.NODE_ENV === 'production';
+    if (!this.apiKey && !this.isProduction) {
+      console.warn('OpenAI API key not found in development. Design reasoning will use fallback responses.');
     }
   }
 
@@ -24,7 +25,8 @@ class OpenAIService {
    * @returns {Promise<Object>} Design reasoning and recommendations
    */
   async generateDesignReasoning(projectContext) {
-    if (!this.apiKey) {
+    // In production we rely on serverless proxy and should not require client key
+    if (!this.apiKey && !this.isProduction) {
       return this.getFallbackReasoning(projectContext);
     }
 
@@ -505,7 +507,7 @@ Provide:
 Format as structured analysis with specific recommendations.
     `;
 
-    if (!this.apiKey) {
+    if (!this.apiKey && !this.isProduction) {
       return {
         feasibility: 'Medium',
         constraints: ['API unavailable for detailed analysis'],
