@@ -29,15 +29,33 @@ class ReplicateService {
    * @returns {Promise<Object>} Generation result with image URLs
    */
   async generateArchitecturalImage(generationParams) {
+    console.log('🎨 Starting image generation:', {
+      viewType: generationParams.viewType,
+      hasApiKey: !!this.apiKey,
+      isProduction: this.isProduction
+    });
+
     // In production we rely on serverless proxy and should not require client key
     if (!this.apiKey && !this.isProduction) {
+      console.warn('⚠️ No API key in development, using fallback');
       return this.getFallbackImage(generationParams);
     }
 
     try {
+      console.log('📡 Creating prediction...');
       const prediction = await this.createPrediction(generationParams);
+
+      console.log('⏳ Waiting for completion...');
       const result = await this.waitForCompletion(prediction.id);
-      
+
+      console.log('✅ Generation successful:', {
+        predictionId: prediction.id,
+        outputType: typeof result.output,
+        outputIsArray: Array.isArray(result.output),
+        outputLength: result.output?.length,
+        output: result.output
+      });
+
       return {
         success: true,
         images: result.output,
@@ -47,11 +65,13 @@ class ReplicateService {
       };
 
     } catch (error) {
-      console.error('Replicate generation error:', error);
+      console.error('❌ Replicate generation error:', error);
+      const fallbackImage = this.getFallbackImage(generationParams);
+      console.log('🔄 Using fallback image:', fallbackImage);
       return {
         success: false,
         error: error.message,
-        fallback: this.getFallbackImage(generationParams)
+        images: fallbackImage.images || fallbackImage.image
       };
     }
   }
@@ -922,10 +942,13 @@ class ReplicateService {
    * @returns {Promise<Object>} Floor plans for each level
    */
   async generatePerLevelFloorPlans(buildingProgram, projectContext) {
+    console.log('🏗️ STEP 6.1: Generating per-level floor plans...');
     const perLevelAllocation = buildingProgram.perLevelAllocation || [];
+    console.log(`📊 Found ${perLevelAllocation.length} levels to generate`);
     const floorPlans = {};
 
     for (const level of perLevelAllocation) {
+      console.log(`🎯 Generating floor plan for: ${level.level}`);
       try {
         const floorPlanParams = this.buildPerLevelFloorPlanParams(level, buildingProgram, projectContext);
         const result = await this.generateArchitecturalImage(floorPlanParams);
@@ -1021,6 +1044,7 @@ class ReplicateService {
    * @returns {Promise<Object>} Exterior and interior views
    */
   async generateComprehensiveViews(projectContext) {
+    console.log('🏢 STEP 6.2: Generating comprehensive 3D views...');
     const {
       buildingProgram,
       blendedStyle,
@@ -1032,8 +1056,10 @@ class ReplicateService {
 
     // Step 6.2.1: Four exterior 3D views (cardinal directions)
     const exteriorDirections = ['North', 'South', 'East', 'West'];
+    console.log(`📊 Generating ${exteriorDirections.length} exterior views`);
 
     for (const direction of exteriorDirections) {
+      console.log(`🎯 Generating exterior view: ${direction}`);
       try {
         const exteriorParams = this.buildExterior3DParams(direction, projectContext);
         const result = await this.generateArchitecturalImage(exteriorParams);
