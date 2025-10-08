@@ -504,11 +504,11 @@ class AIIntegrationService {
     try {
       console.log('Starting comprehensive architectural generation...');
 
-      // Generate consistent seed for the entire project
-      const projectSeed = Math.floor(Math.random() * 1000000);
+      // STEP 1: Use projectSeed from context (generated once in frontend)
+      const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       const enhancedContext = { ...projectContext, seed: projectSeed };
 
-      console.log(`🎲 Using project seed: ${projectSeed} for consistent 2D/3D generation`);
+      console.log(`🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`);
 
       // Step 1: Detect architectural style from portfolio if provided
       let styleDetection = null;

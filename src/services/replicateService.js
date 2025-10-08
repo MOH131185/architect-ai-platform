@@ -248,8 +248,8 @@ class ReplicateService {
   async generateMultipleViews(projectContext, viewTypes = ['exterior', 'interior', 'site_plan']) {
     const results = {};
 
-    // Use consistent seed across all views for the same project
-    const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
+    // STEP 1: Use unified projectSeed from context (no random generation here)
+    const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
     for (const viewType of viewTypes) {
       try {
@@ -284,8 +284,8 @@ class ReplicateService {
       const floorCount = this.calculateFloorCount(projectContext);
       const results = {};
 
-      // Use consistent seed for all floor levels
-      const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
+      // STEP 1: Use unified projectSeed from context (no random generation here)
+      const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
       // Always generate ground floor (most important)
       console.log('🏗️ Generating ground floor plan...');
@@ -342,8 +342,8 @@ class ReplicateService {
     try {
       const results = {};
 
-      // Use consistent seed for all technical drawings
-      const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
+      // STEP 1: Use unified projectSeed from context (no random generation here)
+      const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
       if (generateAllDrawings) {
         // Generate all 4 elevations

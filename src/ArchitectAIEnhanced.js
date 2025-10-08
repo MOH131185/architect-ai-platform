@@ -662,6 +662,9 @@ const ArchitectAIEnhanced = () => {
     setIsLoading(true);
 
     try {
+      // Generate unified project seed ONCE for entire project
+      const projectSeed = Math.floor(Math.random() * 1000000);
+
       // Prepare project context for AI
       const projectContext = {
         buildingProgram: projectDetails?.program || 'mixed-use building',
@@ -673,10 +676,14 @@ const ArchitectAIEnhanced = () => {
         specifications: projectDetails,
         climateData: locationData?.climate,
         area: projectDetails?.area || '200',
-        entranceDirection: projectDetails?.entranceDirection || 'S'
+        entranceDirection: projectDetails?.entranceDirection || 'S',
+        floorArea: parseInt(projectDetails?.area) || 200,
+        // STEP 1: Unified seed for ALL outputs in this project
+        projectSeed: projectSeed
       };
 
       console.log('🎨 Starting AI design generation with:', projectContext);
+      console.log('🎲 Project seed for consistent outputs:', projectSeed);
 
       // Check if portfolio images are available for style detection
       const portfolioImages = (portfolioFiles || [])
