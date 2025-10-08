@@ -683,22 +683,60 @@ const ArchitectAIEnhanced = () => {
         // Try multiple possible paths for 3D views (2 exterior + 1 interior)
         const images = [];
 
-        // Extract from visualizations.views
+        console.log('🔍 Checking aiResult structure:', {
+          hasVisualizations: !!aiResult.visualizations,
+          hasViews: !!aiResult.visualizations?.views,
+          viewKeys: aiResult.visualizations?.views ? Object.keys(aiResult.visualizations.views) : []
+        });
+
+        // Extract from visualizations.views (object with keys: exterior_front, exterior_side, interior)
         if (aiResult.visualizations?.views) {
           const views = aiResult.visualizations.views;
-          // Exterior front view
-          if (views.exterior_front?.images) images.push(...views.exterior_front.images);
-          else if (views.exterior?.images) images.push(...views.exterior.images);
+
+          // Exterior front view - try different possible paths
+          if (views.exterior_front) {
+            if (views.exterior_front.images && views.exterior_front.images.length > 0) {
+              images.push(views.exterior_front.images[0]);
+              console.log('✅ Added exterior_front image');
+            } else if (views.exterior_front.fallback?.images) {
+              images.push(views.exterior_front.fallback.images[0]);
+              console.log('⚠️ Using fallback for exterior_front');
+            }
+          } else if (views.exterior) {
+            if (views.exterior.images && views.exterior.images.length > 0) {
+              images.push(views.exterior.images[0]);
+              console.log('✅ Added exterior image (fallback)');
+            }
+          }
 
           // Exterior side view
-          if (views.exterior_side?.images) images.push(...views.exterior_side.images);
+          if (views.exterior_side) {
+            if (views.exterior_side.images && views.exterior_side.images.length > 0) {
+              images.push(views.exterior_side.images[0]);
+              console.log('✅ Added exterior_side image');
+            } else if (views.exterior_side.fallback?.images) {
+              images.push(views.exterior_side.fallback.images[0]);
+              console.log('⚠️ Using fallback for exterior_side');
+            }
+          }
 
           // Interior view
-          if (views.interior?.images) images.push(...views.interior.images);
+          if (views.interior) {
+            if (views.interior.images && views.interior.images.length > 0) {
+              images.push(views.interior.images[0]);
+              console.log('✅ Added interior image');
+            } else if (views.interior.fallback?.images) {
+              images.push(views.interior.fallback.images[0]);
+              console.log('⚠️ Using fallback for interior');
+            }
+          }
+
+          console.log('🖼️ Total extracted images:', images.length, images);
         }
 
         // Fallback to old paths for compatibility
         if (images.length === 0) {
+          console.log('⚠️ No images found in visualizations.views, trying fallback paths...');
           if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
           if (aiResult.preview3D?.images) return aiResult.preview3D.images;
           if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
