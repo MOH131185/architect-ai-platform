@@ -523,15 +523,23 @@ class AIIntegrationService {
       console.log('🏗️ Generating multi-level floor plans...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
+      // STEP 2: Capture ground floor plan image URL for use as ControlNet control
+      let floorPlanControlImage = null;
+      if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
+        floorPlanControlImage = floorPlans.floorPlans.ground.images[0];
+        console.log('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
+      }
+
       // Step 3: Generate elevations and sections
       console.log('🏗️ Generating elevations (N,S,E,W) and sections (longitudinal, cross)...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(enhancedContext);
 
-      // Step 4: Generate 3D views (2 exterior + 1 interior) - with same seed
+      // Step 4: Generate 3D views (2 exterior + 1 interior) - STEP 2: Pass floor plan as control image
       console.log('🏗️ Generating 3D views: exterior_front, exterior_side, interior');
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
-        ['exterior_front', 'exterior_side', 'interior']
+        ['exterior_front', 'exterior_side', 'interior'],
+        floorPlanControlImage // STEP 2: Pass floor plan as ControlNet control
       );
 
       // Step 5: Generate design reasoning with style context

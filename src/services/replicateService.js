@@ -244,8 +244,9 @@ class ReplicateService {
 
   /**
    * Generate multiple architectural views with consistent seed for same project
+   * STEP 2: Accept optional controlImage to use floor plan as ControlNet input
    */
-  async generateMultipleViews(projectContext, viewTypes = ['exterior', 'interior', 'site_plan']) {
+  async generateMultipleViews(projectContext, viewTypes = ['exterior', 'interior', 'site_plan'], controlImage = null) {
     const results = {};
 
     // STEP 1: Use unified projectSeed from context (no random generation here)
@@ -256,6 +257,13 @@ class ReplicateService {
         const params = this.buildViewParameters(projectContext, viewType);
         // Use same seed for consistency across all views
         params.seed = projectSeed;
+
+        // STEP 2: If controlImage is provided, add it for ControlNet guidance
+        if (controlImage) {
+          params.image = controlImage;
+          console.log(`🎯 Using floor plan as ControlNet control for ${viewType} view`);
+        }
+
         const result = await this.generateArchitecturalImage(params);
         results[viewType] = result;
       } catch (error) {
@@ -476,16 +484,17 @@ class ReplicateService {
 
   /**
    * Generate 3D architectural preview
+   * STEP 2: Accept optional controlImage to use floor plan as ControlNet input
    */
-  async generate3DPreview(projectContext) {
+  async generate3DPreview(projectContext, controlImage = null) {
     if (!this.apiKey) {
       return this.getFallback3DPreview(projectContext);
     }
 
     try {
-      const params = this.build3DPreviewParameters(projectContext);
+      const params = this.build3DPreviewParameters(projectContext, controlImage);
       const result = await this.generateArchitecturalImage(params);
-      
+
       return {
         success: true,
         preview3D: result,
@@ -743,8 +752,9 @@ class ReplicateService {
 
   /**
    * Build parameters for 3D preview generation
+   * STEP 2: Accept optional controlImage to use floor plan as ControlNet input
    */
-  build3DPreviewParameters(projectContext) {
+  build3DPreviewParameters(projectContext, controlImage = null) {
     const {
       buildingProgram = 'commercial building',
       architecturalStyle = 'contemporary',
@@ -752,7 +762,7 @@ class ReplicateService {
       materials = 'glass and steel'
     } = projectContext;
 
-    return {
+    const params = {
       prompt: `Professional 3D architectural visualization, ${architecturalStyle} ${buildingProgram} in ${location}, constructed with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed, 3D perspective view, modern design, clean lines, natural lighting, professional rendering`,
       buildingType: buildingProgram,
       architecturalStyle,
@@ -765,6 +775,14 @@ class ReplicateService {
       guidanceScale: 8.0,
       negativePrompt: "2D, floor plan, technical drawing, blueprint, black and white, line drawing, blurry, low quality"
     };
+
+    // STEP 2: If controlImage is provided, add it for ControlNet guidance
+    if (controlImage) {
+      params.image = controlImage;
+      console.log('🎯 Using floor plan as ControlNet control image for 3D preview');
+    }
+
+    return params;
   }
 
   /**
