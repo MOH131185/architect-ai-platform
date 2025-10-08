@@ -701,21 +701,56 @@ const ArchitectAIEnhanced = () => {
         // Extract multi-level floor plans (ground, upper, roof)
         const floorPlans = {};
 
+        console.log('📋 Extracting floor plans from aiResult:', {
+          hasFloorPlans: !!aiResult.floorPlans,
+          hasFloorPlan: !!aiResult.floorPlan,
+          floorPlansKeys: aiResult.floorPlans ? Object.keys(aiResult.floorPlans) : [],
+        });
+
         if (aiResult.floorPlans) {
           // New comprehensive structure
           if (aiResult.floorPlans.floorPlans) {
             const plans = aiResult.floorPlans.floorPlans;
-            if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
-            if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
-            if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
+            console.log('📋 Found floorPlans.floorPlans:', Object.keys(plans));
+
+            // Extract ground floor
+            if (plans.ground?.images && plans.ground.images.length > 0) {
+              floorPlans.ground = plans.ground.images[0];
+              console.log('✅ Extracted ground floor plan');
+            } else if (plans.ground?.isFallback) {
+              // Use fallback if it exists
+              floorPlans.ground = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan';
+              console.log('⚠️ Using fallback for ground floor');
+            }
+
+            // Extract upper floor
+            if (plans.upper?.images && plans.upper.images.length > 0) {
+              floorPlans.upper = plans.upper.images[0];
+              console.log('✅ Extracted upper floor plan');
+            }
+
+            // Extract roof plan
+            if (plans.roof?.images && plans.roof.images.length > 0) {
+              floorPlans.roof = plans.roof.images[0];
+              console.log('✅ Extracted roof plan');
+            }
           }
         } else if (aiResult.floorPlan?.floorPlan?.images) {
           // Legacy single floor plan
           floorPlans.ground = aiResult.floorPlan.floorPlan.images[0];
+          console.log('✅ Extracted legacy floor plan');
         } else if (aiResult.floorPlan?.images) {
           floorPlans.ground = aiResult.floorPlan.images[0];
+          console.log('✅ Extracted simple floor plan');
         }
 
+        // Ensure we always have at least a fallback ground floor
+        if (!floorPlans.ground) {
+          floorPlans.ground = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Loading';
+          console.log('⚠️ No floor plan found, using placeholder');
+        }
+
+        console.log('📋 Final floor plans:', Object.keys(floorPlans));
         return floorPlans;
       };
 
@@ -725,20 +760,54 @@ const ArchitectAIEnhanced = () => {
           sections: {}
         };
 
+        console.log('📐 Extracting technical drawings from aiResult:', {
+          hasTechnicalDrawings: !!aiResult.technicalDrawings,
+          technicalDrawingsKeys: aiResult.technicalDrawings ? Object.keys(aiResult.technicalDrawings) : []
+        });
+
         if (aiResult.technicalDrawings?.technicalDrawings) {
           const td = aiResult.technicalDrawings.technicalDrawings;
+          console.log('📐 Found technicalDrawings.technicalDrawings:', Object.keys(td));
 
           // Extract elevations
-          if (td.elevation_north?.images) drawings.elevations.north = td.elevation_north.images[0];
-          if (td.elevation_south?.images) drawings.elevations.south = td.elevation_south.images[0];
-          if (td.elevation_east?.images) drawings.elevations.east = td.elevation_east.images[0];
-          if (td.elevation_west?.images) drawings.elevations.west = td.elevation_west.images[0];
+          ['north', 'south', 'east', 'west'].forEach(dir => {
+            const key = `elevation_${dir}`;
+            if (td[key]?.images && td[key].images.length > 0) {
+              drawings.elevations[dir] = td[key].images[0];
+              console.log(`✅ Extracted ${dir} elevation`);
+            } else if (td[key]?.isFallback) {
+              drawings.elevations[dir] = `https://via.placeholder.com/1024x768/8B4513/FFFFFF?text=${dir.charAt(0).toUpperCase() + dir.slice(1)}+Elevation`;
+              console.log(`⚠️ Using fallback for ${dir} elevation`);
+            }
+          });
 
           // Extract sections
-          if (td.section_longitudinal?.images) drawings.sections.longitudinal = td.section_longitudinal.images[0];
-          if (td.section_cross?.images) drawings.sections.cross = td.section_cross.images[0];
+          ['longitudinal', 'cross'].forEach(type => {
+            const key = `section_${type}`;
+            if (td[key]?.images && td[key].images.length > 0) {
+              drawings.sections[type] = td[key].images[0];
+              console.log(`✅ Extracted ${type} section`);
+            } else if (td[key]?.isFallback) {
+              drawings.sections[type] = `https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=${type.charAt(0).toUpperCase() + type.slice(1)}+Section`;
+              console.log(`⚠️ Using fallback for ${type} section`);
+            }
+          });
         }
 
+        // Add at least one fallback if nothing was extracted
+        if (Object.keys(drawings.elevations).length === 0) {
+          drawings.elevations.north = 'https://via.placeholder.com/1024x768/8B4513/FFFFFF?text=Elevation+Loading';
+          console.log('⚠️ No elevations found, using placeholder');
+        }
+        if (Object.keys(drawings.sections).length === 0) {
+          drawings.sections.longitudinal = 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Section+Loading';
+          console.log('⚠️ No sections found, using placeholder');
+        }
+
+        console.log('📐 Final technical drawings:', {
+          elevations: Object.keys(drawings.elevations),
+          sections: Object.keys(drawings.sections)
+        });
         return drawings;
       };
 

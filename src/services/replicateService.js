@@ -29,13 +29,21 @@ class ReplicateService {
    */
   async generateArchitecturalImage(generationParams) {
     if (!this.apiKey) {
-      return this.getFallbackImage(generationParams);
+      console.warn('No Replicate API key, using fallback image');
+      const fallback = this.getFallbackImage(generationParams);
+      return {
+        success: false,
+        images: fallback.images || [fallback],
+        isFallback: true,
+        parameters: generationParams,
+        timestamp: new Date().toISOString()
+      };
     }
 
     try {
       const prediction = await this.createPrediction(generationParams);
       const result = await this.waitForCompletion(prediction.id);
-      
+
       return {
         success: true,
         images: result.output,
@@ -46,10 +54,15 @@ class ReplicateService {
 
     } catch (error) {
       console.error('Replicate generation error:', error);
+      console.warn('Using fallback image due to error');
+      const fallback = this.getFallbackImage(generationParams);
       return {
         success: false,
+        images: fallback.images || [fallback],
         error: error.message,
-        fallback: this.getFallbackImage(generationParams)
+        isFallback: true,
+        parameters: generationParams,
+        timestamp: new Date().toISOString()
       };
     }
   }
@@ -207,7 +220,9 @@ class ReplicateService {
       console.log('🏗️ Generating ground floor plan...');
       const groundParams = this.buildFloorPlanParameters(projectContext, 'ground');
       groundParams.seed = projectSeed;
+      console.log('Floor plan params:', groundParams.viewType, groundParams.prompt?.substring(0, 100));
       results.ground = await this.generateArchitecturalImage(groundParams);
+      console.log('Ground floor result:', results.ground.success ? 'Success' : 'Failed', results.ground.isFallback ? '(Fallback)' : '');
 
       // Only generate additional levels if explicitly requested
       if (generateAllLevels) {
@@ -781,14 +796,25 @@ class ReplicateService {
    */
   getFallbackImage(params) {
     const { viewType = 'exterior', style = 'contemporary' } = params;
-    
+
     // Return placeholder image URLs based on view type
     const fallbackImages = {
       exterior: 'https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder',
+      exterior_front: 'https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Front+View',
+      exterior_side: 'https://via.placeholder.com/1024x768/5AA3E5/FFFFFF?text=Side+View',
       interior: 'https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder',
       site_plan: 'https://via.placeholder.com/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder',
       section: 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Section+View+Placeholder',
+      section_longitudinal: 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Longitudinal+Section',
+      section_cross: 'https://via.placeholder.com/1024x768/E89611/FFFFFF?text=Cross+Section',
       floor_plan: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder',
+      floor_plan_ground: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan',
+      floor_plan_upper: 'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=Upper+Floor+Plan',
+      floor_plan_roof: 'https://via.placeholder.com/1024x1024/1A252F/FFFFFF?text=Roof+Plan',
+      elevation_north: 'https://via.placeholder.com/1024x768/8B4513/FFFFFF?text=North+Elevation',
+      elevation_south: 'https://via.placeholder.com/1024x768/A0522D/FFFFFF?text=South+Elevation',
+      elevation_east: 'https://via.placeholder.com/1024x768/CD853F/FFFFFF?text=East+Elevation',
+      elevation_west: 'https://via.placeholder.com/1024x768/D2691E/FFFFFF?text=West+Elevation',
       '3d_preview': 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'
     };
 
