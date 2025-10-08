@@ -218,25 +218,43 @@ const MapView = ({ center, zoom }) => {
         }
       });
 
-      // Note: google.maps.Marker is deprecated as of Feb 2024
-      // Migration to AdvancedMarkerElement requires importing the marker library
-      // Current Marker implementation is supported for 12+ months minimum
-      // Suppressing warning as migration requires significant refactoring
-      const newMarker = new window.google.maps.Marker({
-        position: center,
-        map: newMap,
-        title: 'Project Location',
-        icon: {
-          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-              <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
-              <circle cx="16" cy="16" r="6" fill="#ffffff"/>
-            </svg>
-          `),
-          scaledSize: new window.google.maps.Size(32, 32),
-          anchor: new window.google.maps.Point(16, 16),
-        }
-      });
+      // Use AdvancedMarkerElement if available, otherwise fall back to standard Marker
+      let newMarker;
+
+      if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
+        // Create custom HTML marker element
+        const markerDiv = document.createElement('div');
+        markerDiv.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+            <circle cx="16" cy="16" r="6" fill="#ffffff"/>
+          </svg>
+        `;
+
+        newMarker = new window.google.maps.marker.AdvancedMarkerElement({
+          position: center,
+          map: newMap,
+          title: 'Project Location',
+          content: markerDiv
+        });
+      } else {
+        // Fallback to standard Marker for older Maps API versions
+        newMarker = new window.google.maps.Marker({
+          position: center,
+          map: newMap,
+          title: 'Project Location',
+          icon: {
+            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+                <circle cx="16" cy="16" r="6" fill="#ffffff"/>
+              </svg>
+            `),
+            scaledSize: new window.google.maps.Size(32, 32),
+            anchor: new window.google.maps.Point(16, 16),
+          }
+        });
+      }
 
       mapRef.current = newMap;
       markerRef.current = newMarker;
@@ -251,7 +269,14 @@ const MapView = ({ center, zoom }) => {
     if (!isMapLoaded || !mapRef.current || !markerRef.current) return;
 
     try {
-      markerRef.current.setPosition(center);
+      // Handle both AdvancedMarkerElement and standard Marker
+      if (markerRef.current.position && typeof markerRef.current.position === 'object') {
+        // AdvancedMarkerElement uses position property
+        markerRef.current.position = center;
+      } else if (markerRef.current.setPosition) {
+        // Standard Marker uses setPosition method
+        markerRef.current.setPosition(center);
+      }
       mapRef.current.setCenter(center);
     } catch (error) {
       console.error('Map update error:', error);

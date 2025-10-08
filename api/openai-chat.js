@@ -29,7 +29,11 @@ export default async function handler(req, res) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY;
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+      console.error('OpenAI API key not found in environment variables');
+      return res.status(500).json({
+        error: 'OpenAI API key not configured',
+        details: 'Please set OPENAI_API_KEY in Vercel environment variables'
+      });
     }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
