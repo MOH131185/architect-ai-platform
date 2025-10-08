@@ -680,13 +680,33 @@ const ArchitectAIEnhanced = () => {
       };
 
       const extract3DImages = () => {
-        // Try multiple possible paths for 3D preview images
-        if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
-        if (aiResult.preview3D?.images) return aiResult.preview3D.images;
-        if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
-        if (aiResult.visualizations?.preview3D?.preview3D?.images) return aiResult.visualizations.preview3D.preview3D.images;
-        if (aiResult.visualization?.images) return aiResult.visualization.images;
-        return [];
+        // Try multiple possible paths for 3D views (2 exterior + 1 interior)
+        const images = [];
+
+        // Extract from visualizations.views
+        if (aiResult.visualizations?.views) {
+          const views = aiResult.visualizations.views;
+          // Exterior front view
+          if (views.exterior_front?.images) images.push(...views.exterior_front.images);
+          else if (views.exterior?.images) images.push(...views.exterior.images);
+
+          // Exterior side view
+          if (views.exterior_side?.images) images.push(...views.exterior_side.images);
+
+          // Interior view
+          if (views.interior?.images) images.push(...views.interior.images);
+        }
+
+        // Fallback to old paths for compatibility
+        if (images.length === 0) {
+          if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
+          if (aiResult.preview3D?.images) return aiResult.preview3D.images;
+          if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
+          if (aiResult.visualizations?.preview3D?.preview3D?.images) return aiResult.visualizations.preview3D.preview3D.images;
+          if (aiResult.visualization?.images) return aiResult.visualization.images;
+        }
+
+        return images;
       };
 
       const floorPlanImages = extractFloorPlanImages();
@@ -1664,42 +1684,88 @@ const ArchitectAIEnhanced = () => {
                   </div>
                 </div>
                 
-                {/* 3D Model */}
+                {/* 3D Views: 2 Exterior + 1 Interior */}
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
                   <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
                     <Building className="w-5 h-5 text-purple-600 mr-2" />
-                    3D Model Visualization
+                    3D Visualizations (2 Exterior + 1 Interior)
                   </h3>
-                  <div className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-96 flex items-center justify-center relative overflow-hidden">
-                    {generatedDesigns?.model3D.images && generatedDesigns.model3D.images.length > 0 ? (
-                      // Display AI-generated 3D preview image
-                      <img
-                        src={generatedDesigns.model3D.images[0]}
-                        alt="AI Generated 3D Visualization"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      // Fallback to placeholder 3D visualization
-                      <>
-                        <div className="absolute inset-0 bg-black/10"></div>
-                        <div className="relative">
-                          <div className="w-48 h-64 bg-white/20 backdrop-blur-sm rounded-lg transform perspective-1000 rotate-y-12 shadow-2xl">
-                            <div className="absolute inset-x-0 top-0 h-full bg-gradient-to-b from-white/30 to-transparent"></div>
-                            <div className="grid grid-cols-3 gap-2 p-3">
-                              {[...Array(12)].map((_, i) => (
-                                <div key={i} className="bg-blue-300/50 rounded-sm h-4"></div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-64 h-12 bg-black/20 blur-xl rounded-full"></div>
+
+                  <div className="grid md:grid-cols-2 gap-4 mb-4">
+                    {/* Exterior Front View */}
+                    <div className="relative">
+                      <div className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[0] ? (
+                          <img
+                            src={generatedDesigns.model3D.images[0]}
+                            alt="Exterior Front View"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-purple-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[0] ? 'none' : 'flex' }}>
+                          <Eye className="w-12 h-12 text-white/50" />
                         </div>
-                      </>
-                    )}
-                    <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
+                      </div>
+                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
+                        Exterior - Front View
+                      </div>
+                    </div>
+
+                    {/* Exterior Side View */}
+                    <div className="relative">
+                      <div className="bg-gradient-to-br from-purple-400 to-pink-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[1] ? (
+                          <img
+                            src={generatedDesigns.model3D.images[1]}
+                            alt="Exterior Side View"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-pink-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[1] ? 'none' : 'flex' }}>
+                          <Eye className="w-12 h-12 text-white/50" />
+                        </div>
+                      </div>
+                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
+                        Exterior - Side View
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interior View */}
+                  <div className="relative">
+                    <div className="bg-gradient-to-br from-pink-400 to-orange-500 rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                      {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[2] ? (
+                        <img
+                          src={generatedDesigns.model3D.images[2]}
+                          alt="Interior View"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      <div className="absolute inset-0 bg-gradient-to-br from-pink-400/20 to-orange-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[2] ? 'none' : 'flex' }}>
+                        <Eye className="w-12 h-12 text-white/50" />
+                      </div>
+                    </div>
+                    <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
+                      Interior - Main Space
+                    </div>
+                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
                       <Eye className="w-3 h-3 mr-1" />
                       {generatedDesigns?.model3D.images && generatedDesigns.model3D.images.length > 0 ? 'AI Generated' : 'Preview Mode'}
                     </div>
                   </div>
+
                   <div className="mt-4 space-y-2">
                     <p className="text-sm font-medium text-gray-700">{generatedDesigns?.model3D.style}</p>
                     <div className="flex flex-wrap gap-2">

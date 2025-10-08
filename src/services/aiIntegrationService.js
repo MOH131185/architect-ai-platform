@@ -93,11 +93,11 @@ class AIIntegrationService {
   async generateVisualizations(projectContext, reasoning) {
     try {
       console.log('Generating architectural visualizations...');
-      
-      // Generate multiple views
+
+      // Generate multiple views: 2 exterior + 1 interior
       const views = await this.replicate.generateMultipleViews(
-        projectContext, 
-        ['exterior', 'interior', 'site_plan']
+        projectContext,
+        ['exterior_front', 'exterior_side', 'interior']
       );
       
       // Generate style variations

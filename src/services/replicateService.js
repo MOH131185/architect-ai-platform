@@ -253,10 +253,20 @@ class ReplicateService {
 
     switch (viewType) {
       case 'exterior':
+      case 'exterior_front':
         return {
           ...baseParams,
-          prompt: `${baseParams.architecturalStyle} ${baseParams.buildingType} exterior view, ${baseParams.materials}, professional architectural photography, daylight, clear sky, photorealistic`,
-          perspective: 'exterior view',
+          prompt: `Professional 3D architectural visualization, front exterior view of ${baseParams.architecturalStyle} ${baseParams.buildingType}, ${baseParams.materials} construction, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, modern design, landscape context`,
+          perspective: 'exterior front view',
+          width: 1024,
+          height: 768
+        };
+
+      case 'exterior_side':
+        return {
+          ...baseParams,
+          prompt: `Professional 3D architectural visualization, side perspective view of ${baseParams.architecturalStyle} ${baseParams.buildingType}, ${baseParams.materials} construction, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed facade, modern design, landscape context with trees`,
+          perspective: 'exterior side view',
           width: 1024,
           height: 768
         };
@@ -264,7 +274,7 @@ class ReplicateService {
       case 'interior':
         return {
           ...baseParams,
-          prompt: `Interior view of ${baseParams.buildingType}, modern ${baseParams.architecturalStyle} design, spacious, well-lit, professional architectural photography, photorealistic`,
+          prompt: `Professional 3D architectural interior visualization, main living space of ${baseParams.buildingType}, modern ${baseParams.architecturalStyle} interior design, spacious, well-lit with natural light, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture, elegant interior`,
           perspective: 'interior view',
           width: 1024,
           height: 768
