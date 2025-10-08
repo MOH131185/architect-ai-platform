@@ -23,6 +23,77 @@ class ReplicateService {
   }
 
   /**
+   * Create consistent building description for all outputs
+   * This ensures 2D and 3D outputs describe the SAME building
+   */
+  createUnifiedBuildingDescription(projectContext) {
+    const {
+      buildingProgram = 'house',
+      architecturalStyle = 'contemporary',
+      materials = 'brick and glass',
+      floorArea = 200,
+      entranceDirection = 'N'
+    } = projectContext;
+
+    // Calculate consistent building characteristics
+    const floorCount = this.calculateFloorCount(projectContext);
+    const levels = floorCount === 1 ? 'single-story' : `${floorCount}-story`;
+
+    // Create entrance description based on direction
+    const entranceMap = {
+      'N': 'north-facing entrance',
+      'NE': 'northeast-facing entrance',
+      'E': 'east-facing entrance',
+      'SE': 'southeast-facing entrance',
+      'S': 'south-facing entrance',
+      'SW': 'southwest-facing entrance',
+      'W': 'west-facing entrance',
+      'NW': 'northwest-facing entrance'
+    };
+    const entranceDesc = entranceMap[entranceDirection] || 'north-facing entrance';
+
+    // Build unified description used by ALL generation functions
+    return {
+      buildingType: `${levels} ${architecturalStyle} ${buildingProgram}`,
+      fullDescription: `${levels} ${architecturalStyle} ${buildingProgram} with ${entranceDesc}`,
+      materials: materials,
+      floorArea: floorArea,
+      floorCount: floorCount,
+      entranceDirection: entranceDirection,
+      architecturalStyle: architecturalStyle,
+      buildingProgram: buildingProgram,
+      // Specific architectural features based on type
+      features: this.getBuildingFeatures(buildingProgram, architecturalStyle, floorCount)
+    };
+  }
+
+  /**
+   * Get building-specific features for consistent description
+   */
+  getBuildingFeatures(buildingProgram, style, floorCount) {
+    const features = [];
+
+    // Add program-specific features
+    if (buildingProgram.includes('house') || buildingProgram.includes('villa')) {
+      features.push('residential spaces', 'private garden', 'garage');
+      if (floorCount > 1) features.push('balcony', 'master bedroom upstairs');
+    } else if (buildingProgram.includes('apartment')) {
+      features.push('multiple units', 'common areas', 'balconies');
+    } else if (buildingProgram.includes('office')) {
+      features.push('open plan offices', 'meeting rooms', 'reception area');
+    }
+
+    // Add style-specific features
+    if (style.includes('modern') || style.includes('contemporary')) {
+      features.push('large windows', 'clean lines', 'flat roof');
+    } else if (style.includes('traditional')) {
+      features.push('pitched roof', 'classic proportions', 'detailed facade');
+    }
+
+    return features.join(', ');
+  }
+
+  /**
    * Generate architectural visualization using SDXL Multi-ControlNet LoRA
    * @param {Object} generationParams - Parameters for image generation
    * @returns {Promise<Object>} Generation result with image URLs
@@ -436,37 +507,49 @@ class ReplicateService {
    * Build parameters for specific view types
    */
   buildViewParameters(projectContext, viewType) {
-    const baseParams = {
-      buildingType: projectContext.buildingProgram || 'commercial building',
-      architecturalStyle: projectContext.architecturalStyle || 'contemporary',
-      location: projectContext.location?.address || 'urban setting',
-      materials: projectContext.materials || 'glass and steel'
-    };
+    // Get unified building description for consistency
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+
+    // Determine entrance side for accurate 3D views
+    const entranceDir = this.getCardinalDirection(unifiedDesc.entranceDirection);
 
     switch (viewType) {
       case 'exterior':
       case 'exterior_front':
         return {
-          ...baseParams,
-          prompt: `Professional 3D architectural visualization, front exterior view of ${baseParams.architecturalStyle} ${baseParams.buildingType}, ${baseParams.materials} construction, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, modern design, landscape context`,
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context matching floor plan`,
           perspective: 'exterior front view',
           width: 1024,
           height: 768
         };
 
       case 'exterior_side':
+        const sideDir = this.getPerpendicularDirection(entranceDir);
         return {
-          ...baseParams,
-          prompt: `Professional 3D architectural visualization, side perspective view of ${baseParams.architecturalStyle} ${baseParams.buildingType}, ${baseParams.materials} construction, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed facade, modern design, landscape context with trees`,
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees`,
           perspective: 'exterior side view',
           width: 1024,
           height: 768
         };
 
       case 'interior':
+        const interiorSpace = unifiedDesc.buildingProgram.includes('house') || unifiedDesc.buildingProgram.includes('villa')
+          ? 'main living room with open kitchen'
+          : unifiedDesc.buildingProgram.includes('office')
+          ? 'main office space'
+          : 'main interior space';
+
         return {
-          ...baseParams,
-          prompt: `Professional 3D architectural interior visualization, main living space of ${baseParams.buildingType}, modern ${baseParams.architecturalStyle} interior design, spacious, well-lit with natural light, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture, elegant interior`,
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Professional 3D architectural interior visualization, ${interiorSpace} of ${unifiedDesc.fullDescription}, ${unifiedDesc.architecturalStyle} interior design matching exterior ${unifiedDesc.materials}, spacious interior with ${unifiedDesc.features}, well-lit with natural light from ${entranceDir}-facing windows, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture`,
           perspective: 'interior view',
           width: 1024,
           height: 768
@@ -474,8 +557,10 @@ class ReplicateService {
 
       case 'site_plan':
         return {
-          ...baseParams,
-          prompt: `Aerial view, site plan, ${baseParams.buildingType} in ${baseParams.location}, urban context, professional architectural drawing style, technical illustration`,
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Aerial view, site plan showing ${unifiedDesc.fullDescription} with clear footprint, entrance on ${entranceDir} side marked, urban context, professional architectural drawing style, technical illustration`,
           perspective: 'aerial view',
           width: 1024,
           height: 1024
@@ -483,8 +568,10 @@ class ReplicateService {
 
       case 'section':
         return {
-          ...baseParams,
-          prompt: `Architectural section view, ${baseParams.buildingType}, technical drawing style, professional architectural illustration, detailed, precise`,
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Architectural section view of ${unifiedDesc.fullDescription}, showing ${unifiedDesc.floorCount} levels, ${unifiedDesc.materials} construction, technical drawing style, professional architectural illustration, detailed, precise`,
           perspective: 'section view',
           width: 1024,
           height: 768
@@ -573,28 +660,27 @@ class ReplicateService {
    * Build parameters for 2D floor plan generation
    */
   buildFloorPlanParameters(projectContext, level = 'ground') {
-    const {
-      buildingProgram = 'commercial building',
-      architecturalStyle = 'contemporary',
-      location = 'urban setting',
-      materials = 'glass and steel',
-      floorArea = 200
-    } = projectContext;
+    // Get unified building description for consistency
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
 
     const levelDescriptions = {
-      ground: 'ground floor, main entrance, living areas, kitchen, common spaces',
-      upper: 'upper floor, bedrooms, private spaces, bathrooms',
-      roof: 'roof plan, mechanical equipment, roof access, terraces, skylights'
+      ground: 'ground floor showing main entrance, living areas, kitchen, common spaces',
+      upper: 'upper floor showing bedrooms, private spaces, bathrooms',
+      roof: 'roof plan showing mechanical equipment, roof access, terraces, skylights'
     };
 
     const levelDesc = levelDescriptions[level] || levelDescriptions.ground;
 
+    // Create entrance-aware floor plan description
+    const entranceNote = level === 'ground'
+      ? `entrance on ${this.getCardinalDirection(unifiedDesc.entranceDirection)} side,`
+      : '';
+
     return {
-      prompt: `Professional architectural floor plan, ${level} level plan, ${architecturalStyle} ${buildingProgram}, ${floorArea}m² floor area, ${levelDesc}, technical drawing style, 2D top-view plan, detailed room layout with dimensions, walls, doors, windows, furniture layout, professional architectural drafting, black and white line drawing with annotations, precise measurements, architectural blueprint style, clean technical drawing`,
-      buildingType: buildingProgram,
-      architecturalStyle,
-      location,
-      materials,
+      prompt: `Professional architectural floor plan for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total floor area, ${unifiedDesc.materials} construction indicated, showing ${unifiedDesc.features}, technical drawing style, 2D top-view plan, detailed room layout with dimensions, walls, doors, windows, furniture layout, professional architectural drafting, black and white line drawing with annotations, precise measurements, architectural blueprint style, clean technical drawing`,
+      buildingType: unifiedDesc.buildingType,
+      architecturalStyle: unifiedDesc.architecturalStyle,
+      materials: unifiedDesc.materials,
       viewType: `floor_plan_${level}`,
       width: 1024,
       height: 1024,
@@ -608,21 +694,19 @@ class ReplicateService {
    * Build parameters for elevation drawings
    */
   buildElevationParameters(projectContext, direction = 'north') {
-    const {
-      buildingProgram = 'commercial building',
-      architecturalStyle = 'contemporary',
-      materials = 'glass and steel',
-      floorArea = 200
-    } = projectContext;
+    // Get unified building description for consistency
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
 
-    const floorCount = this.calculateFloorCount(projectContext);
-    const heightDescription = floorCount === 1 ? 'single story' : `${floorCount} stories`;
+    // Determine if this is the entrance elevation
+    const entranceDir = this.getCardinalDirection(unifiedDesc.entranceDirection);
+    const isEntranceElevation = direction === entranceDir;
+    const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
     return {
-      prompt: `Professional architectural elevation drawing, ${direction} elevation, ${architecturalStyle} ${buildingProgram}, ${heightDescription} ${heightDescription}, ${materials} facade, technical drawing style, orthographic projection, 2D elevation view, detailed facade with windows, doors, materials indication, professional architectural drafting, black and white line drawing with hatching, precise proportions, architectural blueprint style, clean technical drawing`,
-      buildingType: buildingProgram,
-      architecturalStyle,
-      materials,
+      prompt: `Professional architectural elevation drawing, ${direction} ${elevationType} of ${unifiedDesc.fullDescription}, showing ${unifiedDesc.floorCount} levels, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, technical drawing style, orthographic projection, 2D elevation view, detailed facade with windows, doors${isEntranceElevation ? ', prominent main entrance' : ''}, materials indication, professional architectural drafting, black and white line drawing with hatching, precise proportions, architectural blueprint style, clean technical drawing`,
+      buildingType: unifiedDesc.buildingType,
+      architecturalStyle: unifiedDesc.architecturalStyle,
+      materials: unifiedDesc.materials,
       viewType: `elevation_${direction}`,
       width: 1024,
       height: 768,
@@ -636,23 +720,18 @@ class ReplicateService {
    * Build parameters for section drawings
    */
   buildSectionParameters(projectContext, sectionType = 'longitudinal') {
-    const {
-      buildingProgram = 'commercial building',
-      architecturalStyle = 'contemporary',
-      materials = 'glass and steel',
-      floorArea = 200
-    } = projectContext;
+    // Get unified building description for consistency
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
 
-    const floorCount = this.calculateFloorCount(projectContext);
     const sectionDesc = sectionType === 'longitudinal'
-      ? 'longitudinal section, length-wise cut through building'
+      ? 'longitudinal section, length-wise cut through building showing entrance to back'
       : 'cross section, width-wise cut through building';
 
     return {
-      prompt: `Professional architectural section drawing, ${sectionDesc}, ${architecturalStyle} ${buildingProgram}, ${floorCount} floor levels, interior spaces visible, ceiling heights, floor slabs, structural elements, stairs, ${materials} construction, technical drawing style, orthographic projection, 2D section view, detailed interior heights and materials, professional architectural drafting, black and white line drawing with hatching and poché, precise vertical proportions, architectural blueprint style, clean technical drawing`,
-      buildingType: buildingProgram,
-      architecturalStyle,
-      materials,
+      prompt: `Professional architectural section drawing, ${sectionDesc} of ${unifiedDesc.fullDescription}, showing all ${unifiedDesc.floorCount} floor levels, interior spaces visible with ${unifiedDesc.features}, ceiling heights, floor slabs, structural elements, stairs${unifiedDesc.floorCount > 1 ? ', vertical circulation' : ''}, ${unifiedDesc.materials} construction system, technical drawing style, orthographic projection, 2D section view, detailed interior heights and materials, professional architectural drafting, black and white line drawing with hatching and poché, precise vertical proportions, architectural blueprint style, clean technical drawing`,
+      buildingType: unifiedDesc.buildingType,
+      architecturalStyle: unifiedDesc.architecturalStyle,
+      materials: unifiedDesc.materials,
       viewType: `section_${sectionType}`,
       width: 1024,
       height: 768,
