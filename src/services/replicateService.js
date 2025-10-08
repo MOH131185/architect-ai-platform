@@ -234,8 +234,8 @@ class ReplicateService {
     // Check both params.controlImage and params.image for backward compatibility
     if (params.controlImage || params.image) {
       controlNetParams.image = params.controlImage || params.image;
-      // Use strong conditioning for technical drawings to ensure consistency
-      controlNetParams.controlnet_conditioning_scale = params.conditioning_scale || 0.9;
+      // Use moderate conditioning - guides layout without forcing exact replication
+      controlNetParams.controlnet_conditioning_scale = params.conditioning_scale || 0.5;
       console.log('🎯 ControlNet enabled with conditioning scale:', controlNetParams.controlnet_conditioning_scale);
     }
 
@@ -745,7 +745,7 @@ class ReplicateService {
       steps: 40,
       guidanceScale: 7.0,
       negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, blurry, low quality",
-      conditioning_scale: 0.9 // Strong ControlNet conditioning for floor plan consistency
+      conditioning_scale: 0.5 // Moderate ControlNet - guide spatial layout without forcing 2D replication
     };
   }
 
@@ -771,7 +771,7 @@ class ReplicateService {
       steps: 40,
       guidanceScale: 7.0,
       negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, elevation, blurry, low quality",
-      conditioning_scale: 0.9 // Strong ControlNet conditioning for floor plan consistency
+      conditioning_scale: 0.5 // Moderate ControlNet - guide spatial layout without forcing 2D replication
     };
   }
 

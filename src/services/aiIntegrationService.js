@@ -654,14 +654,14 @@ class AIIntegrationService {
       );
       console.log('✅ Technical drawings generated with ControlNet guidance');
 
-      // STEP 3.7: Generate multiple 3D views with floor plan as control
-      console.log('🏗️ Step 6: Generating 3D views (exterior front, side, interior) with floor plan as control...');
+      // STEP 3.7: Generate multiple 3D views WITHOUT ControlNet (photorealistic perspective views)
+      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior)...');
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
         ['exterior_front', 'exterior_side', 'interior'],
-        floorPlanImage
+        null // Do NOT use floor plan control for 3D views - they need perspective freedom
       );
-      console.log('✅ 3D views generated with ControlNet guidance');
+      console.log('✅ 3D views generated as photorealistic perspectives');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
