@@ -25,7 +25,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
+    // In Vercel, use OPENAI_API_KEY (without REACT_APP_ prefix)
+    const apiKey = process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({ error: 'OpenAI API key not configured' });

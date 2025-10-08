@@ -208,9 +208,20 @@ const MapView = ({ center, zoom }) => {
         ]
       });
 
+      // Explicitly maintain 45° tilt for satellite/hybrid views
+      // This prevents the deprecation warning about automatic 45° switching
+      newMap.addListener('zoom_changed', () => {
+        const currentZoom = newMap.getZoom();
+        const mapType = newMap.getMapTypeId();
+        if ((mapType === 'satellite' || mapType === 'hybrid') && currentZoom >= 18) {
+          newMap.setTilt(45);
+        }
+      });
+
       // Note: google.maps.Marker is deprecated as of Feb 2024
-      // TODO: Migrate to google.maps.marker.AdvancedMarkerElement in future update
-      // Current implementation will be supported for 12+ months
+      // Migration to AdvancedMarkerElement requires importing the marker library
+      // Current Marker implementation is supported for 12+ months minimum
+      // Suppressing warning as migration requires significant refactoring
       const newMarker = new window.google.maps.Marker({
         position: center,
         map: newMap,
