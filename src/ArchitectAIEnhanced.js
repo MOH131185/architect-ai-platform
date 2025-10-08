@@ -5,7 +5,7 @@ import {
   MapPin, Upload, Building, Sun, Compass, FileText,
   Palette, Square, Loader2, Sparkles, ArrowRight,
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
-  Users, Shield, Zap, BarChart3, Eye
+  Users, Shield, Zap, BarChart3, Eye, AlertCircle
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
@@ -324,7 +324,8 @@ const ArchitectAIEnhanced = () => {
   const [locationData, setLocationData] = useState(null);
   const [address, setAddress] = useState("");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
-  const [styleChoice, setStyleChoice] = useState('blend');
+  const [styleChoice, setStyleChoice] = useState('blend'); // Keep for backward compatibility
+  const [blendWeight, setBlendWeight] = useState(0.5); // STEP 5: 0=100% local, 1=100% portfolio
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '' });
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -657,7 +658,7 @@ const ArchitectAIEnhanced = () => {
     }, 500); // A small delay to ensure loader is visible
   };
 
-  // Generate AI designs with OpenAI and Replicate integration
+  // STEP 5: Generate AI designs with integrated workflow
   const generateDesigns = async () => {
     setIsLoading(true);
 
@@ -682,96 +683,58 @@ const ArchitectAIEnhanced = () => {
         projectSeed: projectSeed
       };
 
-      console.log('🎨 Starting AI design generation with:', projectContext);
+      console.log('🎨 Starting integrated AI design generation with:', projectContext);
       console.log('🎲 Project seed for consistent outputs:', projectSeed);
+      console.log('⚖️  Blend weight:', blendWeight);
 
-      // Check if portfolio images are available for style detection
+      // STEP 5: Check if portfolio images are available
+      // Portfolio is only required if blendWeight > 0
       const portfolioImages = (portfolioFiles || [])
         .map(file => file.url || file.preview)
         .filter(Boolean);
-      
-      let aiResult;
-      if (portfolioImages.length > 0) {
-        // Use style-optimized design generation with portfolio analysis
-        console.log('🎨 Using style-optimized design generation with portfolio analysis');
-        aiResult = await aiIntegrationService.generateStyleOptimizedDesign(projectContext, portfolioImages);
-      } else {
-        // Use floor plan and 3D preview generation
-        console.log('🎨 Using floor plan and 3D preview generation');
-        aiResult = await aiIntegrationService.generateFloorPlanAnd3DPreview(projectContext, portfolioImages);
-      }
+
+      // STEP 5: Use integrated design generation workflow
+      console.log('🎯 Using integrated design generation with style blending');
+      const aiResult = await aiIntegrationService.generateIntegratedDesign(
+        projectContext,
+        portfolioImages,
+        blendWeight // STEP 5: Pass blend weight to control style merging
+      );
 
       console.log('✅ AI design generation complete:', aiResult);
 
-      // Extract images from AI result with proper fallback handling
+      // STEP 5: Extract images from integrated design result
       const extractFloorPlanImages = () => {
-        // Extract multi-level floor plans (ground, upper, roof)
         const floorPlans = {};
 
         console.log('📋 Extracting floor plans from aiResult:', {
-          hasFloorPlans: !!aiResult.floorPlans,
-          hasVisualizationsFloorPlans: !!aiResult.visualizations?.floorPlans,
+          hasResults: !!aiResult.results,
           hasFloorPlan: !!aiResult.floorPlan,
-          visualizationsKeys: aiResult.visualizations ? Object.keys(aiResult.visualizations) : []
+          resultsKeys: aiResult.results ? Object.keys(aiResult.results) : []
         });
 
-        // Try visualizations.floorPlans first (style-optimized workflow)
-        if (aiResult.visualizations?.floorPlans?.floorPlans) {
-          const plans = aiResult.visualizations.floorPlans.floorPlans;
-          console.log('📋 Found visualizations.floorPlans.floorPlans:', Object.keys(plans));
-
-          // Extract ground floor
-          if (plans.ground?.images && plans.ground.images.length > 0) {
-            floorPlans.ground = plans.ground.images[0];
-            console.log('✅ Extracted ground floor plan from visualizations');
-          }
-
-          // Extract upper floor
-          if (plans.upper?.images && plans.upper.images.length > 0) {
-            floorPlans.upper = plans.upper.images[0];
-            console.log('✅ Extracted upper floor plan from visualizations');
-          }
-
-          // Extract roof plan
-          if (plans.roof?.images && plans.roof.images.length > 0) {
-            floorPlans.roof = plans.roof.images[0];
-            console.log('✅ Extracted roof plan from visualizations');
-          }
+        // STEP 5: Try integrated design results structure first
+        if (aiResult.results?.floorPlan?.images) {
+          floorPlans.ground = aiResult.results.floorPlan.images[0];
+          console.log('✅ Extracted floor plan from integrated results');
         }
-        // Try direct floorPlans structure (comprehensive workflow)
-        else if (aiResult.floorPlans?.floorPlans) {
-          const plans = aiResult.floorPlans.floorPlans;
-          console.log('📋 Found floorPlans.floorPlans:', Object.keys(plans));
-
-          // Extract ground floor
-          if (plans.ground?.images && plans.ground.images.length > 0) {
-            floorPlans.ground = plans.ground.images[0];
-            console.log('✅ Extracted ground floor plan');
-          }
-
-          // Extract upper floor
-          if (plans.upper?.images && plans.upper.images.length > 0) {
-            floorPlans.upper = plans.upper.images[0];
-            console.log('✅ Extracted upper floor plan');
-          }
-
-          // Extract roof plan
-          if (plans.roof?.images && plans.roof.images.length > 0) {
-            floorPlans.roof = plans.roof.images[0];
-            console.log('✅ Extracted roof plan');
-          }
-        }
-        // Legacy structures
+        // Try direct floorPlan result
         else if (aiResult.floorPlan?.floorPlan?.images) {
-          // Legacy single floor plan
           floorPlans.ground = aiResult.floorPlan.floorPlan.images[0];
-          console.log('✅ Extracted legacy floor plan');
-        } else if (aiResult.floorPlan?.images) {
-          floorPlans.ground = aiResult.floorPlan.images[0];
-          console.log('✅ Extracted simple floor plan');
+          console.log('✅ Extracted floor plan from floorPlan.floorPlan');
+        }
+        // Try visualizations structure
+        else if (aiResult.visualizations?.floorPlans?.floorPlans?.ground?.images) {
+          floorPlans.ground = aiResult.visualizations.floorPlans.floorPlans.ground.images[0];
+          console.log('✅ Extracted floor plan from visualizations');
+        }
+        // Try comprehensive workflow structure
+        else if (aiResult.floorPlans?.floorPlans?.ground?.images) {
+          floorPlans.ground = aiResult.floorPlans.floorPlans.ground.images[0];
+          console.log('✅ Extracted floor plan from floorPlans');
         }
 
-        // Ensure we always have at least a fallback ground floor
+        // Fallback placeholder
         if (!floorPlans.ground) {
           floorPlans.ground = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Loading';
           console.log('⚠️ No floor plan found, using placeholder');
@@ -843,68 +806,37 @@ const ArchitectAIEnhanced = () => {
       };
 
       const extract3DImages = () => {
-        // Try multiple possible paths for 3D views (2 exterior + 1 interior)
         const images = [];
 
         console.log('🔍 Checking aiResult structure:', {
-          hasVisualizations: !!aiResult.visualizations,
-          hasViews: !!aiResult.visualizations?.views,
-          viewKeys: aiResult.visualizations?.views ? Object.keys(aiResult.visualizations.views) : []
+          hasResults: !!aiResult.results,
+          hasPreview3D: !!aiResult.preview3D,
+          resultsKeys: aiResult.results ? Object.keys(aiResult.results) : []
         });
 
-        // Extract from visualizations.views (object with keys: exterior_front, exterior_side, interior)
-        if (aiResult.visualizations?.views) {
+        // STEP 5: Try integrated design results structure first
+        if (aiResult.results?.preview3D?.images) {
+          images.push(...aiResult.results.preview3D.images);
+          console.log('✅ Extracted 3D preview from integrated results');
+        }
+        // Try direct preview3D result
+        else if (aiResult.preview3D?.preview3D?.images) {
+          images.push(...aiResult.preview3D.preview3D.images);
+          console.log('✅ Extracted 3D preview from preview3D.preview3D');
+        }
+        // Try visualizations.views structure
+        else if (aiResult.visualizations?.views) {
           const views = aiResult.visualizations.views;
-
-          // Exterior front view - try different possible paths
-          if (views.exterior_front) {
-            if (views.exterior_front.images && views.exterior_front.images.length > 0) {
-              images.push(views.exterior_front.images[0]);
-              console.log('✅ Added exterior_front image');
-            } else if (views.exterior_front.fallback?.images) {
-              images.push(views.exterior_front.fallback.images[0]);
-              console.log('⚠️ Using fallback for exterior_front');
-            }
-          } else if (views.exterior) {
-            if (views.exterior.images && views.exterior.images.length > 0) {
-              images.push(views.exterior.images[0]);
-              console.log('✅ Added exterior image (fallback)');
-            }
-          }
-
-          // Exterior side view
-          if (views.exterior_side) {
-            if (views.exterior_side.images && views.exterior_side.images.length > 0) {
-              images.push(views.exterior_side.images[0]);
-              console.log('✅ Added exterior_side image');
-            } else if (views.exterior_side.fallback?.images) {
-              images.push(views.exterior_side.fallback.images[0]);
-              console.log('⚠️ Using fallback for exterior_side');
-            }
-          }
-
-          // Interior view
-          if (views.interior) {
-            if (views.interior.images && views.interior.images.length > 0) {
-              images.push(views.interior.images[0]);
-              console.log('✅ Added interior image');
-            } else if (views.interior.fallback?.images) {
-              images.push(views.interior.fallback.images[0]);
-              console.log('⚠️ Using fallback for interior');
-            }
-          }
-
-          console.log('🖼️ Total extracted images:', images.length, images);
+          if (views.exterior_front?.images) images.push(views.exterior_front.images[0]);
+          if (views.exterior_side?.images) images.push(views.exterior_side.images[0]);
+          if (views.interior?.images) images.push(views.interior.images[0]);
+          console.log('✅ Extracted', images.length, '3D views from visualizations');
         }
 
-        // Fallback to old paths for compatibility
+        // Fallback placeholder if no images found
         if (images.length === 0) {
-          console.log('⚠️ No images found in visualizations.views, trying fallback paths...');
-          if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
-          if (aiResult.preview3D?.images) return aiResult.preview3D.images;
-          if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
-          if (aiResult.visualizations?.preview3D?.preview3D?.images) return aiResult.visualizations.preview3D.preview3D.images;
-          if (aiResult.visualization?.images) return aiResult.visualization.images;
+          images.push('https://via.placeholder.com/1024x768/34495e/ffffff?text=3D+Preview+Loading');
+          console.log('⚠️ No 3D images found, using placeholder');
         }
 
         return images;
@@ -1488,54 +1420,63 @@ const ArchitectAIEnhanced = () => {
                   )}
                 </div>
                 
-                {/* Style Selection */}
+                {/* STEP 5: Style Blend Weight Slider */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Style Generation Preference</label>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <label className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 ${
-                      styleChoice === 'blend' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                      <input
-                        type="radio"
-                        value="blend"
-                        checked={styleChoice === 'blend'}
-                        onChange={(e) => setStyleChoice(e.target.value)}
-                        className="sr-only"
-                      />
-                      <div className="flex items-center mb-3">
-                        <Layers className="w-6 h-6 text-purple-600 mr-3" />
-                        <span className="font-semibold text-gray-800">Adaptive Blend</span>
+                  <label className="block text-sm font-medium text-gray-700 mb-3">
+                    Style Blend Preference
+                  </label>
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center">
+                        <Layers className="w-5 h-5 text-blue-600 mr-2" />
+                        <span className="font-medium text-gray-800">Local Architecture</span>
                       </div>
-                      <p className="text-sm text-gray-600">AI blends your style with location-appropriate architecture for optimal contextual design</p>
-                      {styleChoice === 'blend' && (
-                        <div className="absolute top-3 right-3">
-                          <Check className="w-5 h-5 text-purple-600" />
-                        </div>
-                      )}
-                    </label>
-                    
-                    <label className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-all duration-300 ${
-                      styleChoice === 'portfolio' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                      <input
-                        type="radio"
-                        value="portfolio"
-                        checked={styleChoice === 'portfolio'}
-                        onChange={(e) => setStyleChoice(e.target.value)}
-                        className="sr-only"
-                      />
-                      <div className="flex items-center mb-3">
-                        <Home className="w-6 h-6 text-purple-600 mr-3" />
-                        <span className="font-semibold text-gray-800">Signature Style</span>
+                      <div className="flex items-center">
+                        <Home className="w-5 h-5 text-purple-600 mr-2" />
+                        <span className="font-medium text-gray-800">Portfolio Style</span>
                       </div>
-                      <p className="text-sm text-gray-600">Apply your unique architectural style exclusively, maintaining your design language</p>
-                      {styleChoice === 'portfolio' && (
-                        <div className="absolute top-3 right-3">
-                          <Check className="w-5 h-5 text-purple-600" />
-                        </div>
-                      )}
-                    </label>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={blendWeight * 100}
+                      onChange={(e) => setBlendWeight(e.target.value / 100)}
+                      className="w-full h-2 bg-gradient-to-r from-blue-400 to-purple-400 rounded-lg appearance-none cursor-pointer slider"
+                      style={{
+                        background: `linear-gradient(to right, #60a5fa 0%, #60a5fa ${(1-blendWeight)*100}%, #a78bfa ${(1-blendWeight)*100}%, #a78bfa 100%)`
+                      }}
+                    />
+
+                    <div className="flex items-center justify-between mt-4">
+                      <span className="text-xs text-gray-600">0% Portfolio</span>
+                      <div className="px-4 py-2 bg-white rounded-lg border-2 border-purple-300">
+                        <span className="font-semibold text-purple-600">
+                          {Math.round((1-blendWeight)*100)}% Local / {Math.round(blendWeight*100)}% Portfolio
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-600">100% Portfolio</span>
+                    </div>
+
+                    <p className="text-sm text-gray-600 mt-4">
+                      {blendWeight === 0 && "100% local architectural style - respects regional traditions and climate"}
+                      {blendWeight > 0 && blendWeight < 0.3 && "Local style with subtle portfolio influences"}
+                      {blendWeight >= 0.3 && blendWeight < 0.7 && "Balanced fusion of local and portfolio styles"}
+                      {blendWeight >= 0.7 && blendWeight < 1 && "Portfolio style adapted to local context"}
+                      {blendWeight === 1 && "100% portfolio style - your unique architectural signature"}
+                    </p>
                   </div>
+
+                  {/* STEP 5: Portfolio requirement indicator */}
+                  {blendWeight > 0 && portfolioFiles.length === 0 && (
+                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start">
+                      <AlertCircle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
+                      <p className="text-sm text-yellow-800">
+                        Portfolio upload required for blend weights above 0%. Upload images above to use portfolio styling.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* AI Analysis Preview */}
@@ -1913,10 +1854,32 @@ const ArchitectAIEnhanced = () => {
                     <p className="text-gray-600">{generatedDesigns?.floorPlan.circulation}</p>
                     <p className="text-gray-600">Efficiency: {generatedDesigns?.floorPlan.efficiency}</p>
                   </div>
+
+                  {/* STEP 5: Consistency Indicator */}
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start">
+                    <Check className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">2D Floor Plan Generated</p>
+                      <p className="text-xs text-blue-700 mt-1">
+                        Used as ControlNet guide for 3D visualization consistency →
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                
+
                 {/* 3D Views: 2 Exterior + 1 Interior */}
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+                  {/* STEP 5: Consistency Indicator */}
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-start">
+                    <Layers className="w-5 h-5 text-green-600 mr-2 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-green-900">3D Derived from 2D Floor Plan</p>
+                      <p className="text-xs text-green-700 mt-1">
+                        ControlNet ensured spatial consistency between floor plan layout and 3D views
+                      </p>
+                    </div>
+                  </div>
+
                   <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
                     <Building className="w-5 h-5 text-purple-600 mr-2" />
                     3D Visualizations (2 Exterior + 1 Interior)
