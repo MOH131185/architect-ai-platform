@@ -324,7 +324,7 @@ const ArchitectAIEnhanced = () => {
   const [locationData, setLocationData] = useState(null);
   const [address, setAddress] = useState("");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
-  const [styleChoice, setStyleChoice] = useState('blend'); // Keep for backward compatibility
+  const [styleChoice] = useState('blend'); // Keep for backward compatibility (read-only)
   const [blendWeight, setBlendWeight] = useState(0.5); // STEP 5: 0=100% local, 1=100% portfolio
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '' });
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
@@ -608,6 +608,7 @@ const ArchitectAIEnhanced = () => {
       const newLocationData = {
         address: formattedAddress,
         coordinates: { lat, lng },
+        address_components: addressComponents, // FIX: Add address_components for locationIntelligence service
         climate: seasonalClimateData.climate,
         sunPath: seasonalClimateData.sunPath,
         zoning: zoningData,
@@ -714,9 +715,13 @@ const ArchitectAIEnhanced = () => {
         });
 
         // STEP 5: Try integrated design results structure first
-        if (aiResult.results?.floorPlan?.images) {
+        if (aiResult.results?.floorPlan?.floorPlan?.images) {
+          floorPlans.ground = aiResult.results.floorPlan.floorPlan.images[0];
+          console.log('✅ Extracted floor plan from integrated results.floorPlan.floorPlan');
+        }
+        else if (aiResult.results?.floorPlan?.images) {
           floorPlans.ground = aiResult.results.floorPlan.images[0];
-          console.log('✅ Extracted floor plan from integrated results');
+          console.log('✅ Extracted floor plan from integrated results.floorPlan');
         }
         // Try direct floorPlan result
         else if (aiResult.floorPlan?.floorPlan?.images) {
@@ -815,9 +820,13 @@ const ArchitectAIEnhanced = () => {
         });
 
         // STEP 5: Try integrated design results structure first
-        if (aiResult.results?.preview3D?.images) {
+        if (aiResult.results?.preview3D?.preview3D?.images) {
+          images.push(...aiResult.results.preview3D.preview3D.images);
+          console.log('✅ Extracted 3D preview from integrated results.preview3D.preview3D');
+        }
+        else if (aiResult.results?.preview3D?.images) {
           images.push(...aiResult.results.preview3D.images);
-          console.log('✅ Extracted 3D preview from integrated results');
+          console.log('✅ Extracted 3D preview from integrated results.preview3D');
         }
         // Try direct preview3D result
         else if (aiResult.preview3D?.preview3D?.images) {
