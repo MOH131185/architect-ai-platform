@@ -587,7 +587,16 @@ class ReplicateService {
         };
 
       default:
-        return baseParams;
+        // Default exterior view
+        return {
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Professional 3D architectural visualization of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} facade, professional architectural photography, photorealistic rendering, high quality`,
+          perspective: 'exterior view',
+          width: 1024,
+          height: 768
+        };
     }
   }
 

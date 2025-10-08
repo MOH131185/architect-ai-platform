@@ -6,6 +6,7 @@
 import openaiService from './openaiService';
 import replicateService from './replicateService';
 import portfolioStyleDetection from './portfolioStyleDetection';
+import { locationIntelligence } from './locationIntelligence';
 
 class AIIntegrationService {
   constructor() {
@@ -569,6 +570,114 @@ class AIIntegrationService {
         fallback: this.getFallbackFloorPlanAnd3D(projectContext)
       };
     }
+  }
+
+  /**
+   * STEP 3: Integrated design generation with location analysis and style blending
+   * Orchestrates location analysis, portfolio detection, and coordinated 2D/3D generation
+   */
+  async generateIntegratedDesign(projectContext, portfolioImages = []) {
+    try {
+      console.log('🎯 Starting integrated design generation workflow...');
+
+      // STEP 3.1: Location analysis
+      console.log('📍 Step 1: Analyzing location and architectural context...');
+      const locationAnalysis = locationIntelligence.recommendArchitecturalStyle(
+        projectContext.location,
+        projectContext.climateData || { type: 'temperate' }
+      );
+
+      // Store location analysis in projectContext
+      const enhancedContext = {
+        ...projectContext,
+        locationAnalysis: locationAnalysis
+      };
+
+      console.log('✅ Location analysis complete:', {
+        primary: locationAnalysis.primary,
+        materials: locationAnalysis.materials?.slice(0, 3),
+        climateAdaptations: locationAnalysis.climateAdaptations?.features?.slice(0, 3)
+      });
+
+      // STEP 3.2: Optional portfolio style detection
+      let portfolioStyle = null;
+      if (portfolioImages && portfolioImages.length > 0) {
+        console.log('🎨 Step 2: Detecting portfolio style from', portfolioImages.length, 'images...');
+        portfolioStyle = await this.portfolioStyleDetection.detectArchitecturalStyle(
+          portfolioImages,
+          projectContext.location
+        );
+        enhancedContext.portfolioStyle = portfolioStyle;
+        console.log('✅ Portfolio style detected:', portfolioStyle?.primaryStyle?.style);
+      } else {
+        console.log('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
+      }
+
+      // STEP 3.3: Blended style prompt creation (placeholder for Step 4)
+      console.log('🎨 Step 3: Creating blended style prompt...');
+      const blendedPrompt = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle);
+      enhancedContext.blendedPrompt = blendedPrompt;
+      console.log('✅ Blended prompt created');
+
+      // STEP 3.4: Use unified seed from projectContext
+      const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+      enhancedContext.seed = projectSeed;
+      console.log('🎲 Using unified seed:', projectSeed);
+
+      // STEP 3.5: Generate floor plan with unified seed and blended prompt
+      console.log('🏗️ Step 4: Generating floor plan with blended style...');
+      const floorPlanResult = await this.replicate.generateFloorPlan(enhancedContext);
+
+      // Capture floor plan image for ControlNet
+      let floorPlanImage = null;
+      if (floorPlanResult?.floorPlan?.images && floorPlanResult.floorPlan.images.length > 0) {
+        floorPlanImage = floorPlanResult.floorPlan.images[0];
+        console.log('✅ Floor plan generated, captured for ControlNet control');
+      }
+
+      // STEP 3.6: Generate 3D preview with same seed and floor plan as control
+      console.log('🏗️ Step 5: Generating 3D preview with floor plan as control...');
+      const preview3DResult = await this.replicate.generate3DPreview(enhancedContext, floorPlanImage);
+      console.log('✅ 3D preview generated with ControlNet guidance');
+
+      // Return integrated results
+      return {
+        success: true,
+        locationAnalysis,
+        portfolioStyle,
+        blendedPrompt,
+        floorPlan: floorPlanResult,
+        preview3D: preview3DResult,
+        projectSeed,
+        enhancedContext,
+        timestamp: new Date().toISOString(),
+        workflow: 'integrated_design_generation'
+      };
+
+    } catch (error) {
+      console.error('❌ Integrated design generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * STEP 4 (Placeholder): Create blended style prompt
+   * Combines location analysis and portfolio style into unified prompt
+   */
+  createBlendedStylePrompt(projectContext, locationAnalysis, portfolioStyle) {
+    // Placeholder implementation - will be enhanced in Step 4
+    const locationStyles = locationAnalysis?.primary || 'contemporary';
+    const portfolioStyles = portfolioStyle?.primaryStyle?.style || null;
+
+    if (portfolioStyles) {
+      return `Blend of ${portfolioStyles} (from portfolio) with ${locationStyles} (local style)`;
+    }
+
+    return `${locationStyles} style adapted for ${projectContext.location?.address || 'local context'}`;
   }
 
   /**
