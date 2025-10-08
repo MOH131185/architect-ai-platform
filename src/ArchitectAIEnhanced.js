@@ -286,7 +286,7 @@ const ArchitectAIEnhanced = () => {
   const [address, setAddress] = useState("");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
   const [styleChoice, setStyleChoice] = useState('blend');
-  const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
+  const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '' });
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
@@ -294,6 +294,8 @@ const ArchitectAIEnhanced = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [sessionStartTime] = useState(Date.now());
   const fileInputRef = useRef(null);
   // const hasDetectedLocation = useRef(false); // Temporarily disabled
 
@@ -309,6 +311,21 @@ const ArchitectAIEnhanced = () => {
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  // Real-time elapsed timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - sessionStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [sessionStartTime]);
+
+  // Format elapsed time as MM:SS
+  const formatElapsedTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // Landing page animation
   useEffect(() => {
@@ -628,7 +645,8 @@ const ArchitectAIEnhanced = () => {
         userPreferences: `${projectDetails?.area || '200'}m² total area`,
         specifications: projectDetails,
         climateData: locationData?.climate,
-        area: projectDetails?.area || '200'
+        area: projectDetails?.area || '200',
+        entranceDirection: projectDetails?.entranceDirection || 'S'
       };
 
       console.log('🎨 Starting AI design generation with:', projectContext);
@@ -1370,16 +1388,99 @@ const ArchitectAIEnhanced = () => {
                     className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
                   >
                     <option value="">Select program type...</option>
-                    <option value="clinic">Medical Clinic</option>
-                    <option value="office">Office Building</option>
-                    <option value="residential">Residential Complex</option>
-                    <option value="retail">Retail Space</option>
-                    <option value="educational">Educational Facility</option>
-                    <option value="hospitality">Hospitality</option>
+
+                    <optgroup label="🏡 Residential - Houses">
+                      <option value="detached-house">Detached House (Single-family)</option>
+                      <option value="semi-detached-house">Semi-detached House (Duplex)</option>
+                      <option value="terraced-house">Terraced House (Townhouse)</option>
+                      <option value="villa">Villa (Luxury Detached)</option>
+                      <option value="cottage">Cottage (Small Detached)</option>
+                    </optgroup>
+
+                    <optgroup label="🏢 Residential - Multi-family">
+                      <option value="apartment-building">Apartment Building</option>
+                      <option value="condominium">Condominium Complex</option>
+                      <option value="residential-tower">Residential Tower</option>
+                    </optgroup>
+
+                    <optgroup label="🏥 Healthcare">
+                      <option value="clinic">Medical Clinic</option>
+                      <option value="dental-clinic">Dental Clinic</option>
+                      <option value="health-center">Health Center</option>
+                      <option value="pharmacy">Pharmacy</option>
+                    </optgroup>
+
+                    <optgroup label="🏢 Commercial">
+                      <option value="office">Office Building</option>
+                      <option value="coworking">Coworking Space</option>
+                      <option value="retail">Retail Space</option>
+                      <option value="shopping-center">Shopping Center</option>
+                      <option value="restaurant">Restaurant</option>
+                      <option value="cafe">Café</option>
+                    </optgroup>
+
+                    <optgroup label="🎓 Educational">
+                      <option value="school">School</option>
+                      <option value="kindergarten">Kindergarten</option>
+                      <option value="training-center">Training Center</option>
+                      <option value="library">Library</option>
+                    </optgroup>
+
+                    <optgroup label="🏨 Hospitality">
+                      <option value="hotel">Hotel</option>
+                      <option value="hostel">Hostel</option>
+                      <option value="bed-breakfast">Bed & Breakfast</option>
+                    </optgroup>
+
+                    <optgroup label="🏛️ Public & Cultural">
+                      <option value="community-center">Community Center</option>
+                      <option value="museum">Museum</option>
+                      <option value="gallery">Art Gallery</option>
+                      <option value="theater">Theater</option>
+                    </optgroup>
+
+                    <optgroup label="🏋️ Sports & Recreation">
+                      <option value="gym">Gym / Fitness Center</option>
+                      <option value="sports-hall">Sports Hall</option>
+                      <option value="swimming-pool">Swimming Pool Complex</option>
+                    </optgroup>
                   </select>
                 </div>
+
+                <div>
+                  <label htmlFor="entrance-direction" className="block text-sm font-medium text-gray-700 mb-2">
+                    <Compass className="w-4 h-4 inline mr-1" />
+                    Principal Entrance Direction
+                  </label>
+                  <select
+                    id="entrance-direction"
+                    value={projectDetails.entranceDirection}
+                    onChange={(e) => setProjectDetails({...projectDetails, entranceDirection: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                  >
+                    <option value="">Select entrance orientation...</option>
+                    <option value="N">⬆️ North (N)</option>
+                    <option value="NE">↗️ North-East (NE)</option>
+                    <option value="E">➡️ East (E)</option>
+                    <option value="SE">↘️ South-East (SE)</option>
+                    <option value="S">⬇️ South (S)</option>
+                    <option value="SW">↙️ South-West (SW)</option>
+                    <option value="W">⬅️ West (W)</option>
+                    <option value="NW">↖️ North-West (NW)</option>
+                  </select>
+                  {projectDetails.entranceDirection && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      <Sun className="w-4 h-4 inline mr-1 text-yellow-500" />
+                      {projectDetails.entranceDirection === 'S' || projectDetails.entranceDirection === 'SE' || projectDetails.entranceDirection === 'SW'
+                        ? 'Good solar exposure - Optimal for passive solar heating'
+                        : projectDetails.entranceDirection === 'N' || projectDetails.entranceDirection === 'NE' || projectDetails.entranceDirection === 'NW'
+                        ? 'Limited solar exposure - Consider additional lighting'
+                        : 'Moderate solar exposure - Balanced lighting conditions'}
+                    </p>
+                  )}
+                </div>
               </div>
-              
+
               {projectDetails.program && (
                 <div className="mt-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6">
                   <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
@@ -1814,7 +1915,7 @@ const ArchitectAIEnhanced = () => {
                 </div>
 
                 <div className="text-sm text-gray-600">
-                  Time: <span className="font-medium">3:45</span> elapsed
+                  Time: <span className="font-medium">{formatElapsedTime(elapsedTime)}</span> elapsed
                 </div>
               </div>
             </div>
