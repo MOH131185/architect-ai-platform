@@ -340,9 +340,10 @@ class ReplicateService {
 
   /**
    * Generate elevations and sections for 2D technical drawings
+   * Uses floor plan as ControlNet control for consistency
    * Optimized to generate only essential views (2 elevations + 1 section)
    */
-  async generateElevationsAndSections(projectContext, generateAllDrawings = false) {
+  async generateElevationsAndSections(projectContext, generateAllDrawings = false, controlImage = null) {
     if (!this.apiKey) {
       return this.getFallbackElevationsAndSections(projectContext);
     }
@@ -353,20 +354,26 @@ class ReplicateService {
       // STEP 1: Use unified projectSeed from context (no random generation here)
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
+      if (controlImage) {
+        console.log('🎯 Using floor plan as ControlNet control for technical drawings');
+      }
+
       if (generateAllDrawings) {
         // Generate all 4 elevations
-        console.log('🏗️ Generating elevations (N, S, E, W)...');
+        console.log('🏗️ Generating elevations (N, S, E, W) with floor plan control...');
         for (const direction of ['north', 'south', 'east', 'west']) {
           const params = this.buildElevationParameters(projectContext, direction);
           params.seed = projectSeed;
+          if (controlImage) params.image = controlImage;
           results[`elevation_${direction}`] = await this.generateArchitecturalImage(params);
         }
 
         // Generate 2 sections
-        console.log('🏗️ Generating sections (longitudinal, cross)...');
+        console.log('🏗️ Generating sections (longitudinal, cross) with floor plan control...');
         for (const sectionType of ['longitudinal', 'cross']) {
           const params = this.buildSectionParameters(projectContext, sectionType);
           params.seed = projectSeed;
+          if (controlImage) params.image = controlImage;
           results[`section_${sectionType}`] = await this.generateArchitecturalImage(params);
         }
       } else {
@@ -376,20 +383,23 @@ class ReplicateService {
         const mainDirection = this.getCardinalDirection(entranceDir);
         const sideDirection = this.getPerpendicularDirection(mainDirection);
 
-        console.log(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection})...`);
+        console.log(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection}) with floor plan control...`);
 
         const mainParams = this.buildElevationParameters(projectContext, mainDirection.toLowerCase());
         mainParams.seed = projectSeed;
+        if (controlImage) mainParams.image = controlImage;
         results[`elevation_${mainDirection.toLowerCase()}`] = await this.generateArchitecturalImage(mainParams);
 
         const sideParams = this.buildElevationParameters(projectContext, sideDirection.toLowerCase());
         sideParams.seed = projectSeed;
+        if (controlImage) sideParams.image = controlImage;
         results[`elevation_${sideDirection.toLowerCase()}`] = await this.generateArchitecturalImage(sideParams);
 
-        // Generate one section (longitudinal)
-        console.log('🏗️ Generating longitudinal section...');
+        // Generate one section (longitudinal) with floor plan control
+        console.log('🏗️ Generating longitudinal section with floor plan control...');
         const sectionParams = this.buildSectionParameters(projectContext, 'longitudinal');
         sectionParams.seed = projectSeed;
+        if (controlImage) sectionParams.image = controlImage;
         results[`section_longitudinal`] = await this.generateArchitecturalImage(sectionParams);
       }
 

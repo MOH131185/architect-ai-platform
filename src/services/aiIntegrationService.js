@@ -645,10 +645,14 @@ class AIIntegrationService {
         console.log('✅ Ground floor plan generated, captured for ControlNet control');
       }
 
-      // STEP 3.6: Generate elevations and sections
-      console.log('🏗️ Step 5: Generating elevations and sections...');
-      const technicalDrawings = await this.replicate.generateElevationsAndSections(enhancedContext);
-      console.log('✅ Technical drawings generated');
+      // STEP 3.6: Generate elevations and sections with floor plan as control
+      console.log('🏗️ Step 5: Generating elevations and sections with floor plan as control...');
+      const technicalDrawings = await this.replicate.generateElevationsAndSections(
+        enhancedContext,
+        false, // generateAllDrawings - use essential only
+        floorPlanImage // Use floor plan as ControlNet control for consistency
+      );
+      console.log('✅ Technical drawings generated with ControlNet guidance');
 
       // STEP 3.7: Generate multiple 3D views with floor plan as control
       console.log('🏗️ Step 6: Generating 3D views (exterior front, side, interior) with floor plan as control...');
