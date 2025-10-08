@@ -230,11 +230,15 @@ class ReplicateService {
    */
   buildControlNetParams(params) {
     const controlNetParams = {};
-    
-    if (params.controlImage) {
-      controlNetParams.image = params.controlImage;
+
+    // Check both params.controlImage and params.image for backward compatibility
+    if (params.controlImage || params.image) {
+      controlNetParams.image = params.controlImage || params.image;
+      // Use strong conditioning for technical drawings to ensure consistency
+      controlNetParams.controlnet_conditioning_scale = params.conditioning_scale || 0.9;
+      console.log('🎯 ControlNet enabled with conditioning scale:', controlNetParams.controlnet_conditioning_scale);
     }
-    
+
     if (params.controlType) {
       controlNetParams.controlnet_conditioning_scale = params.controlType === 'canny' ? 1.0 : 0.8;
     }
@@ -731,7 +735,7 @@ class ReplicateService {
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
     return {
-      prompt: `Professional architectural elevation drawing, ${direction} ${elevationType} of ${unifiedDesc.fullDescription}, showing ${unifiedDesc.floorCount} levels, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, technical drawing style, orthographic projection, 2D elevation view, detailed facade with windows, doors${isEntranceElevation ? ', prominent main entrance' : ''}, materials indication, professional architectural drafting, black and white line drawing with hatching, precise proportions, architectural blueprint style, clean technical drawing`,
+      prompt: `Professional architectural elevation drawing derived from floor plan layout, ${direction} ${elevationType} of ${unifiedDesc.fullDescription}, MATCHING the floor plan footprint and proportions, showing ${unifiedDesc.floorCount} levels, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, windows and doors positioned according to floor plan, technical drawing style, orthographic projection, 2D elevation view, detailed facade with accurate window placement${isEntranceElevation ? ', prominent main entrance as shown in floor plan' : ''}, materials indication, professional architectural drafting, black and white line drawing with hatching, precise proportions matching floor plan dimensions, architectural blueprint style, clean technical drawing, CONSISTENT with floor plan layout`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -740,7 +744,8 @@ class ReplicateService {
       height: 768,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, blurry, low quality"
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, blurry, low quality",
+      conditioning_scale: 0.9 // Strong ControlNet conditioning for floor plan consistency
     };
   }
 
@@ -756,7 +761,7 @@ class ReplicateService {
       : 'cross section, width-wise cut through building';
 
     return {
-      prompt: `Professional architectural section drawing, ${sectionDesc} of ${unifiedDesc.fullDescription}, showing all ${unifiedDesc.floorCount} floor levels, interior spaces visible with ${unifiedDesc.features}, ceiling heights, floor slabs, structural elements, stairs${unifiedDesc.floorCount > 1 ? ', vertical circulation' : ''}, ${unifiedDesc.materials} construction system, technical drawing style, orthographic projection, 2D section view, detailed interior heights and materials, professional architectural drafting, black and white line drawing with hatching and poché, precise vertical proportions, architectural blueprint style, clean technical drawing`,
+      prompt: `Professional architectural section drawing derived from floor plan layout, ${sectionDesc} of ${unifiedDesc.fullDescription}, MATCHING the floor plan spatial arrangement and room layout, showing all ${unifiedDesc.floorCount} floor levels, interior spaces visible with ${unifiedDesc.features}, ceiling heights corresponding to floor plan dimensions, floor slabs, structural elements, stairs${unifiedDesc.floorCount > 1 ? ', vertical circulation' : ''}, ${unifiedDesc.materials} construction system, technical drawing style, orthographic projection, 2D section view, detailed interior heights and materials, professional architectural drafting, black and white line drawing with hatching and poché, precise vertical proportions matching floor plan, architectural blueprint style, clean technical drawing, CONSISTENT with floor plan layout`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -765,7 +770,8 @@ class ReplicateService {
       height: 768,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, elevation, blurry, low quality"
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, elevation, blurry, low quality",
+      conditioning_scale: 0.9 // Strong ControlNet conditioning for floor plan consistency
     };
   }
 
