@@ -634,40 +634,54 @@ class AIIntegrationService {
       enhancedContext.seed = projectSeed;
       console.log('🎲 Using unified seed:', projectSeed);
 
-      // STEP 3.5: Generate floor plan with unified seed and blended prompt
-      console.log('🏗️ Step 4: Generating floor plan with blended style...');
-      const floorPlanResult = await this.replicate.generateFloorPlan(enhancedContext);
+      // STEP 3.5: Generate multi-level floor plans with unified seed and blended prompt
+      console.log('🏗️ Step 4: Generating multi-level floor plans with blended style...');
+      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
-      // Capture floor plan image for ControlNet
+      // Capture ground floor plan image for ControlNet
       let floorPlanImage = null;
-      if (floorPlanResult?.floorPlan?.images && floorPlanResult.floorPlan.images.length > 0) {
-        floorPlanImage = floorPlanResult.floorPlan.images[0];
-        console.log('✅ Floor plan generated, captured for ControlNet control');
+      if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
+        floorPlanImage = floorPlans.floorPlans.ground.images[0];
+        console.log('✅ Ground floor plan generated, captured for ControlNet control');
       }
 
-      // STEP 3.6: Generate 3D preview with same seed and floor plan as control
-      console.log('🏗️ Step 5: Generating 3D preview with floor plan as control...');
-      const preview3DResult = await this.replicate.generate3DPreview(enhancedContext, floorPlanImage);
-      console.log('✅ 3D preview generated with ControlNet guidance');
+      // STEP 3.6: Generate elevations and sections
+      console.log('🏗️ Step 5: Generating elevations and sections...');
+      const technicalDrawings = await this.replicate.generateElevationsAndSections(enhancedContext);
+      console.log('✅ Technical drawings generated');
 
-      // STEP 3: Combine both results in single object
+      // STEP 3.7: Generate multiple 3D views with floor plan as control
+      console.log('🏗️ Step 6: Generating 3D views (exterior front, side, interior) with floor plan as control...');
+      const views = await this.replicate.generateMultipleViews(
+        enhancedContext,
+        ['exterior_front', 'exterior_side', 'interior'],
+        floorPlanImage
+      );
+      console.log('✅ 3D views generated with ControlNet guidance');
+
+      // STEP 3: Combine all results in single object
       const combinedResults = {
-        floorPlan: floorPlanResult?.floorPlan || floorPlanResult,
-        preview3D: preview3DResult?.preview3D || preview3DResult,
+        floorPlans: floorPlans,
+        technicalDrawings: technicalDrawings,
+        views: views,
         metadata: {
-          floorPlanSuccess: floorPlanResult?.success !== false,
-          preview3DSuccess: preview3DResult?.success !== false,
-          floorPlanType: floorPlanResult?.type,
-          preview3DType: preview3DResult?.type
+          floorPlansSuccess: floorPlans?.success !== false,
+          technicalDrawingsSuccess: technicalDrawings?.success !== false,
+          viewsSuccess: Object.keys(views || {}).length > 0,
+          floorPlanCount: floorPlans?.floorCount || 1,
+          viewCount: Object.keys(views || {}).length
         }
       };
 
       console.log('✅ Combined results:', {
-        floorPlan: combinedResults.metadata.floorPlanSuccess ? 'Success' : 'Failed',
-        preview3D: combinedResults.metadata.preview3DSuccess ? 'Success' : 'Failed'
+        floorPlans: combinedResults.metadata.floorPlansSuccess ? 'Success' : 'Failed',
+        technicalDrawings: combinedResults.metadata.technicalDrawingsSuccess ? 'Success' : 'Failed',
+        views: combinedResults.metadata.viewsSuccess ? 'Success' : 'Failed',
+        floorPlanCount: combinedResults.metadata.floorPlanCount,
+        viewCount: combinedResults.metadata.viewCount
       });
 
-      // Return integrated results with combined visualizations and blended style
+      // Return integrated results with all visualizations and blended style
       return {
         success: true,
         locationAnalysis,
@@ -675,9 +689,10 @@ class AIIntegrationService {
         blendedStyle, // STEP 4: Full blended style object
         blendedPrompt: blendedStyle.description, // Keep backward compatibility
         blendWeight, // STEP 4: Store the blend weight used
-        results: combinedResults, // Combined floor plan + 3D preview
-        floorPlan: floorPlanResult, // Also keep individual results for compatibility
-        preview3D: preview3DResult,
+        results: combinedResults, // Combined floor plans + technical drawings + 3D views
+        floorPlans: floorPlans, // Also keep individual results for compatibility
+        technicalDrawings: technicalDrawings,
+        visualizations: { views }, // For compatibility with existing extraction
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),

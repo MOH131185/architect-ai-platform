@@ -715,28 +715,28 @@ const ArchitectAIEnhanced = () => {
         });
 
         // STEP 5: Try integrated design results structure first
-        if (aiResult.results?.floorPlan?.floorPlan?.images) {
-          floorPlans.ground = aiResult.results.floorPlan.floorPlan.images[0];
-          console.log('✅ Extracted floor plan from integrated results.floorPlan.floorPlan');
+        if (aiResult.results?.floorPlans?.floorPlans?.ground?.images) {
+          const plans = aiResult.results.floorPlans.floorPlans;
+          if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
+          if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
+          if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from integrated results');
         }
-        else if (aiResult.results?.floorPlan?.images) {
-          floorPlans.ground = aiResult.results.floorPlan.images[0];
-          console.log('✅ Extracted floor plan from integrated results.floorPlan');
-        }
-        // Try direct floorPlan result
-        else if (aiResult.floorPlan?.floorPlan?.images) {
-          floorPlans.ground = aiResult.floorPlan.floorPlan.images[0];
-          console.log('✅ Extracted floor plan from floorPlan.floorPlan');
+        // Try direct floorPlans result
+        else if (aiResult.floorPlans?.floorPlans?.ground?.images) {
+          const plans = aiResult.floorPlans.floorPlans;
+          if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
+          if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
+          if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from floorPlans');
         }
         // Try visualizations structure
         else if (aiResult.visualizations?.floorPlans?.floorPlans?.ground?.images) {
-          floorPlans.ground = aiResult.visualizations.floorPlans.floorPlans.ground.images[0];
-          console.log('✅ Extracted floor plan from visualizations');
-        }
-        // Try comprehensive workflow structure
-        else if (aiResult.floorPlans?.floorPlans?.ground?.images) {
-          floorPlans.ground = aiResult.floorPlans.floorPlans.ground.images[0];
-          console.log('✅ Extracted floor plan from floorPlans');
+          const plans = aiResult.visualizations.floorPlans.floorPlans;
+          if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
+          if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
+          if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from visualizations');
         }
 
         // Fallback placeholder
@@ -761,9 +761,10 @@ const ArchitectAIEnhanced = () => {
           visualizationsKeys: aiResult.visualizations ? Object.keys(aiResult.visualizations) : []
         });
 
-        // Try visualizations.technicalDrawings first (style-optimized workflow)
-        const td = aiResult.visualizations?.technicalDrawings?.technicalDrawings ||
-                   aiResult.technicalDrawings?.technicalDrawings;
+        // Try integrated design results first
+        const td = aiResult.results?.technicalDrawings?.technicalDrawings ||
+                   aiResult.technicalDrawings?.technicalDrawings ||
+                   aiResult.visualizations?.technicalDrawings?.technicalDrawings;
 
         if (td) {
           console.log('📐 Found technical drawings:', Object.keys(td));
@@ -820,26 +821,25 @@ const ArchitectAIEnhanced = () => {
         });
 
         // STEP 5: Try integrated design results structure first
-        if (aiResult.results?.preview3D?.preview3D?.images) {
-          images.push(...aiResult.results.preview3D.preview3D.images);
-          console.log('✅ Extracted 3D preview from integrated results.preview3D.preview3D');
+        if (aiResult.results?.views) {
+          const views = aiResult.results.views;
+          if (views.exterior_front?.images) images.push(...views.exterior_front.images);
+          if (views.exterior_side?.images) images.push(...views.exterior_side.images);
+          if (views.interior?.images) images.push(...views.interior.images);
+          console.log('✅ Extracted', images.length, '3D views from integrated results.views');
         }
-        else if (aiResult.results?.preview3D?.images) {
-          images.push(...aiResult.results.preview3D.images);
-          console.log('✅ Extracted 3D preview from integrated results.preview3D');
+        // Try visualizations.views structure
+        else if (aiResult.visualizations?.views) {
+          const views = aiResult.visualizations.views;
+          if (views.exterior_front?.images) images.push(...views.exterior_front.images);
+          if (views.exterior_side?.images) images.push(...views.exterior_side.images);
+          if (views.interior?.images) images.push(...views.interior.images);
+          console.log('✅ Extracted', images.length, '3D views from visualizations');
         }
         // Try direct preview3D result
         else if (aiResult.preview3D?.preview3D?.images) {
           images.push(...aiResult.preview3D.preview3D.images);
           console.log('✅ Extracted 3D preview from preview3D.preview3D');
-        }
-        // Try visualizations.views structure
-        else if (aiResult.visualizations?.views) {
-          const views = aiResult.visualizations.views;
-          if (views.exterior_front?.images) images.push(views.exterior_front.images[0]);
-          if (views.exterior_side?.images) images.push(views.exterior_side.images[0]);
-          if (views.interior?.images) images.push(views.interior.images[0]);
-          console.log('✅ Extracted', images.length, '3D views from visualizations');
         }
 
         // Fallback placeholder if no images found
