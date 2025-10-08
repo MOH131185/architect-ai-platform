@@ -1,6 +1,49 @@
-# Troubleshooting Guide - ArchiAI Platform
+# Troubleshooting Guide: 2D/3D Generation Not Working
 
-## 🚨 Critical Issue: Environment Variables Not Loading
+## 🚨 Critical Issues Found and Fixed
+
+### Issue #1: Development Server Not Running ❌
+**Problem**: The Express proxy server (port 3001) must be running for API calls to work in development.
+
+**Solution**: Always run the app with:
+```bash
+npm run dev
+```
+NOT `npm start` (this only runs React, not the API proxy)
+
+**Verify**: Check that you see both:
+- `🚀 API Proxy Server running on http://localhost:3001`
+- React app on `http://localhost:3000`
+
+---
+
+### Issue #2: Invalid OpenAI API Key ❌
+**Problem**: Your OpenAI API key in `.env` appears truncated or invalid.
+
+**Solution**:
+1. Get a valid API key from https://platform.openai.com/api-keys
+2. Update `.env` file:
+```
+REACT_APP_OPENAI_API_KEY=sk-proj-YOUR_ACTUAL_KEY_HERE
+```
+3. Restart the server (`npm run dev`)
+
+**Verify**: Check server logs for "✅ OpenAI API Key: Configured"
+
+---
+
+### Issue #3: Image Output Field Extraction ✅ FIXED
+**Problem**: Replicate's output format varies by model - could be array, string, or object.
+
+**Solution**: Updated `replicateService.js` to handle all formats:
+- `result.output[0]` (array)
+- `result.output` (string)
+- `result.output.image` (object)
+- `result.output.url` (object)
+
+---
+
+## 🚨 Critical Issue: Environment Variables Not Loading (Production)
 
 ### Problem:
 - 3D maps not showing

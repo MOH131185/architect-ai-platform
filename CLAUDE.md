@@ -35,8 +35,8 @@ This is an AI-powered architectural design platform built as a single-page React
 2. **Location Analysis** - Address input with automatic geolocation detection
 3. **Intelligence Report** - Climate data, zoning analysis, architectural recommendations, and 3D map view
 4. **Portfolio Upload** - User uploads architectural portfolio for style learning
-5. **Project Specifications** - Building program and area requirements
-6. **AI Generation & Results** - Complete design with floor plans, 3D visualizations, technical specs, and export options
+5. **Project Specifications** - Building type selection (25+ options across Healthcare, Residential, Commercial, Institutional, Hospitality), floor area input, and entrance orientation selector (North/South/East/West)
+6. **AI Generation & Results** - Complete design with per-level floor plans, comprehensive 3D views, technical drawings, engineering diagrams, and interactive refinement
 
 ### Service Layer Architecture
 
@@ -49,6 +49,10 @@ This is an AI-powered architectural design platform built as a single-page React
 - `aiIntegrationService.js` - Orchestrates complete AI workflow combining OpenAI reasoning and Replicate visualization
 - `openaiService.js` - GPT-4 integration for design reasoning, philosophy, spatial analysis, and feasibility
 - `replicateService.js` - SDXL integration for photorealistic architectural image generation
+- `interactiveRefinementService.js` - Handles natural language design modifications and selective output regeneration
+- `solarOrientationService.js` - Calculates optimal building orientation based on entrance direction and climate
+- `buildingProgramService.js` - Generates building program, massing, and room allocations
+- `materialSelectionService.js` - Recommends materials with thermal mass analysis
 
 ### API Proxying Architecture
 
@@ -89,14 +93,26 @@ This is an AI-powered architectural design platform built as a single-page React
 5. Architectural style recommendations from `globalArchitecturalDatabase.js`
 6. Returns complete location profile with climate, zoning, styles, and market context
 
-**AI Generation Flow**:
-1. User clicks "Generate AI Designs" in step 4
-2. `aiIntegrationService.generateCompleteDesign()` orchestrates:
-   - OpenAI: Generate design reasoning (philosophy, spatial organization, materials, environmental considerations)
-   - Replicate: Generate multiple architectural visualizations (exterior, interior, site plan)
-   - OpenAI: Generate design alternatives (sustainable, cost-effective, innovative, traditional)
-   - OpenAI: Analyze feasibility (cost, timeline, constraints)
-3. Results displayed with images, reasoning, technical specs, and export options
+**AI Generation Flow (Updated - Always uses generateCompleteDesign)**:
+1. User selects building type, floor area, and entrance orientation in step 4
+2. User clicks "Generate AI Designs"
+3. `aiIntegrationService.generateCompleteDesign()` orchestrates comprehensive workflow:
+   - **Step 1**: Site context analysis (enhanced location service, geocoding, climate)
+   - **Step 1.5**: Local architectural style detection (Street View + ML analysis)
+   - **Step 2**: Solar orientation calculation (passive design strategy based on entrance direction)
+   - **Step 3**: Building program calculation (massing, floor areas, room program)
+   - **Step 4**: Portfolio style analysis and blending (if portfolio images provided)
+   - **Step 5**: Material selection with thermal mass analysis
+   - **Step 6**: Enhanced design reasoning generation (OpenAI GPT-4)
+   - **Step 7**: Generate comprehensive architectural outputs (Replicate SDXL):
+     - Per-level floor plans (ground, upper, roof)
+     - Comprehensive 3D views (4 exterior + 2 interior)
+     - Technical drawings (section + 4 elevations: north, south, east, west)
+     - Engineering diagrams (structural system + MEP diagrams)
+   - **Step 8**: Generate design alternatives (sustainable, cost-effective, innovative, traditional)
+   - **Step 9**: Analyze feasibility (cost, timeline, constraints)
+4. Results displayed with all outputs organized by category, with export options
+5. **Interactive Refinement**: User can request modifications via natural language ("Add skylight", "Rotate 15°", etc.) and affected outputs are regenerated
 
 ### Data Flow & State Management
 
@@ -115,17 +131,105 @@ This is an AI-powered architectural design platform built as a single-page React
 }
 ```
 
-**AI Generation Result Structure**:
+**AI Generation Result Structure (Updated - generateCompleteDesign output)**:
 ```javascript
 {
-  reasoning: { designPhilosophy, spatialOrganization, materialRecommendations, ... },
-  visualizations: { views, styleVariations, reasoningBased },
+  success: true,
+  siteAnalysis: { location, coordinates, climate, solar, recommendations },
+  styleDetection: { primaryLocalStyles, materials, designElements },
+  portfolioAnalysis: { styleProfile, blendedStyle, blendingMode },
+  solarOrientation: { optimalOrientation, energySavingsEstimate, recommendations },
+  buildingProgram: { massing, roomProgram, efficiency, structuralConsiderations },
+  materialAnalysis: { primaryMaterials, thermalMassAnalysis, sustainabilityProfile },
+  reasoning: {
+    designPhilosophy,
+    spatialOrganization,
+    materialRecommendations,
+    siteIntegration,
+    passiveSolarDesign,
+    materialStrategy,
+    spatialProgram
+  },
+  outputs: {
+    floorPlans: {
+      floorPlans: { ground: {image, success}, upper: {image, success}, roof: {image, success} },
+      totalLevels: 3
+    },
+    views: {
+      views: {
+        exterior_front: {image, success},
+        exterior_rear: {image, success},
+        exterior_side_1: {image, success},
+        exterior_side_2: {image, success},
+        interior_main: {image, success},
+        interior_secondary: {image, success}
+      },
+      exteriorCount: 4,
+      interiorCount: 2
+    },
+    technicalDrawings: {
+      drawings: {
+        section: {image, success},
+        elevation_north: {image, success},
+        elevation_south: {image, success},
+        elevation_east: {image, success},
+        elevation_west: {image, success}
+      },
+      sectionCount: 1,
+      elevationCount: 4
+    },
+    engineeringDiagrams: {
+      diagrams: {
+        structural: {image, success},
+        mep: {image, success}
+      }
+    },
+    summary: {
+      perLevelFloorPlans, exteriorViews, interiorViews,
+      sections, elevations, engineeringDiagrams, totalOutputs
+    }
+  },
   alternatives: { sustainable, cost_effective, innovative, traditional },
   feasibility: { cost, timeline, constraints, recommendations },
+  enhancedContext: { ...projectContext, all analysis results },
+  elapsedTime: string,
   timestamp: string,
-  workflow: 'complete' | 'quick'
+  workflow: 'enhanced-complete'
 }
 ```
+
+**Key Changes**:
+- `outputs` object now contains structured data for all generated artifacts
+- Each output type (floorPlans, views, drawings, diagrams) has individual success flags
+- Fallback images automatically used when generation fails
+- All outputs accessible via `aiResult.outputs.{category}.{item}.image`
+
+### Interactive Design Refinement (NEW)
+
+**Feature Overview**:
+Users can request design modifications via natural language after initial generation. The system intelligently determines which outputs need regeneration and updates only those components.
+
+**Usage Flow**:
+1. User generates initial design via `generateCompleteDesign()`
+2. In results view, user clicks "Modify Design with AI"
+3. User enters natural language modification (e.g., "Rotate building 15° for better solar access", "Add skylight to living room", "Increase master bedroom by 10m²")
+4. System calls `aiIntegrationService.refineDesign(modificationPrompt, currentDesign, projectContext)`
+5. `interactiveRefinementService` analyzes modification and determines affected outputs
+6. Only affected outputs are regenerated (e.g., entrance change → regenerate floor plans + elevations)
+7. Updated design replaces old outputs seamlessly
+
+**Refinement Service Capabilities**:
+- Validates modification compatibility with current design
+- Parses natural language to extract design intent
+- Maps modifications to affected output categories (floorPlans, views, drawings, diagrams)
+- Regenerates only necessary outputs to save API costs and time
+- Maintains refinement history for undo/tracking
+
+**Example Modifications**:
+- Orientation: "Rotate building 15°", "Change entrance to face east"
+- Spatial: "Add skylight", "Enlarge master bedroom by 10m²", "Add another bathroom"
+- Material: "Switch to brick facade", "Use solar panels on roof"
+- Layout: "Open concept kitchen and living room", "Add courtyard"
 
 ### File Generation & Export System
 

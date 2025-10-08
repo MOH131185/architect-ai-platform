@@ -6,44 +6,131 @@
 import openaiService from './openaiService';
 import replicateService from './replicateService';
 import portfolioStyleDetection from './portfolioStyleDetection';
+import solarOrientationService from './solarOrientationService';
+import buildingProgramService from './buildingProgramService';
+import materialSelectionService from './materialSelectionService';
+import enhancedLocationService from './enhancedLocationService';
+import styleDetectionService from './styleDetectionService';
+import interactiveRefinementService from './interactiveRefinementService';
 
 class AIIntegrationService {
   constructor() {
     this.openai = openaiService;
     this.replicate = replicateService;
     this.portfolioStyleDetection = portfolioStyleDetection;
+    this.solarOrientation = solarOrientationService;
+    this.buildingProgram = buildingProgramService;
+    this.materialSelection = materialSelectionService;
+    this.enhancedLocation = enhancedLocationService;
+    this.styleDetection = styleDetectionService;
+    this.refinement = interactiveRefinementService;
   }
 
   /**
-   * Complete AI-powered architectural design workflow
+   * Enhanced AI-powered architectural design workflow with site analysis
    * @param {Object} projectContext - Complete project information
    * @returns {Promise<Object>} Combined reasoning and generation results
    */
   async generateCompleteDesign(projectContext) {
     try {
-      console.log('Starting complete AI design workflow...');
-      
-      // Step 1: Generate design reasoning
-      const reasoning = await this.generateDesignReasoning(projectContext);
-      
-      // Step 2: Generate architectural visualizations
-      const visualizations = await this.generateVisualizations(projectContext, reasoning);
-      
-      // Step 3: Generate design alternatives
-      const alternatives = await this.generateDesignAlternatives(projectContext, reasoning);
-      
-      // Step 4: Analyze feasibility
-      const feasibility = await this.analyzeFeasibility(projectContext);
-      
+      console.log('Starting enhanced AI design workflow...');
+      const startTime = Date.now();
+
+      // Step 1: Site context gathering and analysis
+      console.log('Step 1: Analyzing site context...');
+      const siteAnalysis = await this.analyzeSiteContext(projectContext);
+
+      // Step 1.5: Local architecture style detection (using Street View + ML)
+      console.log('Step 1.5: Detecting local architectural styles...');
+      const styleDetection = await this.detectLocalStyles(siteAnalysis);
+      siteAnalysis.styleDetection = styleDetection;
+
+      // Step 2: Calculate solar orientation and passive design strategy
+      console.log('Step 2: Calculating solar orientation...');
+      const solarAnalysis = this.solarOrientation.calculateOptimalOrientation(
+        projectContext.location?.coordinates?.lat || 0,
+        projectContext.location?.coordinates?.lng || 0,
+        projectContext.location?.climate,
+        projectContext.entranceDirection
+      );
+
+      // Step 3: Determine building program and massing
+      console.log('Step 3: Calculating building program...');
+      const buildingProgram = await this.buildingProgram.calculateBuildingProgram(
+        projectContext.buildingType || projectContext.buildingProgram,
+        projectContext.siteArea || 1000,
+        projectContext.location?.zoning,
+        projectContext.location,
+        projectContext.userDesiredFloorArea || null
+      );
+
+      // Step 4: Portfolio style analysis and blending
+      console.log('Step 4: Analyzing portfolio style and blending...');
+      const portfolioAnalysis = await this.analyzePortfolioStyle(
+        projectContext.portfolioImages,
+        styleDetection,
+        projectContext.styleBlendingMode || 'mix'
+      );
+
+      // Step 5: Material selection with thermal mass analysis
+      console.log('Step 5: Selecting materials...');
+      const materialAnalysis = this.materialSelection.recommendMaterials(
+        projectContext.location?.climate,
+        projectContext.location,
+        projectContext.buildingType || projectContext.buildingProgram,
+        solarAnalysis
+      );
+
+      // Step 6: Build enhanced project context with all analysis
+      const enhancedContext = {
+        ...projectContext,
+        siteAnalysis,
+        solarOrientation: solarAnalysis,
+        buildingProgram: buildingProgram,
+        portfolioStyle: portfolioAnalysis.styleProfile,
+        blendedStyle: portfolioAnalysis.blendedStyle,
+        materials: materialAnalysis.primaryMaterials,
+        materialAnalysis,
+        roomProgram: buildingProgram.roomProgram,
+        stories: buildingProgram.massing?.stories?.recommended || 2,
+        structuralSystem: buildingProgram.structuralConsiderations?.primarySystem
+      };
+
+      // Step 6: Generate comprehensive design reasoning
+      console.log('Step 5: Generating AI design reasoning...');
+      const reasoning = await this.generateEnhancedDesignReasoning(enhancedContext);
+
+      // Step 7: Generate complete architectural outputs
+      console.log('Step 6: Generating architectural visualizations...');
+      const outputs = await this.generateComprehensiveOutputs(enhancedContext, reasoning);
+
+      // Step 8: Generate design alternatives
+      console.log('Step 7: Generating design alternatives...');
+      const alternatives = await this.generateDesignAlternatives(enhancedContext, reasoning);
+
+      // Step 9: Analyze feasibility with enhanced context
+      console.log('Step 8: Analyzing project feasibility...');
+      const feasibility = await this.analyzeFeasibility(enhancedContext);
+
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`Complete design workflow finished in ${elapsedTime}s`);
+
       return {
         success: true,
+        siteAnalysis,
+        styleDetection,
+        portfolioAnalysis,
+        solarOrientation: solarAnalysis,
+        buildingProgram,
+        materialAnalysis,
         reasoning,
-        visualizations,
+        outputs,
         alternatives,
         feasibility,
-        projectContext,
+        enhancedContext,
+        elapsedTime: `${elapsedTime}s`,
         timestamp: new Date().toISOString(),
-        workflow: 'complete'
+        workflow: 'enhanced-complete'
       };
 
     } catch (error) {
@@ -54,6 +141,347 @@ class AIIntegrationService {
         fallback: this.getFallbackDesign(projectContext)
       };
     }
+  }
+
+  /**
+   * Detect local architectural styles using Street View imagery + ML
+   */
+  async detectLocalStyles(siteAnalysis) {
+    try {
+      // Only run if we have valid location data
+      if (!siteAnalysis.coordinates || !siteAnalysis.addressComponents) {
+        console.warn('Insufficient location data for style detection');
+        return {
+          success: false,
+          note: 'Style detection skipped - insufficient location data',
+          fallback: this.styleDetection.getFallbackStyleDetection({ addressComponents: {} })
+        };
+      }
+
+      // Run style detection service
+      const styleResult = await this.styleDetection.detectLocalArchitectureStyle({
+        coordinates: siteAnalysis.coordinates,
+        addressComponents: siteAnalysis.addressComponents
+      });
+
+      if (!styleResult.success) {
+        console.warn('Style detection failed, using fallback');
+        return styleResult.fallback || {
+          primaryLocalStyles: ['Contemporary'],
+          materials: ['Brick', 'Concrete', 'Glass']
+        };
+      }
+
+      return styleResult.styleProfile;
+
+    } catch (error) {
+      console.error('Local style detection error:', error);
+      return {
+        success: false,
+        error: error.message,
+        note: 'Style detection failed',
+        fallback: {
+          primaryLocalStyles: ['Contemporary'],
+          materials: ['Brick', 'Concrete', 'Glass']
+        }
+      };
+    }
+  }
+
+  /**
+   * Analyze site context using enhanced location service
+   */
+  async analyzeSiteContext(projectContext) {
+    try {
+      // If address or coordinates are provided, use enhanced location service
+      const addressOrCoords = projectContext.location?.address ||
+                              (projectContext.location?.coordinates ?
+                                `${projectContext.location.coordinates.lat},${projectContext.location.coordinates.lng}` :
+                                null);
+
+      if (!addressOrCoords) {
+        console.warn('No location data provided, using fallback');
+        return {
+          location: 'Unknown location',
+          coordinates: { lat: 0, lng: 0 },
+          climate: { type: 'Temperate' },
+          zoning: { type: 'Mixed use' },
+          note: 'No location data provided'
+        };
+      }
+
+      // Use enhanced location service for comprehensive analysis
+      const locationAnalysis = await this.enhancedLocation.analyzeLocation(addressOrCoords);
+
+      if (!locationAnalysis.success) {
+        console.warn('Enhanced location analysis failed, using basic context');
+        return {
+          location: projectContext.location?.address || 'Unknown location',
+          coordinates: projectContext.location?.coordinates || { lat: 0, lng: 0 },
+          climate: projectContext.location?.climate || { type: 'Temperate' },
+          zoning: projectContext.location?.zoning || { type: 'Mixed use' },
+          note: 'Enhanced location analysis unavailable'
+        };
+      }
+
+      // Return enhanced analysis
+      return {
+        location: locationAnalysis.location.formattedAddress,
+        coordinates: locationAnalysis.location.coordinates,
+        addressComponents: locationAnalysis.location.addressComponents,
+        climate: {
+          type: locationAnalysis.climate.classification.description,
+          current: locationAnalysis.climate.current,
+          seasonal: locationAnalysis.climate.seasonal,
+          classification: locationAnalysis.climate.classification
+        },
+        solar: locationAnalysis.solar,
+        recommendations: locationAnalysis.recommendations,
+        zoning: projectContext.location?.zoning || { type: 'Mixed use', note: 'Zoning data not available from location service' },
+        localStyles: projectContext.location?.localStyles || [],
+        source: 'enhanced-location-service'
+      };
+
+    } catch (error) {
+      console.error('Site context analysis error:', error);
+      return {
+        location: projectContext.location?.address || 'Unknown location',
+        coordinates: projectContext.location?.coordinates || { lat: 0, lng: 0 },
+        climate: { type: 'Temperate' },
+        error: error.message,
+        note: 'Site context analysis failed, using fallback'
+      };
+    }
+  }
+
+  /**
+   * Step 4: Analyze portfolio style and blend with local style
+   *
+   * @param {Array} portfolioImages - User-uploaded portfolio images
+   * @param {Object} localStyleDetection - Local style from Step 2
+   * @param {string} blendingMode - 'signature' (100% portfolio) or 'mix' (blend)
+   * @returns {Promise<Object>} Portfolio analysis and blended style recommendations
+   */
+  async analyzePortfolioStyle(portfolioImages, localStyleDetection, blendingMode = 'mix') {
+    try {
+      // Step 4.1: Analyze portfolio images to extract dominant style
+      const portfolioAnalysis = await this.portfolioStyleDetection.analyzePortfolioStyle(
+        portfolioImages || [],
+        { blendingMode }
+      );
+
+      if (!portfolioAnalysis.success) {
+        console.warn('Portfolio analysis failed, using default style profile');
+        return {
+          success: false,
+          styleProfile: portfolioAnalysis.styleProfile,
+          blendedStyle: null,
+          note: 'Portfolio analysis unavailable, using default Contemporary style'
+        };
+      }
+
+      const portfolioStyle = portfolioAnalysis.styleProfile;
+
+      // Step 4.2: Blend portfolio style with local style
+      const localStyle = localStyleDetection?.primaryLocalStyles?.[0]
+        ? {
+            primaryStyle: localStyleDetection.primaryLocalStyles[0],
+            materials: localStyleDetection.materials || [],
+            designElements: localStyleDetection.designElements || []
+          }
+        : {
+            primaryStyle: 'Contemporary',
+            materials: ['Brick', 'Concrete', 'Glass'],
+            designElements: ['Clean lines', 'Large windows']
+          };
+
+      const blendedStyle = this.portfolioStyleDetection.blendStyles(
+        portfolioStyle,
+        localStyle,
+        blendingMode
+      );
+
+      return {
+        success: true,
+        styleProfile: portfolioStyle,
+        blendedStyle,
+        blendingMode,
+        localStyle,
+        analysisMethod: portfolioAnalysis.analysisMethod,
+        imagesAnalyzed: portfolioAnalysis.imagesAnalyzed || 0,
+        timestamp: portfolioAnalysis.timestamp
+      };
+
+    } catch (error) {
+      console.error('Portfolio style analysis error:', error);
+      return {
+        success: false,
+        styleProfile: this.portfolioStyleDetection.getDefaultStyleProfile(),
+        blendedStyle: null,
+        error: error.message,
+        note: 'Portfolio analysis failed, using default Contemporary style'
+      };
+    }
+  }
+
+  /**
+   * Generate enhanced design reasoning with all analysis integrated
+   */
+  async generateEnhancedDesignReasoning(enhancedContext) {
+    try {
+      console.log('Generating enhanced design reasoning with site analysis...');
+
+      // Build comprehensive context for OpenAI
+      const reasoningContext = {
+        ...enhancedContext,
+        siteContext: enhancedContext.siteAnalysis,
+        passiveSolarStrategy: enhancedContext.solarOrientation?.recommendations || [],
+        optimalOrientation: enhancedContext.solarOrientation?.optimalOrientation?.primaryOrientation?.direction,
+        thermalMassStrategy: enhancedContext.materialAnalysis?.thermalMassAnalysis?.requirement,
+        recommendedMaterials: this.extractMaterialSummary(enhancedContext.materialAnalysis),
+        buildingMassing: {
+          stories: enhancedContext.stories,
+          floorArea: enhancedContext.buildingProgram?.massing?.floorAreas?.totalGrossArea,
+          footprint: enhancedContext.buildingProgram?.massing?.footprint
+        },
+        roomProgram: enhancedContext.roomProgram
+      };
+
+      const reasoning = await this.openai.generateDesignReasoning(reasoningContext);
+
+      return {
+        ...reasoning,
+        siteIntegration: this.generateSiteIntegrationNarrative(enhancedContext),
+        passiveSolarDesign: this.generatePassiveSolarNarrative(enhancedContext.solarOrientation),
+        materialStrategy: this.generateMaterialNarrative(enhancedContext.materialAnalysis),
+        spatialProgram: this.generateSpatialProgramNarrative(enhancedContext.buildingProgram),
+        source: 'enhanced-openai',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Enhanced design reasoning error:', error);
+      return this.getFallbackReasoning(enhancedContext);
+    }
+  }
+
+  /**
+   * Step 6: Generate comprehensive high-resolution 2D and 3D architectural outputs
+   */
+  async generateComprehensiveOutputs(enhancedContext, reasoning) {
+    try {
+      const outputs = {};
+      const { buildingProgram } = enhancedContext;
+
+      // Step 6.1: Generate per-level floor plans (1024×1024)
+      console.log('Step 6.1: Generating per-level floor plans...');
+      outputs.floorPlans = await this.replicate.generatePerLevelFloorPlans(
+        buildingProgram,
+        enhancedContext
+      );
+
+      // Step 6.2: Generate comprehensive 3D views (4 exterior + 2 interior)
+      console.log('Step 6.2: Generating comprehensive 3D views...');
+      outputs.views = await this.replicate.generateComprehensiveViews(enhancedContext);
+
+      // Step 6.3: Generate 2D technical drawings (section + 4 elevations)
+      console.log('Step 6.3: Generating 2D technical drawings...');
+      outputs.technicalDrawings = await this.replicate.generateTechnicalDrawings(
+        buildingProgram,
+        enhancedContext
+      );
+
+      // Step 6.4: Generate structural and MEP engineering diagrams
+      console.log('Step 6.4: Generating engineering diagrams...');
+      outputs.engineeringDiagrams = await this.replicate.generateEngineeringDiagrams(
+        buildingProgram,
+        reasoning,
+        enhancedContext
+      );
+
+      return {
+        ...outputs,
+        summary: {
+          perLevelFloorPlans: outputs.floorPlans?.totalLevels || 0,
+          exteriorViews: outputs.views?.exteriorCount || 0,
+          interiorViews: outputs.views?.interiorCount || 0,
+          sections: outputs.technicalDrawings?.sectionCount || 0,
+          elevations: outputs.technicalDrawings?.elevationCount || 0,
+          engineeringDiagrams: Object.keys(outputs.engineeringDiagrams?.diagrams || {}).length,
+          totalOutputs: (outputs.floorPlans?.totalLevels || 0) +
+                        (outputs.views?.exteriorCount || 0) +
+                        (outputs.views?.interiorCount || 0) +
+                        (outputs.technicalDrawings?.sectionCount || 0) +
+                        (outputs.technicalDrawings?.elevationCount || 0) +
+                        Object.keys(outputs.engineeringDiagrams?.diagrams || {}).length
+        },
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('Comprehensive outputs generation error:', error);
+      return {
+        error: error.message,
+        fallback: true
+      };
+    }
+  }
+
+  /**
+   * Extract material summary for reasoning context
+   */
+  extractMaterialSummary(materialAnalysis) {
+    if (!materialAnalysis) return 'Contemporary materials';
+
+    const structural = materialAnalysis.primaryMaterials?.structural?.primary || '';
+    const envelope = materialAnalysis.primaryMaterials?.envelope?.walls || '';
+    const thermalMass = materialAnalysis.thermalMassAnalysis?.requirement || 'Medium';
+
+    return `${structural}, ${envelope}, ${thermalMass} thermal mass`;
+  }
+
+  /**
+   * Generate site integration narrative
+   */
+  generateSiteIntegrationNarrative(enhancedContext) {
+    const { siteAnalysis, location } = enhancedContext;
+
+    return `The design responds to the ${location?.climate?.type || 'local'} climate and ${location?.zoning?.type || 'mixed-use'} zoning context. Site analysis reveals ${siteAnalysis?.note || 'contextual opportunities'} that inform the architectural approach. The building integrates with local architectural character while introducing contemporary sustainable design principles.`;
+  }
+
+  /**
+   * Generate passive solar design narrative
+   */
+  generatePassiveSolarNarrative(solarOrientation) {
+    if (!solarOrientation) return 'Standard solar orientation principles applied.';
+
+    const orientation = solarOrientation.optimalOrientation?.primaryOrientation?.direction || 'South';
+    const savings = solarOrientation.energySavingsEstimate?.annualSavings || '15-20%';
+
+    return `Building oriented with primary facade facing ${orientation} for optimal passive solar performance. This orientation, combined with calculated roof overhangs and strategic glazing placement, is projected to achieve ${savings} annual energy savings. ${solarOrientation.optimalOrientation?.reasoning || ''}`;
+  }
+
+  /**
+   * Generate material strategy narrative
+   */
+  generateMaterialNarrative(materialAnalysis) {
+    if (!materialAnalysis) return 'Contemporary sustainable materials specified.';
+
+    const thermalMass = materialAnalysis.thermalMassAnalysis?.requirement || 'Medium';
+    const benefit = materialAnalysis.thermalMassAnalysis?.performanceBenefit || 'Thermal comfort and energy efficiency';
+
+    return `Material strategy employs ${thermalMass.toLowerCase()} thermal mass construction: ${benefit} Primary structural system uses ${materialAnalysis.primaryMaterials?.structural?.primary || 'contemporary materials'} with ${materialAnalysis.primaryMaterials?.envelope?.walls || 'high-performance envelope'}.`;
+  }
+
+  /**
+   * Generate spatial program narrative
+   */
+  generateSpatialProgramNarrative(buildingProgram) {
+    if (!buildingProgram) return 'Efficient spatial organization.';
+
+    const stories = buildingProgram.massing?.stories?.recommended || 2;
+    const area = buildingProgram.massing?.floorAreas?.totalGrossArea || 0;
+    const efficiency = buildingProgram.efficiency?.netToGrossRatio || 80;
+
+    return `${stories}-story configuration provides ${area}m² total gross area with ${efficiency}% net-to-gross efficiency. ${buildingProgram.massing?.stories?.reasoning || ''} Spatial organization balances functional requirements with circulation efficiency and code compliance.`;
   }
 
   /**
@@ -759,8 +1187,210 @@ class AIIntegrationService {
   buildQuickPrompt(reasoning, projectContext) {
     const philosophy = reasoning.designPhilosophy || 'contemporary design';
     const materials = this.extractMaterialsFromReasoning(reasoning);
-    
+
     return `Professional architectural visualization, ${philosophy}, ${projectContext.buildingProgram || 'building'} with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed`;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // STEP 8: INTERACTIVE REFINEMENT
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Step 8: Process user modification request and regenerate affected outputs
+   *
+   * @param {string} modificationPrompt - Natural language modification (e.g., "add skylight to living room")
+   * @param {Object} currentDesign - Current complete design result from generateCompleteDesign()
+   * @param {Object} projectContext - Current project context
+   * @returns {Promise<Object>} Refined design with updated outputs
+   */
+  async refineDesign(modificationPrompt, currentDesign, projectContext) {
+    try {
+      console.log('Step 8: Processing design refinement...');
+
+      // Validate modification compatibility
+      const validation = this.refinement.validateModification(modificationPrompt, currentDesign);
+      if (!validation.valid) {
+        return {
+          success: false,
+          error: 'Invalid modification',
+          warning: validation.warning,
+          severity: validation.severity,
+          originalPrompt: modificationPrompt
+        };
+      }
+
+      // Process modification and regenerate affected outputs
+      const refinementResult = await this.refinement.processModification(
+        modificationPrompt,
+        currentDesign,
+        projectContext
+      );
+
+      if (!refinementResult.success) {
+        return refinementResult;
+      }
+
+      // Merge regenerated outputs with existing design
+      const updatedDesign = this.mergeRefinementResults(
+        currentDesign,
+        refinementResult
+      );
+
+      return {
+        success: true,
+        modification: refinementResult.modification,
+        updatedDesign,
+        regeneratedOutputs: refinementResult.regeneratedOutputs,
+        affectedOutputs: refinementResult.affectedOutputs,
+        validation: validation.warning ? {
+          warning: validation.warning,
+          severity: validation.severity
+        } : null,
+        timestamp: new Date().toISOString(),
+        workflow: 'refinement'
+      };
+
+    } catch (error) {
+      console.error('Design refinement error:', error);
+      return {
+        success: false,
+        error: error.message,
+        originalPrompt: modificationPrompt
+      };
+    }
+  }
+
+  /**
+   * Merge refinement results with existing design
+   */
+  mergeRefinementResults(currentDesign, refinementResult) {
+    const updated = JSON.parse(JSON.stringify(currentDesign)); // Deep clone
+
+    // Update project context
+    updated.enhancedContext = refinementResult.updatedContext;
+
+    // Merge regenerated outputs
+    const { regeneratedOutputs } = refinementResult;
+
+    if (regeneratedOutputs.reasoning) {
+      updated.reasoning = regeneratedOutputs.reasoning;
+    }
+
+    if (regeneratedOutputs.floorPlans) {
+      updated.outputs.floorPlans = regeneratedOutputs.floorPlans;
+    }
+
+    if (regeneratedOutputs.sections) {
+      if (!updated.outputs.technicalDrawings) {
+        updated.outputs.technicalDrawings = { drawings: {} };
+      }
+      updated.outputs.technicalDrawings.drawings.section = regeneratedOutputs.sections;
+    }
+
+    if (regeneratedOutputs.elevations) {
+      if (!updated.outputs.technicalDrawings) {
+        updated.outputs.technicalDrawings = { drawings: {} };
+      }
+      Object.assign(updated.outputs.technicalDrawings.drawings, regeneratedOutputs.elevations);
+    }
+
+    if (regeneratedOutputs.exteriorViews) {
+      if (!updated.outputs.views) {
+        updated.outputs.views = { views: {} };
+      }
+      Object.assign(updated.outputs.views.views, regeneratedOutputs.exteriorViews);
+    }
+
+    if (regeneratedOutputs.interiorViews) {
+      if (!updated.outputs.views) {
+        updated.outputs.views = { views: {} };
+      }
+      Object.assign(updated.outputs.views.views, regeneratedOutputs.interiorViews);
+    }
+
+    if (regeneratedOutputs.structural) {
+      if (!updated.outputs.engineeringDiagrams) {
+        updated.outputs.engineeringDiagrams = { diagrams: {} };
+      }
+      updated.outputs.engineeringDiagrams.diagrams.structural = regeneratedOutputs.structural;
+    }
+
+    if (regeneratedOutputs.mep) {
+      if (!updated.outputs.engineeringDiagrams) {
+        updated.outputs.engineeringDiagrams = { diagrams: {} };
+      }
+      updated.outputs.engineeringDiagrams.diagrams.mep = regeneratedOutputs.mep;
+    }
+
+    // Add refinement metadata
+    updated.refinementHistory = updated.refinementHistory || [];
+    updated.refinementHistory.push({
+      modification: refinementResult.modification,
+      affectedOutputs: refinementResult.affectedOutputs,
+      timestamp: new Date().toISOString()
+    });
+
+    return updated;
+  }
+
+  /**
+   * Step 8.3: Generate refinement suggestions for the user
+   *
+   * @param {Object} currentDesign - Current design state
+   * @returns {Promise<Array>} List of suggested refinements
+   */
+  async generateRefinementSuggestions(currentDesign) {
+    try {
+      return await this.refinement.generateRefinementSuggestions(currentDesign);
+    } catch (error) {
+      console.error('Refinement suggestions error:', error);
+      return this.refinement.getDefaultSuggestions(currentDesign);
+    }
+  }
+
+  /**
+   * Batch refinement: Process multiple modifications sequentially
+   *
+   * @param {Array} modifications - Array of modification prompts
+   * @param {Object} initialDesign - Initial design state
+   * @param {Object} initialContext - Initial project context
+   * @returns {Promise<Object>} Final refined design
+   */
+  async batchRefineDesign(modifications, initialDesign, initialContext) {
+    let currentDesign = initialDesign;
+    let currentContext = initialContext;
+    const refinementResults = [];
+
+    for (const modification of modifications) {
+      console.log(`Processing batch modification: ${modification}`);
+
+      const result = await this.refineDesign(modification, currentDesign, currentContext);
+
+      if (result.success) {
+        currentDesign = result.updatedDesign;
+        currentContext = result.updatedDesign.enhancedContext;
+        refinementResults.push({
+          modification,
+          success: true,
+          affectedOutputs: result.affectedOutputs
+        });
+      } else {
+        refinementResults.push({
+          modification,
+          success: false,
+          error: result.error
+        });
+      }
+    }
+
+    return {
+      success: true,
+      finalDesign: currentDesign,
+      refinementResults,
+      totalModifications: modifications.length,
+      successfulModifications: refinementResults.filter(r => r.success).length,
+      timestamp: new Date().toISOString()
+    };
   }
 }
 

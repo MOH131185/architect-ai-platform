@@ -286,14 +286,18 @@ const ArchitectAIEnhanced = () => {
   const [address, setAddress] = useState("");
   const [portfolioFiles, setPortfolioFiles] = useState([]);
   const [styleChoice, setStyleChoice] = useState('blend');
-  const [projectDetails, setProjectDetails] = useState({ area: '', program: '' });
+  const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirections: [] });
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
+  const [modificationPrompt, setModificationPrompt] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
   const [downloadCount, setDownloadCount] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const fileInputRef = useRef(null);
   // const hasDetectedLocation = useRef(false); // Temporarily disabled
 
@@ -319,6 +323,32 @@ const ArchitectAIEnhanced = () => {
       return () => clearTimeout(timer);
     }
   }, [currentStep]);
+
+  // Start session timer when user moves past landing page
+  useEffect(() => {
+    if (currentStep > 0 && !sessionStartTime) {
+      setSessionStartTime(Date.now());
+    }
+  }, [currentStep, sessionStartTime]);
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!sessionStartTime) return;
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+      setElapsedTime(elapsed);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionStartTime]);
+
+  // Format elapsed time as MM:SS
+  const formatElapsedTime = useCallback((seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   const detectUserLocation = useCallback(async () => {
     if (!navigator.geolocation) {
@@ -613,6 +643,35 @@ const ArchitectAIEnhanced = () => {
     }, 500); // A small delay to ensure loader is visible
   };
 
+  // Toggle entrance direction selection (allow up to 2 directions)
+  const toggleEntranceDirection = (direction) => {
+    setProjectDetails(prev => {
+      const current = prev.entranceDirections || [];
+
+      // If already selected, remove it
+      if (current.includes(direction)) {
+        return {
+          ...prev,
+          entranceDirections: current.filter(d => d !== direction)
+        };
+      }
+
+      // If 2 are already selected, replace the oldest with the new one
+      if (current.length >= 2) {
+        return {
+          ...prev,
+          entranceDirections: [current[1], direction]
+        };
+      }
+
+      // Add new direction
+      return {
+        ...prev,
+        entranceDirections: [...current, direction]
+      };
+    });
+  };
+
   // Generate AI designs with OpenAI and Replicate integration
   const generateDesigns = async () => {
     setIsLoading(true);
@@ -621,6 +680,7 @@ const ArchitectAIEnhanced = () => {
       // Prepare project context for AI
       const projectContext = {
         buildingProgram: projectDetails?.program || 'mixed-use building',
+        buildingType: projectDetails?.program || 'mixed-use building',
         location: locationData || { address: 'Unknown location' },
         architecturalStyle: styleChoice === 'blend' ? 'Contemporary with local influences' : styleChoice || 'contemporary',
         materials: 'sustainable, local materials',
@@ -628,7 +688,10 @@ const ArchitectAIEnhanced = () => {
         userPreferences: `${projectDetails?.area || '200'}m² total area`,
         specifications: projectDetails,
         climateData: locationData?.climate,
-        area: projectDetails?.area || '200'
+        area: projectDetails?.area || '200',
+        entranceDirection: (projectDetails?.entranceDirections || []).join('-') || 'south', // Join multiple directions or default to south
+        entranceDirections: projectDetails?.entranceDirections || ['south'], // Support for multiple directions
+        portfolioImages: (portfolioFiles || []).map(file => file.url || file.preview).filter(Boolean)
       };
 
       console.log('🎨 Starting AI design generation with:', projectContext);
@@ -637,47 +700,134 @@ const ArchitectAIEnhanced = () => {
       const portfolioImages = (portfolioFiles || [])
         .map(file => file.url || file.preview)
         .filter(Boolean);
-      
-      let aiResult;
-      if (portfolioImages.length > 0) {
-        // Use style-optimized design generation with portfolio analysis
-        console.log('🎨 Using style-optimized design generation with portfolio analysis');
-        aiResult = await aiIntegrationService.generateStyleOptimizedDesign(projectContext, portfolioImages);
-      } else {
-        // Use floor plan and 3D preview generation
-        console.log('🎨 Using floor plan and 3D preview generation');
-        aiResult = await aiIntegrationService.generateFloorPlanAnd3DPreview(projectContext, portfolioImages);
-      }
+
+      // Always use generateCompleteDesign for consistent outputs structure
+      console.log('🎨 Using complete design generation with full outputs');
+      const aiResult = await aiIntegrationService.generateCompleteDesign(projectContext, portfolioImages);
 
       console.log('✅ AI design generation complete:', aiResult);
+      console.log('🔍 Checking outputs structure:', aiResult.outputs);
 
-      // Extract images from AI result with proper fallback handling
-      const extractFloorPlanImages = () => {
-        // Try multiple possible paths for floor plan images
-        if (aiResult.floorPlan?.floorPlan?.images) return aiResult.floorPlan.floorPlan.images;
-        if (aiResult.floorPlan?.images) return aiResult.floorPlan.images;
-        if (aiResult.visualizations?.floorPlan?.images) return aiResult.visualizations.floorPlan.images;
-        if (aiResult.visualizations?.floorPlan?.floorPlan?.images) return aiResult.visualizations.floorPlan.floorPlan.images;
-        return [];
-      };
+      // SIMPLIFIED: Extract outputs from generateCompleteDesign result
+      // Expected structure: aiResult.outputs.floorPlans.floorPlans, aiResult.outputs.views.views, etc.
+      let { outputs } = aiResult;
 
-      const extract3DImages = () => {
-        // Try multiple possible paths for 3D preview images
-        if (aiResult.preview3D?.preview3D?.images) return aiResult.preview3D.preview3D.images;
-        if (aiResult.preview3D?.images) return aiResult.preview3D.images;
-        if (aiResult.visualizations?.preview3D?.images) return aiResult.visualizations.preview3D.images;
-        if (aiResult.visualizations?.preview3D?.preview3D?.images) return aiResult.visualizations.preview3D.preview3D.images;
-        if (aiResult.visualization?.images) return aiResult.visualization.images;
-        return [];
-      };
+      // If outputs missing, create fallback structure with placeholder images
+      if (!outputs) {
+        console.warn('⚠️ No outputs object found in aiResult. Using fallback placeholder images.');
+        console.log('Full result:', aiResult);
 
-      const floorPlanImages = extractFloorPlanImages();
-      const preview3DImages = extract3DImages();
+        // Create fallback outputs structure
+        outputs = {
+          floorPlans: {
+            floorPlans: {
+              ground: { image: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan', success: false },
+              upper: { image: 'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=Upper+Floor+Plan', success: false },
+              roof: { image: 'https://via.placeholder.com/1024x1024/5D6D7E/FFFFFF?text=Roof+Plan', success: false }
+            },
+            totalLevels: 3
+          },
+          views: {
+            views: {
+              exterior_front: { image: 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=Front+View', success: false },
+              exterior_rear: { image: 'https://via.placeholder.com/1024x768/2980B9/FFFFFF?text=Rear+View', success: false },
+              exterior_side_1: { image: 'https://via.placeholder.com/1024x768/5DADE2/FFFFFF?text=Side+View+1', success: false },
+              exterior_side_2: { image: 'https://via.placeholder.com/1024x768/85C1E9/FFFFFF?text=Side+View+2', success: false },
+              interior_main: { image: 'https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+Main', success: false },
+              interior_secondary: { image: 'https://via.placeholder.com/1024x768/9ACD32/FFFFFF?text=Interior+Secondary', success: false }
+            },
+            exteriorCount: 4,
+            interiorCount: 2
+          },
+          technicalDrawings: {
+            drawings: {
+              section: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section', success: false },
+              elevation_north: { image: 'https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=North+Elevation', success: false },
+              elevation_south: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=South+Elevation', success: false },
+              elevation_east: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=East+Elevation', success: false },
+              elevation_west: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=West+Elevation', success: false }
+            },
+            sectionCount: 1,
+            elevationCount: 4
+          },
+          engineeringDiagrams: {
+            diagrams: {
+              structural: { image: 'https://via.placeholder.com/800x600/E67E22/FFFFFF?text=Structural+Diagram', success: false },
+              mep: { image: 'https://via.placeholder.com/800x600/F39C12/FFFFFF?text=MEP+Diagram', success: false }
+            }
+          }
+        };
+      }
 
-      console.log('📊 Extracted floor plan images:', floorPlanImages);
-      console.log('📊 Extracted 3D preview images:', preview3DImages);
+      // Extract per-level floor plans with fallback handling
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
+      const floorPlansData = outputs?.floorPlans?.floorPlans || {};
+      let floorPlanImages = Object.values(floorPlansData)
+        .filter(fp => fp && fp.image) // Don't filter by success - show fallback images too
+        .map(fp => fp.image);
 
-      // Transform AI results to existing structure
+      // Extract 3D views (exterior and interior) with fallback handling
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
+      const viewsData = outputs?.views?.views || {};
+      let preview3DImages = Object.values(viewsData)
+        .filter(view => view && view.image) // Don't filter by success - show fallback images too
+        .map(view => view.image);
+
+      // Extract technical drawings (sections and elevations)
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
+      const technicalDrawingsData = outputs?.technicalDrawings?.drawings || {};
+      let technicalDrawingImages = Object.entries(technicalDrawingsData)
+        .filter(([key, drawing]) => drawing && drawing.image) // Don't filter by success
+        .map(([key, drawing]) => drawing.image);
+
+      // Extract engineering diagrams (structural and MEP)
+      // IMPORTANT: Show images even if success=false (fallback images are still valid)
+      const engineeringDiagramsData = outputs?.engineeringDiagrams?.diagrams || {};
+      let engineeringDiagramImages = Object.values(engineeringDiagramsData)
+        .filter(diagram => diagram && diagram.image) // Don't filter by success
+        .map(diagram => diagram.image);
+
+      console.log('📊 Extracted floor plan images:', floorPlanImages.length, 'images', floorPlanImages);
+      console.log('📊 Floor plans data structure:', floorPlansData);
+      console.log('📊 Extracted 3D preview images:', preview3DImages.length, 'images', preview3DImages);
+      console.log('📊 Views data structure:', viewsData);
+      console.log('📊 Extracted technical drawings:', technicalDrawingImages.length, 'images');
+      console.log('📊 Extracted engineering diagrams:', engineeringDiagramImages.length, 'images');
+
+      // EMERGENCY FALLBACK: Ensure images ALWAYS show, even if all APIs fail
+      if (floorPlanImages.length === 0) {
+        console.warn('⚠️ No floor plan images found. Raw data:', floorPlansData);
+        console.warn('⚠️ Adding emergency fallback floor plan images');
+        floorPlanImages = [
+          'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan',
+          'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=Upper+Floor+Plan',
+          'https://via.placeholder.com/1024x1024/5D6D7E/FFFFFF?text=Roof+Plan'
+        ];
+      }
+      if (preview3DImages.length === 0) {
+        console.warn('⚠️ No 3D images found. Raw data:', viewsData);
+        console.warn('⚠️ Adding emergency fallback 3D images');
+        preview3DImages = [
+          'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Exterior+View',
+          'https://via.placeholder.com/1024x768/2980B9/FFFFFF?text=3D+Interior+View'
+        ];
+      }
+      if (technicalDrawingImages.length === 0) {
+        console.warn('⚠️ No technical drawings found. Adding fallback');
+        technicalDrawingImages = [
+          'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing',
+          'https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=Elevations'
+        ];
+      }
+      if (engineeringDiagramImages.length === 0) {
+        console.warn('⚠️ No engineering diagrams found. Adding fallback');
+        engineeringDiagramImages = [
+          'https://via.placeholder.com/800x600/E67E22/FFFFFF?text=Structural+Diagram',
+          'https://via.placeholder.com/800x600/F39C12/FFFFFF?text=MEP+Diagram'
+        ];
+      }
+
+      // Transform AI results to structured design data with comprehensive outputs
       const designData = {
         floorPlan: {
           rooms: aiResult.reasoning?.spatialOrganization ?
@@ -690,16 +840,24 @@ const ArchitectAIEnhanced = () => {
             ],
           efficiency: "85%",
           circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
-          // Add 2D floor plan images if available
-          images: floorPlanImages
+          // Simplified: Direct image array
+          images: floorPlanImages,
+          // Structured per-level data for detailed rendering
+          perLevelData: floorPlansData,
+          // Check if we have actual generated images or fallbacks
+          hasFallback: Object.values(floorPlansData).some(fp => !fp.success)
         },
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
           materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
-          // Add 3D preview images if available
-          images: preview3DImages
+          // Simplified: Direct image array
+          images: preview3DImages,
+          // Structured views data for detailed rendering
+          viewsData: viewsData,
+          // Check if we have actual generated images or fallbacks
+          hasFallback: Object.values(viewsData).some(view => !view.success)
         },
         technical: {
           structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
@@ -709,7 +867,16 @@ const ArchitectAIEnhanced = () => {
             electrical: "Smart LED lighting with sensors",
             plumbing: "Water-efficient fixtures"
           },
-          compliance: ["Local building codes", "Accessibility standards", "Energy efficiency requirements"]
+          compliance: ["Local building codes", "Accessibility standards", "Energy efficiency requirements"],
+          // Simplified: Direct image arrays
+          drawingImages: technicalDrawingImages,
+          engineeringImages: engineeringDiagramImages,
+          // Structured data for detailed rendering
+          drawingsData: technicalDrawingsData,
+          engineeringData: engineeringDiagramsData,
+          // Check if we have actual generated images or fallbacks
+          hasDrawingFallback: Object.values(technicalDrawingsData).some(d => !d?.success),
+          hasEngineeringFallback: Object.values(engineeringDiagramsData).some(d => !d?.success)
         },
         cost: {
           construction: aiResult.feasibility?.cost || "To be determined",
@@ -720,13 +887,31 @@ const ArchitectAIEnhanced = () => {
           generated: true,
           timestamp: aiResult.timestamp,
           workflow: aiResult.workflow,
-          isFallback: aiResult.isFallback
+          isFallback: aiResult.isFallback || false,
+          // Add summary of what was generated
+          summary: {
+            floorPlansCount: floorPlanImages.length,
+            viewsCount: preview3DImages.length,
+            technicalDrawingsCount: technicalDrawingImages.length,
+            engineeringDiagramsCount: engineeringDiagramImages.length
+          }
         },
-        // Add new features
+        // Preserve additional data
         styleDetection: aiResult.styleDetection || null,
         compatibilityAnalysis: aiResult.compatibilityAnalysis || null,
-        visualizations: aiResult.visualizations || null
+        reasoning: aiResult.reasoning || null,
+        // Store full outputs for advanced usage
+        rawOutputs: outputs
       };
+
+      console.log('🎯 Final design data being set to state:', {
+        floorPlanImages: designData.floorPlan.images?.length,
+        perLevelDataKeys: Object.keys(designData.floorPlan.perLevelData || {}),
+        perLevelData: designData.floorPlan.perLevelData,
+        viewsDataKeys: Object.keys(designData.model3D.viewsData || {}),
+        viewsData: designData.model3D.viewsData,
+        technicalDrawings: Object.keys(designData.technical.drawingsData || {})
+      });
 
       setGeneratedDesigns(designData);
       setIsLoading(false);
@@ -735,39 +920,77 @@ const ArchitectAIEnhanced = () => {
     } catch (error) {
       console.error('❌ AI generation error:', error);
 
-      // Fallback to mock data if AI fails
+      // Robust fallback with placeholder images so 2D/3D always render
+      const fallbackPerLevelData = {
+        ground: { image: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan', success: false, surfaceArea: 200 },
+        first_floor: { image: 'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=First+Floor+Plan', success: false, surfaceArea: 200 },
+        roof: { image: 'https://via.placeholder.com/1024x1024/5D6D7E/FFFFFF?text=Roof+Plan', success: false, surfaceArea: 200 }
+      };
+      const fallbackViewsData = {
+        exterior_north: { image: 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=North+Exterior+View', success: false, direction: 'North' },
+        exterior_south: { image: 'https://via.placeholder.com/1024x768/2980B9/FFFFFF?text=South+Exterior+View', success: false, direction: 'South' },
+        exterior_east: { image: 'https://via.placeholder.com/1024x768/5DADE2/FFFFFF?text=East+Exterior+View', success: false, direction: 'East' },
+        exterior_west: { image: 'https://via.placeholder.com/1024x768/85C1E9/FFFFFF?text=West+Exterior+View', success: false, direction: 'West' },
+        interior_living_space: { image: 'https://via.placeholder.com/1024x768/E74C3C/FFFFFF?text=Main+Living+Space', success: false, spaceName: 'Main Living Space' },
+        interior_bedroom: { image: 'https://via.placeholder.com/1024x768/C0392B/FFFFFF?text=Master+Bedroom', success: false, spaceName: 'Master Bedroom' }
+      };
+      const fallbackTechnicalDrawings = {
+        section: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=Section+Drawing', success: false },
+        elevation_north: { image: 'https://via.placeholder.com/1024x768/7F8C8D/FFFFFF?text=North+Elevation', success: false },
+        elevation_south: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=South+Elevation', success: false },
+        elevation_east: { image: 'https://via.placeholder.com/1024x768/95A5A6/FFFFFF?text=East+Elevation', success: false },
+        elevation_west: { image: 'https://via.placeholder.com/1024x768/BDC3C7/FFFFFF?text=West+Elevation', success: false }
+      };
+      const fallbackEngineeringDiagrams = {
+        structural: { image: 'https://via.placeholder.com/1024x1024/16A085/FFFFFF?text=Structural+Diagram', success: false },
+        mep: { image: 'https://via.placeholder.com/1024x1024/E67E22/FFFFFF?text=MEP+Diagram', success: false }
+      };
+
       setGeneratedDesigns({
         floorPlan: {
           rooms: [
-            { name: "Reception", area: "25m²" },
-            { name: "Main Space", area: "100m²" },
-            { name: "Support Areas", area: "50m²" },
-            { name: "Circulation", area: "25m²" }
+            { name: 'Reception', area: '25m²' },
+            { name: 'Main Space', area: '100m²' },
+            { name: 'Support Areas', area: '50m²' },
+            { name: 'Circulation', area: '25m²' }
           ],
-          efficiency: "85%",
-          circulation: "Optimized circulation flow"
+          efficiency: '85%',
+          circulation: 'Optimized circulation flow',
+          images: Object.values(fallbackPerLevelData).map(fp => fp.image),
+          perLevelData: fallbackPerLevelData,
+          hasFallback: true
         },
         model3D: {
           style: `${styleChoice} architectural design`,
-          features: ["Natural lighting", "Sustainable design", "Modern aesthetics"],
-          materials: ["Sustainable materials", "Local resources"],
-          sustainabilityFeatures: ["Energy efficient", "Eco-friendly"],
-          images: []
+          features: ['Natural lighting', 'Sustainable design', 'Modern aesthetics'],
+          materials: ['Sustainable materials', 'Local resources'],
+          sustainabilityFeatures: ['Energy efficient', 'Eco-friendly'],
+          images: Object.values(fallbackViewsData)
+            .filter(v => v && v.image && String(v.image).includes('Exterior'))
+            .map(v => v.image),
+          viewsData: fallbackViewsData,
+          hasFallback: true
         },
         technical: {
-          structural: "Modern structural system",
-          foundation: "Engineered foundation",
+          structural: 'Modern structural system',
+          foundation: 'Engineered foundation',
           mep: {
-            hvac: "Energy-efficient system",
-            electrical: "Smart lighting",
-            plumbing: "Water-efficient fixtures"
+            hvac: 'Energy-efficient system',
+            electrical: 'Smart lighting',
+            plumbing: 'Water-efficient fixtures'
           },
-          compliance: ["Building codes", "Accessibility", "Energy standards"]
+          compliance: ['Building codes', 'Accessibility', 'Energy standards'],
+          drawingImages: Object.values(fallbackTechnicalDrawings).map(d => d.image),
+          engineeringImages: Object.values(fallbackEngineeringDiagrams).map(d => d.image),
+          drawingsData: fallbackTechnicalDrawings,
+          engineeringData: fallbackEngineeringDiagrams,
+          hasDrawingFallback: true,
+          hasEngineeringFallback: true
         },
         cost: {
-          construction: "Contact for estimate",
-          timeline: "12-18 months",
-          energySavings: "Significant"
+          construction: 'Contact for estimate',
+          timeline: '12-18 months',
+          energySavings: 'Significant'
         },
         aiMetadata: {
           generated: false,
@@ -777,6 +1000,73 @@ const ArchitectAIEnhanced = () => {
       });
       setIsLoading(false);
       setCurrentStep(5);
+    }
+  };
+
+  // Handle design refinement
+  const handleRefinement = async () => {
+    if (!modificationPrompt.trim()) {
+      showToast('⚠️ Please describe the modifications you want');
+      return;
+    }
+
+    setIsRefining(true);
+    try {
+      console.log('🔄 Starting design refinement:', modificationPrompt);
+
+      // Prepare current design state
+      const currentDesign = {
+        outputs: generatedDesigns.rawOutputs,
+        reasoning: generatedDesigns.reasoning,
+        enhancedContext: {
+          buildingProgram: projectDetails.program,
+          buildingType: projectDetails.program,
+          location: locationData,
+          area: projectDetails.area,
+          entranceDirection: projectDetails.entranceDirection
+        }
+      };
+
+      // Prepare project context
+      const projectContext = {
+        buildingProgram: projectDetails.program,
+        buildingType: projectDetails.program,
+        location: locationData,
+        area: projectDetails.area,
+        entranceDirection: projectDetails.entranceDirection,
+        specifications: projectDetails
+      };
+
+      // Call refinement service
+      const refinementResult = await aiIntegrationService.refineDesign(
+        modificationPrompt,
+        currentDesign,
+        projectContext
+      );
+
+      if (refinementResult.success) {
+        console.log('✅ Refinement successful:', refinementResult);
+
+        // Update the design with refined outputs
+        const updatedDesign = {
+          ...generatedDesigns,
+          rawOutputs: refinementResult.updatedDesign.outputs,
+          reasoning: refinementResult.updatedDesign.reasoning
+        };
+
+        setGeneratedDesigns(updatedDesign);
+        showToast('✓ Design refined successfully!');
+        setModificationPrompt('');
+        setShowModification(false);
+      } else {
+        console.error('❌ Refinement failed:', refinementResult.error);
+        showToast(`⚠️ Refinement failed: ${refinementResult.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('❌ Refinement error:', error);
+      showToast('❌ Error refining design. Please try again.');
+    } finally {
+      setIsRefining(false);
     }
   };
 
@@ -1347,7 +1637,46 @@ const ArchitectAIEnhanced = () => {
               
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="total-surface-area" className="block text-sm font-medium text-gray-700 mb-2">Total Surface Area</label>
+                  <label htmlFor="building-program" className="block text-sm font-medium text-gray-700 mb-2">Building Type</label>
+                  <select
+                    id="building-program"
+                    value={projectDetails.program}
+                    onChange={(e) => setProjectDetails({...projectDetails, program: e.target.value})}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                  >
+                    <option value="">Select building type...</option>
+                    <optgroup label="Healthcare">
+                      <option value="clinic">Medical Clinic</option>
+                      <option value="hospital">Hospital</option>
+                      <option value="dental">Dental Office</option>
+                    </optgroup>
+                    <optgroup label="Residential">
+                      <option value="single-family">Single-Family House</option>
+                      <option value="detached-house">Detached House</option>
+                      <option value="semi-detached">Semi-Detached House</option>
+                      <option value="townhouse">Townhouse</option>
+                      <option value="apartment">Apartment Building</option>
+                    </optgroup>
+                    <optgroup label="Commercial">
+                      <option value="office">Office Building</option>
+                      <option value="retail">Retail Space</option>
+                      <option value="restaurant">Restaurant</option>
+                      <option value="mixed-use">Mixed-Use Development</option>
+                    </optgroup>
+                    <optgroup label="Institutional">
+                      <option value="educational">Educational Facility</option>
+                      <option value="library">Library</option>
+                      <option value="community-center">Community Center</option>
+                    </optgroup>
+                    <optgroup label="Hospitality">
+                      <option value="hotel">Hotel</option>
+                      <option value="resort">Resort</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="total-surface-area" className="block text-sm font-medium text-gray-700 mb-2">Total Floor Area</label>
                   <div className="relative">
                     <input
                       id="total-surface-area"
@@ -1360,24 +1689,63 @@ const ArchitectAIEnhanced = () => {
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">m²</span>
                   </div>
                 </div>
-                
-                <div>
-                  <label htmlFor="building-program" className="block text-sm font-medium text-gray-700 mb-2">Building Program</label>
-                  <select
-                    id="building-program"
-                    value={projectDetails.program}
-                    onChange={(e) => setProjectDetails({...projectDetails, program: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
-                  >
-                    <option value="">Select program type...</option>
-                    <option value="clinic">Medical Clinic</option>
-                    <option value="office">Office Building</option>
-                    <option value="residential">Residential Complex</option>
-                    <option value="retail">Retail Space</option>
-                    <option value="educational">Educational Facility</option>
-                    <option value="hospitality">Hospitality</option>
-                  </select>
+              </div>
+
+              {/* Entrance Orientation Selector - 8 Directions */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Principal Entrance Orientation (Select up to 2 directions)
+                </label>
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { dir: 'north', icon: '⬆️', label: 'N' },
+                    { dir: 'northeast', icon: '↗️', label: 'NE' },
+                    { dir: 'east', icon: '➡️', label: 'E' },
+                    { dir: 'southeast', icon: '↘️', label: 'SE' },
+                    { dir: 'south', icon: '⬇️', label: 'S' },
+                    { dir: 'southwest', icon: '↙️', label: 'SW' },
+                    { dir: 'west', icon: '⬅️', label: 'W' },
+                    { dir: 'northwest', icon: '↖️', label: 'NW' }
+                  ].map(({ dir, icon, label }) => {
+                    const isSelected = (projectDetails.entranceDirections || []).includes(dir);
+                    const selectedCount = (projectDetails.entranceDirections || []).length;
+                    const selectionOrder = (projectDetails.entranceDirections || []).indexOf(dir);
+
+                    return (
+                      <button
+                        key={dir}
+                        type="button"
+                        onClick={() => toggleEntranceDirection(dir)}
+                        className={`px-3 py-3 rounded-xl border-2 transition-all duration-200 relative ${
+                          isSelected
+                            ? 'border-green-500 bg-green-50 text-green-700 font-semibold shadow-md'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-green-300'
+                        }`}
+                      >
+                        <div className="flex flex-col items-center">
+                          <span className="text-2xl mb-1">{icon}</span>
+                          <span className="text-xs font-medium">{label}</span>
+                        </div>
+                        {isSelected && (
+                          <span className="absolute top-1 right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                            {selectionOrder + 1}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {(projectDetails.entranceDirections || []).length > 0
+                    ? `Building optimized for ${(projectDetails.entranceDirections || []).map(d => d.toUpperCase()).join(' + ')} entrance with passive solar design`
+                    : 'Select 1-2 entrance directions for optimal orientation and energy efficiency'}
+                </p>
+                {(projectDetails.entranceDirections || []).length === 2 && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center">
+                    <span className="mr-1">⚠️</span>
+                    Maximum 2 directions selected. Click another to replace the first selection.
+                  </p>
+                )}
               </div>
               
               {projectDetails.program && (
@@ -1534,6 +1902,9 @@ const ArchitectAIEnhanced = () => {
                         src={generatedDesigns.floorPlan.images[0]}
                         alt="AI Generated Floor Plan"
                         className="w-full h-full object-contain"
+                        onError={(e) => {
+                          e.target.src = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Error';
+                        }}
                       />
                     ) : (
                       // Fallback to room grid visualization
@@ -1576,6 +1947,9 @@ const ArchitectAIEnhanced = () => {
                         src={generatedDesigns.model3D.images[0]}
                         alt="AI Generated 3D Visualization"
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.src = 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+View+Error';
+                        }}
                       />
                     ) : (
                       // Fallback to placeholder 3D visualization
@@ -1611,6 +1985,185 @@ const ArchitectAIEnhanced = () => {
                   </div>
                 </div>
               </div>
+
+              {/* COMPREHENSIVE 2D/3D OUTPUTS - Per-Level Floor Plans and All Views */}
+              {(generatedDesigns?.floorPlan.perLevelData && Object.keys(generatedDesigns.floorPlan.perLevelData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <Layers className="w-6 h-6 text-blue-600 mr-2" />
+                    Per-Level Floor Plans ({Object.keys(generatedDesigns.floorPlan.perLevelData).length} Levels)
+                  </h3>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(generatedDesigns.floorPlan.perLevelData).map(([level, plan]) => (
+                      <div key={level} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span>{level}</span>
+                          {!plan.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gray-100 rounded-lg overflow-hidden h-48">
+                          {plan.image ? (
+                            <img
+                              src={plan.image}
+                              alt={`${level} Floor Plan`}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/400x300/ECF0F1/2C3E50?text=Floor+Plan+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                        {plan.surfaceArea && (
+                          <p className="text-xs text-gray-600 mt-2">Area: {plan.surfaceArea}m²</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All 3D Views - Exterior and Interior */}
+              {(generatedDesigns?.model3D.viewsData && Object.keys(generatedDesigns.model3D.viewsData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <Eye className="w-6 h-6 text-purple-600 mr-2" />
+                    3D Architectural Views ({Object.keys(generatedDesigns.model3D.viewsData).length} Views)
+                  </h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {Object.entries(generatedDesigns.model3D.viewsData).map(([key, view]) => (
+                      <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span>{view.direction || view.spaceName || key.replace(/_/g, ' ').toUpperCase()}</span>
+                          {!view.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg overflow-hidden h-64">
+                          {view.image ? (
+                            <img
+                              src={view.image}
+                              alt={`${view.direction || view.spaceName || key} View`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/800x600/3498DB/FFFFFF?text=3D+View+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-white text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600 mt-2 capitalize">
+                          {key.includes('exterior') ? '🏢 Exterior View' : '🏠 Interior View'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Technical Drawings - Sections and Elevations */}
+              {(generatedDesigns?.technical.drawingsData && Object.keys(generatedDesigns.technical.drawingsData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-gray-50 to-slate-100 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <FileText className="w-6 h-6 text-gray-600 mr-2" />
+                    Technical Drawings ({Object.keys(generatedDesigns.technical.drawingsData).length} Drawings)
+                  </h3>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(generatedDesigns.technical.drawingsData).map(([key, drawing]) => (
+                      <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <h4 className="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+                          <span className="capitalize">{key.replace(/_/g, ' ')}</span>
+                          {!drawing.success && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                              Fallback
+                            </span>
+                          )}
+                        </h4>
+                        <div className="relative bg-gray-100 rounded-lg overflow-hidden h-48">
+                          {drawing.image ? (
+                            <img
+                              src={drawing.image}
+                              alt={`${key.replace(/_/g, ' ')} Drawing`}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'https://via.placeholder.com/400x300/95A5A6/2C3E50?text=Drawing+Error';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                              No image available
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Engineering Diagrams - Structural and MEP */}
+              {(generatedDesigns?.technical.engineeringData && Object.keys(generatedDesigns.technical.engineeringData).length > 0) && (
+                <div className="mt-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6">
+                  <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <Cpu className="w-6 h-6 text-green-600 mr-2" />
+                    Engineering Diagrams ({Object.keys(generatedDesigns.technical.engineeringData).length} Diagrams)
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Structural and MEP (Mechanical, Electrical, Plumbing) systems for construction planning
+                  </p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {Object.entries(generatedDesigns.technical.engineeringData).map(([key, diagram]) => {
+                      const descriptions = {
+                        structural: 'Load-bearing systems, columns, beams, and foundation details',
+                        mep: 'HVAC, electrical, and plumbing system layouts and specifications'
+                      };
+
+                      return (
+                        <div key={key} className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                          <h4 className="font-semibold text-gray-800 mb-1 flex items-center justify-between">
+                            <span className="capitalize">
+                              {key === 'structural' ? '🏗️ Structural System' : '⚡ MEP Systems'}
+                            </span>
+                            {!diagram.success && (
+                              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                                Fallback
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-xs text-gray-500 mb-3">{descriptions[key]}</p>
+                          <div className="relative bg-gray-100 rounded-lg overflow-hidden h-64">
+                            {diagram.image ? (
+                              <img
+                                src={diagram.image}
+                                alt={`${key} Engineering Diagram`}
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                  e.target.src = 'https://via.placeholder.com/800x600/27AE60/FFFFFF?text=Diagram+Error';
+                                }}
+                              />
+                            ) : (
+                              <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+                                No image available
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Technical Specifications */}
               <div className="mt-8 grid md:grid-cols-3 gap-6">
@@ -1745,19 +2298,46 @@ const ArchitectAIEnhanced = () => {
                 <button
                   onClick={() => setShowModification(!showModification)}
                   className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-medium flex items-center justify-center"
+                  disabled={isRefining}
                 >
                   <Sparkles className="mr-2" />
-                  Modify Design with AI
+                  {isRefining ? 'Refining Design...' : 'Modify Design with AI'}
                 </button>
-                
+
                 {showModification && (
                   <div className="mt-4 space-y-4 animate-fadeIn">
+                    <div className="bg-purple-50 rounded-xl p-4 mb-3">
+                      <h5 className="font-semibold text-gray-800 mb-2">💡 Refinement Examples:</h5>
+                      <ul className="text-sm text-gray-600 space-y-1">
+                        <li>• "Rotate the building 15° for better solar orientation"</li>
+                        <li>• "Add a skylight to the main living area"</li>
+                        <li>• "Increase the master bedroom by 10m²"</li>
+                        <li>• "Change entrance to face east instead of south"</li>
+                      </ul>
+                    </div>
                     <textarea
-                      placeholder="Describe your modifications... (e.g., 'Make the waiting area 20% larger', 'Add a healing garden courtyard', 'Include more natural lighting in consultation rooms')"
+                      value={modificationPrompt}
+                      onChange={(e) => setModificationPrompt(e.target.value)}
+                      placeholder="Describe your modifications in natural language..."
                       className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors h-32"
+                      disabled={isRefining}
                     />
-                    <button className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 transition-colors">
-                      Apply Modifications
+                    <button
+                      onClick={handleRefinement}
+                      disabled={isRefining || !modificationPrompt.trim()}
+                      className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      {isRefining ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Refining Design...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-5 h-5 mr-2" />
+                          Apply Modifications
+                        </>
+                      )}
                     </button>
                   </div>
                 )}
@@ -1813,8 +2393,9 @@ const ArchitectAIEnhanced = () => {
                   ))}
                 </div>
 
-                <div className="text-sm text-gray-600">
-                  Time: <span className="font-medium">3:45</span> elapsed
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Clock className="w-4 h-4" />
+                  <span>Time: <span className="font-medium">{formatElapsedTime(elapsedTime)}</span> elapsed</span>
                 </div>
               </div>
             </div>
