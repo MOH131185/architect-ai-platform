@@ -698,12 +698,48 @@ const ArchitectAIEnhanced = () => {
 
       // Extract images from AI result with proper fallback handling
       const extractFloorPlanImages = () => {
-        // Try multiple possible paths for floor plan images
-        if (aiResult.floorPlan?.floorPlan?.images) return aiResult.floorPlan.floorPlan.images;
-        if (aiResult.floorPlan?.images) return aiResult.floorPlan.images;
-        if (aiResult.visualizations?.floorPlan?.images) return aiResult.visualizations.floorPlan.images;
-        if (aiResult.visualizations?.floorPlan?.floorPlan?.images) return aiResult.visualizations.floorPlan.floorPlan.images;
-        return [];
+        // Extract multi-level floor plans (ground, upper, roof)
+        const floorPlans = {};
+
+        if (aiResult.floorPlans) {
+          // New comprehensive structure
+          if (aiResult.floorPlans.floorPlans) {
+            const plans = aiResult.floorPlans.floorPlans;
+            if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
+            if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
+            if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
+          }
+        } else if (aiResult.floorPlan?.floorPlan?.images) {
+          // Legacy single floor plan
+          floorPlans.ground = aiResult.floorPlan.floorPlan.images[0];
+        } else if (aiResult.floorPlan?.images) {
+          floorPlans.ground = aiResult.floorPlan.images[0];
+        }
+
+        return floorPlans;
+      };
+
+      const extractElevationsAndSections = () => {
+        const drawings = {
+          elevations: {},
+          sections: {}
+        };
+
+        if (aiResult.technicalDrawings?.technicalDrawings) {
+          const td = aiResult.technicalDrawings.technicalDrawings;
+
+          // Extract elevations
+          if (td.elevation_north?.images) drawings.elevations.north = td.elevation_north.images[0];
+          if (td.elevation_south?.images) drawings.elevations.south = td.elevation_south.images[0];
+          if (td.elevation_east?.images) drawings.elevations.east = td.elevation_east.images[0];
+          if (td.elevation_west?.images) drawings.elevations.west = td.elevation_west.images[0];
+
+          // Extract sections
+          if (td.section_longitudinal?.images) drawings.sections.longitudinal = td.section_longitudinal.images[0];
+          if (td.section_cross?.images) drawings.sections.cross = td.section_cross.images[0];
+        }
+
+        return drawings;
       };
 
       const extract3DImages = () => {
@@ -775,9 +811,11 @@ const ArchitectAIEnhanced = () => {
       };
 
       const floorPlanImages = extractFloorPlanImages();
+      const technicalDrawings = extractElevationsAndSections();
       const preview3DImages = extract3DImages();
 
       console.log('📊 Extracted floor plan images:', floorPlanImages);
+      console.log('📊 Extracted elevations and sections:', technicalDrawings);
       console.log('📊 Extracted 3D preview images:', preview3DImages);
 
       // Transform AI results to existing structure
@@ -793,9 +831,11 @@ const ArchitectAIEnhanced = () => {
             ],
           efficiency: "85%",
           circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
-          // Add 2D floor plan images if available
-          images: floorPlanImages
+          // Add multi-level floor plan images
+          levels: floorPlanImages,
+          floorCount: aiResult.floorPlans?.floorCount || (floorPlanImages.upper ? 2 : 1)
         },
+        technicalDrawings: technicalDrawings,
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
@@ -1707,45 +1747,71 @@ const ArchitectAIEnhanced = () => {
 
               {/* Main Design Display */}
               <div className="grid lg:grid-cols-2 gap-6">
-                {/* 2D Floor Plan */}
+                {/* Multi-Level Floor Plans */}
                 <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6">
-                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
-                    <FileText className="w-5 h-5 text-gray-600 mr-2" />
-                    2D Floor Plan
+                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center justify-between">
+                    <span className="flex items-center">
+                      <FileText className="w-5 h-5 text-gray-600 mr-2" />
+                      Floor Plans ({generatedDesigns?.floorPlan.floorCount || 1} Level{generatedDesigns?.floorPlan.floorCount > 1 ? 's' : ''})
+                    </span>
                   </h3>
-                  <div className="bg-white rounded-lg h-96 flex items-center justify-center relative overflow-hidden">
-                    {generatedDesigns?.floorPlan.images && generatedDesigns.floorPlan.images.length > 0 ? (
-                      // Display AI-generated floor plan image
-                      <img
-                        src={generatedDesigns.floorPlan.images[0]}
-                        alt="AI Generated Floor Plan"
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      // Fallback to room grid visualization
-                      <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 gap-2 p-4">
-                        {generatedDesigns?.floorPlan.rooms.map((room, idx) => (
-                          <div key={idx} className={`
-                            ${idx === 0 ? 'col-span-2' : ''}
-                            ${idx === 1 ? 'col-span-1 row-span-2' : ''}
-                            ${idx >= 2 && idx <= 5 ? 'col-span-1' : ''}
-                            ${idx === 6 ? 'col-span-2' : ''}
-                            bg-gradient-to-br ${idx % 2 === 0 ? 'from-blue-100 to-blue-200' : 'from-green-100 to-green-200'}
-                            rounded-lg p-3 flex flex-col justify-center items-center border-2 border-white shadow-sm
-                          `}>
-                            <p className="text-xs font-medium text-gray-700">{room.name}</p>
-                            <p className="text-xs text-gray-600">{room.area}</p>
+
+                  <div className="space-y-4">
+                    {/* Ground Floor */}
+                    {generatedDesigns?.floorPlan.levels?.ground && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Ground Floor</p>
+                        <div className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                          <img
+                            src={generatedDesigns.floorPlan.levels.ground}
+                            alt="Ground Floor Plan"
+                            className="w-full h-full object-contain"
+                          />
+                          <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
+                            Ground Level - Scale 1:100
                           </div>
-                        ))}
+                        </div>
                       </div>
                     )}
-                    <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
-                      {generatedDesigns?.floorPlan.images && generatedDesigns.floorPlan.images.length > 0 ? 'AI Generated' : 'Scale 1:100'}
-                    </div>
+
+                    {/* Upper Floor */}
+                    {generatedDesigns?.floorPlan.levels?.upper && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Upper Floor</p>
+                        <div className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                          <img
+                            src={generatedDesigns.floorPlan.levels.upper}
+                            alt="Upper Floor Plan"
+                            className="w-full h-full object-contain"
+                          />
+                          <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
+                            Upper Level - Scale 1:100
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Roof Plan */}
+                    {generatedDesigns?.floorPlan.levels?.roof && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Roof Plan</p>
+                        <div className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                          <img
+                            src={generatedDesigns.floorPlan.levels.roof}
+                            alt="Roof Plan"
+                            className="w-full h-full object-contain"
+                          />
+                          <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
+                            Roof Level - Scale 1:100
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
+
                   <div className="mt-4 flex items-center justify-between text-sm">
                     <p className="text-gray-600">{generatedDesigns?.floorPlan.circulation}</p>
-                    <button className="text-blue-600 hover:text-blue-700 font-medium">View Details</button>
+                    <p className="text-gray-600">Efficiency: {generatedDesigns?.floorPlan.efficiency}</p>
                   </div>
                 </div>
                 
@@ -1843,6 +1909,106 @@ const ArchitectAIEnhanced = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Elevations and Sections */}
+              {generatedDesigns?.technicalDrawings && (Object.keys(generatedDesigns.technicalDrawings.elevations).length > 0 || Object.keys(generatedDesigns.technicalDrawings.sections).length > 0) && (
+                <div className="mt-8">
+                  <h3 className="font-semibold text-gray-800 mb-6 flex items-center text-xl">
+                    <FileText className="w-6 h-6 text-gray-600 mr-2" />
+                    Technical Drawings (Elevations & Sections)
+                  </h3>
+
+                  {/* Elevations */}
+                  {Object.keys(generatedDesigns.technicalDrawings.elevations).length > 0 && (
+                    <div className="mb-8">
+                      <h4 className="font-medium text-gray-700 mb-4">Elevations</h4>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {generatedDesigns.technicalDrawings.elevations.north && (
+                          <div className="bg-white rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">North Elevation</p>
+                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={generatedDesigns.technicalDrawings.elevations.north}
+                                alt="North Elevation"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {generatedDesigns.technicalDrawings.elevations.south && (
+                          <div className="bg-white rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">South Elevation</p>
+                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={generatedDesigns.technicalDrawings.elevations.south}
+                                alt="South Elevation"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {generatedDesigns.technicalDrawings.elevations.east && (
+                          <div className="bg-white rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">East Elevation</p>
+                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={generatedDesigns.technicalDrawings.elevations.east}
+                                alt="East Elevation"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {generatedDesigns.technicalDrawings.elevations.west && (
+                          <div className="bg-white rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">West Elevation</p>
+                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={generatedDesigns.technicalDrawings.elevations.west}
+                                alt="West Elevation"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sections */}
+                  {Object.keys(generatedDesigns.technicalDrawings.sections).length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-gray-700 mb-4">Building Sections</h4>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {generatedDesigns.technicalDrawings.sections.longitudinal && (
+                          <div className="bg-white rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">Longitudinal Section</p>
+                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={generatedDesigns.technicalDrawings.sections.longitudinal}
+                                alt="Longitudinal Section"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {generatedDesigns.technicalDrawings.sections.cross && (
+                          <div className="bg-white rounded-lg p-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">Cross Section</p>
+                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                              <img
+                                src={generatedDesigns.technicalDrawings.sections.cross}
+                                alt="Cross Section"
+                                className="w-full h-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Technical Specifications */}
               <div className="mt-8 grid md:grid-cols-3 gap-6">
