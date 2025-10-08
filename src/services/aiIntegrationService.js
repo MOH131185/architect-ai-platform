@@ -515,20 +515,24 @@ class AIIntegrationService {
 
       // Step 2: Generate 2D floor plan
       const floorPlan = await this.replicate.generateFloorPlan(projectContext);
-      
-      // Step 3: Generate 3D preview
-      const preview3D = await this.replicate.generate3DPreview(projectContext);
-      
+
+      // Step 3: Generate 3D views (2 exterior + 1 interior)
+      console.log('🏗️ Generating 3D views: exterior_front, exterior_side, interior');
+      const views = await this.replicate.generateMultipleViews(
+        projectContext,
+        ['exterior_front', 'exterior_side', 'interior']
+      );
+
       // Step 4: Generate design reasoning with style context
       const reasoning = await this.generateDesignReasoningWithStyle(
-        projectContext, 
+        projectContext,
         styleDetection
       );
 
       return {
         success: true,
         floorPlan,
-        preview3D,
+        visualizations: { views }, // Wrap views in visualizations object
         styleDetection,
         reasoning,
         projectContext,
