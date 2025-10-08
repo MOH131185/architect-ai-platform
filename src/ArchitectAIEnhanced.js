@@ -703,39 +703,59 @@ const ArchitectAIEnhanced = () => {
 
         console.log('📋 Extracting floor plans from aiResult:', {
           hasFloorPlans: !!aiResult.floorPlans,
+          hasVisualizationsFloorPlans: !!aiResult.visualizations?.floorPlans,
           hasFloorPlan: !!aiResult.floorPlan,
-          floorPlansKeys: aiResult.floorPlans ? Object.keys(aiResult.floorPlans) : [],
+          visualizationsKeys: aiResult.visualizations ? Object.keys(aiResult.visualizations) : []
         });
 
-        if (aiResult.floorPlans) {
-          // New comprehensive structure
-          if (aiResult.floorPlans.floorPlans) {
-            const plans = aiResult.floorPlans.floorPlans;
-            console.log('📋 Found floorPlans.floorPlans:', Object.keys(plans));
+        // Try visualizations.floorPlans first (style-optimized workflow)
+        if (aiResult.visualizations?.floorPlans?.floorPlans) {
+          const plans = aiResult.visualizations.floorPlans.floorPlans;
+          console.log('📋 Found visualizations.floorPlans.floorPlans:', Object.keys(plans));
 
-            // Extract ground floor
-            if (plans.ground?.images && plans.ground.images.length > 0) {
-              floorPlans.ground = plans.ground.images[0];
-              console.log('✅ Extracted ground floor plan');
-            } else if (plans.ground?.isFallback) {
-              // Use fallback if it exists
-              floorPlans.ground = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan';
-              console.log('⚠️ Using fallback for ground floor');
-            }
-
-            // Extract upper floor
-            if (plans.upper?.images && plans.upper.images.length > 0) {
-              floorPlans.upper = plans.upper.images[0];
-              console.log('✅ Extracted upper floor plan');
-            }
-
-            // Extract roof plan
-            if (plans.roof?.images && plans.roof.images.length > 0) {
-              floorPlans.roof = plans.roof.images[0];
-              console.log('✅ Extracted roof plan');
-            }
+          // Extract ground floor
+          if (plans.ground?.images && plans.ground.images.length > 0) {
+            floorPlans.ground = plans.ground.images[0];
+            console.log('✅ Extracted ground floor plan from visualizations');
           }
-        } else if (aiResult.floorPlan?.floorPlan?.images) {
+
+          // Extract upper floor
+          if (plans.upper?.images && plans.upper.images.length > 0) {
+            floorPlans.upper = plans.upper.images[0];
+            console.log('✅ Extracted upper floor plan from visualizations');
+          }
+
+          // Extract roof plan
+          if (plans.roof?.images && plans.roof.images.length > 0) {
+            floorPlans.roof = plans.roof.images[0];
+            console.log('✅ Extracted roof plan from visualizations');
+          }
+        }
+        // Try direct floorPlans structure (comprehensive workflow)
+        else if (aiResult.floorPlans?.floorPlans) {
+          const plans = aiResult.floorPlans.floorPlans;
+          console.log('📋 Found floorPlans.floorPlans:', Object.keys(plans));
+
+          // Extract ground floor
+          if (plans.ground?.images && plans.ground.images.length > 0) {
+            floorPlans.ground = plans.ground.images[0];
+            console.log('✅ Extracted ground floor plan');
+          }
+
+          // Extract upper floor
+          if (plans.upper?.images && plans.upper.images.length > 0) {
+            floorPlans.upper = plans.upper.images[0];
+            console.log('✅ Extracted upper floor plan');
+          }
+
+          // Extract roof plan
+          if (plans.roof?.images && plans.roof.images.length > 0) {
+            floorPlans.roof = plans.roof.images[0];
+            console.log('✅ Extracted roof plan');
+          }
+        }
+        // Legacy structures
+        else if (aiResult.floorPlan?.floorPlan?.images) {
           // Legacy single floor plan
           floorPlans.ground = aiResult.floorPlan.floorPlan.images[0];
           console.log('✅ Extracted legacy floor plan');
@@ -762,12 +782,16 @@ const ArchitectAIEnhanced = () => {
 
         console.log('📐 Extracting technical drawings from aiResult:', {
           hasTechnicalDrawings: !!aiResult.technicalDrawings,
-          technicalDrawingsKeys: aiResult.technicalDrawings ? Object.keys(aiResult.technicalDrawings) : []
+          hasVisualizationsTechnicalDrawings: !!aiResult.visualizations?.technicalDrawings,
+          visualizationsKeys: aiResult.visualizations ? Object.keys(aiResult.visualizations) : []
         });
 
-        if (aiResult.technicalDrawings?.technicalDrawings) {
-          const td = aiResult.technicalDrawings.technicalDrawings;
-          console.log('📐 Found technicalDrawings.technicalDrawings:', Object.keys(td));
+        // Try visualizations.technicalDrawings first (style-optimized workflow)
+        const td = aiResult.visualizations?.technicalDrawings?.technicalDrawings ||
+                   aiResult.technicalDrawings?.technicalDrawings;
+
+        if (td) {
+          console.log('📐 Found technical drawings:', Object.keys(td));
 
           // Extract elevations
           ['north', 'south', 'east', 'west'].forEach(dir => {
