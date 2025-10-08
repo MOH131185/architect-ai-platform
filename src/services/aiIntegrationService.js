@@ -573,12 +573,16 @@ class AIIntegrationService {
   }
 
   /**
-   * STEP 3: Integrated design generation with location analysis and style blending
+   * STEP 3 & 4: Integrated design generation with location analysis and style blending
    * Orchestrates location analysis, portfolio detection, and coordinated 2D/3D generation
+   * @param {Object} projectContext - Project context with all specifications
+   * @param {Array} portfolioImages - Optional portfolio images for style detection
+   * @param {Number} blendWeight - Style blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
    */
-  async generateIntegratedDesign(projectContext, portfolioImages = []) {
+  async generateIntegratedDesign(projectContext, portfolioImages = [], blendWeight = 0.5) {
     try {
       console.log('🎯 Starting integrated design generation workflow...');
+      console.log('⚖️  Blend weight:', blendWeight, `(${Math.round((1-blendWeight)*100)}% local / ${Math.round(blendWeight*100)}% portfolio)`);
 
       // STEP 3.1: Location analysis
       console.log('📍 Step 1: Analyzing location and architectural context...');
@@ -613,11 +617,17 @@ class AIIntegrationService {
         console.log('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
       }
 
-      // STEP 3.3: Blended style prompt creation (placeholder for Step 4)
-      console.log('🎨 Step 3: Creating blended style prompt...');
-      const blendedPrompt = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle);
-      enhancedContext.blendedPrompt = blendedPrompt;
-      console.log('✅ Blended prompt created');
+      // STEP 4: Blended style creation with weighted merging
+      console.log('🎨 Step 3: Creating blended style with weight', blendWeight);
+      const blendedStyle = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle, blendWeight);
+      enhancedContext.blendedStyle = blendedStyle;
+      enhancedContext.blendedPrompt = blendedStyle.description; // Keep backward compatibility
+
+      // STEP 4: Apply blended style to architectural context
+      enhancedContext.architecturalStyle = blendedStyle.styleName;
+      enhancedContext.materials = blendedStyle.materials.slice(0, 3).join(', ') || projectContext.materials;
+
+      console.log('✅ Blended style created:', blendedStyle.styleName);
 
       // STEP 3.4: Use unified seed from projectContext
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
@@ -657,12 +667,14 @@ class AIIntegrationService {
         preview3D: combinedResults.metadata.preview3DSuccess ? 'Success' : 'Failed'
       });
 
-      // Return integrated results with combined visualizations
+      // Return integrated results with combined visualizations and blended style
       return {
         success: true,
         locationAnalysis,
         portfolioStyle,
-        blendedPrompt,
+        blendedStyle, // STEP 4: Full blended style object
+        blendedPrompt: blendedStyle.description, // Keep backward compatibility
+        blendWeight, // STEP 4: Store the blend weight used
         results: combinedResults, // Combined floor plan + 3D preview
         floorPlan: floorPlanResult, // Also keep individual results for compatibility
         preview3D: preview3DResult,
@@ -683,19 +695,137 @@ class AIIntegrationService {
   }
 
   /**
-   * STEP 4 (Placeholder): Create blended style prompt
-   * Combines location analysis and portfolio style into unified prompt
+   * STEP 4: Blend local and portfolio styles with weighted merging
+   * Merges style descriptors based on numeric weight (0-1)
+   * @param {Object} localStyle - Location-based architectural style
+   * @param {Object} portfolioStyle - Portfolio-detected style
+   * @param {Number} weight - Blend weight (0 = all local, 1 = all portfolio, 0.5 = balanced)
+   * @returns {Object} Blended style with merged characteristics
    */
-  createBlendedStylePrompt(projectContext, locationAnalysis, portfolioStyle) {
-    // Placeholder implementation - will be enhanced in Step 4
-    const locationStyles = locationAnalysis?.primary || 'contemporary';
-    const portfolioStyles = portfolioStyle?.primaryStyle?.style || null;
+  blendStyles(localStyle, portfolioStyle, weight = 0.5) {
+    // Validate weight is between 0 and 1
+    const blendWeight = Math.max(0, Math.min(1, weight));
+    const localWeight = 1 - blendWeight;
 
-    if (portfolioStyles) {
-      return `Blend of ${portfolioStyles} (from portfolio) with ${locationStyles} (local style)`;
+    console.log(`🎨 Blending styles with ${Math.round(localWeight * 100)}% local / ${Math.round(blendWeight * 100)}% portfolio`);
+
+    // Extract local style descriptors
+    const localDescriptors = {
+      primary: localStyle?.primary || 'contemporary',
+      materials: localStyle?.materials || [],
+      characteristics: localStyle?.characteristics || [],
+      climateAdaptations: localStyle?.climateAdaptations?.features || []
+    };
+
+    // Extract portfolio style descriptors
+    const portfolioDescriptors = {
+      primary: portfolioStyle?.primaryStyle?.style || null,
+      materials: portfolioStyle?.materials || [],
+      characteristics: portfolioStyle?.designElements || [],
+      features: portfolioStyle?.keyFeatures || []
+    };
+
+    // If no portfolio style, return local style
+    if (!portfolioDescriptors.primary) {
+      return {
+        styleName: localDescriptors.primary,
+        materials: localDescriptors.materials,
+        characteristics: localDescriptors.characteristics,
+        climateAdaptations: localDescriptors.climateAdaptations,
+        blendRatio: { local: 1.0, portfolio: 0.0 },
+        description: `${localDescriptors.primary} style adapted for local context`
+      };
     }
 
-    return `${locationStyles} style adapted for ${projectContext.location?.address || 'local context'}`;
+    // Blend materials (weighted selection)
+    const materialCount = Math.max(3, Math.round(5 * (localWeight + blendWeight)));
+    const localMaterialCount = Math.round(materialCount * localWeight);
+    const portfolioMaterialCount = materialCount - localMaterialCount;
+
+    const blendedMaterials = [
+      ...localDescriptors.materials.slice(0, localMaterialCount),
+      ...portfolioDescriptors.materials.slice(0, portfolioMaterialCount)
+    ];
+
+    // Blend characteristics (weighted selection)
+    const charCount = Math.max(3, Math.round(6 * (localWeight + blendWeight)));
+    const localCharCount = Math.round(charCount * localWeight);
+    const portfolioCharCount = charCount - localCharCount;
+
+    const blendedCharacteristics = [
+      ...localDescriptors.characteristics.slice(0, localCharCount),
+      ...(portfolioDescriptors.characteristics.slice
+        ? portfolioDescriptors.characteristics.slice(0, portfolioCharCount)
+        : []),
+      ...(portfolioDescriptors.features.slice
+        ? portfolioDescriptors.features.slice(0, Math.max(0, portfolioCharCount - 1))
+        : [])
+    ];
+
+    // Create blended style name
+    let blendedStyleName;
+    if (blendWeight < 0.3) {
+      blendedStyleName = `${localDescriptors.primary} with ${portfolioDescriptors.primary} influences`;
+    } else if (blendWeight < 0.7) {
+      blendedStyleName = `Hybrid ${portfolioDescriptors.primary}-${localDescriptors.primary}`;
+    } else {
+      blendedStyleName = `${portfolioDescriptors.primary} adapted to ${localDescriptors.primary} context`;
+    }
+
+    // Create detailed description
+    const description = this.createBlendedDescription(
+      localDescriptors,
+      portfolioDescriptors,
+      blendedMaterials,
+      blendedCharacteristics,
+      blendWeight
+    );
+
+    return {
+      styleName: blendedStyleName,
+      materials: blendedMaterials,
+      characteristics: blendedCharacteristics,
+      climateAdaptations: localDescriptors.climateAdaptations, // Always preserve climate adaptations
+      blendRatio: { local: localWeight, portfolio: blendWeight },
+      localStyle: localDescriptors.primary,
+      portfolioStyle: portfolioDescriptors.primary,
+      description
+    };
+  }
+
+  /**
+   * STEP 4: Create detailed blended style description for prompts
+   */
+  createBlendedDescription(localDesc, portfolioDesc, materials, characteristics, weight) {
+    const materialList = materials.slice(0, 3).join(', ') || 'contemporary materials';
+    const charList = characteristics.slice(0, 4).join(', ') || 'modern features';
+
+    if (weight < 0.3) {
+      return `${localDesc.primary} architectural style with subtle ${portfolioDesc.primary} influences, featuring ${materialList}, incorporating ${charList}, while maintaining local architectural context`;
+    } else if (weight < 0.7) {
+      return `Balanced fusion of ${portfolioDesc.primary} and ${localDesc.primary} styles, utilizing ${materialList}, characterized by ${charList}, creating a contemporary hybrid design`;
+    } else {
+      return `${portfolioDesc.primary} architectural approach adapted for local context, expressed through ${materialList}, featuring ${charList}, respecting regional architectural traditions`;
+    }
+  }
+
+  /**
+   * STEP 4: Create blended style prompt for generation
+   * Uses blendStyles function with weighted merging
+   */
+  createBlendedStylePrompt(projectContext, locationAnalysis, portfolioStyle, weight = 0.5) {
+    // STEP 4: Use sophisticated style blending
+    const blendedStyle = this.blendStyles(locationAnalysis, portfolioStyle, weight);
+
+    console.log('🎨 Blended style created:', {
+      name: blendedStyle.styleName,
+      ratio: `${Math.round(blendedStyle.blendRatio.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.portfolio * 100)}% portfolio`,
+      materials: blendedStyle.materials.slice(0, 3).join(', '),
+      characteristics: blendedStyle.characteristics.slice(0, 3).join(', ')
+    });
+
+    // Return comprehensive blended style object
+    return blendedStyle;
   }
 
   /**
