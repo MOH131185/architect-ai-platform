@@ -189,8 +189,9 @@ class ReplicateService {
 
   /**
    * Generate multi-level floor plans (ground, upper, roof)
+   * Optimized to generate only ground floor by default, with option for full generation
    */
-  async generateMultiLevelFloorPlans(projectContext) {
+  async generateMultiLevelFloorPlans(projectContext, generateAllLevels = false) {
     if (!this.apiKey) {
       return this.getFallbackMultiLevelFloorPlans(projectContext);
     }
@@ -202,25 +203,28 @@ class ReplicateService {
       // Use consistent seed for all floor levels
       const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
 
-      // Generate ground floor
+      // Always generate ground floor (most important)
       console.log('🏗️ Generating ground floor plan...');
       const groundParams = this.buildFloorPlanParameters(projectContext, 'ground');
       groundParams.seed = projectSeed;
       results.ground = await this.generateArchitecturalImage(groundParams);
 
-      // Generate upper floors if multi-story
-      if (floorCount > 1) {
-        console.log(`🏗️ Generating upper floor plan (${floorCount - 1} levels)...`);
-        const upperParams = this.buildFloorPlanParameters(projectContext, 'upper');
-        upperParams.seed = projectSeed;
-        results.upper = await this.generateArchitecturalImage(upperParams);
-      }
+      // Only generate additional levels if explicitly requested
+      if (generateAllLevels) {
+        // Generate upper floors if multi-story
+        if (floorCount > 1) {
+          console.log(`🏗️ Generating upper floor plan (${floorCount - 1} levels)...`);
+          const upperParams = this.buildFloorPlanParameters(projectContext, 'upper');
+          upperParams.seed = projectSeed;
+          results.upper = await this.generateArchitecturalImage(upperParams);
+        }
 
-      // Generate roof plan
-      console.log('🏗️ Generating roof plan...');
-      const roofParams = this.buildFloorPlanParameters(projectContext, 'roof');
-      roofParams.seed = projectSeed;
-      results.roof = await this.generateArchitecturalImage(roofParams);
+        // Generate roof plan
+        console.log('🏗️ Generating roof plan...');
+        const roofParams = this.buildFloorPlanParameters(projectContext, 'roof');
+        roofParams.seed = projectSeed;
+        results.roof = await this.generateArchitecturalImage(roofParams);
+      }
 
       return {
         success: true,
@@ -242,8 +246,9 @@ class ReplicateService {
 
   /**
    * Generate elevations and sections for 2D technical drawings
+   * Optimized to generate only essential views (2 elevations + 1 section)
    */
-  async generateElevationsAndSections(projectContext) {
+  async generateElevationsAndSections(projectContext, generateAllDrawings = false) {
     if (!this.apiKey) {
       return this.getFallbackElevationsAndSections(projectContext);
     }
@@ -254,20 +259,44 @@ class ReplicateService {
       // Use consistent seed for all technical drawings
       const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
 
-      // Generate 4 elevations (North, South, East, West)
-      console.log('🏗️ Generating elevations (N, S, E, W)...');
-      for (const direction of ['north', 'south', 'east', 'west']) {
-        const params = this.buildElevationParameters(projectContext, direction);
-        params.seed = projectSeed;
-        results[`elevation_${direction}`] = await this.generateArchitecturalImage(params);
-      }
+      if (generateAllDrawings) {
+        // Generate all 4 elevations
+        console.log('🏗️ Generating elevations (N, S, E, W)...');
+        for (const direction of ['north', 'south', 'east', 'west']) {
+          const params = this.buildElevationParameters(projectContext, direction);
+          params.seed = projectSeed;
+          results[`elevation_${direction}`] = await this.generateArchitecturalImage(params);
+        }
 
-      // Generate 2 sections (longitudinal and cross)
-      console.log('🏗️ Generating sections (longitudinal, cross)...');
-      for (const sectionType of ['longitudinal', 'cross']) {
-        const params = this.buildSectionParameters(projectContext, sectionType);
-        params.seed = projectSeed;
-        results[`section_${sectionType}`] = await this.generateArchitecturalImage(params);
+        // Generate 2 sections
+        console.log('🏗️ Generating sections (longitudinal, cross)...');
+        for (const sectionType of ['longitudinal', 'cross']) {
+          const params = this.buildSectionParameters(projectContext, sectionType);
+          params.seed = projectSeed;
+          results[`section_${sectionType}`] = await this.generateArchitecturalImage(params);
+        }
+      } else {
+        // Generate only essential drawings (faster, lower cost)
+        // Generate front and side elevations (entrance direction)
+        const entranceDir = projectContext.entranceDirection || 'N';
+        const mainDirection = this.getCardinalDirection(entranceDir);
+        const sideDirection = this.getPerpendicularDirection(mainDirection);
+
+        console.log(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection})...`);
+
+        const mainParams = this.buildElevationParameters(projectContext, mainDirection.toLowerCase());
+        mainParams.seed = projectSeed;
+        results[`elevation_${mainDirection.toLowerCase()}`] = await this.generateArchitecturalImage(mainParams);
+
+        const sideParams = this.buildElevationParameters(projectContext, sideDirection.toLowerCase());
+        sideParams.seed = projectSeed;
+        results[`elevation_${sideDirection.toLowerCase()}`] = await this.generateArchitecturalImage(sideParams);
+
+        // Generate one section (longitudinal)
+        console.log('🏗️ Generating longitudinal section...');
+        const sectionParams = this.buildSectionParameters(projectContext, 'longitudinal');
+        sectionParams.seed = projectSeed;
+        results[`section_longitudinal`] = await this.generateArchitecturalImage(sectionParams);
       }
 
       return {
@@ -285,6 +314,30 @@ class ReplicateService {
         fallback: this.getFallbackElevationsAndSections(projectContext)
       };
     }
+  }
+
+  /**
+   * Get cardinal direction from compass notation
+   */
+  getCardinalDirection(compassDir) {
+    const dirMap = {
+      'N': 'north', 'NE': 'north', 'E': 'east', 'SE': 'east',
+      'S': 'south', 'SW': 'south', 'W': 'west', 'NW': 'north'
+    };
+    return dirMap[compassDir] || 'north';
+  }
+
+  /**
+   * Get perpendicular direction for side elevation
+   */
+  getPerpendicularDirection(direction) {
+    const perpMap = {
+      'north': 'east',
+      'east': 'north',
+      'south': 'west',
+      'west': 'north'
+    };
+    return perpMap[direction] || 'east';
   }
 
   /**
