@@ -502,28 +502,39 @@ class AIIntegrationService {
    */
   async generateFloorPlanAnd3DPreview(projectContext, portfolioImages = []) {
     try {
-      console.log('Starting floor plan and 3D preview generation...');
-      
+      console.log('Starting comprehensive architectural generation...');
+
+      // Generate consistent seed for the entire project
+      const projectSeed = Math.floor(Math.random() * 1000000);
+      const enhancedContext = { ...projectContext, seed: projectSeed };
+
+      console.log(`🎲 Using project seed: ${projectSeed} for consistent 2D/3D generation`);
+
       // Step 1: Detect architectural style from portfolio if provided
       let styleDetection = null;
       if (portfolioImages && portfolioImages.length > 0) {
         styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
-          portfolioImages, 
+          portfolioImages,
           projectContext.location
         );
       }
 
-      // Step 2: Generate 2D floor plan
-      const floorPlan = await this.replicate.generateFloorPlan(projectContext);
+      // Step 2: Generate multi-level floor plans (ground, upper if needed, roof)
+      console.log('🏗️ Generating multi-level floor plans...');
+      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
-      // Step 3: Generate 3D views (2 exterior + 1 interior)
+      // Step 3: Generate elevations and sections
+      console.log('🏗️ Generating elevations (N,S,E,W) and sections (longitudinal, cross)...');
+      const technicalDrawings = await this.replicate.generateElevationsAndSections(enhancedContext);
+
+      // Step 4: Generate 3D views (2 exterior + 1 interior) - with same seed
       console.log('🏗️ Generating 3D views: exterior_front, exterior_side, interior');
       const views = await this.replicate.generateMultipleViews(
-        projectContext,
+        enhancedContext,
         ['exterior_front', 'exterior_side', 'interior']
       );
 
-      // Step 4: Generate design reasoning with style context
+      // Step 5: Generate design reasoning with style context
       const reasoning = await this.generateDesignReasoningWithStyle(
         projectContext,
         styleDetection
@@ -531,13 +542,15 @@ class AIIntegrationService {
 
       return {
         success: true,
-        floorPlan,
+        floorPlans,
+        technicalDrawings,
         visualizations: { views }, // Wrap views in visualizations object
         styleDetection,
         reasoning,
-        projectContext,
+        projectContext: enhancedContext,
+        projectSeed,
         timestamp: new Date().toISOString(),
-        workflow: 'floor_plan_3d_preview'
+        workflow: 'comprehensive_architectural_generation'
       };
 
     } catch (error) {
@@ -672,33 +685,37 @@ class AIIntegrationService {
     try {
       const style = styleDetection?.primaryStyle?.style || 'contemporary';
       const materials = this.extractMaterialsFromStyle(styleDetection);
-      
-      // Generate floor plan with style optimization
-      const floorPlan = await this.replicate.generateFloorPlan({
+
+      const styledContext = {
         ...enhancedContext,
         architecturalStyle: style,
         materials
-      });
+      };
+
+      // Generate multi-level floor plans with style optimization
+      console.log('🏗️ Generating style-optimized multi-level floor plans...');
+      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(styledContext);
+
+      // Generate elevations and sections with style optimization
+      console.log('🏗️ Generating style-optimized elevations and sections...');
+      const technicalDrawings = await this.replicate.generateElevationsAndSections(styledContext);
 
       // Generate 3D views (2 exterior + 1 interior) with style optimization
       console.log('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
       const views = await this.replicate.generateMultipleViews(
-        {
-          ...enhancedContext,
-          architecturalStyle: style,
-          materials
-        },
+        styledContext,
         ['exterior_front', 'exterior_side', 'interior']
       );
 
       // Generate additional style variations
       const styleVariations = await this.replicate.generateStyleVariations(
-        enhancedContext,
+        styledContext,
         [style, 'sustainable', 'innovative']
       );
 
       return {
-        floorPlan,
+        floorPlans,
+        technicalDrawings,
         views, // Changed from preview3D to views
         styleVariations,
         source: 'style_optimized',

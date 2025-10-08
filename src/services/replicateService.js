@@ -159,14 +159,19 @@ class ReplicateService {
   }
 
   /**
-   * Generate multiple architectural views
+   * Generate multiple architectural views with consistent seed for same project
    */
   async generateMultipleViews(projectContext, viewTypes = ['exterior', 'interior', 'site_plan']) {
     const results = {};
-    
+
+    // Use consistent seed across all views for the same project
+    const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
+
     for (const viewType of viewTypes) {
       try {
         const params = this.buildViewParameters(projectContext, viewType);
+        // Use same seed for consistency across all views
+        params.seed = projectSeed;
         const result = await this.generateArchitecturalImage(params);
         results[viewType] = result;
       } catch (error) {
@@ -180,6 +185,125 @@ class ReplicateService {
     }
 
     return results;
+  }
+
+  /**
+   * Generate multi-level floor plans (ground, upper, roof)
+   */
+  async generateMultiLevelFloorPlans(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallbackMultiLevelFloorPlans(projectContext);
+    }
+
+    try {
+      const floorCount = this.calculateFloorCount(projectContext);
+      const results = {};
+
+      // Use consistent seed for all floor levels
+      const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
+
+      // Generate ground floor
+      console.log('🏗️ Generating ground floor plan...');
+      const groundParams = this.buildFloorPlanParameters(projectContext, 'ground');
+      groundParams.seed = projectSeed;
+      results.ground = await this.generateArchitecturalImage(groundParams);
+
+      // Generate upper floors if multi-story
+      if (floorCount > 1) {
+        console.log(`🏗️ Generating upper floor plan (${floorCount - 1} levels)...`);
+        const upperParams = this.buildFloorPlanParameters(projectContext, 'upper');
+        upperParams.seed = projectSeed;
+        results.upper = await this.generateArchitecturalImage(upperParams);
+      }
+
+      // Generate roof plan
+      console.log('🏗️ Generating roof plan...');
+      const roofParams = this.buildFloorPlanParameters(projectContext, 'roof');
+      roofParams.seed = projectSeed;
+      results.roof = await this.generateArchitecturalImage(roofParams);
+
+      return {
+        success: true,
+        floorPlans: results,
+        floorCount,
+        projectSeed,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Multi-level floor plan generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackMultiLevelFloorPlans(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Generate elevations and sections for 2D technical drawings
+   */
+  async generateElevationsAndSections(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallbackElevationsAndSections(projectContext);
+    }
+
+    try {
+      const results = {};
+
+      // Use consistent seed for all technical drawings
+      const projectSeed = projectContext.seed || Math.floor(Math.random() * 1000000);
+
+      // Generate 4 elevations (North, South, East, West)
+      console.log('🏗️ Generating elevations (N, S, E, W)...');
+      for (const direction of ['north', 'south', 'east', 'west']) {
+        const params = this.buildElevationParameters(projectContext, direction);
+        params.seed = projectSeed;
+        results[`elevation_${direction}`] = await this.generateArchitecturalImage(params);
+      }
+
+      // Generate 2 sections (longitudinal and cross)
+      console.log('🏗️ Generating sections (longitudinal, cross)...');
+      for (const sectionType of ['longitudinal', 'cross']) {
+        const params = this.buildSectionParameters(projectContext, sectionType);
+        params.seed = projectSeed;
+        results[`section_${sectionType}`] = await this.generateArchitecturalImage(params);
+      }
+
+      return {
+        success: true,
+        technicalDrawings: results,
+        projectSeed,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Elevations and sections generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: this.getFallbackElevationsAndSections(projectContext)
+      };
+    }
+  }
+
+  /**
+   * Calculate number of floors based on building area and type
+   */
+  calculateFloorCount(projectContext) {
+    const area = projectContext.floorArea || 200;
+    const buildingType = projectContext.buildingProgram || 'house';
+
+    // Single-story buildings
+    if (buildingType.includes('cottage') || buildingType.includes('bungalow')) {
+      return 1;
+    }
+
+    // Multi-story based on area
+    if (area < 150) return 1;
+    if (area < 300) return 2;
+    if (area < 500) return 3;
+    return Math.min(Math.ceil(area / 200), 5); // Max 5 floors
   }
 
   /**
@@ -380,27 +504,93 @@ class ReplicateService {
   /**
    * Build parameters for 2D floor plan generation
    */
-  buildFloorPlanParameters(projectContext) {
+  buildFloorPlanParameters(projectContext, level = 'ground') {
     const {
       buildingProgram = 'commercial building',
       architecturalStyle = 'contemporary',
       location = 'urban setting',
       materials = 'glass and steel',
-      area = '1000 sq ft'
+      floorArea = 200
     } = projectContext;
 
+    const levelDescriptions = {
+      ground: 'ground floor, main entrance, living areas, kitchen, common spaces',
+      upper: 'upper floor, bedrooms, private spaces, bathrooms',
+      roof: 'roof plan, mechanical equipment, roof access, terraces, skylights'
+    };
+
+    const levelDesc = levelDescriptions[level] || levelDescriptions.ground;
+
     return {
-      prompt: `Professional architectural floor plan, ${architecturalStyle} ${buildingProgram}, ${area} area, technical drawing style, 2D plan view, detailed room layout, dimensions, doors, windows, furniture layout, professional architectural drafting, black and white line drawing, precise measurements, architectural blueprint style`,
+      prompt: `Professional architectural floor plan, ${level} level plan, ${architecturalStyle} ${buildingProgram}, ${floorArea}m² floor area, ${levelDesc}, technical drawing style, 2D top-view plan, detailed room layout with dimensions, walls, doors, windows, furniture layout, professional architectural drafting, black and white line drawing with annotations, precise measurements, architectural blueprint style, clean technical drawing`,
       buildingType: buildingProgram,
       architecturalStyle,
       location,
       materials,
-      viewType: 'floor_plan',
+      viewType: `floor_plan_${level}`,
       width: 1024,
       height: 1024,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color, realistic, photorealistic, blurry, low quality"
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, blurry, low quality, sketchy, hand drawn"
+    };
+  }
+
+  /**
+   * Build parameters for elevation drawings
+   */
+  buildElevationParameters(projectContext, direction = 'north') {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      materials = 'glass and steel',
+      floorArea = 200
+    } = projectContext;
+
+    const floorCount = this.calculateFloorCount(projectContext);
+    const heightDescription = floorCount === 1 ? 'single story' : `${floorCount} stories`;
+
+    return {
+      prompt: `Professional architectural elevation drawing, ${direction} elevation, ${architecturalStyle} ${buildingProgram}, ${heightDescription} ${heightDescription}, ${materials} facade, technical drawing style, orthographic projection, 2D elevation view, detailed facade with windows, doors, materials indication, professional architectural drafting, black and white line drawing with hatching, precise proportions, architectural blueprint style, clean technical drawing`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      materials,
+      viewType: `elevation_${direction}`,
+      width: 1024,
+      height: 768,
+      steps: 40,
+      guidanceScale: 7.0,
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, blurry, low quality"
+    };
+  }
+
+  /**
+   * Build parameters for section drawings
+   */
+  buildSectionParameters(projectContext, sectionType = 'longitudinal') {
+    const {
+      buildingProgram = 'commercial building',
+      architecturalStyle = 'contemporary',
+      materials = 'glass and steel',
+      floorArea = 200
+    } = projectContext;
+
+    const floorCount = this.calculateFloorCount(projectContext);
+    const sectionDesc = sectionType === 'longitudinal'
+      ? 'longitudinal section, length-wise cut through building'
+      : 'cross section, width-wise cut through building';
+
+    return {
+      prompt: `Professional architectural section drawing, ${sectionDesc}, ${architecturalStyle} ${buildingProgram}, ${floorCount} floor levels, interior spaces visible, ceiling heights, floor slabs, structural elements, stairs, ${materials} construction, technical drawing style, orthographic projection, 2D section view, detailed interior heights and materials, professional architectural drafting, black and white line drawing with hatching and poché, precise vertical proportions, architectural blueprint style, clean technical drawing`,
+      buildingType: buildingProgram,
+      architecturalStyle,
+      materials,
+      viewType: `section_${sectionType}`,
+      width: 1024,
+      height: 768,
+      steps: 40,
+      guidanceScale: 7.0,
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, elevation, blurry, low quality"
     };
   }
 
@@ -458,6 +648,77 @@ class ReplicateService {
         message: 'Using placeholder 3D preview - API unavailable'
       },
       type: '3d_preview',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback multi-level floor plans when API is unavailable
+   */
+  getFallbackMultiLevelFloorPlans(projectContext) {
+    const floorCount = this.calculateFloorCount(projectContext);
+    const fallbackPlans = {
+      ground: {
+        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan'],
+        success: false
+      },
+      roof: {
+        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Roof+Plan'],
+        success: false
+      }
+    };
+
+    if (floorCount > 1) {
+      fallbackPlans.upper = {
+        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Upper+Floor+Plan'],
+        success: false
+      };
+    }
+
+    return {
+      success: false,
+      isFallback: true,
+      floorPlans: fallbackPlans,
+      floorCount,
+      message: 'Using placeholder floor plans - API unavailable',
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get fallback elevations and sections when API is unavailable
+   */
+  getFallbackElevationsAndSections(projectContext) {
+    return {
+      success: false,
+      isFallback: true,
+      technicalDrawings: {
+        elevation_north: {
+          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=North+Elevation'],
+          success: false
+        },
+        elevation_south: {
+          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=South+Elevation'],
+          success: false
+        },
+        elevation_east: {
+          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=East+Elevation'],
+          success: false
+        },
+        elevation_west: {
+          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=West+Elevation'],
+          success: false
+        },
+        section_longitudinal: {
+          images: ['https://via.placeholder.com/1024x768/2C3E50/FFFFFF?text=Longitudinal+Section'],
+          success: false
+        },
+        section_cross: {
+          images: ['https://via.placeholder.com/1024x768/2C3E50/FFFFFF?text=Cross+Section'],
+          success: false
+        }
+      },
+      message: 'Using placeholder technical drawings - API unavailable',
       timestamp: new Date().toISOString()
     };
   }
