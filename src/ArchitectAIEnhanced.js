@@ -208,6 +208,9 @@ const MapView = ({ center, zoom }) => {
         ]
       });
 
+      // Note: google.maps.Marker is deprecated as of Feb 2024
+      // TODO: Migrate to google.maps.marker.AdvancedMarkerElement in future update
+      // Current implementation will be supported for 12+ months
       const newMarker = new window.google.maps.Marker({
         position: center,
         map: newMap,
