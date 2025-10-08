@@ -679,13 +679,17 @@ class AIIntegrationService {
         architecturalStyle: style,
         materials
       });
-      
-      // Generate 3D preview with style optimization
-      const preview3D = await this.replicate.generate3DPreview({
-        ...enhancedContext,
-        architecturalStyle: style,
-        materials
-      });
+
+      // Generate 3D views (2 exterior + 1 interior) with style optimization
+      console.log('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
+      const views = await this.replicate.generateMultipleViews(
+        {
+          ...enhancedContext,
+          architecturalStyle: style,
+          materials
+        },
+        ['exterior_front', 'exterior_side', 'interior']
+      );
 
       // Generate additional style variations
       const styleVariations = await this.replicate.generateStyleVariations(
@@ -695,7 +699,7 @@ class AIIntegrationService {
 
       return {
         floorPlan,
-        preview3D,
+        views, // Changed from preview3D to views
         styleVariations,
         source: 'style_optimized',
         timestamp: new Date().toISOString()
