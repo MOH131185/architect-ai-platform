@@ -640,13 +640,31 @@ class AIIntegrationService {
       const preview3DResult = await this.replicate.generate3DPreview(enhancedContext, floorPlanImage);
       console.log('✅ 3D preview generated with ControlNet guidance');
 
-      // Return integrated results
+      // STEP 3: Combine both results in single object
+      const combinedResults = {
+        floorPlan: floorPlanResult?.floorPlan || floorPlanResult,
+        preview3D: preview3DResult?.preview3D || preview3DResult,
+        metadata: {
+          floorPlanSuccess: floorPlanResult?.success !== false,
+          preview3DSuccess: preview3DResult?.success !== false,
+          floorPlanType: floorPlanResult?.type,
+          preview3DType: preview3DResult?.type
+        }
+      };
+
+      console.log('✅ Combined results:', {
+        floorPlan: combinedResults.metadata.floorPlanSuccess ? 'Success' : 'Failed',
+        preview3D: combinedResults.metadata.preview3DSuccess ? 'Success' : 'Failed'
+      });
+
+      // Return integrated results with combined visualizations
       return {
         success: true,
         locationAnalysis,
         portfolioStyle,
         blendedPrompt,
-        floorPlan: floorPlanResult,
+        results: combinedResults, // Combined floor plan + 3D preview
+        floorPlan: floorPlanResult, // Also keep individual results for compatibility
         preview3D: preview3DResult,
         projectSeed,
         enhancedContext,
