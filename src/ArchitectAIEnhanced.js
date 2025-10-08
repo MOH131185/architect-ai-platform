@@ -410,59 +410,47 @@ const ArchitectAIEnhanced = () => {
   // }, [currentStep, address, isDetectingLocation, detectUserLocation]);
 
   const getSeasonalClimateData = async (lat, lon) => {
-    const lastYear = new Date().getFullYear() - 1;
-    const seasons = {
-      winter: `${lastYear}-01-15`,
-      spring: `${lastYear}-04-15`,
-      summer: `${lastYear}-07-15`,
-      fall: `${lastYear}-10-15`,
-    };
-
     try {
-      const requests = Object.values(seasons).map(date => {
-        const url = 'https://api.openweathermap.org/data/3.0/onecall/day_summary';
-        return axios.get(url, {
-          params: {
-            lat,
-            lon,
-            date,
-            units: 'metric',
-            appid: process.env.REACT_APP_OPENWEATHER_API_KEY,
-          },
-        });
+      // Use OpenWeather API v2.5 Current Weather (free tier)
+      const url = 'https://api.openweathermap.org/data/2.5/weather';
+      const response = await axios.get(url, {
+        params: {
+          lat,
+          lon,
+          units: 'metric',
+          appid: process.env.REACT_APP_OPENWEATHER_API_KEY,
+        },
       });
 
-      const responses = await Promise.all(requests);
-      const seasonalData = {
-        winter: responses[0].data,
-        spring: responses[1].data,
-        summer: responses[2].data,
-        fall: responses[3].data,
-      };
+      const weatherData = response.data;
+
+      // Create seasonal estimates based on current weather and location
+      const currentTemp = weatherData.main.temp;
+      const tempVariation = 15; // Typical seasonal temperature variation
 
       const finalProcessedData = {
         climate: {
-          type: "Varied (Seasonal Avg.)",
+          type: weatherData.weather[0]?.main || "Varied",
           seasonal: {
             winter: {
-              avgTemp: `${seasonalData.winter.temperature.afternoon.toFixed(1)}°C`,
-              precipitation: `${seasonalData.winter.precipitation.total}mm`,
-              solar: `${(100 - seasonalData.winter.cloud_cover.afternoon)}%`,
+              avgTemp: `${(currentTemp - tempVariation).toFixed(1)}°C`,
+              precipitation: "Moderate",
+              solar: "40-50%",
             },
             spring: {
-              avgTemp: `${seasonalData.spring.temperature.afternoon.toFixed(1)}°C`,
-              precipitation: `${seasonalData.spring.precipitation.total}mm`,
-              solar: `${(100 - seasonalData.spring.cloud_cover.afternoon)}%`,
+              avgTemp: `${(currentTemp - 5).toFixed(1)}°C`,
+              precipitation: "Moderate",
+              solar: "60-70%",
             },
             summer: {
-              avgTemp: `${seasonalData.summer.temperature.afternoon.toFixed(1)}°C`,
-              precipitation: `${seasonalData.summer.precipitation.total}mm`,
-              solar: `${(100 - seasonalData.summer.cloud_cover.afternoon)}%`,
+              avgTemp: `${(currentTemp + tempVariation).toFixed(1)}°C`,
+              precipitation: "Low",
+              solar: "80-90%",
             },
             fall: {
-              avgTemp: `${seasonalData.fall.temperature.afternoon.toFixed(1)}°C`,
-              precipitation: `${seasonalData.fall.precipitation.total}mm`,
-              solar: `${(100 - seasonalData.fall.cloud_cover.afternoon)}%`,
+              avgTemp: `${(currentTemp + 5).toFixed(1)}°C`,
+              precipitation: "Moderate-High",
+              solar: "50-60%",
             },
           }
         },
