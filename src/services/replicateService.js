@@ -590,11 +590,17 @@ class ReplicateService {
         };
 
       case 'axonometric':
+        // Use blended style description if available for consistency with other views
+        const blendedDesc = projectContext.blendedPrompt || (projectContext.blendedStyle?.description);
+        const styleContext = blendedDesc
+          ? `matching the ${unifiedDesc.architecturalStyle} style design from floor plans and elevations`
+          : `in ${unifiedDesc.architecturalStyle} style`;
+
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Professional architectural axonometric view of ${unifiedDesc.fullDescription}, isometric 3D projection showing ${entranceDir}-facing entrance, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels visible, technical illustration style, architectural drawing, clean lines, showing roof structure and building volumes, professional architectural visualization, high detail, precise geometry`,
+          prompt: `Professional architectural axonometric 45-degree isometric view of the SAME ${unifiedDesc.fullDescription} ${styleContext}, isometric 3D projection from above showing ${entranceDir}-facing entrance clearly visible on ${entranceDir} side, ${unifiedDesc.materials} construction consistent with elevations, ${unifiedDesc.features}, ${unifiedDesc.floorCount} floor levels clearly visible with floor separation lines, technical illustration style matching other technical drawings, architectural drawing with clean precise lines, complete roof structure and all building volumes shown, professional architectural visualization, high detail, precise geometry, design must match floor plan layout and elevation facades exactly, unified consistent building design`,
           perspective: 'axonometric view',
           width: 1024,
           height: 768
@@ -731,7 +737,7 @@ class ReplicateService {
       : '';
 
     return {
-      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, showing walls as black lines, doors as arcs, windows as double lines, room labels, dimensions, north arrow, scale bar, STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing`,
+      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, showing walls as black lines, doors as arcs, windows as double lines, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -757,7 +763,7 @@ class ReplicateService {
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
     return {
-      prompt: `2D architectural elevation drawing ONLY, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW showing ${unifiedDesc.floorCount} floor levels stacked vertically, ${unifiedDesc.materials} facade indicated with hatching patterns, window openings as rectangles, door openings${isEntranceElevation ? ', main entrance door clearly shown' : ''}, ground line, roof line, floor division lines, dimension lines showing heights, ORTHOGRAPHIC PROJECTION, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO depth, NO rendering, NO colors, flat 2D technical documentation, vertical facade view ONLY`,
+      prompt: `2D architectural elevation drawing ONLY, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW showing ${unifiedDesc.floorCount} floor levels stacked vertically, ${unifiedDesc.materials} facade indicated with hatching patterns, window openings as rectangles, door openings${isEntranceElevation ? ', main entrance door clearly shown' : ''}, ground line (±0.00m), roof line, floor division lines, COMPLETE DIMENSION LINES with measurements: vertical dimensions showing floor heights (e.g., +0.00m, +3.50m, +7.00m), floor-to-floor heights, total building height, horizontal dimensions showing overall width, window and door dimensions, dimension extension lines with arrows, dimension text in meters, elevation markers at each floor level, ground level marker, ORTHOGRAPHIC PROJECTION, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions, black and white line drawing ONLY, NO 3D elements, NO perspective, NO depth, NO rendering, NO colors, flat 2D technical documentation with professional architectural dimensioning, vertical facade view ONLY`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
