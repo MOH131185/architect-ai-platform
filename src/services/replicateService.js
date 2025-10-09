@@ -855,6 +855,262 @@ class ReplicateService {
   }
 
   /**
+   * Build parameters for detailed construction drawings at specific scales
+   * NEW: Generates high-resolution detail drawings with construction information
+   * @param {Object} projectContext - Project context
+   * @param {Number} floorIndex - Floor level (0 = ground, 1 = first, etc.)
+   * @param {Number} scale - Drawing scale (5, 10, 20, 50 for 1:5, 1:10, 1:20, 1:50)
+   * @returns {Object} Parameters for detail drawing generation
+   */
+  buildDetailParameters(projectContext, floorIndex = 0, scale = 20) {
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+    const floorName = floorIndex === 0 ? 'ground floor' : `floor ${floorIndex + 1}`;
+
+    // Scale-dependent resolution and detail level
+    const scaleSettings = {
+      5: { width: 4096, height: 3072, detail: 'EXTREMELY DETAILED', steps: 60 },    // 1:5 - Very detailed
+      10: { width: 3072, height: 2304, detail: 'HIGHLY DETAILED', steps: 55 },      // 1:10 - Detailed
+      20: { width: 2048, height: 1536, detail: 'DETAILED', steps: 50 },             // 1:20 - Standard detail
+      50: { width: 1536, height: 1152, detail: 'MODERATELY DETAILED', steps: 45 }   // 1:50 - Overview detail
+    };
+
+    const settings = scaleSettings[scale] || scaleSettings[20];
+
+    return {
+      prompt: `2D construction detail drawing at 1:${scale} scale of ${unifiedDesc.fullDescription} ${floorName}, ${settings.detail} technical blueprint showing: wall sections with ${unifiedDesc.materials} assembly layers, floor slab construction with reinforcement bars (#4 @ 300mm c/c), foundation details with footings and piles, structural columns and beams with dimensions, window and door jamb details, flashing and waterproofing layers, insulation placement, ceiling assembly, all construction joints, COMPLETE DIMENSIONAL ANNOTATIONS in millimeters, material callouts (concrete grade, steel grade, insulation R-value), construction notes, welding symbols, bolt specifications, ORTHOGRAPHIC PROJECTION, CAD-style construction documentation, black and white line drawing with hatching for materials, scale bar 1:${scale}, title block, drawing number, NO 3D rendering, NO perspective, NO colors, professional construction documentation`,
+      buildingType: unifiedDesc.buildingType,
+      architecturalStyle: unifiedDesc.architecturalStyle,
+      materials: unifiedDesc.materials,
+      viewType: `construction_detail_floor_${floorIndex}_scale_1_${scale}`,
+      width: settings.width,
+      height: settings.height,
+      steps: settings.steps,
+      guidanceScale: 8.0,
+      negativePrompt: "3D, perspective, color, rendered, photorealistic, artistic, decorative, interior design, furniture, landscaping"
+    };
+  }
+
+  /**
+   * Build parameters for structural plans
+   * NEW: Generates structural engineering drawings with column/beam layout
+   * @param {Object} projectContext - Project context
+   * @param {Number} floorIndex - Floor level (0 = ground/foundation, 1 = first floor structure, etc.)
+   * @returns {Object} Parameters for structural plan generation
+   */
+  buildStructuralPlanParameters(projectContext, floorIndex = 0) {
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+    const floorName = floorIndex === 0 ? 'foundation and ground floor structural plan' : `floor ${floorIndex + 1} structural plan`;
+
+    return {
+      prompt: `2D structural engineering plan of ${unifiedDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint`,
+      buildingType: unifiedDesc.buildingType,
+      architecturalStyle: unifiedDesc.architecturalStyle,
+      materials: unifiedDesc.materials,
+      viewType: `structural_plan_floor_${floorIndex}`,
+      width: 2048,
+      height: 1536,
+      steps: 55,
+      guidanceScale: 8.0,
+      negativePrompt: "3D, perspective, color, rendered, photorealistic, architectural floor plan, room layouts, furniture, doors, windows, interior finishes"
+    };
+  }
+
+  /**
+   * Build parameters for MEP (Mechanical, Electrical, Plumbing) plans
+   * NEW: Generates MEP engineering drawings with HVAC, electrical, and plumbing systems
+   * @param {Object} projectContext - Project context
+   * @param {Number} floorIndex - Floor level
+   * @param {String} system - MEP system type: 'hvac', 'electrical', 'plumbing', or 'combined'
+   * @returns {Object} Parameters for MEP plan generation
+   */
+  buildMEPPlanParameters(projectContext, floorIndex = 0, system = 'combined') {
+    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+    const floorName = floorIndex === 0 ? 'ground floor' : `floor ${floorIndex + 1}`;
+
+    const systemPrompts = {
+      hvac: `HVAC system layout: air handling units (AHU) locations, supply and return ductwork with sizes (e.g., 600x400mm duct), diffuser and grille locations, chilled water piping, heating hot water piping, thermostat locations, control zones, outdoor air intake, exhaust fans`,
+      electrical: `Electrical system layout: main distribution boards (MDB), sub-distribution boards (SDB), lighting fixture locations and types, power outlet locations (single, double, 3-phase), cable routing and conduit sizes, circuit breakers and ratings, emergency lighting, fire alarm devices, data/telecom outlets, electrical load schedule`,
+      plumbing: `Plumbing system layout: water supply mains and risers, drainage and waste pipes with slopes, vent stacks, fixture locations (sinks, toilets, showers), hot and cold water distribution, pipe sizes (e.g., 50mm drain), cleanouts, floor drains, water heater location, backflow preventers, shut-off valves`,
+      combined: `Combined MEP systems: HVAC ductwork and equipment, electrical distribution and lighting, plumbing supply and drainage, integrated coordination showing clashes resolved, ceiling height requirements, service corridors, mechanical rooms, riser diagrams`
+    };
+
+    const systemPrompt = systemPrompts[system] || systemPrompts.combined;
+
+    return {
+      prompt: `2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${unifiedDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services`,
+      buildingType: unifiedDesc.buildingType,
+      architecturalStyle: unifiedDesc.architecturalStyle,
+      materials: unifiedDesc.materials,
+      viewType: `mep_${system}_plan_floor_${floorIndex}`,
+      width: 2048,
+      height: 1536,
+      steps: 55,
+      guidanceScale: 8.0,
+      negativePrompt: "3D, perspective, color rendering, photorealistic, architectural details, furniture, decorative elements, landscaping"
+    };
+  }
+
+  /**
+   * Generate construction detail drawings for all floors at specified scale
+   * NEW: Comprehensive construction documentation workflow
+   * @param {Object} projectContext - Project context
+   * @param {Number} scale - Drawing scale (5, 10, 20, or 50)
+   * @returns {Promise<Object>} Construction details for all floors
+   */
+  async generateConstructionDetails(projectContext, scale = 20) {
+    if (!this.apiKey) {
+      return {
+        success: false,
+        isFallback: true,
+        message: 'API key not configured',
+        details: {}
+      };
+    }
+
+    try {
+      const floorCount = this.calculateFloorCount(projectContext);
+      const results = {};
+      const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+
+      console.log(`🔧 Generating construction details at 1:${scale} scale for ${floorCount} floor(s)...`);
+
+      for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
+        const params = this.buildDetailParameters(projectContext, floorIndex, scale);
+        params.seed = projectSeed + floorIndex; // Vary seed slightly per floor
+
+        console.log(`  📐 Floor ${floorIndex + 1} details...`);
+        results[`floor_${floorIndex}`] = await this.generateArchitecturalImage(params);
+      }
+
+      return {
+        success: true,
+        details: results,
+        scale: scale,
+        floorCount: floorCount,
+        projectSeed,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Construction details generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        details: {},
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Generate structural plans for all floors
+   * NEW: Structural engineering documentation workflow
+   * @param {Object} projectContext - Project context
+   * @param {Object} controlImage - Optional floor plan for reference
+   * @returns {Promise<Object>} Structural plans for all floors
+   */
+  async generateStructuralPlans(projectContext, controlImage = null) {
+    if (!this.apiKey) {
+      return {
+        success: false,
+        isFallback: true,
+        message: 'API key not configured',
+        structuralPlans: {}
+      };
+    }
+
+    try {
+      const floorCount = this.calculateFloorCount(projectContext);
+      const results = {};
+      const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+
+      console.log(`🏗️ Generating structural plans for ${floorCount + 1} level(s) (including foundation)...`);
+
+      // Generate foundation + all floor structural plans
+      for (let floorIndex = 0; floorIndex <= floorCount; floorIndex++) {
+        const params = this.buildStructuralPlanParameters(projectContext, floorIndex);
+        params.seed = projectSeed + floorIndex * 10; // Vary seed per floor
+        if (controlImage) params.image = controlImage;
+
+        const levelName = floorIndex === 0 ? 'foundation' : `floor_${floorIndex}`;
+        console.log(`  🏛️ ${levelName} structural plan...`);
+        results[levelName] = await this.generateArchitecturalImage(params);
+      }
+
+      return {
+        success: true,
+        structuralPlans: results,
+        floorCount: floorCount,
+        projectSeed,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Structural plans generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        structuralPlans: {},
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
+   * Generate MEP plans for all floors
+   * NEW: MEP engineering documentation workflow
+   * @param {Object} projectContext - Project context
+   * @param {String} system - MEP system: 'hvac', 'electrical', 'plumbing', or 'combined'
+   * @param {Object} controlImage - Optional floor plan for reference
+   * @returns {Promise<Object>} MEP plans for all floors
+   */
+  async generateMEPPlans(projectContext, system = 'combined', controlImage = null) {
+    if (!this.apiKey) {
+      return {
+        success: false,
+        isFallback: true,
+        message: 'API key not configured',
+        mepPlans: {}
+      };
+    }
+
+    try {
+      const floorCount = this.calculateFloorCount(projectContext);
+      const results = {};
+      const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+
+      console.log(`⚡ Generating ${system.toUpperCase()} MEP plans for ${floorCount} floor(s)...`);
+
+      for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
+        const params = this.buildMEPPlanParameters(projectContext, floorIndex, system);
+        params.seed = projectSeed + floorIndex * 100; // Vary seed per floor
+        if (controlImage) params.image = controlImage;
+
+        console.log(`  ⚙️  Floor ${floorIndex + 1} ${system} MEP plan...`);
+        results[`floor_${floorIndex}`] = await this.generateArchitecturalImage(params);
+      }
+
+      return {
+        success: true,
+        mepPlans: results,
+        system: system,
+        floorCount: floorCount,
+        projectSeed,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('MEP plans generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        mepPlans: {},
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Get fallback floor plan when API is unavailable
    */
   getFallbackFloorPlan(projectContext) {

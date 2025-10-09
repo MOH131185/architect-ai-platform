@@ -811,6 +811,26 @@ class AIIntegrationService {
         }
       }
 
+      // STEP 3.10: Optional construction documentation generation
+      let constructionDocumentation = null;
+      if (projectContext.generateConstructionDocs) {
+        console.log('🏗️ Step 8: Generating construction documentation (detail drawings, structural plans, MEP plans)...');
+        try {
+          constructionDocumentation = await this.generateConstructionDocumentation(
+            enhancedContext,
+            floorPlanImage
+          );
+          console.log('✅ Construction documentation generated successfully');
+        } catch (constructionError) {
+          console.error('⚠️ Construction documentation generation failed:', constructionError.message);
+          constructionDocumentation = {
+            success: false,
+            error: constructionError.message,
+            note: 'Construction documentation unavailable - continuing with base design'
+          };
+        }
+      }
+
       // Calculate overall blend weight for backward compatibility
       const overallBlendWeight = (materialWeight + characteristicWeight) / 2;
 
@@ -835,6 +855,7 @@ class AIIntegrationService {
         bimModel, // NEW: Include parametric BIM model in results
         bimAxonometric, // NEW: Geometrically consistent axonometric from BIM or fallback
         axonometricSource, // NEW: Source metadata for axonometric generation
+        constructionDocumentation, // NEW: Construction drawings and engineering notes (if requested)
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),
@@ -1308,6 +1329,141 @@ class AIIntegrationService {
     } catch (error) {
       console.error('⚠️ Floor plan geometry extraction failed:', error.message);
       return { extracted: false, source: 'fallback' };
+    }
+  }
+
+  /**
+   * Generate comprehensive construction documentation
+   * Includes detail drawings, structural plans, MEP plans, and engineering notes
+   * @param {Object} projectContext - Enhanced project context with blended style
+   * @param {String} controlImage - Optional control image for ControlNet (floor plan)
+   * @returns {Promise<Object>} Construction documentation with drawings and notes
+   */
+  async generateConstructionDocumentation(projectContext, controlImage = null) {
+    try {
+      console.log('📋 Starting comprehensive construction documentation generation...');
+
+      const results = {
+        success: true,
+        detailDrawings: null,
+        structuralPlans: null,
+        mepPlans: null,
+        structuralNotes: [],
+        mepNotes: [],
+        timestamp: new Date().toISOString()
+      };
+
+      // Determine scale from project context (default to 1:20)
+      const detailScale = projectContext.detailScale || 20;
+      const floorCount = projectContext.floors || 1;
+
+      // STEP 1: Generate construction detail drawings at specified scale
+      console.log(`🔍 Generating construction detail drawings at 1:${detailScale} scale...`);
+      try {
+        results.detailDrawings = await this.replicate.generateConstructionDetails(
+          projectContext,
+          detailScale
+        );
+        console.log(`✅ Detail drawings generated (${results.detailDrawings?.details?.length || 0} floors)`);
+      } catch (detailError) {
+        console.error('⚠️ Detail drawing generation failed:', detailError.message);
+        results.detailDrawings = { success: false, error: detailError.message };
+      }
+
+      // STEP 2: Generate structural plans (foundation + all floors)
+      console.log('🏗️ Generating structural plans for foundation and all floors...');
+      try {
+        results.structuralPlans = await this.replicate.generateStructuralPlans(
+          projectContext,
+          controlImage
+        );
+        console.log(`✅ Structural plans generated (${results.structuralPlans?.plans?.length || 0} levels)`);
+      } catch (structuralError) {
+        console.error('⚠️ Structural plan generation failed:', structuralError.message);
+        results.structuralPlans = { success: false, error: structuralError.message };
+      }
+
+      // STEP 3: Generate MEP plans (all systems: HVAC, electrical, plumbing, combined)
+      console.log('⚡ Generating MEP plans (HVAC, electrical, plumbing, combined)...');
+      try {
+        // Generate combined MEP plans for all floors
+        results.mepPlans = await this.replicate.generateMEPPlans(
+          projectContext,
+          'combined', // Generate combined MEP system layout
+          controlImage
+        );
+        console.log(`✅ MEP plans generated (${results.mepPlans?.plans?.length || 0} floors)`);
+      } catch (mepError) {
+        console.error('⚠️ MEP plan generation failed:', mepError.message);
+        results.mepPlans = { success: false, error: mepError.message };
+      }
+
+      // STEP 4: Generate structural engineering notes for all floors
+      console.log('📝 Generating structural engineering notes with code compliance and calculations...');
+      try {
+        for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
+          const structuralNotes = await this.openai.generateStructuralNotes(
+            projectContext,
+            floorIndex
+          );
+          results.structuralNotes.push({
+            floor: floorIndex,
+            floorName: floorIndex === 0 ? 'Foundation' : `Floor ${floorIndex}`,
+            notes: structuralNotes
+          });
+        }
+        console.log(`✅ Structural notes generated for ${results.structuralNotes.length} levels`);
+      } catch (structuralNotesError) {
+        console.error('⚠️ Structural notes generation failed:', structuralNotesError.message);
+        results.structuralNotes = [{ error: structuralNotesError.message, isFallback: true }];
+      }
+
+      // STEP 5: Generate MEP engineering notes for all floors
+      console.log('📝 Generating MEP engineering notes with equipment specs and code compliance...');
+      try {
+        for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
+          const mepNotes = await this.openai.generateMEPNotes(
+            projectContext,
+            floorIndex,
+            'combined' // Generate notes for combined MEP systems
+          );
+          results.mepNotes.push({
+            floor: floorIndex,
+            floorName: floorIndex === 0 ? 'Ground Floor' : `Floor ${floorIndex}`,
+            notes: mepNotes
+          });
+        }
+        console.log(`✅ MEP notes generated for ${results.mepNotes.length} floors`);
+      } catch (mepNotesError) {
+        console.error('⚠️ MEP notes generation failed:', mepNotesError.message);
+        results.mepNotes = [{ error: mepNotesError.message, isFallback: true }];
+      }
+
+      // Determine overall success
+      results.success =
+        (results.detailDrawings?.success !== false) ||
+        (results.structuralPlans?.success !== false) ||
+        (results.mepPlans?.success !== false) ||
+        (results.structuralNotes.length > 0 && !results.structuralNotes[0]?.isFallback) ||
+        (results.mepNotes.length > 0 && !results.mepNotes[0]?.isFallback);
+
+      console.log('✅ Construction documentation generation complete:', {
+        detailDrawings: results.detailDrawings?.success !== false ? 'Success' : 'Failed',
+        structuralPlans: results.structuralPlans?.success !== false ? 'Success' : 'Failed',
+        mepPlans: results.mepPlans?.success !== false ? 'Success' : 'Failed',
+        structuralNotes: results.structuralNotes.length > 0 && !results.structuralNotes[0]?.isFallback ? 'Success' : 'Failed',
+        mepNotes: results.mepNotes.length > 0 && !results.mepNotes[0]?.isFallback ? 'Success' : 'Failed'
+      });
+
+      return results;
+
+    } catch (error) {
+      console.error('❌ Construction documentation generation failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
     }
   }
 }

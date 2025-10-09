@@ -666,6 +666,8 @@ const ArchitectAIEnhanced = () => {
   const [materialWeight, setMaterialWeight] = useState(0.5); // NEW: 0=100% local materials, 1=100% portfolio materials
   const [characteristicWeight, setCharacteristicWeight] = useState(0.5); // NEW: 0=100% local characteristics, 1=100% portfolio characteristics
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '' });
+  const [generateConstructionDocs, setGenerateConstructionDocs] = useState(false); // NEW: Toggle for construction documentation
+  const [detailScale, setDetailScale] = useState(20); // NEW: Detail drawing scale (1:5, 1:10, 1:20, 1:50)
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
@@ -1093,7 +1095,11 @@ const ArchitectAIEnhanced = () => {
         entranceDirection: projectDetails?.entranceDirection || 'S',
         floorArea: parseInt(projectDetails?.area) || 200,
         // STEP 1: Unified seed for ALL outputs in this project
-        projectSeed: projectSeed
+        projectSeed: projectSeed,
+        // NEW: Construction documentation flags
+        generateConstructionDocs: generateConstructionDocs, // Toggle for construction documentation generation
+        detailScale: detailScale, // Detail drawing scale (1:5, 1:10, 1:20, 1:50)
+        floors: Math.ceil((parseInt(projectDetails?.area) || 200) / 150) || 1 // Estimate floor count from area (150m² per floor)
       };
 
       console.log('🎨 Starting integrated AI design generation with:', projectContext);
@@ -2171,6 +2177,87 @@ const ArchitectAIEnhanced = () => {
                         ? 'Limited solar exposure - Consider additional lighting'
                         : 'Moderate solar exposure - Balanced lighting conditions'}
                     </p>
+                  )}
+                </div>
+
+                {/* NEW: Construction Documentation Controls */}
+                <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center">
+                      <FileCode className="w-5 h-5 text-blue-600 mr-2" />
+                      <h4 className="font-semibold text-gray-800">Construction Documentation</h4>
+                    </div>
+                    <label className="flex items-center cursor-pointer">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          checked={generateConstructionDocs}
+                          onChange={(e) => setGenerateConstructionDocs(e.target.checked)}
+                          className="sr-only"
+                        />
+                        <div className={`block w-14 h-8 rounded-full transition ${generateConstructionDocs ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                        <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${generateConstructionDocs ? 'transform translate-x-6' : ''}`}></div>
+                      </div>
+                      <span className="ml-3 text-sm font-medium text-gray-700">
+                        {generateConstructionDocs ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </label>
+                  </div>
+
+                  {generateConstructionDocs && (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-600 mb-4">
+                        Generate comprehensive technical drawings including detail sections, structural plans, and MEP layouts with engineering notes.
+                      </p>
+
+                      <div>
+                        <label htmlFor="detail-scale" className="block text-sm font-medium text-gray-700 mb-2">
+                          Detail Drawing Scale
+                        </label>
+                        <select
+                          id="detail-scale"
+                          value={detailScale}
+                          onChange={(e) => setDetailScale(parseInt(e.target.value))}
+                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                        >
+                          <option value={5}>1:5 - Extremely Detailed (4096×3072px, ~2min/drawing)</option>
+                          <option value={10}>1:10 - Highly Detailed (3072×2304px, ~90s/drawing)</option>
+                          <option value={20}>1:20 - Detailed (2048×1536px, ~60s/drawing) ⭐ Recommended</option>
+                          <option value={50}>1:50 - Moderately Detailed (1536×1152px, ~45s/drawing)</option>
+                        </select>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Higher detail scales produce sharper drawings but take longer to generate. 1:20 is recommended for most projects.
+                        </p>
+                      </div>
+
+                      <div className="bg-white rounded-lg p-4 border border-blue-200">
+                        <h5 className="font-medium text-gray-800 mb-3">What will be generated:</h5>
+                        <ul className="space-y-2 text-sm text-gray-600">
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <span><strong>Construction Details:</strong> Wall sections, floor assemblies, foundation details with dimensions and material callouts</span>
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <span><strong>Structural Plans:</strong> Foundation plan + floor structural layouts showing columns, beams, and reinforcement</span>
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <span><strong>MEP Plans:</strong> HVAC, electrical, and plumbing system layouts with equipment specifications</span>
+                          </li>
+                          <li className="flex items-start">
+                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <span><strong>Engineering Notes:</strong> Structural calculations, code compliance, and MEP design criteria with location-specific regulations</span>
+                          </li>
+                        </ul>
+                        <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                          <p className="text-xs text-yellow-800">
+                            <AlertCircle className="w-4 h-4 inline mr-1" />
+                            <strong>Note:</strong> Construction documentation adds 3-5 minutes to generation time and uses additional API credits.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
