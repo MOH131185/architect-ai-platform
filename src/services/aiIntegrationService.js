@@ -740,6 +740,8 @@ class AIIntegrationService {
       console.log('🏗️ Step 7: Generating parametric BIM model from blended style specifications...');
       let bimModel = null;
       let bimAxonometric = null;
+      let axonometricSource = 'none';
+
       try {
         bimModel = await this.bim.generateParametricModel({
           ...enhancedContext,
@@ -753,16 +755,54 @@ class AIIntegrationService {
 
         // STEP 3.9: Derive geometrically accurate axonometric view from BIM
         console.log('🏗️ Deriving axonometric view from BIM model...');
-        bimAxonometric = this.bim.deriveAxonometric(bimModel, {
-          angle: 30,
-          scale: 1.0,
-          showGrid: true,
-          showDimensions: true
-        });
-        console.log('✅ Axonometric view derived from BIM (geometrically consistent)');
+        try {
+          bimAxonometric = this.bim.deriveAxonometric(bimModel, {
+            angle: 30,
+            scale: 1.0,
+            showGrid: true,
+            showDimensions: true
+          });
+          axonometricSource = 'bim';
+          console.log('✅ Axonometric view derived from BIM (geometrically consistent)');
+        } catch (axonometricError) {
+          console.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
+          console.log('↩️  Falling back to Replicate for axonometric view...');
+          // Fallback: Generate axonometric using Replicate if BIM fails
+          try {
+            const fallbackAxonometric = await this.replicate.generateMultipleViews(
+              enhancedContext,
+              ['axonometric'],
+              null
+            );
+            if (fallbackAxonometric?.axonometric?.images?.[0]) {
+              bimAxonometric = fallbackAxonometric.axonometric.images[0];
+              axonometricSource = 'replicate_fallback';
+              console.log('✅ Axonometric generated from Replicate fallback');
+            }
+          } catch (fallbackError) {
+            console.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
+            axonometricSource = 'failed';
+          }
+        }
       } catch (bimError) {
         console.error('⚠️ BIM generation failed:', bimError.message);
-        // Continue without BIM - not critical for basic workflow
+        console.log('↩️  Falling back to Replicate for axonometric view...');
+        // Fallback: Generate axonometric using Replicate if entire BIM generation fails
+        try {
+          const fallbackAxonometric = await this.replicate.generateMultipleViews(
+            enhancedContext,
+            ['axonometric'],
+            null
+          );
+          if (fallbackAxonometric?.axonometric?.images?.[0]) {
+            bimAxonometric = fallbackAxonometric.axonometric.images[0];
+            axonometricSource = 'replicate_fallback';
+            console.log('✅ Axonometric generated from Replicate fallback (BIM unavailable)');
+          }
+        } catch (fallbackError) {
+          console.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
+          axonometricSource = 'failed';
+        }
       }
 
       // Calculate overall blend weight for backward compatibility
@@ -783,10 +823,12 @@ class AIIntegrationService {
         technicalDrawings: technicalDrawings,
         visualizations: {
           views, // Photorealistic 3D views
-          axonometric: bimAxonometric // BIM-derived geometrically accurate axonometric
+          axonometric: bimAxonometric, // BIM-derived geometrically accurate axonometric or Replicate fallback
+          axonometricSource // NEW: Track source ('bim', 'replicate_fallback', 'failed', 'none')
         },
         bimModel, // NEW: Include parametric BIM model in results
-        bimAxonometric, // NEW: Geometrically consistent axonometric from BIM
+        bimAxonometric, // NEW: Geometrically consistent axonometric from BIM or fallback
+        axonometricSource, // NEW: Source metadata for axonometric generation
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),
