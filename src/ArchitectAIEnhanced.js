@@ -5,7 +5,7 @@ import {
   MapPin, Upload, Building, Sun, Compass, FileText,
   Palette, Square, Loader2, Sparkles, ArrowRight,
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
-  Users, Shield, Zap, BarChart3, Eye, AlertCircle
+  Users, Shield, Zap, BarChart3, Eye, AlertCircle, X, ZoomIn, ZoomOut, Maximize2
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
@@ -336,6 +336,14 @@ const ArchitectAIEnhanced = () => {
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [sessionStartTime] = useState(Date.now());
+
+  // Image Modal States
+  const [modalImage, setModalImage] = useState(null);
+  const [modalImageTitle, setModalImageTitle] = useState('');
+  const [imageZoom, setImageZoom] = useState(1);
+  const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const fileInputRef = useRef(null);
   // const hasDetectedLocation = useRef(false); // Temporarily disabled
 
@@ -351,6 +359,64 @@ const ArchitectAIEnhanced = () => {
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
+
+  // Image Modal Handlers
+  const openImageModal = useCallback((imageUrl, title = 'Image') => {
+    setModalImage(imageUrl);
+    setModalImageTitle(title);
+    setImageZoom(1);
+    setImagePan({ x: 0, y: 0 });
+  }, []);
+
+  const closeImageModal = useCallback(() => {
+    setModalImage(null);
+    setModalImageTitle('');
+    setImageZoom(1);
+    setImagePan({ x: 0, y: 0 });
+    setIsDragging(false);
+  }, []);
+
+  const handleZoomIn = useCallback(() => {
+    setImageZoom(prev => Math.min(prev + 0.25, 3));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setImageZoom(prev => Math.max(prev - 0.25, 0.5));
+  }, []);
+
+  const handleZoomReset = useCallback(() => {
+    setImageZoom(1);
+    setImagePan({ x: 0, y: 0 });
+  }, []);
+
+  const handleMouseDown = useCallback((e) => {
+    if (imageZoom > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - imagePan.x, y: e.clientY - imagePan.y });
+    }
+  }, [imageZoom, imagePan]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (isDragging && imageZoom > 1) {
+      setImagePan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  }, [isDragging, dragStart, imageZoom]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      handleZoomIn();
+    } else {
+      handleZoomOut();
+    }
+  }, [handleZoomIn, handleZoomOut]);
 
   // Real-time elapsed timer
   useEffect(() => {
@@ -1815,7 +1881,10 @@ const ArchitectAIEnhanced = () => {
                     {generatedDesigns?.floorPlan.levels?.ground && (
                       <div>
                         <p className="text-sm font-medium text-gray-700 mb-2">Ground Floor</p>
-                        <div className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                        <div
+                          className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                          onClick={() => openImageModal(generatedDesigns.floorPlan.levels.ground, 'Ground Floor Plan')}
+                        >
                           <img
                             src={generatedDesigns.floorPlan.levels.ground}
                             alt="Ground Floor Plan"
@@ -1823,6 +1892,9 @@ const ArchitectAIEnhanced = () => {
                           />
                           <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
                             Ground Level - Scale 1:100
+                          </div>
+                          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
                           </div>
                         </div>
                       </div>
@@ -1832,7 +1904,10 @@ const ArchitectAIEnhanced = () => {
                     {generatedDesigns?.floorPlan.levels?.upper && (
                       <div>
                         <p className="text-sm font-medium text-gray-700 mb-2">Upper Floor</p>
-                        <div className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                        <div
+                          className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                          onClick={() => openImageModal(generatedDesigns.floorPlan.levels.upper, 'Upper Floor Plan')}
+                        >
                           <img
                             src={generatedDesigns.floorPlan.levels.upper}
                             alt="Upper Floor Plan"
@@ -1840,6 +1915,9 @@ const ArchitectAIEnhanced = () => {
                           />
                           <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
                             Upper Level - Scale 1:100
+                          </div>
+                          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
                           </div>
                         </div>
                       </div>
@@ -1849,7 +1927,10 @@ const ArchitectAIEnhanced = () => {
                     {generatedDesigns?.floorPlan.levels?.roof && (
                       <div>
                         <p className="text-sm font-medium text-gray-700 mb-2">Roof Plan</p>
-                        <div className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                        <div
+                          className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                          onClick={() => openImageModal(generatedDesigns.floorPlan.levels.roof, 'Roof Plan')}
+                        >
                           <img
                             src={generatedDesigns.floorPlan.levels.roof}
                             alt="Roof Plan"
@@ -1857,6 +1938,9 @@ const ArchitectAIEnhanced = () => {
                           />
                           <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700">
                             Roof Level - Scale 1:100
+                          </div>
+                          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
                           </div>
                         </div>
                       </div>
@@ -1901,7 +1985,10 @@ const ArchitectAIEnhanced = () => {
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
                     {/* Exterior Front View */}
                     <div className="relative">
-                      <div className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                      <div
+                        className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                        onClick={() => generatedDesigns?.model3D.images?.[0] && openImageModal(generatedDesigns.model3D.images[0], 'Exterior - Front View')}
+                      >
                         {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[0] ? (
                           <img
                             src={generatedDesigns.model3D.images[0]}
@@ -1916,6 +2003,11 @@ const ArchitectAIEnhanced = () => {
                         <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-purple-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[0] ? 'none' : 'flex' }}>
                           <Eye className="w-12 h-12 text-white/50" />
                         </div>
+                        {generatedDesigns?.model3D.images?.[0] && (
+                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
+                          </div>
+                        )}
                       </div>
                       <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
                         Exterior - Front View
@@ -2297,8 +2389,101 @@ const ArchitectAIEnhanced = () => {
   // Conditionally wrap with Google Maps only when API key is available AND we're on step 2 (map view)
   const shouldLoadMaps = process.env.REACT_APP_GOOGLE_MAPS_API_KEY && currentStep === 2;
 
+  // Image Modal Component
+  const ImageModal = () => {
+    if (!modalImage) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fadeIn">
+        {/* Modal Content */}
+        <div className="relative w-full h-full flex items-center justify-center p-4">
+          {/* Close Button */}
+          <button
+            onClick={closeImageModal}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-50"
+            aria-label="Close modal"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+
+          {/* Image Title */}
+          <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-lg px-4 py-2 z-50">
+            <h3 className="text-white font-medium">{modalImageTitle}</h3>
+          </div>
+
+          {/* Zoom Controls */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2 z-50">
+            <button
+              onClick={handleZoomOut}
+              className="p-2 hover:bg-white/20 rounded-full transition-colors"
+              disabled={imageZoom <= 0.5}
+              aria-label="Zoom out"
+            >
+              <ZoomOut className="w-5 h-5 text-white" />
+            </button>
+
+            <span className="text-white text-sm font-medium min-w-[60px] text-center">
+              {Math.round(imageZoom * 100)}%
+            </span>
+
+            <button
+              onClick={handleZoomIn}
+              className="p-2 hover:bg-white/20 rounded-full transition-colors"
+              disabled={imageZoom >= 3}
+              aria-label="Zoom in"
+            >
+              <ZoomIn className="w-5 h-5 text-white" />
+            </button>
+
+            <div className="w-px h-6 bg-white/30 mx-1" />
+
+            <button
+              onClick={handleZoomReset}
+              className="p-2 hover:bg-white/20 rounded-full transition-colors"
+              aria-label="Reset zoom"
+            >
+              <Maximize2 className="w-5 h-5 text-white" />
+            </button>
+          </div>
+
+          {/* Instructions */}
+          <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs z-50">
+            <p>Scroll to zoom • {imageZoom > 1 ? 'Drag to pan' : 'Zoom in to pan'}</p>
+          </div>
+
+          {/* Image Container */}
+          <div
+            className="relative overflow-hidden max-w-full max-h-full"
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{
+              cursor: imageZoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+            }}
+          >
+            <img
+              src={modalImage}
+              alt={modalImageTitle}
+              className="max-w-none transition-transform duration-200"
+              style={{
+                transform: `scale(${imageZoom}) translate(${imagePan.x / imageZoom}px, ${imagePan.y / imageZoom}px)`,
+                imageRendering: imageZoom > 2 ? 'pixelated' : 'auto'
+              }}
+              draggable={false}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const content = (
     <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
+      {/* Image Modal */}
+      <ImageModal />
+
       {toastMessage && (
         <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
           {toastMessage}
