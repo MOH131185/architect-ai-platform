@@ -2775,9 +2775,23 @@ const ArchitectAIEnhanced = () => {
   // Conditionally wrap with Google Maps only when API key is available AND we're on step 2 (map view)
   const shouldLoadMaps = process.env.REACT_APP_GOOGLE_MAPS_API_KEY && currentStep === 2;
 
-  // Image Modal Component - Memoized to prevent unnecessary re-renders from parent updates
-  const ImageModal = React.memo(() => {
-    if (!modalImage) return null;
+  // Image Modal Component - Properly separated with props to prevent re-render flickering
+  const ImageModal = React.memo(({
+    image,
+    title,
+    zoom,
+    pan,
+    dragging,
+    onClose,
+    onZoomIn,
+    onZoomOut,
+    onZoomReset,
+    onWheel,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp
+  }) => {
+    if (!image) return null;
 
     return (
       <div
@@ -2786,7 +2800,7 @@ const ArchitectAIEnhanced = () => {
         onClick={(e) => {
           // Close modal when clicking backdrop (not on image or controls)
           if (e.target === e.currentTarget) {
-            closeImageModal();
+            onClose();
           }
         }}
       >
@@ -2794,7 +2808,7 @@ const ArchitectAIEnhanced = () => {
         <div className="relative w-full h-full flex items-center justify-center p-4">
           {/* Close Button */}
           <button
-            onClick={closeImageModal}
+            onClick={onClose}
             className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-50"
             aria-label="Close modal"
           >
@@ -2803,28 +2817,28 @@ const ArchitectAIEnhanced = () => {
 
           {/* Image Title */}
           <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-lg px-4 py-2 z-50">
-            <h3 className="text-white font-medium">{modalImageTitle}</h3>
+            <h3 className="text-white font-medium">{title}</h3>
           </div>
 
           {/* Zoom Controls */}
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-full px-4 py-2 z-50">
             <button
-              onClick={handleZoomOut}
+              onClick={onZoomOut}
               className="p-2 hover:bg-white/20 rounded-full transition-colors"
-              disabled={imageZoom <= 0.5}
+              disabled={zoom <= 0.5}
               aria-label="Zoom out"
             >
               <ZoomOut className="w-5 h-5 text-white" />
             </button>
 
             <span className="text-white text-sm font-medium min-w-[60px] text-center">
-              {Math.round(imageZoom * 100)}%
+              {Math.round(zoom * 100)}%
             </span>
 
             <button
-              onClick={handleZoomIn}
+              onClick={onZoomIn}
               className="p-2 hover:bg-white/20 rounded-full transition-colors"
-              disabled={imageZoom >= 3}
+              disabled={zoom >= 3}
               aria-label="Zoom in"
             >
               <ZoomIn className="w-5 h-5 text-white" />
@@ -2833,7 +2847,7 @@ const ArchitectAIEnhanced = () => {
             <div className="w-px h-6 bg-white/30 mx-1" />
 
             <button
-              onClick={handleZoomReset}
+              onClick={onZoomReset}
               className="p-2 hover:bg-white/20 rounded-full transition-colors"
               aria-label="Reset zoom"
             >
@@ -2843,7 +2857,7 @@ const ArchitectAIEnhanced = () => {
 
           {/* Instructions */}
           <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs z-50">
-            <p>Scroll to zoom • {imageZoom > 1 ? 'Drag to pan' : 'Zoom in to pan'}</p>
+            <p>Scroll to zoom • {zoom > 1 ? 'Drag to pan' : 'Zoom in to pan'}</p>
           </div>
 
           {/* Image Container */}
@@ -2852,25 +2866,25 @@ const ArchitectAIEnhanced = () => {
             style={{
               width: '90vw',
               height: '80vh',
-              cursor: imageZoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+              cursor: zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'default',
               userSelect: 'none'
             }}
-            onWheel={handleWheel}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onWheel={onWheel}
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUp}
+            onMouseLeave={onMouseUp}
           >
             <img
-              src={modalImage}
-              alt={modalImageTitle}
+              src={image}
+              alt={title}
               className="max-w-none select-none pointer-events-none"
               style={{
-                transform: `scale(${imageZoom}) translate(${imagePan.x / imageZoom}px, ${imagePan.y / imageZoom}px)`,
-                imageRendering: imageZoom > 2 ? 'pixelated' : 'auto',
-                transition: isDragging ? 'none' : 'transform 0.2s ease-out',
-                maxWidth: imageZoom === 1 ? '100%' : 'none',
-                maxHeight: imageZoom === 1 ? '100%' : 'none',
+                transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+                imageRendering: zoom > 2 ? 'pixelated' : 'auto',
+                transition: dragging ? 'none' : 'transform 0.2s ease-out',
+                maxWidth: zoom === 1 ? '100%' : 'none',
+                maxHeight: zoom === 1 ? '100%' : 'none',
                 objectFit: 'contain',
                 willChange: 'transform'
               }}
@@ -2881,12 +2895,26 @@ const ArchitectAIEnhanced = () => {
         </div>
       </div>
     );
-  }, [modalImage, modalImageTitle, imageZoom, imagePan, isDragging]);
+  });
 
   const content = (
     <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
       {/* Image Modal */}
-      <ImageModal />
+      <ImageModal
+        image={modalImage}
+        title={modalImageTitle}
+        zoom={imageZoom}
+        pan={imagePan}
+        dragging={isDragging}
+        onClose={closeImageModal}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+      />
 
       {toastMessage && (
         <div className="fixed bottom-4 left-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
