@@ -2040,7 +2040,10 @@ const ArchitectAIEnhanced = () => {
 
                   {/* Interior View */}
                   <div className="relative mb-4">
-                    <div className="bg-gradient-to-br from-pink-400 to-orange-500 rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
+                    <div
+                      className="bg-gradient-to-br from-pink-400 to-orange-500 rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                      onClick={() => generatedDesigns?.model3D.images?.[2] && openImageModal(generatedDesigns.model3D.images[2], 'Interior - Main Space')}
+                    >
                       {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[2] ? (
                         <img
                           src={generatedDesigns.model3D.images[2]}
@@ -2055,13 +2058,14 @@ const ArchitectAIEnhanced = () => {
                       <div className="absolute inset-0 bg-gradient-to-br from-pink-400/20 to-orange-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[2] ? 'none' : 'flex' }}>
                         <Eye className="w-12 h-12 text-white/50" />
                       </div>
+                      {generatedDesigns?.model3D.images?.[2] && (
+                        <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                          <ZoomIn className="w-4 h-4 text-gray-700" />
+                        </div>
+                      )}
                     </div>
                     <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
                       Interior - Main Space
-                    </div>
-                    <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
-                      <Eye className="w-3 h-3 mr-1" />
-                      {generatedDesigns?.model3D.images && generatedDesigns.model3D.images.length > 0 ? 'AI Generated' : 'Preview Mode'}
                     </div>
                   </div>
 
