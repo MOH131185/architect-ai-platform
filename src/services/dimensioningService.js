@@ -306,7 +306,7 @@ class DimensioningService {
         value: `${dimensions.floorHeight.toFixed(2)}m`,
         label: `Floor ${i} height`
       });
-    });
+    }
 
     // Foundation depth label
     annotations.push({
