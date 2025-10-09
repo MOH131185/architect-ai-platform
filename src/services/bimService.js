@@ -554,21 +554,175 @@ class BIMService {
   }
 
   /**
-   * Derive axonometric view
+   * Derive axonometric view from BIM model
+   * Generates an SVG-based 3D isometric projection
+   * @param {Object} bimModel - Complete BIM model or dimensions
+   * @param {Object} options - Rendering options (angle, scale, etc.)
+   * @returns {String} Data URL of SVG image
    */
-  deriveAxonometric(dimensions, floorCount, envelope) {
-    // Simplified axonometric data
-    // In a real implementation, this would include 3D to 2D isometric projection
-    return {
-      type: 'axonometric',
-      angle: 45, // degrees
-      dimensions,
-      floorCount,
-      envelope: {
-        simplified: true,
-        materials: envelope.materials
+  deriveAxonometric(bimModel, options = {}) {
+    try {
+      // Extract geometry from model or use direct parameters
+      const geometry = bimModel?.geometry || bimModel;
+      const dimensions = geometry?.dimensions || bimModel;
+      const floorCount = geometry?.floors?.length || bimModel?.floorCount || 1;
+      const envelope = geometry?.envelope || bimModel?.envelope || {};
+
+      const {
+        angle = 30, // isometric angle in degrees
+        scale = 1.0,
+        showGrid = false,
+        showDimensions = false
+      } = options;
+
+      console.log('🎨 Generating BIM-derived axonometric view...');
+      console.log('   Dimensions:', dimensions.length, 'x', dimensions.width, 'x', dimensions.height);
+      console.log('   Floors:', floorCount);
+
+      // Calculate SVG dimensions
+      const svgWidth = 800;
+      const svgHeight = 600;
+      const padding = 50;
+
+      // Isometric projection matrix (30° angle, 2:1 ratio)
+      const cos30 = Math.cos(angle * Math.PI / 180);
+      const sin30 = Math.sin(angle * Math.PI / 180);
+
+      // Project 3D point to 2D isometric
+      const project = (x, y, z) => {
+        const isoX = (x - y) * cos30;
+        const isoY = (x + y) * sin30 - z;
+        return {
+          x: isoX * scale + svgWidth / 2,
+          y: svgHeight - (isoY * scale + padding)
+        };
+      };
+
+      // Building dimensions (scale to fit)
+      const maxDim = Math.max(dimensions.length, dimensions.width, dimensions.height);
+      const buildingScale = (Math.min(svgWidth, svgHeight) - 2 * padding) / maxDim * 0.6;
+
+      const L = dimensions.length * buildingScale;
+      const W = dimensions.width * buildingScale;
+      const H = dimensions.height * buildingScale;
+      const floorHeight = dimensions.floorHeight * buildingScale || H / floorCount;
+
+      // Generate SVG paths
+      let svgPaths = '';
+
+      // Ground plane (base)
+      const p1 = project(0, 0, 0);
+      const p2 = project(L, 0, 0);
+      const p3 = project(L, W, 0);
+      const p4 = project(0, W, 0);
+
+      svgPaths += `<polygon points="${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}"
+                   fill="#e8e8e8" stroke="#666" stroke-width="1.5" opacity="0.7"/>`;
+
+      // Building mass (each floor)
+      for (let floor = 0; floor < floorCount; floor++) {
+        const z1 = floor * floorHeight;
+        const z2 = (floor + 1) * floorHeight;
+
+        // Front face
+        const ff1 = project(0, 0, z1);
+        const ff2 = project(L, 0, z1);
+        const ff3 = project(L, 0, z2);
+        const ff4 = project(0, 0, z2);
+        svgPaths += `<polygon points="${ff1.x},${ff1.y} ${ff2.x},${ff2.y} ${ff3.x},${ff3.y} ${ff4.x},${ff4.y}"
+                     fill="#f0f0f0" stroke="#444" stroke-width="1.5"/>`;
+
+        // Right face
+        const rf1 = project(L, 0, z1);
+        const rf2 = project(L, W, z1);
+        const rf3 = project(L, W, z2);
+        const rf4 = project(L, 0, z2);
+        svgPaths += `<polygon points="${rf1.x},${rf1.y} ${rf2.x},${rf2.y} ${rf3.x},${rf3.y} ${rf4.x},${rf4.y}"
+                     fill="#d8d8d8" stroke="#444" stroke-width="1.5"/>`;
+
+        // Top face (only on last floor)
+        if (floor === floorCount - 1) {
+          const tf1 = project(0, 0, z2);
+          const tf2 = project(L, 0, z2);
+          const tf3 = project(L, W, z2);
+          const tf4 = project(0, W, z2);
+          svgPaths += `<polygon points="${tf1.x},${tf1.y} ${tf2.x},${tf2.y} ${tf3.x},${tf3.y} ${tf4.x},${tf4.y}"
+                       fill="#c0c0c0" stroke="#444" stroke-width="1.5"/>`;
+        }
+
+        // Floor line (horizontal separator)
+        const fl1 = project(0, 0, z2);
+        const fl2 = project(L, 0, z2);
+        const fl3 = project(L, W, z2);
+        svgPaths += `<line x1="${fl1.x}" y1="${fl1.y}" x2="${fl2.x}" y2="${fl2.y}"
+                     stroke="#666" stroke-width="1" stroke-dasharray="3,3"/>`;
+        svgPaths += `<line x1="${fl2.x}" y1="${fl2.y}" x2="${fl3.x}" y2="${fl3.y}"
+                     stroke="#666" stroke-width="1" stroke-dasharray="3,3"/>`;
       }
-    };
+
+      // Add windows (simplified as rectangles on facades)
+      if (envelope.facades) {
+        const windowColor = '#87CEEB';
+        const windowsPerFace = 3;
+        const windowWidth = L / (windowsPerFace + 1) * 0.3;
+        const windowHeight = floorHeight * 0.4;
+
+        for (let floor = 0; floor < floorCount; floor++) {
+          const z = floor * floorHeight + floorHeight / 2;
+
+          // Front facade windows
+          for (let i = 1; i <= windowsPerFace; i++) {
+            const x = (L / (windowsPerFace + 1)) * i;
+            const w1 = project(x - windowWidth/2, 0, z - windowHeight/2);
+            const w2 = project(x + windowWidth/2, 0, z - windowHeight/2);
+            const w3 = project(x + windowWidth/2, 0, z + windowHeight/2);
+            const w4 = project(x - windowWidth/2, 0, z + windowHeight/2);
+            svgPaths += `<polygon points="${w1.x},${w1.y} ${w2.x},${w2.y} ${w3.x},${w3.y} ${w4.x},${w4.y}"
+                         fill="${windowColor}" stroke="#333" stroke-width="0.5" opacity="0.7"/>`;
+          }
+        }
+      }
+
+      // Create complete SVG
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
+        <defs>
+          <style>
+            text { font-family: Arial, sans-serif; font-size: 12px; fill: #333; }
+            .dimension { font-size: 10px; fill: #666; }
+          </style>
+        </defs>
+        <rect width="100%" height="100%" fill="#ffffff"/>
+
+        ${svgPaths}
+
+        <!-- Title -->
+        <text x="${svgWidth/2}" y="30" text-anchor="middle" font-size="14" font-weight="bold">
+          Axonometric View (BIM-Derived)
+        </text>
+
+        <!-- Dimensions label -->
+        <text x="${svgWidth/2}" y="${svgHeight - 10}" text-anchor="middle" class="dimension">
+          ${dimensions.length.toFixed(1)}m × ${dimensions.width.toFixed(1)}m × ${dimensions.height.toFixed(1)}m | ${floorCount} floor${floorCount > 1 ? 's' : ''}
+        </text>
+
+        <!-- Metadata -->
+        <text x="10" y="${svgHeight - 10}" class="dimension">
+          Generated from BIM model | Angle: ${angle}°
+        </text>
+      </svg>`;
+
+      // Convert SVG to data URL
+      const svgData = encodeURIComponent(svg);
+      const dataUrl = `data:image/svg+xml,${svgData}`;
+
+      console.log('✅ BIM axonometric view generated successfully');
+
+      return dataUrl;
+
+    } catch (error) {
+      console.error('❌ BIM axonometric generation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
