@@ -539,12 +539,12 @@ class AIIntegrationService {
         floorPlanControlImage // Use floor plan as ControlNet control
       );
 
-      // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - STEP 2: Pass floor plan as control image
-      console.log('🏗️ Generating 3D views: exterior_front, exterior_side, interior, axonometric, perspective');
+      // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - WITHOUT ControlNet for better photorealistic results
+      console.log('🏗️ Generating 3D photorealistic views: exterior_front, exterior_side, interior, axonometric, perspective (no ControlNet for perspective freedom)');
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
         ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
-        floorPlanControlImage // STEP 2: Pass floor plan as ControlNet control
+        null // Removed ControlNet - 3D views need photorealistic perspective freedom, not constrained by 2D floor plan
       );
 
       // Step 5: Generate design reasoning with style context
