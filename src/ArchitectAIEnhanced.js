@@ -391,6 +391,7 @@ const ArchitectAIEnhanced = () => {
 
   const handleMouseDown = useCallback((e) => {
     if (imageZoom > 1) {
+      e.preventDefault();
       setIsDragging(true);
       setDragStart({ x: e.clientX - imagePan.x, y: e.clientY - imagePan.y });
     }
@@ -398,25 +399,31 @@ const ArchitectAIEnhanced = () => {
 
   const handleMouseMove = useCallback((e) => {
     if (isDragging && imageZoom > 1) {
-      setImagePan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
+      e.preventDefault();
+      requestAnimationFrame(() => {
+        setImagePan({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y
+        });
       });
     }
   }, [isDragging, dragStart, imageZoom]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e) => {
+    if (e) e.preventDefault();
     setIsDragging(false);
   }, []);
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
-    if (e.deltaY < 0) {
-      handleZoomIn();
-    } else {
-      handleZoomOut();
+    e.stopPropagation();
+    const delta = e.deltaY * -0.01;
+    const newZoom = Math.min(Math.max(imageZoom + delta, 0.5), 3);
+    setImageZoom(newZoom);
+    if (newZoom <= 1) {
+      setImagePan({ x: 0, y: 0 });
     }
-  }, [handleZoomIn, handleZoomOut]);
+  }, [imageZoom]);
 
   // Real-time elapsed timer
   useEffect(() => {
@@ -2016,7 +2023,10 @@ const ArchitectAIEnhanced = () => {
 
                     {/* Exterior Side View */}
                     <div className="relative">
-                      <div className="bg-gradient-to-br from-purple-400 to-pink-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                      <div
+                        className="bg-gradient-to-br from-purple-400 to-pink-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                        onClick={() => generatedDesigns?.model3D.images?.[1] && openImageModal(generatedDesigns.model3D.images[1], 'Exterior - Side View')}
+                      >
                         {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[1] ? (
                           <img
                             src={generatedDesigns.model3D.images[1]}
@@ -2031,6 +2041,11 @@ const ArchitectAIEnhanced = () => {
                         <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-pink-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[1] ? 'none' : 'flex' }}>
                           <Eye className="w-12 h-12 text-white/50" />
                         </div>
+                        {generatedDesigns?.model3D.images?.[1] && (
+                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
+                          </div>
+                        )}
                       </div>
                       <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
                         Exterior - Side View
@@ -2073,7 +2088,10 @@ const ArchitectAIEnhanced = () => {
                   <div className="grid md:grid-cols-2 gap-4">
                     {/* Axonometric View */}
                     <div className="relative">
-                      <div className="bg-gradient-to-br from-teal-400 to-blue-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                      <div
+                        className="bg-gradient-to-br from-teal-400 to-blue-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                        onClick={() => generatedDesigns?.model3D.images?.[3] && openImageModal(generatedDesigns.model3D.images[3], 'Axonometric View')}
+                      >
                         {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[3] ? (
                           <img
                             src={generatedDesigns.model3D.images[3]}
@@ -2088,6 +2106,11 @@ const ArchitectAIEnhanced = () => {
                         <div className="absolute inset-0 bg-gradient-to-br from-teal-400/20 to-blue-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[3] ? 'none' : 'flex' }}>
                           <Eye className="w-12 h-12 text-white/50" />
                         </div>
+                        {generatedDesigns?.model3D.images?.[3] && (
+                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
+                          </div>
+                        )}
                       </div>
                       <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
                         Axonometric View
@@ -2096,7 +2119,10 @@ const ArchitectAIEnhanced = () => {
 
                     {/* Perspective View */}
                     <div className="relative">
-                      <div className="bg-gradient-to-br from-indigo-400 to-purple-600 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                      <div
+                        className="bg-gradient-to-br from-indigo-400 to-purple-600 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                        onClick={() => generatedDesigns?.model3D.images?.[4] && openImageModal(generatedDesigns.model3D.images[4], 'Perspective View')}
+                      >
                         {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[4] ? (
                           <img
                             src={generatedDesigns.model3D.images[4]}
@@ -2111,6 +2137,11 @@ const ArchitectAIEnhanced = () => {
                         <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-purple-600/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[4] ? 'none' : 'flex' }}>
                           <Eye className="w-12 h-12 text-white/50" />
                         </div>
+                        {generatedDesigns?.model3D.images?.[4] && (
+                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                            <ZoomIn className="w-4 h-4 text-gray-700" />
+                          </div>
+                        )}
                       </div>
                       <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
                         Perspective View
@@ -2147,48 +2178,72 @@ const ArchitectAIEnhanced = () => {
                         {generatedDesigns.technicalDrawings.elevations.north && (
                           <div className="bg-white rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-700 mb-2">North Elevation</p>
-                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                            <div
+                              className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
+                              onClick={() => openImageModal(generatedDesigns.technicalDrawings.elevations.north, 'North Elevation')}
+                            >
                               <img
                                 src={generatedDesigns.technicalDrawings.elevations.north}
                                 alt="North Elevation"
                                 className="w-full h-full object-contain"
                               />
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                <ZoomIn className="w-4 h-4 text-gray-700" />
+                              </div>
                             </div>
                           </div>
                         )}
                         {generatedDesigns.technicalDrawings.elevations.south && (
                           <div className="bg-white rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-700 mb-2">South Elevation</p>
-                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                            <div
+                              className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
+                              onClick={() => openImageModal(generatedDesigns.technicalDrawings.elevations.south, 'South Elevation')}
+                            >
                               <img
                                 src={generatedDesigns.technicalDrawings.elevations.south}
                                 alt="South Elevation"
                                 className="w-full h-full object-contain"
                               />
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                <ZoomIn className="w-4 h-4 text-gray-700" />
+                              </div>
                             </div>
                           </div>
                         )}
                         {generatedDesigns.technicalDrawings.elevations.east && (
                           <div className="bg-white rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-700 mb-2">East Elevation</p>
-                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                            <div
+                              className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
+                              onClick={() => openImageModal(generatedDesigns.technicalDrawings.elevations.east, 'East Elevation')}
+                            >
                               <img
                                 src={generatedDesigns.technicalDrawings.elevations.east}
                                 alt="East Elevation"
                                 className="w-full h-full object-contain"
                               />
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                <ZoomIn className="w-4 h-4 text-gray-700" />
+                              </div>
                             </div>
                           </div>
                         )}
                         {generatedDesigns.technicalDrawings.elevations.west && (
                           <div className="bg-white rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-700 mb-2">West Elevation</p>
-                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                            <div
+                              className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
+                              onClick={() => openImageModal(generatedDesigns.technicalDrawings.elevations.west, 'West Elevation')}
+                            >
                               <img
                                 src={generatedDesigns.technicalDrawings.elevations.west}
                                 alt="West Elevation"
                                 className="w-full h-full object-contain"
                               />
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                <ZoomIn className="w-4 h-4 text-gray-700" />
+                              </div>
                             </div>
                           </div>
                         )}
@@ -2204,24 +2259,36 @@ const ArchitectAIEnhanced = () => {
                         {generatedDesigns.technicalDrawings.sections.longitudinal && (
                           <div className="bg-white rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-700 mb-2">Longitudinal Section</p>
-                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                            <div
+                              className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
+                              onClick={() => openImageModal(generatedDesigns.technicalDrawings.sections.longitudinal, 'Longitudinal Section')}
+                            >
                               <img
                                 src={generatedDesigns.technicalDrawings.sections.longitudinal}
                                 alt="Longitudinal Section"
                                 className="w-full h-full object-contain"
                               />
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                <ZoomIn className="w-4 h-4 text-gray-700" />
+                              </div>
                             </div>
                           </div>
                         )}
                         {generatedDesigns.technicalDrawings.sections.cross && (
                           <div className="bg-white rounded-lg p-4">
                             <p className="text-sm font-medium text-gray-700 mb-2">Cross Section</p>
-                            <div className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden">
+                            <div
+                              className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
+                              onClick={() => openImageModal(generatedDesigns.technicalDrawings.sections.cross, 'Cross Section')}
+                            >
                               <img
                                 src={generatedDesigns.technicalDrawings.sections.cross}
                                 alt="Cross Section"
                                 className="w-full h-full object-contain"
                               />
+                              <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
+                                <ZoomIn className="w-4 h-4 text-gray-700" />
+                              </div>
                             </div>
                           </div>
                         )}
@@ -2457,25 +2524,33 @@ const ArchitectAIEnhanced = () => {
 
           {/* Image Container */}
           <div
-            className="relative overflow-hidden max-w-full max-h-full"
+            className="relative overflow-hidden flex items-center justify-center"
+            style={{
+              width: '90vw',
+              height: '80vh',
+              cursor: imageZoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+              userSelect: 'none'
+            }}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            style={{
-              cursor: imageZoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
-            }}
           >
             <img
               src={modalImage}
               alt={modalImageTitle}
-              className="max-w-none transition-transform duration-200"
+              className="max-w-none select-none pointer-events-none"
               style={{
                 transform: `scale(${imageZoom}) translate(${imagePan.x / imageZoom}px, ${imagePan.y / imageZoom}px)`,
-                imageRendering: imageZoom > 2 ? 'pixelated' : 'auto'
+                imageRendering: imageZoom > 2 ? 'pixelated' : 'auto',
+                transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+                maxWidth: imageZoom === 1 ? '100%' : 'none',
+                maxHeight: imageZoom === 1 ? '100%' : 'none',
+                objectFit: 'contain'
               }}
               draggable={false}
+              onDragStart={(e) => e.preventDefault()}
             />
           </div>
         </div>
