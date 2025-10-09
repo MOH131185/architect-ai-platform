@@ -695,6 +695,24 @@ class AIIntegrationService {
         viewCount: combinedResults.metadata.viewCount
       });
 
+      // STEP 3.8: Generate parametric BIM model based on blended style
+      console.log('🏗️ Step 7: Generating parametric BIM model from blended style specifications...');
+      let bimModel = null;
+      try {
+        bimModel = await this.bim.generateParametricModel({
+          ...enhancedContext,
+          style: blendedStyle.styleName,
+          materials: blendedStyle.materials,
+          characteristics: blendedStyle.characteristics,
+          floorPlan: floorPlans,
+          elevations: technicalDrawings
+        });
+        console.log('✅ BIM model generated successfully with', bimModel?.components?.length || 0, 'components');
+      } catch (bimError) {
+        console.error('⚠️ BIM generation failed:', bimError.message);
+        // Continue without BIM - not critical for basic workflow
+      }
+
       // Calculate overall blend weight for backward compatibility
       const overallBlendWeight = (materialWeight + characteristicWeight) / 2;
 
@@ -712,6 +730,7 @@ class AIIntegrationService {
         floorPlans: floorPlans, // Also keep individual results for compatibility
         technicalDrawings: technicalDrawings,
         visualizations: { views }, // For compatibility with existing extraction
+        bimModel, // NEW: Include parametric BIM model in results
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),
