@@ -904,6 +904,28 @@ class AIIntegrationService {
       };
     }
 
+    // FIX 1: Short circuit when both weights are zero (100% local)
+    if (matWeight === 0 && charWeight === 0) {
+      console.log('🏛️ Pure local design requested (0% portfolio influence)');
+      const materialList = localDescriptors.materials.slice(0, 3).join(', ') || 'local materials';
+      const charList = localDescriptors.characteristics.slice(0, 4).join(', ') || 'traditional characteristics';
+      return {
+        styleName: localDescriptors.primary,
+        materials: localDescriptors.materials,
+        characteristics: localDescriptors.characteristics,
+        climateAdaptations: localDescriptors.climateAdaptations,
+        blendRatio: {
+          local: 1.0,
+          portfolio: 0.0,
+          materials: { local: 1.0, portfolio: 0.0 },
+          characteristics: { local: 1.0, portfolio: 0.0 }
+        },
+        localStyle: localDescriptors.primary,
+        portfolioStyle: null,
+        description: `${localDescriptors.primary} architectural style using local materials (${materialList}) and traditional characteristics (${charList}), fully rooted in regional context`
+      };
+    }
+
     // Blend materials (weighted selection based on materialWeight)
     const materialCount = Math.max(3, Math.round(5 * (localMatWeight + matWeight)));
     const localMaterialCount = Math.round(materialCount * localMatWeight);
@@ -932,9 +954,13 @@ class AIIntegrationService {
     // Calculate overall blend weight (average of material and characteristic weights)
     const overallWeight = (matWeight + charWeight) / 2;
 
-    // Create blended style name based on overall dominance
+    // FIX 2: Create blended style name based on overall dominance with threshold for pure local
     let blendedStyleName;
-    if (overallWeight < 0.3) {
+    if (overallWeight <= 0.05) {
+      // Pure local (threshold for rounding errors and very small weights)
+      blendedStyleName = localDescriptors.primary;
+      console.log('🏛️ Style name: Pure local (no portfolio influences)');
+    } else if (overallWeight < 0.3) {
       // Local dominant
       blendedStyleName = `${localDescriptors.primary} with subtle ${portfolioDescriptors.primary} influences`;
     } else if (overallWeight < 0.7) {
@@ -983,6 +1009,18 @@ class AIIntegrationService {
     // Create nuanced description based on material and characteristic weights
     const matWeightPct = Math.round((weights?.material || 0.5) * 100);
     const charWeightPct = Math.round((weights?.characteristic || 0.5) * 100);
+
+    // FIX 3: Handle pure local case (0% portfolio)
+    if (matWeightPct === 0 && charWeightPct === 0) {
+      console.log('🏛️ Description: Pure local (no portfolio references)');
+      return `${localDesc.primary} architectural style using local materials (${materialList}) and traditional characteristics (${charList}), fully rooted in regional context`;
+    }
+
+    if (weight <= 0.05) {
+      // Near-zero portfolio influence (handles small rounding errors)
+      console.log('🏛️ Description: Essentially pure local (minimal portfolio influence)');
+      return `${localDesc.primary} architectural style using local materials (${materialList}) and traditional characteristics (${charList}), fully rooted in regional context`;
+    }
 
     if (weight < 0.3) {
       // Local dominant
