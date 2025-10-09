@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
+import bimService from './services/bimService';
+import dimensioningService from './services/dimensioningService';
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -22,10 +24,6 @@ const downloadFile = (filename, content, mimeType) => {
   document.body.removeChild(link);
   window.URL.revokeObjectURL(url);
 };
-
-// Import BIM service for DWG/IFC exports
-import bimService from './services/bimService';
-import dimensioningService from './services/dimensioningService';
 
 // Generate DWG file content
 const generateDWGContent = (projectDetails, bimModel = null) => {
