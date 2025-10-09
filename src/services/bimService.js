@@ -845,4 +845,5 @@ LAYERS:\n`;
   }
 }
 
-export default new BIMService();
+const bimService = new BIMService();
+export default bimService;

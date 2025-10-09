@@ -296,4 +296,5 @@ Format as structured analysis with specific recommendations.
   }
 }
 
-export default new PortfolioStyleDetectionService();
+const portfolioStyleDetectionService = new PortfolioStyleDetectionService();
+export default portfolioStyleDetectionService;

@@ -484,4 +484,5 @@ class DimensioningService {
   }
 }
 
-export default new DimensioningService();
+const dimensioningService = new DimensioningService();
+export default dimensioningService;

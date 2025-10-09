@@ -661,4 +661,5 @@ Note: Detailed MEP calculations and engineer's stamp required for construction.
   }
 }
 
-export default new OpenAIService();
+const openaiService = new OpenAIService();
+export default openaiService;

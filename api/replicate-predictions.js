@@ -4,13 +4,30 @@
  */
 
 export default async function handler(req, res) {
-  // Enable CORS
+  // Enable CORS with origin restriction
+  const allowedOrigins = [
+    'https://www.archiaisolution.pro',
+    'https://archiaisolution.pro',
+    'https://architect-ai-platform.vercel.app',
+    'http://localhost:3000', // Development only
+    'http://localhost:3001'  // Development server
+  ];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (process.env.NODE_ENV === 'development') {
+    // In development, allow any localhost origin
+    if (origin && origin.includes('localhost')) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+  }
+
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'Content-Type, Accept'
   );
 
   // Handle OPTIONS request

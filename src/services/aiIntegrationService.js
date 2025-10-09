@@ -1468,4 +1468,5 @@ class AIIntegrationService {
   }
 }
 
-export default new AIIntegrationService();
+const aiIntegrationService = new AIIntegrationService();
+export default aiIntegrationService;

@@ -570,7 +570,7 @@ const MapView = ({ center, zoom }) => {
     } catch (error) {
       console.error('Map initialization error:', error);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [center, zoom]); // Fixed dependencies
 
   // Update map center and marker when coordinates change
   useEffect(() => {
@@ -589,7 +589,7 @@ const MapView = ({ center, zoom }) => {
     } catch (error) {
       console.error('Map update error:', error);
     }
-  }, [center.lat, center.lng, isMapLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [center, center.lat, center.lng, isMapLoaded]); // Fixed dependencies
 
   return <div ref={ref} style={{ width: '100%', height: '100%', borderRadius: '12px' }} />;
 };

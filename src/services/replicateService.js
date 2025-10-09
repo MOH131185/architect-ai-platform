@@ -1309,4 +1309,5 @@ class ReplicateService {
   }
 }
 
-export default new ReplicateService();
+const replicateService = new ReplicateService();
+export default replicateService;
