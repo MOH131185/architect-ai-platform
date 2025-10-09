@@ -531,15 +531,19 @@ class AIIntegrationService {
         console.log('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
       }
 
-      // Step 3: Generate elevations and sections
-      console.log('🏗️ Generating elevations (N,S,E,W) and sections (longitudinal, cross)...');
-      const technicalDrawings = await this.replicate.generateElevationsAndSections(enhancedContext);
+      // Step 3: Generate elevations and sections (all 4 elevations + 2 sections)
+      console.log('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross)...');
+      const technicalDrawings = await this.replicate.generateElevationsAndSections(
+        enhancedContext,
+        true, // Generate all drawings (4 elevations + 2 sections)
+        floorPlanControlImage // Use floor plan as ControlNet control
+      );
 
-      // Step 4: Generate 3D views (2 exterior + 1 interior) - STEP 2: Pass floor plan as control image
-      console.log('🏗️ Generating 3D views: exterior_front, exterior_side, interior');
+      // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - STEP 2: Pass floor plan as control image
+      console.log('🏗️ Generating 3D views: exterior_front, exterior_side, interior, axonometric, perspective');
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
-        ['exterior_front', 'exterior_side', 'interior'],
+        ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
         floorPlanControlImage // STEP 2: Pass floor plan as ControlNet control
       );
 
@@ -645,20 +649,20 @@ class AIIntegrationService {
         console.log('✅ Ground floor plan generated, captured for ControlNet control');
       }
 
-      // STEP 3.6: Generate elevations and sections with floor plan as control
-      console.log('🏗️ Step 5: Generating elevations and sections with floor plan as control...');
+      // STEP 3.6: Generate elevations and sections with floor plan as control (all 4 elevations + 2 sections)
+      console.log('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) with floor plan as control...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         enhancedContext,
-        false, // generateAllDrawings - use essential only
+        true, // generateAllDrawings - generate all 4 elevations + 2 sections
         floorPlanImage // Use floor plan as ControlNet control for consistency
       );
-      console.log('✅ Technical drawings generated with ControlNet guidance');
+      console.log('✅ All technical drawings generated with ControlNet guidance');
 
       // STEP 3.7: Generate multiple 3D views WITHOUT ControlNet (photorealistic perspective views)
-      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior)...');
+      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, axonometric, perspective)...');
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
-        ['exterior_front', 'exterior_side', 'interior'],
+        ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
         null // Do NOT use floor plan control for 3D views - they need perspective freedom
       );
       console.log('✅ 3D views generated as photorealistic perspectives');

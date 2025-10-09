@@ -826,6 +826,8 @@ const ArchitectAIEnhanced = () => {
           if (views.exterior_front?.images) images.push(...views.exterior_front.images);
           if (views.exterior_side?.images) images.push(...views.exterior_side.images);
           if (views.interior?.images) images.push(...views.interior.images);
+          if (views.axonometric?.images) images.push(...views.axonometric.images);
+          if (views.perspective?.images) images.push(...views.perspective.images);
           console.log('✅ Extracted', images.length, '3D views from integrated results.views');
         }
         // Try visualizations.views structure
@@ -834,6 +836,8 @@ const ArchitectAIEnhanced = () => {
           if (views.exterior_front?.images) images.push(...views.exterior_front.images);
           if (views.exterior_side?.images) images.push(...views.exterior_side.images);
           if (views.interior?.images) images.push(...views.interior.images);
+          if (views.axonometric?.images) images.push(...views.axonometric.images);
+          if (views.perspective?.images) images.push(...views.perspective.images);
           console.log('✅ Extracted', images.length, '3D views from visualizations');
         }
         // Try direct preview3D result
@@ -1891,7 +1895,7 @@ const ArchitectAIEnhanced = () => {
 
                   <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
                     <Building className="w-5 h-5 text-purple-600 mr-2" />
-                    3D Visualizations (2 Exterior + 1 Interior)
+                    3D Visualizations (5 Views: Exterior, Interior, Axonometric, Perspective)
                   </h3>
 
                   <div className="grid md:grid-cols-2 gap-4 mb-4">
@@ -1943,7 +1947,7 @@ const ArchitectAIEnhanced = () => {
                   </div>
 
                   {/* Interior View */}
-                  <div className="relative">
+                  <div className="relative mb-4">
                     <div className="bg-gradient-to-br from-pink-400 to-orange-500 rounded-lg h-80 flex items-center justify-center relative overflow-hidden">
                       {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[2] ? (
                         <img
@@ -1966,6 +1970,55 @@ const ArchitectAIEnhanced = () => {
                     <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-medium text-gray-700 flex items-center">
                       <Eye className="w-3 h-3 mr-1" />
                       {generatedDesigns?.model3D.images && generatedDesigns.model3D.images.length > 0 ? 'AI Generated' : 'Preview Mode'}
+                    </div>
+                  </div>
+
+                  {/* Axonometric and Perspective Views */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Axonometric View */}
+                    <div className="relative">
+                      <div className="bg-gradient-to-br from-teal-400 to-blue-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[3] ? (
+                          <img
+                            src={generatedDesigns.model3D.images[3]}
+                            alt="Axonometric View"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-br from-teal-400/20 to-blue-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[3] ? 'none' : 'flex' }}>
+                          <Eye className="w-12 h-12 text-white/50" />
+                        </div>
+                      </div>
+                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
+                        Axonometric View
+                      </div>
+                    </div>
+
+                    {/* Perspective View */}
+                    <div className="relative">
+                      <div className="bg-gradient-to-br from-indigo-400 to-purple-600 rounded-lg h-64 flex items-center justify-center relative overflow-hidden">
+                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[4] ? (
+                          <img
+                            src={generatedDesigns.model3D.images[4]}
+                            alt="Perspective View"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-purple-600/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[4] ? 'none' : 'flex' }}>
+                          <Eye className="w-12 h-12 text-white/50" />
+                        </div>
+                      </div>
+                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
+                        Perspective View
+                      </div>
                     </div>
                   </div>
 

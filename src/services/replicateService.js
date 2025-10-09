@@ -589,6 +589,28 @@ class ReplicateService {
           height: 1024
         };
 
+      case 'axonometric':
+        return {
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Professional architectural axonometric view of ${unifiedDesc.fullDescription}, isometric 3D projection showing ${entranceDir}-facing entrance, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels visible, technical illustration style, architectural drawing, clean lines, showing roof structure and building volumes, professional architectural visualization, high detail, precise geometry`,
+          perspective: 'axonometric view',
+          width: 1024,
+          height: 768
+        };
+
+      case 'perspective':
+        return {
+          buildingType: unifiedDesc.buildingType,
+          architecturalStyle: unifiedDesc.architecturalStyle,
+          materials: unifiedDesc.materials,
+          prompt: `Professional architectural perspective rendering of ${unifiedDesc.fullDescription}, dramatic 3D perspective view showing ${entranceDir}-facing entrance with depth and scale, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height, photorealistic architectural rendering, landscape context with trees and people for scale, golden hour lighting, professional architectural visualization, cinematic composition, high quality detailed rendering`,
+          perspective: 'perspective view',
+          width: 1024,
+          height: 768
+        };
+
       case 'section':
         return {
           buildingType: unifiedDesc.buildingType,
