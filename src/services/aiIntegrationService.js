@@ -695,6 +695,9 @@ class AIIntegrationService {
         viewCount: combinedResults.metadata.viewCount
       });
 
+      // Calculate overall blend weight for backward compatibility
+      const overallBlendWeight = (materialWeight + characteristicWeight) / 2;
+
       // Return integrated results with all visualizations and blended style
       return {
         success: true,
@@ -702,7 +705,9 @@ class AIIntegrationService {
         portfolioStyle,
         blendedStyle, // STEP 4: Full blended style object
         blendedPrompt: blendedStyle.description, // Keep backward compatibility
-        blendWeight, // STEP 4: Store the blend weight used
+        blendWeight: overallBlendWeight, // STEP 4: Store the overall blend weight (average of material and characteristic weights)
+        materialWeight, // NEW: Store individual material weight
+        characteristicWeight, // NEW: Store individual characteristic weight
         results: combinedResults, // Combined floor plans + technical drawings + 3D views
         floorPlans: floorPlans, // Also keep individual results for compatibility
         technicalDrawings: technicalDrawings,

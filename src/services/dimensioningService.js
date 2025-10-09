@@ -16,7 +16,7 @@ class DimensioningService {
    * @param {string} floorLevel - Which floor level (ground, upper, roof)
    * @returns {Promise<Object>} Annotated image data with dimensions
    */
-  async annotateFl oorPlan(imageUrl, bimModel, floorLevel = 'ground') {
+  async annotateFloorPlan(imageUrl, bimModel, floorLevel = 'ground') {
     console.log(`📐 Adding dimensions to ${floorLevel} floor plan...`);
 
     const { geometry, views } = bimModel;
