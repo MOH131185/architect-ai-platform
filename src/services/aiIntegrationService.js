@@ -7,12 +7,16 @@ import openaiService from './openaiService';
 import replicateService from './replicateService';
 import portfolioStyleDetection from './portfolioStyleDetection';
 import { locationIntelligence } from './locationIntelligence';
+import bimService from './bimService';
+import dimensioningService from './dimensioningService';
 
 class AIIntegrationService {
   constructor() {
     this.openai = openaiService;
     this.replicate = replicateService;
     this.portfolioStyleDetection = portfolioStyleDetection;
+    this.bim = bimService;
+    this.dimensioning = dimensioningService;
   }
 
   /**
@@ -581,12 +585,14 @@ class AIIntegrationService {
    * Orchestrates location analysis, portfolio detection, and coordinated 2D/3D generation
    * @param {Object} projectContext - Project context with all specifications
    * @param {Array} portfolioImages - Optional portfolio images for style detection
-   * @param {Number} blendWeight - Style blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
+   * @param {Number} materialWeight - Material blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
+   * @param {Number} characteristicWeight - Characteristic blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
    */
-  async generateIntegratedDesign(projectContext, portfolioImages = [], blendWeight = 0.5) {
+  async generateIntegratedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
     try {
       console.log('🎯 Starting integrated design generation workflow...');
-      console.log('⚖️  Blend weight:', blendWeight, `(${Math.round((1-blendWeight)*100)}% local / ${Math.round(blendWeight*100)}% portfolio)`);
+      console.log('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
+      console.log('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
 
       // STEP 3.1: Location analysis
       console.log('📍 Step 1: Analyzing location and architectural context...');
@@ -621,9 +627,9 @@ class AIIntegrationService {
         console.log('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
       }
 
-      // STEP 4: Blended style creation with weighted merging
-      console.log('🎨 Step 3: Creating blended style with weight', blendWeight);
-      const blendedStyle = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle, blendWeight);
+      // STEP 4: Blended style creation with granular weighted merging
+      console.log('🎨 Step 3: Creating blended style with separate material and characteristic weights');
+      const blendedStyle = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
       enhancedContext.blendedStyle = blendedStyle;
       enhancedContext.blendedPrompt = blendedStyle.description; // Keep backward compatibility
 
@@ -719,18 +725,23 @@ class AIIntegrationService {
 
   /**
    * STEP 4: Blend local and portfolio styles with weighted merging
-   * Merges style descriptors based on numeric weight (0-1)
+   * Merges style descriptors based on separate material and characteristic weights
    * @param {Object} localStyle - Location-based architectural style
    * @param {Object} portfolioStyle - Portfolio-detected style
-   * @param {Number} weight - Blend weight (0 = all local, 1 = all portfolio, 0.5 = balanced)
+   * @param {Number} materialWeight - Material blend weight (0 = all local, 1 = all portfolio, 0.5 = balanced)
+   * @param {Number} characteristicWeight - Characteristic blend weight (0 = all local, 1 = all portfolio, 0.5 = balanced)
    * @returns {Object} Blended style with merged characteristics
    */
-  blendStyles(localStyle, portfolioStyle, weight = 0.5) {
-    // Validate weight is between 0 and 1
-    const blendWeight = Math.max(0, Math.min(1, weight));
-    const localWeight = 1 - blendWeight;
+  blendStyles(localStyle, portfolioStyle, materialWeight = 0.5, characteristicWeight = 0.5) {
+    // Validate weights are between 0 and 1
+    const matWeight = Math.max(0, Math.min(1, materialWeight));
+    const charWeight = Math.max(0, Math.min(1, characteristicWeight));
+    const localMatWeight = 1 - matWeight;
+    const localCharWeight = 1 - charWeight;
 
-    console.log(`🎨 Blending styles with ${Math.round(localWeight * 100)}% local / ${Math.round(blendWeight * 100)}% portfolio`);
+    console.log(`🎨 Blending styles with:`);
+    console.log(`   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`);
+    console.log(`   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`);
 
     // Extract local style descriptors
     const localDescriptors = {
@@ -755,14 +766,19 @@ class AIIntegrationService {
         materials: localDescriptors.materials,
         characteristics: localDescriptors.characteristics,
         climateAdaptations: localDescriptors.climateAdaptations,
-        blendRatio: { local: 1.0, portfolio: 0.0 },
+        blendRatio: {
+          local: 1.0,
+          portfolio: 0.0,
+          materials: { local: 1.0, portfolio: 0.0 },
+          characteristics: { local: 1.0, portfolio: 0.0 }
+        },
         description: `${localDescriptors.primary} style adapted for local context`
       };
     }
 
-    // Blend materials (weighted selection)
-    const materialCount = Math.max(3, Math.round(5 * (localWeight + blendWeight)));
-    const localMaterialCount = Math.round(materialCount * localWeight);
+    // Blend materials (weighted selection based on materialWeight)
+    const materialCount = Math.max(3, Math.round(5 * (localMatWeight + matWeight)));
+    const localMaterialCount = Math.round(materialCount * localMatWeight);
     const portfolioMaterialCount = materialCount - localMaterialCount;
 
     const blendedMaterials = [
@@ -770,9 +786,9 @@ class AIIntegrationService {
       ...portfolioDescriptors.materials.slice(0, portfolioMaterialCount)
     ];
 
-    // Blend characteristics (weighted selection)
-    const charCount = Math.max(3, Math.round(6 * (localWeight + blendWeight)));
-    const localCharCount = Math.round(charCount * localWeight);
+    // Blend characteristics (weighted selection based on characteristicWeight)
+    const charCount = Math.max(3, Math.round(6 * (localCharWeight + charWeight)));
+    const localCharCount = Math.round(charCount * localCharWeight);
     const portfolioCharCount = charCount - localCharCount;
 
     const blendedCharacteristics = [
@@ -785,13 +801,19 @@ class AIIntegrationService {
         : [])
     ];
 
-    // Create blended style name
+    // Calculate overall blend weight (average of material and characteristic weights)
+    const overallWeight = (matWeight + charWeight) / 2;
+
+    // Create blended style name based on overall dominance
     let blendedStyleName;
-    if (blendWeight < 0.3) {
-      blendedStyleName = `${localDescriptors.primary} with ${portfolioDescriptors.primary} influences`;
-    } else if (blendWeight < 0.7) {
-      blendedStyleName = `Hybrid ${portfolioDescriptors.primary}-${localDescriptors.primary}`;
+    if (overallWeight < 0.3) {
+      // Local dominant
+      blendedStyleName = `${localDescriptors.primary} with subtle ${portfolioDescriptors.primary} influences`;
+    } else if (overallWeight < 0.7) {
+      // Balanced
+      blendedStyleName = `Hybrid ${portfolioDescriptors.primary}–${localDescriptors.primary}`;
     } else {
+      // Portfolio dominant
       blendedStyleName = `${portfolioDescriptors.primary} adapted to ${localDescriptors.primary} context`;
     }
 
@@ -801,7 +823,8 @@ class AIIntegrationService {
       portfolioDescriptors,
       blendedMaterials,
       blendedCharacteristics,
-      blendWeight
+      overallWeight,
+      { material: matWeight, characteristic: charWeight }
     );
 
     return {
@@ -809,7 +832,12 @@ class AIIntegrationService {
       materials: blendedMaterials,
       characteristics: blendedCharacteristics,
       climateAdaptations: localDescriptors.climateAdaptations, // Always preserve climate adaptations
-      blendRatio: { local: localWeight, portfolio: blendWeight },
+      blendRatio: {
+        local: 1 - overallWeight,
+        portfolio: overallWeight,
+        materials: { local: localMatWeight, portfolio: matWeight },
+        characteristics: { local: localCharWeight, portfolio: charWeight }
+      },
       localStyle: localDescriptors.primary,
       portfolioStyle: portfolioDescriptors.primary,
       description
@@ -818,31 +846,45 @@ class AIIntegrationService {
 
   /**
    * STEP 4: Create detailed blended style description for prompts
+   * Enhanced to reflect granular material and characteristic weights
    */
-  createBlendedDescription(localDesc, portfolioDesc, materials, characteristics, weight) {
+  createBlendedDescription(localDesc, portfolioDesc, materials, characteristics, weight, weights) {
     const materialList = materials.slice(0, 3).join(', ') || 'contemporary materials';
     const charList = characteristics.slice(0, 4).join(', ') || 'modern features';
 
+    // Create nuanced description based on material and characteristic weights
+    const matWeightPct = Math.round((weights?.material || 0.5) * 100);
+    const charWeightPct = Math.round((weights?.characteristic || 0.5) * 100);
+
     if (weight < 0.3) {
-      return `${localDesc.primary} architectural style with subtle ${portfolioDesc.primary} influences, featuring ${materialList}, incorporating ${charList}, while maintaining local architectural context`;
+      // Local dominant
+      const materialNote = matWeightPct < 30 ? 'local' : matWeightPct > 70 ? 'contemporary' : 'mixed';
+      const charNote = charWeightPct < 30 ? 'traditional' : charWeightPct > 70 ? 'modern' : 'hybrid';
+      return `${localDesc.primary} architectural style with subtle ${portfolioDesc.primary} influences, featuring ${materialNote} materials (${materialList}), incorporating ${charNote} characteristics (${charList}), while maintaining strong local architectural context`;
     } else if (weight < 0.7) {
-      return `Balanced fusion of ${portfolioDesc.primary} and ${localDesc.primary} styles, utilizing ${materialList}, characterized by ${charList}, creating a contemporary hybrid design`;
+      // Balanced
+      return `Balanced fusion of ${portfolioDesc.primary} and ${localDesc.primary} styles, utilizing ${materialList} (${100-matWeightPct}% local/${matWeightPct}% portfolio materials), characterized by ${charList} (${100-charWeightPct}% local/${charWeightPct}% portfolio spatial features), creating a contemporary hybrid design that respects both traditions`;
     } else {
-      return `${portfolioDesc.primary} architectural approach adapted for local context, expressed through ${materialList}, featuring ${charList}, respecting regional architectural traditions`;
+      // Portfolio dominant
+      const materialNote = matWeightPct > 70 ? 'signature' : matWeightPct < 30 ? 'locally-sourced' : 'blended';
+      const charNote = charWeightPct > 70 ? 'distinctive' : charWeightPct < 30 ? 'contextual' : 'integrated';
+      return `${portfolioDesc.primary} architectural approach adapted for local context, expressed through ${materialNote} materials (${materialList}), featuring ${charNote} spatial characteristics (${charList}), thoughtfully respecting regional architectural traditions`;
     }
   }
 
   /**
    * STEP 4: Create blended style prompt for generation
-   * Uses blendStyles function with weighted merging
+   * Uses blendStyles function with granular weighted merging
    */
-  createBlendedStylePrompt(projectContext, locationAnalysis, portfolioStyle, weight = 0.5) {
-    // STEP 4: Use sophisticated style blending
-    const blendedStyle = this.blendStyles(locationAnalysis, portfolioStyle, weight);
+  createBlendedStylePrompt(projectContext, locationAnalysis, portfolioStyle, materialWeight = 0.5, characteristicWeight = 0.5) {
+    // STEP 4: Use sophisticated style blending with separate weights
+    const blendedStyle = this.blendStyles(locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
 
     console.log('🎨 Blended style created:', {
       name: blendedStyle.styleName,
-      ratio: `${Math.round(blendedStyle.blendRatio.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.portfolio * 100)}% portfolio`,
+      overallRatio: `${Math.round(blendedStyle.blendRatio.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.portfolio * 100)}% portfolio`,
+      materialRatio: `${Math.round(blendedStyle.blendRatio.materials.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.materials.portfolio * 100)}% portfolio`,
+      characteristicRatio: `${Math.round(blendedStyle.blendRatio.characteristics.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.characteristics.portfolio * 100)}% portfolio`,
       materials: blendedStyle.materials.slice(0, 3).join(', '),
       characteristics: blendedStyle.characteristics.slice(0, 3).join(', ')
     });

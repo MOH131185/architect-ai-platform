@@ -41,7 +41,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: 'You are an expert architectural AI assistant specializing in design reasoning, spatial analysis, and building optimization. Provide detailed, technical architectural insights.'
+              content: 'You are an expert architectural AI assistant specializing in vernacular and contemporary architecture, with deep expertise in blending local tradition with modern design. You excel at analyzing location context, climate adaptations, and portfolio styles to create contextually appropriate designs. Provide detailed, technical architectural insights in structured JSON format.'
             },
             {
               role: 'user',
@@ -68,6 +68,7 @@ class OpenAIService {
 
   /**
    * Build comprehensive design prompt from project context
+   * Enhanced with location analysis and portfolio style context
    */
   buildDesignPrompt(projectContext) {
     const {
@@ -75,32 +76,120 @@ class OpenAIService {
       buildingProgram,
       siteConstraints,
       climate,
+      climateData,
       zoning,
-      userPreferences
+      userPreferences,
+      locationAnalysis,
+      portfolioStyle,
+      blendedStyle
     } = projectContext;
 
+    // Extract seasonal climate data if available
+    const seasonalClimate = climateData?.seasonal ? `
+SEASONAL CLIMATE DATA:
+- Winter: Avg ${climateData.seasonal.winter?.avgTemp || 'N/A'}°C, ${climateData.seasonal.winter?.precipitation || 'N/A'}mm precipitation
+- Spring: Avg ${climateData.seasonal.spring?.avgTemp || 'N/A'}°C, ${climateData.seasonal.spring?.precipitation || 'N/A'}mm precipitation
+- Summer: Avg ${climateData.seasonal.summer?.avgTemp || 'N/A'}°C, ${climateData.seasonal.summer?.precipitation || 'N/A'}mm precipitation
+- Fall: Avg ${climateData.seasonal.fall?.avgTemp || 'N/A'}°C, ${climateData.seasonal.fall?.precipitation || 'N/A'}mm precipitation
+- Sun Path: ${climateData.sunPath?.summer || 'N/A'} (summer), ${climateData.sunPath?.winter || 'N/A'} (winter)
+- Optimal Orientation: ${climateData.sunPath?.optimalOrientation || 'N/A'}` : '';
+
+    // Extract location architectural style data
+    const locationStyleInfo = locationAnalysis ? `
+LOCATION ARCHITECTURAL CONTEXT:
+- Primary Local Style: ${locationAnalysis.primary || 'Contemporary'}
+- Local Materials: ${locationAnalysis.materials?.slice(0, 5).join(', ') || 'Not specified'}
+- Local Characteristics: ${locationAnalysis.characteristics?.slice(0, 5).join(', ') || 'Not specified'}
+- Climate Adaptations: ${locationAnalysis.climateAdaptations?.features?.slice(0, 5).join(', ') || 'Not specified'}
+- Alternative Styles: ${locationAnalysis.alternatives?.slice(0, 3).join(', ') || 'Not specified'}` : '';
+
+    // Extract portfolio style data
+    const portfolioStyleInfo = portfolioStyle ? `
+PORTFOLIO STYLE ANALYSIS:
+- Detected Style: ${portfolioStyle.primaryStyle?.style || 'Not specified'}
+- Confidence: ${portfolioStyle.primaryStyle?.confidence || 'Not specified'}
+- Key Materials: ${portfolioStyle.designElements?.materials || 'Not specified'}
+- Spatial Organization: ${portfolioStyle.designElements?.spatialOrganization || 'Not specified'}
+- Design Characteristics: ${portfolioStyle.styleConsistency?.signatureElements || 'Not specified'}` : '';
+
+    // Extract blended style information
+    const blendedStyleInfo = blendedStyle ? `
+BLENDED STYLE APPROACH:
+- Style Name: ${blendedStyle.styleName || 'Contextual Contemporary'}
+- Blend Ratio: ${Math.round((blendedStyle.blendRatio?.local || 0.5) * 100)}% local / ${Math.round((blendedStyle.blendRatio?.portfolio || 0.5) * 100)}% portfolio
+- Selected Materials: ${blendedStyle.materials?.slice(0, 5).join(', ') || 'Not specified'}
+- Design Characteristics: ${blendedStyle.characteristics?.slice(0, 5).join(', ') || 'Not specified'}
+- Description: ${blendedStyle.description || 'Balanced fusion of local and portfolio styles'}` : '';
+
     return `
-Analyze this architectural project and provide comprehensive design reasoning:
+Analyze this architectural project and provide comprehensive design reasoning with specific focus on style integration and climate adaptation:
 
 PROJECT CONTEXT:
 - Location: ${location?.address || 'Not specified'}
-- Climate: ${climate?.type || 'Not specified'}
+- Climate Type: ${climate?.type || climateData?.type || 'Not specified'}
 - Zoning: ${zoning?.type || 'Not specified'}
 - Building Program: ${buildingProgram || 'Not specified'}
 - Site Constraints: ${siteConstraints || 'Not specified'}
 - User Preferences: ${userPreferences || 'Not specified'}
+${seasonalClimate}
+${locationStyleInfo}
+${portfolioStyleInfo}
+${blendedStyleInfo}
 
-Please provide:
-1. Design Philosophy & Approach
-2. Spatial Organization Strategy
-3. Material & Construction Recommendations
-4. Environmental & Sustainability Considerations
-5. Technical Challenges & Solutions
-6. Code Compliance & Zoning Optimization
-7. Cost-Effective Design Strategies
-8. Future-Proofing Recommendations
+Please provide comprehensive design reasoning in the following structured JSON format:
 
-Format your response as structured JSON with clear sections and actionable insights.
+{
+  "styleRationale": {
+    "overview": "Explanation of how local tradition, climate, and portfolio style influence this design",
+    "localStyleImpact": "Specific ways the local architectural context shapes the design (materials, forms, cultural elements)",
+    "portfolioStyleImpact": "How the portfolio style preferences are incorporated while respecting local context",
+    "climateIntegration": "How seasonal climate data informs orientation, materials, and passive design strategies"
+  },
+  "designPhilosophy": "Overall design approach that harmonizes context, climate, and user vision",
+  "spatialOrganization": {
+    "strategy": "Spatial layout strategy responding to climate, site, and program",
+    "keySpaces": "Primary spaces and their relationships",
+    "circulation": "Movement patterns and flow",
+    "flexibility": "Adaptability for future needs"
+  },
+  "materialRecommendations": {
+    "primary": ["List of 3-5 primary materials with rationale for each"],
+    "secondary": ["List of 2-3 secondary/accent materials"],
+    "sustainable": "Sustainability considerations and local sourcing opportunities"
+  },
+  "environmentalConsiderations": {
+    "passiveStrategies": "Passive heating, cooling, and ventilation approaches for this climate",
+    "activeStrategies": "Active systems recommendations",
+    "renewableEnergy": "Solar, geothermal, or other renewable integration opportunities",
+    "waterManagement": "Rainwater harvesting, greywater, and stormwater strategies"
+  },
+  "technicalSolutions": {
+    "structural": "Structural system recommendations",
+    "envelope": "Building envelope and insulation strategies for climate",
+    "mep": "MEP systems optimized for efficiency",
+    "smart": "Smart building and automation opportunities"
+  },
+  "codeCompliance": {
+    "zoning": "Zoning compliance strategy",
+    "building": "Building code considerations",
+    "accessibility": "Accessibility and universal design",
+    "energy": "Energy code compliance pathway"
+  },
+  "costStrategies": {
+    "valueEngineering": "Cost optimization approaches",
+    "phasingOpportunities": "Potential construction phasing",
+    "lifecycle": "Lifecycle cost considerations",
+    "localEconomy": "Leveraging local materials and labor"
+  },
+  "futureProofing": {
+    "adaptability": "Design flexibility for changing uses",
+    "technology": "Technology integration pathways",
+    "climate": "Climate change resilience",
+    "expansion": "Future expansion possibilities"
+  }
+}
+
+IMPORTANT: Ensure your response is valid JSON and includes all requested sections. Focus on actionable, specific recommendations that reflect the unique combination of location context, climate conditions, and design preferences.
     `.trim();
   }
 
@@ -120,6 +209,12 @@ Format your response as structured JSON with clear sections and actionable insig
 
     // Fallback to structured text response
     return {
+      styleRationale: {
+        overview: this.extractSection(aiResponse, 'Style Rationale') || this.extractSection(aiResponse, 'styleRationale'),
+        localStyleImpact: this.extractSection(aiResponse, 'Local Style Impact') || 'Local architectural context considered',
+        portfolioStyleImpact: this.extractSection(aiResponse, 'Portfolio Style Impact') || 'Portfolio preferences integrated',
+        climateIntegration: this.extractSection(aiResponse, 'Climate Integration') || 'Climate-responsive design applied'
+      },
       designPhilosophy: this.extractSection(aiResponse, 'Design Philosophy'),
       spatialOrganization: this.extractSection(aiResponse, 'Spatial Organization'),
       materialRecommendations: this.extractSection(aiResponse, 'Material'),
