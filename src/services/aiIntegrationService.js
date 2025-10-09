@@ -664,14 +664,15 @@ class AIIntegrationService {
       );
       console.log('✅ All technical drawings generated as independent 2D orthographic projections');
 
-      // STEP 3.7: Generate multiple 3D views WITHOUT ControlNet (photorealistic perspective views)
-      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, axonometric, perspective)...');
+      // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) + BIM-derived axonometric
+      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective)...');
+      // Generate photorealistic views WITHOUT axonometric (will use BIM-derived version)
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
-        ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
-        null // Do NOT use floor plan control for 3D views - they need perspective freedom
+        ['exterior_front', 'exterior_side', 'interior', 'perspective'],
+        null // No ControlNet for photorealistic freedom
       );
-      console.log('✅ 3D views generated as photorealistic perspectives');
+      console.log('✅ Photorealistic 3D views generated');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -698,6 +699,7 @@ class AIIntegrationService {
       // STEP 3.8: Generate parametric BIM model based on blended style
       console.log('🏗️ Step 7: Generating parametric BIM model from blended style specifications...');
       let bimModel = null;
+      let bimAxonometric = null;
       try {
         bimModel = await this.bim.generateParametricModel({
           ...enhancedContext,
@@ -708,6 +710,16 @@ class AIIntegrationService {
           elevations: technicalDrawings
         });
         console.log('✅ BIM model generated successfully with', bimModel?.components?.length || 0, 'components');
+
+        // STEP 3.9: Derive geometrically accurate axonometric view from BIM
+        console.log('🏗️ Deriving axonometric view from BIM model...');
+        bimAxonometric = this.bim.deriveAxonometric(bimModel, {
+          angle: 30,
+          scale: 1.0,
+          showGrid: true,
+          showDimensions: true
+        });
+        console.log('✅ Axonometric view derived from BIM (geometrically consistent)');
       } catch (bimError) {
         console.error('⚠️ BIM generation failed:', bimError.message);
         // Continue without BIM - not critical for basic workflow
@@ -729,8 +741,12 @@ class AIIntegrationService {
         results: combinedResults, // Combined floor plans + technical drawings + 3D views
         floorPlans: floorPlans, // Also keep individual results for compatibility
         technicalDrawings: technicalDrawings,
-        visualizations: { views }, // For compatibility with existing extraction
+        visualizations: {
+          views, // Photorealistic 3D views
+          axonometric: bimAxonometric // BIM-derived geometrically accurate axonometric
+        },
         bimModel, // NEW: Include parametric BIM model in results
+        bimAxonometric, // NEW: Geometrically consistent axonometric from BIM
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),

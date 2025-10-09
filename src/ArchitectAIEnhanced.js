@@ -1014,6 +1014,7 @@ const ArchitectAIEnhanced = () => {
         console.log('🔍 Checking aiResult structure:', {
           hasResults: !!aiResult.results,
           hasPreview3D: !!aiResult.preview3D,
+          hasBIMAxonometric: !!aiResult.bimAxonometric,
           resultsKeys: aiResult.results ? Object.keys(aiResult.results) : []
         });
 
@@ -1023,7 +1024,14 @@ const ArchitectAIEnhanced = () => {
           if (views.exterior_front?.images) images.push(...views.exterior_front.images);
           if (views.exterior_side?.images) images.push(...views.exterior_side.images);
           if (views.interior?.images) images.push(...views.interior.images);
-          if (views.axonometric?.images) images.push(...views.axonometric.images);
+          // Use BIM-derived axonometric instead of Replicate-generated one
+          if (aiResult.bimAxonometric) {
+            images.push(aiResult.bimAxonometric);
+            console.log('✅ Using BIM-derived axonometric view (geometrically consistent)');
+          } else if (views.axonometric?.images) {
+            images.push(...views.axonometric.images);
+            console.log('⚠️ Using Replicate axonometric (BIM not available)');
+          }
           if (views.perspective?.images) images.push(...views.perspective.images);
           console.log('✅ Extracted', images.length, '3D views from integrated results.views');
         }
@@ -1033,7 +1041,13 @@ const ArchitectAIEnhanced = () => {
           if (views.exterior_front?.images) images.push(...views.exterior_front.images);
           if (views.exterior_side?.images) images.push(...views.exterior_side.images);
           if (views.interior?.images) images.push(...views.interior.images);
-          if (views.axonometric?.images) images.push(...views.axonometric.images);
+          // Use BIM-derived axonometric from visualizations
+          if (aiResult.visualizations.axonometric) {
+            images.push(aiResult.visualizations.axonometric);
+            console.log('✅ Using BIM-derived axonometric from visualizations');
+          } else if (views.axonometric?.images) {
+            images.push(...views.axonometric.images);
+          }
           if (views.perspective?.images) images.push(...views.perspective.images);
           console.log('✅ Extracted', images.length, '3D views from visualizations');
         }
