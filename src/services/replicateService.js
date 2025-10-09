@@ -731,7 +731,7 @@ class ReplicateService {
       : '';
 
     return {
-      prompt: `Professional architectural floor plan for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total floor area, ${unifiedDesc.materials} construction indicated, showing ${unifiedDesc.features}, technical drawing style, 2D top-view plan, detailed room layout with dimensions, walls, doors, windows, furniture layout, professional architectural drafting, black and white line drawing with annotations, precise measurements, architectural blueprint style, clean technical drawing`,
+      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, showing walls as black lines, doors as arcs, windows as double lines, room labels, dimensions, north arrow, scale bar, STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -740,7 +740,7 @@ class ReplicateService {
       height: 1024,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, blurry, low quality, sketchy, hand drawn"
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side"
     };
   }
 
@@ -757,7 +757,7 @@ class ReplicateService {
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
     return {
-      prompt: `Professional architectural elevation drawing derived from floor plan layout, ${direction} ${elevationType} of ${unifiedDesc.fullDescription}, MATCHING the floor plan footprint and proportions, showing ${unifiedDesc.floorCount} levels, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, windows and doors positioned according to floor plan, technical drawing style, orthographic projection, 2D elevation view, detailed facade with accurate window placement${isEntranceElevation ? ', prominent main entrance as shown in floor plan' : ''}, materials indication, professional architectural drafting, black and white line drawing with hatching, precise proportions matching floor plan dimensions, architectural blueprint style, clean technical drawing, CONSISTENT with floor plan layout`,
+      prompt: `2D architectural elevation drawing ONLY, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW showing ${unifiedDesc.floorCount} floor levels stacked vertically, ${unifiedDesc.materials} facade indicated with hatching patterns, window openings as rectangles, door openings${isEntranceElevation ? ', main entrance door clearly shown' : ''}, ground line, roof line, floor division lines, dimension lines showing heights, ORTHOGRAPHIC PROJECTION, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO depth, NO rendering, NO colors, flat 2D technical documentation, vertical facade view ONLY`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -766,8 +766,8 @@ class ReplicateService {
       height: 768,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, top view, plan view, blurry, low quality",
-      conditioning_scale: 0.3 // Reduced ControlNet - guide spatial layout without forcing floor plan replication
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut"
+      // Removed ControlNet completely - elevations should be independent 2D drawings
     };
   }
 
@@ -783,7 +783,7 @@ class ReplicateService {
       : 'cross section, width-wise cut through building';
 
     return {
-      prompt: `Professional architectural section drawing derived from floor plan layout, ${sectionDesc} of ${unifiedDesc.fullDescription}, MATCHING the floor plan spatial arrangement and room layout, showing all ${unifiedDesc.floorCount} floor levels, interior spaces visible with ${unifiedDesc.features}, ceiling heights corresponding to floor plan dimensions, floor slabs, structural elements, stairs${unifiedDesc.floorCount > 1 ? ', vertical circulation' : ''}, ${unifiedDesc.materials} construction system, technical drawing style, orthographic projection, 2D section view, detailed interior heights and materials, professional architectural drafting, black and white line drawing with hatching and poché, precise vertical proportions matching floor plan, architectural blueprint style, clean technical drawing, CONSISTENT with floor plan layout`,
+      prompt: `2D architectural section drawing ONLY, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, floor slabs as horizontal lines, walls in section as thick black lines, interior room heights visible, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors' : ''}, foundation line, roof structure in section, ${unifiedDesc.materials} construction indicated with hatching, ORTHOGRAPHIC PROJECTION, section cut line, poché (solid fill) for cut walls, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -792,8 +792,8 @@ class ReplicateService {
       height: 768,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, top view, plan view, elevation, blurry, low quality",
-      conditioning_scale: 0.3 // Reduced ControlNet - guide spatial layout without forcing floor plan replication
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade"
+      // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
 

@@ -531,12 +531,12 @@ class AIIntegrationService {
         console.log('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
       }
 
-      // Step 3: Generate elevations and sections (all 4 elevations + 2 sections)
-      console.log('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross)...');
+      // Step 3: Generate elevations and sections as independent 2D technical drawings
+      console.log('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         enhancedContext,
         true, // Generate all drawings (4 elevations + 2 sections)
-        floorPlanControlImage // Use floor plan as ControlNet control
+        null // No ControlNet - elevations/sections must be independent 2D orthographic projections
       );
 
       // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - WITHOUT ControlNet for better photorealistic results
@@ -649,14 +649,14 @@ class AIIntegrationService {
         console.log('✅ Ground floor plan generated, captured for ControlNet control');
       }
 
-      // STEP 3.6: Generate elevations and sections with floor plan as control (all 4 elevations + 2 sections)
-      console.log('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) with floor plan as control...');
+      // STEP 3.6: Generate elevations and sections as independent 2D technical drawings
+      console.log('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         enhancedContext,
         true, // generateAllDrawings - generate all 4 elevations + 2 sections
-        floorPlanImage // Use floor plan as ControlNet control for consistency
+        null // No ControlNet - elevations/sections must be independent 2D orthographic projections
       );
-      console.log('✅ All technical drawings generated with ControlNet guidance');
+      console.log('✅ All technical drawings generated as independent 2D orthographic projections');
 
       // STEP 3.7: Generate multiple 3D views WITHOUT ControlNet (photorealistic perspective views)
       console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, axonometric, perspective)...');
