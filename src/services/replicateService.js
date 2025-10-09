@@ -363,45 +363,47 @@ class ReplicateService {
       }
 
       if (generateAllDrawings) {
-        // Generate all 4 elevations
-        console.log('🏗️ Generating elevations (N, S, E, W) with floor plan control...');
+        // FIX: Use high-quality settings when generating all drawings (full documentation set)
+        // High quality: 1536×1152 with 50 steps for crisp, professional technical drawings
+        console.log('🏗️ Generating elevations (N, S, E, W) with HIGH QUALITY settings (1536×1152, 50 steps)...');
         for (const direction of ['north', 'south', 'east', 'west']) {
-          const params = this.buildElevationParameters(projectContext, direction);
+          const params = this.buildElevationParameters(projectContext, direction, true); // highQuality = true
           params.seed = projectSeed;
           if (controlImage) params.image = controlImage;
           results[`elevation_${direction}`] = await this.generateArchitecturalImage(params);
         }
 
-        // Generate 2 sections
-        console.log('🏗️ Generating sections (longitudinal, cross) with floor plan control...');
+        // Generate 2 sections with high quality
+        console.log('🏗️ Generating sections (longitudinal, cross) with HIGH QUALITY settings (1536×1152, 50 steps)...');
         for (const sectionType of ['longitudinal', 'cross']) {
-          const params = this.buildSectionParameters(projectContext, sectionType);
+          const params = this.buildSectionParameters(projectContext, sectionType, true); // highQuality = true
           params.seed = projectSeed;
           if (controlImage) params.image = controlImage;
           results[`section_${sectionType}`] = await this.generateArchitecturalImage(params);
         }
       } else {
-        // Generate only essential drawings (faster, lower cost)
+        // FIX: Use standard quality for quick previews (faster generation, lower cost)
+        // Standard quality: 1024×768 with 40 steps
         // Generate front and side elevations (entrance direction)
         const entranceDir = projectContext.entranceDirection || 'N';
         const mainDirection = this.getCardinalDirection(entranceDir);
         const sideDirection = this.getPerpendicularDirection(mainDirection);
 
-        console.log(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection}) with floor plan control...`);
+        console.log(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection}) with STANDARD QUALITY settings (1024×768, 40 steps)...`);
 
-        const mainParams = this.buildElevationParameters(projectContext, mainDirection.toLowerCase());
+        const mainParams = this.buildElevationParameters(projectContext, mainDirection.toLowerCase(), false); // highQuality = false
         mainParams.seed = projectSeed;
         if (controlImage) mainParams.image = controlImage;
         results[`elevation_${mainDirection.toLowerCase()}`] = await this.generateArchitecturalImage(mainParams);
 
-        const sideParams = this.buildElevationParameters(projectContext, sideDirection.toLowerCase());
+        const sideParams = this.buildElevationParameters(projectContext, sideDirection.toLowerCase(), false); // highQuality = false
         sideParams.seed = projectSeed;
         if (controlImage) sideParams.image = controlImage;
         results[`elevation_${sideDirection.toLowerCase()}`] = await this.generateArchitecturalImage(sideParams);
 
-        // Generate one section (longitudinal) with floor plan control
-        console.log('🏗️ Generating longitudinal section with floor plan control...');
-        const sectionParams = this.buildSectionParameters(projectContext, 'longitudinal');
+        // Generate one section (longitudinal) with standard quality
+        console.log('🏗️ Generating longitudinal section with STANDARD QUALITY settings (1024×768, 40 steps)...');
+        const sectionParams = this.buildSectionParameters(projectContext, 'longitudinal', false); // highQuality = false
         sectionParams.seed = projectSeed;
         if (controlImage) sectionParams.image = controlImage;
         results[`section_longitudinal`] = await this.generateArchitecturalImage(sectionParams);
@@ -752,8 +754,9 @@ class ReplicateService {
 
   /**
    * Build parameters for elevation drawings
+   * FIX: Increased resolution and inference steps for sharper, more detailed technical drawings
    */
-  buildElevationParameters(projectContext, direction = 'north') {
+  buildElevationParameters(projectContext, direction = 'north', highQuality = true) {
     // Get unified building description for consistency
     const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
 
@@ -762,16 +765,22 @@ class ReplicateService {
     const isEntranceElevation = direction === entranceDir;
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
+    // FIX: Use high-quality settings for sharper linework and better detail
+    // High quality: 1536×1152 with 50 steps for crisp, professional technical drawings
+    // Standard quality: 1024×768 with 40 steps for faster previews
+    const resolution = highQuality ? { width: 1536, height: 1152 } : { width: 1024, height: 768 };
+    const renderQuality = highQuality ? { steps: 50, guidanceScale: 7.5 } : { steps: 40, guidanceScale: 7.0 };
+
     return {
       prompt: `2D architectural elevation drawing ONLY, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW showing ${unifiedDesc.floorCount} floor levels stacked vertically, ${unifiedDesc.materials} facade indicated with hatching patterns, window openings as rectangles, door openings${isEntranceElevation ? ', main entrance door clearly shown' : ''}, ground line (±0.00m), roof line, floor division lines, COMPLETE DIMENSION LINES with measurements: vertical dimensions showing floor heights (e.g., +0.00m, +3.50m, +7.00m), floor-to-floor heights, total building height, horizontal dimensions showing overall width, window and door dimensions, dimension extension lines with arrows, dimension text in meters, elevation markers at each floor level, ground level marker, ORTHOGRAPHIC PROJECTION, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions, black and white line drawing ONLY, NO 3D elements, NO perspective, NO depth, NO rendering, NO colors, flat 2D technical documentation with professional architectural dimensioning, vertical facade view ONLY`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
       viewType: `elevation_${direction}`,
-      width: 1024,
-      height: 768,
-      steps: 40,
-      guidanceScale: 7.0,
+      width: resolution.width,
+      height: resolution.height,
+      steps: renderQuality.steps,
+      guidanceScale: renderQuality.guidanceScale,
       negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut"
       // Removed ControlNet completely - elevations should be independent 2D drawings
     };
@@ -779,8 +788,9 @@ class ReplicateService {
 
   /**
    * Build parameters for section drawings
+   * FIX: Increased resolution and inference steps for sharper, more detailed technical drawings
    */
-  buildSectionParameters(projectContext, sectionType = 'longitudinal') {
+  buildSectionParameters(projectContext, sectionType = 'longitudinal', highQuality = true) {
     // Get unified building description for consistency
     const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
 
@@ -788,16 +798,22 @@ class ReplicateService {
       ? 'longitudinal section, length-wise cut through building showing entrance to back'
       : 'cross section, width-wise cut through building';
 
+    // FIX: Use high-quality settings for sharper linework and better detail
+    // High quality: 1536×1152 with 50 steps for crisp, professional technical drawings
+    // Standard quality: 1024×768 with 40 steps for faster previews
+    const resolution = highQuality ? { width: 1536, height: 1152 } : { width: 1024, height: 768 };
+    const renderQuality = highQuality ? { steps: 50, guidanceScale: 7.5 } : { steps: 40, guidanceScale: 7.0 };
+
     return {
       prompt: `2D architectural section drawing ONLY, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, floor slabs as horizontal lines, walls in section as thick black lines, interior room heights visible, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors' : ''}, foundation line, roof structure in section, ${unifiedDesc.materials} construction indicated with hatching, ORTHOGRAPHIC PROJECTION, section cut line, poché (solid fill) for cut walls, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
       viewType: `section_${sectionType}`,
-      width: 1024,
-      height: 768,
-      steps: 40,
-      guidanceScale: 7.0,
+      width: resolution.width,
+      height: resolution.height,
+      steps: renderQuality.steps,
+      guidanceScale: renderQuality.guidanceScale,
       negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade"
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
