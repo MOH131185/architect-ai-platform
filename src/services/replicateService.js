@@ -285,9 +285,9 @@ class ReplicateService {
 
   /**
    * Generate multi-level floor plans (ground, upper, roof)
-   * Optimized to generate only ground floor by default, with option for full generation
+   * Generates all levels by default to show complete building design
    */
-  async generateMultiLevelFloorPlans(projectContext, generateAllLevels = false) {
+  async generateMultiLevelFloorPlans(projectContext, generateAllLevels = true) {
     if (!this.apiKey) {
       return this.getFallbackMultiLevelFloorPlans(projectContext);
     }
@@ -766,8 +766,8 @@ class ReplicateService {
       height: 768,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, blurry, low quality",
-      conditioning_scale: 0.5 // Moderate ControlNet - guide spatial layout without forcing 2D replication
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, top view, plan view, blurry, low quality",
+      conditioning_scale: 0.3 // Reduced ControlNet - guide spatial layout without forcing floor plan replication
     };
   }
 
@@ -792,8 +792,8 @@ class ReplicateService {
       height: 768,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, elevation, blurry, low quality",
-      conditioning_scale: 0.5 // Moderate ControlNet - guide spatial layout without forcing 2D replication
+      negativePrompt: "3D, perspective, color photograph, realistic photo, photorealistic, floor plan, top view, plan view, elevation, blurry, low quality",
+      conditioning_scale: 0.3 // Reduced ControlNet - guide spatial layout without forcing floor plan replication
     };
   }
 
