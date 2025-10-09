@@ -2460,12 +2460,21 @@ const ArchitectAIEnhanced = () => {
   // Conditionally wrap with Google Maps only when API key is available AND we're on step 2 (map view)
   const shouldLoadMaps = process.env.REACT_APP_GOOGLE_MAPS_API_KEY && currentStep === 2;
 
-  // Image Modal Component
-  const ImageModal = () => {
+  // Image Modal Component - Memoized to prevent unnecessary re-renders from parent updates
+  const ImageModal = React.memo(() => {
     if (!modalImage) return null;
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm animate-fadeIn">
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+        style={{ animation: 'fadeIn 0.2s ease-in' }}
+        onClick={(e) => {
+          // Close modal when clicking backdrop (not on image or controls)
+          if (e.target === e.currentTarget) {
+            closeImageModal();
+          }
+        }}
+      >
         {/* Modal Content */}
         <div className="relative w-full h-full flex items-center justify-center p-4">
           {/* Close Button */}
@@ -2547,7 +2556,8 @@ const ArchitectAIEnhanced = () => {
                 transition: isDragging ? 'none' : 'transform 0.2s ease-out',
                 maxWidth: imageZoom === 1 ? '100%' : 'none',
                 maxHeight: imageZoom === 1 ? '100%' : 'none',
-                objectFit: 'contain'
+                objectFit: 'contain',
+                willChange: 'transform'
               }}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
@@ -2556,7 +2566,7 @@ const ArchitectAIEnhanced = () => {
         </div>
       </div>
     );
-  };
+  }, [modalImage, modalImageTitle, imageZoom, imagePan, isDragging]);
 
   const content = (
     <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
