@@ -557,7 +557,7 @@ class AIIntegrationService {
       styleApproach: reasoning.styleRationale?.overview || '',
 
       // Create unified architectural description
-      unifiedArchitecturalPrompt: this.createUnifiedArchitecturalPrompt(reasoning)
+      unifiedArchitecturalPrompt: this.createUnifiedArchitecturalPrompt(reasoning, projectContext)
     };
 
     // Log extracted parameters for debugging
@@ -674,7 +674,7 @@ class AIIntegrationService {
    * Create unified architectural prompt that will be injected into ALL image generations
    * This is the KEY to ensuring consistency across all views
    */
-  createUnifiedArchitecturalPrompt(reasoning) {
+  createUnifiedArchitecturalPrompt(reasoning, projectContext = {}) {
     const materials = this.extractMaterialsFromReasoning(reasoning);
     const philosophy = reasoning.designPhilosophy || 'contemporary design';
     const spatial = typeof reasoning.spatialOrganization === 'object'
@@ -683,7 +683,7 @@ class AIIntegrationService {
     const environmental = this.extractEnvironmentalFeatures(reasoning);
 
     // Create a comprehensive architectural description that will guide ALL images
-    const unifiedPrompt = `
+    const unifiedPromptBase = `
       Architectural design following this EXACT specification:
       PHILOSOPHY: ${philosophy}
       MATERIALS: ${materials} facade and construction
@@ -692,6 +692,8 @@ class AIIntegrationService {
       STYLE: Contemporary design with clean lines, large windows, flat or low-pitched roof
       CONSISTENCY: All views must show the SAME building with identical materials, colors, and architectural features
     `.trim().replace(/\s+/g, ' ');
+    const override = projectContext && projectContext.promptOverride ? ` OVERRIDE: ${projectContext.promptOverride}` : '';
+    const unifiedPrompt = `${unifiedPromptBase}${override}`.trim();
 
     logger.verbose('🏛️ Unified architectural prompt created:', unifiedPrompt.substring(0, 100) + '...');
 

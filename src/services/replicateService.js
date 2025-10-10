@@ -344,6 +344,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // Artistic views (interior, perspective) use varied seeds for aesthetic variety
     const technicalViews = ['exterior_front', 'exterior_side', 'axonometric', 'site_plan'];
     const artisticViews = ['interior', 'perspective'];
+    const strictConsistency = !!projectContext.strictConsistency;
 
     // Define seed offsets for artistic views only
     const artisticSeedOffsets = {
@@ -365,10 +366,16 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
           params.seed = projectSeed;
           logger.verbose(`🎯 Technical view ${viewType} using consistent seed: ${params.seed}`);
         } else if (isArtisticView) {
-          // Use varied seed for artistic views to allow aesthetic variety
-          const seedOffset = artisticSeedOffsets[viewType] || 0;
-          params.seed = projectSeed + seedOffset;
-          logger.verbose(`🎨 Artistic view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
+          if (strictConsistency) {
+            // Enforce identical geometry across ALL 3D views
+            params.seed = projectSeed;
+            logger.verbose(`✅ Strict consistency enabled. Artistic view ${viewType} using consistent seed: ${params.seed}`);
+          } else {
+            // Use varied seed for artistic views to allow aesthetic variety
+            const seedOffset = artisticSeedOffsets[viewType] || 0;
+            params.seed = projectSeed + seedOffset;
+            logger.verbose(`🎨 Artistic view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
+          }
         } else {
           // Default to consistent seed for unknown view types
           params.seed = projectSeed;
