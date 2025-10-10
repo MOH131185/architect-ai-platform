@@ -68,6 +68,64 @@ class ReplicateService {
   }
 
   /**
+   * Extract detailed project specifications from context
+   * Includes room program, areas, and specific requirements
+   */
+  extractProjectDetails(projectContext) {
+    const {
+      area,
+      floorArea,
+      programDetails,
+      buildingProgram,
+      floors
+    } = projectContext;
+
+    // Extract total area
+    const totalArea = area || floorArea || 200;
+    const areaDetail = totalArea ? ` (${totalArea}m² total area)` : '';
+
+    // Extract program details (room-by-room breakdown)
+    let programDetail = '';
+    let spacesDetail = '';
+    let interiorDetail = '';
+    let mainSpace = null;
+
+    if (programDetails && typeof programDetails === 'object') {
+      // Build detailed room list from programDetails
+      const rooms = Object.entries(programDetails)
+        .map(([room, area]) => `${room} (${area}m²)`)
+        .filter(r => r);
+
+      if (rooms.length > 0) {
+        programDetail = `containing ${rooms.join(', ')}`;
+        spacesDetail = ` with ${rooms.length} distinct spaces`;
+
+        // Extract main space for interior view
+        const roomNames = Object.keys(programDetails);
+        mainSpace = roomNames.find(r =>
+          r.toLowerCase().includes('living') ||
+          r.toLowerCase().includes('main') ||
+          r.toLowerCase().includes('great')
+        ) || roomNames[0];
+
+        interiorDetail = `featuring ${rooms.slice(0, 3).join(', ')}`;
+      }
+    } else if (buildingProgram) {
+      // Fallback to building program type
+      programDetail = `designed as ${buildingProgram}`;
+    }
+
+    return {
+      areaDetail,
+      programDetail,
+      spacesDetail,
+      interiorDetail,
+      mainSpace,
+      totalArea
+    };
+  }
+
+  /**
    * Get building-specific features for consistent description
    */
   getBuildingFeatures(buildingProgram, style, floorCount) {
@@ -538,6 +596,9 @@ class ReplicateService {
     // Determine entrance side for accurate 3D views
     const entranceDir = this.getCardinalDirection(unifiedDesc.entranceDirection);
 
+    // Extract detailed project specifications
+    const projectDetails = this.extractProjectDetails(projectContext);
+
     switch (viewType) {
       case 'exterior':
       case 'exterior_front':
@@ -545,7 +606,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context matching floor plan`,
+          prompt: `Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements`,
           perspective: 'exterior front view',
           width: 1024,
           height: 768
@@ -557,24 +618,27 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees`,
+          prompt: `Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications`,
           perspective: 'exterior side view',
           width: 1024,
           height: 768
         };
 
       case 'interior':
-        const interiorSpace = unifiedDesc.buildingProgram.includes('house') || unifiedDesc.buildingProgram.includes('villa')
-          ? 'main living room with open kitchen'
-          : unifiedDesc.buildingProgram.includes('office')
-          ? 'main office space'
-          : 'main interior space';
+        // Determine main interior space from program details or building type
+        const interiorSpace = projectDetails.mainSpace || (
+          unifiedDesc.buildingProgram.includes('house') || unifiedDesc.buildingProgram.includes('villa')
+            ? 'main living room with open kitchen'
+            : unifiedDesc.buildingProgram.includes('office')
+            ? 'main office space'
+            : 'main interior space'
+        );
 
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural interior visualization, ${interiorSpace} of ${unifiedDesc.fullDescription}, ${unifiedDesc.architecturalStyle} interior design matching exterior ${unifiedDesc.materials}, spacious interior with ${unifiedDesc.features}, well-lit with natural light from ${entranceDir}-facing windows, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture`,
+          prompt: `Professional 3D architectural interior visualization, ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design matching exterior ${unifiedDesc.materials}, spacious interior with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from ${entranceDir}-facing windows, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture, interior matching project program requirements`,
           perspective: 'interior view',
           width: 1024,
           height: 768
@@ -725,21 +789,36 @@ class ReplicateService {
     // Get unified building description for consistency
     const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
 
-    const levelDescriptions = {
-      ground: 'ground floor showing main entrance, living areas, kitchen, common spaces',
-      upper: 'upper floor showing bedrooms, private spaces, bathrooms',
-      roof: 'roof plan showing mechanical equipment, roof access, terraces, skylights'
-    };
+    // Extract detailed project specifications
+    const projectDetails = this.extractProjectDetails(projectContext);
 
-    const levelDesc = levelDescriptions[level] || levelDescriptions.ground;
+    // Build room-specific descriptions based on program details
+    let levelDesc = '';
+    if (projectDetails.programDetail && level === 'ground') {
+      // Use actual program details for ground floor
+      levelDesc = `ground floor ${projectDetails.programDetail}`;
+    } else {
+      // Fallback to generic descriptions
+      const levelDescriptions = {
+        ground: 'ground floor showing main entrance, living areas, kitchen, common spaces',
+        upper: 'upper floor showing bedrooms, private spaces, bathrooms',
+        roof: 'roof plan showing mechanical equipment, roof access, terraces, skylights'
+      };
+      levelDesc = levelDescriptions[level] || levelDescriptions.ground;
+    }
 
     // Create entrance-aware floor plan description
     const entranceNote = level === 'ground'
       ? `entrance on ${this.getCardinalDirection(unifiedDesc.entranceDirection)} side,`
       : '';
 
+    // Build complete room list for the prompt
+    const roomListDetail = projectDetails.programDetail
+      ? `, specific rooms: ${projectDetails.programDetail}`
+      : '';
+
     return {
-      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, showing walls as black lines, doors as arcs, windows as double lines, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
+      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${levelDesc}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -772,7 +851,7 @@ class ReplicateService {
     const renderQuality = highQuality ? { steps: 50, guidanceScale: 7.5 } : { steps: 40, guidanceScale: 7.0 };
 
     return {
-      prompt: `Professional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing, NO 3D perspective, NO rendering, NO colors, professional technical drawing`,
+      prompt: `Professional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, WITH COMPLETE VISIBLE DIMENSIONAL ANNOTATIONS: overall building width in meters with dimension lines and arrows, overall building height from ground to roof peak with vertical dimension lines, floor-to-floor heights labeled (typically 3.0m), window dimensions (width x height), door dimensions, foundation depth below grade, all dimensions clearly marked with extension lines, dimension text readable and professional, scale 1:100, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing with full dimensioning, NO 3D perspective, NO rendering, NO colors, professional technical drawing with measurements`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -798,14 +877,14 @@ class ReplicateService {
       ? 'longitudinal section, length-wise cut through building showing entrance to back'
       : 'cross section, width-wise cut through building';
 
-    // FIX: Use high-quality settings for sharper linework and better detail
-    // High quality: 1536×1152 with 50 steps for crisp, professional technical drawings
-    // Standard quality: 1024×768 with 40 steps for faster previews
+    // ENHANCED: Boost quality settings for sections specifically
+    // High quality: 1536×1152 with 75 steps (increased from 50) and stronger guidance
+    // Standard quality: 1024×768 with 50 steps (increased from 40)
     const resolution = highQuality ? { width: 1536, height: 1152 } : { width: 1024, height: 768 };
-    const renderQuality = highQuality ? { steps: 50, guidanceScale: 7.5 } : { steps: 40, guidanceScale: 7.0 };
+    const renderQuality = highQuality ? { steps: 75, guidanceScale: 8.5 } : { steps: 50, guidanceScale: 8.0 };
 
     return {
-      prompt: `2D architectural section drawing ONLY, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, floor slabs as horizontal lines, walls in section as thick black lines, interior room heights visible, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors' : ''}, foundation line, roof structure in section, ${unifiedDesc.materials} construction indicated with hatching, ORTHOGRAPHIC PROJECTION, section cut line, poché (solid fill) for cut walls, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY`,
+      prompt: `HIGHLY DETAILED 2D architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, MAXIMUM DETAIL construction documentation showing: floor slabs as thick horizontal lines with reinforcement (#4 @ 300mm c/c), walls in section as thick black lines with material layers visible, interior room heights clearly labeled, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors with tread and riser details' : ''}, foundation line with depth annotation (0.5m typical), roof structure in section with rafters and covering, ${unifiedDesc.materials} construction indicated with proper architectural hatching patterns (concrete cross-hatch, brick diagonal lines, insulation wavy lines), ORTHOGRAPHIC PROJECTION, section cut line indicator, poché (solid black fill) for all cut walls and slabs, floor-to-floor heights dimensioned (typically 3.0m), ceiling heights labeled (2.7m typical), all structural elements visible and labeled, CAD-style high-detail technical drawing, professional architectural blueprint with maximum clarity, crisp black and white line drawing ONLY, SHARP LINEWORK, high contrast, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY, professional construction document quality`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -814,7 +893,7 @@ class ReplicateService {
       height: resolution.height,
       steps: renderQuality.steps,
       guidanceScale: renderQuality.guidanceScale,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade"
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low detail, sketchy, artistic, loose lines, unclear"
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
