@@ -307,6 +307,7 @@ class ReplicateService {
   /**
    * Generate multiple architectural views with consistent seed for same project
    * STEP 2: Accept optional controlImage to use floor plan as ControlNet input
+   * FIXED: Add seed variation per view to prevent identical images
    */
   async generateMultipleViews(projectContext, viewTypes = ['exterior', 'interior', 'site_plan'], controlImage = null) {
     const results = {};
@@ -314,11 +315,26 @@ class ReplicateService {
     // STEP 1: Use unified projectSeed from context (no random generation here)
     const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
+    // Define seed offsets for different views to ensure variety while maintaining consistency
+    const seedOffsets = {
+      'exterior': 0,
+      'exterior_front': 0,
+      'exterior_side': 100,      // Different from front
+      'interior': 200,           // Different from exteriors
+      'axonometric': 300,        // Technical view
+      'perspective': 400,        // Artistic view
+      'site_plan': 500
+    };
+
     for (const viewType of viewTypes) {
       try {
         const params = this.buildViewParameters(projectContext, viewType);
-        // Use same seed for consistency across all views
-        params.seed = projectSeed;
+
+        // CRITICAL FIX: Vary seed per view type to prevent identical images
+        const seedOffset = seedOffsets[viewType] || 0;
+        params.seed = projectSeed + seedOffset;
+
+        console.log(`🎲 Generating ${viewType} with seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
 
         // STEP 2: If controlImage is provided, add it for ControlNet guidance
         if (controlImage) {
@@ -648,10 +664,11 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${reasoningPrefix}Professional 3D architectural interior visualization, ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design matching exterior ${materials}, spacious interior with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from ${entranceDir}-facing windows, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture, interior matching project program requirements`,
+          prompt: `${reasoningPrefix}INTERIOR ONLY: Professional 3D architectural interior visualization, inside view of ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design with ${materials} visible indoors, spacious open interior space with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from large windows, professional interior architectural photography, photorealistic interior rendering, high quality, detailed interior furnishings, contemporary furniture and decor, interior space only, interior design matching project program requirements, warm inviting interior atmosphere`,
           perspective: 'interior view',
           width: 1024,
-          height: 768
+          height: 768,
+          negativePrompt: "exterior, outside, facade, building exterior, outdoor, landscape, trees, street, sky visible, exterior walls, building from outside, aerial view, elevation, front view, site plan, technical drawing, blueprint"
         };
 
       case 'site_plan':
@@ -687,7 +704,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Professional architectural perspective rendering of ${unifiedDesc.fullDescription}, dramatic 3D perspective view showing ${entranceDir}-facing entrance with depth and scale, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height, photorealistic architectural rendering, landscape context with trees and people for scale, golden hour lighting, professional architectural visualization, cinematic composition, high quality detailed rendering`,
+          prompt: `${reasoningPrefix}Wide angle aerial perspective rendering of COMPLETE ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, dramatic 3D perspective view from distance showing entire building with ${entranceDir}-facing entrance, FULL BUILDING IN FRAME with surrounding context, ${materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height fully visible${projectDetails.spacesDetail}, photorealistic architectural rendering, landscape context with trees and people for scale providing sense of distance, golden hour lighting, professional architectural visualization from elevated vantage point, cinematic composition showing complete project, high quality detailed rendering with full building view, bird's eye perspective angle capturing entire structure, distant viewpoint`,
           perspective: 'perspective view',
           width: 1024,
           height: 768
