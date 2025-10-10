@@ -704,15 +704,15 @@ class AIIntegrationService {
         // Continue without annotations - originals are still available
       }
 
-      // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) WITH ControlNet for geometric consistency
-      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective) WITH floor plan ControlNet...');
-      // Generate photorealistic views WITH floor plan as ControlNet to ensure geometric consistency
+      // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) WITHOUT ControlNet for proper 3D perspective
+      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective) WITHOUT ControlNet for proper perspective...');
+      // Generate photorealistic views WITHOUT floor plan ControlNet - 3D views need perspective freedom
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
         ['exterior_front', 'exterior_side', 'interior', 'perspective'],
-        floorPlanImage // Use floor plan as ControlNet control to match 2D layout
+        null // NO ControlNet - prevents 2D floor plan from overriding 3D perspective prompts
       );
-      console.log('✅ Photorealistic 3D views generated with ControlNet guidance from floor plan');
+      console.log('✅ Photorealistic 3D views generated with proper perspective freedom');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {

@@ -5,7 +5,7 @@ import {
   MapPin, Upload, Building, Sun, Compass, FileText,
   Palette, Square, Loader2, Sparkles, ArrowRight,
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
-  Users, Shield, Zap, BarChart3, Eye, AlertCircle, X, ZoomIn, ZoomOut, Maximize2
+  Users, Shield, Zap, BarChart3, Eye, AlertCircle, X, ZoomIn, ZoomOut, Maximize2, Settings
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
@@ -1351,7 +1351,9 @@ const ArchitectAIEnhanced = () => {
         // Add style rationale from enhanced OpenAI response
         styleRationale: aiResult.reasoning?.styleRationale || null,
         // Add BIM model from integrated design generation
-        bimModel: aiResult.bimModel || null
+        bimModel: aiResult.bimModel || null,
+        // Add construction documentation (structural plans, MEP plans, engineering notes)
+        constructionDocumentation: aiResult.constructionDocumentation || null
       };
 
       setGeneratedDesigns(designData);
@@ -2821,6 +2823,172 @@ const ArchitectAIEnhanced = () => {
                             </div>
                           </div>
                         )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Construction Documentation - Structural & MEP Plans */}
+              {generatedDesigns?.constructionDocumentation && (
+                <div className="mt-8">
+                  <h3 className="text-2xl font-semibold text-gray-800 mb-6 flex items-center">
+                    <Layers className="w-6 h-6 text-orange-600 mr-3" />
+                    Construction Documentation
+                  </h3>
+
+                  {/* Structural Plans */}
+                  {generatedDesigns.constructionDocumentation.structuralPlans?.plans && (
+                    <div className="mb-8">
+                      <h4 className="text-lg font-semibold text-gray-700 mb-4">Structural Plans</h4>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {generatedDesigns.constructionDocumentation.structuralPlans.plans.map((plan, idx) => (
+                          <div key={idx} className="bg-white rounded-lg p-4 shadow-sm">
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              {plan.levelName || `Level ${idx}`}
+                            </p>
+                            {plan.image ? (
+                              <div
+                                className="bg-gray-50 rounded h-64 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                                onClick={() => openImageModal(plan.image, plan.levelName || `Structural Plan - Level ${idx}`)}
+                              >
+                                <img
+                                  src={plan.image}
+                                  alt={`Structural Plan - ${plan.levelName}`}
+                                  className="w-full h-full object-contain"
+                                />
+                              </div>
+                            ) : (
+                              <div className="bg-gray-100 rounded h-64 flex items-center justify-center">
+                                <FileCode className="w-12 h-12 text-gray-400" />
+                                <span className="ml-2 text-gray-500">Plan pending</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MEP Plans */}
+                  {generatedDesigns.constructionDocumentation.mepPlans?.plans && (
+                    <div className="mb-8">
+                      <h4 className="text-lg font-semibold text-gray-700 mb-4">MEP Plans (Mechanical, Electrical, Plumbing)</h4>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {generatedDesigns.constructionDocumentation.mepPlans.plans.map((plan, idx) => (
+                          <div key={idx} className="bg-white rounded-lg p-4 shadow-sm">
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              Floor {plan.floorIndex + 1} - {plan.system || 'Combined MEP'}
+                            </p>
+                            {plan.image ? (
+                              <div
+                                className="bg-gray-50 rounded h-64 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                                onClick={() => openImageModal(plan.image, `MEP Plan - Floor ${plan.floorIndex + 1}`)}
+                              >
+                                <img
+                                  src={plan.image}
+                                  alt={`MEP Plan - Floor ${plan.floorIndex + 1}`}
+                                  className="w-full h-full object-contain"
+                                />
+                              </div>
+                            ) : (
+                              <div className="bg-gray-100 rounded h-64 flex items-center justify-center">
+                                <Settings className="w-12 h-12 text-gray-400 animate-spin-slow" />
+                                <span className="ml-2 text-gray-500">Plan pending</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Engineering Notes */}
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Structural Notes */}
+                    {generatedDesigns.constructionDocumentation.structuralNotes?.length > 0 && (
+                      <div className="bg-blue-50 rounded-xl p-6">
+                        <h4 className="font-semibold text-gray-800 mb-4">Structural Engineering Notes</h4>
+                        <div className="space-y-3">
+                          {generatedDesigns.constructionDocumentation.structuralNotes.map((note, idx) => (
+                            <div key={idx} className="border-l-4 border-blue-400 pl-4">
+                              <p className="text-sm font-medium text-gray-700 mb-1">
+                                {note.levelName || `Level ${note.level}`}
+                              </p>
+                              <div className="text-sm text-gray-600 space-y-1">
+                                {note.notes?.specifications && (
+                                  <p>• <strong>Specs:</strong> {note.notes.specifications}</p>
+                                )}
+                                {note.notes?.loadCalculations && (
+                                  <p>• <strong>Loads:</strong> {note.notes.loadCalculations}</p>
+                                )}
+                                {note.notes?.codeCompliance && (
+                                  <p>• <strong>Code:</strong> {note.notes.codeCompliance}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MEP Notes */}
+                    {generatedDesigns.constructionDocumentation.mepNotes?.length > 0 && (
+                      <div className="bg-green-50 rounded-xl p-6">
+                        <h4 className="font-semibold text-gray-800 mb-4">MEP Engineering Notes</h4>
+                        <div className="space-y-3">
+                          {generatedDesigns.constructionDocumentation.mepNotes.map((note, idx) => (
+                            <div key={idx} className="border-l-4 border-green-400 pl-4">
+                              <p className="text-sm font-medium text-gray-700 mb-1">
+                                Floor {note.floorIndex + 1} - {note.system || 'All Systems'}
+                              </p>
+                              <div className="text-sm text-gray-600 space-y-1">
+                                {note.notes?.specifications && (
+                                  <p>• <strong>Equipment:</strong> {note.notes.specifications}</p>
+                                )}
+                                {note.notes?.capacity && (
+                                  <p>• <strong>Capacity:</strong> {note.notes.capacity}</p>
+                                )}
+                                {note.notes?.efficiency && (
+                                  <p>• <strong>Efficiency:</strong> {note.notes.efficiency}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Detail Drawings */}
+                  {generatedDesigns.constructionDocumentation.detailDrawings?.details && (
+                    <div className="mt-8">
+                      <h4 className="text-lg font-semibold text-gray-700 mb-4">Construction Details</h4>
+                      <div className="grid md:grid-cols-3 gap-6">
+                        {generatedDesigns.constructionDocumentation.detailDrawings.details.map((detail, idx) => (
+                          <div key={idx} className="bg-white rounded-lg p-4 shadow-sm">
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              {detail.detailName || `Detail ${idx + 1}`}
+                            </p>
+                            {detail.image ? (
+                              <div
+                                className="bg-gray-50 rounded h-48 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+                                onClick={() => openImageModal(detail.image, detail.detailName)}
+                              >
+                                <img
+                                  src={detail.image}
+                                  alt={detail.detailName}
+                                  className="w-full h-full object-contain"
+                                />
+                              </div>
+                            ) : (
+                              <div className="bg-gray-100 rounded h-48 flex items-center justify-center">
+                                <Square className="w-10 h-10 text-gray-400" />
+                                <span className="ml-2 text-gray-500 text-sm">Detail pending</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
