@@ -884,12 +884,13 @@ class AIIntegrationService {
       // STEP 3.7: Generate multiple 3D views with reasoning guidance for consistency
       console.log('🏗️ Step 7: Generating 3D photorealistic views with OpenAI reasoning guidance...');
       // Generate photorealistic views with reasoning guidance for consistency
+      // CRITICAL FIX: Include axonometric in main generation to ensure it's always created
       const views = await this.replicate.generateMultipleViews(
         reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
-        ['exterior_front', 'exterior_side', 'interior', 'perspective'],
+        ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
         null // NO ControlNet - prevents 2D floor plan from overriding 3D perspective prompts
       );
-      console.log('✅ Photorealistic 3D views generated with unified design framework');
+      console.log('✅ Photorealistic 3D views generated with unified design framework (including axonometric)');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
