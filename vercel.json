@@ -7,20 +7,6 @@
       "maxDuration": 60
     }
   },
-  "rewrites": [
-    {
-      "source": "/api/openai-chat",
-      "destination": "/api/openai-chat.js"
-    },
-    {
-      "source": "/api/replicate-predictions",
-      "destination": "/api/replicate-predictions.js"
-    },
-    {
-      "source": "/api/replicate-status",
-      "destination": "/api/replicate-status.js"
-    }
-  ],
   "headers": [
     {
       "source": "/api/(.*)",
