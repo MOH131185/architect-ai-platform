@@ -1187,7 +1187,7 @@ const ArchitectAIEnhanced = () => {
 
         // Fallback placeholder
         if (!floorPlans.ground) {
-          floorPlans.ground = 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Loading';
+          floorPlans.ground = 'https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Loading';
           console.log('⚠️ No floor plan found, using placeholder');
         }
 
@@ -1222,7 +1222,7 @@ const ArchitectAIEnhanced = () => {
               drawings.elevations[dir] = td[key].images[0];
               console.log(`✅ Extracted ${dir} elevation`);
             } else if (td[key]?.isFallback) {
-              drawings.elevations[dir] = `https://via.placeholder.com/1024x768/8B4513/FFFFFF?text=${dir.charAt(0).toUpperCase() + dir.slice(1)}+Elevation`;
+              drawings.elevations[dir] = `https://placehold.co/1024x768/8B4513/FFFFFF?text=${dir.charAt(0).toUpperCase() + dir.slice(1)}+Elevation`;
               console.log(`⚠️ Using fallback for ${dir} elevation`);
             }
           });
@@ -1234,7 +1234,7 @@ const ArchitectAIEnhanced = () => {
               drawings.sections[type] = td[key].images[0];
               console.log(`✅ Extracted ${type} section`);
             } else if (td[key]?.isFallback) {
-              drawings.sections[type] = `https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=${type.charAt(0).toUpperCase() + type.slice(1)}+Section`;
+              drawings.sections[type] = `https://placehold.co/1024x768/F5A623/FFFFFF?text=${type.charAt(0).toUpperCase() + type.slice(1)}+Section`;
               console.log(`⚠️ Using fallback for ${type} section`);
             }
           });
@@ -1242,11 +1242,11 @@ const ArchitectAIEnhanced = () => {
 
         // Add at least one fallback if nothing was extracted
         if (Object.keys(drawings.elevations).length === 0) {
-          drawings.elevations.north = 'https://via.placeholder.com/1024x768/8B4513/FFFFFF?text=Elevation+Loading';
+          drawings.elevations.north = 'https://placehold.co/1024x768/8B4513/FFFFFF?text=Elevation+Loading';
           console.log('⚠️ No elevations found, using placeholder');
         }
         if (Object.keys(drawings.sections).length === 0) {
-          drawings.sections.longitudinal = 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Section+Loading';
+          drawings.sections.longitudinal = 'https://placehold.co/1024x768/F5A623/FFFFFF?text=Section+Loading';
           console.log('⚠️ No sections found, using placeholder');
         }
 
@@ -1308,7 +1308,7 @@ const ArchitectAIEnhanced = () => {
 
         // Fallback placeholder if no images found
         if (images.length === 0) {
-          images.push('https://via.placeholder.com/1024x768/34495e/ffffff?text=3D+Preview+Loading');
+          images.push('https://placehold.co/1024x768/34495e/ffffff?text=3D+Preview+Loading');
           console.log('⚠️ No 3D images found, using placeholder');
         }
 

@@ -1423,7 +1423,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       success: false,
       isFallback: true,
       floorPlan: {
-        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
+        images: ['https://placehold.co/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
         message: 'Using placeholder floor plan - API unavailable'
       },
       type: '2d_floor_plan',
@@ -1439,7 +1439,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       success: false,
       isFallback: true,
       preview3D: {
-        images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
+        images: ['https://placehold.co/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
         message: 'Using placeholder 3D preview - API unavailable'
       },
       type: '3d_preview',
@@ -1454,18 +1454,18 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const floorCount = this.calculateFloorCount(projectContext);
     const fallbackPlans = {
       ground: {
-        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan'],
+        images: ['https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan'],
         success: false
       },
       roof: {
-        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Roof+Plan'],
+        images: ['https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Roof+Plan'],
         success: false
       }
     };
 
     if (floorCount > 1) {
       fallbackPlans.upper = {
-        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Upper+Floor+Plan'],
+        images: ['https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Upper+Floor+Plan'],
         success: false
       };
     }
@@ -1489,27 +1489,27 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       isFallback: true,
       technicalDrawings: {
         elevation_north: {
-          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=North+Elevation'],
+          images: ['https://placehold.co/1024x768/34495E/FFFFFF?text=North+Elevation'],
           success: false
         },
         elevation_south: {
-          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=South+Elevation'],
+          images: ['https://placehold.co/1024x768/34495E/FFFFFF?text=South+Elevation'],
           success: false
         },
         elevation_east: {
-          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=East+Elevation'],
+          images: ['https://placehold.co/1024x768/34495E/FFFFFF?text=East+Elevation'],
           success: false
         },
         elevation_west: {
-          images: ['https://via.placeholder.com/1024x768/34495E/FFFFFF?text=West+Elevation'],
+          images: ['https://placehold.co/1024x768/34495E/FFFFFF?text=West+Elevation'],
           success: false
         },
         section_longitudinal: {
-          images: ['https://via.placeholder.com/1024x768/2C3E50/FFFFFF?text=Longitudinal+Section'],
+          images: ['https://placehold.co/1024x768/2C3E50/FFFFFF?text=Longitudinal+Section'],
           success: false
         },
         section_cross: {
-          images: ['https://via.placeholder.com/1024x768/2C3E50/FFFFFF?text=Cross+Section'],
+          images: ['https://placehold.co/1024x768/2C3E50/FFFFFF?text=Cross+Section'],
           success: false
         }
       },
@@ -1526,23 +1526,23 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
     // Return placeholder image URLs based on view type
     const fallbackImages = {
-      exterior: 'https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder',
-      exterior_front: 'https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Front+View',
-      exterior_side: 'https://via.placeholder.com/1024x768/5AA3E5/FFFFFF?text=Side+View',
-      interior: 'https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder',
-      site_plan: 'https://via.placeholder.com/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder',
-      section: 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Section+View+Placeholder',
-      section_longitudinal: 'https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=Longitudinal+Section',
-      section_cross: 'https://via.placeholder.com/1024x768/E89611/FFFFFF?text=Cross+Section',
-      floor_plan: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder',
-      floor_plan_ground: 'https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan',
-      floor_plan_upper: 'https://via.placeholder.com/1024x1024/34495E/FFFFFF?text=Upper+Floor+Plan',
-      floor_plan_roof: 'https://via.placeholder.com/1024x1024/1A252F/FFFFFF?text=Roof+Plan',
-      elevation_north: 'https://via.placeholder.com/1024x768/8B4513/FFFFFF?text=North+Elevation',
-      elevation_south: 'https://via.placeholder.com/1024x768/A0522D/FFFFFF?text=South+Elevation',
-      elevation_east: 'https://via.placeholder.com/1024x768/CD853F/FFFFFF?text=East+Elevation',
-      elevation_west: 'https://via.placeholder.com/1024x768/D2691E/FFFFFF?text=West+Elevation',
-      '3d_preview': 'https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'
+      exterior: 'https://placehold.co/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder',
+      exterior_front: 'https://placehold.co/1024x768/4A90E2/FFFFFF?text=Front+View',
+      exterior_side: 'https://placehold.co/1024x768/5AA3E5/FFFFFF?text=Side+View',
+      interior: 'https://placehold.co/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder',
+      site_plan: 'https://placehold.co/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder',
+      section: 'https://placehold.co/1024x768/F5A623/FFFFFF?text=Section+View+Placeholder',
+      section_longitudinal: 'https://placehold.co/1024x768/F5A623/FFFFFF?text=Longitudinal+Section',
+      section_cross: 'https://placehold.co/1024x768/E89611/FFFFFF?text=Cross+Section',
+      floor_plan: 'https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder',
+      floor_plan_ground: 'https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Ground+Floor+Plan',
+      floor_plan_upper: 'https://placehold.co/1024x1024/34495E/FFFFFF?text=Upper+Floor+Plan',
+      floor_plan_roof: 'https://placehold.co/1024x1024/1A252F/FFFFFF?text=Roof+Plan',
+      elevation_north: 'https://placehold.co/1024x768/8B4513/FFFFFF?text=North+Elevation',
+      elevation_south: 'https://placehold.co/1024x768/A0522D/FFFFFF?text=South+Elevation',
+      elevation_east: 'https://placehold.co/1024x768/CD853F/FFFFFF?text=East+Elevation',
+      elevation_west: 'https://placehold.co/1024x768/D2691E/FFFFFF?text=West+Elevation',
+      '3d_preview': 'https://placehold.co/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'
     };
 
     return {

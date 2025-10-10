@@ -747,17 +747,17 @@ class AIIntegrationService {
       exterior: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder']
+        images: ['https://placehold.co/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder']
       },
       interior: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder']
+        images: ['https://placehold.co/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder']
       },
       site_plan: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder']
+        images: ['https://placehold.co/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder']
       }
     };
   }
@@ -770,17 +770,17 @@ class AIIntegrationService {
       modern: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Modern+Style+Placeholder']
+        images: ['https://placehold.co/1024x768/4A90E2/FFFFFF?text=Modern+Style+Placeholder']
       },
       sustainable: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
+        images: ['https://placehold.co/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
       },
       contemporary: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Contemporary+Style+Placeholder']
+        images: ['https://placehold.co/1024x768/9013FE/FFFFFF?text=Contemporary+Style+Placeholder']
       }
     };
   }
@@ -792,7 +792,7 @@ class AIIntegrationService {
     return {
       success: false,
       isFallback: true,
-      images: ['https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=AI+Reasoning+Based+Placeholder']
+      images: ['https://placehold.co/1024x768/F5A623/FFFFFF?text=AI+Reasoning+Based+Placeholder']
     };
   }
 
@@ -833,7 +833,7 @@ class AIIntegrationService {
         success: false,
         isFallback: true,
         floorPlan: {
-          images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
+          images: ['https://placehold.co/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
           message: 'Using placeholder floor plan - API unavailable'
         },
         type: '2d_floor_plan'
@@ -842,7 +842,7 @@ class AIIntegrationService {
         success: false,
         isFallback: true,
         preview3D: {
-          images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
+          images: ['https://placehold.co/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
           message: 'Using placeholder 3D preview - API unavailable'
         },
         type: '3d_preview'
@@ -901,28 +901,28 @@ class AIIntegrationService {
       floorPlan: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder']
+        images: ['https://placehold.co/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder']
       },
       preview3D: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder']
+        images: ['https://placehold.co/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder']
       },
       styleVariations: {
         contemporary: {
           success: false,
           isFallback: true,
-          images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Contemporary+Style+Placeholder']
+          images: ['https://placehold.co/1024x768/4A90E2/FFFFFF?text=Contemporary+Style+Placeholder']
         },
         sustainable: {
           success: false,
           isFallback: true,
-          images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
+          images: ['https://placehold.co/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
         },
         innovative: {
           success: false,
           isFallback: true,
-          images: ['https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Innovative+Style+Placeholder']
+          images: ['https://placehold.co/1024x768/9013FE/FFFFFF?text=Innovative+Style+Placeholder']
         }
       },
       isFallback: true,
