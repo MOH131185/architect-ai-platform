@@ -664,45 +664,10 @@ class AIIntegrationService {
       );
       console.log('✅ All technical drawings generated as independent 2D orthographic projections');
 
-      // STEP 3.6.5: Annotate elevations and sections with dimensions
-      console.log('📐 Annotating technical drawings with dimensions...');
-      try {
-        const td = technicalDrawings?.technicalDrawings;
-        if (td) {
-          // Annotate elevations
-          ['north', 'south', 'east', 'west'].forEach(dir => {
-            const key = `elevation_${dir}`;
-            if (td[key]?.images && td[key].images.length > 0) {
-              const baseImage = td[key].images[0];
-              const annotatedSvg = this.dimensioning.annotateElevation(baseImage, {
-                direction: dir,
-                height: enhancedContext.buildingHeight || '12m',
-                width: enhancedContext.buildingWidth || '20m'
-              });
-              td[key].annotated = annotatedSvg;
-              console.log(`✅ Annotated ${dir} elevation`);
-            }
-          });
-
-          // Annotate sections
-          ['longitudinal', 'cross'].forEach(type => {
-            const key = `section_${type}`;
-            if (td[key]?.images && td[key].images.length > 0) {
-              const baseImage = td[key].images[0];
-              const annotatedSvg = this.dimensioning.annotateSection(baseImage, {
-                type: type,
-                floors: enhancedContext.floors || 1
-              });
-              td[key].annotated = annotatedSvg;
-              console.log(`✅ Annotated ${type} section`);
-            }
-          });
-        }
-        console.log('✅ Technical drawing annotation complete');
-      } catch (annoError) {
-        console.error('⚠️ Elevation annotation failed:', annoError.message);
-        // Continue without annotations - originals are still available
-      }
+      // STEP 3.6.5: Skip dimensioning annotation (causing errors with undefined BIM model)
+      // TODO: Fix dimensioning service to work with image URLs instead of BIM models
+      console.log('⏭️  Skipping dimension annotation (not yet compatible with image-based workflow)');
+      // The generated elevations and sections will be displayed without additional annotations
 
       // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) WITHOUT ControlNet for proper 3D perspective
       console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective) WITHOUT ControlNet for proper perspective...');
