@@ -3,6 +3,7 @@
  * Combines OpenAI reasoning with Replicate generation for complete AI-powered architectural workflow
  */
 
+import logger from '../utils/productionLogger';
 import openaiService from './openaiService';
 import replicateService from './replicateService';
 import portfolioStyleDetection from './portfolioStyleDetection';
@@ -26,20 +27,20 @@ class AIIntegrationService {
    */
   async generateCompleteDesign(projectContext) {
     try {
-      console.log('Starting complete AI design workflow...');
-      
+      logger.info('Starting complete AI design workflow...');
+
       // Step 1: Generate design reasoning
       const reasoning = await this.generateDesignReasoning(projectContext);
-      
+
       // Step 2: Generate architectural visualizations
       const visualizations = await this.generateVisualizations(projectContext, reasoning);
-      
+
       // Step 3: Generate design alternatives
       const alternatives = await this.generateDesignAlternatives(projectContext, reasoning);
-      
+
       // Step 4: Analyze feasibility
       const feasibility = await this.analyzeFeasibility(projectContext);
-      
+
       return {
         success: true,
         reasoning,
@@ -52,7 +53,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Complete design workflow error:', error);
+      logger.error('Complete design workflow error:', error);
       return {
         success: false,
         error: error.message,
@@ -66,16 +67,16 @@ class AIIntegrationService {
    */
   async generateDesignReasoning(projectContext) {
     try {
-      console.log('Generating design reasoning...');
+      logger.info('Generating design reasoning...');
       const reasoning = await this.openai.generateDesignReasoning(projectContext);
-      
+
       return {
         ...reasoning,
         source: 'openai',
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Design reasoning error:', error);
+      logger.error('Design reasoning error:', error);
       return {
         designPhilosophy: 'Contextual and sustainable design approach',
         spatialOrganization: 'Functional and flexible spatial arrangement',
@@ -98,13 +99,13 @@ class AIIntegrationService {
    */
   async generateVisualizations(projectContext, reasoning) {
     try {
-      console.log('Generating architectural visualizations with unified design framework...');
+      logger.verbose('Generating architectural visualizations with unified design framework...');
 
       // CRITICAL FIX: Create enhanced context with OpenAI reasoning embedded
       const reasoningEnhancedContext = this.createReasoningEnhancedContext(projectContext, reasoning);
 
       // Generate multiple views with reasoning-enhanced context
-      console.log('🎨 Generating views with OpenAI-guided design parameters...');
+      logger.verbose('🎨 Generating views with OpenAI-guided design parameters...');
       const views = await this.replicate.generateMultipleViews(
         reasoningEnhancedContext,
         ['exterior_front', 'exterior_side', 'interior']
@@ -132,7 +133,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Visualization generation error:', error);
+      logger.error('Visualization generation error:', error);
       return {
         views: this.getFallbackViews(),
         styleVariations: this.getFallbackStyleVariations(),
@@ -149,7 +150,7 @@ class AIIntegrationService {
    */
   async generateDesignAlternatives(projectContext, reasoning) {
     try {
-      console.log('Generating design alternatives...');
+      logger.verbose('Generating design alternatives...');
       
       const approaches = ['sustainable', 'cost_effective', 'innovative', 'traditional'];
       const alternatives = {};
@@ -172,7 +173,7 @@ class AIIntegrationService {
             approach
           };
         } catch (error) {
-          console.error(`Error generating ${approach} alternative:`, error);
+          logger.error(`Error generating ${approach} alternative:`, error);
           alternatives[approach] = {
             error: error.message,
             approach
@@ -187,7 +188,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Design alternatives error:', error);
+      logger.error('Design alternatives error:', error);
       return {
         alternatives: this.getFallbackAlternatives(),
         source: 'fallback',
@@ -202,10 +203,10 @@ class AIIntegrationService {
    */
   async analyzeFeasibility(projectContext) {
     try {
-      console.log('Analyzing project feasibility...');
+      logger.verbose('Analyzing project feasibility...');
       return await this.openai.analyzeFeasibility(projectContext);
     } catch (error) {
-      console.error('Feasibility analysis error:', error);
+      logger.error('Feasibility analysis error:', error);
       return {
         feasibility: 'Medium',
         constraints: ['Detailed analysis unavailable'],
@@ -319,7 +320,7 @@ class AIIntegrationService {
    * @returns {Object} Master design specification with exact parameters
    */
   createMasterDesignSpecification(projectContext, reasoning, blendedStyle) {
-    console.log('🏗️ Creating Master Design Specification (Design DNA)...');
+    logger.verbose('🏗️ Creating Master Design Specification (Design DNA)...');
 
     // Extract dimensions from project context
     const floorArea = projectContext.floorArea || projectContext.area || 200;
@@ -390,7 +391,7 @@ class AIIntegrationService {
       }
     };
 
-    console.log('✅ Master Design Specification created:', {
+    logger.verbose('✅ Master Design Specification created:', {
       dimensions: `${masterSpec.dimensions.length}m × ${masterSpec.dimensions.width}m × ${masterSpec.dimensions.height}m`,
       entrance: `${masterSpec.entrance.facade} facade`,
       materials: `${masterSpec.materials.primary}, ${masterSpec.materials.secondary}`,
@@ -531,7 +532,7 @@ class AIIntegrationService {
    * This ensures ALL Replicate calls use the same architectural framework
    */
   createReasoningEnhancedContext(projectContext, reasoning) {
-    console.log('🔧 Creating unified design framework from OpenAI reasoning...');
+    logger.verbose('🔧 Creating unified design framework from OpenAI reasoning...');
 
     // Extract key design parameters from reasoning
     const extractedParams = {
@@ -560,7 +561,7 @@ class AIIntegrationService {
     };
 
     // Log extracted parameters for debugging
-    console.log('📋 Extracted design parameters:', {
+    logger.verbose('📋 Extracted design parameters:', {
       philosophy: extractedParams.designPhilosophy.substring(0, 50) + '...',
       materials: extractedParams.materials,
       spatial: extractedParams.spatialOrganization.substring(0, 50) + '...',
@@ -692,7 +693,7 @@ class AIIntegrationService {
       CONSISTENCY: All views must show the SAME building with identical materials, colors, and architectural features
     `.trim().replace(/\s+/g, ' ');
 
-    console.log('🏛️ Unified architectural prompt created:', unifiedPrompt.substring(0, 100) + '...');
+    logger.verbose('🏛️ Unified architectural prompt created:', unifiedPrompt.substring(0, 100) + '...');
 
     return unifiedPrompt;
   }
@@ -922,13 +923,13 @@ class AIIntegrationService {
    */
   async generateFloorPlanAnd3DPreview(projectContext, portfolioImages = []) {
     try {
-      console.log('Starting comprehensive architectural generation with OpenAI reasoning guidance...');
+      logger.verbose('Starting comprehensive architectural generation with OpenAI reasoning guidance...');
 
       // STEP 1: Use projectSeed from context (generated once in frontend)
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       const enhancedContext = { ...projectContext, seed: projectSeed };
 
-      console.log(`🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`);
+      logger.verbose(`🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`);
 
       // Step 1: Detect architectural style from portfolio if provided
       let styleDetection = null;
@@ -940,7 +941,7 @@ class AIIntegrationService {
       }
 
       // CRITICAL FIX: Generate design reasoning FIRST to guide all subsequent generation
-      console.log('🧠 Generating OpenAI design reasoning to create unified architectural framework...');
+      logger.verbose('🧠 Generating OpenAI design reasoning to create unified architectural framework...');
       const reasoning = await this.generateDesignReasoningWithStyle(
         enhancedContext,
         styleDetection
@@ -950,18 +951,18 @@ class AIIntegrationService {
       const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);
 
       // Step 2: Generate multi-level floor plans with reasoning guidance
-      console.log('🏗️ Generating multi-level floor plans guided by OpenAI reasoning...');
+      logger.verbose('🏗️ Generating multi-level floor plans guided by OpenAI reasoning...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);
 
       // STEP 2: Capture ground floor plan image URL for use as ControlNet control
       let floorPlanControlImage = null;
       if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
         floorPlanControlImage = floorPlans.floorPlans.ground.images[0];
-        console.log('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
+        logger.verbose('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
       }
 
       // Step 3: Generate elevations and sections with reasoning guidance
-      console.log('🏗️ Generating all elevations (N,S,E,W) and sections with OpenAI reasoning guidance...');
+      logger.verbose('🏗️ Generating all elevations (N,S,E,W) and sections with OpenAI reasoning guidance...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         reasoningEnhancedContext,  // Use reasoning-enhanced context
         true, // Generate all drawings (4 elevations + 2 sections)
@@ -969,7 +970,7 @@ class AIIntegrationService {
       );
 
       // Step 4: Generate 3D views with reasoning guidance for consistency
-      console.log('🏗️ Generating 3D photorealistic views with OpenAI reasoning guidance for consistency...');
+      logger.verbose('🏗️ Generating 3D photorealistic views with OpenAI reasoning guidance for consistency...');
       const views = await this.replicate.generateMultipleViews(
         reasoningEnhancedContext,  // Use reasoning-enhanced context
         ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
@@ -990,7 +991,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Floor plan and 3D preview generation error:', error);
+      logger.error('Floor plan and 3D preview generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -1010,12 +1011,12 @@ class AIIntegrationService {
    */
   async generateIntegratedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
     try {
-      console.log('🎯 Starting integrated design generation workflow with OpenAI reasoning guidance...');
-      console.log('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
-      console.log('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
+      logger.verbose('🎯 Starting integrated design generation workflow with OpenAI reasoning guidance...');
+      logger.verbose('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
+      logger.verbose('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
 
       // STEP 3.1: Location analysis
-      console.log('📍 Step 1: Analyzing location and architectural context...');
+      logger.verbose('📍 Step 1: Analyzing location and architectural context...');
       const locationAnalysis = locationIntelligence.recommendArchitecturalStyle(
         projectContext.location,
         projectContext.climateData || { type: 'temperate' }
@@ -1027,7 +1028,7 @@ class AIIntegrationService {
         locationAnalysis: locationAnalysis
       };
 
-      console.log('✅ Location analysis complete:', {
+      logger.verbose('✅ Location analysis complete:', {
         primary: locationAnalysis.primary,
         materials: locationAnalysis.materials?.slice(0, 3),
         climateAdaptations: locationAnalysis.climateAdaptations?.features?.slice(0, 3)
@@ -1036,19 +1037,19 @@ class AIIntegrationService {
       // STEP 3.2: Optional portfolio style detection
       let portfolioStyle = null;
       if (portfolioImages && portfolioImages.length > 0) {
-        console.log('🎨 Step 2: Detecting portfolio style from', portfolioImages.length, 'images...');
+        logger.verbose('🎨 Step 2: Detecting portfolio style from', portfolioImages.length, 'images...');
         portfolioStyle = await this.portfolioStyleDetection.detectArchitecturalStyle(
           portfolioImages,
           projectContext.location
         );
         enhancedContext.portfolioStyle = portfolioStyle;
-        console.log('✅ Portfolio style detected:', portfolioStyle?.primaryStyle?.style);
+        logger.verbose('✅ Portfolio style detected:', portfolioStyle?.primaryStyle?.style);
       } else {
-        console.log('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
+        logger.verbose('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
       }
 
       // STEP 4: Blended style creation with granular weighted merging
-      console.log('🎨 Step 3: Creating blended style with separate material and characteristic weights');
+      logger.verbose('🎨 Step 3: Creating blended style with separate material and characteristic weights');
       const blendedStyle = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
       enhancedContext.blendedStyle = blendedStyle;
       enhancedContext.blendedPrompt = blendedStyle.description; // Keep backward compatibility
@@ -1057,53 +1058,53 @@ class AIIntegrationService {
       enhancedContext.architecturalStyle = blendedStyle.styleName;
       enhancedContext.materials = blendedStyle.materials.slice(0, 3).join(', ') || projectContext.materials;
 
-      console.log('✅ Blended style created:', blendedStyle.styleName);
+      logger.verbose('✅ Blended style created:', blendedStyle.styleName);
 
       // STEP 3.4: Use unified seed from projectContext
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       enhancedContext.seed = projectSeed;
-      console.log('🎲 Using unified seed:', projectSeed);
+      logger.verbose('🎲 Using unified seed:', projectSeed);
 
       // CRITICAL FIX: Generate design reasoning FIRST with blended style context
-      console.log('🧠 Step 4: Generating OpenAI design reasoning to create unified architectural framework...');
+      logger.verbose('🧠 Step 4: Generating OpenAI design reasoning to create unified architectural framework...');
       const reasoning = await this.openai.generateDesignReasoning(enhancedContext);
 
       // STEP 4.1: Create Master Design Specification (Design DNA) for consistency
-      console.log('🏗️ Step 4.1: Creating Master Design Specification (Design DNA)...');
+      logger.verbose('🏗️ Step 4.1: Creating Master Design Specification (Design DNA)...');
       const masterDesignSpec = this.createMasterDesignSpecification(enhancedContext, reasoning, blendedStyle);
       enhancedContext.masterDesignSpec = masterDesignSpec;
 
       // Create reasoning-enhanced context that will be used for ALL image generation
       const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);
-      console.log('✅ Unified design framework created from OpenAI reasoning with Master Design Spec');
+      logger.verbose('✅ Unified design framework created from OpenAI reasoning with Master Design Spec');
 
       // STEP 3.5: Generate multi-level floor plans with reasoning guidance
-      console.log('🏗️ Step 5: Generating multi-level floor plans with OpenAI reasoning guidance...');
+      logger.verbose('🏗️ Step 5: Generating multi-level floor plans with OpenAI reasoning guidance...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);
 
       // Capture ground floor plan image for ControlNet
       let floorPlanImage = null;
       if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
         floorPlanImage = floorPlans.floorPlans.ground.images[0];
-        console.log('✅ Ground floor plan generated, captured for ControlNet control');
+        logger.verbose('✅ Ground floor plan generated, captured for ControlNet control');
       }
 
       // STEP 3.6: Generate elevations and sections with reasoning guidance
-      console.log('🏗️ Step 6: Generating all elevations and sections with OpenAI reasoning guidance...');
+      logger.verbose('🏗️ Step 6: Generating all elevations and sections with OpenAI reasoning guidance...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
         true, // generateAllDrawings - generate all 4 elevations + 2 sections
         null // No ControlNet - elevations/sections must be independent 2D orthographic projections
       );
-      console.log('✅ All technical drawings generated with unified design framework');
+      logger.verbose('✅ All technical drawings generated with unified design framework');
 
       // STEP 3.6.5: Skip dimensioning annotation (causing errors with undefined BIM model)
       // TODO: Fix dimensioning service to work with image URLs instead of BIM models
-      console.log('⏭️  Skipping dimension annotation (not yet compatible with image-based workflow)');
+      logger.verbose('⏭️  Skipping dimension annotation (not yet compatible with image-based workflow)');
       // The generated elevations and sections will be displayed without additional annotations
 
       // STEP 3.7: Generate multiple 3D views with reasoning guidance for consistency
-      console.log('🏗️ Step 7: Generating 3D photorealistic views with OpenAI reasoning guidance...');
+      logger.verbose('🏗️ Step 7: Generating 3D photorealistic views with OpenAI reasoning guidance...');
       // Generate photorealistic views with reasoning guidance for consistency
       // CRITICAL FIX: Include axonometric in main generation to ensure it's always created
       const views = await this.replicate.generateMultipleViews(
@@ -1111,7 +1112,7 @@ class AIIntegrationService {
         ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
         null // NO ControlNet - prevents 2D floor plan from overriding 3D perspective prompts
       );
-      console.log('✅ Photorealistic 3D views generated with unified design framework (including axonometric)');
+      logger.verbose('✅ Photorealistic 3D views generated with unified design framework (including axonometric)');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -1127,7 +1128,7 @@ class AIIntegrationService {
         }
       };
 
-      console.log('✅ Combined results:', {
+      logger.verbose('✅ Combined results:', {
         floorPlans: combinedResults.metadata.floorPlansSuccess ? 'Success' : 'Failed',
         technicalDrawings: combinedResults.metadata.technicalDrawingsSuccess ? 'Success' : 'Failed',
         views: combinedResults.metadata.viewsSuccess ? 'Success' : 'Failed',
@@ -1136,7 +1137,7 @@ class AIIntegrationService {
       });
 
       // STEP 3.8: Generate parametric BIM model with reasoning guidance
-      console.log('🏗️ Step 8: Generating parametric BIM model with OpenAI reasoning guidance...');
+      logger.verbose('🏗️ Step 8: Generating parametric BIM model with OpenAI reasoning guidance...');
       let bimModel = null;
       let bimAxonometric = null;
       let axonometricSource = 'none';
@@ -1155,10 +1156,10 @@ class AIIntegrationService {
           floorPlanGeometry: floorPlanGeometry, // NEW: Pass AI-generated geometry to BIM
           elevations: technicalDrawings
         });
-        console.log('✅ BIM model generated with unified design framework');
+        logger.verbose('✅ BIM model generated with unified design framework');
 
         // STEP 3.9: Derive geometrically accurate axonometric view from BIM
-        console.log('🏗️ Deriving axonometric view from BIM model...');
+        logger.verbose('🏗️ Deriving axonometric view from BIM model...');
         try {
           bimAxonometric = this.bim.deriveAxonometric(bimModel, {
             angle: 30,
@@ -1167,10 +1168,10 @@ class AIIntegrationService {
             showDimensions: true
           });
           axonometricSource = 'bim';
-          console.log('✅ Axonometric view derived from BIM (geometrically consistent)');
+          logger.verbose('✅ Axonometric view derived from BIM (geometrically consistent)');
         } catch (axonometricError) {
-          console.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
-          console.log('↩️  Falling back to Replicate for axonometric view WITH ControlNet...');
+          logger.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
+          logger.verbose('↩️  Falling back to Replicate for axonometric view WITH ControlNet...');
           // Fallback: Generate axonometric using Replicate WITH floor plan ControlNet if BIM fails
           try {
             const fallbackAxonometric = await this.replicate.generateMultipleViews(
@@ -1181,17 +1182,17 @@ class AIIntegrationService {
             if (fallbackAxonometric?.axonometric?.images?.[0]) {
               bimAxonometric = fallbackAxonometric.axonometric.images[0];
               axonometricSource = 'replicate_fallback';
-              console.log('✅ Axonometric generated from Replicate fallback with ControlNet guidance');
-              console.warn('⚠️ Using Replicate fallback axonometric - may not be fully consistent with BIM geometry');
+              logger.verbose('✅ Axonometric generated from Replicate fallback with ControlNet guidance');
+              logger.warn('⚠️ Using Replicate fallback axonometric - may not be fully consistent with BIM geometry');
             }
           } catch (fallbackError) {
-            console.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
+            logger.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
             axonometricSource = 'failed';
           }
         }
       } catch (bimError) {
-        console.error('⚠️ BIM generation failed:', bimError.message);
-        console.log('↩️  Falling back to Replicate for axonometric view WITH ControlNet...');
+        logger.error('⚠️ BIM generation failed:', bimError.message);
+        logger.verbose('↩️  Falling back to Replicate for axonometric view WITH ControlNet...');
         // Fallback: Generate axonometric using Replicate WITH floor plan ControlNet if entire BIM generation fails
         try {
           const fallbackAxonometric = await this.replicate.generateMultipleViews(
@@ -1202,26 +1203,26 @@ class AIIntegrationService {
           if (fallbackAxonometric?.axonometric?.images?.[0]) {
             bimAxonometric = fallbackAxonometric.axonometric.images[0];
             axonometricSource = 'replicate_fallback';
-            console.log('✅ Axonometric generated from Replicate fallback (BIM unavailable) with ControlNet guidance');
-            console.warn('⚠️ Using Replicate fallback axonometric - may not be fully consistent with BIM geometry');
+            logger.verbose('✅ Axonometric generated from Replicate fallback (BIM unavailable) with ControlNet guidance');
+            logger.warn('⚠️ Using Replicate fallback axonometric - may not be fully consistent with BIM geometry');
           }
         } catch (fallbackError) {
-          console.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
+          logger.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
           axonometricSource = 'failed';
         }
       }
 
       // STEP 3.10: Generate construction documentation (always enabled)
-      console.log('🏗️ Step 9: Generating construction documentation (structural + MEP)...');
+      logger.verbose('🏗️ Step 9: Generating construction documentation (structural + MEP)...');
       let constructionDocumentation = null;
       try {
         constructionDocumentation = await this.generateConstructionDocumentation(
           reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
           floorPlanImage
         );
-        console.log('✅ Construction documentation generated');
+        logger.verbose('✅ Construction documentation generated');
       } catch (constructionError) {
-        console.error('⚠️ Construction documentation generation failed:', constructionError.message);
+        logger.error('⚠️ Construction documentation generation failed:', constructionError.message);
         constructionDocumentation = {
           success: false,
           error: constructionError.message,
@@ -1262,7 +1263,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('❌ Integrated design generation error:', error);
+      logger.error('❌ Integrated design generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -1287,9 +1288,9 @@ class AIIntegrationService {
     const localMatWeight = 1 - matWeight;
     const localCharWeight = 1 - charWeight;
 
-    console.log(`🎨 Blending styles with:`);
-    console.log(`   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`);
-    console.log(`   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`);
+    logger.verbose(`🎨 Blending styles with:`);
+    logger.verbose(`   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`);
+    logger.verbose(`   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`);
 
     // Extract local style descriptors
     const localDescriptors = {
@@ -1326,7 +1327,7 @@ class AIIntegrationService {
 
     // FIX 1: Short circuit when both weights are zero (100% local)
     if (matWeight === 0 && charWeight === 0) {
-      console.log('🏛️ Pure local design requested (0% portfolio influence)');
+      logger.verbose('🏛️ Pure local design requested (0% portfolio influence)');
       const materialList = localDescriptors.materials.slice(0, 3).join(', ') || 'local materials';
       const charList = localDescriptors.characteristics.slice(0, 4).join(', ') || 'traditional characteristics';
       return {
@@ -1379,7 +1380,7 @@ class AIIntegrationService {
     if (overallWeight <= 0.05) {
       // Pure local (threshold for rounding errors and very small weights)
       blendedStyleName = localDescriptors.primary;
-      console.log('🏛️ Style name: Pure local (no portfolio influences)');
+      logger.verbose('🏛️ Style name: Pure local (no portfolio influences)');
     } else if (overallWeight < 0.3) {
       // Local dominant
       blendedStyleName = `${localDescriptors.primary} with subtle ${portfolioDescriptors.primary} influences`;
@@ -1432,13 +1433,13 @@ class AIIntegrationService {
 
     // FIX 3: Handle pure local case (0% portfolio)
     if (matWeightPct === 0 && charWeightPct === 0) {
-      console.log('🏛️ Description: Pure local (no portfolio references)');
+      logger.verbose('🏛️ Description: Pure local (no portfolio references)');
       return `${localDesc.primary} architectural style using local materials (${materialList}) and traditional characteristics (${charList}), fully rooted in regional context`;
     }
 
     if (weight <= 0.05) {
       // Near-zero portfolio influence (handles small rounding errors)
-      console.log('🏛️ Description: Essentially pure local (minimal portfolio influence)');
+      logger.verbose('🏛️ Description: Essentially pure local (minimal portfolio influence)');
       return `${localDesc.primary} architectural style using local materials (${materialList}) and traditional characteristics (${charList}), fully rooted in regional context`;
     }
 
@@ -1466,7 +1467,7 @@ class AIIntegrationService {
     // STEP 4: Use sophisticated style blending with separate weights
     const blendedStyle = this.blendStyles(locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
 
-    console.log('🎨 Blended style created:', {
+    logger.verbose('🎨 Blended style created:', {
       name: blendedStyle.styleName,
       overallRatio: `${Math.round(blendedStyle.blendRatio.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.portfolio * 100)}% portfolio`,
       materialRatio: `${Math.round(blendedStyle.blendRatio.materials.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.materials.portfolio * 100)}% portfolio`,
@@ -1494,7 +1495,7 @@ class AIIntegrationService {
 
       return await this.openai.generateDesignReasoning(enhancedContext);
     } catch (error) {
-      console.error('Style-enhanced reasoning error:', error);
+      logger.error('Style-enhanced reasoning error:', error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -1504,7 +1505,7 @@ class AIIntegrationService {
    */
   async generateStyleOptimizedDesign(projectContext, portfolioImages) {
     try {
-      console.log('Starting style-optimized design generation...');
+      logger.verbose('Starting style-optimized design generation...');
       
       // Step 1: Analyze portfolio for style detection
       const styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
@@ -1546,7 +1547,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Style-optimized design error:', error);
+      logger.error('Style-optimized design error:', error);
       return {
         success: false,
         error: error.message,
@@ -1609,15 +1610,15 @@ class AIIntegrationService {
       };
 
       // Generate multi-level floor plans with style optimization
-      console.log('🏗️ Generating style-optimized multi-level floor plans...');
+      logger.verbose('🏗️ Generating style-optimized multi-level floor plans...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(styledContext);
 
       // Generate elevations and sections with style optimization
-      console.log('🏗️ Generating style-optimized elevations and sections...');
+      logger.verbose('🏗️ Generating style-optimized elevations and sections...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(styledContext);
 
       // Generate 3D views (2 exterior + 1 interior) with style optimization
-      console.log('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
+      logger.verbose('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
       const views = await this.replicate.generateMultipleViews(
         styledContext,
         ['exterior_front', 'exterior_side', 'interior']
@@ -1639,7 +1640,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Style-optimized visualization error:', error);
+      logger.error('Style-optimized visualization error:', error);
       return this.getFallbackVisualizations();
     }
   }
@@ -1649,7 +1650,7 @@ class AIIntegrationService {
    */
   async quickDesign(projectContext) {
     try {
-      console.log('Starting quick design generation...');
+      logger.verbose('Starting quick design generation...');
       
       // Generate basic reasoning
       const reasoning = await this.openai.generateDesignReasoning(projectContext);
@@ -1670,7 +1671,7 @@ class AIIntegrationService {
       };
 
     } catch (error) {
-      console.error('Quick design error:', error);
+      logger.error('Quick design error:', error);
       return {
         success: false,
         error: error.message,
@@ -1722,11 +1723,11 @@ class AIIntegrationService {
         note: 'BIM will derive dimensions from project context to match AI floor plan scale'
       };
 
-      console.log('📐 Extracted floor plan geometry:', geometry);
+      logger.verbose('📐 Extracted floor plan geometry:', geometry);
 
       return geometry;
     } catch (error) {
-      console.error('⚠️ Floor plan geometry extraction failed:', error.message);
+      logger.error('⚠️ Floor plan geometry extraction failed:', error.message);
       return { extracted: false, source: 'fallback' };
     }
   }
@@ -1740,7 +1741,7 @@ class AIIntegrationService {
    */
   async generateConstructionDocumentation(projectContext, controlImage = null) {
     try {
-      console.log('📋 Starting comprehensive construction documentation generation...');
+      logger.verbose('📋 Starting comprehensive construction documentation generation...');
 
       const results = {
         success: true,
@@ -1757,33 +1758,33 @@ class AIIntegrationService {
       const floorCount = projectContext.floors || 1;
 
       // STEP 1: Generate construction detail drawings at specified scale
-      console.log(`🔍 Generating construction detail drawings at 1:${detailScale} scale...`);
+      logger.verbose(`🔍 Generating construction detail drawings at 1:${detailScale} scale...`);
       try {
         results.detailDrawings = await this.replicate.generateConstructionDetails(
           projectContext,
           detailScale
         );
-        console.log(`✅ Detail drawings generated (${results.detailDrawings?.details?.length || 0} floors)`);
+        logger.verbose(`✅ Detail drawings generated (${results.detailDrawings?.details?.length || 0} floors)`);
       } catch (detailError) {
-        console.error('⚠️ Detail drawing generation failed:', detailError.message);
+        logger.error('⚠️ Detail drawing generation failed:', detailError.message);
         results.detailDrawings = { success: false, error: detailError.message };
       }
 
       // STEP 2: Generate structural plans (foundation + all floors)
-      console.log('🏗️ Generating structural plans for foundation and all floors...');
+      logger.verbose('🏗️ Generating structural plans for foundation and all floors...');
       try {
         results.structuralPlans = await this.replicate.generateStructuralPlans(
           projectContext,
           controlImage
         );
-        console.log(`✅ Structural plans generated (${results.structuralPlans?.plans?.length || 0} levels)`);
+        logger.verbose(`✅ Structural plans generated (${results.structuralPlans?.plans?.length || 0} levels)`);
       } catch (structuralError) {
-        console.error('⚠️ Structural plan generation failed:', structuralError.message);
+        logger.error('⚠️ Structural plan generation failed:', structuralError.message);
         results.structuralPlans = { success: false, error: structuralError.message };
       }
 
       // STEP 3: Generate MEP plans (all systems: HVAC, electrical, plumbing, combined)
-      console.log('⚡ Generating MEP plans (HVAC, electrical, plumbing, combined)...');
+      logger.verbose('⚡ Generating MEP plans (HVAC, electrical, plumbing, combined)...');
       try {
         // Generate combined MEP plans for all floors
         results.mepPlans = await this.replicate.generateMEPPlans(
@@ -1791,14 +1792,14 @@ class AIIntegrationService {
           'combined', // Generate combined MEP system layout
           controlImage
         );
-        console.log(`✅ MEP plans generated (${results.mepPlans?.plans?.length || 0} floors)`);
+        logger.verbose(`✅ MEP plans generated (${results.mepPlans?.plans?.length || 0} floors)`);
       } catch (mepError) {
-        console.error('⚠️ MEP plan generation failed:', mepError.message);
+        logger.error('⚠️ MEP plan generation failed:', mepError.message);
         results.mepPlans = { success: false, error: mepError.message };
       }
 
       // STEP 4: Generate structural engineering notes for all floors
-      console.log('📝 Generating structural engineering notes with code compliance and calculations...');
+      logger.verbose('📝 Generating structural engineering notes with code compliance and calculations...');
       try {
         for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
           const structuralNotes = await this.openai.generateStructuralNotes(
@@ -1811,14 +1812,14 @@ class AIIntegrationService {
             notes: structuralNotes
           });
         }
-        console.log(`✅ Structural notes generated for ${results.structuralNotes.length} levels`);
+        logger.verbose(`✅ Structural notes generated for ${results.structuralNotes.length} levels`);
       } catch (structuralNotesError) {
-        console.error('⚠️ Structural notes generation failed:', structuralNotesError.message);
+        logger.error('⚠️ Structural notes generation failed:', structuralNotesError.message);
         results.structuralNotes = [{ error: structuralNotesError.message, isFallback: true }];
       }
 
       // STEP 5: Generate MEP engineering notes for all floors
-      console.log('📝 Generating MEP engineering notes with equipment specs and code compliance...');
+      logger.verbose('📝 Generating MEP engineering notes with equipment specs and code compliance...');
       try {
         for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
           const mepNotes = await this.openai.generateMEPNotes(
@@ -1832,9 +1833,9 @@ class AIIntegrationService {
             notes: mepNotes
           });
         }
-        console.log(`✅ MEP notes generated for ${results.mepNotes.length} floors`);
+        logger.verbose(`✅ MEP notes generated for ${results.mepNotes.length} floors`);
       } catch (mepNotesError) {
-        console.error('⚠️ MEP notes generation failed:', mepNotesError.message);
+        logger.error('⚠️ MEP notes generation failed:', mepNotesError.message);
         results.mepNotes = [{ error: mepNotesError.message, isFallback: true }];
       }
 
@@ -1846,7 +1847,7 @@ class AIIntegrationService {
         (results.structuralNotes.length > 0 && !results.structuralNotes[0]?.isFallback) ||
         (results.mepNotes.length > 0 && !results.mepNotes[0]?.isFallback);
 
-      console.log('✅ Construction documentation generation complete:', {
+      logger.verbose('✅ Construction documentation generation complete:', {
         detailDrawings: results.detailDrawings?.success !== false ? 'Success' : 'Failed',
         structuralPlans: results.structuralPlans?.success !== false ? 'Success' : 'Failed',
         mepPlans: results.mepPlans?.success !== false ? 'Success' : 'Failed',
@@ -1857,7 +1858,7 @@ class AIIntegrationService {
       return results;
 
     } catch (error) {
-      console.error('❌ Construction documentation generation failed:', error);
+      logger.error('❌ Construction documentation generation failed:', error);
       return {
         success: false,
         error: error.message,

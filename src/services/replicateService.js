@@ -3,6 +3,8 @@
  * Uses SDXL Multi-ControlNet LoRA for architectural visualization
  */
 
+import logger from '../utils/productionLogger';
+
 const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
 
 // Use Vercel serverless functions in production, local proxy in development
@@ -18,7 +20,7 @@ class ReplicateService {
   constructor() {
     this.apiKey = REPLICATE_API_KEY;
     if (!this.apiKey) {
-      console.warn('Replicate API key not found. Image generation will use placeholder images.');
+      logger.warn('Replicate API key not found. Image generation will use placeholder images.');
     }
   }
 
@@ -178,7 +180,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    */
   async generateArchitecturalImage(generationParams) {
     if (!this.apiKey) {
-      console.warn('No Replicate API key, using fallback image');
+      logger.warn('No Replicate API key, using fallback image');
       const fallback = this.getFallbackImage(generationParams);
       return {
         success: false,
@@ -202,8 +204,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('Replicate generation error:', error);
-      console.warn('Using fallback image due to error');
+      logger.error('Replicate generation error:', error);
+      logger.warn('Using fallback image due to error');
       const fallback = this.getFallbackImage(generationParams);
       return {
         success: false,
@@ -314,7 +316,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       controlNetParams.image = params.controlImage || params.image;
       // Use moderate conditioning - guides layout without forcing exact replication
       controlNetParams.controlnet_conditioning_scale = params.conditioning_scale || 0.5;
-      console.log('🎯 ControlNet enabled with conditioning scale:', controlNetParams.controlnet_conditioning_scale);
+      logger.verbose('🎯 ControlNet enabled with conditioning scale:', controlNetParams.controlnet_conditioning_scale);
     }
 
     if (params.controlType) {
@@ -361,24 +363,24 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         if (isTechnicalView) {
           // Use SAME seed for technical views to ensure geometric consistency
           params.seed = projectSeed;
-          console.log(`🎯 Technical view ${viewType} using consistent seed: ${params.seed}`);
+          logger.verbose(`🎯 Technical view ${viewType} using consistent seed: ${params.seed}`);
         } else if (isArtisticView) {
           // Use varied seed for artistic views to allow aesthetic variety
           const seedOffset = artisticSeedOffsets[viewType] || 0;
           params.seed = projectSeed + seedOffset;
-          console.log(`🎨 Artistic view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
+          logger.verbose(`🎨 Artistic view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
         } else {
           // Default to consistent seed for unknown view types
           params.seed = projectSeed;
-          console.log(`🔧 Default view ${viewType} using consistent seed: ${params.seed}`);
+          logger.verbose(`🔧 Default view ${viewType} using consistent seed: ${params.seed}`);
         }
 
-        console.log(`🎲 Generating ${viewType} with seed: ${params.seed} (base: ${projectSeed})`);
+        logger.verbose(`🎲 Generating ${viewType} with seed: ${params.seed} (base: ${projectSeed})`);
 
         // STEP 2: If controlImage is provided, add it for ControlNet guidance
         if (controlImage) {
           params.image = controlImage;
-          console.log(`🎯 Using floor plan as ControlNet control for ${viewType} view`);
+          logger.verbose(`🎯 Using floor plan as ControlNet control for ${viewType} view`);
         }
 
         return {
@@ -386,7 +388,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
           promise: this.generateArchitecturalImage(params)
         };
       } catch (error) {
-        console.error(`Error building parameters for ${viewType} view:`, error);
+        logger.error(`Error building parameters for ${viewType} view:`, error);
         return {
           viewType,
           promise: Promise.resolve({
@@ -420,7 +422,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     });
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`✅ 3D views generated in ${elapsedTime}s (parallel execution, ${viewTypes.length} views)`);
+    logger.verbose(`✅ 3D views generated in ${elapsedTime}s (parallel execution, ${viewTypes.length} views)`);
 
     return results;
   }
@@ -444,12 +446,12 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
       // PERFORMANCE OPTIMIZATION: Generate all floor plans in parallel
-      console.log('🏗️ Generating floor plans (parallel execution)...');
+      logger.verbose('🏗️ Generating floor plans (parallel execution)...');
 
       // Build parameters for all plans
       const groundParams = this.buildFloorPlanParameters(projectContext, 'ground');
       groundParams.seed = projectSeed;
-      console.log('Floor plan params:', groundParams.viewType, groundParams.prompt?.substring(0, 100));
+      logger.verbose('Floor plan params:', groundParams.viewType, groundParams.prompt?.substring(0, 100));
 
       const planPromises = [
         { key: 'ground', promise: this.generateArchitecturalImage(groundParams) }
@@ -459,14 +461,14 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       if (generateAllLevels) {
         // Generate upper floors if multi-story
         if (floorCount > 1) {
-          console.log(`🏗️ Generating upper floor plan (${floorCount - 1} levels)...`);
+          logger.verbose(`🏗️ Generating upper floor plan (${floorCount - 1} levels)...`);
           const upperParams = this.buildFloorPlanParameters(projectContext, 'upper');
           upperParams.seed = projectSeed;
           planPromises.push({ key: 'upper', promise: this.generateArchitecturalImage(upperParams) });
         }
 
         // Generate roof plan
-        console.log('🏗️ Generating roof plan...');
+        logger.verbose('🏗️ Generating roof plan...');
         const roofParams = this.buildFloorPlanParameters(projectContext, 'roof');
         roofParams.seed = projectSeed;
         planPromises.push({ key: 'roof', promise: this.generateArchitecturalImage(roofParams) });
@@ -480,11 +482,11 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       // Collect results
       planResults.forEach(({ key, result }) => {
         results[key] = result;
-        console.log(`${key} floor result:`, result.success ? 'Success' : 'Failed', result.isFallback ? '(Fallback)' : '');
+        logger.verbose(`${key} floor result:`, result.success ? 'Success' : 'Failed', result.isFallback ? '(Fallback)' : '');
       });
 
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ Floor plans generated in ${elapsedTime}s (parallel execution)`);
+      logger.verbose(`✅ Floor plans generated in ${elapsedTime}s (parallel execution)`);
 
       return {
         success: true,
@@ -496,7 +498,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('Multi-level floor plan generation error:', error);
+      logger.error('Multi-level floor plan generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -524,7 +526,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
       if (controlImage) {
-        console.log('🎯 Using floor plan as ControlNet control for technical drawings');
+        logger.verbose('🎯 Using floor plan as ControlNet control for technical drawings');
       }
 
       // PERFORMANCE OPTIMIZATION: Generate all technical drawings in parallel
@@ -533,7 +535,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       if (generateAllDrawings) {
         // FIX: Use high-quality settings when generating all drawings (full documentation set)
         // High quality: 1536×1152 with 50 steps for crisp, professional technical drawings
-        console.log('🏗️ Generating elevations (N, S, E, W) with HIGH QUALITY settings (1536×1152, 50 steps)...');
+        logger.verbose('🏗️ Generating elevations (N, S, E, W) with HIGH QUALITY settings (1536×1152, 50 steps)...');
         for (const direction of ['north', 'south', 'east', 'west']) {
           const params = this.buildElevationParameters(projectContext, direction, true); // highQuality = true
           params.seed = projectSeed;
@@ -545,7 +547,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         }
 
         // Generate 2 sections with high quality
-        console.log('🏗️ Generating sections (longitudinal, cross) with HIGH QUALITY settings (1536×1152, 50 steps)...');
+        logger.verbose('🏗️ Generating sections (longitudinal, cross) with HIGH QUALITY settings (1536×1152, 50 steps)...');
         for (const sectionType of ['longitudinal', 'cross']) {
           const params = this.buildSectionParameters(projectContext, sectionType, true); // highQuality = true
           params.seed = projectSeed;
@@ -563,7 +565,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         const mainDirection = this.getCardinalDirection(entranceDir);
         const sideDirection = this.getPerpendicularDirection(mainDirection);
 
-        console.log(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection}) with STANDARD QUALITY settings (1024×768, 40 steps)...`);
+        logger.verbose(`🏗️ Generating main elevation (${mainDirection}) and side elevation (${sideDirection}) with STANDARD QUALITY settings (1024×768, 40 steps)...`);
 
         const mainParams = this.buildElevationParameters(projectContext, mainDirection.toLowerCase(), false); // highQuality = false
         mainParams.seed = projectSeed;
@@ -582,7 +584,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         });
 
         // Generate one section (longitudinal) with standard quality
-        console.log('🏗️ Generating longitudinal section with STANDARD QUALITY settings (1024×768, 40 steps)...');
+        logger.verbose('🏗️ Generating longitudinal section with STANDARD QUALITY settings (1024×768, 40 steps)...');
         const sectionParams = this.buildSectionParameters(projectContext, 'longitudinal', false); // highQuality = false
         sectionParams.seed = projectSeed;
         if (controlImage) sectionParams.image = controlImage;
@@ -603,7 +605,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       });
 
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ Technical drawings generated in ${elapsedTime}s (parallel execution, ${drawingPromises.length} drawings)`);
+      logger.verbose(`✅ Technical drawings generated in ${elapsedTime}s (parallel execution, ${drawingPromises.length} drawings)`);
 
       return {
         success: true,
@@ -614,7 +616,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('Elevations and sections generation error:', error);
+      logger.error('Elevations and sections generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -686,7 +688,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('Floor plan generation error:', error);
+      logger.error('Floor plan generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -716,7 +718,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('3D preview generation error:', error);
+      logger.error('3D preview generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -878,7 +880,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         const result = await this.generateArchitecturalImage(params);
         results[style] = result;
       } catch (error) {
-        console.error(`Error generating ${style} variation:`, error);
+        logger.error(`Error generating ${style} variation:`, error);
         results[style] = {
           success: false,
           error: error.message,
@@ -1089,7 +1091,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // STEP 2: If controlImage is provided, add it for ControlNet guidance
     if (controlImage) {
       params.image = controlImage;
-      console.log('🎯 Using floor plan as ControlNet control image for 3D preview');
+      logger.verbose('🎯 Using floor plan as ControlNet control image for 3D preview');
     }
 
     return params;
@@ -1215,7 +1217,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       const results = {};
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
-      console.log(`🔧 Generating construction details at 1:${scale} scale for ${floorCount} floor(s) (parallel execution)...`);
+      logger.verbose(`🔧 Generating construction details at 1:${scale} scale for ${floorCount} floor(s) (parallel execution)...`);
 
       // PERFORMANCE OPTIMIZATION: Generate all floors in parallel
       const detailPromises = [];
@@ -1223,7 +1225,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         const params = this.buildDetailParameters(projectContext, floorIndex, scale);
         params.seed = projectSeed + floorIndex; // Vary seed slightly per floor
 
-        console.log(`  📐 Floor ${floorIndex + 1} details...`);
+        logger.verbose(`  📐 Floor ${floorIndex + 1} details...`);
         detailPromises.push({
           key: `floor_${floorIndex}`,
           promise: this.generateArchitecturalImage(params)
@@ -1241,7 +1243,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       });
 
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ Construction details generated in ${elapsedTime}s (parallel execution)`);
+      logger.verbose(`✅ Construction details generated in ${elapsedTime}s (parallel execution)`);
 
       return {
         success: true,
@@ -1254,7 +1256,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('Construction details generation error:', error);
+      logger.error('Construction details generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -1288,7 +1290,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       const results = {};
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
-      console.log(`🏗️ Generating structural plans for ${floorCount + 1} level(s) (including foundation, parallel execution)...`);
+      logger.verbose(`🏗️ Generating structural plans for ${floorCount + 1} level(s) (including foundation, parallel execution)...`);
 
       // PERFORMANCE OPTIMIZATION: Generate foundation + all floors in parallel
       const structuralPromises = [];
@@ -1298,7 +1300,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         if (controlImage) params.image = controlImage;
 
         const levelName = floorIndex === 0 ? 'foundation' : `floor_${floorIndex}`;
-        console.log(`  🏛️ ${levelName} structural plan...`);
+        logger.verbose(`  🏛️ ${levelName} structural plan...`);
         structuralPromises.push({
           key: levelName,
           promise: this.generateArchitecturalImage(params)
@@ -1316,7 +1318,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       });
 
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ Structural plans generated in ${elapsedTime}s (parallel execution)`);
+      logger.verbose(`✅ Structural plans generated in ${elapsedTime}s (parallel execution)`);
 
       return {
         success: true,
@@ -1328,7 +1330,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('Structural plans generation error:', error);
+      logger.error('Structural plans generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -1363,7 +1365,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       const results = {};
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
-      console.log(`⚡ Generating ${system.toUpperCase()} MEP plans for ${floorCount} floor(s) (parallel execution)...`);
+      logger.verbose(`⚡ Generating ${system.toUpperCase()} MEP plans for ${floorCount} floor(s) (parallel execution)...`);
 
       // PERFORMANCE OPTIMIZATION: Generate all floors in parallel
       const mepPromises = [];
@@ -1372,7 +1374,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         params.seed = projectSeed + floorIndex * 100; // Vary seed per floor
         if (controlImage) params.image = controlImage;
 
-        console.log(`  ⚙️  Floor ${floorIndex + 1} ${system} MEP plan...`);
+        logger.verbose(`  ⚙️  Floor ${floorIndex + 1} ${system} MEP plan...`);
         mepPromises.push({
           key: `floor_${floorIndex}`,
           promise: this.generateArchitecturalImage(params)
@@ -1390,7 +1392,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       });
 
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-      console.log(`✅ MEP plans generated in ${elapsedTime}s (parallel execution)`);
+      logger.verbose(`✅ MEP plans generated in ${elapsedTime}s (parallel execution)`);
 
       return {
         success: true,
@@ -1403,7 +1405,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       };
 
     } catch (error) {
-      console.error('MEP plans generation error:', error);
+      logger.error('MEP plans generation error:', error);
       return {
         success: false,
         error: error.message,
