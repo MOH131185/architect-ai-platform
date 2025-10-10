@@ -311,6 +311,221 @@ class AIIntegrationService {
   }
 
   /**
+   * Create Master Design Specification (Design DNA)
+   * Extracts exact building parameters to ensure consistency across all views
+   * @param {Object} projectContext - Project context with location and requirements
+   * @param {Object} reasoning - OpenAI design reasoning
+   * @param {Object} blendedStyle - Blended style from portfolio + local analysis
+   * @returns {Object} Master design specification with exact parameters
+   */
+  createMasterDesignSpecification(projectContext, reasoning, blendedStyle) {
+    console.log('🏗️ Creating Master Design Specification (Design DNA)...');
+
+    // Extract dimensions from project context
+    const floorArea = projectContext.floorArea || projectContext.area || 200;
+    const floorCount = this.calculateFloorCount(projectContext);
+    const buildingProgram = projectContext.buildingProgram || 'residential';
+    
+    // Calculate building footprint (assume rectangular)
+    const aspectRatio = 1.2; // Slightly rectangular
+    const length = Math.sqrt(floorArea * aspectRatio);
+    const width = floorArea / length;
+    const floorHeight = buildingProgram.includes('commercial') ? 3.5 : 3.0;
+    const totalHeight = floorCount * floorHeight;
+
+    // Determine entrance position from reasoning or default to north
+    const entranceFacade = this.extractEntranceFacade(reasoning) || 'north';
+    const entrancePosition = 'centered';
+    const entranceWidth = 2.4; // Standard door width
+
+    // Extract materials from blended style (priority over reasoning)
+    const materials = this.extractBlendedMaterials(blendedStyle, reasoning);
+    
+    // Determine roof type from reasoning and building program
+    const roofType = this.extractRoofType(reasoning, buildingProgram);
+    
+    // Extract window pattern from architectural style
+    const windowPattern = this.extractWindowPattern(reasoning, blendedStyle);
+    
+    // Determine structural system based on building type and height
+    const structuralSystem = this.determineStructuralSystem(buildingProgram, floorCount);
+    
+    // Define color scheme based on materials
+    const colorScheme = this.defineColorScheme(materials);
+
+    const masterSpec = {
+      dimensions: {
+        length: Math.round(length * 10) / 10,
+        width: Math.round(width * 10) / 10,
+        height: Math.round(totalHeight * 10) / 10,
+        floors: floorCount,
+        floorHeight: floorHeight
+      },
+      entrance: {
+        facade: entranceFacade,
+        position: entrancePosition,
+        width: entranceWidth
+      },
+      materials: {
+        primary: materials.primary,
+        secondary: materials.secondary,
+        accent: materials.accent
+      },
+      roof: {
+        type: roofType.type,
+        material: roofType.material
+      },
+      windows: {
+        pattern: windowPattern.pattern,
+        frameColor: windowPattern.frameColor
+      },
+      structure: {
+        system: structuralSystem.system,
+        gridSpacing: structuralSystem.gridSpacing
+      },
+      colors: {
+        facade: colorScheme.facade,
+        roof: colorScheme.roof,
+        trim: colorScheme.trim
+      }
+    };
+
+    console.log('✅ Master Design Specification created:', {
+      dimensions: `${masterSpec.dimensions.length}m × ${masterSpec.dimensions.width}m × ${masterSpec.dimensions.height}m`,
+      entrance: `${masterSpec.entrance.facade} facade`,
+      materials: `${masterSpec.materials.primary}, ${masterSpec.materials.secondary}`,
+      floors: masterSpec.dimensions.floors
+    });
+
+    return masterSpec;
+  }
+
+  /**
+   * Calculate floor count based on area and building type
+   */
+  calculateFloorCount(projectContext) {
+    const area = projectContext.floorArea || projectContext.area || 200;
+    const buildingType = projectContext.buildingProgram || 'house';
+
+    if (buildingType.includes('cottage') || buildingType.includes('bungalow')) {
+      return 1;
+    }
+
+    if (area < 150) return 1;
+    if (area < 300) return 2;
+    if (area < 500) return 3;
+    return Math.min(Math.ceil(area / 200), 5);
+  }
+
+  /**
+   * Extract entrance facade from reasoning
+   */
+  extractEntranceFacade(reasoning) {
+    if (reasoning.spatialOrganization && typeof reasoning.spatialOrganization === 'string') {
+      const spatial = reasoning.spatialOrganization.toLowerCase();
+      if (spatial.includes('north')) return 'north';
+      if (spatial.includes('south')) return 'south';
+      if (spatial.includes('east')) return 'east';
+      if (spatial.includes('west')) return 'west';
+    }
+    return 'north'; // Default
+  }
+
+  /**
+   * Extract materials from blended style with fallback to reasoning
+   */
+  extractBlendedMaterials(blendedStyle, reasoning) {
+    if (blendedStyle?.materials && blendedStyle.materials.length >= 3) {
+      return {
+        primary: blendedStyle.materials[0],
+        secondary: blendedStyle.materials[1],
+        accent: blendedStyle.materials[2]
+      };
+    }
+
+    // Fallback to reasoning materials
+    const materialText = reasoning.materialRecommendations || '';
+    const materials = ['brick', 'glass', 'steel', 'concrete', 'wood', 'stone'];
+    const foundMaterials = materials.filter(material => 
+      materialText.toLowerCase().includes(material)
+    );
+
+    return {
+      primary: foundMaterials[0] || 'brick',
+      secondary: foundMaterials[1] || 'glass',
+      accent: foundMaterials[2] || 'steel'
+    };
+  }
+
+  /**
+   * Extract roof type from reasoning and building program
+   */
+  extractRoofType(reasoning, buildingProgram) {
+    const reasoningText = JSON.stringify(reasoning).toLowerCase();
+    
+    if (reasoningText.includes('flat roof') || buildingProgram.includes('commercial')) {
+      return { type: 'flat', material: 'membrane' };
+    }
+    if (reasoningText.includes('pitched') || reasoningText.includes('gable')) {
+      return { type: 'gable', material: 'slate' };
+    }
+    if (reasoningText.includes('hip')) {
+      return { type: 'hip', material: 'tile' };
+    }
+    
+    return { type: 'flat', material: 'membrane' }; // Default
+  }
+
+  /**
+   * Extract window pattern from reasoning and style
+   */
+  extractWindowPattern(reasoning, blendedStyle) {
+    const styleName = blendedStyle?.styleName?.toLowerCase() || '';
+    
+    if (styleName.includes('modern') || styleName.includes('contemporary')) {
+      return { pattern: 'ribbon', frameColor: 'black' };
+    }
+    if (styleName.includes('traditional')) {
+      return { pattern: 'punched', frameColor: 'white' };
+    }
+    
+    return { pattern: 'ribbon', frameColor: 'black' }; // Default
+  }
+
+  /**
+   * Determine structural system based on building type and height
+   */
+  determineStructuralSystem(buildingProgram, floorCount) {
+    if (floorCount <= 2) {
+      return { system: 'load_bearing_masonry', gridSpacing: 4 };
+    }
+    if (floorCount <= 5) {
+      return { system: 'concrete_frame', gridSpacing: 6 };
+    }
+    return { system: 'steel_frame', gridSpacing: 8 };
+  }
+
+  /**
+   * Define color scheme based on materials
+   */
+  defineColorScheme(materials) {
+    const colorMap = {
+      brick: '#B8735C',
+      stone: '#8B7355',
+      glass: '#87CEEB',
+      steel: '#708090',
+      concrete: '#A9A9A9',
+      wood: '#8B4513'
+    };
+
+    return {
+      facade: colorMap[materials.primary] || '#B8735C',
+      roof: '#2C3E50',
+      trim: '#1C1C1C'
+    };
+  }
+
+  /**
    * CRITICAL FIX: Create reasoning-enhanced context for consistent image generation
    * Extracts specific design parameters from OpenAI reasoning and embeds them into context
    * This ensures ALL Replicate calls use the same architectural framework
@@ -356,7 +571,8 @@ class AIIntegrationService {
     return {
       ...projectContext,
       // Override basic parameters with reasoning-derived ones
-      materials: extractedParams.materials,
+      // CRITICAL FIX: Prioritize blended materials over reasoning-extracted materials
+      materials: projectContext.blendedStyle?.materials?.slice(0, 3).join(', ') || extractedParams.materials,
       architecturalStyle: this.extractArchitecturalStyle(reasoning, projectContext),
 
       // Add new reasoning-derived parameters
@@ -852,9 +1068,14 @@ class AIIntegrationService {
       console.log('🧠 Step 4: Generating OpenAI design reasoning to create unified architectural framework...');
       const reasoning = await this.openai.generateDesignReasoning(enhancedContext);
 
+      // STEP 4.1: Create Master Design Specification (Design DNA) for consistency
+      console.log('🏗️ Step 4.1: Creating Master Design Specification (Design DNA)...');
+      const masterDesignSpec = this.createMasterDesignSpecification(enhancedContext, reasoning, blendedStyle);
+      enhancedContext.masterDesignSpec = masterDesignSpec;
+
       // Create reasoning-enhanced context that will be used for ALL image generation
       const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);
-      console.log('✅ Unified design framework created from OpenAI reasoning');
+      console.log('✅ Unified design framework created from OpenAI reasoning with Master Design Spec');
 
       // STEP 3.5: Generate multi-level floor plans with reasoning guidance
       console.log('🏗️ Step 5: Generating multi-level floor plans with OpenAI reasoning guidance...');
@@ -990,24 +1211,22 @@ class AIIntegrationService {
         }
       }
 
-      // STEP 3.10: Optional construction documentation generation with reasoning guidance
+      // STEP 3.10: Generate construction documentation (always enabled)
+      console.log('🏗️ Step 9: Generating construction documentation (structural + MEP)...');
       let constructionDocumentation = null;
-      if (projectContext.generateConstructionDocs) {
-        console.log('🏗️ Step 9: Generating construction documentation with OpenAI reasoning guidance...');
-        try {
-          constructionDocumentation = await this.generateConstructionDocumentation(
-            reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
-            floorPlanImage
-          );
-          console.log('✅ Construction documentation generated with unified design framework');
-        } catch (constructionError) {
-          console.error('⚠️ Construction documentation generation failed:', constructionError.message);
-          constructionDocumentation = {
-            success: false,
-            error: constructionError.message,
-            note: 'Construction documentation unavailable - continuing with base design'
-          };
-        }
+      try {
+        constructionDocumentation = await this.generateConstructionDocumentation(
+          reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
+          floorPlanImage
+        );
+        console.log('✅ Construction documentation generated');
+      } catch (constructionError) {
+        console.error('⚠️ Construction documentation generation failed:', constructionError.message);
+        constructionDocumentation = {
+          success: false,
+          error: constructionError.message,
+          note: 'Construction documentation unavailable - continuing with base design'
+        };
       }
 
       // Calculate overall blend weight for backward compatibility

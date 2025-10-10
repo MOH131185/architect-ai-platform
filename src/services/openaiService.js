@@ -121,6 +121,13 @@ BLENDED STYLE APPROACH:
 - Design Characteristics: ${blendedStyle.characteristics?.slice(0, 5).join(', ') || 'Not specified'}
 - Description: ${blendedStyle.description || 'Balanced fusion of local and portfolio styles'}` : '';
 
+    // CRITICAL MATERIAL CONSTRAINT: Force use of blended materials only
+    const materialConstraint = blendedStyle ? `
+CRITICAL MATERIAL CONSTRAINT:
+You MUST use ONLY these exact materials in your design: ${blendedStyle.materials?.slice(0, 5).join(', ')}
+DO NOT recommend alternative materials. These materials have been carefully selected to blend portfolio preferences with local context.
+Your material recommendations must match these materials exactly.` : '';
+
     return `
 Analyze this architectural project and provide comprehensive design reasoning with specific focus on style integration and climate adaptation:
 
@@ -135,6 +142,7 @@ ${seasonalClimate}
 ${locationStyleInfo}
 ${portfolioStyleInfo}
 ${blendedStyleInfo}
+${materialConstraint}
 
 Please provide comprehensive design reasoning in the following structured JSON format:
 

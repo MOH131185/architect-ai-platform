@@ -23,6 +23,26 @@ class ReplicateService {
   }
 
   /**
+   * Format Master Design Specification for injection into prompts
+   * Creates consistent specification string that ensures all views show the same building
+   * @param {Object} masterDesignSpec - Master design specification object
+   * @returns {String} Formatted specification string for prompts
+   */
+  formatMasterDesignSpec(masterDesignSpec) {
+    if (!masterDesignSpec) return '';
+    
+    return `EXACT BUILDING SPECIFICATION (must match precisely):
+- Dimensions: ${masterDesignSpec.dimensions.length}m × ${masterDesignSpec.dimensions.width}m × ${masterDesignSpec.dimensions.height}m (${masterDesignSpec.dimensions.floors} floors)
+- Entrance: ${masterDesignSpec.entrance.facade} facade, ${masterDesignSpec.entrance.position}, ${masterDesignSpec.entrance.width}m wide
+- Materials: Primary ${masterDesignSpec.materials.primary}, Secondary ${masterDesignSpec.materials.secondary}, Accent ${masterDesignSpec.materials.accent}
+- Roof: ${masterDesignSpec.roof.type} type, ${masterDesignSpec.roof.material}
+- Windows: ${masterDesignSpec.windows.pattern} pattern, ${masterDesignSpec.windows.frameColor} frames
+- Structure: ${masterDesignSpec.structure.system} with ${masterDesignSpec.structure.gridSpacing}m grid
+- Colors: Facade ${masterDesignSpec.colors.facade}, Roof ${masterDesignSpec.colors.roof}
+THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
+  }
+
+  /**
    * Create consistent building description for all outputs
    * This ensures 2D and 3D outputs describe the SAME building
    */
@@ -315,26 +335,42 @@ class ReplicateService {
     // STEP 1: Use unified projectSeed from context (no random generation here)
     const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
-    // Define seed offsets for different views to ensure variety while maintaining consistency
-    const seedOffsets = {
-      'exterior': 0,
-      'exterior_front': 0,
-      'exterior_side': 100,      // Different from front
-      'interior': 200,           // Different from exteriors
-      'axonometric': 300,        // Technical view
-      'perspective': 400,        // Artistic view
-      'site_plan': 500
+    // CRITICAL FIX: Unified seed strategy for geometric consistency
+    // Technical views (floor plans, elevations, sections, axonometric) use SAME seed for geometric consistency
+    // Artistic views (interior, perspective) use varied seeds for aesthetic variety
+    const technicalViews = ['exterior_front', 'exterior_side', 'axonometric', 'site_plan'];
+    const artisticViews = ['interior', 'perspective'];
+    
+    // Define seed offsets for artistic views only
+    const artisticSeedOffsets = {
+      'interior': 200,
+      'perspective': 400
     };
 
     for (const viewType of viewTypes) {
       try {
         const params = this.buildViewParameters(projectContext, viewType);
 
-        // CRITICAL FIX: Vary seed per view type to prevent identical images
-        const seedOffset = seedOffsets[viewType] || 0;
-        params.seed = projectSeed + seedOffset;
+        // Determine seed strategy based on view type
+        const isTechnicalView = technicalViews.includes(viewType);
+        const isArtisticView = artisticViews.includes(viewType);
+        
+        if (isTechnicalView) {
+          // Use SAME seed for technical views to ensure geometric consistency
+          params.seed = projectSeed;
+          console.log(`🎯 Technical view ${viewType} using consistent seed: ${params.seed}`);
+        } else if (isArtisticView) {
+          // Use varied seed for artistic views to allow aesthetic variety
+          const seedOffset = artisticSeedOffsets[viewType] || 0;
+          params.seed = projectSeed + seedOffset;
+          console.log(`🎨 Artistic view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
+        } else {
+          // Default to consistent seed for unknown view types
+          params.seed = projectSeed;
+          console.log(`🔧 Default view ${viewType} using consistent seed: ${params.seed}`);
+        }
 
-        console.log(`🎲 Generating ${viewType} with seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
+        console.log(`🎲 Generating ${viewType} with seed: ${params.seed} (base: ${projectSeed})`);
 
         // STEP 2: If controlImage is provided, add it for ControlNet guidance
         if (controlImage) {
@@ -620,6 +656,9 @@ class ReplicateService {
     const hasReasoningGuidance = projectContext.isReasoningEnhanced && projectContext.unifiedArchitecturalPrompt;
     const reasoningPrefix = hasReasoningGuidance ? projectContext.unifiedArchitecturalPrompt + '. ' : '';
 
+    // CRITICAL FIX: Inject Master Design Specification for consistency
+    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+
     // Override materials if reasoning-enhanced
     const materials = projectContext.isReasoningEnhanced && projectContext.materials
       ? projectContext.materials
@@ -632,7 +671,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${reasoningPrefix}Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements`,
           perspective: 'exterior front view',
           width: 1024,
           height: 768
@@ -644,7 +683,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${reasoningPrefix}Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications`,
           perspective: 'exterior side view',
           width: 1024,
           height: 768
@@ -664,7 +703,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${reasoningPrefix}INTERIOR ONLY: Professional 3D architectural interior visualization, inside view of ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design with ${materials} visible indoors, spacious open interior space with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from large windows, professional interior architectural photography, photorealistic interior rendering, high quality, detailed interior furnishings, contemporary furniture and decor, interior space only, interior design matching project program requirements, warm inviting interior atmosphere`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}INTERIOR ONLY: Professional 3D architectural interior visualization, inside view of ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design with ${materials} visible indoors, spacious open interior space with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from large windows, professional interior architectural photography, photorealistic interior rendering, high quality, detailed interior furnishings, contemporary furniture and decor, interior space only, interior design matching project program requirements, warm inviting interior atmosphere`,
           perspective: 'interior view',
           width: 1024,
           height: 768,
@@ -676,7 +715,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Aerial view, site plan showing ${unifiedDesc.fullDescription} with clear footprint, entrance on ${entranceDir} side marked, urban context, professional architectural drawing style, technical illustration`,
+          prompt: `${specPrefix}\n\nAerial view, site plan showing ${unifiedDesc.fullDescription} with clear footprint, entrance on ${entranceDir} side marked, urban context, professional architectural drawing style, technical illustration`,
           perspective: 'aerial view',
           width: 1024,
           height: 1024
@@ -693,7 +732,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `Professional architectural axonometric 45-degree isometric view of the SAME ${unifiedDesc.fullDescription} ${styleContext}, isometric 3D projection from above showing ${entranceDir}-facing entrance clearly visible on ${entranceDir} side, ${unifiedDesc.materials} construction consistent with elevations, ${unifiedDesc.features}, ${unifiedDesc.floorCount} floor levels clearly visible with floor separation lines, technical illustration style matching other technical drawings, architectural drawing with clean precise lines, complete roof structure and all building volumes shown, professional architectural visualization, high detail, precise geometry, design must match floor plan layout and elevation facades exactly, unified consistent building design`,
+          prompt: `${specPrefix}\n\nProfessional architectural axonometric 45-degree isometric view of the SAME ${unifiedDesc.fullDescription} ${styleContext}, isometric 3D projection from above showing ${entranceDir}-facing entrance clearly visible on ${entranceDir} side, ${unifiedDesc.materials} construction consistent with elevations, ${unifiedDesc.features}, ${unifiedDesc.floorCount} floor levels clearly visible with floor separation lines, technical illustration style matching other technical drawings, architectural drawing with clean precise lines, complete roof structure and all building volumes shown, professional architectural visualization, high detail, precise geometry, design must match floor plan layout and elevation facades exactly, unified consistent building design`,
           perspective: 'axonometric view',
           width: 1024,
           height: 768
@@ -704,7 +743,7 @@ class ReplicateService {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: unifiedDesc.materials,
-          prompt: `${reasoningPrefix}Wide angle aerial perspective rendering of COMPLETE ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, dramatic 3D perspective view from distance showing entire building with ${entranceDir}-facing entrance, FULL BUILDING IN FRAME with surrounding context, ${materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height fully visible${projectDetails.spacesDetail}, photorealistic architectural rendering, landscape context with trees and people for scale providing sense of distance, golden hour lighting, professional architectural visualization from elevated vantage point, cinematic composition showing complete project, high quality detailed rendering with full building view, bird's eye perspective angle capturing entire structure, distant viewpoint`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}Wide angle aerial perspective rendering of COMPLETE ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, dramatic 3D perspective view from distance showing entire building with ${entranceDir}-facing entrance, FULL BUILDING IN FRAME with surrounding context, ${materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height fully visible${projectDetails.spacesDetail}, photorealistic architectural rendering, landscape context with trees and people for scale providing sense of distance, golden hour lighting, professional architectural visualization from elevated vantage point, cinematic composition showing complete project, high quality detailed rendering with full building view, bird's eye perspective angle capturing entire structure, distant viewpoint`,
           perspective: 'perspective view',
           width: 1024,
           height: 768
@@ -844,8 +883,11 @@ class ReplicateService {
       ? `, specific rooms: ${projectDetails.programDetail}`
       : '';
 
+    // CRITICAL FIX: Inject Master Design Specification for consistency
+    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+    
     return {
-      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${levelDesc}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
+      prompt: `${specPrefix}\n\n2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${levelDesc}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -877,8 +919,11 @@ class ReplicateService {
     const resolution = highQuality ? { width: 1536, height: 1152 } : { width: 1024, height: 768 };
     const renderQuality = highQuality ? { steps: 50, guidanceScale: 7.5 } : { steps: 40, guidanceScale: 7.0 };
 
+    // CRITICAL FIX: Inject Master Design Specification for consistency
+    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+    
     return {
-      prompt: `Professional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, WITH COMPLETE VISIBLE DIMENSIONAL ANNOTATIONS: overall building width in meters with dimension lines and arrows, overall building height from ground to roof peak with vertical dimension lines, floor-to-floor heights labeled (typically 3.0m), window dimensions (width x height), door dimensions, foundation depth below grade, all dimensions clearly marked with extension lines, dimension text readable and professional, scale 1:100, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing with full dimensioning, NO 3D perspective, NO rendering, NO colors, professional technical drawing with measurements`,
+      prompt: `${specPrefix}\n\nProfessional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, WITH COMPLETE VISIBLE DIMENSIONAL ANNOTATIONS: overall building width in meters with dimension lines and arrows, overall building height from ground to roof peak with vertical dimension lines, floor-to-floor heights labeled (typically 3.0m), window dimensions (width x height), door dimensions, foundation depth below grade, all dimensions clearly marked with extension lines, dimension text readable and professional, scale 1:100, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing with full dimensioning, NO 3D perspective, NO rendering, NO colors, professional technical drawing with measurements`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -910,8 +955,11 @@ class ReplicateService {
     const resolution = highQuality ? { width: 1536, height: 1152 } : { width: 1024, height: 768 };
     const renderQuality = highQuality ? { steps: 75, guidanceScale: 8.5 } : { steps: 50, guidanceScale: 8.0 };
 
+    // CRITICAL FIX: Inject Master Design Specification for consistency
+    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+    
     return {
-      prompt: `HIGHLY DETAILED 2D architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, MAXIMUM DETAIL construction documentation showing: floor slabs as thick horizontal lines with reinforcement (#4 @ 300mm c/c), walls in section as thick black lines with material layers visible, interior room heights clearly labeled, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors with tread and riser details' : ''}, foundation line with depth annotation (0.5m typical), roof structure in section with rafters and covering, ${unifiedDesc.materials} construction indicated with proper architectural hatching patterns (concrete cross-hatch, brick diagonal lines, insulation wavy lines), ORTHOGRAPHIC PROJECTION, section cut line indicator, poché (solid black fill) for all cut walls and slabs, floor-to-floor heights dimensioned (typically 3.0m), ceiling heights labeled (2.7m typical), all structural elements visible and labeled, CAD-style high-detail technical drawing, professional architectural blueprint with maximum clarity, crisp black and white line drawing ONLY, SHARP LINEWORK, high contrast, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY, professional construction document quality`,
+      prompt: `${specPrefix}\n\nHIGHLY DETAILED 2D architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, MAXIMUM DETAIL construction documentation showing: floor slabs as thick horizontal lines with reinforcement (#4 @ 300mm c/c), walls in section as thick black lines with material layers visible, interior room heights clearly labeled, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors with tread and riser details' : ''}, foundation line with depth annotation (0.5m typical), roof structure in section with rafters and covering, ${unifiedDesc.materials} construction indicated with proper architectural hatching patterns (concrete cross-hatch, brick diagonal lines, insulation wavy lines), ORTHOGRAPHIC PROJECTION, section cut line indicator, poché (solid black fill) for all cut walls and slabs, floor-to-floor heights dimensioned (typically 3.0m), ceiling heights labeled (2.7m typical), all structural elements visible and labeled, CAD-style high-detail technical drawing, professional architectural blueprint with maximum clarity, crisp black and white line drawing ONLY, SHARP LINEWORK, high contrast, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY, professional construction document quality`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
