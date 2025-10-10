@@ -1,6 +1,6 @@
 /**
  * Express server to proxy API calls to OpenAI and Replicate
- * This avoids CORS issues when calling from the browser
+ * This avoids CORS issues when calling from the browser during local development
  */
 
 const express = require('express');
@@ -19,15 +19,15 @@ app.use(express.json());
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    openai: !!process.env.REACT_APP_OPENAI_API_KEY,
-    replicate: !!process.env.REACT_APP_REPLICATE_API_KEY
+    openai: !!(process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY),
+    replicate: !!(process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY)
   });
 });
 
 // OpenAI proxy endpoint
 app.post('/api/openai/chat', async (req, res) => {
   try {
-    const apiKey = process.env.REACT_APP_OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -58,7 +58,7 @@ app.post('/api/openai/chat', async (req, res) => {
 // Replicate proxy endpoint - create prediction
 app.post('/api/replicate/predictions', async (req, res) => {
   try {
-    const apiKey = process.env.REACT_APP_REPLICATE_API_KEY;
+    const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({ error: 'Replicate API key not configured' });
@@ -89,7 +89,7 @@ app.post('/api/replicate/predictions', async (req, res) => {
 // Replicate proxy endpoint - get prediction status
 app.get('/api/replicate/predictions/:id', async (req, res) => {
   try {
-    const apiKey = process.env.REACT_APP_REPLICATE_API_KEY;
+    const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({ error: 'Replicate API key not configured' });
@@ -117,7 +117,7 @@ app.get('/api/replicate/predictions/:id', async (req, res) => {
 // Replicate proxy endpoint - cancel prediction
 app.post('/api/replicate/predictions/:id/cancel', async (req, res) => {
   try {
-    const apiKey = process.env.REACT_APP_REPLICATE_API_KEY;
+    const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({ error: 'Replicate API key not configured' });
@@ -144,7 +144,8 @@ app.post('/api/replicate/predictions/:id/cancel', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 API Proxy Server running on http://localhost:${PORT}`);
-  console.log(`✅ OpenAI API Key: ${process.env.REACT_APP_OPENAI_API_KEY ? 'Configured' : 'Missing'}`);
-  console.log(`✅ Replicate API Key: ${process.env.REACT_APP_REPLICATE_API_KEY ? 'Configured' : 'Missing'}`);
+  console.log(`🔌 API Proxy Server running on http://localhost:${PORT}`);
+  console.log(`🔑 OpenAI API Key: ${(process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY) ? 'Configured' : 'Missing'}`);
+  console.log(`🔑 Replicate API Key: ${(process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY) ? 'Configured' : 'Missing'}`);
 });
+
