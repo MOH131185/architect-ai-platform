@@ -31,3 +31,9 @@ export function getReplicateStatusUrl(predictionId) {
   if (API_BASE) return `${API_BASE}/api/replicate/predictions${predictionId ? '/' + predictionId : ''}`;
   return `/api/replicate-status${predictionId ? `?id=${predictionId}` : ''}`;
 }
+
+export function getHealthUrl() {
+  // Health endpoint exists in both dev proxy and Vercel
+  if (API_BASE) return `${API_BASE}/api/health`;
+  return '/api/health';
+}

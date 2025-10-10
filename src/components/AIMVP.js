@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import aiIntegrationService from '../services/aiIntegrationService';
+import { getOpenAIUrl, getReplicatePredictUrl, getHealthUrl } from '../utils/apiRoutes';
 import './AIMVP.css';
 
 const AIMVP = () => {
@@ -27,8 +28,13 @@ const AIMVP = () => {
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [apiStatus, setApiStatus] = useState('checking');
+  const [apiRoutes, setApiRoutes] = useState({ openai: '', replicate: '', health: '' });
+  const [connectivity, setConnectivity] = useState({ status: 'checking', detail: '' });
 
   useEffect(() => {
+    // Resolve routes
+    setApiRoutes({ openai: getOpenAIUrl(), replicate: getReplicatePredictUrl(), health: getHealthUrl() });
+
     // Check API configuration
     const hasOpenAI = !!process.env.REACT_APP_OPENAI_API_KEY;
     const hasReplicate = !!process.env.REACT_APP_REPLICATE_API_KEY;
@@ -50,6 +56,16 @@ const AIMVP = () => {
       const seed = Math.floor(Math.random() * 1000000);
       return { ...prev, projectSeed: seed, seed };
     });
+
+    // Ping /api/health to verify connectivity
+    const healthUrl = getHealthUrl();
+    fetch(healthUrl, { method: 'GET' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Health ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        setConnectivity({ status: 'ok', detail: `health ok${data?.status ? ` (${data.status})` : ''}` });
+      })
+      .catch((err) => setConnectivity({ status: 'error', detail: err.message }));
   }, []);
 
   const handleInputChange = (field, value) => {
@@ -145,6 +161,29 @@ const AIMVP = () => {
       </div>
 
       <div className="ai-mvp-content">
+        <div className="api-connectivity" style={{
+          marginBottom: '16px', padding: '10px', borderRadius: 6, background: '#eef2ff', color: '#1e40af', fontSize: '0.85rem'
+        }}>
+          <div><strong>API Routes</strong></div>
+          <div>OpenAI: <code>{apiRoutes.openai}</code></div>
+          <div>Replicate: <code>{apiRoutes.replicate}</code></div>
+          <div>Health: <code>{apiRoutes.health}</code> — {connectivity.status === 'ok' ? 'Connected' : (connectivity.status === 'error' ? 'Error' : 'Checking...')} {connectivity.status === 'error' ? `( ${connectivity.detail} )` : ''}</div>
+          <button
+            type="button"
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              setConnectivity({ status: 'checking', detail: '' });
+              const healthUrl = getHealthUrl();
+              fetch(healthUrl, { method: 'GET' })
+                .then(async (res) => {
+                  if (!res.ok) throw new Error(`Health ${res.status}`);
+                  const data = await res.json().catch(() => ({}));
+                  setConnectivity({ status: 'ok', detail: `health ok${data?.status ? ` (${data.status})` : ''}` });
+                })
+                .catch((err) => setConnectivity({ status: 'error', detail: err.message }));
+            }}
+          >Recheck</button>
+        </div>
         <div className="project-inputs">
           <h2>Project Context</h2>
           
