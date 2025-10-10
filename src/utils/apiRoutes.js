@@ -12,7 +12,9 @@ const isCRADevPort = port === '3000';
 const isLocalHost = isLoopback || isPrivateIPv4 || isLocalDomain || isCRADevPort;
 
 const FORCE_LOCAL = (process.env.REACT_APP_FORCE_LOCAL_PROXY || '').toLowerCase() === 'true';
-const API_BASE = process.env.REACT_APP_API_BASE || (isLocalHost || FORCE_LOCAL ? 'http://localhost:3001' : '');
+// Prefer host-based local base so LAN devices can reach the proxy
+const computedLocalBase = isBrowser ? `${window.location.protocol}//${host}:3001` : 'http://localhost:3001';
+const API_BASE = process.env.REACT_APP_API_BASE || ((isLocalHost || FORCE_LOCAL) ? computedLocalBase : '');
 
 export function getOpenAIUrl() {
   // Local proxy uses /api/openai/chat; Vercel function is /api/openai-chat

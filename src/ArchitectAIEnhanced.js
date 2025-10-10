@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { getOpenAIUrl, getReplicatePredictUrl, getHealthUrl } from './utils/apiRoutes';
 import axios from 'axios';
 import { Wrapper } from "@googlemaps/react-wrapper";
 import {
@@ -11,6 +12,31 @@ import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
 import bimService from './services/bimService';
 import dimensioningService from './services/dimensioningService';
+
+// Connectivity panel state
+const Connectivity = ({}) => {
+  const [routes, setRoutes] = useState({ openai: '', replicate: '', health: '' });
+  const [connectivity, setConnectivity] = useState({ status: 'checking', detail: '' });
+  useEffect(() => {
+    const r = { openai: getOpenAIUrl(), replicate: getReplicatePredictUrl(), health: getHealthUrl() };
+    setRoutes(r);
+    fetch(r.health)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Health ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        setConnectivity({ status: 'ok', detail: data?.status || 'ok' });
+      })
+      .catch((err) => setConnectivity({ status: 'error', detail: err.message }));
+  }, []);
+  return (
+    <div style={{ marginBottom: 12, padding: 8, borderRadius: 6, background: '#eef2ff', color: '#1e40af', fontSize: '0.85rem' }}>
+      <div><strong>API Routes</strong></div>
+      <div>OpenAI: <code>{routes.openai}</code></div>
+      <div>Replicate: <code>{routes.replicate}</code></div>
+      <div>Health: <code>{routes.health}</code> — {connectivity.status === 'ok' ? 'Connected' : (connectivity.status === 'error' ? `Error (${connectivity.detail})` : 'Checking...')}</div>
+    </div>
+  );
+};
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
