@@ -281,33 +281,44 @@ class AIIntegrationService {
    * Extract materials from reasoning
    */
   extractMaterialsFromReasoning(reasoning) {
-    // Handle both string and object formats for materialRecommendations
-    if (typeof reasoning.materialRecommendations === 'object' && reasoning.materialRecommendations.primary) {
-      // If we have structured material recommendations, use them
-      const primaryMaterials = reasoning.materialRecommendations.primary || [];
-      const secondaryMaterials = reasoning.materialRecommendations.secondary || [];
-      const allMaterials = [...primaryMaterials, ...secondaryMaterials];
+    // Normalize to string list safely
+    const rec = reasoning?.materialRecommendations;
+    const toName = (m) => {
+      if (m == null) return '';
+      if (typeof m === 'string') return m;
+      if (typeof m === 'object') {
+        // common fields
+        if (m.name) return String(m.name);
+        if (m.material) return String(m.material);
+        if (m.label) return String(m.label);
+        if (m.type) return String(m.type);
+        return JSON.stringify(m);
+      }
+      return String(m);
+    };
+
+    if (rec && typeof rec === 'object' && (rec.primary || rec.secondary)) {
+      const primaryMaterials = Array.isArray(rec.primary) ? rec.primary : (rec.primary ? [rec.primary] : []);
+      const secondaryMaterials = Array.isArray(rec.secondary) ? rec.secondary : (rec.secondary ? [rec.secondary] : []);
+      const allMaterials = [...primaryMaterials, ...secondaryMaterials]
+        .map(toName)
+        .map(s => s.trim())
+        .filter(Boolean);
 
       if (allMaterials.length > 0) {
-        // Extract just the material names from detailed descriptions
-        const materialNames = allMaterials.map(m => {
-          // Extract material name from descriptions like "Concrete - for structural durability"
-          const match = m.match(/^([^-,]+)/);
-          return match ? match[1].trim().toLowerCase() : m.toLowerCase();
+        // Extract simple names from descriptions like "Concrete - for structural durability"
+        const materialNames = allMaterials.map(s => {
+          const match = typeof s === 'string' ? s.match(/^([^-,]+)/) : null;
+          return (match ? match[1] : s).trim().toLowerCase();
         });
         return materialNames.slice(0, 3).join(' and ');
       }
     }
 
     // Fallback to string parsing
-    const materialText = typeof reasoning.materialRecommendations === 'string'
-      ? reasoning.materialRecommendations
-      : JSON.stringify(reasoning.materialRecommendations || '');
+    const materialText = typeof rec === 'string' ? rec : JSON.stringify(rec || '');
     const materials = ['glass', 'steel', 'concrete', 'wood', 'stone', 'brick', 'timber', 'metal', 'aluminum'];
-    const foundMaterials = materials.filter(material =>
-      materialText.toLowerCase().includes(material)
-    );
-
+    const foundMaterials = materials.filter(material => materialText.toLowerCase().includes(material));
     return foundMaterials.length > 0 ? foundMaterials.slice(0, 3).join(' and ') : 'glass and steel';
   }
 
