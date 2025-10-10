@@ -254,9 +254,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitTime) {
-      const url = process.env.NODE_ENV === 'production'
-        ? `/api/replicate-status?id=${predictionId}`
-        : `http://localhost:3001/api/replicate/predictions/${predictionId}`;
+      const url = getReplicateStatusUrl(predictionId);
 
       const response = await fetch(url, {
         headers: {
