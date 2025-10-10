@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { getOpenAIUrl, getReplicatePredictUrl, getHealthUrl } from './utils/apiRoutes';
 import axios from 'axios';
 import { Wrapper } from "@googlemaps/react-wrapper";
 import {
@@ -12,32 +11,6 @@ import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
 import bimService from './services/bimService';
 import dimensioningService from './services/dimensioningService';
-
-// Connectivity panel state
-// eslint-disable-next-line no-unused-vars
-const Connectivity = () => {
-  const [routes, setRoutes] = useState({ openai: '', replicate: '', health: '' });
-  const [connectivity, setConnectivity] = useState({ status: 'checking', detail: '' });
-  useEffect(() => {
-    const r = { openai: getOpenAIUrl(), replicate: getReplicatePredictUrl(), health: getHealthUrl() };
-    setRoutes(r);
-    fetch(r.health)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`Health ${res.status}`);
-        const data = await res.json().catch(() => ({}));
-        setConnectivity({ status: 'ok', detail: data?.status || 'ok' });
-      })
-      .catch((err) => setConnectivity({ status: 'error', detail: err.message }));
-  }, []);
-  return (
-    <div style={{ marginBottom: 12, padding: 8, borderRadius: 6, background: '#eef2ff', color: '#1e40af', fontSize: '0.85rem' }}>
-      <div><strong>API Routes</strong></div>
-      <div>OpenAI: <code>{routes.openai}</code></div>
-      <div>Replicate: <code>{routes.replicate}</code></div>
-      <div>Health: <code>{routes.health}</code> — {connectivity.status === 'ok' ? 'Connected' : (connectivity.status === 'error' ? `Error (${connectivity.detail})` : 'Checking...')}</div>
-    </div>
-  );
-};
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -553,43 +526,21 @@ const MapView = ({ center, zoom }) => {
         }
       });
 
-      // Use AdvancedMarkerElement if available, otherwise fall back to standard Marker
-      let newMarker;
+      // Use AdvancedMarkerElement (modern Maps API)
+      const markerDiv = document.createElement('div');
+      markerDiv.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+          <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
+          <circle cx="16" cy="16" r="6" fill="#ffffff"/>
+        </svg>
+      `;
 
-      if (window.google.maps.marker && window.google.maps.marker.AdvancedMarkerElement) {
-        // Create custom HTML marker element
-        const markerDiv = document.createElement('div');
-        markerDiv.innerHTML = `
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-            <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
-            <circle cx="16" cy="16" r="6" fill="#ffffff"/>
-          </svg>
-        `;
-
-        newMarker = new window.google.maps.marker.AdvancedMarkerElement({
-          position: center,
-          map: newMap,
-          title: 'Project Location',
-          content: markerDiv
-        });
-      } else {
-        // Fallback to standard Marker for older Maps API versions
-        newMarker = new window.google.maps.Marker({
-          position: center,
-          map: newMap,
-          title: 'Project Location',
-          icon: {
-            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="12" fill="#3b82f6" stroke="#ffffff" stroke-width="3"/>
-                <circle cx="16" cy="16" r="6" fill="#ffffff"/>
-              </svg>
-            `),
-            scaledSize: new window.google.maps.Size(32, 32),
-            anchor: new window.google.maps.Point(16, 16),
-          }
-        });
-      }
+      const newMarker = new window.google.maps.marker.AdvancedMarkerElement({
+        position: center,
+        map: newMap,
+        title: 'Project Location',
+        content: markerDiv
+      });
 
       mapRef.current = newMap;
       markerRef.current = newMarker;
@@ -604,14 +555,8 @@ const MapView = ({ center, zoom }) => {
     if (!isMapLoaded || !mapRef.current || !markerRef.current) return;
 
     try {
-      // Handle both AdvancedMarkerElement and standard Marker
-      if (markerRef.current.position && typeof markerRef.current.position === 'object') {
-        // AdvancedMarkerElement uses position property
-        markerRef.current.position = center;
-      } else if (markerRef.current.setPosition) {
-        // Standard Marker uses setPosition method
-        markerRef.current.setPosition(center);
-      }
+      // AdvancedMarkerElement uses position property
+      markerRef.current.position = center;
       mapRef.current.setCenter(center);
     } catch (error) {
       console.error('Map update error:', error);
@@ -1336,7 +1281,9 @@ const ArchitectAIEnhanced = () => {
               { name: "Circulation", area: `${Math.floor((parseInt(projectDetails?.area) || 200) * 0.1)}m²` }
             ],
           efficiency: "85%",
-          circulation: aiResult.reasoning?.spatialOrganization || "Optimized circulation flow",
+          circulation: typeof aiResult.reasoning?.spatialOrganization === 'object'
+            ? (aiResult.reasoning.spatialOrganization.strategy || aiResult.reasoning.spatialOrganization.circulation || "Optimized circulation flow")
+            : (aiResult.reasoning?.spatialOrganization || "Optimized circulation flow"),
           // Add multi-level floor plan images
           levels: floorPlanImages,
           floorCount: aiResult.floorPlans?.floorCount || (floorPlanImages.upper ? 2 : 1)
@@ -1353,7 +1300,9 @@ const ArchitectAIEnhanced = () => {
           images: preview3DImages
         },
         technical: {
-          structural: aiResult.reasoning?.materialRecommendations || "Modern structural system",
+          structural: typeof aiResult.reasoning?.materialRecommendations === 'object'
+            ? (aiResult.reasoning.materialRecommendations.primary || "Modern structural system")
+            : (aiResult.reasoning?.materialRecommendations || "Modern structural system"),
           foundation: "Engineered foundation system",
           mep: {
             hvac: "Energy-efficient HVAC system",
