@@ -1344,7 +1344,9 @@ const ArchitectAIEnhanced = () => {
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
-          materials: aiResult.reasoning?.materialRecommendations?.split(',').map(m => m.trim()) || ["Sustainable materials", "Local stone", "Glass", "Steel"],
+          materials: (normalizeMaterials(aiResult.reasoning?.materialRecommendations).length > 0
+            ? normalizeMaterials(aiResult.reasoning?.materialRecommendations)
+            : ["Sustainable materials", "Local stone", "Glass", "Steel"]),
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
           // Add 3D preview images if available
           images: preview3DImages
@@ -1462,6 +1464,44 @@ const ArchitectAIEnhanced = () => {
       "Environmental optimization",
       "Green building principles"
     ];
+  };
+
+  // Normalize material recommendations into an array of strings
+  const normalizeMaterials = (materialRecommendations) => {
+    try {
+      const toStringVal = (v) => {
+        if (v == null) return '';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'object') {
+          if (v.name) return String(v.name);
+          if (v.material) return String(v.material);
+          if (v.label) return String(v.label);
+          if (v.type) return String(v.type);
+          return JSON.stringify(v);
+        }
+        return String(v);
+      };
+
+      const mr = materialRecommendations;
+
+      if (Array.isArray(mr)) {
+        return mr.map(toStringVal).map(s => s.trim()).filter(Boolean);
+      }
+
+      if (mr && typeof mr === 'object' && (mr.primary || mr.secondary)) {
+        const primary = Array.isArray(mr.primary) ? mr.primary : (mr.primary ? [mr.primary] : []);
+        const secondary = Array.isArray(mr.secondary) ? mr.secondary : (mr.secondary ? [mr.secondary] : []);
+        return [...primary, ...secondary].map(toStringVal).map(s => s.trim()).filter(Boolean);
+      }
+
+      if (typeof mr === 'string') {
+        return mr.split(',').map(s => s.trim()).filter(Boolean);
+      }
+
+      return [];
+    } catch (_e) {
+      return [];
+    }
   };
 
   const renderLandingPage = () => (
