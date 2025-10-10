@@ -3,6 +3,8 @@
  * Provides AI-powered architectural design reasoning and analysis
  */
 
+import logger from '../utils/productionLogger';
+
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 
 // Use Vercel serverless function in production, local proxy in development
@@ -14,7 +16,7 @@ class OpenAIService {
   constructor() {
     this.apiKey = OPENAI_API_KEY;
     if (!this.apiKey) {
-      console.warn('OpenAI API key not found. Design reasoning will use fallback responses.');
+      logger.warn('OpenAI API key not found. Design reasoning will use fallback responses.');
     }
   }
 
@@ -61,7 +63,7 @@ class OpenAIService {
       return this.parseDesignReasoning(data.choices[0].message.content, projectContext);
 
     } catch (error) {
-      console.error('OpenAI API error:', error);
+      logger.error('OpenAI API error:', error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -212,7 +214,7 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.warn('Could not parse JSON from OpenAI response, using text format');
+      logger.warn('Could not parse JSON from OpenAI response, using text format');
     }
 
     // Fallback to structured text response
@@ -342,7 +344,7 @@ Format as structured analysis with specific recommendations.
       return this.parseFeasibilityAnalysis(data.choices[0].message.content);
 
     } catch (error) {
-      console.error('Feasibility analysis error:', error);
+      logger.error('Feasibility analysis error:', error);
       return {
         feasibility: 'Unknown',
         constraints: ['Analysis unavailable'],
@@ -474,7 +476,7 @@ Format as bullet points for easy reference by engineers and contractors.`;
       };
 
     } catch (error) {
-      console.error('Structural notes generation error:', error);
+      logger.error('Structural notes generation error:', error);
       return this.getFallbackStructuralNotes(projectContext, floorIndex);
     }
   }
@@ -610,7 +612,7 @@ Format as bullet points with specific values, equipment specs, and code referenc
       };
 
     } catch (error) {
-      console.error('MEP notes generation error:', error);
+      logger.error('MEP notes generation error:', error);
       return this.getFallbackMEPNotes(projectContext, floorIndex, system);
     }
   }
