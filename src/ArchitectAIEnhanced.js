@@ -2838,23 +2838,23 @@ const ArchitectAIEnhanced = () => {
                   </h3>
 
                   {/* Structural Plans */}
-                  {generatedDesigns.constructionDocumentation.structuralPlans?.plans && (
+                  {generatedDesigns.constructionDocumentation.structuralPlans?.structuralPlans && Object.keys(generatedDesigns.constructionDocumentation.structuralPlans.structuralPlans).length > 0 && (
                     <div className="mb-8">
                       <h4 className="text-lg font-semibold text-gray-700 mb-4">Structural Plans</h4>
                       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {generatedDesigns.constructionDocumentation.structuralPlans.plans.map((plan, idx) => (
-                          <div key={idx} className="bg-white rounded-lg p-4 shadow-sm">
+                        {Object.entries(generatedDesigns.constructionDocumentation.structuralPlans.structuralPlans).map(([levelKey, plan]) => (
+                          <div key={levelKey} className="bg-white rounded-lg p-4 shadow-sm">
                             <p className="text-sm font-medium text-gray-700 mb-2">
-                              {plan.levelName || `Level ${idx}`}
+                              {levelKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                             </p>
-                            {plan.image ? (
+                            {plan.images && plan.images.length > 0 ? (
                               <div
                                 className="bg-gray-50 rounded h-64 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                                onClick={() => openImageModal(plan.image, plan.levelName || `Structural Plan - Level ${idx}`)}
+                                onClick={() => openImageModal(plan.images[0], `Structural Plan - ${levelKey}`)}
                               >
                                 <img
-                                  src={plan.image}
-                                  alt={`Structural Plan - ${plan.levelName}`}
+                                  src={plan.images[0]}
+                                  alt={`Structural Plan - ${levelKey}`}
                                   className="w-full h-full object-contain"
                                 />
                               </div>
@@ -2871,23 +2871,23 @@ const ArchitectAIEnhanced = () => {
                   )}
 
                   {/* MEP Plans */}
-                  {generatedDesigns.constructionDocumentation.mepPlans?.plans && (
+                  {generatedDesigns.constructionDocumentation.mepPlans?.mepPlans && Object.keys(generatedDesigns.constructionDocumentation.mepPlans.mepPlans).length > 0 && (
                     <div className="mb-8">
                       <h4 className="text-lg font-semibold text-gray-700 mb-4">MEP Plans (Mechanical, Electrical, Plumbing)</h4>
                       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {generatedDesigns.constructionDocumentation.mepPlans.plans.map((plan, idx) => (
-                          <div key={idx} className="bg-white rounded-lg p-4 shadow-sm">
+                        {Object.entries(generatedDesigns.constructionDocumentation.mepPlans.mepPlans).map(([floorKey, plan]) => (
+                          <div key={floorKey} className="bg-white rounded-lg p-4 shadow-sm">
                             <p className="text-sm font-medium text-gray-700 mb-2">
-                              Floor {plan.floorIndex + 1} - {plan.system || 'Combined MEP'}
+                              {floorKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} - {generatedDesigns.constructionDocumentation.mepPlans.system || 'Combined MEP'}
                             </p>
-                            {plan.image ? (
+                            {plan.images && plan.images.length > 0 ? (
                               <div
                                 className="bg-gray-50 rounded h-64 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                                onClick={() => openImageModal(plan.image, `MEP Plan - Floor ${plan.floorIndex + 1}`)}
+                                onClick={() => openImageModal(plan.images[0], `MEP Plan - ${floorKey}`)}
                               >
                                 <img
-                                  src={plan.image}
-                                  alt={`MEP Plan - Floor ${plan.floorIndex + 1}`}
+                                  src={plan.images[0]}
+                                  alt={`MEP Plan - ${floorKey}`}
                                   className="w-full h-full object-contain"
                                 />
                               </div>
@@ -2961,23 +2961,23 @@ const ArchitectAIEnhanced = () => {
                   </div>
 
                   {/* Detail Drawings */}
-                  {generatedDesigns.constructionDocumentation.detailDrawings?.details && (
+                  {generatedDesigns.constructionDocumentation.detailDrawings?.details && Object.keys(generatedDesigns.constructionDocumentation.detailDrawings.details).length > 0 && (
                     <div className="mt-8">
                       <h4 className="text-lg font-semibold text-gray-700 mb-4">Construction Details</h4>
                       <div className="grid md:grid-cols-3 gap-6">
-                        {generatedDesigns.constructionDocumentation.detailDrawings.details.map((detail, idx) => (
-                          <div key={idx} className="bg-white rounded-lg p-4 shadow-sm">
+                        {Object.entries(generatedDesigns.constructionDocumentation.detailDrawings.details).map(([floorKey, detail], idx) => (
+                          <div key={floorKey} className="bg-white rounded-lg p-4 shadow-sm">
                             <p className="text-sm font-medium text-gray-700 mb-2">
-                              {detail.detailName || `Detail ${idx + 1}`}
+                              {floorKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} Details
                             </p>
-                            {detail.image ? (
+                            {detail.images && detail.images.length > 0 ? (
                               <div
                                 className="bg-gray-50 rounded h-48 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                                onClick={() => openImageModal(detail.image, detail.detailName)}
+                                onClick={() => openImageModal(detail.images[0], `${floorKey} Details`)}
                               >
                                 <img
-                                  src={detail.image}
-                                  alt={detail.detailName}
+                                  src={detail.images[0]}
+                                  alt={`${floorKey} Details`}
                                   className="w-full h-full object-contain"
                                 />
                               </div>
