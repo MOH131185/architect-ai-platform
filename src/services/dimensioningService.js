@@ -367,6 +367,9 @@ class DimensioningService {
         case 'label':
           svg += this.svgLabel(annotation, scale);
           break;
+        default:
+          // Unknown annotation type - skip
+          break;
         case 'elevation_marker':
           svg += this.svgElevationMarker(annotation, scale);
           break;

@@ -93,8 +93,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       area,
       floorArea,
       programDetails,
-      buildingProgram,
-      floors
+      buildingProgram
+      // floors - reserved for future use
     } = projectContext;
 
     // Extract total area
@@ -1522,7 +1522,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * Get fallback image when API is unavailable
    */
   getFallbackImage(params) {
-    const { viewType = 'exterior', style = 'contemporary' } = params;
+    const { viewType = 'exterior' } = params;
+    // style parameter reserved for future use
 
     // Return placeholder image URLs based on view type
     const fallbackImages = {

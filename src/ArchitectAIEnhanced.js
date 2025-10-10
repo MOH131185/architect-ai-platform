@@ -14,7 +14,8 @@ import bimService from './services/bimService';
 import dimensioningService from './services/dimensioningService';
 
 // Connectivity panel state
-const Connectivity = ({}) => {
+// eslint-disable-next-line no-unused-vars
+const Connectivity = () => {
   const [routes, setRoutes] = useState({ openai: '', replicate: '', health: '' });
   const [connectivity, setConnectivity] = useState({ status: 'checking', detail: '' });
   useEffect(() => {
