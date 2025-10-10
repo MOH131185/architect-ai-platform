@@ -4,17 +4,12 @@
  */
 
 import logger from '../utils/productionLogger';
+import { getReplicatePredictUrl, getReplicateStatusUrl } from '../utils/apiRoutes';
 
 const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
 
-// Use Vercel serverless functions in production, local proxy in development
-const REPLICATE_API_PROXY_URL = process.env.NODE_ENV === 'production'
-  ? '/api/replicate-predictions'  // Vercel serverless function
-  : 'http://localhost:3001/api/replicate/predictions';  // Local proxy server
-
-const REPLICATE_STATUS_URL = process.env.NODE_ENV === 'production'
-  ? '/api/replicate-status'  // Vercel serverless function
-  : 'http://localhost:3001/api/replicate/predictions';  // Local proxy server
+// Resolve API endpoints at runtime for dev/prod
+const REPLICATE_API_PROXY_URL = getReplicatePredictUrl();
 
 class ReplicateService {
   constructor() {
@@ -1570,9 +1565,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     }
 
     try {
-      const url = process.env.NODE_ENV === 'production'
-        ? `/api/replicate-status?id=${predictionId}`
-        : `http://localhost:3001/api/replicate/predictions/${predictionId}`;
+      const url = getReplicateStatusUrl(predictionId);
 
       const response = await fetch(url, {
         headers: {

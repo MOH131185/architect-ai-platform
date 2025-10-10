@@ -4,13 +4,12 @@
  */
 
 import logger from '../utils/productionLogger';
+import { getOpenAIUrl } from '../utils/apiRoutes';
 
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 
-// Use Vercel serverless function in production, local proxy in development
-const OPENAI_API_URL = process.env.NODE_ENV === 'production'
-  ? '/api/openai-chat'  // Vercel serverless function
-  : 'http://localhost:3001/api/openai/chat';  // Local proxy server
+// Resolve API endpoint at runtime for dev/prod
+const OPENAI_API_URL = getOpenAIUrl();
 
 class OpenAIService {
   constructor() {
