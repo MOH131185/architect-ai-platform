@@ -94,27 +94,32 @@ class AIIntegrationService {
 
   /**
    * Generate architectural visualizations using Replicate
+   * ENHANCED: Pass OpenAI reasoning to ALL Replicate calls for consistency
    */
   async generateVisualizations(projectContext, reasoning) {
     try {
-      console.log('Generating architectural visualizations...');
+      console.log('Generating architectural visualizations with unified design framework...');
 
-      // Generate multiple views: 2 exterior + 1 interior
+      // CRITICAL FIX: Create enhanced context with OpenAI reasoning embedded
+      const reasoningEnhancedContext = this.createReasoningEnhancedContext(projectContext, reasoning);
+
+      // Generate multiple views with reasoning-enhanced context
+      console.log('🎨 Generating views with OpenAI-guided design parameters...');
       const views = await this.replicate.generateMultipleViews(
-        projectContext,
+        reasoningEnhancedContext,
         ['exterior_front', 'exterior_side', 'interior']
       );
-      
-      // Generate style variations
+
+      // Generate style variations with reasoning-enhanced context
       const styleVariations = await this.replicate.generateStyleVariations(
-        projectContext,
+        reasoningEnhancedContext,
         ['modern', 'sustainable', 'contemporary']
       );
-      
-      // Generate from reasoning
+
+      // Generate from reasoning with enhanced context
       const reasoningBased = await this.replicate.generateFromReasoning(
-        reasoning, 
-        projectContext
+        reasoning,
+        reasoningEnhancedContext
       );
 
       return {
@@ -122,6 +127,7 @@ class AIIntegrationService {
         styleVariations,
         reasoningBased,
         source: 'replicate',
+        reasoning: reasoning, // Include reasoning in results for reference
         timestamp: new Date().toISOString()
       };
 
@@ -274,13 +280,205 @@ class AIIntegrationService {
    * Extract materials from reasoning
    */
   extractMaterialsFromReasoning(reasoning) {
-    const materialText = reasoning.materialRecommendations || '';
-    const materials = ['glass', 'steel', 'concrete', 'wood', 'stone', 'brick'];
-    const foundMaterials = materials.filter(material => 
+    // Handle both string and object formats for materialRecommendations
+    if (typeof reasoning.materialRecommendations === 'object' && reasoning.materialRecommendations.primary) {
+      // If we have structured material recommendations, use them
+      const primaryMaterials = reasoning.materialRecommendations.primary || [];
+      const secondaryMaterials = reasoning.materialRecommendations.secondary || [];
+      const allMaterials = [...primaryMaterials, ...secondaryMaterials];
+
+      if (allMaterials.length > 0) {
+        // Extract just the material names from detailed descriptions
+        const materialNames = allMaterials.map(m => {
+          // Extract material name from descriptions like "Concrete - for structural durability"
+          const match = m.match(/^([^-,]+)/);
+          return match ? match[1].trim().toLowerCase() : m.toLowerCase();
+        });
+        return materialNames.slice(0, 3).join(' and ');
+      }
+    }
+
+    // Fallback to string parsing
+    const materialText = typeof reasoning.materialRecommendations === 'string'
+      ? reasoning.materialRecommendations
+      : JSON.stringify(reasoning.materialRecommendations || '');
+    const materials = ['glass', 'steel', 'concrete', 'wood', 'stone', 'brick', 'timber', 'metal', 'aluminum'];
+    const foundMaterials = materials.filter(material =>
       materialText.toLowerCase().includes(material)
     );
-    
-    return foundMaterials.length > 0 ? foundMaterials.join(' and ') : 'glass and steel';
+
+    return foundMaterials.length > 0 ? foundMaterials.slice(0, 3).join(' and ') : 'glass and steel';
+  }
+
+  /**
+   * CRITICAL FIX: Create reasoning-enhanced context for consistent image generation
+   * Extracts specific design parameters from OpenAI reasoning and embeds them into context
+   * This ensures ALL Replicate calls use the same architectural framework
+   */
+  createReasoningEnhancedContext(projectContext, reasoning) {
+    console.log('🔧 Creating unified design framework from OpenAI reasoning...');
+
+    // Extract key design parameters from reasoning
+    const extractedParams = {
+      // Extract design philosophy
+      designPhilosophy: reasoning.designPhilosophy || 'contemporary sustainable design',
+
+      // Extract materials from structured or text format
+      materials: this.extractMaterialsFromReasoning(reasoning),
+
+      // Extract spatial organization
+      spatialOrganization: typeof reasoning.spatialOrganization === 'object'
+        ? reasoning.spatialOrganization.strategy || reasoning.spatialOrganization
+        : reasoning.spatialOrganization || 'functional open-plan layout',
+
+      // Extract environmental features
+      environmentalFeatures: this.extractEnvironmentalFeatures(reasoning),
+
+      // Extract technical solutions
+      technicalFeatures: this.extractTechnicalFeatures(reasoning),
+
+      // Extract style rationale if available
+      styleApproach: reasoning.styleRationale?.overview || '',
+
+      // Create unified architectural description
+      unifiedArchitecturalPrompt: this.createUnifiedArchitecturalPrompt(reasoning)
+    };
+
+    // Log extracted parameters for debugging
+    console.log('📋 Extracted design parameters:', {
+      philosophy: extractedParams.designPhilosophy.substring(0, 50) + '...',
+      materials: extractedParams.materials,
+      spatial: extractedParams.spatialOrganization.substring(0, 50) + '...',
+      environmental: extractedParams.environmentalFeatures.substring(0, 50) + '...'
+    });
+
+    // Return enhanced context with reasoning embedded
+    return {
+      ...projectContext,
+      // Override basic parameters with reasoning-derived ones
+      materials: extractedParams.materials,
+      architecturalStyle: this.extractArchitecturalStyle(reasoning, projectContext),
+
+      // Add new reasoning-derived parameters
+      reasoningParams: extractedParams,
+      designPhilosophy: extractedParams.designPhilosophy,
+      spatialOrganization: extractedParams.spatialOrganization,
+      environmentalFeatures: extractedParams.environmentalFeatures,
+      technicalFeatures: extractedParams.technicalFeatures,
+
+      // Add unified architectural prompt for ALL image generations
+      unifiedArchitecturalPrompt: extractedParams.unifiedArchitecturalPrompt,
+
+      // Flag to indicate reasoning-enhanced context
+      isReasoningEnhanced: true,
+
+      // Include full reasoning for reference
+      fullReasoning: reasoning
+    };
+  }
+
+  /**
+   * Extract environmental features from reasoning
+   */
+  extractEnvironmentalFeatures(reasoning) {
+    const features = [];
+
+    if (reasoning.environmentalConsiderations) {
+      const env = reasoning.environmentalConsiderations;
+
+      // Handle object format
+      if (typeof env === 'object') {
+        if (env.passiveStrategies) features.push('passive solar design');
+        if (env.renewableEnergy) features.push('solar panels');
+        if (env.waterManagement) features.push('rainwater harvesting');
+      }
+      // Handle string format
+      else if (typeof env === 'string') {
+        if (env.toLowerCase().includes('passive')) features.push('passive cooling');
+        if (env.toLowerCase().includes('solar')) features.push('solar orientation');
+        if (env.toLowerCase().includes('natural')) features.push('natural ventilation');
+      }
+    }
+
+    return features.length > 0 ? features.join(', ') : 'sustainable design features';
+  }
+
+  /**
+   * Extract technical features from reasoning
+   */
+  extractTechnicalFeatures(reasoning) {
+    const features = [];
+
+    if (reasoning.technicalSolutions) {
+      const tech = reasoning.technicalSolutions;
+
+      // Handle object format
+      if (typeof tech === 'object') {
+        if (tech.structural) features.push('efficient structural system');
+        if (tech.envelope) features.push('high-performance envelope');
+        if (tech.smart) features.push('smart building systems');
+      }
+      // Handle string format
+      else if (typeof tech === 'string') {
+        if (tech.toLowerCase().includes('structural')) features.push('optimized structure');
+        if (tech.toLowerCase().includes('insulation')) features.push('thermal insulation');
+      }
+    }
+
+    return features.length > 0 ? features.join(', ') : 'advanced building systems';
+  }
+
+  /**
+   * Extract architectural style from reasoning and context
+   */
+  extractArchitecturalStyle(reasoning, projectContext) {
+    // Try to extract from style rationale
+    if (reasoning.styleRationale?.overview) {
+      const styleText = reasoning.styleRationale.overview.toLowerCase();
+      if (styleText.includes('modern')) return 'modern';
+      if (styleText.includes('contemporary')) return 'contemporary';
+      if (styleText.includes('traditional')) return 'traditional';
+      if (styleText.includes('sustainable')) return 'sustainable';
+    }
+
+    // Try to extract from design philosophy
+    if (reasoning.designPhilosophy) {
+      const philosophy = reasoning.designPhilosophy.toLowerCase();
+      if (philosophy.includes('modern')) return 'modern';
+      if (philosophy.includes('contemporary')) return 'contemporary';
+      if (philosophy.includes('traditional')) return 'traditional';
+    }
+
+    // Fallback to project context or default
+    return projectContext.architecturalStyle || 'contemporary';
+  }
+
+  /**
+   * Create unified architectural prompt that will be injected into ALL image generations
+   * This is the KEY to ensuring consistency across all views
+   */
+  createUnifiedArchitecturalPrompt(reasoning) {
+    const materials = this.extractMaterialsFromReasoning(reasoning);
+    const philosophy = reasoning.designPhilosophy || 'contemporary design';
+    const spatial = typeof reasoning.spatialOrganization === 'object'
+      ? reasoning.spatialOrganization.strategy || ''
+      : reasoning.spatialOrganization || '';
+    const environmental = this.extractEnvironmentalFeatures(reasoning);
+
+    // Create a comprehensive architectural description that will guide ALL images
+    const unifiedPrompt = `
+      Architectural design following this EXACT specification:
+      PHILOSOPHY: ${philosophy}
+      MATERIALS: ${materials} facade and construction
+      SPATIAL: ${spatial}
+      ENVIRONMENTAL: ${environmental}
+      STYLE: Contemporary design with clean lines, large windows, flat or low-pitched roof
+      CONSISTENCY: All views must show the SAME building with identical materials, colors, and architectural features
+    `.trim().replace(/\s+/g, ' ');
+
+    console.log('🏛️ Unified architectural prompt created:', unifiedPrompt.substring(0, 100) + '...');
+
+    return unifiedPrompt;
   }
 
   /**
@@ -504,10 +702,11 @@ class AIIntegrationService {
 
   /**
    * Generate 2D floor plan and 3D preview with style detection
+   * ENHANCED: Generate reasoning FIRST to guide all image generation
    */
   async generateFloorPlanAnd3DPreview(projectContext, portfolioImages = []) {
     try {
-      console.log('Starting comprehensive architectural generation...');
+      console.log('Starting comprehensive architectural generation with OpenAI reasoning guidance...');
 
       // STEP 1: Use projectSeed from context (generated once in frontend)
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
@@ -524,9 +723,19 @@ class AIIntegrationService {
         );
       }
 
-      // Step 2: Generate multi-level floor plans (ground, upper if needed, roof)
-      console.log('🏗️ Generating multi-level floor plans...');
-      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
+      // CRITICAL FIX: Generate design reasoning FIRST to guide all subsequent generation
+      console.log('🧠 Generating OpenAI design reasoning to create unified architectural framework...');
+      const reasoning = await this.generateDesignReasoningWithStyle(
+        enhancedContext,
+        styleDetection
+      );
+
+      // Create reasoning-enhanced context for ALL subsequent generations
+      const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);
+
+      // Step 2: Generate multi-level floor plans with reasoning guidance
+      console.log('🏗️ Generating multi-level floor plans guided by OpenAI reasoning...');
+      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);
 
       // STEP 2: Capture ground floor plan image URL for use as ControlNet control
       let floorPlanControlImage = null;
@@ -535,26 +744,20 @@ class AIIntegrationService {
         console.log('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
       }
 
-      // Step 3: Generate elevations and sections as independent 2D technical drawings
-      console.log('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
+      // Step 3: Generate elevations and sections with reasoning guidance
+      console.log('🏗️ Generating all elevations (N,S,E,W) and sections with OpenAI reasoning guidance...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
-        enhancedContext,
+        reasoningEnhancedContext,  // Use reasoning-enhanced context
         true, // Generate all drawings (4 elevations + 2 sections)
         null // No ControlNet - elevations/sections must be independent 2D orthographic projections
       );
 
-      // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - WITHOUT ControlNet for better photorealistic results
-      console.log('🏗️ Generating 3D photorealistic views: exterior_front, exterior_side, interior, axonometric, perspective (no ControlNet for perspective freedom)');
+      // Step 4: Generate 3D views with reasoning guidance for consistency
+      console.log('🏗️ Generating 3D photorealistic views with OpenAI reasoning guidance for consistency...');
       const views = await this.replicate.generateMultipleViews(
-        enhancedContext,
+        reasoningEnhancedContext,  // Use reasoning-enhanced context
         ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
         null // Removed ControlNet - 3D views need photorealistic perspective freedom, not constrained by 2D floor plan
-      );
-
-      // Step 5: Generate design reasoning with style context
-      const reasoning = await this.generateDesignReasoningWithStyle(
-        projectContext,
-        styleDetection
       );
 
       return {
@@ -583,6 +786,7 @@ class AIIntegrationService {
   /**
    * STEP 3 & 4: Integrated design generation with location analysis and style blending
    * Orchestrates location analysis, portfolio detection, and coordinated 2D/3D generation
+   * ENHANCED: Generate reasoning FIRST to guide all image generation
    * @param {Object} projectContext - Project context with all specifications
    * @param {Array} portfolioImages - Optional portfolio images for style detection
    * @param {Number} materialWeight - Material blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
@@ -590,7 +794,7 @@ class AIIntegrationService {
    */
   async generateIntegratedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
     try {
-      console.log('🎯 Starting integrated design generation workflow...');
+      console.log('🎯 Starting integrated design generation workflow with OpenAI reasoning guidance...');
       console.log('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
       console.log('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
 
@@ -644,9 +848,17 @@ class AIIntegrationService {
       enhancedContext.seed = projectSeed;
       console.log('🎲 Using unified seed:', projectSeed);
 
-      // STEP 3.5: Generate multi-level floor plans with unified seed and blended prompt
-      console.log('🏗️ Step 4: Generating multi-level floor plans with blended style...');
-      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
+      // CRITICAL FIX: Generate design reasoning FIRST with blended style context
+      console.log('🧠 Step 4: Generating OpenAI design reasoning to create unified architectural framework...');
+      const reasoning = await this.openai.generateDesignReasoning(enhancedContext);
+
+      // Create reasoning-enhanced context that will be used for ALL image generation
+      const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);
+      console.log('✅ Unified design framework created from OpenAI reasoning');
+
+      // STEP 3.5: Generate multi-level floor plans with reasoning guidance
+      console.log('🏗️ Step 5: Generating multi-level floor plans with OpenAI reasoning guidance...');
+      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);
 
       // Capture ground floor plan image for ControlNet
       let floorPlanImage = null;
@@ -655,29 +867,29 @@ class AIIntegrationService {
         console.log('✅ Ground floor plan generated, captured for ControlNet control');
       }
 
-      // STEP 3.6: Generate elevations and sections as independent 2D technical drawings
-      console.log('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
+      // STEP 3.6: Generate elevations and sections with reasoning guidance
+      console.log('🏗️ Step 6: Generating all elevations and sections with OpenAI reasoning guidance...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
-        enhancedContext,
+        reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
         true, // generateAllDrawings - generate all 4 elevations + 2 sections
         null // No ControlNet - elevations/sections must be independent 2D orthographic projections
       );
-      console.log('✅ All technical drawings generated as independent 2D orthographic projections');
+      console.log('✅ All technical drawings generated with unified design framework');
 
       // STEP 3.6.5: Skip dimensioning annotation (causing errors with undefined BIM model)
       // TODO: Fix dimensioning service to work with image URLs instead of BIM models
       console.log('⏭️  Skipping dimension annotation (not yet compatible with image-based workflow)');
       // The generated elevations and sections will be displayed without additional annotations
 
-      // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) WITHOUT ControlNet for proper 3D perspective
-      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective) WITHOUT ControlNet for proper perspective...');
-      // Generate photorealistic views WITHOUT floor plan ControlNet - 3D views need perspective freedom
+      // STEP 3.7: Generate multiple 3D views with reasoning guidance for consistency
+      console.log('🏗️ Step 7: Generating 3D photorealistic views with OpenAI reasoning guidance...');
+      // Generate photorealistic views with reasoning guidance for consistency
       const views = await this.replicate.generateMultipleViews(
-        enhancedContext,
+        reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
         ['exterior_front', 'exterior_side', 'interior', 'perspective'],
         null // NO ControlNet - prevents 2D floor plan from overriding 3D perspective prompts
       );
-      console.log('✅ Photorealistic 3D views generated with proper perspective freedom');
+      console.log('✅ Photorealistic 3D views generated with unified design framework');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -701,8 +913,8 @@ class AIIntegrationService {
         viewCount: combinedResults.metadata.viewCount
       });
 
-      // STEP 3.8: Generate parametric BIM model based on blended style AND AI-generated floor plans
-      console.log('🏗️ Step 7: Generating parametric BIM model from blended style AND AI-generated floor plan geometry...');
+      // STEP 3.8: Generate parametric BIM model with reasoning guidance
+      console.log('🏗️ Step 8: Generating parametric BIM model with OpenAI reasoning guidance...');
       let bimModel = null;
       let bimAxonometric = null;
       let axonometricSource = 'none';
@@ -711,8 +923,9 @@ class AIIntegrationService {
         // Extract floor plan geometry to synchronize BIM with AI-generated plans
         const floorPlanGeometry = this.extractFloorPlanGeometry(floorPlans);
 
+        // Use reasoning-enhanced context for BIM generation
         bimModel = await this.bim.generateParametricModel({
-          ...enhancedContext,
+          ...reasoningEnhancedContext,  // Use reasoning-enhanced context
           style: blendedStyle.styleName,
           materials: blendedStyle.materials,
           characteristics: blendedStyle.characteristics,
@@ -720,7 +933,7 @@ class AIIntegrationService {
           floorPlanGeometry: floorPlanGeometry, // NEW: Pass AI-generated geometry to BIM
           elevations: technicalDrawings
         });
-        console.log('✅ BIM model generated successfully synchronized with AI floor plan geometry');
+        console.log('✅ BIM model generated with unified design framework');
 
         // STEP 3.9: Derive geometrically accurate axonometric view from BIM
         console.log('🏗️ Deriving axonometric view from BIM model...');
@@ -776,16 +989,16 @@ class AIIntegrationService {
         }
       }
 
-      // STEP 3.10: Optional construction documentation generation
+      // STEP 3.10: Optional construction documentation generation with reasoning guidance
       let constructionDocumentation = null;
       if (projectContext.generateConstructionDocs) {
-        console.log('🏗️ Step 8: Generating construction documentation (detail drawings, structural plans, MEP plans)...');
+        console.log('🏗️ Step 9: Generating construction documentation with OpenAI reasoning guidance...');
         try {
           constructionDocumentation = await this.generateConstructionDocumentation(
-            enhancedContext,
+            reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
             floorPlanImage
           );
-          console.log('✅ Construction documentation generated successfully');
+          console.log('✅ Construction documentation generated with unified design framework');
         } catch (constructionError) {
           console.error('⚠️ Construction documentation generation failed:', constructionError.message);
           constructionDocumentation = {
@@ -802,6 +1015,7 @@ class AIIntegrationService {
       // Return integrated results with all visualizations and blended style
       return {
         success: true,
+        reasoning,  // CRITICAL: Include OpenAI reasoning that guided all generation
         locationAnalysis,
         portfolioStyle,
         blendedStyle, // STEP 4: Full blended style object
@@ -822,7 +1036,7 @@ class AIIntegrationService {
         axonometricSource, // NEW: Source metadata for axonometric generation
         constructionDocumentation, // NEW: Construction drawings and engineering notes (if requested)
         projectSeed,
-        enhancedContext,
+        enhancedContext: reasoningEnhancedContext,  // Return the reasoning-enhanced context
         timestamp: new Date().toISOString(),
         workflow: 'integrated_design_generation'
       };

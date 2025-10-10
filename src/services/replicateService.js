@@ -588,6 +588,7 @@ class ReplicateService {
 
   /**
    * Build parameters for specific view types
+   * ENHANCED: Inject unified architectural prompt from OpenAI reasoning
    */
   buildViewParameters(projectContext, viewType) {
     // Get unified building description for consistency
@@ -599,14 +600,23 @@ class ReplicateService {
     // Extract detailed project specifications
     const projectDetails = this.extractProjectDetails(projectContext);
 
+    // CRITICAL FIX: Check if we have unified architectural prompt from OpenAI reasoning
+    const hasReasoningGuidance = projectContext.isReasoningEnhanced && projectContext.unifiedArchitecturalPrompt;
+    const reasoningPrefix = hasReasoningGuidance ? projectContext.unifiedArchitecturalPrompt + '. ' : '';
+
+    // Override materials if reasoning-enhanced
+    const materials = projectContext.isReasoningEnhanced && projectContext.materials
+      ? projectContext.materials
+      : unifiedDesc.materials;
+
     switch (viewType) {
       case 'exterior':
       case 'exterior_front':
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements`,
+          materials: materials,
+          prompt: `${reasoningPrefix}Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements`,
           perspective: 'exterior front view',
           width: 1024,
           height: 768
@@ -617,8 +627,8 @@ class ReplicateService {
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications`,
+          materials: materials,
+          prompt: `${reasoningPrefix}Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications`,
           perspective: 'exterior side view',
           width: 1024,
           height: 768
@@ -637,8 +647,8 @@ class ReplicateService {
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural interior visualization, ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design matching exterior ${unifiedDesc.materials}, spacious interior with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from ${entranceDir}-facing windows, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture, interior matching project program requirements`,
+          materials: materials,
+          prompt: `${reasoningPrefix}Professional 3D architectural interior visualization, ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design matching exterior ${materials}, spacious interior with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from ${entranceDir}-facing windows, professional architectural photography, photorealistic rendering, high quality, detailed furnishings, contemporary furniture, interior matching project program requirements`,
           perspective: 'interior view',
           width: 1024,
           height: 768
