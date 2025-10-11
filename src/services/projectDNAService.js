@@ -411,23 +411,37 @@ class ProjectDNAService {
    * Blend materials from different sources
    */
   blendMaterials(local, portfolio, reasoning, weight) {
+    // Ensure all inputs are arrays
+    const localArray = Array.isArray(local) ? local : [];
+    const portfolioArray = Array.isArray(portfolio) ? portfolio : [];
+    const reasoningArray = Array.isArray(reasoning) ? reasoning : [];
+
     const allMaterials = [];
 
     // Add materials based on weight
     const portfolioCount = Math.round(3 * weight);
     const localCount = 3 - portfolioCount;
 
-    allMaterials.push(...portfolio.slice(0, portfolioCount));
-    allMaterials.push(...local.slice(0, localCount));
-
-    // Add reasoning materials if space
-    if (allMaterials.length < 3 && reasoning.length > 0) {
-      allMaterials.push(...reasoning.slice(0, 3 - allMaterials.length));
+    if (portfolioArray.length > 0) {
+      allMaterials.push(...portfolioArray.slice(0, portfolioCount));
+    }
+    if (localArray.length > 0) {
+      allMaterials.push(...localArray.slice(0, localCount));
     }
 
-    // Ensure we have at least 3 materials
-    while (allMaterials.length < 3) {
-      allMaterials.push(local[allMaterials.length] || 'concrete');
+    // Add reasoning materials if space
+    if (allMaterials.length < 3 && reasoningArray.length > 0) {
+      allMaterials.push(...reasoningArray.slice(0, 3 - allMaterials.length));
+    }
+
+    // Ensure we have at least 3 materials with defaults
+    const defaults = ['concrete', 'glass', 'steel'];
+    let defaultIndex = 0;
+    while (allMaterials.length < 3 && defaultIndex < defaults.length) {
+      if (!allMaterials.includes(defaults[defaultIndex])) {
+        allMaterials.push(defaults[defaultIndex]);
+      }
+      defaultIndex++;
     }
 
     return [...new Set(allMaterials)].slice(0, 3);
@@ -460,13 +474,26 @@ class ProjectDNAService {
     const local = locationAnalysis?.characteristics || ['clean lines', 'functional', 'sustainable'];
     const portfolio = portfolioStyle?.designElements || [];
 
+    // Ensure both are arrays
+    const localArray = Array.isArray(local) ? local : [local];
+    const portfolioArray = Array.isArray(portfolio) ? portfolio : [];
+
     const count = 5;
     const portfolioCount = Math.round(count * weight);
     const localCount = count - portfolioCount;
 
     const blended = [];
-    blended.push(...portfolio.slice(0, portfolioCount));
-    blended.push(...local.slice(0, localCount));
+    if (portfolioArray.length > 0) {
+      blended.push(...portfolioArray.slice(0, portfolioCount));
+    }
+    if (localArray.length > 0) {
+      blended.push(...localArray.slice(0, localCount));
+    }
+
+    // Ensure we have at least some characteristics
+    if (blended.length === 0) {
+      blended.push('clean lines', 'functional', 'sustainable');
+    }
 
     return [...new Set(blended)].slice(0, 5);
   }
