@@ -21,12 +21,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Support both REPLICATE_API_TOKEN and REACT_APP_REPLICATE_API_KEY
-    const apiKey = process.env.REPLICATE_API_TOKEN || process.env.REACT_APP_REPLICATE_API_KEY;
+    // Try multiple possible environment variable names
+    const apiKey = process.env.REACT_APP_REPLICATE_API_KEY ||
+                   process.env.REPLICATE_API_TOKEN ||
+                   process.env.REPLICATE_API_KEY ||
+                   process.env.REPLICATE_KEY;
     const { id } = req.query;
 
     if (!apiKey) {
-      return res.status(500).json({ error: 'Replicate API key not configured' });
+      console.error('Replicate API key not found in environment variables');
+      return res.status(500).json({
+        error: 'Replicate API key not configured',
+        details: 'Please set REACT_APP_REPLICATE_API_KEY in Vercel environment variables'
+      });
     }
 
     if (!id) {

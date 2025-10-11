@@ -21,16 +21,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    // In Vercel, use OPENAI_API_KEY (without REACT_APP_ prefix)
-    const apiKey = process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY;
+    // Try multiple possible environment variable names
+    const apiKey = process.env.REACT_APP_OPENAI_API_KEY ||
+                   process.env.OPENAI_API_KEY ||
+                   process.env.OPENAI_KEY;
 
     if (!apiKey) {
       console.error('OpenAI API key not found in environment variables');
+      console.error('Checked: REACT_APP_OPENAI_API_KEY, OPENAI_API_KEY, OPENAI_KEY');
       return res.status(500).json({
         error: 'OpenAI API key not configured',
-        details: 'Please set OPENAI_API_KEY in Vercel environment variables'
+        details: 'Please set REACT_APP_OPENAI_API_KEY in Vercel environment variables',
+        checked: ['REACT_APP_OPENAI_API_KEY', 'OPENAI_API_KEY', 'OPENAI_KEY']
       });
     }
+
+    // Log key presence (not the key itself) for debugging
+    console.log('OpenAI API key found, length:', apiKey.length);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -44,6 +51,18 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
+      console.error('OpenAI API error:', response.status, data);
+
+      // Special handling for 401 - likely invalid API key
+      if (response.status === 401) {
+        return res.status(401).json({
+          ...data,
+          error: 'Invalid OpenAI API key',
+          details: 'The API key provided is not valid. Please check your API key in Vercel environment variables.',
+          suggestion: 'Ensure you copied the complete key starting with "sk-"'
+        });
+      }
+
       return res.status(response.status).json(data);
     }
 
