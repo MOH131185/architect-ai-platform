@@ -1092,6 +1092,22 @@ class AIIntegrationService {
       const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);
       logger.verbose('✅ Unified design framework created from OpenAI reasoning with Master Design Spec');
 
+      // CRITICAL: Validation checkpoint - Ensure OpenAI reasoning is complete before Replicate generation
+      logger.verbose('🔍 Validation Checkpoint: Verifying OpenAI reasoning completeness...');
+      if (!reasoningEnhancedContext.masterDesignSpec) {
+        throw new Error('WORKFLOW ERROR: Master Design Specification missing - OpenAI reasoning incomplete');
+      }
+      if (!reasoningEnhancedContext.unifiedArchitecturalPrompt) {
+        throw new Error('WORKFLOW ERROR: Unified Architectural Prompt missing - OpenAI reasoning incomplete');
+      }
+      if (!projectSeed) {
+        throw new Error('WORKFLOW ERROR: Project seed missing - cannot ensure consistency');
+      }
+      if (!reasoningEnhancedContext.isReasoningEnhanced) {
+        throw new Error('WORKFLOW ERROR: Context not reasoning-enhanced - critical parameters missing');
+      }
+      logger.verbose('✅ Validation passed: OpenAI reasoning complete, proceeding with Replicate generation');
+
       // STEP 3.5: Generate multi-level floor plans with reasoning guidance
       logger.verbose('🏗️ Step 5: Generating multi-level floor plans with OpenAI reasoning guidance...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);

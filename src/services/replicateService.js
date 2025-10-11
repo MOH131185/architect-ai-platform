@@ -335,17 +335,23 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // STEP 1: Use unified projectSeed from context (no random generation here)
     const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
-    // CRITICAL FIX: Unified seed strategy for geometric consistency
-    // Technical views (floor plans, elevations, sections, axonometric) use SAME seed for geometric consistency
-    // Artistic views (interior, perspective) use varied seeds for aesthetic variety
-    const technicalViews = ['exterior_front', 'exterior_side', 'axonometric', 'site_plan'];
-    const artisticViews = ['interior', 'perspective'];
+    // CRITICAL FIX: Unified seed strategy for geometric consistency with sufficient variation
+    // Technical views use SAME seed for geometric consistency
+    // 3D views use VARIED seeds for camera angle diversity while maintaining same building
+    const technicalViews = ['axonometric', 'site_plan']; // Pure technical views
+    const exteriorViews = ['exterior_front', 'exterior_side']; // Exterior 3D views
+    const interiorViews = ['interior']; // Interior 3D views
+    const perspectiveViews = ['perspective']; // Perspective 3D views
     const strictConsistency = !!projectContext.strictConsistency;
 
-    // Define seed offsets for artistic views only
-    const artisticSeedOffsets = {
-      'interior': 200,
-      'perspective': 400
+    // Define seed offsets for 3D views - INCREASED for sufficient variation
+    // Offsets must be large enough to generate different camera angles but same building
+    const viewSeedOffsets = {
+      'exterior_front': 0,        // Base seed - front view
+      'exterior_side': 500,       // +500 for side view variety
+      'interior': 1000,           // +1000 for interior diversity
+      'perspective': 1500,        // +1500 for perspective variation
+      'axonometric': 2000         // +2000 for axonometric distinctness
     };
 
     // PERFORMANCE OPTIMIZATION: Build all view promises for parallel execution
@@ -355,30 +361,30 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
         // Determine seed strategy based on view type
         const isTechnicalView = technicalViews.includes(viewType);
-        const isArtisticView = artisticViews.includes(viewType);
+        const isExteriorView = exteriorViews.includes(viewType);
+        const isInteriorView = interiorViews.includes(viewType);
+        const isPerspectiveView = perspectiveViews.includes(viewType);
 
-        if (isTechnicalView) {
-          // Use SAME seed for technical views to ensure geometric consistency
+        if (strictConsistency) {
+          // Strict mode: All views use same seed (no variation)
           params.seed = projectSeed;
-          logger.verbose(`🎯 Technical view ${viewType} using consistent seed: ${params.seed}`);
-        } else if (isArtisticView) {
-          if (strictConsistency) {
-            // Enforce identical geometry across ALL 3D views
-            params.seed = projectSeed;
-            logger.verbose(`✅ Strict consistency enabled. Artistic view ${viewType} using consistent seed: ${params.seed}`);
-          } else {
-            // Use varied seed for artistic views to allow aesthetic variety
-            const seedOffset = artisticSeedOffsets[viewType] || 0;
-            params.seed = projectSeed + seedOffset;
-            logger.verbose(`🎨 Artistic view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
-          }
+          logger.verbose(`✅ Strict consistency enabled. ${viewType} using base seed: ${params.seed}`);
+        } else if (viewSeedOffsets.hasOwnProperty(viewType)) {
+          // Use defined seed offset for this view type
+          const seedOffset = viewSeedOffsets[viewType];
+          params.seed = projectSeed + seedOffset;
+          logger.verbose(`🎨 3D view ${viewType} using varied seed: ${params.seed} (base: ${projectSeed} + offset: ${seedOffset})`);
+        } else if (isTechnicalView) {
+          // Technical views use base seed for geometric accuracy
+          params.seed = projectSeed;
+          logger.verbose(`🎯 Technical view ${viewType} using base seed: ${params.seed}`);
         } else {
-          // Default to consistent seed for unknown view types
+          // Default to base seed for unknown view types
           params.seed = projectSeed;
-          logger.verbose(`🔧 Default view ${viewType} using consistent seed: ${params.seed}`);
+          logger.verbose(`🔧 Default view ${viewType} using base seed: ${params.seed}`);
         }
 
-        logger.verbose(`🎲 Generating ${viewType} with seed: ${params.seed} (base: ${projectSeed})`);
+        logger.verbose(`🎲 Generating ${viewType} with final seed: ${params.seed}`);
 
         // STEP 2: If controlImage is provided, add it for ControlNet guidance
         if (controlImage) {
@@ -777,7 +783,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}EXTERIOR ONLY: Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography from street level, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements, EXTERIOR VIEW ONLY, BUILDING FROM OUTSIDE, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
           perspective: 'exterior front view',
           width: 1024,
           height: 768,
@@ -791,7 +797,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}EXTERIOR ONLY: Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography from street level, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications, EXTERIOR VIEW ONLY, BUILDING FROM OUTSIDE, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
           perspective: 'exterior side view',
           width: 1024,
           height: 768,
@@ -1024,7 +1030,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 40,
       guidanceScale: 7.0,
       seed: viewConsistencyService.getProjectSeed(),
-      negativePrompt: "3D rendering, perspective view, exterior view, building facade, 3D model, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, exterior building, building from outside, facade view, elevation view, section view, technical drawing that is not floor plan"
+      negativePrompt: enhancedNegativePrompt
     };
   }
 
@@ -1194,8 +1200,14 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const consistentSeed = viewConsistencyService.getProjectSeed();
     const floorName = floorIndex === 0 ? 'foundation and ground floor structural plan' : `floor ${floorIndex + 1} structural plan`;
 
+    // CRITICAL FIX: Inject Master Design Specification for consistency
+    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+
+    // CRITICAL FIX: Use enhanced negative prompt from consistency validation service
+    const enhancedNegativePrompt = consistencyValidationService.getStructuralPlanNegativePrompt();
+
     return {
-      prompt: `STRICTLY 2D STRUCTURAL PLAN: 2D structural engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint, SAME PROJECT, SAME BUILDING, SAME DESIGN, STRUCTURAL PLAN ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
+      prompt: `${specPrefix}\n\nSTRICTLY 2D STRUCTURAL PLAN: 2D structural engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint, SAME PROJECT, SAME BUILDING, SAME DESIGN, STRUCTURAL PLAN ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: consistentDesc.buildingType,
       architecturalStyle: consistentDesc.architecturalStyle,
       materials: consistentDesc.materials,
@@ -1205,7 +1217,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 55,
       guidanceScale: 8.0,
       seed: consistentSeed,
-      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, interior view, elevation view, section view, technical drawing that is not structural plan"
+      negativePrompt: enhancedNegativePrompt
     };
   }
 
@@ -1224,6 +1236,12 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const consistentSeed = viewConsistencyService.getProjectSeed();
     const floorName = floorIndex === 0 ? 'ground floor' : `floor ${floorIndex + 1}`;
 
+    // CRITICAL FIX: Inject Master Design Specification for consistency
+    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+
+    // CRITICAL FIX: Use enhanced negative prompt from consistency validation service
+    const enhancedNegativePrompt = consistencyValidationService.getMEPPlanNegativePrompt();
+
     const systemPrompts = {
       hvac: `HVAC system layout: air handling units (AHU) locations, supply and return ductwork with sizes (e.g., 600x400mm duct), diffuser and grille locations, chilled water piping, heating hot water piping, thermostat locations, control zones, outdoor air intake, exhaust fans`,
       electrical: `Electrical system layout: main distribution boards (MDB), sub-distribution boards (SDB), lighting fixture locations and types, power outlet locations (single, double, 3-phase), cable routing and conduit sizes, circuit breakers and ratings, emergency lighting, fire alarm devices, data/telecom outlets, electrical load schedule`,
@@ -1234,7 +1252,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const systemPrompt = systemPrompts[system] || systemPrompts.combined;
 
     return {
-      prompt: `STRICTLY 2D MEP PLAN: 2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services, SAME PROJECT, SAME BUILDING, SAME DESIGN, MEP PLAN ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
+      prompt: `${specPrefix}\n\nSTRICTLY 2D MEP PLAN: 2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services, SAME PROJECT, SAME BUILDING, SAME DESIGN, MEP PLAN ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: consistentDesc.buildingType,
       architecturalStyle: consistentDesc.architecturalStyle,
       materials: consistentDesc.materials,
@@ -1244,7 +1262,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 55,
       guidanceScale: 8.0,
       seed: consistentSeed,
-      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, interior view, elevation view, section view, technical drawing that is not MEP plan"
+      negativePrompt: enhancedNegativePrompt
     };
   }
 

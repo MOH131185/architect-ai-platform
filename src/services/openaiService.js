@@ -68,6 +68,31 @@ class OpenAIService {
   }
 
   /**
+   * Calculate floor count based on building program and floor area
+   * CRITICAL: This must match the logic in aiIntegrationService.js for consistency
+   */
+  calculateFloorCount(buildingProgram, floorArea) {
+    const area = floorArea || 200;
+    const buildingType = (buildingProgram || 'house').toLowerCase();
+
+    // Single-floor building types
+    if (buildingType.includes('cottage') ||
+        buildingType.includes('bungalow') ||
+        buildingType.includes('pavilion')) {
+      return 1;
+    }
+
+    // Area-based calculation
+    if (area < 150) return 1;
+    if (area < 300) return 2;
+    if (area < 500) return 3;
+    if (area < 800) return 4;
+
+    // Maximum 5 floors for AI generation quality
+    return Math.min(Math.ceil(area / 200), 5);
+  }
+
+  /**
    * Build comprehensive design prompt from project context
    * Enhanced with location analysis and portfolio style context
    */
@@ -129,6 +154,10 @@ You MUST use ONLY these exact materials in your design: ${blendedStyle.materials
 DO NOT recommend alternative materials. These materials have been carefully selected to blend portfolio preferences with local context.
 Your material recommendations must match these materials exactly.` : '';
 
+    // Calculate floor count for floor-by-floor analysis
+    const floorArea = projectContext.floorArea || projectContext.area || 200;
+    const calculatedFloorCount = this.calculateFloorCount(buildingProgram, floorArea);
+
     return `
 Analyze this architectural project and provide comprehensive design reasoning with specific focus on style integration and climate adaptation:
 
@@ -137,6 +166,8 @@ PROJECT CONTEXT:
 - Climate Type: ${climate?.type || climateData?.type || 'Not specified'}
 - Zoning: ${zoning?.type || 'Not specified'}
 - Building Program: ${buildingProgram || 'Not specified'}
+- Total Floor Area: ${floorArea}m²
+- Calculated Floor Count: ${calculatedFloorCount} floors
 - Site Constraints: ${siteConstraints || 'Not specified'}
 - User Preferences: ${userPreferences || 'Not specified'}
 ${seasonalClimate}
@@ -144,6 +175,8 @@ ${locationStyleInfo}
 ${portfolioStyleInfo}
 ${blendedStyleInfo}
 ${materialConstraint}
+
+CRITICAL REQUIREMENT: You MUST provide floor-by-floor spatial analysis with UNIQUE layouts for each floor level.
 
 Please provide comprehensive design reasoning in the following structured JSON format:
 
@@ -160,6 +193,33 @@ Please provide comprehensive design reasoning in the following structured JSON f
     "keySpaces": "Primary spaces and their relationships",
     "circulation": "Movement patterns and flow",
     "flexibility": "Adaptability for future needs"
+  },
+  "floorByFloorAnalysis": {
+    "floorCount": ${calculatedFloorCount},
+    "floors": [
+      {
+        "level": 0,
+        "name": "Ground Floor",
+        "totalArea": "Approximate area in m²",
+        "primaryFunction": "Main functional purpose of this floor",
+        "rooms": [
+          {
+            "name": "Room name",
+            "area": "Approximate area in m²",
+            "purpose": "Specific function and use",
+            "features": ["Key features like 'double-height ceiling', 'south-facing windows', 'open plan'"]
+          }
+        ],
+        "uniqueCharacteristics": ["What makes this floor DISTINCT from other floors"],
+        "verticalCirculation": ["Staircase location", "Elevator location if applicable"],
+        "entranceAccess": "Main entrance details (ground floor only)"
+      }
+      // REPEAT for floors 1 through ${calculatedFloorCount - 1}
+      // Each floor MUST have DIFFERENT room programs and layouts
+      // Ground floor: entrance, public spaces, main program
+      // Middle floors: private spaces, bedrooms/offices, no ground entrances
+      // Top floor: master suite/executive, roof access, skylights
+    ]
   },
   "materialRecommendations": {
     "primary": ["List of 3-5 primary materials with rationale for each"],
@@ -198,6 +258,24 @@ Please provide comprehensive design reasoning in the following structured JSON f
   }
 }
 
+CRITICAL FLOOR-BY-FLOOR REQUIREMENTS:
+1. You MUST generate exactly ${calculatedFloorCount} floor entries in the "floorByFloorAnalysis.floors" array
+2. Each floor MUST have a UNIQUE room program - DO NOT repeat the same layout
+3. Ground floor (level 0): Main entrance, public/social spaces, primary program areas
+   - Residential: entrance lobby, living room, dining, kitchen, guest bathroom, garage/storage
+   - Office: reception, open workspace, conference rooms, pantry
+   - Mixed-use: retail/commercial on ground, lobby for upper floors
+4. Middle floors (levels 1 to ${calculatedFloorCount - 2}): Private/functional spaces, NO ground entrance
+   - Residential: bedrooms, private bathrooms, master suite, walk-in closets, family room
+   - Office: workstations, meeting rooms, break rooms, server room
+   - Hotel: guest rooms, housekeeping, laundry
+5. Top floor (level ${calculatedFloorCount - 1}): Premium spaces, roof access, views
+   - Residential: master bedroom suite, roof terrace, skylights, study
+   - Office: executive offices, sky lounge, rooftop terrace
+   - Mixed-use: penthouse, mechanical equipment access
+6. ALL floors must include vertical circulation (stairs/elevator) in consistent location
+7. Calculate realistic room areas that sum to approximately ${floorArea / calculatedFloorCount}m² per floor
+
 IMPORTANT: Ensure your response is valid JSON and includes all requested sections. Focus on actionable, specific recommendations that reflect the unique combination of location context, climate conditions, and design preferences.
     `.trim();
   }
@@ -217,6 +295,13 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
     }
 
     // Fallback to structured text response
+    logger.warn('Failed to parse JSON, using fallback floor-by-floor analysis');
+
+    // Generate fallback floor-by-floor analysis
+    const buildingProgram = projectContext.buildingProgram || 'house';
+    const floorArea = projectContext.floorArea || projectContext.area || 200;
+    const floorCount = this.calculateFloorCount(buildingProgram, floorArea);
+
     return {
       styleRationale: {
         overview: this.extractSection(aiResponse, 'Style Rationale') || this.extractSection(aiResponse, 'styleRationale'),
@@ -226,6 +311,7 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
       },
       designPhilosophy: this.extractSection(aiResponse, 'Design Philosophy'),
       spatialOrganization: this.extractSection(aiResponse, 'Spatial Organization'),
+      floorByFloorAnalysis: this.generateFallbackFloorAnalysis(buildingProgram, floorArea, floorCount),
       materialRecommendations: this.extractSection(aiResponse, 'Material'),
       environmentalConsiderations: this.extractSection(aiResponse, 'Environmental'),
       technicalSolutions: this.extractSection(aiResponse, 'Technical'),
@@ -234,6 +320,116 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
       futureProofing: this.extractSection(aiResponse, 'Future'),
       rawResponse: aiResponse,
       timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Generate fallback floor-by-floor analysis when OpenAI doesn't provide it
+   * Creates unique room programs for each floor based on building type
+   */
+  generateFallbackFloorAnalysis(buildingProgram, floorArea, floorCount) {
+    const areaPerFloor = Math.round(floorArea / floorCount);
+    const buildingType = (buildingProgram || 'house').toLowerCase();
+    const floors = [];
+
+    for (let i = 0; i < floorCount; i++) {
+      const isGround = i === 0;
+      const isTop = i === floorCount - 1;
+      const isMiddle = !isGround && !isTop;
+
+      let floorData = {
+        level: i,
+        name: isGround ? 'Ground Floor' : `Floor ${i + 1}`,
+        totalArea: `${areaPerFloor}m²`,
+        primaryFunction: '',
+        rooms: [],
+        uniqueCharacteristics: [],
+        verticalCirculation: ['Central staircase', floorCount > 2 ? 'Elevator' : null].filter(Boolean)
+      };
+
+      // Ground floor
+      if (isGround) {
+        if (buildingType.includes('house') || buildingType.includes('villa') || buildingType.includes('residential')) {
+          floorData.primaryFunction = 'Public and social spaces';
+          floorData.rooms = [
+            { name: 'Entrance Lobby', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Main entrance and reception', features: ['Double-height ceiling', 'Natural light'] },
+            { name: 'Living Room', area: `${Math.round(areaPerFloor * 0.25)}m²`, purpose: 'Family gathering and entertainment', features: ['South-facing windows', 'Open plan'] },
+            { name: 'Dining Area', area: `${Math.round(areaPerFloor * 0.15)}m²`, purpose: 'Family dining', features: ['Adjacent to kitchen', 'Garden views'] },
+            { name: 'Kitchen', area: `${Math.round(areaPerFloor * 0.2)}m²`, purpose: 'Food preparation', features: ['Island counter', 'Pantry storage'] },
+            { name: 'Guest Bathroom', area: `${Math.round(areaPerFloor * 0.05)}m²`, purpose: 'Guest facilities', features: ['Powder room'] },
+            { name: 'Storage/Garage', area: `${Math.round(areaPerFloor * 0.25)}m²`, purpose: 'Storage and parking', features: ['Direct access'] }
+          ];
+          floorData.entranceAccess = 'Main entrance from street, garage access';
+        } else if (buildingType.includes('office')) {
+          floorData.primaryFunction = 'Reception and public workspace';
+          floorData.rooms = [
+            { name: 'Reception Area', area: `${Math.round(areaPerFloor * 0.15)}m²`, purpose: 'Visitor reception', features: ['Waiting area', 'Front desk'] },
+            { name: 'Open Workspace', area: `${Math.round(areaPerFloor * 0.45)}m²`, purpose: 'Collaborative work area', features: ['Hot desks', 'Natural light'] },
+            { name: 'Conference Rooms', area: `${Math.round(areaPerFloor * 0.2)}m²`, purpose: 'Meetings', features: ['AV equipment', 'Glass partitions'] },
+            { name: 'Pantry', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Staff break area', features: ['Kitchen facilities'] },
+            { name: 'Restrooms', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Staff facilities', features: ['Accessible'] }
+          ];
+          floorData.entranceAccess = 'Main entrance with accessible ramp';
+        }
+        floorData.uniqueCharacteristics = ['Main entrance', 'Ground-level access', 'Public-facing spaces'];
+      }
+
+      // Middle floors
+      else if (isMiddle) {
+        if (buildingType.includes('house') || buildingType.includes('villa') || buildingType.includes('residential')) {
+          floorData.primaryFunction = 'Private bedrooms and bathrooms';
+          floorData.rooms = [
+            { name: 'Master Bedroom', area: `${Math.round(areaPerFloor * 0.3)}m²`, purpose: 'Primary bedroom suite', features: ['En-suite bathroom', 'Walk-in closet', 'Balcony'] },
+            { name: 'Bedroom 2', area: `${Math.round(areaPerFloor * 0.2)}m²`, purpose: 'Secondary bedroom', features: ['Built-in wardrobes'] },
+            { name: 'Bedroom 3', area: `${Math.round(areaPerFloor * 0.2)}m²`, purpose: 'Secondary bedroom', features: ['Built-in wardrobes'] },
+            { name: 'Shared Bathroom', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Bathroom for bedrooms 2-3', features: ['Bathtub', 'Dual sinks'] },
+            { name: 'Family Room', area: `${Math.round(areaPerFloor * 0.15)}m²`, purpose: 'Private family lounge', features: ['TV area', 'Bookshelves'] },
+            { name: 'Laundry', area: `${Math.round(areaPerFloor * 0.05)}m²`, purpose: 'Laundry facilities', features: ['Storage'] }
+          ];
+        } else if (buildingType.includes('office')) {
+          floorData.primaryFunction = 'Workstations and meeting spaces';
+          floorData.rooms = [
+            { name: 'Open Workspace', area: `${Math.round(areaPerFloor * 0.5)}m²`, purpose: 'Workstations', features: ['Modular desks', 'Natural ventilation'] },
+            { name: 'Meeting Rooms', area: `${Math.round(areaPerFloor * 0.2)}m²`, purpose: 'Small meetings', features: ['Video conferencing'] },
+            { name: 'Break Room', area: `${Math.round(areaPerFloor * 0.15)}m²`, purpose: 'Staff relaxation', features: ['Coffee station', 'Lounge seating'] },
+            { name: 'Server Room', area: `${Math.round(areaPerFloor * 0.05)}m²`, purpose: 'IT infrastructure', features: ['Climate control', 'Security'] },
+            { name: 'Restrooms', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Staff facilities', features: ['Accessible'] }
+          ];
+        }
+        floorData.uniqueCharacteristics = ['No ground entrance', 'Private spaces', 'Vertical circulation access'];
+      }
+
+      // Top floor
+      else if (isTop) {
+        if (buildingType.includes('house') || buildingType.includes('villa') || buildingType.includes('residential')) {
+          floorData.primaryFunction = 'Master suite and roof terrace';
+          floorData.rooms = [
+            { name: 'Master Bedroom Suite', area: `${Math.round(areaPerFloor * 0.35)}m²`, purpose: 'Premium master bedroom', features: ['Vaulted ceiling', 'Skylights', 'En-suite bathroom'] },
+            { name: 'Walk-in Closet', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Wardrobe storage', features: ['Custom built-ins'] },
+            { name: 'Study/Office', area: `${Math.round(areaPerFloor * 0.15)}m²`, purpose: 'Home office', features: ['Quiet space', 'Views'] },
+            { name: 'Roof Terrace', area: `${Math.round(areaPerFloor * 0.3)}m²`, purpose: 'Outdoor living space', features: ['Panoramic views', 'Planters'] },
+            { name: 'Mechanical Room', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'HVAC and utilities', features: ['Roof access hatch'] }
+          ];
+        } else if (buildingType.includes('office')) {
+          floorData.primaryFunction = 'Executive offices and lounge';
+          floorData.rooms = [
+            { name: 'Executive Offices', area: `${Math.round(areaPerFloor * 0.3)}m²`, purpose: 'Private executive spaces', features: ['Corner offices', 'Views'] },
+            { name: 'Sky Lounge', area: `${Math.round(areaPerFloor * 0.3)}m²`, purpose: 'Staff social space', features: ['Panoramic windows', 'Kitchen'] },
+            { name: 'Rooftop Terrace', area: `${Math.round(areaPerFloor * 0.25)}m²`, purpose: 'Outdoor workspace', features: ['Shade structures', 'Greenery'] },
+            { name: 'Boardroom', area: `${Math.round(areaPerFloor * 0.1)}m²`, purpose: 'Executive meetings', features: ['Premium finishes', 'AV'] },
+            { name: 'Mechanical Room', area: `${Math.round(areaPerFloor * 0.05)}m²`, purpose: 'Rooftop equipment', features: ['Equipment access'] }
+          ];
+        }
+        floorData.uniqueCharacteristics = ['Top floor', 'Roof access', 'Premium spaces', 'Skylights and views'];
+      }
+
+      floors.push(floorData);
+    }
+
+    return {
+      floorCount,
+      floors,
+      note: 'Fallback floor analysis - OpenAI response parsing failed'
     };
   }
 
@@ -250,9 +446,14 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
    * Fallback reasoning when API is unavailable
    */
   getFallbackReasoning(projectContext) {
+    const buildingProgram = projectContext.buildingProgram || 'house';
+    const floorArea = projectContext.floorArea || projectContext.area || 200;
+    const floorCount = this.calculateFloorCount(buildingProgram, floorArea);
+
     return {
       designPhilosophy: "Focus on sustainable, contextually appropriate design that responds to local climate and cultural conditions.",
       spatialOrganization: "Optimize spatial flow and functionality while maintaining flexibility for future adaptations.",
+      floorByFloorAnalysis: this.generateFallbackFloorAnalysis(buildingProgram, floorArea, floorCount),
       materialRecommendations: "Select materials based on local availability, durability, and environmental impact.",
       environmentalConsiderations: "Implement passive design strategies, renewable energy integration, and water conservation.",
       technicalSolutions: "Address structural efficiency, MEP optimization, and smart building technologies.",
