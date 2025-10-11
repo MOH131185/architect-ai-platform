@@ -29,7 +29,7 @@ class ConsistencyValidationService {
 
     // 3. Material Consistency
     const materialIssues = this.validateMaterials(results, enhancedContext);
-    issues.push...(...materialIssues);
+    issues.push(...materialIssues);
 
     // 4. View Type Classification (2D vs 3D)
     const viewTypeIssues = this.validateViewTypes(results);
