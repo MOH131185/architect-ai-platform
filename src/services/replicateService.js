@@ -5,6 +5,7 @@
 
 import logger from '../utils/productionLogger';
 import { getReplicatePredictUrl, getReplicateStatusUrl } from '../utils/apiRoutes';
+import viewConsistencyService from './viewConsistencyService';
 
 const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
 
@@ -812,31 +813,39 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         };
 
       case 'axonometric':
-        // Use blended style description if available for consistency with other views
-        const blendedDesc = projectContext.blendedPrompt || (projectContext.blendedStyle?.description);
-        const styleContext = blendedDesc
-          ? `matching the ${unifiedDesc.architecturalStyle} style design from floor plans and elevations`
-          : `in ${unifiedDesc.architecturalStyle} style`;
-
+        // FIXED: Use view consistency service for consistent 3D views
+        viewConsistencyService.initializeProjectConsistency(projectContext);
+        const consistentDesc = viewConsistencyService.getUnifiedDescription();
+        const consistentSeed = viewConsistencyService.getProjectSeed();
+        
         return {
-          buildingType: unifiedDesc.buildingType,
-          architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `${specPrefix}\n\nProfessional architectural axonometric 45-degree isometric view of the SAME ${unifiedDesc.fullDescription} ${styleContext}, isometric 3D projection from above showing ${entranceDir}-facing entrance clearly visible on ${entranceDir} side, ${unifiedDesc.materials} construction consistent with elevations, ${unifiedDesc.features}, ${unifiedDesc.floorCount} floor levels clearly visible with floor separation lines, technical illustration style matching other technical drawings, architectural drawing with clean precise lines, complete roof structure and all building volumes shown, professional architectural visualization, high detail, precise geometry, design must match floor plan layout and elevation facades exactly, unified consistent building design`,
+          buildingType: consistentDesc.buildingType,
+          architecturalStyle: consistentDesc.architecturalStyle,
+          materials: consistentDesc.materials,
+          seed: consistentSeed,
+          prompt: `${specPrefix}\n\nProfessional architectural axonometric 45-degree isometric view of the SAME ${consistentDesc.fullDescription}, isometric 3D projection from above showing ${entranceDir}-facing entrance clearly visible on ${entranceDir} side, ${consistentDesc.materials} construction consistent with elevations, ${consistentDesc.features}, ${consistentDesc.floorCount} floor levels clearly visible with floor separation lines, technical illustration style matching other technical drawings, architectural drawing with clean precise lines, complete roof structure and all building volumes shown, professional architectural visualization, high detail, precise geometry, design must match floor plan layout and elevation facades exactly, unified consistent building design, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
           perspective: 'axonometric view',
           width: 1024,
-          height: 768
+          height: 768,
+          negativePrompt: viewConsistencyService.getNegativePrompt('axonometric')
         };
 
       case 'perspective':
+        // FIXED: Use view consistency service for consistent perspective views
+        viewConsistencyService.initializeProjectConsistency(projectContext);
+        const perspectiveDesc = viewConsistencyService.getUnifiedDescription();
+        const perspectiveSeed = viewConsistencyService.getProjectSeed();
+        
         return {
-          buildingType: unifiedDesc.buildingType,
-          architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `${specPrefix}\n\n${reasoningPrefix}Wide angle aerial perspective rendering of COMPLETE ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, dramatic 3D perspective view from distance showing entire building with ${entranceDir}-facing entrance, FULL BUILDING IN FRAME with surrounding context, ${materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height fully visible${projectDetails.spacesDetail}, photorealistic architectural rendering, landscape context with trees and people for scale providing sense of distance, golden hour lighting, professional architectural visualization from elevated vantage point, cinematic composition showing complete project, high quality detailed rendering with full building view, bird's eye perspective angle capturing entire structure, distant viewpoint`,
+          buildingType: perspectiveDesc.buildingType,
+          architecturalStyle: perspectiveDesc.architecturalStyle,
+          materials: perspectiveDesc.materials,
+          seed: perspectiveSeed,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}Wide angle aerial perspective rendering of COMPLETE ${perspectiveDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, dramatic 3D perspective view from distance showing entire building with ${entranceDir}-facing entrance, FULL BUILDING IN FRAME with surrounding context, ${perspectiveDesc.materials} facade, ${perspectiveDesc.features}, ${perspectiveDesc.floorCount} levels height fully visible${projectDetails.spacesDetail}, photorealistic architectural rendering, landscape context with trees and people for scale providing sense of distance, golden hour lighting, professional architectural visualization from elevated vantage point, cinematic composition showing complete project, high quality detailed rendering with full building view, bird's eye perspective angle capturing entire structure, distant viewpoint, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
           perspective: 'perspective view',
           width: 1024,
-          height: 768
+          height: 768,
+          negativePrompt: viewConsistencyService.getNegativePrompt('perspective')
         };
 
       case 'section':
@@ -940,10 +949,12 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
   /**
    * Build parameters for 2D floor plan generation
+   * FIXED: Ensures proper 2D top-down floor plans, not front views
    */
   buildFloorPlanParameters(projectContext, level = 'ground') {
-    // Get unified building description for consistency
-    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+    // Initialize project consistency
+    viewConsistencyService.initializeProjectConsistency(projectContext);
+    const unifiedDesc = viewConsistencyService.getUnifiedDescription();
 
     // Extract detailed project specifications
     const projectDetails = this.extractProjectDetails(projectContext);
@@ -951,10 +962,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // Build room-specific descriptions based on program details
     let levelDesc = '';
     if (projectDetails.programDetail && level === 'ground') {
-      // Use actual program details for ground floor
       levelDesc = `ground floor ${projectDetails.programDetail}`;
     } else {
-      // Fallback to generic descriptions
       const levelDescriptions = {
         ground: 'ground floor showing main entrance, living areas, kitchen, common spaces',
         upper: 'upper floor showing bedrooms, private spaces, bathrooms',
@@ -973,11 +982,12 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       ? `, specific rooms: ${projectDetails.programDetail}`
       : '';
 
-    // CRITICAL FIX: Inject Master Design Specification for consistency
-    const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
+    // Use view consistency service for consistent prompts
+    const specPrefix = viewConsistencyService.formatMasterDesignSpec(projectContext.masterDesignSpec);
+    const basePrompt = viewConsistencyService.getPositivePrompt('floor_plan', projectContext);
     
     return {
-      prompt: `${specPrefix}\n\n2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${levelDesc}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
+      prompt: `${specPrefix}${basePrompt}, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${levelDesc}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -986,7 +996,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       height: 1024,
       steps: 40,
       guidanceScale: 7.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side"
+      seed: viewConsistencyService.getProjectSeed(),
+      negativePrompt: viewConsistencyService.getNegativePrompt('floor_plan')
     };
   }
 
@@ -1136,39 +1147,46 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
   /**
    * Build parameters for structural plans
-   * NEW: Generates structural engineering drawings with column/beam layout
+   * FIXED: Ensures structural plans match the same project design
    * @param {Object} projectContext - Project context
    * @param {Number} floorIndex - Floor level (0 = ground/foundation, 1 = first floor structure, etc.)
    * @returns {Object} Parameters for structural plan generation
    */
   buildStructuralPlanParameters(projectContext, floorIndex = 0) {
-    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+    // FIXED: Use view consistency service for consistent structural plans
+    viewConsistencyService.initializeProjectConsistency(projectContext);
+    const consistentDesc = viewConsistencyService.getUnifiedDescription();
+    const consistentSeed = viewConsistencyService.getProjectSeed();
     const floorName = floorIndex === 0 ? 'foundation and ground floor structural plan' : `floor ${floorIndex + 1} structural plan`;
 
     return {
-      prompt: `2D structural engineering plan of ${unifiedDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint`,
-      buildingType: unifiedDesc.buildingType,
-      architecturalStyle: unifiedDesc.architecturalStyle,
-      materials: unifiedDesc.materials,
+      prompt: `2D structural engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
+      buildingType: consistentDesc.buildingType,
+      architecturalStyle: consistentDesc.architecturalStyle,
+      materials: consistentDesc.materials,
       viewType: `structural_plan_floor_${floorIndex}`,
       width: 2048,
       height: 1536,
       steps: 55,
       guidanceScale: 8.0,
-      negativePrompt: "3D, perspective, color, rendered, photorealistic, architectural floor plan, room layouts, furniture, doors, windows, interior finishes"
+      seed: consistentSeed,
+      negativePrompt: viewConsistencyService.getNegativePrompt('structural_plan')
     };
   }
 
   /**
    * Build parameters for MEP (Mechanical, Electrical, Plumbing) plans
-   * NEW: Generates MEP engineering drawings with HVAC, electrical, and plumbing systems
+   * FIXED: Ensures MEP plans match the same project design
    * @param {Object} projectContext - Project context
    * @param {Number} floorIndex - Floor level
    * @param {String} system - MEP system type: 'hvac', 'electrical', 'plumbing', or 'combined'
    * @returns {Object} Parameters for MEP plan generation
    */
   buildMEPPlanParameters(projectContext, floorIndex = 0, system = 'combined') {
-    const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+    // FIXED: Use view consistency service for consistent MEP plans
+    viewConsistencyService.initializeProjectConsistency(projectContext);
+    const consistentDesc = viewConsistencyService.getUnifiedDescription();
+    const consistentSeed = viewConsistencyService.getProjectSeed();
     const floorName = floorIndex === 0 ? 'ground floor' : `floor ${floorIndex + 1}`;
 
     const systemPrompts = {
@@ -1181,16 +1199,17 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const systemPrompt = systemPrompts[system] || systemPrompts.combined;
 
     return {
-      prompt: `2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${unifiedDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services`,
-      buildingType: unifiedDesc.buildingType,
-      architecturalStyle: unifiedDesc.architecturalStyle,
-      materials: unifiedDesc.materials,
+      prompt: `2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
+      buildingType: consistentDesc.buildingType,
+      architecturalStyle: consistentDesc.architecturalStyle,
+      materials: consistentDesc.materials,
       viewType: `mep_${system}_plan_floor_${floorIndex}`,
       width: 2048,
       height: 1536,
       steps: 55,
       guidanceScale: 8.0,
-      negativePrompt: "3D, perspective, color rendering, photorealistic, architectural details, furniture, decorative elements, landscaping"
+      seed: consistentSeed,
+      negativePrompt: viewConsistencyService.getNegativePrompt('mep_plan')
     };
   }
 
