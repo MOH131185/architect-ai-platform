@@ -438,8 +438,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
   /**
    * Generate multi-level floor plans (ground, upper, roof)
-   * Generates all levels by default to show complete building design
-   * FIXED: Each floor gets DISTINCT prompts and slight seed variations
+   * ENHANCED: Uses ProjectDNA for intelligent floor generation
+   * FIXED: Each floor gets DISTINCT prompts with room programs from ProjectDNA
    * OPTIMIZED: Parallel generation for 60-70% speed improvement
    */
   async generateMultiLevelFloorPlans(projectContext, generateAllLevels = true) {
@@ -449,51 +449,83 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
     try {
       const startTime = Date.now();
-      const floorCount = this.calculateFloorCount(projectContext);
+
+      // Use ProjectDNA if available for intelligent floor distribution
+      const projectDNA = projectContext.projectDNA;
+      let floorCount, floorBreakdown;
+
+      if (projectDNA) {
+        floorCount = projectDNA.floorCount;
+        floorBreakdown = projectDNA.floorPlans;
+        logger.info(`📐 Using ProjectDNA: ${floorCount} floors with intelligent distribution`);
+      } else {
+        floorCount = this.calculateFloorCount(projectContext);
+        floorBreakdown = null;
+        logger.verbose(`📐 Calculated floor count: ${floorCount} (no ProjectDNA)`);
+      }
+
       const results = {};
 
-      // STEP 1: Use unified projectSeed from context (no random generation here)
-      const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+      // Use unified seed from ProjectDNA or context
+      const projectSeed = projectDNA?.seeds?.master ||
+                         projectContext.seed ||
+                         projectContext.projectSeed ||
+                         Math.floor(Math.random() * 1000000);
 
       // PERFORMANCE OPTIMIZATION: Generate all floor plans in parallel
       logger.verbose('🏗️ Generating DISTINCT floor plans for each level (parallel execution)...');
-      logger.verbose(`📊 Floor count: ${floorCount} (ground + ${floorCount - 1} upper floors)`);
+      logger.verbose(`📊 Floor count: ${floorCount} floors`);
 
-      // CRITICAL FIX: Build parameters for ground floor with floor index 0
-      const groundParams = this.buildFloorPlanParameters(projectContext, 'ground', 0);
-      groundParams.seed = projectSeed; // Ground floor uses base seed
-      logger.verbose('Ground floor plan params:', groundParams.viewType, groundParams.prompt?.substring(0, 150));
+      const planPromises = [];
 
-      const planPromises = [
-        { key: 'ground', promise: this.generateArchitecturalImage(groundParams) }
-      ];
+      // Generate floor plans based on ProjectDNA breakdown or standard distribution
+      if (floorBreakdown && floorBreakdown.length > 0) {
+        // Use intelligent floor breakdown from ProjectDNA
+        for (let i = 0; i < floorBreakdown.length && i < floorCount; i++) {
+          const floor = floorBreakdown[i];
+          const floorKey = floor.level.toLowerCase().replace(/\s+/g, '_');
 
-      // Only generate additional levels if explicitly requested
-      if (generateAllLevels) {
-        // CRITICAL FIX: Generate upper floors if multi-story
-        // Each upper floor gets distinct prompt based on floor index and slightly varied seed
-        if (floorCount > 1) {
-          // For 2-story building, this generates upper floor (floor index 1)
-          // For 3+ story buildings, this generates a representative upper floor
-          logger.verbose(`🏗️ Generating upper floor plan (floors 2-${floorCount})...`);
-          const upperParams = this.buildFloorPlanParameters(projectContext, 'upper', 1);
+          const params = this.buildFloorPlanParameters(projectContext, floorKey, i);
+          params.seed = projectSeed + (projectDNA?.seeds?.offsets?.[floorKey] || i * 10);
 
-          // CRITICAL FIX: Vary seed slightly to ensure distinct image while maintaining geometric consistency
-          // Small variation (projectSeed + 50) ensures same building but different interior layout
-          upperParams.seed = projectSeed + 50;
-
-          logger.verbose('Upper floor plan params:', upperParams.viewType, upperParams.prompt?.substring(0, 150));
-          planPromises.push({ key: 'upper', promise: this.generateArchitecturalImage(upperParams) });
+          logger.verbose(`${floor.level} (${floor.area}m²): ${floor.program}`);
+          planPromises.push({ key: floorKey, promise: this.generateArchitecturalImage(params) });
         }
+      } else {
+        // Fallback to standard floor generation
+        const groundParams = this.buildFloorPlanParameters(projectContext, 'ground', 0);
+        groundParams.seed = projectSeed;
+        logger.verbose('Ground floor plan params:', groundParams.viewType);
 
-        // Generate roof plan (roof is above all floors)
-        logger.verbose('🏗️ Generating roof plan...');
-        const roofParams = this.buildFloorPlanParameters(projectContext, 'roof', floorCount);
+        planPromises.push({ key: 'ground', promise: this.generateArchitecturalImage(groundParams) });
 
-        // CRITICAL FIX: Vary seed for roof plan to ensure distinct image
-        roofParams.seed = projectSeed + 100;
+        // Only generate additional levels if explicitly requested
+        if (generateAllLevels) {
+          // CRITICAL FIX: Generate upper floors if multi-story
+          // Each upper floor gets distinct prompt based on floor index and slightly varied seed
+          if (floorCount > 1) {
+            // For 2-story building, this generates upper floor (floor index 1)
+            // For 3+ story buildings, this generates a representative upper floor
+            logger.verbose(`🏗️ Generating upper floor plan (floors 2-${floorCount})...`);
+            const upperParams = this.buildFloorPlanParameters(projectContext, 'upper', 1);
 
-        planPromises.push({ key: 'roof', promise: this.generateArchitecturalImage(roofParams) });
+            // CRITICAL FIX: Vary seed slightly to ensure distinct image while maintaining geometric consistency
+            // Small variation (projectSeed + 50) ensures same building but different interior layout
+            upperParams.seed = projectSeed + 50;
+
+            logger.verbose('Upper floor plan params:', upperParams.viewType);
+            planPromises.push({ key: 'upper', promise: this.generateArchitecturalImage(upperParams) });
+          }
+
+          // Generate roof plan (roof is above all floors)
+          logger.verbose('🏗️ Generating roof plan...');
+          const roofParams = this.buildFloorPlanParameters(projectContext, 'roof', floorCount);
+
+          // CRITICAL FIX: Vary seed for roof plan to ensure distinct image
+          roofParams.seed = projectSeed + 100;
+
+          planPromises.push({ key: 'roof', promise: this.generateArchitecturalImage(roofParams) });
+        }
       }
 
       // Execute all generations in parallel
@@ -973,9 +1005,12 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
   /**
    * Build parameters for 2D floor plan generation
-   * FIXED: Ensures proper 2D top-down floor plans with DISTINCT prompts per floor
+   * FIXED: Uses ProjectDNA for consistent floor plan generation
    */
   buildFloorPlanParameters(projectContext, level = 'ground', floorIndex = null) {
+    // Use ProjectDNA if available
+    const projectDNA = projectContext.projectDNA;
+
     // Initialize project consistency
     viewConsistencyService.initializeProjectConsistency(projectContext);
     const unifiedDesc = viewConsistencyService.getUnifiedDescription();
@@ -1019,8 +1054,16 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // CRITICAL FIX: Use enhanced negative prompt from consistency validation service
     const enhancedNegativePrompt = consistencyValidationService.get2DFloorPlanNegativePrompt();
 
+    // Add ProjectDNA specification if available
+    let dnaSpec = '';
+    if (projectDNA && floorIndex !== null && projectDNA.floorPlans[floorIndex]) {
+      const floor = projectDNA.floorPlans[floorIndex];
+      const roomList = floor.rooms?.map(r => `${r.name} (${r.area}m²)`).join(', ') || '';
+      dnaSpec = `DNA SPECIFICATION: ${floor.level} (${floor.area}m²) containing ${roomList}, `;
+    }
+
     return {
-      prompt: `STRICTLY 2D FLOOR PLAN ONLY: ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning, FLOOR PLAN VIEW ONLY, NO EXTERIOR VIEWS, NO 3D RENDERINGS`,
+      prompt: `${dnaSpec}STRICTLY 2D FLOOR PLAN ONLY: ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning, FLOOR PLAN VIEW ONLY, NO EXTERIOR VIEWS, NO 3D RENDERINGS`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,

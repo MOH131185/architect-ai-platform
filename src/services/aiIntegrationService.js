@@ -11,6 +11,7 @@ import { locationIntelligence } from './locationIntelligence';
 import bimService from './bimService';
 import dimensioningService from './dimensioningService';
 import consistencyValidationService from './consistencyValidationService';
+import projectDNAService from './projectDNAService';
 
 class AIIntegrationService {
   constructor() {
@@ -1017,7 +1018,7 @@ class AIIntegrationService {
   /**
    * STEP 3 & 4: Integrated design generation with location analysis and style blending
    * Orchestrates location analysis, portfolio detection, and coordinated 2D/3D generation
-   * ENHANCED: Generate reasoning FIRST to guide all image generation
+   * ENHANCED: Uses ProjectDNA for complete consistency
    * @param {Object} projectContext - Project context with all specifications
    * @param {Array} portfolioImages - Optional portfolio images for style detection
    * @param {Number} materialWeight - Material blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
@@ -1025,7 +1026,7 @@ class AIIntegrationService {
    */
   async generateIntegratedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
     try {
-      logger.verbose('🎯 Starting integrated design generation workflow with OpenAI reasoning guidance...');
+      logger.info('🎯 Starting integrated design generation with ProjectDNA framework...');
       logger.verbose('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
       logger.verbose('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
 
@@ -1083,10 +1084,26 @@ class AIIntegrationService {
       logger.verbose('🧠 Step 4: Generating OpenAI design reasoning to create unified architectural framework...');
       const reasoning = await this.openai.generateDesignReasoning(enhancedContext);
 
-      // STEP 4.1: Create Master Design Specification (Design DNA) for consistency
-      logger.verbose('🏗️ Step 4.1: Creating Master Design Specification (Design DNA)...');
-      const masterDesignSpec = this.createMasterDesignSpecification(enhancedContext, reasoning, blendedStyle);
-      enhancedContext.masterDesignSpec = masterDesignSpec;
+      // STEP 4.1: Create ProjectDNA - The master consistency framework
+      logger.info('🧬 Step 4.1: Creating ProjectDNA for complete consistency...');
+      const projectDNA = projectDNAService.createProjectDNA(
+        enhancedContext,
+        locationAnalysis,
+        portfolioStyle,
+        reasoning
+      );
+
+      // Validate ProjectDNA completeness
+      const validation = projectDNAService.validateProjectDNA(projectDNA);
+      if (!validation.valid) {
+        logger.warn('⚠️ ProjectDNA validation failed:', validation.missing);
+      }
+
+      // Add ProjectDNA to context
+      enhancedContext.projectDNA = projectDNA;
+      enhancedContext.masterDesignSpec = projectDNA.dimensions; // Keep backward compatibility
+      enhancedContext.projectSeed = projectDNA.seeds.master;
+      enhancedContext.seed = projectDNA.seeds.master;
 
       // Create reasoning-enhanced context that will be used for ALL image generation
       const reasoningEnhancedContext = this.createReasoningEnhancedContext(enhancedContext, reasoning);

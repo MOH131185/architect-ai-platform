@@ -10,7 +10,7 @@ class ConsistencyValidationService {
   /**
    * Validate complete project consistency
    * @param {Object} results - All generated results (floor plans, elevations, 3D views, structural, MEP)
-   * @param {Object} enhancedContext - Enhanced project context with master design spec
+   * @param {Object} enhancedContext - Enhanced project context with master design spec and ProjectDNA
    * @returns {Object} Validation results with issues array
    */
   validateConsistency(results, enhancedContext) {
@@ -18,6 +18,12 @@ class ConsistencyValidationService {
     const warnings = [];
 
     logger.verbose('🔍 Starting comprehensive consistency validation...');
+
+    // 0. Validate ProjectDNA if available
+    if (enhancedContext.projectDNA) {
+      const dnaIssues = this.validateProjectDNA(results, enhancedContext.projectDNA);
+      issues.push(...dnaIssues);
+    }
 
     // 1. Floor Count Consistency
     const floorCountIssues = this.validateFloorCount(results, enhancedContext);
@@ -306,6 +312,58 @@ class ConsistencyValidationService {
    */
   getMEPPlanNegativePrompt() {
     return "3D building rendering, building exterior walls, building facade, photorealistic building, perspective view, elevation view, section view, people, furniture, architectural finishes, decorative elements, trees, landscape, sky, building from outside, volumetric lighting, shadows with depth, isometric building view, axonometric building projection, different building, different project, blurry, artistic rendering, hand-drawn sketch, low technical detail, missing MEP systems";
+  }
+
+  /**
+   * Validate ProjectDNA consistency
+   * Ensures all outputs align with the master ProjectDNA specification
+   * @param {Object} results - Generated results
+   * @param {Object} projectDNA - ProjectDNA specification
+   * @returns {Array} Array of issues found
+   */
+  validateProjectDNA(results, projectDNA) {
+    const issues = [];
+
+    logger.verbose('🧬 Validating ProjectDNA consistency...');
+
+    // Check floor count matches ProjectDNA
+    const dnaFloorCount = projectDNA.floorCount;
+    if (results.floorPlans?.floorCount && results.floorPlans.floorCount !== dnaFloorCount) {
+      issues.push(`Floor plans show ${results.floorPlans.floorCount} floors but ProjectDNA specifies ${dnaFloorCount} floors`);
+    }
+
+    // Check if all specified floor levels were generated
+    if (projectDNA.floorPlans && results.floorPlans?.floorPlans) {
+      const expectedLevels = projectDNA.floorPlans.map(f => f.level);
+      const generatedLevels = Object.keys(results.floorPlans.floorPlans);
+
+      expectedLevels.forEach(level => {
+        const levelKey = level.toLowerCase().replace(/\s+/g, '_');
+        if (!generatedLevels.some(g => g.includes(levelKey))) {
+          issues.push(`Missing floor plan for ${level} specified in ProjectDNA`);
+        }
+      });
+    }
+
+    // Check seed consistency with ProjectDNA
+    const dnaSeed = projectDNA.seeds?.master;
+    if (dnaSeed && results.floorPlans?.projectSeed && results.floorPlans.projectSeed !== dnaSeed) {
+      issues.push(`Floor plans used seed ${results.floorPlans.projectSeed} but ProjectDNA specifies ${dnaSeed}`);
+    }
+
+    // Validate building dimensions
+    if (projectDNA.dimensions) {
+      logger.verbose(`ProjectDNA dimensions: ${projectDNA.dimensions.buildingFootprint.length}m × ${projectDNA.dimensions.buildingFootprint.width}m × ${projectDNA.dimensions.totalHeight}m`);
+      logger.verbose(`ProjectDNA style: ${projectDNA.finalStyle.name}`);
+      logger.verbose(`ProjectDNA materials: ${projectDNA.finalStyle.materials.join(', ')}`);
+    }
+
+    // Check consistency flags are respected
+    if (projectDNA.consistencyRules?.strictGeometry && !results.bimModel) {
+      logger.verbose('Note: Strict geometry flag set but BIM model not generated (may be optional)');
+    }
+
+    return issues;
   }
 }
 
