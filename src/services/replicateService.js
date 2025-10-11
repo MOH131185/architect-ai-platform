@@ -6,6 +6,7 @@
 import logger from '../utils/productionLogger';
 import { getReplicatePredictUrl, getReplicateStatusUrl } from '../utils/apiRoutes';
 import viewConsistencyService from './viewConsistencyService';
+import consistencyValidationService from './consistencyValidationService';
 
 const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
 
@@ -432,6 +433,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
   /**
    * Generate multi-level floor plans (ground, upper, roof)
    * Generates all levels by default to show complete building design
+   * FIXED: Each floor gets DISTINCT prompts and slight seed variations
    * OPTIMIZED: Parallel generation for 60-70% speed improvement
    */
   async generateMultiLevelFloorPlans(projectContext, generateAllLevels = true) {
@@ -448,12 +450,13 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       const projectSeed = projectContext.seed || projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
       // PERFORMANCE OPTIMIZATION: Generate all floor plans in parallel
-      logger.verbose('🏗️ Generating floor plans (parallel execution)...');
+      logger.verbose('🏗️ Generating DISTINCT floor plans for each level (parallel execution)...');
+      logger.verbose(`📊 Floor count: ${floorCount} (ground + ${floorCount - 1} upper floors)`);
 
-      // Build parameters for all plans
-      const groundParams = this.buildFloorPlanParameters(projectContext, 'ground');
-      groundParams.seed = projectSeed;
-      logger.verbose('Floor plan params:', groundParams.viewType, groundParams.prompt?.substring(0, 100));
+      // CRITICAL FIX: Build parameters for ground floor with floor index 0
+      const groundParams = this.buildFloorPlanParameters(projectContext, 'ground', 0);
+      groundParams.seed = projectSeed; // Ground floor uses base seed
+      logger.verbose('Ground floor plan params:', groundParams.viewType, groundParams.prompt?.substring(0, 150));
 
       const planPromises = [
         { key: 'ground', promise: this.generateArchitecturalImage(groundParams) }
@@ -461,18 +464,29 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
       // Only generate additional levels if explicitly requested
       if (generateAllLevels) {
-        // Generate upper floors if multi-story
+        // CRITICAL FIX: Generate upper floors if multi-story
+        // Each upper floor gets distinct prompt based on floor index and slightly varied seed
         if (floorCount > 1) {
-          logger.verbose(`🏗️ Generating upper floor plan (${floorCount - 1} levels)...`);
-          const upperParams = this.buildFloorPlanParameters(projectContext, 'upper');
-          upperParams.seed = projectSeed;
+          // For 2-story building, this generates upper floor (floor index 1)
+          // For 3+ story buildings, this generates a representative upper floor
+          logger.verbose(`🏗️ Generating upper floor plan (floors 2-${floorCount})...`);
+          const upperParams = this.buildFloorPlanParameters(projectContext, 'upper', 1);
+
+          // CRITICAL FIX: Vary seed slightly to ensure distinct image while maintaining geometric consistency
+          // Small variation (projectSeed + 50) ensures same building but different interior layout
+          upperParams.seed = projectSeed + 50;
+
+          logger.verbose('Upper floor plan params:', upperParams.viewType, upperParams.prompt?.substring(0, 150));
           planPromises.push({ key: 'upper', promise: this.generateArchitecturalImage(upperParams) });
         }
 
-        // Generate roof plan
+        // Generate roof plan (roof is above all floors)
         logger.verbose('🏗️ Generating roof plan...');
-        const roofParams = this.buildFloorPlanParameters(projectContext, 'roof');
-        roofParams.seed = projectSeed;
+        const roofParams = this.buildFloorPlanParameters(projectContext, 'roof', floorCount);
+
+        // CRITICAL FIX: Vary seed for roof plan to ensure distinct image
+        roofParams.seed = projectSeed + 100;
+
         planPromises.push({ key: 'roof', promise: this.generateArchitecturalImage(roofParams) });
       }
 
@@ -758,26 +772,30 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     switch (viewType) {
       case 'exterior':
       case 'exterior_front':
+        // CRITICAL FIX: Use enhanced negative prompt to prevent 2D floor plans or different buildings
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height${projectDetails.spacesDetail}, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context, site-specific design matching project requirements, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
           perspective: 'exterior front view',
           width: 1024,
-          height: 768
+          height: 768,
+          negativePrompt: consistencyValidationService.get3DViewNegativePrompt()
         };
 
       case 'exterior_side':
         const sideDir = this.getPerpendicularDirection(entranceDir);
+        // CRITICAL FIX: Use enhanced negative prompt to prevent 2D floor plans or different buildings
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.programDetail}, ${materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible${projectDetails.spacesDetail}, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees, design matching project specifications, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
           perspective: 'exterior side view',
           width: 1024,
-          height: 768
+          height: 768,
+          negativePrompt: consistencyValidationService.get3DViewNegativePrompt()
         };
 
       case 'interior':
@@ -949,9 +967,9 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
   /**
    * Build parameters for 2D floor plan generation
-   * FIXED: Ensures proper 2D top-down floor plans, not front views
+   * FIXED: Ensures proper 2D top-down floor plans with DISTINCT prompts per floor
    */
-  buildFloorPlanParameters(projectContext, level = 'ground') {
+  buildFloorPlanParameters(projectContext, level = 'ground', floorIndex = null) {
     // Initialize project consistency
     viewConsistencyService.initializeProjectConsistency(projectContext);
     const unifiedDesc = viewConsistencyService.getUnifiedDescription();
@@ -959,20 +977,26 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // Extract detailed project specifications
     const projectDetails = this.extractProjectDetails(projectContext);
 
-    // Build room-specific descriptions based on program details
-    let levelDesc = '';
-    if (projectDetails.programDetail && level === 'ground') {
-      levelDesc = `ground floor ${projectDetails.programDetail}`;
-    } else {
-      const levelDescriptions = {
-        ground: 'ground floor showing main entrance, living areas, kitchen, common spaces',
-        upper: 'upper floor showing bedrooms, private spaces, bathrooms',
-        roof: 'roof plan showing mechanical equipment, roof access, terraces, skylights'
-      };
-      levelDesc = levelDescriptions[level] || levelDescriptions.ground;
+    // Calculate floor count and determine floor index
+    const floorCount = this.calculateFloorCount(projectContext);
+    let actualFloorIndex = floorIndex;
+    if (actualFloorIndex === null) {
+      // Map level string to floor index
+      if (level === 'ground') actualFloorIndex = 0;
+      else if (level === 'upper') actualFloorIndex = 1;
+      else if (level === 'roof') actualFloorIndex = floorCount; // Roof is above all floors
     }
 
-    // Create entrance-aware floor plan description
+    // CRITICAL FIX: Use consistency validation service to get DISTINCT floor-specific prompts
+    // This ensures each floor has unique spatial characteristics (ground has entrance, upper has bedrooms, etc.)
+    const buildingProgram = projectContext.buildingProgram || 'house';
+    const floorSpecificPrompt = consistencyValidationService.getFloorSpecificPrompt(
+      actualFloorIndex,
+      floorCount,
+      buildingProgram
+    );
+
+    // Create entrance-aware floor plan description (only for ground floor)
     const entranceNote = level === 'ground'
       ? `entrance on ${this.getCardinalDirection(unifiedDesc.entranceDirection)} side,`
       : '';
@@ -985,9 +1009,12 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     // Use view consistency service for consistent prompts
     const specPrefix = viewConsistencyService.formatMasterDesignSpec(projectContext.masterDesignSpec);
     const basePrompt = viewConsistencyService.getPositivePrompt('floor_plan', projectContext);
-    
+
+    // CRITICAL FIX: Use enhanced negative prompt from consistency validation service
+    const enhancedNegativePrompt = consistencyValidationService.get2DFloorPlanNegativePrompt();
+
     return {
-      prompt: `${specPrefix}${basePrompt}, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${levelDesc}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
+      prompt: `${specPrefix}${basePrompt}, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -997,13 +1024,14 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 40,
       guidanceScale: 7.0,
       seed: viewConsistencyService.getProjectSeed(),
-      negativePrompt: viewConsistencyService.getNegativePrompt('floor_plan')
+      negativePrompt: enhancedNegativePrompt
     };
   }
 
   /**
    * Build parameters for elevation drawings
    * FIX: Increased resolution and inference steps for sharper, more detailed technical drawings
+   * FIX: Enhanced negative prompts to prevent 3D views
    */
   buildElevationParameters(projectContext, direction = 'north', highQuality = true) {
     // Get unified building description for consistency
@@ -1022,7 +1050,10 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
     // CRITICAL FIX: Inject Master Design Specification for consistency
     const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
-    
+
+    // CRITICAL FIX: Use enhanced negative prompt from consistency validation service
+    const enhancedNegativePrompt = consistencyValidationService.getTechnicalDrawingNegativePrompt();
+
     return {
       prompt: `${specPrefix}\n\nProfessional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, WITH COMPLETE VISIBLE DIMENSIONAL ANNOTATIONS: overall building width in meters with dimension lines and arrows, overall building height from ground to roof peak with vertical dimension lines, floor-to-floor heights labeled (typically 3.0m), window dimensions (width x height), door dimensions, foundation depth below grade, all dimensions clearly marked with extension lines, dimension text readable and professional, scale 1:100, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing with full dimensioning, NO 3D perspective, NO rendering, NO colors, professional technical drawing with measurements`,
       buildingType: unifiedDesc.buildingType,
@@ -1033,7 +1064,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       height: resolution.height,
       steps: renderQuality.steps,
       guidanceScale: renderQuality.guidanceScale,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut"
+      negativePrompt: enhancedNegativePrompt
       // Removed ControlNet completely - elevations should be independent 2D drawings
     };
   }
@@ -1041,6 +1072,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
   /**
    * Build parameters for section drawings
    * FIX: Increased resolution and inference steps for sharper, more detailed technical drawings
+   * FIX: Enhanced negative prompts to prevent 3D views
    */
   buildSectionParameters(projectContext, sectionType = 'longitudinal', highQuality = true) {
     // Get unified building description for consistency
@@ -1058,7 +1090,10 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
 
     // CRITICAL FIX: Inject Master Design Specification for consistency
     const specPrefix = this.formatMasterDesignSpec(projectContext.masterDesignSpec);
-    
+
+    // CRITICAL FIX: Use enhanced negative prompt from consistency validation service
+    const enhancedNegativePrompt = consistencyValidationService.getTechnicalDrawingNegativePrompt();
+
     return {
       prompt: `${specPrefix}\n\nHIGHLY DETAILED 2D architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, MAXIMUM DETAIL construction documentation showing: floor slabs as thick horizontal lines with reinforcement (#4 @ 300mm c/c), walls in section as thick black lines with material layers visible, interior room heights clearly labeled, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors with tread and riser details' : ''}, foundation line with depth annotation (0.5m typical), roof structure in section with rafters and covering, ${unifiedDesc.materials} construction indicated with proper architectural hatching patterns (concrete cross-hatch, brick diagonal lines, insulation wavy lines), ORTHOGRAPHIC PROJECTION, section cut line indicator, poché (solid black fill) for all cut walls and slabs, floor-to-floor heights dimensioned (typically 3.0m), ceiling heights labeled (2.7m typical), all structural elements visible and labeled, CAD-style high-detail technical drawing, professional architectural blueprint with maximum clarity, crisp black and white line drawing ONLY, SHARP LINEWORK, high contrast, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY, professional construction document quality`,
       buildingType: unifiedDesc.buildingType,
@@ -1069,7 +1104,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       height: resolution.height,
       steps: renderQuality.steps,
       guidanceScale: renderQuality.guidanceScale,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low detail, sketchy, artistic, loose lines, unclear"
+      negativePrompt: enhancedNegativePrompt
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
