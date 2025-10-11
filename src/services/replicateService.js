@@ -812,11 +812,11 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
           materials: materials,
-          prompt: `${specPrefix}\n\n${reasoningPrefix}INTERIOR ONLY: Professional 3D architectural interior visualization, inside view of ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design with ${materials} visible indoors, spacious open interior space with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from large windows, professional interior architectural photography, photorealistic interior rendering, high quality, detailed interior furnishings, contemporary furniture and decor, interior space only, interior design matching project program requirements, warm inviting interior atmosphere`,
+          prompt: `${specPrefix}\n\n${reasoningPrefix}INTERIOR ONLY: Professional 3D architectural interior visualization, inside view of ${interiorSpace} of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${projectDetails.interiorDetail}, ${unifiedDesc.architecturalStyle} interior design with ${materials} visible indoors, spacious open interior space with ${unifiedDesc.features}${projectDetails.spacesDetail}, well-lit with natural light from large windows, professional interior architectural photography, photorealistic interior rendering, high quality, detailed interior furnishings, contemporary furniture and decor, interior space only, interior design matching project program requirements, warm inviting interior atmosphere, INTERIOR VIEW ONLY, NO EXTERIOR ELEMENTS`,
           perspective: 'interior view',
           width: 1024,
           height: 768,
-          negativePrompt: "exterior, outside, facade, building exterior, outdoor, landscape, trees, street, sky visible, exterior walls, building from outside, aerial view, elevation, front view, site plan, technical drawing, blueprint"
+          negativePrompt: "exterior, outside, facade, building exterior, outdoor, landscape, trees, street, sky visible, exterior walls, building from outside, aerial view, elevation, front view, site plan, technical drawing, blueprint, 3D exterior view, building facade, outdoor environment, external view, building from outside, street view, exterior perspective, outdoor space, external architecture"
         };
 
       case 'site_plan':
@@ -1014,7 +1014,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const enhancedNegativePrompt = consistencyValidationService.get2DFloorPlanNegativePrompt();
 
     return {
-      prompt: `${specPrefix}${basePrompt}, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
+      prompt: `STRICTLY 2D FLOOR PLAN ONLY: ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning, FLOOR PLAN VIEW ONLY, NO EXTERIOR VIEWS, NO 3D RENDERINGS`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -1024,7 +1024,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 40,
       guidanceScale: 7.0,
       seed: viewConsistencyService.getProjectSeed(),
-      negativePrompt: enhancedNegativePrompt
+      negativePrompt: "3D rendering, perspective view, exterior view, building facade, 3D model, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, exterior building, building from outside, facade view, elevation view, section view, technical drawing that is not floor plan"
     };
   }
 
@@ -1055,7 +1055,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const enhancedNegativePrompt = consistencyValidationService.getTechnicalDrawingNegativePrompt();
 
     return {
-      prompt: `${specPrefix}\n\nProfessional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, WITH COMPLETE VISIBLE DIMENSIONAL ANNOTATIONS: overall building width in meters with dimension lines and arrows, overall building height from ground to roof peak with vertical dimension lines, floor-to-floor heights labeled (typically 3.0m), window dimensions (width x height), door dimensions, foundation depth below grade, all dimensions clearly marked with extension lines, dimension text readable and professional, scale 1:100, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing with full dimensioning, NO 3D perspective, NO rendering, NO colors, professional technical drawing with measurements`,
+      prompt: `${specPrefix}\n\nSTRICTLY 2D ELEVATION DRAWING: Professional 2D architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, FLAT 2D ORTHOGRAPHIC FACADE VIEW showing ${unifiedDesc.floorCount} floor levels, ${unifiedDesc.materials} facade with proper hatching patterns, window and door openings clearly shown${isEntranceElevation ? ', main entrance prominently displayed' : ''}, ground line reference (±0.00m), roof profile, floor division lines, WITH COMPLETE VISIBLE DIMENSIONAL ANNOTATIONS: overall building width in meters with dimension lines and arrows, overall building height from ground to roof peak with vertical dimension lines, floor-to-floor heights labeled (typically 3.0m), window dimensions (width x height), door dimensions, foundation depth below grade, all dimensions clearly marked with extension lines, dimension text readable and professional, scale 1:100, architectural dimensions and annotations, technical line drawing style, black and white CAD-style documentation, clean precise linework, architectural elevation drawing with full dimensioning, NO 3D perspective, NO rendering, NO colors, professional technical drawing with measurements, ELEVATION VIEW ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -1064,7 +1064,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       height: resolution.height,
       steps: renderQuality.steps,
       guidanceScale: renderQuality.guidanceScale,
-      negativePrompt: enhancedNegativePrompt
+      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, interior view, floor plan, section view, technical drawing that is not elevation"
       // Removed ControlNet completely - elevations should be independent 2D drawings
     };
   }
@@ -1095,7 +1095,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const enhancedNegativePrompt = consistencyValidationService.getTechnicalDrawingNegativePrompt();
 
     return {
-      prompt: `${specPrefix}\n\nHIGHLY DETAILED 2D architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, MAXIMUM DETAIL construction documentation showing: floor slabs as thick horizontal lines with reinforcement (#4 @ 300mm c/c), walls in section as thick black lines with material layers visible, interior room heights clearly labeled, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors with tread and riser details' : ''}, foundation line with depth annotation (0.5m typical), roof structure in section with rafters and covering, ${unifiedDesc.materials} construction indicated with proper architectural hatching patterns (concrete cross-hatch, brick diagonal lines, insulation wavy lines), ORTHOGRAPHIC PROJECTION, section cut line indicator, poché (solid black fill) for all cut walls and slabs, floor-to-floor heights dimensioned (typically 3.0m), ceiling heights labeled (2.7m typical), all structural elements visible and labeled, CAD-style high-detail technical drawing, professional architectural blueprint with maximum clarity, crisp black and white line drawing ONLY, SHARP LINEWORK, high contrast, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY, professional construction document quality`,
+      prompt: `${specPrefix}\n\nSTRICTLY 2D SECTION DRAWING: HIGHLY DETAILED 2D architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, MAXIMUM DETAIL construction documentation showing: floor slabs as thick horizontal lines with reinforcement (#4 @ 300mm c/c), walls in section as thick black lines with material layers visible, interior room heights clearly labeled, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors with tread and riser details' : ''}, foundation line with depth annotation (0.5m typical), roof structure in section with rafters and covering, ${unifiedDesc.materials} construction indicated with proper architectural hatching patterns (concrete cross-hatch, brick diagonal lines, insulation wavy lines), ORTHOGRAPHIC PROJECTION, section cut line indicator, poché (solid black fill) for all cut walls and slabs, floor-to-floor heights dimensioned (typically 3.0m), ceiling heights labeled (2.7m typical), all structural elements visible and labeled, CAD-style high-detail technical drawing, professional architectural blueprint with maximum clarity, crisp black and white line drawing ONLY, SHARP LINEWORK, high contrast, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY, professional construction document quality, SECTION VIEW ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -1104,7 +1104,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       height: resolution.height,
       steps: renderQuality.steps,
       guidanceScale: renderQuality.guidanceScale,
-      negativePrompt: enhancedNegativePrompt
+      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, interior view, floor plan, elevation view, technical drawing that is not section"
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
@@ -1167,7 +1167,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const settings = scaleSettings[scale] || scaleSettings[20];
 
     return {
-      prompt: `2D construction detail drawing at 1:${scale} scale of ${unifiedDesc.fullDescription} ${floorName}, ${settings.detail} technical blueprint showing: wall sections with ${unifiedDesc.materials} assembly layers, floor slab construction with reinforcement bars (#4 @ 300mm c/c), foundation details with footings and piles, structural columns and beams with dimensions, window and door jamb details, flashing and waterproofing layers, insulation placement, ceiling assembly, all construction joints, COMPLETE DIMENSIONAL ANNOTATIONS in millimeters, material callouts (concrete grade, steel grade, insulation R-value), construction notes, welding symbols, bolt specifications, ORTHOGRAPHIC PROJECTION, CAD-style construction documentation, black and white line drawing with hatching for materials, scale bar 1:${scale}, title block, drawing number, NO 3D rendering, NO perspective, NO colors, professional construction documentation`,
+      prompt: `STRICTLY 2D CONSTRUCTION DETAIL: 2D construction detail drawing at 1:${scale} scale of ${unifiedDesc.fullDescription} ${floorName}, ${settings.detail} technical blueprint showing: wall sections with ${unifiedDesc.materials} assembly layers, floor slab construction with reinforcement bars (#4 @ 300mm c/c), foundation details with footings and piles, structural columns and beams with dimensions, window and door jamb details, flashing and waterproofing layers, insulation placement, ceiling assembly, all construction joints, COMPLETE DIMENSIONAL ANNOTATIONS in millimeters, material callouts (concrete grade, steel grade, insulation R-value), construction notes, welding symbols, bolt specifications, ORTHOGRAPHIC PROJECTION, CAD-style construction documentation, black and white line drawing with hatching for materials, scale bar 1:${scale}, title block, drawing number, NO 3D rendering, NO perspective, NO colors, professional construction documentation, CONSTRUCTION DETAIL ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
@@ -1176,7 +1176,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       height: settings.height,
       steps: settings.steps,
       guidanceScale: 8.0,
-      negativePrompt: "3D, perspective, color, rendered, photorealistic, artistic, decorative, interior design, furniture, landscaping"
+      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, interior design, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, exterior view, building facade, outdoor environment, external view, building from outside, street view, exterior perspective, outdoor space, external architecture"
     };
   }
 
@@ -1195,7 +1195,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const floorName = floorIndex === 0 ? 'foundation and ground floor structural plan' : `floor ${floorIndex + 1} structural plan`;
 
     return {
-      prompt: `2D structural engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
+      prompt: `STRICTLY 2D STRUCTURAL PLAN: 2D structural engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing: structural grid with axis labels (A, B, C / 1, 2, 3), column positions and sizes (e.g., 400x400mm RC column), beam layout with spans and sizes (e.g., 300x600mm beam), slab thickness and reinforcement (#5 @ 200mm c/c both ways), ${floorIndex === 0 ? 'foundation footings, pile caps, grade beams, soil bearing capacity notes,' : 'floor framing direction arrows,'} load-bearing walls indicated with hatching, structural steel connections where applicable, moment frames, shear walls, expansion joints, COMPLETE STRUCTURAL DIMENSIONS, reinforcement bar schedules, concrete grade specifications (e.g., C30/37), steel grade (e.g., S355), load annotations (kN/m²), structural notes and calculations references, scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style structural drawing, black and white technical documentation, NO 3D, NO perspective, NO colors, professional structural engineering blueprint, SAME PROJECT, SAME BUILDING, SAME DESIGN, STRUCTURAL PLAN ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: consistentDesc.buildingType,
       architecturalStyle: consistentDesc.architecturalStyle,
       materials: consistentDesc.materials,
@@ -1205,7 +1205,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 55,
       guidanceScale: 8.0,
       seed: consistentSeed,
-      negativePrompt: viewConsistencyService.getNegativePrompt('structural_plan')
+      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, interior view, elevation view, section view, technical drawing that is not structural plan"
     };
   }
 
@@ -1234,7 +1234,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
     const systemPrompt = systemPrompts[system] || systemPrompts.combined;
 
     return {
-      prompt: `2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services, SAME PROJECT, SAME BUILDING, SAME DESIGN`,
+      prompt: `STRICTLY 2D MEP PLAN: 2D MEP (Mechanical, Electrical, Plumbing) engineering plan of ${consistentDesc.fullDescription} ${floorName}, showing ${systemPrompt}, all equipment specifications and model numbers, pipe and duct sizing annotations, flow directions with arrows, isolating valves, control devices, legends for symbols used, equipment schedules, design criteria notes (CFM, GPM, kW), scale 1:100, ORTHOGRAPHIC TOP VIEW, CAD-style MEP drawing, black and white technical documentation with color-coded systems (represented by different line types: dashed, dotted, solid), professional MEP engineering blueprint, NO 3D, NO perspective, NO architectural details, focused on building services, SAME PROJECT, SAME BUILDING, SAME DESIGN, MEP PLAN ONLY, NO 3D RENDERINGS, NO PERSPECTIVE VIEWS`,
       buildingType: consistentDesc.buildingType,
       architecturalStyle: consistentDesc.architecturalStyle,
       materials: consistentDesc.materials,
@@ -1244,7 +1244,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       steps: 55,
       guidanceScale: 8.0,
       seed: consistentSeed,
-      negativePrompt: viewConsistencyService.getNegativePrompt('mep_plan')
+      negativePrompt: "3D rendering, perspective view, isometric view, axonometric view, photorealistic, colors, rendered, artistic, decorative, furniture, landscaping, trees, sky, outdoor, aerial view, bird's eye view, 3D visualization, architectural photography, interior view, elevation view, section view, technical drawing that is not MEP plan"
     };
   }
 

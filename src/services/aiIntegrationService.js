@@ -696,13 +696,13 @@ class AIIntegrationService {
 
     // Create a comprehensive architectural description that will guide ALL images
     const unifiedPromptBase = `
-      Architectural design following this EXACT specification:
+      CONSISTENT BUILDING DESIGN: Architectural design following this EXACT specification:
       PHILOSOPHY: ${philosophy}
       MATERIALS: ${materials} facade and construction
       SPATIAL: ${spatial}
       ENVIRONMENTAL: ${environmental}
       STYLE: Contemporary design with clean lines, large windows, flat or low-pitched roof
-      CONSISTENCY: All views must show the SAME building with identical materials, colors, and architectural features
+      CRITICAL CONSISTENCY REQUIREMENT: All views must show the SAME building with identical materials, colors, architectural features, and design elements. This is the SAME PROJECT, SAME BUILDING, SAME DESIGN across all generated views.
     `.trim().replace(/\s+/g, ' ');
     const override = projectContext && projectContext.promptOverride ? ` OVERRIDE: ${projectContext.promptOverride}` : '';
     const unifiedPrompt = `${unifiedPromptBase}${override}`.trim();
