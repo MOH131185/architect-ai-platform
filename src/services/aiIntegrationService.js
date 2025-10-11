@@ -10,6 +10,7 @@ import portfolioStyleDetection from './portfolioStyleDetection';
 import { locationIntelligence } from './locationIntelligence';
 import bimService from './bimService';
 import dimensioningService from './dimensioningService';
+import consistencyValidationService from './consistencyValidationService';
 
 class AIIntegrationService {
   constructor() {
@@ -1243,6 +1244,40 @@ class AIIntegrationService {
         };
       }
 
+      // STEP 3.11: Validate consistency of all generated outputs
+      logger.verbose('🔍 Step 10: Validating output consistency...');
+      let consistencyValidation = null;
+      try {
+        consistencyValidation = consistencyValidationService.validateConsistency(
+          {
+            floorPlans,
+            technicalDrawings,
+            visualizations: { views },
+            bimModel,
+            constructionDocumentation
+          },
+          reasoningEnhancedContext
+        );
+        logger.verbose(`✅ Consistency validation complete: Score ${(consistencyValidation.score * 100).toFixed(1)}%`);
+
+        if (consistencyValidation.issues.length > 0) {
+          logger.warn(`⚠️ Found ${consistencyValidation.issues.length} consistency issues - review recommended`);
+        }
+        if (consistencyValidation.warnings.length > 0) {
+          logger.verbose(`ℹ️ Found ${consistencyValidation.warnings.length} consistency warnings`);
+        }
+      } catch (validationError) {
+        logger.error('⚠️ Consistency validation failed:', validationError.message);
+        consistencyValidation = {
+          valid: false,
+          score: 0,
+          issues: [`Validation failed: ${validationError.message}`],
+          warnings: [],
+          error: validationError.message,
+          timestamp: new Date().toISOString()
+        };
+      }
+
       // Calculate overall blend weight for backward compatibility
       const overallBlendWeight = (materialWeight + characteristicWeight) / 2;
 
@@ -1269,6 +1304,7 @@ class AIIntegrationService {
         bimAxonometric, // NEW: Geometrically consistent axonometric from BIM or fallback
         axonometricSource, // NEW: Source metadata for axonometric generation
         constructionDocumentation, // NEW: Construction drawings and engineering notes (if requested)
+        consistencyValidation, // NEW: Output consistency validation with score and issues
         projectSeed,
         enhancedContext: reasoningEnhancedContext,  // Return the reasoning-enhanced context
         timestamp: new Date().toISOString(),

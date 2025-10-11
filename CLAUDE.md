@@ -227,6 +227,434 @@ Located in ArchitectAIEnhanced.js, functions generate downloadable files:
 2. Add export button in step 5 render function
 3. Call `downloadFile()` with appropriate MIME type
 
+### Design Consistency & Unified Context System
+
+**CRITICAL REQUIREMENT**: All AI-generated outputs (2D floor plans, elevations, sections, 3D views, MEP plans, structural plans) MUST maintain visual and conceptual consistency as if they're views of the SAME building designed by the SAME architect.
+
+#### Master Design Specification ("Design DNA")
+
+Located in `aiIntegrationService.js:325-413`, the `createMasterDesignSpecification()` function creates a unified architectural framework that governs ALL subsequent generation:
+
+**Specification Components**:
+```javascript
+{
+  dimensions: { length, width, height, floors, floorHeight },
+  entrance: { facade, position, width },
+  materials: { primary, secondary, accent },
+  roof: { type, material },
+  windows: { pattern, frameColor },
+  structure: { system, gridSpacing },
+  colors: { facade, roof, trim }
+}
+```
+
+**Consistency Enforcement Flow**:
+
+1. **Context Building** (`aiIntegrationService.js:1025-1092`):
+   - Location analysis → Portfolio style detection → Blended style creation
+   - OpenAI generates reasoning FIRST (before any images)
+   - Master Design Spec created from reasoning + blended style
+   - `createReasoningEnhancedContext()` embeds reasoning into ALL image generation calls
+
+2. **Unified Seed Management** (`aiIntegrationService.js:942-945`, `1077-1079`):
+   - Single `projectSeed` generated once in frontend, passed to ALL Replicate calls
+   - Ensures geometric consistency across 2D plans, elevations, and 3D views
+   - Seed must propagate through: floor plans → elevations → sections → 3D views → MEP → structural
+
+3. **Floor Count Synchronization** (`aiIntegrationService.js:418-430`):
+   - `calculateFloorCount()` determines floors based on area and building type
+   - MUST be consistent across: floor plans, elevations, sections, 3D views, BIM model
+   - Validation: All outputs must show SAME number of floors
+
+4. **Material Continuity** (`aiIntegrationService.js:449-470`, `586-587`):
+   - Blended style materials take PRIORITY over reasoning-extracted materials
+   - Materials embedded in `reasoningEnhancedContext.materials`
+   - Same materials appear in: exterior views, floor plans (via textures), elevations, sections
+
+5. **Style Consistency** (`aiIntegrationService.js:1479-1494`):
+   - `createBlendedStylePrompt()` creates unified style description
+   - Blended style applied to ALL generation calls via `reasoningEnhancedContext`
+   - Style name, characteristics, and climate adaptations preserved across outputs
+
+6. **Prompt Injection Strategy** (`aiIntegrationService.js:688-712`):
+   - `createUnifiedArchitecturalPrompt()` creates base prompt injected into ALL Replicate calls
+   - Prompt includes: philosophy, materials, spatial organization, environmental features
+   - "CONSISTENCY:" directive ensures all views show SAME building
+
+#### Validation Requirements
+
+**When modifying AI generation code, ALWAYS verify**:
+
+1. **Shared Context Propagation**:
+   - Does `reasoningEnhancedContext` flow to ALL image generation functions?
+   - Are Master Design Spec parameters accessible in prompts?
+   - Is `projectSeed` passed to every Replicate call?
+
+2. **Floor Count Accuracy**:
+   - Do floor plans show correct number of levels?
+   - Do elevations show correct building height (floors × floorHeight)?
+   - Do 3D views match floor count from plans?
+   - Does BIM model use same floor count?
+
+3. **Material Synchronization**:
+   - Are materials from `blendedStyle.materials` used consistently?
+   - Do exterior 3D views use same materials as elevations?
+   - Do interior views reference same material palette?
+
+4. **Geometric Coherence**:
+   - Do building dimensions match across 2D and 3D outputs?
+   - Does entrance facade match between plans and 3D views?
+   - Do window patterns align between elevations and 3D renders?
+
+5. **Style Fidelity**:
+   - Does architectural style remain consistent across all views?
+   - Are roof types consistent between plans, elevations, and 3D views?
+   - Do structural grids align across floor plans and structural drawings?
+
+#### Common Consistency Pitfalls
+
+**AVOID**:
+- ❌ Generating images without `reasoningEnhancedContext`
+- ❌ Using different seeds for different view types
+- ❌ Overriding blended materials with reasoning materials
+- ❌ Allowing floor count mismatches between 2D and 3D
+- ❌ Generating 3D views before OpenAI reasoning completes
+- ❌ Skipping Master Design Spec creation in quick workflows
+
+**ENSURE**:
+- ✅ OpenAI reasoning generated FIRST, before any images
+- ✅ Master Design Spec created from reasoning + blended style
+- ✅ Same `projectSeed` used for ALL outputs
+- ✅ `reasoningEnhancedContext` passed to ALL Replicate calls
+- ✅ Floor count validated across all output types
+- ✅ Materials from `blendedStyle` prioritized over reasoning extraction
+
+#### Debugging Consistency Issues
+
+**Floor Count Mismatch**:
+- Check `calculateFloorCount()` logic in `aiIntegrationService.js:418-430`
+- Verify `floorCount` propagates to `masterDesignSpec.dimensions.floors`
+- Validate Replicate prompts include correct floor count
+
+**Material Inconsistency**:
+- Inspect `blendedStyle.materials` in `enhancedContext`
+- Verify `createReasoningEnhancedContext()` uses blended materials (line 587)
+- Check Replicate prompts for material references
+
+**Seed Not Propagating**:
+- Trace `projectSeed` from frontend through all service calls
+- Verify `enhancedContext.seed` set in `generateIntegratedDesign()` (line 1078)
+- Check Replicate service receives and uses seed parameter
+
+**Style Drift**:
+- Validate `blendedStyle.styleName` matches across all outputs
+- Check `unifiedArchitecturalPrompt` injection in all Replicate calls
+- Verify portfolio style blending weights (material vs characteristic)
+
+### AI Orchestration Workflow for Complete Architectural Deliverables
+
+**PURPOSE**: This section governs how Claude Code (or any AI assistant) should orchestrate the complete architectural design generation workflow, ensuring all deliverables are coordinated, consistent, and production-ready.
+
+#### Phase 1: Site & Context Analysis
+
+**Inputs Required**:
+- Project address or coordinates
+- Building program (residential, commercial, mixed-use, etc.)
+- Total floor area (m² or ft²)
+- Optional: Portfolio images for style learning
+
+**Orchestration Steps**:
+
+1. **Location Intelligence** (`locationIntelligence.js`):
+   - Geocode address to coordinates (Google Geocoding API)
+   - Fetch seasonal climate data (OpenWeather API)
+   - Analyze zoning regulations based on address components
+   - Recommend local architectural styles from `globalArchitecturalDatabase.js`
+   - Calculate sustainability score and market context
+
+2. **Portfolio Style Detection** (if portfolio provided):
+   - Analyze uploaded images using `portfolioStyleDetection.js`
+   - Extract primary style, materials, design elements, key features
+   - Assess compatibility with location context
+   - Generate style recommendations
+
+3. **Blended Style Creation** (`aiIntegrationService.js:1479-1494`):
+   - Merge local context (from location intelligence) with portfolio style
+   - Apply material weight (0-1): local materials ← → portfolio materials
+   - Apply characteristic weight (0-1): local features ← → portfolio features
+   - Generate unified style description for ALL subsequent generation
+
+**Validation Checkpoints**:
+- ✅ Location data includes climate, zoning, recommended styles
+- ✅ Portfolio analysis (if applicable) extracted valid style information
+- ✅ Blended style includes materials array (min 3), characteristics array (min 3)
+- ✅ Blended style description is comprehensive and actionable
+
+#### Phase 2: Floor Count Reasoning & Master Specification
+
+**CRITICAL**: Floor count must be determined ONCE and used consistently across ALL outputs.
+
+**Floor Count Calculation** (`aiIntegrationService.js:418-430`):
+
+```javascript
+calculateFloorCount(projectContext) {
+  const area = projectContext.floorArea || projectContext.area || 200;
+  const buildingType = projectContext.buildingProgram || 'house';
+
+  // Building type rules
+  if (buildingType.includes('cottage') || buildingType.includes('bungalow')) return 1;
+
+  // Area-based calculation
+  if (area < 150) return 1;
+  if (area < 300) return 2;
+  if (area < 500) return 3;
+  return Math.min(Math.ceil(area / 200), 5); // Max 5 floors
+}
+```
+
+**Master Design Specification Creation** (`aiIntegrationService.js:325-413`):
+
+1. **Generate OpenAI Reasoning FIRST**:
+   - Call `openaiService.generateDesignReasoning(enhancedContext)`
+   - Extract design philosophy, spatial organization, materials, environmental considerations
+   - This reasoning becomes the "brain" guiding ALL image generation
+
+2. **Create Master Design Spec**:
+   - Calculate dimensions: length, width, height based on floor area and floor count
+   - Determine entrance facade (from reasoning or default to north)
+   - Extract materials from blended style (PRIORITY) or reasoning (fallback)
+   - Define roof type (flat/gable/hip) from reasoning and building program
+   - Set window pattern (ribbon/punched) from architectural style
+   - Determine structural system based on floor count
+   - Define color scheme from materials
+
+3. **Create Reasoning-Enhanced Context**:
+   - Embed OpenAI reasoning into project context
+   - Add Master Design Spec parameters
+   - Create unified architectural prompt for injection into ALL Replicate calls
+   - Set `isReasoningEnhanced: true` flag
+
+**Validation Checkpoints**:
+- ✅ Floor count calculated and stored in `masterDesignSpec.dimensions.floors`
+- ✅ OpenAI reasoning generated before any image generation starts
+- ✅ Master Design Spec created with all 7 components (dimensions, entrance, materials, roof, windows, structure, colors)
+- ✅ `reasoningEnhancedContext` created with unified architectural prompt
+- ✅ Project seed generated and stored for ALL Replicate calls
+
+#### Phase 3: Coordinated Deliverable Generation
+
+**Generation Order** (MUST follow this sequence):
+
+1. **Multi-Level Floor Plans** (`replicateService.generateMultiLevelFloorPlans`):
+   - Generate plans for ALL floors (based on calculated floor count)
+   - Use reasoning-enhanced context + project seed
+   - Capture ground floor plan image URL for potential ControlNet use
+   - Output: `{ floorPlans: { ground, floor1, floor2, ... }, floorCount }`
+
+2. **Technical Drawings** (`replicateService.generateElevationsAndSections`):
+   - Generate 4 elevations (North, South, East, West)
+   - Generate 2 sections (Longitudinal, Transverse)
+   - Use reasoning-enhanced context + same project seed
+   - **NO ControlNet** - elevations must be independent 2D orthographic projections
+   - Output: `{ elevations: { north, south, east, west }, sections: { longitudinal, transverse } }`
+
+3. **3D Photorealistic Views** (`replicateService.generateMultipleViews`):
+   - Generate exterior_front, exterior_side, interior, axonometric, perspective
+   - Use reasoning-enhanced context + same project seed
+   - **NO ControlNet** - 3D views need photorealistic freedom, not 2D floor plan constraints
+   - Output: `{ exterior_front, exterior_side, interior, axonometric, perspective }`
+
+4. **BIM Model & Axonometric** (`bimService.generateParametricModel`):
+   - Extract floor plan geometry from AI-generated plans
+   - Generate parametric BIM model using reasoning-enhanced context
+   - Derive geometrically accurate axonometric view from BIM
+   - Fallback to Replicate if BIM generation fails
+   - Output: `{ bimModel, axonometric, axonometricSource: 'bim' | 'replicate_fallback' }`
+
+5. **Construction Documentation** (OPTIONAL - `aiIntegrationService.generateConstructionDocumentation`):
+   - Detail drawings at specified scale (default 1:20)
+   - Structural plans (foundation + all floors)
+   - MEP plans (HVAC, electrical, plumbing, combined)
+   - Structural engineering notes (OpenAI)
+   - MEP engineering notes (OpenAI)
+   - Output: `{ detailDrawings, structuralPlans, mepPlans, structuralNotes, mepNotes }`
+
+**Validation Checkpoints After Each Generation**:
+- ✅ All outputs use same `projectSeed`
+- ✅ All outputs use `reasoningEnhancedContext`
+- ✅ Floor count matches across: floor plans, elevations, 3D views, BIM
+- ✅ Materials consistent across all visual outputs
+- ✅ Architectural style recognizable across all views
+- ✅ Success flags checked (fallback to placeholders if API fails)
+
+#### Phase 4: Quality Assurance & Consistency Validation
+
+**Cross-Output Validation**:
+
+1. **Floor Count Consistency**:
+   ```javascript
+   const floorCounts = {
+     floorPlans: results.floorPlans?.floorCount,
+     masterSpec: enhancedContext.masterDesignSpec?.dimensions?.floors,
+     bim: results.bimModel?.floors
+   };
+   // All values should match
+   ```
+
+2. **Material Consistency**:
+   ```javascript
+   const materials = {
+     blended: enhancedContext.blendedStyle?.materials,
+     reasoning: enhancedContext.reasoningParams?.materials,
+     masterSpec: enhancedContext.masterDesignSpec?.materials
+   };
+   // Blended materials should take priority
+   ```
+
+3. **Seed Propagation**:
+   ```javascript
+   const seeds = {
+     project: enhancedContext.projectSeed,
+     floorPlans: floorPlansGenerationSeed,
+     elevations: elevationsGenerationSeed,
+     views3D: views3DGenerationSeed
+   };
+   // All should match projectSeed
+   ```
+
+4. **Visual Coherence Check**:
+   - Do exterior 3D views show same facade as elevations?
+   - Do floor plans show same number of levels as 3D views?
+   - Do materials in 3D renders match materials in technical drawings?
+   - Does roof type match between plans, elevations, and 3D views?
+
+**Automated Validation Function** (to be implemented):
+```javascript
+function validateConsistency(results, enhancedContext) {
+  const issues = [];
+
+  // Check floor count
+  if (results.floorPlans?.floorCount !== enhancedContext.masterDesignSpec?.dimensions?.floors) {
+    issues.push('Floor count mismatch between plans and master spec');
+  }
+
+  // Check seed propagation
+  if (!allSeedsMatch(results, enhancedContext.projectSeed)) {
+    issues.push('Seed not propagated to all generation calls');
+  }
+
+  // Check materials
+  if (!materialsConsistent(results, enhancedContext.blendedStyle?.materials)) {
+    issues.push('Material inconsistency detected across outputs');
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+```
+
+#### Phase 5: Result Packaging & Delivery
+
+**Output Structure**:
+
+```javascript
+{
+  success: true,
+
+  // Phase 1: Context
+  locationAnalysis: { primary, materials, climateAdaptations, ... },
+  portfolioStyle: { primaryStyle, materials, designElements, ... },
+  blendedStyle: { styleName, materials, characteristics, blendRatio, description },
+
+  // Phase 2: Reasoning & Spec
+  reasoning: { designPhilosophy, spatialOrganization, materialRecommendations, ... },
+  masterDesignSpec: { dimensions, entrance, materials, roof, windows, structure, colors },
+
+  // Phase 3: Deliverables
+  floorPlans: { floorPlans: { ground, floor1, ... }, floorCount, success },
+  technicalDrawings: { elevations: { n, s, e, w }, sections: { long, trans }, success },
+  visualizations: { views: { exterior_front, exterior_side, interior, axon, persp }, axonometricSource },
+  bimModel: { model, metadata, success },
+  constructionDocumentation: { detailDrawings, structuralPlans, mepPlans, notes, success },
+
+  // Phase 4: Validation
+  consistencyValidation: { valid: true, issues: [] },
+
+  // Metadata
+  projectSeed: 123456,
+  materialWeight: 0.5,
+  characteristicWeight: 0.5,
+  timestamp: '2025-10-11T...',
+  workflow: 'integrated_design_generation'
+}
+```
+
+**User-Facing Deliverables**:
+
+1. **Design Documentation PDF**:
+   - Executive summary with location analysis
+   - Design philosophy and reasoning
+   - All floor plans (labeled by level)
+   - All elevations and sections (labeled by orientation)
+   - 3D photorealistic views
+   - Material specifications
+   - Technical notes (structural + MEP)
+
+2. **CAD Files**:
+   - DWG (AutoCAD 2D drawings)
+   - DXF (universal 2D exchange format)
+   - Generated via `generateDWGContent()` in ArchitectAIEnhanced.js
+
+3. **BIM Files**:
+   - RVT (Revit parametric model)
+   - IFC (ISO-10303-21 standard)
+   - Generated via `generateRVTContent()` and `generateIFCContent()`
+
+4. **Image Exports**:
+   - High-resolution PNGs of all views
+   - Organized in folders: FloorPlans/, Elevations/, Sections/, 3DViews/
+
+**Final Validation Checklist**:
+- ✅ All deliverables generated successfully (or fallbacks provided)
+- ✅ Consistency validation passed
+- ✅ Floor count accurate across all outputs
+- ✅ Materials synchronized across visual outputs
+- ✅ Architectural style recognizable and consistent
+- ✅ Project seed recorded for reproducibility
+- ✅ User-facing files ready for download
+- ✅ Metadata complete and accurate
+
+#### Error Handling & Graceful Degradation
+
+**If OpenAI Fails**:
+- Use fallback reasoning with generic design philosophy
+- Master Design Spec still created using location analysis
+- Flag outputs with `isFallback: true`
+- Continue with image generation using fallback context
+
+**If Replicate Fails** (specific generation):
+- Return placeholder image URLs (via placehold.co)
+- Mark specific output as `success: false, isFallback: true`
+- Continue with remaining generations
+- User sees partial deliverables with fallback placeholders
+
+**If BIM Generation Fails**:
+- Fall back to Replicate for axonometric generation
+- Use floor plan ControlNet for geometric consistency
+- Mark axonometric source as 'replicate_fallback'
+- Warn user that axonometric may not be geometrically perfect
+
+**If Construction Documentation Fails**:
+- Mark as optional deliverable
+- Provide base design without construction details
+- User can still download floor plans, elevations, 3D views
+- Log error for debugging but don't block main workflow
+
+**Critical Failures** (abort workflow):
+- No location data available
+- No floor area provided
+- OpenAI AND Replicate both unavailable
+- Network connectivity issues
+
 ### Important Files to Understand
 
 **Core Application**:
