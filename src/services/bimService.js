@@ -572,8 +572,8 @@ class BIMService {
         angle = 30, // isometric angle in degrees
         scale = 1.0
         // showGrid and showDimensions are reserved for future use
-        // showGrid = false,
-        // showDimensions = false
+        // const showGrid = false;
+        // const showDimensions = false;
       } = options;
 
       console.log('🎨 Generating BIM-derived axonometric view...');

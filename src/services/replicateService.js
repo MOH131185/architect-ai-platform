@@ -10,6 +10,7 @@ const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
 
 // Resolve API endpoints at runtime for dev/prod
 const REPLICATE_API_PROXY_URL = getReplicatePredictUrl();
+// Note: REPLICATE_STATUS_URL is available but not currently used
 
 class ReplicateService {
   constructor() {
