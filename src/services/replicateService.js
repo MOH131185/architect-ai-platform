@@ -30,15 +30,58 @@ class ReplicateService {
    */
   formatMasterDesignSpec(masterDesignSpec) {
     if (!masterDesignSpec) return '';
-    
+
+    // Safely access nested properties with defaults
+    const dimensions = masterDesignSpec.dimensions || {};
+    const entrance = masterDesignSpec.entrance || {};
+    const materials = masterDesignSpec.materials || {};
+    const roof = masterDesignSpec.roof || {};
+    const windows = masterDesignSpec.windows || {};
+    const structure = masterDesignSpec.structure || {};
+    const colors = masterDesignSpec.colors || {};
+
+    // Only include lines that have valid data
+    const specs = [];
+
+    if (dimensions.length && dimensions.width && dimensions.height) {
+      specs.push(`- Dimensions: ${dimensions.length}m × ${dimensions.width}m × ${dimensions.height}m${dimensions.floors ? ` (${dimensions.floors} floors)` : ''}`);
+    }
+
+    if (entrance.facade && entrance.position) {
+      specs.push(`- Entrance: ${entrance.facade} facade, ${entrance.position}${entrance.width ? `, ${entrance.width}m wide` : ''}`);
+    }
+
+    if (materials.primary || materials.secondary || materials.accent) {
+      const matParts = [];
+      if (materials.primary) matParts.push(`Primary ${materials.primary}`);
+      if (materials.secondary) matParts.push(`Secondary ${materials.secondary}`);
+      if (materials.accent) matParts.push(`Accent ${materials.accent}`);
+      specs.push(`- Materials: ${matParts.join(', ')}`);
+    }
+
+    if (roof.type || roof.material) {
+      specs.push(`- Roof: ${roof.type || 'standard'} type${roof.material ? `, ${roof.material}` : ''}`);
+    }
+
+    if (windows.pattern || windows.frameColor) {
+      specs.push(`- Windows: ${windows.pattern || 'standard'} pattern${windows.frameColor ? `, ${windows.frameColor} frames` : ''}`);
+    }
+
+    if (structure.system && structure.gridSpacing) {
+      specs.push(`- Structure: ${structure.system} with ${structure.gridSpacing}m grid`);
+    }
+
+    if (colors.facade || colors.roof) {
+      const colorParts = [];
+      if (colors.facade) colorParts.push(`Facade ${colors.facade}`);
+      if (colors.roof) colorParts.push(`Roof ${colors.roof}`);
+      specs.push(`- Colors: ${colorParts.join(', ')}`);
+    }
+
+    if (specs.length === 0) return '';
+
     return `EXACT BUILDING SPECIFICATION (must match precisely):
-- Dimensions: ${masterDesignSpec.dimensions.length}m × ${masterDesignSpec.dimensions.width}m × ${masterDesignSpec.dimensions.height}m (${masterDesignSpec.dimensions.floors} floors)
-- Entrance: ${masterDesignSpec.entrance.facade} facade, ${masterDesignSpec.entrance.position}, ${masterDesignSpec.entrance.width}m wide
-- Materials: Primary ${masterDesignSpec.materials.primary}, Secondary ${masterDesignSpec.materials.secondary}, Accent ${masterDesignSpec.materials.accent}
-- Roof: ${masterDesignSpec.roof.type} type, ${masterDesignSpec.roof.material}
-- Windows: ${masterDesignSpec.windows.pattern} pattern, ${masterDesignSpec.windows.frameColor} frames
-- Structure: ${masterDesignSpec.structure.system} with ${masterDesignSpec.structure.gridSpacing}m grid
-- Colors: Facade ${masterDesignSpec.colors.facade}, Roof ${masterDesignSpec.colors.roof}
+${specs.join('\n')}
 THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
   }
 

@@ -1423,11 +1423,18 @@ const ArchitectAIEnhanced = () => {
         if (v == null) return '';
         if (typeof v === 'string') return v;
         if (typeof v === 'object') {
-          if (v.name) return String(v.name);
+          // Handle {material: "...", rationale: "..."} structure
+          if (v.material && v.rationale) {
+            return `${v.material} (${v.rationale})`;
+          }
           if (v.material) return String(v.material);
+          if (v.name) return String(v.name);
           if (v.label) return String(v.label);
           if (v.type) return String(v.type);
-          return JSON.stringify(v);
+          // Last resort: extract first string value found
+          const firstStringValue = Object.values(v).find(val => typeof val === 'string');
+          if (firstStringValue) return String(firstStringValue);
+          return String(v.material || v.name || 'Material');
         }
         return String(v);
       };
