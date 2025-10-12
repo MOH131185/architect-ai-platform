@@ -7,6 +7,7 @@ import logger from '../utils/productionLogger';
 import { getReplicatePredictUrl, getReplicateStatusUrl } from '../utils/apiRoutes';
 import viewConsistencyService from './viewConsistencyService';
 import consistencyValidationService from './consistencyValidationService';
+import geometricFloorPlanService from './geometricFloorPlanService';
 
 const REPLICATE_API_KEY = process.env.REACT_APP_REPLICATE_API_KEY;
 
@@ -16,9 +17,13 @@ const REPLICATE_API_PROXY_URL = getReplicatePredictUrl();
 
 class ReplicateService {
   constructor() {
-    this.apiKey = REPLICATE_API_KEY;
-    if (!this.apiKey) {
-      logger.warn('Replicate API key not found. Image generation will use placeholder images.');
+    // API key is not needed in client-side code
+    // The proxy server handles authentication
+    this.apiKey = REPLICATE_API_KEY; // Will be undefined in browser, which is OK
+
+    // Only log warning in development mode and if we're not in browser
+    if (typeof window === 'undefined' && !this.apiKey) {
+      logger.warn('Replicate API key not found in server environment.');
     }
   }
 
@@ -220,17 +225,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * @returns {Promise<Object>} Generation result with image URLs
    */
   async generateArchitecturalImage(generationParams) {
-    if (!this.apiKey) {
-      logger.warn('No Replicate API key, using fallback image');
-      const fallback = this.getFallbackImage(generationParams);
-      return {
-        success: false,
-        images: fallback.images || [fallback],
-        isFallback: true,
-        parameters: generationParams,
-        timestamp: new Date().toISOString()
-      };
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check that was preventing image generation
 
     try {
       const prediction = await this.createPrediction(generationParams);
@@ -486,12 +482,17 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * OPTIMIZED: Parallel generation for 60-70% speed improvement
    */
   async generateMultiLevelFloorPlans(projectContext, generateAllLevels = true) {
-    if (!this.apiKey) {
-      return this.getFallbackMultiLevelFloorPlans(projectContext);
-    }
+    // NOTE: Using geometric floor plan generation instead of SDXL
+    // SDXL is not suitable for 2D technical drawings - see FLOOR_PLAN_GENERATION_ANALYSIS.md
 
     try {
       const startTime = Date.now();
+
+      // DEBUG: Log input parameters
+      logger.info(`🔍 DEBUG - Floor plan generation started (GEOMETRIC MODE)`);
+      logger.info(`🔍 DEBUG - floorArea: ${projectContext.floorArea}`);
+      logger.info(`🔍 DEBUG - buildingProgram: ${projectContext.buildingProgram}`);
+      logger.info(`🔍 DEBUG - generateAllLevels: ${generateAllLevels}`);
 
       // Use ProjectDNA if available for intelligent floor distribution
       const projectDNA = projectContext.projectDNA;
@@ -504,8 +505,11 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       } else {
         floorCount = this.calculateFloorCount(projectContext);
         floorBreakdown = null;
-        logger.verbose(`📐 Calculated floor count: ${floorCount} (no ProjectDNA)`);
+        logger.info(`📐 Calculated floor count: ${floorCount} (no ProjectDNA)`);
       }
+
+      // DEBUG: Log calculated floor count
+      logger.info(`🔍 DEBUG - Final floor count: ${floorCount}`);
 
       const results = {};
 
@@ -515,72 +519,122 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
                          projectContext.projectSeed ||
                          Math.floor(Math.random() * 1000000);
 
-      // PERFORMANCE OPTIMIZATION: Generate all floor plans in parallel
-      logger.verbose('🏗️ Generating DISTINCT floor plans for each level (parallel execution)...');
-      logger.verbose(`📊 Floor count: ${floorCount} floors`);
+      // CRITICAL: Check if ProjectDNA is available for geometric generation
+      if (projectDNA && projectDNA.floorPlans && projectDNA.floorPlans.length > 0) {
+        // NEW APPROACH: Use geometric floor plan service with ProjectDNA
+        logger.info('✨ Using GEOMETRIC floor plan generation with ProjectDNA');
+        logger.verbose('🏗️ Generating GEOMETRIC floor plans for each level (parallel execution)...');
+        logger.verbose(`📊 Floor count: ${floorCount} floors`);
 
-      const planPromises = [];
+        const planPromises = [];
 
-      // Generate floor plans based on ProjectDNA breakdown or standard distribution
-      if (floorBreakdown && floorBreakdown.length > 0) {
-        // Use intelligent floor breakdown from ProjectDNA
-        for (let i = 0; i < floorBreakdown.length && i < floorCount; i++) {
-          const floor = floorBreakdown[i];
+        // Generate geometric floor plans for each floor in ProjectDNA
+        for (let i = 0; i < projectDNA.floorPlans.length && i < floorCount; i++) {
+          const floor = projectDNA.floorPlans[i];
           const floorKey = floor.level.toLowerCase().replace(/\s+/g, '_');
 
-          const params = this.buildFloorPlanParameters(projectContext, floorKey, i);
-          params.seed = projectSeed + (projectDNA?.seeds?.offsets?.[floorKey] || i * 10);
+          logger.verbose(`${floor.level} (${floor.area}m²): ${floor.program} - GEOMETRIC`);
 
-          logger.verbose(`${floor.level} (${floor.area}m²): ${floor.program}`);
-          planPromises.push({ key: floorKey, promise: this.generateArchitecturalImage(params) });
+          // Generate geometric floor plan using ProjectDNA
+          planPromises.push({
+            key: floorKey,
+            promise: geometricFloorPlanService.generateFloorPlan(projectDNA, i)
+              .then(dataURL => ({
+                success: true,
+                images: [dataURL],
+                type: 'geometric_floor_plan',
+                timestamp: new Date().toISOString()
+              }))
+              .catch(error => {
+                logger.error(`Geometric floor plan generation failed for ${floorKey}:`, error);
+                return {
+                  success: false,
+                  images: [`https://placehold.co/1536x1536/2C3E50/FFFFFF?text=${encodeURIComponent(floor.level + ' Plan Error')}`],
+                  error: error.message,
+                  isFallback: true
+                };
+              })
+          });
         }
+
+        // Execute all generations in parallel
+        const planResults = await Promise.all(planPromises.map(({ key, promise }) =>
+          promise.then(result => ({ key, result }))
+        ));
+
+        // Collect results
+        planResults.forEach(({ key, result }) => {
+          results[key] = result;
+          logger.verbose(`${key} floor result:`, result.success ? 'Success (GEOMETRIC)' : 'Failed', result.isFallback ? '(Fallback)' : '');
+        });
+
       } else {
-        // Fallback to standard floor generation
+        // FALLBACK: Use SDXL if ProjectDNA not available (old behavior)
+        logger.warn('⚠️ ProjectDNA not available - falling back to SDXL (may produce low-quality floor plans)');
+        logger.warn('⚠️ For best results, ensure ProjectDNA is generated first');
+
+        // PERFORMANCE OPTIMIZATION: Generate all floor plans in parallel
+        logger.verbose('🏗️ Generating DISTINCT floor plans for each level (parallel execution)...');
+        logger.verbose(`📊 Floor count: ${floorCount} floors`);
+
+        const planPromises = [];
+
+        // Fallback to standard floor generation using SDXL
         const groundParams = this.buildFloorPlanParameters(projectContext, 'ground', 0);
         groundParams.seed = projectSeed;
-        logger.verbose('Ground floor plan params:', groundParams.viewType);
+
+        logger.info(`🔍 DEBUG - Ground floor params (SDXL FALLBACK):`);
+        logger.info(`🔍 DEBUG - Prompt: ${groundParams.prompt.substring(0, 200)}...`);
+        logger.info(`🔍 DEBUG - Seed: ${groundParams.seed}`);
+        logger.info(`🔍 DEBUG - Width x Height: ${groundParams.width} x ${groundParams.height}`);
 
         planPromises.push({ key: 'ground', promise: this.generateArchitecturalImage(groundParams) });
 
         // Only generate additional levels if explicitly requested
         if (generateAllLevels) {
-          // CRITICAL FIX: Generate upper floors if multi-story
-          // Each upper floor gets distinct prompt based on floor index and slightly varied seed
+          logger.info(`🔍 DEBUG - generateAllLevels is TRUE, checking if floorCount > 1...`);
+          logger.info(`🔍 DEBUG - floorCount > 1? ${floorCount > 1} (floorCount = ${floorCount})`);
+
           if (floorCount > 1) {
-            // For 2-story building, this generates upper floor (floor index 1)
-            // For 3+ story buildings, this generates a representative upper floor
+            logger.info(`🔍 DEBUG - Condition MET: Generating upper floor plan for ${floorCount} floors`);
             logger.verbose(`🏗️ Generating upper floor plan (floors 2-${floorCount})...`);
             const upperParams = this.buildFloorPlanParameters(projectContext, 'upper', 1);
+            upperParams.seed = projectSeed;
 
-            // CRITICAL FIX: Vary seed slightly to ensure distinct image while maintaining geometric consistency
-            // Small variation (projectSeed + 50) ensures same building but different interior layout
-            upperParams.seed = projectSeed + 50;
+            logger.info(`🔍 DEBUG - Upper floor params:`);
+            logger.info(`🔍 DEBUG - Prompt: ${upperParams.prompt.substring(0, 200)}...`);
+            logger.info(`🔍 DEBUG - Seed: ${upperParams.seed}`);
 
-            logger.verbose('Upper floor plan params:', upperParams.viewType);
             planPromises.push({ key: 'upper', promise: this.generateArchitecturalImage(upperParams) });
+          } else {
+            logger.info(`🔍 DEBUG - Condition NOT MET: floorCount is ${floorCount}, skipping upper floor`);
           }
 
           // Generate roof plan (roof is above all floors)
+          logger.info(`🔍 DEBUG - Generating roof plan...`);
           logger.verbose('🏗️ Generating roof plan...');
           const roofParams = this.buildFloorPlanParameters(projectContext, 'roof', floorCount);
-
-          // CRITICAL FIX: Vary seed for roof plan to ensure distinct image
-          roofParams.seed = projectSeed + 100;
+          roofParams.seed = projectSeed;
 
           planPromises.push({ key: 'roof', promise: this.generateArchitecturalImage(roofParams) });
+        } else {
+          logger.info(`🔍 DEBUG - generateAllLevels is FALSE, skipping upper and roof`);
         }
+
+        // DEBUG: Log total number of plans to generate
+        logger.info(`🔍 DEBUG - Total plans to generate: ${planPromises.length}`);
+
+        // Execute all generations in parallel
+        const planResults = await Promise.all(planPromises.map(({ key, promise }) =>
+          promise.then(result => ({ key, result }))
+        ));
+
+        // Collect results
+        planResults.forEach(({ key, result }) => {
+          results[key] = result;
+          logger.verbose(`${key} floor result:`, result.success ? 'Success' : 'Failed', result.isFallback ? '(Fallback)' : '');
+        });
       }
-
-      // Execute all generations in parallel
-      const planResults = await Promise.all(planPromises.map(({ key, promise }) =>
-        promise.then(result => ({ key, result }))
-      ));
-
-      // Collect results
-      planResults.forEach(({ key, result }) => {
-        results[key] = result;
-        logger.verbose(`${key} floor result:`, result.success ? 'Success' : 'Failed', result.isFallback ? '(Fallback)' : '');
-      });
 
       const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
       logger.verbose(`✅ Floor plans generated in ${elapsedTime}s (parallel execution)`);
@@ -591,6 +645,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
         floorCount,
         projectSeed,
         generationTime: elapsedTime,
+        generationMethod: projectDNA ? 'geometric' : 'sdxl_fallback',
         timestamp: new Date().toISOString()
       };
 
@@ -611,9 +666,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * OPTIMIZED: Parallel generation for 75-80% speed improvement
    */
   async generateElevationsAndSections(projectContext, generateAllDrawings = false, controlImage = null) {
-    if (!this.apiKey) {
-      return this.getFallbackElevationsAndSections(projectContext);
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check
 
     try {
       const startTime = Date.now();
@@ -769,9 +823,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * Generate 2D floor plan using specialized architectural models
    */
   async generateFloorPlan(projectContext) {
-    if (!this.apiKey) {
-      return this.getFallbackFloorPlan(projectContext);
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check
 
     try {
       const params = this.buildFloorPlanParameters(projectContext);
@@ -799,9 +852,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * STEP 2: Accept optional controlImage to use floor plan as ControlNet input
    */
   async generate3DPreview(projectContext, controlImage = null) {
-    if (!this.apiKey) {
-      return this.getFallback3DPreview(projectContext);
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check
 
     try {
       const params = this.build3DPreviewParameters(projectContext, controlImage);
@@ -1105,18 +1157,25 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
       dnaSpec = `DNA SPECIFICATION: ${floor.level} (${floor.area}m²) containing ${roomList}, `;
     }
 
+    // Enhanced prompt for better 2D floor plan generation
+    const floorPlanPrompt = level === 'roof'
+      ? `ARCHITECTURAL ROOF PLAN: Professional 2D architectural roof plan drawing, technical blueprint showing roof layout of ${unifiedDesc.fullDescription}, flat orthographic top view showing roof structure, ridge lines, valleys, drainage slopes, gutters, downspouts, roof material indication, chimney if present, HVAC equipment placement, roof access, parapet walls if flat roof, dimension lines, north arrow, scale 1:100, black and white technical drawing, CAD-style linework, NO 3D elements, NO perspective`
+      : `ARCHITECTURAL FLOOR PLAN: Professional 2D architectural floor plan, ${level} level technical blueprint of ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing clear wall outlines as thick black lines, door openings with arc swing indicators, window openings as parallel lines in walls${roomListDetail}, room names and area labels in m², furniture layout indicators, dimension lines with measurements, grid lines if applicable, north arrow indicator, scale notation 1:100, professional CAD-style technical drawing, clean black lines on white background, orthographic top-down view only, architectural drafting standards, NO 3D elements whatsoever, NO perspective, NO shading, NO rendering, flat 2D technical documentation`;
+
+    const floorPlanNegative = "3D rendering, perspective view, isometric, axonometric, exterior view, building facade, photorealistic, colored, shaded, rendered, artistic, elevation, section, site plan, landscape, trees, cars, people, sky, clouds, shadows, materials, textures, lighting effects, reflections, 3D visualization, architectural photography, street view, aerial perspective, building exterior, outdoor environment";
+
     return {
-      prompt: `${dnaSpec}STRICTLY 2D FLOOR PLAN ONLY: ${level} floor technical blueprint for ${unifiedDesc.fullDescription}${projectDetails.areaDetail}, ${floorSpecificPrompt}, ${entranceNote} showing walls as black lines, doors as arcs, windows as double lines${roomListDetail}, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions matching project specifications, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning, FLOOR PLAN VIEW ONLY, NO EXTERIOR VIEWS, NO 3D RENDERINGS`,
+      prompt: `${dnaSpec}${floorPlanPrompt}`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
       viewType: `floor_plan_${level}`,
       width: 1024,
       height: 1024,
-      steps: 40,
-      guidanceScale: 7.0,
-      seed: viewConsistencyService.getProjectSeed(),
-      negativePrompt: enhancedNegativePrompt
+      steps: 45,  // Increased for better quality
+      guidanceScale: 8.5,  // Increased for stronger adherence to prompt
+      seed: viewConsistencyService.getProjectSeed(), // CONSISTENCY FIX: Use SAME seed for all floors
+      negativePrompt: floorPlanNegative
     };
   }
 
@@ -1361,14 +1420,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * @returns {Promise<Object>} Construction details for all floors
    */
   async generateConstructionDetails(projectContext, scale = 20) {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        isFallback: true,
-        message: 'API key not configured',
-        details: {}
-      };
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check
 
     try {
       const startTime = Date.now();
@@ -1434,14 +1487,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * @returns {Promise<Object>} Structural plans for all floors
    */
   async generateStructuralPlans(projectContext, controlImage = null) {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        isFallback: true,
-        message: 'API key not configured',
-        structuralPlans: {}
-      };
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check
 
     try {
       const startTime = Date.now();
@@ -1509,14 +1556,8 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * @returns {Promise<Object>} MEP plans for all floors
    */
   async generateMEPPlans(projectContext, system = 'combined', controlImage = null) {
-    if (!this.apiKey) {
-      return {
-        success: false,
-        isFallback: true,
-        message: 'API key not configured',
-        mepPlans: {}
-      };
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
+    // Removed API key check
 
     try {
       const startTime = Date.now();
@@ -1718,9 +1759,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * Get generation status
    */
   async getGenerationStatus(predictionId) {
-    if (!this.apiKey) {
-      return { status: 'unavailable', message: 'API key not configured' };
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
 
     try {
       const url = getReplicateStatusUrl(predictionId);
@@ -1745,9 +1784,7 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
    * Cancel generation
    */
   async cancelGeneration(predictionId) {
-    if (!this.apiKey) {
-      return { success: false, message: 'API key not configured' };
-    }
+    // NOTE: API key is handled by proxy server, not needed in client
 
     try {
       const url = process.env.NODE_ENV === 'production'

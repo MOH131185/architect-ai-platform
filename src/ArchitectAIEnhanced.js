@@ -638,8 +638,7 @@ const ArchitectAIEnhanced = () => {
   const [materialWeight, setMaterialWeight] = useState(0.5); // NEW: 0=100% local materials, 1=100% portfolio materials
   const [characteristicWeight, setCharacteristicWeight] = useState(0.5); // NEW: 0=100% local characteristics, 1=100% portfolio characteristics
   const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '' });
-  const [generateConstructionDocs, setGenerateConstructionDocs] = useState(false); // NEW: Toggle for construction documentation
-  const [detailScale, setDetailScale] = useState(20); // NEW: Detail drawing scale (1:5, 1:10, 1:20, 1:50)
+  // Construction documentation removed to focus on 2D/3D consistency
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showModification, setShowModification] = useState(false);
@@ -1068,9 +1067,6 @@ const ArchitectAIEnhanced = () => {
         floorArea: parseInt(projectDetails?.area) || 200,
         // STEP 1: Unified seed for ALL outputs in this project
         projectSeed: projectSeed,
-        // NEW: Construction documentation flags
-        generateConstructionDocs: generateConstructionDocs, // Toggle for construction documentation generation
-        detailScale: detailScale, // Detail drawing scale (1:5, 1:10, 1:20, 1:50)
         floors: Math.ceil((parseInt(projectDetails?.area) || 200) / 150) || 1 // Estimate floor count from area (150m² per floor)
       };
 
@@ -1103,7 +1099,22 @@ const ArchitectAIEnhanced = () => {
         console.log('📋 Extracting floor plans from aiResult:', {
           hasResults: !!aiResult.results,
           hasFloorPlan: !!aiResult.floorPlan,
-          resultsKeys: aiResult.results ? Object.keys(aiResult.results) : []
+          hasFloorPlans: !!aiResult.floorPlans,
+          resultsKeys: aiResult.results ? Object.keys(aiResult.results) : [],
+          floorPlansKeys: aiResult.floorPlans ? Object.keys(aiResult.floorPlans) : [],
+          resultsFloorPlansKeys: aiResult.results?.floorPlans ? Object.keys(aiResult.results.floorPlans) : [],
+          resultsFloorPlansNestedKeys: aiResult.results?.floorPlans?.floorPlans ? Object.keys(aiResult.results.floorPlans.floorPlans) : [],
+          hasResultsFloorPlansGround: !!aiResult.results?.floorPlans?.floorPlans?.ground,
+          hasDirectFloorPlansGround: !!aiResult.floorPlans?.ground,
+          hasFloorPlansFloorPlansGround: !!aiResult.floorPlans?.floorPlans?.ground,
+          resultsFloorPlansSuccess: aiResult.results?.floorPlans?.success,
+          directFloorPlansSuccess: aiResult.floorPlans?.success,
+          // Check for underscore keys too
+          hasGroundFloor: !!aiResult.floorPlans?.ground_floor,
+          hasFirstFloor: !!aiResult.floorPlans?.first_floor,
+          groundImageURL: aiResult.results?.floorPlans?.floorPlans?.ground?.images?.[0]?.substring(0, 50) ||
+                          aiResult.floorPlans?.ground?.images?.[0]?.substring(0, 50) ||
+                          aiResult.floorPlans?.ground_floor?.images?.[0]?.substring(0, 50) || 'NOT FOUND'
         });
 
         // STEP 5: Try integrated design results structure first
@@ -1114,13 +1125,55 @@ const ArchitectAIEnhanced = () => {
           if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
           console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from integrated results');
         }
-        // Try direct floorPlans result
+        // PRIORITY: Try floorPlans.floorPlans with underscore keys (GEOMETRIC from aiIntegrationService)
+        else if (aiResult.floorPlans?.floorPlans?.ground_floor || aiResult.floorPlans?.floorPlans?.first_floor) {
+          const plans = aiResult.floorPlans.floorPlans;
+          console.log('✨ GEOMETRIC FLOOR PLANS from floorPlans.floorPlans with underscore keys:', Object.keys(plans));
+
+          if (plans.ground_floor?.images && plans.ground_floor.images.length > 0) {
+            floorPlans.ground = plans.ground_floor.images[0];
+            console.log('✅ Extracted ground_floor plan (GEOMETRIC):', floorPlans.ground.substring(0, 100) + '...');
+          }
+          if (plans.first_floor?.images && plans.first_floor.images.length > 0) {
+            floorPlans.upper = plans.first_floor.images[0];
+            console.log('✅ Extracted first_floor plan (GEOMETRIC):', floorPlans.upper.substring(0, 100) + '...');
+          }
+          if (plans.second_floor?.images && plans.second_floor.images.length > 0) {
+            floorPlans.second = plans.second_floor.images[0];
+            console.log('✅ Extracted second_floor plan (GEOMETRIC)');
+          }
+          if (plans.roof?.images && plans.roof.images.length > 0) {
+            floorPlans.roof = plans.roof.images[0];
+            console.log('✅ Extracted roof plan (GEOMETRIC)');
+          }
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'geometric floor plans from floorPlans.floorPlans');
+        }
+        // FIXED: Try floorPlans.floorPlans (correct structure from aiIntegrationService - SDXL)
         else if (aiResult.floorPlans?.floorPlans?.ground?.images) {
           const plans = aiResult.floorPlans.floorPlans;
           if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
           if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
           if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
-          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from floorPlans');
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from floorPlans.floorPlans');
+        }
+        // NEW: Try direct floorPlans structure (from replicateService.generateMultiLevelFloorPlans)
+        // FIXED: The structure from replicateService is floorPlans.ground, not floorPlans.floorPlans.ground
+        else if (aiResult.floorPlans?.ground) {
+          const plans = aiResult.floorPlans;
+          // The structure is floorPlans.ground.images directly
+          if (plans.ground?.images && plans.ground.images.length > 0) {
+            floorPlans.ground = plans.ground.images[0];
+            console.log('✅ Extracted ground floor plan:', floorPlans.ground.substring(0, 80));
+          }
+          if (plans.upper?.images && plans.upper.images.length > 0) {
+            floorPlans.upper = plans.upper.images[0];
+            console.log('✅ Extracted upper floor plan:', floorPlans.upper.substring(0, 80));
+          }
+          if (plans.roof?.images && plans.roof.images.length > 0) {
+            floorPlans.roof = plans.roof.images[0];
+            console.log('✅ Extracted roof plan:', floorPlans.roof.substring(0, 80));
+          }
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from direct floorPlans structure');
         }
         // Try visualizations structure
         else if (aiResult.visualizations?.floorPlans?.floorPlans?.ground?.images) {
@@ -1129,6 +1182,43 @@ const ArchitectAIEnhanced = () => {
           if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
           if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
           console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from visualizations');
+        }
+        // NEW: Try with underscore keys (ground_floor, first_floor, etc.) - GEOMETRIC FLOOR PLANS
+        else if (aiResult.floorPlans?.ground_floor || aiResult.floorPlans?.first_floor) {
+          const plans = aiResult.floorPlans;
+          console.log('✨ GEOMETRIC FLOOR PLANS DETECTED with underscore keys:', Object.keys(plans));
+          console.log('✨ ground_floor structure:', plans.ground_floor ? {
+            hasImages: !!plans.ground_floor.images,
+            imagesLength: plans.ground_floor.images?.length,
+            imagePreview: plans.ground_floor.images?.[0]?.substring(0, 100)
+          } : 'NOT FOUND');
+
+          // Map underscore keys to standard keys
+          if (plans.ground_floor?.images && plans.ground_floor.images.length > 0) {
+            floorPlans.ground = plans.ground_floor.images[0];
+            console.log('✅ Extracted ground_floor plan (GEOMETRIC):', floorPlans.ground.substring(0, 100) + '...');
+          } else {
+            console.error('❌ ground_floor has no images:', plans.ground_floor);
+          }
+
+          if (plans.first_floor?.images && plans.first_floor.images.length > 0) {
+            floorPlans.upper = plans.first_floor.images[0];
+            console.log('✅ Extracted first_floor plan (GEOMETRIC):', floorPlans.upper.substring(0, 100) + '...');
+          } else if (plans.first_floor) {
+            console.error('❌ first_floor has no images:', plans.first_floor);
+          }
+
+          if (plans.second_floor?.images && plans.second_floor.images.length > 0) {
+            floorPlans.second = plans.second_floor.images[0];
+            console.log('✅ Extracted second_floor plan (GEOMETRIC)');
+          }
+
+          if (plans.roof?.images && plans.roof.images.length > 0) {
+            floorPlans.roof = plans.roof.images[0];
+            console.log('✅ Extracted roof plan (GEOMETRIC)');
+          }
+
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'geometric floor plans using underscore keys');
         }
 
         // Fallback placeholder
@@ -1292,17 +1382,30 @@ const ArchitectAIEnhanced = () => {
         model3D: {
           style: aiResult.reasoning?.designPhilosophy || `${styleChoice} architectural design`,
           features: extractFeatures(aiResult.reasoning?.environmentalConsiderations),
-          materials: (normalizeMaterials(aiResult.reasoning?.materialRecommendations).length > 0
-            ? normalizeMaterials(aiResult.reasoning?.materialRecommendations)
-            : ["Sustainable materials", "Local stone", "Glass", "Steel"]),
+          materials: (() => {
+            const normalized = normalizeMaterials(aiResult.reasoning?.materialRecommendations);
+            // Ensure materials is always an array of strings
+            return normalized.length > 0
+              ? normalized
+              : ["Sustainable materials", "Local stone", "Glass", "Steel"];
+          })(),
           sustainabilityFeatures: extractSustainabilityFeatures(aiResult.reasoning?.environmentalConsiderations),
           // Add 3D preview images if available
           images: preview3DImages
         },
         technical: {
-          structural: typeof aiResult.reasoning?.materialRecommendations === 'object'
-            ? (aiResult.reasoning.materialRecommendations.primary || "Modern structural system")
-            : (aiResult.reasoning?.materialRecommendations || "Modern structural system"),
+          structural: (() => {
+            const mr = aiResult.reasoning?.materialRecommendations;
+            if (!mr) return "Modern structural system";
+            if (typeof mr === 'string') return mr;
+            if (Array.isArray(mr.primary)) {
+              return mr.primary.map(m => typeof m === 'object' ? (m.material || m.name || 'Material') : m).join(', ');
+            }
+            if (typeof mr.primary === 'object') {
+              return mr.primary.material || mr.primary.name || "Modern structural system";
+            }
+            return mr.primary || "Modern structural system";
+          })(),
           foundation: "Engineered foundation system",
           mep: {
             hvac: "Energy-efficient HVAC system",
@@ -1356,7 +1459,7 @@ const ArchitectAIEnhanced = () => {
         model3D: {
           style: `${styleChoice} architectural design`,
           features: ["Natural lighting", "Sustainable design", "Modern aesthetics"],
-          materials: ["Sustainable materials", "Local resources"],
+          materials: ["Sustainable materials", "Local resources", "Glass", "Steel"], // Always an array of strings
           sustainabilityFeatures: ["Energy efficient", "Eco-friendly"],
           images: []
         },
@@ -2204,87 +2307,6 @@ const ArchitectAIEnhanced = () => {
                     </p>
                   )}
                 </div>
-
-                {/* NEW: Construction Documentation Controls */}
-                <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center">
-                      <FileCode className="w-5 h-5 text-blue-600 mr-2" />
-                      <h4 className="font-semibold text-gray-800">Construction Documentation</h4>
-                    </div>
-                    <label className="flex items-center cursor-pointer">
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={generateConstructionDocs}
-                          onChange={(e) => setGenerateConstructionDocs(e.target.checked)}
-                          className="sr-only"
-                        />
-                        <div className={`block w-14 h-8 rounded-full transition ${generateConstructionDocs ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                        <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${generateConstructionDocs ? 'transform translate-x-6' : ''}`}></div>
-                      </div>
-                      <span className="ml-3 text-sm font-medium text-gray-700">
-                        {generateConstructionDocs ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </label>
-                  </div>
-
-                  {generateConstructionDocs && (
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-600 mb-4">
-                        Generate comprehensive technical drawings including detail sections, structural plans, and MEP layouts with engineering notes.
-                      </p>
-
-                      <div>
-                        <label htmlFor="detail-scale" className="block text-sm font-medium text-gray-700 mb-2">
-                          Detail Drawing Scale
-                        </label>
-                        <select
-                          id="detail-scale"
-                          value={detailScale}
-                          onChange={(e) => setDetailScale(parseInt(e.target.value))}
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
-                        >
-                          <option value={5}>1:5 - Extremely Detailed (4096×3072px, ~2min/drawing)</option>
-                          <option value={10}>1:10 - Highly Detailed (3072×2304px, ~90s/drawing)</option>
-                          <option value={20}>1:20 - Detailed (2048×1536px, ~60s/drawing) ⭐ Recommended</option>
-                          <option value={50}>1:50 - Moderately Detailed (1536×1152px, ~45s/drawing)</option>
-                        </select>
-                        <p className="mt-2 text-xs text-gray-500">
-                          Higher detail scales produce sharper drawings but take longer to generate. 1:20 is recommended for most projects.
-                        </p>
-                      </div>
-
-                      <div className="bg-white rounded-lg p-4 border border-blue-200">
-                        <h5 className="font-medium text-gray-800 mb-3">What will be generated:</h5>
-                        <ul className="space-y-2 text-sm text-gray-600">
-                          <li className="flex items-start">
-                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                            <span><strong>Construction Details:</strong> Wall sections, floor assemblies, foundation details with dimensions and material callouts</span>
-                          </li>
-                          <li className="flex items-start">
-                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                            <span><strong>Structural Plans:</strong> Foundation plan + floor structural layouts showing columns, beams, and reinforcement</span>
-                          </li>
-                          <li className="flex items-start">
-                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                            <span><strong>MEP Plans:</strong> HVAC, electrical, and plumbing system layouts with equipment specifications</span>
-                          </li>
-                          <li className="flex items-start">
-                            <Check className="w-4 h-4 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                            <span><strong>Engineering Notes:</strong> Structural calculations, code compliance, and MEP design criteria with location-specific regulations</span>
-                          </li>
-                        </ul>
-                        <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                          <p className="text-xs text-yellow-800">
-                            <AlertCircle className="w-4 h-4 inline mr-1" />
-                            <strong>Note:</strong> Construction documentation adds 3-5 minutes to generation time and uses additional API credits.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
 
               {projectDetails.program && (
@@ -2540,83 +2562,19 @@ const ArchitectAIEnhanced = () => {
 
                   <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
                     <Building className="w-5 h-5 text-purple-600 mr-2" />
-                    3D Visualizations (5 Views: Exterior, Interior, Axonometric, Perspective)
+                    3D Visualization
                   </h3>
 
-                  <div className="grid md:grid-cols-2 gap-4 mb-4">
-                    {/* Exterior Front View */}
-                    <div className="relative">
-                      <div
-                        className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
-                        onClick={() => generatedDesigns?.model3D.images?.[0] && openImageModal(generatedDesigns.model3D.images[0], 'Exterior - Front View')}
-                      >
-                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[0] ? (
-                          <img
-                            src={generatedDesigns.model3D.images[0]}
-                            alt="Exterior Front View"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextSibling.style.display = 'flex';
-                            }}
-                          />
-                        ) : null}
-                        <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-purple-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[0] ? 'none' : 'flex' }}>
-                          <Eye className="w-12 h-12 text-white/50" />
-                        </div>
-                        {generatedDesigns?.model3D.images?.[0] && (
-                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
-                            <ZoomIn className="w-4 h-4 text-gray-700" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
-                        Exterior - Front View
-                      </div>
-                    </div>
-
-                    {/* Exterior Side View */}
-                    <div className="relative">
-                      <div
-                        className="bg-gradient-to-br from-purple-400 to-pink-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
-                        onClick={() => generatedDesigns?.model3D.images?.[1] && openImageModal(generatedDesigns.model3D.images[1], 'Exterior - Side View')}
-                      >
-                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[1] ? (
-                          <img
-                            src={generatedDesigns.model3D.images[1]}
-                            alt="Exterior Side View"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextSibling.style.display = 'flex';
-                            }}
-                          />
-                        ) : null}
-                        <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-pink-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[1] ? 'none' : 'flex' }}>
-                          <Eye className="w-12 h-12 text-white/50" />
-                        </div>
-                        {generatedDesigns?.model3D.images?.[1] && (
-                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
-                            <ZoomIn className="w-4 h-4 text-gray-700" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
-                        Exterior - Side View
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Interior View */}
-                  <div className="relative mb-4">
+                  {/* SIMPLIFIED: Only show Exterior Front View (single 3D view generated) */}
+                  <div className="relative">
                     <div
-                      className="bg-gradient-to-br from-pink-400 to-orange-500 rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
-                      onClick={() => generatedDesigns?.model3D.images?.[2] && openImageModal(generatedDesigns.model3D.images[2], 'Interior - Main Space')}
+                      className="bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg h-96 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
+                      onClick={() => generatedDesigns?.model3D.images?.[0] && openImageModal(generatedDesigns.model3D.images[0], 'Exterior - Front View')}
                     >
-                      {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[2] ? (
+                      {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[0] ? (
                         <img
-                          src={generatedDesigns.model3D.images[2]}
-                          alt="Interior View"
+                          src={generatedDesigns.model3D.images[0]}
+                          alt="Exterior Front View"
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.target.style.display = 'none';
@@ -2624,100 +2582,46 @@ const ArchitectAIEnhanced = () => {
                           }}
                         />
                       ) : null}
-                      <div className="absolute inset-0 bg-gradient-to-br from-pink-400/20 to-orange-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[2] ? 'none' : 'flex' }}>
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-purple-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[0] ? 'none' : 'flex' }}>
                         <Eye className="w-12 h-12 text-white/50" />
                       </div>
-                      {generatedDesigns?.model3D.images?.[2] && (
+                      {generatedDesigns?.model3D.images?.[0] && (
                         <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
                           <ZoomIn className="w-4 h-4 text-gray-700" />
                         </div>
                       )}
                     </div>
                     <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
-                      Interior - Main Space
-                    </div>
-                  </div>
-
-                  {/* Axonometric and Perspective Views */}
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {/* Axonometric View */}
-                    <div className="relative">
-                      <div
-                        className="bg-gradient-to-br from-teal-400 to-blue-500 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
-                        onClick={() => generatedDesigns?.model3D.images?.[3] && openImageModal(generatedDesigns.model3D.images[3], 'Axonometric View')}
-                      >
-                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[3] ? (
-                          <img
-                            src={generatedDesigns.model3D.images[3]}
-                            alt="Axonometric View"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextSibling.style.display = 'flex';
-                            }}
-                          />
-                        ) : null}
-                        <div className="absolute inset-0 bg-gradient-to-br from-teal-400/20 to-blue-500/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[3] ? 'none' : 'flex' }}>
-                          <Eye className="w-12 h-12 text-white/50" />
-                        </div>
-                        {generatedDesigns?.model3D.images?.[3] && (
-                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
-                            <ZoomIn className="w-4 h-4 text-gray-700" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
-                        Axonometric View
-                      </div>
-                    </div>
-
-                    {/* Perspective View */}
-                    <div className="relative">
-                      <div
-                        className="bg-gradient-to-br from-indigo-400 to-purple-600 rounded-lg h-64 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-xl transition-shadow"
-                        onClick={() => generatedDesigns?.model3D.images?.[4] && openImageModal(generatedDesigns.model3D.images[4], 'Perspective View')}
-                      >
-                        {generatedDesigns?.model3D.images && generatedDesigns.model3D.images[4] ? (
-                          <img
-                            src={generatedDesigns.model3D.images[4]}
-                            alt="Perspective View"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                              e.target.nextSibling.style.display = 'flex';
-                            }}
-                          />
-                        ) : null}
-                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-400/20 to-purple-600/20 flex items-center justify-center" style={{ display: generatedDesigns?.model3D.images?.[4] ? 'none' : 'flex' }}>
-                          <Eye className="w-12 h-12 text-white/50" />
-                        </div>
-                        {generatedDesigns?.model3D.images?.[4] && (
-                          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur p-2 rounded-full opacity-0 hover:opacity-100 transition-opacity">
-                            <ZoomIn className="w-4 h-4 text-gray-700" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur px-2 py-1 rounded text-xs font-medium text-gray-700">
-                        Perspective View
-                      </div>
+                      Exterior - Front View
                     </div>
                   </div>
 
                   <div className="mt-4 space-y-2">
                     <p className="text-sm font-medium text-gray-700">{generatedDesigns?.model3D.style}</p>
                     <div className="flex flex-wrap gap-2">
-                      {generatedDesigns?.model3D.materials.map((material, idx) => (
-                        <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
-                          {material}
-                        </span>
-                      ))}
+                      {(() => {
+                        // Ensure materials is always an array
+                        const materials = Array.isArray(generatedDesigns?.model3D.materials)
+                          ? generatedDesigns.model3D.materials
+                          : (generatedDesigns?.model3D.materials
+                            ? [generatedDesigns.model3D.materials]
+                            : ["Materials not available"]);
+
+                        return materials.map((material, idx) => (
+                          <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                            {typeof material === 'object'
+                              ? (material.material || material.name || "Material")
+                              : String(material)}
+                          </span>
+                        ));
+                      })()}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Elevations and Sections */}
-              {generatedDesigns?.technicalDrawings && (Object.keys(generatedDesigns.technicalDrawings.elevations).length > 0 || Object.keys(generatedDesigns.technicalDrawings.sections).length > 0) && (
+              {/* Elevations and Sections - HIDDEN until full reasoning platform is ready */}
+              {false && generatedDesigns?.technicalDrawings && (Object.keys(generatedDesigns.technicalDrawings.elevations).length > 0 || Object.keys(generatedDesigns.technicalDrawings.sections).length > 0) && (
                 <div className="mt-8">
                   <h3 className="font-semibold text-gray-800 mb-6 flex items-center text-xl">
                     <FileText className="w-6 h-6 text-gray-600 mr-2" />
@@ -2852,171 +2756,9 @@ const ArchitectAIEnhanced = () => {
                 </div>
               )}
 
-              {/* Construction Documentation - Structural & MEP Plans */}
-              {generatedDesigns?.constructionDocumentation && (
-                <div className="mt-8">
-                  <h3 className="text-2xl font-semibold text-gray-800 mb-6 flex items-center">
-                    <Layers className="w-6 h-6 text-orange-600 mr-3" />
-                    Construction Documentation
-                  </h3>
-
-                  {/* Structural Plans */}
-                  {generatedDesigns.constructionDocumentation.structuralPlans?.structuralPlans && Object.keys(generatedDesigns.constructionDocumentation.structuralPlans.structuralPlans).length > 0 && (
-                    <div className="mb-8">
-                      <h4 className="text-lg font-semibold text-gray-700 mb-4">Structural Plans</h4>
-                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {Object.entries(generatedDesigns.constructionDocumentation.structuralPlans.structuralPlans).map(([levelKey, plan]) => (
-                          <div key={levelKey} className="bg-white rounded-lg p-4 shadow-sm">
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              {levelKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </p>
-                            {plan.images && plan.images.length > 0 ? (
-                              <div
-                                className="bg-gray-50 rounded h-64 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                                onClick={() => openImageModal(plan.images[0], `Structural Plan - ${levelKey}`)}
-                              >
-                                <img
-                                  src={plan.images[0]}
-                                  alt={`Structural Plan - ${levelKey}`}
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                            ) : (
-                              <div className="bg-gray-100 rounded h-64 flex items-center justify-center">
-                                <FileCode className="w-12 h-12 text-gray-400" />
-                                <span className="ml-2 text-gray-500">Plan pending</span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MEP Plans */}
-                  {generatedDesigns.constructionDocumentation.mepPlans?.mepPlans && Object.keys(generatedDesigns.constructionDocumentation.mepPlans.mepPlans).length > 0 && (
-                    <div className="mb-8">
-                      <h4 className="text-lg font-semibold text-gray-700 mb-4">MEP Plans (Mechanical, Electrical, Plumbing)</h4>
-                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {Object.entries(generatedDesigns.constructionDocumentation.mepPlans.mepPlans).map(([floorKey, plan]) => (
-                          <div key={floorKey} className="bg-white rounded-lg p-4 shadow-sm">
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              {floorKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} - {generatedDesigns.constructionDocumentation.mepPlans.system || 'Combined MEP'}
-                            </p>
-                            {plan.images && plan.images.length > 0 ? (
-                              <div
-                                className="bg-gray-50 rounded h-64 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                                onClick={() => openImageModal(plan.images[0], `MEP Plan - ${floorKey}`)}
-                              >
-                                <img
-                                  src={plan.images[0]}
-                                  alt={`MEP Plan - ${floorKey}`}
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                            ) : (
-                              <div className="bg-gray-100 rounded h-64 flex items-center justify-center">
-                                <Settings className="w-12 h-12 text-gray-400 animate-spin-slow" />
-                                <span className="ml-2 text-gray-500">Plan pending</span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Engineering Notes */}
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Structural Notes */}
-                    {generatedDesigns.constructionDocumentation.structuralNotes?.length > 0 && (
-                      <div className="bg-blue-50 rounded-xl p-6">
-                        <h4 className="font-semibold text-gray-800 mb-4">Structural Engineering Notes</h4>
-                        <div className="space-y-3">
-                          {generatedDesigns.constructionDocumentation.structuralNotes.map((note, idx) => (
-                            <div key={idx} className="border-l-4 border-blue-400 pl-4">
-                              <p className="text-sm font-medium text-gray-700 mb-1">
-                                {note.levelName || `Level ${note.level}`}
-                              </p>
-                              <div className="text-sm text-gray-600 space-y-1">
-                                {note.notes?.specifications && (
-                                  <p>• <strong>Specs:</strong> {note.notes.specifications}</p>
-                                )}
-                                {note.notes?.loadCalculations && (
-                                  <p>• <strong>Loads:</strong> {note.notes.loadCalculations}</p>
-                                )}
-                                {note.notes?.codeCompliance && (
-                                  <p>• <strong>Code:</strong> {note.notes.codeCompliance}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* MEP Notes */}
-                    {generatedDesigns.constructionDocumentation.mepNotes?.length > 0 && (
-                      <div className="bg-green-50 rounded-xl p-6">
-                        <h4 className="font-semibold text-gray-800 mb-4">MEP Engineering Notes</h4>
-                        <div className="space-y-3">
-                          {generatedDesigns.constructionDocumentation.mepNotes.map((note, idx) => (
-                            <div key={idx} className="border-l-4 border-green-400 pl-4">
-                              <p className="text-sm font-medium text-gray-700 mb-1">
-                                Floor {note.floorIndex + 1} - {note.system || 'All Systems'}
-                              </p>
-                              <div className="text-sm text-gray-600 space-y-1">
-                                {note.notes?.specifications && (
-                                  <p>• <strong>Equipment:</strong> {note.notes.specifications}</p>
-                                )}
-                                {note.notes?.capacity && (
-                                  <p>• <strong>Capacity:</strong> {note.notes.capacity}</p>
-                                )}
-                                {note.notes?.efficiency && (
-                                  <p>• <strong>Efficiency:</strong> {note.notes.efficiency}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Detail Drawings */}
-                  {generatedDesigns.constructionDocumentation.detailDrawings?.details && Object.keys(generatedDesigns.constructionDocumentation.detailDrawings.details).length > 0 && (
-                    <div className="mt-8">
-                      <h4 className="text-lg font-semibold text-gray-700 mb-4">Construction Details</h4>
-                      <div className="grid md:grid-cols-3 gap-6">
-                        {Object.entries(generatedDesigns.constructionDocumentation.detailDrawings.details).map(([floorKey, detail], idx) => (
-                          <div key={floorKey} className="bg-white rounded-lg p-4 shadow-sm">
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              {floorKey.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} Details
-                            </p>
-                            {detail.images && detail.images.length > 0 ? (
-                              <div
-                                className="bg-gray-50 rounded h-48 overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                                onClick={() => openImageModal(detail.images[0], `${floorKey} Details`)}
-                              >
-                                <img
-                                  src={detail.images[0]}
-                                  alt={`${floorKey} Details`}
-                                  className="w-full h-full object-contain"
-                                />
-                              </div>
-                            ) : (
-                              <div className="bg-gray-100 rounded h-48 flex items-center justify-center">
-                                <Square className="w-10 h-10 text-gray-400" />
-                                <span className="ml-2 text-gray-500 text-sm">Detail pending</span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Construction Documentation section removed to focus on 2D/3D consistency
+              All construction documentation rendering has been removed to improve performance
+              and focus on core 2D/3D design consistency */}
 
               {/* Style Blending Analysis */}
               {generatedDesigns?.styleRationale && (
