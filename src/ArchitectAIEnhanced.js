@@ -1080,102 +1080,69 @@ const ArchitectAIEnhanced = () => {
         .map(file => file.url || file.preview)
         .filter(Boolean);
 
-      // STEP 5: Use integrated design generation workflow with dual weights
-      console.log('🎯 Using integrated design generation with dual weight style blending');
+      // STEP 5: Use UNIFIED design generation workflow for guaranteed 2D/3D consistency
+      console.log('🎯 Using UNIFIED design generation workflow');
+      console.log('📋 This ensures 2D floor plans and 3D views show the SAME building');
       console.log('📊 Material Weight:', materialWeight, 'Characteristic Weight:', characteristicWeight);
-      const aiResult = await aiIntegrationService.generateIntegratedDesign(
+      const aiResult = await aiIntegrationService.generateUnifiedDesign(
         projectContext,
         portfolioImages,
-        materialWeight,      // NEW: Pass material weight separately
-        characteristicWeight // NEW: Pass characteristic weight separately
+        materialWeight,      // Material blend weight (0 = local, 1 = portfolio)
+        characteristicWeight // Characteristic blend weight (0 = local, 1 = portfolio)
       );
 
       console.log('✅ AI design generation complete:', aiResult);
 
-      // STEP 5: Extract images from integrated design result
+      // STEP 5: Extract images from UNIFIED design result
       const extractFloorPlanImages = () => {
         const floorPlans = {};
 
-        console.log('📋 Extracting floor plans from aiResult:', {
-          hasResults: !!aiResult.results,
-          hasFloorPlan: !!aiResult.floorPlan,
+        console.log('📋 Extracting floor plans from UNIFIED aiResult:', {
+          workflow: aiResult.workflow,
           hasFloorPlans: !!aiResult.floorPlans,
-          resultsKeys: aiResult.results ? Object.keys(aiResult.results) : [],
-          floorPlansKeys: aiResult.floorPlans ? Object.keys(aiResult.floorPlans) : [],
-          resultsFloorPlansKeys: aiResult.results?.floorPlans ? Object.keys(aiResult.results.floorPlans) : [],
-          resultsFloorPlansNestedKeys: aiResult.results?.floorPlans?.floorPlans ? Object.keys(aiResult.results.floorPlans.floorPlans) : [],
-          hasResultsFloorPlansGround: !!aiResult.results?.floorPlans?.floorPlans?.ground,
-          hasDirectFloorPlansGround: !!aiResult.floorPlans?.ground,
-          hasFloorPlansFloorPlansGround: !!aiResult.floorPlans?.floorPlans?.ground,
-          resultsFloorPlansSuccess: aiResult.results?.floorPlans?.success,
-          directFloorPlansSuccess: aiResult.floorPlans?.success,
-          // Check for underscore keys too
-          hasGroundFloor: !!aiResult.floorPlans?.ground_floor,
-          hasFirstFloor: !!aiResult.floorPlans?.first_floor,
-          groundImageURL: aiResult.results?.floorPlans?.floorPlans?.ground?.images?.[0]?.substring(0, 50) ||
-                          aiResult.floorPlans?.ground?.images?.[0]?.substring(0, 50) ||
-                          aiResult.floorPlans?.ground_floor?.images?.[0]?.substring(0, 50) || 'NOT FOUND'
+          floorPlansSuccess: aiResult.floorPlans?.success,
+          floorPlansKeys: aiResult.floorPlans?.floorPlans ? Object.keys(aiResult.floorPlans.floorPlans) : [],
+          floorCount: aiResult.floorPlans?.floorCount,
+          masterSpecFloors: aiResult.masterSpec?.dimensions?.floors
         });
 
-        // STEP 5: Try integrated design results structure first
-        if (aiResult.results?.floorPlans?.floorPlans?.ground?.images) {
+        // UNIFIED WORKFLOW: Extract from new structure (floorPlans.floorPlans with ground, floor_1, floor_2, etc.)
+        if (aiResult.floorPlans?.floorPlans) {
+          const plans = aiResult.floorPlans.floorPlans;
+          console.log('✨ UNIFIED FLOOR PLANS structure:', Object.keys(plans));
+
+          // Ground floor
+          if (plans.ground?.images && plans.ground.images.length > 0) {
+            floorPlans.ground = plans.ground.images[0];
+            console.log('✅ Extracted ground floor plan (UNIFIED)');
+          }
+
+          // Additional floors (floor_1, floor_2, etc.)
+          if (plans.floor_1?.images && plans.floor_1.images.length > 0) {
+            floorPlans.upper = plans.floor_1.images[0];
+            console.log('✅ Extracted floor_1 plan (UNIFIED)');
+          }
+
+          if (plans.floor_2?.images && plans.floor_2.images.length > 0) {
+            floorPlans.second = plans.floor_2.images[0];
+            console.log('✅ Extracted floor_2 plan (UNIFIED)');
+          }
+
+          if (plans.floor_3?.images && plans.floor_3.images.length > 0) {
+            floorPlans.third = plans.floor_3.images[0];
+            console.log('✅ Extracted floor_3 plan (UNIFIED)');
+          }
+
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'unified floor plans');
+        }
+        // FALLBACK: Try old integrated design results structure
+        else if (aiResult.results?.floorPlans?.floorPlans?.ground?.images) {
           const plans = aiResult.results.floorPlans.floorPlans;
           if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
           if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
           if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
-          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from integrated results');
+          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from old structure');
         }
-        // PRIORITY: Try floorPlans.floorPlans with underscore keys (GEOMETRIC from aiIntegrationService)
-        else if (aiResult.floorPlans?.floorPlans?.ground_floor || aiResult.floorPlans?.floorPlans?.first_floor) {
-          const plans = aiResult.floorPlans.floorPlans;
-          console.log('✨ GEOMETRIC FLOOR PLANS from floorPlans.floorPlans with underscore keys:', Object.keys(plans));
-
-          if (plans.ground_floor?.images && plans.ground_floor.images.length > 0) {
-            floorPlans.ground = plans.ground_floor.images[0];
-            console.log('✅ Extracted ground_floor plan (GEOMETRIC):', floorPlans.ground.substring(0, 100) + '...');
-          }
-          if (plans.first_floor?.images && plans.first_floor.images.length > 0) {
-            floorPlans.upper = plans.first_floor.images[0];
-            console.log('✅ Extracted first_floor plan (GEOMETRIC):', floorPlans.upper.substring(0, 100) + '...');
-          }
-          if (plans.second_floor?.images && plans.second_floor.images.length > 0) {
-            floorPlans.second = plans.second_floor.images[0];
-            console.log('✅ Extracted second_floor plan (GEOMETRIC)');
-          }
-          if (plans.roof?.images && plans.roof.images.length > 0) {
-            floorPlans.roof = plans.roof.images[0];
-            console.log('✅ Extracted roof plan (GEOMETRIC)');
-          }
-          console.log('✅ Extracted', Object.keys(floorPlans).length, 'geometric floor plans from floorPlans.floorPlans');
-        }
-        // FIXED: Try floorPlans.floorPlans (correct structure from aiIntegrationService - SDXL)
-        else if (aiResult.floorPlans?.floorPlans?.ground?.images) {
-          const plans = aiResult.floorPlans.floorPlans;
-          if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
-          if (plans.upper?.images) floorPlans.upper = plans.upper.images[0];
-          if (plans.roof?.images) floorPlans.roof = plans.roof.images[0];
-          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from floorPlans.floorPlans');
-        }
-        // NEW: Try direct floorPlans structure (from replicateService.generateMultiLevelFloorPlans)
-        // FIXED: The structure from replicateService is floorPlans.ground, not floorPlans.floorPlans.ground
-        else if (aiResult.floorPlans?.ground) {
-          const plans = aiResult.floorPlans;
-          // The structure is floorPlans.ground.images directly
-          if (plans.ground?.images && plans.ground.images.length > 0) {
-            floorPlans.ground = plans.ground.images[0];
-            console.log('✅ Extracted ground floor plan:', floorPlans.ground.substring(0, 80));
-          }
-          if (plans.upper?.images && plans.upper.images.length > 0) {
-            floorPlans.upper = plans.upper.images[0];
-            console.log('✅ Extracted upper floor plan:', floorPlans.upper.substring(0, 80));
-          }
-          if (plans.roof?.images && plans.roof.images.length > 0) {
-            floorPlans.roof = plans.roof.images[0];
-            console.log('✅ Extracted roof plan:', floorPlans.roof.substring(0, 80));
-          }
-          console.log('✅ Extracted', Object.keys(floorPlans).length, 'floor plans from direct floorPlans structure');
-        }
-        // Try visualizations structure
         else if (aiResult.visualizations?.floorPlans?.floorPlans?.ground?.images) {
           const plans = aiResult.visualizations.floorPlans.floorPlans;
           if (plans.ground?.images) floorPlans.ground = plans.ground.images[0];
@@ -1237,13 +1204,29 @@ const ArchitectAIEnhanced = () => {
           sections: {}
         };
 
-        console.log('📐 Extracting technical drawings from aiResult:', {
-          hasTechnicalDrawings: !!aiResult.technicalDrawings,
-          hasVisualizationsTechnicalDrawings: !!aiResult.visualizations?.technicalDrawings,
-          visualizationsKeys: aiResult.visualizations ? Object.keys(aiResult.visualizations) : []
+        console.log('📐 Extracting elevations from UNIFIED aiResult:', {
+          hasElevations: !!aiResult.elevations,
+          elevationsSuccess: aiResult.elevations?.success,
+          elevationsKeys: aiResult.elevations?.elevations ? Object.keys(aiResult.elevations.elevations) : []
         });
 
-        // Try integrated design results first
+        // UNIFIED WORKFLOW: Extract from new elevations structure
+        const elevationsData = aiResult.elevations?.elevations;
+
+        if (elevationsData) {
+          console.log('📐 Found UNIFIED elevations:', Object.keys(elevationsData));
+
+          // Extract elevations (elevation_north, elevation_south, etc.)
+          ['north', 'south', 'east', 'west'].forEach(dir => {
+            const key = `elevation_${dir}`;
+            if (elevationsData[key]?.images && elevationsData[key].images.length > 0) {
+              drawings.elevations[dir] = elevationsData[key].images[0];
+              console.log(`✅ Extracted ${dir} elevation (UNIFIED)`);
+            }
+          });
+        }
+
+        // FALLBACK: Try old integrated design results
         const td = aiResult.results?.technicalDrawings?.technicalDrawings ||
                    aiResult.technicalDrawings?.technicalDrawings ||
                    aiResult.visualizations?.technicalDrawings?.technicalDrawings;
@@ -1296,19 +1279,39 @@ const ArchitectAIEnhanced = () => {
       const extract3DImages = () => {
         const images = [];
 
-        console.log('🔍 Checking aiResult structure:', {
-          hasResults: !!aiResult.results,
-          hasPreview3D: !!aiResult.preview3D,
-          hasBIMAxonometric: !!aiResult.bimAxonometric,
-          resultsKeys: aiResult.results ? Object.keys(aiResult.results) : []
+        console.log('🔍 Extracting 3D views from UNIFIED aiResult:', {
+          hasVisualizations: !!aiResult.visualizations,
+          visualizationsSuccess: aiResult.visualizations?.success,
+          viewsKeys: aiResult.visualizations?.views ? Object.keys(aiResult.visualizations.views) : []
         });
 
-        // STEP 5: Try integrated design results structure first
-        if (aiResult.results?.views) {
+        // UNIFIED WORKFLOW: Extract from new visualizations.views structure
+        if (aiResult.visualizations?.views) {
+          const views = aiResult.visualizations.views;
+          console.log('🎨 Found UNIFIED 3D views:', Object.keys(views));
+
+          if (views.exterior_front?.images && views.exterior_front.images.length > 0) {
+            images.push(...views.exterior_front.images);
+            console.log('✅ Extracted exterior_front view (UNIFIED)');
+          }
+          if (views.exterior_side?.images && views.exterior_side.images.length > 0) {
+            images.push(...views.exterior_side.images);
+            console.log('✅ Extracted exterior_side view (UNIFIED)');
+          }
+          if (views.interior?.images && views.interior.images.length > 0) {
+            images.push(...views.interior.images);
+            console.log('✅ Extracted interior view (UNIFIED)');
+          }
+
+          console.log('✅ Extracted', images.length, 'unified 3D views');
+        }
+        // FALLBACK: Try old integrated design results structure
+        else if (aiResult.results?.views) {
           const views = aiResult.results.views;
           if (views.exterior_front?.images) images.push(...views.exterior_front.images);
           if (views.exterior_side?.images) images.push(...views.exterior_side.images);
           if (views.interior?.images) images.push(...views.interior.images);
+          console.log('✅ Extracted', images.length, '3D views from old structure');
           // Use BIM-derived axonometric instead of Replicate-generated one
           if (aiResult.bimAxonometric) {
             images.push(aiResult.bimAxonometric);

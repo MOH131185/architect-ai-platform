@@ -222,8 +222,8 @@ Please provide comprehensive design reasoning in the following structured JSON f
     ]
   },
   "materialRecommendations": {
-    "primary": ["List of 3-5 primary materials with rationale for each"],
-    "secondary": ["List of 2-3 secondary/accent materials"],
+    "primary": ["Simple material name 1", "Simple material name 2", "Simple material name 3"],
+    "secondary": ["Simple secondary material 1", "Simple secondary material 2"],
     "sustainable": "Sustainability considerations and local sourcing opportunities"
   },
   "environmentalConsiderations": {
@@ -276,7 +276,11 @@ CRITICAL FLOOR-BY-FLOOR REQUIREMENTS:
 6. ALL floors must include vertical circulation (stairs/elevator) in consistent location
 7. Calculate realistic room areas that sum to approximately ${floorArea / calculatedFloorCount}m² per floor
 
-IMPORTANT: Ensure your response is valid JSON and includes all requested sections. Focus on actionable, specific recommendations that reflect the unique combination of location context, climate conditions, and design preferences.
+IMPORTANT:
+1. Ensure your response is valid JSON and includes all requested sections
+2. For materialRecommendations.primary and .secondary arrays, return ONLY simple material names as strings (e.g., "concrete", "glass", "wood")
+3. DO NOT return objects with material and rationale properties - return simple strings only
+4. Focus on actionable, specific recommendations that reflect the unique combination of location context, climate conditions, and design preferences
     `.trim();
   }
 
@@ -868,6 +872,321 @@ Note: Detailed MEP calculations and engineer's stamp required for construction.
       `.trim(),
       timestamp: new Date().toISOString()
     };
+  }
+
+  /**
+   * Generate COMPLETE Master Design Specification for unified generation workflow
+   * This is the SINGLE SOURCE OF TRUTH for all subsequent 2D/3D generation
+   *
+   * @param {Object} projectContext - Complete project context with location, portfolio, blended style
+   * @returns {Promise<Object>} Complete master design specification with exact values
+   */
+  async generateMasterDesignSpecification(projectContext) {
+    if (!this.apiKey) {
+      return this.getFallbackMasterSpecification(projectContext);
+    }
+
+    try {
+      // Import unified prompt service
+      const unifiedPromptService = require('./unifiedPromptService').default;
+
+      // Create master specification prompt
+      const prompt = unifiedPromptService.createMasterSpecificationPrompt(projectContext);
+
+      logger.verbose('Generating master design specification via OpenAI...');
+
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a master architect. Generate COMPLETE, DETAILED architectural specifications with EXACT numeric values. Respond ONLY with valid JSON, no additional text.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 4000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+
+      // Parse JSON from response
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const masterSpec = JSON.parse(jsonMatch[0]);
+
+          // Add metadata
+          masterSpec.metadata = {
+            generatedBy: 'OpenAI GPT-4',
+            timestamp: new Date().toISOString(),
+            locationContext: projectContext.location?.address || 'Not specified',
+            styleBlend: projectContext.blendedStyle?.styleName || 'Contemporary'
+          };
+
+          // Validate specification
+          const validation = unifiedPromptService.validateMasterSpecification(masterSpec);
+          if (!validation.valid) {
+            logger.warn('Master specification validation failed, using fallback:', validation.missing);
+            return this.getFallbackMasterSpecification(projectContext);
+          }
+
+          logger.verbose('Master design specification generated successfully');
+          return masterSpec;
+        }
+      } catch (parseError) {
+        logger.error('Could not parse master specification JSON:', parseError);
+        return this.getFallbackMasterSpecification(projectContext);
+      }
+
+      return this.getFallbackMasterSpecification(projectContext);
+
+    } catch (error) {
+      logger.error('Master design specification generation error:', error);
+      return this.getFallbackMasterSpecification(projectContext);
+    }
+  }
+
+  /**
+   * Fallback master specification when API is unavailable
+   */
+  getFallbackMasterSpecification(projectContext) {
+    const buildingProgram = projectContext.buildingProgram || 'house';
+    const floorArea = projectContext.floorArea || projectContext.area || 200;
+    const floorCount = this.calculateFloorCount(buildingProgram, floorArea);
+    const blendedStyle = projectContext.blendedStyle || {};
+
+    // Calculate dimensions
+    const aspectRatio = 1.5;
+    const length = Math.round(Math.sqrt(floorArea * aspectRatio) * 10) / 10;
+    const width = Math.round((floorArea / length) * 10) / 10;
+    const floorHeight = buildingProgram.toLowerCase().includes('office') ? 3.5 : 3.0;
+    const height = Math.round(floorCount * floorHeight * 10) / 10;
+
+    // Extract materials from blended style
+    const materials = blendedStyle.materials || ['brick', 'glass', 'wood'];
+
+    return {
+      projectName: `${blendedStyle.styleName || 'Contemporary'} ${buildingProgram} (Fallback)`,
+      styleName: blendedStyle.styleName || 'Contemporary',
+      philosophy: blendedStyle.description || 'Context-responsive design balancing local tradition with modern functionality',
+
+      dimensions: {
+        totalArea: floorArea,
+        floors: floorCount,
+        floorHeight: floorHeight,
+        length: length,
+        width: width,
+        height: height,
+        calculated: `Footprint ${length}m × ${width}m from ${floorArea}m² with 1.5:1 aspect ratio`
+      },
+
+      materials: {
+        primary: materials[0] || 'brick',
+        secondary: materials[1] || 'glass',
+        accent: materials[2] || 'wood',
+        roof: 'flat concrete with membrane',
+        windows: 'aluminum frame',
+        doors: 'solid wood',
+        rationale: 'Selected from blended style materials (fallback mode)'
+      },
+
+      entrance: {
+        orientation: 'north',
+        type: 'double door',
+        width: 2.4,
+        feature: 'covered entrance',
+        rationale: 'North orientation for climate optimization'
+      },
+
+      floors: this.generateFallbackFloorAnalysis(buildingProgram, floorArea, floorCount).floors,
+
+      features: {
+        roof: 'flat roof with parapet',
+        windows: 'large glass panels',
+        facade: `${materials[0]} cladding`,
+        balconies: floorCount > 1 ? 'upper floor balconies' : 'None',
+        landscaping: 'contextual landscaping',
+        sustainability: ['passive cooling', 'natural ventilation', 'daylighting']
+      },
+
+      climate: {
+        type: projectContext.climateData?.type || 'temperate',
+        orientation: 'optimized for climate',
+        shading: 'overhangs on sun-facing facades',
+        cooling: 'passive cooling strategies',
+        insulation: 'high-performance envelope',
+        daylighting: 'maximize natural light'
+      },
+
+      structuralSystem: {
+        type: floorCount <= 2 ? 'load-bearing masonry' : 'reinforced concrete frame',
+        foundation: 'spread footings',
+        columns: '400mm × 400mm on 6m grid',
+        floors: '200mm RC slab',
+        roof: '200mm RC slab'
+      },
+
+      colorPalette: {
+        exterior: {
+          primary: 'neutral tone',
+          accent: 'contrasting accent',
+          trim: 'dark trim'
+        },
+        interior: {
+          walls: 'warm white',
+          floors: 'natural finish',
+          accents: 'wood and metal'
+        }
+      },
+
+      metadata: {
+        generatedBy: 'Fallback',
+        timestamp: new Date().toISOString(),
+        isFallback: true,
+        locationContext: projectContext.location?.address || 'Not specified',
+        styleBlend: blendedStyle.styleName || 'Contemporary'
+      }
+    };
+  }
+
+  /**
+   * Generate MDS delta based on text modification request
+   * @param {Object} currentMDS - Current Master Design Specification
+   * @param {String} modificationText - User's modification request in natural language
+   * @returns {Promise<Object>} Delta object with changes to apply to MDS
+   */
+  async generateMDSDelta(currentMDS, modificationText) {
+    // Always use fallback in test environment or when no API key
+    if (!this.apiKey || process.env.NODE_ENV === 'test') {
+      return this.getFallbackMDSDelta(modificationText);
+    }
+
+    const prompt = `
+Analyze this modification request and generate a JSON delta object with specific changes to apply to the Master Design Specification:
+
+CURRENT MDS SUMMARY:
+- Building: ${currentMDS.dimensions.floors} floors, ${currentMDS.dimensions.grossArea}m²
+- Materials: Primary: ${currentMDS.materials.primary}, Secondary: ${currentMDS.materials.secondary}
+- Style: ${currentMDS.style.primary}
+- Entry: ${currentMDS.entry.side} side
+
+MODIFICATION REQUEST: "${modificationText}"
+
+Generate a JSON delta object containing ONLY the fields that need to change. Examples:
+- If user wants "3 floors", return: { "dimensions": { "floors": 3 } }
+- If user wants "brick facade", return: { "materials": { "primary": "brick", "facade": "brick" } }
+- If user wants "add a gym", return: { "program": { "add": [{ "name": "Gym", "area": 50 }] } }
+
+Return ONLY valid JSON with nested structure matching the MDS schema.
+    `;
+
+    try {
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an architectural AI assistant. Generate precise JSON delta objects for MDS modifications. Return ONLY valid JSON, no explanations.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.3
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+
+      // Try to parse JSON from response
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+      } catch (parseError) {
+        logger.warn('Could not parse MDS delta JSON:', parseError);
+      }
+
+      return this.getFallbackMDSDelta(modificationText);
+
+    } catch (error) {
+      logger.error('MDS delta generation error:', error);
+      return this.getFallbackMDSDelta(modificationText);
+    }
+  }
+
+  /**
+   * Fallback MDS delta when API is unavailable
+   */
+  getFallbackMDSDelta(modificationText) {
+    const text = modificationText.toLowerCase();
+    const delta = {};
+
+    // Check for floor modifications
+    if (text.includes('floor') || text.includes('story') || text.includes('level')) {
+      const floorMatch = text.match(/(\d+)\s*(floor|story|level)/);
+      if (floorMatch) {
+        delta.dimensions = { floors: parseInt(floorMatch[1]) };
+      }
+    }
+
+    // Check for material modifications
+    if (text.includes('brick')) {
+      delta.materials = { primary: 'brick', facade: 'brick' };
+    } else if (text.includes('glass')) {
+      delta.materials = { primary: 'glass', facade: 'glass' };
+    } else if (text.includes('wood')) {
+      delta.materials = { primary: 'wood', facade: 'wood' };
+    } else if (text.includes('concrete')) {
+      delta.materials = { primary: 'concrete', facade: 'concrete' };
+    }
+
+    // Check for entry modifications
+    if (text.includes('north') && text.includes('entry')) {
+      delta.entry = { side: 'north' };
+    } else if (text.includes('south') && text.includes('entry')) {
+      delta.entry = { side: 'south' };
+    } else if (text.includes('east') && text.includes('entry')) {
+      delta.entry = { side: 'east' };
+    } else if (text.includes('west') && text.includes('entry')) {
+      delta.entry = { side: 'west' };
+    }
+
+    // Default fallback if no specific changes detected
+    if (Object.keys(delta).length === 0) {
+      delta.dimensions = { floors: 3 };
+      delta.materials = { primary: 'brick' };
+    }
+
+    return delta;
   }
 }
 

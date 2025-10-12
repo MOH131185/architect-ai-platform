@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__playwright__playwright_navigate"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

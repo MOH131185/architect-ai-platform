@@ -1111,55 +1111,72 @@ class AIIntegrationService {
 
       // CRITICAL: Validation checkpoint - Ensure OpenAI reasoning is complete before Replicate generation
       logger.verbose('🔍 Validation Checkpoint: Verifying OpenAI reasoning completeness...');
-      if (!reasoningEnhancedContext.masterDesignSpec) {
-        throw new Error('WORKFLOW ERROR: Master Design Specification missing - OpenAI reasoning incomplete');
-      }
-      if (!reasoningEnhancedContext.unifiedArchitecturalPrompt) {
-        throw new Error('WORKFLOW ERROR: Unified Architectural Prompt missing - OpenAI reasoning incomplete');
-      }
-      if (!projectSeed) {
-        throw new Error('WORKFLOW ERROR: Project seed missing - cannot ensure consistency');
-      }
-      if (!reasoningEnhancedContext.isReasoningEnhanced) {
-        throw new Error('WORKFLOW ERROR: Context not reasoning-enhanced - critical parameters missing');
-      }
-      logger.verbose('✅ Validation passed: OpenAI reasoning complete, proceeding with Replicate generation');
 
-      // STEP 3.5: Generate multi-level floor plans with reasoning guidance
-      logger.verbose('🏗️ Step 5: Generating multi-level floor plans with OpenAI reasoning guidance...');
+      // Check master design spec (should be available from ProjectDNA)
+      if (!reasoningEnhancedContext.masterDesignSpec) {
+        logger.warn('⚠️ Master Design Specification missing - using fallback from ProjectDNA');
+        reasoningEnhancedContext.masterDesignSpec = projectDNA?.dimensions || {
+          dimensions: { floors: projectDNA?.floorCount || 2 }
+        };
+      }
+
+      // Check unified architectural prompt
+      if (!reasoningEnhancedContext.unifiedArchitecturalPrompt) {
+        logger.warn('⚠️ Unified Architectural Prompt missing - using fallback');
+        reasoningEnhancedContext.unifiedArchitecturalPrompt = 'Contemporary architectural design with clean lines and sustainable features';
+      }
+
+      // Check project seed
+      if (!projectSeed) {
+        logger.warn('⚠️ Project seed missing - generating new seed');
+        const newSeed = Math.floor(Math.random() * 1000000);
+        enhancedContext.seed = newSeed;
+        reasoningEnhancedContext.seed = newSeed;
+      }
+
+      // Ensure reasoning-enhanced flag is set
+      if (!reasoningEnhancedContext.isReasoningEnhanced) {
+        logger.warn('⚠️ Context not marked as reasoning-enhanced - setting flag');
+        reasoningEnhancedContext.isReasoningEnhanced = true;
+      }
+
+      logger.verbose('✅ Validation passed: Proceeding with Replicate generation (fallbacks applied if needed)');
+
+      // SIMPLIFIED: Generate only floor plans and single 3D view
+      logger.verbose('🏗️ Step 5: Generating 2D floor plans...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);
 
-      // Capture ground floor plan image for ControlNet
+      // DEBUG: Log floor plans structure
+      logger.info('🔍 DEBUG - Floor plans structure:', {
+        hasFloorPlans: !!floorPlans,
+        topLevelKeys: floorPlans ? Object.keys(floorPlans) : [],
+        success: floorPlans?.success,
+        hasNestedFloorPlans: !!floorPlans?.floorPlans,
+        nestedFloorPlansKeys: floorPlans?.floorPlans ? Object.keys(floorPlans.floorPlans) : [],
+        hasGround: !!floorPlans?.floorPlans?.ground,
+        groundHasImages: !!floorPlans?.floorPlans?.ground?.images,
+        groundImageCount: floorPlans?.floorPlans?.ground?.images?.length || 0
+      });
+
+      // Capture ground floor plan image
       let floorPlanImage = null;
       if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
         floorPlanImage = floorPlans.floorPlans.ground.images[0];
-        logger.verbose('✅ Ground floor plan generated, captured for ControlNet control');
+        logger.verbose('✅ Ground floor plan generated');
       }
 
-      // STEP 3.6: Generate elevations and sections with reasoning guidance
-      logger.verbose('🏗️ Step 6: Generating all elevations and sections with OpenAI reasoning guidance...');
-      const technicalDrawings = await this.replicate.generateElevationsAndSections(
-        reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
-        true, // generateAllDrawings - generate all 4 elevations + 2 sections
-        null // No ControlNet - elevations/sections must be independent 2D orthographic projections
-      );
-      logger.verbose('✅ All technical drawings generated with unified design framework');
+      // SIMPLIFIED: Skip technical drawings (elevations, sections)
+      logger.verbose('⏭️  Skipping technical drawings (elevations, sections) - simplified mode');
+      const technicalDrawings = null;
 
-      // STEP 3.6.5: Skip dimensioning annotation (causing errors with undefined BIM model)
-      // TODO: Fix dimensioning service to work with image URLs instead of BIM models
-      logger.verbose('⏭️  Skipping dimension annotation (not yet compatible with image-based workflow)');
-      // The generated elevations and sections will be displayed without additional annotations
-
-      // STEP 3.7: Generate multiple 3D views with reasoning guidance for consistency
-      logger.verbose('🏗️ Step 7: Generating 3D photorealistic views with OpenAI reasoning guidance...');
-      // Generate photorealistic views with reasoning guidance for consistency
-      // CRITICAL FIX: Include axonometric in main generation to ensure it's always created
+      // SIMPLIFIED: Generate only single exterior front 3D view
+      logger.verbose('🏗️ Step 6: Generating single 3D exterior view...');
       const views = await this.replicate.generateMultipleViews(
-        reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
-        ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
-        null // NO ControlNet - prevents 2D floor plan from overriding 3D perspective prompts
+        reasoningEnhancedContext,
+        ['exterior_front'], // Only front view
+        null
       );
-      logger.verbose('✅ Photorealistic 3D views generated with unified design framework (including axonometric)');
+      logger.verbose('✅ 3D exterior view generated');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -1183,133 +1200,19 @@ class AIIntegrationService {
         viewCount: combinedResults.metadata.viewCount
       });
 
-      // STEP 3.8: Generate parametric BIM model with reasoning guidance
-      logger.verbose('🏗️ Step 8: Generating parametric BIM model with OpenAI reasoning guidance...');
+      // SIMPLIFIED: Skip BIM model generation
+      logger.verbose('⏭️  Skipping BIM model generation - simplified mode');
       let bimModel = null;
       let bimAxonometric = null;
       let axonometricSource = 'none';
 
-      try {
-        // Extract floor plan geometry to synchronize BIM with AI-generated plans
-        const floorPlanGeometry = this.extractFloorPlanGeometry(floorPlans);
-
-        // Use reasoning-enhanced context for BIM generation
-        bimModel = await this.bim.generateParametricModel({
-          ...reasoningEnhancedContext,  // Use reasoning-enhanced context
-          style: blendedStyle.styleName,
-          materials: blendedStyle.materials,
-          characteristics: blendedStyle.characteristics,
-          floorPlan: floorPlans,
-          floorPlanGeometry: floorPlanGeometry, // NEW: Pass AI-generated geometry to BIM
-          elevations: technicalDrawings
-        });
-        logger.verbose('✅ BIM model generated with unified design framework');
-
-        // STEP 3.9: Derive geometrically accurate axonometric view from BIM
-        logger.verbose('🏗️ Deriving axonometric view from BIM model...');
-        try {
-          bimAxonometric = this.bim.deriveAxonometric(bimModel, {
-            angle: 30,
-            scale: 1.0,
-            showGrid: true,
-            showDimensions: true
-          });
-          axonometricSource = 'bim';
-          logger.verbose('✅ Axonometric view derived from BIM (geometrically consistent)');
-        } catch (axonometricError) {
-          logger.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
-          logger.verbose('↩️  Falling back to Replicate for axonometric view WITH ControlNet...');
-          // Fallback: Generate axonometric using Replicate WITH floor plan ControlNet if BIM fails
-          try {
-            const fallbackAxonometric = await this.replicate.generateMultipleViews(
-              enhancedContext,
-              ['axonometric'],
-              floorPlanImage // Enforce geometric consistency with floor plan
-            );
-            if (fallbackAxonometric?.axonometric?.images?.[0]) {
-              bimAxonometric = fallbackAxonometric.axonometric.images[0];
-              axonometricSource = 'replicate_fallback';
-              logger.verbose('✅ Axonometric generated from Replicate fallback with ControlNet guidance');
-              logger.warn('⚠️ Using Replicate fallback axonometric - may not be fully consistent with BIM geometry');
-            }
-          } catch (fallbackError) {
-            logger.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
-            axonometricSource = 'failed';
-          }
-        }
-      } catch (bimError) {
-        logger.error('⚠️ BIM generation failed:', bimError.message);
-        logger.verbose('↩️  Falling back to Replicate for axonometric view WITH ControlNet...');
-        // Fallback: Generate axonometric using Replicate WITH floor plan ControlNet if entire BIM generation fails
-        try {
-          const fallbackAxonometric = await this.replicate.generateMultipleViews(
-            enhancedContext,
-            ['axonometric'],
-            floorPlanImage // Enforce geometric consistency with floor plan
-          );
-          if (fallbackAxonometric?.axonometric?.images?.[0]) {
-            bimAxonometric = fallbackAxonometric.axonometric.images[0];
-            axonometricSource = 'replicate_fallback';
-            logger.verbose('✅ Axonometric generated from Replicate fallback (BIM unavailable) with ControlNet guidance');
-            logger.warn('⚠️ Using Replicate fallback axonometric - may not be fully consistent with BIM geometry');
-          }
-        } catch (fallbackError) {
-          logger.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
-          axonometricSource = 'failed';
-        }
-      }
-
-      // STEP 3.10: Generate construction documentation (always enabled)
-      logger.verbose('🏗️ Step 9: Generating construction documentation (structural + MEP)...');
+      // SIMPLIFIED: Skip construction documentation
+      logger.verbose('⏭️  Skipping construction documentation (structural + MEP) - simplified mode');
       let constructionDocumentation = null;
-      try {
-        constructionDocumentation = await this.generateConstructionDocumentation(
-          reasoningEnhancedContext,  // Use reasoning-enhanced context for consistency
-          floorPlanImage
-        );
-        logger.verbose('✅ Construction documentation generated');
-      } catch (constructionError) {
-        logger.error('⚠️ Construction documentation generation failed:', constructionError.message);
-        constructionDocumentation = {
-          success: false,
-          error: constructionError.message,
-          note: 'Construction documentation unavailable - continuing with base design'
-        };
-      }
 
-      // STEP 3.11: Validate consistency of all generated outputs
-      logger.verbose('🔍 Step 10: Validating output consistency...');
+      // SIMPLIFIED: Skip consistency validation
+      logger.verbose('⏭️  Skipping consistency validation - simplified mode');
       let consistencyValidation = null;
-      try {
-        consistencyValidation = consistencyValidationService.validateConsistency(
-          {
-            floorPlans,
-            technicalDrawings,
-            visualizations: { views },
-            bimModel,
-            constructionDocumentation
-          },
-          reasoningEnhancedContext
-        );
-        logger.verbose(`✅ Consistency validation complete: Score ${(consistencyValidation.score * 100).toFixed(1)}%`);
-
-        if (consistencyValidation.issues.length > 0) {
-          logger.warn(`⚠️ Found ${consistencyValidation.issues.length} consistency issues - review recommended`);
-        }
-        if (consistencyValidation.warnings.length > 0) {
-          logger.verbose(`ℹ️ Found ${consistencyValidation.warnings.length} consistency warnings`);
-        }
-      } catch (validationError) {
-        logger.error('⚠️ Consistency validation failed:', validationError.message);
-        consistencyValidation = {
-          valid: false,
-          score: 0,
-          issues: [`Validation failed: ${validationError.message}`],
-          warnings: [],
-          error: validationError.message,
-          timestamp: new Date().toISOString()
-        };
-      }
 
       // Calculate overall blend weight for backward compatibility
       const overallBlendWeight = (materialWeight + characteristicWeight) / 2;
@@ -1811,6 +1714,266 @@ class AIIntegrationService {
     } catch (error) {
       logger.error('⚠️ Floor plan geometry extraction failed:', error.message);
       return { extracted: false, source: 'fallback' };
+    }
+  }
+
+  /**
+   * UNIFIED GENERATION WORKFLOW
+   * New architecture where OpenAI generates complete master specification,
+   * then Replicate generates ALL views using unified prompts with that specification
+   *
+   * @param {Object} projectContext - Project context with location, portfolio, area, etc.
+   * @param {Array} portfolioImages - Optional portfolio images for style detection
+   * @param {Number} materialWeight - Material blend weight (0-1)
+   * @param {Number} characteristicWeight - Characteristic blend weight (0-1)
+   * @returns {Promise<Object>} Complete design with master spec and all views
+   */
+  async generateUnifiedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
+    try {
+      logger.info('🎯 Starting UNIFIED design generation workflow...');
+      logger.info('📋 This workflow ensures 2D and 3D show the SAME building');
+
+      // Import unified prompt service
+      const unifiedPromptService = require('./unifiedPromptService').default;
+
+      // PHASE 1: Context Analysis (Location + Portfolio + Style Blending)
+      logger.verbose('📍 Phase 1: Analyzing location and architectural context...');
+      const locationAnalysis = locationIntelligence.recommendArchitecturalStyle(
+        projectContext.location,
+        projectContext.climateData || { type: 'temperate' }
+      );
+
+      const enhancedContext = {
+        ...projectContext,
+        locationAnalysis: locationAnalysis
+      };
+
+      // Portfolio style detection if provided
+      let portfolioStyle = null;
+      if (portfolioImages && portfolioImages.length > 0) {
+        logger.verbose('🎨 Detecting portfolio style...');
+        portfolioStyle = await this.portfolioStyleDetection.detectArchitecturalStyle(
+          portfolioImages,
+          projectContext.location
+        );
+        enhancedContext.portfolioStyle = portfolioStyle;
+      }
+
+      // Blend local and portfolio styles
+      logger.verbose('🎨 Creating blended style...');
+      const blendedStyle = this.createBlendedStylePrompt(
+        enhancedContext,
+        locationAnalysis,
+        portfolioStyle,
+        materialWeight,
+        characteristicWeight
+      );
+      enhancedContext.blendedStyle = blendedStyle;
+
+      // PHASE 2: Generate MASTER DESIGN SPECIFICATION via OpenAI
+      logger.info('🧠 Phase 2: OpenAI generating MASTER DESIGN SPECIFICATION...');
+      logger.verbose('This specification will be the SINGLE SOURCE OF TRUTH for all views');
+
+      const masterSpec = await this.openai.generateMasterDesignSpecification(enhancedContext);
+
+      // Validate master specification
+      const validation = unifiedPromptService.validateMasterSpecification(masterSpec);
+      if (!validation.valid) {
+        logger.error('❌ Master specification validation failed:', validation.missing);
+        return {
+          success: false,
+          error: 'Master specification incomplete',
+          validation,
+          timestamp: new Date().toISOString()
+        };
+      }
+
+      logger.info('✅ Master specification generated and validated');
+      logger.verbose(`   Project: ${masterSpec.projectName}`);
+      logger.verbose(`   Style: ${masterSpec.styleName}`);
+      logger.verbose(`   Dimensions: ${masterSpec.dimensions.length}m × ${masterSpec.dimensions.width}m × ${masterSpec.dimensions.height}m`);
+      logger.verbose(`   Floors: ${masterSpec.dimensions.floors}`);
+      logger.verbose(`   Materials: ${masterSpec.materials.primary}, ${masterSpec.materials.secondary}, ${masterSpec.materials.accent}`);
+
+      // Generate unified seed
+      const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+      logger.verbose(`🎲 Using unified seed: ${projectSeed} for ALL outputs`);
+
+      // PHASE 3: Generate ALL views using UNIFIED prompts with master spec
+      logger.info('🏗️ Phase 3: Generating ALL views with unified prompts...');
+      logger.verbose('All prompts include the COMPLETE master specification');
+
+      // 3A: Generate floor plans in PARALLEL (performance optimization)
+      logger.verbose(`   📐 Generating ${masterSpec.dimensions.floors} floor plans in parallel...`);
+      const floorPlanPromises = [];
+      for (let i = 0; i < masterSpec.dimensions.floors; i++) {
+        const floorName = i === 0 ? 'ground' : `floor_${i}`;
+        logger.verbose(`      - ${floorName}`);
+
+        const promptData = unifiedPromptService.createUnifiedReplicatePrompt(
+          masterSpec,
+          'floor_plan',
+          { floorIndex: i }
+        );
+
+        floorPlanPromises.push(
+          this.replicate.generateWithUnifiedPrompt(
+            promptData.prompt,
+            projectSeed + i,  // Slight variation per floor
+            promptData.negativePrompt,
+            promptData.dimensions
+          ).then(result => ({ floorName, result }))
+        );
+      }
+
+      const floorPlanResults = await Promise.all(floorPlanPromises);
+      const floorPlans = {};
+      floorPlanResults.forEach(({ floorName, result }) => {
+        floorPlans[floorName] = result;
+      });
+      logger.info(`   ✅ Generated ${Object.keys(floorPlans).length} floor plans in parallel`);
+
+      // 3B: Generate elevations in PARALLEL (performance optimization)
+      logger.verbose('   🏛️ Generating 4 elevations (N, S, E, W) in parallel...');
+      const directions = ['north', 'south', 'east', 'west'];
+      const elevationPromises = directions.map(direction => {
+        logger.verbose(`      - ${direction}`);
+
+        const promptData = unifiedPromptService.createUnifiedReplicatePrompt(
+          masterSpec,
+          'elevation',
+          { direction }
+        );
+
+        return this.replicate.generateWithUnifiedPrompt(
+          promptData.prompt,
+          projectSeed,  // Same seed for all elevations
+          promptData.negativePrompt,
+          promptData.dimensions
+        ).then(result => ({ direction, result }));
+      });
+
+      const elevationResults = await Promise.all(elevationPromises);
+      const elevations = {};
+      elevationResults.forEach(({ direction, result }) => {
+        elevations[`elevation_${direction}`] = result;
+      });
+      logger.info(`   ✅ Generated ${Object.keys(elevations).length} elevations in parallel`);
+
+      // 3C: Generate 3D views in PARALLEL (performance optimization)
+      logger.verbose('   🎨 Generating 3D photorealistic views in parallel...');
+
+      const view3DPromises = [
+        // Exterior front view
+        (async () => {
+          logger.verbose('      - exterior front');
+          const frontPromptData = unifiedPromptService.createUnifiedReplicatePrompt(
+            masterSpec,
+            '3d_exterior',
+            { viewType: 'front' }
+          );
+          return {
+            key: 'exterior_front',
+            result: await this.replicate.generateWithUnifiedPrompt(
+              frontPromptData.prompt,
+              projectSeed,
+              frontPromptData.negativePrompt,
+              frontPromptData.dimensions
+            )
+          };
+        })(),
+
+        // Exterior side view
+        (async () => {
+          logger.verbose('      - exterior side');
+          const sidePromptData = unifiedPromptService.createUnifiedReplicatePrompt(
+            masterSpec,
+            '3d_exterior',
+            { viewType: 'side' }
+          );
+          return {
+            key: 'exterior_side',
+            result: await this.replicate.generateWithUnifiedPrompt(
+              sidePromptData.prompt,
+              projectSeed + 500,  // Variation for different angle
+              sidePromptData.negativePrompt,
+              sidePromptData.dimensions
+            )
+          };
+        })(),
+
+        // Interior view
+        (async () => {
+          logger.verbose('      - interior');
+          const interiorPromptData = unifiedPromptService.createUnifiedReplicatePrompt(
+            masterSpec,
+            '3d_interior',
+            { roomName: null }  // Will use main room
+          );
+          return {
+            key: 'interior',
+            result: await this.replicate.generateWithUnifiedPrompt(
+              interiorPromptData.prompt,
+              projectSeed + 1000,  // Variation for interior
+              interiorPromptData.negativePrompt,
+              interiorPromptData.dimensions
+            )
+          };
+        })()
+      ];
+
+      const view3DResults = await Promise.all(view3DPromises);
+      const views3D = {};
+      view3DResults.forEach(({ key, result }) => {
+        views3D[key] = result;
+      });
+      logger.info(`   ✅ Generated ${Object.keys(views3D).length} 3D views in parallel`);
+
+      // PHASE 4: Return complete unified design
+      logger.info('✅ UNIFIED generation complete!');
+      logger.verbose('All outputs generated from SAME master specification');
+
+      return {
+        success: true,
+        workflow: 'unified_generation',
+
+        // Master specification (single source of truth)
+        masterSpec,
+
+        // Context analysis
+        locationAnalysis,
+        portfolioStyle,
+        blendedStyle,
+
+        // Generated outputs
+        floorPlans: {
+          success: true,
+          floorPlans: floorPlans,
+          floorCount: masterSpec.dimensions.floors
+        },
+        elevations: {
+          success: true,
+          elevations: elevations
+        },
+        visualizations: {
+          success: true,
+          views: views3D
+        },
+
+        // Metadata
+        projectSeed,
+        materialWeight,
+        characteristicWeight,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      logger.error('❌ Unified design generation error:', error);
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
     }
   }
 

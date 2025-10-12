@@ -220,6 +220,55 @@ THIS BUILDING MUST BE IDENTICAL IN ALL VIEWS.`;
   }
 
   /**
+   * UNIFIED GENERATION METHOD
+   * Generate architectural visualization using complete unified prompt
+   * This method accepts a pre-built prompt that includes complete master specification
+   *
+   * @param {String} unifiedPrompt - Complete prompt including master specification
+   * @param {Number} seed - Project seed for consistency
+   * @param {String} negativePrompt - Negative prompt for this view type
+   * @param {Object} dimensions - Image dimensions {width, height}
+   * @returns {Promise<Object>} Generation result with image URLs
+   */
+  async generateWithUnifiedPrompt(unifiedPrompt, seed, negativePrompt = '', dimensions = { width: 1024, height: 1024 }) {
+    try {
+      logger.verbose('Generating with unified prompt (includes master spec)');
+
+      const prediction = await this.createPrediction({
+        prompt: unifiedPrompt,
+        negativePrompt: negativePrompt,
+        seed: seed,
+        width: dimensions.width,
+        height: dimensions.height,
+        steps: 50,
+        guidanceScale: 8.0
+      });
+
+      const result = await this.waitForCompletion(prediction.id);
+
+      return {
+        success: true,
+        images: result.output,
+        predictionId: prediction.id,
+        seed: seed,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      logger.error('Unified generation error:', error);
+      logger.warn('Using fallback image');
+
+      return {
+        success: false,
+        images: ['https://placehold.co/1024x768/4A90E2/FFFFFF?text=Generation+Failed'],
+        error: error.message,
+        isFallback: true,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Generate architectural visualization using SDXL Multi-ControlNet LoRA
    * @param {Object} generationParams - Parameters for image generation
    * @returns {Promise<Object>} Generation result with image URLs
