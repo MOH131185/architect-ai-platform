@@ -3,7 +3,11 @@ import ArchitectAIEnhanced from './ArchitectAIEnhanced';
 import './App.css';
 
 function App() {
-  return <ArchitectAIEnhanced />;
+  return (
+    <div>
+      <ArchitectAIEnhanced />
+    </div>
+  );
 }
 
 export default App;

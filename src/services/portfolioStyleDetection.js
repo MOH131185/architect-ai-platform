@@ -3,12 +3,10 @@
  * Uses OpenAI to analyze uploaded portfolio images and detect architectural styles
  */
 
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+import { getOpenAIUrl } from '../utils/apiRoutes';
 
-// Use Vercel serverless function in production, local proxy in development
-const OPENAI_API_URL = process.env.NODE_ENV === 'production'
-  ? '/api/openai-chat'  // Vercel serverless function
-  : 'http://localhost:3001/api/openai/chat';  // Local proxy server
+const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+const OPENAI_API_URL = getOpenAIUrl();
 
 class PortfolioStyleDetectionService {
   constructor() {
@@ -38,7 +36,7 @@ class PortfolioStyleDetectionService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4-vision-preview',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -296,4 +294,5 @@ Format as structured analysis with specific recommendations.
   }
 }
 
-export default new PortfolioStyleDetectionService();
+const portfolioStyleDetectionService = new PortfolioStyleDetectionService();
+export default portfolioStyleDetectionService;

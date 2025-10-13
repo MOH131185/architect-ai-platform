@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test React App for Errors</title>
+</head>
+<body>
+    <h1>Testing React App UI</h1>
+    <p>Opening app in iframe to check for console errors...</p>
+    <iframe src="http://localhost:3000" width="100%" height="600" id="app-frame"></iframe>
+
+    <script>
+        // Check if app loads without errors
+        setTimeout(() => {
+            console.log('App should be loaded. Check browser console for any React errors.');
+            fetch('http://localhost:3000')
+                .then(r => r.text())
+                .then(html => {
+                    if (html.includes('root')) {
+                        console.log('✅ React app HTML loaded successfully');
+                    }
+                });
+        }, 3000);
+    </script>
+</body>
+</html>
