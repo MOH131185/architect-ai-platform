@@ -12,6 +12,7 @@ import bimService from './bimService';
 import dimensioningService from './dimensioningService';
 import consistencyValidationService from './consistencyValidationService';
 import projectDNAService from './projectDNAService';
+import geometricFloorPlanService from './geometricFloorPlanService';
 
 class AIIntegrationService {
   constructor() {
@@ -932,6 +933,118 @@ class AIIntegrationService {
     };
   }
 
+  normalizeGroundFloorKey(floorPlansResult) {
+    if (!floorPlansResult?.floorPlans || typeof floorPlansResult.floorPlans !== 'object') return;
+
+    const plans = floorPlansResult.floorPlans;
+    if (!plans.ground) {
+      if (plans.ground_floor) {
+        plans.ground = plans.ground_floor;
+      } else if (plans.floor_0) {
+        plans.ground = plans.floor_0;
+      } else if (plans.floor0) {
+        plans.ground = plans.floor0;
+      }
+    }
+  }
+
+  async resolveFloorPlanControlImage(floorPlansResult, projectDNA = null) {
+    let controlImage = this.extractControlImageFromPlans(floorPlansResult);
+
+    if (controlImage) {
+      return controlImage;
+    }
+
+    if (projectDNA?.floorPlans?.length && typeof window !== 'undefined' && typeof document !== 'undefined') {
+      try {
+        controlImage = await geometricFloorPlanService.generateFloorPlan(projectDNA, 0);
+        logger.verbose('✅ Generated fallback ground floor plan from ProjectDNA for ControlNet guidance');
+        return controlImage;
+      } catch (error) {
+        logger.warn('⚠️ Failed to generate geometric fallback floor plan:', error.message || error);
+      }
+    } else if (projectDNA?.floorPlans?.length) {
+      logger.warn('⚠️ DOM not available - cannot generate geometric fallback floor plan');
+    }
+
+    return null;
+  }
+
+  extractControlImageFromPlans(floorPlansResult) {
+    if (!floorPlansResult) return null;
+
+    const containers = [];
+    if (floorPlansResult.floorPlans && typeof floorPlansResult.floorPlans === 'object') {
+      containers.push(floorPlansResult.floorPlans);
+    }
+    if (typeof floorPlansResult === 'object') {
+      containers.push(floorPlansResult);
+    }
+
+    const candidateKeys = ['ground', 'ground_floor', 'floor_0', 'floor0', 'main', 'main_floor', 'level_0'];
+
+    for (const container of containers) {
+      if (!container) continue;
+
+      for (const key of candidateKeys) {
+        const image = this.extractFirstImage(container[key]);
+        if (image) {
+          return image;
+        }
+      }
+
+      for (const [key, entry] of Object.entries(container)) {
+        const image = this.extractFirstImage(entry);
+        if (!image) continue;
+
+        const level = (entry?.level || key || '').toString().toLowerCase();
+        if (level.includes('ground') || level.includes('main') || key === 'floor_0') {
+          return image;
+        }
+      }
+    }
+
+    for (const container of containers) {
+      if (!container) continue;
+      for (const entry of Object.values(container)) {
+        const image = this.extractFirstImage(entry);
+        if (image) {
+          logger.warn('⚠️ Using first available floor plan image as ControlNet guidance (ground not found)');
+          return image;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  extractFirstImage(planEntry) {
+    if (!planEntry) return null;
+
+    if (typeof planEntry === 'string') {
+      return planEntry;
+    }
+
+    if (Array.isArray(planEntry?.images) && planEntry.images.length > 0) {
+      return planEntry.images[0];
+    }
+
+    if (Array.isArray(planEntry) && planEntry.length > 0) {
+      const first = planEntry[0];
+      if (typeof first === 'string') return first;
+      if (first?.images?.length) return first.images[0];
+    }
+
+    return null;
+  }
+
+  hasValidImages(viewResult) {
+    if (!viewResult) return false;
+    const images = Array.isArray(viewResult.images) ? viewResult.images : [];
+    if (images.length === 0) return false;
+    return images.some(img => typeof img === 'string' && img.trim().length > 0);
+  }
+
   /**
    * Generate 2D floor plan and 3D preview with style detection
    * ENHANCED: Generate reasoning FIRST to guide all image generation
@@ -970,10 +1083,39 @@ class AIIntegrationService {
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(reasoningEnhancedContext);
 
       // STEP 2: Capture ground floor plan image URL for use as ControlNet control
-      let floorPlanControlImage = null;
-      if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
-        floorPlanControlImage = floorPlans.floorPlans.ground.images[0];
-        logger.verbose('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
+      this.normalizeGroundFloorKey(floorPlans);
+      let floorPlanControlImage = await this.resolveFloorPlanControlImage(
+        floorPlans,
+        reasoningEnhancedContext.projectDNA
+      );
+
+      if (floorPlanControlImage) {
+        logger.verbose('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage.substring(0, 50) + '...');
+        // Ensure ground key exists so UI can reliably access it
+        if (floorPlans?.floorPlans && !floorPlans.floorPlans.ground) {
+          floorPlans.floorPlans.ground = {
+            success: true,
+            images: [floorPlanControlImage],
+            isFallback: true,
+            type: 'geometric_floor_plan',
+            message: 'Injected ground floor alias for consistency'
+          };
+        }
+      } else {
+        logger.warn('⚠️ Unable to resolve ground floor plan control image');
+      }
+
+      // Generate BIM model for deterministic fallbacks (ensures 2D ↔ 3D consistency)
+      let bimModel = null;
+      let bimAxonometric = null;
+      try {
+        bimModel = this.bim.generateParametricModel({
+          ...reasoningEnhancedContext,
+          floorPlanControlImage
+        });
+        bimAxonometric = this.bim.deriveAxonometric(bimModel);
+      } catch (error) {
+        logger.warn('⚠️ BIM fallback generation failed:', error.message || error);
       }
 
       // Step 3: Generate elevations and sections with reasoning guidance
@@ -989,8 +1131,32 @@ class AIIntegrationService {
       const views = await this.replicate.generateMultipleViews(
         reasoningEnhancedContext,  // Use reasoning-enhanced context
         ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
-        null // Removed ControlNet - 3D views need photorealistic perspective freedom, not constrained by 2D floor plan
+        floorPlanControlImage
       );
+
+      if (bimAxonometric) {
+        // Guarantee at least one geometrically consistent 3D asset
+        if (!this.hasValidImages(views.axonometric)) {
+          views.axonometric = {
+            success: true,
+            images: [bimAxonometric],
+            source: 'bim',
+            isFallback: true,
+            message: 'BIM-derived axonometric fallback for guaranteed consistency'
+          };
+        }
+
+        if (!this.hasValidImages(views.exterior_front)) {
+          views.exterior_front = {
+            ...(views.exterior_front || {}),
+            success: true,
+            images: [bimAxonometric],
+            isFallback: true,
+            fallbackSource: 'bim_axonometric',
+            message: 'BIM-derived exterior fallback (matches generated floor plan)'
+          };
+        }
+      }
 
       return {
         success: true,
@@ -1002,7 +1168,9 @@ class AIIntegrationService {
         projectContext: enhancedContext,
         projectSeed,
         timestamp: new Date().toISOString(),
-        workflow: 'comprehensive_architectural_generation'
+        workflow: 'comprehensive_architectural_generation',
+        bimModel,
+        bimAxonometric
       };
 
     } catch (error) {
@@ -1158,11 +1326,35 @@ class AIIntegrationService {
         groundImageCount: floorPlans?.floorPlans?.ground?.images?.length || 0
       });
 
-      // Capture ground floor plan image
-      let floorPlanImage = null;
-      if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
-        floorPlanImage = floorPlans.floorPlans.ground.images[0];
+      this.normalizeGroundFloorKey(floorPlans);
+      const floorPlanImage = await this.resolveFloorPlanControlImage(
+        floorPlans,
+        reasoningEnhancedContext.projectDNA
+      );
+
+      if (floorPlanImage) {
         logger.verbose('✅ Ground floor plan generated');
+        if (floorPlans?.floorPlans && !floorPlans.floorPlans.ground) {
+          floorPlans.floorPlans.ground = {
+            success: true,
+            images: [floorPlanImage],
+            isFallback: true,
+            type: 'geometric_floor_plan',
+            message: 'Injected ground floor alias for consistency'
+          };
+        }
+      }
+
+      let bimModel = null;
+      let bimAxonometric = null;
+      try {
+        bimModel = this.bim.generateParametricModel({
+          ...reasoningEnhancedContext,
+          floorPlanControlImage: floorPlanImage
+        });
+        bimAxonometric = this.bim.deriveAxonometric(bimModel);
+      } catch (error) {
+        logger.warn('⚠️ BIM fallback generation failed:', error.message || error);
       }
 
       // SIMPLIFIED: Skip technical drawings (elevations, sections)
@@ -1174,9 +1366,20 @@ class AIIntegrationService {
       const views = await this.replicate.generateMultipleViews(
         reasoningEnhancedContext,
         ['exterior_front'], // Only front view
-        null
+        floorPlanImage
       );
       logger.verbose('✅ 3D exterior view generated');
+
+      if (bimAxonometric && !this.hasValidImages(views.exterior_front)) {
+        views.exterior_front = {
+          ...(views.exterior_front || {}),
+          success: true,
+          images: [bimAxonometric],
+          isFallback: true,
+          fallbackSource: 'bim_axonometric',
+          message: 'BIM-derived exterior fallback (matches generated floor plan)'
+        };
+      }
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -1200,11 +1403,11 @@ class AIIntegrationService {
         viewCount: combinedResults.metadata.viewCount
       });
 
-      // SIMPLIFIED: Skip BIM model generation
-      logger.verbose('⏭️  Skipping BIM model generation - simplified mode');
-      let bimModel = null;
-      let bimAxonometric = null;
       let axonometricSource = 'none';
+
+      if (bimAxonometric) {
+        axonometricSource = 'bim';
+      }
 
       // SIMPLIFIED: Skip construction documentation
       logger.verbose('⏭️  Skipping construction documentation (structural + MEP) - simplified mode');
