@@ -644,6 +644,18 @@ class AIIntegrationService {
       enhancedContext.seed = projectSeed;
       console.log('🎲 Using unified seed:', projectSeed);
 
+      // CRITICAL: Create Building DNA for perfect 2D/3D consistency
+      console.log('🧬 Creating building DNA master specification for consistency...');
+      const buildingDNA = this.createBuildingDNA(enhancedContext, blendedStyle);
+      enhancedContext.masterDesignSpec = buildingDNA;
+      enhancedContext.reasoningParams = buildingDNA; // Backward compatibility
+      console.log('✅ Building DNA created:', {
+        materials: buildingDNA.materials,
+        roofType: buildingDNA.roof?.type,
+        windowPattern: buildingDNA.windows?.pattern,
+        floors: buildingDNA.dimensions?.floors
+      });
+
       // STEP 3.5: Generate multi-level floor plans with unified seed and blended prompt
       console.log('🏗️ Step 4: Generating multi-level floor plans with blended style...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
@@ -1013,6 +1025,91 @@ class AIIntegrationService {
 
     // Return comprehensive blended style object
     return blendedStyle;
+  }
+
+  /**
+   * Create Building DNA master specification for perfect 2D/3D consistency
+   * This creates explicit building parameters shared across ALL generations
+   */
+  createBuildingDNA(projectContext, blendedStyle) {
+    const area = projectContext.floorArea || projectContext.area || 200;
+    const buildingType = projectContext.buildingProgram || 'house';
+
+    // Calculate floors
+    let floors = 1;
+    if (buildingType.includes('cottage') || buildingType.includes('bungalow')) {
+      floors = 1;
+    } else if (area < 150) {
+      floors = 1;
+    } else if (area < 300) {
+      floors = 2;
+    } else if (area < 500) {
+      floors = 3;
+    } else {
+      floors = Math.min(Math.ceil(area / 200), 5);
+    }
+
+    // Determine roof type from style
+    let roofType = 'flat roof';
+    const styleName = (blendedStyle.styleName || '').toLowerCase();
+    if (styleName.includes('traditional') || styleName.includes('colonial') || styleName.includes('victorian')) {
+      roofType = 'gable roof';
+    } else if (styleName.includes('mediterranean') || styleName.includes('tuscan')) {
+      roofType = 'hip roof';
+    } else if (styleName.includes('modern') || styleName.includes('contemporary')) {
+      roofType = 'flat roof';
+    }
+
+    // Determine window pattern from style
+    let windowPattern = 'ribbon windows';
+    if (styleName.includes('traditional') || styleName.includes('colonial')) {
+      windowPattern = 'punched windows';
+    } else if (styleName.includes('modern') || styleName.includes('contemporary')) {
+      windowPattern = 'ribbon windows';
+    } else if (styleName.includes('glass') || blendedStyle.materials.some(m => m.toLowerCase().includes('glass'))) {
+      windowPattern = 'curtain wall glazing';
+    }
+
+    // Calculate dimensions based on area and floors
+    const areaPerFloor = area / floors;
+    const length = Math.sqrt(areaPerFloor * 1.6); // 1.6:1 aspect ratio
+    const width = areaPerFloor / length;
+    const floorHeight = 3.5; // Standard floor height in meters
+
+    return {
+      dimensions: {
+        length: `${length.toFixed(1)}m`,
+        width: `${width.toFixed(1)}m`,
+        height: `${(floors * floorHeight).toFixed(1)}m`,
+        floors: floors,
+        floorHeight: `${floorHeight}m`,
+        totalArea: `${area}m²`
+      },
+      entrance: {
+        facade: projectContext.entranceDirection || 'N',
+        position: 'center',
+        width: '2.4m'
+      },
+      materials: blendedStyle.materials.slice(0, 3).join(', '),
+      roof: {
+        type: roofType,
+        material: blendedStyle.materials[0] || 'concrete'
+      },
+      windows: {
+        pattern: windowPattern,
+        frameColor: 'aluminum'
+      },
+      structure: {
+        system: floors > 3 ? 'concrete frame' : 'load-bearing walls',
+        gridSpacing: '6.0m'
+      },
+      colors: {
+        facade: 'neutral tones',
+        roof: 'dark gray',
+        trim: 'white'
+      },
+      style: blendedStyle.styleName
+    };
   }
 
   /**
