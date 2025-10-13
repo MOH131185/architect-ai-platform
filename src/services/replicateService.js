@@ -737,16 +737,16 @@ class ReplicateService {
       : '';
 
     return {
-      prompt: `2D architectural floor plan drawing ONLY, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, showing walls as black lines, doors as arcs, windows as double lines, room labels with area annotations (m²), COMPLETE DIMENSION LINES with measurements showing all wall lengths, overall building dimensions, room dimensions, dimension extension lines with arrows, dimension text in meters, north arrow, scale bar (1:100), STRICTLY 2D TOP-DOWN VIEW, orthographic projection, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation drawing with professional architectural dimensioning`,
+      prompt: `ULTRA-HIGH QUALITY professional architectural floor plan drawing, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, PRECISE BLACK AND WHITE CAD-QUALITY DRAWING showing: thick black walls (200-300mm), door openings with swing arcs, windows shown as double lines with sill details, wall thickness indicators, room labels with area annotations (m²), COMPLETE PROFESSIONAL DIMENSIONING SYSTEM with: all wall dimensions in meters, overall building dimensions with extension lines, room dimensions showing length × width, dimension chains with arrows and dimension text clearly labeled, north arrow indicator, scale bar (1:100), grid reference system, STRICTLY 2D ORTHOGRAPHIC TOP-DOWN VIEW, technical blueprint precision, CAD-style architectural drawing with full professional dimensioning and annotations, crisp clean lines, high detail, professional construction documentation quality, architectural technical drawing standards, sharp precise linework`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
       viewType: `floor_plan_${level}`,
-      width: 1024,
-      height: 1024,
-      steps: 40,
-      guidanceScale: 7.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side"
+      width: 1536,
+      height: 1536,
+      steps: 60,
+      guidanceScale: 8.5,
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail"
     };
   }
 
@@ -763,16 +763,16 @@ class ReplicateService {
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
     return {
-      prompt: `2D architectural elevation drawing ONLY, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW showing ${unifiedDesc.floorCount} floor levels stacked vertically, ${unifiedDesc.materials} facade indicated with hatching patterns, window openings as rectangles, door openings${isEntranceElevation ? ', main entrance door clearly shown' : ''}, ground line (±0.00m), roof line, floor division lines, COMPLETE DIMENSION LINES with measurements: vertical dimensions showing floor heights (e.g., +0.00m, +3.50m, +7.00m), floor-to-floor heights, total building height, horizontal dimensions showing overall width, window and door dimensions, dimension extension lines with arrows, dimension text in meters, elevation markers at each floor level, ground level marker, ORTHOGRAPHIC PROJECTION, CAD-style technical drawing with full dimensioning, architectural blueprint with quotation dimensions, black and white line drawing ONLY, NO 3D elements, NO perspective, NO depth, NO rendering, NO colors, flat 2D technical documentation with professional architectural dimensioning, vertical facade view ONLY`,
+      prompt: `ULTRA-HIGH QUALITY professional architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW ORTHOGRAPHIC PROJECTION, PRECISE CAD-QUALITY DRAWING showing: ${unifiedDesc.floorCount} floor levels stacked vertically with clear floor division lines, ${unifiedDesc.materials} facade materials indicated with professional hatching patterns and textures, window openings shown as precise rectangles with frames and glazing lines, door openings with frame details${isEntranceElevation ? ', main entrance door clearly articulated with threshold and frame' : ''}, ground line marked (±0.00m), roof line with edge detail, floor separation lines at each level, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +3.50m, +7.00m, etc.), floor-to-floor heights (3.50m typical), total building height dimension, horizontal dimensions showing overall building width, facade modules and bay widths, window and door opening dimensions, dimension extension lines with arrows, dimension text in meters clearly labeled, elevation level markers at each floor (+3.50m, +7.00m), ground level reference marker (±0.00m), material notation keys, detail reference bubbles, ORTHOGRAPHIC PROJECTION technical precision, professional CAD-style architectural drawing with full dimensioning system, architectural blueprint construction documentation quality, crisp clean black and white linework, high detail technical drawing, sharp precise lines`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
       viewType: `elevation_${direction}`,
-      width: 1024,
-      height: 768,
-      steps: 40,
-      guidanceScale: 7.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut"
+      width: 1536,
+      height: 1152,
+      steps: 60,
+      guidanceScale: 8.5,
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail"
       // Removed ControlNet completely - elevations should be independent 2D drawings
     };
   }
@@ -789,16 +789,16 @@ class ReplicateService {
       : 'cross section, width-wise cut through building';
 
     return {
-      prompt: `2D architectural section drawing ONLY, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW showing all ${unifiedDesc.floorCount} floor levels vertically, floor slabs as horizontal lines, walls in section as thick black lines, interior room heights visible, stairs${unifiedDesc.floorCount > 1 ? ' connecting floors' : ''}, foundation line, roof structure in section, ${unifiedDesc.materials} construction indicated with hatching, ORTHOGRAPHIC PROJECTION, section cut line, poché (solid fill) for cut walls, CAD-style technical drawing, architectural blueprint, black and white line drawing ONLY, NO 3D elements, NO perspective, NO rendering, NO colors, flat 2D technical documentation, vertical section view ONLY`,
+      prompt: `ULTRA-HIGH QUALITY professional architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW ORTHOGRAPHIC PROJECTION, PRECISE CAD-QUALITY DRAWING showing: all ${unifiedDesc.floorCount} floor levels stacked vertically with clear separation, floor slabs shown as thick horizontal lines (150-200mm), walls in section cut shown as thick black solid lines with poché (solid black fill), interior room heights clearly visible, ceiling heights indicated, stairs with detailed treads and risers${unifiedDesc.floorCount > 1 ? ' connecting all floors with proper rise and run' : ''}, foundation wall and footing shown below grade, roof structure in section with rafters/joists and roof assembly layers, ${unifiedDesc.materials} construction assembly indicated with professional hatching patterns (brick, concrete, insulation layers), structural elements (beams, columns) clearly shown in section, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimensions showing floor heights (+0.00m, +3.50m, +7.00m), ceiling heights (2.70m typical), total building height, foundation depth below grade (-1.00m), horizontal dimensions showing room widths and building depth, dimension extension lines with arrows, dimension text in meters, section cut line indicators (A-A or B-B), level markers at each floor, material notation and hatching legend, detail reference callouts, ORTHOGRAPHIC PROJECTION technical precision, section cut poché (solid black fill) for all cut elements, professional CAD-style construction documentation, architectural blueprint quality, crisp clean black and white linework, high technical detail, sharp precise lines`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: unifiedDesc.materials,
       viewType: `section_${sectionType}`,
-      width: 1024,
-      height: 768,
-      steps: 40,
-      guidanceScale: 7.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade"
+      width: 1536,
+      height: 1152,
+      steps: 60,
+      guidanceScale: 8.5,
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail"
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
