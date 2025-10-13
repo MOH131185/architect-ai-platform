@@ -2820,12 +2820,8 @@ const ArchitectAIEnhanced = () => {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
-        style={{ animation: 'fadeIn 0.2s ease-in' }}
         onClick={(e) => {
-          // Close modal when clicking backdrop (not on image or controls)
-          if (e.target === e.currentTarget) {
-            onClose();
-          }
+          if (e.target === e.currentTarget) onClose();
         }}
       >
         {/* Modal Content */}
@@ -2906,11 +2902,10 @@ const ArchitectAIEnhanced = () => {
               style={{
                 transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
                 imageRendering: zoom > 2 ? 'pixelated' : 'auto',
-                transition: dragging ? 'none' : 'transform 0.2s ease-out',
+                transition: 'none',
                 maxWidth: zoom === 1 ? '100%' : 'none',
                 maxHeight: zoom === 1 ? '100%' : 'none',
-                objectFit: 'contain',
-                willChange: 'transform'
+                objectFit: 'contain'
               }}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
@@ -2918,6 +2913,25 @@ const ArchitectAIEnhanced = () => {
           </div>
         </div>
       </div>
+    );
+  }, (prevProps, nextProps) => {
+    // Custom comparison function for React.memo
+    // Only re-render if these specific props change
+    return (
+      prevProps.image === nextProps.image &&
+      prevProps.title === nextProps.title &&
+      prevProps.zoom === nextProps.zoom &&
+      prevProps.pan.x === nextProps.pan.x &&
+      prevProps.pan.y === nextProps.pan.y &&
+      prevProps.dragging === nextProps.dragging &&
+      prevProps.onClose === nextProps.onClose &&
+      prevProps.onZoomIn === nextProps.onZoomIn &&
+      prevProps.onZoomOut === nextProps.onZoomOut &&
+      prevProps.onZoomReset === nextProps.onZoomReset &&
+      prevProps.onWheel === nextProps.onWheel &&
+      prevProps.onMouseDown === nextProps.onMouseDown &&
+      prevProps.onMouseMove === nextProps.onMouseMove &&
+      prevProps.onMouseUp === nextProps.onMouseUp
     );
   });
 
