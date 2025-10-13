@@ -18,11 +18,19 @@ REACT_APP_OPENWEATHER_API_KEY=your_openweather_api_key_here
 ```
 **Your actual key**: See your local `.env` file
 
-### 3. OpenAI API Key
+### 3. OpenAI API Key (CRITICAL - Set BOTH Variables)
 ```
 REACT_APP_OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 ```
-**Your actual key**: Starts with `sk-svcacct-` or `sk-proj-` - check your local `.env` file
+**IMPORTANT**: You must set BOTH variables with the SAME value:
+- `OPENAI_API_KEY` (without REACT_APP_ prefix) - Used by serverless functions in `/api` folder
+  **THIS IS REQUIRED** for the app to work in production!
+- `REACT_APP_OPENAI_API_KEY` - Used by React frontend (optional but recommended)
+
+**Your actual key**: Check your local `.env` file - starts with `sk-proj-` or `sk-svcacct-`
+
+**Current Issue**: If you see "404 error on /api/openai-chat", it means `OPENAI_API_KEY` (without prefix) is missing in Vercel!
 
 ### 4. Replicate API Token (Set BOTH for compatibility)
 ```

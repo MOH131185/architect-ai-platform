@@ -158,6 +158,48 @@ Located in ArchitectAIEnhanced.js, functions generate downloadable files:
 - API key presence and validity (check console logs)
 - International address formats and coordinate systems
 - 3D map rendering performance on various devices
+
+## Consistency Remediation Prompt
+
+Use the following high-level directive inside Claude Code to eliminate the remaining architectural consistency failures without manually walking through line-by-line implementation steps:
+
+```
+You are working inside the Architect AI Platform repository. Your mission is to make every generated artifact (floor plans, 3D exterior/interior views, technical drawings, structural plans, and MEP plans) describe the SAME project instance from start to finish.
+
+Core obligations:
+1. **Location & Program Intelligence**
+   - Always obtain site intelligence by chaining Google Maps geocoding with OpenWeather climate insights before invoking OpenAI.
+   - Derive programmatic requirements (number of floors, functional mix, area distribution) from the parcel surface area, zoning hints, and portfolio preferences.
+   - Persist this interpreted program in a single `projectContext` object shared across all downstream services.
+
+2. **Style & Material Continuity**
+   - Parse the uploaded portfolio to extract dominant architectural style, material palette, fenestration rhythm, and detailing vocabulary.
+   - Blend these findings with the detected local vernacular (from the location intelligence layer) to create one authoritative style brief.
+   - Enforce the same style brief on every OpenAI reasoning call and every Replicate image generation request using shared prompt fragments and identical `projectSeed` values.
+
+3. **Floor Plan Logic**
+   - Reason about how many distinct floor plates the program requires. Never duplicate the same plan: generate exactly one plan per floor and only if that floor exists.
+   - Ensure all plan prompts explicitly require "strictly 2D top-down orthographic" output with dimensioning, legends, and matching north orientation.
+
+4. **3D Visualization Alignment**
+   - Guarantee that exterior perspective, exterior side, interior, and axonometric views reference the same massing, materials, and fenestration as the floor plans.
+   - Add guard-rail negative prompts to prevent the models from hallucinating other buildings or 2D drawings.
+
+5. **Technical, Structural, and MEP Drawings**
+   - Generate these artifacts as disciplined 2D documentation sheets (no renders). Reuse floor plate geometry, structural grid, and equipment locations derived from the program reasoning.
+   - Sync scale bars, annotations, and detail callouts with the architect-selected scale from the UI.
+
+6. **Validation & Regression Harness**
+   - Implement automated checks that compare seeds, style briefs, and program summaries across every generated artifact payload before presenting results to the user.
+   - Fail fast with actionable error messaging if any view drifts from the canonical project context.
+
+Deliverables:
+- Refactor or extend services (`locationIntelligence`, `aiIntegrationService`, `replicateService`, view builders) to satisfy the obligations above.
+- Update prompts and data contracts so all downstream consumers use the unified project context.
+- Add regression tests (or snapshot checks) that confirm artifact uniformity for multi-floor and single-floor scenarios.
+
+Do not skip reasoning steps; annotate critical changes with comments explaining how they enforce cross-artifact consistency.
+```
 - AI generation with different building programs and locations
 - File download functionality across browsers
 

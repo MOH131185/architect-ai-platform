@@ -376,6 +376,9 @@ class DimensioningService {
         case 'section_marker':
           svg += this.svgSectionMarker(annotation, scale);
           break;
+        default:
+          // Handle unknown annotation types
+          break;
       }
     });
 
@@ -484,4 +487,5 @@ class DimensioningService {
   }
 }
 
-export default new DimensioningService();
+const dimensioningService = new DimensioningService();
+export default dimensioningService;

@@ -3,18 +3,19 @@
  * Provides AI-powered architectural design reasoning and analysis
  */
 
+import logger from '../utils/productionLogger';
+import { getOpenAIUrl } from '../utils/apiRoutes';
+
 const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 
-// Use Vercel serverless function in production, local proxy in development
-const OPENAI_API_URL = process.env.NODE_ENV === 'production'
-  ? '/api/openai-chat'  // Vercel serverless function
-  : 'http://localhost:3001/api/openai/chat';  // Local proxy server
+// Resolve API endpoint at runtime for dev/prod
+const OPENAI_API_URL = getOpenAIUrl();
 
 class OpenAIService {
   constructor() {
     this.apiKey = OPENAI_API_KEY;
     if (!this.apiKey) {
-      console.warn('OpenAI API key not found. Design reasoning will use fallback responses.');
+      logger.warn('OpenAI API key not found. Design reasoning will use fallback responses.');
     }
   }
 
@@ -37,7 +38,7 @@ class OpenAIService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -61,7 +62,7 @@ class OpenAIService {
       return this.parseDesignReasoning(data.choices[0].message.content, projectContext);
 
     } catch (error) {
-      console.error('OpenAI API error:', error);
+      logger.error('OpenAI API error:', error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -121,6 +122,13 @@ BLENDED STYLE APPROACH:
 - Design Characteristics: ${blendedStyle.characteristics?.slice(0, 5).join(', ') || 'Not specified'}
 - Description: ${blendedStyle.description || 'Balanced fusion of local and portfolio styles'}` : '';
 
+    // CRITICAL MATERIAL CONSTRAINT: Force use of blended materials only
+    const materialConstraint = blendedStyle ? `
+CRITICAL MATERIAL CONSTRAINT:
+You MUST use ONLY these exact materials in your design: ${blendedStyle.materials?.slice(0, 5).join(', ')}
+DO NOT recommend alternative materials. These materials have been carefully selected to blend portfolio preferences with local context.
+Your material recommendations must match these materials exactly.` : '';
+
     return `
 Analyze this architectural project and provide comprehensive design reasoning with specific focus on style integration and climate adaptation:
 
@@ -135,6 +143,7 @@ ${seasonalClimate}
 ${locationStyleInfo}
 ${portfolioStyleInfo}
 ${blendedStyleInfo}
+${materialConstraint}
 
 Please provide comprehensive design reasoning in the following structured JSON format:
 
@@ -204,7 +213,7 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.warn('Could not parse JSON from OpenAI response, using text format');
+      logger.warn('Could not parse JSON from OpenAI response, using text format');
     }
 
     // Fallback to structured text response
@@ -310,7 +319,7 @@ Format as structured analysis with specific recommendations.
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -334,7 +343,7 @@ Format as structured analysis with specific recommendations.
       return this.parseFeasibilityAnalysis(data.choices[0].message.content);
 
     } catch (error) {
-      console.error('Feasibility analysis error:', error);
+      logger.error('Feasibility analysis error:', error);
       return {
         feasibility: 'Unknown',
         constraints: ['Analysis unavailable'],
@@ -353,6 +362,313 @@ Format as structured analysis with specific recommendations.
       timestamp: new Date().toISOString()
     };
   }
+
+  /**
+   * Generate structural engineering notes and calculation justifications
+   * NEW: Provides regulatory compliance, load calculations, and material specifications per floor
+   * @param {Object} projectContext - Project context with location and building data
+   * @param {Number} floorIndex - Floor level (0 = foundation, 1 = first floor, etc.)
+   * @returns {Promise<Object>} Structural notes with codes, calculations, and specifications
+   */
+  async generateStructuralNotes(projectContext, floorIndex = 0) {
+    const floorName = floorIndex === 0 ? 'foundation' : `floor ${floorIndex}`;
+    const location = projectContext.location?.address || projectContext.location || 'Not specified';
+    const climateData = projectContext.climateData || projectContext.climate || {};
+    const buildingProgram = projectContext.buildingProgram || 'building';
+    const floorArea = projectContext.floorArea || 200;
+    const floorCount = projectContext.floorCount || Math.ceil(floorArea / 150);
+
+    const structuralPrompt = `
+Generate comprehensive structural engineering notes and calculation justifications for ${floorName} of a ${buildingProgram} project.
+
+PROJECT DETAILS:
+- Location: ${location}
+- Climate: ${climateData.type || 'temperate'}
+- Building Program: ${buildingProgram}
+- Floor Area: ${floorArea}m²
+- Total Floors: ${floorCount}
+- Current Level: ${floorName}
+
+Provide detailed structural engineering documentation including:
+
+1. APPLICABLE BUILDING CODES & STANDARDS:
+   - Local building codes for ${location}
+   - International codes (IBC, Eurocode, etc.)
+   - Seismic design category and requirements
+   - Wind load requirements
+   - Snow load requirements (if applicable)
+
+2. LOAD CALCULATIONS:
+   - Dead loads: Structural self-weight, finishes, MEP
+   - Live loads: Occupancy loads for ${buildingProgram}
+   - Environmental loads: Wind, seismic, snow
+   - Load combinations per code
+   - Safety factors applied
+
+3. STRUCTURAL SYSTEM DESIGN:
+   - Foundation type and bearing capacity requirements
+   - ${floorIndex === 0 ? 'Foundation design: footings, piles, or mat foundation' : 'Floor slab design: thickness and reinforcement'}
+   - Column sizing and spacing
+   - Beam spans and dimensions
+   - Lateral force resisting system
+
+4. MATERIAL SPECIFICATIONS:
+   - Concrete grade (e.g., C30/37, fc' = 30 MPa)
+   - Steel reinforcement grade (e.g., fy = 420 MPa)
+   - Structural steel grade (if applicable)
+   - Masonry specifications
+
+5. DESIGN CALCULATIONS SUMMARY:
+   - Flexural design: beam/slab capacity
+   - Shear design: verification
+   - Deflection limits: L/360 serviceability
+   - Crack control: maximum crack width
+   - Punching shear at columns
+
+6. CONSTRUCTION NOTES:
+   - Reinforcement detailing requirements
+   - Concrete cover for durability
+   - Construction joints locations
+   - Quality control requirements
+   - Inspection hold points
+
+Format as bullet points for easy reference by engineers and contractors.`;
+
+    if (!this.apiKey) {
+      return this.getFallbackStructuralNotes(projectContext, floorIndex);
+    }
+
+    try {
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert structural engineer with expertise in international building codes, structural calculations, and construction documentation. Provide technically accurate, code-compliant structural design notes.'
+            },
+            {
+              role: 'user',
+              content: structuralPrompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.5
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        floorIndex,
+        floorName,
+        notes: data.choices[0].message.content,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      logger.error('Structural notes generation error:', error);
+      return this.getFallbackStructuralNotes(projectContext, floorIndex);
+    }
+  }
+
+  /**
+   * Generate MEP engineering notes and system specifications
+   * NEW: Provides MEP system design criteria, equipment specs, and regulatory requirements per floor
+   * @param {Object} projectContext - Project context with location and building data
+   * @param {Number} floorIndex - Floor level
+   * @param {String} system - MEP system: 'hvac', 'electrical', 'plumbing', or 'combined'
+   * @returns {Promise<Object>} MEP notes with codes, calculations, and specifications
+   */
+  async generateMEPNotes(projectContext, floorIndex = 0, system = 'combined') {
+    const floorName = floorIndex === 0 ? 'ground floor' : `floor ${floorIndex + 1}`;
+    const location = projectContext.location?.address || projectContext.location || 'Not specified';
+    const climateData = projectContext.climateData || projectContext.climate || {};
+    const buildingProgram = projectContext.buildingProgram || 'building';
+    const floorArea = projectContext.floorArea || 200;
+
+    const systemFocus = {
+      hvac: 'HVAC (Heating, Ventilation, Air Conditioning)',
+      electrical: 'Electrical Systems',
+      plumbing: 'Plumbing and Fire Protection',
+      combined: 'All MEP Systems (Mechanical, Electrical, Plumbing)'
+    };
+
+    const mepPrompt = `
+Generate comprehensive ${systemFocus[system]} engineering notes and specifications for ${floorName} of a ${buildingProgram} project.
+
+PROJECT DETAILS:
+- Location: ${location}
+- Climate: ${climateData.type || 'temperate'} (${climateData.seasonal?.summer?.avgTemp || 'N/A'}°C summer, ${climateData.seasonal?.winter?.avgTemp || 'N/A'}°C winter)
+- Building Program: ${buildingProgram}
+- Floor Area: ${floorArea}m²
+- Current Level: ${floorName}
+
+Provide detailed MEP engineering documentation for ${systemFocus[system]} including:
+
+${system === 'hvac' || system === 'combined' ? `
+1. HVAC SYSTEM DESIGN:
+   - Heating/cooling load calculations (BTU/hr or kW)
+   - Ventilation requirements (CFM/m³/hr per occupant)
+   - Equipment selection: chillers, boilers, AHUs
+   - Ductwork sizing and layout
+   - Zone control strategy
+   - Energy efficiency measures (SEER, EER ratings)
+   - Applicable codes: ASHRAE 90.1, IMC, local codes
+` : ''}
+
+${system === 'electrical' || system === 'combined' ? `
+2. ELECTRICAL SYSTEM DESIGN:
+   - Total electrical load calculation (kW, VA)
+   - Lighting design: lux levels for ${buildingProgram}
+   - Power distribution: panel schedules
+   - Circuit sizing and breaker ratings
+   - Emergency power requirements
+   - Life safety systems: fire alarm, emergency lighting
+   - Energy code compliance
+   - Applicable codes: NEC, IEC, local codes
+` : ''}
+
+${system === 'plumbing' || system === 'combined' ? `
+3. PLUMBING SYSTEM DESIGN:
+   - Water supply demand (GPM/l/min)
+   - Drainage fixture units and pipe sizing
+   - Hot water system sizing
+   - Fire protection: sprinkler coverage (if required)
+   - Water conservation: low-flow fixtures
+   - Backflow prevention requirements
+   - Applicable codes: IPC, UPC, NFPA 13, local codes
+` : ''}
+
+4. EQUIPMENT SCHEDULES:
+   - Major equipment specifications
+   - Manufacturer requirements
+   - Capacity and model numbers
+   - Installation requirements
+   - Maintenance access needs
+
+5. ENERGY EFFICIENCY & SUSTAINABILITY:
+   - Energy recovery opportunities
+   - Renewable energy integration points
+   - Water conservation measures
+   - LEED/green building considerations
+
+6. COORDINATION NOTES:
+   - Structural coordination: beam/slab penetrations
+   - Ceiling height requirements
+   - Equipment room sizing
+   - Installation sequencing
+
+Format as bullet points with specific values, equipment specs, and code references.`;
+
+    if (!this.apiKey) {
+      return this.getFallbackMEPNotes(projectContext, floorIndex, system);
+    }
+
+    try {
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert MEP (Mechanical, Electrical, Plumbing) engineer with expertise in building systems design, energy codes, and sustainable engineering. Provide technically accurate, code-compliant MEP design notes with specific calculations and equipment specifications.'
+            },
+            {
+              role: 'user',
+              content: mepPrompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.5
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        floorIndex,
+        floorName,
+        system,
+        notes: data.choices[0].message.content,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      logger.error('MEP notes generation error:', error);
+      return this.getFallbackMEPNotes(projectContext, floorIndex, system);
+    }
+  }
+
+  /**
+   * Fallback structural notes when API is unavailable
+   */
+  getFallbackStructuralNotes(projectContext, floorIndex) {
+    const floorName = floorIndex === 0 ? 'foundation' : `floor ${floorIndex}`;
+    return {
+      success: false,
+      isFallback: true,
+      floorIndex,
+      floorName,
+      notes: `
+STRUCTURAL ENGINEERING NOTES - ${floorName.toUpperCase()}
+
+1. APPLICABLE CODES: IBC 2021, ACI 318, ASCE 7, local building codes
+2. LOAD CALCULATIONS: Dead load 6 kPa, Live load 4 kPa (residential), Wind speed 45 m/s
+3. STRUCTURAL SYSTEM: Reinforced concrete frame, ${floorIndex === 0 ? 'spread footings on competent soil' : 'flat slab with drop panels'}
+4. MATERIALS: Concrete C30/37 (fc' = 30 MPa), Steel reinforcement Grade 60 (fy = 420 MPa)
+5. DESIGN: Flexural capacity verified, Shear capacity adequate, Deflection < L/360
+6. CONSTRUCTION: 40mm concrete cover, construction joints every 15m, quality control per code
+
+Note: Detailed structural calculations and engineer's stamp required for construction.
+      `.trim(),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Fallback MEP notes when API is unavailable
+   */
+  getFallbackMEPNotes(projectContext, floorIndex, system) {
+    const floorName = floorIndex === 0 ? 'ground floor' : `floor ${floorIndex + 1}`;
+    return {
+      success: false,
+      isFallback: true,
+      floorIndex,
+      floorName,
+      system,
+      notes: `
+MEP ENGINEERING NOTES - ${floorName.toUpperCase()} - ${system.toUpperCase()}
+
+1. HVAC: Cooling load 100 W/m², heating load 80 W/m², ventilation 10 CFM/person, ASHRAE 90.1 compliance
+2. ELECTRICAL: Total load 20 VA/m², lighting 10 W/m², emergency lighting per NEC, fire alarm per NFPA 72
+3. PLUMBING: Water supply 2.5 GPM/fixture, drainage per fixture units, sprinkler coverage NFPA 13 (if required)
+4. EQUIPMENT: AHU 5000 CFM, distribution panels 400A, water heater 80 gal, manufacturer specs TBD
+5. ENERGY: Energy recovery ventilation, LED lighting, low-flow fixtures, LEED Silver target
+6. COORDINATION: 600mm ceiling plenum, mechanical room 3% of floor area, structural penetrations coordinated
+
+Note: Detailed MEP calculations and engineer's stamp required for construction.
+      `.trim(),
+      timestamp: new Date().toISOString()
+    };
+  }
 }
 
-export default new OpenAIService();
+const openaiService = new OpenAIService();
+export default openaiService;

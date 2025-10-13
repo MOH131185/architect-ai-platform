@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import aiIntegrationService from '../services/aiIntegrationService';
+import { getOpenAIUrl, getReplicatePredictUrl, getHealthUrl } from '../utils/apiRoutes';
 import './AIMVP.css';
 
 const AIMVP = () => {
@@ -14,15 +15,26 @@ const AIMVP = () => {
     architecturalStyle: 'contemporary',
     materials: 'glass and steel',
     siteConstraints: 'urban lot',
-    userPreferences: 'sustainable design'
+    userPreferences: 'sustainable design',
+    // New controls for consistency and overrides
+    strictConsistency: true,
+    promptOverride: '',
+    // Blending weights (0 = all local, 1 = all portfolio)
+    materialWeight: 0.5,
+    characteristicWeight: 0.5
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
   const [apiStatus, setApiStatus] = useState('checking');
+  const [apiRoutes, setApiRoutes] = useState({ openai: '', replicate: '', health: '' });
+  const [connectivity, setConnectivity] = useState({ status: 'checking', detail: '' });
 
   useEffect(() => {
+    // Resolve routes
+    setApiRoutes({ openai: getOpenAIUrl(), replicate: getReplicatePredictUrl(), health: getHealthUrl() });
+
     // Check API configuration
     const hasOpenAI = !!process.env.REACT_APP_OPENAI_API_KEY;
     const hasReplicate = !!process.env.REACT_APP_REPLICATE_API_KEY;
@@ -37,6 +49,23 @@ const AIMVP = () => {
         replicate: hasReplicate ? 'configured' : 'missing'
       });
     }
+
+    // Initialize a unified project seed once per session
+    setProjectContext(prev => {
+      if (prev.projectSeed) return prev;
+      const seed = Math.floor(Math.random() * 1000000);
+      return { ...prev, projectSeed: seed, seed };
+    });
+
+    // Ping /api/health to verify connectivity
+    const healthUrl = getHealthUrl();
+    fetch(healthUrl, { method: 'GET' })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Health ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        setConnectivity({ status: 'ok', detail: `health ok${data?.status ? ` (${data.status})` : ''}` });
+      })
+      .catch((err) => setConnectivity({ status: 'error', detail: err.message }));
   }, []);
 
   const handleInputChange = (field, value) => {
@@ -82,7 +111,13 @@ const AIMVP = () => {
 
     try {
       console.log('Starting complete AI design workflow...');
-      const result = await aiIntegrationService.generateCompleteDesign(projectContext);
+      // Switch to integrated workflow for unified 2D/3D/technical outputs
+      const result = await aiIntegrationService.generateIntegratedDesign(
+        projectContext,
+        [],
+        typeof projectContext.materialWeight === 'number' ? projectContext.materialWeight : 0.5,
+        typeof projectContext.characteristicWeight === 'number' ? projectContext.characteristicWeight : 0.5
+      );
       setResults(result);
     } catch (err) {
       console.error('Complete generation error:', err);
@@ -126,9 +161,103 @@ const AIMVP = () => {
       </div>
 
       <div className="ai-mvp-content">
+        <div className="api-connectivity" style={{
+          marginBottom: '16px', padding: '10px', borderRadius: 6, background: '#eef2ff', color: '#1e40af', fontSize: '0.85rem'
+        }}>
+          <div><strong>API Routes</strong></div>
+          <div>OpenAI: <code>{apiRoutes.openai}</code></div>
+          <div>Replicate: <code>{apiRoutes.replicate}</code></div>
+          <div>Health: <code>{apiRoutes.health}</code> — {connectivity.status === 'ok' ? 'Connected' : (connectivity.status === 'error' ? 'Error' : 'Checking...')} {connectivity.status === 'error' ? `( ${connectivity.detail} )` : ''}</div>
+          <button
+            type="button"
+            style={{ marginTop: 8 }}
+            onClick={() => {
+              setConnectivity({ status: 'checking', detail: '' });
+              const healthUrl = getHealthUrl();
+              fetch(healthUrl, { method: 'GET' })
+                .then(async (res) => {
+                  if (!res.ok) throw new Error(`Health ${res.status}`);
+                  const data = await res.json().catch(() => ({}));
+                  setConnectivity({ status: 'ok', detail: `health ok${data?.status ? ` (${data.status})` : ''}` });
+                })
+                .catch((err) => setConnectivity({ status: 'error', detail: err.message }));
+            }}
+          >Recheck</button>
+        </div>
         <div className="project-inputs">
           <h2>Project Context</h2>
           
+          <div className="input-group">
+            <label>Style Blend Weights</label>
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Materials: {Math.round((1 - (projectContext.materialWeight ?? 0.5)) * 100)}% local / {Math.round((projectContext.materialWeight ?? 0.5) * 100)}% portfolio</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round(((projectContext.materialWeight ?? 0.5) * 100))}
+                  onChange={(e) => handleInputChange('materialWeight', Math.max(0, Math.min(1, parseInt(e.target.value, 10) / 100)))}
+                />
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Characteristics: {Math.round((1 - (projectContext.characteristicWeight ?? 0.5)) * 100)}% local / {Math.round((projectContext.characteristicWeight ?? 0.5) * 100)}% portfolio</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round(((projectContext.characteristicWeight ?? 0.5) * 100))}
+                  onChange={(e) => handleInputChange('characteristicWeight', Math.max(0, Math.min(1, parseInt(e.target.value, 10) / 100)))}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label>Strict Consistency (3D):</label>
+            <input
+              type="checkbox"
+              checked={!!projectContext.strictConsistency}
+              onChange={(e) => handleInputChange('strictConsistency', e.target.checked)}
+            />
+          </div>
+
+          <div className="input-group">
+            <label>Prompt Override (applied to all outputs):</label>
+            <textarea
+              rows={3}
+              value={projectContext.promptOverride}
+              onChange={(e) => handleInputChange('promptOverride', e.target.value)}
+              placeholder="e.g., use local brick, pitched roof at 30°, align all views with same entrance orientation"
+            />
+          </div>
+
+          <div className="input-group">
+            <label>Project Seed:</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="number"
+                value={projectContext.projectSeed || ''}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value || '');
+                  if (!isNaN(val)) {
+                    setProjectContext(prev => ({ ...prev, projectSeed: val, seed: val }));
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setProjectContext(prev => { const s = Math.floor(Math.random()*1000000); return { ...prev, projectSeed: s, seed: s }; })}
+              >Randomize</button>
+            </div>
+          </div>
+
           <div className="input-group">
             <label>Building Program:</label>
             <select 
@@ -257,6 +386,53 @@ const AIMVP = () => {
                   </div>
                 )}
 
+                {/* Integrated results (floor plans, technical drawings, 3D views) */}
+                {results.floorPlans && (
+                  <div className="floorplans-section">
+                    <h3>Floor Plans</h3>
+                    <div className="visualization-content">
+                      {Object.entries(results.floorPlans.floorPlans || {}).map(([level, data]) => (
+                        (data?.images || []).map((img, idx) => (
+                          <div key={`${level}-${idx}`} className="image-container">
+                            <img src={img} alt={`${level} floor plan`} className="generated-image" />
+                          </div>
+                        ))
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {results.technicalDrawings && (
+                  <div className="technical-section">
+                    <h3>Technical Drawings (Elevations/Sections)</h3>
+                    <div className="visualization-content">
+                      {Object.entries(results.technicalDrawings.technicalDrawings || {}).map(([key, data]) => (
+                        (data?.images || []).map((img, idx) => (
+                          <div key={`${key}-${idx}`} className="image-container">
+                            <img src={img} alt={key} className="generated-image" />
+                          </div>
+                        ))
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {results.visualizations?.views && (
+                  <div className="views-section">
+                    <h3>3D Views</h3>
+                    <div className="visualization-content">
+                      {Object.entries(results.visualizations.views || {}).map(([view, data]) => (
+                        (data?.images || []).map((img, idx) => (
+                          <div key={`${view}-${idx}`} className="image-container">
+                            <img src={img} alt={`${view} view`} className="generated-image" />
+                          </div>
+                        ))
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* MVP single visualization (quick design) */}
                 {results.visualization && (
                   <div className="visualization-section">
                     <h3>Generated Visualization</h3>
