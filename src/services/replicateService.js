@@ -539,14 +539,22 @@ class ReplicateService {
     switch (viewType) {
       case 'exterior':
       case 'exterior_front':
+        // Extract design spec for consistency with floor plans
+        const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
+        const specificMaterials = designContext.materials || unifiedDesc.materials;
+        const roofType = designContext.roof?.type || 'flat roof';
+        const windowPattern = designContext.windows?.pattern || 'ribbon windows';
+
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural visualization showing ${entranceDir}-facing front view of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, main entrance clearly visible on ${entranceDir} side, ${unifiedDesc.floorCount} levels height, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade, landscape context matching floor plan`,
+          materials: specificMaterials,
+          prompt: `Professional 3D photorealistic architectural visualization showing ${entranceDir}-facing front view of the SAME ${unifiedDesc.fullDescription} matching floor plan and elevation designs exactly, ${specificMaterials} facade construction consistent with technical drawings, ${windowPattern} clearly visible, ${roofType} profile, ${unifiedDesc.features}, main entrance prominently visible on ${entranceDir} side matching elevation drawings, ${unifiedDesc.floorCount} levels height with clear floor separations matching technical dimensions, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade matching elevation materials and window patterns, landscape context with trees and hardscape, design must be identical to floor plans and elevations, unified consistent building, no design variations`,
           perspective: 'exterior front view',
-          width: 1024,
-          height: 768
+          width: 1536,
+          height: 1152,
+          steps: 60,
+          guidanceScale: 8.0
         };
 
       case 'exterior_side':
@@ -736,17 +744,23 @@ class ReplicateService {
       ? `entrance on ${this.getCardinalDirection(unifiedDesc.entranceDirection)} side,`
       : '';
 
+    // Extract additional design details from context if available
+    const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
+    const specificMaterials = designContext.materials || unifiedDesc.materials;
+    const roofType = designContext.roof?.type || 'flat roof';
+    const windowPattern = designContext.windows?.pattern || 'ribbon windows';
+
     return {
-      prompt: `ULTRA-HIGH QUALITY professional architectural floor plan drawing, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, PRECISE BLACK AND WHITE CAD-QUALITY DRAWING showing: thick black walls (200-300mm), door openings with swing arcs, windows shown as double lines with sill details, wall thickness indicators, room labels with area annotations (m²), COMPLETE PROFESSIONAL DIMENSIONING SYSTEM with: all wall dimensions in meters, overall building dimensions with extension lines, room dimensions showing length × width, dimension chains with arrows and dimension text clearly labeled, north arrow indicator, scale bar (1:100), grid reference system, STRICTLY 2D ORTHOGRAPHIC TOP-DOWN VIEW, technical blueprint precision, CAD-style architectural drawing with full professional dimensioning and annotations, crisp clean lines, high detail, professional construction documentation quality, architectural technical drawing standards, sharp precise linework`,
+      prompt: `MAXIMUM QUALITY professional CAD architectural floor plan drawing, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, ULTRA-PRECISE BLACK AND WHITE CAD-QUALITY TECHNICAL DRAWING showing: thick solid black exterior walls (250mm), interior walls (150mm), door openings with accurate 90° swing arcs, ${windowPattern} shown as double parallel lines with sill details and mullions, wall thickness clearly differentiated, all room labels with area annotations (m²), furniture layout outlines, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM with: dimension chains for all wall segments with measurements in meters, overall building dimensions with extension lines and arrows, room dimensions showing length × width (e.g. 4.50m × 3.80m), window opening widths, door widths (0.90m, 1.20m), wall thicknesses annotated, north arrow with cardinal directions, metric scale bar (1:100), grid reference coordinate system (A-H, 1-10), construction axis lines, STRICTLY 2D ORTHOGRAPHIC TOP-DOWN VIEW, technical blueprint precision matching professional CAD software output (AutoCAD/Revit quality), full professional dimensioning and detailed annotations, ultra-crisp clean lines, maximum detail technical drawing, laser-sharp precise linework, professional construction documentation standards, ${specificMaterials} materials notation, ${roofType} indicated`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
-      materials: unifiedDesc.materials,
+      materials: specificMaterials,
       viewType: `floor_plan_${level}`,
-      width: 1536,
-      height: 1536,
-      steps: 60,
-      guidanceScale: 8.5,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail"
+      width: 2048,
+      height: 2048,
+      steps: 70,
+      guidanceScale: 9.0,
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated"
     };
   }
 
@@ -762,17 +776,24 @@ class ReplicateService {
     const isEntranceElevation = direction === entranceDir;
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
+    // Extract additional design details from context for consistency
+    const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
+    const specificMaterials = designContext.materials || unifiedDesc.materials;
+    const roofType = designContext.roof?.type || 'flat roof';
+    const windowPattern = designContext.windows?.pattern || 'ribbon windows';
+    const floorHeight = designContext.dimensions?.floorHeight || '3.50m';
+
     return {
-      prompt: `ULTRA-HIGH QUALITY professional architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW ORTHOGRAPHIC PROJECTION, PRECISE CAD-QUALITY DRAWING showing: ${unifiedDesc.floorCount} floor levels stacked vertically with clear floor division lines, ${unifiedDesc.materials} facade materials indicated with professional hatching patterns and textures, window openings shown as precise rectangles with frames and glazing lines, door openings with frame details${isEntranceElevation ? ', main entrance door clearly articulated with threshold and frame' : ''}, ground line marked (±0.00m), roof line with edge detail, floor separation lines at each level, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +3.50m, +7.00m, etc.), floor-to-floor heights (3.50m typical), total building height dimension, horizontal dimensions showing overall building width, facade modules and bay widths, window and door opening dimensions, dimension extension lines with arrows, dimension text in meters clearly labeled, elevation level markers at each floor (+3.50m, +7.00m), ground level reference marker (±0.00m), material notation keys, detail reference bubbles, ORTHOGRAPHIC PROJECTION technical precision, professional CAD-style architectural drawing with full dimensioning system, architectural blueprint construction documentation quality, crisp clean black and white linework, high detail technical drawing, sharp precise lines`,
+      prompt: `MAXIMUM QUALITY professional CAD architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW ORTHOGRAPHIC PROJECTION, ULTRA-PRECISE CAD-QUALITY TECHNICAL DRAWING showing: ${unifiedDesc.floorCount} floor levels stacked vertically with clear floor division lines at ${floorHeight} intervals, ${specificMaterials} facade materials indicated with professional architectural hatching patterns and textures (brick coursing, stone panels, glass curtain wall modules), ${windowPattern} shown as precise rectangles with frames, glazing lines, and mullions, door openings with frame details and thresholds${isEntranceElevation ? ', main entrance door clearly articulated with threshold, frame, and canopy' : ''}, ground line marked (±0.00m), ${roofType} profile with edge detail and parapet/eaves, floor separation lines at each level, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +${floorHeight}, +${parseFloat(floorHeight)*2}m, etc.), floor-to-floor heights (${floorHeight} typical), total building height dimension with extension lines, horizontal dimensions showing overall building width, facade bay modules and structural grid spacing, window opening dimensions (height × width), door opening dimensions, dimension extension lines with clear arrows, dimension text in meters clearly labeled and legible, elevation level markers at each floor level, ground level reference datum (±0.00m), material legend and hatching key, detail reference bubbles and section cut indicators, ORTHOGRAPHIC PROJECTION technical precision matching AutoCAD/Revit output quality, professional CAD-style architectural construction documentation with full dimensioning system and annotations, ultra-crisp clean black and white linework, maximum detail technical drawing, laser-sharp precise lines, professional construction documentation standards`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
-      materials: unifiedDesc.materials,
+      materials: specificMaterials,
       viewType: `elevation_${direction}`,
-      width: 1536,
-      height: 1152,
-      steps: 60,
-      guidanceScale: 8.5,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail"
+      width: 2048,
+      height: 1536,
+      steps: 70,
+      guidanceScale: 9.0,
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, inconsistent design"
       // Removed ControlNet completely - elevations should be independent 2D drawings
     };
   }
@@ -788,17 +809,24 @@ class ReplicateService {
       ? 'longitudinal section, length-wise cut through building showing entrance to back'
       : 'cross section, width-wise cut through building';
 
+    // Extract additional design details from context for consistency
+    const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
+    const specificMaterials = designContext.materials || unifiedDesc.materials;
+    const roofType = designContext.roof?.type || 'flat roof';
+    const floorHeight = designContext.dimensions?.floorHeight || '3.50m';
+    const ceilingHeight = '2.70m';
+
     return {
-      prompt: `ULTRA-HIGH QUALITY professional architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW ORTHOGRAPHIC PROJECTION, PRECISE CAD-QUALITY DRAWING showing: all ${unifiedDesc.floorCount} floor levels stacked vertically with clear separation, floor slabs shown as thick horizontal lines (150-200mm), walls in section cut shown as thick black solid lines with poché (solid black fill), interior room heights clearly visible, ceiling heights indicated, stairs with detailed treads and risers${unifiedDesc.floorCount > 1 ? ' connecting all floors with proper rise and run' : ''}, foundation wall and footing shown below grade, roof structure in section with rafters/joists and roof assembly layers, ${unifiedDesc.materials} construction assembly indicated with professional hatching patterns (brick, concrete, insulation layers), structural elements (beams, columns) clearly shown in section, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimensions showing floor heights (+0.00m, +3.50m, +7.00m), ceiling heights (2.70m typical), total building height, foundation depth below grade (-1.00m), horizontal dimensions showing room widths and building depth, dimension extension lines with arrows, dimension text in meters, section cut line indicators (A-A or B-B), level markers at each floor, material notation and hatching legend, detail reference callouts, ORTHOGRAPHIC PROJECTION technical precision, section cut poché (solid black fill) for all cut elements, professional CAD-style construction documentation, architectural blueprint quality, crisp clean black and white linework, high technical detail, sharp precise lines`,
+      prompt: `MAXIMUM QUALITY professional CAD architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW ORTHOGRAPHIC PROJECTION, ULTRA-PRECISE CAD-QUALITY TECHNICAL DRAWING showing: all ${unifiedDesc.floorCount} floor levels stacked vertically at ${floorHeight} intervals with clear separation lines, floor slabs shown as thick horizontal lines (200mm reinforced concrete), walls in section cut shown as thick solid black lines with poché (solid black fill indicating cut elements), interior room heights clearly visible with ${ceilingHeight} ceiling clearance, stairs with detailed treads (280mm) and risers (175mm)${unifiedDesc.floorCount > 1 ? ' connecting all floors with proper 30° rise and run, handrails indicated' : ''}, foundation wall (300mm) and spread footing shown below grade (-1.20m), ${roofType} structure in section with rafters/joists spacing (600mm o.c.) and roof assembly layers (waterproofing, insulation, structure), ${specificMaterials} construction assembly indicated with professional architectural hatching patterns (masonry coursing, concrete solid fill, insulation diagonal lines, structural steel cross-hatching), structural elements (beams 300×600mm, columns 300×300mm) clearly shown in section cut, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +${floorHeight}, +${parseFloat(floorHeight)*2}m, etc.), ceiling heights (${ceilingHeight} typical), total building height with parapet, foundation depth below grade (-1.20m), horizontal dimensions showing room widths, building depth, structural bay spacing, dimension extension lines with arrows, dimension text in meters clearly labeled, section cut line indicators (Section A-A or Section B-B), level markers and datum references at each floor, material notation legend with hatching key, detail reference callouts (numbered circles), finish floor level indicators (FFL), ORTHOGRAPHIC PROJECTION technical precision matching AutoCAD/Revit quality, section cut poché (solid black fill) for all cut structural elements, professional CAD-style construction documentation, architectural blueprint quality, ultra-crisp clean black and white linework, maximum technical detail, laser-sharp precise lines`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
-      materials: unifiedDesc.materials,
+      materials: specificMaterials,
       viewType: `section_${sectionType}`,
-      width: 1536,
-      height: 1152,
-      steps: 60,
-      guidanceScale: 8.5,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail"
+      width: 2048,
+      height: 1536,
+      steps: 70,
+      guidanceScale: 9.0,
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, inconsistent design"
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
