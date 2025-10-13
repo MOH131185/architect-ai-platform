@@ -466,7 +466,31 @@ const ArchitectAIEnhanced = () => {
   const [imagePan, setImagePan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  // Use refs to store current values for event handlers (prevents handler recreation)
+  const imageZoomRef = useRef(1);
+  const imagePanRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
   const fileInputRef = useRef(null);
+
+  // Sync state with refs
+  useEffect(() => {
+    imageZoomRef.current = imageZoom;
+  }, [imageZoom]);
+
+  useEffect(() => {
+    imagePanRef.current = imagePan;
+  }, [imagePan]);
+
+  useEffect(() => {
+    isDraggingRef.current = isDragging;
+  }, [isDragging]);
+
+  useEffect(() => {
+    dragStartRef.current = dragStart;
+  }, [dragStart]);
   // const hasDetectedLocation = useRef(false); // Temporarily disabled
 
   const showToast = useCallback((message) => {
@@ -512,24 +536,24 @@ const ArchitectAIEnhanced = () => {
   }, []);
 
   const handleMouseDown = useCallback((e) => {
-    if (imageZoom > 1) {
+    if (imageZoomRef.current > 1) {
       e.preventDefault();
       setIsDragging(true);
-      setDragStart({ x: e.clientX - imagePan.x, y: e.clientY - imagePan.y });
+      setDragStart({ x: e.clientX - imagePanRef.current.x, y: e.clientY - imagePanRef.current.y });
     }
-  }, [imageZoom, imagePan]);
+  }, []);
 
   const handleMouseMove = useCallback((e) => {
-    if (isDragging && imageZoom > 1) {
+    if (isDraggingRef.current && imageZoomRef.current > 1) {
       e.preventDefault();
       requestAnimationFrame(() => {
         setImagePan({
-          x: e.clientX - dragStart.x,
-          y: e.clientY - dragStart.y
+          x: e.clientX - dragStartRef.current.x,
+          y: e.clientY - dragStartRef.current.y
         });
       });
     }
-  }, [isDragging, dragStart, imageZoom]);
+  }, []);
 
   const handleMouseUp = useCallback((e) => {
     if (e) e.preventDefault();
@@ -540,12 +564,12 @@ const ArchitectAIEnhanced = () => {
     e.preventDefault();
     e.stopPropagation();
     const delta = e.deltaY * -0.01;
-    const newZoom = Math.min(Math.max(imageZoom + delta, 0.5), 3);
+    const newZoom = Math.min(Math.max(imageZoomRef.current + delta, 0.5), 3);
     setImageZoom(newZoom);
     if (newZoom <= 1) {
       setImagePan({ x: 0, y: 0 });
     }
-  }, [imageZoom]);
+  }, []);
 
   // Real-time elapsed timer
   useEffect(() => {
