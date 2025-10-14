@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
 import aiIntegrationService from './services/aiIntegrationService';
+import enhancedAIIntegrationService from './services/enhancedAIIntegrationService';
 import bimService from './services/bimService';
 import dimensioningService from './services/dimensioningService';
 
@@ -872,7 +873,8 @@ const ArchitectAIEnhanced = () => {
         name: file.name,
         size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
         type: file.type,
-        preview: URL.createObjectURL(file)
+        preview: URL.createObjectURL(file),
+        file: file  // Keep reference to original File object for enhanced analysis
       })));
       setIsUploading(false);
     }, 500); // A small delay to ensure loader is visible
@@ -907,20 +909,23 @@ const ArchitectAIEnhanced = () => {
       console.log('🎲 Project seed for consistent outputs:', projectSeed);
       console.log('⚖️  Material Weight:', materialWeight, '| Characteristic Weight:', characteristicWeight);
 
-      // STEP 5: Check if portfolio images are available
-      // Portfolio is only required if blendWeight > 0
-      const portfolioImages = (portfolioFiles || [])
-        .map(file => file.url || file.preview)
-        .filter(Boolean);
+      // STEP 5: Prepare portfolio files for enhanced analysis
+      // Extract original File objects for enhanced portfolio analysis
+      const portfolioFilesForAnalysis = (portfolioFiles || [])
+        .map(item => item.file)  // Extract File object from wrapper
+        .filter(Boolean);         // Remove any undefined values
 
-      // STEP 5: Use integrated design generation workflow with dual weights
-      console.log('🎯 Using integrated design generation with dual weight style blending');
+      // STEP 5: Use enhanced intelligent design generation workflow
+      // This includes UK location intelligence, GPT-4 Vision portfolio analysis, and style blending
+      console.log('🎯 Using enhanced intelligent design generation workflow');
       console.log('📊 Material Weight:', materialWeight, 'Characteristic Weight:', characteristicWeight);
-      const aiResult = await aiIntegrationService.generateIntegratedDesign(
+      console.log('📁 Portfolio files:', portfolioFilesForAnalysis.length);
+
+      const aiResult = await enhancedAIIntegrationService.generateCompleteIntelligentDesign(
         projectContext,
-        portfolioImages,
-        materialWeight,      // NEW: Pass material weight separately
-        characteristicWeight // NEW: Pass characteristic weight separately
+        portfolioFilesForAnalysis,  // Pass File objects for enhanced analysis
+        materialWeight,              // Material weight for style blending
+        characteristicWeight         // Characteristic weight for style blending
       );
 
       console.log('✅ AI design generation complete:', aiResult);
