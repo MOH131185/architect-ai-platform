@@ -8,6 +8,7 @@ import replicateService from './replicateService';
 import enhancedUKLocationService from './enhancedUKLocationService';
 import enhancedPortfolioService from './enhancedPortfolioService';
 import aiIntegrationService from './aiIntegrationService';
+import designDNAGenerator from './designDNAGenerator';
 
 class EnhancedAIIntegrationService {
   constructor() {
@@ -119,9 +120,10 @@ class EnhancedAIIntegrationService {
       }
 
       // ========================================
-      // STEP 4: CREATE BUILDING DNA
+      // STEP 4: CREATE COMPREHENSIVE DESIGN DNA WITH OPENAI
       // ========================================
-      console.log('\n🧬 STEP 4: Creating Building DNA for Perfect Consistency');
+      console.log('\n🧬 STEP 4: Creating Comprehensive Design DNA for 80%+ Consistency');
+      console.log('   Using OpenAI to generate ultra-detailed specifications...');
 
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       console.log('   Project Seed:', projectSeed);
@@ -140,17 +142,40 @@ class EnhancedAIIntegrationService {
         regulations: ukAnalysis?.regulations
       };
 
-      // Generate Building DNA using existing aiIntegrationService method
-      const buildingDNA = this.aiIntegration.createBuildingDNA(enhancedContext, blendedStyle);
+      // Generate comprehensive Design DNA using OpenAI (with fallback)
+      const comprehensiveDNA = await designDNAGenerator.generateComprehensiveDesignDNA(enhancedContext);
+
+      // Also generate basic Building DNA for backward compatibility
+      const basicDNA = this.aiIntegration.createBuildingDNA(enhancedContext, blendedStyle);
+
+      // Merge both DNAs - comprehensive takes priority
+      const buildingDNA = {
+        ...basicDNA,
+        ...comprehensiveDNA,
+        // Ensure critical fields exist
+        dimensions: comprehensiveDNA.dimensions || basicDNA.dimensions,
+        materials: comprehensiveDNA.materials || basicDNA.materials,
+        roof: comprehensiveDNA.roof || basicDNA.roof,
+        windows: comprehensiveDNA.windows || basicDNA.windows,
+        colorPalette: comprehensiveDNA.colorPalette || {},
+        consistencyNotes: comprehensiveDNA.consistencyNotes || {}
+      };
+
       enhancedContext.buildingDNA = buildingDNA;
       enhancedContext.masterDesignSpec = buildingDNA;
+      enhancedContext.comprehensiveDNA = comprehensiveDNA;
 
-      console.log('✅ Building DNA Created:');
+      console.log('✅ Comprehensive Design DNA Created:');
       console.log('   Dimensions:', `${buildingDNA.dimensions?.length || 15}m × ${buildingDNA.dimensions?.width || 10}m`);
-      console.log('   Floors:', buildingDNA.dimensions?.floorCount || buildingDNA.dimensions?.floors || 2);
-      console.log('   Materials:', buildingDNA.materials?.exterior || 'Modern materials');
-      console.log('   Roof:', buildingDNA.roof?.type || 'gable');
-      console.log('   Windows:', buildingDNA.openings?.windows?.type || buildingDNA.windows?.pattern || 'modern windows');
+      console.log('   Floors:', buildingDNA.dimensions?.floorCount || 2);
+      console.log('   Primary Material:', buildingDNA.materials?.exterior?.primary || buildingDNA.materials?.exterior || 'Modern materials');
+      console.log('   Material Color:', buildingDNA.materials?.exterior?.color || 'Natural');
+      console.log('   Roof:', buildingDNA.roof?.type || 'gable', buildingDNA.roof?.material || '');
+      console.log('   Windows:', buildingDNA.windows?.type || 'modern', '-', buildingDNA.windows?.color || '');
+      console.log('   Color Palette:', buildingDNA.colorPalette?.primary || 'Natural tones');
+      if (comprehensiveDNA.consistencyNotes?.criticalForAllViews) {
+        console.log('   🎯 Consistency Rule:', comprehensiveDNA.consistencyNotes.criticalForAllViews);
+      }
 
       // ========================================
       // STEP 5: GENERATE FLOOR PLANS
