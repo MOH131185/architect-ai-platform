@@ -598,7 +598,17 @@ class ReplicateService {
         };
 
       case 'axonometric':
-        // Use blended style description if available for consistency with other views
+        // Extract Building DNA for perfect consistency
+        const buildingDNA = projectContext.buildingDNA || projectContext.masterDesignSpec || {};
+        const dnaMaterials = buildingDNA.materials?.exterior || unifiedDesc.materials;
+        const dnaRoof = buildingDNA.roof?.type || 'gable roof';
+        const dnaWindows = buildingDNA.openings?.windows?.type || buildingDNA.windows?.pattern || 'modern windows';
+        const dnaDimensions = buildingDNA.dimensions || {};
+        const dnaLength = dnaDimensions.length || dnaDimensions.width || 15;
+        const dnaWidth = dnaDimensions.width || dnaDimensions.depth || 10;
+        const dnaHeight = dnaDimensions.height || dnaDimensions.floorCount * 3.5 || 7;
+
+        // Use blended style description if available
         const blendedDesc = projectContext.blendedPrompt || (projectContext.blendedStyle?.description);
         const styleContext = blendedDesc
           ? `matching the ${unifiedDesc.architecturalStyle} style design from floor plans and elevations`
@@ -607,8 +617,8 @@ class ReplicateService {
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional architectural axonometric 45-degree isometric view of the SAME ${unifiedDesc.fullDescription} ${styleContext}, isometric 3D projection from above showing ${entranceDir}-facing entrance clearly visible on ${entranceDir} side, ${unifiedDesc.materials} construction consistent with elevations, ${unifiedDesc.features}, ${unifiedDesc.floorCount} floor levels clearly visible with floor separation lines, technical illustration style matching other technical drawings, architectural drawing with clean precise lines, complete roof structure and all building volumes shown, professional architectural visualization, high detail, precise geometry, design must match floor plan layout and elevation facades exactly, unified consistent building design`,
+          materials: dnaMaterials,
+          prompt: `Professional architectural axonometric 45-degree isometric technical drawing view of the EXACT SAME BUILDING from floor plans and elevations. CRITICAL CONSISTENCY REQUIREMENTS: Building dimensions EXACTLY ${dnaLength}m × ${dnaWidth}m × ${dnaHeight}m, ${unifiedDesc.floorCount} floors, ${entranceDir}-facing entrance on ${entranceDir} side, EXACT materials: ${dnaMaterials} construction IDENTICAL to elevation drawings, roof type: ${dnaRoof} EXACTLY as shown in elevations, windows: ${dnaWindows} EXACTLY matching elevation pattern, ${unifiedDesc.features}, ${styleContext}, isometric 3D projection from 45-degree angle showing complete building volume, floor separation lines visible at each level, technical illustration with architectural precision, clean professional CAD-style lines, MUST USE IDENTICAL MATERIALS AND COLORS as other 3D views (Exterior Front and Side views), same brick/material texture and color palette, unified consistent architectural design, this is the SAME building shown in all other views just from a different angle, high detail precise geometry matching floor plan footprint and elevation facades exactly`,
           perspective: 'axonometric view',
           width: 1024,
           height: 768
