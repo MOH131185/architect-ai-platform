@@ -539,17 +539,39 @@ class ReplicateService {
     switch (viewType) {
       case 'exterior':
       case 'exterior_front':
-        // Extract design spec for consistency with floor plans
+        // Extract comprehensive Design DNA for 80%+ consistency
+        const buildingDNA = projectContext.buildingDNA || projectContext.masterDesignSpec || projectContext.comprehensiveDNA || {};
         const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
-        const specificMaterials = designContext.materials || unifiedDesc.materials;
-        const roofType = designContext.roof?.type || 'flat roof';
-        const windowPattern = designContext.windows?.pattern || 'ribbon windows';
+
+        // Extract EXACT material specifications from comprehensive DNA
+        const dnaMaterialsExt = buildingDNA.materials?.exterior || {};
+        const materialPrimaryExt = dnaMaterialsExt.primary || unifiedDesc.materials;
+        const materialColorExt = dnaMaterialsExt.color || 'natural';
+        const materialTextureExt = dnaMaterialsExt.texture || 'smooth finish';
+        const specificMaterialsExt = `${materialPrimaryExt} (${materialColorExt}) with ${materialTextureExt}`;
+
+        // Extract exact roof specifications
+        const roofTypeExt = buildingDNA.roof?.type || 'gable';
+        const roofMaterialExt = buildingDNA.roof?.material || 'tiles';
+        const roofColorExt = buildingDNA.roof?.color || 'dark grey';
+        const roofSpecExt = `${roofTypeExt} roof with ${roofMaterialExt} (${roofColorExt})`;
+
+        // Extract exact window specifications
+        const windowTypeExt = buildingDNA.windows?.type || 'casement';
+        const windowColorExt = buildingDNA.windows?.color || 'white';
+        const windowPatternExt = buildingDNA.windows?.pattern || 'regular grid pattern';
+        const windowSpecExt = `${windowTypeExt} windows with ${windowColorExt} frames in ${windowPatternExt}`;
+
+        // Get consistency notes
+        const consistencyRuleExt = buildingDNA.consistencyNotes?.viewEmphasis3d ||
+                                   buildingDNA.consistencyNotes?.criticalForAllViews ||
+                                   `Photorealistic ${materialPrimaryExt} (${materialColorExt}) texture`;
 
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: specificMaterials,
-          prompt: `Professional 3D photorealistic architectural visualization showing ${entranceDir}-facing front view of the SAME ${unifiedDesc.fullDescription} matching floor plan and elevation designs exactly, ${specificMaterials} facade construction consistent with technical drawings, ${windowPattern} clearly visible, ${roofType} profile, ${unifiedDesc.features}, main entrance prominently visible on ${entranceDir} side matching elevation drawings, ${unifiedDesc.floorCount} levels height with clear floor separations matching technical dimensions, professional architectural photography, daylight, clear blue sky, photorealistic rendering, high quality, detailed facade matching elevation materials and window patterns, landscape context with trees and hardscape, design must be identical to floor plans and elevations, unified consistent building, no design variations`,
+          materials: specificMaterialsExt,
+          prompt: `Professional 3D photorealistic architectural visualization showing ${entranceDir}-facing front view of the SAME ${unifiedDesc.fullDescription} matching floor plan and elevation designs exactly, CRITICAL CONSISTENCY REQUIREMENT: ${consistencyRuleExt}, EXACT MATERIALS: ${specificMaterialsExt} facade construction IDENTICAL to elevation drawings and all other views, ${windowSpecExt} clearly visible matching elevation specifications, ${roofSpecExt} profile EXACTLY as shown in elevations, ${unifiedDesc.features}, main entrance prominently visible on ${entranceDir} side matching elevation drawings, ${unifiedDesc.floorCount} levels height with clear floor separations matching technical dimensions, professional architectural photography, daylight, clear blue sky, photorealistic rendering with accurate ${materialPrimaryExt} (${materialColorExt}) texture and color, high quality, detailed facade showing ${materialTextureExt} of ${materialPrimaryExt}, landscape context with trees and hardscape, design must be identical to floor plans and elevations, unified consistent building, no design variations, MUST USE SAME MATERIALS AND COLORS as all other views (${materialPrimaryExt} in ${materialColorExt}), same ${roofMaterialExt} roof color (${roofColorExt}), same ${windowColorExt} window frames`,
           perspective: 'exterior front view',
           width: 1536,
           height: 1152,
@@ -559,11 +581,37 @@ class ReplicateService {
 
       case 'exterior_side':
         const sideDir = this.getPerpendicularDirection(entranceDir);
+
+        // Extract comprehensive Design DNA for 80%+ consistency
+        const buildingDNASide = projectContext.buildingDNA || projectContext.masterDesignSpec || projectContext.comprehensiveDNA || {};
+
+        // Extract EXACT material specifications
+        const dnaMaterialsSide = buildingDNASide.materials?.exterior || {};
+        const materialPrimarySide = dnaMaterialsSide.primary || unifiedDesc.materials;
+        const materialColorSide = dnaMaterialsSide.color || 'natural';
+        const materialTextureSide = dnaMaterialsSide.texture || 'smooth finish';
+        const specificMaterialsSide = `${materialPrimarySide} (${materialColorSide}) with ${materialTextureSide}`;
+
+        // Extract roof specifications
+        const roofTypeSide = buildingDNASide.roof?.type || 'gable';
+        const roofMaterialSide = buildingDNASide.roof?.material || 'tiles';
+        const roofColorSide = buildingDNASide.roof?.color || 'dark grey';
+
+        // Extract window specifications
+        const windowTypeSide = buildingDNASide.windows?.type || 'casement';
+        const windowColorSide = buildingDNASide.windows?.color || 'white';
+        const windowPatternSide = buildingDNASide.windows?.pattern || 'regular grid pattern';
+
+        // Get consistency notes
+        const consistencyRuleSide = buildingDNASide.consistencyNotes?.viewEmphasis3d ||
+                                    buildingDNASide.consistencyNotes?.criticalForAllViews ||
+                                    `Photorealistic ${materialPrimarySide} (${materialColorSide}) texture`;
+
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional 3D architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}, ${unifiedDesc.materials} construction, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible, professional architectural photography, daylight, clear sky, photorealistic rendering, high quality, detailed side facade, landscape context with trees`,
+          materials: specificMaterialsSide,
+          prompt: `Professional 3D photorealistic architectural visualization showing ${sideDir} side view of ${unifiedDesc.fullDescription}, CRITICAL CONSISTENCY REQUIREMENT: ${consistencyRuleSide}, EXACT MATERIALS: ${specificMaterialsSide} construction IDENTICAL to front view and elevation drawings, ${windowTypeSide} windows with ${windowColorSide} frames in ${windowPatternSide} matching all other views, ${roofTypeSide} roof with ${roofMaterialSide} (${roofColorSide}) profile, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels clearly visible with floor separations, professional architectural photography, daylight, clear sky, photorealistic rendering with accurate ${materialPrimarySide} (${materialColorSide}) texture and color, high quality, detailed side facade showing ${materialTextureSide}, landscape context with trees, MUST USE IDENTICAL MATERIALS AND COLORS as front view (${materialPrimarySide} in ${materialColorSide}), same ${roofMaterialSide} roof (${roofColorSide}), same ${windowColorSide} window frames, unified consistent architectural design`,
           perspective: 'exterior side view',
           width: 1024,
           height: 768
@@ -599,11 +647,11 @@ class ReplicateService {
 
       case 'axonometric':
         // Extract Building DNA for perfect consistency
-        const buildingDNA = projectContext.buildingDNA || projectContext.masterDesignSpec || {};
-        const dnaMaterials = buildingDNA.materials?.exterior || unifiedDesc.materials;
-        const dnaRoof = buildingDNA.roof?.type || 'gable roof';
-        const dnaWindows = buildingDNA.openings?.windows?.type || buildingDNA.windows?.pattern || 'modern windows';
-        const dnaDimensions = buildingDNA.dimensions || {};
+        const buildingDNAAxo = projectContext.buildingDNA || projectContext.masterDesignSpec || {};
+        const dnaMaterials = buildingDNAAxo.materials?.exterior || unifiedDesc.materials;
+        const dnaRoof = buildingDNAAxo.roof?.type || 'gable roof';
+        const dnaWindows = buildingDNAAxo.openings?.windows?.type || buildingDNAAxo.windows?.pattern || 'modern windows';
+        const dnaDimensions = buildingDNAAxo.dimensions || {};
         const dnaLength = dnaDimensions.length || dnaDimensions.width || 15;
         const dnaWidth = dnaDimensions.width || dnaDimensions.depth || 10;
         const dnaHeight = dnaDimensions.height || dnaDimensions.floorCount * 3.5 || 7;
@@ -625,11 +673,38 @@ class ReplicateService {
         };
 
       case 'perspective':
+        // Extract comprehensive Design DNA for 80%+ consistency
+        const buildingDNAPersp = projectContext.buildingDNA || projectContext.masterDesignSpec || projectContext.comprehensiveDNA || {};
+
+        // Extract EXACT material specifications
+        const dnaMaterialsPersp = buildingDNAPersp.materials?.exterior || {};
+        const materialPrimaryPersp = dnaMaterialsPersp.primary || unifiedDesc.materials;
+        const materialColorPersp = dnaMaterialsPersp.color || 'natural';
+        const materialTexturePersp = dnaMaterialsPersp.texture || 'smooth finish';
+        const specificMaterialsPersp = `${materialPrimaryPersp} (${materialColorPersp}) with ${materialTexturePersp}`;
+
+        // Extract roof specifications
+        const roofTypePersp = buildingDNAPersp.roof?.type || 'gable';
+        const roofMaterialPersp = buildingDNAPersp.roof?.material || 'tiles';
+        const roofColorPersp = buildingDNAPersp.roof?.color || 'dark grey';
+
+        // Extract window specifications
+        const windowColorPersp = buildingDNAPersp.windows?.color || 'white';
+
+        // Get color palette for consistency
+        const colorPalette = buildingDNAPersp.colorPalette || {};
+        const primaryColor = colorPalette.primary || materialColorPersp;
+
+        // Get consistency notes
+        const consistencyRulePersp = buildingDNAPersp.consistencyNotes?.viewEmphasis3d ||
+                                     buildingDNAPersp.consistencyNotes?.criticalForAllViews ||
+                                     `Photorealistic ${materialPrimaryPersp} (${materialColorPersp}) texture`;
+
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: unifiedDesc.materials,
-          prompt: `Professional architectural perspective rendering of ${unifiedDesc.fullDescription}, dramatic 3D perspective view showing ${entranceDir}-facing entrance with depth and scale, ${unifiedDesc.materials} facade, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height, photorealistic architectural rendering, landscape context with trees and people for scale, golden hour lighting, professional architectural visualization, cinematic composition, high quality detailed rendering`,
+          materials: specificMaterialsPersp,
+          prompt: `Professional architectural perspective rendering of ${unifiedDesc.fullDescription}, dramatic 3D perspective view showing ${entranceDir}-facing entrance with depth and scale, CRITICAL CONSISTENCY REQUIREMENT: ${consistencyRulePersp}, EXACT MATERIALS: ${specificMaterialsPersp} facade IDENTICAL to all other views, ${roofTypePersp} roof with ${roofMaterialPersp} (${roofColorPersp}) profile matching elevations, ${windowColorPersp} window frames matching all views, ${unifiedDesc.features}, ${unifiedDesc.floorCount} levels height, photorealistic architectural rendering with accurate ${materialPrimaryPersp} (${materialColorPersp}) texture showing ${materialTexturePersp}, landscape context with trees and people for scale, golden hour lighting, professional architectural visualization, cinematic composition, high quality detailed rendering, MUST USE CONSISTENT COLOR PALETTE with primary color ${primaryColor}, same materials as front and side views (${materialPrimaryPersp} in ${materialColorPersp}), unified consistent architectural design`,
           perspective: 'perspective view',
           width: 1024,
           height: 768
@@ -776,6 +851,7 @@ class ReplicateService {
 
   /**
    * Build parameters for elevation drawings
+   * ENHANCED: Uses comprehensive Design DNA for 80%+ consistency
    */
   buildElevationParameters(projectContext, direction = 'north') {
     // Get unified building description for consistency
@@ -786,15 +862,44 @@ class ReplicateService {
     const isEntranceElevation = direction === entranceDir;
     const elevationType = isEntranceElevation ? 'main entrance elevation' : 'side elevation';
 
-    // Extract additional design details from context for consistency
+    // Extract comprehensive Design DNA for 80%+ consistency
+    const buildingDNA = projectContext.buildingDNA || projectContext.masterDesignSpec || projectContext.comprehensiveDNA || {};
     const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
-    const specificMaterials = designContext.materials || unifiedDesc.materials;
-    const roofType = designContext.roof?.type || 'flat roof';
-    const windowPattern = designContext.windows?.pattern || 'ribbon windows';
-    const floorHeight = designContext.dimensions?.floorHeight || '3.50m';
+
+    // Extract EXACT material specifications from comprehensive DNA
+    const dnaMaterials = buildingDNA.materials?.exterior || {};
+    const materialPrimary = dnaMaterials.primary || unifiedDesc.materials;
+    const materialColor = dnaMaterials.color || 'natural';
+    const materialTexture = dnaMaterials.texture || 'smooth finish';
+    const materialFinish = dnaMaterials.finish || 'matte';
+
+    // Construct detailed material description for consistency
+    const specificMaterials = `${materialPrimary} (${materialColor}) with ${materialTexture}, ${materialFinish} finish`;
+
+    // Extract exact roof specifications
+    const roofType = buildingDNA.roof?.type || 'gable';
+    const roofMaterial = buildingDNA.roof?.material || 'tiles';
+    const roofColor = buildingDNA.roof?.color || 'dark grey';
+    const roofSpec = `${roofType} ${roofMaterial} (${roofColor})`;
+
+    // Extract exact window specifications
+    const windowType = buildingDNA.windows?.type || 'casement';
+    const windowColor = buildingDNA.windows?.color || 'white';
+    const windowFrame = buildingDNA.materials?.windows?.frame || `${windowColor} frames`;
+    const windowPattern = buildingDNA.windows?.pattern || 'regular grid pattern';
+    const windowSpec = `${windowType} windows with ${windowFrame}, ${windowPattern}`;
+
+    // Extract dimensions
+    const floorHeight = buildingDNA.dimensions?.floorHeight || designContext.dimensions?.floorHeight || 3.2;
+    const totalHeight = buildingDNA.dimensions?.height || (floorHeight * unifiedDesc.floorCount);
+
+    // Get consistency notes for elevations
+    const consistencyRule = buildingDNA.consistencyNotes?.elevationEmphasis ||
+                           buildingDNA.consistencyNotes?.criticalForAllViews ||
+                           `MUST USE: ${materialPrimary} (${materialColor}) for ALL exterior walls`;
 
     return {
-      prompt: `MAXIMUM QUALITY professional CAD architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW ORTHOGRAPHIC PROJECTION, ULTRA-PRECISE CAD-QUALITY TECHNICAL DRAWING showing: ${unifiedDesc.floorCount} floor levels stacked vertically with clear floor division lines at ${floorHeight} intervals, ${specificMaterials} facade materials indicated with professional architectural hatching patterns and textures (brick coursing, stone panels, glass curtain wall modules), ${windowPattern} shown as precise rectangles with frames, glazing lines, and mullions, door openings with frame details and thresholds${isEntranceElevation ? ', main entrance door clearly articulated with threshold, frame, and canopy' : ''}, ground line marked (±0.00m), ${roofType} profile with edge detail and parapet/eaves, floor separation lines at each level, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +${floorHeight}, +${parseFloat(floorHeight)*2}m, etc.), floor-to-floor heights (${floorHeight} typical), total building height dimension with extension lines, horizontal dimensions showing overall building width, facade bay modules and structural grid spacing, window opening dimensions (height × width), door opening dimensions, dimension extension lines with clear arrows, dimension text in meters clearly labeled and legible, elevation level markers at each floor level, ground level reference datum (±0.00m), material legend and hatching key, detail reference bubbles and section cut indicators, ORTHOGRAPHIC PROJECTION technical precision matching AutoCAD/Revit output quality, professional CAD-style architectural construction documentation with full dimensioning system and annotations, ultra-crisp clean black and white linework, maximum detail technical drawing, laser-sharp precise lines, professional construction documentation standards`,
+      prompt: `MAXIMUM QUALITY professional CAD architectural elevation drawing, ${direction} ${elevationType} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D FACADE VIEW ORTHOGRAPHIC PROJECTION, CRITICAL CONSISTENCY REQUIREMENT: ${consistencyRule}, ULTRA-PRECISE CAD-QUALITY TECHNICAL DRAWING showing: ${unifiedDesc.floorCount} floor levels stacked vertically with clear floor division lines at ${floorHeight}m intervals, EXACT MATERIALS: ${specificMaterials} facade construction IDENTICAL to 3D views and other elevations, materials shown with professional architectural hatching patterns and textures indicating ${materialPrimary} (${materialColor}) with ${materialTexture}, ${windowSpec} shown as precise rectangles with glazing lines and mullions, door openings with frame details and thresholds${isEntranceElevation ? ', main entrance door clearly articulated with threshold, frame, and canopy' : ''}, ground line marked (±0.00m), ${roofSpec} profile with edge detail and parapet/eaves, floor separation lines at each level at ${floorHeight}m spacing, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +${floorHeight}m, +${floorHeight*2}m, etc.), floor-to-floor heights (${floorHeight}m typical), total building height ${totalHeight}m dimension with extension lines, horizontal dimensions showing overall building width, facade bay modules and structural grid spacing, window opening dimensions (height × width), door opening dimensions, dimension extension lines with clear arrows, dimension text in meters clearly labeled and legible, elevation level markers at each floor level, ground level reference datum (±0.00m), material legend showing ${materialPrimary} (${materialColor}), detail reference bubbles and section cut indicators, ORTHOGRAPHIC PROJECTION technical precision matching AutoCAD/Revit output quality, professional CAD-style architectural construction documentation with full dimensioning system and annotations, ultra-crisp clean black and white linework, maximum detail technical drawing, laser-sharp precise lines, professional construction documentation standards, MUST USE IDENTICAL MATERIALS AND COLORS as all other elevations (${materialPrimary} in ${materialColor}), unified consistent architectural design`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: specificMaterials,
@@ -803,13 +908,14 @@ class ReplicateService {
       height: 1536,
       steps: 70,
       guidanceScale: 9.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, inconsistent design"
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, bird's eye view, interior view, section cut, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, inconsistent design, yellow walls, wrong material color, incorrect materials"
       // Removed ControlNet completely - elevations should be independent 2D drawings
     };
   }
 
   /**
    * Build parameters for section drawings
+   * ENHANCED: Uses comprehensive Design DNA for 80%+ consistency
    */
   buildSectionParameters(projectContext, sectionType = 'longitudinal') {
     // Get unified building description for consistency
@@ -819,15 +925,36 @@ class ReplicateService {
       ? 'longitudinal section, length-wise cut through building showing entrance to back'
       : 'cross section, width-wise cut through building';
 
-    // Extract additional design details from context for consistency
+    // Extract comprehensive Design DNA for 80%+ consistency
+    const buildingDNA = projectContext.buildingDNA || projectContext.masterDesignSpec || projectContext.comprehensiveDNA || {};
     const designContext = projectContext.masterDesignSpec || projectContext.reasoningParams || {};
-    const specificMaterials = designContext.materials || unifiedDesc.materials;
-    const roofType = designContext.roof?.type || 'flat roof';
-    const floorHeight = designContext.dimensions?.floorHeight || '3.50m';
-    const ceilingHeight = '2.70m';
+
+    // Extract EXACT material specifications from comprehensive DNA
+    const dnaMaterials = buildingDNA.materials?.exterior || {};
+    const materialPrimary = dnaMaterials.primary || unifiedDesc.materials;
+    const materialColor = dnaMaterials.color || 'natural';
+    const materialTexture = dnaMaterials.texture || 'smooth finish';
+    const specificMaterials = `${materialPrimary} (${materialColor}) with ${materialTexture}`;
+
+    // Extract exact roof specifications
+    const roofType = buildingDNA.roof?.type || 'gable';
+    const roofMaterial = buildingDNA.roof?.material || 'tiles';
+    const roofPitch = buildingDNA.roof?.pitch || 'medium 40-45 degrees';
+    const roofSpec = `${roofType} ${roofMaterial} at ${roofPitch}`;
+
+    // Extract exact dimensions
+    const floorHeight = buildingDNA.dimensions?.floorHeight || designContext.dimensions?.floorHeight || 3.2;
+    const totalHeight = buildingDNA.dimensions?.height || (floorHeight * unifiedDesc.floorCount);
+    const buildingLength = buildingDNA.dimensions?.length || 15;
+    const buildingWidth = buildingDNA.dimensions?.width || 10;
+    const ceilingHeight = 2.7;
+
+    // Get consistency notes
+    const consistencyRule = buildingDNA.consistencyNotes?.criticalForAllViews ||
+                           `MUST USE: ${materialPrimary} (${materialColor}) for ALL exterior walls`;
 
     return {
-      prompt: `MAXIMUM QUALITY professional CAD architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW ORTHOGRAPHIC PROJECTION, ULTRA-PRECISE CAD-QUALITY TECHNICAL DRAWING showing: all ${unifiedDesc.floorCount} floor levels stacked vertically at ${floorHeight} intervals with clear separation lines, floor slabs shown as thick horizontal lines (200mm reinforced concrete), walls in section cut shown as thick solid black lines with poché (solid black fill indicating cut elements), interior room heights clearly visible with ${ceilingHeight} ceiling clearance, stairs with detailed treads (280mm) and risers (175mm)${unifiedDesc.floorCount > 1 ? ' connecting all floors with proper 30° rise and run, handrails indicated' : ''}, foundation wall (300mm) and spread footing shown below grade (-1.20m), ${roofType} structure in section with rafters/joists spacing (600mm o.c.) and roof assembly layers (waterproofing, insulation, structure), ${specificMaterials} construction assembly indicated with professional architectural hatching patterns (masonry coursing, concrete solid fill, insulation diagonal lines, structural steel cross-hatching), structural elements (beams 300×600mm, columns 300×300mm) clearly shown in section cut, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +${floorHeight}, +${parseFloat(floorHeight)*2}m, etc.), ceiling heights (${ceilingHeight} typical), total building height with parapet, foundation depth below grade (-1.20m), horizontal dimensions showing room widths, building depth, structural bay spacing, dimension extension lines with arrows, dimension text in meters clearly labeled, section cut line indicators (Section A-A or Section B-B), level markers and datum references at each floor, material notation legend with hatching key, detail reference callouts (numbered circles), finish floor level indicators (FFL), ORTHOGRAPHIC PROJECTION technical precision matching AutoCAD/Revit quality, section cut poché (solid black fill) for all cut structural elements, professional CAD-style construction documentation, architectural blueprint quality, ultra-crisp clean black and white linework, maximum technical detail, laser-sharp precise lines`,
+      prompt: `MAXIMUM QUALITY professional CAD architectural section drawing, ${sectionDesc} technical blueprint of ${unifiedDesc.fullDescription}, STRICTLY FLAT 2D CUT-THROUGH VIEW ORTHOGRAPHIC PROJECTION, CRITICAL CONSISTENCY REQUIREMENT: ${consistencyRule}, ULTRA-PRECISE CAD-QUALITY TECHNICAL DRAWING showing: all ${unifiedDesc.floorCount} floor levels stacked vertically at ${floorHeight}m intervals with clear separation lines, floor slabs shown as thick horizontal lines (200mm reinforced concrete), walls in section cut shown as thick solid black lines with poché (solid black fill indicating cut elements) using EXACT MATERIALS: ${specificMaterials} construction, interior room heights clearly visible with ${ceilingHeight}m ceiling clearance, stairs with detailed treads (280mm) and risers (175mm)${unifiedDesc.floorCount > 1 ? ' connecting all floors with proper 30° rise and run, handrails indicated' : ''}, foundation wall (300mm) and spread footing shown below grade (-1.20m), ${roofSpec} structure in section with rafters/joists spacing (600mm o.c.) and roof assembly layers (waterproofing, insulation, structure), ${specificMaterials} construction assembly indicated with professional architectural hatching patterns showing ${materialPrimary} (${materialColor}) construction (masonry coursing, concrete solid fill, insulation diagonal lines, structural steel cross-hatching), structural elements (beams 300×600mm, columns 300×300mm) clearly shown in section cut, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM: vertical dimension chains showing floor heights (+0.00m, +${floorHeight}m, +${floorHeight*2}m, etc.), ceiling heights (${ceilingHeight}m typical), total building height ${totalHeight}m with parapet, foundation depth below grade (-1.20m), horizontal dimensions showing room widths ${sectionType === 'longitudinal' ? buildingLength : buildingWidth}m, building depth, structural bay spacing, dimension extension lines with arrows, dimension text in meters clearly labeled, section cut line indicators (Section A-A or Section B-B), level markers and datum references at each floor, material notation legend showing ${materialPrimary} (${materialColor}) with hatching key, detail reference callouts (numbered circles), finish floor level indicators (FFL), ORTHOGRAPHIC PROJECTION technical precision matching AutoCAD/Revit quality, section cut poché (solid black fill) for all cut structural elements, professional CAD-style construction documentation, architectural blueprint quality, ultra-crisp clean black and white linework, maximum technical detail, laser-sharp precise lines, ${materialPrimary} (${materialColor}) wall construction clearly indicated`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: specificMaterials,
@@ -836,7 +963,7 @@ class ReplicateService {
       height: 1536,
       steps: 70,
       guidanceScale: 9.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, inconsistent design"
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, floor plan, top view, plan view, elevation view, exterior view, facade, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, inconsistent design, wrong material color, incorrect materials"
       // Removed ControlNet completely - sections should be independent 2D drawings
     };
   }
