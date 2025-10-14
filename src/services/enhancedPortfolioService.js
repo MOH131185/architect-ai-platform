@@ -83,19 +83,64 @@ class EnhancedPortfolioService {
       }
     }
 
-    // Limit to first 10 images to avoid token limits
-    return images.slice(0, 10);
+    // Limit to first 5 images to avoid payload size limits (413 error)
+    // With compression, 5 images should be ~2-3MB total
+    return images.slice(0, 5);
   }
 
   /**
-   * Convert file to base64
+   * Convert file to base64 with image compression
    */
-  fileToBase64(file) {
+  async fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
+      reader.onload = async (e) => {
+        try {
+          // Compress image to reduce payload size
+          const compressed = await this.compressImage(e.target.result, file.type);
+          resolve(compressed);
+        } catch (error) {
+          console.warn('Image compression failed, using original:', error);
+          resolve(e.target.result);
+        }
+      };
       reader.onerror = reject;
       reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Compress image to reduce payload size for API
+   */
+  compressImage(dataUrl, mimeType) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        // Resize to max 1024px on longest side
+        const MAX_SIZE = 1024;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height && width > MAX_SIZE) {
+          height = (height / width) * MAX_SIZE;
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width = (width / height) * MAX_SIZE;
+          height = MAX_SIZE;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Compress to JPEG with 0.7 quality
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(compressed);
+      };
+      img.onerror = () => resolve(dataUrl); // Fallback to original
+      img.src = dataUrl;
     });
   }
 

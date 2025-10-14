@@ -146,11 +146,11 @@ class EnhancedAIIntegrationService {
       enhancedContext.masterDesignSpec = buildingDNA;
 
       console.log('✅ Building DNA Created:');
-      console.log('   Dimensions:', `${buildingDNA.dimensions.length}m × ${buildingDNA.dimensions.width}m`);
-      console.log('   Floors:', buildingDNA.dimensions.floorCount);
-      console.log('   Materials:', buildingDNA.materials.exterior);
-      console.log('   Roof:', buildingDNA.roof.type);
-      console.log('   Windows:', buildingDNA.openings.windows.type);
+      console.log('   Dimensions:', `${buildingDNA.dimensions?.length || 15}m × ${buildingDNA.dimensions?.width || 10}m`);
+      console.log('   Floors:', buildingDNA.dimensions?.floorCount || buildingDNA.dimensions?.floors || 2);
+      console.log('   Materials:', buildingDNA.materials?.exterior || 'Modern materials');
+      console.log('   Roof:', buildingDNA.roof?.type || 'gable');
+      console.log('   Windows:', buildingDNA.openings?.windows?.type || buildingDNA.windows?.pattern || 'modern windows');
 
       // ========================================
       // STEP 5: GENERATE FLOOR PLANS
@@ -225,8 +225,8 @@ class EnhancedAIIntegrationService {
           region: ukAnalysis?.region || 'Global',
           portfolioStyle: portfolioAnalysis?.primaryStyle?.name || 'None',
           blendedStyleName: blendedStyle.styleName,
-          totalFloors: buildingDNA.dimensions.floorCount,
-          buildingDimensions: `${buildingDNA.dimensions.length}m × ${buildingDNA.dimensions.width}m`,
+          totalFloors: buildingDNA.dimensions?.floorCount || buildingDNA.dimensions?.floors || 2,
+          buildingDimensions: `${buildingDNA.dimensions?.length || 15}m × ${buildingDNA.dimensions?.width || 10}m`,
           materials: blendedStyle.materials.slice(0, 3)
         },
 
