@@ -8,7 +8,6 @@ import {
   Users, Shield, Zap, BarChart3, Eye, AlertCircle, X, ZoomIn, ZoomOut, Maximize2
 } from 'lucide-react';
 import { locationIntelligence } from './services/locationIntelligence';
-import aiIntegrationService from './services/aiIntegrationService';
 import enhancedAIIntegrationService from './services/enhancedAIIntegrationService';
 import bimService from './services/bimService';
 import dimensioningService from './services/dimensioningService';

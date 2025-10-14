@@ -480,7 +480,7 @@ class EnhancedUKLocationService {
     const considerations = regionData?.sustainabilityConsiderations || [];
 
     return {
-      passive Design: [
+      passiveDesign: [
         {
           strategy: 'Orientation',
           recommendation: sunData.optimalOrientation,
@@ -552,7 +552,7 @@ class EnhancedUKLocationService {
           benefit: 'Support local ecosystems'
         }
       ],
-      regional Considerations: considerations.map(c => ({
+      regionalConsiderations: considerations.map(c => ({
         consideration: c,
         action: 'Required'
       }))

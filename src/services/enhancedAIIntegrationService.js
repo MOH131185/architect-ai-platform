@@ -7,9 +7,7 @@ import openaiService from './openaiService';
 import replicateService from './replicateService';
 import enhancedUKLocationService from './enhancedUKLocationService';
 import enhancedPortfolioService from './enhancedPortfolioService';
-import buildingDNAService from './buildingDNAService';
-import bimService from './bimService';
-import dimensioningService from './dimensioningService';
+import aiIntegrationService from './aiIntegrationService';
 
 class EnhancedAIIntegrationService {
   constructor() {
@@ -17,9 +15,7 @@ class EnhancedAIIntegrationService {
     this.replicate = replicateService;
     this.ukLocation = enhancedUKLocationService;
     this.portfolio = enhancedPortfolioService;
-    this.buildingDNA = buildingDNAService;
-    this.bim = bimService;
-    this.dimensioning = dimensioningService;
+    this.aiIntegration = aiIntegrationService;
   }
 
   /**
@@ -144,8 +140,8 @@ class EnhancedAIIntegrationService {
         regulations: ukAnalysis?.regulations
       };
 
-      // Generate Building DNA
-      const buildingDNA = this.buildingDNA.generateBuildingDNA(enhancedContext);
+      // Generate Building DNA using existing aiIntegrationService method
+      const buildingDNA = this.aiIntegration.createBuildingDNA(enhancedContext, blendedStyle);
       enhancedContext.buildingDNA = buildingDNA;
       enhancedContext.masterDesignSpec = buildingDNA;
 
