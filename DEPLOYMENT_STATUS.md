@@ -1,9 +1,20 @@
 # 🎉 Deployment Status - ArchiAI Platform
 
-## ✅ COMPLETE - All Features Restored & AI Integrated!
+## ✅ REVERTED TO: Building DNA for Perfect 2D/3D Consistency (Commit 64c7472)
 
 **Website**: https://www.archiaisolution.pro
-**Last Updated**: 2025-10-05
+**Current Commit**: 64c7472 - feat: implement Building DNA for perfect 2D/3D design consistency
+**Last Updated**: 2025-10-14
+**Status**: Reverted from img2img experiments
+
+### 🔄 Why Reverted
+The img2img implementation attempts (commits 541140f through d53b90a) all encountered CUDA out of memory errors due to ControlNet triggering 16GB GPU memory requirements. Reverted to stable Building DNA implementation which uses text-based generation only.
+
+### 🆕 Current Features (Commit 64c7472)
+- **Building DNA Service**: Comprehensive building specification system
+- **Perfect 2D/3D Consistency**: All views use unified seed and detailed prompts
+- **Text-Based Generation**: No img2img, no ControlNet - pure SDXL text-to-image
+- **Stable & Working**: All generations succeed without CUDA errors
 
 ---
 
