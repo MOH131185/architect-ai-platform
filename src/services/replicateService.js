@@ -450,21 +450,43 @@ class ReplicateService {
 
   /**
    * Calculate number of floors based on building area and type
+   * FIXED: Enforce single-family house constraints to prevent apartment buildings
    */
   calculateFloorCount(projectContext) {
     const area = projectContext.floorArea || 200;
-    const buildingType = projectContext.buildingProgram || 'house';
+    const buildingType = (projectContext.buildingProgram || 'house').toLowerCase();
 
     // Single-story buildings
     if (buildingType.includes('cottage') || buildingType.includes('bungalow')) {
       return 1;
     }
 
-    // Multi-story based on area
+    // CRITICAL FIX: Enforce single-family house constraints
+    // Detached houses, villas, single-family homes should be MAX 2-3 floors
+    // This prevents generating 5+ story apartment buildings when user selects "detached house"
+    const isSingleFamilyHouse =
+      buildingType.includes('house') ||
+      buildingType.includes('villa') ||
+      buildingType.includes('detached') ||
+      buildingType.includes('single-family') ||
+      buildingType.includes('residential house') ||
+      buildingType.includes('townhouse');
+
+    if (isSingleFamilyHouse) {
+      // Single-family houses: MAX 2 floors (3 for villas) based on area
+      if (area < 150) return 1;  // Small house: 1 floor (e.g. 120m²)
+      if (area < 400) return 2;  // Medium house: 2 floors (e.g. 200-300m²)
+      // Large houses stay 2 floors with larger footprint (e.g. 500m² = 250m² per floor)
+      // This prevents creating apartment buildings for large houses
+      if (buildingType.includes('villa') && area >= 400) return 3;  // Large villas can have 3 floors
+      return 2;  // All other houses: MAX 2 floors
+    }
+
+    // Multi-unit buildings (apartments, offices): 3-5+ floors allowed
     if (area < 150) return 1;
     if (area < 300) return 2;
     if (area < 500) return 3;
-    return Math.min(Math.ceil(area / 200), 5); // Max 5 floors
+    return Math.min(Math.ceil(area / 200), 5); // Max 5 floors for apartments/offices
   }
 
   /**
@@ -646,11 +668,25 @@ class ReplicateService {
         };
 
       case 'axonometric':
-        // Extract Building DNA for perfect consistency
+        // FIXED: Extract DETAILED material specs to match other 3D views
         const buildingDNAAxo = projectContext.buildingDNA || projectContext.masterDesignSpec || {};
-        const dnaMaterials = buildingDNAAxo.materials?.exterior || unifiedDesc.materials;
-        const dnaRoof = buildingDNAAxo.roof?.type || 'gable roof';
-        const dnaWindows = buildingDNAAxo.openings?.windows?.type || buildingDNAAxo.windows?.pattern || 'modern windows';
+
+        // Get EXACT material specifications (not just name) to match 3D views
+        const dnaMaterialsObj = buildingDNAAxo.materials?.exterior || {};
+        const materialPrimaryAxo = dnaMaterialsObj.primary || unifiedDesc.materials;
+        const materialColorAxo = dnaMaterialsObj.color || 'natural brick red-brown';  // More specific fallback
+        const materialTextureAxo = dnaMaterialsObj.texture || 'textured brick with mortar joints';  // Specific
+        const materialFullAxo = `${materialPrimaryAxo} (${materialColorAxo}) with ${materialTextureAxo}`;
+
+        const dnaRoof = buildingDNAAxo.roof?.type || 'gable';
+        const dnaRoofMaterial = buildingDNAAxo.roof?.material || 'tiles';
+        const dnaRoofColor = buildingDNAAxo.roof?.color || 'dark grey';
+        const dnaRoofFull = `${dnaRoof} roof with ${dnaRoofMaterial} (${dnaRoofColor})`;
+
+        const dnaWindows = buildingDNAAxo.windows?.type || 'casement';
+        const dnaWindowColor = buildingDNAAxo.windows?.color || 'white';
+        const dnaWindowsFull = `${dnaWindows} windows with ${dnaWindowColor} frames`;
+
         const dnaDimensions = buildingDNAAxo.dimensions || {};
         const dnaLength = dnaDimensions.length || dnaDimensions.width || 15;
         const dnaWidth = dnaDimensions.width || dnaDimensions.depth || 10;
@@ -665,11 +701,12 @@ class ReplicateService {
         return {
           buildingType: unifiedDesc.buildingType,
           architecturalStyle: unifiedDesc.architecturalStyle,
-          materials: dnaMaterials,
-          prompt: `Professional architectural axonometric 45-degree isometric technical drawing view of the EXACT SAME BUILDING from floor plans and elevations. CRITICAL CONSISTENCY REQUIREMENTS: Building dimensions EXACTLY ${dnaLength}m × ${dnaWidth}m × ${dnaHeight}m, ${unifiedDesc.floorCount} floors, ${entranceDir}-facing entrance on ${entranceDir} side, EXACT materials: ${dnaMaterials} construction IDENTICAL to elevation drawings, roof type: ${dnaRoof} EXACTLY as shown in elevations, windows: ${dnaWindows} EXACTLY matching elevation pattern, ${unifiedDesc.features}, ${styleContext}, isometric 3D projection from 45-degree angle showing complete building volume, floor separation lines visible at each level, technical illustration with architectural precision, clean professional CAD-style lines, MUST USE IDENTICAL MATERIALS AND COLORS as other 3D views (Exterior Front and Side views), same brick/material texture and color palette, unified consistent architectural design, this is the SAME building shown in all other views just from a different angle, high detail precise geometry matching floor plan footprint and elevation facades exactly`,
+          materials: materialFullAxo,
+          prompt: `Professional architectural axonometric 45-degree isometric view of the EXACT SAME ${unifiedDesc.fullDescription} from floor plans and elevations. CRITICAL MATERIAL CONSISTENCY FIRST: Building constructed with ${materialFullAxo}, IDENTICAL materials and colors to Exterior Front and Side views, ${dnaRoofFull} EXACTLY matching other 3D views, ${dnaWindowsFull} matching all views. Building dimensions ${dnaLength}m × ${dnaWidth}m × ${dnaHeight}m, ${unifiedDesc.floorCount} floors, ${entranceDir}-facing entrance. ${styleContext}. Photorealistic architectural rendering with EXACT ${materialPrimaryAxo} (${materialColorAxo}) texture and color matching other 3D visualizations, isometric 3D projection from 45-degree angle showing complete building volume with realistic materials not simplified technical style, floor separation lines visible at each level, architectural precision showing SAME building from different angle only, unified consistent design with identical brick/material texture and color palette as Exterior Front and Side views, realistic architectural visualization matching all other 3D views exactly`,
           perspective: 'axonometric view',
           width: 1024,
-          height: 768
+          height: 768,
+          negativePrompt: "modern glass building, white cube building, contemporary minimalist cube, technical diagram, simplified CAD wireframe, different materials from other views, different colors from 3D views, wrong building type, yellow facade, incorrect materials, flat colors, abstract geometric, different architectural style from other views"
         };
 
       case 'perspective':
@@ -811,10 +848,16 @@ class ReplicateService {
 
   /**
    * Build parameters for 2D floor plan generation
+   * FIXED: Clarify footprint area per floor to prevent oversized floor plans
    */
   buildFloorPlanParameters(projectContext, level = 'ground') {
     // Get unified building description for consistency
     const unifiedDesc = this.createUnifiedBuildingDescription(projectContext);
+
+    // CRITICAL FIX: Calculate footprint area per floor to match user input
+    const totalArea = unifiedDesc.floorArea;
+    const floorCount = unifiedDesc.floorCount;
+    const footprintArea = Math.round(totalArea / floorCount);  // Area for THIS floor only
 
     const levelDescriptions = {
       ground: 'ground floor showing main entrance, living areas, kitchen, common spaces',
@@ -836,7 +879,7 @@ class ReplicateService {
     const windowPattern = designContext.windows?.pattern || 'ribbon windows';
 
     return {
-      prompt: `MAXIMUM QUALITY professional CAD architectural floor plan drawing, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} ${unifiedDesc.floorArea}m² total area, ULTRA-PRECISE BLACK AND WHITE CAD-QUALITY TECHNICAL DRAWING showing: thick solid black exterior walls (250mm), interior walls (150mm), door openings with accurate 90° swing arcs, ${windowPattern} shown as double parallel lines with sill details and mullions, wall thickness clearly differentiated, all room labels with area annotations (m²), furniture layout outlines, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM with: dimension chains for all wall segments with measurements in meters, overall building dimensions with extension lines and arrows, room dimensions showing length × width (e.g. 4.50m × 3.80m), window opening widths, door widths (0.90m, 1.20m), wall thicknesses annotated, north arrow with cardinal directions, metric scale bar (1:100), grid reference coordinate system (A-H, 1-10), construction axis lines, STRICTLY 2D ORTHOGRAPHIC TOP-DOWN VIEW, technical blueprint precision matching professional CAD software output (AutoCAD/Revit quality), full professional dimensioning and detailed annotations, ultra-crisp clean lines, maximum detail technical drawing, laser-sharp precise linework, professional construction documentation standards, ${specificMaterials} materials notation, ${roofType} indicated`,
+      prompt: `MAXIMUM QUALITY professional CAD architectural floor plan drawing, ${level} floor technical blueprint for ${unifiedDesc.fullDescription}, ${levelDesc}, ${entranceNote} BUILDING FOOTPRINT ${footprintArea}m² THIS FLOOR ONLY (total building ${totalArea}m² distributed across ${floorCount} ${floorCount === 1 ? 'floor' : 'floors'}), ULTRA-PRECISE BLACK AND WHITE CAD-QUALITY TECHNICAL DRAWING showing: thick solid black exterior walls (250mm), interior walls (150mm), door openings with accurate 90° swing arcs, ${windowPattern} shown as double parallel lines with sill details and mullions, wall thickness clearly differentiated, all room labels with area annotations (m²), furniture layout outlines matching ${footprintArea}m² footprint for this ${level} floor, COMPLETE PROFESSIONAL DIMENSIONING SYSTEM with: dimension chains for all wall segments with measurements in meters, overall building dimensions with extension lines and arrows, room dimensions showing length × width (e.g. 4.50m × 3.80m), window opening widths, door widths (0.90m, 1.20m), wall thicknesses annotated, north arrow with cardinal directions, metric scale bar (1:100), grid reference coordinate system (A-H, 1-10), construction axis lines, STRICTLY 2D ORTHOGRAPHIC TOP-DOWN VIEW, technical blueprint precision matching professional CAD software output (AutoCAD/Revit quality), full professional dimensioning and detailed annotations, ultra-crisp clean lines, maximum detail technical drawing, laser-sharp precise linework, professional construction documentation standards, ${specificMaterials} materials notation, ${roofType} indicated, floor plan sized appropriately for ${footprintArea}m² footprint not oversized`,
       buildingType: unifiedDesc.buildingType,
       architecturalStyle: unifiedDesc.architecturalStyle,
       materials: specificMaterials,
@@ -845,7 +888,7 @@ class ReplicateService {
       height: 2048,
       steps: 70,
       guidanceScale: 9.0,
-      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated"
+      negativePrompt: "3D, three dimensional, perspective, isometric, axonometric, rendered, photorealistic, realistic photo, color photograph, shading, shadows, depth, volumetric, elevation view, section view, exterior view, interior view, building facade, roof view from side, blurry, low quality, sketchy, hand drawn, artistic, fuzzy lines, poor detail, incomplete dimensions, missing annotations, low resolution, pixelated, oversized floor plan, too many rooms, apartment building layout"
     };
   }
 
