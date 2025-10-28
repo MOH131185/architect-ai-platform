@@ -1,0 +1,674 @@
+{
+  "id": "design-default-001",
+  "version": "1.0.0",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "seed": 123456,
+  "site": {
+    "address": "Example Site",
+    "coordinates": {
+      "lat": 51.5074,
+      "lng": -0.1278
+    },
+    "boundary": [
+      { "lat": 51.5074, "lng": -0.1278 },
+      { "lat": 51.5075, "lng": -0.1278 },
+      { "lat": 51.5075, "lng": -0.1276 },
+      { "lat": 51.5074, "lng": -0.1276 }
+    ],
+    "boundaryLocal": [
+      { "x": 0, "y": 0 },
+      { "x": 15, "y": 0 },
+      { "x": 15, "y": 20 },
+      { "x": 0, "y": 20 }
+    ],
+    "area": 300,
+    "perimeter": 70,
+    "orientation": 0,
+    "setbacks": {
+      "front": 5,
+      "rear": 5,
+      "left": 3,
+      "right": 3
+    },
+    "maxCoverage": 60,
+    "maxHeight": 10,
+    "maxFloors": 2,
+    "zoning": "residential",
+    "climate": "temperate"
+  },
+  "dna": {
+    "dimensions": {
+      "length": 12.0,
+      "width": 8.0,
+      "totalHeight": 6.0,
+      "floorCount": 2,
+      "floorHeights": [3.0, 3.0]
+    },
+    "materials": [
+      {
+        "name": "Red Brick",
+        "hexColor": "#B8604E",
+        "application": "exterior walls",
+        "texture": "smooth",
+        "finish": "matte"
+      },
+      {
+        "name": "Asphalt Shingles",
+        "hexColor": "#3C3C3C",
+        "application": "roof",
+        "texture": "textured",
+        "finish": "weather-resistant"
+      },
+      {
+        "name": "White Trim",
+        "hexColor": "#FFFFFF",
+        "application": "window and door frames",
+        "texture": "smooth",
+        "finish": "semi-gloss"
+      }
+    ],
+    "colorPalette": {
+      "facade": "#B8604E",
+      "trim": "#FFFFFF",
+      "roof": "#3C3C3C",
+      "windows": "#2C3E50",
+      "door": "#8B4513",
+      "accent": "#D4AF37"
+    },
+    "roof": {
+      "type": "gable",
+      "pitch": 35,
+      "material": "Asphalt Shingles",
+      "color": "#3C3C3C",
+      "overhang": 0.5
+    },
+    "architecturalStyle": "Modern Residential",
+    "styleKeywords": [
+      "clean lines",
+      "functional",
+      "efficient",
+      "contemporary"
+    ],
+    "viewSpecificFeatures": {
+      "north": {
+        "mainEntrance": true,
+        "windows": 4,
+        "features": [
+          "main entrance centered",
+          "covered porch"
+        ]
+      },
+      "south": {
+        "patioDoors": true,
+        "windows": 3,
+        "features": [
+          "large sliding patio doors",
+          "rear deck access"
+        ]
+      },
+      "east": {
+        "windows": 2,
+        "features": [
+          "side garden view"
+        ]
+      },
+      "west": {
+        "windows": 2,
+        "features": [
+          "sunset views"
+        ]
+      }
+    },
+    "consistencyRules": [
+      "Floor count must be exactly 2 across all views",
+      "Materials and hex colors must be identical in all views",
+      "Window counts must match between floor plans and elevations",
+      "Main entrance must be on north facade only",
+      "Heights: Ground floor 3.0m, Upper floor 3.0m, Total 6.0m",
+      "Building dimensions: 12.0m × 8.0m (length × width)",
+      "Roof: Gable type, 35° pitch, #3C3C3C color"
+    ],
+    "seed": 123456,
+    "generatedBy": "geometry",
+    "timestamp": "2025-01-01T00:00:00.000Z"
+  },
+  "cameras": [
+    {
+      "id": "cam-floor-plan-ground",
+      "name": "Ground Floor Plan",
+      "type": "orthographic",
+      "viewType": "floor_plan",
+      "position": { "x": 6, "y": 4, "z": 10 },
+      "target": { "x": 6, "y": 4, "z": 0 },
+      "up": { "x": 0, "y": 1, "z": 0 },
+      "left": -8,
+      "right": 8,
+      "top": 6,
+      "bottom": -6,
+      "near": 0.1,
+      "far": 100,
+      "resolution": { "width": 1024, "height": 1024 },
+      "floorLevel": 0
+    },
+    {
+      "id": "cam-floor-plan-upper",
+      "name": "Upper Floor Plan",
+      "type": "orthographic",
+      "viewType": "floor_plan",
+      "position": { "x": 6, "y": 4, "z": 13 },
+      "target": { "x": 6, "y": 4, "z": 3 },
+      "up": { "x": 0, "y": 1, "z": 0 },
+      "left": -8,
+      "right": 8,
+      "top": 6,
+      "bottom": -6,
+      "near": 0.1,
+      "far": 100,
+      "resolution": { "width": 1024, "height": 1024 },
+      "floorLevel": 1
+    },
+    {
+      "id": "cam-elevation-north",
+      "name": "North Elevation",
+      "type": "orthographic",
+      "viewType": "elevation",
+      "position": { "x": 6, "y": -15, "z": 3 },
+      "target": { "x": 6, "y": 0, "z": 3 },
+      "up": { "x": 0, "y": 0, "z": 1 },
+      "left": -8,
+      "right": 8,
+      "top": 5,
+      "bottom": -1,
+      "near": 0.1,
+      "far": 100,
+      "resolution": { "width": 1024, "height": 768 },
+      "orientation": "north"
+    },
+    {
+      "id": "cam-elevation-south",
+      "name": "South Elevation",
+      "type": "orthographic",
+      "viewType": "elevation",
+      "position": { "x": 6, "y": 23, "z": 3 },
+      "target": { "x": 6, "y": 8, "z": 3 },
+      "up": { "x": 0, "y": 0, "z": 1 },
+      "left": -8,
+      "right": 8,
+      "top": 5,
+      "bottom": -1,
+      "near": 0.1,
+      "far": 100,
+      "resolution": { "width": 1024, "height": 768 },
+      "orientation": "south"
+    },
+    {
+      "id": "cam-3d-exterior",
+      "name": "3D Exterior View",
+      "type": "perspective",
+      "viewType": "exterior_3d",
+      "position": { "x": -10, "y": -10, "z": 8 },
+      "target": { "x": 6, "y": 4, "z": 2 },
+      "up": { "x": 0, "y": 0, "z": 1 },
+      "fov": 45,
+      "aspect": 1.33,
+      "near": 0.1,
+      "far": 1000,
+      "resolution": { "width": 1024, "height": 1024 }
+    },
+    {
+      "id": "cam-axonometric",
+      "name": "Axonometric View",
+      "type": "orthographic",
+      "viewType": "axonometric",
+      "position": { "x": 20, "y": -15, "z": 15 },
+      "target": { "x": 6, "y": 4, "z": 0 },
+      "up": { "x": 0, "y": 0, "z": 1 },
+      "left": -15,
+      "right": 15,
+      "top": 15,
+      "bottom": -5,
+      "near": 0.1,
+      "far": 100,
+      "resolution": { "width": 1024, "height": 1024 }
+    }
+  ],
+  "levels": [
+    {
+      "id": "level-ground",
+      "index": 0,
+      "name": "Ground Floor",
+      "type": "ground",
+      "elevation": 0,
+      "floorToFloorHeight": 3.0,
+      "ceilingHeight": 2.7,
+      "footprint": [
+        { "x": 0, "y": 0 },
+        { "x": 12, "y": 0 },
+        { "x": 12, "y": 8 },
+        { "x": 0, "y": 8 }
+      ],
+      "area": 96,
+      "rooms": ["room-living", "room-kitchen", "room-entry"],
+      "walls": ["wall-01", "wall-02", "wall-03", "wall-04"],
+      "doors": ["door-entrance", "door-kitchen"],
+      "windows": ["win-01", "win-02", "win-03", "win-04"],
+      "isHabitable": true,
+      "hasEntranceDoor": true
+    },
+    {
+      "id": "level-upper",
+      "index": 1,
+      "name": "Upper Floor",
+      "type": "upper",
+      "elevation": 3.0,
+      "floorToFloorHeight": 3.0,
+      "ceilingHeight": 2.7,
+      "footprint": [
+        { "x": 0, "y": 0 },
+        { "x": 12, "y": 0 },
+        { "x": 12, "y": 8 },
+        { "x": 0, "y": 8 }
+      ],
+      "area": 96,
+      "rooms": ["room-bedroom1", "room-bedroom2", "room-bathroom"],
+      "walls": ["wall-05", "wall-06", "wall-07", "wall-08"],
+      "doors": ["door-bedroom1", "door-bedroom2", "door-bathroom"],
+      "windows": ["win-05", "win-06", "win-07"],
+      "isHabitable": true,
+      "hasEntranceDoor": false
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room-living",
+      "name": "Living Room",
+      "type": "living",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "polygon": [
+        { "x": 0, "y": 0 },
+        { "x": 7, "y": 0 },
+        { "x": 7, "y": 8 },
+        { "x": 0, "y": 8 }
+      ],
+      "area": 56,
+      "dimensions": { "length": 7, "width": 8 },
+      "position": { "x": 0, "y": 0 },
+      "adjacentRooms": ["room-kitchen", "room-entry"],
+      "adjacentTo": {
+        "east": "room-kitchen",
+        "north": "room-entry"
+      },
+      "doors": ["door-entrance"],
+      "windows": ["win-01", "win-02", "win-03"],
+      "hasExteriorWall": true,
+      "requiresNaturalLight": true,
+      "requiresPrivacy": false
+    },
+    {
+      "id": "room-kitchen",
+      "name": "Kitchen",
+      "type": "kitchen",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "polygon": [
+        { "x": 7, "y": 0 },
+        { "x": 12, "y": 0 },
+        { "x": 12, "y": 5 },
+        { "x": 7, "y": 5 }
+      ],
+      "area": 25,
+      "dimensions": { "length": 5, "width": 5 },
+      "position": { "x": 7, "y": 0 },
+      "adjacentRooms": ["room-living"],
+      "adjacentTo": {
+        "west": "room-living"
+      },
+      "doors": ["door-kitchen"],
+      "windows": ["win-04"],
+      "hasExteriorWall": true,
+      "requiresNaturalLight": true,
+      "requiresPrivacy": false
+    },
+    {
+      "id": "room-entry",
+      "name": "Entry Hall",
+      "type": "entry",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "polygon": [
+        { "x": 7, "y": 5 },
+        { "x": 12, "y": 5 },
+        { "x": 12, "y": 8 },
+        { "x": 7, "y": 8 }
+      ],
+      "area": 15,
+      "dimensions": { "length": 5, "width": 3 },
+      "position": { "x": 7, "y": 5 },
+      "adjacentRooms": ["room-living", "room-kitchen"],
+      "adjacentTo": {
+        "south": "room-living",
+        "west": "room-kitchen"
+      },
+      "doors": [],
+      "windows": [],
+      "hasExteriorWall": false,
+      "requiresNaturalLight": false,
+      "requiresPrivacy": false
+    },
+    {
+      "id": "room-bedroom1",
+      "name": "Master Bedroom",
+      "type": "bedroom",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "polygon": [
+        { "x": 0, "y": 0 },
+        { "x": 6, "y": 0 },
+        { "x": 6, "y": 8 },
+        { "x": 0, "y": 8 }
+      ],
+      "area": 48,
+      "dimensions": { "length": 6, "width": 8 },
+      "position": { "x": 0, "y": 0 },
+      "adjacentRooms": ["room-bedroom2"],
+      "adjacentTo": {
+        "east": "room-bedroom2"
+      },
+      "doors": ["door-bedroom1"],
+      "windows": ["win-05", "win-06"],
+      "hasExteriorWall": true,
+      "requiresNaturalLight": true,
+      "requiresPrivacy": true
+    },
+    {
+      "id": "room-bedroom2",
+      "name": "Bedroom 2",
+      "type": "bedroom",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "polygon": [
+        { "x": 6, "y": 0 },
+        { "x": 12, "y": 0 },
+        { "x": 12, "y": 5 },
+        { "x": 6, "y": 5 }
+      ],
+      "area": 30,
+      "dimensions": { "length": 6, "width": 5 },
+      "position": { "x": 6, "y": 0 },
+      "adjacentRooms": ["room-bedroom1", "room-bathroom"],
+      "adjacentTo": {
+        "west": "room-bedroom1",
+        "north": "room-bathroom"
+      },
+      "doors": ["door-bedroom2"],
+      "windows": ["win-07"],
+      "hasExteriorWall": true,
+      "requiresNaturalLight": true,
+      "requiresPrivacy": true
+    },
+    {
+      "id": "room-bathroom",
+      "name": "Bathroom",
+      "type": "bathroom",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "polygon": [
+        { "x": 6, "y": 5 },
+        { "x": 12, "y": 5 },
+        { "x": 12, "y": 8 },
+        { "x": 6, "y": 8 }
+      ],
+      "area": 18,
+      "dimensions": { "length": 6, "width": 3 },
+      "position": { "x": 6, "y": 5 },
+      "adjacentRooms": ["room-bedroom2"],
+      "adjacentTo": {
+        "south": "room-bedroom2"
+      },
+      "doors": ["door-bathroom"],
+      "windows": [],
+      "hasExteriorWall": false,
+      "requiresNaturalLight": false,
+      "requiresPrivacy": true
+    }
+  ],
+  "doors": [
+    {
+      "id": "door-entrance",
+      "name": "Main Entrance",
+      "type": "entrance",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "position": { "x": 6, "y": 0 },
+      "rotation": 0,
+      "normal": { "x": 0, "y": -1 },
+      "width": 1.0,
+      "height": 2.1,
+      "thickness": 0.05,
+      "swing": "right",
+      "isExterior": true,
+      "isMain": true,
+      "connectsRooms": ["room-living"],
+      "connectsToExterior": true,
+      "material": "Wood",
+      "color": "#8B4513"
+    },
+    {
+      "id": "door-kitchen",
+      "name": "Kitchen Door",
+      "type": "interior",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "position": { "x": 7, "y": 3 },
+      "rotation": 90,
+      "normal": { "x": 1, "y": 0 },
+      "width": 0.9,
+      "height": 2.1,
+      "thickness": 0.04,
+      "swing": "left",
+      "isExterior": false,
+      "isMain": false,
+      "connectsRooms": ["room-living", "room-kitchen"],
+      "connectsToExterior": false,
+      "material": "Wood",
+      "color": "#FFFFFF"
+    },
+    {
+      "id": "door-bedroom1",
+      "name": "Master Bedroom Door",
+      "type": "interior",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "position": { "x": 6, "y": 4 },
+      "rotation": 90,
+      "normal": { "x": 1, "y": 0 },
+      "width": 0.9,
+      "height": 2.1,
+      "thickness": 0.04,
+      "swing": "right",
+      "isExterior": false,
+      "isMain": false,
+      "connectsRooms": ["room-bedroom1", "room-bedroom2"],
+      "connectsToExterior": false,
+      "material": "Wood",
+      "color": "#FFFFFF"
+    },
+    {
+      "id": "door-bedroom2",
+      "name": "Bedroom 2 Door",
+      "type": "interior",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "position": { "x": 9, "y": 5 },
+      "rotation": 0,
+      "normal": { "x": 0, "y": 1 },
+      "width": 0.9,
+      "height": 2.1,
+      "thickness": 0.04,
+      "swing": "left",
+      "isExterior": false,
+      "isMain": false,
+      "connectsRooms": ["room-bedroom2", "room-bathroom"],
+      "connectsToExterior": false,
+      "material": "Wood",
+      "color": "#FFFFFF"
+    },
+    {
+      "id": "door-bathroom",
+      "name": "Bathroom Door",
+      "type": "interior",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "position": { "x": 8, "y": 5 },
+      "rotation": 0,
+      "normal": { "x": 0, "y": 1 },
+      "width": 0.8,
+      "height": 2.1,
+      "thickness": 0.04,
+      "swing": "right",
+      "isExterior": false,
+      "isMain": false,
+      "connectsRooms": ["room-bathroom"],
+      "connectsToExterior": false,
+      "material": "Wood",
+      "color": "#FFFFFF"
+    }
+  ],
+  "windows": [
+    {
+      "id": "win-01",
+      "name": "Living Room Window 1",
+      "type": "casement",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "roomId": "room-living",
+      "position": { "x": 2, "y": 0 },
+      "rotation": 0,
+      "normal": { "x": 0, "y": -1 },
+      "orientation": "north",
+      "width": 1.2,
+      "height": 1.4,
+      "sillHeight": 0.9,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    },
+    {
+      "id": "win-02",
+      "name": "Living Room Window 2",
+      "type": "casement",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "roomId": "room-living",
+      "position": { "x": 0, "y": 3 },
+      "rotation": 270,
+      "normal": { "x": -1, "y": 0 },
+      "orientation": "west",
+      "width": 1.2,
+      "height": 1.4,
+      "sillHeight": 0.9,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    },
+    {
+      "id": "win-03",
+      "name": "Living Room Window 3",
+      "type": "sliding",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "roomId": "room-living",
+      "position": { "x": 3, "y": 8 },
+      "rotation": 180,
+      "normal": { "x": 0, "y": 1 },
+      "orientation": "south",
+      "width": 2.4,
+      "height": 1.8,
+      "sillHeight": 0.3,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    },
+    {
+      "id": "win-04",
+      "name": "Kitchen Window",
+      "type": "casement",
+      "levelId": "level-ground",
+      "levelIndex": 0,
+      "roomId": "room-kitchen",
+      "position": { "x": 12, "y": 2 },
+      "rotation": 90,
+      "normal": { "x": 1, "y": 0 },
+      "orientation": "east",
+      "width": 1.0,
+      "height": 1.2,
+      "sillHeight": 1.0,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    },
+    {
+      "id": "win-05",
+      "name": "Master Bedroom Window 1",
+      "type": "double_hung",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "roomId": "room-bedroom1",
+      "position": { "x": 2, "y": 0 },
+      "rotation": 0,
+      "normal": { "x": 0, "y": -1 },
+      "orientation": "north",
+      "width": 1.2,
+      "height": 1.4,
+      "sillHeight": 0.9,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    },
+    {
+      "id": "win-06",
+      "name": "Master Bedroom Window 2",
+      "type": "double_hung",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "roomId": "room-bedroom1",
+      "position": { "x": 0, "y": 4 },
+      "rotation": 270,
+      "normal": { "x": -1, "y": 0 },
+      "orientation": "west",
+      "width": 1.2,
+      "height": 1.4,
+      "sillHeight": 0.9,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    },
+    {
+      "id": "win-07",
+      "name": "Bedroom 2 Window",
+      "type": "casement",
+      "levelId": "level-upper",
+      "levelIndex": 1,
+      "roomId": "room-bedroom2",
+      "position": { "x": 12, "y": 2 },
+      "rotation": 90,
+      "normal": { "x": 1, "y": 0 },
+      "orientation": "east",
+      "width": 1.2,
+      "height": 1.4,
+      "sillHeight": 0.9,
+      "isOperable": true,
+      "glazingLayers": 2,
+      "frameColor": "#FFFFFF"
+    }
+  ],
+  "walls": [],
+  "metadata": {
+    "generatedBy": "geometry",
+    "geometryFirst": true,
+    "consistencyScore": 100,
+    "generationTime": 0,
+    "aiModel": "none"
+  }
+}
