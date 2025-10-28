@@ -194,3 +194,16 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 export default FEATURE_FLAGS;
+
+// CommonJS compatibility for Node.js testing
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    FEATURE_FLAGS,
+    isFeatureEnabled,
+    setFeatureFlag,
+    getAllFeatureFlags,
+    resetFeatureFlags,
+    loadFeatureFlagsFromStorage,
+    logFeatureFlags
+  };
+}
