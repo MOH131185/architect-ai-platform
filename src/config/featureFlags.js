@@ -91,7 +91,7 @@ export const FEATURE_FLAGS = {
  */
 export function isFeatureEnabled(flagName) {
   if (!(flagName in FEATURE_FLAGS)) {
-    console.warn(\`[WARNING] Unknown feature flag: \${flagName}\`);
+    console.warn('[WARNING] Unknown feature flag: ' + flagName);
     return false;
   }
   return FEATURE_FLAGS[flagName] === true;
@@ -102,14 +102,14 @@ export function isFeatureEnabled(flagName) {
  */
 export function setFeatureFlag(flagName, value) {
   if (!(flagName in FEATURE_FLAGS)) {
-    console.warn(\`[WARNING] Unknown feature flag: \${flagName}\`);
+    console.warn('[WARNING] Unknown feature flag: ' + flagName);
     return;
   }
 
   const oldValue = FEATURE_FLAGS[flagName];
   FEATURE_FLAGS[flagName] = value;
 
-  console.log(\`[FLAG] Feature flag updated: \${flagName}\`, {
+  console.log('[FLAG] Feature flag updated: ' + flagName, {
     from: oldValue,
     to: value
   });
@@ -181,7 +181,7 @@ export function logFeatureFlags() {
   console.group('[FLAGS] Feature Flags Status');
   Object.entries(FEATURE_FLAGS).forEach(([key, value]) => {
     const icon = value ? '[ON]' : '[OFF]';
-    console.log(\`\${icon} \${key}: \${value}\`);
+    console.log(icon + ' ' + key + ': ' + value);
   });
   console.groupEnd();
 }
