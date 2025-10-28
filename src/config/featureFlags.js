@@ -91,7 +91,7 @@ export const FEATURE_FLAGS = {
  */
 export function isFeatureEnabled(flagName) {
   if (!(flagName in FEATURE_FLAGS)) {
-    console.warn(\`⚠️ Unknown feature flag: \${flagName}\`);
+    console.warn(\`[WARNING] Unknown feature flag: \${flagName}\`);
     return false;
   }
   return FEATURE_FLAGS[flagName] === true;
@@ -102,14 +102,14 @@ export function isFeatureEnabled(flagName) {
  */
 export function setFeatureFlag(flagName, value) {
   if (!(flagName in FEATURE_FLAGS)) {
-    console.warn(\`⚠️ Unknown feature flag: \${flagName}\`);
+    console.warn(\`[WARNING] Unknown feature flag: \${flagName}\`);
     return;
   }
 
   const oldValue = FEATURE_FLAGS[flagName];
   FEATURE_FLAGS[flagName] = value;
 
-  console.log(\`🚩 Feature flag updated: \${flagName}\`, {
+  console.log(\`[FLAG] Feature flag updated: \${flagName}\`, {
     from: oldValue,
     to: value
   });
@@ -148,7 +148,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.enhancedConsistencyChecks = true;
   FEATURE_FLAGS.debugGeometry = false;
 
-  console.log('🔄 Feature flags reset to defaults');
+  console.log('[RESET] Feature flags reset to defaults');
 }
 
 /**
@@ -164,7 +164,7 @@ export function loadFeatureFlagsFromStorage() {
           FEATURE_FLAGS[key] = flags[key];
         }
       });
-      console.log('✅ Feature flags loaded from storage:', flags);
+      console.log('[LOADED] Feature flags loaded from storage:', flags);
     }
   } catch (error) {
     console.error('Failed to load feature flags:', error);
@@ -178,9 +178,9 @@ loadFeatureFlagsFromStorage();
  * Development helper: Log current feature flag status
  */
 export function logFeatureFlags() {
-  console.group('🚩 Feature Flags Status');
+  console.group('[FLAGS] Feature Flags Status');
   Object.entries(FEATURE_FLAGS).forEach(([key, value]) => {
-    const icon = value ? '✅' : '❌';
+    const icon = value ? '[ON]' : '[OFF]';
     console.log(\`\${icon} \${key}: \${value}\`);
   });
   console.groupEnd();
@@ -188,7 +188,7 @@ export function logFeatureFlags() {
 
 // Log feature flags in development mode
 if (process.env.NODE_ENV === 'development') {
-  console.log('🚩 Feature Flags initialized');
+  console.log('[FLAGS] Feature Flags initialized');
   console.log('   geometryFirst:', FEATURE_FLAGS.geometryFirst);
   console.log('   Use setFeatureFlag() to override');
 }
