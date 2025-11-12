@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear Design History Storage</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .warning {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 4px;
+      padding: 15px;
+      margin: 20px 0;
+      color: #856404;
+    }
+    button {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #c82333;
+    }
+    button.secondary {
+      background: #6c757d;
+    }
+    button.secondary:hover {
+      background: #5a6268;
+    }
+    .success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      border-radius: 4px;
+      padding: 15px;
+      margin: 20px 0;
+      color: #155724;
+    }
+    .info {
+      background: #d1ecf1;
+      border: 1px solid #bee5eb;
+      border-radius: 4px;
+      padding: 15px;
+      margin: 20px 0;
+      color: #0c5460;
+    }
+    pre {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧹 Clear Design History Storage</h1>
+    <p>Use this utility to clear corrupted design history data from localStorage.</p>
+
+    <div class="warning">
+      <strong>⚠️ Warning:</strong> This will permanently delete all saved design history.
+      This action cannot be undone. Use only if you're experiencing storage issues with the AI Modify feature.
+    </div>
+
+    <div id="storageInfo" class="info" style="display:none;"></div>
+    <div id="successMessage" class="success" style="display:none;"></div>
+
+    <button onclick="inspectStorage()">📊 Inspect Storage</button>
+    <button class="secondary" onclick="repairStorage()">🔧 Repair Corrupted Data</button>
+    <button onclick="clearStorage()">🗑️ Clear All Design History</button>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const STORAGE_PREFIX = 'archiAI_';
+    const DESIGN_HISTORY_KEY = STORAGE_PREFIX + 'design_history';
+
+    function inspectStorage() {
+      const output = document.getElementById('output');
+      const info = document.getElementById('storageInfo');
+
+      try {
+        const raw = localStorage.getItem(DESIGN_HISTORY_KEY);
+
+        if (!raw) {
+          info.innerHTML = '<strong>ℹ️ Status:</strong> No design history found in storage.';
+          info.style.display = 'block';
+          output.innerHTML = '';
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+        const isArray = Array.isArray(parsed._data || parsed);
+        const isCorrupted = parsed && typeof parsed === 'object' && !Array.isArray(parsed._data) && !Array.isArray(parsed);
+
+        let statusHTML = `<strong>📊 Storage Status:</strong><br>`;
+        statusHTML += `Type: ${isArray ? '✅ Array (OK)' : '❌ Object (Corrupted)'}<br>`;
+        statusHTML += `Has _data wrapper: ${parsed._data ? 'Yes' : 'No'}<br>`;
+        statusHTML += `Has _timestamp: ${parsed._timestamp ? 'Yes' : 'No'}<br>`;
+
+        if (isCorrupted) {
+          const numericKeys = Object.keys(parsed).filter(k => /^\d+$/.test(k));
+          statusHTML += `<br><strong>⚠️ Corrupted:</strong> Found ${numericKeys.length} numeric keys (should be array)`;
+        }
+
+        info.innerHTML = statusHTML;
+        info.style.display = 'block';
+
+        output.innerHTML = '<h3>Raw Storage Data:</h3><pre>' + JSON.stringify(parsed, null, 2).substring(0, 1000) + '...</pre>';
+      } catch (error) {
+        output.innerHTML = '<div class="warning"><strong>❌ Error:</strong> ' + error.message + '</div>';
+      }
+    }
+
+    function repairStorage() {
+      const output = document.getElementById('output');
+      const success = document.getElementById('successMessage');
+
+      try {
+        const raw = localStorage.getItem(DESIGN_HISTORY_KEY);
+
+        if (!raw) {
+          success.innerHTML = '<strong>ℹ️ Nothing to repair:</strong> No design history found.';
+          success.style.display = 'block';
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+
+        // Check if already in correct format
+        if (Array.isArray(parsed._data)) {
+          success.innerHTML = '<strong>✅ Already OK:</strong> Design history is already in correct format.';
+          success.style.display = 'block';
+          return;
+        }
+
+        if (Array.isArray(parsed)) {
+          // Old format without _data wrapper - migrate to new format
+          const repaired = { _data: parsed, _timestamp: Date.now() };
+          localStorage.setItem(DESIGN_HISTORY_KEY, JSON.stringify(repaired));
+          success.innerHTML = `<strong>✅ Repaired:</strong> Migrated ${parsed.length} entries to new format.`;
+          success.style.display = 'block';
+          return;
+        }
+
+        // Extract numeric keys (corrupted format)
+        const keys = Object.keys(parsed).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+
+        if (keys.length === 0) {
+          success.innerHTML = '<strong>ℹ️ Nothing to repair:</strong> No corrupted data found.';
+          success.style.display = 'block';
+          return;
+        }
+
+        // Repair: convert object with numeric keys back to array
+        const repaired = keys.map(k => parsed[k]);
+        const repairedData = { _data: repaired, _timestamp: Date.now() };
+
+        localStorage.setItem(DESIGN_HISTORY_KEY, JSON.stringify(repairedData));
+
+        success.innerHTML = `<strong>✅ Repaired:</strong> Converted ${repaired.length} entries from corrupted object format to array format.`;
+        success.style.display = 'block';
+
+        // Show repaired data
+        output.innerHTML = '<h3>Repaired Data:</h3><pre>' + JSON.stringify(repairedData, null, 2).substring(0, 1000) + '...</pre>';
+
+      } catch (error) {
+        output.innerHTML = '<div class="warning"><strong>❌ Repair failed:</strong> ' + error.message + '</div>';
+      }
+    }
+
+    function clearStorage() {
+      if (!confirm('⚠️ Are you sure you want to clear all design history? This cannot be undone.')) {
+        return;
+      }
+
+      const output = document.getElementById('output');
+      const success = document.getElementById('successMessage');
+
+      try {
+        // Remove design history
+        localStorage.removeItem(DESIGN_HISTORY_KEY);
+
+        // Also clear design versions if present
+        const versionKey = STORAGE_PREFIX + 'design_versions';
+        localStorage.removeItem(versionKey);
+
+        success.innerHTML = '<strong>✅ Cleared:</strong> All design history has been removed from localStorage.';
+        success.style.display = 'block';
+        output.innerHTML = '';
+
+        // Hide info panel
+        document.getElementById('storageInfo').style.display = 'none';
+
+      } catch (error) {
+        output.innerHTML = '<div class="warning"><strong>❌ Clear failed:</strong> ' + error.message + '</div>';
+      }
+    }
+  </script>
+</body>
+</html>

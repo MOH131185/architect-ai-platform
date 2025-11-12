@@ -3,17 +3,40 @@
 ## Overview
 
 Your ArchitectAI platform is now integrated with:
-- **OpenAI API** - For AI-powered design reasoning
-- **Replicate API** - For architectural image generation using SDXL
+- **OpenAI GPT-4o** - For AI-powered design reasoning and style signature generation
+- **OpenAI DALL·E 3** - For consistent architectural image generation (PRIMARY)
+- **Replicate SDXL** - For architectural image generation (FALLBACK)
 
 ## Current Status
 
 ✅ **API Keys Configured** (in `.env` file):
-- `REACT_APP_OPENAI_API_KEY` - Configured
-- `REACT_APP_REPLICATE_API_KEY` - Configured
+- `OPENAI_REASONING_API_KEY` - For GPT-4o reasoning and prompting (server-side)
+- `OPENAI_IMAGES_API_KEY` - For DALL·E 3 image generation (server-side)
+- `REACT_APP_OPENAI_API_KEY` - Legacy key for backward compatibility
+- `REACT_APP_REPLICATE_API_KEY` - For SDXL fallback
 
 ✅ **Backend Proxy Server** - Running on http://localhost:3001
 ✅ **Frontend React App** - Running on http://localhost:3000
+
+## What's New: DALL·E 3 Consistency System
+
+This platform now uses **DALL·E 3 as the primary image generator** with a sophisticated consistency system:
+
+1. **Style Signature Generation**: GPT-4o analyzes your project and portfolio to create a comprehensive style signature containing:
+   - Materials palette (e.g., "polished concrete", "anodized aluminum")
+   - Color palette (facade, roof, trim colors)
+   - Façade articulation style
+   - Glazing ratios
+   - Line weight rules for 2D drawings
+   - Diagram conventions
+   - Lighting and camera settings
+   - Post-processing guidelines
+
+2. **Per-View Prompt Kits**: Each architectural view (plan, section, elevation, exterior, interior, axonometric) gets a tailored prompt kit based on the style signature.
+
+3. **Automatic Fallback**: If DALL·E 3 fails or times out, the system automatically falls back to Replicate SDXL with the same prompts.
+
+4. **Session Persistence**: Style signatures are cached in localStorage and reused throughout the project session for maximum consistency.
 
 ## Running the Application
 
@@ -56,8 +79,9 @@ Direct API calls from the browser to OpenAI and Replicate are blocked by CORS (C
 
 **Proxy Server Endpoints:**
 - `GET /api/health` - Check API configuration status
-- `POST /api/openai/chat` - OpenAI chat completions
-- `POST /api/replicate/predictions` - Create Replicate prediction
+- `POST /api/openai/chat` - OpenAI GPT-4o chat completions (reasoning)
+- `POST /api/openai/images` - OpenAI DALL·E 3 image generation (NEW)
+- `POST /api/replicate/predictions` - Create Replicate SDXL prediction
 - `GET /api/replicate/predictions/:id` - Get prediction status
 - `POST /api/replicate/predictions/:id/cancel` - Cancel prediction
 
@@ -143,28 +167,54 @@ Deploy `server.js` to a separate hosting service (Heroku, Railway, Render) and p
 
 **Local Development (`.env`):**
 ```env
+# Google & Weather APIs
 REACT_APP_GOOGLE_MAPS_API_KEY=your_google_maps_key
 REACT_APP_OPENWEATHER_API_KEY=your_openweather_key
-REACT_APP_OPENAI_API_KEY=sk-svcacct-...
+
+# OpenAI Keys (Server-side - not exposed to browser)
+OPENAI_REASONING_API_KEY=sk-proj-...  # For GPT-4o reasoning
+OPENAI_IMAGES_API_KEY=sk-proj-...     # For DALL·E 3 images
+
+# Legacy OpenAI Key (backward compatibility)
+REACT_APP_OPENAI_API_KEY=sk-proj-...
+
+# Replicate (Fallback)
 REACT_APP_REPLICATE_API_KEY=r8_...
+
+# Proxy URL
 REACT_APP_API_PROXY_URL=http://localhost:3001
 ```
 
 **Production (Vercel Environment Variables):**
-- Add all the above variables in Vercel Dashboard → Settings → Environment Variables
-- Update `REACT_APP_API_PROXY_URL` to your production proxy URL
+Add all the above variables in Vercel Dashboard → Settings → Environment Variables:
+- `OPENAI_REASONING_API_KEY` - **Required** for style signature and reasoning
+- `OPENAI_IMAGES_API_KEY` - **Required** for DALL·E 3 generation
+- `REACT_APP_OPENAI_API_KEY` - Keep for backward compatibility
+- `REACT_APP_REPLICATE_API_KEY` - **Required** for fallback
+- Other variables as listed above
+
+**Important**: The two new OpenAI keys (`OPENAI_REASONING_API_KEY` and `OPENAI_IMAGES_API_KEY`) are server-side only and never exposed to the browser. They can be the same key or different keys depending on your usage tracking needs.
 
 ## API Usage & Costs
 
-### OpenAI (GPT-4):
-- **Cost**: ~$0.03 per 1K tokens (input), ~$0.06 per 1K tokens (output)
-- **Usage per request**: ~2000-3000 tokens (~$0.10-$0.20 per design)
+### OpenAI GPT-4o (Reasoning & Style Signature):
+- **Cost**: ~$2.50 per 1M input tokens, ~$10 per 1M output tokens
+- **Usage per request**: ~2000-5000 tokens (~$0.02-$0.08 per design)
 
-### Replicate (SDXL):
+### OpenAI DALL·E 3 (Primary Image Generation):
+- **Cost**: $0.040 per image (standard 1024x1024), $0.080 per image (HD 1024x1024)
+- **Usage per design**: 5-10 images @ HD quality (~$0.40-$0.80 per design)
+
+### Replicate SDXL (Fallback):
 - **Cost**: ~$0.0025 per second of compute time
-- **Usage per image**: 20-60 seconds (~$0.05-$0.15 per image)
+- **Usage per image**: 20-60 seconds (~$0.05-$0.15 per image, only when DALL·E 3 fails)
 
-**Estimated cost per complete design**: $0.50-$1.00
+**Estimated cost per complete design** (with DALL·E 3): **$0.60-$1.20**
+- GPT-4o reasoning: $0.02-$0.08
+- DALL·E 3 images (7 views): $0.56-$0.80 (HD)
+- Style signature generation: $0.02 (one-time per project)
+
+**Fallback cost**: If DALL·E 3 fails and all images use SDXL: $0.50-$1.50
 
 ## Security Notes
 

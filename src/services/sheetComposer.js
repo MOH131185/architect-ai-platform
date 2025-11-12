@@ -14,13 +14,24 @@
  * Units: millimeters (mm)
  */
 
-import crypto from 'crypto';
-
 // A1 sheet dimensions (portrait orientation)
 const A1_WIDTH = 594; // mm
 const A1_HEIGHT = 841; // mm
 const MARGIN = 10; // mm
 const TITLE_BLOCK_HEIGHT = 60; // mm
+
+/**
+ * Simple hash function for browser (not cryptographically secure)
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(16, '0');
+}
 
 /**
  * Create A1 sheet SVG with all views
@@ -32,10 +43,7 @@ export function createA1Sheet(design, views, options = {}) {
   } = options;
 
   // Calculate hash of design JSON
-  const designHash = crypto
-    .createHash('sha256')
-    .update(JSON.stringify(design))
-    .digest('hex');
+  const designHash = simpleHash(JSON.stringify(design));
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${A1_WIDTH}mm" height="${A1_HEIGHT}mm" viewBox="0 0 ${A1_WIDTH} ${A1_HEIGHT}"

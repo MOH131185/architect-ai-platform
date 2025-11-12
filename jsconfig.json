@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "baseUrl": "src",
+    "paths": {
+      "@services/*": ["services/*"],
+      "@components/*": ["components/*"],
+      "@utils/*": ["utils/*"],
+      "@config/*": ["config/*"],
+      "@domain/*": ["domain/*"],
+      "@exports/*": ["exports/*"],
+      "@styles/*": ["styles/*"],
+      "@types/*": ["types/*"]
+    },
+    "target": "es6",
+    "module": "commonjs",
+    "jsx": "react",
+    "checkJs": false,
+    "moduleResolution": "node"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "scripts"
+  ]
+}

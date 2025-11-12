@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear localStorage - ArchitectAI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 600;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .status {
+            margin-top: 2rem;
+            padding: 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        .details {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 0.9rem;
+            color: #555;
+        }
+        .details h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1rem;
+        }
+        .details ul {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+        .details li {
+            margin: 0.3rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗑️ Clear ArchitectAI Storage</h1>
+        <p>This will clear all cached data including:<br>
+        • Project style signatures<br>
+        • Generated designs<br>
+        • Portfolio analysis<br>
+        • Location data</p>
+
+        <button onclick="clearStorage()">Clear All Data</button>
+
+        <div id="status" class="status"></div>
+
+        <div class="details">
+            <h3>📋 Instructions:</h3>
+            <ol>
+                <li>Click "Clear All Data" button above</li>
+                <li>Navigate to <strong>http://localhost:3000</strong></li>
+                <li>The app will be in a fresh state</li>
+                <li>Generate a new design to test the latest fixes</li>
+            </ol>
+
+            <h3 style="margin-top: 1.5rem;">🔍 What to Test:</h3>
+            <ul>
+                <li><strong>Floor Plan:</strong> Should be 2D blueprint (not 3D isometric)</li>
+                <li><strong>Perspective View:</strong> Should appear in 3D visualizations</li>
+                <li><strong>Consistency:</strong> All views use same materials/roof/windows</li>
+                <li><strong>PDF Upload:</strong> Portfolio PDFs should extract images</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function clearStorage() {
+            const statusDiv = document.getElementById('status');
+
+            try {
+                // Get current localStorage contents before clearing
+                const itemCount = localStorage.length;
+                const items = [];
+                for (let i = 0; i < itemCount; i++) {
+                    items.push(localStorage.key(i));
+                }
+
+                // Clear localStorage
+                localStorage.clear();
+
+                // Clear sessionStorage too
+                sessionStorage.clear();
+
+                // Show success message
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `
+                    ✅ <strong>Success!</strong> Cleared ${itemCount} items from storage.<br>
+                    <small style="display: block; margin-top: 0.5rem;">
+                    Items removed: ${items.join(', ') || 'none'}<br><br>
+                    You can now navigate to <a href="http://localhost:3000" style="color: #155724; font-weight: 700;">http://localhost:3000</a>
+                    </small>
+                `;
+
+                console.log('✅ localStorage cleared successfully');
+                console.log('Items removed:', items);
+
+            } catch (error) {
+                statusDiv.className = 'status info';
+                statusDiv.innerHTML = `
+                    ⚠️ <strong>Note:</strong> ${error.message}<br>
+                    <small>Please clear manually: Press F12 → Console → Type: localStorage.clear()</small>
+                `;
+                console.error('Error clearing storage:', error);
+            }
+        }
+
+        // Show info on page load
+        window.addEventListener('load', function() {
+            const itemCount = localStorage.length;
+            if (itemCount > 0) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.className = 'status info';
+                statusDiv.innerHTML = `
+                    📦 Currently storing <strong>${itemCount} items</strong> in localStorage.<br>
+                    <small>Click the button above to clear them.</small>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

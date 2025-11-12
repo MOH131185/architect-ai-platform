@@ -97,7 +97,7 @@ export default async function handler(req, res) {
       // Metadata
       metadata: {
         generatedBy: 'ai',
-        geometryFirst: true,
+        geometryFirst: req.body.geometryFirst || false, // Read from request payload, default false
         consistencyScore: 100,
         generationTime: 0,
         aiModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo'

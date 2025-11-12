@@ -1,21 +1,20 @@
 /**
  * OpenAI Service for Design Reasoning
  * Provides AI-powered architectural design reasoning and analysis
+ *
+ * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+import secureApiClient from './secureApiClient';
 
-// Use Vercel serverless function in production, local proxy in development
 const OPENAI_API_URL = process.env.NODE_ENV === 'production'
-  ? '/api/openai-chat'  // Vercel serverless function
-  : 'http://localhost:3001/api/openai/chat';  // Local proxy server
+  ? '/api/openai-chat'
+  : 'http://localhost:3001/api/openai-chat';
 
 class OpenAIService {
   constructor() {
-    this.apiKey = OPENAI_API_KEY;
-    if (!this.apiKey) {
-      console.warn('OpenAI API key not found. Design reasoning will use fallback responses.');
-    }
+    // No API key needed - handled by server
+    this.isAvailable = true; // Server will handle availability
   }
 
   /**
@@ -24,40 +23,25 @@ class OpenAIService {
    * @returns {Promise<Object>} Design reasoning and recommendations
    */
   async generateDesignReasoning(projectContext) {
-    if (!this.apiKey) {
-      return this.getFallbackReasoning(projectContext);
-    }
-
     try {
       const prompt = this.buildDesignPrompt(projectContext);
-      
-      const response = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert architectural AI assistant specializing in vernacular and contemporary architecture, with deep expertise in blending local tradition with modern design. You excel at analyzing location context, climate adaptations, and portfolio styles to create contextually appropriate designs. Provide detailed, technical architectural insights in structured JSON format.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 2000,
-          temperature: 0.7
-        })
+
+      const data = await secureApiClient.openaiChat({
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert architectural AI assistant specializing in vernacular and contemporary architecture, with deep expertise in blending local tradition with modern design. You excel at analyzing location context, climate adaptations, and portfolio styles to create contextually appropriate designs. Provide detailed, technical architectural insights in structured JSON format.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 2000,
+        temperature: 0.7
       });
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
       return this.parseDesignReasoning(data.choices[0].message.content, projectContext);
 
     } catch (error) {
@@ -352,6 +336,270 @@ Format as structured analysis with specific recommendations.
       rawResponse: response,
       timestamp: new Date().toISOString()
     };
+  }
+
+  /**
+   * Generic chat completion method for custom prompts
+   * @param {Array} messages - Array of message objects with role and content
+   * @param {Object} options - Additional options (model, temperature, etc.)
+   * @returns {Promise<Object>} OpenAI API response
+   */
+  async chatCompletion(messages, options = {}) {
+    if (!this.apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+
+    try {
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: options.model || 'gpt-4',
+          messages: messages,
+          max_tokens: options.max_tokens || 2000,
+          temperature: options.temperature !== undefined ? options.temperature : 0.7,
+          response_format: options.response_format || undefined
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`OpenAI API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('OpenAI chat completion error:', error);
+      throw error;
+    }
+  }
+  /**
+   * Summarize Design Context from initial project requirements
+   * Creates a canonical JSON that GPT-4 will remember for consistency
+   * @param {Object} projectRequirements - Initial project details
+   * @returns {Promise<Object>} Design context JSON
+   */
+  async summarizeDesignContext(projectRequirements) {
+    try {
+      console.log('🎨 Creating Design Context with GPT-4 for consistency...');
+
+      const {
+        buildingProgram = 'residential building',
+        area = 200,
+        location = {},
+        blendedStyle = {},
+        buildingDNA = {}
+      } = projectRequirements;
+
+      const prompt = `You are an expert architectural designer. Analyze these project requirements and create a canonical Design Context that will be used to generate consistent architectural views.
+
+Project Requirements:
+- Program: ${buildingProgram}
+- Area: ${area}m²
+- Location: ${location.address || 'Not specified'}
+- Style: ${blendedStyle.style || 'Contemporary'}
+- Materials: ${(blendedStyle.materials || []).join(', ') || 'Not specified'}
+- Building DNA: ${JSON.stringify(buildingDNA, null, 2)}
+
+Create a Design Context JSON with these exact keys:
+{
+  "style": "architectural style name (e.g., Contemporary, Victorian, Modern)",
+  "massing": "building form description (e.g., rectangular two-story volume)",
+  "facadeMaterials": "primary facade materials (e.g., red brick with glass windows)",
+  "colorPalette": "color scheme (e.g., warm red brick, white window frames, dark grey roof)",
+  "program": "building type",
+  "floors": "number of floors",
+  "dimensions": "approximate footprint dimensions (e.g., 15m x 10m)",
+  "roofType": "roof type (e.g., gable, flat, hip)",
+  "windowPattern": "window arrangement (e.g., symmetrical double-hung)",
+  "architecturalFeatures": ["list", "of", "distinctive", "features"]
+}
+
+Be specific and descriptive. This context will be used to generate ALL architectural views consistently.`;
+
+      const response = await this.chatCompletion([
+        {
+          role: 'system',
+          content: 'You are an expert architectural designer. Return ONLY valid JSON.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        model: 'gpt-4',
+        temperature: 0.3, // Low for consistency
+        response_format: { type: 'json_object' }
+      });
+
+      const designContext = JSON.parse(response.choices[0].message.content);
+
+      console.log('✅ Design Context created:', designContext);
+
+      // Store in localStorage for persistence
+      const sessionId = Date.now().toString();
+      localStorage.setItem('designSessionId', sessionId);
+      localStorage.setItem(`designContext_${sessionId}`, JSON.stringify(designContext));
+
+      return designContext;
+
+    } catch (error) {
+      console.error('❌ Design Context creation failed:', error);
+
+      // Fallback to basic context
+      return {
+        style: projectRequirements.blendedStyle?.style || 'Contemporary',
+        massing: 'simple rectangular form',
+        facadeMaterials: (projectRequirements.blendedStyle?.materials || ['brick']).join(' and '),
+        colorPalette: 'neutral tones',
+        program: projectRequirements.buildingProgram || 'building',
+        floors: projectRequirements.buildingDNA?.dimensions?.floors || '2',
+        dimensions: '10m x 8m',
+        roofType: projectRequirements.buildingDNA?.roof?.type || 'gable',
+        windowPattern: 'regular grid',
+        architecturalFeatures: []
+      };
+    }
+  }
+
+  /**
+   * Convert image URL to base64 data URL via proxy
+   * @param {string} imageUrl - Azure DALL·E image URL
+   * @returns {Promise<string>} Base64 data URL
+   */
+  async imageUrlToDataURL(imageUrl) {
+    try {
+      // Detect dev/prod environment
+      const isDev = process.env.NODE_ENV !== 'production';
+      const proxyUrl = isDev
+        ? `http://localhost:3001/api/proxy/image?url=${encodeURIComponent(imageUrl)}`
+        : `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+
+      console.log(`   Fetching via proxy: ${isDev ? 'dev' : 'prod'}`);
+
+      // Fetch image via proxy
+      const response = await fetch(proxyUrl);
+      if (!response.ok) {
+        throw new Error(`Proxy fetch failed: ${response.status}`);
+      }
+
+      const blob = await response.blob();
+
+      // Convert to data URL with aggressive downscaling to 256px and high compression
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+
+        img.onload = () => {
+          // Create canvas for aggressive downscaling (256px max to reduce payload)
+          const canvas = document.createElement('canvas');
+          const maxSize = 256; // Reduced from 512px to avoid 413 Payload Too Large
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Convert to base64 data URL with high compression (0.5 quality)
+          const dataURL = canvas.toDataURL('image/jpeg', 0.5);
+          console.log(`   📦 Base64 size: ${(dataURL.length / 1024).toFixed(1)} KB`);
+          resolve(dataURL);
+        };
+
+        img.onerror = () => reject(new Error('Image load failed'));
+        img.src = URL.createObjectURL(blob);
+      });
+
+    } catch (error) {
+      console.error(`   ❌ Image to data URL conversion failed:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Classify view using GPT-4 Vision to verify correctness
+   * @param {string} imageUrl - URL of generated image
+   * @param {string} expectedView - Expected view type
+   * @returns {Promise<Object>} Classification result
+   */
+  async classifyView(imageUrl, expectedView) {
+    try {
+      console.log(`🔍 Classifying view: expected ${expectedView}`);
+
+      // Convert Azure DALL·E URLs and Midjourney URLs to base64 data URLs to avoid timeout issues
+      let finalImageUrl = imageUrl;
+      if (imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net') ||
+          imageUrl.includes('maginary.ai') ||
+          imageUrl.includes('midjourney') ||
+          imageUrl.includes('cdn.discordapp.com')) { // Midjourney often uses Discord CDN
+        console.log(`   Converting image URL to base64 via proxy...`);
+        try {
+          finalImageUrl = await this.imageUrlToDataURL(imageUrl);
+          console.log(`   ✅ Converted to base64 data URL (${finalImageUrl.length} chars)`);
+        } catch (conversionError) {
+          console.warn(`   ⚠️  Conversion failed, using original URL:`, conversionError.message);
+          // Fall back to original URL if conversion fails
+        }
+      }
+
+      const response = await this.chatCompletion([
+        {
+          role: 'system',
+          content: 'You are an expert at identifying architectural drawing types. Return ONLY valid JSON.'
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Analyze this architectural image and determine what type of view it is.
+
+Expected: ${expectedView}
+
+Return JSON:
+{
+  "actualView": "the actual view type (floor_plan_2d, exterior_front, interior, elevation, section, axonometric, perspective)",
+  "is2D": boolean (true if 2D technical drawing, false if 3D or realistic),
+  "isCorrect": boolean (true if matches expected),
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation"
+}`
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: finalImageUrl,
+                detail: 'low' // Low detail for faster classification
+              }
+            }
+          ]
+        }
+      ], {
+        model: 'gpt-4o',
+        temperature: 0.1,
+        max_tokens: 300,
+        response_format: { type: 'json_object' }
+      });
+
+      const classification = JSON.parse(response.choices[0].message.content);
+
+      console.log(`✅ Classification: ${classification.actualView} (${classification.confidence * 100}% confident)`);
+
+      return classification;
+
+    } catch (error) {
+      console.error('❌ View classification failed:', error);
+      return {
+        actualView: 'unknown',
+        is2D: false,
+        isCorrect: false,
+        confidence: 0,
+        reason: 'Classification failed'
+      };
+    }
   }
 }
 

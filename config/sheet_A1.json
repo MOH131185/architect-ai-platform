@@ -1,0 +1,348 @@
+{
+  "name": "A1 Landscape Master Sheet",
+  "description": "Single Output Sheet for complete architectural presentation with all views, plans, elevations, and metrics",
+  "size_mm": [841, 594],
+  "margins_mm": 15,
+  "background": "#FFFFFF",
+  "grid": {
+    "enabled": false,
+    "spacing_mm": 10,
+    "color": "#E0E0E0"
+  },
+  "title_block": {
+    "id": "title",
+    "x": 15,
+    "y": 524,
+    "w": 811,
+    "h": 55,
+    "background": "#F5F5F5",
+    "border": {
+      "width": 0.5,
+      "color": "#333333"
+    },
+    "fields": [
+      {
+        "label": "PROJECT",
+        "x": 10,
+        "y": 10,
+        "font_size": 5,
+        "font_weight": "bold",
+        "value": "project_name"
+      },
+      {
+        "label": "LOCATION",
+        "x": 10,
+        "y": 20,
+        "font_size": 3.5,
+        "value": "location_address"
+      },
+      {
+        "label": "DESIGN ID",
+        "x": 10,
+        "y": 30,
+        "font_size": 3,
+        "value": "design_id"
+      },
+      {
+        "label": "SEED",
+        "x": 10,
+        "y": 37,
+        "font_size": 3,
+        "value": "seed"
+      },
+      {
+        "label": "HASH",
+        "x": 10,
+        "y": 44,
+        "font_size": 2.5,
+        "font_family": "monospace",
+        "value": "design_hash"
+      },
+      {
+        "label": "SCALE",
+        "x": 300,
+        "y": 10,
+        "font_size": 4,
+        "value": "1:100"
+      },
+      {
+        "label": "DATE",
+        "x": 300,
+        "y": 20,
+        "font_size": 3.5,
+        "value": "generation_date"
+      },
+      {
+        "label": "REVISION",
+        "x": 300,
+        "y": 30,
+        "font_size": 3.5,
+        "value": "revision"
+      },
+      {
+        "label": "STATUS",
+        "x": 450,
+        "y": 10,
+        "font_size": 4,
+        "value": "status"
+      },
+      {
+        "label": "CONSISTENCY",
+        "x": 450,
+        "y": 20,
+        "font_size": 3.5,
+        "value": "consistency_score"
+      },
+      {
+        "type": "north_arrow",
+        "x": 760,
+        "y": 10,
+        "size": 35
+      },
+      {
+        "type": "scale_bar",
+        "x": 600,
+        "y": 40,
+        "length_mm": 150,
+        "scale": "1:100",
+        "segments": 5
+      },
+      {
+        "type": "qr_code",
+        "x": 720,
+        "y": 10,
+        "size": 35,
+        "url": "project_url"
+      }
+    ]
+  },
+  "slots": [
+    {
+      "id": "plan_ground",
+      "label": "GROUND FLOOR PLAN",
+      "x": 15,
+      "y": 235,
+      "w": 400,
+      "h": 270,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/plan_ground.svg",
+      "border": {
+        "width": 0.35,
+        "color": "#000000"
+      },
+      "show_scale": true,
+      "show_dimensions": true
+    },
+    {
+      "id": "plan_upper",
+      "label": "UPPER FLOOR PLAN",
+      "x": 426,
+      "y": 235,
+      "w": 400,
+      "h": 270,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/plan_upper.svg",
+      "border": {
+        "width": 0.35,
+        "color": "#000000"
+      },
+      "show_scale": true,
+      "show_dimensions": true
+    },
+    {
+      "id": "elev_north",
+      "label": "NORTH ELEVATION",
+      "x": 15,
+      "y": 125,
+      "w": 195,
+      "h": 100,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/elev_north.svg",
+      "border": {
+        "width": 0.25,
+        "color": "#000000"
+      },
+      "show_scale": true
+    },
+    {
+      "id": "elev_south",
+      "label": "SOUTH ELEVATION",
+      "x": 220,
+      "y": 125,
+      "w": 195,
+      "h": 100,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/elev_south.svg",
+      "border": {
+        "width": 0.25,
+        "color": "#000000"
+      },
+      "show_scale": true
+    },
+    {
+      "id": "elev_east",
+      "label": "EAST ELEVATION",
+      "x": 425,
+      "y": 125,
+      "w": 195,
+      "h": 100,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/elev_east.svg",
+      "border": {
+        "width": 0.25,
+        "color": "#000000"
+      },
+      "show_scale": true
+    },
+    {
+      "id": "elev_west",
+      "label": "WEST ELEVATION",
+      "x": 630,
+      "y": 125,
+      "w": 195,
+      "h": 100,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/elev_west.svg",
+      "border": {
+        "width": 0.25,
+        "color": "#000000"
+      },
+      "show_scale": true
+    },
+    {
+      "id": "section_AA",
+      "label": "SECTION A-A",
+      "x": 15,
+      "y": 15,
+      "w": 280,
+      "h": 100,
+      "scale": "1:100",
+      "type": "vector",
+      "src": "technical/section_longitudinal.svg",
+      "border": {
+        "width": 0.25,
+        "color": "#000000"
+      },
+      "show_scale": true
+    },
+    {
+      "id": "axon",
+      "label": "AXONOMETRIC VIEW",
+      "x": 305,
+      "y": 15,
+      "w": 155,
+      "h": 100,
+      "type": "raster",
+      "src": "renders/axon.png",
+      "border": {
+        "width": 0.18,
+        "color": "#666666"
+      },
+      "fit": "contain"
+    },
+    {
+      "id": "persp",
+      "label": "PERSPECTIVE VIEW",
+      "x": 470,
+      "y": 15,
+      "w": 155,
+      "h": 100,
+      "type": "raster",
+      "src": "renders/persp.png",
+      "border": {
+        "width": 0.18,
+        "color": "#666666"
+      },
+      "fit": "contain"
+    },
+    {
+      "id": "materials",
+      "label": "MATERIAL PALETTE",
+      "x": 635,
+      "y": 15,
+      "w": 95,
+      "h": 100,
+      "type": "generated",
+      "src": "generated/materials.svg",
+      "border": {
+        "width": 0.18,
+        "color": "#666666"
+      }
+    },
+    {
+      "id": "metrics",
+      "label": "KEY METRICS",
+      "x": 740,
+      "y": 15,
+      "w": 86,
+      "h": 100,
+      "type": "generated",
+      "src": "generated/metrics.svg",
+      "border": {
+        "width": 0.18,
+        "color": "#666666"
+      }
+    }
+  ],
+  "lineweights_mm": {
+    "cut": 0.35,
+    "profile": 0.25,
+    "thin": 0.18,
+    "dimension": 0.13,
+    "grid": 0.09
+  },
+  "fonts": {
+    "family": "Inter, Arial, sans-serif",
+    "title_size_mm": 5.0,
+    "label_size_mm": 3.5,
+    "text_size_mm": 3.0,
+    "dimension_size_mm": 2.5,
+    "note_size_mm": 2.0
+  },
+  "colors": {
+    "text": "#000000",
+    "dimension": "#0066CC",
+    "cut_line": "#000000",
+    "profile_line": "#333333",
+    "grid_line": "#CCCCCC",
+    "hatch_fill": "#F0F0F0"
+  },
+  "compliance_badges": {
+    "x": 15,
+    "y": 510,
+    "spacing": 60,
+    "badges": [
+      {
+        "id": "door_width",
+        "label": "Door Width ≥800mm",
+        "rule": "min_door_width_mm >= 800"
+      },
+      {
+        "id": "corridor_width",
+        "label": "Corridor ≥900mm",
+        "rule": "min_corridor_width_mm >= 900"
+      },
+      {
+        "id": "stair_pitch",
+        "label": "Stair Pitch ≤42°",
+        "rule": "max_stair_pitch_deg <= 42"
+      },
+      {
+        "id": "wwr",
+        "label": "WWR 0.25-0.45",
+        "rule": "wwr >= 0.25 && wwr <= 0.45"
+      },
+      {
+        "id": "head_height",
+        "label": "Head Height ≥2.0m",
+        "rule": "min_head_height_m >= 2.0"
+      }
+    ]
+  }
+}

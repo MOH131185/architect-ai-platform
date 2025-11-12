@@ -4,29 +4,24 @@
   "private": true,
   "dependencies": {
     "@googlemaps/react-wrapper": "^1.2.0",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/jest-dom": "^5.17.0",
-    "@testing-library/react": "^13.4.0",
-    "@testing-library/user-event": "^13.5.0",
     "@types/three": "^0.180.0",
     "axios": "^1.11.0",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
+    "dompurify": "^3.3.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.525.0",
-    "nanoid": "^5.1.6",
     "node-fetch": "^2.7.0",
-    "pdf-parse": "^2.3.12",
     "pdfjs-dist": "^5.4.296",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.9.4",
     "react-scripts": "5.0.1",
-    "sharp": "^0.34.4",
-    "three": "^0.180.0",
-    "web-vitals": "^2.1.4",
-    "zod": "^4.1.12"
+    "three": "^0.180.0"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -59,10 +54,6 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.1",
-    "autoprefixer": "^10.4.21",
-    "concurrently": "^9.2.1",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.1"
+    "concurrently": "^9.2.1"
   }
 }

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enable Hybrid A1 Mode - Architect AI Platform</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #666;
+            font-size: 18px;
+            font-weight: normal;
+            margin-bottom: 30px;
+        }
+        .status-box {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        .status-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .status-value {
+            font-family: monospace;
+            padding: 4px 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        .status-value.enabled {
+            background: #48bb78;
+            color: white;
+        }
+        .status-value.disabled {
+            background: #fc8181;
+            color: white;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        button.secondary {
+            background: #4a5568;
+        }
+        .info-box {
+            background: #edf2f7;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .warning-box {
+            background: #fef5e7;
+            border-left: 4px solid #f6c23e;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .success-box {
+            background: #d4edda;
+            border-left: 4px solid #48bb78;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .mode-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .mode-card h3 {
+            margin-top: 0;
+            color: #4a5568;
+        }
+        .mode-card ul {
+            padding-left: 20px;
+            color: #718096;
+        }
+        .mode-card.active {
+            border-color: #667eea;
+            background: #f7f3ff;
+        }
+        code {
+            background: #f7fafc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Hybrid A1 Mode Controller</h1>
+        <h2>Professional Multi-Panel Generation for A1 Sheets</h2>
+
+        <div class="info-box">
+            <strong>What is Hybrid A1 Mode?</strong><br>
+            Instead of generating the entire A1 sheet in one attempt (which often produces wireframes or incomplete layouts),
+            Hybrid Mode generates each panel separately with optimized prompts, then composites them into a professional presentation board.
+        </div>
+
+        <div class="status-box">
+            <div class="status-item">
+                <span class="status-label">Current Mode:</span>
+                <span id="currentMode" class="status-value">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Feature Flag:</span>
+                <span id="flagStatus" class="status-value">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Session Storage:</span>
+                <span id="sessionStatus" class="status-value">Checking...</span>
+            </div>
+        </div>
+
+        <div class="comparison">
+            <div class="mode-card" id="standardCard">
+                <h3>📄 Standard Mode (Default)</h3>
+                <ul>
+                    <li>Single-shot generation</li>
+                    <li>~60 seconds generation time</li>
+                    <li>May produce wireframes</li>
+                    <li>Less control over individual views</li>
+                    <li>Often missing floor plans/sections</li>
+                </ul>
+            </div>
+            <div class="mode-card" id="hybridCard">
+                <h3>🎯 Hybrid Mode (Professional)</h3>
+                <ul>
+                    <li>15+ individual panels</li>
+                    <li>~2-3 minutes generation time</li>
+                    <li>Photorealistic 3D views</li>
+                    <li>Technical 2D drawings</li>
+                    <li>Complete floor plans & elevations</li>
+                </ul>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <button id="enableBtn" onclick="enableHybridMode()">
+                Enable Hybrid Mode
+            </button>
+            <button id="disableBtn" onclick="disableHybridMode()" class="secondary">
+                Use Standard Mode
+            </button>
+        </div>
+
+        <div class="warning-box">
+            <strong>Important:</strong> After changing modes, you need to:
+            <ol>
+                <li>Refresh the main application page</li>
+                <li>Navigate to your clinic project (190 Corporation St, Birmingham)</li>
+                <li>Click "Generate AI Designs" to test the new mode</li>
+            </ol>
+        </div>
+
+        <div class="success-box" id="successBox">
+            <strong>✅ Mode Changed Successfully!</strong><br>
+            <span id="successMessage"></span>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <button onclick="window.location.href='http://localhost:3000'" style="background: #4299e1;">
+                Open Application →
+            </button>
+            <button onclick="checkStatus()" class="secondary">
+                Refresh Status
+            </button>
+        </div>
+
+        <div class="info-box" style="margin-top: 30px;">
+            <strong>Expected Results in Hybrid Mode:</strong><br>
+            • Site map with location context<br>
+            • Main 3D photorealistic exterior view<br>
+            • Ground floor plan with room labels<br>
+            • First floor plan (if applicable)<br>
+            • All 4 elevations (N, S, E, W)<br>
+            • 2 sections (longitudinal & transverse)<br>
+            • Axonometric 3D view<br>
+            • Material palette<br>
+            • UK RIBA title block<br>
+            • Professional annotations
+        </div>
+    </div>
+
+    <script>
+        function checkStatus() {
+            try {
+                // Check sessionStorage
+                const stored = sessionStorage.getItem('featureFlags');
+                const flags = stored ? JSON.parse(stored) : {};
+                const isHybridEnabled = flags.hybridA1Mode === true;
+
+                // Update UI
+                document.getElementById('currentMode').textContent = isHybridEnabled ? 'HYBRID' : 'STANDARD';
+                document.getElementById('currentMode').className = 'status-value ' + (isHybridEnabled ? 'enabled' : 'disabled');
+
+                document.getElementById('flagStatus').textContent = 'hybridA1Mode: ' + isHybridEnabled;
+                document.getElementById('flagStatus').className = 'status-value ' + (isHybridEnabled ? 'enabled' : 'disabled');
+
+                document.getElementById('sessionStatus').textContent = stored ? 'Active' : 'Empty';
+                document.getElementById('sessionStatus').className = 'status-value enabled';
+
+                // Update mode cards
+                document.getElementById('standardCard').className = 'mode-card ' + (!isHybridEnabled ? 'active' : '');
+                document.getElementById('hybridCard').className = 'mode-card ' + (isHybridEnabled ? 'active' : '');
+
+                // Update buttons
+                document.getElementById('enableBtn').style.display = isHybridEnabled ? 'none' : 'inline-block';
+                document.getElementById('disableBtn').style.display = isHybridEnabled ? 'inline-block' : 'none';
+
+            } catch (error) {
+                console.error('Error checking status:', error);
+            }
+        }
+
+        function enableHybridMode() {
+            try {
+                // Get existing flags
+                const stored = sessionStorage.getItem('featureFlags');
+                const flags = stored ? JSON.parse(stored) : {};
+
+                // Enable hybrid mode
+                flags.hybridA1Mode = true;
+
+                // Save to sessionStorage
+                sessionStorage.setItem('featureFlags', JSON.stringify(flags));
+
+                // Show success message
+                document.getElementById('successBox').style.display = 'block';
+                document.getElementById('successMessage').textContent = 'Hybrid Mode is now ENABLED. Refresh the application to use panel-based generation.';
+
+                // Update status
+                checkStatus();
+
+                console.log('✅ Hybrid A1 Mode enabled successfully');
+
+            } catch (error) {
+                console.error('Error enabling hybrid mode:', error);
+                alert('Failed to enable hybrid mode: ' + error.message);
+            }
+        }
+
+        function disableHybridMode() {
+            try {
+                // Get existing flags
+                const stored = sessionStorage.getItem('featureFlags');
+                const flags = stored ? JSON.parse(stored) : {};
+
+                // Disable hybrid mode
+                flags.hybridA1Mode = false;
+
+                // Save to sessionStorage
+                sessionStorage.setItem('featureFlags', JSON.stringify(flags));
+
+                // Show success message
+                document.getElementById('successBox').style.display = 'block';
+                document.getElementById('successMessage').textContent = 'Standard Mode is now ACTIVE. Refresh the application to use single-shot generation.';
+
+                // Update status
+                checkStatus();
+
+                console.log('✅ Switched to Standard A1 Mode');
+
+            } catch (error) {
+                console.error('Error disabling hybrid mode:', error);
+                alert('Failed to disable hybrid mode: ' + error.message);
+            }
+        }
+
+        // Check status on page load
+        checkStatus();
+
+        // Auto-refresh status every 2 seconds
+        setInterval(checkStatus, 2000);
+    </script>
+</body>
+</html>

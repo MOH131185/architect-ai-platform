@@ -23,20 +23,10 @@ const AIMVP = () => {
   const [apiStatus, setApiStatus] = useState('checking');
 
   useEffect(() => {
-    // Check API configuration
-    const hasOpenAI = !!process.env.REACT_APP_OPENAI_API_KEY;
-    const hasReplicate = !!process.env.REACT_APP_REPLICATE_API_KEY;
-
-    if (hasOpenAI && hasReplicate) {
-      setApiStatus('configured');
-      console.log('✅ Both API keys configured');
-    } else {
-      setApiStatus('missing');
-      console.warn('⚠️ API keys missing:', {
-        openai: hasOpenAI ? 'configured' : 'missing',
-        replicate: hasReplicate ? 'configured' : 'missing'
-      });
-    }
+    // SECURITY: API keys are now handled server-side only
+    // Always assume APIs are configured - server will handle availability
+    setApiStatus('configured');
+    console.log('✅ Using server-side API proxy (secure)');
   }, []);
 
   const handleInputChange = (field, value) => {

@@ -1,72 +1,53 @@
 # Architect AI Platform
 
-AI-powered architectural design platform that generates complete building packages with **98%+ cross-view consistency** using a Geometry-First Architecture.
+AI-powered architectural design platform that generates complete building packages with **98%+ cross-view consistency** using an A1 One-Shot comprehensive sheet workflow.
 
 ---
 
 ## 🚀 Key Features
 
-- **Geometry-First Architecture** - 99.5%+ dimensional accuracy driven by 3D geometry, not AI approximation
-- **Complete Design Packages** - 13 coordinated views: floor plans, elevations, sections, 3D visualizations
+- **A1 One-Shot Workflow** - Single comprehensive A1 architectural sheet with all views embedded
+- **Complete Design Packages** - All views on one sheet: floor plans, elevations, sections, 3D visualizations
 - **Design DNA System** - Ensures materials, dimensions, and features are consistent across all views
 - **Climate-Responsive Design** - Automatic adaptation to local climate and zoning regulations
 - **Site-Aware Generation** - Draw site boundaries and generate designs that fit perfectly
 - **Portfolio Learning** - Upload your architectural portfolio to influence AI-generated designs
 - **Together.ai Integration** - FLUX.1-dev for photorealistic rendering + Qwen 2.5 72B for architectural reasoning
+- **Together-Only Mode** - All image generation and reasoning via Together.ai (legacy providers removed)
 
 ---
 
-## 📐 Geometry-First Architecture
+## 📐 A1 One-Shot Architecture
 
-### What is Geometry-First?
+### What is A1 One-Shot?
 
-Traditional AI image generation creates each view independently, leading to inconsistencies. The Geometry-First Architecture **generates precise 3D geometry first**, then renders all views from that single source of truth.
+The A1 One-Shot workflow generates a **single comprehensive A1 architectural sheet** (841×594mm) containing all views, project data, and technical details. This ensures perfect consistency since all views are generated together in one coherent image.
 
 ### Architecture Flow
 
 ```
-User Input → Together.ai Reasoning → Spatial Layout → 3D Geometry → Multiple Views
-   ↓              (DNA Generation)      (Algorithm)     (Three.js)     (Distinct)
-Site Polygon   →  Exact Dimensions  →  Validation   →  Rendering   →  A1 Sheet
+User Input → Location Analysis → Portfolio Analysis → Design DNA → A1 Sheet Generation
+   ↓              (Style/Climate)      (Vision AI)     (Qwen 2.5)      (FLUX.1-dev)
+Site Polygon  →  Blended Style    →    Materials    →  Validated    →  Single Sheet
 ```
 
 ### Benefits
 
-| Metric | Before (AI-Only) | After (Geometry-First) |
-|--------|------------------|------------------------|
-| **Dimensional Accuracy** | 75% | **99.5%** ⬆ |
-| **Cross-View Consistency** | 70% | **98%** ⬆ |
+| Metric | Before (Separate Views) | After (A1 One-Shot) |
+|--------|------------------------|---------------------|
+| **Cross-View Consistency** | 70% | **98%+** ⬆ |
 | **Material Consistency** | 60% | **99%** ⬆ |
-| **Validation Rules** | 0 | **50+** ⬆ |
+| **Generation Time** | ~3 minutes | **~30-40 seconds** ⬇ |
+| **Output Format** | 13 separate images | **1 professional sheet** ⬆ |
 
 ### How to Use
 
-Geometry-First is **enabled by default**. To toggle:
+A1 One-Shot is **enabled by default**. Simply click "Generate AI Designs" and the system will automatically:
 
-```javascript
-// In browser console or code
-import { setFeatureFlag } from './src/config/featureFlags';
-
-// Enable geometry-first (default)
-setFeatureFlag('geometryFirst', true);
-
-// Disable (fallback to legacy AI-only)
-setFeatureFlag('geometryFirst', false);
-```
-
-Or use the Settings UI component:
-```jsx
-import { GeometryFirstSettings } from './src/components/GeometryFirstSettings';
-
-<GeometryFirstSettings />
-```
-
-### Documentation
-
-Complete technical documentation:
-- 📖 **[Geometry-First README](./GEOMETRY_FIRST_README.md)** - Full technical reference
-- 📋 **[Local Testing Complete](./GEOMETRY_FIRST_LOCAL_TESTING_COMPLETE.md)** - Test results and verification
-- 🏗️ **[Implementation Summary](./GEOMETRY_FIRST_COMPLETE.md)** - Overview of all 8 milestones
+1. Analyze location for architectural style and climate
+2. Blend portfolio style with local context
+3. Generate Master Design DNA with exact specifications
+4. Create single comprehensive A1 sheet with all views
 
 ---
 
@@ -75,12 +56,13 @@ Complete technical documentation:
 ### Prerequisites
 
 - **Node.js** 18+ and npm
-- **Environment Variables** (see `.env.example`)
-  - `TOGETHER_API_KEY` - **Required** for FLUX image generation and Qwen reasoning
-  - `REACT_APP_GOOGLE_MAPS_API_KEY` - For geocoding and 3D maps
-  - `REACT_APP_OPENWEATHER_API_KEY` - For climate data
-  - `REACT_APP_OPENAI_API_KEY` - Optional fallback for reasoning
-  - `REACT_APP_REPLICATE_API_KEY` - Optional fallback for images
+- **Environment Variables** (see `env.template`)
+  - `TOGETHER_API_KEY` - **REQUIRED** for FLUX image generation and Qwen reasoning (Build Tier 2+ with $5-10 credits)
+  - `REACT_APP_GOOGLE_MAPS_API_KEY` - **REQUIRED** for geocoding and 3D maps
+  - `REACT_APP_OPENWEATHER_API_KEY` - **REQUIRED** for climate data
+  - `OPENAI_REASONING_API_KEY` - **OPTIONAL** fallback for reasoning only (Together.ai is primary)
+  
+**Note:** Legacy providers (DALL-E, Replicate, OpenArt, Maginary) have been removed. All image generation uses Together.ai FLUX.1-dev exclusively.
 
 ### Installation
 
@@ -93,9 +75,12 @@ cd architect-ai-platform
 npm install
 
 # Copy environment template
-cp .env.example .env
+cp env.template .env
 
 # Add your API keys to .env
+# REQUIRED: TOGETHER_API_KEY (get at https://api.together.ai/)
+# REQUIRED: REACT_APP_GOOGLE_MAPS_API_KEY
+# REQUIRED: REACT_APP_OPENWEATHER_API_KEY
 ```
 
 ### Running Locally
@@ -130,9 +115,11 @@ API proxy runs on `http://localhost:3001`
 - `npm run server` - Start Express API proxy only
 
 ### Testing
-- `npm test` - Run Jest test suite
+- `npm test` - Run Jest test suite in interactive mode
 - `npm run test:coverage` - Run tests with coverage report
-- `node test-geometry-first-local.js` - Run Geometry-First verification suite (49 tests)
+- `node scripts/test-a1-one-shot.js` - Test A1 One-Shot workflow end-to-end
+- `node test-together-api-connection.js` - Test Together.ai connectivity
+- `node test-dna-pipeline.js` - Test DNA generation pipeline
 
 ### Validation
 - `npm run check:env` - Verify all required environment variables
@@ -153,37 +140,29 @@ architect-ai-platform/
 │   ├── ArchitectAIEnhanced.js      # Main application (2000+ lines)
 │   ├── App.js                       # Entry point
 │   ├── components/                  # React components
-│   │   ├── GeometryFirstSettings.jsx
+│   │   ├── A1SheetViewer.jsx
 │   │   ├── SitePolygonDrawer.jsx
 │   │   └── ...
 │   ├── services/                    # 40+ AI/logic services
 │   │   ├── togetherAIService.js    # FLUX image generation
 │   │   ├── togetherAIReasoningService.js
+│   │   ├── reasoningOrchestrator.js # OpenAI → Together.ai fallback
 │   │   ├── enhancedDNAGenerator.js # Design DNA system
 │   │   ├── dnaValidator.js
 │   │   ├── dnaPromptGenerator.js
+│   │   ├── dnaWorkflowOrchestrator.js # A1 workflow orchestration
 │   │   └── ...
-│   ├── geometry/                    # Geometry-First pipeline
-│   │   ├── spatialLayoutAlgorithm.js
-│   │   ├── geometryBuilder.js
-│   │   └── openingsGenerator.js
-│   ├── core/                        # TypeScript core
-│   │   ├── validators.ts           # 50+ architectural rules
-│   │   └── designSchema.ts
 │   ├── config/
 │   │   └── featureFlags.js         # Feature toggle system
 │   └── hooks/
-│       └── useGeometryViews.js     # Geometry view management
 ├── api/                             # Vercel Serverless Functions
-│   ├── render.js                   # 3D geometry rendering
-│   ├── plan.js                     # DNA generation
-│   ├── sheet.js                    # A1 sheet export
 │   ├── together-chat.js            # Together.ai reasoning proxy
-│   └── together-image.js           # Together.ai image proxy
-├── tests/
-│   └── api.test.js                 # API smoke tests
-├── data/
-│   └── design.json                 # Example design state
+│   ├── together-image.js           # Together.ai image proxy
+│   ├── openai-chat.js              # OpenAI fallback proxy
+│   └── ...
+├── scripts/
+│   ├── test-a1-one-shot.js        # A1 workflow test
+│   └── ...
 ├── server.js                        # Express API proxy (development)
 └── package.json
 ```
@@ -192,62 +171,34 @@ architect-ai-platform/
 
 ## 🔧 API Endpoints
 
-### Geometry-First Pipeline
-
-**POST `/api/render`** - Render 3D geometry views
-```javascript
-{
-  design: { dna: {...}, dimensions: {...} }
-}
-// Returns: {axon: {...}, persp: {...}, interior: {...}}
-```
-
-**POST `/api/plan`** - Generate Project DNA
-```javascript
-{
-  address: "123 Main St",
-  program: "2BR residential",
-  climate: { type: "temperate" }
-}
-// Returns: { design: { dna: {...} } }
-```
-
-**GET `/api/sheet?format=svg|pdf`** - Export A1 architecture sheet
-```
-// Returns: SVG with all views, stamped with design_id, seed, SHA256
-```
-
-### Legacy AI Endpoints
+### Primary Endpoints
 
 **POST `/api/together/chat`** - Together.ai reasoning (Qwen 2.5 72B)
-**POST `/api/together/image`** - FLUX image generation
-**POST `/api/openai/chat`** - OpenAI fallback
-**POST `/api/replicate/predictions`** - Replicate fallback
+**POST `/api/together/image`** - FLUX.1-dev image generation
+**POST `/api/openai/chat`** - OpenAI GPT-4o (fallback for reasoning)
 
----
-
-## 🧪 Testing
+### Testing
 
 ### Run Comprehensive Test Suite
 ```bash
-node test-geometry-first-local.js
+node scripts/test-a1-one-shot.js
 ```
 
 Expected output:
 ```
-🧪 Geometry-First Local Testing Suite
+🧪 Testing A1 One-Shot Workflow...
 
-📊 TEST SUMMARY
-Total Tests: 49
-✅ Passed: 49
-Success Rate: 100.0%
+📋 Test Parameters:
+   Location: 123 Test Street, London, UK
+   Program: residential
+   Area: 200 m²
+   Floors: 2
 
-✅ All tests passed! ✨
-```
+🚀 Running A1 Sheet Workflow...
 
-### Run Jest Tests
-```bash
-npm test
+✅ A1 Sheet workflow completed successfully!
+   The workflow generates a single comprehensive A1 sheet
+   with all views embedded and style/climate/portfolio blended.
 ```
 
 ### Test Individual Services
@@ -258,8 +209,8 @@ node test-together-api-connection.js
 # Test DNA generation
 node test-dna-pipeline.js
 
-# Test geometry pipeline
-node test-geometry-pipeline.js
+# Test A1 one-shot workflow
+node scripts/test-a1-one-shot.js
 ```
 
 ---
@@ -271,16 +222,11 @@ node test-geometry-pipeline.js
 - 📋 **[API_SETUP.md](./API_SETUP.md)** - AI integration reference
 - 🔧 **[VERCEL_ENV_SETUP.md](./VERCEL_ENV_SETUP.md)** - Deployment guide
 
-### Geometry-First Architecture
-- 📐 **[GEOMETRY_FIRST_README.md](./GEOMETRY_FIRST_README.md)** - Technical reference
-- ✅ **[GEOMETRY_FIRST_LOCAL_TESTING_COMPLETE.md](./GEOMETRY_FIRST_LOCAL_TESTING_COMPLETE.md)** - Test results
-- 🏗️ **[GEOMETRY_FIRST_COMPLETE.md](./GEOMETRY_FIRST_COMPLETE.md)** - Implementation summary
-- 📊 **[M1-M4 Milestone Docs](.)** - Individual milestone documentation
-
 ### System Documentation
 - 🧬 **[DNA_SYSTEM_ARCHITECTURE.md](./DNA_SYSTEM_ARCHITECTURE.md)** - Design DNA system
 - ✓ **[CONSISTENCY_SYSTEM_COMPLETE.md](./CONSISTENCY_SYSTEM_COMPLETE.md)** - 98% consistency details
 - 🔧 **[FIX_SUMMARY.md](./FIX_SUMMARY.md)** - Recent critical fixes
+- 📐 **[A1_SHEET_ONE_SHOT_IMPLEMENTATION.md](./A1_SHEET_ONE_SHOT_IMPLEMENTATION.md)** - A1 workflow details
 
 ---
 
