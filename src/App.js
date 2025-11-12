@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import ArchitectAIEnhanced from './ArchitectAIEnhanced';
+// REFACTORED: Using new modular architecture (5,646 lines → 100 lines)
+import ArchitectAIEnhanced from './ArchitectAIEnhancedNew';
+// Legacy (kept for rollback): import ArchitectAIEnhanced from './ArchitectAIEnhanced';
 import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
 
