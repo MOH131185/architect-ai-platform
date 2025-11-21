@@ -265,29 +265,34 @@ logFeatureFlags(); // Logs all flags to console
 6. Optional: User draws custom site boundary polygon via `SitePolygonDrawer` component
 7. Returns complete location profile with climate, zoning, styles, and market context
 
-**AI Generation Flow (A1-Only Mode - DEFAULT)**:
+**AI Generation Flow (Multi-Panel A1 Mode - DEFAULT)**:
 1. User clicks "Generate AI Designs" in step 6
-2. **STEP 1**: `enhancedDNAGenerator.js` generates Master Design DNA via Together.ai Qwen 2.5 72B:
-   - Exact dimensions (e.g., 15.25m × 10.15m × 7.40m)
-   - Materials with hex color codes (e.g., Red brick #B8604E)
-   - Room-by-room specifications with dimensions
-   - View-specific features (entrance location, window counts per facade)
-   - Consistency rules enforced across ALL sections of the A1 sheet
+2. **STEP 1**: Two-Pass DNA Generation via `twoPassDNAGenerator.js`:
+   - **Pass A (Author)**: Qwen2.5-72B generates structured JSON DNA with `site`, `program`, `style`, `geometry_rules`
+   - **Pass B (Reviewer)**: Qwen2.5-72B validates and repairs DNA, ensuring completeness
+   - NO fallback DNA - errors are surfaced to user for retry
+   - Structured schema enforces site polygon, climate, room areas, materials, roof type
 3. **STEP 2**: `dnaValidator.js` validates DNA (realistic dimensions, compatible materials, floor counts)
-4. **STEP 3**: `a1SheetPromptGenerator.buildA1SheetPrompt()` creates comprehensive UK RIBA-standard prompt:
-   - All views specified in one prompt: plans, elevations, sections, 3D, title block
-   - Portfolio style blending (70% portfolio / 30% local materials and characteristics)
-   - Climate and site-specific adaptations
-   - Strong negative prompts to avoid placeholder/grid aesthetics
-5. **STEP 4**: `togetherAIService.generateA1SheetImage()` generates single A1 sheet with FLUX.1-dev:
-   - Resolution: 1792×1269px (Together API compliant, A1 aspect ratio)
-   - Contains all views embedded in professional layout
-   - UK RIBA title block with ARB number, planning ref, compliance notes
-6. **STEP 5**: `a1SheetValidator.js` validates sheet quality and completeness
-7. **STEP 6**: Design saved to history (`designHistoryService.createDesign()`) with seed and base prompt
-8. Results displayed with A1 sheet viewer and AI Modify panel
+4. **STEP 3**: Deterministic seed derivation via `seedDerivation.js`:
+   - Base seed from DNA hash: `baseSeed = hash(masterDNA)`
+   - Panel seeds: `panelSeed[i] = (baseSeed + i * 137) % 1000000`
+   - Ensures perfect reproducibility (same DNA → same seeds)
+5. **STEP 4**: Panel generation with DNA-driven prompts:
+   - 13-14 panels generated sequentially (hero_3d, interior_3d, site, plans, elevations, sections, diagrams)
+   - Each prompt embeds structured DNA JSON for consistency
+   - FLUX.1-dev (40 steps) for 3D panels (2000×2000px)
+   - FLUX.1-schnell (4 steps) for 2D technical panels (1500×1500px)
+   - Priority order: 3D first → site → plans → elevations → sections → diagrams
+6. **STEP 5**: Server-side A1 composition via `/api/a1/compose`:
+   - Composites panels into UK RIBA-standard A1 layout
+   - Preserves aspect ratios with white margins
+   - Adds title block, labels, and frames
+7. **STEP 6**: Baseline artifacts saved to IndexedDB for modifications
+8. **STEP 7**: Design saved to history with compressed DNA, seed maps, and panel metadata
+9. Results displayed with A1 sheet viewer and AI Modify panel
 
-**Generation Time**: ~60 seconds for complete A1 sheet
+**Generation Time**: ~4-5 minutes for complete A1 sheet (13 panels × 20s + composition)
+**Consistency**: 98%+ with structured DNA and deterministic seeds
 
 **AI Modify Flow** (Post-Generation Modifications):
 1. User enters modification request or selects quick toggles (Add Sections, Add 3D View, Add Details)
@@ -335,8 +340,29 @@ The A1 workflow is **always enabled** (A1-only mode). Users simply click "Genera
 
 **Problem Solved**: Early versions had only 70% consistency between views (different colors, window counts, dimensions varied). DNA system achieves **98%+ consistency**.
 
+**Two-Pass DNA Generation (NEW - Default)**:
+
+The platform now uses a strict two-pass DNA generation pipeline:
+
+**Pass A - Author** (Qwen2.5-72B):
+- Generates structured JSON DNA with four required sections:
+  - `site`: polygon, area, orientation, climate, sun path, wind
+  - `program`: floors, rooms with exact areas and orientations
+  - `style`: architecture type, materials, window patterns
+  - `geometry_rules`: grid, max span, roof type
+- Temperature: 0.3 for consistency
+- Output: JSON only (no prose)
+
+**Pass B - Reviewer** (Qwen2.5-72B + Deterministic Repair):
+- Validates schema completeness
+- Repairs missing fields using AI or deterministic rules
+- Temperature: 0.1 for deterministic repairs
+- Ensures all required sections are present and valid
+
+**NO Fallback DNA**: If DNA generation fails, the error is surfaced to the user for retry. This ensures every design has complete, validated DNA.
+
 **How It Works**:
-1. **Master DNA Generation**: AI extracts EXACT specifications:
+1. **Master DNA Generation**: Two-pass AI extracts EXACT specifications:
    ```javascript
    {
      dimensions: { length: 15.25, width: 10.15, height: 7.40 },
@@ -381,10 +407,12 @@ The A1 workflow is **always enabled** (A1-only mode). Users simply click "Genera
 
 ### Geometry-First Pipeline (Optional)
 
-**Status**: Optional feature (`geometryFirst: false` by default)
-**When to Enable**: Projects requiring exact dimensional accuracy, custom site constraints, or faster generation
+⚠️ **EXPERIMENTAL STATUS**: The geometry-first pipeline is partially implemented. Core TypeScript files (`src/core/designSchema.ts`, `src/core/validators.ts`, `src/geometry/buildGeometry.ts`) are referenced in documentation but may not be present on the main branch. Tests (`test-geometry-first-local.js`) may fail. Use DNA-Enhanced workflow (default) for production.
 
-**Architecture**:
+**Status**: Experimental feature (`geometryFirst: false` by default)
+**When to Enable**: Testing only - not recommended for production until core files are fully implemented
+
+**Intended Architecture** (when complete):
 ```
 User Input → DNA Generation → Spatial Layout → 3D Geometry → Multiple Views
    ↓              (Qwen)         (Algorithm)     (Three.js)     (Parallel)
@@ -671,12 +699,18 @@ npm run test:coverage                 # With coverage report
 - `src/config/featureFlags.js` - Feature flag system (a1Only: true, geometryFirst: false)
 - `src/config/appConfig.js` - Application-wide configuration
 
-**A1-Only Generation Pipeline** (Read these for A1 workflow):
-- `src/services/enhancedDNAGenerator.js` - Master DNA generation (850 lines)
+**Multi-Panel A1 Generation Pipeline** (Read these for A1 workflow):
+- `src/services/twoPassDNAGenerator.js` - **NEW** - Two-pass DNA generation (Author + Reviewer)
+- `src/services/dnaSchema.js` - **NEW** - Structured DNA schema and validation
+- `src/services/dnaRepair.js` - **NEW** - Deterministic DNA repair functions
+- `src/services/dnaPromptContext.js` - **NEW** - Structured DNA prompt builders
+- `src/services/enhancedDNAGenerator.js` - Legacy DNA generation (fallback)
 - `src/services/dnaValidator.js` - DNA validation and auto-correction
-- `src/services/a1SheetPromptGenerator.js` - A1 sheet prompt + withConsistencyLock()
-- `src/services/dnaWorkflowOrchestrator.js` - A1 workflow orchestration (runA1SheetWorkflow)
-- `src/services/a1SheetValidator.js` - Sheet quality validation
+- `src/services/seedDerivation.js` - Deterministic seed formula (baseSeed + index*137)
+- `src/services/panelGenerationService.js` - Panel planning and generation
+- `src/services/panelOrchestrator.js` - Panel orchestration with priorities
+- `src/services/dnaWorkflowOrchestrator.js` - Multi-panel workflow orchestration
+- `src/services/a1LayoutComposer.js` - Server-side A1 composition
 
 **AI Modification System** (Read these for modify workflow):
 - `src/services/aiModificationService.js` - modifyA1Sheet() with consistency lock
@@ -706,13 +740,17 @@ npm run test:coverage                 # With coverage report
 - `scripts/check-env.js` - Validates environment variables
 - `scripts/check-contracts.js` - Validates service contracts
 - `test-together-api-connection.js` - Tests Together.ai connectivity
+- `test-seed-derivation.js` - **NEW** - Tests deterministic seed formula (7 tests)
+- `test-two-pass-dna.js` - **NEW** - Tests two-pass DNA pipeline (7 tests)
 - `test-clinic-a1-generation.js` - Tests clinic A1 prompt generation with all required sections
 - `test-modify-seed-consistency.js` - Tests seed reuse and consistency lock in modify workflow
 - `test-a1-modify-consistency.js` - Test A1 modification workflow with consistency lock
+- `test-multi-panel-e2e.js` - Tests complete multi-panel generation workflow
 - `test-geometry-first-local.js` - Comprehensive Geometry-First test suite
 
 **Key Documentation**:
 - `README.md` - Public-facing documentation with Geometry-First overview
+- `docs/STRICT_MULTI_PANEL_IMPLEMENTATION.md` - **NEW** - Two-pass DNA and strict consistency implementation
 - `DNA_SYSTEM_ARCHITECTURE.md` - Complete DNA pipeline explanation
 - `CONSISTENCY_SYSTEM_COMPLETE.md` - 98% consistency achievement details
 - `GEOMETRY_FIRST_README.md` - Detailed Geometry-First technical reference

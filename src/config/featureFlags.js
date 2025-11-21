@@ -20,7 +20,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default true
    */
-  a1Only: true,
+  a1Only: false,
 
   /**
    * Geometry-First Pipeline (OPTIONAL)
@@ -53,7 +53,27 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default false (Enable via setFeatureFlag('hybridA1Mode', true))
    */
-  hybridA1Mode: false,
+  hybridA1Mode: true,
+
+  /**
+   * Multi-Panel A1 Generation (NEW)
+   *
+   * When enabled:
+   * - Generates 14 individual panels with specialized prompts
+   * - Uses hash-derived seeds from DNA for reproducibility
+   * - Server-side sharp composition into complete A1 sheet
+   * - Panel-specific drift detection and validation
+   * - Baseline artifact storage for modifications
+   * - Generation time: ~90-100 seconds (14 panels × 6s + composition)
+   * - API cost: ~$0.17-$0.24 per sheet
+   *
+   * When disabled:
+   * - Uses existing single-shot A1 generation
+   *
+   * @type {boolean}
+   * @default true (Enable for dev testing)
+   */
+  multiPanelA1: true,
 
   /**
    * Minimum interval between Together.ai image generation requests (ms)
@@ -115,13 +135,59 @@ export const FEATURE_FLAGS = {
    * Overlay captured site snapshot onto A1 sheet image
    * Default disabled to rely on AI-generated site panel only
    */
-  overlaySiteSnapshotOnA1: false,
+  overlaySiteSnapshotOnA1: true,
 
   /**
    * Composite site snapshot during A1 modify flow
    * Default disabled to avoid duplicate/overlapping site panels
    */
-  compositeSiteSnapshotOnModify: false
+  compositeSiteSnapshotOnModify: false,
+
+  /**
+   * Use FLUX.1-kontext-max for A1 sheet generation
+   * Requires Build Tier 2+ on Together.ai
+   * 
+   * @type {boolean}
+   * @default false
+   */
+  useFluxKontextForA1: false,
+
+  /**
+   * Use ModelRouter for all LLM/image calls
+   * Enables env-driven model selection (GPT-5, Claude, Together)
+   * 
+   * @type {boolean}
+   * @default true
+   */
+  useModelRouter: true,
+
+  /**
+   * Show consistency warnings in UI before exports
+   * Validates DNA, geometry, views, and A1 sheet structure
+   * 
+   * @type {boolean}
+   * @default true
+   */
+  showConsistencyWarnings: true,
+
+  /**
+   * Two-Pass DNA Generation (STRICT MODE)
+   *
+   * When enabled (default):
+   * - Uses Qwen2.5-72B in two passes (Author + Reviewer)
+   * - Pass A: Generate structured JSON DNA
+   * - Pass B: Validate and repair DNA
+   * - NO fallback DNA - errors are surfaced to user
+   * - Enforces strict schema with site, program, style, geometry_rules
+   * - Deterministic repair for missing fields
+   *
+   * When disabled:
+   * - Uses legacy DNA generator with fallback DNA
+   *
+   * @type {boolean}
+   * @default true
+   */
+  twoPassDNA: true
 };
 
 /**
@@ -179,16 +245,23 @@ export function resetFeatureFlags() {
     logger.error('Failed to clear feature flags', { error });
   }
 
-  FEATURE_FLAGS.a1Only = true;
+  FEATURE_FLAGS.a1Only = false;
   FEATURE_FLAGS.geometryFirst = false;
-  FEATURE_FLAGS.hybridA1Mode = false;  // Disabled by default to avoid rate limiting
+  FEATURE_FLAGS.hybridA1Mode = true;
+  FEATURE_FLAGS.multiPanelA1 = true;
   FEATURE_FLAGS.togetherImageMinIntervalMs = 9000;
   FEATURE_FLAGS.togetherBatchCooldownMs = 30000;
   FEATURE_FLAGS.respectRetryAfter = true;
   FEATURE_FLAGS.fluxImageModel = 'black-forest-labs/FLUX.1-dev';
   FEATURE_FLAGS.a1Orientation = 'landscape';
+  FEATURE_FLAGS.overlaySiteSnapshotOnA1 = true;
+  FEATURE_FLAGS.compositeSiteSnapshotOnModify = false;
+  FEATURE_FLAGS.useFluxKontextForA1 = false;
+  FEATURE_FLAGS.useModelRouter = true;
+  FEATURE_FLAGS.showConsistencyWarnings = true;
+  FEATURE_FLAGS.twoPassDNA = true;
 
-  logger.info('Feature flags reset to defaults (hybridA1Mode: disabled, FLUX.1-dev enabled)');
+  logger.info('Feature flags reset to defaults (ModelRouter enabled, consistency warnings enabled, two-pass DNA enabled)');
 }
 
 /**
@@ -213,6 +286,8 @@ export function loadFeatureFlagsFromStorage() {
 
 // Auto-load on module import
 loadFeatureFlagsFromStorage();
+FEATURE_FLAGS.multiPanelA1 = true;
+FEATURE_FLAGS.a1Only = false;
 
 /**
  * Development helper: Log current feature flag status
