@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Climate-Responsive Design Service
  *
@@ -13,7 +15,7 @@
 
 class ClimateResponsiveDesignService {
   constructor() {
-    console.log('🌡️ Climate-Responsive Design Service initialized');
+    logger.info('🌡️ Climate-Responsive Design Service initialized');
   }
 
   /**
@@ -21,11 +23,11 @@ class ClimateResponsiveDesignService {
    */
   generateClimateParameters(climateData, latitude = 40) {
     if (!climateData) {
-      console.warn('⚠️ No climate data provided, using temperate defaults');
+      logger.warn('⚠️ No climate data provided, using temperate defaults');
       return this.getDefaultParameters();
     }
 
-    console.log('🌡️ Generating climate-responsive parameters for:', climateData.type);
+    logger.info('🌡️ Generating climate-responsive parameters for:', climateData.type);
 
     const params = {};
 

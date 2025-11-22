@@ -16,15 +16,18 @@
  */
 
 import axios from 'axios';
-import { simplifyPolygon, detectBuildingType } from '../utils/polygonSimplifier';
-import { detectPropertyBoundary, analyzeShapeType } from './propertyBoundaryService';
+import { simplifyPolygon, detectBuildingType } from '../utils/polygonSimplifier.js';
+import { detectPropertyBoundary, analyzeShapeType } from './propertyBoundaryService.js';
+import runtimeEnv from '../utils/runtimeEnv.js';
+import logger from '../utils/logger.js';
+
 
 class SiteAnalysisService {
   constructor() {
     this.googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     this.cachePrefix = 'siteAnalysis_';
     this.cacheTTL = 60 * 60 * 1000; // 1 hour in milliseconds
-    console.log('🗺️  Site Analysis Service initialized with polygon detection and caching');
+    logger.info('🗺️  Site Analysis Service initialized with polygon detection and caching');
   }
 
   /**
@@ -32,22 +35,24 @@ class SiteAnalysisService {
    */
   getCachedAnalysis(cacheKey) {
     try {
-      const cached = sessionStorage.getItem(cacheKey);
+      const session = runtimeEnv.getSession();
+      if (!session) return null;
+      const cached = session.getItem(cacheKey);
       if (!cached) return null;
 
       const { data, timestamp } = JSON.parse(cached);
       const age = Date.now() - timestamp;
 
       if (age < this.cacheTTL) {
-        console.log(`   ✓ Using cached site analysis (age: ${Math.round(age / 1000)}s)`);
+        logger.info(`   ✓ Using cached site analysis (age: ${Math.round(age / 1000)}s)`);
         return data;
       } else {
-        console.log(`   × Cache expired (age: ${Math.round(age / 1000)}s), fetching fresh data`);
-        sessionStorage.removeItem(cacheKey);
+        logger.info(`   × Cache expired (age: ${Math.round(age / 1000)}s), fetching fresh data`);
+        session.removeItem(cacheKey);
         return null;
       }
     } catch (error) {
-      console.warn('Cache read error:', error);
+      logger.warn('Cache read error:', error);
       return null;
     }
   }
@@ -57,14 +62,19 @@ class SiteAnalysisService {
    */
   saveToCache(cacheKey, data) {
     try {
+      const session = runtimeEnv.getSession();
+      if (!session) {
+        return;
+      }
+
       const cacheEntry = {
         data,
         timestamp: Date.now()
       };
-      sessionStorage.setItem(cacheKey, JSON.stringify(cacheEntry));
-      console.log('   ✓ Site analysis cached successfully');
+      session.setItem(cacheKey, JSON.stringify(cacheEntry));
+      logger.info('   ✓ Site analysis cached successfully');
     } catch (error) {
-      console.warn('Cache write error:', error);
+      logger.warn('Cache write error:', error);
       // Continue without caching
     }
   }
@@ -75,7 +85,7 @@ class SiteAnalysisService {
    * ENHANCED: Now includes actual property boundary polygon detection and caching
    */
   async analyzeSiteContext(address, coordinates) {
-    console.log('🔍 Analyzing site context for:', address);
+    logger.info('🔍 Analyzing site context for:', address);
 
     // Generate cache key from address and coordinates
     const cacheKey = `${this.cachePrefix}${address}_${coordinates.lat}_${coordinates.lng}`.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -167,7 +177,7 @@ class SiteAnalysisService {
 
       return result;
     } catch (error) {
-      console.error('❌ Site analysis failed:', error);
+      logger.error('❌ Site analysis failed:', error);
       return {
         success: false,
         siteAnalysis: this.getFallbackSiteAnalysis(address, coordinates),
@@ -199,7 +209,7 @@ class SiteAnalysisService {
 
       throw new Error('Geocoding failed');
     } catch (error) {
-      console.error('Geocoding error:', error);
+      logger.error('Geocoding error:', error);
       return null;
     }
   }
@@ -210,22 +220,22 @@ class SiteAnalysisService {
    * ENHANCED: Uses new propertyBoundaryService with intelligent shape detection
    */
   async getPropertyBoundary(coordinates, placeId, addressDetails) {
-    console.log('🔍 Fetching property boundary polygon with enhanced detection...');
+    logger.info('🔍 Fetching property boundary polygon with enhanced detection...');
 
     // Build full address string for better detection
     const fullAddress = addressDetails?.formattedAddress || '';
 
     try {
       // PRIORITY 1: Use enhanced property boundary service (multi-source with intelligent fallbacks)
-      console.log('🔍 PRIORITY 1: Enhanced multi-source boundary detection...');
+      logger.info('🔍 PRIORITY 1: Enhanced multi-source boundary detection...');
       const enhancedBoundary = await detectPropertyBoundary(coordinates, fullAddress);
 
       if (enhancedBoundary && enhancedBoundary.polygon && enhancedBoundary.polygon.length >= 3) {
-        console.log('✅ Property boundary detected via enhanced service');
-        console.log(`   📐 Shape: ${enhancedBoundary.shapeType}`);
-        console.log(`   📐 Area: ${enhancedBoundary.area}m²`);
-        console.log(`   📊 Source: ${enhancedBoundary.source}`);
-        console.log(`   🎯 Confidence: ${(enhancedBoundary.confidence * 100).toFixed(0)}%`);
+        logger.success(' Property boundary detected via enhanced service');
+        logger.info(`   📐 Shape: ${enhancedBoundary.shapeType}`);
+        logger.info(`   📐 Area: ${enhancedBoundary.area}m²`);
+        logger.info(`   📊 Source: ${enhancedBoundary.source}`);
+        logger.info(`   🎯 Confidence: ${(enhancedBoundary.confidence * 100).toFixed(0)}%`);
 
         return {
           polygon: enhancedBoundary.polygon,
@@ -239,7 +249,7 @@ class SiteAnalysisService {
       }
 
       // PRIORITY 2: Fallback to legacy OpenStreetMap detection
-      console.log('🔍 PRIORITY 2: Fallback to legacy OpenStreetMap detection...');
+      logger.info('🔍 PRIORITY 2: Fallback to legacy OpenStreetMap detection...');
       const hasStreetNumber = addressDetails?.addressComponents?.some(
         component => component.types.includes('street_number')
       );
@@ -255,8 +265,8 @@ class SiteAnalysisService {
 
       const osmBoundary = await this.getOSMPropertyBoundary(coordinates, enhancedAddressDetails);
       if (osmBoundary && osmBoundary.polygon) {
-        console.log('✅ Property boundary from legacy OpenStreetMap');
-        console.log(`   📐 Area: ${osmBoundary.area}m²`);
+        logger.success(' Property boundary from legacy OpenStreetMap');
+        logger.info(`   📐 Area: ${osmBoundary.area}m²`);
 
         // Enhance with shape analysis
         const shapeType = analyzeShapeType(osmBoundary.polygon);
@@ -269,11 +279,11 @@ class SiteAnalysisService {
       }
 
       // PRIORITY 3: Fallback to Google Geocoding/Places
-      console.log('🔍 PRIORITY 3: Trying Google Geocoding/Places...');
+      logger.info('🔍 PRIORITY 3: Trying Google Geocoding/Places...');
       const placesBoundary = await this.getPlaceGeometry(coordinates, placeId);
       if (placesBoundary && placesBoundary.polygon) {
-        console.log('✅ Property boundary from Google Places');
-        console.log(`   📐 Area: ${placesBoundary.area}m²`);
+        logger.success(' Property boundary from Google Places');
+        logger.info(`   📐 Area: ${placesBoundary.area}m²`);
 
         // Enhance with shape analysis
         const shapeType = analyzeShapeType(placesBoundary.polygon);
@@ -285,10 +295,10 @@ class SiteAnalysisService {
         };
       }
 
-      console.log('⚠️  No property boundary found from any source - using intelligent estimation');
+      logger.info('⚠️  No property boundary found from any source - using intelligent estimation');
       return null;
     } catch (error) {
-      console.error('Property boundary detection error:', error);
+      logger.error('Property boundary detection error:', error);
       return null;
     }
   }
@@ -304,9 +314,9 @@ class SiteAnalysisService {
     const maxRetries = 2;
     const baseTimeout = 30000; // 30 seconds base timeout
 
-    console.log(`🎯 Searching for exact building geometry${retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : ''}`);
-    console.log(`   Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-    console.log(`   Address precision: ${addressDetails?.hasStreetNumber ? 'PRECISE (has house number)' : 'GENERAL (no house number)'}`);
+    logger.info(`🎯 Searching for exact building geometry${retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : ''}`);
+    logger.info(`   Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    logger.info(`   Address precision: ${addressDetails?.hasStreetNumber ? 'PRECISE (has house number)' : 'GENERAL (no house number)'}`);
 
     // STRATEGY 1: Point-in-polygon query (most accurate - finds building containing the exact point)
     // STRATEGY 2: Nearby search with tight radius (fallback if point not inside any building)
@@ -337,7 +347,7 @@ class SiteAnalysisService {
       const timeoutMs = baseTimeout + (retryCount * 10000);
 
       // TRY STRATEGY 1: Point-in-polygon (exact location)
-      console.log(`   🎯 Strategy 1: Searching for building at EXACT coordinates...`);
+      logger.info(`   🎯 Strategy 1: Searching for building at EXACT coordinates...`);
       let response = await axios.get('https://overpass-api.de/api/interpreter', {
         params: { data: pointQuery },
         timeout: timeoutMs
@@ -345,7 +355,7 @@ class SiteAnalysisService {
 
       // If no results from point query, try nearby search
       if (!response.data || !response.data.elements || response.data.elements.length === 0) {
-        console.log(`   📍 Strategy 2: No building at exact point, searching within ${searchRadius}m radius...`);
+        logger.info(`   📍 Strategy 2: No building at exact point, searching within ${searchRadius}m radius...`);
         response = await axios.get('https://overpass-api.de/api/interpreter', {
           params: { data: nearbyQuery },
           timeout: timeoutMs
@@ -353,7 +363,7 @@ class SiteAnalysisService {
       }
 
       if (response.data && response.data.elements && response.data.elements.length > 0) {
-        console.log(`   Found ${response.data.elements.length} potential properties`);
+        logger.info(`   Found ${response.data.elements.length} potential properties`);
 
         // Filter to only actual buildings (exclude large landuse polygons)
         const buildings = response.data.elements.filter(element => {
@@ -369,13 +379,13 @@ class SiteAnalysisService {
 
             // For precise addresses, only accept residential-sized buildings (< 300m²)
             if (addressDetails?.hasStreetNumber && area > 300) {
-              console.log(`   ⏭️ Skipping large building (${area.toFixed(0)}m²) - likely not a single house`);
+              logger.info(`   ⏭️ Skipping large building (${area.toFixed(0)}m²) - likely not a single house`);
               return false;
             }
 
             // Exclude huge landuse polygons (> 1000m²)
             if (area > 1000) {
-              console.log(`   ⏭️ Skipping very large polygon (${area.toFixed(0)}m²)`);
+              logger.info(`   ⏭️ Skipping very large polygon (${area.toFixed(0)}m²)`);
               return false;
             }
           }
@@ -383,10 +393,10 @@ class SiteAnalysisService {
           return true;
         });
 
-        console.log(`   Filtered to ${buildings.length} actual buildings`);
+        logger.info(`   Filtered to ${buildings.length} actual buildings`);
 
         if (buildings.length === 0) {
-          console.log('   ⚠️ No suitable residential buildings found after filtering');
+          logger.info('   ⚠️ No suitable residential buildings found after filtering');
           return null;
         }
 
@@ -395,12 +405,12 @@ class SiteAnalysisService {
         const targetHouseNumber = addressDetails?.houseNumber;
 
         if (targetHouseNumber) {
-          console.log(`   🔍 Looking for building with house number: ${targetHouseNumber}`);
+          logger.info(`   🔍 Looking for building with house number: ${targetHouseNumber}`);
 
           for (const element of buildings) {
             const osmHouseNumber = element.tags?.['addr:housenumber'];
             if (osmHouseNumber && osmHouseNumber === targetHouseNumber) {
-              console.log(`   🎯 EXACT MATCH FOUND! Building ${element.id} has addr:housenumber = ${osmHouseNumber}`);
+              logger.info(`   🎯 EXACT MATCH FOUND! Building ${element.id} has addr:housenumber = ${osmHouseNumber}`);
               exactMatchElement = element;
               break;
             }
@@ -412,7 +422,7 @@ class SiteAnalysisService {
         let minDistance = Infinity;
 
         if (!exactMatchElement) {
-          console.log('   📏 No exact house number match, selecting by distance...');
+          logger.info('   📏 No exact house number match, selecting by distance...');
 
           for (const element of buildings) {
             // Get element's center point
@@ -423,7 +433,7 @@ class SiteAnalysisService {
             const distance = this.calculateDistance(lat, lng, elementCenter.lat, elementCenter.lon);
 
             const osmHouseNumber = element.tags?.['addr:housenumber'];
-            console.log(`   📍 Building ${element.id}: ${distance.toFixed(1)}m away, type: ${element.tags?.building}${osmHouseNumber ? `, house#: ${osmHouseNumber}` : ''}`);
+            logger.info(`   📍 Building ${element.id}: ${distance.toFixed(1)}m away, type: ${element.tags?.building}${osmHouseNumber ? `, house#: ${osmHouseNumber}` : ''}`);
 
             if (distance < minDistance) {
               minDistance = distance;
@@ -431,13 +441,13 @@ class SiteAnalysisService {
             }
           }
 
-          console.log(`   ✅ Selected closest building at ${minDistance.toFixed(1)}m distance`);
+          logger.info(`   ✅ Selected closest building at ${minDistance.toFixed(1)}m distance`);
         } else {
           // Calculate distance for the exact match
           const elementCenter = this.getElementCenter(exactMatchElement);
           if (elementCenter) {
             minDistance = this.calculateDistance(lat, lng, elementCenter.lat, elementCenter.lon);
-            console.log(`   ✅ Using exact house number match at ${minDistance.toFixed(1)}m distance`);
+            logger.info(`   ✅ Using exact house number match at ${minDistance.toFixed(1)}m distance`);
           }
         }
 
@@ -452,11 +462,11 @@ class SiteAnalysisService {
             const osmHouseNumber = closestElement.tags?.['addr:housenumber'];
             const isExactMatch = exactMatchElement !== null;
 
-            console.log(`   ✅ Property boundary: ${polygon.length} vertices, ${area.toFixed(0)}m²`);
-            console.log(`   📊 Building type: ${closestElement.tags?.building}`);
-            console.log(`   🆔 OSM ID: ${closestElement.id}`);
-            console.log(`   🏠 House number: ${osmHouseNumber || 'N/A'}`);
-            console.log(`   ${isExactMatch ? '🎯 Selection method: EXACT HOUSE NUMBER MATCH' : '📏 Selection method: DISTANCE-BASED (closest building)'}`);
+            logger.info(`   ✅ Property boundary: ${polygon.length} vertices, ${area.toFixed(0)}m²`);
+            logger.info(`   📊 Building type: ${closestElement.tags?.building}`);
+            logger.info(`   🆔 OSM ID: ${closestElement.id}`);
+            logger.info(`   🏠 House number: ${osmHouseNumber || 'N/A'}`);
+            logger.info(`   ${isExactMatch ? '🎯 Selection method: EXACT HOUSE NUMBER MATCH' : '📏 Selection method: DISTANCE-BASED (closest building)'}`);
 
             return {
               polygon: polygon,
@@ -477,7 +487,7 @@ class SiteAnalysisService {
         }
       }
 
-      console.log('   ⚠️ No suitable property boundary found');
+      logger.info('   ⚠️ No suitable property boundary found');
       return null;
     } catch (error) {
       // Handle timeout errors with retry logic
@@ -488,15 +498,15 @@ class SiteAnalysisService {
 
       if (isTimeout && retryCount < maxRetries) {
         const delayMs = 1000 * Math.pow(2, retryCount); // Exponential backoff: 1s, 2s
-        console.log(`⚠️ OSM API timeout - retrying in ${delayMs}ms...`);
-        console.log(`   Error: ${error.message}`);
+        logger.info(`⚠️ OSM API timeout - retrying in ${delayMs}ms...`);
+        logger.info(`   Error: ${error.message}`);
 
         await new Promise(resolve => setTimeout(resolve, delayMs));
         return this.getOSMPropertyBoundary(coordinates, addressDetails, retryCount + 1);
       }
 
       // Log detailed error information
-      console.error('OSM boundary fetch error:', {
+      logger.error('OSM boundary fetch error:', {
         message: error.message,
         code: error.code,
         status: error.response?.status,
@@ -504,7 +514,7 @@ class SiteAnalysisService {
       });
 
       if (isTimeout) {
-        console.log('⚠️ OSM API still timing out after retries - falling back to Google Places');
+        logger.info('⚠️ OSM API still timing out after retries - falling back to Google Places');
       }
 
       return null;
@@ -557,7 +567,7 @@ class SiteAnalysisService {
       }
     }
 
-    console.log(`   📐 Extracted polygon with ${coords.length} vertices`);
+    logger.info(`   📐 Extracted polygon with ${coords.length} vertices`);
 
     // Simplify polygon if it has too many vertices (OSM can be overly detailed)
     if (coords.length > 10) {
@@ -565,7 +575,7 @@ class SiteAnalysisService {
 
       // Detect building type
       const buildingType = detectBuildingType(simplified);
-      console.log(`   🏠 Building type: ${buildingType.type} (confidence: ${buildingType.confidence})`);
+      logger.info(`   🏠 Building type: ${buildingType.type} (confidence: ${buildingType.confidence})`);
 
       return simplified;
     }
@@ -629,10 +639,10 @@ class SiteAnalysisService {
         if (geocodeResponse.data.status === 'OK' && geocodeResponse.data.results.length > 0) {
           geocodeData = geocodeResponse.data.results[0];
           locationType = geocodeData.geometry?.location_type;
-          console.log(`   📍 Geocoding precision: ${locationType}`);
+          logger.info(`   📍 Geocoding precision: ${locationType}`);
         }
       } catch (error) {
-        console.warn('   ⚠️ Geocoding API failed:', error.message);
+        logger.warn('   ⚠️ Geocoding API failed:', error.message);
       }
 
       // STEP 2: Determine building footprint based on location precision
@@ -647,7 +657,7 @@ class SiteAnalysisService {
 
       if (locationType === 'ROOFTOP' || locationType === 'RANGE_INTERPOLATED') {
         // High precision - create realistic building footprint estimate
-        console.log('   🏠 High precision address - creating building footprint estimate');
+        logger.info('   🏠 High precision address - creating building footprint estimate');
 
         // Estimate typical building dimensions based on address type
         const buildingWidth = 12;  // meters (typical building width)
@@ -658,7 +668,7 @@ class SiteAnalysisService {
         area = this.computePolygonArea(polygon);
         estimatedFootprint = true;
 
-        console.log(`   📐 Created ${buildingWidth}m × ${buildingDepth}m building footprint: ${area}m²`);
+        logger.info(`   📐 Created ${buildingWidth}m × ${buildingDepth}m building footprint: ${area}m²`);
 
       } else {
         // Lower precision - try to get bounds from Places API
@@ -692,7 +702,7 @@ class SiteAnalysisService {
           const MAX_REASONABLE_AREA = 500; // m² - max reasonable for single residential building
 
           if (area > MAX_REASONABLE_AREA) {
-            console.log(`   ⚠️ Viewport too large (${area}m²) - creating estimated footprint instead`);
+            logger.info(`   ⚠️ Viewport too large (${area}m²) - creating estimated footprint instead`);
 
             // Replace with reasonable building footprint
             const buildingWidth = 12;
@@ -701,7 +711,7 @@ class SiteAnalysisService {
             area = this.computePolygonArea(polygon);
             estimatedFootprint = true;
 
-            console.log(`   📐 Replaced with ${buildingWidth}m × ${buildingDepth}m footprint: ${area}m²`);
+            logger.info(`   📐 Replaced with ${buildingWidth}m × ${buildingDepth}m footprint: ${area}m²`);
           }
         }
       }
@@ -723,7 +733,7 @@ class SiteAnalysisService {
 
       return null;
     } catch (error) {
-      console.error('Google Places geometry error:', error);
+      logger.error('Google Places geometry error:', error);
       return null;
     }
   }
@@ -826,7 +836,7 @@ class SiteAnalysisService {
 
       return this.getFallbackStreetContext();
     } catch (error) {
-      console.error('Street context error:', error);
+      logger.error('Street context error:', error);
       return this.getFallbackStreetContext();
     }
   }
@@ -885,7 +895,7 @@ class SiteAnalysisService {
       dimensions = this.calculatePolygonDimensions(propertyBoundary.polygon);
       buildableArea = this.calculateBuildableArea(dimensions, plotType);
 
-      console.log(`📐 Using actual plot dimensions: ${dimensions.width}m × ${dimensions.depth}m (${propertyBoundary.area}m²)`);
+      logger.info(`📐 Using actual plot dimensions: ${dimensions.width}m × ${dimensions.depth}m (${propertyBoundary.area}m²)`);
     } else {
       // Fallback: Estimate plot shape
       plotShape = isCornerLot ? 'L-shaped' : 'rectangular';
@@ -896,7 +906,7 @@ class SiteAnalysisService {
       // Calculate buildable area (accounting for setbacks)
       buildableArea = this.calculateBuildableArea(dimensions, plotType);
 
-      console.log('⚠️  Using estimated plot dimensions');
+      logger.info('⚠️  Using estimated plot dimensions');
     }
 
     return {

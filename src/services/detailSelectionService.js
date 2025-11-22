@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Detail Selection Service
  * AI-driven selection of critical technical details based on climate, materials, and building type
@@ -6,7 +8,7 @@
 
 class DetailSelectionService {
   constructor() {
-    console.log('🔧 Detail Selection Service initialized');
+    logger.info('🔧 Detail Selection Service initialized');
   }
 
   /**
@@ -17,7 +19,7 @@ class DetailSelectionService {
    * @returns {Array} Array of 2 detail objects with specifications
    */
   selectCriticalDetails(masterDNA, location, projectContext) {
-    console.log('🔧 Selecting critical technical details...');
+    logger.info('🔧 Selecting critical technical details...');
 
     const climate = location?.climate || {};
     const climateType = climate.type || 'Temperate';
@@ -213,9 +215,9 @@ class DetailSelectionService {
         callout: this.generateDetailCallout(detail, masterDNA, location)
       }));
 
-    console.log(`✅ Selected ${selectedDetails.length} critical details:`);
+    logger.success(` Selected ${selectedDetails.length} critical details:`);
     selectedDetails.forEach((detail, idx) => {
-      console.log(`   ${idx + 1}. ${detail.name} (Score: ${detail.totalScore.toFixed(1)}, Scale: ${detail.scale})`);
+      logger.info(`   ${idx + 1}. ${detail.name} (Score: ${detail.totalScore.toFixed(1)}, Scale: ${detail.scale})`);
     });
 
     return selectedDetails;

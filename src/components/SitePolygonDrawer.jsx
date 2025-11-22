@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { calculateEdgeLengths } from '../utils/geometry';
+import { calculateEdgeLengths } from '../utils/geometry.js';
 
 /**
  * Site polygon drawing component for Google Maps

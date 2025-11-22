@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react';
 import { Building2, ArrowRight, ChevronLeft, Loader2, Plus, Trash2 } from 'lucide-react';
-import { useDesignContext } from '../context/DesignContext';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow';
-import { useProgramSpaces } from '../hooks/useProgramSpaces';
-import FloorPlanUpload from '../components/FloorPlanUpload';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
+import { useProgramSpaces } from '../hooks/useProgramSpaces.js';
 
 /**
  * ProjectSpecifications - Step 4: Define project requirements
@@ -20,7 +19,7 @@ import FloorPlanUpload from '../components/FloorPlanUpload';
  * @component
  */
 const ProjectSpecifications = () => {
-  const { projectDetails, setProjectDetails, floorPlanImage, setFloorPlanImage } = useDesignContext();
+  const { projectDetails, setProjectDetails } = useDesignContext();
   const { nextStep, prevStep, canGoForward } = useArchitectWorkflow();
   const {
     programSpaces,
@@ -51,16 +50,91 @@ const ProjectSpecifications = () => {
   const totalArea = getTotalArea();
 
   const buildingTypes = [
-    { value: 'detached-house', label: 'Detached House' },
-    { value: 'semi-detached-house', label: 'Semi-Detached House' },
-    { value: 'terraced-house', label: 'Terraced House' },
-    { value: 'apartment-building', label: 'Apartment Building' },
-    { value: 'villa', label: 'Villa' },
-    { value: 'clinic', label: 'Medical Clinic' },
-    { value: 'office', label: 'Office Building' },
-    { value: 'retail', label: 'Retail Space' },
-    { value: 'school', label: 'Educational Facility' },
-    { value: 'mixed-use', label: 'Mixed Use' }
+    // Residential - Houses
+    { value: 'detached-house', label: '🏡 Detached House (Single-family)' },
+    { value: 'semi-detached-house', label: '🏡 Semi-detached House (Duplex)' },
+    { value: 'terraced-house', label: '🏡 Terraced House (Townhouse)' },
+    { value: 'villa', label: '🏡 Villa (Luxury Detached)' },
+    { value: 'cottage', label: '🏡 Cottage (Small Detached)' },
+    // Residential - Multi-family
+    { value: 'apartment-building', label: '🏢 Apartment Building' },
+    { value: 'condominium', label: '🏢 Condominium Complex' },
+    { value: 'residential-tower', label: '🏢 Residential Tower' },
+    // Healthcare
+    { value: 'clinic', label: '🏥 Medical Clinic' },
+    { value: 'dental-clinic', label: '🏥 Dental Clinic' },
+    { value: 'health-center', label: '🏥 Health Center' },
+    { value: 'pharmacy', label: '🏥 Pharmacy' },
+    // Commercial
+    { value: 'office', label: '🏢 Office Building' },
+    { value: 'coworking', label: '🏢 Coworking Space' },
+    { value: 'retail', label: '🏢 Retail Space' },
+    { value: 'shopping-center', label: '🏢 Shopping Center' },
+    { value: 'restaurant', label: '🏢 Restaurant' },
+    { value: 'cafe', label: '🏢 Café' },
+    // Educational
+    { value: 'school', label: '🎓 School' },
+    { value: 'kindergarten', label: '🎓 Kindergarten' },
+    { value: 'training-center', label: '🎓 Training Center' },
+    { value: 'library', label: '🎓 Library' },
+    // Hospitality
+    { value: 'hotel', label: '🏨 Hotel' },
+    { value: 'hostel', label: '🏨 Hostel' },
+    { value: 'bed-breakfast', label: '🏨 Bed & Breakfast' },
+    // Public & Cultural
+    { value: 'community-center', label: '🏛️ Community Center' },
+    { value: 'museum', label: '🏛️ Museum' },
+    { value: 'gallery', label: '🏛️ Art Gallery' },
+    { value: 'theater', label: '🏛️ Theater' },
+    // Sports & Recreation
+    { value: 'gym', label: '🏋️ Gym / Fitness Center' },
+    { value: 'sports-hall', label: '🏋️ Sports Hall' },
+    { value: 'swimming-pool', label: '🏋️ Swimming Pool Complex' },
+    { value: 'tennis-club', label: '🏋️ Tennis Club' },
+    { value: 'yoga-studio', label: '🏋️ Yoga Studio' },
+    // Industrial & Warehouse
+    { value: 'warehouse', label: '🏭 Warehouse' },
+    { value: 'factory', label: '🏭 Factory / Manufacturing' },
+    { value: 'workshop', label: '🏭 Workshop' },
+    { value: 'logistics-center', label: '🏭 Logistics Center' },
+    { value: 'storage-facility', label: '🏭 Storage Facility' },
+    // Religious
+    { value: 'church', label: '⛪ Church' },
+    { value: 'mosque', label: '⛪ Mosque' },
+    { value: 'temple', label: '⛪ Temple' },
+    { value: 'synagogue', label: '⛪ Synagogue' },
+    { value: 'chapel', label: '⛪ Chapel' },
+    // Transportation
+    { value: 'parking-garage', label: '🚗 Parking Garage' },
+    { value: 'bus-station', label: '🚗 Bus Station' },
+    { value: 'train-station', label: '🚗 Train Station' },
+    { value: 'airport-terminal', label: '🚗 Airport Terminal' },
+    { value: 'service-station', label: '🚗 Service Station' },
+    // Mixed-Use
+    { value: 'mixed-use-residential-commercial', label: '🏪 Mixed-Use (Residential + Commercial)' },
+    { value: 'mixed-use-office-retail', label: '🏪 Mixed-Use (Office + Retail)' },
+    { value: 'live-work', label: '🏪 Live-Work Space' },
+    // Senior & Care
+    { value: 'nursing-home', label: '🏥 Nursing Home' },
+    { value: 'assisted-living', label: '🏥 Assisted Living Facility' },
+    { value: 'daycare', label: '🏥 Daycare Center' },
+    { value: 'retirement-community', label: '🏥 Retirement Community' },
+    // Specialized
+    { value: 'research-lab', label: '🎯 Research Laboratory' },
+    { value: 'data-center', label: '🎯 Data Center' },
+    { value: 'veterinary-clinic', label: '🎯 Veterinary Clinic' },
+    { value: 'funeral-home', label: '🎯 Funeral Home' },
+    { value: 'fire-station', label: '🎯 Fire Station' },
+    { value: 'police-station', label: '🎯 Police Station' },
+    { value: 'post-office', label: '🎯 Post Office' },
+    { value: 'bank', label: '🎯 Bank' },
+    { value: 'cinema', label: '🎯 Cinema / Movie Theater' },
+    { value: 'nightclub', label: '🎯 Nightclub' },
+    { value: 'spa', label: '🎯 Spa / Wellness Center' },
+    { value: 'greenhouse', label: '🎯 Greenhouse' },
+    { value: 'observatory', label: '🎯 Observatory' },
+    { value: 'aquarium', label: '🎯 Aquarium' },
+    { value: 'zoo-building', label: '🎯 Zoo Building' }
   ];
 
   const entranceDirections = [
@@ -260,18 +334,6 @@ const ProjectSpecifications = () => {
             <p>Select building type and area to generate program spaces</p>
           </div>
         )}
-      </div>
-
-      {/* Floor Plan Upload */}
-      <div className="bg-white rounded-2xl shadow-xl p-8">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Floor Plan (Optional)</h3>
-        <FloorPlanUpload
-          onImageChange={setFloorPlanImage}
-          currentImage={floorPlanImage}
-        />
-        <p className="text-sm text-gray-500 mt-2">
-          Upload an existing floor plan for AI to reference (optional)
-        </p>
       </div>
 
       {/* Navigation */}

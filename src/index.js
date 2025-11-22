@@ -1,9 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import App from './App';
-import globalErrorHandler from './utils/globalErrorHandler';
-import logger from './utils/logger';
+import App from './App.js';
+import globalErrorHandler from './utils/globalErrorHandler.js';
+import logger from './utils/logger.js';
 
 // Initialize global error handling
 globalErrorHandler.initialize();

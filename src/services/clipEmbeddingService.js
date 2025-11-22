@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * CLIP Embedding Service
  *
@@ -15,7 +17,7 @@ class CLIPEmbeddingService {
   constructor() {
     this.embeddingDimension = 512;
     this.model = 'ViT-L/14';
-    console.log('🎯 CLIP Embedding Service initialized');
+    logger.info('🎯 CLIP Embedding Service initialized');
   }
 
   /**
@@ -26,8 +28,8 @@ class CLIPEmbeddingService {
    * @returns {Promise<Object>} Embedding result with vector and metadata
    */
   async generateEmbedding(imageUrl, options = {}) {
-    console.log('\n🎯 [CLIP] Generating image embedding...');
-    console.log(`   📷 Image Type: ${this.detectImageType(imageUrl)}`);
+    logger.info('\n🎯 [CLIP] Generating image embedding...');
+    logger.info(`   📷 Image Type: ${this.detectImageType(imageUrl)}`);
 
     try {
       // SECURITY: API availability is handled server-side
@@ -40,7 +42,7 @@ class CLIPEmbeddingService {
       return await this.generateMockEmbedding(imageUrl);
 
     } catch (error) {
-      console.warn('⚠️  [CLIP] API generation failed, using mock embedding');
+      logger.warn('⚠️  [CLIP] API generation failed, using mock embedding');
       return await this.generateMockEmbedding(imageUrl);
     }
   }
@@ -50,7 +52,7 @@ class CLIPEmbeddingService {
    * Model: salesforce/blip or openai/clip-vit-large-patch14
    */
   async generateWithReplicateCLIP(imageUrl) {
-    console.log('🌐 [CLIP] Using Replicate CLIP API...');
+    logger.api(' [CLIP] Using Replicate CLIP API...');
 
     try {
       const response = await fetch('/api/replicate-predictions', {
@@ -75,7 +77,7 @@ class CLIPEmbeddingService {
       // Poll for result
       const embedding = await this.pollReplicateResult(prediction.id);
 
-      console.log('✅ [CLIP] Embedding generated via API');
+      logger.success(' [CLIP] Embedding generated via API');
       return {
         success: true,
         embedding,
@@ -85,7 +87,7 @@ class CLIPEmbeddingService {
       };
 
     } catch (error) {
-      console.error('❌ [CLIP] API generation failed:', error);
+      logger.error('❌ [CLIP] API generation failed:', error);
       throw error;
     }
   }
@@ -118,7 +120,7 @@ class CLIPEmbeddingService {
    * Uses a deterministic approach based on image data
    */
   async generateMockEmbedding(imageUrl) {
-    console.log('🎲 [CLIP] Generating deterministic mock embedding...');
+    logger.info('🎲 [CLIP] Generating deterministic mock embedding...');
 
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -155,10 +157,10 @@ class CLIPEmbeddingService {
     const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
     const normalizedEmbedding = embedding.map(val => val / magnitude);
 
-    console.log('✅ [CLIP] Mock embedding generated');
-    console.log(`   📊 Dimension: ${normalizedEmbedding.length}`);
-    console.log(`   📏 Magnitude: ${magnitude.toFixed(4)}`);
-    console.log(`   🔢 Hash Seed: ${imageHash}`);
+    logger.success(' [CLIP] Mock embedding generated');
+    logger.info(`   📊 Dimension: ${normalizedEmbedding.length}`);
+    logger.info(`   📏 Magnitude: ${magnitude.toFixed(4)}`);
+    logger.info(`   🔢 Hash Seed: ${imageHash}`);
 
     return {
       success: true,
@@ -213,7 +215,7 @@ class CLIPEmbeddingService {
    * @returns {Promise<Object>} Comparison result with score
    */
   async compareImages(imageUrlA, imageUrlB) {
-    console.log('\n🔍 [CLIP] Comparing images...');
+    logger.info('\n🔍 [CLIP] Comparing images...');
 
     const resultA = await this.generateEmbedding(imageUrlA);
     const resultB = await this.generateEmbedding(imageUrlB);
@@ -223,8 +225,8 @@ class CLIPEmbeddingService {
       resultB.embedding
     );
 
-    console.log('✅ [CLIP] Comparison complete');
-    console.log(`   📊 Similarity: ${(similarity * 100).toFixed(2)}%`);
+    logger.success(' [CLIP] Comparison complete');
+    logger.info(`   📊 Similarity: ${(similarity * 100).toFixed(2)}%`);
 
     return {
       success: true,
@@ -254,7 +256,7 @@ class CLIPEmbeddingService {
    * This allows comparing text prompts to images
    */
   async generateTextEmbedding(text) {
-    console.log('\n📝 [CLIP] Generating text embedding...');
+    logger.info('\n📝 [CLIP] Generating text embedding...');
 
     // For mock implementation, use text hash as seed
     const textHash = this.hashString(text);
@@ -272,9 +274,9 @@ class CLIPEmbeddingService {
     const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
     const normalizedEmbedding = embedding.map(val => val / magnitude);
 
-    console.log('✅ [CLIP] Text embedding generated');
-    console.log(`   📝 Text Length: ${text.length} chars, ${words} words`);
-    console.log(`   📊 Dimension: ${normalizedEmbedding.length}`);
+    logger.success(' [CLIP] Text embedding generated');
+    logger.info(`   📝 Text Length: ${text.length} chars, ${words} words`);
+    logger.info(`   📊 Dimension: ${normalizedEmbedding.length}`);
 
     return {
       success: true,
@@ -328,7 +330,7 @@ class CLIPEmbeddingService {
     link.click();
     URL.revokeObjectURL(url);
 
-    console.log(`💾 Saved embedding to ${filename}`);
+    logger.info(`💾 Saved embedding to ${filename}`);
   }
 
   /**
@@ -338,10 +340,10 @@ class CLIPEmbeddingService {
     const text = await file.text();
     const data = JSON.parse(text);
 
-    console.log(`📂 Loaded embedding from file`);
-    console.log(`   📊 Dimension: ${data.dimension}`);
-    console.log(`   🎨 Model: ${data.model}`);
-    console.log(`   📅 Created: ${data.timestamp}`);
+    logger.info(`📂 Loaded embedding from file`);
+    logger.info(`   📊 Dimension: ${data.dimension}`);
+    logger.info(`   🎨 Model: ${data.model}`);
+    logger.info(`   📅 Created: ${data.timestamp}`);
 
     return data.embedding;
   }

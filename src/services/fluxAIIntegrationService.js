@@ -13,6 +13,8 @@
  */
 
 import togetherAIService from './togetherAIService.js';
+import logger from '../utils/logger.js';
+
 
 export class FluxAIIntegrationService {
   constructor() {
@@ -35,8 +37,8 @@ export class FluxAIIntegrationService {
       useUnifiedSheet = true  // DEFAULT: Use unified A1 sheet for consistency
     } = params;
 
-    console.log('🏗️ [FLUX AI + DNA] Starting DNA-enhanced architectural generation...');
-    console.log('📋 Project Context:', {
+    logger.info('🏗️ [FLUX AI + DNA] Starting DNA-enhanced architectural generation...');
+    logger.info('📋 Project Context:', {
       buildingProgram,
       locationAddress: locationData?.address,
       portfolioStyle: portfolioAnalysis?.style,
@@ -46,7 +48,7 @@ export class FluxAIIntegrationService {
     try {
       // Choose generation method based on flag
       if (useUnifiedSheet) {
-        console.log('📐 Using UNIFIED A1 SHEET generation for perfect consistency...');
+        logger.info('📐 Using UNIFIED A1 SHEET generation for perfect consistency...');
 
         const unifiedResult = await togetherAIService.generateUnifiedSheet({
           projectContext: {
@@ -59,12 +61,12 @@ export class FluxAIIntegrationService {
           }
         });
 
-        console.log('✅ [UNIFIED] Single A1 sheet with all views generated!');
+        logger.success(' [UNIFIED] Single A1 sheet with all views generated!');
         return unifiedResult;
 
       } else {
         // Fallback to old method with 13 separate images
-        console.log('🧬 Using separate image generation (13 views)...');
+        logger.info('🧬 Using separate image generation (13 views)...');
 
         const dnaEnhancedResult = await togetherAIService.generateConsistentArchitecturalPackage({
           projectContext: {
@@ -79,10 +81,10 @@ export class FluxAIIntegrationService {
         }
       });
 
-      console.log('✅ DNA-Enhanced generation complete');
-      console.log('   Generated:', dnaEnhancedResult.uniqueImages, 'unique views');
-      console.log('   Consistency:', dnaEnhancedResult.consistency);
-      console.log('   Floor Plans in result:', {
+      logger.success(' DNA-Enhanced generation complete');
+      logger.info('   Generated:', dnaEnhancedResult.uniqueImages, 'unique views');
+      logger.info('   Consistency:', dnaEnhancedResult.consistency);
+      logger.info('   Floor Plans in result:', {
         floor_plan_ground: !!dnaEnhancedResult.floor_plan_ground,
         floor_plan_upper: !!dnaEnhancedResult.floor_plan_upper
       });
@@ -90,9 +92,9 @@ export class FluxAIIntegrationService {
       // Map DNA-enhanced results to expected structure
       const mappedResult = this.mapDNAResultsToLegacyFormat(dnaEnhancedResult);
 
-      console.log('📤 Final result structure:');
-      console.log('   floorPlans.floorPlans.ground.images:', mappedResult.floorPlans?.floorPlans?.ground?.images);
-      console.log('   floorPlans.floorPlans.upper.images:', mappedResult.floorPlans?.floorPlans?.upper?.images);
+      logger.info('📤 Final result structure:');
+      logger.info('   floorPlans.floorPlans.ground.images:', mappedResult.floorPlans?.floorPlans?.ground?.images);
+      logger.info('   floorPlans.floorPlans.upper.images:', mappedResult.floorPlans?.floorPlans?.upper?.images);
 
       const finalResult = {
         success: true,
@@ -108,14 +110,14 @@ export class FluxAIIntegrationService {
         timestamp: new Date().toISOString()
       };
 
-      console.log('🎯 Returning final result with', Object.keys(finalResult).length, 'properties');
+      logger.info('🎯 Returning final result with', Object.keys(finalResult).length, 'properties');
       return finalResult;
       }
 
     } catch (error) {
-      console.error('❌ [FLUX AI + DNA] Generation error:', error);
+      logger.error('❌ [FLUX AI + DNA] Generation error:', error);
       // Fallback to old method if DNA enhancement fails
-      console.log('⚠️ Falling back to legacy generation method...');
+      logger.info('⚠️ Falling back to legacy generation method...');
       return await this.generateCompleteLegacy(params);
     }
   }
@@ -124,8 +126,8 @@ export class FluxAIIntegrationService {
    * Map DNA-enhanced results to legacy format expected by UI
    */
   mapDNAResultsToLegacyFormat(dnaResult) {
-    console.log('🔄 Mapping DNA results to legacy format...');
-    console.log('🔍 DNA Result structure (all views):');
+    logger.info('🔄 Mapping DNA results to legacy format...');
+    logger.info('🔍 DNA Result structure (all views):');
 
     // Log ALL view results for debugging
     const viewTypes = [
@@ -139,9 +141,9 @@ export class FluxAIIntegrationService {
     viewTypes.forEach(viewType => {
       const result = dnaResult[viewType];
       if (result?.success) {
-        console.log(`   ✅ ${viewType}: SUCCESS (${result.url?.substring(0, 50)}...)`);
+        logger.info(`   ✅ ${viewType}: SUCCESS (${result.url?.substring(0, 50)}...)`);
       } else {
-        console.warn(`   ❌ ${viewType}: FAILED (${result?.error || 'no data'})`);
+        logger.warn(`   ❌ ${viewType}: FAILED (${result?.error || 'no data'})`);
       }
     });
 
@@ -165,9 +167,9 @@ export class FluxAIIntegrationService {
       }
     };
 
-    console.log('📋 Floor Plans mapped:');
-    console.log('   Ground:', floorPlans.floorPlans.ground.images.length, 'image(s)', floorPlans.floorPlans.ground.url?.substring(0, 50));
-    console.log('   Upper:', floorPlans.floorPlans.upper.images.length, 'image(s)', floorPlans.floorPlans.upper.url?.substring(0, 50));
+    logger.info('📋 Floor Plans mapped:');
+    logger.info('   Ground:', floorPlans.floorPlans.ground.images.length, 'image(s)', floorPlans.floorPlans.ground.url?.substring(0, 50));
+    logger.info('   Upper:', floorPlans.floorPlans.upper.images.length, 'image(s)', floorPlans.floorPlans.upper.url?.substring(0, 50));
 
     // Technical Drawings with better error handling
     const technicalDrawings = {
@@ -205,13 +207,13 @@ export class FluxAIIntegrationService {
       }
     };
 
-    console.log('📐 Technical Drawings mapped:');
-    console.log('   Elevations (N):', dnaResult.elevation_north?.url ? '✅ URL exists' : '❌ NO URL');
-    console.log('   Elevations (S):', dnaResult.elevation_south?.url ? '✅ URL exists' : '❌ NO URL');
-    console.log('   Elevations (E):', dnaResult.elevation_east?.url ? '✅ URL exists' : '❌ NO URL');
-    console.log('   Elevations (W):', dnaResult.elevation_west?.url ? '✅ URL exists' : '❌ NO URL');
-    console.log('   Section (Long):', dnaResult.section_longitudinal?.url ? '✅ URL exists' : '❌ NO URL');
-    console.log('   Section (Cross):', dnaResult.section_cross?.url ? '✅ URL exists' : '❌ NO URL');
+    logger.info('📐 Technical Drawings mapped:');
+    logger.info('   Elevations (N):', dnaResult.elevation_north?.url ? '✅ URL exists' : '❌ NO URL');
+    logger.info('   Elevations (S):', dnaResult.elevation_south?.url ? '✅ URL exists' : '❌ NO URL');
+    logger.info('   Elevations (E):', dnaResult.elevation_east?.url ? '✅ URL exists' : '❌ NO URL');
+    logger.info('   Elevations (W):', dnaResult.elevation_west?.url ? '✅ URL exists' : '❌ NO URL');
+    logger.info('   Section (Long):', dnaResult.section_longitudinal?.url ? '✅ URL exists' : '❌ NO URL');
+    logger.info('   Section (Cross):', dnaResult.section_cross?.url ? '✅ URL exists' : '❌ NO URL');
 
     // 3D Visualizations
     const visualizations = {
@@ -235,10 +237,10 @@ export class FluxAIIntegrationService {
       floorPlanReference: floorPlans.floorPlans.ground.images[0] || null
     };
 
-    console.log('🏠 3D Visualizations mapped:');
-    console.log('   Exterior:', 2, '(Front/Side)');
-    console.log('   Special:', 2, '(Axonometric/Perspective)');
-    console.log('   Interior:', 1, '(Living Room)');
+    logger.info('🏠 3D Visualizations mapped:');
+    logger.info('   Exterior:', 2, '(Front/Side)');
+    logger.info('   Special:', 2, '(Axonometric/Perspective)');
+    logger.info('   Interior:', 1, '(Living Room)');
 
     return {
       floorPlans,
@@ -251,7 +253,7 @@ export class FluxAIIntegrationService {
    * Legacy generation method (fallback)
    */
   async generateCompleteLegacy(params) {
-    console.log('⚠️ Using legacy generation (DNA enhancement unavailable)');
+    logger.info('⚠️ Using legacy generation (DNA enhancement unavailable)');
     // Keep old implementation as fallback
     // ... (existing code remains unchanged)
     throw new Error('Legacy generation not implemented - DNA enhancement required');
@@ -546,7 +548,7 @@ export class FluxAIIntegrationService {
    * Verify consistency between views using AI
    */
   async verifyConsistency(images) {
-    console.log('🔍 [FLUX AI] Verifying consistency between views...');
+    logger.info('🔍 [FLUX AI] Verifying consistency between views...');
 
     // Use Together AI to analyze consistency
     const consistencyCheck = await togetherAIService.generateReasoning({

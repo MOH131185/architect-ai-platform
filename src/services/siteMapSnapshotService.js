@@ -12,6 +12,8 @@
  */
 
 import CryptoJS from 'crypto-js';
+import logger from '../utils/logger.js';
+
 
 /**
  * Get site snapshot from Google Static Maps API
@@ -36,7 +38,7 @@ export async function getSiteSnapshot({
 
   const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
-    console.warn('⚠️  Google Maps API key not found. Site map snapshot will be skipped.');
+    logger.warn('⚠️  Google Maps API key not found. Site map snapshot will be skipped.');
     return null;
   }
 
@@ -74,19 +76,19 @@ export async function getSiteSnapshot({
               `&key=${apiKey}`;
 
   try {
-    console.log(`🗺️  Fetching site snapshot from Google Static Maps...`);
-    console.log(`   Center: ${coordinates.lat}, ${coordinates.lng}`);
-    console.log(`   Map Type: ${mapType}`);
-    console.log(`   ${visibleParam ? 'Visible bounds (auto-fit)' : `Zoom: ${zoom}`}`);
-    console.log(`   Size: ${size[0]}×${size[1]}px`);
-    console.log(`   Polygon overlay: ${polygon ? `${polygon.length} points` : 'none'}`);
+    logger.info(`🗺️  Fetching site snapshot from Google Static Maps...`);
+    logger.info(`   Center: ${coordinates.lat}, ${coordinates.lng}`);
+    logger.info(`   Map Type: ${mapType}`);
+    logger.info(`   ${visibleParam ? 'Visible bounds (auto-fit)' : `Zoom: ${zoom}`}`);
+    logger.info(`   Size: ${size[0]}×${size[1]}px`);
+    logger.info(`   Polygon overlay: ${polygon ? `${polygon.length} points` : 'none'}`);
 
     const response = await fetch(url);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ Google Static Maps API error: ${response.status} ${response.statusText}`);
-      console.error(`   Response: ${errorText.substring(0, 200)}`);
+      logger.error(`❌ Google Static Maps API error: ${response.status} ${response.statusText}`);
+      logger.error(`   Response: ${errorText.substring(0, 200)}`);
       throw new Error(`Google Static Maps API error: ${response.status}`);
     }
 
@@ -97,19 +99,19 @@ export async function getSiteSnapshot({
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result;
-        console.log(`✅ Site snapshot fetched successfully`);
-        console.log(`   Data URL length: ${dataUrl.length} chars`);
+        logger.success(` Site snapshot fetched successfully`);
+        logger.info(`   Data URL length: ${dataUrl.length} chars`);
         resolve(dataUrl);
       };
       reader.onerror = () => {
-        console.error('❌ Failed to convert blob to base64');
+        logger.error('❌ Failed to convert blob to base64');
         reject(new Error('Failed to convert map image to base64'));
       };
       reader.readAsDataURL(blob);
     });
 
   } catch (error) {
-    console.error('❌ Site snapshot fetch failed:', error.message);
+    logger.error('❌ Site snapshot fetch failed:', error.message);
     // Return null instead of throwing - allows workflow to continue without site map
     return null;
   }
@@ -163,15 +165,15 @@ export async function captureSnapshotForPersistence({
   const resolvedCenter = center || coordinates;
 
   if (!resolvedCenter || !resolvedCenter.lat || !resolvedCenter.lng) {
-    console.warn('⚠️ No valid center/coordinates provided for site snapshot');
+    logger.warn('⚠️ No valid center/coordinates provided for site snapshot');
     return null;
   }
 
-  console.log('📸 Capturing site snapshot for persistence...');
-  console.log(`   Center: ${resolvedCenter.lat.toFixed(6)}, ${resolvedCenter.lng.toFixed(6)}`);
-  console.log(`   Zoom: ${zoom}, Map type: ${mapType}`);
-  console.log(`   Size: ${size.width}×${size.height}px`);
-  console.log(`   Polygon: ${polygon ? polygon.length + ' points' : 'none'}`);
+  logger.info('📸 Capturing site snapshot for persistence...');
+  logger.info(`   Center: ${resolvedCenter.lat.toFixed(6)}, ${resolvedCenter.lng.toFixed(6)}`);
+  logger.info(`   Zoom: ${zoom}, Map type: ${mapType}`);
+  logger.info(`   Size: ${size.width}×${size.height}px`);
+  logger.info(`   Polygon: ${polygon ? polygon.length + ' points' : 'none'}`);
 
   try {
     // Convert size to array format for getSiteSnapshot
@@ -187,16 +189,16 @@ export async function captureSnapshotForPersistence({
     });
 
     if (!dataUrl) {
-      console.warn('⚠️ Site snapshot capture returned null');
+      logger.warn('⚠️ Site snapshot capture returned null');
       return null;
     }
 
     // Compute SHA256 hash for deduplication
     const sha256 = CryptoJS.SHA256(dataUrl).toString();
 
-    console.log('✅ Site snapshot captured with metadata');
-    console.log(`   Hash: ${sha256.substring(0, 16)}...`);
-    console.log(`   Data URL length: ${dataUrl.length} chars`);
+    logger.success(' Site snapshot captured with metadata');
+    logger.info(`   Hash: ${sha256.substring(0, 16)}...`);
+    logger.info(`   Data URL length: ${dataUrl.length} chars`);
 
     return {
       dataUrl,
@@ -212,7 +214,7 @@ export async function captureSnapshotForPersistence({
     };
 
   } catch (error) {
-    console.error('❌ Failed to capture site snapshot for persistence:', error);
+    logger.error('❌ Failed to capture site snapshot for persistence:', error);
     return null;
   }
 }

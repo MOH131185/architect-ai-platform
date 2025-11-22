@@ -9,6 +9,8 @@ import enhancedDNAGenerator from './enhancedDNAGenerator.js';
 import dnaPromptGenerator from './dnaPromptGenerator.js';
 import { generateSingleView } from './togetherAIService.js';
 import togetherAIReasoningService from './togetherAIReasoningService.js';
+import logger from '../utils/logger.js';
+
 
 /**
  * View type to ViewId mapping
@@ -132,7 +134,7 @@ function computeImpactedViews(changeRequest, currentDNA) {
  * Update DNA based on change request
  */
 async function updateDNAAndPrompts(designId, changeRequest, projectContext) {
-  console.log('🧬 Updating DNA based on change request...');
+  logger.info('🧬 Updating DNA based on change request...');
 
   // Get latest stable DNA
   const latestStable = await designHistoryStore.getLatestStable(designId);
@@ -169,10 +171,10 @@ REQUIREMENTS:
       projectContext
     });
 
-    console.log('✅ DNA updated successfully');
+    logger.success(' DNA updated successfully');
     return updatedDNA || latestStable.masterDNA; // Fallback to current if update fails
   } catch (error) {
-    console.warn('⚠️ DNA update failed, using current DNA:', error);
+    logger.warn('⚠️ DNA update failed, using current DNA:', error);
     return latestStable.masterDNA; // Fallback to current DNA
   }
 }
@@ -187,7 +189,7 @@ async function generateImpactedViewsSequentially(
   selectedViews,
   projectContext
 ) {
-  console.log(`🎨 Generating ${selectedViews.length} impacted views sequentially...`);
+  logger.info(`🎨 Generating ${selectedViews.length} impacted views sequentially...`);
 
   const results = {};
   const delayMs = 6000; // Enforced delay between requests
@@ -197,7 +199,7 @@ async function generateImpactedViewsSequentially(
     const viewConfig = VIEW_CONFIGS[viewId];
 
     if (!viewConfig) {
-      console.warn(`⚠️ Unknown view ID: ${viewId}`);
+      logger.warn(`⚠️ Unknown view ID: ${viewId}`);
       continue;
     }
 
@@ -207,7 +209,7 @@ async function generateImpactedViewsSequentially(
     );
 
     if (!promptKey) {
-      console.warn(`⚠️ No prompt found for view: ${viewId}`);
+      logger.warn(`⚠️ No prompt found for view: ${viewId}`);
       continue;
     }
 
@@ -215,7 +217,7 @@ async function generateImpactedViewsSequentially(
     const seed = seedsByView[viewId] || masterDNA.seed || Math.floor(Math.random() * 1e6);
 
     try {
-      console.log(`\n🎨 [${i + 1}/${selectedViews.length}] Generating ${viewId}...`);
+      logger.info(`\n🎨 [${i + 1}/${selectedViews.length}] Generating ${viewId}...`);
 
       const result = await generateSingleView(
         {
@@ -229,10 +231,10 @@ async function generateImpactedViewsSequentially(
 
       results[viewId] = result.url;
 
-      console.log(`✅ [${i + 1}/${selectedViews.length}] ${viewId} generated successfully`);
+      logger.success(` [${i + 1}/${selectedViews.length}] ${viewId} generated successfully`);
 
     } catch (error) {
-      console.error(`❌ Failed to generate ${viewId}:`, error);
+      logger.error(`❌ Failed to generate ${viewId}:`, error);
       results[viewId] = null; // Mark as failed
     }
   }
@@ -244,10 +246,10 @@ async function generateImpactedViewsSequentially(
  * Apply modification to design
  */
 export async function applyModification({ designId, changeRequest, selectedViews, projectContext }) {
-  console.log('🔧 Applying modification to design...');
-  console.log(`   Design ID: ${designId}`);
-  console.log(`   Change request: ${changeRequest.substring(0, 100)}...`);
-  console.log(`   Selected views: ${selectedViews.length}`);
+  logger.info('🔧 Applying modification to design...');
+  logger.info(`   Design ID: ${designId}`);
+  logger.info(`   Change request: ${changeRequest.substring(0, 100)}...`);
+  logger.info(`   Selected views: ${selectedViews.length}`);
 
   try {
     // Step 1: Compute impacted views if not explicitly selected
@@ -255,7 +257,7 @@ export async function applyModification({ designId, changeRequest, selectedViews
     if (viewsToRegenerate.length === 0) {
       const latestStable = await designHistoryStore.getLatestStable(designId);
       viewsToRegenerate = computeImpactedViews(changeRequest, latestStable.masterDNA);
-      console.log(`   Auto-detected ${viewsToRegenerate.length} impacted views`);
+      logger.info(`   Auto-detected ${viewsToRegenerate.length} impacted views`);
     }
 
     // Step 2: Update DNA based on change request
@@ -296,9 +298,9 @@ export async function applyModification({ designId, changeRequest, selectedViews
       resultsByView
     });
 
-    console.log('✅ Modification applied successfully');
-    console.log(`   Run ID: ${run.runId}`);
-    console.log(`   Generated: ${Object.values(resultsByView).filter(r => r).length}/${viewsToRegenerate.length} views`);
+    logger.success(' Modification applied successfully');
+    logger.info(`   Run ID: ${run.runId}`);
+    logger.info(`   Generated: ${Object.values(resultsByView).filter(r => r).length}/${viewsToRegenerate.length} views`);
 
     return {
       dna: updatedDNA,
@@ -310,7 +312,7 @@ export async function applyModification({ designId, changeRequest, selectedViews
     };
 
   } catch (error) {
-    console.error('❌ Failed to apply modification:', error);
+    logger.error('❌ Failed to apply modification:', error);
     throw error;
   }
 }

@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Facade Feature Analyzer Service
  *
@@ -11,7 +13,7 @@
 
 class FacadeFeatureAnalyzer {
   constructor() {
-    console.log('🔍 Facade Feature Analyzer initialized');
+    logger.info('🔍 Facade Feature Analyzer initialized');
   }
 
   /**
@@ -88,11 +90,11 @@ class FacadeFeatureAnalyzer {
       }
     };
 
-    console.log('✅ Facade features analyzed:');
-    console.log(`   North: ${facadeFeatures.north.windows} windows ${facadeFeatures.north.hasDoor ? '+ door' : ''}`);
-    console.log(`   South: ${facadeFeatures.south.windows} windows ${facadeFeatures.south.hasDoor ? '+ door' : ''}`);
-    console.log(`   East: ${facadeFeatures.east.windows} windows ${facadeFeatures.east.hasDoor ? '+ door' : ''}`);
-    console.log(`   West: ${facadeFeatures.west.windows} windows ${facadeFeatures.west.hasDoor ? '+ door' : ''}`);
+    logger.success(' Facade features analyzed:');
+    logger.info(`   North: ${facadeFeatures.north.windows} windows ${facadeFeatures.north.hasDoor ? '+ door' : ''}`);
+    logger.info(`   South: ${facadeFeatures.south.windows} windows ${facadeFeatures.south.hasDoor ? '+ door' : ''}`);
+    logger.info(`   East: ${facadeFeatures.east.windows} windows ${facadeFeatures.east.hasDoor ? '+ door' : ''}`);
+    logger.info(`   West: ${facadeFeatures.west.windows} windows ${facadeFeatures.west.hasDoor ? '+ door' : ''}`);
 
     return facadeFeatures;
   }
@@ -317,14 +319,14 @@ class FacadeFeatureAnalyzer {
       });
     }
 
-    console.log('\n📊 Facade Consistency Report:');
+    logger.info('\n📊 Facade Consistency Report:');
     report.checks.forEach(check => {
-      console.log(`   ${check.status} ${check.check}: ${check.expected}`);
+      logger.info(`   ${check.status} ${check.check}: ${check.expected}`);
     });
 
     if (report.issues.length > 0) {
-      console.log('\n⚠️ Issues found:');
-      report.issues.forEach(issue => console.log(`   ${issue}`));
+      logger.info('\n⚠️ Issues found:');
+      report.issues.forEach(issue => logger.info(`   ${issue}`));
     }
 
     return report;

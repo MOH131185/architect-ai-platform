@@ -8,20 +8,22 @@
  * - Best practice design principles
  */
 
-import togetherAIReasoningService from './togetherAIReasoningService';
-import openaiService from './openaiService';
+import togetherAIReasoningService from './togetherAIReasoningService.js';
+import openaiService from './openaiService.js';
+import logger from '../utils/logger.js';
+
 
 class FloorPlanReasoningService {
   constructor() {
     this.openai = openaiService;
-    console.log('📐 Floor Plan Reasoning Service initialized');
+    logger.info('📐 Floor Plan Reasoning Service initialized');
   }
 
   /**
    * Generate intelligent floor plan layout based on project type and site context
    */
   async generateFloorPlanReasoning(projectContext, siteAnalysis) {
-    console.log(`🧠 Generating floor plan reasoning for ${projectContext.building_program}...`);
+    logger.ai(` Generating floor plan reasoning for ${projectContext.building_program}...`);
 
     try {
       const reasoningPrompt = this.buildFloorPlanPrompt(projectContext, siteAnalysis);
@@ -53,10 +55,10 @@ Always return valid JSON only.`
 
       const reasoning = JSON.parse(response.choices[0].message.content);
 
-      console.log('✅ Floor plan reasoning generated');
-      console.log(`   Layout strategy: ${reasoning.layout_strategy}`);
-      console.log(`   Ground floor rooms: ${reasoning.ground_floor?.rooms?.length || 0}`);
-      console.log(`   Upper floor rooms: ${reasoning.upper_floor?.rooms?.length || 0}`);
+      logger.success(' Floor plan reasoning generated');
+      logger.info(`   Layout strategy: ${reasoning.layout_strategy}`);
+      logger.info(`   Ground floor rooms: ${reasoning.ground_floor?.rooms?.length || 0}`);
+      logger.info(`   Upper floor rooms: ${reasoning.upper_floor?.rooms?.length || 0}`);
 
       return {
         success: true,
@@ -65,7 +67,7 @@ Always return valid JSON only.`
       };
 
     } catch (error) {
-      console.error('❌ Floor plan reasoning failed:', error);
+      logger.error('❌ Floor plan reasoning failed:', error);
       return {
         success: false,
         reasoning: this.getFallbackReasoning(projectContext, siteAnalysis),

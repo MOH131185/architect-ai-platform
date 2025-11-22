@@ -14,8 +14,8 @@
  * LOGGING: Uses centralized logger (Opus 4.1 compliant)
  */
 
-import logger from '../utils/logger';
-import { captureSitePlanForA1, simplifyPolygon } from './sitePlanCaptureService';
+import logger from '../utils/logger.js';
+import { captureSitePlanForA1, simplifyPolygon } from './sitePlanCaptureService.js';
 // Note: Image compression is optional - if compressor not available, use original
 const imageCompressor = {
   needsCompression: (dataUrl, maxMB) => {
@@ -24,7 +24,7 @@ const imageCompressor = {
   },
   compressDataURL: async (dataUrl, options) => {
     // Return original if compression not available
-    console.log('Image compression not available, using original');
+    logger.info('Image compression not available, using original');
     return dataUrl;
   }
 };
@@ -42,8 +42,8 @@ const imageCompressor = {
 export async function captureSiteMapForGeneration({
   locationData,
   sitePolygon = null,
-  useAsContext = true,
-  mode = 'context'
+  useAsContext = false,
+  mode = 'embed'
 }) {
   logger.info('Capturing site map for A1 generation', {
     mode,
@@ -51,6 +51,13 @@ export async function captureSiteMapForGeneration({
     hasPolygon: !!sitePolygon,
     polygonPoints: sitePolygon?.length || 0
   }, '🗺️');
+
+  let resolvedMode = mode;
+
+  if (useAsContext || mode === 'context') {
+    logger.warn('Site map IMG2IMG context mode is disabled. Falling back to embed mode to prevent layout drift.', { requestedMode: mode });
+    resolvedMode = 'embed';
+  }
 
   if (!locationData || !locationData.coordinates) {
     logger.warn('No location data provided for site map capture');
@@ -114,20 +121,13 @@ export async function captureSiteMapForGeneration({
 
     // Prepare integration instructions based on mode
     let instructions = null;
-    if (mode === 'context') {
-      // Use as IMG2IMG context - site map influences entire generation
-      instructions = {
-        type: 'img2img_context',
-        strength: 0.85, // High strength for site context influence
-        prompt: `Architectural design respecting the provided site context and boundaries. The building must fit within the marked site polygon, respecting setbacks and orientation. Site features and surrounding context should influence the design.`
-      };
-    } else if (mode === 'embed') {
+    if (resolvedMode === 'embed') {
       // Embed in A1 sheet prompt - AI generates site panel based on description
       instructions = {
         type: 'prompt_embed',
         prompt: `Include a site plan panel in the A1 sheet showing the building footprint within the actual site boundaries. The site plan should show the captured location context with north arrow, scale bar, and site dimensions.`
       };
-    } else if (mode === 'overlay') {
+    } else if (resolvedMode === 'overlay') {
       // Post-process overlay - composite real site map after generation
       instructions = {
         type: 'post_overlay',
@@ -141,11 +141,11 @@ export async function captureSiteMapForGeneration({
       attachment: processedDataUrl,
       metadata: {
         ...sitePlanResult.metadata,
-        mode,
+        mode: resolvedMode,
         compressed: processedDataUrl !== sitePlanResult.dataUrl
       },
       instructions,
-      mode
+      mode: resolvedMode
     };
 
   } catch (error) {
@@ -182,31 +182,9 @@ export function generateSiteAwarePrompt({
     };
   }
 
-  const { mode, instructions } = siteMapData;
+  const resolvedMode = siteMapData?.mode === 'context' ? 'embed' : siteMapData?.mode;
 
-  if (mode === 'context') {
-    // IMG2IMG context mode - site map as init image
-    // IMPORTANT: Remove site plan generation from prompt to avoid duplication
-    const modifiedPrompt = basePrompt
-      .replace(/Site & Climate context.*?\n.*?\n.*?\n.*?\n/g, '') // Remove site panel section
-      .replace(/Small map with site outline.*?\./g, '') // Remove site map instructions
-      .replace(/Site\/Location plan.*?scale bar/g, ''); // Remove site plan from mandatory panels
-
-    const contextPrompt = `${modifiedPrompt}
-
-IMPORTANT: This generation uses the actual site map as context (IMG2IMG mode).
-The architectural design MUST respect the site boundaries and context shown in the reference image.
-DO NOT generate a separate site plan panel - the site context is already provided.
-Focus on creating architecture that fits perfectly within the given site constraints.`;
-
-    return {
-      prompt: contextPrompt,
-      attachments: [siteMapData.attachment],
-      useAsInit: true,
-      initStrength: 0.85 // High influence for site context
-    };
-
-  } else if (mode === 'embed') {
+  if (resolvedMode === 'embed') {
     // Embed mode - AI generates site panel based on description
     // Keep site panel instructions but enhance with actual data
     const enhancedPrompt = basePrompt.replace(
@@ -219,8 +197,7 @@ Focus on creating architecture that fits perfectly within the given site constra
       attachments: null, // Don't send as attachment
       useAsInit: false
     };
-
-  } else if (mode === 'overlay') {
+  } else if (resolvedMode === 'overlay') {
     // Overlay mode - generate without site, will composite later
     const promptWithoutSite = basePrompt
       .replace(/Site & Climate context.*?\n.*?\n.*?\n.*?\n/g, '') // Remove site panel
@@ -279,8 +256,8 @@ export function getOptimalQualitySettings(baseSettings = {}, purpose = 'initial'
     return {
       ...settings,
       model: 'black-forest-labs/FLUX.1-dev', // Best architectural model
-      steps: 48, // Optimal for quality vs time
-      guidanceScale: 7.8, // Strong prompt adherence
+      steps: 50, // Increased from 48 for better quality
+      guidanceScale: 8.2, // Increased from 7.8 for stronger adherence
       width: 1792, // Maximum API width
       height: 1269, // A1 landscape ratio
       seed: settings.seed || Math.floor(Math.random() * 1e6)
@@ -291,8 +268,8 @@ export function getOptimalQualitySettings(baseSettings = {}, purpose = 'initial'
     return {
       ...settings,
       model: 'black-forest-labs/FLUX.1-dev', // Same model for consistency
-      steps: 48, // Keep same quality
-      guidanceScale: 8.5, // Stronger guidance for modifications
+      steps: 50, // Keep same quality as initial
+      guidanceScale: 9.0, // Stronger guidance for modifications (increased from 8.5)
       imageStrength: 0.18, // Low strength to preserve original
       preserveDimensions: true // Lock dimensions to original
     };

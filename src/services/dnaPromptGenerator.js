@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * DNA-Driven Prompt Generator
  * Generates UNIQUE, SPECIFIC prompts for each architectural view
@@ -6,7 +8,7 @@
 
 class DNAPromptGenerator {
   constructor() {
-    console.log('📝 DNA Prompt Generator initialized');
+    logger.info('📝 DNA Prompt Generator initialized');
   }
 
   /**
@@ -14,7 +16,7 @@ class DNAPromptGenerator {
    * Used for selective regeneration in modify workflow
    */
   generatePromptsForViews(masterDNA, viewIds, projectContext = null) {
-    console.log(`📝 Generating prompts for ${viewIds.length} specific views...`);
+    logger.info(`📝 Generating prompts for ${viewIds.length} specific views...`);
 
     const prompts = {};
     const locationContext = masterDNA.locationContext || '';
@@ -59,11 +61,11 @@ class DNAPromptGenerator {
           prompts.interior_3d = this.generate3DInteriorPrompt(masterDNA, projectContext);
           break;
         default:
-          console.warn(`⚠️ Unknown view ID: ${viewId}`);
+          logger.warn(`⚠️ Unknown view ID: ${viewId}`);
       }
     });
 
-    console.log(`✅ Generated ${Object.keys(prompts).length} prompts`);
+    logger.success(` Generated ${Object.keys(prompts).length} prompts`);
     return prompts;
   }
 
@@ -73,7 +75,7 @@ class DNAPromptGenerator {
    * NOW ENHANCED with location, climate, and site context
    */
   generateAllPrompts(masterDNA, projectContext) {
-    console.log('📝 Generating 13 unique site-aware prompts from Master DNA...');
+    logger.info('📝 Generating 13 unique site-aware prompts from Master DNA...');
 
     // 🌍 Extract location context for all prompts
     const locationContext = masterDNA.locationContext || '';
@@ -171,7 +173,7 @@ Building must fit within site boundaries with 3m setbacks` : '';
       site_plan: this.generateSitePlanPrompt(masterDNA, projectContext)
     };
 
-    console.log(`✅ Generated ${Object.keys(prompts).length} unique prompts (${Object.keys(floorPlanPrompts).length} floor plans, ${Object.keys(elevationPrompts).length} elevations, 2 sections, 5 3D views, 1 site plan)`);
+    logger.success(` Generated ${Object.keys(prompts).length} unique prompts (${Object.keys(floorPlanPrompts).length} floor plans, ${Object.keys(elevationPrompts).length} elevations, 2 sections, 5 3D views, 1 site plan)`);
     return prompts;
   }
 
@@ -180,7 +182,7 @@ Building must fit within site boundaries with 3m setbacks` : '';
    * Used by AI modification service
    */
   generateViewSpecificPrompt(viewType, dna, projectContext = null) {
-    console.log(`📝 Generating prompt for specific view: ${viewType}`);
+    logger.info(`📝 Generating prompt for specific view: ${viewType}`);
 
     // Map view types to generation methods
     if (viewType.includes('floor-plan') || viewType.includes('floor_plan')) {
@@ -246,7 +248,7 @@ Building must fit within site boundaries with 3m setbacks` : '';
     }
 
     // Fallback
-    console.warn(`⚠️ Unknown view type: ${viewType}, using generic prompt`);
+    logger.warn(`⚠️ Unknown view type: ${viewType}, using generic prompt`);
     return {
       prompt: `Architectural view: ${viewType}`,
       negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature'
@@ -613,280 +615,111 @@ SEED: ${dna.seed}`;
       return this.getFallbackSectionPrompt(type);
     }
 
-    // 🆕 Extract project type
+    // Extract project type for negative prompts
     const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
     const negativePrompts = [];
     if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
       negativePrompts.push('NO single-family house', 'NO residential house section');
     }
 
-    const sectionName = type === 'longitudinal' ? 'LONGITUDINAL SECTION' : 'CROSS SECTION';
-    const visible = sectionData.visible?.join(', ') || 'Interior structure';
-    const dimension = type === 'longitudinal' ? dna.dimensions?.length : dna.dimensions?.width;
-    const cutDirection = type === 'longitudinal' ? 'lengthwise (front to back)' : 'across width (side to side)';
+    const isLongitudinal = type === 'longitudinal';
+    const cutDirection = isLongitudinal ? 'length-wise (front to back)' : 'width-wise (side to side)';
+    const sectionLabel = isLongitudinal ? 'A-A' : 'B-B';
 
-    return `ARCHITECTURAL 2D TECHNICAL SECTION DRAWING - ${sectionName}
-BLACK AND WHITE BLUEPRINT STYLE - NO PHOTOREALISM, NO 3D EFFECTS, NO COLORS
+    const visibleElements = sectionData.visible?.join('\n✓ ') || 'Interior structure, floor levels, roof';
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 DRAWING TYPE: 2D ORTHOGRAPHIC SECTION (Technical Blueprint)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-This MUST be a pure 2D technical architectural section drawing, NOT a rendering:
-✓ Black lines on white background (blueprint/CAD style)
-✓ Flat orthographic projection (zero perspective, zero depth)
-✓ Building CUT ${cutDirection} to show interior
-✓ Cut elements (walls, floors, roof) shown with heavy lines
-✓ Interior spaces clearly visible beyond cut
-✓ All floor levels, ceiling heights clearly marked
-✓ Dimension lines showing heights, widths, depths
-✓ Room labels and annotations
-✓ Staircase details visible (if in cut plane)
-✓ Foundation and ground level shown
-
-✗ NO photorealistic 3D rendering or visualization
-✗ NO colors, shading, shadows, or lighting effects
-✗ NO perspective distortion (all vertical lines must be perfectly vertical)
-✗ NO people, furniture, or decorative elements
-✗ NO texture mapping or material rendering
-✗ NO depth effects or atmospheric perspective
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📐 SECTION SPECIFICATIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Building: ${dna.dimensions?.floorCount}-story ${dna.building_program || 'residential building'}
-Cut Location: ${sectionData.cutLocation}
-Section Depth: ${dimension}m
-Total Building Height: ${dna.dimensions?.totalHeight}m
-Ground Floor Height: ${dna.dimensions?.groundFloorHeight}
-Upper Floor Height: ${dna.dimensions?.upperFloorHeight}
-Wall Thickness: ${dna.dimensions?.wallThickness} (exterior walls)
-
-Visible Interior Elements:
-${visible}
-${type === 'longitudinal' ? '- Staircase connecting floors with step details' : '- Room widths and interior wall divisions'}
-- Floor slabs (${dna.dimensions?.slabThickness} thick)
-- Ceiling heights at each level
-- Roof structure and pitch
-- Foundation depth below ground level
-
-Materials (shown via hatching on CUT surfaces):
-- Exterior Walls: ${dna.materials?.exterior?.primary} (heavy hatch on cut surface)
-- Roof Structure: ${dna.materials?.roof?.type} (show rafters/trusses)
-- Floor Slabs: Concrete (diagonal hatch on cut)
-- Interior Walls: Lightweight construction (lighter hatch)
-- Foundation: Concrete (heavy diagonal hatch)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📏 REQUIRED DIMENSIONS & ANNOTATIONS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Must include dimension lines showing:
-✓ Total building height (${dna.dimensions?.totalHeight}m)
-✓ Ground floor ceiling height (${dna.dimensions?.groundFloorHeight})
-✓ Upper floor ceiling height (${dna.dimensions?.upperFloorHeight})
-✓ Floor slab thickness (${dna.dimensions?.slabThickness})
-✓ Exterior wall thickness (${dna.dimensions?.wallThickness})
-✓ Room widths/depths (all major spaces)
-✓ Foundation depth below grade
-✓ Roof pitch and height
-✓ Floor-to-floor dimensions
-
-Level Markers (on left side):
-- Roof Level: +${dna.dimensions?.totalHeight}m
-- Upper Floor: +${dna.dimensions?.groundFloorHeight}
-- Ground Floor: ±0.00
-- Foundation: -0.5m (or actual depth)
-
-Annotations required:
-- Drawing title: "${sectionName}" or "SECTION A-A"
-- Section cut line direction indicator (A-A arrows)
-- Scale indicator (e.g., "SCALE 1:100")
-- Room labels (Living Room, Kitchen, Bedroom, etc.)
-- Material notes with leader lines pointing to cut elements
-- Floor level labels (FFL 0.00m / FFL ${dna.dimensions?.groundFloorHeight || '3.10'}m / FFL ${dna.dimensions?.totalHeight || '6.20'}m)
-- Key detail callouts: insulation layer, foundation strip footing
-- Floor build-ups annotated (e.g., "150mm concrete slab + 50mm insulation")
-- Ceiling heights clearly marked at each level
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎨 DRAWING STYLE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Line Weights:
-- Extra heavy lines: Elements in cut (walls, floors, roof where cut)
-- Heavy lines: Building outline, major structural elements
-- Medium lines: Interior walls, windows, doors beyond cut
-- Thin lines: Dimension lines, hatching, annotations
-- Dashed lines: Hidden elements or structure above/below
-
-Hatching Patterns (for CUT elements only):
-- Exterior walls (cut): Dense diagonal hatch (45°)
-- Floor slabs (cut): Concrete hatch pattern
-- Roof structure (cut): Wood/structural pattern
-- Foundation (cut): Heavy concrete hatch
-- Interior walls (cut): Light hatch (indicates non-structural)
-
-Elements Beyond Cut (NOT hatched):
-- Show windows and doors as outlines
-- Show visible walls in background as thin lines
-- Indicate room spaces clearly
-- NO hatching on elements that are not cut
-
-Format: Professional architectural technical section drawing, CAD/blueprint style, black linework on white background, orthographic projection, fully dimensioned and annotated.
-
-SEED: ${dna.seed}`;
-  }
-
-  /**
-   * 3D EXTERIOR PROMPTS - Photorealistic views (2 unique angles)
-   */
-  generate3DExteriorPrompt(dna, viewDirection, projectContext = null) {
-    const viewData = dna['3dViews']?.[`exterior_${viewDirection}`];
-    if (!viewData) {
-      return this.getFallback3DExteriorPrompt(viewDirection);
-    }
-
-    // 🆕 Extract project type
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
-    const negativePrompts = [];
-    if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO single-family house', 'NO residential house', 'NO pitched roof unless specified', 'NO front yard/garden');
-    }
-    
-    const visible = viewData.visible?.join('\n✓ ') || 'Building exterior';
-    const camera = viewData.camera || 'Eye level view';
-    const isFrontView = viewDirection === 'front';
-
-    return `Photorealistic 3D architectural exterior render - ${viewDirection.toUpperCase()} VIEW [SEED: ${dna.seed}]
+    return `Architectural SECTION ${sectionLabel} - 2D Technical Section Drawing [SEED: ${dna.seed}]
 ${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
 
-🎯 PRIMARY OBJECTIVE: Create a HIGH-QUALITY photorealistic 3D render that EXACTLY matches the floor plans and elevations
+🎯 PRIMARY OBJECTIVE: Create a precise 2D SECTION DRAWING showing interior structure cut ${cutDirection}
 
-━━━ RENDER SPECIFICATIONS ━━━
-Render Quality: Professional architectural visualization (4K quality)
-Style: Photorealistic (NOT cartoon, NOT artistic, NOT stylized)
-Camera Position: ${camera}
-View Direction: ${isFrontView ? 'From NORTH looking at SOUTH facade (front view)' : 'From EAST looking at WEST facade (side view)'}
-Eye Height: 1.6m (human standing viewpoint)
-Focal Length: 35-50mm equivalent (natural perspective, minimal distortion)
+━━━ DRAWING SPECIFICATIONS ━━━
+Drawing Type: ARCHITECTURAL SECTION (2D orthographic cut-through view)
+Style: Technical line drawing, CAD/blueprint style
+Format: Black lines on white background
+View: TRUE ORTHOGRAPHIC (NO perspective, NO 3D effects)
+Section Cut: ${isLongitudinal ? 'LONGITUDINAL (Section A-A) - cut through building length' : 'CROSS SECTION (Section B-B) - cut through building width'}
 
-━━━ VIEW CONFIGURATION ━━━
-${viewData.description}
+━━━ SECTION CONFIGURATION ━━━
+${sectionData.description || `${type} section through building showing internal structure`}
+Cut Line: ${sectionData.cutLine || (isLongitudinal ? 'Through center of building, front to back' : 'Through center of building, side to side')}
+Looking Direction: ${sectionData.lookingDirection || (isLongitudinal ? 'Looking east' : 'Looking north')}
+
 Visible Elements:
-✓ ${visible}
+✓ ${visibleElements}
 
-Primary Focus: ${viewData.mustShow}
-${isFrontView ? '🚪 MAIN ENTRANCE must be PROMINENTLY VISIBLE and clearly recognizable' : '📏 Building DEPTH and three-dimensional form clearly shown'}
+━━━ BUILDING DIMENSIONS (MUST MATCH) ━━━
+Floor Count: EXACTLY ${dna.dimensions?.floorCount} floors visible in section
+Ground Floor Height: ${dna.dimensions?.groundFloorHeight || '2.7m'} floor-to-floor
+Upper Floor Height: ${dna.dimensions?.upperFloorHeight || '2.7m'} floor-to-floor
+Total Height: ${dna.dimensions?.totalHeight}m from foundation to ridge
+${isLongitudinal ? `Building Length: ${dna.dimensions?.length}m` : `Building Width: ${dna.dimensions?.width}m`}
 
-━━━ BUILDING DIMENSIONS (CRITICAL - MUST MATCH TECHNICAL DRAWINGS) ━━━
-Floor Count: EXACTLY ${dna.dimensions?.floorCount} floors
-  └─ Ground Floor: 0.0m to +${dna.dimensions?.groundFloorHeight} (height: ${dna.dimensions?.groundFloorHeight})
-  └─ Upper Floor: +${dna.dimensions?.groundFloorHeight} to +${dna.dimensions?.totalHeight} (height: ${dna.dimensions?.upperFloorHeight})
-Building Footprint: ${dna.dimensions?.length}m (length) × ${dna.dimensions?.width}m (width)
-Total Height: ${dna.dimensions?.totalHeight}m from ground to roof ridge
-${isFrontView ? `Front Facade Width: ${dna.dimensions?.length}m` : `Side Facade Width: ${dna.dimensions?.width}m`}
+━━━ STRUCTURAL ELEMENTS TO SHOW ━━━
+Foundation:
+  └─ Foundation depth: ${sectionData.foundation?.depth || '1.0m'} below grade
+  └─ Foundation type: ${sectionData.foundation?.type || 'Strip foundation'}
+  └─ Show ground level line clearly
 
-⚠️ CRITICAL: This is a ${dna.dimensions?.floorCount}-floor ${dna.dimensions?.floorCount === 1 ? 'single-story building' : dna.dimensions?.floorCount === 2 ? 'two-story house' : 'multi-story building'}, NOT a ${dna.dimensions?.floorCount + 1}-floor building!
+Floor Structure:
+  └─ Ground floor slab: ${sectionData.floorSlab || '150mm concrete'}
+  └─ Upper floor construction: ${sectionData.upperFloor || '200mm timber joists'}
+  └─ Floor finish levels marked
 
-━━━ MATERIALS - PHOTOREALISTIC & EXACT ━━━
-Exterior Walls: ${dna.materials?.exterior?.primary}
-  └─ Exact Color: ${dna.materials?.exterior?.color} (match this hex code precisely)
-  └─ Texture: ${dna.materials?.exterior?.texture} finish
-  └─ Pattern: ${dna.materials?.exterior?.bond || 'Standard bond pattern'}
-  └─ Finish: ${dna.materials?.exterior?.finish || 'Matte'} appearance
-  └─ Rendering: Show realistic brick/material texture with subtle color variation
-  └─ Weathering: Clean, well-maintained (slight weathering acceptable)
+Wall Construction:
+  └─ External walls: ${dna.materials?.exterior?.primary} (${sectionData.wallThickness || '300mm'} thick)
+  └─ Internal walls: ${sectionData.internalWalls || '100mm partitions'}
+  └─ Show wall build-up hatching
 
-Roof: ${dna.materials?.roof?.material}
-  └─ Color: ${dna.materials?.roof?.color} (exact match)
-  └─ Type: ${dna.materials?.roof?.type} roof
-  └─ Pitch: ${dna.materials?.roof?.pitch} angle (clearly visible)
-  └─ Overhang: ${dna.materials?.roof?.overhang || '0.4m'} beyond walls
-  └─ Ridge Height: ${dna.materials?.roof?.ridgeHeight || dna.dimensions?.totalHeight}m
-  └─ Rendering: Show realistic tile/material texture, clean and new
+Roof Structure:
+  └─ Roof type: ${dna.materials?.roof?.type}
+  └─ Roof pitch: ${dna.materials?.roof?.pitch}
+  └─ Show rafters, ridge beam, ceiling joists
+  └─ Insulation zone indicated
 
-Windows: ${dna.materials?.windows?.type} style windows
-  └─ Frame Material: ${dna.materials?.windows?.frame}
-  └─ Frame Color: ${dna.materials?.windows?.color} (exact match)
-  └─ Glazing: ${dna.materials?.windows?.glazing} glazed with realistic reflections
-  └─ Size: ${dna.materials?.windows?.standardSize || '1.5m × 1.2m each'}
-  └─ Mullions: ${dna.materials?.windows?.mullions || 'Yes'} (if specified)
-  └─ Rendering: Show realistic glass reflections (subtle sky/environment reflection)
-  └─ Positions: EXACTLY as shown in elevations (no additional windows)
+━━━ ANNOTATION REQUIREMENTS ━━━
+Dimension Lines:
+  └─ Overall height from ground to ridge
+  └─ Floor-to-floor heights
+  └─ Room heights (floor to ceiling)
+  └─ Foundation depth
+  └─ ${isLongitudinal ? 'Overall building length' : 'Overall building width'}
 
-${isFrontView ? `Main Entrance Door:
-  └─ Type: ${dna.materials?.doors?.main?.type} door
-  └─ Material: ${dna.materials?.doors?.main?.material}
-  └─ Color: ${dna.materials?.doors?.main?.color} (exact match)
-  └─ Size: ${dna.materials?.doors?.main?.width} × ${dna.materials?.doors?.main?.height || '2.1m'}
-  └─ Style: ${dna.materials?.doors?.main?.panelConfig || 'Traditional panel configuration'}
-  └─ Details: Door handle, threshold, frame clearly visible
-  └─ Rendering: High-quality material finish, realistic wood grain or painted surface` : ''}
+Level Markers:
+  └─ Ground Level: ±0.00
+  └─ First Floor Level: +${dna.dimensions?.groundFloorHeight || '2.7'}
+  └─ Roof Level: +${dna.dimensions?.totalHeight}
+  └─ Foundation: -${sectionData.foundation?.depth || '1.0'}
 
-Trim & Details: ${dna.materials?.trim?.material} trim
-  └─ Color: ${dna.materials?.trim?.color} (contrasts with exterior)
-  └─ Width: ${dna.materials?.trim?.width || '150mm'}
-  └─ Application: Around windows, doors, corners, roof edges
+Material Hatching:
+  └─ Concrete: Stipple pattern
+  └─ Brick/Masonry: Diagonal lines
+  └─ Timber: Wood grain pattern
+  └─ Insulation: Cross-hatch
+  └─ Earth/Ground: Dot pattern
 
-━━━ LIGHTING & ATMOSPHERE ━━━
-Time of Day: Golden hour (late afternoon, 4-5 PM)
-Sun Position: Low in sky, creating warm directional light
-Sky: Realistic blue sky with scattered white clouds (20-30% cloud cover)
-Lighting Quality: Soft, warm, natural sunlight
-  └─ Primary Light: Warm golden sunlight from sun
-  └─ Shadows: Soft, natural shadows (not harsh, not absent)
-  └─ Ambient Light: Gentle blue sky fill light
-  └─ Exposure: Balanced (neither too bright nor too dark)
-
-Material Reflections:
-  └─ Windows: Subtle sky and environment reflections in glass
-  └─ Surfaces: Realistic material response to light (matte brick, glossy windows)
-  └─ Atmosphere: Clear visibility, slight atmospheric haze in distance
-
-━━━ CONTEXT & SURROUNDINGS ━━━
-Site Context: Suburban/residential neighborhood setting
-Landscaping:
-  └─ Front/Side Garden: Well-maintained lawn (green grass, not yellow)
-  └─ Path/Driveway: Paved walkway leading to entrance (concrete or paving stones)
-  └─ Planting: Small shrubs or flowers near building foundation (not overgrown)
-  └─ Trees: 1-2 small ornamental trees (not blocking view of building)
-  └─ Boundaries: Low hedge or fence visible in background (optional)
-
-Background:
-  └─ Neighboring Buildings: Subtle context (houses visible in far background, out of focus)
-  └─ Sky: Realistic atmosphere
-  └─ Ground Plane: Continues naturally into distance
-
-Scale Reference:
-  └─ Optional: Car in driveway, bicycle, or outdoor furniture for human scale
-  └─ Keep minimal - building is the focus
-
-━━━ CRITICAL CONSISTENCY REQUIREMENTS ━━━
-✓ Floor count MUST be EXACTLY ${dna.dimensions?.floorCount} floors (count the horizontal divisions)
-✓ Window positions MUST match elevation drawings EXACTLY (same number, same spacing)
-✓ Building proportions MUST match dimensions: ${dna.dimensions?.length}m × ${dna.dimensions?.width}m × ${dna.dimensions?.totalHeight}m
-✓ Material colors MUST match hex codes EXACTLY (${dna.materials?.exterior?.color} walls, ${dna.materials?.roof?.color} roof)
-✓ Roof type and pitch MUST match (${dna.materials?.roof?.type} at ${dna.materials?.roof?.pitch})
-✓ ${isFrontView ? 'Main entrance MUST be visible and match north elevation drawing' : 'Side facade MUST match east/west elevation drawing'}
-✓ No additional architectural features not shown in technical drawings
+━━━ CRITICAL REQUIREMENTS ━━━
+✓ TRUE 2D ORTHOGRAPHIC - absolutely NO perspective
+✓ Black linework on white background
+✓ Cut elements shown with heavier line weight
+✓ Elements beyond cut shown with lighter lines (dashed where appropriate)
+✓ All dimensions in meters
+✓ Floor count EXACTLY ${dna.dimensions?.floorCount} floors
+✓ Heights match elevation drawings exactly
 
 ━━━ EXPLICIT PROHIBITIONS ━━━
-✗ NO cartoon or artistic stylization (photorealistic only)
-✗ NO unrealistic materials (no shiny plastic, no fake textures)
-✗ NO harsh dramatic lighting (natural daylight only)
-✗ NO extra floors beyond ${dna.dimensions?.floorCount} (common AI mistake)
-✗ NO wrong building type (this is a ${dna.dimensions?.floorCount === 2 ? 'two-story detached house' : 'residential building'}, NOT an apartment block)
-✗ NO additional windows not shown in elevations
-✗ NO wrong facade (${isFrontView ? 'show FRONT facade, not side or rear' : 'show SIDE facade, not front or rear'})
-✗ NO fantasy architecture or creative reinterpretation
+✗ NO perspective or 3D effects
+✗ NO photorealistic rendering
+✗ NO colors (black and white only)
+✗ NO artistic interpretation
+✗ NO extra floors or structural elements not specified
+✗ NO furniture or decoration (structural only)
 
-━━━ DIFFERENTIATION FROM OTHER VIEWS ━━━
-This is the ${isFrontView ? 'FRONT' : 'SIDE'} 3D view:
-${isFrontView ? '- Shows north facade with main entrance prominently\n- Primary facade, typically symmetrical\n- Focus on entrance and front facade details\n- DIFFERENT from side view (which shows building depth)' : '- Shows east or west facade from side\n- Demonstrates building depth and three-dimensional form\n- Partial view of front or rear facade\n- DIFFERENT from front view (which shows main entrance)'}
+━━━ DIFFERENTIATION FROM OTHER SECTIONS ━━━
+This is Section ${sectionLabel} (${type}):
+${isLongitudinal ? '- Cut LENGTHWISE through building (front to back)\n- Shows stair arrangement along building length\n- Reveals front-to-back spatial sequence\n- DIFFERENT from Section B-B (cross section)' : '- Cut WIDTHWISE through building (side to side)\n- Shows structural bays across width\n- Reveals side-to-side room arrangement\n- DIFFERENT from Section A-A (longitudinal)'}
 
-Output: Professional architectural 3D render, photorealistic quality, natural lighting, ${viewDirection} exterior view showing EXACTLY ${dna.dimensions?.floorCount} floors.`;
+Output: Professional architectural section drawing, technical CAD style, 2D orthographic, black lines on white, Section ${sectionLabel} (${type}) showing EXACTLY ${dna.dimensions?.floorCount} floors.`;
   }
 
   /**

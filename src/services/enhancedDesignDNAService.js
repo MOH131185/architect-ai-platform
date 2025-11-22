@@ -14,9 +14,11 @@
  * - Consistency rules that MUST be followed
  */
 
-import togetherAIReasoningService from './togetherAIReasoningService';
-import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM';
-import normalizeDNA from './dnaNormalization';
+import togetherAIReasoningService from './togetherAIReasoningService.js';
+import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM.js';
+import normalizeDNA from './dnaNormalization.js';
+import logger from '../utils/logger.js';
+
 
 class EnhancedDesignDNAService {
   constructor() {
@@ -33,7 +35,7 @@ class EnhancedDesignDNAService {
    * @returns {Promise<Object>} Comprehensive Design DNA
    */
   async generateMasterDesignDNA(projectContext, portfolioAnalysis = null, locationData = null) {
-    console.log('\n🧬 [DNA Generator] Starting Master Design DNA generation...');
+    logger.info('\n🧬 [DNA Generator] Starting Master Design DNA generation...');
 
     try {
       const prompt = this.buildDNAPrompt(projectContext, portfolioAnalysis, locationData);
@@ -81,11 +83,11 @@ Return ONLY valid JSON. No markdown, no explanations.`
       dna.version = '2.0';
       dna.is_authoritative = true;
 
-      console.log('✅ [DNA Generator] Master Design DNA generated and normalized');
-      console.log('   📏 Dimensions:', `${dna.dimensions?.length}m × ${dna.dimensions?.width}m × ${dna.dimensions?.height}m`);
-      console.log('   🏗️  Floors:', dna.dimensions?.floors);
-      console.log('   🎨 Materials:', dna.materials?.length, 'items');
-      console.log('   🏠 Roof:', `${dna.roof?.type || 'N/A'}`);
+      logger.success(' [DNA Generator] Master Design DNA generated and normalized');
+      logger.info('   📏 Dimensions:', `${dna.dimensions?.length}m × ${dna.dimensions?.width}m × ${dna.dimensions?.height}m`);
+      logger.info('   🏗️  Floors:', dna.dimensions?.floors);
+      logger.info('   🎨 Materials:', dna.materials?.length, 'items');
+      logger.info('   🏠 Roof:', `${dna.roof?.type || 'N/A'}`);
 
       return {
         success: true,
@@ -94,7 +96,7 @@ Return ONLY valid JSON. No markdown, no explanations.`
       };
 
     } catch (error) {
-      console.error('❌ [DNA Generator] Failed:', error);
+      logger.error('❌ [DNA Generator] Failed:', error);
 
       // Return high-quality fallback DNA
       return {
@@ -295,15 +297,35 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
       return null;
     }
 
-    console.log(`\n🔍 [DNA Extractor] Analyzing ${portfolioFiles.length} portfolio images...`);
+    logger.info(`\n🔍 [DNA Extractor] Analyzing ${portfolioFiles.length} portfolio images...`);
 
     try {
       // Take first image for DNA extraction
       const firstImage = portfolioFiles[0];
-      let imageUrl = firstImage.preview || firstImage.url;
+
+      // Debug: Log the structure of the portfolio file
+      logger.info('   🔍 Portfolio file structure:', {
+        hasPreview: !!firstImage.preview,
+        hasUrl: !!firstImage.url,
+        hasDataUrl: !!firstImage.dataUrl,
+        hasImageUrl: !!firstImage.imageUrl,
+        hasPngDataUrl: !!firstImage.pngDataUrl,
+        hasFile: !!firstImage.file,
+        keys: Object.keys(firstImage)
+      });
+
+      // Try multiple possible properties where image data might be stored
+      let imageUrl = firstImage.dataUrl
+        || firstImage.pngDataUrl  // PDF conversion stores here
+        || firstImage.data
+        || firstImage.base64
+        || firstImage.preview
+        || firstImage.url
+        || firstImage.imageUrl;
 
       // Convert to base64 if it's a File object
-      if (firstImage.file instanceof File) {
+      if (!imageUrl && firstImage.file instanceof File) {
+        logger.info('   📄 Converting File object to base64...');
         imageUrl = await new Promise((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result);
@@ -311,17 +333,41 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
         });
       }
 
+      // Convert blob: URLs to base64 (external APIs cannot access blob URLs)
+      if (imageUrl && imageUrl.startsWith('blob:')) {
+        logger.info('   📄 Converting blob URL to base64...');
+        try {
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          imageUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          logger.info('   ✅ Blob URL converted to base64 successfully');
+        } catch (blobError) {
+          logger.error('   ❌ Failed to convert blob URL:', blobError.message);
+          throw new Error('Failed to convert portfolio image blob URL to base64');
+        }
+      }
+
+      if (!imageUrl) {
+        logger.error('   ❌ No image data found in portfolio file');
+        logger.error('   Available properties:', Object.keys(firstImage));
+        throw new Error('Portfolio image unavailable for DNA extraction (no URL or data URL provided)');
+      }
+
+      logger.info('   ✅ Image data found, length:', imageUrl.length, 'chars');
+      logger.info('   📸 Calling Together AI Llama Vision API for portfolio analysis...');
+
       const response = await this.openai.chatCompletion([
-        {
-          role: 'system',
-          content: 'You are an expert architectural analyst. Extract EXACT design DNA from architectural images. Return ONLY valid JSON.'
-        },
         {
           role: 'user',
           content: [
             {
               type: 'text',
-              text: `Analyze this architectural image and extract EXACT Design DNA:
+              text: `You are an expert architectural analyst. Analyze this architectural image and extract EXACT Design DNA. Return ONLY valid JSON with this structure:
 
 {
   "materials": {
@@ -346,13 +392,14 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
     "symmetry": "type"
   },
   "distinctive_features": ["list", "of", "unique", "elements"]
-}`
+}
+
+Respond with ONLY the JSON object, no other text.`
             },
             {
               type: 'image_url',
               image_url: {
-                url: imageUrl,
-                detail: 'high'
+                url: imageUrl
               }
             }
           ]
@@ -360,19 +407,61 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
       ], {
         model: 'gpt-4o',
         temperature: 0.1,
-        response_format: { type: 'json_object' }
+        max_tokens: 2000
       });
 
-      const extractedDNA = JSON.parse(response.choices[0].message.content);
+      // Validate response structure
+      if (!response || !response.choices || !response.choices[0] || !response.choices[0].message) {
+        throw new Error('Invalid API response structure: missing choices or message');
+      }
 
-      console.log('✅ [DNA Extractor] DNA extracted from portfolio');
-      console.log('   🎨 Style:', extractedDNA.style?.name);
-      console.log('   📦 Materials:', extractedDNA.materials?.facade_primary);
+      const messageContent = response.choices[0].message.content;
+      if (!messageContent) {
+        throw new Error('Empty response from API');
+      }
+
+      // Parse JSON with error handling
+      let extractedDNA;
+      try {
+        // Check if response is plain text refusal
+        if (messageContent.trim().startsWith("I'm unable") ||
+          messageContent.trim().startsWith("I cannot") ||
+          messageContent.trim().startsWith("I can't") ||
+          !messageContent.trim().startsWith('{')) {
+          logger.warn('   ⚠️  AI unable to analyze portfolio image:', messageContent.substring(0, 100));
+          logger.info('   ℹ️  Continuing without portfolio analysis (optional feature)');
+          return null;
+        }
+
+        extractedDNA = JSON.parse(messageContent);
+      } catch (parseError) {
+        logger.error('   ❌ JSON parsing failed:', parseError.message);
+        logger.error('   Raw response:', messageContent.substring(0, 200));
+        logger.info('   ℹ️  Continuing without portfolio analysis (optional feature)');
+        return null; // Return null instead of throwing - portfolio is optional
+      }
+
+      logger.success(' [DNA Extractor] DNA extracted from portfolio');
+      logger.info('   🎨 Style:', extractedDNA.style?.name || 'Not specified');
+      logger.info('   📦 Materials:', extractedDNA.materials?.facade_primary || 'Not specified');
 
       return extractedDNA;
 
+
     } catch (error) {
-      console.error('❌ [DNA Extractor] Failed:', error);
+      // Enhanced error logging with full details
+      logger.error('❌ [DNA Extractor] Failed:', error.message || String(error));
+      if (error.stack) {
+        logger.error('   Stack trace:', error.stack.split('\n').slice(0, 3).join('\n'));
+      }
+
+      // Log specific error types
+      if (error.message && error.message.includes('API error')) {
+        logger.error('   💡 Hint: Check if GPT-4o API is accessible and API keys are configured');
+      } else if (error.message && error.message.includes('parse')) {
+        logger.error('   💡 Hint: API returned invalid JSON format');
+      }
+
       return null;
     }
   }
@@ -385,7 +474,7 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
       return projectDNA;
     }
 
-    console.log('🔀 [DNA Merger] Merging project and portfolio DNA...');
+    logger.info('🔀 [DNA Merger] Merging project and portfolio DNA...');
 
     // Portfolio materials take priority if they exist
     if (portfolioDNA.materials) {
@@ -419,7 +508,7 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
       }
     }
 
-    console.log('✅ [DNA Merger] DNA sources merged successfully');
+    logger.success(' [DNA Merger] DNA sources merged successfully');
 
     return projectDNA;
   }
@@ -440,7 +529,7 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
     const width = Math.round((footprintArea / length) * 100) / 100;
     const height = floors * 3.2;
 
-    console.log('⚠️  [DNA Generator] Using high-quality fallback DNA');
+    logger.info('⚠️  [DNA Generator] Using high-quality fallback DNA');
 
     return {
       project_id: `fallback_${Date.now()}`,

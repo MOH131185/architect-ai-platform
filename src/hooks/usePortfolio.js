@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { useDesignContext } from '../context/DesignContext';
-import { convertPdfFileToImageFile } from '../utils/pdfToImages';
-import logger from '../utils/logger';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import { convertPdfFileToImageFile } from '../utils/pdfToImages.js';
+import logger from '../utils/logger.js';
 
 /**
  * usePortfolio - Portfolio Management Hook
@@ -31,6 +31,7 @@ export const usePortfolio = () => {
    * Handle portfolio file upload with PDF conversion
    */
   const handlePortfolioUpload = useCallback(async (e) => {
+    if (!e?.target?.files) return;
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 

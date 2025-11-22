@@ -12,7 +12,9 @@
  * All images are embedded directly in the SVG for a true single-file output
  */
 
-import { isFeatureEnabled } from '../config/featureFlags';
+import { isFeatureEnabled } from '../config/featureFlags.js';
+import logger from '../utils/logger.js';
+
 
 // A1 Portrait dimensions (better for complete architectural sheet)
 const SHEET_WIDTH = 594; // mm
@@ -33,33 +35,33 @@ async function generateSituationPlan({
   width,
   height
 }) {
-  console.log('📍 Generating Situation Plan...');
+  logger.info('📍 Generating Situation Plan...');
 
   const streetContext = siteAnalysis?.streetContext || {};
   const primaryRoad = streetContext.primaryRoad || 'Local Street';
   const adjacentRoads = streetContext.adjacentRoads || 1;
   const buildingDims = buildingFootprint?.dimensions || { length: 15, width: 10 };
-  
+
   const scale = '1:500';
   const margin = 15;
   const drawWidth = width - margin * 2;
   const drawHeight = height - margin * 2;
-  
+
   const buildingX = margin + drawWidth * 0.5 - (drawWidth * 0.3) / 2;
   const buildingY = margin + drawHeight * 0.5 - (drawHeight * 0.3) / 2;
   const buildingWidth = drawWidth * 0.3;
   const buildingHeight = drawHeight * 0.3;
-  
+
   return `<g transform="translate(${x}, ${y})">
     <rect width="${width}" height="${height}" fill="#ffffff" stroke="#333" stroke-width="1"/>
     <text x="${width / 2}" y="12" text-anchor="middle" class="section-title" font-weight="bold">SITUATION PLAN</text>
     <line x1="${margin}" y1="18" x2="${width - margin}" y2="18" stroke="#000" stroke-width="0.5"/>
     ${sitePolygon && sitePolygon.length > 0 ? `
     <polygon points="${sitePolygon.map((pt, idx) => {
-      const normalizedX = margin + (pt.lng || 0) * drawWidth / 0.01;
-      const normalizedY = margin + (pt.lat || 0) * drawHeight / 0.01;
-      return `${normalizedX},${normalizedY}`;
-    }).join(' ')}"
+    const normalizedX = margin + (pt.lng || 0) * drawWidth / 0.01;
+    const normalizedY = margin + (pt.lat || 0) * drawHeight / 0.01;
+    return `${normalizedX},${normalizedY}`;
+  }).join(' ')}"
              fill="none" stroke="#ff0000" stroke-width="2" stroke-dasharray="5,2"/>
     ` : `
     <rect x="${margin + drawWidth * 0.2}" y="${margin + drawHeight * 0.2}"
@@ -108,7 +110,7 @@ async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, w
         height
       });
     } catch (err) {
-      console.warn('⚠️ Situation Plan generation failed, falling back:', err);
+      logger.warn('⚠️ Situation Plan generation failed, falling back:', err);
     }
   }
   // If we have Google Maps URL, use it
@@ -137,7 +139,7 @@ async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, w
       ${svgSitePlan}
     </g>`;
   } catch (err) {
-    console.warn('⚠️ SVG site plan generation failed, using basic placeholder:', err);
+    logger.warn('⚠️ SVG site plan generation failed, using basic placeholder:', err);
 
     // Final fallback: simple placeholder with coordinates
     return `<g transform="translate(${x}, ${y})">
@@ -329,7 +331,7 @@ function generateProjectDataSection(dna, location, context, x, y, width, height)
  */
 function generateConsistencyBadge(score, x, y) {
   const scoreColor = score >= 98 ? '#4caf50' : score >= 95 ? '#ff9800' : '#f44336';
-  
+
   return `<g transform="translate(${x}, ${y})">
     <rect width="50" height="25" rx="3" fill="${scoreColor}" opacity="0.9"/>
     <text x="25" y="17" text-anchor="middle" class="small" fill="#fff" font-weight="bold">${score}%</text>
@@ -362,8 +364,8 @@ function generateTechnicalDetailsSection(details, x, y, width, height) {
     const annotations = Array.isArray(callout.annotations) ? callout.annotations.slice(0, 2) : [];
     return `
       <text x="5" y="${offsetY}" class="small" font-weight="bold">${label} • ${title} (${scale})</text>
-      ${layers.map((l, i) => `<text x="10" y="${offsetY + 12 + i*10}" class="tiny">- ${l}</text>`).join('')}
-      ${annotations.length > 0 ? `<text x="10" y="${offsetY + 12 + layers.length*10}" class="tiny" fill="#666">Notes: ${annotations.join(', ')}</text>` : ''}
+      ${layers.map((l, i) => `<text x="10" y="${offsetY + 12 + i * 10}" class="tiny">- ${l}</text>`).join('')}
+      ${annotations.length > 0 ? `<text x="10" y="${offsetY + 12 + layers.length * 10}" class="tiny" fill="#666">Notes: ${annotations.join(', ')}</text>` : ''}
     `;
   };
 
@@ -379,28 +381,28 @@ function generateTechnicalDetailsSection(details, x, y, width, height) {
  * Generate unified A1 sheet with all views embedded
  */
 export async function generateUnifiedSheet(designResult, projectContext) {
-  console.log('📐 Generating unified A1 sheet with all views...');
-  console.log('   designResult keys:', Object.keys(designResult));
-  console.log('   visualizations:', designResult.visualizations);
+  logger.info('📐 Generating unified A1 sheet with all views...');
+  logger.info('   designResult keys:', Object.keys(designResult));
+  logger.info('   visualizations:', designResult.visualizations);
 
   // Check if programmatic composer is enabled
   if (isFeatureEnabled('a1ProgrammaticComposer')) {
-    console.log('   🎨 Using programmatic SVG composer (deterministic structure)');
+    logger.info('   🎨 Using programmatic SVG composer (deterministic structure)');
     try {
       const { renderA1SheetSVG } = await import('./a1SheetComposer');
       const sheetData = mapDesignResultToA1SheetData(designResult, projectContext);
       const result = renderA1SheetSVG(sheetData);
-      console.log('✅ Programmatic A1 sheet generated');
-      console.log('   📏 SVG length:', result.svg.length, 'characters');
+      logger.success(' Programmatic A1 sheet generated');
+      logger.info('   📏 SVG length:', result.svg.length, 'characters');
       return result.svg;
     } catch (error) {
-      console.error('❌ Programmatic composer failed, falling back to legacy:', error);
+      logger.error('❌ Programmatic composer failed, falling back to legacy:', error);
       // Fall through to legacy implementation
     }
   }
 
   // Legacy implementation (kept for fallback)
-  console.log('   📐 Using legacy sheet generator');
+  logger.info('   📐 Using legacy sheet generator');
 
   const {
     designDNA,
@@ -414,11 +416,11 @@ export async function generateUnifiedSheet(designResult, projectContext) {
   const foundViews = Object.keys(views).filter(k => views[k]);
   const missingViews = Object.keys(views).filter(k => !views[k]);
 
-  console.log('   ✅ Found views (' + foundViews.length + '):', foundViews);
+  logger.info('   ✅ Found views (' + foundViews.length + '):', foundViews);
   if (missingViews.length > 0) {
-    console.warn('   ⚠️  Missing views (' + missingViews.length + '):', missingViews);
+    logger.warn('   ⚠️  Missing views (' + missingViews.length + '):', missingViews);
   }
-  console.log('   📊 Total views with URLs:', Object.values(views).filter(v => v).length + '/11');
+  logger.info('   📊 Total views with URLs:', Object.values(views).filter(v => v).length + '/11');
 
   // Calculate simple hash for traceability
   const designHash = simpleHash(JSON.stringify({ dna, seed: dna?.seed }));
@@ -473,11 +475,11 @@ export async function generateUnifiedSheet(designResult, projectContext) {
 
 </svg>`;
 
-  console.log('✅ Unified sheet generated');
-  console.log('   📏 SVG length:', svg.length, 'characters');
+  logger.success(' Unified sheet generated');
+  logger.info('   📏 SVG length:', svg.length, 'characters');
 
   if (!svg || svg.length < 100) {
-    console.error('❌ Generated SVG is too short or empty!');
+    logger.error('❌ Generated SVG is too short or empty!');
     return null;
   }
 
@@ -494,18 +496,50 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
   const views = extractViewURLs(designResult);
 
   // Extract materials
-  const materials = Array.isArray(dna?.materials) 
+  const materials = Array.isArray(dna?.materials)
     ? dna.materials.map(m => ({
-        name: m.name || 'Unknown',
-        description: m.application || m.description || '',
-        swatchHex: m.hexColor || m.color_hex || '#888888'
-      }))
+      name: m.name || 'Unknown',
+      description: m.application || m.description || '',
+      swatchHex: m.hexColor || m.color_hex || '#888888'
+    }))
     : [];
 
   // Extract climate summary
   const climate = location?.climate || location?.climateSummary || {};
-  const seasonal = climate?.seasonal || {};
-  const avgTemp = seasonal?.summer?.avgTemp || seasonal?.winter?.avgTemp || climate?.avgTemp || '10 °C';
+
+  // Handle weatherService structure or fallback
+  let avgTemp = '10°C';
+  let rainfall = '750 mm/yr';
+  let prevailingWind = 'SW';
+  let climateZone = 'Temperate Oceanic';
+
+  if (climate.temperature) {
+    // New structure from weatherService
+    if (climate.temperature.min !== undefined && climate.temperature.max !== undefined) {
+      avgTemp = `${((climate.temperature.min + climate.temperature.max) / 2).toFixed(1)}°C`;
+    } else if (climate.temperature.current !== undefined) {
+      avgTemp = `${climate.temperature.current}°C`;
+    }
+
+    if (climate.precipitation?.daily_sum !== undefined) {
+      rainfall = `${(climate.precipitation.daily_sum * 365).toFixed(0)} mm/yr`;
+    }
+
+    if (climate.wind?.prevailing) {
+      prevailingWind = climate.wind.prevailing;
+    }
+
+    if (climate.climateZone) {
+      climateZone = climate.climateZone;
+    }
+  } else {
+    // Fallback to existing logic
+    const seasonal = climate?.seasonal || {};
+    avgTemp = seasonal?.summer?.avgTemp || seasonal?.winter?.avgTemp || climate?.avgTemp || '10 °C';
+    rainfall = climate?.avgRainfall || climate?.rainfall || '750 mm/yr';
+    prevailingWind = climate?.prevailingWind || 'west–south-west';
+    climateZone = climate?.type || climate?.climateZone || 'Temperate Oceanic';
+  }
 
   return {
     project: {
@@ -520,12 +554,15 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
     },
     location: {
       mapImageUrl: location?.siteMapUrl || location?.mapImageUrl,
-      prevailingWind: climate?.prevailingWind || 'west–south-west',
+      prevailingWind: prevailingWind,
       climateSummary: {
         avgTemp: avgTemp,
-        rainfall: climate?.avgRainfall || climate?.rainfall || '750 mm/yr',
-        zone: climate?.type || climate?.climateZone || 'Temperate Oceanic',
-        strategy: location?.sunPath?.optimalOrientation 
+        rainfall: rainfall,
+        zone: climateZone,
+        prevailingWind: prevailingWind,
+        climateZone: climateZone, // Redundant but safe
+        avgRainfall: rainfall, // Redundant but safe
+        strategy: location?.sunPath?.optimalOrientation
           ? `Orient living area toward ${location.sunPath.optimalOrientation.toLowerCase()} for daylight; add roof overhangs for shading.`
           : 'Orient living area toward south for daylight; add roof overhangs for shading.'
       },
@@ -534,7 +571,7 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
     dna: {
       style: dna?.architecturalStyle || dna?.architectural_style?.name || 'Modern Contemporary with Local Brick Aesthetic',
       materials: materials,
-      blend: dna?.portfolioBlendPercent 
+      blend: dna?.portfolioBlendPercent
         ? `${100 - (dna.portfolioBlendPercent || 70)}% local contextual style + ${dna.portfolioBlendPercent || 70}% architect's personal minimalist DNA`
         : '60% local contextual style + 40% architect\'s personal minimalist DNA'
     },
@@ -587,16 +624,16 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
     },
     summary: {
       siteArea: location?.siteAnalysis?.area || '450 m²',
-      builtUp: dna?.dimensions 
+      builtUp: dna?.dimensions
         ? `${((dna.dimensions.length || 0) * (dna.dimensions.width || 0) * (dna.dimensions.floorHeights?.length || 2)).toFixed(0)} m²`
         : '230 m²',
-      floors: dna?.dimensions?.floorHeights?.length 
+      floors: dna?.dimensions?.floorHeights?.length
         ? `G + ${dna.dimensions.floorHeights.length - 1}`
         : 'G + 1',
       bedrooms: dna?.rooms?.filter(r => r.name?.toLowerCase().includes('bedroom')).length || '3',
       bathrooms: dna?.rooms?.filter(r => r.name?.toLowerCase().includes('bath')).length || '3',
       height: dna?.dimensions?.height ? `${dna.dimensions.height.toFixed(1)} m` : '6.5 m',
-      cost: dna?.dimensions 
+      cost: dna?.dimensions
         ? `£${((dna.dimensions.length || 0) * (dna.dimensions.width || 0) * (dna.dimensions.floorHeights?.length || 2) * 1400).toLocaleString()}`
         : '£320,000',
       completion: 'Q3 2026'
@@ -611,7 +648,7 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
 function extractViewURLs(designResult) {
   const views = {};
 
-  console.log('   🔍 Extracting URLs from design result...');
+  logger.info('   🔍 Extracting URLs from design result...');
 
   // Helper function to get URL from nested structure
   const getUrl = (obj) => {
@@ -628,7 +665,7 @@ function extractViewURLs(designResult) {
   if (designResult.floorPlans?.floorPlans) {
     views.ground = getUrl(designResult.floorPlans.floorPlans.ground);
     views.upper = getUrl(designResult.floorPlans.floorPlans.upper);
-    console.log('      Floor Plans: ground=' + (views.ground ? 'found' : 'missing') + ', upper=' + (views.upper ? 'found' : 'missing'));
+    logger.info('      Floor Plans: ground=' + (views.ground ? 'found' : 'missing') + ', upper=' + (views.upper ? 'found' : 'missing'));
   }
 
   // Technical drawings from technicalDrawings.technicalDrawings
@@ -640,8 +677,8 @@ function extractViewURLs(designResult) {
     views.elevationW = getUrl(td.elevation_west);
     views.sectionLong = getUrl(td.section_longitudinal);
     views.sectionCross = getUrl(td.section_cross);
-    console.log('      Elevations: N=' + (views.elevationN ? 'found' : 'missing') + ', S=' + (views.elevationS ? 'found' : 'missing'));
-    console.log('      Sections: Long=' + (views.sectionLong ? 'found' : 'missing') + ', Cross=' + (views.sectionCross ? 'found' : 'missing'));
+    logger.info('      Elevations: N=' + (views.elevationN ? 'found' : 'missing') + ', S=' + (views.elevationS ? 'found' : 'missing'));
+    logger.info('      Sections: Long=' + (views.sectionLong ? 'found' : 'missing') + ', Cross=' + (views.sectionCross ? 'found' : 'missing'));
   }
 
   // 3D views from visualizations.views
@@ -652,10 +689,10 @@ function extractViewURLs(designResult) {
     views.interior = getUrl(v.interior);
     views.exterior = getUrl(v.exterior_front || v.exterior_side);
     views.site = getUrl(v.site);
-    console.log('      3D Views: axon=' + (views.axon ? 'found' : 'missing') + ', persp=' + (views.persp ? 'found' : 'missing') + ', interior=' + (views.interior ? 'found' : 'missing'));
+    logger.info('      3D Views: axon=' + (views.axon ? 'found' : 'missing') + ', persp=' + (views.persp ? 'found' : 'missing') + ', interior=' + (views.interior ? 'found' : 'missing'));
   }
 
-  console.log('   ✅ Extracted ' + Object.values(views).filter(v => v).length + ' image URLs');
+  logger.info('   ✅ Extracted ' + Object.values(views).filter(v => v).length + ' image URLs');
   return views;
 }
 
@@ -772,7 +809,7 @@ function generateSectionsRow(views) {
  * Embed image in SVG
  */
 function embedImage(url, x, y, width, height, label) {
-  console.log(`   📊 embedImage called: label="${label}", url=${url ? 'present' : 'MISSING'}`);
+  logger.info(`   📊 embedImage called: label="${label}", url=${url ? 'present' : 'MISSING'}`);
 
   if (!url) {
     return `
@@ -858,7 +895,7 @@ function simpleHash(str) {
  * No AI calls - pure SVG composition
  */
 export async function composeA1({ views, siteMapImage, metadata }) {
-  console.log('📐 Composing A1 sheet locally...');
+  logger.info('📐 Composing A1 sheet locally...');
 
   const {
     designId = `design_${Date.now()}`,
@@ -963,7 +1000,7 @@ function generateSiteMapSectionFromImage(siteMapImage, x, y, width, height) {
 function generateProgramSchedule(dna, context) {
   const programSpaces = context?.programSpaces || dna?.programSpaces || [];
   const projectType = context?.projectType || dna?.projectType || null;
-  
+
   if (!programSpaces || programSpaces.length === 0) {
     return '';
   }
@@ -971,14 +1008,14 @@ function generateProgramSchedule(dna, context) {
   const x = MARGIN + 5;
   const y = MARGIN + 200; // Position below material palette
   const width = 180;
-  const programTotal = programSpaces.reduce((sum, space) => 
+  const programTotal = programSpaces.reduce((sum, space) =>
     sum + (parseFloat(space.area || 0) * (space.count || 1)), 0
   );
 
   let svg = `<g id="program-schedule">
     <rect x="${x}" y="${y}" width="${width}" height="${50 + programSpaces.length * 20}" fill="#f9f9f9" stroke="#333" stroke-width="0.5" rx="2"/>
     <text x="${x + 5}" y="${y + 12}" class="tiny" font-weight="bold">PROGRAM SCHEDULE</text>`;
-  
+
   if (projectType) {
     svg += `<text x="${x + 5}" y="${y + 25}" class="tiny" fill="#666">Type: ${projectType.toUpperCase()}</text>`;
   }
@@ -1011,7 +1048,7 @@ async function svgToPng(svgString) {
       canvas.height = SHEET_HEIGHT * 2;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
+
       const pngDataUrl = canvas.toDataURL('image/png');
       URL.revokeObjectURL(url);
       resolve(pngDataUrl);

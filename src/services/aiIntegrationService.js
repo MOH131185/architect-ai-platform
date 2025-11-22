@@ -1,23 +1,22 @@
 /**
  * AI Integration Service
- * Combines OpenAI reasoning with Replicate generation for complete AI-powered architectural workflow
+ * Orchestrates Together AI (primary) with optional OpenAI fallbacks for architectural workflows.
+ * Legacy ControlNet workflows are retained for backwards compatibility but are deprecated.
  */
 
-import togetherAIReasoningService from './togetherAIReasoningService';
-import portfolioStyleDetection from './portfolioStyleDetection';
-import { locationIntelligence } from './locationIntelligence';
-import bimService from './bimService';
-import dimensioningService from './dimensioningService';
-import { enforce2DFloorPlan } from '../utils/floorPlan2DEnforcement';
-import togetherAIService from './togetherAIService';
-import controlNetMultiViewService from './controlNetMultiViewService';
-import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM';
+import togetherAIReasoningService from './togetherAIReasoningService.js';
+import portfolioStyleDetection from './portfolioStyleDetection.js';
+import { locationIntelligence } from './locationIntelligence.js';
+import bimService from './bimService.js';
+import dimensioningService from './dimensioningService.js';
+import { enforce2DFloorPlan } from '../utils/floorPlan2DEnforcement.js';
+import togetherAIService from './togetherAIService.js';
+import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM.js';
+import logger from '../utils/logger.js';
+
 
 // Together AI is now the DEFAULT for all reasoning (except location/weather)
 const USE_TOGETHER = true; // Always use Together AI for reasoning
-
-// Feature flag for ControlNet Multi-View workflow
-const USE_CONTROLNET_WORKFLOW = process.env.REACT_APP_USE_CONTROLNET_WORKFLOW === 'true';
 
 class AIIntegrationService {
   constructor() {
@@ -25,7 +24,6 @@ class AIIntegrationService {
     this.portfolioStyleDetection = portfolioStyleDetection;
     this.bim = bimService;
     this.dimensioning = dimensioningService;
-    this.controlNet = controlNetMultiViewService;
 
     // Style signature cache (one per project session)
     this.styleSignatureCache = null;
@@ -57,17 +55,20 @@ class AIIntegrationService {
    * @returns {Promise<Object>} Complete visualization package with all 6 views
    */
   async generateControlNetMultiViewPackage(projectParams) {
-    console.log('\n🎯 [AI Integration] Starting ControlNet Multi-View workflow...');
+    logger.info('\n🎯 [AI Integration] Starting ControlNet Multi-View workflow...');
+    logger.warn('⚠️ ControlNet multi-view workflow is deprecated. Please migrate to the A1-only pipeline.');
 
     try {
-      // Delegate to ControlNet service
-      const result = await this.controlNet.generateConsistentMultiViewPackage(projectParams);
+      const { default: controlNetService } = await import('./controlNetMultiViewService.js');
 
-      console.log('✅ [AI Integration] ControlNet workflow complete');
+      // Delegate to ControlNet service
+      const result = await controlNetService.generateConsistentMultiViewPackage(projectParams);
+
+      logger.success(' [AI Integration] ControlNet workflow complete');
       return result;
 
     } catch (error) {
-      console.error('❌ [AI Integration] ControlNet workflow failed:', error);
+      logger.error('❌ [AI Integration] ControlNet workflow failed:', error);
       throw error;
     }
   }
@@ -142,12 +143,12 @@ class AIIntegrationService {
   async generateStyleSignature(portfolio, specs, location) {
     // Return cached signature if exists (one per project session)
     if (this.styleSignatureCache) {
-      console.log('✅ Using cached style signature');
+      logger.success(' Using cached style signature');
       return this.styleSignatureCache;
     }
 
     try {
-      console.log('🎨 Generating style signature via GPT-4o...');
+      logger.info('🎨 Generating style signature via GPT-4o...');
 
       // CRITICAL: Use blended style materials (respects user's material weight settings)
       const blendedStyle = portfolio?.blendedStyle;
@@ -228,7 +229,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
       signature.timestamp = new Date().toISOString();
       signature.projectId = specs.projectId || Date.now().toString();
 
-      console.log('✅ Style signature generated:', {
+      logger.info('✅ Style signature generated:', {
         materials: signature.materialsPalette?.slice(0, 2).join(', '),
         facadeStyle: signature.facadeArticulation,
         lighting: signature.lighting
@@ -239,7 +240,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
 
       return signature;
     } catch (error) {
-      console.error('❌ Style signature generation failed:', error);
+      logger.error('❌ Style signature generation failed:', error);
       // Return fallback signature
       return this.getFallbackStyleSignature(specs, location);
     }
@@ -290,7 +291,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
 
     // 🎯 CRITICAL: If we have extracted details from master image, use them for PERFECT consistency
     if (extractedDetails && !extractedDetails.fallback) {
-      console.log(`🎯 Using EXTRACTED VISUAL DETAILS for ${viewType} (ensures perfect consistency)`);
+      logger.info(`🎯 Using EXTRACTED VISUAL DETAILS for ${viewType} (ensures perfect consistency)`);
 
       // Override DNA strings with EXACT extracted details from master image
       if (extractedDetails.materials?.facade) {
@@ -330,11 +331,11 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
         floorStr = `${extractedDetails.floors_visible} floors`;
       }
 
-      console.log(`   📦 Exact facade: ${materialStr}`);
-      console.log(`   🏠 Exact roof: ${roofStr}`);
-      console.log(`   🪟 Exact windows: ${windowStr}`);
+      logger.info(`   📦 Exact facade: ${materialStr}`);
+      logger.info(`   🏠 Exact roof: ${roofStr}`);
+      logger.info(`   🪟 Exact windows: ${windowStr}`);
     } else {
-      console.log(`🧬 Building DNA for ${viewType}:`, {
+      logger.info(`🧬 Building DNA for ${viewType}:`, {
         dimensions: dimensionStr,
         floors: floorStr,
         roof: roofStr,
@@ -544,7 +545,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
    */
   async extractVisualDetailsFromImage(imageUrl, buildingDNA = {}) {
     try {
-      console.log(`\n🔍 Extracting exact visual details from master image using GPT-4o Vision...`);
+      logger.info(`\n🔍 Extracting exact visual details from master image using GPT-4o Vision...`);
 
       const dna = buildingDNA || {};
       const expectedMaterials = dna.materials?.exterior?.primary || 'materials';
@@ -643,22 +644,22 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       // Design DNA is authoritative source for building specifications
       const totalFloors = buildingDNA?.dimensions?.floors || buildingDNA?.dimensions?.floorCount;
       if (totalFloors && extractedDetails.floors_visible !== totalFloors) {
-        console.log(`   🔧 Overriding extracted floors (${extractedDetails.floors_visible}) with Design DNA floors (${totalFloors})`);
+        logger.info(`   🔧 Overriding extracted floors (${extractedDetails.floors_visible}) with Design DNA floors (${totalFloors})`);
         extractedDetails.floors_visible = totalFloors;
       }
 
-      console.log(`✅ Visual details extracted successfully:`);
-      console.log(`   📦 Facade: ${extractedDetails.materials?.facade || 'N/A'}`);
-      console.log(`   🏠 Roof: ${extractedDetails.roof?.type || 'N/A'} - ${extractedDetails.roof?.color || 'N/A'}`);
-      console.log(`   🪟 Windows: ${extractedDetails.windows?.type || 'N/A'} - ${extractedDetails.windows?.frame_color || 'N/A'}`);
-      console.log(`   🎨 Colors: ${Object.keys(extractedDetails.colors || {}).length} extracted`);
-      console.log(`   📏 Floors: ${extractedDetails.floors_visible || 'N/A'}`);
+      logger.success(` Visual details extracted successfully:`);
+      logger.info(`   📦 Facade: ${extractedDetails.materials?.facade || 'N/A'}`);
+      logger.info(`   🏠 Roof: ${extractedDetails.roof?.type || 'N/A'} - ${extractedDetails.roof?.color || 'N/A'}`);
+      logger.info(`   🪟 Windows: ${extractedDetails.windows?.type || 'N/A'} - ${extractedDetails.windows?.frame_color || 'N/A'}`);
+      logger.info(`   🎨 Colors: ${Object.keys(extractedDetails.colors || {}).length} extracted`);
+      logger.info(`   📏 Floors: ${extractedDetails.floors_visible || 'N/A'}`);
 
       return extractedDetails;
 
     } catch (error) {
-      console.error(`❌ Failed to extract visual details:`, error.message);
-      console.log(`⚠️  Falling back to Building DNA only`);
+      logger.error(`❌ Failed to extract visual details:`, error.message);
+      logger.info(`⚠️  Falling back to Building DNA only`);
 
       // Return basic structure from DNA as fallback
       return {
@@ -712,10 +713,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateConsistentImages(viewRequests, context) {
     try {
-      console.log(`🎨 Generating ${viewRequests.length} consistent images with HYBRID MODEL SELECTION`);
-      console.log(`   🎯 Strategy: DALL-E 3 for technical views, Midjourney for photorealistic renders`);
-      console.log(`   📐 Technical views (floor plans, elevations, sections, axonometric) → DALL-E 3`);
-      console.log(`   📸 Photorealistic views (exterior, interior, perspective) → Midjourney (optional)`);
+      logger.info(`🎨 Generating ${viewRequests.length} consistent images with HYBRID MODEL SELECTION`);
+      logger.info(`   🎯 Strategy: DALL-E 3 for technical views, Midjourney for photorealistic renders`);
+      logger.info(`   📐 Technical views (floor plans, elevations, sections, axonometric) → DALL-E 3`);
+      logger.info(`   📸 Photorealistic views (exterior, interior, perspective) → Midjourney (optional)`);
 
       // Ensure style signature exists
       const styleSignature = context.styleSignature ||
@@ -738,7 +739,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         // Move master to front for sequential generation
         const [masterReq] = viewRequests.splice(masterIndex, 1);
         viewRequests.unshift(masterReq);
-        console.log(`📌 Moved ${masterReq.viewType} to first position as master reference image`);
+        logger.info(`📌 Moved ${masterReq.viewType} to first position as master reference image`);
       }
 
       for (let i = 0; i < viewRequests.length; i++) {
@@ -746,9 +747,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         const isMaster = i === 0 && (req.viewType === 'exterior' || req.viewType === 'exterior_front' || req.viewType === 'exterior_side');
 
         if (isMaster) {
-          console.log(`\n🎨 [MASTER] Generating master ${req.viewType} for visual reference...`);
+          logger.info(`\n🎨 [MASTER] Generating master ${req.viewType} for visual reference...`);
         } else {
-          console.log(`\n🎨 [${i + 1}/${viewRequests.length}] Generating ${req.viewType}${extractedVisualDetails ? ' using extracted details' : ''}...`);
+          logger.info(`\n🎨 [${i + 1}/${viewRequests.length}] Generating ${req.viewType}${extractedVisualDetails ? ' using extracted details' : ''}...`);
         }
 
         // Build prompt kit for this view (with extracted details if available)
@@ -769,7 +770,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         while (!success && retries < maxRetries) {
           try {
             if (retries > 0) {
-              console.log(`   🔄 Retry attempt ${retries}/${maxRetries - 1} for ${req.viewType}...`);
+              logger.info(`   🔄 Retry attempt ${retries}/${maxRetries - 1} for ${req.viewType}...`);
             }
 
             // 🎯 HYBRID MODEL SELECTION: Route based on view type
@@ -777,7 +778,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
 
             if (isTechnical) {
               // 📐 TECHNICAL VIEWS → DALL-E 3 (better at following precise instructions)
-              console.log(`   📐 Using DALL-E 3 for ${req.viewType} (technical precision)...`);
+              logger.info(`   📐 Using DALL-E 3 for ${req.viewType} (technical precision)...`);
 
               try {
                 const result = await this.openaiImage.generateImage({
@@ -798,9 +799,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                   throw new Error('No images returned from DALL-E 3');
                 }
 
-                console.log(`   ✅ DALL-E 3 generation successful for ${req.viewType}`);
+                logger.info(`   ✅ DALL-E 3 generation successful for ${req.viewType}`);
               } catch (dalle3Error) {
-                console.error(`   ❌ DALL-E 3 failed for ${req.viewType}:`, dalle3Error.message);
+                logger.error(`   ❌ DALL-E 3 failed for ${req.viewType}:`, dalle3Error.message);
                 throw new Error(`DALL-E 3 generation failed for ${req.viewType}: ${dalle3Error.message}`);
               }
 
@@ -812,7 +813,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
 
             // 🎨 CRITICAL FIX #3: Apply 2D enforcement for floor plans (convert 3D axonometric to 2D blueprint)
             if (imageUrl && (req.viewType === 'plan' || req.viewType === 'floor_plan')) {
-              console.log(`   🔧 Applying 2D floor plan enforcement (convert 3D to flat blueprint)...`);
+              logger.info(`   🔧 Applying 2D floor plan enforcement (convert 3D to flat blueprint)...`);
               try {
                 const processedImageUrl = await enforce2DFloorPlan(imageUrl, {
                   applyBlueprintTint: true,
@@ -822,26 +823,26 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                 });
                 imageUrl = processedImageUrl;
                 images[0].url = processedImageUrl; // Update the images array
-                console.log(`   ✅ Floor plan converted to 2D blueprint style`);
+                logger.info(`   ✅ Floor plan converted to 2D blueprint style`);
               } catch (enforce2DError) {
-                console.error(`   ❌ 2D enforcement failed:`, enforce2DError.message);
-                console.warn(`   ⚠️  Using original floor plan image (DALL·E 3 generated)`);
+                logger.error(`   ❌ 2D enforcement failed:`, enforce2DError.message);
+                logger.warn(`   ⚠️  Using original floor plan image (DALL·E 3 generated)`);
                 // Continue with original image
               }
             }
 
             // 🔍 CRITICAL FIX #2: Validate view correctness using GPT-4 Vision
             if (imageUrl) {
-              console.log(`   🔍 Validating view correctness with GPT-4 Vision...`);
+              logger.info(`   🔍 Validating view correctness with GPT-4 Vision...`);
               try {
                 // Note: Together AI doesn't have vision API, skip classification
                 const classification = null;
 
                 if (classification.isCorrect) {
-                  console.log(`   ✅ View verified: ${classification.actualView} (confidence: ${classification.confidence})`);
+                  logger.info(`   ✅ View verified: ${classification.actualView} (confidence: ${classification.confidence})`);
                 } else {
-                  console.warn(`   ⚠️  View mismatch: expected ${req.viewType}, got ${classification.actualView}`);
-                  console.warn(`   Reason: ${classification.reason}`);
+                  logger.warn(`   ⚠️  View mismatch: expected ${req.viewType}, got ${classification.actualView}`);
+                  logger.warn(`   Reason: ${classification.reason}`);
 
                   // Auto-regenerate up to 2 times for 2D views (floor_plan, elevation_*, section_*)
                   const is2DView = req.viewType === 'plan' || req.viewType === 'floor_plan' ||
@@ -849,12 +850,12 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                   const maxRegenAttempts = is2DView ? 2 : 1;
 
                   if (retries < maxRegenAttempts) {
-                    console.log(`   🔄 Auto-regenerating with enhanced prompt (attempt ${retries + 1}/${maxRegenAttempts})...`);
+                    logger.info(`   🔄 Auto-regenerating with enhanced prompt (attempt ${retries + 1}/${maxRegenAttempts})...`);
                     retries++;
                     success = false;
                     continue; // Retry with same parameters
                   } else {
-                    console.warn(`   ⚠️  Keeping mismatched view after ${maxRegenAttempts} retries (user will be warned)`);
+                    logger.warn(`   ⚠️  Keeping mismatched view after ${maxRegenAttempts} retries (user will be warned)`);
                   }
                 }
 
@@ -863,15 +864,15 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                   images[0].classification = classification;
                 }
               } catch (classifyError) {
-                console.error(`   ❌ View classification failed:`, classifyError.message);
-                console.log(`   ⚠️  Continuing without validation`);
+                logger.error(`   ❌ View classification failed:`, classifyError.message);
+                logger.info(`   ⚠️  Continuing without validation`);
               }
             }
 
             // 🎯 STEP 2: If this is the master image, extract visual details
             if (isMaster && imageUrl) {
               masterImageUrl = imageUrl;
-              console.log(`\n🔍 Master image generated, extracting visual details for consistency...`);
+              logger.info(`\n🔍 Master image generated, extracting visual details for consistency...`);
 
               extractedVisualDetails = await this.extractVisualDetailsFromImage(
                 masterImageUrl,
@@ -879,9 +880,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
               );
 
               if (extractedVisualDetails && !extractedVisualDetails.fallback) {
-                console.log(`✅ Visual details extracted successfully - will be used for ALL remaining views`);
+                logger.success(` Visual details extracted successfully - will be used for ALL remaining views`);
               } else {
-                console.log(`⚠️  Visual extraction failed or fallback - using Building DNA only`);
+                logger.info(`⚠️  Visual extraction failed or fallback - using Building DNA only`);
               }
             }
 
@@ -901,22 +902,22 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             });
 
             const modelName = modelUsed === 'dalle3' ? 'DALL-E 3' : 'Midjourney';
-            console.log(`   ✅ ${req.viewType} generated with ${modelName}${retries > 0 ? ` (attempt ${retries + 1})` : ''}`);
+            logger.info(`   ✅ ${req.viewType} generated with ${modelName}${retries > 0 ? ` (attempt ${retries + 1})` : ''}`);
 
           } catch (midjourneyGenError) {
             lastError = midjourneyGenError;
             retries++;
 
-            console.error(`   ❌ Midjourney attempt ${retries} failed:`, midjourneyGenError.message);
+            logger.error(`   ❌ Midjourney attempt ${retries} failed:`, midjourneyGenError.message);
 
             if (retries < maxRetries) {
               const waitTime = retries * 3000; // Exponential backoff: 3s, 6s, 9s
-              console.log(`   ⏳ Waiting ${waitTime / 1000}s before retry...`);
+              logger.info(`   ⏳ Waiting ${waitTime / 1000}s before retry...`);
               await new Promise(resolve => setTimeout(resolve, waitTime));
             } else {
               // All retries exhausted - use placeholder
-              console.error(`   ❌ All ${maxRetries} attempts failed for ${req.viewType}`);
-              console.warn(`   ⚠️  Using placeholder image (Midjourney ONLY policy - no fallback)`);
+              logger.error(`   ❌ All ${maxRetries} attempts failed for ${req.viewType}`);
+              logger.warn(`   ⚠️  Using placeholder image (Midjourney ONLY policy - no fallback)`);
 
               results.push({
                 success: false,
@@ -933,7 +934,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
 
         // Add delay between requests to respect rate limits (except after last request)
         if (i < viewRequests.length - 1) {
-          console.log(`   ⏳ Waiting 2s before next image...`);
+          logger.info(`   ⏳ Waiting 2s before next image...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
@@ -954,18 +955,18 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       const usedExtractedDetails = results.filter(r => r.usedExtractedDetails).length;
       const hasMaster = results.some(r => r.isMaster);
 
-      console.log(`\n✅ ============================================`);
-      console.log(`✅ Completed ${results.length} image generations (TOGETHER AI EXCLUSIVE)`);
-      console.log(`   🎨 Together AI (FLUX.1): ${togetherAICount}/${results.length}`);
-      console.log(`   ❌ Placeholder: ${placeholderCount}/${results.length}`);
-      console.log(`   🎯 Master Image: ${hasMaster ? 'Generated successfully' : 'Not found'}`);
-      console.log(`   🔗 Used Extracted Details: ${usedExtractedDetails}/${results.length - 1} views`);
-      console.log(`   🎨 Consistency Level: ${extractedVisualDetails && !extractedVisualDetails.fallback ? 'PERFECT (GPT-4o coordinated)' : successCount === results.length ? 'HIGH (DNA-based)' : 'MEDIUM'}`);
-      console.log(`✅ ============================================`);
+      logger.info(`\n✅ ============================================`);
+      logger.success(` Completed ${results.length} image generations (TOGETHER AI EXCLUSIVE)`);
+      logger.info(`   🎨 Together AI (FLUX.1): ${togetherAICount}/${results.length}`);
+      logger.info(`   ❌ Placeholder: ${placeholderCount}/${results.length}`);
+      logger.info(`   🎯 Master Image: ${hasMaster ? 'Generated successfully' : 'Not found'}`);
+      logger.info(`   🔗 Used Extracted Details: ${usedExtractedDetails}/${results.length - 1} views`);
+      logger.info(`   🎨 Consistency Level: ${extractedVisualDetails && !extractedVisualDetails.fallback ? 'PERFECT (GPT-4o coordinated)' : successCount === results.length ? 'HIGH (DNA-based)' : 'MEDIUM'}`);
+      logger.success(` ============================================`);
 
       return results;
     } catch (error) {
-      console.error('❌ Consistent image generation error:', error);
+      logger.error('❌ Consistent image generation error:', error);
       throw error;
     }
   }
@@ -977,7 +978,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateCompleteDesign(projectContext) {
     try {
-      console.log('Starting complete AI design workflow...');
+      logger.info('Starting complete AI design workflow...');
       
       // Step 1: Generate design reasoning
       const reasoning = await this.generateDesignReasoning(projectContext);
@@ -1003,7 +1004,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('Complete design workflow error:', error);
+      logger.error('Complete design workflow error:', error);
       return {
         success: false,
         error: error.message,
@@ -1017,7 +1018,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateDesignReasoning(projectContext) {
     try {
-      console.log(`Generating design reasoning... (Using ${USE_TOGETHER ? 'Together AI' : 'OpenAI'})`);
+      logger.info(`Generating design reasoning... (Using ${USE_TOGETHER ? 'Together AI' : 'OpenAI'})`);
 
       let reasoning;
       if (USE_TOGETHER) {
@@ -1051,7 +1052,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('Design reasoning error:', error);
+      logger.error('Design reasoning error:', error);
       return {
         designPhilosophy: 'Contextual and sustainable design approach',
         spatialOrganization: 'Functional and flexible spatial arrangement',
@@ -1073,11 +1074,11 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateVisualizations(projectContext, reasoning) {
     try {
-      console.log(`Generating architectural visualizations... (Using ${USE_TOGETHER ? 'Together AI FLUX.1' : 'Replicate'})`);
+      logger.info(`Generating architectural visualizations... (Using ${USE_TOGETHER ? 'Together AI FLUX.1' : 'Replicate'})`);
 
       if (USE_TOGETHER) {
         // Use Together AI FLUX.1 DNA-enhanced generation for all 13 views
-        console.log('🧬 Generating complete architectural package with DNA consistency...');
+        logger.info('🧬 Generating complete architectural package with DNA consistency...');
 
         const packageResult = await togetherAIService.generateConsistentArchitecturalPackage({
           projectContext: {
@@ -1086,7 +1087,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           }
         });
 
-        console.log(`✅ Generated ${packageResult.totalViews} views with ${packageResult.consistency} consistency`);
+        logger.success(` Generated ${packageResult.totalViews} views with ${packageResult.consistency} consistency`);
 
         // Map the 13 views to the expected format
         return {
@@ -1144,7 +1145,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       }
 
     } catch (error) {
-      console.error('Visualization generation error:', error);
+      logger.error('Visualization generation error:', error);
       return {
         views: this.getFallbackViews(),
         styleVariations: this.getFallbackStyleVariations(),
@@ -1161,7 +1162,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateDesignAlternatives(projectContext, reasoning) {
     try {
-      console.log('Generating design alternatives...');
+      logger.info('Generating design alternatives...');
       
       const approaches = ['sustainable', 'cost_effective', 'innovative', 'traditional'];
       const alternatives = {};
@@ -1184,7 +1185,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             approach
           };
         } catch (error) {
-          console.error(`Error generating ${approach} alternative:`, error);
+          logger.error(`Error generating ${approach} alternative:`, error);
           alternatives[approach] = {
             error: error.message,
             approach
@@ -1199,7 +1200,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('Design alternatives error:', error);
+      logger.error('Design alternatives error:', error);
       return {
         alternatives: this.getFallbackAlternatives(),
         source: 'fallback',
@@ -1214,10 +1215,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async analyzeFeasibility(projectContext) {
     try {
-      console.log('Analyzing project feasibility...');
+      logger.info('Analyzing project feasibility...');
       return await this.ai.analyzeFeasibility(projectContext);
     } catch (error) {
-      console.error('Feasibility analysis error:', error);
+      logger.error('Feasibility analysis error:', error);
       return {
         feasibility: 'Medium',
         constraints: ['Detailed analysis unavailable'],
@@ -1526,13 +1527,13 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateFloorPlanAnd3DPreview(projectContext, portfolioImages = []) {
     try {
-      console.log('Starting comprehensive architectural generation...');
+      logger.info('Starting comprehensive architectural generation...');
 
       // STEP 1: Use projectSeed from context (generated once in frontend)
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       const enhancedContext = { ...projectContext, seed: projectSeed };
 
-      console.log(`🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`);
+      logger.info(`🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`);
 
       // Step 1: Detect architectural style from portfolio if provided
       let styleDetection = null;
@@ -1544,18 +1545,18 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       }
 
       // Step 2: Generate multi-level floor plans (ground, upper if needed, roof)
-      console.log('🏗️ Generating multi-level floor plans...');
+      logger.info('🏗️ Generating multi-level floor plans...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
       // STEP 2: Capture ground floor plan image URL for use as ControlNet control
       let floorPlanControlImage = null;
       if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
         floorPlanControlImage = floorPlans.floorPlans.ground.images[0];
-        console.log('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
+        logger.info('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
       }
 
       // Step 3: Generate elevations and sections as independent 2D technical drawings
-      console.log('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
+      logger.info('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         enhancedContext,
         true, // Generate all drawings (4 elevations + 2 sections)
@@ -1563,7 +1564,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       );
 
       // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - WITHOUT ControlNet for better photorealistic results
-      console.log('🏗️ Generating 3D photorealistic views: exterior_front, exterior_side, interior, axonometric, perspective (no ControlNet for perspective freedom)');
+      logger.info('🏗️ Generating 3D photorealistic views: exterior_front, exterior_side, interior, axonometric, perspective (no ControlNet for perspective freedom)');
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
         ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
@@ -1590,7 +1591,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('Floor plan and 3D preview generation error:', error);
+      logger.error('Floor plan and 3D preview generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -1609,12 +1610,12 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateIntegratedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
     try {
-      console.log('🎯 Starting integrated design generation workflow...');
-      console.log('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
-      console.log('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
+      logger.info('🎯 Starting integrated design generation workflow...');
+      logger.info('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
+      logger.info('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
 
       // STEP 3.1: Location analysis
-      console.log('📍 Step 1: Analyzing location and architectural context...');
+      logger.info('📍 Step 1: Analyzing location and architectural context...');
       const locationAnalysis = locationIntelligence.recommendArchitecturalStyle(
         projectContext.location,
         projectContext.climateData || { type: 'temperate' }
@@ -1626,7 +1627,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         locationAnalysis: locationAnalysis
       };
 
-      console.log('✅ Location analysis complete:', {
+      logger.info('✅ Location analysis complete:', {
         primary: locationAnalysis.primary,
         materials: locationAnalysis.materials?.slice(0, 3),
         climateAdaptations: locationAnalysis.climateAdaptations?.features?.slice(0, 3)
@@ -1635,19 +1636,19 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       // STEP 3.2: Optional portfolio style detection
       let portfolioStyle = null;
       if (portfolioImages && portfolioImages.length > 0) {
-        console.log('🎨 Step 2: Detecting portfolio style from', portfolioImages.length, 'images...');
+        logger.info('🎨 Step 2: Detecting portfolio style from', portfolioImages.length, 'images...');
         portfolioStyle = await this.portfolioStyleDetection.detectArchitecturalStyle(
           portfolioImages,
           projectContext.location
         );
         enhancedContext.portfolioStyle = portfolioStyle;
-        console.log('✅ Portfolio style detected:', portfolioStyle?.primaryStyle?.style);
+        logger.info('✅ Portfolio style detected:', portfolioStyle?.primaryStyle?.style);
       } else {
-        console.log('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
+        logger.info('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
       }
 
       // STEP 4: Blended style creation with granular weighted merging
-      console.log('🎨 Step 3: Creating blended style with separate material and characteristic weights');
+      logger.info('🎨 Step 3: Creating blended style with separate material and characteristic weights');
       const blendedStyle = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
       enhancedContext.blendedStyle = blendedStyle;
       enhancedContext.blendedPrompt = blendedStyle.description; // Keep backward compatibility
@@ -1656,19 +1657,19 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       enhancedContext.architecturalStyle = blendedStyle.styleName;
       enhancedContext.materials = blendedStyle.materials.slice(0, 3).join(', ') || projectContext.materials;
 
-      console.log('✅ Blended style created:', blendedStyle.styleName);
+      logger.info('✅ Blended style created:', blendedStyle.styleName);
 
       // STEP 3.4: Use unified seed from projectContext
       const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       enhancedContext.seed = projectSeed;
-      console.log('🎲 Using unified seed:', projectSeed);
+      logger.info('🎲 Using unified seed:', projectSeed);
 
       // CRITICAL: Create Building DNA for perfect 2D/3D consistency
-      console.log('🧬 Creating building DNA master specification for consistency...');
+      logger.info('🧬 Creating building DNA master specification for consistency...');
       const buildingDNA = this.createBuildingDNA(enhancedContext, blendedStyle);
       enhancedContext.masterDesignSpec = buildingDNA;
       enhancedContext.reasoningParams = buildingDNA; // Backward compatibility
-      console.log('✅ Building DNA created:', {
+      logger.info('✅ Building DNA created:', {
         materials: buildingDNA.materials,
         roofType: buildingDNA.roof?.type,
         windowPattern: buildingDNA.windows?.pattern,
@@ -1676,7 +1677,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       });
 
       // STEP 3.5: Generate multi-level floor plans with unified seed and blended prompt
-      console.log('🏗️ Step 4: Generating multi-level floor plans with blended style...');
+      logger.info('🏗️ Step 4: Generating multi-level floor plans with blended style...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
       // Capture ground floor plan image for ControlNet
@@ -1684,20 +1685,20 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       let floorPlanImage = null;
       if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
         floorPlanImage = floorPlans.floorPlans.ground.images[0];
-        console.log('✅ Ground floor plan generated, captured for ControlNet control');
+        logger.success(' Ground floor plan generated, captured for ControlNet control');
       }
 
       // STEP 3.6: Generate elevations and sections as independent 2D technical drawings
-      console.log('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
+      logger.info('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(
         enhancedContext,
         true, // generateAllDrawings - generate all 4 elevations + 2 sections
         null // No ControlNet - elevations/sections must be independent 2D orthographic projections
       );
-      console.log('✅ All technical drawings generated as independent 2D orthographic projections');
+      logger.success(' All technical drawings generated as independent 2D orthographic projections');
 
       // STEP 3.6.5: Annotate elevations and sections with dimensions
-      console.log('📐 Annotating technical drawings with dimensions...');
+      logger.info('📐 Annotating technical drawings with dimensions...');
       try {
         const td = technicalDrawings?.technicalDrawings;
         if (td) {
@@ -1712,7 +1713,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                 width: enhancedContext.buildingWidth || '20m'
               });
               td[key].annotated = annotatedSvg;
-              console.log(`✅ Annotated ${dir} elevation`);
+              logger.success(` Annotated ${dir} elevation`);
             }
           });
 
@@ -1726,25 +1727,25 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                 floors: enhancedContext.floors || 1
               });
               td[key].annotated = annotatedSvg;
-              console.log(`✅ Annotated ${type} section`);
+              logger.success(` Annotated ${type} section`);
             }
           });
         }
-        console.log('✅ Technical drawing annotation complete');
+        logger.success(' Technical drawing annotation complete');
       } catch (annoError) {
-        console.error('⚠️ Elevation annotation failed:', annoError.message);
+        logger.error('⚠️ Elevation annotation failed:', annoError.message);
         // Continue without annotations - originals are still available
       }
 
       // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) + BIM-derived axonometric
-      console.log('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective)...');
+      logger.info('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective)...');
       // Generate photorealistic views WITHOUT axonometric (will use BIM-derived version)
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
         ['exterior_front', 'exterior_side', 'interior', 'perspective'],
         null // No ControlNet for photorealistic freedom
       );
-      console.log('✅ Photorealistic 3D views generated');
+      logger.success(' Photorealistic 3D views generated');
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -1760,7 +1761,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         }
       };
 
-      console.log('✅ Combined results:', {
+      logger.info('✅ Combined results:', {
         floorPlans: combinedResults.metadata.floorPlansSuccess ? 'Success' : 'Failed',
         technicalDrawings: combinedResults.metadata.technicalDrawingsSuccess ? 'Success' : 'Failed',
         views: combinedResults.metadata.viewsSuccess ? 'Success' : 'Failed',
@@ -1769,7 +1770,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       });
 
       // STEP 3.8: Generate parametric BIM model based on blended style
-      console.log('🏗️ Step 7: Generating parametric BIM model from blended style specifications...');
+      logger.info('🏗️ Step 7: Generating parametric BIM model from blended style specifications...');
       let bimModel = null;
       let bimAxonometric = null;
       let axonometricSource = 'none';
@@ -1783,10 +1784,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           floorPlan: floorPlans,
           elevations: technicalDrawings
         });
-        console.log('✅ BIM model generated successfully with', bimModel?.components?.length || 0, 'components');
+        logger.info('✅ BIM model generated successfully with', bimModel?.components?.length || 0, 'components');
 
         // STEP 3.9: Derive geometrically accurate axonometric view from BIM
-        console.log('🏗️ Deriving axonometric view from BIM model...');
+        logger.info('🏗️ Deriving axonometric view from BIM model...');
         try {
           bimAxonometric = this.bim.deriveAxonometric(bimModel, {
             angle: 30,
@@ -1795,10 +1796,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             showDimensions: true
           });
           axonometricSource = 'bim';
-          console.log('✅ Axonometric view derived from BIM (geometrically consistent)');
+          logger.success(' Axonometric view derived from BIM (geometrically consistent)');
         } catch (axonometricError) {
-          console.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
-          console.log('↩️  Falling back to Replicate for axonometric view...');
+          logger.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
+          logger.info('↩️  Falling back to Replicate for axonometric view...');
           // Fallback: Generate axonometric using Replicate if BIM fails
           try {
             const fallbackAxonometric = await this.replicate.generateMultipleViews(
@@ -1809,16 +1810,16 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             if (fallbackAxonometric?.axonometric?.images?.[0]) {
               bimAxonometric = fallbackAxonometric.axonometric.images[0];
               axonometricSource = 'replicate_fallback';
-              console.log('✅ Axonometric generated from Replicate fallback');
+              logger.success(' Axonometric generated from Replicate fallback');
             }
           } catch (fallbackError) {
-            console.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
+            logger.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
             axonometricSource = 'failed';
           }
         }
       } catch (bimError) {
-        console.error('⚠️ BIM generation failed:', bimError.message);
-        console.log('↩️  Falling back to Replicate for axonometric view...');
+        logger.error('⚠️ BIM generation failed:', bimError.message);
+        logger.info('↩️  Falling back to Replicate for axonometric view...');
         // Fallback: Generate axonometric using Replicate if entire BIM generation fails
         try {
           const fallbackAxonometric = await this.replicate.generateMultipleViews(
@@ -1829,10 +1830,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           if (fallbackAxonometric?.axonometric?.images?.[0]) {
             bimAxonometric = fallbackAxonometric.axonometric.images[0];
             axonometricSource = 'replicate_fallback';
-            console.log('✅ Axonometric generated from Replicate fallback (BIM unavailable)');
+            logger.success(' Axonometric generated from Replicate fallback (BIM unavailable)');
           }
         } catch (fallbackError) {
-          console.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
+          logger.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
           axonometricSource = 'failed';
         }
       }
@@ -1868,7 +1869,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('❌ Integrated design generation error:', error);
+      logger.error('❌ Integrated design generation error:', error);
       return {
         success: false,
         error: error.message,
@@ -1893,9 +1894,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
     const localMatWeight = 1 - matWeight;
     const localCharWeight = 1 - charWeight;
 
-    console.log(`🎨 Blending styles with:`);
-    console.log(`   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`);
-    console.log(`   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`);
+    logger.info(`🎨 Blending styles with:`);
+    logger.info(`   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`);
+    logger.info(`   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`);
 
     // Extract local style descriptors
     const localDescriptors = {
@@ -2034,7 +2035,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
     // STEP 4: Use sophisticated style blending with separate weights
     const blendedStyle = this.blendStyles(locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
 
-    console.log('🎨 Blended style created:', {
+    logger.info('🎨 Blended style created:', {
       name: blendedStyle.styleName,
       overallRatio: `${Math.round(blendedStyle.blendRatio.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.portfolio * 100)}% portfolio`,
       materialRatio: `${Math.round(blendedStyle.blendRatio.materials.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.materials.portfolio * 100)}% portfolio`,
@@ -2147,7 +2148,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
 
       return await this.ai.generateDesignReasoning(enhancedContext);
     } catch (error) {
-      console.error('Style-enhanced reasoning error:', error);
+      logger.error('Style-enhanced reasoning error:', error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -2157,7 +2158,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateStyleOptimizedDesign(projectContext, portfolioImages) {
     try {
-      console.log('Starting style-optimized design generation...');
+      logger.info('Starting style-optimized design generation...');
       
       // Step 1: Analyze portfolio for style detection
       const styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
@@ -2199,7 +2200,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('Style-optimized design error:', error);
+      logger.error('Style-optimized design error:', error);
       return {
         success: false,
         error: error.message,
@@ -2262,15 +2263,15 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
       // Generate multi-level floor plans with style optimization
-      console.log('🏗️ Generating style-optimized multi-level floor plans...');
+      logger.info('🏗️ Generating style-optimized multi-level floor plans...');
       const floorPlans = await this.replicate.generateMultiLevelFloorPlans(styledContext);
 
       // Generate elevations and sections with style optimization
-      console.log('🏗️ Generating style-optimized elevations and sections...');
+      logger.info('🏗️ Generating style-optimized elevations and sections...');
       const technicalDrawings = await this.replicate.generateElevationsAndSections(styledContext);
 
       // Generate 3D views (2 exterior + 1 interior) with style optimization
-      console.log('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
+      logger.info('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
       const views = await this.replicate.generateMultipleViews(
         styledContext,
         ['exterior_front', 'exterior_side', 'interior']
@@ -2292,7 +2293,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('Style-optimized visualization error:', error);
+      logger.error('Style-optimized visualization error:', error);
       return this.getFallbackVisualizations();
     }
   }
@@ -2302,7 +2303,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async quickDesign(projectContext) {
     try {
-      console.log(`Starting quick design generation... (Using ${USE_TOGETHER ? 'Together AI' : 'OpenAI/Replicate'})`);
+      logger.info(`Starting quick design generation... (Using ${USE_TOGETHER ? 'Together AI' : 'OpenAI/Replicate'})`);
 
       // Generate basic reasoning (now uses Together AI when flag is set)
       const reasoning = await this.generateDesignReasoning(projectContext);
@@ -2346,7 +2347,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       };
 
     } catch (error) {
-      console.error('Quick design error:', error);
+      logger.error('Quick design error:', error);
       return {
         success: false,
         error: error.message,

@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * DNA Normalization Service
  *
@@ -22,7 +24,7 @@
  */
 export function normalizeDNA(dna, ctx = {}) {
   if (!dna || typeof dna !== 'object') {
-    console.warn('Invalid DNA input, using minimal fallback');
+    logger.warn('Invalid DNA input, using minimal fallback');
     return createMinimalDNA(ctx);
   }
 

@@ -46,6 +46,30 @@ export function buildDNARequestPayload(locationData, siteMetrics, programSpec, p
       grid: '1m grid',
       max_span: '6m',
       roof_type: 'gable'
+    },
+    // NEW: Geometry volume section for 3D massing
+    geometry: {
+      massing: {
+        type: 'single_volume', // single_volume, multi_wing, courtyard, etc.
+        footprint_shape: 'rectangular',
+        floor_stacking: 'uniform' // uniform, setback, cantilever
+      },
+      roof: {
+        type: 'gable', // gable, hip, flat, shed, etc.
+        pitch_degrees: 35,
+        overhang_m: 0.5
+      },
+      facades: {
+        north: { type: 'primary', features: ['entrance', 'windows'] },
+        south: { type: 'secondary', features: ['windows', 'balcony'] },
+        east: { type: 'side', features: ['windows'] },
+        west: { type: 'side', features: ['windows'] }
+      },
+      heights: {
+        ground_floor_m: 3.0,
+        upper_floors_m: 2.7,
+        parapet_m: 0.3
+      }
     }
   };
 
@@ -98,7 +122,32 @@ export function normalizeRawDNA(rawDNA) {
       grid: String(rawDNA.geometry_rules?.grid || '1m grid'),
       max_span: String(rawDNA.geometry_rules?.max_span || '6m'),
       roof_type: String(rawDNA.geometry_rules?.roof_type || 'gable')
-    }
+    },
+
+    // NEW: Geometry volume section (optional, for 3D massing)
+    geometry: rawDNA.geometry ? {
+      massing: {
+        type: String(rawDNA.geometry.massing?.type || 'single_volume'),
+        footprint_shape: String(rawDNA.geometry.massing?.footprint_shape || 'rectangular'),
+        floor_stacking: String(rawDNA.geometry.massing?.floor_stacking || 'uniform')
+      },
+      roof: {
+        type: String(rawDNA.geometry.roof?.type || rawDNA.geometry_rules?.roof_type || 'gable'),
+        pitch_degrees: parseFloat(rawDNA.geometry.roof?.pitch_degrees) || 35,
+        overhang_m: parseFloat(rawDNA.geometry.roof?.overhang_m) || 0.5
+      },
+      facades: {
+        north: rawDNA.geometry.facades?.north || { type: 'primary', features: ['entrance', 'windows'] },
+        south: rawDNA.geometry.facades?.south || { type: 'secondary', features: ['windows'] },
+        east: rawDNA.geometry.facades?.east || { type: 'side', features: ['windows'] },
+        west: rawDNA.geometry.facades?.west || { type: 'side', features: ['windows'] }
+      },
+      heights: {
+        ground_floor_m: parseFloat(rawDNA.geometry.heights?.ground_floor_m) || 3.0,
+        upper_floors_m: parseFloat(rawDNA.geometry.heights?.upper_floors_m) || 2.7,
+        parapet_m: parseFloat(rawDNA.geometry.heights?.parapet_m) || 0.3
+      }
+    } : undefined
   };
 
   return normalized;

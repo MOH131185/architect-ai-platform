@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Together.ai DNA Generator
  *
@@ -23,11 +25,11 @@ export async function generateProjectDNA(params) {
     seed
   } = params;
 
-  console.log('[Together DNA] Generating Project DNA...');
-  console.log('  Address:', address);
-  console.log('  Program:', program);
-  console.log('  Climate:', climate?.type);
-  console.log('  Seed:', seed);
+  logger.info('[Together DNA] Generating Project DNA...');
+  logger.info('  Address:', address);
+  logger.info('  Program:', program);
+  logger.info('  Climate:', climate?.type);
+  logger.info('  Seed:', seed);
 
   const prompt = createDNAPrompt({
     address,
@@ -83,10 +85,10 @@ export async function generateProjectDNA(params) {
     dnaJSON.generatedBy = 'ai';
     dnaJSON.timestamp = new Date().toISOString();
 
-    console.log('[Together DNA] Generation successful');
-    console.log('  Floor count:', dnaJSON.dimensions.floorCount);
-    console.log('  Building size:', `${dnaJSON.dimensions.length}m × ${dnaJSON.dimensions.width}m`);
-    console.log('  Style:', dnaJSON.architecturalStyle);
+    logger.info('[Together DNA] Generation successful');
+    logger.info('  Floor count:', dnaJSON.dimensions.floorCount);
+    logger.info('  Building size:', `${dnaJSON.dimensions.length}m × ${dnaJSON.dimensions.width}m`);
+    logger.info('  Style:', dnaJSON.architecturalStyle);
 
     return {
       success: true,
@@ -95,7 +97,7 @@ export async function generateProjectDNA(params) {
     };
 
   } catch (error) {
-    console.error('[Together DNA] Generation failed:', error);
+    logger.error('[Together DNA] Generation failed:', error);
     return {
       success: false,
       error: error.message,
@@ -225,7 +227,7 @@ function validateDNA(dna) {
     throw new Error(`Invalid roof type: ${dna.roof.type}`);
   }
 
-  console.log('[Together DNA] Validation passed');
+  logger.info('[Together DNA] Validation passed');
 }
 
 /**

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 
 /**
  * DesignContext - Global State Management for Architect AI Platform
@@ -27,6 +27,7 @@ export const DesignProvider = ({ children }) => {
   const [address, setAddress] = useState('');
   const [sitePolygon, setSitePolygon] = useState(null);
   const [siteMetrics, setSiteMetrics] = useState(null);
+  const [locationAccuracy, setLocationAccuracy] = useState(null); // { accuracy: number, qualityScore: number }
 
   // ===== PORTFOLIO & STYLE =====
   const [portfolioFiles, setPortfolioFiles] = useState([]);
@@ -41,8 +42,6 @@ export const DesignProvider = ({ children }) => {
     entranceDirection: ''
   });
   const [programSpaces, setProgramSpaces] = useState([]);
-  const [floorPlanImage, setFloorPlanImage] = useState(null);
-  const [floorPlanImageName, setFloorPlanImageName] = useState('');
 
   // ===== GENERATION RESULTS =====
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
@@ -131,14 +130,13 @@ export const DesignProvider = ({ children }) => {
     setAddress('');
     setSitePolygon(null);
     setSiteMetrics(null);
+    setLocationAccuracy(null);
     setPortfolioFiles([]);
     setMaterialWeight(0.5);
     setCharacteristicWeight(0.5);
     setProjectStyleSignature(null);
     setProjectDetails({ area: '', program: '', entranceDirection: '' });
     setProgramSpaces([]);
-    setFloorPlanImage(null);
-    setFloorPlanImageName('');
     setGeneratedDesigns(null);
     setCurrentDesignId(null);
     setCurrentProjectId(null);
@@ -213,6 +211,8 @@ export const DesignProvider = ({ children }) => {
     setSitePolygon,
     siteMetrics,
     setSiteMetrics,
+    locationAccuracy,
+    setLocationAccuracy,
 
     // Portfolio & Style
     portfolioFiles,
@@ -229,10 +229,6 @@ export const DesignProvider = ({ children }) => {
     setProjectDetails,
     programSpaces,
     setProgramSpaces,
-    floorPlanImage,
-    setFloorPlanImage,
-    floorPlanImageName,
-    setFloorPlanImageName,
 
     // Generation Results
     generatedDesigns,

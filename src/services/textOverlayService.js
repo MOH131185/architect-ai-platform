@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Text Overlay Service
  *
@@ -236,7 +238,7 @@ function overlayScale(ctx, scale, x, y) {
  * @returns {Promise<string>} Base64 data URL with overlays
  */
 export async function overlayA1SheetLabels(imageUrl, masterDNA = {}, projectMeta = {}) {
-  console.log('🏷️  [Text Overlay Service] Adding critical text overlays to A1 sheet...');
+  logger.info('🏷️  [Text Overlay Service] Adding critical text overlays to A1 sheet...');
 
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -255,7 +257,7 @@ export async function overlayA1SheetLabels(imageUrl, masterDNA = {}, projectMeta
         const width = canvas.width;
         const height = canvas.height;
 
-        console.log(`   📐 Image dimensions: ${width}×${height}px`);
+        logger.info(`   📐 Image dimensions: ${width}×${height}px`);
 
         // Add title block (bottom right)
         overlayTitleBlock(ctx, width, height, {
@@ -309,21 +311,21 @@ export async function overlayA1SheetLabels(imageUrl, masterDNA = {}, projectMeta
 
         const overlayedDataUrl = canvas.toDataURL('image/png', 1.0);
 
-        console.log('✅ [Text Overlay Service] Text overlays added successfully');
-        console.log(`   🏷️  Title block: Added`);
-        console.log(`   🏷️  Section labels: ${labelPositions.length} added`);
-        console.log(`   🏷️  Scale indicators: ${scalePositions.length} added`);
-        if (masterDNA.dimensions) console.log(`   🏷️  Dimension annotation: Added`);
+        logger.info('✅ [Text Overlay Service] Text overlays added successfully');
+        logger.info(`   🏷️  Title block: Added`);
+        logger.info(`   🏷️  Section labels: ${labelPositions.length} added`);
+        logger.info(`   🏷️  Scale indicators: ${scalePositions.length} added`);
+        if (masterDNA.dimensions) logger.info(`   🏷️  Dimension annotation: Added`);
 
         resolve(overlayedDataUrl);
       } catch (error) {
-        console.error('❌ [Text Overlay Service] Failed to add overlays:', error);
+        logger.error('❌ [Text Overlay Service] Failed to add overlays:', error);
         reject(error);
       }
     };
 
     img.onerror = (error) => {
-      console.error('❌ [Text Overlay Service] Failed to load image:', error);
+      logger.error('❌ [Text Overlay Service] Failed to load image:', error);
       reject(new Error('Failed to load image for text overlay'));
     };
 
@@ -341,7 +343,7 @@ export async function overlayA1SheetLabels(imageUrl, masterDNA = {}, projectMeta
  * @returns {Promise<string>} Base64 data URL with annotation
  */
 export async function addTextAnnotation(imageUrl, text, x, y, options = {}) {
-  console.log(`🏷️  [Text Overlay Service] Adding text annotation: "${text}"...`);
+  logger.info(`🏷️  [Text Overlay Service] Adding text annotation: "${text}"...`);
 
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -367,16 +369,16 @@ export async function addTextAnnotation(imageUrl, text, x, y, options = {}) {
 
         const annotatedDataUrl = canvas.toDataURL('image/png', 1.0);
 
-        console.log('✅ [Text Overlay Service] Text annotation added');
+        logger.info('✅ [Text Overlay Service] Text annotation added');
         resolve(annotatedDataUrl);
       } catch (error) {
-        console.error('❌ [Text Overlay Service] Failed to add annotation:', error);
+        logger.error('❌ [Text Overlay Service] Failed to add annotation:', error);
         reject(error);
       }
     };
 
     img.onerror = (error) => {
-      console.error('❌ [Text Overlay Service] Failed to load image:', error);
+      logger.error('❌ [Text Overlay Service] Failed to load image:', error);
       reject(new Error('Failed to load image for annotation'));
     };
 

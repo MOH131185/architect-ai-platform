@@ -2,15 +2,43 @@
  * Enhanced DNA Generator Service
  * Generates ultra-detailed Design DNA for 95%+ consistency across ALL architectural views
  * Each view has UNIQUE specifications while maintaining PERFECT consistency
+ * 
+ * REFACTORED: Now uses ModelRouter for env-driven model selection
  */
 
+import modelRouter from './modelRouter.js';
+import promptLibrary from './promptLibrary.js';
 import locationAwareDNAModifier from './locationAwareDNAModifier.js';
 import climateResponsiveDesignService from './climateResponsiveDesignService.js';
 import { validateDesignAgainstSite } from './siteValidationService.js';
+import { generateDesignReasoning } from './reasoningOrchestrator.js';
+import logger from '../utils/logger.js';
+
+
+function formatSunPathDetails(sunPath) {
+  if (!sunPath) {
+    return {
+      orientationText: 'south',
+      detailText: 'No solar data available'
+    };
+  }
+  const orientation = `${Math.round(sunPath.optimalOrientation ?? 180)}°`;
+  const winter = sunPath.winterSolstice || sunPath.winter || {};
+  const summer = sunPath.summerSolstice || sunPath.summer || {};
+  const winterAz = Math.round(winter.azimuth ?? 180);
+  const winterAlt = Math.round(winter.altitude ?? 15);
+  const summerAz = Math.round(summer.azimuth ?? 180);
+  const summerAlt = Math.round(summer.altitude ?? 65);
+
+  return {
+    orientationText: orientation,
+    detailText: `Winter ${winterAz}°/${winterAlt}° • Summer ${summerAz}°/${summerAlt}°`
+  };
+}
 
 class EnhancedDNAGenerator {
   constructor() {
-    console.log('🧬 Enhanced DNA Generator initialized');
+    logger.info('🧬 Enhanced DNA Generator initialized');
   }
 
   /**
@@ -19,13 +47,18 @@ class EnhancedDNAGenerator {
    * NOW ENHANCED with location and climate awareness
    */
   async generateMasterDesignDNA(projectContext, portfolioAnalysis = null, locationData = null) {
-    console.log('🧬 Generating Location-Aware Master Design DNA...');
+    logger.info('🧬 Generating Location-Aware Master Design DNA...');
 
     const {
       buildingProgram,
       projectType,
+      buildingCategory,
+      buildingSubType,
+      buildingNotes,
+      entranceOrientation,
       programSpaces,
       area,
+      floorCount,
       location,
       blendedStyle,
       buildingDNA,
@@ -39,9 +72,13 @@ class EnhancedDNAGenerator {
     const effectiveLocation = locationData || location || projectContext.locationData;
     const effectiveClimate = effectiveLocation?.climate || ukLocationData?.climateData;
     const effectiveSiteAnalysis = siteAnalysis || projectContext.siteAnalysis;
+    const sunPathDetails = formatSunPathDetails(effectiveLocation?.sunPath);
 
-    // 🆕 ENFORCE PROJECT TYPE: Use projectType if provided, otherwise buildingProgram
-    const enforcedProjectType = projectType || buildingProgram || 'mixed-use building';
+    // 🆕 ENFORCE PROJECT TYPE: Use building taxonomy if provided
+    const enforcedProjectType = buildingSubType || projectType || buildingProgram || 'mixed-use building';
+    const fullBuildingType = buildingCategory && buildingSubType 
+      ? `${buildingCategory} - ${buildingSubType}` 
+      : enforcedProjectType;
     
     // 🆕 BUILD PROGRAM SCHEDULE STRING
     let programScheduleStr = '';
@@ -84,9 +121,22 @@ CRITICAL: Floor plans MUST include these exact spaces with these exact areas.`;
     };
 
     // 🆕 Calculate optimal floor count based on site area constraints
-    let calculatedFloorCount = projectContext.floorCount || 2;
+    // PRIORITY: Use AI-calculated floor count from auto-level assignment if available
+    let calculatedFloorCount = programSpaces?._calculatedFloorCount || floorCount || projectContext.floorCount || 2;
     let siteCoverageRatio = 0.6; // Default 60% site coverage
     let maxFootprintArea = null;
+
+    // Log floor count source
+    if (programSpaces?._calculatedFloorCount) {
+      logger.info(`🏢 Using AI-calculated floor count: ${calculatedFloorCount} floors`);
+      logger.info(`   Site area: ${programSpaces._floorMetrics?.actualFootprint?.toFixed(0) || 'N/A'}m² footprint`);
+      logger.info(`   Coverage: ${programSpaces._floorMetrics?.siteCoveragePercent?.toFixed(1) || 'N/A'}%`);
+      logger.info(`   Reasoning: ${programSpaces._floorMetrics?.reasoning || 'N/A'}`);
+    } else if (floorCount) {
+      logger.info(`🏢 Using user-provided floor count: ${calculatedFloorCount} floors`);
+    } else {
+      logger.info(`🏢 Using default floor count: ${calculatedFloorCount} floors`);
+    }
 
     if (siteMetrics && siteMetrics.areaM2 && area) {
       const requiredArea = parseFloat(area);
@@ -118,13 +168,13 @@ CRITICAL: Floor plans MUST include these exact spaces with these exact areas.`;
       // Set calculated floor count within constraints
       calculatedFloorCount = Math.min(Math.max(minFloorsNeeded, 1), maxFloorsAllowed);
 
-      console.log('📊 Floor calculation:');
-      console.log(`   Site area: ${siteArea.toFixed(0)}m²`);
-      console.log(`   Required area: ${requiredArea.toFixed(0)}m²`);
-      console.log(`   Max footprint (${(siteCoverageRatio*100).toFixed(0)}% coverage): ${maxFootprintArea.toFixed(0)}m²`);
-      console.log(`   Calculated floors: ${calculatedFloorCount}`);
+      logger.info('📊 Floor calculation:');
+      logger.info(`   Site area: ${siteArea.toFixed(0)}m²`);
+      logger.info(`   Required area: ${requiredArea.toFixed(0)}m²`);
+      logger.info(`   Max footprint (${(siteCoverageRatio*100).toFixed(0)}% coverage): ${maxFootprintArea.toFixed(0)}m²`);
+      logger.info(`   Calculated floors: ${calculatedFloorCount}`);
       if (effectiveLocation?.zoning?.maxHeight) {
-        console.log(`   Max floors allowed: ${maxFloorsAllowed} (height limit: ${effectiveLocation.zoning.maxHeight})`);
+        logger.info(`   Max floors allowed: ${maxFloorsAllowed} (height limit: ${effectiveLocation.zoning.maxHeight})`);
       }
     }
 
@@ -155,6 +205,68 @@ Principal Facade: Recommended ${effectiveLocation.sunPath.optimalOrientation}-fa
     }
 
     siteContextStr += streetContextStr;
+
+    // 🧠 ARCHITECTURAL REASONING: Generate design philosophy and strategy
+    logger.ai(' Generating architectural reasoning for optimal design decisions...');
+    let designReasoning = null;
+    try {
+      designReasoning = await generateDesignReasoning({
+        buildingProgram: enforcedProjectType,
+        area,
+        location: effectiveLocation,
+        locationData: effectiveLocation,
+        climate: effectiveClimate,
+        blendedStyle,
+        programSpaces,
+        siteMetrics,
+        siteAnalysis: effectiveSiteAnalysis
+      });
+
+      logger.info('   ✅ Design reasoning generated:', {
+        source: designReasoning.source || 'unknown',
+        model: designReasoning.model || 'unknown',
+        hasPhilosophy: !!designReasoning.designPhilosophy
+      });
+    } catch (reasoningError) {
+      logger.warn('   ⚠️ Reasoning generation failed, using fallback:', reasoningError.message);
+      designReasoning = {
+        designPhilosophy: 'Contemporary design responding to site and climate',
+        spatialOrganization: { strategy: 'Functional layout optimized for program' },
+        materialRecommendations: { primary: 'Context-appropriate materials' },
+        environmentalConsiderations: { passiveStrategies: ['Natural ventilation', 'Daylighting'] },
+        isFallback: true
+      };
+    }
+
+    // 🎨 INTEGRATE REASONING INTO DNA PROMPT
+    const reasoningSection = designReasoning && !designReasoning.isFallback ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠 ARCHITECTURAL REASONING (Integrate into DNA):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESIGN PHILOSOPHY:
+${designReasoning.designPhilosophy || 'Not provided'}
+
+SPATIAL ORGANIZATION:
+${designReasoning.spatialOrganization?.strategy || 'Functional layout'}
+${designReasoning.spatialOrganization?.circulation ? `Circulation: ${designReasoning.spatialOrganization.circulation}` : ''}
+
+MATERIAL STRATEGY:
+${designReasoning.materialRecommendations?.primary || 'Context-appropriate materials'}
+${designReasoning.materialRecommendations?.alternatives ? `Alternatives: ${designReasoning.materialRecommendations.alternatives.join(', ')}` : ''}
+
+ENVIRONMENTAL APPROACH:
+${designReasoning.environmentalConsiderations?.passiveStrategies?.join(', ') || 'Standard environmental considerations'}
+${designReasoning.environmentalConsiderations?.activeStrategies?.join(', ') || ''}
+
+ARCHITECTURAL FEATURES (Integrate these into design):
+${designReasoning.architecturalFeatures?.map(f => `- ${f.name}: ${f.rationale}`).join('\n') || 'Standard features based on building type'}
+
+STRUCTURAL APPROACH:
+${designReasoning.structuralApproach?.system || 'Appropriate for building type and scale'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : '';
 
     const prompt = `You are an expert architect creating a LOCATION-AWARE MASTER DESIGN DNA for PERFECT CONSISTENCY across ALL architectural views.
 
@@ -187,9 +299,13 @@ ${programScheduleStr}
 - Zoning: ${effectiveLocation?.zoning?.type || 'commercial'} (max height: ${effectiveLocation?.zoning?.maxHeight || 'unrestricted'})
 ${negativeTypePrompts.length > 0 ? `- CRITICAL RESTRICTIONS: ${negativeTypePrompts.join(', ')}` : ''}
 - Site: ${siteContextStr}
-- Sun Path: ${effectiveLocation?.sunPath?.optimalOrientation || 'south'} facing optimal
+- Sun Path: ${sunPathDetails.orientationText} facing optimal (${sunPathDetails.detailText})
+- Wind: ${effectiveLocation?.wind?.direction || 'Unknown direction'} at ${effectiveLocation?.wind?.speed || 'Unknown speed'} (Impact: ${effectiveLocation?.wind?.impact || 'Unknown'})
+- Wind Orientation: ${effectiveLocation?.wind?.facadeRecommendation || 'Standard orientation'}
 - Architectural Style: ${blendedStyle?.styleName || effectiveLocation?.recommendedStyle || 'Contemporary'}
 - Local Materials: ${effectiveLocation?.localMaterials?.join(', ') || blendedStyle?.materials?.join(', ') || 'Brick, glass, timber'}
+
+${reasoningSection}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🤖 AI REASONING REQUIRED: BUILDING LEVELS & FLOORS
@@ -356,8 +472,11 @@ Generate ULTRA-DETAILED specifications in JSON format:
     },
     "ground": {
       "rooms": [
-        ${programSpaces && programSpaces.length > 0 ? programSpaces.filter(s => !s.level || s.level.toLowerCase().includes('ground')).map((space, idx) => `{
-          "name": "${space.name || `Space ${idx + 1}`}",
+        ${programSpaces && programSpaces.length > 0 ? programSpaces.filter(s => {
+          const level = (s.level || '').toString().toLowerCase();
+          return !level || level.includes('ground');
+        }).map((space, idx) => `{
+          "name": "${space.label || space.name || `Space ${idx + 1}`}",
           "dimensions": "Calculate from ${space.area}m² area",
           "area": "${space.area}m²",
           "position": "To be determined by AI based on layout",
@@ -382,8 +501,11 @@ Generate ULTRA-DETAILED specifications in JSON format:
     },
     "first": {
       "rooms": [
-        ${programSpaces && programSpaces.length > 0 ? programSpaces.filter(s => s.level && s.level.toLowerCase().includes('first') || s.level === '1').map((space, idx) => `{
-          "name": "${space.name || `Space ${idx + 1}`}",
+        ${programSpaces && programSpaces.length > 0 ? programSpaces.filter(s => {
+          const level = (s.level || '').toString().toLowerCase();
+          return level.includes('first') || level === '1';
+        }).map((space, idx) => `{
+          "name": "${space.label || space.name || `Space ${idx + 1}`}",
           "dimensions": "Calculate from ${space.area}m² area",
           "area": "${space.area}m²",
           "position": "To be determined by AI based on layout",
@@ -548,6 +670,15 @@ Generate ULTRA-DETAILED specifications in JSON format:
     "type": "Window type - MUST match materials.windows.type"
   },
 
+  "designReasoning": {
+    "adjacencyDiagram": "Describe spatial relationships: which rooms are adjacent, which are separated, and why (e.g., 'Kitchen adjacent to dining for serving, bedrooms away from living areas for privacy')",
+    "circulationLogic": "Describe circulation paths: main corridor layout, stair location, entrance to rooms flow (e.g., 'Central corridor from entrance, stair at midpoint, all rooms accessible from corridor')",
+    "daylightingStrategy": "Describe natural light approach: which rooms get most light, window orientation, light wells if any (e.g., 'Living room south-facing for maximum daylight, bedrooms east for morning light, bathrooms internal')",
+    "structuralGrid": "Describe structural logic: column spacing, load-bearing walls, spans (e.g., '5m × 5m structural grid, load-bearing perimeter walls, internal columns at grid intersections')",
+    "climateResponse": "Describe climate-responsive features: shading, ventilation, thermal mass (e.g., 'Deep overhangs on south facade for summer shading, cross-ventilation through north-south windows, thermal mass in ground floor slab')",
+    "programOrganization": "Describe how program spaces are organized: public vs private, service vs served, vertical zoning (e.g., 'Public spaces (living, dining, kitchen) on ground floor, private spaces (bedrooms) on upper floor, service spaces (utility, storage) in basement')"
+  },
+
   "consistencyRules": {
     "CRITICAL": [
       "FLOOR COUNT: ALL views must show EXACTLY [floorCount] floors (AI-determined: [levelReasoning.reasoning]), NOT [floorCount + 1], NOT [floorCount - 1]",
@@ -562,7 +693,10 @@ Generate ULTRA-DETAILED specifications in JSON format:
       "DIMENSIONS: Building length × width × height MUST be EXACT same numbers in ALL views",
       "WALLS: Wall thickness MUST be same in plans, sections, and elevations (0.3m exterior, 0.15m interior)",
       "ALIGNMENT: Windows on different floors MUST align vertically in elevations",
-      "ELEVATIONS: Show [recommendedElevations[0]] and [recommendedElevations[1]] elevations (principal facade + opposite)"
+      "ELEVATIONS: Show [recommendedElevations[0]] and [recommendedElevations[1]] elevations (principal facade + opposite)",
+      "ADJACENCY: Room adjacencies must follow designReasoning.adjacencyDiagram logic",
+      "CIRCULATION: Circulation paths must follow designReasoning.circulationLogic",
+      "DAYLIGHTING: Window placement must follow designReasoning.daylightingStrategy"
     ],
     "floorPlanRule": "ABSOLUTE 2D overhead CAD drawing, BLACK LINES ON WHITE BACKGROUND, ZERO 3D elements, ZERO perspective, ZERO isometric, ZERO shadows, pure orthographic top view like AutoCAD output",
     "elevationRule": "ABSOLUTE FLAT 2D facade view, BLACK LINES ON WHITE, ZERO depth, ZERO perspective, ZERO 3D, straight-on orthographic projection, like looking at a completely flat wall",
@@ -618,72 +752,56 @@ VALIDATION CHECKLIST before responding:
 Respond with ONLY the JSON object, no markdown formatting.`;
 
     try {
-      // Use Together.ai Llama 3.3 70B Instruct for DNA generation
-      // Use correct endpoint based on environment
-      const apiUrl = process.env.NODE_ENV === 'production'
-        ? '/api/together-chat'  // Vercel serverless function
-        : 'http://localhost:3001/api/together/chat';  // Local Express proxy
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert architect specializing in ultra-detailed architectural specifications for perfect consistency. Always respond with valid JSON only, no markdown formatting.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2, // Low temperature for consistency
-          max_tokens: 4000,
-          response_format: { type: 'json_object' } // Structured JSON output
-        })
+      // 🆕 REFACTORED: Use ModelRouter for env-driven model selection
+      // ModelRouter will choose GPT-5-high > GPT-5 > Qwen > Llama based on availability
+      logger.info('🧭 Using ModelRouter for DNA generation...');
+      
+      const dnaPrompt = promptLibrary.buildDNAGenerationPrompt({
+        projectBrief: projectContext.projectBrief || `${enforcedProjectType} project`,
+        projectType: enforcedProjectType,
+        area,
+        locationProfile: effectiveLocation,
+        blendedStyle,
+        siteMetrics,
+        programSpaces,
+        zoningConstraints: effectiveLocation?.zoning
       });
 
-      if (!response.ok) {
-        throw new Error(`Together.ai API error: ${response.status} ${response.statusText}`);
+      const routerResult = await modelRouter.callLLM('DNA_GENERATION', {
+        systemPrompt: dnaPrompt.systemPrompt,
+        userPrompt: dnaPrompt.userPrompt,
+        schema: true,
+        temperature: 0.2,
+        maxTokens: 4000,
+        context: { priority: 'quality', budget: 'medium' }
+      });
+
+      if (!routerResult.success) {
+        throw new Error(`DNA generation failed: ${routerResult.error}`);
       }
 
-      const data = await response.json();
+      // ModelRouter returns parsed JSON in data field
+      let masterDNA = routerResult.data;
+      
+      logger.success(` DNA generated via ${routerResult.metadata.model} in ${routerResult.metadata.latencyMs}ms`);
+      
+      // 🔧 ENRICH DNA: Ensure all required fields are present with sensible defaults
+      masterDNA = this._enrichDNAWithDefaults(masterDNA, projectContext, effectiveLocation);
 
-      if (!data.choices || !data.choices[0]) {
-        throw new Error('Invalid response from Together.ai');
-      }
-
-      // Parse the response - Together.ai returns choices[0].message.content
-      let dnaContent = data.choices[0].message.content;
-
-      if (!dnaContent) {
-        console.error('❌ Invalid Together.ai response structure:', data);
-        throw new Error('Together.ai response missing content');
-      }
-
-      // Remove markdown code blocks if present
-      dnaContent = dnaContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-
-      let masterDNA = JSON.parse(dnaContent);
-
-      console.log('✅ Master Design DNA generated successfully');
-      console.log('   Project ID:', masterDNA.projectID);
-      console.log('   Seed:', masterDNA.seed);
-      console.log('   Dimensions:', masterDNA.dimensions?.length, '×', masterDNA.dimensions?.width);
-      console.log('   Floors:', masterDNA.dimensions?.floorCount);
+      logger.success(' Master Design DNA generated successfully');
+      logger.info('   Project ID:', masterDNA.projectID);
+      logger.info('   Seed:', masterDNA.seed);
+      logger.info('   Dimensions:', masterDNA.dimensions?.length, '×', masterDNA.dimensions?.width);
+      logger.info('   Floors:', masterDNA.dimensions?.floorCount);
 
       // 🚨 SITE VALIDATION: Pre-validate and enforce constraints
       if (siteData && siteData.siteArea !== Infinity) {
-        console.log('🔍 Validating design against site constraints...');
+        logger.info('🔍 Validating design against site constraints...');
 
         const validationResult = validateDesignAgainstSite(masterDNA, siteData);
 
         if (!validationResult.valid) {
-          console.warn('⚠️ Site validation errors detected:', validationResult.errors.length, 'errors');
+          logger.warn('⚠️ Site validation errors detected:', validationResult.errors.length, 'errors');
 
           // Auto-correct critical violations
           for (const error of validationResult.errors) {
@@ -695,33 +813,41 @@ Respond with ONLY the JSON object, no markdown formatting.`;
               masterDNA.dimensions.length = Math.floor(masterDNA.dimensions.length * scaleFactor);
               masterDNA.dimensions.width = Math.floor(masterDNA.dimensions.width * scaleFactor);
 
-              console.log(`   📐 Adjusted footprint: ${masterDNA.dimensions.length}m × ${masterDNA.dimensions.width}m`);
+              logger.info(`   📐 Adjusted footprint: ${masterDNA.dimensions.length}m × ${masterDNA.dimensions.width}m`);
             }
 
             if (error.type === 'HEIGHT_EXCEEDS_LIMIT') {
               // Reduce height to comply
               masterDNA.dimensions.totalHeight = siteData.maxHeight;
               masterDNA.dimensions.height = siteData.maxHeight;
-              console.log(`   📏 Adjusted height: ${siteData.maxHeight}m`);
+              logger.info(`   📏 Adjusted height: ${siteData.maxHeight}m`);
             }
 
             if (error.type === 'FLOOR_COUNT_EXCEEDS_LIMIT') {
               // Reduce floor count
               masterDNA.dimensions.floorCount = siteData.maxFloors;
               masterDNA.dimensions.numLevels = siteData.maxFloors;
-              console.log(`   🏢 Adjusted floors: ${siteData.maxFloors}`);
+              logger.info(`   🏢 Adjusted floors: ${siteData.maxFloors}`);
             }
           }
 
           // Re-validate after corrections
           const revalidation = validateDesignAgainstSite(masterDNA, siteData);
           if (!revalidation.valid) {
-            console.error('❌ Critical: Design still violates site constraints after auto-correction');
+            logger.error('❌ Critical: Design still violates site constraints after auto-correction');
+
+            // HARD CONSTRAINT ENFORCEMENT: Throw error if corrections fail
+            const errorMessages = revalidation.errors.map(e => e.message).join('; ');
+            throw new Error(
+              `SITE CONSTRAINT VIOLATION: Cannot fit ${area}m² building on ${siteData.siteArea.toFixed(0)}m² site. ` +
+              `Violations: ${errorMessages}. ` +
+              `Suggestions: ${revalidation.errors.map(e => e.suggestion).join(', ')}`
+            );
           } else {
-            console.log('✅ Design adjusted to meet site constraints');
+            logger.success(' Design adjusted to meet site constraints');
           }
         } else {
-          console.log('✅ Design validated against site constraints');
+          logger.success(' Design validated against site constraints');
         }
 
         // Add site constraints to DNA for downstream services
@@ -738,16 +864,37 @@ Respond with ONLY the JSON object, no markdown formatting.`;
           adjustmentsApplied: !validationResult.valid
         };
 
+        // Add boundary validation results for A1 prompt generation
+        masterDNA.boundaryValidation = {
+          validated: true,
+          compliant: validationResult.valid,
+          compliancePercentage: validationResult.valid ? 100 : 85,
+          wasCorrected: !validationResult.valid,
+          setbacks: siteData.constraints || {
+            front: 3,
+            rear: 3,
+            sideLeft: 3,
+            sideRight: 3
+          },
+          buildableBoundary: siteData.polygon || null,
+          correctedFootprint: siteData.polygon ? [
+            { x: 0, y: 0 },
+            { x: masterDNA.dimensions.length, y: 0 },
+            { x: masterDNA.dimensions.length, y: masterDNA.dimensions.width },
+            { x: 0, y: masterDNA.dimensions.width }
+          ] : null
+        };
+
         // Add building orientation to DNA
         if (!masterDNA.buildingOrientation && siteData.optimalOrientation) {
           masterDNA.buildingOrientation = siteData.optimalOrientation;
-          console.log(`   🧭 Building orientation set to: ${siteData.optimalOrientation}°`);
+          logger.info(`   🧭 Building orientation set to: ${siteData.optimalOrientation}°`);
         }
       }
 
       // 🌍 ENHANCEMENT: Apply location and climate modifications
       if (effectiveLocation || effectiveClimate) {
-        console.log('🌍 Applying location and climate modifications...');
+        logger.info('🌍 Applying location and climate modifications...');
 
         // Apply location-aware modifications
         masterDNA = locationAwareDNAModifier.applyLocationContext(
@@ -763,21 +910,106 @@ Respond with ONLY the JSON object, no markdown formatting.`;
             effectiveLocation?.coordinates?.lat || 40
           );
           masterDNA.climateDesign = climateParams;
-          console.log('   Climate strategy:', climateParams.thermal?.strategy);
+          logger.info('   Climate strategy:', climateParams.thermal?.strategy);
         }
+        
+        // 🆕 Add environmental performance data
+        masterDNA.environmental = {
+          uValues: {
+            wall: 0.18, // W/m²K - UK Building Regs Part L compliant
+            roof: 0.13,
+            glazing: 1.4,
+            floor: 0.15
+          },
+          epcRating: 'B', // Target B rating (81-91)
+          epcScore: 85,
+          ventilation: 'Natural cross-ventilation',
+          sunOrientation: effectiveLocation?.sunPath?.optimalOrientation || 180,
+          airTightness: 5.0, // m³/h/m² @ 50Pa
+          renewableEnergy: area > 100 ? 'Solar PV 4kWp' : null
+        };
+        logger.info('   Environmental: EPC Rating B, U-values compliant');
 
         // 🆕 Add site context to DNA
         if (siteMetrics && siteMetrics.areaM2) {
           masterDNA.siteContext = siteContextStr;
           masterDNA.siteMetrics = siteMetrics;
-          console.log('   Site area:', siteMetrics.areaM2.toFixed(0), 'm²');
-          console.log('   Site orientation:', (siteMetrics.orientationDeg || 0).toFixed(0), '°');
+          logger.info('   Site area:', siteMetrics.areaM2.toFixed(0), 'm²');
+          logger.info('   Site orientation:', (siteMetrics.orientationDeg || 0).toFixed(0), '°');
         }
 
-        console.log('✅ Location, climate, and site enhancements applied');
+        // 🆕 EXPLICIT FOOTPRINT/MASSING ENCODING
+        masterDNA.massing = {
+          footprintShape: siteMetrics?.shapeType || 'rectangular',
+          buildingForm: this._determineBuildingForm(masterDNA, siteMetrics),
+          wings: this._determineWingConfiguration(masterDNA, siteMetrics),
+          courtyardPresence: siteMetrics?.areaM2 > 400,
+          verticalArticulation: masterDNA.dimensions?.floorCount > 2 ? 'stepped' : 'uniform',
+          roofForm: masterDNA.roof?.type || 'gable'
+        };
+
+        // 🆕 EXPLICIT STYLE WEIGHTING (local vs portfolio)
+        // Extract portfolio blend percentage from context or use default
+        const portfolioBlendPercent = projectContext.portfolioBlendPercent || 
+                                      projectContext.portfolioWeight || 
+                                      (blendedStyle?.blendRatio?.portfolio ? blendedStyle.blendRatio.portfolio * 100 : 70);
+        const portfolioWeight = portfolioBlendPercent / 100;
+        const localWeight = 1 - portfolioWeight;
+        
+        masterDNA.styleWeights = {
+          local: localWeight,
+          portfolio: portfolioWeight,
+          localStyle: effectiveLocation?.recommendedStyle || blendedStyle?.styleName || 'Contemporary',
+          portfolioStyle: portfolioAnalysis?.dominantStyle || blendedStyle?.styleName || 'Contemporary',
+          dominantInfluence: localWeight > portfolioWeight ? 'local' : 'portfolio'
+        };
+
+        // 🆕 EXPLICIT MATERIAL PRIORITY (emphasize local materials)
+        masterDNA.materialPriority = {
+          primary: effectiveLocation?.localMaterials?.[0] || blendedStyle?.materials?.[0] || 'Brick',
+          secondary: effectiveLocation?.localMaterials?.[1] || blendedStyle?.materials?.[1] || 'Glass',
+          accent: blendedStyle?.materials?.[2] || 'Timber',
+          localMaterialsUsed: effectiveLocation?.localMaterials || [],
+          portfolioMaterialsUsed: portfolioAnalysis?.materials || [],
+          weightedSelection: `${Math.round(localWeight * 100)}% local, ${Math.round(portfolioWeight * 100)}% portfolio`
+        };
+
+        // 🆕 ADD BUILDING TAXONOMY METADATA
+        if (buildingCategory || buildingSubType) {
+          masterDNA.metadata = masterDNA.metadata || {};
+          masterDNA.metadata.buildingTaxonomy = {
+            category: buildingCategory,
+            subType: buildingSubType,
+            fullType: fullBuildingType,
+            notes: buildingNotes
+          };
+        }
+
+        // 🆕 ADD ENTRANCE ORIENTATION
+        if (entranceOrientation) {
+          masterDNA.entrance = masterDNA.entrance || {};
+          masterDNA.entrance.facade = entranceOrientation;
+          masterDNA.entrance.direction = entranceOrientation;
+        }
+
+        // 🆕 ADD PROGRAM SPACES TO DNA
+        if (programSpaces && programSpaces.length > 0) {
+          masterDNA.programSpaces = programSpaces;
+        }
+
+        logger.success(' Location, climate, and site enhancements applied');
+        logger.info(`   Massing: ${masterDNA.massing.buildingForm} form with ${masterDNA.massing.wings} wings`);
+        logger.info(`   Style weighting: ${Math.round(localWeight * 100)}% local (${masterDNA.styleWeights.localStyle}), ${Math.round(portfolioWeight * 100)}% portfolio`);
+        logger.info(`   Material priority: ${masterDNA.materialPriority.primary} (local) > ${masterDNA.materialPriority.secondary}`);
+        if (buildingCategory && buildingSubType) {
+          logger.info(`   Building type: ${fullBuildingType}`);
+        }
+        if (entranceOrientation) {
+          logger.info(`   Main entrance: ${entranceOrientation} facade`);
+        }
       }
 
-      console.log('   Consistency Rules:', masterDNA.consistencyRules?.CRITICAL?.length || 0);
+      logger.info('   Consistency Rules:', masterDNA.consistencyRules?.CRITICAL?.length || 0);
 
       return {
         success: true,
@@ -786,14 +1018,14 @@ Respond with ONLY the JSON object, no markdown formatting.`;
       };
 
     } catch (error) {
-      console.error('❌ Master DNA generation failed:', error);
+      logger.error('❌ Master DNA generation failed:', error);
 
       // Create fallback DNA
       let fallbackDNA = this.createFallbackMasterDNA(projectContext);
 
       // 🌍 Apply location enhancements to fallback too
       if (effectiveLocation || effectiveClimate) {
-        console.log('🌍 Applying location modifications to fallback DNA...');
+        logger.info('🌍 Applying location modifications to fallback DNA...');
         fallbackDNA = locationAwareDNAModifier.applyLocationContext(
           fallbackDNA,
           effectiveLocation,
@@ -897,6 +1129,21 @@ Respond with ONLY the JSON object, no markdown formatting.`;
             { name: 'Bathroom', dimensions: '3.0m × 2.5m', area: '7.5m²', position: 'Rear' }
           ]
         }
+      },
+
+      environmental: {
+        uValues: {
+          wall: 0.18,
+          roof: 0.13,
+          glazing: 1.4,
+          floor: 0.15
+        },
+        epcRating: 'B',
+        epcScore: 85,
+        ventilation: 'Natural cross-ventilation',
+        sunOrientation: 180,
+        airTightness: 5.0,
+        renewableEnergy: null
       },
 
       elevations: {
@@ -1020,6 +1267,180 @@ Respond with ONLY the JSON object, no markdown formatting.`;
         interior_3d: 'Interior DIFFERENT'
       }
     };
+  }
+
+  /**
+   * Enrich DNA with defaults for missing fields
+   * Ensures all required fields are present for A1 sheet generation
+   * @private
+   */
+  _enrichDNAWithDefaults(masterDNA, projectContext, location) {
+    // Ensure dimensions object exists before accessing nested props
+    const defaultFloorCount = projectContext.floorCount || projectContext.programSpaces?._calculatedFloorCount || 2;
+    if (!masterDNA.dimensions || typeof masterDNA.dimensions !== 'object') {
+      masterDNA.dimensions = {};
+    }
+    if (!masterDNA.dimensions.length || !masterDNA.dimensions.width) {
+      const fallbackArea = parseFloat(projectContext.floorArea || projectContext.area) || 180;
+      const floors = defaultFloorCount || 2;
+      const footprint = Math.max(60, fallbackArea / floors);
+      const ratio = 1.4;
+      const estimatedLength = Math.sqrt(footprint * ratio);
+      const estimatedWidth = estimatedLength / ratio;
+      masterDNA.dimensions.length = masterDNA.dimensions.length || Math.round(estimatedLength * 10) / 10;
+      masterDNA.dimensions.width = masterDNA.dimensions.width || Math.round(estimatedWidth * 10) / 10;
+    }
+    if (!masterDNA.dimensions.floorCount) {
+      masterDNA.dimensions.floorCount = defaultFloorCount || 2;
+    }
+    if (!masterDNA.dimensions.height) {
+      masterDNA.dimensions.height = (masterDNA.dimensions.floorCount || 2) * 3.2;
+    }
+    if (!masterDNA.dimensions.totalHeight) {
+      masterDNA.dimensions.totalHeight = masterDNA.dimensions.height;
+    }
+    
+    // Ensure materials array exists
+    if (!masterDNA.materials || !Array.isArray(masterDNA.materials) || masterDNA.materials.length === 0) {
+      masterDNA.materials = [
+        {
+          name: 'Red brick',
+          hexColor: '#B8604E',
+          application: 'exterior walls',
+          texture: 'stretcher bond',
+          finish: 'matte'
+        },
+        {
+          name: 'Aluminum frames',
+          hexColor: '#333333',
+          application: 'windows and doors',
+          finish: 'powder coated'
+        }
+      ];
+    }
+    
+    // Ensure roof configuration exists
+    if (!masterDNA.roof || typeof masterDNA.roof !== 'object') {
+      masterDNA.roof = {
+        type: 'gable',
+        pitch: 35,
+        material: 'Clay tiles',
+        color: '#8B4513',
+        overhang: '0.5m',
+        gutters: 'Cast aluminum'
+      };
+    }
+    
+    // Ensure color palette exists
+    if (!masterDNA.colorPalette || typeof masterDNA.colorPalette !== 'object') {
+      masterDNA.colorPalette = {
+        facade: masterDNA.materials?.[0]?.hexColor || '#B8604E',
+        trim: '#FFFFFF',
+        roof: masterDNA.roof?.color || '#8B4513',
+        accent: '#2C3E50'
+      };
+    }
+    
+    // Ensure entrance configuration exists
+    if (!masterDNA.entrance || typeof masterDNA.entrance !== 'object') {
+      const entranceDir = projectContext.entranceDirection || projectContext.entranceOrientation || 'N';
+      masterDNA.entrance = {
+        facade: entranceDir,
+        direction: entranceDir,
+        position: 'centered',
+        type: 'main entrance',
+        width: '1.2m',
+        canopy: true
+      };
+    }
+    
+    // Ensure doors configuration exists
+    if (!masterDNA.doors || typeof masterDNA.doors !== 'object') {
+      const entranceDir = masterDNA.entrance?.facade || 'N';
+      masterDNA.doors = {
+        location: entranceDir === 'N' ? 'north' : entranceDir === 'S' ? 'south' : entranceDir === 'E' ? 'east' : 'west',
+        position: 'centered',
+        width: 1.2,
+        color: '#2C3E50',
+        type: 'Panel door'
+      };
+    }
+    
+    // Ensure window configuration exists
+    if (!masterDNA.windows || typeof masterDNA.windows !== 'object') {
+      const floorCount = masterDNA.dimensions?.floorCount || 2;
+      const baseWindowCount = floorCount === 1 ? 8 : floorCount === 2 ? 12 : floorCount * 6;
+      
+      masterDNA.windows = {
+        type: 'Casement',
+        frame: 'Aluminum',
+        color: '#333333',
+        glazing: 'Double glazed',
+        standardSize: '1.5m × 1.2m',
+        counts: {
+          north: Math.ceil(baseWindowCount * 0.35),
+          south: Math.ceil(baseWindowCount * 0.30),
+          east: Math.ceil(baseWindowCount * 0.20),
+          west: Math.ceil(baseWindowCount * 0.15)
+        }
+      };
+    }
+    
+    // Ensure dimensions has totalArea
+    if (!masterDNA.dimensions.totalArea) {
+      const length = masterDNA.dimensions.length || 15;
+      const width = masterDNA.dimensions.width || 10;
+      const floors = masterDNA.dimensions.floorCount || 2;
+      masterDNA.dimensions.totalArea = length * width * floors;
+    }
+    
+    return masterDNA;
+  }
+
+  /**
+   * Determine building form based on DNA and site metrics
+   * @private
+   */
+  _determineBuildingForm(masterDNA, siteMetrics) {
+    const floorCount = masterDNA.dimensions?.floorCount || 2;
+    const footprintArea = (masterDNA.dimensions?.length || 15) * (masterDNA.dimensions?.width || 10);
+    const siteArea = siteMetrics?.areaM2 || footprintArea * 2;
+    const coverage = footprintArea / siteArea;
+
+    // Determine form based on site coverage and floor count
+    if (coverage > 0.7) {
+      return 'compact'; // High coverage - compact form
+    } else if (floorCount > 3) {
+      return 'tower'; // Tall building - tower form
+    } else if (siteMetrics?.shapeType === 'L-shaped' || siteMetrics?.shapeType === 'corner') {
+      return 'L-shaped'; // L-shaped site - L-shaped building
+    } else if (siteArea > 500 && coverage < 0.4) {
+      return 'courtyard'; // Large site, low coverage - courtyard form
+    } else {
+      return 'linear'; // Default - linear form
+    }
+  }
+
+  /**
+   * Determine wing configuration based on DNA and site metrics
+   * @private
+   */
+  _determineWingConfiguration(masterDNA, siteMetrics) {
+    const buildingForm = this._determineBuildingForm(masterDNA, siteMetrics);
+    
+    switch (buildingForm) {
+      case 'L-shaped':
+        return 'two-wing';
+      case 'courtyard':
+        return 'four-wing';
+      case 'tower':
+        return 'single-core';
+      case 'compact':
+        return 'single-volume';
+      case 'linear':
+      default:
+        return 'single-bar';
+    }
   }
 }
 

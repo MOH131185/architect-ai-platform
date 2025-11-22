@@ -12,6 +12,8 @@
  */
 
 import axios from 'axios';
+import logger from '../utils/logger.js';
+
 
 /**
  * Fetch building footprint from Google Geocoding API
@@ -21,7 +23,7 @@ import axios from 'axios';
  * @returns {Promise<Object>} Footprint data with coordinates and metadata
  */
 export async function fetchBuildingFootprint(placeId, apiKey) {
-  console.log('🏢 Fetching building footprint for place_id:', placeId);
+  logger.info('🏢 Fetching building footprint for place_id:', placeId);
 
   if (!apiKey) {
     throw new Error('Google Maps API key is required');
@@ -37,7 +39,7 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     });
 
     if (response.data.status !== 'OK') {
-      console.warn(`Building footprint fetch failed: ${response.data.status}`);
+      logger.warn(`Building footprint fetch failed: ${response.data.status}`);
       return null;
     }
 
@@ -46,7 +48,7 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     // Extract building outline from response
     const buildings = result.buildings;
     if (!buildings || buildings.length === 0) {
-      console.warn('No building data in API response');
+      logger.warn('No building data in API response');
       return null;
     }
 
@@ -54,7 +56,7 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     const outlines = buildingData.building_outlines;
 
     if (!outlines || outlines.length === 0) {
-      console.warn('No building outlines found');
+      logger.warn('No building outlines found');
       return null;
     }
 
@@ -62,14 +64,14 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     const displayPolygon = outline.display_polygon;
 
     if (!displayPolygon || !displayPolygon.coordinates || displayPolygon.coordinates.length === 0) {
-      console.warn('Invalid display_polygon structure');
+      logger.warn('Invalid display_polygon structure');
       return null;
     }
 
     // GeoJSON polygon format: coordinates[0] is outer ring as [lng, lat] pairs
     const geoJsonCoords = displayPolygon.coordinates[0];
 
-    console.log(`✅ Building footprint detected: ${geoJsonCoords.length} vertices`);
+    logger.success(` Building footprint detected: ${geoJsonCoords.length} vertices`);
 
     return {
       geoJsonCoordinates: geoJsonCoords,
@@ -82,11 +84,11 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     };
 
   } catch (error) {
-    console.error('❌ Failed to fetch building footprint:', error);
+    logger.error('❌ Failed to fetch building footprint:', error);
 
     // Check if error is due to API not supporting extra_computations
     if (error.response?.data?.error_message) {
-      console.warn('API Message:', error.response.data.error_message);
+      logger.warn('API Message:', error.response.data.error_message);
     }
 
     return null;
@@ -113,7 +115,7 @@ export function convertGeoJsonToMapCoords(geoJsonCoords) {
 
   if (first.lat !== last.lat || first.lng !== last.lng) {
     coords.push({ ...first }); // Close the polygon
-    console.log('  Closed polygon (added duplicate of first vertex)');
+    logger.info('  Closed polygon (added duplicate of first vertex)');
   }
 
   return coords;
@@ -338,7 +340,7 @@ export function calculatePolygonArea(coords) {
  * @returns {Promise<Object>} Complete footprint data with classification
  */
 export async function detectAddressShape(address, apiKey) {
-  console.log('🔍 Starting address-to-shape detection for:', address);
+  logger.info('🔍 Starting address-to-shape detection for:', address);
 
   try {
     // Step 1: Geocode address to get place_id
@@ -354,13 +356,13 @@ export async function detectAddressShape(address, apiKey) {
     const placeId = locationResult.place_id;
     const center = locationResult.geometry.location;
 
-    console.log('  Geocoded to place_id:', placeId);
+    logger.info('  Geocoded to place_id:', placeId);
 
     // Step 2: Fetch building footprint
     const footprint = await fetchBuildingFootprint(placeId, apiKey);
 
     if (!footprint) {
-      console.warn('⚠️  No building footprint available for this address');
+      logger.warn('⚠️  No building footprint available for this address');
       return {
         success: false,
         center,
@@ -378,7 +380,7 @@ export async function detectAddressShape(address, apiKey) {
     // Step 5: Calculate area
     const areaM2 = calculatePolygonArea(polygonCoords);
 
-    console.log('✅ Address-to-shape detection complete:', {
+    logger.info('✅ Address-to-shape detection complete:', {
       shape: shapeClassification.name,
       vertices: shapeClassification.vertexCount,
       area: `${areaM2.toFixed(1)} m²`
@@ -399,7 +401,7 @@ export async function detectAddressShape(address, apiKey) {
     };
 
   } catch (error) {
-    console.error('❌ Address-to-shape detection failed:', error);
+    logger.error('❌ Address-to-shape detection failed:', error);
     return {
       success: false,
       error: error.message

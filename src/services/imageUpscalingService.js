@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Image Upscaling Service
  *
@@ -12,7 +14,7 @@
  * @returns {Promise<string>} Base64 data URL of upscaled image
  */
 export async function upscaleImage(imageUrl, scaleFactor = 2) {
-  console.log(`🔍 [Upscaling Service] Starting upscaling with factor ${scaleFactor}x...`);
+  logger.info(`🔍 [Upscaling Service] Starting upscaling with factor ${scaleFactor}x...`);
 
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -25,8 +27,8 @@ export async function upscaleImage(imageUrl, scaleFactor = 2) {
         const targetWidth = originalWidth * scaleFactor;
         const targetHeight = originalHeight * scaleFactor;
 
-        console.log(`   📐 Original: ${originalWidth}×${originalHeight}px`);
-        console.log(`   📐 Target: ${targetWidth}×${targetHeight}px`);
+        logger.info(`   📐 Original: ${originalWidth}×${originalHeight}px`);
+        logger.info(`   📐 Target: ${targetWidth}×${targetHeight}px`);
 
         // Create canvas for upscaling
         const canvas = document.createElement('canvas');
@@ -44,18 +46,18 @@ export async function upscaleImage(imageUrl, scaleFactor = 2) {
         // Convert to base64
         const upscaledDataUrl = canvas.toDataURL('image/png', 1.0); // Maximum quality
 
-        console.log(`✅ [Upscaling Service] Upscaling complete`);
-        console.log(`   📊 Data URL size: ${(upscaledDataUrl.length / 1024 / 1024).toFixed(2)}MB`);
+        logger.success(` [Upscaling Service] Upscaling complete`);
+        logger.info(`   📊 Data URL size: ${(upscaledDataUrl.length / 1024 / 1024).toFixed(2)}MB`);
 
         resolve(upscaledDataUrl);
       } catch (error) {
-        console.error('❌ [Upscaling Service] Failed to upscale:', error);
+        logger.error('❌ [Upscaling Service] Failed to upscale:', error);
         reject(error);
       }
     };
 
     img.onerror = (error) => {
-      console.error('❌ [Upscaling Service] Failed to load image:', error);
+      logger.error('❌ [Upscaling Service] Failed to load image:', error);
       reject(new Error('Failed to load image for upscaling'));
     };
 
@@ -71,7 +73,7 @@ export async function upscaleImage(imageUrl, scaleFactor = 2) {
  * @returns {Promise<string>} Base64 data URL of upscaled image
  */
 export async function upscaleImageProgressive(imageUrl, targetScale = 4) {
-  console.log(`🔍 [Upscaling Service] Starting progressive upscaling to ${targetScale}x...`);
+  logger.info(`🔍 [Upscaling Service] Starting progressive upscaling to ${targetScale}x...`);
 
   let currentUrl = imageUrl;
   let currentScale = 1;
@@ -79,12 +81,12 @@ export async function upscaleImageProgressive(imageUrl, targetScale = 4) {
   // Upscale in 2x steps for better quality
   while (currentScale < targetScale) {
     const stepScale = Math.min(2, targetScale / currentScale);
-    console.log(`   🔄 Step: ${currentScale}x → ${currentScale * stepScale}x`);
+    logger.info(`   🔄 Step: ${currentScale}x → ${currentScale * stepScale}x`);
     currentUrl = await upscaleImage(currentUrl, stepScale);
     currentScale *= stepScale;
   }
 
-  console.log(`✅ [Upscaling Service] Progressive upscaling complete: ${targetScale}x`);
+  logger.success(` [Upscaling Service] Progressive upscaling complete: ${targetScale}x`);
   return currentUrl;
 }
 
@@ -98,7 +100,7 @@ export async function upscaleImageProgressive(imageUrl, targetScale = 4) {
  * @returns {Promise<Object>} { url: string, width: number, height: number, scale: number }
  */
 export async function upscaleA1SheetForPrint(imageUrl, currentWidth = 1792, currentHeight = 1264, orientation = 'landscape') {
-  console.log(`🖨️  [Upscaling Service] Upscaling A1 sheet for print quality (300 DPI ${orientation})...`);
+  logger.info(`🖨️  [Upscaling Service] Upscaling A1 sheet for print quality (300 DPI ${orientation})...`);
 
   // A1 @ 300 DPI: Landscape = 9933×7016px, Portrait = 7016×9933px
   const isLandscape = orientation === 'landscape' || currentWidth > currentHeight;
@@ -109,14 +111,14 @@ export async function upscaleA1SheetForPrint(imageUrl, currentWidth = 1792, curr
   const scaleY = targetHeight / currentHeight;
   const scaleFactor = Math.min(scaleX, scaleY); // Use smaller scale to maintain aspect ratio
 
-  console.log(`   📐 Current: ${currentWidth}×${currentHeight}px (~60 DPI)`);
-  console.log(`   📐 Target: ${targetWidth}×${targetHeight}px (300 DPI)`);
-  console.log(`   🔢 Scale factor: ${scaleFactor.toFixed(2)}x`);
+  logger.info(`   📐 Current: ${currentWidth}×${currentHeight}px (~60 DPI)`);
+  logger.info(`   📐 Target: ${targetWidth}×${targetHeight}px (300 DPI)`);
+  logger.info(`   🔢 Scale factor: ${scaleFactor.toFixed(2)}x`);
 
   // For very large scales (>4x), use progressive upscaling
   let upscaledUrl;
   if (scaleFactor > 4) {
-    console.log(`   ⚠️  Large scale detected (${scaleFactor.toFixed(2)}x), using progressive upscaling...`);
+    logger.info(`   ⚠️  Large scale detected (${scaleFactor.toFixed(2)}x), using progressive upscaling...`);
     upscaledUrl = await upscaleImageProgressive(imageUrl, Math.floor(scaleFactor));
     // Fine-tune to exact dimensions if needed
     if (Math.floor(scaleFactor) !== scaleFactor) {
@@ -146,12 +148,12 @@ export async function upscaleA1SheetForPrint(imageUrl, currentWidth = 1792, curr
  * @returns {Promise<Object>} { url: string, width: number, height: number, scale: number }
  */
 export async function upscaleA1SheetForDisplay(imageUrl, currentWidth = 1792, currentHeight = 1264) {
-  console.log(`🖥️  [Upscaling Service] Upscaling A1 sheet for display (2x for text clarity)...`);
+  logger.info(`🖥️  [Upscaling Service] Upscaling A1 sheet for display (2x for text clarity)...`);
 
   const scaleFactor = 2; // 2x upscaling balances quality and file size
 
-  console.log(`   📐 Original: ${currentWidth}×${currentHeight}px`);
-  console.log(`   📐 Upscaled: ${currentWidth * scaleFactor}×${currentHeight * scaleFactor}px`);
+  logger.info(`   📐 Original: ${currentWidth}×${currentHeight}px`);
+  logger.info(`   📐 Upscaled: ${currentWidth * scaleFactor}×${currentHeight * scaleFactor}px`);
 
   const upscaledUrl = await upscaleImage(imageUrl, scaleFactor);
 
@@ -173,7 +175,7 @@ export async function upscaleA1SheetForDisplay(imageUrl, currentWidth = 1792, cu
  * @returns {Promise<string>} Base64 data URL of sharpened image
  */
 export async function sharpenImage(imageUrl, amount = 0.5) {
-  console.log(`✨ [Upscaling Service] Applying sharpening filter (amount: ${amount})...`);
+  logger.info(`✨ [Upscaling Service] Applying sharpening filter (amount: ${amount})...`);
 
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -224,16 +226,16 @@ export async function sharpenImage(imageUrl, amount = 0.5) {
         ctx.putImageData(imageData, 0, 0);
 
         const sharpenedDataUrl = canvas.toDataURL('image/png', 1.0);
-        console.log(`✅ [Upscaling Service] Sharpening complete`);
+        logger.success(` [Upscaling Service] Sharpening complete`);
         resolve(sharpenedDataUrl);
       } catch (error) {
-        console.error('❌ [Upscaling Service] Failed to sharpen:', error);
+        logger.error('❌ [Upscaling Service] Failed to sharpen:', error);
         reject(error);
       }
     };
 
     img.onerror = (error) => {
-      console.error('❌ [Upscaling Service] Failed to load image for sharpening:', error);
+      logger.error('❌ [Upscaling Service] Failed to load image for sharpening:', error);
       reject(new Error('Failed to load image for sharpening'));
     };
 
@@ -256,7 +258,7 @@ export async function enhanceA1Sheet(imageUrl, options = {}) {
     orientation = 'landscape' // Default landscape
   } = options;
 
-  console.log(`🎨 [Upscaling Service] Starting comprehensive A1 enhancement (${mode} mode)...`);
+  logger.info(`🎨 [Upscaling Service] Starting comprehensive A1 enhancement (${mode} mode)...`);
 
   let result;
 
@@ -269,16 +271,16 @@ export async function enhanceA1Sheet(imageUrl, options = {}) {
 
   // Step 2: Sharpen (optional but recommended for text clarity)
   if (sharpen) {
-    console.log(`   ✨ Applying sharpening for text clarity...`);
+    logger.info(`   ✨ Applying sharpening for text clarity...`);
     result.url = await sharpenImage(result.url, 0.4); // Moderate sharpening
     result.sharpened = true;
   }
 
-  console.log(`✅ [Upscaling Service] Enhancement complete!`);
-  console.log(`   📐 Final dimensions: ${result.width}×${result.height}px`);
-  console.log(`   🔢 Scale: ${result.scale}x`);
-  console.log(`   ✨ Sharpened: ${result.sharpened ? 'Yes' : 'No'}`);
-  if (result.dpi) console.log(`   🖨️  Estimated DPI: ${result.dpi}`);
+  logger.success(` [Upscaling Service] Enhancement complete!`);
+  logger.info(`   📐 Final dimensions: ${result.width}×${result.height}px`);
+  logger.info(`   🔢 Scale: ${result.scale}x`);
+  logger.info(`   ✨ Sharpened: ${result.sharpened ? 'Yes' : 'No'}`);
+  if (result.dpi) logger.info(`   🖨️  Estimated DPI: ${result.dpi}`);
 
   return result;
 }

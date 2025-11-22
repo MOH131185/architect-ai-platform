@@ -11,6 +11,8 @@
 import togetherAIReasoningService from './togetherAIReasoningService.js';
 import { buildDNARequestPayload, normalizeRawDNA, validateDNASchema, convertToLegacyDNA } from './dnaSchema.js';
 import { repairDNA } from './dnaRepair.js';
+import geometryVolumeReasoning from './geometryVolumeReasoning.js';
+import { isFeatureEnabled } from '../config/featureFlags.js';
 import logger from '../utils/logger.js';
 
 class TwoPassDNAGenerator {
@@ -66,19 +68,58 @@ class TwoPassDNAGenerator {
       throw new Error('Pass B failed: DNA validation failed. Please retry generation.');
     }
 
+    // PASS C (Optional): Generate 3D volume specification
+    // Only run if geometryVolumeFirst feature flag is enabled
+    let volumeSpec = null;
+
+    if (isFeatureEnabled('geometryVolumeFirst')) {
+      logger.info('🔹 PASS C: Generating 3D volume specification...');
+
+      try {
+        const volumeResult = await geometryVolumeReasoning.generateVolumeSpecification(
+          validatedDNA,
+          projectContext,
+          locationData || projectContext.location
+        );
+
+        // Only use volumeSpec if generation was successful
+        if (volumeResult && volumeResult.success === true) {
+          volumeSpec = volumeResult.volumeSpec;
+          logger.success('✅ Pass C: Volume specification generated successfully');
+        } else {
+          logger.warn('⚠️  Pass C: Volume generation failed, continuing without volume spec');
+          // Don't attach invalid volumeSpec to DNA
+        }
+      } catch (volumeError) {
+        logger.warn('⚠️  Pass C error, continuing without volume spec:', volumeError.message);
+        // Don't attach volumeSpec on error
+      }
+    } else {
+      logger.debug('⏭️  PASS C: Skipped (geometryVolumeFirst flag disabled)');
+    }
+
     // Convert to legacy format for compatibility
     const legacyDNA = convertToLegacyDNA(validatedDNA);
+
+    // Attach volume spec to legacy DNA only if successfully generated
+    if (volumeSpec) {
+      legacyDNA.volumeSpec = volumeSpec;
+    }
 
     logger.success('✅ Two-Pass DNA Generation complete');
     logger.info('   Site: ' + (validatedDNA.site?.area_m2 || 0) + 'm²');
     logger.info('   Program: ' + (validatedDNA.program?.floors || 0) + ' floors, ' + (validatedDNA.program?.rooms?.length || 0) + ' rooms');
     logger.info('   Style: ' + (validatedDNA.style?.architecture || 'N/A'));
     logger.info('   Roof: ' + (validatedDNA.geometry_rules?.roof_type || 'N/A'));
+    if (volumeSpec) {
+      logger.info('   Volume: ' + (volumeSpec.massing?.type || 'N/A') + ', ' + (volumeSpec.roof?.type || 'N/A') + ' roof');
+    }
 
     return {
       success: true,
       masterDNA: legacyDNA,
       structuredDNA: validatedDNA,
+      volumeSpec,
       timestamp: new Date().toISOString()
     };
   }

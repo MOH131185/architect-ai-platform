@@ -1,8 +1,26 @@
 /**
- * Vercel Serverless Function for Together AI Image Generation (FLUX.1)
- * Proxies requests to Together AI API to keep API keys secure
- * Handles rate limiting with Retry-After header forwarding
+ * Vercel Serverless Function for Together AI Image Generation (REFACTORED)
+ * 
+ * REFACTORED: Enforces deterministic seed handling, rate limiting, and normalized responses.
+ * Uses FLUX.1-dev for A1 sheet generation with explicit seed propagation.
  */
+
+// Simple in-memory rate limiter for serverless
+let lastRequestTime = 0;
+const MIN_INTERVAL_MS = 6000; // 6 seconds between requests
+
+async function enforceRateLimit() {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  
+  if (timeSinceLastRequest < MIN_INTERVAL_MS) {
+    const waitTime = MIN_INTERVAL_MS - timeSinceLastRequest;
+    console.log(`⏱️ Rate limiting: waiting ${waitTime}ms`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
+  lastRequestTime = Date.now();
+}
 
 export default async function handler(req, res) {
   // Handle OPTIONS for CORS preflight
@@ -27,21 +45,36 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Enforce rate limiting
+    await enforceRateLimit();
+
     const {
-      model = 'black-forest-labs/FLUX.1-schnell',
+      model = 'black-forest-labs/FLUX.1-dev',
       prompt,
       negativePrompt = '',
-      width = 1024,
-      height = 1024,
+      width = 1792,
+      height = 1269,
       seed,
-      num_inference_steps = 4,
+      num_inference_steps = 48,
       guidanceScale = 7.8,
       initImage = null,
-      imageStrength = 0.55
+      imageStrength = 0.18
     } = req.body;
 
     if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
+      return res.status(400).json({ 
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Prompt is required',
+          details: null
+        }
+      });
+    }
+
+    // Ensure seed is provided (deterministic requirement)
+    const effectiveSeed = seed || Date.now();
+    if (!seed) {
+      console.warn('⚠️ No seed provided, using timestamp. For deterministic behavior, always provide a seed.');
     }
 
     // Validate and cap parameters for FLUX.1
@@ -51,14 +84,17 @@ export default async function handler(req, res) {
     const validatedSteps = Math.min(Math.max(num_inference_steps, 1), maxSteps);
 
     const generationMode = initImage ? 'image-to-image' : 'text-to-image';
-    console.log(`🎨 [FLUX.1] Generating image (${generationMode}) with model ${model}...`);
+    console.log(`🎨 [FLUX.1] Generating image (${generationMode}) with model ${model}, seed ${effectiveSeed}...`);
+
+    const startTime = Date.now();
+    const traceId = `trace_${startTime}_${Math.random().toString(36).substring(2, 9)}`;
 
     const requestBody = {
       model,
       prompt,
       width: validatedWidth,
       height: validatedHeight,
-      seed,
+      seed: effectiveSeed,
       steps: validatedSteps,
       n: 1
     };
@@ -75,7 +111,21 @@ export default async function handler(req, res) {
 
     // Add image-to-image parameters if initImage provided
     if (initImage) {
-      requestBody.init_image = initImage;
+      let normalizedInitImage = initImage;
+
+      if (typeof initImage === 'string' && initImage.startsWith('data:')) {
+        try {
+          const base64Data = initImage.split(',')[1];
+          if (base64Data) {
+            normalizedInitImage = base64Data;
+            console.log('🔧 Normalized init_image: stripped data URL prefix');
+          }
+        } catch (e) {
+          console.warn('⚠️  Failed to normalize init_image, using as-is:', e.message);
+        }
+      }
+
+      requestBody.init_image = normalizedInitImage;
       requestBody.image_strength = imageStrength;
     }
 
@@ -140,20 +190,50 @@ export default async function handler(req, res) {
     const imageUrl = data.data?.[0]?.url || data.output?.[0];
 
     if (imageUrl) {
-      console.log(`✅ FLUX.1 image generated successfully (${generationMode})`);
-      res.status(200).json({
+      const latencyMs = Date.now() - startTime;
+      console.log(`✅ FLUX.1 image generated successfully (${generationMode}, ${latencyMs}ms)`);
+      
+      // Normalized response structure
+      const normalizedResponse = {
         url: imageUrl,
-        model: model.includes('flux') ? 'flux' : model,
-        seed
-      });
+        seedUsed: effectiveSeed,
+        model,
+        latencyMs,
+        traceId,
+        metadata: {
+          width: validatedWidth,
+          height: validatedHeight,
+          steps: validatedSteps,
+          guidanceScale,
+          generationMode,
+          hasInitImage: !!initImage,
+          imageStrength: initImage ? imageStrength : null
+        },
+        // Include raw data for backward compatibility
+        raw: data
+      };
+      
+      res.status(200).json(normalizedResponse);
     } else {
       console.error('❌ No image URL in FLUX.1 response');
-      res.status(500).json({ error: 'No image generated' });
+      res.status(500).json({ 
+        error: {
+          code: 'NO_IMAGE_GENERATED',
+          message: 'No image URL in response',
+          details: data
+        }
+      });
     }
 
   } catch (error) {
     console.error('FLUX.1 generation error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message,
+        details: null
+      }
+    });
   }
 }
 

@@ -8,11 +8,15 @@
  * - Consistency tracking across generations
  */
 
+import runtimeEnv from '../utils/runtimeEnv.js';
+import logger from '../utils/logger.js';
+
+
 class DesignGenerationHistory {
   constructor() {
     this.history = [];
     this.currentSessionId = null;
-    console.log('📚 Design Generation History Service initialized');
+    logger.info('📚 Design Generation History Service initialized');
   }
 
   /**
@@ -65,9 +69,9 @@ class DesignGenerationHistory {
     this.history.push(session);
     this.currentSessionId = sessionId;
 
-    console.log(`📚 New generation session started: ${sessionId}`);
-    console.log(`   Project: ${params.projectDetails?.program || 'Unknown'}`);
-    console.log(`   Seed: ${params.seed}`);
+    logger.info(`📚 New generation session started: ${sessionId}`);
+    logger.info(`   Project: ${params.projectDetails?.program || 'Unknown'}`);
+    logger.info(`   Seed: ${params.seed}`);
 
     return sessionId;
   }
@@ -80,7 +84,7 @@ class DesignGenerationHistory {
   recordOriginalGeneration(sessionId, data) {
     const session = this.getSession(sessionId);
     if (!session) {
-      console.error(`❌ Session not found: ${sessionId}`);
+      logger.error(`❌ Session not found: ${sessionId}`);
       return;
     }
 
@@ -101,9 +105,9 @@ class DesignGenerationHistory {
     session.metadata.totalGenerations = 1;
     session.metadata.lastModified = new Date().toISOString();
 
-    console.log(`✅ Original generation recorded for session ${sessionId}`);
-    console.log(`   DNA: ${session.original.dna?.dimensions?.length}m × ${session.original.dna?.dimensions?.width}m`);
-    console.log(`   Workflow: ${session.original.workflow}`);
+    logger.success(` Original generation recorded for session ${sessionId}`);
+    logger.info(`   DNA: ${session.original.dna?.dimensions?.length}m × ${session.original.dna?.dimensions?.width}m`);
+    logger.info(`   Workflow: ${session.original.workflow}`);
 
     this.saveToLocalStorage();
   }
@@ -117,7 +121,7 @@ class DesignGenerationHistory {
   addModificationRequest(sessionId, request) {
     const session = this.getSession(sessionId);
     if (!session) {
-      console.error(`❌ Session not found: ${sessionId}`);
+      logger.error(`❌ Session not found: ${sessionId}`);
       return null;
     }
 
@@ -152,9 +156,9 @@ class DesignGenerationHistory {
     session.metadata.totalModifications += 1;
     session.metadata.lastModified = new Date().toISOString();
 
-    console.log(`📝 Modification request added: ${modificationId}`);
-    console.log(`   Type: ${request.type}`);
-    console.log(`   Description: ${request.description}`);
+    logger.info(`📝 Modification request added: ${modificationId}`);
+    logger.info(`   Type: ${request.type}`);
+    logger.info(`   Description: ${request.description}`);
 
     this.saveToLocalStorage();
 
@@ -170,13 +174,13 @@ class DesignGenerationHistory {
   recordModificationResult(sessionId, modificationId, result) {
     const session = this.getSession(sessionId);
     if (!session) {
-      console.error(`❌ Session not found: ${sessionId}`);
+      logger.error(`❌ Session not found: ${sessionId}`);
       return;
     }
 
     const modification = session.modifications.find(m => m.id === modificationId);
     if (!modification) {
-      console.error(`❌ Modification not found: ${modificationId}`);
+      logger.error(`❌ Modification not found: ${modificationId}`);
       return;
     }
 
@@ -198,8 +202,8 @@ class DesignGenerationHistory {
 
     session.metadata.lastModified = new Date().toISOString();
 
-    console.log(`✅ Modification result recorded: ${modificationId}`);
-    console.log(`   Status: ${modification.status}`);
+    logger.success(` Modification result recorded: ${modificationId}`);
+    logger.info(`   Status: ${modification.status}`);
 
     this.saveToLocalStorage();
   }
@@ -342,14 +346,19 @@ class DesignGenerationHistory {
    */
   saveToLocalStorage() {
     try {
+      const local = runtimeEnv.getLocal();
+      if (!local) {
+        return;
+      }
+
       const data = {
         history: this.history,
         currentSessionId: this.currentSessionId
       };
-      localStorage.setItem('architectAI_generationHistory', JSON.stringify(data));
-      console.log('💾 Generation history saved to localStorage');
+      local.setItem('architectAI_generationHistory', JSON.stringify(data));
+      logger.info('💾 Generation history saved to localStorage');
     } catch (error) {
-      console.error('❌ Failed to save generation history:', error);
+      logger.error('❌ Failed to save generation history:', error);
     }
   }
 
@@ -358,15 +367,20 @@ class DesignGenerationHistory {
    */
   loadFromLocalStorage() {
     try {
-      const data = localStorage.getItem('architectAI_generationHistory');
+      const local = runtimeEnv.getLocal();
+      if (!local) {
+        return;
+      }
+
+      const data = local.getItem('architectAI_generationHistory');
       if (data) {
         const parsed = JSON.parse(data);
         this.history = parsed.history || [];
         this.currentSessionId = parsed.currentSessionId || null;
-        console.log(`✅ Loaded ${this.history.length} session(s) from localStorage`);
+        logger.success(` Loaded ${this.history.length} session(s) from localStorage`);
       }
     } catch (error) {
-      console.error('❌ Failed to load generation history:', error);
+      logger.error('❌ Failed to load generation history:', error);
     }
   }
 
@@ -376,8 +390,11 @@ class DesignGenerationHistory {
   clearHistory() {
     this.history = [];
     this.currentSessionId = null;
-    localStorage.removeItem('architectAI_generationHistory');
-    console.log('🗑️  Generation history cleared');
+    const local = runtimeEnv.getLocal();
+    if (local) {
+      local.removeItem('architectAI_generationHistory');
+    }
+    logger.info('🗑️  Generation history cleared');
   }
 
   /**

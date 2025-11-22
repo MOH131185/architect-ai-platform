@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Architectural Sheet Service
  *
@@ -13,7 +15,7 @@
 
 class ArchitecturalSheetService {
   constructor() {
-    console.log('📐 Architectural Sheet Service initialized');
+    logger.info('📐 Architectural Sheet Service initialized');
 
     // A1 dimensions at 300 DPI
     this.A1_WIDTH = 9933;  // pixels (841mm at 300 DPI)
@@ -141,7 +143,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
    * This replaces the multiple separate image generations
    */
   async generateUnifiedSheet(masterDNA, projectInfo, apiService) {
-    console.log('🎨 Generating unified A1 architectural sheet...');
+    logger.info('🎨 Generating unified A1 architectural sheet...');
 
     try {
       // Generate the comprehensive prompt
@@ -158,7 +160,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
         seed: projectInfo.seed || Math.floor(Math.random() * 1000000)
       });
 
-      console.log('✅ Unified A1 sheet generated successfully');
+      logger.success(' Unified A1 sheet generated successfully');
 
       return {
         type: 'unified_sheet',
@@ -182,7 +184,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
         }
       };
     } catch (error) {
-      console.error('❌ Failed to generate unified sheet:', error);
+      logger.error('❌ Failed to generate unified sheet:', error);
       throw error;
     }
   }
@@ -193,7 +195,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
    * This would need to be implemented server-side if needed
    */
   async compositeImagesToA1Sheet(images, projectInfo) {
-    console.warn('⚠️ Canvas compositing not available in browser environment');
+    logger.warn('⚠️ Canvas compositing not available in browser environment');
     throw new Error('Canvas compositing requires server-side rendering. Use generateUnifiedSheet instead.');
   }
 
@@ -202,7 +204,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
    * DISABLED: Canvas API not available in browser
    */
   drawTitleBlock(ctx, projectInfo) {
-    console.warn('⚠️ Canvas operations not available in browser');
+    logger.warn('⚠️ Canvas operations not available in browser');
   }
 
   /**
@@ -210,7 +212,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
    * DISABLED: Canvas API not available in browser
    */
   drawGridAndAnnotations(ctx) {
-    console.warn('⚠️ Canvas operations not available in browser');
+    logger.warn('⚠️ Canvas operations not available in browser');
   }
 
   /**
@@ -400,7 +402,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
       height: Math.round(height * layout.height)
     };
 
-    console.log(`📐 Site map bbox for ${a1LayoutKey} (${width}×${height}px):`, bbox);
+    logger.info(`📐 Site map bbox for ${a1LayoutKey} (${width}×${height}px):`, bbox);
 
     return bbox;
   }
@@ -415,12 +417,12 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
    */
   async compositeSiteSnapshot(baseSheetDataUrl, siteSnapshot, bbox) {
     if (!baseSheetDataUrl || !siteSnapshot || !siteSnapshot.dataUrl) {
-      console.warn('⚠️ Missing base sheet or site snapshot, skipping compositing');
+      logger.warn('⚠️ Missing base sheet or site snapshot, skipping compositing');
       return baseSheetDataUrl;
     }
 
-    console.log('🎨 Compositing site snapshot onto A1 sheet...');
-    console.log(`   BBox: ${bbox.x}, ${bbox.y}, ${bbox.width}×${bbox.height}px`);
+    logger.info('🎨 Compositing site snapshot onto A1 sheet...');
+    logger.info(`   BBox: ${bbox.x}, ${bbox.y}, ${bbox.width}×${bbox.height}px`);
 
     return new Promise((resolve, reject) => {
       try {
@@ -494,14 +496,14 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
             // Convert to data URL
             const compositedDataUrl = canvas.toDataURL('image/png');
 
-            console.log('✅ Site snapshot composited successfully');
-            console.log(`   Output size: ${canvas.width}×${canvas.height}px`);
+            logger.success(' Site snapshot composited successfully');
+            logger.info(`   Output size: ${canvas.width}×${canvas.height}px`);
 
             resolve(compositedDataUrl);
           };
 
           siteImage.onerror = () => {
-            console.error('❌ Failed to load site snapshot image');
+            logger.error('❌ Failed to load site snapshot image');
             resolve(baseSheetDataUrl); // Return original if snapshot load fails
           };
 
@@ -509,14 +511,14 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
         };
 
         baseImage.onerror = () => {
-          console.error('❌ Failed to load base A1 sheet image');
+          logger.error('❌ Failed to load base A1 sheet image');
           reject(new Error('Failed to load base A1 sheet'));
         };
 
         baseImage.src = baseSheetDataUrl;
 
       } catch (error) {
-        console.error('❌ Error compositing site snapshot:', error);
+        logger.error('❌ Error compositing site snapshot:', error);
         resolve(baseSheetDataUrl); // Return original on error
       }
     });

@@ -17,12 +17,16 @@ import projectDNAPipeline from './projectDNAPipeline.js';
 import clipEmbeddingService from './clipEmbeddingService.js';
 import enhancedDesignDNAService from './enhancedDesignDNAService.js';
 import twoPassDNAGenerator from './twoPassDNAGenerator.js';
+import { generateGeometryDNA } from './geometryReasoningService.js';
+import { buildGeometryModel, createSceneSpec } from './geometryBuilder.js';
+import { renderGeometryPlaceholders } from './geometryRenderService.js';
 import designHistoryService from './designHistoryService.js';
 import dnaValidator from './dnaValidator.js';
 import normalizeDNA from './dnaNormalization.js';
 import { buildA1SheetPrompt, buildDisciplineA1Prompt, generateA1SheetMetadata } from './a1/A1PromptService.js';
 import { check3Dvs2DConsistency } from './bimConsistencyChecker.js';
 import { generateArchitecturalImage } from './togetherAIService.js';
+import multiModelImageService from './multiModelImageService.js';
 import imageUpscalingService from './imageUpscalingService.js';
 import reasoningOrchestrator from './reasoningOrchestrator.js';
 import a1SheetValidator from './a1/A1ValidationService.js';
@@ -1797,7 +1801,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
     const dnaValidatorInstance = overrides.dnaValidator || this.validator;
     const deriveSeedsFn = overrides.seedUtils?.derivePanelSeedsFromDNA || derivePanelSeedsFromDNA;
     const planPanelsFn = overrides.panelService?.planA1Panels || planA1Panels;
-    const generateImageFn = overrides.togetherAIService?.generateArchitecturalImage || generateArchitecturalImage;
+    const generateImageFn = overrides.togetherAIService?.generateArchitecturalImage || multiModelImageService.generateImage.bind(multiModelImageService);
     const validatePanelConsistencyFn = overrides.driftValidator?.validatePanelConsistency || validatePanelConsistency;
     const validateMultiConsistencyFn = overrides.driftValidator?.validateMultiPanelConsistency || validateMultiPanelConsistency;
     const baselineStore = overrides.baselineStore || baselineArtifactStore;
@@ -1895,6 +1899,47 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
 
       logger.success('✅ DNA validated');
 
+      // STEP 2.5: Geometry reasoning + baseline (feature-flagged)
+      let geometryRenders = null;
+      let geometryRenderMap = null;
+      let geometryDNA = null;
+      let geometryScene = null;
+
+      if (isFeatureEnabled('geometryVolumeFirst')) {
+        logger.info('🏗️  STEP 2.5: Generating geometry DNA and placeholder renders...');
+
+        try {
+          geometryDNA = generateGeometryDNA({
+            masterDNA,
+            sitePolygon: siteSnapshot?.sitePolygon || [],
+            climate: locationData?.climate,
+            style: masterDNA.architecturalStyle
+          });
+
+          const geometryModel = buildGeometryModel(geometryDNA, masterDNA);
+          geometryScene = createSceneSpec(geometryModel);
+          const rendersArray = renderGeometryPlaceholders(geometryScene, {
+            includePerspective: true,
+            includeAxon: true
+          }) || [];
+
+          geometryRenders = rendersArray;
+          geometryRenderMap = rendersArray.reduce((acc, render) => {
+            acc[render.type] = render;
+            return acc;
+          }, {});
+
+          // Attach geometry DNA to masterDNA for downstream consumers
+          masterDNA.geometry = geometryDNA;
+
+          logger.success('✅ Geometry DNA and placeholder renders generated', {
+            renders: rendersArray.length
+          });
+        } catch (renderError) {
+          logger.warn('⚠️  Geometry pass failed, continuing without geometry baselines:', renderError.message);
+        }
+      }
+
       // STEP 3: Derive panel seeds from DNA hash
       logger.info('🔢 STEP 3: Deriving panel seeds from DNA...');
       const panelSequence = panelTypesOverride || [
@@ -1920,7 +1965,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         programSpaces: projectContext?.programSpaces || [],
         baseSeed: effectiveBaseSeed,
         climate: locationData?.climate,
-        locationData: locationData
+        locationData: locationData,
+        geometryRenders: geometryRenderMap,
+        geometryDNA
       });
 
       const floorCount = masterDNA?.dimensions?.floors || 2;
@@ -1938,6 +1985,20 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         logger.info(`   Generating panel ${i + 1}/${panelJobs.length}: ${job.type}...`);
 
         try {
+          // Check if we have a geometry render for this panel type
+          let geometryRender = null;
+          if (geometryRenderMap && job.type.includes('elevation')) {
+            const direction = job.type.includes('north') ? 'north'
+              : job.type.includes('south') ? 'south'
+              : job.type.includes('east') ? 'east'
+              : 'west';
+            geometryRender = geometryRenderMap[`orthographic_${direction}`];
+          } else if (geometryRenderMap && job.type === 'hero_3d') {
+            geometryRender = geometryRenderMap.perspective_hero;
+          } else if (geometryRenderMap && job.type === 'axonometric_3d') {
+            geometryRender = geometryRenderMap.axonometric;
+          }
+
           const result = await generateImageFn({
             viewType: job.type,
             prompt: job.prompt,
@@ -1945,7 +2006,10 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             width: job.width,
             height: job.height,
             seed: job.seed,
-            designDNA: masterDNA
+            designDNA: masterDNA,
+            geometryDNA,
+            geometryRender, // Pass geometry render if available
+            geometryStrength: job.meta?.geometryStrength || 0.6 // Moderate influence - allow AI to add details
           });
 
           generatedPanels.push({
@@ -1958,10 +2022,14 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             width: result.metadata?.width || job.width,
             height: result.metadata?.height || job.height,
             dnaSnapshot: job.dnaSnapshot,
-            meta: job.meta
+            meta: {
+              ...job.meta,
+              hadGeometryControl: !!geometryRender,
+              model: result.model || 'flux'
+            }
           });
 
-          logger.success(`   ✅ Generated ${job.type}`);
+          logger.success(`   ✅ Generated ${job.type}${result.hadFallback ? ' (SDXL fallback)' : ''}`);
 
           // Rate limiting delay (20 seconds between panels to avoid 429s)
           if (i < panelJobs.length - 1) {
@@ -2120,6 +2188,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         baselineImageUrl: compositionResult.composedSheetUrl,
         siteSnapshotUrl: siteSnapshot?.dataUrl || null,
         baselineDNA: masterDNA,
+        geometryBaseline: geometryDNA ? {
+          geometryDNA,
+          renders: geometryRenders,
+          scene: geometryScene
+        } : null,
         baselineLayout: {
           panelCoordinates: Object.values(compositionResult.coordinates),
           layoutKey: 'uk-riba-standard',
@@ -2136,10 +2209,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           height: compositionResult.metadata.height,
           a1LayoutKey: 'uk-riba-standard',
           generatedAt: new Date().toISOString(),
-          workflow: 'multi-panel-a1',
+          workflow: geometryDNA ? 'geometry-volume-first' : 'multi-panel-a1',
           consistencyScore: consistencyReport.consistencyScore,
           panelCount: generatedPanels.length,
-          panelValidations
+          panelValidations,
+          hasGeometryControl: !!geometryDNA
         },
         seeds: {
           base: effectiveBaseSeed,
@@ -2163,6 +2237,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       await historyService.createDesign({
         designId,
         masterDNA,
+        geometryDNA: geometryDNA || masterDNA.geometry || null,
+        geometryRenders: geometryRenders,
         mainPrompt: 'Multi-panel A1 generation',
         seed: effectiveBaseSeed,
         seedsByView: panelSeeds,
@@ -2196,6 +2272,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         panelMap: panelsMap,
         composedSheetUrl: compositionResult.composedSheetUrl,
         coordinates: compositionResult.coordinates,
+        geometryDNA: geometryDNA || masterDNA.geometry || null,
+        geometryRenders: geometryRenders,
+        geometryScene,
         consistencyReport,
         baselineBundle,
         seeds: {
@@ -2204,7 +2283,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         },
         panelValidations,
         metadata: {
-          workflow: 'multi-panel-a1',
+          workflow: geometryDNA ? 'geometry-volume-first' : 'multi-panel-a1',
           panelCount: generatedPanels.length,
           consistencyScore: consistencyReport.consistencyScore,
           generatedAt: new Date().toISOString(),

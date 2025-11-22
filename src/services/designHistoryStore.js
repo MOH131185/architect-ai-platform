@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Design History Store
  * IndexedDB wrapper for storing design history with full project runs
@@ -62,7 +64,7 @@ export async function getProject(designId) {
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
-    console.error('❌ Failed to get project:', error);
+    logger.error('❌ Failed to get project:', error);
     return null;
   }
 }
@@ -120,10 +122,10 @@ export async function saveBase(projectData) {
       request.onerror = () => reject(request.error);
     });
 
-    console.log(`✅ Saved base project: ${designId}`);
+    logger.info(`✅ Saved base project: ${designId}`);
     return project;
   } catch (error) {
-    console.error('❌ Failed to save base project:', error);
+    logger.error('❌ Failed to save base project:', error);
     throw error;
   }
 }
@@ -174,10 +176,10 @@ export async function appendRun(designId, runData) {
       request.onerror = () => reject(request.error);
     });
 
-    console.log(`✅ Appended run ${runId} to project ${designId}`);
+    logger.info(`✅ Appended run ${runId} to project ${designId}`);
     return run;
   } catch (error) {
-    console.error('❌ Failed to append run:', error);
+    logger.error('❌ Failed to append run:', error);
     throw error;
   }
 }
@@ -211,7 +213,7 @@ export async function getLatestStable(designId) {
       timestamp: project.createdAt
     };
   } catch (error) {
-    console.error('❌ Failed to get latest stable:', error);
+    logger.error('❌ Failed to get latest stable:', error);
     return null;
   }
 }
@@ -228,7 +230,7 @@ export async function listRuns(designId) {
 
     return project.runs || [];
   } catch (error) {
-    console.error('❌ Failed to list runs:', error);
+    logger.error('❌ Failed to list runs:', error);
     return [];
   }
 }
@@ -260,7 +262,7 @@ export async function buildAIContext(designId) {
 
     return context;
   } catch (error) {
-    console.error('❌ Failed to build AI context:', error);
+    logger.error('❌ Failed to build AI context:', error);
     return null;
   }
 }
@@ -280,7 +282,7 @@ export async function getAllProjects() {
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
-    console.error('❌ Failed to get all projects:', error);
+    logger.error('❌ Failed to get all projects:', error);
     return [];
   }
 }
@@ -300,10 +302,10 @@ export async function deleteProject(designId) {
       request.onerror = () => reject(request.error);
     });
 
-    console.log(`🗑️ Deleted project: ${designId}`);
+    logger.info(`🗑️ Deleted project: ${designId}`);
     return true;
   } catch (error) {
-    console.error('❌ Failed to delete project:', error);
+    logger.error('❌ Failed to delete project:', error);
     throw error;
   }
 }

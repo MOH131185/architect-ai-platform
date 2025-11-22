@@ -59,15 +59,47 @@ async function testA1ModifyWorkflow() {
       a1Sheet: {
         url: 'https://example.com/baseline-a1-sheet.png',
         seed: testConfig.seed,
-        qualityScore: 95
+        qualityScore: 95,
+        metadata: {
+          templateCompleteness: 100,
+          dnaConsistency: 92
+        }
       },
       masterDNA: {
-        dimensions: { length: 15, width: 10, height: 7 },
+        dimensions: { length: 15, width: 10, height: 7, floorCount: 2 },
         architecturalStyle: 'Modern',
         materials: [
           { name: 'Brick', hexColor: '#B8604E' },
           { name: 'Concrete', hexColor: '#8B7D6B' }
-        ]
+        ],
+        massing: {
+          buildingForm: 'linear',
+          footprintShape: 'rectangular',
+          wings: 'single-bar'
+        },
+        styleWeights: {
+          local: 0.9,
+          portfolio: 0.1,
+          localStyle: 'British Contemporary',
+          dominantInfluence: 'local'
+        },
+        materialPriority: {
+          primary: 'Brick',
+          secondary: 'Glass',
+          weightedSelection: '90% local, 10% portfolio'
+        }
+      },
+      templateValidation: {
+        valid: true,
+        score: 100,
+        missingMandatory: [],
+        missingRecommended: []
+      },
+      dnaConsistencyReport: {
+        score: 92,
+        consistent: true,
+        issues: [],
+        warnings: []
       }
     };
 
@@ -75,6 +107,36 @@ async function testA1ModifyWorkflow() {
       'Baseline A1 sheet generation',
       baselineResult.success && baselineResult.a1Sheet.seed === testConfig.seed,
       `Seed: ${baselineResult.a1Sheet.seed}, Quality: ${baselineResult.a1Sheet.qualityScore}%`
+    );
+
+    // TEST 1.5: Validate Template Completeness
+    console.log('\n📐 TEST 1.5: Validate template completeness...');
+    
+    logTest(
+      'Template validation present',
+      baselineResult.templateValidation !== undefined,
+      `Score: ${baselineResult.templateValidation?.score}%`
+    );
+
+    logTest(
+      'Template validation passed',
+      baselineResult.templateValidation?.valid === true,
+      `Missing mandatory: ${baselineResult.templateValidation?.missingMandatory?.length || 0}`
+    );
+
+    // TEST 1.6: Validate DNA Consistency
+    console.log('\n📐 TEST 1.6: Validate DNA consistency...');
+    
+    logTest(
+      'DNA consistency check present',
+      baselineResult.dnaConsistencyReport !== undefined,
+      `Score: ${baselineResult.dnaConsistencyReport?.score}%`
+    );
+
+    logTest(
+      'DNA consistency acceptable',
+      baselineResult.dnaConsistencyReport?.consistent === true,
+      `Issues: ${baselineResult.dnaConsistencyReport?.issues?.length || 0}`
     );
 
     // TEST 2: Save to Design History

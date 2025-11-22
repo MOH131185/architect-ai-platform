@@ -36,6 +36,16 @@ export const FEATURE_FLAGS = {
   geometryFirst: false,
 
   /**
+   * Geometry Volume Agent (EXPERIMENTAL)
+   *
+   * When enabled:
+   * - Runs geometry/volume DNA reasoning
+   * - Persists geometry baselines and renders
+   * - Threads geometry into panel prompts (future steps)
+   */
+  geometryVolumeFirst: false,
+
+  /**
    * Hybrid A1 Sheet Mode (EXPERIMENTAL)
    *
    * When enabled:
@@ -187,7 +197,29 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default true
    */
-  twoPassDNA: true
+  twoPassDNA: true,
+
+  /**
+   * Geometry Volume First (3D MASSING AGENT)
+   *
+   * When enabled:
+   * - Pass C: Generate 3D volume specification after DNA
+   * - Uses Qwen2.5-72B to reason about building massing
+   * - Generates neutral geometry renders (elevations, axonometric, perspective)
+   * - FLUX/SDXL use geometry renders as control images
+   * - Ensures single coherent project (no mixed roof types)
+   * - Modify workflow preserves 3D volume for appearance changes
+   *
+   * When disabled (default):
+   * - Skips geometry reasoning and renders
+   * - FLUX/SDXL generate from prompts only
+   *
+   * @type {boolean}
+   * @default false
+   *
+   * NOTE: This flag is defined above at line 46. Do not duplicate.
+   */
+  // geometryVolumeFirst: false // ❌ REMOVED - Duplicate of line 46
 };
 
 /**
@@ -260,8 +292,9 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useModelRouter = true;
   FEATURE_FLAGS.showConsistencyWarnings = true;
   FEATURE_FLAGS.twoPassDNA = true;
+  FEATURE_FLAGS.geometryVolumeFirst = false;
 
-  logger.info('Feature flags reset to defaults (ModelRouter enabled, consistency warnings enabled, two-pass DNA enabled)');
+  logger.info('Feature flags reset to defaults (ModelRouter enabled, consistency warnings enabled, two-pass DNA enabled, geometry volume disabled)');
 }
 
 /**

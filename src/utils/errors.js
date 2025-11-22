@@ -5,7 +5,7 @@
  * Includes specialized error types for API, validation, and generation failures.
  */
 
-import logger from './logger';
+import logger from './logger.js';
 
 // Base error class with additional context
 class BaseError extends Error {

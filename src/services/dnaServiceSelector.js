@@ -4,6 +4,8 @@
  */
 
 import dnaCache from '../utils/dnaCache.js';
+import logger from '../utils/logger.js';
+
 
 class DNAServiceSelector {
   /**
@@ -12,17 +14,17 @@ class DNAServiceSelector {
   selectService(requirements) {
     // Dynamic import will be handled in generateDNA
     if (requirements.consistency === 'maximum') {
-      console.log('📊 Selected: Enhanced Design DNA Service (Maximum Consistency)');
+      logger.info('📊 Selected: Enhanced Design DNA Service (Maximum Consistency)');
       return 'enhancedDesignDNAService';
     }
     // Use enhancedDNAGenerator for detailed specifications
     else if (requirements.detail === 'ultra') {
-      console.log('🔬 Selected: Enhanced DNA Generator (Ultra Detail)');
+      logger.info('🔬 Selected: Enhanced DNA Generator (Ultra Detail)');
       return 'enhancedDNAGenerator';
     }
     // Default to basic for speed
     else {
-      console.log('⚡ Selected: Design DNA Generator (Fast Generation)');
+      logger.info('⚡ Selected: Design DNA Generator (Fast Generation)');
       return 'designDNAGenerator';
     }
   }
@@ -34,7 +36,7 @@ class DNAServiceSelector {
     // Check cache first
     const cachedDNA = dnaCache.get(projectContext);
     if (cachedDNA) {
-      console.log('🚀 Using cached DNA - skipping regeneration');
+      logger.info('🚀 Using cached DNA - skipping regeneration');
       return cachedDNA;
     }
 
@@ -55,7 +57,7 @@ class DNAServiceSelector {
           service = (await import('./designDNAGenerator')).default;
       }
 
-      console.log(`🧬 Using ${serviceName} for DNA generation`);
+      logger.info(`🧬 Using ${serviceName} for DNA generation`);
 
       // Call the appropriate method based on service
       let generatedDNA;
@@ -78,8 +80,8 @@ class DNAServiceSelector {
 
       return generatedDNA;
     } catch (error) {
-      console.error('❌ DNA generation failed:', error);
-      console.log('🔄 Using fallback DNA generation');
+      logger.error('❌ DNA generation failed:', error);
+      logger.info('🔄 Using fallback DNA generation');
       return this.generateFallbackDNA(projectContext);
     }
   }
@@ -112,7 +114,7 @@ class DNAServiceSelector {
       requirements.detail = 'ultra';
     }
 
-    console.log('📋 Project Requirements Analysis:', requirements);
+    logger.info('📋 Project Requirements Analysis:', requirements);
     return requirements;
   }
 

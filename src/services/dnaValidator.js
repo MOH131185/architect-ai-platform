@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Design DNA Validator Service
  * Validates building DNA specifications before image generation
@@ -6,7 +8,7 @@
 
 class DNAValidatorService {
   constructor() {
-    console.log('🧬 DNA Validator Service initialized');
+    logger.info('🧬 DNA Validator Service initialized');
   }
 
   /**
@@ -15,7 +17,7 @@ class DNAValidatorService {
    * @returns {Object} Validation result with errors and warnings
    */
   validateDesignDNA(designDNA) {
-    console.log('🔍 Validating Design DNA...');
+    logger.info('🔍 Validating Design DNA...');
 
     const errors = [];
     const warnings = [];
@@ -45,23 +47,32 @@ class DNAValidatorService {
     // 7. Validate window configuration
     this.validateWindows(designDNA.windows, errors, warnings);
 
-    // 8. Cross-validate related fields
+    // 8. Validate style weights (portfolio vs local)
+    this.validateStyleWeights(designDNA.styleWeights, errors, warnings);
+
+    // 9. Validate material priority
+    this.validateMaterialPriority(designDNA.materialPriority, errors, warnings);
+
+    // 10. Validate climate-responsive design
+    this.validateClimateDesign(designDNA.climateDesign, errors, warnings);
+
+    // 11. Cross-validate related fields
     this.crossValidate(designDNA, errors, warnings, suggestions);
 
     const isValid = errors.length === 0;
 
-    console.log(`✅ DNA Validation complete: ${isValid ? 'VALID' : 'INVALID'}`);
+    logger.info(`✅ DNA Validation complete: ${isValid ? 'VALID' : 'INVALID'}`);
     if (errors.length > 0) {
-      console.log(`   ❌ Errors: ${errors.length}`);
-      errors.forEach(e => console.log(`      - ${e}`));
+      logger.info(`   ❌ Errors: ${errors.length}`);
+      errors.forEach(e => logger.info(`      - ${e}`));
     }
     if (warnings.length > 0) {
-      console.log(`   ⚠️  Warnings: ${warnings.length}`);
-      warnings.forEach(w => console.log(`      - ${w}`));
+      logger.info(`   ⚠️  Warnings: ${warnings.length}`);
+      warnings.forEach(w => logger.info(`      - ${w}`));
     }
     if (suggestions.length > 0) {
-      console.log(`   💡 Suggestions: ${suggestions.length}`);
-      suggestions.forEach(s => console.log(`      - ${s}`));
+      logger.info(`   💡 Suggestions: ${suggestions.length}`);
+      suggestions.forEach(s => logger.info(`      - ${s}`));
     }
 
     return {
@@ -145,6 +156,53 @@ class DNAValidatorService {
       return;
     }
 
+    // Handle array format (new DNA structure)
+    if (Array.isArray(materials)) {
+      if (materials.length === 0) {
+        warnings.push('No materials specified');
+        return;
+      }
+
+      if (materials.length > 5) {
+        warnings.push(`Too many materials (${materials.length}), may cause visual confusion`);
+      }
+
+      // Validate each material has required fields
+      materials.forEach((mat, idx) => {
+        if (!mat.name) {
+          errors.push(`Material ${idx} missing name`);
+        }
+        if (!mat.hexColor) {
+          warnings.push(`Material ${idx} (${mat.name || 'unnamed'}) missing hex color`);
+        } else {
+          // Validate hex color format
+          if (!/^#[0-9A-Fa-f]{6}$/.test(mat.hexColor)) {
+            errors.push(`Material ${idx} (${mat.name}) has invalid hex color: ${mat.hexColor}`);
+          }
+        }
+        if (!mat.application) {
+          warnings.push(`Material ${idx} (${mat.name || 'unnamed'}) missing application (e.g., 'exterior walls', 'roof')`);
+        }
+      });
+
+      // Check material types
+      const hasGlass = materials.some(m => m.name?.toLowerCase().includes('glass'));
+      const hasConcrete = materials.some(m => m.name?.toLowerCase().includes('concrete'));
+      const hasWood = materials.some(m => m.name?.toLowerCase().includes('wood') || m.name?.toLowerCase().includes('timber'));
+      const hasBrick = materials.some(m => m.name?.toLowerCase().includes('brick'));
+
+      if (hasGlass && materials.length === 1) {
+        warnings.push('Building entirely in glass may not be realistic');
+      }
+
+      if (hasWood && hasConcrete && !hasBrick) {
+        warnings.push('Wood and concrete combination may need transitional materials');
+      }
+
+      return;
+    }
+
+    // Handle string format (legacy)
     const materialString = typeof materials === 'string' ? materials : materials.toString();
     const materialList = materialString.split(',').map(m => m.trim());
 
@@ -621,7 +679,7 @@ class DNAValidatorService {
    * Auto-fix common DNA issues
    */
   autoFixDesignDNA(designDNA) {
-    console.log('🔧 Attempting to auto-fix Design DNA issues...');
+    logger.info('🔧 Attempting to auto-fix Design DNA issues...');
 
     const fixed = JSON.parse(JSON.stringify(designDNA)); // Deep clone
 
@@ -697,11 +755,135 @@ class DNAValidatorService {
     const validation = this.validateDesignDNA(fixed);
 
     if (validation.isValid) {
-      console.log('✅ Design DNA auto-fixed successfully');
+      logger.info('✅ Design DNA auto-fixed successfully');
       return fixed;
     } else {
-      console.log('⚠️  Auto-fix incomplete, manual intervention needed');
+      logger.info('⚠️  Auto-fix incomplete, manual intervention needed');
       return null;
+    }
+  }
+
+  /**
+   * Validate style weights (portfolio vs local)
+   */
+  validateStyleWeights(styleWeights, errors, warnings) {
+    if (!styleWeights) {
+      // Optional field, no warning needed
+      return;
+    }
+
+    // Check that weights are valid percentages
+    if (styleWeights.local !== undefined) {
+      const local = parseFloat(styleWeights.local);
+      if (isNaN(local) || local < 0 || local > 1) {
+        errors.push(`Invalid local style weight: ${styleWeights.local} (must be 0-1)`);
+      }
+    }
+
+    if (styleWeights.portfolio !== undefined) {
+      const portfolio = parseFloat(styleWeights.portfolio);
+      if (isNaN(portfolio) || portfolio < 0 || portfolio > 1) {
+        errors.push(`Invalid portfolio style weight: ${styleWeights.portfolio} (must be 0-1)`);
+      }
+    }
+
+    // Check that weights sum to approximately 1
+    if (styleWeights.local !== undefined && styleWeights.portfolio !== undefined) {
+      const sum = parseFloat(styleWeights.local) + parseFloat(styleWeights.portfolio);
+      if (Math.abs(sum - 1.0) > 0.01) {
+        warnings.push(`Style weights don't sum to 1.0: local ${styleWeights.local} + portfolio ${styleWeights.portfolio} = ${sum.toFixed(2)}`);
+      }
+    }
+
+    // Validate style names
+    if (!styleWeights.localStyle || !styleWeights.portfolioStyle) {
+      warnings.push('Style names (localStyle, portfolioStyle) should be specified');
+    }
+  }
+
+  /**
+   * Validate material priority
+   */
+  validateMaterialPriority(materialPriority, errors, warnings) {
+    if (!materialPriority) {
+      // Optional field, no warning needed
+      return;
+    }
+
+    // Check that primary, secondary, accent are specified
+    if (!materialPriority.primary) {
+      warnings.push('Primary material not specified in materialPriority');
+    }
+
+    if (!materialPriority.secondary) {
+      warnings.push('Secondary material not specified in materialPriority');
+    }
+
+    // Check for hex colors in material arrays
+    if (materialPriority.localMaterialsUsed && Array.isArray(materialPriority.localMaterialsUsed)) {
+      // Validate that materials are strings
+      materialPriority.localMaterialsUsed.forEach((mat, idx) => {
+        if (typeof mat !== 'string' && !mat.name) {
+          warnings.push(`Local material ${idx} should be a string or have a name property`);
+        }
+      });
+    }
+  }
+
+  /**
+   * Validate climate-responsive design features
+   */
+  validateClimateDesign(climateDesign, errors, warnings) {
+    if (!climateDesign) {
+      // Optional field, no warning needed
+      return;
+    }
+
+    // Validate thermal strategy
+    if (climateDesign.thermal) {
+      const validStrategies = ['passive', 'active', 'hybrid', 'natural ventilation', 'mechanical'];
+      if (climateDesign.thermal.strategy && !validStrategies.some(s => climateDesign.thermal.strategy.toLowerCase().includes(s))) {
+        warnings.push(`Unusual thermal strategy: ${climateDesign.thermal.strategy}`);
+      }
+
+      // Check U-values are realistic
+      if (climateDesign.thermal.uValues) {
+        const uVals = climateDesign.thermal.uValues;
+        if (uVals.wall !== undefined) {
+          const wallU = parseFloat(uVals.wall);
+          if (isNaN(wallU) || wallU < 0.1 || wallU > 2.0) {
+            errors.push(`Unrealistic wall U-value: ${uVals.wall} W/m²K (typical range: 0.15-0.35)`);
+          }
+        }
+        if (uVals.roof !== undefined) {
+          const roofU = parseFloat(uVals.roof);
+          if (isNaN(roofU) || roofU < 0.08 || roofU > 1.5) {
+            errors.push(`Unrealistic roof U-value: ${uVals.roof} W/m²K (typical range: 0.11-0.25)`);
+          }
+        }
+        if (uVals.glazing !== undefined) {
+          const glazingU = parseFloat(uVals.glazing);
+          if (isNaN(glazingU) || glazingU < 0.5 || glazingU > 5.0) {
+            errors.push(`Unrealistic glazing U-value: ${uVals.glazing} W/m²K (typical range: 0.8-2.0)`);
+          }
+        }
+      }
+    }
+
+    // Validate shading features
+    if (climateDesign.shading) {
+      const validShadingTypes = ['overhangs', 'louvers', 'brise-soleil', 'fins', 'screens', 'none'];
+      if (climateDesign.shading.type && !validShadingTypes.includes(climateDesign.shading.type.toLowerCase())) {
+        warnings.push(`Unusual shading type: ${climateDesign.shading.type}`);
+      }
+    }
+
+    // Validate ventilation strategy
+    if (climateDesign.ventilation) {
+      const validVentTypes = ['natural', 'mechanical', 'hybrid', 'cross-ventilation', 'stack'];
+      if (climateDesign.ventilation.type && !validVentTypes.some(v => climateDesign.ventilation.type.toLowerCase().includes(v))) {
+        warnings.push(`Unusual ventilation type: ${climateDesign.ventilation.type}`);
+      }
     }
   }
 }

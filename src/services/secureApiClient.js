@@ -8,8 +8,8 @@
  * by routing them through the backend proxy endpoints.
  */
 
-import logger from '../utils/logger';
-import { APIError, NetworkError, RateLimitError } from '../utils/errors';
+import logger from '../utils/logger.js';
+import { APIError, NetworkError, RateLimitError } from '../utils/errors.js';
 
 class SecureApiClient {
   constructor() {

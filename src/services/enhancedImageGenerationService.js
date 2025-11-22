@@ -4,7 +4,9 @@
  * Combines GPT-4o reasoning with specialized image models
  */
 
-import togetherAIReasoningService from './togetherAIReasoningService';
+import togetherAIReasoningService from './togetherAIReasoningService.js';
+import logger from '../utils/logger.js';
+
 
 const API_BASE_URL = process.env.REACT_APP_API_PROXY_URL || 'http://localhost:3001';
 
@@ -28,7 +30,7 @@ class EnhancedImageGenerationService {
     // Create style token for consistency
     this.consistencyToken = `${this.architecturalDNA.style}_${this.architecturalDNA.materials.join('-')}_seed${this.masterSeed}`;
 
-    console.log('🧬 Architectural DNA initialized:', this.architecturalDNA);
+    logger.info('🧬 Architectural DNA initialized:', this.architecturalDNA);
     return this.architecturalDNA;
   }
 
@@ -79,7 +81,7 @@ Generate a JSON response with:
 
       return JSON.parse(response);
     } catch (error) {
-      console.error('Error generating architectural DNA:', error);
+      logger.error('Error generating architectural DNA:', error);
       return this.getDefaultArchitecturalDNA();
     }
   }
@@ -117,7 +119,7 @@ Generate a JSON response with:
         }
       };
     } catch (error) {
-      console.error('Error generating 2D blueprint:', error);
+      logger.error('Error generating 2D blueprint:', error);
       return this.getFallbackBlueprint(floorNumber);
     }
   }
@@ -155,7 +157,7 @@ Generate a JSON response with:
         }
       };
     } catch (error) {
-      console.error(`Error generating 3D ${viewType}:`, error);
+      logger.error(`Error generating 3D ${viewType}:`, error);
       return this.getFallback3DView(viewType);
     }
   }
@@ -194,7 +196,7 @@ Generate a JSON response with:
         }
       };
     } catch (error) {
-      console.error(`Error generating ${drawingType} ${direction}:`, error);
+      logger.error(`Error generating ${drawingType} ${direction}:`, error);
       return this.getFallbackTechnicalDrawing(drawingType, direction);
     }
   }
@@ -295,7 +297,7 @@ Generate a JSON response with:
    * Generate complete architectural package
    */
   async generateCompletePackage(location, specifications, portfolio) {
-    console.log('🏗️ Starting enhanced architectural generation...');
+    logger.info('🏗️ Starting enhanced architectural generation...');
 
     // Initialize consistency
     await this.initializeConsistency(location, specifications, portfolio);
@@ -313,7 +315,7 @@ Generate a JSON response with:
 
     try {
       // 1. Generate 2D Blueprints
-      console.log('📐 Generating 2D blueprints...');
+      logger.info('📐 Generating 2D blueprints...');
       const floors = specifications.floors || 2;
       for (let i = 0; i < floors; i++) {
         const blueprint = await this.generate2DBlueprint(i);
@@ -325,7 +327,7 @@ Generate a JSON response with:
       const referenceBlueprint = results.blueprints[0]?.url;
 
       // 2. Generate 3D Views
-      console.log('🏠 Generating 3D views...');
+      logger.info('🏠 Generating 3D views...');
       const viewTypes = ['exterior', 'interior', 'axonometric', 'birds_eye'];
       for (const viewType of viewTypes) {
         const view3D = await this.generate3DView(viewType, referenceBlueprint);
@@ -334,7 +336,7 @@ Generate a JSON response with:
       }
 
       // 3. Generate Technical Drawings
-      console.log('📏 Generating technical drawings...');
+      logger.info('📏 Generating technical drawings...');
       const elevations = ['north', 'south', 'east', 'west'];
       for (const direction of elevations) {
         const elevation = await this.generateTechnicalDrawing('elevation', direction);
@@ -350,11 +352,11 @@ Generate a JSON response with:
         await this.delay(2000);
       }
 
-      console.log('✅ Enhanced generation complete!');
+      logger.success(' Enhanced generation complete!');
       return results;
 
     } catch (error) {
-      console.error('Error in complete package generation:', error);
+      logger.error('Error in complete package generation:', error);
       return this.getFallbackPackage();
     }
   }

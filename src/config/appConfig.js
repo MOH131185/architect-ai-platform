@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Application Configuration
  *
@@ -120,11 +122,6 @@ const API_KEY_CONFIG = {
  * Feature flag configuration
  */
 const FEATURE_FLAG_CONFIG = {
-  USE_CONTROLNET_WORKFLOW: {
-    envVar: 'REACT_APP_USE_CONTROLNET_WORKFLOW',
-    defaultValue: false,
-    description: 'Enable ControlNet-based multi-view generation'
-  },
   USE_TOGETHER: {
     envVar: 'REACT_APP_USE_TOGETHER',
     defaultValue: false,
@@ -251,8 +248,8 @@ function initializeConfig() {
 
   // Throw on errors (in production and development)
   if (validationErrors.length > 0) {
-    console.error('❌ Configuration Errors:');
-    validationErrors.forEach((error) => console.error(`  - ${error}`));
+    logger.error('❌ Configuration Errors:');
+    validationErrors.forEach((error) => logger.error(`  - ${error}`));
 
     if (IS_PROD || IS_DEV) {
       throw new Error(
@@ -263,10 +260,10 @@ function initializeConfig() {
 
   // Log successful initialization in dev mode
   if (IS_DEV) {
-    console.log('✅ Application configuration initialized successfully');
-    console.log(`   Environment: ${ENV}`);
-    console.log(`   API Keys loaded: ${Object.keys(apiKeysCache).length}`);
-    console.log(`   Feature Flags: ${JSON.stringify(featureFlagsCache, null, 2)}`);
+    logger.info('✅ Application configuration initialized successfully');
+    logger.info(`   Environment: ${ENV}`);
+    logger.info(`   API Keys loaded: ${Object.keys(apiKeysCache).length}`);
+    logger.info(`   Feature Flags: ${JSON.stringify(featureFlagsCache, null, 2)}`);
   }
 }
 

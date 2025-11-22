@@ -10,8 +10,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import designHistoryService from '../services/designHistoryService';
-import aiIntegrationService from '../services/aiIntegrationService';
+import designHistoryService from '../services/designHistoryService.js';
+import aiIntegrationService from '../services/aiIntegrationService.js';
 
 // ============================================================================
 // STEP 1: Add state variable to track current project

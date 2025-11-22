@@ -5,7 +5,10 @@
  * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-import secureApiClient from './secureApiClient';
+import secureApiClient from './secureApiClient.js';
+import runtimeEnv from '../utils/runtimeEnv.js';
+import logger from '../utils/logger.js';
+
 
 const OPENAI_API_URL = process.env.NODE_ENV === 'production'
   ? '/api/openai-chat'
@@ -45,7 +48,7 @@ class OpenAIService {
       return this.parseDesignReasoning(data.choices[0].message.content, projectContext);
 
     } catch (error) {
-      console.error('OpenAI API error:', error);
+      logger.error('OpenAI API error:', error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -188,7 +191,7 @@ IMPORTANT: Ensure your response is valid JSON and includes all requested section
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.warn('Could not parse JSON from OpenAI response, using text format');
+      logger.warn('Could not parse JSON from OpenAI response, using text format');
     }
 
     // Fallback to structured text response
@@ -318,7 +321,7 @@ Format as structured analysis with specific recommendations.
       return this.parseFeasibilityAnalysis(data.choices[0].message.content);
 
     } catch (error) {
-      console.error('Feasibility analysis error:', error);
+      logger.error('Feasibility analysis error:', error);
       return {
         feasibility: 'Unknown',
         constraints: ['Analysis unavailable'],
@@ -371,7 +374,7 @@ Format as structured analysis with specific recommendations.
 
       return await response.json();
     } catch (error) {
-      console.error('OpenAI chat completion error:', error);
+      logger.error('OpenAI chat completion error:', error);
       throw error;
     }
   }
@@ -383,7 +386,7 @@ Format as structured analysis with specific recommendations.
    */
   async summarizeDesignContext(projectRequirements) {
     try {
-      console.log('🎨 Creating Design Context with GPT-4 for consistency...');
+      logger.info('🎨 Creating Design Context with GPT-4 for consistency...');
 
       const {
         buildingProgram = 'residential building',
@@ -436,17 +439,19 @@ Be specific and descriptive. This context will be used to generate ALL architect
 
       const designContext = JSON.parse(response.choices[0].message.content);
 
-      console.log('✅ Design Context created:', designContext);
+      logger.info('✅ Design Context created:', designContext);
 
-      // Store in localStorage for persistence
-      const sessionId = Date.now().toString();
-      localStorage.setItem('designSessionId', sessionId);
-      localStorage.setItem(`designContext_${sessionId}`, JSON.stringify(designContext));
+      const local = runtimeEnv.getLocal();
+      if (local) {
+        const sessionId = Date.now().toString();
+        local.setItem('designSessionId', sessionId);
+        local.setItem(`designContext_${sessionId}`, JSON.stringify(designContext));
+      }
 
       return designContext;
 
     } catch (error) {
-      console.error('❌ Design Context creation failed:', error);
+      logger.error('❌ Design Context creation failed:', error);
 
       // Fallback to basic context
       return {
@@ -477,7 +482,7 @@ Be specific and descriptive. This context will be used to generate ALL architect
         ? `http://localhost:3001/api/proxy/image?url=${encodeURIComponent(imageUrl)}`
         : `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
 
-      console.log(`   Fetching via proxy: ${isDev ? 'dev' : 'prod'}`);
+      logger.info(`   Fetching via proxy: ${isDev ? 'dev' : 'prod'}`);
 
       // Fetch image via proxy
       const response = await fetch(proxyUrl);
@@ -505,7 +510,7 @@ Be specific and descriptive. This context will be used to generate ALL architect
 
           // Convert to base64 data URL with high compression (0.5 quality)
           const dataURL = canvas.toDataURL('image/jpeg', 0.5);
-          console.log(`   📦 Base64 size: ${(dataURL.length / 1024).toFixed(1)} KB`);
+          logger.info(`   📦 Base64 size: ${(dataURL.length / 1024).toFixed(1)} KB`);
           resolve(dataURL);
         };
 
@@ -514,7 +519,7 @@ Be specific and descriptive. This context will be used to generate ALL architect
       });
 
     } catch (error) {
-      console.error(`   ❌ Image to data URL conversion failed:`, error.message);
+      logger.error(`   ❌ Image to data URL conversion failed:`, error.message);
       throw error;
     }
   }
@@ -527,7 +532,7 @@ Be specific and descriptive. This context will be used to generate ALL architect
    */
   async classifyView(imageUrl, expectedView) {
     try {
-      console.log(`🔍 Classifying view: expected ${expectedView}`);
+      logger.info(`🔍 Classifying view: expected ${expectedView}`);
 
       // Convert Azure DALL·E URLs and Midjourney URLs to base64 data URLs to avoid timeout issues
       let finalImageUrl = imageUrl;
@@ -535,12 +540,12 @@ Be specific and descriptive. This context will be used to generate ALL architect
           imageUrl.includes('maginary.ai') ||
           imageUrl.includes('midjourney') ||
           imageUrl.includes('cdn.discordapp.com')) { // Midjourney often uses Discord CDN
-        console.log(`   Converting image URL to base64 via proxy...`);
+        logger.info(`   Converting image URL to base64 via proxy...`);
         try {
           finalImageUrl = await this.imageUrlToDataURL(imageUrl);
-          console.log(`   ✅ Converted to base64 data URL (${finalImageUrl.length} chars)`);
+          logger.info(`   ✅ Converted to base64 data URL (${finalImageUrl.length} chars)`);
         } catch (conversionError) {
-          console.warn(`   ⚠️  Conversion failed, using original URL:`, conversionError.message);
+          logger.warn(`   ⚠️  Conversion failed, using original URL:`, conversionError.message);
           // Fall back to original URL if conversion fails
         }
       }
@@ -586,12 +591,12 @@ Return JSON:
 
       const classification = JSON.parse(response.choices[0].message.content);
 
-      console.log(`✅ Classification: ${classification.actualView} (${classification.confidence * 100}% confident)`);
+      logger.success(` Classification: ${classification.actualView} (${classification.confidence * 100}% confident)`);
 
       return classification;
 
     } catch (error) {
-      console.error('❌ View classification failed:', error);
+      logger.error('❌ View classification failed:', error);
       return {
         actualView: 'unknown',
         is2D: false,

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
-import { useDesignContext } from '../context/DesignContext';
-import { sanitizePromptInput, sanitizeDimensionInput } from '../utils/promptSanitizer';
-import logger from '../utils/logger';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import { sanitizePromptInput, sanitizeDimensionInput } from '../utils/promptSanitizer.js';
+import logger from '../utils/logger.js';
 
 /**
  * useProgramSpaces - Program Space Generation Hook
@@ -20,7 +20,8 @@ export const useProgramSpaces = () => {
     projectDetails,
     isGeneratingSpaces,
     setIsGeneratingSpaces,
-    showToast
+    showToast,
+    siteMetrics  // For auto-level assignment based on site area
   } = useDesignContext();
 
   /**
@@ -118,7 +119,7 @@ export const useProgramSpaces = () => {
   /**
    * Generate program spaces using AI
    */
-  const generateProgramSpacesWithAI = useCallback(async (buildingProgram, totalArea) => {
+  const generateProgramSpacesWithAI = useCallback(async (buildingProgram, totalArea, siteArea = null) => {
     // Sanitize inputs for security
     const sanitizedProgram = sanitizePromptInput(buildingProgram, { maxLength: 100, allowNewlines: false });
     const sanitizedArea = sanitizeDimensionInput(totalArea);
@@ -131,21 +132,84 @@ export const useProgramSpaces = () => {
     setIsGeneratingSpaces(true);
     logger.info('Generating program spaces with AI', {
       program: sanitizedProgram,
-      area: `${sanitizedArea}m²`
+      area: `${sanitizedArea}m²`,
+      siteArea: siteArea ? `${siteArea}m²` : 'not provided'
     }, '🤖');
 
     try {
       // Import the reasoning service
       const togetherAIReasoningService = (await import('../services/togetherAIReasoningService')).default;
 
-      const prompt = `You are an architectural programming expert. Generate a detailed room schedule for a ${sanitizedProgram} with a total area of ${sanitizedArea}m².
+      const prompt = `You are an architectural programming expert with expertise in spatial organization and vertical circulation planning. Generate a detailed room schedule for a ${sanitizedProgram} with a total area of ${sanitizedArea}m².
 
 REQUIREMENTS:
 - Total of all spaces should be approximately ${sanitizedArea}m² (allowing 10-15% for circulation)
 - Include all necessary spaces for this building type
 - Specify realistic area for each space in m²
-- Indicate which floor level each space should be on
-- Include appropriate count for repeated spaces
+- CRITICAL: Intelligently assign floor levels based on function hierarchy
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AI REASONING REQUIRED: INTELLIGENT LEVEL ASSIGNMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Apply these ARCHITECTURAL PRINCIPLES for level assignment:
+
+GROUND FLOOR (Highest priority for):
+1. PUBLIC ACCESS SPACES: Reception, waiting areas, lobby, entrance halls
+2. ACCESSIBILITY-CRITICAL: Spaces requiring wheelchair access (medical treatment, retail sales floor, public toilets)
+3. HEAVY SERVICES: Kitchens, laboratories, mechanical rooms, storage with frequent deliveries
+4. HIGH-TRAFFIC COMMERCIAL: Sales floors, cafes, restaurants, public dining
+5. EMERGENCY ACCESS: First aid rooms, treatment rooms, consultation rooms
+
+FIRST FLOOR (Second priority for):
+1. SEMI-PRIVATE: Staff offices, administration, meeting rooms
+2. SECONDARY SERVICES: Staff rooms, smaller kitchens, quiet areas
+3. EDUCATIONAL: Classrooms (if multi-story school), libraries, study areas
+4. RESIDENTIAL: Bedrooms, bathrooms (in houses), private living areas
+
+SECOND+ FLOORS (Upper priority for):
+1. MOST PRIVATE: Bedrooms, private studies, home offices (in residential)
+2. SPECIALIZED: Server rooms, archives, upper-level storage
+3. ROOFTOP AMENITIES: Terraces, roof gardens (if applicable)
+4. VIEWS: Spaces benefiting from higher elevation (observation decks, executive offices)
+
+BUILDING TYPE SPECIFIC RULES:
+
+${sanitizedProgram.toLowerCase().includes('clinic') || sanitizedProgram.toLowerCase().includes('hospital') ? `
+🏥 HEALTHCARE:
+- Ground: Reception, waiting, consultation rooms, treatment rooms, laboratory, pharmacy (accessibility essential)
+- First: Administration, staff rooms, medical records, specialized equipment
+- NEVER: Bedrooms on ground floor unless specified` : ''}
+
+${sanitizedProgram.toLowerCase().includes('office') ? `
+🏢 OFFICE:
+- Ground: Reception, lobby, meeting rooms, break room
+- First+: Open office areas, private offices, conference rooms
+- Top floor: Executive offices, boardrooms` : ''}
+
+${sanitizedProgram.toLowerCase().includes('school') ? `
+🏫 SCHOOL:
+- Ground: Administration, cafeteria, library, gymnasium, science labs
+- First+: Classrooms distributed across floors
+- NEVER: All classrooms on ground (poor space efficiency)` : ''}
+
+${sanitizedProgram.toLowerCase().includes('house') || sanitizedProgram.toLowerCase().includes('villa') ? `
+🏠 RESIDENTIAL:
+- Ground: Living room, dining, kitchen, WC, study
+- First: Bedrooms, bathrooms, private spaces
+- Second (if 3-story): Master suite, additional bedrooms
+- NEVER: Kitchen on upper floor unless specified` : ''}
+
+${sanitizedProgram.toLowerCase().includes('retail') || sanitizedProgram.toLowerCase().includes('shop') ? `
+🏪 RETAIL:
+- Ground: Sales floor, cashier, customer toilets (100% ground floor public access)
+- First (if applicable): Storage, staff room, office
+- NEVER: Sales areas on upper floors without elevator` : ''}
+
+CIRCULATION LOGIC:
+- If total area > 300m², consider distributing across 2+ floors
+- Circulation space per floor: ~15-20% of floor area (hallways, stairs, lifts)
+- Vertical access: Include "Staircase" (8-12m²) and "Lift" (6-8m²) if multi-floor
 
 CRITICAL: Return ONLY a valid JSON array. No explanations, no markdown, no code blocks. Just the raw JSON array.
 
@@ -182,9 +246,49 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         const jsonMatch = content.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           try {
-            const spaces = JSON.parse(jsonMatch[0]);
+            let spaces = JSON.parse(jsonMatch[0]);
             if (Array.isArray(spaces) && spaces.length > 0) {
               logger.info('AI generated program spaces', { count: spaces.length }, '✅');
+
+              // 🤖 AUTO-LEVEL ASSIGNMENT: Calculate optimal floors and assign spaces
+              if (siteArea && siteArea > 0) {
+                logger.info('🏢 Auto-calculating optimal floor count and assigning levels...', null, '🤖');
+
+                try {
+                  const autoLevelAssignmentService = (await import('../services/autoLevelAssignmentService')).default;
+
+                  const result = autoLevelAssignmentService.autoAssignComplete(
+                    spaces,
+                    siteArea,
+                    sanitizedProgram,
+                    {} // constraints will come from location data in context
+                  );
+
+                  if (result.success) {
+                    logger.info('✅ Auto-assignment complete:', {
+                      floors: result.floorCount,
+                      footprint: `${result.floorMetrics.actualFootprint.toFixed(0)}m²`,
+                      coverage: `${result.floorMetrics.siteCoveragePercent.toFixed(1)}%`
+                    }, '✅');
+
+                    logger.info(`   ${result.summary.reasoning}`);
+
+                    // Use auto-assigned spaces
+                    spaces = result.assignedSpaces;
+
+                    // Store floor count for later use
+                    spaces._calculatedFloorCount = result.floorCount;
+                    spaces._floorMetrics = result.floorMetrics;
+                  } else {
+                    logger.warn('Auto-assignment failed, using AI-assigned levels');
+                  }
+                } catch (autoError) {
+                  logger.warn('Auto-level assignment error, using AI-assigned levels:', autoError.message);
+                }
+              } else {
+                logger.info('⚠️ No site area provided, using AI-assigned levels only');
+              }
+
               return spaces;
             } else {
               logger.warn('AI returned empty or invalid array, using defaults');
@@ -218,14 +322,24 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       return;
     }
 
+    // Get site area from siteMetrics for auto-level assignment
+    const siteArea = siteMetrics?.areaM2 || null;
+
+    logger.info(`🏗️ Generating program spaces with auto-level assignment`, {
+      program: projectDetails.program,
+      totalArea: projectDetails.area,
+      siteArea: siteArea ? `${siteArea.toFixed(0)}m²` : 'not available'
+    });
+
     const spaces = await generateProgramSpacesWithAI(
       projectDetails.program,
-      projectDetails.area
+      projectDetails.area,
+      siteArea  // Pass siteArea for auto-level calculation
     );
 
     setProgramSpaces(spaces);
-    showToast(`Generated ${spaces.length} program spaces`);
-  }, [projectDetails, generateProgramSpacesWithAI, setProgramSpaces, showToast]);
+    showToast(`Generated ${spaces.length} program spaces with ${spaces._calculatedFloorCount || 'default'} floors`);
+  }, [projectDetails, siteMetrics, generateProgramSpacesWithAI, setProgramSpaces, showToast]);
 
   /**
    * Add a program space manually

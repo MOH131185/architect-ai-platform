@@ -1,0 +1,41 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Clean blueprint paper roll with house icon - matching reference image -->
+  <g transform="translate(100, 100)">
+    <!-- Rolled paper edge (right side) -->
+    <ellipse cx="48" cy="0" rx="10" ry="40" 
+             fill="#F0F9FF" 
+             stroke="#2C3E50" 
+             stroke-width="2.5"/>
+    
+    <!-- Main blueprint paper sheet -->
+    <rect x="-58" y="-40" width="106" height="80" 
+          fill="#FFFFFF" 
+          stroke="#2C3E50" 
+          stroke-width="2.5" 
+          rx="3"/>
+    
+    <!-- House icon in center of blueprint -->
+    <g transform="translate(0, 0)">
+      <!-- Roof triangle -->
+      <path d="M -22 -2 L 0 -22 L 22 -2" 
+            fill="none" 
+            stroke="#2C3E50" 
+            stroke-width="3" 
+            stroke-linecap="round" 
+            stroke-linejoin="round"/>
+      
+      <!-- House walls -->
+      <path d="M -20 -2 L -20 22 L 20 22 L 20 -2" 
+            fill="none" 
+            stroke="#2C3E50" 
+            stroke-width="3" 
+            stroke-linejoin="round"/>
+      
+      <!-- Door -->
+      <rect x="-6" y="10" width="12" height="12" 
+            fill="none" 
+            stroke="#2C3E50" 
+            stroke-width="2.5"/>
+    </g>
+  </g>
+</svg>

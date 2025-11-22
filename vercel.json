@@ -9,16 +9,56 @@
   },
   "rewrites": [
     {
+      "source": "/api/together-chat",
+      "destination": "/api/together-chat.js"
+    },
+    {
+      "source": "/api/together-image",
+      "destination": "/api/together-image.js"
+    },
+    {
       "source": "/api/openai-chat",
       "destination": "/api/openai-chat.js"
     },
     {
-      "source": "/api/replicate-predictions",
-      "destination": "/api/replicate-predictions.js"
+      "source": "/api/openai-images",
+      "destination": "/api/openai-images.js"
     },
     {
-      "source": "/api/replicate-status",
-      "destination": "/api/replicate-status.js"
+      "source": "/api/sheet",
+      "destination": "/api/sheet.js"
+    },
+    {
+      "source": "/api/render",
+      "destination": "/api/render.js"
+    },
+    {
+      "source": "/api/plan",
+      "destination": "/api/plan.js"
+    },
+    {
+      "source": "/api/overlay",
+      "destination": "/api/overlay.js"
+    },
+    {
+      "source": "/api/overlay-site-map",
+      "destination": "/api/overlay-site-map.js"
+    },
+    {
+      "source": "/api/drift-detect",
+      "destination": "/api/drift-detect.js"
+    },
+    {
+      "source": "/api/upscale",
+      "destination": "/api/upscale.js"
+    },
+    {
+      "source": "/api/proxy-image",
+      "destination": "/api/proxy-image.js"
+    },
+    {
+      "source": "/api/a1/compose",
+      "destination": "/api/a1/compose.js"
     }
   ],
   "headers": [
@@ -27,7 +67,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "*"
+          "value": "https://www.archiaisolution.pro"
         },
         {
           "key": "Access-Control-Allow-Methods",

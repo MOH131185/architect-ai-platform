@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import aiIntegrationService from '../services/aiIntegrationService';
+import aiIntegrationService from '../services/aiIntegrationService.js';
 import './AIMVP.css';
 
 const AIMVP = () => {

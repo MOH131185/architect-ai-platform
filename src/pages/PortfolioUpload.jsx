@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Upload, ArrowRight, ChevronLeft, X, Image as ImageIcon } from 'lucide-react';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow';
-import { usePortfolio } from '../hooks/usePortfolio';
+import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
+import { usePortfolio } from '../hooks/usePortfolio.js';
 
 /**
  * PortfolioUpload - Step 3: Upload portfolio and configure style blending
@@ -137,7 +137,7 @@ const PortfolioUpload = () => {
               type="range"
               min="0"
               max="1"
-              step="0.1"
+              step="0.01"
               value={materialWeight}
               onChange={(e) => updateMaterialWeight(parseFloat(e.target.value))}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
@@ -160,7 +160,7 @@ const PortfolioUpload = () => {
               type="range"
               min="0"
               max="1"
-              step="0.1"
+              step="0.01"
               value={characteristicWeight}
               onChange={(e) => updateCharacteristicWeight(parseFloat(e.target.value))}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"

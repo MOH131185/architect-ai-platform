@@ -9,7 +9,61 @@
  * - Output references (floor plan URLs, seeds)
  */
 
-import storageManager from '../utils/storageManager';
+import storageManager from '../utils/storageManager.js';
+import { evaluateDNACompleteness } from '../validators/dnaCompletenessValidator.js';
+import { saveSiteSnapshot, deleteSiteSnapshot } from '../utils/siteSnapshotStore.js';
+import logger from '../utils/logger.js';
+import {
+  compressMasterDNA as compressMasterDNAHelper,
+  sanitizePanelMap,
+  sanitizeSheetMetadata as sanitizeSheetMetadataHelper,
+  stripDataUrl as stripDataUrlHelper
+} from '../utils/designHistorySanitizer.js';
+
+
+function cloneData(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (error) {
+    logger.warn('⚠️ Failed to deep-clone value for storage', error);
+    return value;
+  }
+}
+
+function resolvePanelMap(source) {
+  if (!source || typeof source !== 'object') {
+    return null;
+  }
+  const cleaned = sanitizePanelMap(source);
+  if (!cleaned || Object.keys(cleaned).length === 0) {
+    return null;
+  }
+  return cleaned;
+}
+
+function sanitizeGeometryRenders(renders) {
+  if (!renders || !Array.isArray(renders)) {
+    return null;
+  }
+  return renders.map(render => {
+    if (!render || typeof render !== 'object') return null;
+    const sanitized = { ...render };
+    if (sanitized.url) {
+      sanitized.url = stripDataUrlHelper(sanitized.url);
+    }
+    return sanitized;
+  }).filter(Boolean);
+}
+
+function resolvePanelLayout(panels) {
+  if (!Array.isArray(panels)) {
+    return null;
+  }
+  return cloneData(panels);
+}
 
 class DesignHistoryService {
   constructor() {
@@ -29,7 +83,7 @@ class DesignHistoryService {
    * @param {string} context.floorPlanUrl - Ground floor plan image URL
    * @param {number} context.seed - Generation seed for consistency
    */
-  saveDesignContext(context) {
+  async saveDesignContext(context) {
     try {
       const timestamp = new Date().toISOString();
       const projectId = context.projectId || this.generateProjectId();
@@ -52,25 +106,25 @@ class DesignHistoryService {
       };
 
       // Get existing history
-      const history = this.getAllHistory();
+      const history = await this.getAllHistory();
 
       // Add or update project
       const existingIndex = history.findIndex(entry => entry.projectId === projectId);
       if (existingIndex >= 0) {
         history[existingIndex] = historyEntry;
-        console.log(`📝 Updated design history for project: ${projectId}`);
+        logger.info(`📝 Updated design history for project: ${projectId}`);
       } else {
         history.push(historyEntry);
-        console.log(`✅ Saved design history for project: ${projectId}`);
+        logger.success(` Saved design history for project: ${projectId}`);
       }
 
       // Save to localStorage with StorageManager (automatic quota handling)
-      storageManager.setItem(this.storageKey, history);
+      await storageManager.setItem(this.storageKey, history);
 
       return projectId;
 
     } catch (error) {
-      console.error('❌ Failed to save design history:', error);
+      logger.error('❌ Failed to save design history:', error);
       throw error;
     }
   }
@@ -81,21 +135,21 @@ class DesignHistoryService {
    * @param {string} projectId - Project identifier
    * @returns {Object|null} Design context or null if not found
    */
-  getDesignContext(projectId) {
+  async getDesignContext(projectId) {
     try {
-      const history = this.getAllHistory();
+      const history = await this.getAllHistory();
       const context = history.find(entry => entry.projectId === projectId);
 
       if (context) {
-        console.log(`📖 Retrieved design history for project: ${projectId}`);
+        logger.info(`📖 Retrieved design history for project: ${projectId}`);
         return context;
       } else {
-        console.log(`⚠️  No design history found for project: ${projectId}`);
+        logger.info(`⚠️  No design history found for project: ${projectId}`);
         return null;
       }
 
     } catch (error) {
-      console.error('❌ Failed to retrieve design history:', error);
+      logger.error('❌ Failed to retrieve design history:', error);
       return null;
     }
   }
@@ -106,9 +160,9 @@ class DesignHistoryService {
    *
    * @returns {Object|null} Most recent design context
    */
-  getLatestDesignContext() {
+  async getLatestDesignContext() {
     try {
-      const history = this.getAllHistory();
+      const history = await this.getAllHistory();
 
       if (history.length === 0) {
         return null;
@@ -119,11 +173,11 @@ class DesignHistoryService {
         new Date(b.timestamp) - new Date(a.timestamp)
       );
 
-      console.log(`📖 Retrieved latest design history: ${sorted[0].projectId}`);
+      logger.info(`📖 Retrieved latest design history: ${sorted[0].projectId}`);
       return sorted[0];
 
     } catch (error) {
-      console.error('❌ Failed to retrieve latest design history:', error);
+      logger.error('❌ Failed to retrieve latest design history:', error);
       return null;
     }
   }
@@ -131,11 +185,11 @@ class DesignHistoryService {
   /**
    * Get all design history entries
    *
-   * @returns {Array} Array of design history entries
+   * @returns {Promise<Array>} Array of design history entries
    */
-  getAllHistory() {
+  async getAllHistory() {
     try {
-      const stored = storageManager.getItem(this.storageKey, []);
+      const stored = await storageManager.getItem(this.storageKey, []);
 
       // Already an array - return as-is
       if (Array.isArray(stored)) {
@@ -145,7 +199,7 @@ class DesignHistoryService {
       // Migration: repair corrupted object-with-numeric-keys format
       // This happens when arrays were spread with timestamp: { ...array, _timestamp }
       if (stored && typeof stored === 'object') {
-        console.warn('⚠️ Detected corrupted design history (object instead of array), migrating...');
+        logger.warn('⚠️ Detected corrupted design history (object instead of array), migrating...');
 
         // Extract numeric keys and convert to array
         const keys = Object.keys(stored).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
@@ -154,8 +208,8 @@ class DesignHistoryService {
           const repaired = keys.map(k => stored[k]);
 
           // Re-save with correct format
-          storageManager.setItem(this.storageKey, repaired);
-          console.log(`✅ Migrated ${repaired.length} design history entries`);
+          await storageManager.setItem(this.storageKey, repaired);
+          logger.success(` Migrated ${repaired.length} design history entries`);
 
           return repaired;
         }
@@ -164,7 +218,7 @@ class DesignHistoryService {
       // Fallback: return empty array
       return [];
     } catch (error) {
-      console.error('❌ Failed to parse design history:', error);
+      logger.error('❌ Failed to parse design history:', error);
       return [];
     }
   }
@@ -177,11 +231,11 @@ class DesignHistoryService {
    * @param {string} newPrompt - Additional instructions for the new generation
    * @returns {string} Enhanced prompt with previous context
    */
-  generateContinuationPrompt(projectId, newPrompt) {
-    const context = this.getDesignContext(projectId);
+  async generateContinuationPrompt(projectId, newPrompt) {
+    const context = await this.getDesignContext(projectId);
 
     if (!context) {
-      console.warn('⚠️  No previous context found, using new prompt as-is');
+      logger.warn('⚠️  No previous context found, using new prompt as-is');
       return newPrompt;
     }
 
@@ -215,7 +269,7 @@ CONSISTENCY REQUIREMENTS:
 - Ensure all views appear to be from the same building
 `;
 
-    console.log('📝 Generated continuation prompt with historical context');
+    logger.info('📝 Generated continuation prompt with historical context');
     return continuationPrompt;
   }
 
@@ -224,7 +278,7 @@ CONSISTENCY REQUIREMENTS:
    */
   clearAllHistory() {
     storageManager.removeItem(this.storageKey);
-    console.log('🗑️  Cleared all design history');
+    logger.info('🗑️  Cleared all design history');
   }
 
   /**
@@ -232,11 +286,15 @@ CONSISTENCY REQUIREMENTS:
    *
    * @param {string} projectId - Project identifier to delete
    */
-  deleteProject(projectId) {
-    const history = this.getAllHistory();
+  async deleteProject(projectId) {
+    const history = await this.getAllHistory();
+    const design = history.find(entry => entry.projectId === projectId);
+    if (design?.siteSnapshot?.key) {
+      await deleteSiteSnapshot(design.siteSnapshot.key);
+    }
     const filtered = history.filter(entry => entry.projectId !== projectId);
-    storageManager.setItem(this.storageKey, filtered);
-    console.log(`🗑️  Deleted design history for project: ${projectId}`);
+    await storageManager.setItem(this.storageKey, filtered);
+    logger.info(`🗑️  Deleted design history for project: ${projectId}`);
   }
 
   /**
@@ -246,16 +304,17 @@ CONSISTENCY REQUIREMENTS:
    * @returns {string|null} - Stripped URL or metadata note
    */
   stripDataUrl(url) {
-    if (!url) return null;
+    return stripDataUrlHelper(url);
+  }
 
-    // If it's a data URL, don't store it (too large)
-    if (url.startsWith('data:')) {
-      const sizeKB = (url.length / 1024).toFixed(2);
-      console.warn(`⚠️ Stripping data URL from storage (${sizeKB}KB)`);
-      return `[DATA_URL_REMOVED_${sizeKB}KB]`;
-    }
-
-    return url;
+  /**
+   * Compress masterDNA to reduce storage size
+   * Removes verbose descriptions and keeps only essential data
+   * @param {Object} dna - Master DNA object
+   * @returns {Object} Compressed DNA
+   */
+  compressMasterDNA(dna) {
+    return compressMasterDNAHelper(dna);
   }
 
   /**
@@ -275,6 +334,8 @@ CONSISTENCY REQUIREMENTS:
       const {
         designId,
         masterDNA,
+        geometryDNA = null,
+        geometryRenders = null,
         mainPrompt,
         seed,
         seedsByView = {},
@@ -286,67 +347,142 @@ CONSISTENCY REQUIREMENTS:
         height = 1269,
         model = 'black-forest-labs/FLUX.1-dev',
         a1LayoutKey = 'uk-riba-standard',
-        siteSnapshot = null // 🆕 Site map snapshot for pixel-exact parity
+        siteSnapshot = null, // 🆕 Site map snapshot for pixel-exact parity
+        locationData = {},
+        blendedStyle = null,
+        a1SheetMetadata = null,
+        a1SheetPanels = null,
+        panelMap = null,
+        a1Sheet = null
       } = params;
 
-      const sheetUrl = resultUrl || a1SheetUrl || null;
-
-      // ⚠️ CRITICAL: Strip data URLs to prevent localStorage quota exceeded
-      // Data URLs (base64 images) can be 10-20MB and exceed 5-10MB localStorage limit
+      const sheetUrl = resultUrl || a1SheetUrl || a1Sheet?.composedSheetUrl || a1Sheet?.url || null;
       const strippedSheetUrl = this.stripDataUrl(sheetUrl);
-      const strippedSiteDataUrl = siteSnapshot ? this.stripDataUrl(siteSnapshot.dataUrl) : null;
 
-      console.log('💾 Preparing design for storage...');
+      const resolvedDesignId = designId || this.generateDesignId();
+      let siteSnapshotKey = null;
+
+      if (siteSnapshot?.dataUrl) {
+        siteSnapshotKey = await saveSiteSnapshot(resolvedDesignId, siteSnapshot.dataUrl);
+      }
+
+      logger.info('💾 Preparing design for storage...');
       if (sheetUrl !== strippedSheetUrl) {
-        console.log(`   Stripped A1 sheet URL: ${(sheetUrl?.length / 1024).toFixed(2)}KB → metadata only`);
+        logger.info(`   Stripped A1 sheet URL: ${(sheetUrl?.length / 1024).toFixed(2)}KB → metadata only`);
       }
-      if (siteSnapshot && siteSnapshot.dataUrl !== strippedSiteDataUrl) {
-        console.log(`   Stripped site snapshot: ${(siteSnapshot.dataUrl?.length / 1024).toFixed(2)}KB → metadata only`);
+      if (siteSnapshot?.dataUrl && !siteSnapshotKey) {
+        logger.warn('⚠️ Site snapshot could not be persisted; overlay consistency may drift.');
       }
+
+      const canonicalDNA = cloneData(masterDNA) || {};
+      const compressedDNA = this.compressMasterDNA(canonicalDNA);
+      const dnaCompleteness = evaluateDNACompleteness(canonicalDNA || {});
+      if (!dnaCompleteness.isComplete) {
+        logger.warn('⚠️ Stored design with incomplete DNA', {
+          designId: params.designId || 'pending',
+          missing: dnaCompleteness.missing
+        });
+      }
+
+      const resolvedSheetMetadata = sanitizeSheetMetadataHelper(
+        a1SheetMetadata ||
+        a1Sheet?.metadata ||
+        {}
+      );
+      const resolvedPanelLayout =
+        resolvePanelLayout(
+          a1SheetPanels ||
+          a1Sheet?.panelLayout ||
+          (Array.isArray(a1Sheet?.panels) ? a1Sheet.panels : null) ||
+          resolvedSheetMetadata.panels
+        );
+
+      if (resolvedPanelLayout) {
+        resolvedSheetMetadata.panels = resolvedPanelLayout;
+      }
+
+      const resolvedPanelMap =
+        resolvePanelMap(
+          panelMap ||
+          params.panels ||
+          a1Sheet?.panelMap ||
+          a1Sheet?.panels ||
+          (!Array.isArray(a1Sheet?.panels) && a1Sheet?.panels) ||
+          resolvedSheetMetadata.panelMap
+        );
+
+      if (resolvedPanelMap) {
+        resolvedSheetMetadata.panelMap = resolvedPanelMap;
+      }
+
+      const sanitizedGeometryRenders = sanitizeGeometryRenders(geometryRenders || a1Sheet?.geometryRenders);
 
       const design = {
-        designId: designId || this.generateDesignId(),
-        masterDNA: masterDNA || {},
+        designId: resolvedDesignId,
+        masterDNA: compressedDNA, // ⚠️ Compressed to reduce storage
+        masterDNAFull: canonicalDNA,
+        geometryDNA: geometryDNA || canonicalDNA?.geometry || canonicalDNA?.geometryDNA || null,
+        geometryRenders: sanitizedGeometryRenders || null,
         mainPrompt: mainPrompt || '',
         basePrompt: mainPrompt || '', // Alias for compatibility
         seed: seed || Date.now(),
         seedsByView: seedsByView || {},
+        composedSheetUrl: strippedSheetUrl,
         resultUrl: strippedSheetUrl, // ⚠️ Data URLs stripped
         a1SheetUrl: strippedSheetUrl, // ⚠️ Data URLs stripped
         styleBlendPercent: styleBlendPercent,
-        projectContext: projectContext,
+        projectContext: cloneData(projectContext) || {},
+        locationData: cloneData(locationData) || {},
+        blendedStyle: cloneData(blendedStyle),
+        panels: resolvedPanelMap || null,
+        panelMap: resolvedPanelMap || null,
+        panelCoordinates: a1Sheet?.panelCoordinates || a1Sheet?.coordinates || resolvedSheetMetadata.coordinates || null,
         versions: [], // Array of version objects
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        integrity: {
+          dnaCompleteness,
+          lastValidatedAt: new Date().toISOString()
+        },
         // A1 Sheet metadata for consistency preservation
         a1Sheet: {
           url: strippedSheetUrl, // ⚠️ Data URLs stripped
+          composedSheetUrl: strippedSheetUrl,
           metadata: {
             width: width,
             height: height,
             model: model,
             basePrompt: mainPrompt || '',
             a1LayoutKey: a1LayoutKey,
-            seed: seed || Date.now()
-          }
+            seed: seed || Date.now(),
+            ...resolvedSheetMetadata
+          },
+          panels: resolvedPanelMap || null,
+          layoutPanels: resolvedPanelLayout || null,
+          panelMap: resolvedPanelMap || null,
+          coordinates: a1Sheet?.panelCoordinates || a1Sheet?.coordinates || resolvedSheetMetadata.coordinates || null,
+          geometryRenders: sanitizedGeometryRenders || null,
+          geometryDNA: geometryDNA || canonicalDNA?.geometry || canonicalDNA?.geometryDNA || null
         },
-        // 🆕 Site snapshot for pixel-exact map parity across modifications
-        // ⚠️ Data URLs stripped to prevent quota exceeded
-        siteSnapshot: siteSnapshot ? {
-          dataUrl: strippedSiteDataUrl, // ⚠️ Data URLs stripped
-          sha256: siteSnapshot.sha256 || null,
-          center: siteSnapshot.center || { lat: 51.5074, lng: -0.1278 },
-          zoom: siteSnapshot.zoom || 17,
-          mapType: siteSnapshot.mapType || 'hybrid',
-          size: siteSnapshot.size || { width: 400, height: 300 },
-          polygon: siteSnapshot.polygon || null, // Array of {lat, lng}
-          polygonStyle: siteSnapshot.polygonStyle || { strokeColor: 'red', strokeWeight: 2, fillColor: 'red', fillOpacity: 0.2 },
-          capturedAt: siteSnapshot.capturedAt || new Date().toISOString()
+        panelMap: resolvedPanelMap || null,
+        panelLayout: resolvedPanelLayout || null,
+        siteSnapshot: siteSnapshotKey ? {
+          key: siteSnapshotKey,
+          metadata: {
+            sha256: siteSnapshot?.sha256 || null,
+            center: siteSnapshot?.center || { lat: 51.5074, lng: -0.1278 },
+            zoom: siteSnapshot?.zoom || 17,
+            mapType: siteSnapshot?.mapType || 'hybrid',
+            size: siteSnapshot?.size || { width: 400, height: 300 },
+            polygon: siteSnapshot?.polygon || null,
+            polygonStyle: siteSnapshot?.polygonStyle || { strokeColor: 'red', strokeWeight: 2, fillColor: 'red', fillOpacity: 0.2 },
+            capturedAt: siteSnapshot?.capturedAt || new Date().toISOString()
+          }
         } : null
       };
 
       // Save to IndexedDB or localStorage
-      const history = this.getAllHistory();
+      let history = await this.getAllHistory();
       const existingIndex = history.findIndex(d => d.designId === design.designId);
 
       if (existingIndex >= 0) {
@@ -355,29 +491,45 @@ CONSISTENCY REQUIREMENTS:
         history.push(design);
       }
 
+      // ⚠️ CRITICAL: Enforce maximum history size to prevent quota exceeded
+      // Keep only the most recent 2 designs (A1 sheets with panels are very large)
+      const MAX_DESIGNS = 2;
+      if (history.length > MAX_DESIGNS) {
+        logger.warn(`⚠️ History exceeds ${MAX_DESIGNS} designs, removing oldest...`);
+        history.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        const removed = history.slice(MAX_DESIGNS);
+        removed.forEach(entry => {
+          if (entry?.siteSnapshot?.key) {
+            deleteSiteSnapshot(entry.siteSnapshot.key);
+          }
+        });
+        history = history.slice(0, MAX_DESIGNS);
+        logger.success(` Kept ${history.length} most recent designs`);
+      }
+
       // Check if setItem succeeded
-      const saved = storageManager.setItem(this.storageKey, history);
+      const saved = await storageManager.setItem(this.storageKey, history);
       if (!saved) {
         const stats = storageManager.getStats();
-        console.error('❌ Failed to save design to storage:', {
+        logger.error('❌ Failed to save design to storage:', {
           designId: design.designId,
           historyLength: history.length,
           storageUsage: storageManager.getStorageUsage(),
           stats: stats
         });
-        console.error('📊 Storage diagnostics:');
-        console.error('   - Items in storage:', stats?.itemCount || 0);
-        console.error('   - Total size:', stats?.totalSizeKB || 0, 'KB');
-        console.error('   - Usage:', stats?.usagePercent || 0, '%');
-        console.error('   - Check browser console above for detailed storage error');
+        logger.error('📊 Storage diagnostics:');
+        logger.error('   - Items in storage:', stats?.itemCount || 0);
+        logger.error('   - Total size:', stats?.totalSizeKB || 0, 'KB');
+        logger.error('   - Usage:', stats?.usagePercent || 0, '%');
+        logger.error('   - Check browser console above for detailed storage error');
         throw new Error(`Failed to save design to storage. Storage usage: ${storageManager.getStorageUsage()}%. Check console for detailed error.`);
       }
 
-      console.log(`✅ Created design: ${design.designId}`);
+      logger.success(` Created design: ${design.designId}`);
 
       return design.designId;
     } catch (error) {
-      console.error('❌ Failed to create design:', error);
+      logger.error('❌ Failed to create design:', error);
       throw error;
     }
   }
@@ -387,13 +539,13 @@ CONSISTENCY REQUIREMENTS:
    * @param {string} designId - Design ID
    * @returns {Object|null} Design object or null
    */
-  getDesign(designId) {
+  async getDesign(designId) {
     try {
-      const history = this.getAllHistory();
+      const history = await this.getAllHistory();
       const design = history.find(d => d.designId === designId);
       return design || null;
     } catch (error) {
-      console.error('❌ Failed to get design:', error);
+      logger.error('❌ Failed to get design:', error);
       return null;
     }
   }
@@ -414,10 +566,10 @@ CONSISTENCY REQUIREMENTS:
    */
   async getOrCreateDesign(designId, baseData = {}) {
     try {
-      let design = this.getDesign(designId);
+      let design = await this.getDesign(designId);
 
       if (!design) {
-        console.log(`⚠️ Design ${designId} not found in history, creating entry...`);
+        logger.info(`⚠️ Design ${designId} not found in history, creating entry...`);
 
         // Create minimal design entry
         await this.createDesign({
@@ -439,18 +591,18 @@ CONSISTENCY REQUIREMENTS:
         });
 
         // Re-read the design
-        design = this.getDesign(designId);
+        design = await this.getDesign(designId);
 
         if (!design) {
           throw new Error(`Failed to create design entry for ${designId}`);
         }
 
-        console.log(`✅ Created design entry: ${designId}`);
+        logger.success(` Created design entry: ${designId}`);
       }
 
       return design;
     } catch (error) {
-      console.error('❌ Failed to get or create design:', error);
+      logger.error('❌ Failed to get or create design:', error);
       throw error;
     }
   }
@@ -459,18 +611,19 @@ CONSISTENCY REQUIREMENTS:
    * List all designs
    * @returns {Array} Array of design summaries
    */
-  listDesigns() {
+  async listDesigns() {
     try {
-      const history = this.getAllHistory();
+      const history = await this.getAllHistory();
       return history.map(d => ({
         designId: d.designId,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
         versionCount: d.versions?.length || 0,
-        hasA1Sheet: !!(d.resultUrl || d.a1SheetUrl)
+        hasA1Sheet: !!(d.resultUrl || d.a1SheetUrl || d.composedSheetUrl || d.a1Sheet?.composedSheetUrl),
+        hasGeometryBaseline: !!(d.geometryDNA || d.geometryRenders || d.a1Sheet?.geometryRenders)
       }));
     } catch (error) {
-      console.error('❌ Failed to list designs:', error);
+      logger.error('❌ Failed to list designs:', error);
       return [];
     }
   }
@@ -483,7 +636,7 @@ CONSISTENCY REQUIREMENTS:
    */
   async addVersion(designId, versionData) {
     try {
-      const design = this.getDesign(designId);
+      const design = await this.getDesign(designId);
       if (!design) {
         throw new Error(`Design ${designId} not found`);
       }
@@ -492,6 +645,18 @@ CONSISTENCY REQUIREMENTS:
       const strippedVersionData = { ...versionData };
       if (strippedVersionData.resultUrl) {
         strippedVersionData.resultUrl = this.stripDataUrl(strippedVersionData.resultUrl);
+      }
+      if (strippedVersionData.composedSheetUrl) {
+        strippedVersionData.composedSheetUrl = this.stripDataUrl(strippedVersionData.composedSheetUrl);
+      }
+      if (strippedVersionData.geometryRenders) {
+        strippedVersionData.geometryRenders = sanitizeGeometryRenders(strippedVersionData.geometryRenders);
+      }
+      if (strippedVersionData.panelMap) {
+        strippedVersionData.panelMap = sanitizePanelMap(strippedVersionData.panelMap);
+      }
+      if (strippedVersionData.panels) {
+        strippedVersionData.panels = sanitizePanelMap(strippedVersionData.panels);
       }
 
       const versionId = `v${(design.versions?.length || 0) + 1}`;
@@ -508,25 +673,25 @@ CONSISTENCY REQUIREMENTS:
       design.updatedAt = new Date().toISOString();
 
       // Update in storage
-      const history = this.getAllHistory();
+      const history = await this.getAllHistory();
       const index = history.findIndex(d => d.designId === designId);
       if (index >= 0) {
         history[index] = design;
-        const saved = storageManager.setItem(this.storageKey, history);
+        const saved = await storageManager.setItem(this.storageKey, history);
         if (!saved) {
-          console.error('❌ Failed to save version to storage:', {
+          logger.error('❌ Failed to save version to storage:', {
             designId,
             versionId,
             storageUsage: storageManager.getStorageUsage()
           });
           throw new Error(`Failed to save version to storage. Storage usage: ${storageManager.getStorageUsage()}%`);
         }
-        console.log(`✅ Added version ${versionId} to design ${designId}`);
+        logger.success(` Added version ${versionId} to design ${designId}`);
       }
 
       return versionId;
     } catch (error) {
-      console.error('❌ Failed to add version:', error);
+      logger.error('❌ Failed to add version:', error);
       throw error;
     }
   }
@@ -537,15 +702,15 @@ CONSISTENCY REQUIREMENTS:
    * @param {string} versionId - Version ID
    * @returns {Object|null} Version object or null
    */
-  getVersion(designId, versionId) {
+  async getVersion(designId, versionId) {
     try {
-      const design = this.getDesign(designId);
+      const design = await this.getDesign(designId);
       if (!design || !design.versions) {
         return null;
       }
       return design.versions.find(v => v.versionId === versionId) || null;
     } catch (error) {
-      console.error('❌ Failed to get version:', error);
+      logger.error('❌ Failed to get version:', error);
       return null;
     }
   }
@@ -573,11 +738,11 @@ CONSISTENCY REQUIREMENTS:
    *
    * @param {string} projectId - Optional: export specific project only
    */
-  exportHistory(projectId = null) {
+  async exportHistory(projectId = null) {
     try {
       const data = projectId
-        ? this.getDesignContext(projectId)
-        : this.getAllHistory();
+        ? await this.getDesignContext(projectId)
+        : await this.getAllHistory();
 
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -593,10 +758,10 @@ CONSISTENCY REQUIREMENTS:
       link.click();
 
       URL.revokeObjectURL(url);
-      console.log(`📥 Exported design history: ${filename}`);
+      logger.info(`📥 Exported design history: ${filename}`);
 
     } catch (error) {
-      console.error('❌ Failed to export design history:', error);
+      logger.error('❌ Failed to export design history:', error);
     }
   }
 
@@ -614,7 +779,7 @@ CONSISTENCY REQUIREMENTS:
       const entries = Array.isArray(imported) ? imported : [imported];
 
       // Merge with existing history
-      const existing = this.getAllHistory();
+      const existing = await this.getAllHistory();
       const merged = [...existing];
 
       entries.forEach(entry => {
@@ -626,11 +791,11 @@ CONSISTENCY REQUIREMENTS:
         }
       });
 
-      storageManager.setItem(this.storageKey, merged);
-      console.log(`📤 Imported ${entries.length} design history entries`);
+      await storageManager.setItem(this.storageKey, merged);
+      logger.info(`📤 Imported ${entries.length} design history entries`);
 
     } catch (error) {
-      console.error('❌ Failed to import design history:', error);
+      logger.error('❌ Failed to import design history:', error);
       throw error;
     }
   }

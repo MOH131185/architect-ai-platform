@@ -9,9 +9,9 @@
  * - Request/response interceptors
  */
 
-import logger from './logger';
-import errorHandler, { APIError, RateLimitError, NetworkError, TimeoutError, withTimeout } from './errors';
-import performanceMonitor from './performance';
+import logger from './logger.js';
+import errorHandler, { APIError, RateLimitError, NetworkError, TimeoutError, withTimeout } from './errors.js';
+import performanceMonitor from './performance.js';
 
 class APIClient {
   constructor(baseURL = '') {

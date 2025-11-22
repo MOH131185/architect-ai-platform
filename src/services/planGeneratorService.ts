@@ -6,7 +6,7 @@
  * NO AI hallucination - pure geometric rules.
  */
 
-import type { PlanJSON, SiteGeometry, Level, Room, Door, Window } from '../types/PlanJSON';
+import type { PlanJSON, SiteGeometry, Level, Room, Door, Window } from '../types/PlanJSON.js';
 import {
   baseSeedFor,
   hashPlanJSON,

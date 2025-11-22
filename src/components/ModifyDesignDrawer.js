@@ -6,10 +6,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Edit3, CheckSquare, Loader2, Wand2, Plus } from 'lucide-react';
-import aiModificationService from '../services/aiModificationService';
-import designHistoryService from '../services/designHistoryService';
-import { sanitizePromptInput, sanitizeDimensions } from '../utils/promptSanitizer';
-import logger from '../utils/logger';
+import aiModificationService from '../services/aiModificationService.js';
+import designHistoryService from '../services/designHistoryService.js';
+import { sanitizePromptInput, sanitizeDimensions } from '../utils/promptSanitizer.js';
+import logger from '../utils/logger.js';
 
 export default function ModifyDesignDrawer({
   isOpen,
@@ -42,32 +42,36 @@ export default function ModifyDesignDrawer({
   const [design, setDesign] = useState(null);
 
   useEffect(() => {
-    if (isOpen && designId) {
-      // Load design data for consistency lock
-      const designData = designHistoryService.getDesign(designId);
-      if (designData) {
-        setDesign(designData);
-        if (designData.basePrompt || designData.mainPrompt) {
-          setMainPrompt(designData.basePrompt || designData.mainPrompt);
+    const loadDesignData = async () => {
+      if (isOpen && designId) {
+        // Load design data for consistency lock
+        const designData = await designHistoryService.getDesign(designId);
+        if (designData) {
+          setDesign(designData);
+          if (designData.basePrompt || designData.mainPrompt) {
+            setMainPrompt(designData.basePrompt || designData.mainPrompt);
+          }
+          if (designData.masterDNA?.dimensions) {
+            setDimensions({
+              length: designData.masterDNA.dimensions.length || '',
+              width: designData.masterDNA.dimensions.width || '',
+              height: designData.masterDNA.dimensions.height || ''
+            });
+          }
+        } else if (currentPrompt) {
+          setMainPrompt(currentPrompt);
         }
-        if (designData.masterDNA?.dimensions) {
+        // Also check currentDNA dimensions
+        if (currentDNA?.dimensions) {
           setDimensions({
-            length: designData.masterDNA.dimensions.length || '',
-            width: designData.masterDNA.dimensions.width || '',
-            height: designData.masterDNA.dimensions.height || ''
+            length: currentDNA.dimensions.length || '',
+            width: currentDNA.dimensions.width || '',
+            height: currentDNA.dimensions.height || ''
           });
         }
-      } else if (currentPrompt) {
-        setMainPrompt(currentPrompt);
       }
-      if (currentDNA?.dimensions) {
-        setDimensions({
-          length: currentDNA.dimensions.length || '',
-          width: currentDNA.dimensions.width || '',
-          height: currentDNA.dimensions.height || ''
-        });
-      }
-    }
+    };
+    loadDesignData();
   }, [isOpen, designId, currentPrompt, currentDNA]);
 
   const toggleQuickAction = (key) => {

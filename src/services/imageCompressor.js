@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Image Compression Service for img2img modifications
  *
@@ -70,9 +72,9 @@ class ImageCompressor {
           compressed = canvas.toDataURL('image/jpeg', quality);
 
           if (compressed.length <= maxSize) {
-            console.log(`✅ Image compressed: ${(currentSize / 1024).toFixed(0)}KB → ${(compressed.length / 1024).toFixed(0)}KB`);
-            console.log(`   Dimensions: ${img.width}×${img.height} → ${targetWidth}×${targetHeight}`);
-            console.log(`   Quality: ${(quality * 100).toFixed(0)}%`);
+            logger.info(`✅ Image compressed: ${(currentSize / 1024).toFixed(0)}KB → ${(compressed.length / 1024).toFixed(0)}KB`);
+            logger.info(`   Dimensions: ${img.width}×${img.height} → ${targetWidth}×${targetHeight}`);
+            logger.info(`   Quality: ${(quality * 100).toFixed(0)}%`);
             resolve(compressed);
             return;
           }
@@ -99,12 +101,12 @@ class ImageCompressor {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         compressed = canvas.toDataURL('image/jpeg', 0.3);
 
-        console.log(`⚠️ Maximum compression applied: ${(compressed.length / 1024).toFixed(0)}KB`);
+        logger.info(`⚠️ Maximum compression applied: ${(compressed.length / 1024).toFixed(0)}KB`);
         resolve(compressed);
       };
 
       img.onerror = (error) => {
-        console.error('Failed to load image for compression:', error);
+        logger.error('Failed to load image for compression:', error);
         reject(new Error('Image compression failed'));
       };
 
@@ -204,14 +206,14 @@ class ImageCompressor {
         }
 
         const finalSizeKB = (result.length / 1024).toFixed(1);
-        console.log(`✅ Image resized to exact dimensions: ${targetWidth}×${targetHeight}px, ${finalSizeKB}KB`);
-        console.log(`   Original: ${img.width}×${img.height}px, Quality: ${(currentQuality * 100).toFixed(0)}%`);
+        logger.info(`✅ Image resized to exact dimensions: ${targetWidth}×${targetHeight}px, ${finalSizeKB}KB`);
+        logger.info(`   Original: ${img.width}×${img.height}px, Quality: ${(currentQuality * 100).toFixed(0)}%`);
 
         resolve(result);
       };
 
       img.onerror = (error) => {
-        console.error('Failed to load image for resizing:', error);
+        logger.error('Failed to load image for resizing:', error);
         reject(new Error('Image resize failed'));
       };
 

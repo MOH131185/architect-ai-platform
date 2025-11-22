@@ -9,7 +9,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
-import { composeA1Sheet } from '../services/a1SheetComposer.js';
+import { composeA1Sheet } from '../services/a1/A1SheetGenerator.js';
 
 export default function A1MasterSheet({ projectData }) {
   const [zoom, setZoom] = useState(0.15); // Start at 15% to fit in viewport

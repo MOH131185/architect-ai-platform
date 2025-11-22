@@ -1,19 +1,23 @@
 /**
  * AI Stylization Service
- * Optional layer that applies photorealistic AI rendering to geometry-based views
- * Uses ControlNet with depth/normal maps for consistency preservation
+ *
+ * DEPRECATED: ControlNet-based stylization is no longer part of the A1-only workflow.
+ * This module remains for backward compatibility with legacy geometry-first experiments.
+ * The `aiStylization` feature flag should stay disabled in production.
  */
 
-import { isFeatureEnabled } from '../config/featureFlags';
+import { isFeatureEnabled } from '../config/featureFlags.js';
+import logger from '../utils/logger.js';
+
 
 /**
  * Apply AI stylization to geometry views using ControlNet
  */
 export async function stylizeGeometryViews(geometryUrls, design, masterDNA) {
-  console.log('🎨 Starting AI stylization of geometry views...');
+  logger.info('🎨 Starting AI stylization of geometry views...');
 
   if (!isFeatureEnabled('aiStylization')) {
-    console.log('AI stylization disabled via feature flag');
+    logger.info('AI stylization disabled via feature flag');
     return null;
   }
 
@@ -59,11 +63,11 @@ export async function stylizeGeometryViews(geometryUrls, design, masterDNA) {
       );
     }
 
-    console.log('✅ AI stylization complete');
+    logger.success(' AI stylization complete');
     return stylizedResults;
 
   } catch (error) {
-    console.error('❌ AI stylization failed:', error);
+    logger.error('❌ AI stylization failed:', error);
     return null;
   }
 }
@@ -72,14 +76,13 @@ export async function stylizeGeometryViews(geometryUrls, design, masterDNA) {
  * Apply ControlNet-based stylization to a single view
  */
 async function stylizeWithControlNet(imageUrl, design, masterDNA, viewType, seed) {
-  console.log(`  Stylizing ${viewType} view...`);
+  logger.info(`  Stylizing ${viewType} view...`);
 
   const prompt = buildStylizationPrompt(design, masterDNA, viewType);
   const controlNetType = getControlNetType(viewType);
 
-  // Together.ai FLUX with ControlNet (when available)
-  // Note: As of now, Together.ai doesn't support ControlNet directly
-  // This would need to use Replicate SDXL with ControlNet or wait for FLUX ControlNet support
+  // Together.ai does not provide ControlNet support; this legacy flow relies on Replicate SDXL.
+  // New implementations should favor DNA-driven consistency via togetherAIService instead.
 
   const requestBody = {
     model: 'stability-ai/sdxl:controlnet',
@@ -121,7 +124,7 @@ async function stylizeWithControlNet(imageUrl, design, masterDNA, viewType, seed
     };
 
   } catch (error) {
-    console.error(`  Failed to stylize ${viewType}:`, error);
+    logger.error(`  Failed to stylize ${viewType}:`, error);
     return null;
   }
 }
@@ -215,7 +218,7 @@ async function pollPredictionStatus(predictionId, maxAttempts = 60) {
       throw new Error(`Prediction failed: ${prediction.error || 'Unknown error'}`);
     }
 
-    console.log(`  Polling ${predictionId}: ${prediction.status}...`);
+    logger.info(`  Polling ${predictionId}: ${prediction.status}...`);
   }
 
   throw new Error('Prediction timeout');
@@ -225,7 +228,7 @@ async function pollPredictionStatus(predictionId, maxAttempts = 60) {
  * Apply stylization to floor plans and elevations (HED/Canny ControlNet)
  */
 export async function stylizeTechnicalDrawings(svgUrls, design, masterDNA) {
-  console.log('📐 Stylizing technical drawings...');
+  logger.info('📐 Stylizing technical drawings...');
 
   if (!isFeatureEnabled('aiStylization')) {
     return null;
@@ -256,7 +259,7 @@ export async function stylizeTechnicalDrawings(svgUrls, design, masterDNA) {
     }
   }
 
-  console.log(`✅ Stylized ${results.length} technical drawings`);
+  logger.success(` Stylized ${results.length} technical drawings`);
   return results;
 }
 
@@ -264,7 +267,7 @@ export async function stylizeTechnicalDrawings(svgUrls, design, masterDNA) {
  * Fallback: Use basic image-to-image without ControlNet
  */
 export async function stylizeWithBasicImg2Img(imageUrl, design, masterDNA, viewType) {
-  console.log(`  Using fallback img2img for ${viewType}...`);
+  logger.info(`  Using fallback img2img for ${viewType}...`);
 
   const prompt = buildStylizationPrompt(design, masterDNA, viewType);
 
@@ -296,7 +299,7 @@ export async function stylizeWithBasicImg2Img(imageUrl, design, masterDNA, viewT
     };
 
   } catch (error) {
-    console.error(`Fallback img2img failed for ${viewType}:`, error);
+    logger.error(`Fallback img2img failed for ${viewType}:`, error);
     return null;
   }
 }

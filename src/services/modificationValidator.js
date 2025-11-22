@@ -7,10 +7,12 @@
  */
 
 import { preValidateModification } from './siteValidationService.js';
+import logger from '../utils/logger.js';
+
 
 class ModificationValidator {
   constructor() {
-    console.log('✓ Modification Validator initialized');
+    logger.info('✓ Modification Validator initialized');
   }
 
   /**
@@ -25,7 +27,7 @@ class ModificationValidator {
    * @returns {Object} Validation result with feasibility and suggestions
    */
   validateModification(modificationRequest, designData) {
-    console.log('🔍 Pre-validating modification request...');
+    logger.info('🔍 Pre-validating modification request...');
 
     const { deltaPrompt = '', quickToggles = {} } = modificationRequest;
     const { masterDNA, siteConstraints, history } = designData;
@@ -98,7 +100,7 @@ class ModificationValidator {
       }
 
       if (similarMods.successful > 0) {
-        console.log(`   ✓ Similar modification succeeded ${similarMods.successful} time(s) before`);
+        logger.info(`   ✓ Similar modification succeeded ${similarMods.successful} time(s) before`);
       }
     }
 
@@ -132,11 +134,11 @@ class ModificationValidator {
     }
 
     // Summary
-    console.log(`✅ Validation complete:`);
-    console.log(`   Valid: ${result.valid}`);
-    console.log(`   Feasible: ${result.feasible}`);
-    console.log(`   Warnings: ${result.warnings.length}`);
-    console.log(`   Suggestions: ${result.suggestions.length}`);
+    logger.info(`✅ Validation complete:`);
+    logger.info(`   Valid: ${result.valid}`);
+    logger.info(`   Feasible: ${result.feasible}`);
+    logger.info(`   Warnings: ${result.warnings.length}`);
+    logger.info(`   Suggestions: ${result.suggestions.length}`);
 
     return result;
   }

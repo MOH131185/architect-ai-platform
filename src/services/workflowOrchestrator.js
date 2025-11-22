@@ -1,16 +1,21 @@
 /**
  * Workflow Orchestrator
  *
+ * REFACTORED: Integrates ConsistencyEngine and costEstimationService
  * Manages the complete design workflow as a state machine.
  * Handles step transitions, loading states, errors, and progress events.
  *
- * Version: 1.0.0
- * Last Updated: 2025-10-25
+ * Version: 2.0.0
+ * Last Updated: 2025-11-15
  *
  * @module services/workflowOrchestrator
  */
 
 import { createError } from '../domain/dna.js';
+import consistencyEngine from './consistencyEngine.js';
+import costEstimationService from './costEstimationService.js';
+import logger from '../utils/logger.js';
+
 
 /**
  * Workflow states
@@ -185,7 +190,7 @@ class WorkflowOrchestrator {
         try {
           callback(event);
         } catch (error) {
-          console.error(`Error in event listener for ${eventType}:`, error);
+          logger.error(`Error in event listener for ${eventType}:`, error);
         }
       });
     }
@@ -197,7 +202,7 @@ class WorkflowOrchestrator {
         try {
           callback(event);
         } catch (error) {
-          console.error('Error in wildcard event listener:', error);
+          logger.error('Error in wildcard event listener:', error);
         }
       });
     }
@@ -213,7 +218,7 @@ class WorkflowOrchestrator {
     const previousState = this.state;
     this.state = newState;
 
-    console.log(`🔄 Workflow state: ${previousState} → ${newState}`);
+    logger.info(`🔄 Workflow state: ${previousState} → ${newState}`);
 
     this.emit(WorkflowEvent.STATE_CHANGED, {
       previousState,
@@ -280,7 +285,7 @@ class WorkflowOrchestrator {
 
     // Note: Actual implementation would call location intelligence service
     // This is a placeholder showing the pattern
-    console.log(`📍 Starting location analysis for: ${address}`);
+    logger.info(`📍 Starting location analysis for: ${address}`);
   }
 
   /**
@@ -293,7 +298,7 @@ class WorkflowOrchestrator {
     this.transitionTo(WorkflowState.LOCATION_COMPLETE);
     this.emit(WorkflowEvent.LOCATION_SUCCESS, locationProfile);
 
-    console.log('✅ Location analysis complete');
+    logger.success(' Location analysis complete');
   }
 
   /**
@@ -305,7 +310,7 @@ class WorkflowOrchestrator {
     this.setError('LOCATION_ANALYSIS_FAILED', error.message, { originalError: error });
     this.emit(WorkflowEvent.LOCATION_ERROR, error);
 
-    console.error('❌ Location analysis failed:', error);
+    logger.error('❌ Location analysis failed:', error);
   }
 
   /**
@@ -324,7 +329,7 @@ class WorkflowOrchestrator {
     this.transitionTo(WorkflowState.PORTFOLIO_ANALYZING);
     this.emit(WorkflowEvent.PORTFOLIO_STARTED, { fileCount: files.length });
 
-    console.log(`🎨 Starting portfolio analysis (${files.length} files)`);
+    logger.info(`🎨 Starting portfolio analysis (${files.length} files)`);
   }
 
   /**
@@ -337,7 +342,7 @@ class WorkflowOrchestrator {
     this.transitionTo(WorkflowState.PORTFOLIO_COMPLETE);
     this.emit(WorkflowEvent.PORTFOLIO_SUCCESS, portfolioAnalysis);
 
-    console.log('✅ Portfolio analysis complete');
+    logger.success(' Portfolio analysis complete');
   }
 
   /**
@@ -349,7 +354,7 @@ class WorkflowOrchestrator {
     this.setError('PORTFOLIO_ANALYSIS_FAILED', error.message, { originalError: error });
     this.emit(WorkflowEvent.PORTFOLIO_ERROR, error);
 
-    console.error('❌ Portfolio analysis failed:', error);
+    logger.error('❌ Portfolio analysis failed:', error);
   }
 
   /**
@@ -367,7 +372,7 @@ class WorkflowOrchestrator {
     this.transitionTo(WorkflowState.SPECS_COMPLETE);
     this.emit(WorkflowEvent.SPECS_SUBMITTED, specifications);
 
-    console.log('✅ Specifications submitted');
+    logger.success(' Specifications submitted');
   }
 
   /**
@@ -386,7 +391,7 @@ class WorkflowOrchestrator {
     this.transitionTo(WorkflowState.GENERATING);
     this.emit(WorkflowEvent.GENERATION_STARTED, projectContext);
 
-    console.log('🎨 Starting design generation...');
+    logger.info('🎨 Starting design generation...');
 
     // Set initial progress
     this.setProgress(0, 4, 'Initializing generation...');
@@ -402,20 +407,53 @@ class WorkflowOrchestrator {
   updateGenerationProgress(step, stepNumber, message) {
     this.setProgress(stepNumber, 4, message);
 
-    console.log(`   ${stepNumber}/4: ${message}`);
+    logger.info(`   ${stepNumber}/4: ${message}`);
   }
 
   /**
    * Complete generation with results
+   * REFACTORED: Now includes consistency check and cost estimation
    *
    * @param {import('../domain/dna.js').DesignResult} designResult
    */
-  completeGeneration(designResult) {
+  async completeGeneration(designResult) {
+    logger.info('🎯 Finalizing generation with consistency and cost checks...');
+
+    // Run consistency check
+    try {
+      const consistencyReport = await consistencyEngine.checkDesignConsistency(designResult);
+      designResult.consistencyReport = consistencyReport;
+
+      logger.info(`   Consistency: ${(consistencyReport.score * 100).toFixed(1)}% (${consistencyReport.passed ? 'PASSED' : 'FAILED'})`);
+
+      if (!consistencyReport.passed) {
+        logger.warn('   ⚠️  Consistency issues detected:', consistencyReport.issues);
+      }
+    } catch (error) {
+      logger.error('   ❌ Consistency check failed:', error);
+      designResult.consistencyReport = {
+        passed: false,
+        score: 0,
+        issues: [error.message]
+      };
+    }
+
+    // Generate cost estimate
+    try {
+      const costReport = costEstimationService.estimateCosts(designResult);
+      designResult.costReport = costReport;
+
+      logger.info(`   Cost: £${costReport.totalCost.toLocaleString()} (£${costReport.summary.ratePerM2}/m²)`);
+    } catch (error) {
+      logger.error('   ❌ Cost estimation failed:', error);
+      designResult.costReport = null;
+    }
+
     this.data.designResult = designResult;
     this.transitionTo(WorkflowState.GENERATION_COMPLETE);
     this.emit(WorkflowEvent.GENERATION_SUCCESS, designResult);
 
-    console.log('✅ Design generation complete');
+    logger.success(' Design generation complete with consistency and cost analysis');
   }
 
   /**
@@ -427,7 +465,7 @@ class WorkflowOrchestrator {
     this.setError('GENERATION_FAILED', error.message, { originalError: error });
     this.emit(WorkflowEvent.GENERATION_ERROR, error);
 
-    console.error('❌ Design generation failed:', error);
+    logger.error('❌ Design generation failed:', error);
   }
 
   /**
@@ -449,7 +487,7 @@ class WorkflowOrchestrator {
       message: ''
     };
 
-    console.log('🔄 Workflow reset to idle');
+    logger.info('🔄 Workflow reset to idle');
 
     this.emit(WorkflowEvent.STATE_CHANGED, {
       previousState: this.state,

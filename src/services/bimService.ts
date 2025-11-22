@@ -9,7 +9,7 @@
  */
 
 import * as THREE from 'three';
-import type { PlanJSON, Room, Level } from '../types/PlanJSON';
+import type { PlanJSON, Room, Level } from '../types/PlanJSON.js';
 
 /**
  * Scene generation options

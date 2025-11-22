@@ -13,20 +13,26 @@
  * CACHING: Prompt and SSIM result caching for performance (Opus 4.1 compliant)
  */
 
-import designGenerationHistory from './designGenerationHistory';
-import secureApiClient from './secureApiClient';
-import dnaPromptGenerator from './dnaPromptGenerator';
-import { withConsistencyLock, withConsistencyLockCompact, strongNegativesForLayoutDrift } from './a1SheetPromptGenerator';
-import sheetConsistencyGuard from './sheetConsistencyGuard';
-import architecturalSheetService from './architecturalSheetService';
-import { isFeatureEnabled } from '../config/featureFlags';
-import modificationValidator from './modificationValidator';
-import imageCompressor from './imageCompressor';
-import logger from '../utils/logger';
-import { ValidationError, GenerationError, APIError, NetworkError } from '../utils/errors';
-import { orchestratePanelGeneration, getLayoutIdForPanel, PANEL_KEY_TO_LAYOUT_ID } from './panelOrchestrator';
-import { derivePanelSeed } from './seedDerivation';
-import { compositeA1Sheet } from './a1Compositor';
+import designGenerationHistory from './designGenerationHistory.js';
+import secureApiClient from './secureApiClient.js';
+import dnaPromptGenerator from './dnaPromptGenerator.js';
+import { withConsistencyLockCompact, strongNegativesForLayoutDrift } from './a1/A1PromptService.js';
+import sheetConsistencyGuard from './sheetConsistencyGuard.js';
+import architecturalSheetService from './architecturalSheetService.js';
+import modificationClassifier from './modificationClassifier.js';
+import { isFeatureEnabled } from '../config/featureFlags.js';
+import modificationValidator from './modificationValidator.js';
+import imageCompressor from './imageCompressor.js';
+import logger from '../utils/logger.js';
+import { ValidationError, GenerationError, APIError, NetworkError } from '../utils/errors.js';
+import { orchestratePanelGeneration, getLayoutIdForPanel, PANEL_KEY_TO_LAYOUT_ID } from './panelOrchestrator.js';
+import { derivePanelSeed } from './seedDerivation.js';
+import { compositeA1Sheet } from './a1/A1SheetGenerator.js';
+import { detectA1Drift, DRIFT_THRESHOLD } from './a1/A1ValidationService.js';
+import { validateSiteSnapshot } from '../validators/siteSnapshotValidator.js';
+import { evaluateDNACompleteness } from '../validators/dnaCompletenessValidator.js';
+import { analyzePromptConstraints } from '../validators/promptConstraintValidator.js';
+import runtimeEnv from '../utils/runtimeEnv.js';
 
 /**
  * Prompt cache for avoiding repeated generation
@@ -41,6 +47,89 @@ const PROMPT_CACHE_TTL = 60 * 60 * 1000; // 1 hour
  */
 const ssimCache = new Map();
 const SSIM_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+const HYBRID_ZONE_SSIM_THRESHOLD = 0.96;
+const HYBRID_ZONE_PHASH_THRESHOLD = 2;
+
+const A1_WIDTH_PX = 1792;
+const A1_HEIGHT_PX = 1269;
+const A1_ASPECT_RATIO = A1_WIDTH_PX / A1_HEIGHT_PX;
+const ASPECT_TOLERANCE = 0.04;
+const DEFAULT_IMG2IMG_MODEL = 'black-forest-labs/FLUX.1-dev';
+const SUPPORTED_IMG2IMG_MODELS = new Set([DEFAULT_IMG2IMG_MODEL]);
+
+function alignToMultipleOf16(value) {
+  if (!Number.isFinite(value)) {
+    return 16;
+  }
+  const aligned = value - (value % 16);
+  return Math.max(16, aligned);
+}
+
+function describeMaterials(materials) {
+  if (!Array.isArray(materials) || materials.length === 0) {
+    return undefined;
+  }
+  return materials
+    .map((material) => {
+      if (!material || typeof material !== 'object') {
+        return typeof material === 'string' ? material : null;
+      }
+      const name = material.name || material.material || 'material';
+      const color = material.hexColor || material.color_hex || material.color || null;
+      return color ? `${name} (${color})` : name;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
+function normalizeDNAForDrift(dna, fallbackPanels = []) {
+  if (!dna || typeof dna !== 'object') {
+    return null;
+  }
+
+  const footprint =
+    dna.dimensions?.footprint ||
+    (dna.dimensions?.length && dna.dimensions?.width
+      ? `${dna.dimensions.length}×${dna.dimensions.width}`
+      : undefined);
+
+  const materialDesc = dna.materialDesc || describeMaterials(dna.materials);
+
+  let panels = [];
+  if (Array.isArray(dna.panels)) {
+    panels = dna.panels;
+  } else if (Array.isArray(fallbackPanels)) {
+    panels = fallbackPanels;
+  }
+
+  return {
+    ...dna,
+    materialDesc,
+    dimensions: {
+      ...(dna.dimensions || {}),
+      footprint,
+      height: dna.dimensions?.height
+    },
+    panels
+  };
+}
+
+function resolveStoredDNA(masterDNAOverride, design = {}) {
+  if (masterDNAOverride && Object.keys(masterDNAOverride).length > 0) {
+    return masterDNAOverride;
+  }
+
+  if (design.masterDNAFull && Object.keys(design.masterDNAFull).length > 0) {
+    return design.masterDNAFull;
+  }
+
+  if (design.masterDNA && Object.keys(design.masterDNA).length > 0) {
+    return design.masterDNA;
+  }
+
+  return null;
+}
 
 class AIModificationService {
   constructor() {
@@ -241,9 +330,15 @@ class AIModificationService {
       baselineUrl = null,
       masterDNA = null,
       mainPrompt = null,
-      strictLock = true,
-      targetPanels = null // 🆕 Array of panel keys to target (Hybrid A1 mode)
+      strictLock: strictLockParam = true,
+      targetPanels = null, // 🆕 Array of panel keys to target (Hybrid A1 mode)
+      manualStrengthOverride: manualStrengthOverrideParam = null,
+      forceSameGeometry = false,
+      driftRetryCount = 0
     } = params;
+
+    let strictLock = strictLockParam;
+    let manualStrengthOverride = manualStrengthOverrideParam;
 
     // Check if Hybrid A1 mode is enabled
     const hybridModeEnabled = isFeatureEnabled('hybridA1Mode');
@@ -269,10 +364,15 @@ class AIModificationService {
 
     // Use provided data or fall back to stored design data
     // 🎯 CRITICAL: Preserve EXACT DNA to maintain building identity across modifications
-    const originalDNA = masterDNA || originalDesign.masterDNA;
+    let originalDNA = resolveStoredDNA(masterDNA, originalDesign);
     const originalSeed = originalDesign.seedsByView?.a1Sheet || originalDesign.seed;
     const originalPrompt = mainPrompt || originalDesign.basePrompt || originalDesign.mainPrompt;
     const resolvedBaselineUrl = baselineUrl || originalDesign.resultUrl || originalDesign.a1SheetUrl;
+    const storedPanelMap = originalDesign.a1Sheet?.panelMap || originalDesign.panelMap || null;
+    const sheetMetadata = {
+      ...(originalDesign.a1Sheet?.metadata || {}),
+      panelMap: storedPanelMap || null
+    };
     
     // Extract site and context data for consistency
     const originalLocation = originalDesign.locationData;
@@ -287,6 +387,48 @@ class AIModificationService {
         'masterDNA',
         designId
       );
+    }
+
+    let dnaCompleteness = evaluateDNACompleteness(originalDNA || {});
+    if (!dnaCompleteness.isComplete && originalDesign.masterDNAFull && originalDNA !== originalDesign.masterDNAFull) {
+      originalDNA = originalDesign.masterDNAFull;
+      dnaCompleteness = evaluateDNACompleteness(originalDNA || {});
+    }
+
+    if (!dnaCompleteness.isComplete) {
+      const missingFields = dnaCompleteness.missing.join(', ') || 'critical DNA fields';
+      const guidance = originalDesign.masterDNAFull
+        ? 'Regenerate the base A1 sheet to refresh the stored DNA before modifying.'
+        : 'This design predates DNA preservation. Please regenerate the base A1 sheet.';
+      throw new ValidationError(
+        `Design ${designId} uses incomplete DNA (${missingFields}). ${guidance}`,
+        'dnaCompleteness',
+        dnaCompleteness
+      );
+    }
+
+    // NEW: Classify modification request if geometry volume mode is enabled
+    let modificationClass = null;
+    const geometryVolumeEnabled = isFeatureEnabled('geometryVolumeFirst');
+    
+    if (geometryVolumeEnabled && (userPrompt || deltaPrompt)) {
+      const modRequest = userPrompt || deltaPrompt || '';
+      const volumeSpec = originalDesign.volumeSpec || originalDesign.geometry?.volumeSpec;
+      
+      try {
+        modificationClass = await modificationClassifier.classifyModification(
+          modRequest,
+          originalDNA,
+          volumeSpec
+        );
+        
+        logger.info('🔍 Modification classified', {
+          category: modificationClass.classification,
+          requiresGeometryRegen: modificationClass.requires_geometry_regeneration
+        });
+      } catch (classError) {
+        logger.warn('⚠️  Classification failed, proceeding with standard modify:', classError.message);
+      }
     }
 
     if (!originalSeed) {
@@ -323,13 +465,45 @@ class AIModificationService {
 
     // 🔒 DIMENSION LOCK: Read baseline dimensions, model, and layout from history
     const baselineMetadata = originalDesign.a1Sheet?.metadata || {};
-    // Use valid A1 portrait defaults (multiples of 16): 1264×1792px
-    let baselineWidth = baselineMetadata.width ?? 1264;  // 79×16
-    let baselineHeight = baselineMetadata.height ?? 1792; // 112×16
-    // Ensure multiples of 16 (Together.ai requirement)
-    baselineWidth -= baselineWidth % 16;
-    baselineHeight -= baselineHeight % 16;
-    let baselineModel = baselineMetadata.model || 'black-forest-labs/FLUX.1-dev';
+    const metadataWidth = Number.parseInt(
+      baselineMetadata.width ?? baselineMetadata.canvasWidth ?? baselineMetadata.sheetWidth,
+      10
+    );
+    const metadataHeight = Number.parseInt(
+      baselineMetadata.height ?? baselineMetadata.canvasHeight ?? baselineMetadata.sheetHeight,
+      10
+    );
+
+    let baselineWidth = Number.isFinite(metadataWidth) ? metadataWidth : A1_WIDTH_PX;
+    let baselineHeight = Number.isFinite(metadataHeight) ? metadataHeight : A1_HEIGHT_PX;
+
+    if (!Number.isFinite(metadataWidth) || !Number.isFinite(metadataHeight)) {
+      logger.warn('Baseline A1 dimensions missing in history; defaulting to 1792×1269px landscape.');
+    }
+
+    const currentAspect = baselineHeight > 0 ? baselineWidth / baselineHeight : A1_ASPECT_RATIO;
+    if (Math.abs(currentAspect - A1_ASPECT_RATIO) > ASPECT_TOLERANCE) {
+      logger.warn('Baseline A1 dimensions not landscape ratio. Overriding to 1792×1269px.', {
+        recordedWidth: baselineWidth,
+        recordedHeight: baselineHeight
+      });
+      baselineWidth = A1_WIDTH_PX;
+      baselineHeight = A1_HEIGHT_PX;
+    }
+
+    // Ensure dimensions stay within 25% of canonical landscape and align to multiples of 16
+    const clampDimension = (value, fallback) => {
+      if (!Number.isFinite(value) || value <= 0) {
+        return fallback;
+      }
+      const min = Math.max(512, fallback * 0.75);
+      const max = fallback * 1.25;
+      return Math.min(Math.max(value, min), max);
+    };
+
+    baselineWidth = alignToMultipleOf16(clampDimension(baselineWidth, A1_WIDTH_PX));
+    baselineHeight = alignToMultipleOf16(clampDimension(baselineHeight, A1_HEIGHT_PX));
+    let baselineModel = baselineMetadata.model || DEFAULT_IMG2IMG_MODEL;
     const baselineLayoutKey = baselineMetadata.a1LayoutKey || 'uk-riba-standard';
 
     // 🔧 IMG2IMG COMPATIBILITY: Force compatible model if kontext detected
@@ -339,7 +513,14 @@ class AIModificationService {
         originalModel: baselineModel,
         newModel: 'black-forest-labs/FLUX.1-dev'
       }, '🔧');
-      baselineModel = 'black-forest-labs/FLUX.1-dev';
+      baselineModel = DEFAULT_IMG2IMG_MODEL;
+    }
+
+    if (!SUPPORTED_IMG2IMG_MODELS.has(baselineModel)) {
+      logger.warn('Baseline model not supported for img2img - defaulting to FLUX.1-dev', {
+        baselineModel
+      });
+      baselineModel = DEFAULT_IMG2IMG_MODEL;
     }
 
     logger.info('Baseline locked', {
@@ -351,16 +532,26 @@ class AIModificationService {
     // Build delta prompt from quick toggles and user prompt
     let deltaText = deltaPrompt || '';
 
+    const overlaySitePlanRequested = !!quickToggles.addSitePlan;
+    if (overlaySitePlanRequested) {
+      logger.warn('Site plan overlay-only mode: ignoring AI regenerate request for site plan panel. HTML overlay will refresh separately.', null, '🗺️');
+      try {
+        const session = runtimeEnv.getSession();
+        if (session) {
+          session.setItem('sitePlanOverlayRefreshRequested', new Date().toISOString());
+        }
+      } catch (storageError) {
+        logger.debug('Unable to record site plan overlay refresh flag', { error: storageError.message });
+      }
+      quickToggles.addSitePlan = false;
+    }
+
     if (quickToggles.addSections) {
       deltaText += '\n\n🚨 ADD SECTIONS TO EXISTING A1 SHEET (IMG2IMG - PRESERVE SHEET):\n- IMAGE-TO-IMAGE mode: Reference shows COMPLETE A1 sheet with all views\n- PRESERVE 95%: Site plan, floor plans, elevations, 3D views, title block\n- ONLY ADD sections in available white space if missing\n- ADD SECTION A-A (Longitudinal) and SECTION B-B (Transverse)\n- Both sections must show dimension lines matching original dimensions\n- DO NOT replace sheet, DO NOT remove views, DO NOT rearrange layout';
     }
 
     if (quickToggles.add3DView) {
       deltaText += '\n\n🚨 ADD 3D VIEWS TO EXISTING A1 SHEET (IMG2IMG - PRESERVE SHEET):\n- IMAGE-TO-IMAGE mode: Reference shows COMPLETE A1 sheet with all views\n- PRESERVE 95%: Site plan, floor plans, elevations, sections, title block\n- ONLY ADD 3D views in available white space\n- ADD exterior 3D perspective, axonometric, or interior views as needed\n- DO NOT replace sheet, DO NOT remove views, DO NOT rearrange layout';
-    }
-
-    if (quickToggles.addSitePlan) {
-      deltaText += '\n\nADD SITE PLAN TO EXISTING A1 SHEET:\n- MAINTAIN the complete A1 sheet layout with ALL existing elements\n- ADD detailed site plan with context in available space if missing\n- Show site boundaries, building footprint, and surrounding context\n- Include north arrow and scale\n- Show access paths, parking, and landscaping\n- DO NOT replace the sheet - ADD to existing layout\n- PRESERVE all existing views';
     }
 
     if (quickToggles.addInterior3D) {
@@ -381,6 +572,39 @@ class AIModificationService {
 
     if (!deltaText.trim()) {
       deltaText = 'Regenerate A1 sheet maintaining exact consistency with original design';
+    }
+
+    const constraintAnalysis = analyzePromptConstraints({
+      quickToggles,
+      deltaPrompt: deltaText,
+      userPrompt,
+      sheetMetadata,
+      projectContext,
+      targetPanels
+    });
+
+    if (!constraintAnalysis.valid) {
+      throw new ValidationError(
+        constraintAnalysis.errors.join(' '),
+        'promptConstraints',
+        constraintAnalysis
+      );
+    }
+
+    if (constraintAnalysis.directiveText) {
+      deltaText += `\n${constraintAnalysis.directiveText}`;
+    }
+
+    if (constraintAnalysis.lockRecommendation === 'tighten') {
+      strictLock = true;
+      if (!manualStrengthOverride) {
+        manualStrengthOverride = constraintAnalysis.lockStrengthHint || 0.14;
+      }
+    } else if (constraintAnalysis.lockRecommendation === 'relax') {
+      strictLock = false;
+      if (!manualStrengthOverride) {
+        manualStrengthOverride = constraintAnalysis.lockStrengthHint || 0.2;
+      }
     }
 
     // 🔍 PRE-VALIDATE MODIFICATION before expensive generation
@@ -428,26 +652,23 @@ class AIModificationService {
       let compactPrompt = this.getCachedPrompt(promptCacheKey);
 
       if (!compactPrompt) {
-        // 🎯 COMPACT PROMPT: Use withConsistencyLockCompact for <8k chars
-
-        compactPrompt = strictLock
-          ? withConsistencyLockCompact({
-              base: {
-                masterDNA: originalDNA,
-                mainPrompt: originalPrompt,
-                a1LayoutKey: baselineLayoutKey,
-                projectContext: projectContext, // 🆕 Preserve project type
-                projectType: projectType, // 🆕 Explicit project type
-                buildingName: buildingName // 🆕 Explicit building name
-              },
-              delta: deltaText
-            })
-          : withConsistencyLock(originalPrompt, deltaText, originalDNA, projectContext).prompt;
+        // 🎯 COMPACT PROMPT: Always use withConsistencyLockCompact for img2img
+        compactPrompt = withConsistencyLockCompact({
+          base: {
+            masterDNA: originalDNA,
+            mainPrompt: originalPrompt,
+            a1LayoutKey: baselineLayoutKey,
+            projectContext: projectContext, // 🆕 Preserve project type
+            projectType: projectType, // 🆕 Explicit project type
+            buildingName: buildingName // 🆕 Explicit building name
+          },
+          delta: deltaText
+        });
 
         this.cachePrompt(promptCacheKey, compactPrompt);
       }
 
-      logger.info(`Generated ${strictLock ? 'compact' : 'standard'} locked prompt`, {
+      logger.info('Generated compact locked prompt', {
         length: typeof compactPrompt === 'string' ? compactPrompt.length : JSON.stringify(compactPrompt).length,
         baseLength: originalPrompt?.length || 0,
         deltaLength: deltaText?.length || 0
@@ -572,8 +793,9 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
       // CRITICAL: Strength must be low enough to preserve layout but high enough for visible changes
       // Testing shows: <0.10 = no visible changes, >0.20 = layout drift, 0.12-0.18 = optimal
       let imageStrength;
+      let appliedImageStrength;
 
-      const isSiteRelated = deltaText.toLowerCase().includes('site') || quickToggles.addSitePlan;
+      const isSiteRelated = !overlaySitePlanRequested && deltaText.toLowerCase().includes('site');
       const isAddingViews = quickToggles.addSections || quickToggles.add3DView ||
                            quickToggles.addInterior3D || quickToggles.addFloorPlans;
       const isDetailsOnly = quickToggles.addDetails && !isAddingViews;
@@ -589,18 +811,38 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
         imageStrength = strictLock ? 0.12 : 0.15; // Default balanced (88-85% preserve)
       }
 
+      const clampStrengthValue = (value) =>
+        Number.parseFloat(Math.max(0.02, Math.min(0.35, value)).toFixed(3));
+
+      if (manualStrengthOverride !== null && Number.isFinite(manualStrengthOverride)) {
+        imageStrength = clampStrengthValue(manualStrengthOverride);
+        logger.info('Manual img2img strength override applied', {
+          override: manualStrengthOverride,
+          applied: imageStrength
+        }, '🎚️');
+      } else {
+        imageStrength = clampStrengthValue(imageStrength);
+      }
+
+      appliedImageStrength = imageStrength;
+      const strengthPlan = Array.from(new Set([
+        appliedImageStrength,
+        clampStrengthValue(appliedImageStrength * 0.75),
+        clampStrengthValue(appliedImageStrength * 0.5)
+      ])).slice(0, 3);
+
       logger.info('Image-to-Image settings', {
-        strength: imageStrength,
-        mode: imageStrength < 0.25 ? 'HIGH PRESERVE' : imageStrength < 0.35 ? 'BALANCED' : 'HIGH MODIFY',
-        preservation: `${((1 - imageStrength) * 100).toFixed(0)}%`,
-        changes: `${(imageStrength * 100).toFixed(0)}%`
+        strengthPlan,
+        primaryStrength: strengthPlan[0],
+        mode: strengthPlan[0] < 0.25 ? 'HIGH PRESERVE' : strengthPlan[0] < 0.35 ? 'BALANCED' : 'HIGH MODIFY',
+        preservation: `${((1 - strengthPlan[0]) * 100).toFixed(0)}%`,
+        changes: `${(strengthPlan[0] * 100).toFixed(0)}%`
       }, '🎚️');
 
       // Generate modified A1 sheet with img2img using secureApiClient
       const promptToUse = typeof compactPrompt === 'string' ? compactPrompt : compactPrompt.prompt || compactPrompt;
 
       // 🚫 STRONG NEGATIVE PROMPTS: Always send A1 negatives + layout-drift prevention
-      // Even with compact prompts, we need explicit negatives to prevent grid/collage regressions
       const baseNegatives = this.getA1NegativePrompt();
       const layoutDriftNegatives = strongNegativesForLayoutDrift();
       const combinedNegativePrompt = `${baseNegatives}, ${layoutDriftNegatives}`;
@@ -611,70 +853,45 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
         combinedLength: combinedNegativePrompt.length
       }, '🚫');
 
-      let result = await secureApiClient.togetherImage({
-        prompt: promptToUse,
-        negativePrompt: combinedNegativePrompt,
-        seed: originalSeed,
-        width: baselineWidth,
-        height: baselineHeight,
-        num_inference_steps: 48, // OPTIMIZED: Higher steps for best architectural quality
-        guidanceScale: 9.0, // ENHANCED: Stronger guidance for precise modifications
-        model: baselineModel,
-        initImage: initImageData,
-        imageStrength: imageStrength
-      });
+      const allowedDrift = quickToggles.addSections || quickToggles.add3DView ? 'moderate' : 'minimal';
+      const targetSSIM = strictLock ? 0.9 : 0.85;
 
-      if (!result || !result.url) {
-        throw new GenerationError(
-          'A1 sheet generation failed - no URL returned',
-          'a1-generation',
-          { designId }
-        );
-      }
+      const evaluateConsistency = async (candidateUrl) => {
+        if (!resolvedBaselineUrl || !initImageData) {
+          return null;
+        }
 
-      // 🔍 VALIDATE CONSISTENCY and RETRY if needed
-      let consistencyResult = null;
-      let finalResult = result;
-
-      if (resolvedBaselineUrl && initImageData) {
-        logger.info('Validating consistency with baseline', null, '🔍');
-
-        // Calculate hash keys for caching (outside try block for retry access)
         const hash1 = resolvedBaselineUrl.substring(0, 50);
-        const hash2 = result.url.substring(0, 50);
+        const hash2 = candidateUrl.substring(0, 50);
+        const cachedSSIM = this.getCachedSSIM(hash1, hash2);
+
+        if (cachedSSIM !== null) {
+          logger.debug('Using cached consistency score', { score: cachedSSIM }, '💾');
+          return {
+            score: cachedSSIM,
+            ssimScore: cachedSSIM,
+            hashDistance: 0,
+            issues: []
+          };
+        }
 
         try {
-          // Check SSIM cache
-          const cachedSSIM = this.getCachedSSIM(hash1, hash2);
-
-          if (cachedSSIM !== null) {
-            consistencyResult = {
-              score: cachedSSIM,
-              ssimScore: cachedSSIM,
-              hashDistance: 0,
-              issues: []
-            };
-            logger.debug('Using cached consistency score', { score: cachedSSIM }, '💾');
-          } else {
-            consistencyResult = await sheetConsistencyGuard.validateConsistency(
-              resolvedBaselineUrl,
-              result.url,
-              {
-                strictMode: true,
-                allowedDrift: quickToggles.addSections || quickToggles.add3DView ? 'moderate' : 'minimal'
-              }
-            );
-
-            // Cache the result
-            this.cacheSSIM(hash1, hash2, consistencyResult.ssimScore);
-          }
+          const validation = await sheetConsistencyGuard.validateConsistency(
+            resolvedBaselineUrl,
+            candidateUrl,
+            {
+              strictMode: true,
+              allowedDrift
+            }
+          );
+          this.cacheSSIM(hash1, hash2, validation.ssimScore);
+          return validation;
         } catch (validationError) {
           logger.warn('Consistency validation failed, skipping', {
             error: validationError.message,
             fallback: 'Proceeding without validation'
           });
-          // Continue without consistency validation (non-fatal)
-          consistencyResult = {
+          return {
             score: 0,
             ssimScore: 0,
             hashDistance: 0,
@@ -682,69 +899,147 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
             validationSkipped: true
           };
         }
+      };
 
+      let finalResult = null;
+      let consistencyResult = null;
+
+      for (let attemptIndex = 0; attemptIndex < strengthPlan.length; attemptIndex++) {
+        const strength = strengthPlan[attemptIndex];
+        const attemptLabel = attemptIndex === 0 ? 'primary' : `retry-${attemptIndex}`;
+
+        logger.info(`Running ${attemptLabel} img2img pass`, {
+          imageStrength: strength,
+          attempt: attemptIndex + 1,
+          totalAttempts: strengthPlan.length
+        });
+
+        const imageJobOptions = {
+          prompt: promptToUse,
+          negativePrompt: combinedNegativePrompt,
+          seed: originalSeed,
+          width: baselineWidth,
+          height: baselineHeight,
+          num_inference_steps: 48,
+          guidanceScale: 9.0,
+          model: baselineModel,
+          initImage: initImageData,
+          imageStrength: strength
+        };
+
+        if (strictLock) {
+          imageJobOptions.forceSameGeometry = true;
+          imageJobOptions.preserveLayout = true;
+          imageJobOptions.layoutLock = 'a1-fixed-grid';
+          imageJobOptions.noiseThreshold = Math.min(0.14, Math.max(0.08, (manualStrengthOverride ?? strength) * 0.6));
+        }
+
+        const attemptResult = await secureApiClient.togetherImage(imageJobOptions);
+
+        if (!attemptResult || !attemptResult.url) {
+          throw new GenerationError(
+            'A1 sheet generation failed - no URL returned',
+            'a1-generation',
+            { designId, attempt: attemptIndex + 1 }
+          );
+        }
+
+        const candidateConsistency = await evaluateConsistency(attemptResult.url);
+        const isFinalAttempt = attemptIndex === strengthPlan.length - 1;
+        const acceptable =
+          !candidateConsistency ||
+          candidateConsistency.validationSkipped ||
+          (candidateConsistency.ssimScore ?? 1) >= targetSSIM;
+
+        if (acceptable || isFinalAttempt) {
+          finalResult = attemptResult;
+          consistencyResult = candidateConsistency;
+
+          if (!acceptable && isFinalAttempt) {
+            logger.warn('Consistency below target but maximum retries reached', {
+              ssim: candidateConsistency?.ssimScore ?? 0,
+              targetSSIM
+            });
+          }
+          break;
+        }
+
+        logger.warn('Consistency below target, scheduling additional retry', {
+          attempt: attemptIndex + 1,
+          currentSSIM: candidateConsistency?.ssimScore ?? 0,
+          targetSSIM,
+          nextStrength: strengthPlan[attemptIndex + 1]
+        });
+      }
+
+      if (!finalResult) {
+        throw new GenerationError(
+          'A1 sheet generation failed after all img2img attempts',
+          'a1-generation',
+          { designId }
+        );
+      }
+
+      if (consistencyResult) {
         logger.info('Consistency metrics', {
           score: (consistencyResult.score ?? 0).toFixed(3),
           ssim: (consistencyResult.ssimScore ?? 0).toFixed(3),
-          threshold: 0.92,
+          target: targetSSIM,
           hashDistance: consistencyResult.hashDistance ?? 0,
           validationSkipped: consistencyResult.validationSkipped || false
         });
+      } else {
+        logger.info('Consistency validation skipped (no baseline or validation error)');
+      }
 
-        // 🔄 AUTOMATIC RETRY: If SSIM < 0.85 and strict lock enabled (skip if validation failed)
-        if (strictLock && !consistencyResult.validationSkipped && (consistencyResult.ssimScore ?? 0) < 0.85) {
-          // Use even lower strength for retry, especially for site-related changes
-          const retryStrength = isSiteRelated ? 0.03 : 0.05;
+      // 🧭 DRIFT DETECTION
+      const previousDriftSnapshot = normalizeDNAForDrift(originalDNA, originalDesign?.panels);
+      const newDNASnapshotSource =
+        finalResult.metadata?.masterDNA ||
+        finalResult.masterDNA ||
+        finalResult.updatedDNA ||
+        finalResult.metadata?.a1DNA;
+      const newDriftSnapshot = normalizeDNAForDrift(newDNASnapshotSource, finalResult.metadata?.panels);
 
-          logger.warn('SSIM below threshold, retrying with minimal strength for maximum preservation', {
-            currentSSIM: (consistencyResult.ssimScore ?? 0).toFixed(3),
-            threshold: 0.85,
-            newStrength: retryStrength,
-            modType: isSiteRelated ? 'site-related' : 'general'
-          });
+      if (previousDriftSnapshot && newDriftSnapshot) {
+        const drift = detectA1Drift(previousDriftSnapshot, newDriftSnapshot);
+        const driftRatio = typeof drift.driftRatio === 'number' ? drift.driftRatio : (drift.errors.length > 0 ? 1 : 0);
+        const driftThreshold = DRIFT_THRESHOLD;
 
-          const retryResult = await secureApiClient.togetherImage({
-            prompt: promptToUse,
-            negativePrompt: combinedNegativePrompt, // Use same strong negatives for retry
-            seed: originalSeed,
-            width: baselineWidth,
-            height: baselineHeight,
-            num_inference_steps: 40, // Match main generation
-            guidanceScale: 8.5, // Match main generation
-            model: baselineModel,
-            initImage: initImageData,
-            imageStrength: retryStrength  // Ultra-minimal strength for site (97% preserve) or minimal (95% preserve)
-          });
+        if (driftRatio >= driftThreshold) {
+          logger.error('A1 drift detected', { errors: drift.errors, warnings: drift.warnings, driftRatio }, '⚠️');
 
-          if (retryResult && retryResult.url) {
-            // Validate retry result
-            const retryHash = retryResult.url.substring(0, 50);
-            const retryConsistency = await sheetConsistencyGuard.validateConsistency(
-              resolvedBaselineUrl,
-              retryResult.url,
-              { strictMode: false, allowedDrift: 'minimal' }
+          if (forceSameGeometry || driftRetryCount >= 1) {
+            throw new GenerationError(
+              `Drift exceeded safe threshold (${Math.round(driftRatio * 100)}%). Please regenerate the base A1 sheet.`,
+              'a1-drift',
+              { designId, drift }
             );
-
-            logger.info('Retry consistency', { ssim: (retryConsistency.ssimScore ?? 0).toFixed(3) });
-
-            // Use retry result if SSIM improved
-            if ((retryConsistency.ssimScore ?? 0) > (consistencyResult.ssimScore ?? 0)) {
-              logger.success('Retry improved SSIM', {
-                from: (consistencyResult.ssimScore ?? 0).toFixed(3),
-                to: (retryConsistency.ssimScore ?? 0).toFixed(3)
-              });
-              finalResult = retryResult;
-              consistencyResult = retryConsistency;
-              this.cacheSSIM(hash1, retryHash, retryConsistency.ssimScore);
-            } else {
-              logger.warn('Retry did not improve SSIM, using original result');
-            }
           }
-        } else if ((consistencyResult.ssimScore ?? 0) >= 0.92) {
-          logger.success('Consistency acceptable', {
-            ssim: (consistencyResult.ssimScore ?? 0).toFixed(3)
+
+          const correctedStrength = Math.max(0.08, (appliedImageStrength || 0.18) - 0.05);
+          logger.info('Auto-correcting drift with stricter lock', {
+            correctedStrength,
+            previousStrength: appliedImageStrength
+          }, '🔄');
+
+          return this.modifyA1Sheet({
+            ...params,
+            strictLock: true,
+            forceSameGeometry: true,
+            manualStrengthOverride: correctedStrength,
+            masterDNA: originalDNA,
+            baselineUrl: resolvedBaselineUrl,
+            mainPrompt: originalPrompt,
+            driftRetryCount: driftRetryCount + 1
           });
         }
+
+        if (drift.warnings.length > 0) {
+          logger.warn('A1 Sheet Drift Warnings', { warnings: drift.warnings, driftRatio }, '⚠️');
+        }
+      } else {
+        logger.debug('Drift detection skipped - new DNA unavailable');
       }
 
       // 🗺️ SITE MAP PARITY: Composite site snapshot for pixel-exact map
@@ -772,6 +1067,30 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
         }
       } catch (e) {
         logger.warn('Failed to refresh site snapshot; proceeding without overlay', { error: e.message });
+      }
+
+      const siteSnapshotValidation = await validateSiteSnapshot(
+        ensuredSiteSnapshot
+          ? {
+              dataUrl: ensuredSiteSnapshot.dataUrl,
+              capturedAt: ensuredSiteSnapshot.capturedAt,
+              size: ensuredSiteSnapshot.size,
+              metadata: ensuredSiteSnapshot
+            }
+          : null,
+        {
+          context: 'modify-workflow',
+          allowMissing: false
+        }
+      );
+
+      if (!siteSnapshotValidation.valid) {
+        const reason = siteSnapshotValidation.errors.map(err => err.message).join(' ');
+        throw new ValidationError(
+          `Site snapshot invalid for modification: ${reason}. Regenerate the base A1 sheet to refresh the site map.`,
+          'siteSnapshot',
+          siteSnapshotValidation
+        );
       }
 
       const hasValidSiteSnapshot = ensuredSiteSnapshot &&
@@ -814,6 +1133,16 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
         resultUrl: finalResult.url,
         seed: originalSeed,
         prompt: promptToUse,
+        baselineDimensions: {
+          width: baselineWidth,
+          height: baselineHeight
+        },
+        baselineModel,
+        img2imgSettings: {
+          strengthPlan,
+          finalStrength: strengthPlan[strengthPlan.length - 1]
+        },
+        sitePlanOverlayRequested: overlaySitePlanRequested,
         consistencyScore: consistencyResult?.score || null,
         ssimScore: consistencyResult?.ssimScore || null,
         timestamp: new Date().toISOString()
@@ -828,7 +1157,12 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
         versionId,
         consistencyScore: consistencyResult?.score || null,
         ssimScore: consistencyResult?.ssimScore || null,
-        consistencyIssues: consistencyResult?.issues || []
+        consistencyIssues: consistencyResult?.issues || [],
+        sitePlanOverlayRequested: overlaySitePlanRequested,
+        img2img: {
+          finalStrength: strengthPlan[strengthPlan.length - 1],
+          strengthPlan
+        }
       };
 
     } catch (error) {
@@ -1080,7 +1414,7 @@ inconsistent style, mixed art styles, cartoon, sketch`;
     }
 
     // Extract panel map and seed map from original design
-    const originalPanelMap = originalDesign.a1Sheet?.panels || originalDesign.panelMap || {};
+    const originalPanelMap = storedPanelMap || originalDesign.a1Sheet?.panels || originalDesign.panelMap || {};
     const originalSeedMap = originalDesign.a1Sheet?.seedMap || {};
     const baseSeed = originalDesign.a1Sheet?.seed || originalDesign.seed;
     const originalDNA = masterDNA || originalDesign.masterDNA;
@@ -1173,20 +1507,48 @@ inconsistent style, mixed art styles, cartoon, sketch`;
           const zones = layout.panels.filter(p => 
             unchangedPanels.some(key => getLayoutIdForPanel(key) === p.id)
           );
+          const zoneThresholds = zones.reduce((acc, zone) => {
+            acc[zone.id] = {
+              ssim: HYBRID_ZONE_SSIM_THRESHOLD,
+              pHash: HYBRID_ZONE_PHASH_THRESHOLD
+            };
+            return acc;
+          }, {});
           
           zoneValidation = await sheetConsistencyGuard.validateZoneConsistency(
             originalDesign.a1Sheet.url,
             compositedSheet.url,
             zones,
-            { unchangedPanels: zones.map(z => z.id) }
+            {
+              unchangedPanels: zones.map(z => z.id),
+              zoneThresholds
+            }
           );
           
           logger.info('Zone consistency validation', {
             consistent: zoneValidation.consistent,
             overallScore: zoneValidation.overallScore.toFixed(3)
           });
+
+          if (!zoneValidation.consistent) {
+            throw new GenerationError(
+              'Zone consistency dropped below threshold',
+              'zone-validation',
+              {
+                issues: zoneValidation.issues,
+                score: zoneValidation.overallScore
+              }
+            );
+          }
         } catch (validationError) {
-          logger.warn('Zone validation failed', validationError);
+          logger.error('Zone validation failed', validationError);
+          throw validationError instanceof GenerationError
+            ? validationError
+            : new GenerationError(
+                'Zone validation failed',
+                'zone-validation',
+                { error: validationError.message }
+              );
         }
       }
 
@@ -1223,7 +1585,15 @@ inconsistent style, mixed art styles, cartoon, sketch`;
       logger.error('Hybrid modification failed', error);
       
       // Fallback to One-Shot modify if panel regeneration fails or rate limit hit
-      if (error instanceof GenerationError && (error.code === 'panel_generation' || error.message?.includes('rate limit') || error.message?.includes('429'))) {
+      if (
+        error instanceof GenerationError &&
+        (
+          error.code === 'panel_generation' ||
+          error.code === 'zone-validation' ||
+          error.message?.includes('rate limit') ||
+          error.message?.includes('429')
+        )
+      ) {
         logger.warn('Falling back to One-Shot modify workflow');
         // Temporarily disable hybrid mode
         const { setFeatureFlag } = await import('../config/featureFlags.js');
@@ -1266,9 +1636,6 @@ inconsistent style, mixed art styles, cartoon, sketch`;
     }
     if (quickToggles.addInterior3D) {
       targets.push('v_interior');
-    }
-    if (quickToggles.addSitePlan) {
-      targets.push('site');
     }
     if (quickToggles.addFloorPlans) {
       targets.push('plan_ground', 'plan_upper');

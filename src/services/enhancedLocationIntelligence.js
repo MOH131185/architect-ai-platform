@@ -1,14 +1,13 @@
-// src/services/enhancedLocationIntelligence.js
+import weatherService from './weatherService.js';
+import logger from '../utils/logger.js';
 
-// Provides functions to fetch authoritative zoning and planning data from official sources.
-// This is an example implementation that fetches data from UK Planning Portal or US city open data.
 
 export const enhancedLocationIntelligence = {
   /**
    * Get authoritative zoning data for a given address and coordinates.
    * @param {string} address - Full address string.
    * @param {{ lat: number, lng: number }} coords - Latitude and longitude.
-   * @returns {Promise<{zoning: any, designGuidelines: any, dataQuality: string, citations: string[]}>}
+   * @returns {Promise<{zoning: any, designGuidelines: any, dataQuality: string, citations: string[], climate: any}>}
    */
   async getAuthorativeZoningData(address, coords) {
     const { lat, lng } = coords || {};
@@ -16,8 +15,14 @@ export const enhancedLocationIntelligence = {
     let designGuidelines = null;
     let citations = [];
     let dataQuality = 'unknown';
+    let climateData = null;
 
     try {
+      // Fetch real-time climate data
+      if (lat && lng) {
+        climateData = await weatherService.getClimateData(lat, lng);
+      }
+
       // Simple heuristic: determine if coordinate is in the UK based on lat/lng.
       const isUK = lat > 49 && lat < 61 && lng > -8 && lng < 2;
       if (isUK) {
@@ -43,7 +48,7 @@ export const enhancedLocationIntelligence = {
         citations.push('NYC Open Data');
       }
     } catch (error) {
-      console.error('Error fetching zoning data', error);
+      logger.error('Error fetching zoning data', error);
       dataQuality = 'low';
       zoningInfo = null;
       designGuidelines = null;
@@ -54,6 +59,7 @@ export const enhancedLocationIntelligence = {
       designGuidelines,
       dataQuality,
       citations,
+      climate: climateData
     };
   },
 };

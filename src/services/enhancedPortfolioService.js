@@ -6,8 +6,10 @@
  * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-import secureApiClient from './secureApiClient';
-import materialDetectionService from './materialDetectionService';
+import secureApiClient from './secureApiClient.js';
+import materialDetectionService from './materialDetectionService.js';
+import logger from '../utils/logger.js';
+
 
 class EnhancedPortfolioService {
   constructor() {
@@ -21,28 +23,28 @@ class EnhancedPortfolioService {
   async analyzePortfolio(portfolioFiles, locationContext) {
 
     try {
-      console.log('📁 Analyzing portfolio:', portfolioFiles.length, 'files');
+      logger.info('📁 Analyzing portfolio:', portfolioFiles.length, 'files');
 
       // Convert files to base64 images
       const images = await this.processPortfolioFiles(portfolioFiles);
-      console.log('✅ Processed', images.length, 'images from portfolio');
+      logger.info('✅ Processed', images.length, 'images from portfolio');
 
       if (images.length === 0) {
-        console.warn('No images extracted from portfolio');
+        logger.warn('No images extracted from portfolio');
         return this.getFallbackPortfolioAnalysis(locationContext);
       }
 
       // Analyze with GPT-4 Vision
       const visionAnalysis = await this.analyzeWithVision(images, locationContext);
-      console.log('✅ Vision analysis complete');
+      logger.success(' Vision analysis complete');
 
       // Enhanced material detection using materialDetectionService
       const materialAnalysis = await this.enhancedMaterialAnalysis(images, visionAnalysis, locationContext);
-      console.log('✅ Material detection complete');
+      logger.success(' Material detection complete');
 
       // Combine analyses with confidence scoring
       const combinedAnalysis = this.combineAnalyses(visionAnalysis, materialAnalysis, locationContext);
-      console.log('✅ Portfolio analysis complete with confidence scores');
+      logger.success(' Portfolio analysis complete with confidence scores');
 
       return {
         success: true,
@@ -53,7 +55,7 @@ class EnhancedPortfolioService {
       };
 
     } catch (error) {
-      console.error('Portfolio analysis error:', error);
+      logger.error('Portfolio analysis error:', error);
       return this.getFallbackPortfolioAnalysis(locationContext);
     }
   }
@@ -81,7 +83,7 @@ class EnhancedPortfolioService {
           });
         }
       } catch (error) {
-        console.error('Error processing file:', file.name, error);
+        logger.error('Error processing file:', file.name, error);
       }
     }
 
@@ -102,7 +104,7 @@ class EnhancedPortfolioService {
           const compressed = await this.compressImage(e.target.result, file.type);
           resolve(compressed);
         } catch (error) {
-          console.warn('Image compression failed, using original:', error);
+          logger.warn('Image compression failed, using original:', error);
           resolve(e.target.result);
         }
       };
@@ -162,13 +164,13 @@ class EnhancedPortfolioService {
       // Read PDF file as ArrayBuffer
       const arrayBuffer = await pdfFile.arrayBuffer();
 
-      console.log(`📄 Processing PDF: ${pdfFile.name}`);
+      logger.info(`📄 Processing PDF: ${pdfFile.name}`);
 
       // Load PDF document
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const pdf = await loadingTask.promise;
 
-      console.log(`📄 PDF has ${pdf.numPages} pages`);
+      logger.info(`📄 PDF has ${pdf.numPages} pages`);
 
       const images = [];
       const maxPages = Math.min(3, pdf.numPages); // Extract first 3 pages only
@@ -200,23 +202,23 @@ class EnhancedPortfolioService {
             name: `${pdfFile.name}_page_${pageNum}.jpg`
           });
 
-          console.log(`✅ Extracted page ${pageNum} from PDF`);
+          logger.success(` Extracted page ${pageNum} from PDF`);
         } catch (pageError) {
-          console.error(`❌ Error extracting page ${pageNum}:`, pageError);
+          logger.error(`❌ Error extracting page ${pageNum}:`, pageError);
         }
       }
 
       if (images.length > 0) {
-        console.log(`✅ Successfully extracted ${images.length} pages from PDF`);
+        logger.success(` Successfully extracted ${images.length} pages from PDF`);
       } else {
-        console.warn('⚠️  No images extracted from PDF');
+        logger.warn('⚠️  No images extracted from PDF');
       }
 
       return images;
 
     } catch (error) {
-      console.error('❌ PDF extraction error:', error);
-      console.warn('⚠️  PDF processing failed. Please upload JPG/PNG images directly.');
+      logger.error('❌ PDF extraction error:', error);
+      logger.warn('⚠️  PDF processing failed. Please upload JPG/PNG images directly.');
       return [];
     }
   }
@@ -263,7 +265,7 @@ class EnhancedPortfolioService {
       return this.parsePortfolioAnalysis(analysisText, locationContext);
 
     } catch (error) {
-      console.error('Vision analysis error:', error);
+      logger.error('Vision analysis error:', error);
       throw error;
     }
   }
@@ -435,7 +437,7 @@ Analyze all images carefully and provide detailed, specific observations.
         };
       }
     } catch (error) {
-      console.warn('Could not parse JSON from portfolio analysis:', error);
+      logger.warn('Could not parse JSON from portfolio analysis:', error);
     }
 
     // Fallback to text-based extraction
@@ -566,9 +568,9 @@ Analyze all images carefully and provide detailed, specific observations.
    * Blend portfolio style with location recommendations
    */
   blendStyleWithLocation(portfolioAnalysis, locationAnalysis, materialWeight = 0.5, characteristicWeight = 0.5) {
-    console.log('🎨 Blending portfolio style with location context...');
-    console.log('   Material weight:', materialWeight, '(portfolio influence)');
-    console.log('   Characteristic weight:', characteristicWeight, '(portfolio influence)');
+    logger.info('🎨 Blending portfolio style with location context...');
+    logger.info('   Material weight:', materialWeight, '(portfolio influence)');
+    logger.info('   Characteristic weight:', characteristicWeight, '(portfolio influence)');
 
     const portfolioMaterials = portfolioAnalysis.materials?.exterior || [];
     const locationMaterials = locationAnalysis.materials?.walls || [];
@@ -698,7 +700,7 @@ Analyze all images carefully and provide detailed, specific observations.
 
         detectedMaterials.push(materials);
       } catch (error) {
-        console.warn('Material detection error for image:', image.name, error);
+        logger.warn('Material detection error for image:', image.name, error);
       }
     }
 

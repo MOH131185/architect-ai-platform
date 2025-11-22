@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Sparkles, ChevronLeft, Loader2, Clock, AlertCircle } from 'lucide-react';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow';
-import { useGeneration } from '../hooks/useGeneration';
+import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
+import { useGeneration } from '../hooks/useGeneration.js';
 
 /**
  * AIGeneration - Step 5: AI design generation with progress tracking

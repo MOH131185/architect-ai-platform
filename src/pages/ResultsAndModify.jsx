@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Download, Wand2, Eye, X, ZoomIn, ZoomOut, Maximize2, ChevronLeft } from 'lucide-react';
-import { useDesignContext } from '../context/DesignContext';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow';
-import A1SheetViewer from '../components/A1SheetViewer';
-import AIModifyPanel from '../components/AIModifyPanel';
-import ModifyDesignDrawer from '../components/ModifyDesignDrawer';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
+import A1SheetViewer from '../components/A1SheetViewer.jsx';
+import A1PanelGallery from '../components/A1PanelGallery.jsx';
+import GeometryDebugViewer from '../components/GeometryDebugViewer.jsx';
+import AIModifyPanel from '../components/AIModifyPanel.jsx';
+import ModifyDesignDrawer from '../components/ModifyDesignDrawer.js';
+import logger from '../utils/logger.js';
+
 
 /**
  * ResultsAndModify - Step 6: Display results and enable modifications
@@ -40,7 +44,6 @@ const ResultsAndModify = () => {
   } = useDesignContext();
 
   const { prevStep } = useArchitectWorkflow();
-  const [downloadCount, setDownloadCount] = useState(0);
 
   if (!generatedDesigns || !generatedDesigns.a1Sheet) {
     return (
@@ -62,19 +65,111 @@ const ResultsAndModify = () => {
   }
 
   const { a1Sheet, masterDNA, cost } = generatedDesigns;
+  const composedSheetUrl = a1Sheet.composedSheetUrl || a1Sheet.url;
 
+  // Enhanced download handler with proper blob conversion and proxy support
   const handleDownloadA1Sheet = async () => {
     try {
+      logger.info('📥 Download triggered from Results page');
+
+      // Create filename with timestamp and design ID
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      const filename = `A1-Sheet-${currentDesignId || 'design'}-${timestamp}.png`;
+
+      let imageUrl = composedSheetUrl;
+
+      // Helper to get proxied URL if needed
+      const getProxiedUrl = (url) => {
+        if (!url) return null;
+
+        // If already a proxy URL, return as-is
+        if (url.includes('/api/proxy') || url.includes('/api/proxy-image')) {
+          return url;
+        }
+
+        // Check if it's a cross-origin URL that needs proxying
+        const needsProxy = url.startsWith('http') &&
+          !url.startsWith(window.location.origin) &&
+          !url.startsWith('http://localhost') &&
+          !url.startsWith('data:');
+
+        if (needsProxy) {
+          const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const proxyBase = isDev ? 'http://localhost:3001/api/proxy/image' : '/api/proxy-image';
+          return `${proxyBase}?url=${encodeURIComponent(url)}`;
+        }
+
+        return url;
+      };
+
+      // Method 1: If it's a data URL, convert to blob
+      if (imageUrl && imageUrl.startsWith('data:')) {
+        logger.success(' Data URL detected, converting to blob...');
+        const arr = imageUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime || 'image/png' });
+        const url = window.URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Clean up
+        setTimeout(() => window.URL.revokeObjectURL(url), 100);
+
+        logger.success('A1 sheet downloaded successfully');
+        return;
+      }
+
+      // Method 2: Use proxy URL for cross-origin images
+      const proxiedUrl = getProxiedUrl(imageUrl);
+      logger.info('🌐 Fetching image via proxy...', proxiedUrl?.substring(0, 100));
+
+      const response = await fetch(proxiedUrl, {
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-cache'
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      let blob = await response.blob();
+
+      // Validate blob is actually an image
+      if (!blob.type.startsWith('image/')) {
+        logger.warn('Blob type is not image, forcing PNG type');
+        const arrayBuffer = await blob.arrayBuffer();
+        blob = new Blob([arrayBuffer], { type: 'image/png' });
+      }
+
+      const url = window.URL.createObjectURL(blob);
+
       const link = document.createElement('a');
-      link.href = a1Sheet.url;
-      link.download = `architecture-a1-sheet-${currentDesignId || Date.now()}.png`;
+      link.href = url;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      setDownloadCount(prev => prev + 1);
+      // Clean up
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+
+      logger.success('A1 sheet downloaded successfully');
+
     } catch (error) {
-      console.error('Download failed:', error);
+      logger.error('❌ Download failed:', error);
+      alert(`Download failed: ${error.message}\n\nPlease try using the download button in the A1 sheet viewer above, or right-click the image and select "Save image as..."`);
     }
   };
 
@@ -150,13 +245,31 @@ const ResultsAndModify = () => {
         )}
       </div>
 
-      {/* A1 Sheet Display */}
+      {/* A1 Sheet Display - FIXED: Pass correct prop name */}
       <div className="bg-white rounded-2xl shadow-xl p-6">
         <h3 className="text-xl font-bold text-gray-800 mb-4">A1 Comprehensive Sheet</h3>
-        <A1SheetViewer a1Sheet={a1Sheet} />
+        <A1SheetViewer
+          sheetData={a1Sheet}
+          sitePlanAttachment={generatedDesigns.sitePlanAttachment}
+          onDownload={handleDownloadA1Sheet}
+          showToast={(msg) => logger.info(msg)}
+        />
         <p className="text-sm text-gray-500 mt-4">
-          Click to zoom • All views embedded in UK RIBA standard format
+          <strong>Use the controls above to zoom and download.</strong> All views embedded in UK RIBA standard format.
+          The A1 sheet is displayed at high resolution and includes all architectural views.
         </p>
+      </div>
+
+      {/* Panel Gallery */}
+      <div className="bg-white rounded-2xl shadow-xl p-6">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Panel Gallery</h3>
+        <A1PanelGallery result={generatedDesigns} />
+      </div>
+
+      {/* Geometry Debug Viewer */}
+      <div className="bg-white rounded-2xl shadow-xl p-6">
+        <h3 className="text-xl font-bold text-gray-800 mb-4">Geometry Renders (Debug)</h3>
+        <GeometryDebugViewer geometryRenders={generatedDesigns.geometryRenders || generatedDesigns.a1Sheet?.geometryRenders} />
       </div>
 
       {/* Design DNA Information */}
@@ -214,7 +327,7 @@ const ResultsAndModify = () => {
           ].map((option) => (
             <button
               key={option.format}
-              onClick={() => console.log(`Export as ${option.format}`)}
+              onClick={() => logger.info(`Export as ${option.format}`)}
               className="flex flex-col items-center p-4 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all"
             >
               <option.icon className="w-8 h-8 text-gray-600 mb-2" />
@@ -231,7 +344,12 @@ const ResultsAndModify = () => {
         onClose={() => setShowModifyDrawer(false)}
       >
         <AIModifyPanel
-          design={generatedDesigns}
+          designId={currentDesignId}
+          currentDesign={generatedDesigns}
+          onModificationComplete={(modifiedDesign) => {
+            logger.info('✅ Modification complete:', modifiedDesign);
+            setShowModifyDrawer(false);
+          }}
           onClose={() => setShowModifyDrawer(false)}
         />
       </ModifyDesignDrawer>

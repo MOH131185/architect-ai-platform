@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * DNA Cache Utility - Caches generated DNA for reuse
  * Prevents regeneration of identical DNA specifications
@@ -51,7 +53,7 @@ class DNACache {
       if (age < this.maxAge) {
         this.hitCount++;
         const ageInSeconds = Math.round(age / 1000);
-        console.log(`🎯 DNA Cache HIT (age: ${ageInSeconds}s, hit rate: ${this.getHitRate()}%)`);
+        logger.info(`🎯 DNA Cache HIT (age: ${ageInSeconds}s, hit rate: ${this.getHitRate()}%)`);
 
         // Update last accessed time
         cached.lastAccessed = Date.now();
@@ -60,13 +62,13 @@ class DNACache {
         return JSON.parse(JSON.stringify(cached.dna));
       } else {
         // Expired entry
-        console.log('⏰ DNA Cache expired, removing entry');
+        logger.info('⏰ DNA Cache expired, removing entry');
         this.cache.delete(key);
         this.missCount++;
       }
     } else {
       this.missCount++;
-      console.log(`💭 DNA Cache MISS (hit rate: ${this.getHitRate()}%)`);
+      logger.info(`💭 DNA Cache MISS (hit rate: ${this.getHitRate()}%)`);
     }
 
     return null;
@@ -93,7 +95,7 @@ class DNACache {
     };
 
     this.cache.set(key, entry);
-    console.log(`💾 DNA cached (total entries: ${this.cache.size})`);
+    logger.info(`💾 DNA cached (total entries: ${this.cache.size})`);
   }
 
   /**
@@ -112,7 +114,7 @@ class DNACache {
 
     if (oldestKey) {
       const entry = this.cache.get(oldestKey);
-      console.log(`🗑️ Evicting oldest DNA cache entry (${entry.projectInfo.type})`);
+      logger.info(`🗑️ Evicting oldest DNA cache entry (${entry.projectInfo.type})`);
       this.cache.delete(oldestKey);
     }
   }
@@ -125,7 +127,7 @@ class DNACache {
     this.cache.clear();
     this.hitCount = 0;
     this.missCount = 0;
-    console.log(`🗑️ DNA cache cleared (removed ${size} entries)`);
+    logger.info(`🗑️ DNA cache cleared (removed ${size} entries)`);
   }
 
   /**
@@ -170,7 +172,7 @@ class DNACache {
   configure(options = {}) {
     if (options.maxAge) this.maxAge = options.maxAge;
     if (options.maxEntries) this.maxEntries = options.maxEntries;
-    console.log('⚙️ DNA Cache configured:', {
+    logger.info('⚙️ DNA Cache configured:', {
       maxAge: `${this.maxAge / 1000}s`,
       maxEntries: this.maxEntries
     });
@@ -183,7 +185,7 @@ class DNACache {
     const key = this.generateKey(projectContext);
     if (this.cache.has(key)) {
       this.cache.delete(key);
-      console.log('❌ DNA cache entry invalidated');
+      logger.info('❌ DNA cache entry invalidated');
       return true;
     }
     return false;
@@ -193,7 +195,7 @@ class DNACache {
    * Prefetch/warm cache with DNA
    */
   warmCache(projectContexts, dnaGenerator) {
-    console.log(`🔥 Warming DNA cache with ${projectContexts.length} entries...`);
+    logger.info(`🔥 Warming DNA cache with ${projectContexts.length} entries...`);
 
     projectContexts.forEach(async (context) => {
       if (!this.get(context)) {
@@ -201,7 +203,7 @@ class DNACache {
           const dna = await dnaGenerator(context);
           this.set(context, dna);
         } catch (error) {
-          console.error('Failed to warm cache entry:', error);
+          logger.error('Failed to warm cache entry:', error);
         }
       }
     });

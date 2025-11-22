@@ -1,7 +1,10 @@
 // src/services/locationIntelligence.js
 // Enhanced with street view material detection and surrounding area analysis
-import { architecturalStyleService } from '../data/globalArchitecturalDatabase';
-import materialDetectionService from './materialDetectionService';
+import { architecturalStyleService } from '../data/globalArchitecturalDatabase.js';
+import materialDetectionService from './materialDetectionService.js';
+import { getClimateDesignRules as buildClimateDesignRules } from '../rings/ring1-site/climateRules.js';
+import logger from '../utils/logger.js';
+
 
 export const locationIntelligence = {
   async recommendArchitecturalStyle(location, climate, options = {}) {
@@ -88,7 +91,7 @@ export const locationIntelligence = {
         colorPalette: this.extractAreaColorPalette(detectedMaterials)
       };
     } catch (error) {
-      console.warn('Material detection fallback:', error);
+      logger.warn('Material detection fallback:', error);
       return this.getFallbackMaterials(locationData);
     }
   },
@@ -260,7 +263,7 @@ export const locationIntelligence = {
         localAvailability: this.checkLocalAvailability(contextualMaterials)
       };
     } catch (error) {
-      console.warn('Material recommendation fallback:', error);
+      logger.warn('Material recommendation fallback:', error);
       return {
         recommended: localStyles || ['Brick', 'Stone', 'Timber'],
         compatibility: { score: 70, rating: 'Good' },
@@ -866,5 +869,9 @@ export const locationIntelligence = {
     };
 
     return notes[country] || notes.default;
+  },
+
+  getClimateDesignRules(climateType, context = {}) {
+    return buildClimateDesignRules(climateType, context);
   }
 };

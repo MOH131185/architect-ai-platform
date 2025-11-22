@@ -5,6 +5,8 @@
  */
 
 import html2canvas from 'html2canvas';
+import logger from '../utils/logger.js';
+
 
 /**
  * Capture site using Google Static Maps API
@@ -17,7 +19,7 @@ export async function captureStaticMap({ center, polygon = [], zoom = 19 }) {
     throw new Error('Google Maps API key not configured');
   }
 
-  console.log('🗺️ Using Google Static Maps for accurate capture...');
+  logger.info('🗺️ Using Google Static Maps for accurate capture...');
 
   // Build Static Maps URL
   const baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
@@ -71,7 +73,7 @@ export async function captureOverheadMap(containerEl, options = {}) {
   // Prefer static map capture when possible (exact coordinates, no placeholder math)
   if (!mapInstance && center && polygon) {
     try {
-      console.log('🗺️ Using Google Static Maps for accurate capture...');
+      logger.info('🗺️ Using Google Static Maps for accurate capture...');
       return await captureStaticMap({ center, polygon, zoom });
     } catch (error) {
       console.warn('Static Maps failed, falling back to html2canvas...', error);
@@ -82,14 +84,14 @@ export async function captureOverheadMap(containerEl, options = {}) {
     throw new Error('Container element is required');
   }
 
-  console.log('📸 Capturing overhead site map with html2canvas...');
+  logger.info('📸 Capturing overhead site map with html2canvas...');
 
   try {
     // Step 1: Ensure map is in overhead (orthographic) view
     if (mapInstance) {
       await ensureOverheadMapState(mapInstance, { zoom, center });
     } else {
-      console.log('ℹ️ Map instance not provided - capturing current view as-is');
+      logger.info('ℹ️ Map instance not provided - capturing current view as-is');
     }
 
     // Step 2: Wait for map to stabilize
@@ -126,11 +128,11 @@ export async function captureOverheadMap(containerEl, options = {}) {
       scaleBarEl.remove();
     }
 
-    console.log('✅ Site map captured successfully');
+    logger.info('✅ Site map captured successfully');
     return dataURL;
 
   } catch (error) {
-    console.error('❌ Failed to capture site map:', error);
+    logger.error('❌ Failed to capture site map:', error);
     throw error;
   }
 }

@@ -2,11 +2,13 @@
  * Test Clinic A1 Generation
  * 
  * Validates that clinic projects generate complete A1 sheets with all required sections
+ * Tests new A1 template validation system
  */
 
-const { buildA1SheetPrompt } = require('./src/services/a1SheetPromptGenerator');
+const { buildA1SheetPrompt } = require('./src/services/a1/A1PromptService.js');
+const a1SheetValidator = require('./src/services/a1/A1ValidationService.js').default;
 
-console.log('🧪 Testing Clinic A1 Prompt Generation\n');
+console.log('🧪 Testing Clinic A1 Prompt Generation with Template Validation\n');
 
 // Test clinic project type
 const clinicDNA = {
@@ -64,40 +66,60 @@ const climate = {
 };
 
 try {
-  console.log('📋 Generating A1 prompt for clinic project...\n');
+  console.log('📋 Test 1: Get required sections from validator...\n');
+  
+  const requiredSections = a1SheetValidator.getRequiredSections(clinicContext);
+  console.log(`✅ Required sections: ${requiredSections.length}`);
+  requiredSections.forEach(section => {
+    console.log(`   - ${section.name} (${section.id})`);
+  });
+
+  console.log('\n📋 Test 2: Generating A1 prompt for clinic project...\n');
   
   const { prompt, negativePrompt } = buildA1SheetPrompt({
     masterDNA: clinicDNA,
     location,
     climate,
     projectContext: clinicContext,
-    projectMeta: { name: 'Test Clinic', projectType: 'clinic' }
+    projectMeta: { name: 'Test Clinic', projectType: 'clinic' },
+    requiredSections // Pass required sections to prompt builder
   });
 
   console.log('✅ Prompt generated successfully\n');
   
-  // Validate required sections for clinic
-  const requiredSections = [
-    'LOCATION PLAN',
-    'GROUND FLOOR PLAN',
-    'ELEVATION',
-    'SECTION',
-    '3D VIEW',
-    'TITLE BLOCK'
-  ];
+  console.log('📋 Test 3: Validate template completeness...\n');
+  
+  const templateValidation = a1SheetValidator.validateA1TemplateCompleteness({
+    prompt,
+    masterDNA: clinicDNA,
+    projectContext: clinicContext
+  });
 
-  const promptUpper = prompt.toUpperCase();
-  const missingSections = requiredSections.filter(section => !promptUpper.includes(section));
-
-  if (missingSections.length > 0) {
-    console.error('❌ FAILED: Missing required sections:', missingSections.join(', '));
+  if (!templateValidation.valid) {
+    console.error('❌ FAILED: Template validation failed');
+    console.error('   Missing mandatory:', templateValidation.missingMandatory.join(', '));
+    console.error('   Score:', templateValidation.score);
     process.exit(1);
   }
 
+  console.log(`✅ Template validation passed (${templateValidation.score}% completeness)`);
+  console.log(`   Present sections: ${templateValidation.presentSections.length}`);
+  
+  if (templateValidation.missingRecommended.length > 0) {
+    console.log(`   ⚠️  Missing recommended: ${templateValidation.missingRecommended.join(', ')}`);
+  }
+
+  console.log('\n📋 Test 4: Validate required sections for clinic...\n');
+
+  const promptUpper = prompt.toUpperCase();
+
   // Check for clinic-specific restrictions
   if (!promptUpper.includes('NO SINGLE-FAMILY HOUSE') && !promptUpper.includes('NO RESIDENTIAL HOUSE')) {
-    console.warn('⚠️  Warning: Clinic restrictions may not be strong enough');
+    console.error('❌ FAILED: Clinic restrictions not strong enough');
+    process.exit(1);
   }
+
+  console.log('✅ Clinic-specific restrictions present');
 
   // Check for all four elevations
   const elevationCount = ['NORTH ELEVATION', 'SOUTH ELEVATION', 'EAST ELEVATION', 'WEST ELEVATION']
@@ -108,6 +130,8 @@ try {
     process.exit(1);
   }
 
+  console.log(`✅ All 4 elevations specified`);
+
   // Check for both sections
   const sectionCount = ['SECTION A-A', 'SECTION B-B']
     .filter(section => promptUpper.includes(section)).length;
@@ -117,14 +141,27 @@ try {
     process.exit(1);
   }
 
-  console.log('✅ All required sections present:');
-  console.log('   ✓ Location Plan');
-  console.log('   ✓ Ground Floor Plan');
+  console.log(`✅ Both sections specified`);
+
+  // Check for interior view
+  if (!promptUpper.includes('INTERIOR')) {
+    console.warn('⚠️  Warning: Interior view not explicitly mentioned');
+  } else {
+    console.log('✅ Interior view specified');
+  }
+
+  console.log('\n📋 Test Summary:');
+  console.log('   ✓ Template validation system working');
+  console.log('   ✓ Required sections API functional');
+  console.log('   ✓ Location Plan present');
+  console.log('   ✓ Ground Floor Plan present');
   console.log('   ✓ All 4 Elevations (North, South, East, West)');
   console.log('   ✓ Both Sections (A-A, B-B)');
-  console.log('   ✓ 3D Views');
-  console.log('   ✓ Title Block');
-  console.log('\n✅ Clinic A1 prompt validation PASSED');
+  console.log('   ✓ 3D Views present');
+  console.log('   ✓ Title Block present');
+  console.log('   ✓ Clinic-specific restrictions enforced');
+  console.log(`   ✓ Template completeness: ${templateValidation.score}%`);
+  console.log('\n✅ ALL TESTS PASSED - Clinic A1 prompt validation complete');
 
 } catch (error) {
   console.error('❌ Test failed:', error.message);

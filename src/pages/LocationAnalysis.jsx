@@ -1,6 +1,6 @@
 import React from 'react';
 import { MapPin, Compass, Loader2, Check, Cpu } from 'lucide-react';
-import { useLocationData } from '../hooks/useLocationData';
+import { useLocationData } from '../hooks/useLocationData.js';
 
 /**
  * LocationAnalysis - Step 1: Address input and location detection

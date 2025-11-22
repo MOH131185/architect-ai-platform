@@ -1,17 +1,217 @@
 /**
  * Storage Manager with Quota Handling
  *
- * Manages localStorage with automatic cleanup when quota is exceeded.
+ * Manages storage with pluggable backends (localStorage, IndexedDB).
  * Prevents app crashes from storage quota errors.
+ * 
+ * REFACTORED: Now supports multiple backend types via factory pattern.
  */
 
 import logger from './logger.js';
 
+/**
+ * Storage Backend Interface
+ */
+class StorageBackend {
+  async setItem(key, value) {
+    throw new Error('Not implemented');
+  }
+
+  async getItem(key) {
+    throw new Error('Not implemented');
+  }
+
+  async removeItem(key) {
+    throw new Error('Not implemented');
+  }
+
+  async getAllKeys() {
+    throw new Error('Not implemented');
+  }
+
+  async clear() {
+    throw new Error('Not implemented');
+  }
+}
+
+/**
+ * LocalStorage Backend
+ */
+class LocalStorageBackend extends StorageBackend {
+  constructor(prefix = 'archiAI_') {
+    super();
+    this.prefix = prefix;
+  }
+
+  async setItem(key, value) {
+    const prefixedKey = this.prefix + key;
+    localStorage.setItem(prefixedKey, value);
+  }
+
+  async getItem(key) {
+    const prefixedKey = this.prefix + key;
+    return localStorage.getItem(prefixedKey);
+  }
+
+  async removeItem(key) {
+    const prefixedKey = this.prefix + key;
+    localStorage.removeItem(prefixedKey);
+  }
+
+  async getAllKeys() {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(this.prefix)) {
+        keys.push(key.replace(this.prefix, ''));
+      }
+    }
+    return keys;
+  }
+
+  async clear() {
+    const keys = await this.getAllKeys();
+    for (const key of keys) {
+      await this.removeItem(key);
+    }
+  }
+}
+
+/**
+ * IndexedDB Backend (future implementation)
+ */
+class IndexedDBBackend extends StorageBackend {
+  constructor(dbName = 'archiAI', storeName = 'storage', prefix = 'archiAI_') {
+    super();
+    this.dbName = dbName;
+    this.storeName = storeName;
+    this.prefix = prefix;
+    this.db = null;
+    this.initPromise = null;
+  }
+
+  async init() {
+    if (this.db) return this.db;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, 1);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName);
+        }
+      };
+    });
+
+    return this.initPromise;
+  }
+
+  async setItem(key, value) {
+    await this.init();
+    const prefixedKey = this.prefix + key;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.put(value, prefixedKey);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getItem(key) {
+    await this.init();
+    const prefixedKey = this.prefix + key;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.get(prefixedKey);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async removeItem(key) {
+    await this.init();
+    const prefixedKey = this.prefix + key;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.delete(prefixedKey);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getAllKeys() {
+    await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAllKeys();
+
+      request.onsuccess = () => {
+        const keys = request.result
+          .filter(k => k.startsWith(this.prefix))
+          .map(k => k.replace(this.prefix, ''));
+        resolve(keys);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clear() {
+    await this.init();
+    const keys = await this.getAllKeys();
+
+    for (const key of keys) {
+      await this.removeItem(key);
+    }
+  }
+}
+
+/**
+ * Create storage backend
+ * @param {string} kind - Backend type: 'localStorage' or 'indexedDB'
+ * @param {Object} options - Backend options
+ * @returns {StorageBackend} Backend instance
+ */
+export function createStorageBackend(kind = 'localStorage', options = {}) {
+  const prefix = options.prefix || 'archiAI_';
+
+  switch (kind) {
+    case 'indexedDB':
+      return new IndexedDBBackend(
+        options.dbName || 'archiAI',
+        options.storeName || 'storage',
+        prefix
+      );
+    case 'localStorage':
+    default:
+      return new LocalStorageBackend(prefix);
+  }
+}
+
 class StorageManager {
-  constructor(maxItems = 50, maxSizeMB = 5) {
+  constructor(maxItems = 50, maxSizeMB = 5, backend = null) {
     this.maxItems = maxItems;
     this.maxSize = maxSizeMB * 1024 * 1024; // Convert to bytes
     this.storagePrefix = 'archiAI_';
+    this.backend = backend || new LocalStorageBackend(this.storagePrefix);
   }
 
   /**
@@ -20,25 +220,25 @@ class StorageManager {
    * @param {any} value - Value to store (will be JSON serialized)
    * @param {Object} options - Storage options
    * @param {boolean} options.addTimestamp - Add timestamp to value (default: true)
-   * @returns {boolean} Success status
+   * @returns {Promise<boolean>} Success status
    */
-  setItem(key, value, options = { addTimestamp: true }) {
-    try {
-      const prefixedKey = this.storagePrefix + key;
+  async setItem(key, value, options = { addTimestamp: true }) {
+    // Declare outside try block so it's accessible in catch
+    let dataToStore;
 
+    try {
       // Add timestamp for cleanup tracking
       // IMPORTANT: Don't spread arrays (converts to objects with numeric keys)
-      let dataToStore;
       if (options.addTimestamp) {
         if (Array.isArray(value)) {
           // For arrays, wrap in an object to preserve array structure
-          dataToStore = { _data: value, _timestamp: Date.now() };
+          dataToStore = { _data: value, _timestamp: Date.now(), _schemaVersion: 2 };
         } else if (value && typeof value === 'object') {
           // For objects, use spread
-          dataToStore = { ...value, _timestamp: Date.now() };
+          dataToStore = { ...value, _timestamp: Date.now(), _schemaVersion: 2 };
         } else {
           // For primitives, wrap in object
-          dataToStore = { _data: value, _timestamp: Date.now() };
+          dataToStore = { _data: value, _timestamp: Date.now(), _schemaVersion: 2 };
         }
       } else {
         dataToStore = value;
@@ -53,11 +253,11 @@ class StorageManager {
           sizeMB: (sizeBytes / 1024 / 1024).toFixed(2),
           maxMB: (this.maxSize / 1024 / 1024).toFixed(2)
         });
-        this.cleanup(prefixedKey);
+        await this.cleanup(key);
       }
 
       try {
-        localStorage.setItem(prefixedKey, serialized);
+        await this.backend.setItem(key, serialized);
         logger.debug(`Successfully stored ${key}`, {
           sizeKB: (sizeBytes / 1024).toFixed(2)
         }, '💾');
@@ -67,11 +267,7 @@ class StorageManager {
           errorName: innerError.name,
           errorMessage: innerError.message,
           sizeKB: (sizeBytes / 1024).toFixed(2),
-          storageUsage: this.getStorageUsage(),
-          prefixedKey: prefixedKey,
-          isLocalStorageAvailable: typeof localStorage !== 'undefined',
-          storageLength: typeof localStorage !== 'undefined' ? localStorage.length : 'N/A',
-          fullError: innerError
+          storageUsage: await this.getStorageUsage()
         });
         throw innerError; // Re-throw to be caught by outer catch
       }
@@ -79,26 +275,26 @@ class StorageManager {
     } catch (error) {
       if (error.name === 'QuotaExceededError') {
         logger.warn('Storage quota exceeded, performing cleanup', {
-          currentUsage: `${this.getStorageUsage()}%`,
+          currentUsage: `${await this.getStorageUsage()}%`,
           key
         }, '💾');
-        this.cleanup(this.storagePrefix + key);
+        await this.cleanup(key);
 
         try {
           // Retry after cleanup
-          const serialized = JSON.stringify(value);
+          const serialized = JSON.stringify(dataToStore);
           const retrySize = new Blob([serialized]).size;
-          localStorage.setItem(this.storagePrefix + key, serialized);
+          await this.backend.setItem(key, serialized);
           logger.success(`Successfully stored ${key} after cleanup`, {
             sizeKB: (retrySize / 1024).toFixed(2),
-            newUsage: `${this.getStorageUsage()}%`
+            newUsage: `${await this.getStorageUsage()}%`
           });
           return true;
         } catch (retryError) {
           logger.error(`Failed to store ${key} even after cleanup`, {
             error: retryError.name,
             message: retryError.message,
-            usageAfterCleanup: `${this.getStorageUsage()}%`,
+            usageAfterCleanup: `${await this.getStorageUsage()}%`,
             attemptedSizeKB: (new Blob([JSON.stringify(value)]).size / 1024).toFixed(2)
           });
           return false;
@@ -110,8 +306,7 @@ class StorageManager {
           errorType: typeof error,
           isSecurityError: error.name === 'SecurityError',
           isDOMException: error instanceof DOMException,
-          code: error.code || 'N/A',
-          stack: error.stack
+          code: error.code || 'N/A'
         });
 
         // Provide specific guidance based on error type
@@ -130,12 +325,11 @@ class StorageManager {
    * Get item from storage
    * @param {string} key - Storage key
    * @param {any} defaultValue - Default value if not found
-   * @returns {any} Stored value or default
+   * @returns {Promise<any>} Stored value or default
    */
-  getItem(key, defaultValue = null) {
+  async getItem(key, defaultValue = null) {
     try {
-      const prefixedKey = this.storagePrefix + key;
-      const item = localStorage.getItem(prefixedKey);
+      const item = await this.backend.getItem(key);
 
       if (item === null) {
         return defaultValue;
@@ -150,8 +344,8 @@ class StorageManager {
           return parsed._data;
         }
 
-        // Otherwise, it's an object - remove timestamp
-        const { _timestamp, ...data } = parsed;
+        // Otherwise, it's an object - remove timestamp and schema version
+        const { _timestamp, _schemaVersion, ...data } = parsed;
         return data;
       }
 
@@ -165,10 +359,11 @@ class StorageManager {
   /**
    * Remove item from storage
    * @param {string} key - Storage key
+   * @returns {Promise<void>}
    */
-  removeItem(key) {
+  async removeItem(key) {
     try {
-      localStorage.removeItem(this.storagePrefix + key);
+      await this.backend.removeItem(key);
     } catch (error) {
       logger.error(`Error removing ${key}`, error);
     }
@@ -177,16 +372,16 @@ class StorageManager {
   /**
    * Cleanup old items to free space
    * @param {string} preserveKey - Key to preserve during cleanup
-   * @param {number} removePercentage - Percentage of items to remove (default: 20%)
+   * @param {number} removePercentage - Percentage of items to remove (default: 50%)
+   * @returns {Promise<void>}
    */
-  cleanup(preserveKey, removePercentage = 0.2) {
+  async cleanup(preserveKey, removePercentage = 0.8) {
     try {
       logger.info('Starting storage cleanup', null, '🧹');
 
-      // Get all keys with our prefix
-      const keys = Object.keys(localStorage).filter(k =>
-        k.startsWith(this.storagePrefix) && k !== preserveKey
-      );
+      // Get all keys
+      const allKeys = await this.backend.getAllKeys();
+      const keys = allKeys.filter(k => k !== preserveKey);
 
       if (keys.length === 0) {
         logger.warn('No items to clean up');
@@ -194,28 +389,30 @@ class StorageManager {
       }
 
       // Sort by timestamp (oldest first)
-      const sorted = keys.sort((a, b) => {
-        try {
-          const aData = JSON.parse(localStorage[a]);
-          const bData = JSON.parse(localStorage[b]);
-          const aTime = aData?._timestamp || 0;
-          const bTime = bData?._timestamp || 0;
-          return aTime - bTime;
-        } catch {
-          return 0;
-        }
-      });
+      const keysWithTimestamps = await Promise.all(
+        keys.map(async (key) => {
+          try {
+            const item = await this.backend.getItem(key);
+            const data = JSON.parse(item);
+            return { key, timestamp: data?._timestamp || 0 };
+          } catch {
+            return { key, timestamp: 0 };
+          }
+        })
+      );
 
-      // Remove oldest items
+      const sorted = keysWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Remove oldest items - very aggressive (80% instead of 50%) to ensure space
       const toRemove = Math.max(1, Math.floor(sorted.length * removePercentage));
       const removed = sorted.slice(0, toRemove);
 
-      removed.forEach(key => {
-        localStorage.removeItem(key);
-      });
+      for (const item of removed) {
+        await this.backend.removeItem(item.key);
+      }
 
       logger.success(`Cleaned up ${removed.length} old items`, {
-        storageUsage: `${this.getStorageUsage()}%`
+        storageUsage: `${await this.getStorageUsage()}%`
       });
     } catch (error) {
       logger.error('Cleanup error', error);
@@ -224,14 +421,17 @@ class StorageManager {
 
   /**
    * Get approximate storage usage percentage
-   * @returns {number} Usage percentage (0-100)
+   * @returns {Promise<number>} Usage percentage (0-100)
    */
-  getStorageUsage() {
+  async getStorageUsage() {
     try {
+      const keys = await this.backend.getAllKeys();
       let total = 0;
-      for (let key in localStorage) {
-        if (localStorage.hasOwnProperty(key) && key.startsWith(this.storagePrefix)) {
-          total += localStorage[key].length + key.length;
+
+      for (const key of keys) {
+        const item = await this.backend.getItem(key);
+        if (item) {
+          total += item.length + key.length;
         }
       }
 
@@ -245,11 +445,12 @@ class StorageManager {
 
   /**
    * Clear all items with our prefix
+   * @returns {Promise<void>}
    */
-  clearAll() {
+  async clearAll() {
     try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith(this.storagePrefix));
-      keys.forEach(key => localStorage.removeItem(key));
+      await this.backend.clear();
+      const keys = await this.backend.getAllKeys();
       logger.info(`Cleared ${keys.length} items`, null, '🗑️');
     } catch (error) {
       logger.error('Clear all error', error);
@@ -258,13 +459,11 @@ class StorageManager {
 
   /**
    * Get all keys (without prefix)
-   * @returns {string[]} Array of keys
+   * @returns {Promise<string[]>} Array of keys
    */
-  getAllKeys() {
+  async getAllKeys() {
     try {
-      return Object.keys(localStorage)
-        .filter(k => k.startsWith(this.storagePrefix))
-        .map(k => k.replace(this.storagePrefix, ''));
+      return await this.backend.getAllKeys();
     } catch {
       return [];
     }
@@ -272,26 +471,26 @@ class StorageManager {
 
   /**
    * Get storage statistics
-   * @returns {Object} Storage stats
+   * @returns {Promise<Object>} Storage stats
    */
-  getStats() {
+  async getStats() {
     try {
-      const keys = this.getAllKeys();
+      const keys = await this.getAllKeys();
       let totalSize = 0;
 
-      keys.forEach(key => {
-        const item = localStorage.getItem(this.storagePrefix + key);
+      for (const key of keys) {
+        const item = await this.backend.getItem(key);
         if (item) {
           totalSize += item.length;
         }
-      });
+      }
 
       return {
         itemCount: keys.length,
         totalSizeKB: (totalSize / 1024).toFixed(2),
-        usagePercent: this.getStorageUsage(),
-        oldestItem: this.getOldestItem(),
-        newestItem: this.getNewestItem()
+        usagePercent: await this.getStorageUsage(),
+        oldestItem: await this.getOldestItem(),
+        newestItem: await this.getNewestItem()
       };
     } catch {
       return null;
@@ -301,66 +500,71 @@ class StorageManager {
   /**
    * Debug utility: Print detailed storage information
    * Useful for diagnosing storage issues in browser console
+   * @returns {Promise<Object>} Storage stats
    */
-  debugStorage() {
-    console.log('🔍 ========================================');
-    console.log('🔍 STORAGE DEBUG INFORMATION');
-    console.log('🔍 ========================================\n');
+  async debugStorage() {
+    logger.info('🔍 ========================================');
+    logger.info('🔍 STORAGE DEBUG INFORMATION');
+    logger.info('🔍 ========================================\n');
 
-    const stats = this.getStats();
+    const stats = await this.getStats();
     if (stats) {
-      console.log(`📊 Total Items: ${stats.itemCount}`);
-      console.log(`📦 Total Size: ${stats.totalSizeKB} KB`);
-      console.log(`💾 Usage: ${stats.usagePercent}%`);
-      console.log(`🕐 Oldest Item: ${stats.oldestItem ? new Date(stats.oldestItem).toISOString() : 'N/A'}`);
-      console.log(`🕑 Newest Item: ${stats.newestItem ? new Date(stats.newestItem).toISOString() : 'N/A'}`);
+      logger.info(`📊 Total Items: ${stats.itemCount}`);
+      logger.info(`📦 Total Size: ${stats.totalSizeKB} KB`);
+      logger.info(`💾 Usage: ${stats.usagePercent}%`);
+      logger.info(`🕐 Oldest Item: ${stats.oldestItem ? new Date(stats.oldestItem).toISOString() : 'N/A'}`);
+      logger.info(`🕑 Newest Item: ${stats.newestItem ? new Date(stats.newestItem).toISOString() : 'N/A'}`);
     }
 
-    console.log('\n📋 Keys by Size:');
-    const keys = this.getAllKeys();
-    const keysSizes = keys.map(key => {
-      const item = localStorage.getItem(this.storagePrefix + key);
-      return {
-        key,
-        sizeKB: item ? (item.length / 1024).toFixed(2) : 0
-      };
-    }).sort((a, b) => parseFloat(b.sizeKB) - parseFloat(a.sizeKB));
+    logger.info('\n📋 Keys by Size:');
+    const keys = await this.getAllKeys();
+    const keysSizes = await Promise.all(
+      keys.map(async (key) => {
+        const item = await this.backend.getItem(key);
+        return {
+          key,
+          sizeKB: item ? (item.length / 1024).toFixed(2) : 0
+        };
+      })
+    );
+
+    keysSizes.sort((a, b) => parseFloat(b.sizeKB) - parseFloat(a.sizeKB));
 
     keysSizes.slice(0, 10).forEach((item, index) => {
-      console.log(`   ${index + 1}. ${item.key}: ${item.sizeKB} KB`);
+      logger.info(`   ${index + 1}. ${item.key}: ${item.sizeKB} KB`);
     });
 
-    console.log('\n🔍 ========================================\n');
+    logger.info('\n🔍 ========================================\n');
 
     return stats;
   }
 
   /**
    * Test storage write capability
-   * @returns {Object} Test results
+   * @returns {Promise<Object>} Test results
    */
-  testStorage() {
+  async testStorage() {
     const testKey = 'storage_test';
     const testData = { test: 'data', timestamp: Date.now() };
 
     logger.info('Testing storage write capability', null, '🧪');
 
     try {
-      const success = this.setItem(testKey, testData);
+      const success = await this.setItem(testKey, testData);
 
       if (!success) {
         logger.error('Storage write failed');
         return { success: false, error: 'Write failed' };
       }
 
-      const retrieved = this.getItem(testKey);
+      const retrieved = await this.getItem(testKey);
 
       if (JSON.stringify(retrieved) !== JSON.stringify(testData)) {
         logger.error('Storage read mismatch');
         return { success: false, error: 'Read mismatch' };
       }
 
-      this.removeItem(testKey);
+      await this.removeItem(testKey);
       logger.success('Storage test passed');
 
       return { success: true };
@@ -372,19 +576,19 @@ class StorageManager {
 
   /**
    * Get oldest item timestamp
-   * @returns {number|null} Timestamp or null
+   * @returns {Promise<number|null>} Timestamp or null
    */
-  getOldestItem() {
+  async getOldestItem() {
     try {
-      const keys = this.getAllKeys();
+      const keys = await this.getAllKeys();
       let oldest = Date.now();
 
-      keys.forEach(key => {
-        const item = this.getItem(key);
+      for (const key of keys) {
+        const item = await this.getItem(key);
         if (item && item._timestamp && item._timestamp < oldest) {
           oldest = item._timestamp;
         }
-      });
+      }
 
       return oldest === Date.now() ? null : oldest;
     } catch {
@@ -394,19 +598,19 @@ class StorageManager {
 
   /**
    * Get newest item timestamp
-   * @returns {number|null} Timestamp or null
+   * @returns {Promise<number|null>} Timestamp or null
    */
-  getNewestItem() {
+  async getNewestItem() {
     try {
-      const keys = this.getAllKeys();
+      const keys = await this.getAllKeys();
       let newest = 0;
 
-      keys.forEach(key => {
-        const item = this.getItem(key);
+      for (const key of keys) {
+        const item = await this.getItem(key);
         if (item && item._timestamp && item._timestamp > newest) {
           newest = item._timestamp;
         }
-      });
+      }
 
       return newest === 0 ? null : newest;
     } catch {
@@ -415,8 +619,8 @@ class StorageManager {
   }
 }
 
-// Export singleton instance
+// Export singleton instance with localStorage backend (default)
 const storageManager = new StorageManager();
 
 export default storageManager;
-export { StorageManager };
+export { StorageManager, StorageBackend, LocalStorageBackend, IndexedDBBackend };

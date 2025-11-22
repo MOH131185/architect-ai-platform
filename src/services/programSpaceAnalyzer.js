@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Program Space Analyzer Service
  * Building type validation, space logic, and optimal floor count calculation
@@ -10,6 +12,116 @@ class ProgramSpaceAnalyzer {
     this.adjacencyMatrices = this.initializeAdjacencyMatrices();
     this.circulationRatios = this.initializeCirculationRatios();
     this.buildingCodes = this.initializeBuildingCodes();
+  }
+
+  /**
+   * Get template for building type (category + subType)
+   * @param {string} category - Building category
+   * @param {string} subType - Building sub-type
+   * @returns {Object|null} Template or null
+   */
+  getTemplateForType(category, subType) {
+    // Map category/subType to existing templates
+    const mappings = {
+      'residential': { 'single-family': 'residential', 'multi-family': 'residential', 'villa': 'residential', 'cottage': 'residential', 'mansion': 'residential', 'duplex': 'residential' },
+      'commercial': { 'office': 'office', 'retail': 'retail', 'mixed-use': 'office', 'shopping-mall': 'retail' },
+      'healthcare': { 'clinic': 'clinic', 'hospital': 'hospital', 'dental': 'clinic', 'lab': 'clinic' },
+      'education': { 'school': 'school', 'university': 'school', 'kindergarten': 'school' },
+      'hospitality': { 'hotel': 'hotel', 'resort': 'hotel', 'guest-house': 'hotel' },
+      'industrial': { 'warehouse': 'retail', 'manufacturing': 'office', 'workshop': 'office' },
+      'cultural': { 'museum': 'retail', 'library': 'school', 'theatre': 'retail' },
+      'government': { 'town-hall': 'office', 'police': 'office', 'fire-station': 'office' },
+      'religious': { 'mosque': 'retail', 'church': 'retail', 'temple': 'retail' },
+      'recreation': { 'sports-center': 'retail', 'gym': 'retail', 'pool': 'retail' }
+    };
+
+    const categoryMappings = mappings[category];
+    if (!categoryMappings) return this.buildingTypeTemplates['residential'];
+
+    const templateKey = categoryMappings[subType] || Object.values(categoryMappings)[0];
+    return this.buildingTypeTemplates[templateKey] || this.buildingTypeTemplates['residential'];
+  }
+
+  /**
+   * Generate program spaces from specifications
+   * @param {Object} specs - Building specifications
+   * @param {string} specs.category - Building category
+   * @param {string} specs.subType - Building sub-type
+   * @param {number} specs.area - Total area in m²
+   * @param {number} specs.floorCount - Number of floors
+   * @param {Object} specs.climate - Climate data
+   * @param {Object} specs.zoning - Zoning constraints
+   * @returns {Object} Generated program
+   */
+  generateProgramFromSpecs(specs) {
+    const template = this.getTemplateForType(specs.category, specs.subType);
+    
+    const programData = {
+      projectType: specs.subType || specs.category,
+      totalArea: specs.area,
+      numberOfLevels: specs.floorCount,
+      specifications: { includeOptional: specs.area > template.minArea * 1.5 }
+    };
+
+    return this.generateSpaceProgram(specs.area, template, programData.specifications);
+  }
+
+  /**
+   * Validate program table
+   * @param {Array<Object>} programSpaces - Program spaces array
+   * @param {Object} constraints - Validation constraints
+   * @returns {Object} Validation result
+   */
+  validateProgramTable(programSpaces, constraints = {}) {
+    const errors = [];
+    const warnings = [];
+
+    if (!Array.isArray(programSpaces) || programSpaces.length === 0) {
+      return { isValid: false, errors: ['Program table is empty'], warnings: [] };
+    }
+
+    let totalArea = 0;
+    const spaceNames = new Set();
+
+    programSpaces.forEach((space, index) => {
+      // Check required fields
+      if (!space.label || space.label.trim() === '') {
+        errors.push(`Row ${index + 1}: Space name is required`);
+      }
+
+      if (!space.area || isNaN(space.area) || space.area <= 0) {
+        errors.push(`Row ${index + 1}: Valid area is required`);
+      } else {
+        totalArea += space.area * (space.count || 1);
+      }
+
+      if (!space.count || isNaN(space.count) || space.count < 1) {
+        warnings.push(`Row ${index + 1}: Count should be at least 1`);
+      }
+
+      // Check for duplicate names
+      if (space.label && spaceNames.has(space.label.toLowerCase())) {
+        warnings.push(`Row ${index + 1}: Duplicate space name "${space.label}"`);
+      }
+      spaceNames.add(space.label?.toLowerCase());
+    });
+
+    // Check total area against constraints
+    if (constraints.targetArea && totalArea > 0) {
+      const diff = Math.abs(totalArea - constraints.targetArea);
+      const percentDiff = (diff / constraints.targetArea) * 100;
+
+      if (percentDiff > 20) {
+        warnings.push(`Total program area (${totalArea.toFixed(0)}m²) differs significantly from target (${constraints.targetArea}m²)`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      totalArea
+    };
   }
 
   /**

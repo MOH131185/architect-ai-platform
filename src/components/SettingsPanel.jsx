@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getAllFeatureFlags, setFeatureFlag } from '../config/featureFlags';
+import { getAllFeatureFlags, setFeatureFlag } from '../config/featureFlags.js';
 
 const SettingsPanel = ({ isOpen, onClose }) => {
   const [flags, setFlags] = useState({});
@@ -34,6 +34,13 @@ const SettingsPanel = ({ isOpen, onClose }) => {
           {/* Core Features */}
           <section style={sectionStyle}>
             <h3>🏗️ Core Features</h3>
+
+            <ToggleSwitch
+              label="Hybrid A1 Mode (RECOMMENDED)"
+              description="Generate A1 sheet with individual panels for better quality. Includes all floor plans, elevations, sections, and 3D views."
+              checked={flags.hybridA1Mode}
+              onChange={(val) => handleToggle('hybridA1Mode', val)}
+            />
 
             <ToggleSwitch
               label="AI Stylization"

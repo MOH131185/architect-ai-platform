@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Material Detection Service
  * AI-powered material extraction from portfolio images and surrounding area
@@ -430,7 +432,7 @@ class MaterialDetectionService {
 
       return detectedMaterials;
     } catch (error) {
-      console.error('Material extraction error:', error);
+      logger.error('Material extraction error:', error);
       return this.getFallbackMaterials(context);
     }
   }
@@ -470,7 +472,7 @@ class MaterialDetectionService {
         materialAvailability: this.checkLocalAvailability(regionKey)
       };
     } catch (error) {
-      console.error('Surrounding material detection error:', error);
+      logger.error('Surrounding material detection error:', error);
       return this.getDefaultRegionalMaterials(location);
     }
   }
@@ -838,4 +840,4 @@ class MaterialDetectionService {
   }
 }
 
-module.exports = new MaterialDetectionService();
+export default new MaterialDetectionService();

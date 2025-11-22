@@ -1,99 +1,117 @@
 /**
  * Reasoning Orchestrator
  * 
- * Provides unified reasoning API with OpenAI → Together.ai fallback
- * - Primary: OpenAI GPT-4o (if REACT_APP_OPENAI_API_KEY available)
- * - Fallback: Together.ai Qwen 2.5 72B (if OpenAI fails or unavailable)
+ * REFACTORED: Now uses ModelRouter for unified reasoning with env-driven model selection
+ * Automatically selects optimal model: GPT-5 > Claude 4.5 > Llama 405B > Qwen 72B
  */
 
-import openaiService from './openaiService';
-import togetherAIReasoningService from './togetherAIReasoningService';
+import modelRouter from './modelRouter.js';
+import promptLibrary from './promptLibrary.js';
 
 /**
- * Generate design reasoning with OpenAI → Together.ai fallback
+ * Generate design reasoning using ModelRouter
  * @param {Object} projectContext - Project information including location, requirements, etc.
  * @returns {Promise<Object>} Design reasoning and recommendations
  */
 export async function generateDesignReasoning(projectContext) {
-  console.log('🧠 [Reasoning Orchestrator] Generating design reasoning...');
+  console.log('🧠 [Reasoning Orchestrator] Generating design reasoning via ModelRouter...');
   
-  // Try OpenAI first (server will handle API key availability)
   try {
-    console.log('   → Attempting OpenAI GPT-4o...');
-    const result = await openaiService.generateDesignReasoning(projectContext);
+    // Extract key context
+    const locationProfile = projectContext.location || projectContext.locationData;
+    const blendedStyle = projectContext.blendedStyle;
+    const masterDNA = projectContext.buildingDNA || projectContext.masterDNA;
 
-    // Check if result is valid (not fallback)
-    if (result && !result.isFallback) {
-      console.log('   ✅ OpenAI reasoning generated successfully');
-      return {
-        ...result,
-        source: 'openai',
-        model: 'gpt-4o'
-      };
-    } else {
-      console.log('   ⚠️  OpenAI returned fallback, trying Together.ai...');
+    // Build reasoning prompt using prompt library
+    const reasoningPrompt = promptLibrary.buildArchitecturalReasoningPrompt({
+      projectContext,
+      locationProfile,
+      blendedStyle,
+      masterDNA
+    });
+
+    // Use ModelRouter for optimal model selection
+    const result = await modelRouter.callLLM('ARCHITECTURAL_REASONING', {
+      systemPrompt: reasoningPrompt.systemPrompt,
+      userPrompt: reasoningPrompt.userPrompt,
+      schema: true,
+      temperature: 0.7,
+      maxTokens: 2000,
+      context: { priority: 'quality', budget: 'medium' }
+    });
+
+    if (!result.success) {
+      throw new Error(`Reasoning generation failed: ${result.error}`);
     }
-  } catch (error) {
-    console.warn('   ⚠️  OpenAI failed:', error.message);
-    console.log('   → Falling back to Together.ai...');
-  }
 
-  // Fallback to Together.ai
-  try {
-    console.log('   → Using Together.ai Qwen 2.5 72B...');
-    const result = await togetherAIReasoningService.generateDesignReasoning(projectContext);
-    console.log('   ✅ Together.ai reasoning generated successfully');
+    console.log(`   ✅ Reasoning generated via ${result.metadata.model} in ${result.metadata.latencyMs}ms`);
+
     return {
-      ...result,
-      source: 'together-ai',
-      model: 'Qwen/Qwen2.5-72B-Instruct-Turbo'
+      ...result.data,
+      source: result.metadata.provider,
+      model: result.metadata.model,
+      metadata: result.metadata
     };
+
   } catch (error) {
-    console.error('   ❌ Together.ai also failed:', error.message);
-    throw new Error(`Both reasoning services failed: ${error.message}`);
+    console.error('   ❌ Reasoning generation failed:', error.message);
+    
+    // Return fallback reasoning
+    return {
+      designPhilosophy: 'Contemporary design responding to site and climate',
+      spatialOrganization: { strategy: 'Functional layout optimized for program' },
+      materialRecommendations: { primary: 'Context-appropriate materials' },
+      environmentalConsiderations: { passiveStrategies: ['Natural ventilation', 'Daylighting'] },
+      isFallback: true,
+      error: error.message
+    };
   }
 }
 
 /**
- * Summarize design context with OpenAI → Together.ai fallback
+ * Summarize design context using ModelRouter
  * @param {Object} projectRequirements - Initial project details
  * @returns {Promise<Object>} Design context JSON
  */
 export async function summarizeDesignContext(projectRequirements) {
-  console.log('🎨 [Reasoning Orchestrator] Summarizing design context...');
+  console.log('🎨 [Reasoning Orchestrator] Summarizing design context via ModelRouter...');
   
-  // Try OpenAI first (server will handle API key availability)
   try {
-    console.log('   → Attempting OpenAI GPT-4o...');
-    const result = await openaiService.summarizeDesignContext(projectRequirements);
+    // Build simplified context prompt
+    const systemPrompt = 'You are an expert architect summarizing design context. Return structured JSON with style, massing, materials, and key features.';
+    
+    const userPrompt = `Summarize design context for:
+Building: ${projectRequirements.buildingProgram || 'building'}
+Area: ${projectRequirements.floorArea || projectRequirements.area || 200}m²
+Style: ${projectRequirements.blendedStyle?.styleName || 'Contemporary'}
+Materials: ${projectRequirements.blendedStyle?.materials?.join(', ') || 'Not specified'}
+Location: ${projectRequirements.location?.address || 'Not specified'}
 
-    if (result && result.style) {
-        console.log('   ✅ OpenAI context generated successfully');
-        return {
-          ...result,
-          source: 'openai',
-          model: 'gpt-4o'
-        };
-      } else {
-        console.log('   ⚠️  OpenAI returned invalid result, trying Together.ai...');
-      }
-  } catch (error) {
-    console.warn('   ⚠️  OpenAI failed:', error.message);
-    console.log('   → Falling back to Together.ai...');
-  }
+Return JSON: {style, massing, facadeMaterials, colorPalette, program, floors, dimensions, roofType, windowPattern, architecturalFeatures[]}.`;
 
-  // Fallback to Together.ai
-  try {
-    console.log('   → Using Together.ai Qwen 2.5 72B...');
-    const result = await togetherAIReasoningService.summarizeDesignContext(projectRequirements);
-    console.log('   ✅ Together.ai context generated successfully');
-    return {
-      ...result,
-      source: 'together-ai',
-      model: 'Qwen/Qwen2.5-72B-Instruct-Turbo'
-    };
+    const result = await modelRouter.callLLM('ARCHITECTURAL_REASONING', {
+      systemPrompt,
+      userPrompt,
+      schema: true,
+      temperature: 0.5,
+      maxTokens: 1000,
+      context: { priority: 'speed', budget: 'low' }
+    });
+
+    if (result.success) {
+      console.log(`   ✅ Context summarized via ${result.metadata.model}`);
+      return {
+        designContext: result.data,
+        source: result.metadata.provider,
+        model: result.metadata.model
+      };
+    }
+
+    throw new Error(result.error || 'Context summarization failed');
+
   } catch (error) {
-    console.error('   ❌ Together.ai also failed:', error.message);
+    console.error('   ❌ Context summarization failed:', error.message);
+    
     // Return basic fallback
     return {
       designContext: {

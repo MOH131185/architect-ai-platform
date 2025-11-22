@@ -13,7 +13,7 @@
  * 6. User reviews final project with consistency report
  */
 
-import dnaWorkflowOrchestrator from '../services/dnaWorkflowOrchestrator';
+import dnaWorkflowOrchestrator from '../services/dnaWorkflowOrchestrator.js';
 
 /**
  * ========================================
@@ -419,7 +419,7 @@ export async function quickTest() {
  */
 export const ReactComponentExample = `
 import React, { useState, useEffect } from 'react';
-import dnaWorkflowOrchestrator from './services/dnaWorkflowOrchestrator';
+import dnaWorkflowOrchestrator from './services/dnaWorkflowOrchestrator.js';
 
 function ArchitectAIWithDNA() {
   const [projectId, setProjectId] = useState(null);

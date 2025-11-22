@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Dimensioning and Annotation Service
  * Adds measurements, labels, and technical annotations to floor plans and technical drawings
@@ -6,7 +8,7 @@
 
 class DimensioningService {
   constructor() {
-    console.log('Dimensioning Service initialized');
+    logger.info('Dimensioning Service initialized');
   }
 
   /**
@@ -17,13 +19,13 @@ class DimensioningService {
    * @returns {Promise<Object>} Annotated image data with dimensions
    */
   async annotateFloorPlan(imageUrl, bimModel, floorLevel = 'ground') {
-    console.log(`📐 Adding dimensions to ${floorLevel} floor plan...`);
+    logger.info(`📐 Adding dimensions to ${floorLevel} floor plan...`);
 
     const { geometry, views } = bimModel;
     const floorPlan = views.floorPlans[`floor_${floorLevel === 'ground' ? 0 : floorLevel === 'upper' ? 1 : 2}`];
 
     if (!floorPlan) {
-      console.warn(`Floor plan for ${floorLevel} not found in BIM model`);
+      logger.warn(`Floor plan for ${floorLevel} not found in BIM model`);
       return { success: false, error: 'Floor plan not found' };
     }
 
@@ -158,7 +160,7 @@ class DimensioningService {
    * Add dimensions to elevation drawing
    */
   async annotateElevation(imageUrl, bimModel, direction = 'north') {
-    console.log(`📐 Adding dimensions to ${direction} elevation...`);
+    logger.info(`📐 Adding dimensions to ${direction} elevation...`);
 
     const { geometry, views } = bimModel;
     const elevation = views.elevations[direction];
@@ -252,7 +254,7 @@ class DimensioningService {
    * Add dimensions to section drawing
    */
   async annotateSection(imageUrl, bimModel, sectionType = 'longitudinal') {
-    console.log(`📐 Adding dimensions to ${sectionType} section...`);
+    logger.info(`📐 Adding dimensions to ${sectionType} section...`);
 
     const { geometry, views } = bimModel;
     const section = views.sections[sectionType];

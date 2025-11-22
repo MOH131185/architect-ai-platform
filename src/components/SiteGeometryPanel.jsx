@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { calculateDistance } from '../utils/geometry';
+import { calculateDistance } from '../utils/geometry.js';
 
 /**
  * Site Geometry Panel
@@ -23,34 +23,52 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
     }
 
     const calculatedEdges = [];
+    const numVertices = vertices.length;
 
-    for (let i = 0; i < vertices.length - 1; i++) { // Exclude last vertex (closing point)
-      const current = vertices[i];
-      const next = vertices[(i + 1) % (vertices.length - 1)];
-      const prev = i > 0 ? vertices[i - 1] : vertices[vertices.length - 2];
+    // For each edge, calculate length and the INTERIOR ANGLE at the START vertex
+    for (let i = 0; i < numVertices; i++) {
+      const prevIdx = (i - 1 + numVertices) % numVertices;
+      const currIdx = i;
+      const nextIdx = (i + 1) % numVertices;
 
-      // Calculate edge length
+      const prev = vertices[prevIdx];
+      const current = vertices[currIdx];
+      const next = vertices[nextIdx];
+
+      // Calculate edge length (from current to next)
       const length = calculateDistance(
         current.lat, current.lng,
         next.lat, next.lng
       );
 
-      // Calculate bearing from current to next
-      const bearing = calculateBearing(current, next);
+      // Calculate bearing from current to next (outgoing edge)
+      const bearingOut = calculateBearing(current, next);
 
-      // Calculate angle between edges
-      const prevBearing = calculateBearing(prev, current);
-      let angle = bearing - prevBearing;
-      if (angle < 0) angle += 360;
-      if (angle > 180) angle = 360 - angle; // Interior angle
+      // Calculate bearing from prev to current (incoming edge)
+      const bearingIn = calculateBearing(prev, current);
+
+      // Calculate INTERIOR angle at current vertex (angle between ribs)
+      // This is the angle you turn from the incoming edge to the outgoing edge
+      let turnAngle = bearingOut - bearingIn;
+
+      // Normalize to 0-360
+      while (turnAngle < 0) turnAngle += 360;
+      while (turnAngle >= 360) turnAngle -= 360;
+
+      // Convert to interior angle
+      // If we turn more than 180°, the interior angle is on the other side
+      let interiorAngle = turnAngle;
+      if (turnAngle > 180) {
+        interiorAngle = 360 - turnAngle;
+      }
 
       calculatedEdges.push({
         index: i,
-        from: i,
-        to: (i + 1) % (vertices.length - 1),
+        from: currIdx,
+        to: nextIdx,
         length: length,
-        bearing: bearing,
-        angle: angle,
+        bearing: bearingOut,
+        angle: interiorAngle,  // Interior angle at THIS vertex (between incoming and outgoing ribs)
         fromVertex: current,
         toVertex: next
       });
@@ -194,42 +212,45 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
 
   return (
     <div
+      className="liquid-glass-card"
       style={{
         position: 'absolute',
         top: '80px',
-        left: '10px',  // Changed from right to left
+        left: '10px',
         zIndex: 1000,
-        background: 'rgba(255, 255, 255, 0.95)',
-        borderRadius: '8px',
-        padding: '16px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         maxWidth: '350px',
         maxHeight: '500px',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        border: '1px solid rgba(255, 255, 255, 0.3)',
+        background: 'rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(180%)'
       }}
     >
       <h3 style={{
         margin: '0 0 12px 0',
         fontSize: '16px',
         fontWeight: 'bold',
-        color: '#333',
-        borderBottom: '2px solid #1976D2',
+        color: '#FFFFFF',
+        borderBottom: '2px solid rgba(0, 168, 255, 0.5)',
         paddingBottom: '8px'
       }}>
         📐 Site Geometry
       </h3>
 
       <div style={{
-        background: '#E3F2FD',
+        background: 'rgba(0, 168, 255, 0.15)',
         padding: '8px 12px',
         borderRadius: '6px',
         marginBottom: '16px',
-        fontSize: '14px'
+        fontSize: '14px',
+        color: '#FFFFFF',
+        border: '1px solid rgba(0, 168, 255, 0.3)'
       }}>
         <strong>Total Area:</strong> {totalArea.toFixed(1)} m²
       </div>
 
-      <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+      <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.8)', marginBottom: '12px' }}>
         Click values to edit lengths and angles
       </div>
 
@@ -239,14 +260,14 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
           style={{
             marginBottom: '12px',
             padding: '10px',
-            background: '#f5f5f5',
+            background: 'rgba(255, 255, 255, 0.05)',
             borderRadius: '6px',
-            border: '1px solid #ddd'
+            border: '1px solid rgba(255, 255, 255, 0.2)'
           }}
         >
           <div style={{
             fontWeight: 'bold',
-            color: '#1976D2',
+            color: '#FFFFFF',
             marginBottom: '6px',
             fontSize: '13px'
           }}>
@@ -255,7 +276,7 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
 
           {/* Edge Length */}
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-            <span style={{ width: '70px', fontSize: '12px' }}>Length:</span>
+            <span style={{ width: '70px', fontSize: '12px', color: 'rgba(255, 255, 255, 0.9)', fontWeight: '500' }}>Length:</span>
             {editingEdge === index ? (
               <input
                 type="number"
@@ -270,9 +291,12 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
                 style={{
                   flex: 1,
                   padding: '4px 8px',
-                  border: '2px solid #1976D2',
+                  border: '2px solid rgba(0, 168, 255, 0.5)',
                   borderRadius: '4px',
-                  fontSize: '12px'
+                  fontSize: '12px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: '#FFFFFF',
+                  fontFamily: 'monospace'
                 }}
               />
             ) : (
@@ -282,11 +306,13 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
                   flex: 1,
                   cursor: 'pointer',
                   padding: '4px 8px',
-                  background: 'white',
+                  background: 'rgba(255, 255, 255, 0.1)',
                   borderRadius: '4px',
                   fontSize: '12px',
                   fontFamily: 'monospace',
-                  border: '1px solid #ccc'
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: '#FFFFFF',
+                  fontWeight: '600'
                 }}
                 title="Click to edit"
               >
@@ -295,54 +321,61 @@ const SiteGeometryPanel = ({ vertices, onVerticesChange, visible }) => {
             )}
           </div>
 
-          {/* Interior Angle */}
-          {index > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <span style={{ width: '70px', fontSize: '12px' }}>Angle:</span>
-              {editingAngle === index ? (
-                <input
-                  type="number"
-                  step="1"
-                  min="1"
-                  max="179"
-                  defaultValue={edge.angle.toFixed(1)}
-                  onBlur={(e) => handleAngleChange(index, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAngleChange(index, e.target.value);
-                    if (e.key === 'Escape') setEditingAngle(null);
-                  }}
-                  autoFocus
-                  style={{
-                    flex: 1,
-                    padding: '4px 8px',
-                    border: '2px solid #1976D2',
-                    borderRadius: '4px',
-                    fontSize: '12px'
-                  }}
-                />
-              ) : (
-                <span
-                  onClick={() => setEditingAngle(index)}
-                  style={{
-                    flex: 1,
-                    cursor: 'pointer',
-                    padding: '4px 8px',
-                    background: 'white',
-                    borderRadius: '4px',
-                    fontSize: '12px',
-                    fontFamily: 'monospace',
-                    border: '1px solid #ccc'
-                  }}
-                  title="Click to edit"
-                >
-                  {edge.angle.toFixed(1)}°
-                </span>
-              )}
-            </div>
-          )}
+          {/* Interior Angle (angle between ribs at this corner) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{ width: '70px', fontSize: '12px', color: 'rgba(255, 255, 255, 0.9)', fontWeight: '500' }}>Corner ∠:</span>
+            {editingAngle === index ? (
+              <input
+                type="number"
+                step="1"
+                min="1"
+                max="179"
+                defaultValue={edge.angle.toFixed(1)}
+                onBlur={(e) => handleAngleChange(index, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAngleChange(index, e.target.value);
+                  if (e.key === 'Escape') setEditingAngle(null);
+                }}
+                autoFocus
+                style={{
+                  flex: 1,
+                  padding: '4px 8px',
+                  border: '2px solid rgba(0, 168, 255, 0.5)',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: '#FFFFFF',
+                  fontFamily: 'monospace'
+                }}
+              />
+            ) : (
+              <span
+                onClick={() => setEditingAngle(index)}
+                style={{
+                  flex: 1,
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  background: edge.angle >= 89 && edge.angle <= 91
+                    ? 'rgba(76, 175, 80, 0.2)'
+                    : 'rgba(255, 255, 255, 0.1)',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  border: edge.angle >= 89 && edge.angle <= 91
+                    ? '1px solid rgba(76, 175, 80, 0.5)'
+                    : '1px solid rgba(255, 255, 255, 0.2)',
+                  color: '#FFFFFF',
+                  fontWeight: '600'
+                }}
+                title="Click to edit (angle between incoming and outgoing ribs)"
+              >
+                {edge.angle.toFixed(1)}° {edge.angle >= 89 && edge.angle <= 91 ? '⊥' : ''}
+              </span>
+            )}
+          </div>
 
           {/* Bearing (compass direction) */}
-          <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+          <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)', marginTop: '4px' }}>
             Direction: {edge.bearing.toFixed(1)}° ({getCompassDirection(edge.bearing)})
           </div>
         </div>

@@ -1,16 +1,16 @@
 import React from 'react';
-import { DesignProvider } from './context/DesignContext';
-import { useArchitectWorkflow } from './hooks/useArchitectWorkflow';
-import LandingPage from './pages/LandingPage';
-import LocationAnalysis from './pages/LocationAnalysis';
-import IntelligenceReport from './pages/IntelligenceReport';
-import PortfolioUpload from './pages/PortfolioUpload';
-import ProjectSpecifications from './pages/ProjectSpecifications';
-import AIGeneration from './pages/AIGeneration';
-import ResultsAndModify from './pages/ResultsAndModify';
-import ErrorBoundary from './components/ErrorBoundary';
-import Toast from './components/Toast';
-import { useDesignContext } from './context/DesignContext';
+import { DesignProvider } from './context/DesignContext.jsx';
+import { useArchitectWorkflow } from './hooks/useArchitectWorkflow.js';
+import LandingPage from './pages/LandingPage.jsx';
+import LocationAnalysis from './pages/LocationAnalysis.jsx';
+import IntelligenceReport from './pages/IntelligenceReport.jsx';
+import PortfolioUpload from './pages/PortfolioUpload.jsx';
+import ProjectSpecifications from './pages/ProjectSpecifications.jsx';
+import AIGeneration from './pages/AIGeneration.jsx';
+import ResultsAndModify from './pages/ResultsAndModify.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import Toast from './components/Toast.jsx';
+import { useDesignContext } from './context/DesignContext.jsx';
 import { Check } from 'lucide-react';
 
 /**

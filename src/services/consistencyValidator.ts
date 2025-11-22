@@ -7,7 +7,7 @@
  * Philosophy: If geometry drifts, auto-reject and retry with stronger constraints.
  */
 
-import type { PlanJSON } from '../types/PlanJSON';
+import type { PlanJSON } from '../types/PlanJSON.js';
 
 /**
  * Validation result

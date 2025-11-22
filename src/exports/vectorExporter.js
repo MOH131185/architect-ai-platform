@@ -5,12 +5,14 @@
  */
 
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+import logger from '../utils/logger.js';
+
 
 /**
  * Export floor plan as SVG with dimensions
  */
 export function exportFloorPlanSVG(design, level = 0) {
-  console.log(`📐 Exporting floor plan SVG (level ${level})...`);
+  logger.info(`📐 Exporting floor plan SVG (level ${level})...`);
 
   const rooms = design.rooms.filter(r => r.level === level);
   if (rooms.length === 0) {
@@ -124,7 +126,7 @@ export function exportFloorPlanSVG(design, level = 0) {
  * Export elevation as SVG
  */
 export function exportElevationSVG(design, direction = 'north') {
-  console.log(`📐 Exporting ${direction} elevation SVG...`);
+  logger.info(`📐 Exporting ${direction} elevation SVG...`);
 
   const length = direction === 'north' || direction === 'south'
     ? design.dimensions.length * 1000
@@ -206,7 +208,7 @@ export function exportElevationSVG(design, direction = 'north') {
  * Export section as SVG
  */
 export function exportSectionSVG(design, type = 'longitudinal') {
-  console.log(`📐 Exporting ${type} section SVG...`);
+  logger.info(`📐 Exporting ${type} section SVG...`);
 
   const length = type === 'longitudinal'
     ? design.dimensions.length * 1000
@@ -275,7 +277,7 @@ export function exportSectionSVG(design, type = 'longitudinal') {
  */
 export function exportGLTF(scene, filename = 'model.glb') {
   return new Promise((resolve, reject) => {
-    console.log('📦 Exporting glTF model...');
+    logger.info('📦 Exporting glTF model...');
 
     const exporter = new GLTFExporter();
 
@@ -289,11 +291,11 @@ export function exportGLTF(scene, filename = 'model.glb') {
       scene,
       (result) => {
         const blob = new Blob([result], { type: 'application/octet-stream' });
-        console.log('✅ glTF export complete');
+        logger.info('✅ glTF export complete');
         resolve({ blob, filename });
       },
       (error) => {
-        console.error('❌ glTF export failed:', error);
+        logger.error('❌ glTF export failed:', error);
         reject(error);
       },
       options
@@ -305,7 +307,7 @@ export function exportGLTF(scene, filename = 'model.glb') {
  * Export to DXF (simplified - basic polylines only)
  */
 export function exportDXF(design) {
-  console.log('📐 Exporting DXF...');
+  logger.info('📐 Exporting DXF...');
 
   // DXF header
   let dxf = `  0\nSECTION\n  2\nHEADER\n  9\n$ACADVER\n  1\nAC1015\n  0\nENDSEC\n`;
@@ -350,14 +352,14 @@ export function saveToTechnicalFolder(content, filename) {
 
   URL.revokeObjectURL(url);
 
-  console.log(`✅ Saved: ${filename}`);
+  logger.info(`✅ Saved: ${filename}`);
 }
 
 /**
  * Generate all exports for a design
  */
 export async function exportAllTechnicalDrawings(design, scene) {
-  console.log('📦 Generating all technical exports...');
+  logger.info('📦 Generating all technical exports...');
 
   const designId = design.design_id;
   const exports = [];
@@ -415,11 +417,11 @@ export async function exportAllTechnicalDrawings(design, scene) {
       exports.push({ type: 'gltf', filename });
     }
 
-    console.log(`✅ Exported ${exports.length} technical drawings`);
+    logger.info(`✅ Exported ${exports.length} technical drawings`);
     return exports;
 
   } catch (error) {
-    console.error('❌ Export failed:', error);
+    logger.error('❌ Export failed:', error);
     return exports;
   }
 }

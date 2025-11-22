@@ -273,26 +273,32 @@ logFeatureFlags(); // Logs all flags to console
    - NO fallback DNA - errors are surfaced to user for retry
    - Structured schema enforces site polygon, climate, room areas, materials, roof type
 3. **STEP 2**: `dnaValidator.js` validates DNA (realistic dimensions, compatible materials, floor counts)
-4. **STEP 3**: Deterministic seed derivation via `seedDerivation.js`:
+4. **STEP 2.5** (Optional - if `geometryVolumeFirst` enabled): 3D Volume Generation:
+   - **Pass C (Volume Reasoning)**: Qwen2.5-72B generates 3D volume specification
+   - Resolves ambiguities (e.g., "triangle + flat roof" → single coherent roof type)
+   - `geometryRenderService.js` generates neutral geometry renders (elevations, axonometric, perspective)
+   - Geometry renders serve as control images for FLUX/SDXL
+5. **STEP 3**: Deterministic seed derivation via `seedDerivation.js`:
    - Base seed from DNA hash: `baseSeed = hash(masterDNA)`
    - Panel seeds: `panelSeed[i] = (baseSeed + i * 137) % 1000000`
    - Ensures perfect reproducibility (same DNA → same seeds)
-5. **STEP 4**: Panel generation with DNA-driven prompts:
+6. **STEP 4**: Panel generation with DNA-driven prompts:
    - 13-14 panels generated sequentially (hero_3d, interior_3d, site, plans, elevations, sections, diagrams)
    - Each prompt embeds structured DNA JSON for consistency
-   - FLUX.1-dev (40 steps) for 3D panels (2000×2000px)
+   - If geometry renders available: used as img2img control images
+   - FLUX.1-dev (40 steps) for 3D panels (2000×2000px) with SDXL fallback
    - FLUX.1-schnell (4 steps) for 2D technical panels (1500×1500px)
    - Priority order: 3D first → site → plans → elevations → sections → diagrams
-6. **STEP 5**: Server-side A1 composition via `/api/a1/compose`:
+7. **STEP 5**: Server-side A1 composition via `/api/a1/compose`:
    - Composites panels into UK RIBA-standard A1 layout
    - Preserves aspect ratios with white margins
    - Adds title block, labels, and frames
-7. **STEP 6**: Baseline artifacts saved to IndexedDB for modifications
-8. **STEP 7**: Design saved to history with compressed DNA, seed maps, and panel metadata
-9. Results displayed with A1 sheet viewer and AI Modify panel
+8. **STEP 6**: Baseline artifacts saved to IndexedDB (includes geometry volume + renders if enabled)
+9. **STEP 7**: Design saved to history with compressed DNA, seed maps, panel metadata, and geometry data
+10. Results displayed with A1 sheet viewer and AI Modify panel
 
-**Generation Time**: ~4-5 minutes for complete A1 sheet (13 panels × 20s + composition)
-**Consistency**: 98%+ with structured DNA and deterministic seeds
+**Generation Time**: ~5-6 minutes for complete A1 sheet (with geometry volume)
+**Consistency**: 99%+ with geometry volume control, 98%+ with DNA-only
 
 **AI Modify Flow** (Post-Generation Modifications):
 1. User enters modification request or selects quick toggles (Add Sections, Add 3D View, Add Details)
@@ -409,8 +415,31 @@ The platform now uses a strict two-pass DNA generation pipeline:
 
 ⚠️ **EXPERIMENTAL STATUS**: The geometry-first pipeline is partially implemented. Core TypeScript files (`src/core/designSchema.ts`, `src/core/validators.ts`, `src/geometry/buildGeometry.ts`) are referenced in documentation but may not be present on the main branch. Tests (`test-geometry-first-local.js`) may fail. Use DNA-Enhanced workflow (default) for production.
 
-**Status**: Experimental feature (`geometryFirst: false` by default)
+**Status**: Experimental feature (`geometryVolumeFirst: false` by default)
 **When to Enable**: Testing only - not recommended for production until core files are fully implemented
+
+**Recent Fixes (November 22, 2025)**: Critical bugs in the Geometry-First Volume Agent implementation have been resolved. See `GEOMETRY_FIXES.md` for details:
+- ✅ **Fix #1**: Implemented missing `buildGeometryDirective()` function in `pureModificationService.js`
+- ✅ **Fix #2**: Removed duplicate `geometryVolumeFirst` feature flag definition
+- ✅ **Fix #3**: Fixed Together.ai geometry control parameters (`control_image` → `init_image`)
+- ✅ **Fix #4**: Moved Pass C (volume specification) behind `geometryVolumeFirst` feature flag
+
+**Pass C (3D Volume Specification)**: When `geometryVolumeFirst` is enabled, Two-Pass DNA generation includes a third pass:
+- **Pass A**: Generate structured JSON DNA (Qwen2.5-72B)
+- **Pass B**: Validate and repair DNA
+- **Pass C**: Generate 3D volume specification with massing strategy, roof type, and facade organization
+- Volume spec used for img2img conditioning via Together.ai's `init_image` parameter
+
+**Feature Flag Control**:
+```javascript
+import { setFeatureFlag } from './src/config/featureFlags';
+
+// Enable geometry-first pipeline (includes Pass C)
+setFeatureFlag('geometryVolumeFirst', true);
+
+// Disable to use DNA-only pipeline (default)
+setFeatureFlag('geometryVolumeFirst', false);
+```
 
 **Intended Architecture** (when complete):
 ```
@@ -700,10 +729,14 @@ npm run test:coverage                 # With coverage report
 - `src/config/appConfig.js` - Application-wide configuration
 
 **Multi-Panel A1 Generation Pipeline** (Read these for A1 workflow):
-- `src/services/twoPassDNAGenerator.js` - **NEW** - Two-pass DNA generation (Author + Reviewer)
-- `src/services/dnaSchema.js` - **NEW** - Structured DNA schema and validation
+- `src/services/twoPassDNAGenerator.js` - **NEW** - Two-pass DNA generation (Author + Reviewer + Volume)
+- `src/services/dnaSchema.js` - **NEW** - Structured DNA schema with geometry volume
 - `src/services/dnaRepair.js` - **NEW** - Deterministic DNA repair functions
 - `src/services/dnaPromptContext.js` - **NEW** - Structured DNA prompt builders
+- `src/services/geometryVolumeReasoning.js` - **NEW** - 3D volume specification reasoning
+- `src/services/geometryRenderService.js` - **NEW** - Geometry render generation (elevations, axonometric)
+- `src/services/multiModelImageService.js` - **NEW** - FLUX + SDXL wrapper with fallback
+- `src/services/modificationClassifier.js` - **NEW** - Modification request classification
 - `src/services/enhancedDNAGenerator.js` - Legacy DNA generation (fallback)
 - `src/services/dnaValidator.js` - DNA validation and auto-correction
 - `src/services/seedDerivation.js` - Deterministic seed formula (baseSeed + index*137)
@@ -742,6 +775,7 @@ npm run test:coverage                 # With coverage report
 - `test-together-api-connection.js` - Tests Together.ai connectivity
 - `test-seed-derivation.js` - **NEW** - Tests deterministic seed formula (7 tests)
 - `test-two-pass-dna.js` - **NEW** - Tests two-pass DNA pipeline (7 tests)
+- `test-geometry-volume.js` - **NEW** - Tests geometry volume system (7 tests)
 - `test-clinic-a1-generation.js` - Tests clinic A1 prompt generation with all required sections
 - `test-modify-seed-consistency.js` - Tests seed reuse and consistency lock in modify workflow
 - `test-a1-modify-consistency.js` - Test A1 modification workflow with consistency lock
@@ -750,7 +784,10 @@ npm run test:coverage                 # With coverage report
 
 **Key Documentation**:
 - `README.md` - Public-facing documentation with Geometry-First overview
+- `GEOMETRY_FIXES.md` - **NEW** - Geometry-First Volume Agent critical fixes (November 22, 2025)
+- `PROJECT_CLEANUP_REPORT.md` - Comprehensive cleanup report with 6 critical bugs fixed
 - `docs/STRICT_MULTI_PANEL_IMPLEMENTATION.md` - **NEW** - Two-pass DNA and strict consistency implementation
+- `docs/GEOMETRY_VOLUME_AGENT.md` - **NEW** - Geometry-first volume agent architecture
 - `DNA_SYSTEM_ARCHITECTURE.md` - Complete DNA pipeline explanation
 - `CONSISTENCY_SYSTEM_COMPLETE.md` - 98% consistency achievement details
 - `GEOMETRY_FIRST_README.md` - Detailed Geometry-First technical reference

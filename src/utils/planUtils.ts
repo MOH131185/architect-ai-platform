@@ -2,7 +2,7 @@
  * Utility functions for working with PlanJSON
  */
 
-import type { PlanJSON, ValidationResult } from '../types/PlanJSON';
+import type { PlanJSON, ValidationResult } from '../types/PlanJSON.js';
 import CryptoJS from 'crypto-js';
 
 /**

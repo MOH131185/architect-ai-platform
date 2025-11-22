@@ -10,8 +10,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, History, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-import designGenerationHistory from '../services/designGenerationHistory';
-import aiModificationService from '../services/aiModificationService';
+import designGenerationHistory from '../services/designGenerationHistory.js';
+import aiModificationService from '../services/aiModificationService.js';
 
 const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete }) => {
   const [missingViews, setMissingViews] = useState([]);

@@ -30,7 +30,8 @@ class SheetConsistencyGuard {
   async validateZoneConsistency(baselineImageUrl, modifiedImageUrl, zones, options = {}) {
     const {
       strictMode = true,
-      unchangedPanels = [] // Array of panel IDs that should remain unchanged
+      unchangedPanels = [], // Array of panel IDs that should remain unchanged
+      zoneThresholds = {} // Optional per-zone thresholds { zoneId: { ssim, pHash } }
     } = options;
 
     logger.info('Validating zone consistency (Hybrid A1 mode)', {
@@ -41,6 +42,7 @@ class SheetConsistencyGuard {
     const zoneResults = {};
     let overallConsistent = true;
     let totalScore = 0;
+    let validatedZones = 0;
     const issues = [];
 
     try {
@@ -53,6 +55,9 @@ class SheetConsistencyGuard {
       // Validate each zone
       for (const zone of zones) {
         const shouldBeUnchanged = unchangedPanels.includes(zone.id);
+        const thresholdConfig = zoneThresholds[zone.id] || {};
+        const zoneSsimThreshold = typeof thresholdConfig.ssim === 'number' ? thresholdConfig.ssim : this.ssimThreshold;
+        const zonePhashThreshold = typeof thresholdConfig.pHash === 'number' ? thresholdConfig.pHash : this.pHashThreshold;
         
         if (!shouldBeUnchanged) {
           // Skip validation for zones that are expected to change
@@ -81,7 +86,7 @@ class SheetConsistencyGuard {
           const hashDistance = this.hammingDistance(baselineHash, modifiedHash);
           const ssimScore = await this.computeSSIM(normalizedBaseline, normalizedModified);
 
-          const zoneConsistent = hashDistance <= this.pHashThreshold && ssimScore >= this.ssimThreshold;
+          const zoneConsistent = hashDistance <= zonePhashThreshold && ssimScore >= zoneSsimThreshold;
           const zoneScore = (ssimScore * 0.7) + ((1 - hashDistance / 32) * 0.3);
 
           zoneResults[zone.id] = {
@@ -89,16 +94,22 @@ class SheetConsistencyGuard {
             score: zoneScore,
             ssimScore,
             hashDistance,
+            thresholds: {
+              ssim: zoneSsimThreshold,
+              pHash: zonePhashThreshold
+            },
             issues: []
           };
 
           if (!zoneConsistent) {
             overallConsistent = false;
-            issues.push(`Zone ${zone.id}: hashDistance=${hashDistance}, ssim=${ssimScore.toFixed(3)}`);
-            zoneResults[zone.id].issues.push(`Zone drifted: hashDistance=${hashDistance}, ssim=${ssimScore.toFixed(3)}`);
+            const issueText = `Zone ${zone.id}: hashDistance=${hashDistance} (≤${zonePhashThreshold}), ssim=${ssimScore.toFixed(3)} (≥${zoneSsimThreshold})`;
+            issues.push(issueText);
+            zoneResults[zone.id].issues.push(`Zone drifted: ${issueText}`);
           }
 
           totalScore += zoneScore;
+          validatedZones += 1;
 
         } catch (error) {
           logger.warn(`Zone ${zone.id} validation failed`, error);
@@ -111,7 +122,7 @@ class SheetConsistencyGuard {
         }
       }
 
-      const averageScore = zones.length > 0 ? totalScore / zones.length : 0;
+      const averageScore = validatedZones > 0 ? totalScore / validatedZones : 0;
 
       return {
         consistent: overallConsistent,

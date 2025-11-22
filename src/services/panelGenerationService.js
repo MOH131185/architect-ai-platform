@@ -306,7 +306,9 @@ export function planA1Panels({
   programSpaces,
   baseSeed,
   climate,
-  locationData
+  locationData,
+  geometryRenders = null,
+  geometryDNA = null
 }) {
   const seedSource = typeof baseSeed === 'number' || typeof baseSeed === 'string'
     ? baseSeed
@@ -317,6 +319,7 @@ export function planA1Panels({
 
   return panelSequence.map((panelType) => {
     const seed = panelSeedMap[panelType] ?? derivePanelSeed(seedSource, panelType);
+    const geometryHint = selectGeometryRender(panelType, geometryRenders);
     
     // Try specialized builder first, fallback to generic
     let jobPrompt, jobNegativePrompt;
@@ -325,7 +328,8 @@ export function planA1Panels({
         masterDNA,
         locationData: locationData || { climate },
         projectContext: { buildingProgram: buildingType, programSpaces },
-        consistencyLock: null
+        consistencyLock: null,
+        geometryHint
       });
       jobPrompt = specialized.prompt;
       jobNegativePrompt = specialized.negativePrompt;
@@ -337,7 +341,8 @@ export function planA1Panels({
         buildingType,
         entranceOrientation,
         programSpaces,
-        climate
+        climate,
+        geometryHint
       });
       jobNegativePrompt = buildNegativePrompt(panelType);
     }
@@ -353,10 +358,35 @@ export function planA1Panels({
       dnaSnapshot: masterDNA || null,
       meta: {
         siteBoundary,
-        entranceOrientation
+        entranceOrientation,
+        geometryHint,
+        geometryDNA: geometryDNA || null,
+        geometryStrength: geometryHint ? 0.6 : 0
       }
     };
   });
+}
+
+function selectGeometryRender(panelType, geometryRenders) {
+  if (!geometryRenders || typeof geometryRenders !== 'object') return null;
+
+  if (panelType.includes('elevation')) {
+    const dir = panelType.includes('north') ? 'orthographic_north'
+      : panelType.includes('south') ? 'orthographic_south'
+      : panelType.includes('east') ? 'orthographic_east'
+      : 'orthographic_west';
+    return geometryRenders[dir] || null;
+  }
+
+  if (panelType === 'hero_3d') {
+    return geometryRenders.perspective_hero || geometryRenders.perspective || null;
+  }
+
+  if (panelType === 'site_diagram' || panelType === 'axonometric_3d') {
+    return geometryRenders.axonometric || null;
+  }
+
+  return null;
 }
 
 /**

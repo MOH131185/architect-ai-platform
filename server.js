@@ -28,13 +28,13 @@ const corsOptions = {
     const allowedOrigins = process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',')
       : [
-          'http://localhost:3000',  // React dev server
-          'http://localhost:3001',  // Local API server
-          'https://www.archiaisolution.pro',  // Production domain
-          'https://archiaisolution.pro',
-          // Tightened regex: only match architect-ai-platform-* Vercel previews
-          /^https:\/\/architect-ai-platform-[a-z0-9]+-[a-z0-9]+\.vercel\.app$/
-        ];
+        'http://localhost:3000',  // React dev server
+        'http://localhost:3001',  // Local API server
+        'https://www.archiaisolution.pro',  // Production domain
+        'https://archiaisolution.pro',
+        // Tightened regex: only match architect-ai-platform-* Vercel previews
+        /^https:\/\/architect-ai-platform-[a-z0-9]+-[a-z0-9]+\.vercel\.app$/
+      ];
 
     // Allow requests with no origin (like Postman or server-side requests)
     if (!origin) return callback(null, true);
@@ -80,10 +80,11 @@ const aiApiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Very strict rate limiting for image generation (most expensive)
+// Strict rate limiting for image generation (expensive operations)
+// Increased limit for development - adjust for production
 const imageGenerationLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,  // 5 minutes
-  max: 5,  // Limit each IP to 5 image generations per 5 minutes
+  max: 30,  // Limit each IP to 30 image generations per 5 minutes (increased for dev)
   message: 'Image generation rate limit exceeded. Please wait 5 minutes.',
   skipSuccessfulRequests: false,
 });
@@ -353,7 +354,7 @@ app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {
     const generationMode = initImage ? 'image-to-image' : 'text-to-image';
     const isProduction = process.env.NODE_ENV === 'production';
     const logLevel = process.env.LOG_LEVEL || (isProduction ? 'error' : 'debug');
-    
+
     if (logLevel === 'debug' && !isProduction) {
       console.log(`🎨 [FLUX.1] Generating image (${generationMode}) with seed ${seed}...`);
       if (negativePrompt) {
@@ -759,17 +760,17 @@ app.post('/api/upscale', async (req, res) => {
     // Try to use sharp if available (better quality)
     try {
       const sharp = require('sharp');
-      
+
       console.log(`🔄 Upscaling image to ${targetWidth}×${targetHeight}px...`);
-      
+
       // Fetch the image
       const imageResponse = await fetch(imageUrl);
       if (!imageResponse.ok) {
         throw new Error(`Failed to fetch image: ${imageResponse.status}`);
       }
-      
+
       const imageBuffer = await imageResponse.arrayBuffer();
-      
+
       // Upscale using sharp with Lanczos3 algorithm (best quality)
       const upscaledBuffer = await sharp(Buffer.from(imageBuffer))
         .resize(targetWidth, targetHeight, {
@@ -779,13 +780,13 @@ app.post('/api/upscale', async (req, res) => {
         })
         .png({ quality: 100, compressionLevel: 6 })
         .toBuffer();
-      
+
       // Convert to data URL
       const base64 = upscaledBuffer.toString('base64');
       const dataUrl = `data:image/png;base64,${base64}`;
-      
+
       console.log(`✅ Upscaled successfully: ${targetWidth}×${targetHeight}px`);
-      
+
       return res.json({
         success: true,
         dataUrl,
@@ -806,6 +807,179 @@ app.post('/api/upscale', async (req, res) => {
     console.error('Upscale endpoint error:', error);
     return res.status(500).json({
       error: 'Upscaling failed',
+      message: error.message
+    });
+  }
+});
+
+// ============================================================================
+// A1 SHEET COMPOSITION ENDPOINT
+// ============================================================================
+
+// A1 Layout Configuration
+const WORKING_WIDTH = 1792;
+const WORKING_HEIGHT = 1269;
+
+const PANEL_LAYOUT = {
+  // Top row
+  site_diagram: { x: 0.02, y: 0.02, width: 0.18, height: 0.16 },
+  hero_3d: { x: 0.21, y: 0.02, width: 0.36, height: 0.30 },
+  interior_3d: { x: 0.58, y: 0.02, width: 0.28, height: 0.30 },
+  material_palette: { x: 0.87, y: 0.02, width: 0.11, height: 0.16 },
+  climate_card: { x: 0.87, y: 0.19, width: 0.11, height: 0.13 },
+
+  // Middle row - Floor plans
+  floor_plan_ground: { x: 0.02, y: 0.33, width: 0.28, height: 0.24 },
+  floor_plan_first: { x: 0.31, y: 0.33, width: 0.28, height: 0.24 },
+  floor_plan_level2: { x: 0.60, y: 0.33, width: 0.26, height: 0.24 },
+
+  // Lower row - Elevations
+  elevation_north: { x: 0.02, y: 0.58, width: 0.23, height: 0.18 },
+  elevation_south: { x: 0.26, y: 0.58, width: 0.23, height: 0.18 },
+  elevation_east: { x: 0.50, y: 0.58, width: 0.23, height: 0.18 },
+  elevation_west: { x: 0.74, y: 0.58, width: 0.24, height: 0.18 },
+
+  // Bottom row - Sections
+  section_AA: { x: 0.02, y: 0.77, width: 0.32, height: 0.21 },
+  section_BB: { x: 0.35, y: 0.77, width: 0.32, height: 0.21 },
+  title_block: { x: 0.68, y: 0.77, width: 0.30, height: 0.21 }
+};
+
+/**
+ * POST /api/a1/compose
+ * Compose individual panels into a complete A1 sheet
+ */
+app.post('/api/a1/compose', async (req, res) => {
+  try {
+    const { designId, panels = [], siteOverlay = null, layoutConfig = 'uk-riba-standard' } = req.body;
+
+    if (!panels || panels.length === 0) {
+      return res.status(400).json({
+        error: 'No panels provided for composition'
+      });
+    }
+
+    console.log(`🖼️  [A1 Compose] Composing ${panels.length} panels for design ${designId}...`);
+
+    // Try to load sharp
+    let sharp;
+    try {
+      sharp = require('sharp');
+    } catch (e) {
+      console.warn('⚠️ Sharp not available for server-side composition');
+      // Fallback to returning the first image (legacy behavior) or error
+      return res.status(503).json({
+        error: 'Server-side composition unavailable (sharp not installed)',
+        fallback: true
+      });
+    }
+
+    // 1. Create blank canvas
+    const width = WORKING_WIDTH;
+    const height = WORKING_HEIGHT;
+
+    const background = sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 255, g: 255, b: 255 }
+      }
+    }).png();
+
+    // 2. Fetch and prepare all panel images
+    const composites = [];
+    const coordinates = {};
+    const layout = PANEL_LAYOUT; // Use standard layout for now
+
+    console.log('   ⬇️  Fetching panel images...');
+
+    const processPanelPromises = panels.map(async (panel) => {
+      try {
+        const panelLayout = layout[panel.type];
+        if (!panelLayout) {
+          console.warn(`   ⚠️  Unknown panel type: ${panel.type}`);
+          return;
+        }
+
+        const imageUrl = panel.imageUrl || panel.url;
+        if (!imageUrl) return;
+
+        // Fetch image
+        let buffer;
+        if (imageUrl.startsWith('data:')) {
+          // Handle data URL
+          const base64Data = imageUrl.split(';base64,').pop();
+          buffer = Buffer.from(base64Data, 'base64');
+        } else {
+          // Handle remote URL
+          const response = await fetch(imageUrl);
+          if (!response.ok) throw new Error(`Failed to fetch ${imageUrl}`);
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        }
+
+        // Calculate dimensions
+        const x = Math.round(panelLayout.x * width);
+        const y = Math.round(panelLayout.y * height);
+        const panelWidth = Math.round(panelLayout.width * width);
+        const panelHeight = Math.round(panelLayout.height * height);
+
+        // Resize image
+        const resizedBuffer = await sharp(buffer)
+          .resize(panelWidth, panelHeight, {
+            fit: 'contain',
+            background: { r: 255, g: 255, b: 255, alpha: 0 }
+          })
+          .png()
+          .toBuffer();
+
+        composites.push({
+          input: resizedBuffer,
+          left: x,
+          top: y
+        });
+
+        coordinates[panel.type] = { x, y, width: panelWidth, height: panelHeight };
+
+      } catch (err) {
+        console.error(`   ❌ Failed to process panel ${panel.type}:`, err.message);
+      }
+    });
+
+    await Promise.all(processPanelPromises);
+
+    // 3. Composite final sheet
+    console.log(`   🎨 Compositing ${composites.length} panels...`);
+
+    const composedBuffer = await background
+      .composite(composites)
+      .png()
+      .toBuffer();
+
+    // 4. Convert to Data URL
+    const base64 = composedBuffer.toString('base64');
+    const composedSheetUrl = `data:image/png;base64,${base64}`;
+
+    console.log(`✅ [A1 Compose] Composition complete: ${width}x${height}px`);
+
+    return res.json({
+      composedSheetUrl,
+      url: composedSheetUrl,
+      coordinates,
+      metadata: {
+        width,
+        height,
+        panelCount: panels.length,
+        layoutKey: layoutConfig,
+        format: 'png'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [A1 Compose] Error:', error);
+    return res.status(500).json({
+      error: 'A1 composition failed',
       message: error.message
     });
   }

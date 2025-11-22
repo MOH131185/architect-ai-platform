@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
-import { useDesignContext } from '../context/DesignContext';
-import dnaWorkflowOrchestrator from '../services/dnaWorkflowOrchestrator';
-import designGenerationHistory from '../services/designGenerationHistory';
-import logger from '../utils/logger';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import dnaWorkflowOrchestrator from '../services/dnaWorkflowOrchestrator.js';
+import designGenerationHistory from '../services/designGenerationHistory.js';
+import logger from '../utils/logger.js';
+import { normalizeMultiPanelResult } from '../types/schemas.js';
 
 /**
  * useGeneration - AI Generation Workflow Hook
@@ -250,6 +251,7 @@ export const useGeneration = () => {
         recommendedStyle: locationData?.recommendedStyle,
         localMaterials: locationData?.localMaterials,
         siteAnalysis: locationData?.siteAnalysis,
+        siteDNA: locationData?.siteDNA,
         sitePolygon: sitePolygon,
         siteMetrics: siteMetrics,
         architecturalStyle: 'Contemporary with local influences',
@@ -289,44 +291,29 @@ export const useGeneration = () => {
       // Select workflow
       updateProgress('Workflow', 4, 'Selecting optimal generation workflow...');
 
-      // Check for hybrid mode
-      const { isFeatureEnabled } = await import('../config/featureFlags');
-      const useHybridMode = isFeatureEnabled('hybridA1Mode');
-
-      // Execute generation
+      // Execute multi-panel generation
       updateProgress('Generation', 5, 'Generating architectural designs...');
 
       let aiResult;
 
-      if (useHybridMode) {
-        logger.info('Using HYBRID A1 workflow (panel-based generation)', null, '🎯');
-        updateProgress('Generation', 5, 'Generating individual architectural panels...');
+      logger.info('Using MULTI-PANEL A1 workflow (panel-based generation)', null, '🎯');
+      updateProgress('Generation', 5, 'Generating 14 specialized architectural panels...');
 
-        aiResult = await dnaWorkflowOrchestrator.runHybridA1SheetWorkflow({
-          projectContext,
-          locationData,
-          portfolioAnalysis,
-          portfolioBlendPercent: 70,
-          seed: projectSeed,
-          siteShape: locationData?.sitePolygon
-        });
-      } else {
-        logger.info('Using STANDARD A1 workflow (single-shot generation)', null, '📄');
-        updateProgress('Generation', 5, 'Generating single A1 comprehensive sheet...');
+      const rawResult = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
+        projectContext,
+        locationData,
+        portfolioFiles: uploadedPortfolioFiles || [],
+        siteSnapshot: locationData?.siteSnapshot || null,
+        baseSeed: projectSeed,
+        portfolioAnalysis
+      });
 
-        aiResult = await dnaWorkflowOrchestrator.runA1SheetWorkflow({
-          projectContext,
-          locationData,
-          portfolioAnalysis,
-          portfolioBlendPercent: 70,
-          seed: projectSeed
-        });
-      }
+      aiResult = normalizeMultiPanelResult(rawResult);
 
-      logger.info('AI design generation complete', { success: aiResult.success }, '✅');
+      logger.info('AI design generation complete', { success: aiResult?.success }, '✅');
 
       // Validate A1 sheet result
-      if (!aiResult.success || !aiResult.a1Sheet) {
+      if (!aiResult?.success || !aiResult?.a1Sheet) {
         const errorDetails = typeof aiResult.error === 'object'
           ? JSON.stringify(aiResult.error, null, 2)
           : aiResult.error;
@@ -351,9 +338,12 @@ export const useGeneration = () => {
       const timeline = dimensions.floors > 3 ? '18-24 months' : '12-18 months';
 
       const designData = {
-        workflow: 'a1-sheet-one-shot',
+        workflow: 'multi-panel-a1',
         a1Sheet: aiResult.a1Sheet,
         masterDNA: aiResult.masterDNA,
+        panels: aiResult.panelMap || aiResult.panels,
+        panelMap: aiResult.panelMap || aiResult.panels,
+        panelCoordinates: aiResult.panelCoordinates || aiResult.coordinates,
         reasoning: aiResult.reasoning || {},
         projectContext: aiResult.projectContext || projectContext,
         locationData: aiResult.locationData || locationData,
@@ -387,14 +377,52 @@ export const useGeneration = () => {
           blendedStyle: aiResult.blendedStyle || portfolioAnalysis
         });
 
-        designGenerationHistory.recordDesign(sessionId, {
-          designId,
+        designGenerationHistory.recordOriginalGeneration(sessionId, {
           masterDNA: aiResult.masterDNA,
-          resultUrl: aiResult.a1Sheet.url,
+          designDNA: aiResult.masterDNA,
+          prompt: promptResult.prompt,
+          result: {
+            a1Sheet: aiResult.a1Sheet,
+            panels: aiResult.panelMap || aiResult.panels,
+            panelMap: aiResult.panelMap || aiResult.panels,
+            individualViews: aiResult.visualizations || {},
+            designId: designId
+          },
+          reasoning: aiResult.reasoning || {},
           seed: projectSeed,
-          basePrompt: promptResult.prompt,
           negativePrompt: promptResult.negativePrompt,
           timestamp: Date.now()
+        });
+
+        // Also save to designHistoryService for AIModifyPanel compatibility
+        const designHistoryService = (await import('../services/designHistoryService')).default;
+        await designHistoryService.createDesign({
+          designId,
+          mainPrompt: promptResult.prompt,
+          basePrompt: promptResult.prompt,
+          masterDNA: aiResult.masterDNA || {},
+          seed: projectSeed,
+          seedsByView: { a1Sheet: projectSeed },
+          resultUrl: aiResult.a1Sheet.url,
+          composedSheetUrl: aiResult.a1Sheet.composedSheetUrl || aiResult.a1Sheet.url,
+          a1SheetUrl: aiResult.a1Sheet.url,
+          projectContext: projectContext || {},
+          styleBlendPercent: 70,
+          width: 1792,
+          height: 1269,
+          model: 'black-forest-labs/FLUX.1-dev',
+          a1LayoutKey: 'uk-riba-standard',
+          siteSnapshot: aiResult.sitePlanAttachment || null,
+          panelMap: aiResult.panelMap || aiResult.panels,
+          panels: aiResult.panelMap || aiResult.panels,
+          panelCoordinates: aiResult.panelCoordinates || aiResult.coordinates,
+          a1Sheet: {
+            ...aiResult.a1Sheet,
+            composedSheetUrl: aiResult.a1Sheet.composedSheetUrl || aiResult.a1Sheet.url,
+            panels: aiResult.panelMap || aiResult.panels,
+            panelMap: aiResult.panelMap || aiResult.panels,
+            coordinates: aiResult.panelCoordinates || aiResult.coordinates
+          }
         });
 
         logger.info('Design saved to history', { designId }, '💾');

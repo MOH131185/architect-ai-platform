@@ -1,6 +1,10 @@
 /**
  * ControlNet Multi-View Architectural Visualization Service
  *
+ * DEPRECATED: The A1-only workflow no longer calls this service. It remains available solely for
+ * backward compatibility with legacy multi-view experiments. New features should rely on the
+ * DNA-driven A1 pipeline and not invoke this ControlNet workflow unless explicitly required.
+ *
  * Mission: Generate consistent multi-view 3D architectural visualizations that strictly match
  * uploaded 2D floor plans using ControlNet for structural fidelity.
  *
@@ -13,10 +17,12 @@
  * 6. Output Format - Return complete JSON package
  */
 
-import togetherAIReasoningService from './togetherAIReasoningService';
-import enhancedDesignDNAService from './enhancedDesignDNAService';
-import dnaPromptGenerator from './dnaPromptGenerator';
-import enhancedViewConfigurationService from './enhancedViewConfigurationService';
+import togetherAIReasoningService from './togetherAIReasoningService.js';
+import enhancedDesignDNAService from './enhancedDesignDNAService.js';
+import dnaPromptGenerator from './dnaPromptGenerator.js';
+import enhancedViewConfigurationService from './enhancedViewConfigurationService.js';
+import logger from '../utils/logger.js';
+
 
 class ControlNetMultiViewService {
   constructor() {
@@ -66,7 +72,7 @@ Critical requirements:
 
     // Validate required fields
     if (!control_image) {
-      console.warn('⚠️  No control_image provided - ControlNet conditioning will be limited');
+      logger.warn('⚠️  No control_image provided - ControlNet conditioning will be limited');
     }
 
     const normalized = {
@@ -83,7 +89,7 @@ Critical requirements:
       building_program
     };
 
-    console.log('📋 STEP 2: Input parameters validated:', {
+    logger.info('📋 STEP 2: Input parameters validated:', {
       project: normalized.project_name,
       floors: normalized.floors,
       seed: normalized.seed,
@@ -105,7 +111,7 @@ Critical requirements:
    * @returns {Promise<Object>} Building core description with enhanced DNA
    */
   async generateBuildingCoreDescription(inputParams, portfolioAnalysis = null, locationData = null) {
-    console.log('🧬 STEP 3: Generating Enhanced Design DNA for 95%+ consistency...');
+    logger.info('🧬 STEP 3: Generating Enhanced Design DNA for 95%+ consistency...');
 
     try {
       // Prepare project context for DNA generation
@@ -129,7 +135,7 @@ Critical requirements:
       );
 
       if (!dnaResult.success) {
-        console.warn('⚠️  Enhanced DNA generation failed, using fallback...');
+        logger.warn('⚠️  Enhanced DNA generation failed, using fallback...');
         return this.getFallbackBuildingCoreDescription(inputParams);
       }
 
@@ -149,7 +155,7 @@ Critical requirements:
       buildingCoreDescription.dna_version = '2.0';
       buildingCoreDescription.consistency_level = '95%+';
 
-      console.log('✅ Enhanced DNA generated with 95%+ consistency:', {
+      logger.info('✅ Enhanced DNA generated with 95%+ consistency:', {
         dimensions: `${masterDNA.dimensions?.length}m × ${masterDNA.dimensions?.width}m × ${masterDNA.dimensions?.height}m`,
         floors: masterDNA.dimensions?.floor_count,
         materials: masterDNA.materials?.exterior?.primary,
@@ -162,7 +168,7 @@ Critical requirements:
       return buildingCoreDescription;
 
     } catch (error) {
-      console.error('❌ Failed to generate Enhanced DNA:', error);
+      logger.error('❌ Failed to generate Enhanced DNA:', error);
       return this.getFallbackBuildingCoreDescription(inputParams);
     }
   }
@@ -264,7 +270,7 @@ Critical requirements:
    * @returns {Object} View configurations for all 6 views
    */
   generateViewConfigurations(buildingCoreDescription) {
-    console.log('🎨 STEP 4: Generating view-by-view prompts with ControlNet...');
+    logger.info('🎨 STEP 4: Generating view-by-view prompts with ControlNet...');
 
     const {
       geometry,
@@ -372,7 +378,7 @@ Critical requirements:
       output: "perspective.png"
     };
 
-    console.log(`✅ Generated configurations for ${Object.keys(views).length} views`);
+    logger.success(` Generated configurations for ${Object.keys(views).length} views`);
     return views;
   }
 
@@ -387,7 +393,7 @@ Critical requirements:
    * @returns {Object} Enhanced view configurations for all 6 views
    */
   generateEnhancedViewConfigurations(buildingCoreDescription, elevationImages = {}) {
-    console.log('🎨 STEP 4 (Enhanced): Generating multi-ControlNet view configurations...');
+    logger.info('🎨 STEP 4 (Enhanced): Generating multi-ControlNet view configurations...');
 
     const { seed, control_image } = buildingCoreDescription;
 
@@ -399,9 +405,9 @@ Critical requirements:
       seed: seed
     });
 
-    console.log(`✅ Generated enhanced configurations for ${Object.keys(enhancedViews).length} views`);
-    console.log(`   🎯 Features: Multi-ControlNet, explicit elevation references, enhanced negatives`);
-    console.log(`   📐 Floor plan weight: 1.1, Elevation weights: 0.9`);
+    logger.success(` Generated enhanced configurations for ${Object.keys(enhancedViews).length} views`);
+    logger.info(`   🎯 Features: Multi-ControlNet, explicit elevation references, enhanced negatives`);
+    logger.info(`   📐 Floor plan weight: 1.1, Elevation weights: 0.9`);
 
     return enhancedViews;
   }
@@ -413,7 +419,7 @@ Critical requirements:
    * @returns {Promise<Object>} Generated images for all views
    */
   async generateAllViews(viewConfigs) {
-    console.log('🖼️  Generating all views with Replicate SDXL + ControlNet...');
+    logger.info('🖼️  Generating all views with Replicate SDXL + ControlNet...');
 
     const results = {};
     const viewNames = Object.keys(viewConfigs);
@@ -422,7 +428,7 @@ Critical requirements:
       const config = viewConfigs[viewName];
 
       try {
-        console.log(`   🎨 Generating ${config.view}...`);
+        logger.info(`   🎨 Generating ${config.view}...`);
 
         const generationParams = {
           prompt: config.prompt,
@@ -448,13 +454,13 @@ Critical requirements:
           prompt_used: config.prompt.substring(0, 150) + '...'
         };
 
-        console.log(`   ✅ ${config.view} ${result.success ? 'generated' : 'failed'}`);
+        logger.info(`   ✅ ${config.view} ${result.success ? 'generated' : 'failed'}`);
 
         // Small delay to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (error) {
-        console.error(`   ❌ Failed to generate ${config.view}:`, error.message);
+        logger.error(`   ❌ Failed to generate ${config.view}:`, error.message);
         results[viewName] = {
           view: config.view,
           success: false,
@@ -483,7 +489,7 @@ Critical requirements:
    * @returns {Object} Enhanced validation report
    */
   validateConsistency(viewConfigs, results, buildingCoreDescription = null) {
-    console.log('🔍 STEP 5: Enhanced Consistency Validation with DNA Rules...');
+    logger.info('🔍 STEP 5: Enhanced Consistency Validation with DNA Rules...');
 
     const validation = {
       checks: [],
@@ -637,12 +643,12 @@ Critical requirements:
       validation.consistency_check = 'failed';
     }
 
-    console.log(`${validation.passed ? '✅' : '⚠️ '} Enhanced Consistency Validation: ${validation.summary}`);
-    console.log(`   Critical: ${validation.critical_summary}`);
+    logger.info(`${validation.passed ? '✅' : '⚠️ '} Enhanced Consistency Validation: ${validation.summary}`);
+    logger.info(`   Critical: ${validation.critical_summary}`);
     validation.checks.forEach(check => {
       const icon = check.passed ? '✅' : '❌';
       const criticalTag = check.critical ? '[CRITICAL]' : '';
-      console.log(`   ${icon} ${criticalTag} ${check.test}: ${check.details}`);
+      logger.info(`   ${icon} ${criticalTag} ${check.test}: ${check.details}`);
     });
 
     return validation;
@@ -660,7 +666,7 @@ Critical requirements:
    * @returns {Object} Complete output package
    */
   compileOutputPackage(buildingCoreDescription, viewConfigs, results, validation) {
-    console.log('📦 STEP 6: Compiling output package...');
+    logger.info('📦 STEP 6: Compiling output package...');
 
     const output = {
       project: buildingCoreDescription.project_name,
@@ -695,10 +701,10 @@ Critical requirements:
       ]
     };
 
-    console.log('✅ Complete multi-view visualization package ready');
-    console.log(`   📊 Generated: ${output.metadata.successful_views} / ${output.metadata.total_views} views`);
-    console.log(`   🎯 Consistency: ${validation.consistency_check}`);
-    console.log(`   🌱 Seed: ${output.seed}`);
+    logger.success(' Complete multi-view visualization package ready');
+    logger.info(`   📊 Generated: ${output.metadata.successful_views} / ${output.metadata.total_views} views`);
+    logger.info(`   🎯 Consistency: ${validation.consistency_check}`);
+    logger.info(`   🌱 Seed: ${output.seed}`);
 
     return output;
   }
@@ -713,8 +719,8 @@ Critical requirements:
    * @returns {Promise<Object>} Complete visualization package
    */
   async generateConsistentMultiViewPackage(rawParams) {
-    console.log('\n🏗️  CONTROLNET MULTI-VIEW GENERATION STARTING...\n');
-    console.log('━'.repeat(60));
+    logger.info('\n🏗️  CONTROLNET MULTI-VIEW GENERATION STARTING...\n');
+    logger.info('━'.repeat(60));
 
     try {
       // STEP 2: Validate and normalize input
@@ -740,13 +746,13 @@ Critical requirements:
         validation
       );
 
-      console.log('━'.repeat(60));
-      console.log('✅ CONTROLNET MULTI-VIEW GENERATION COMPLETE\n');
+      logger.info('━'.repeat(60));
+      logger.success(' CONTROLNET MULTI-VIEW GENERATION COMPLETE\n');
 
       return outputPackage;
 
     } catch (error) {
-      console.error('❌ ControlNet multi-view generation failed:', error);
+      logger.error('❌ ControlNet multi-view generation failed:', error);
       throw error;
     }
   }
@@ -772,7 +778,7 @@ Critical requirements:
    * Fallback building core description when AI reasoning fails
    */
   getFallbackBuildingCoreDescription(inputParams) {
-    console.log('⚠️  Using fallback building_core_description');
+    logger.info('⚠️  Using fallback building_core_description');
 
     // Calculate reasonable dimensions based on floor area
     const footprint = inputParams.floor_area / inputParams.floors;

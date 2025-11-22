@@ -19,10 +19,12 @@ import floorPlanReasoningService from './floorPlanReasoningService.js';
 import siteAnalysisService from './siteAnalysisService.js';
 import facadeFeatureAnalyzer from './facadeFeatureAnalyzer.js';
 import { validateFloorPlanWithinSite } from './siteValidationService.js';
+import logger from '../utils/logger.js';
+
 
 class FloorPlanGenerator {
   constructor() {
-    console.log('🏗️  Floor Plan Generator initialized');
+    logger.info('🏗️  Floor Plan Generator initialized');
     this.reasoningService = floorPlanReasoningService;
     this.siteService = siteAnalysisService;
     this.facadeAnalyzer = facadeFeatureAnalyzer;
@@ -36,13 +38,13 @@ class FloorPlanGenerator {
    * @returns {Object} Complete floor plan data with reasoning and annotations
    */
   async generateFloorPlans(projectContext, siteData = null) {
-    console.log(`\n🏗️  Generating intelligent floor plans for ${projectContext.building_program}...`);
-    console.log(`   Project: ${projectContext.floors}-story, ${projectContext.floor_area}m² total`);
+    logger.info(`\n🏗️  Generating intelligent floor plans for ${projectContext.building_program}...`);
+    logger.info(`   Project: ${projectContext.floors}-story, ${projectContext.floor_area}m² total`);
 
     try {
       // 1. Get or fetch site analysis
       if (!siteData && projectContext.address) {
-        console.log('   📍 Fetching site analysis...');
+        logger.info('   📍 Fetching site analysis...');
         const siteResult = await this.siteService.analyzeSiteContext(
           projectContext.address,
           projectContext.coordinates || { lat: 0, lng: 0 }
@@ -59,7 +61,7 @@ class FloorPlanGenerator {
       }
 
       // 2. Generate intelligent floor plan reasoning using GPT-4o
-      console.log('   🧠 Generating intelligent layout reasoning...');
+      logger.info('   🧠 Generating intelligent layout reasoning...');
       const reasoningResult = await this.reasoningService.generateFloorPlanReasoning(
         projectContext,
         siteData
@@ -73,35 +75,35 @@ class FloorPlanGenerator {
       );
 
       // 3. Build detailed floor plan data structure
-      console.log('   📐 Building detailed floor plan data...');
+      logger.info('   📐 Building detailed floor plan data...');
       const floorPlans = this.buildFloorPlanData(reasoning, projectContext, siteData);
 
       // 4. Add circulation analysis
-      console.log('   🚶 Analyzing circulation...');
+      logger.info('   🚶 Analyzing circulation...');
       floorPlans.circulation = this.analyzeCirculation(reasoning, floorPlans);
 
       // 5. Add room relationship analysis
-      console.log('   🔗 Analyzing room relationships...');
+      logger.info('   🔗 Analyzing room relationships...');
       floorPlans.relationships = this.analyzeRoomRelationships(reasoning, floorPlans);
 
       // 6. Generate annotations and labels
-      console.log('   🏷️  Generating annotations...');
+      logger.info('   🏷️  Generating annotations...');
       floorPlans.annotations = this.generateAnnotations(reasoning, floorPlans);
 
       // 7. Calculate efficiency metrics
-      console.log('   📊 Calculating efficiency metrics...');
+      logger.info('   📊 Calculating efficiency metrics...');
       floorPlans.metrics = this.calculateEfficiencyMetrics(reasoning, floorPlans, projectContext);
 
       // 8. Generate UI display data
       floorPlans.ui_display = this.generateUIDisplayData(reasoning, floorPlans);
 
-      console.log('✅ Floor plans generated successfully!');
-      console.log(`   Ground floor: ${floorPlans.ground_floor.rooms.length} rooms`);
+      logger.success(' Floor plans generated successfully!');
+      logger.info(`   Ground floor: ${floorPlans.ground_floor.rooms.length} rooms`);
       if (floorPlans.upper_floors && floorPlans.upper_floors.length > 0) {
-        console.log(`   Upper floors: ${floorPlans.upper_floors.length} floor(s)`);
+        logger.info(`   Upper floors: ${floorPlans.upper_floors.length} floor(s)`);
       }
-      console.log(`   Circulation efficiency: ${floorPlans.metrics.circulation_efficiency}%`);
-      console.log(`   Layout quality: ${floorPlans.metrics.layout_quality}`);
+      logger.info(`   Circulation efficiency: ${floorPlans.metrics.circulation_efficiency}%`);
+      logger.info(`   Layout quality: ${floorPlans.metrics.layout_quality}`);
 
       return {
         success: true,
@@ -112,7 +114,7 @@ class FloorPlanGenerator {
       };
 
     } catch (error) {
-      console.error('❌ Floor plan generation failed:', error);
+      logger.error('❌ Floor plan generation failed:', error);
       return {
         success: false,
         floorPlans: this.getFallbackFloorPlans(projectContext),
@@ -137,12 +139,12 @@ class FloorPlanGenerator {
       );
 
       if (!validationResult.valid) {
-        console.warn('⚠️ Floor plan exceeds site boundaries, adjusting...');
+        logger.warn('⚠️ Floor plan exceeds site boundaries, adjusting...');
         // Calculate scale factor to fit within site
         const scaleFactor = 0.85; // Reduce to 85% to ensure fit with setbacks
         footprint.width = Math.floor(footprint.width * scaleFactor);
         footprint.depth = Math.floor(footprint.depth * scaleFactor);
-        console.log(`   📐 Adjusted footprint to ${footprint.width}m × ${footprint.depth}m`);
+        logger.info(`   📐 Adjusted footprint to ${footprint.width}m × ${footprint.depth}m`);
       }
     }
 
@@ -260,7 +262,7 @@ class FloorPlanGenerator {
 
       return result;
     } catch (e) {
-      console.warn('Entrance consistency enforcement failed; returning original reasoning:', e?.message);
+      logger.warn('Entrance consistency enforcement failed; returning original reasoning:', e?.message);
       return reasoning;
     }
   }

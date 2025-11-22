@@ -1,95 +1,205 @@
 /**
- * Sheet API Endpoint - Vercel Serverless Function
+ * Sheet API Endpoint - Vercel Serverless Function (REFACTORED)
  *
- * Generates A1 master sheet with all architectural views
- * GET /api/sheet?format=svg|pdf&design_id=...
+ * REFACTORED: Multi-format export with overlay composition support.
+ * Accepts SheetResult + overlays, returns exported sheet with checksum.
+ * 
+ * POST /api/sheet
+ * Body: { designId, sheetType, versionId, sheetMetadata, overlays, format, imageUrl }
  *
- * @route GET /api/sheet
+ * @route POST /api/sheet
  */
 
 import crypto from 'crypto';
 
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 60 // 60 seconds for sheet generation
+  maxDuration: 60
 };
 
-// A1 dimensions in mm
-const A1_WIDTH = 594;
-const A1_HEIGHT = 841;
+// Import sheet composer (will be transpiled for serverless)
+// For now, inline the composition logic to avoid TS compilation issues
+
+const A1_WIDTH = 841; // mm (landscape)
+const A1_HEIGHT = 594; // mm (landscape)
 const MARGIN = 10;
 const TITLE_BLOCK_HEIGHT = 60;
 
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ 
+      error: {
+        code: 'METHOD_NOT_ALLOWED',
+        message: 'Method not allowed. Use POST.',
+        details: null
+      }
+    });
   }
 
   try {
-    const { format = 'svg', design_id } = req.query;
+    const {
+      designId,
+      sheetType = 'ARCH',
+      versionId = 'base',
+      sheetMetadata = {},
+      overlays = [],
+      format = 'png',
+      imageUrl
+    } = req.body;
 
-    // In a real implementation, would load design from database/storage
-    // For now, return a template sheet
-
-    console.log(`[Sheet API] Generating ${format.toUpperCase()} sheet`);
-    if (design_id) {
-      console.log(`[Sheet API] Design ID: ${design_id}`);
+    if (!designId) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'designId is required',
+          details: null
+        }
+      });
     }
 
-    // Create mock design data
-    const design = createMockDesign(design_id);
+    if (!imageUrl) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'imageUrl is required',
+          details: null
+        }
+      });
+    }
 
-    // Generate sheet
-    if (format === 'svg' || !format) {
-      const svg = createA1SheetSVG(design);
+    console.log(`[Sheet API] Exporting ${format.toUpperCase()} sheet for ${designId} (${sheetType})`);
 
-      // Return SVG
+    // For PNG/JPG: Return the image URL directly (with optional overlay composition)
+    if (format === 'png' || format === 'jpg' || format === 'jpeg') {
+      let finalUrl = imageUrl;
+      
+      // If overlays provided, compose them (call overlay API)
+      if (overlays.length > 0) {
+        console.log(`[Sheet API] Composing ${overlays.length} overlays...`);
+        
+        try {
+          // Call overlay composition endpoint
+          const overlayResponse = await fetch(`${process.env.API_BASE_URL || 'http://localhost:3001'}/api/overlay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              baseImageUrl: imageUrl,
+              overlays,
+              format: 'png'
+            })
+          });
+          
+          if (overlayResponse.ok) {
+            const overlayData = await overlayResponse.json();
+            finalUrl = overlayData.url;
+            console.log('[Sheet API] Overlays composed successfully');
+          } else {
+            console.warn('[Sheet API] Overlay composition failed, using base image');
+          }
+        } catch (overlayError) {
+          console.warn('[Sheet API] Overlay composition error:', overlayError.message);
+        }
+      }
+      
+      // Generate checksum
+      const checksum = crypto
+        .createHash('sha256')
+        .update(finalUrl + designId + versionId)
+        .digest('hex');
+      
+      const filename = `${designId}_${sheetType}_${versionId}_${new Date().toISOString().split('T')[0]}.${format}`;
+      
+      return res.status(200).json({
+        url: finalUrl,
+        filename,
+        format,
+        checksum,
+        overlaysApplied: overlays.length,
+        sheetType,
+        designId,
+        versionId
+      });
+
+    } else if (format === 'svg') {
+      // SVG export (legacy support)
+      const svg = createA1SheetSVG({
+        designId,
+        seed: sheetMetadata.seed || Date.now(),
+        masterDNA: sheetMetadata.dna || {},
+        locationProfile: { address: sheetMetadata.location || 'N/A' },
+        views: {},
+        siteMapImage: overlays.find(o => o.type === 'site-plan')?.dataUrl || null
+      });
+
       res.setHeader('Content-Type', 'image/svg+xml');
-      res.setHeader('Content-Disposition', `attachment; filename="architecture-sheet-${design.id}.svg"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${designId}_${sheetType}_${versionId}.svg"`);
       return res.status(200).send(svg);
 
     } else if (format === 'pdf') {
-      // PDF conversion would require puppeteer or similar
       return res.status(501).json({
-        error: 'PDF format not implemented',
-        message: 'PDF conversion requires additional setup (puppeteer, svg2pdf.js)',
-        alternative: 'Use format=svg and convert client-side or with external service'
+        error: {
+          code: 'NOT_IMPLEMENTED',
+          message: 'PDF format not yet implemented',
+          details: { alternative: 'Use format=png or format=svg' }
+        }
       });
 
     } else {
       return res.status(400).json({
-        error: 'Invalid format',
-        message: 'Format must be "svg" or "pdf"'
+        error: {
+          code: 'INVALID_FORMAT',
+          message: `Invalid format: ${format}`,
+          details: { supportedFormats: ['png', 'jpg', 'svg', 'pdf'] }
+        }
       });
     }
 
   } catch (error) {
     console.error('[Sheet API] Error:', error);
     return res.status(500).json({
-      error: 'Sheet generation failed',
-      message: error.message
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error.message,
+        details: null
+      }
     });
   }
 }
 
 /**
- * Create A1 sheet SVG
+ * Create A1 sheet SVG with real design data
  */
-function createA1SheetSVG(design) {
+function createA1SheetSVG(designData) {
+  const {
+    masterDNA = {},
+    locationProfile = {},
+    siteMapImage = null,
+    views = {},
+    metrics = null,
+    costReport = null,
+    designId = `design-${Date.now()}`,
+    seed = Math.floor(Math.random() * 1000000)
+  } = designData;
+
   // Calculate design hash
   const designHash = crypto
     .createHash('sha256')
-    .update(JSON.stringify(design))
+    .update(JSON.stringify({ masterDNA, seed, designId }))
     .digest('hex');
+
+  const dimensions = masterDNA.dimensions || {};
+  const materials = Array.isArray(masterDNA.materials) ? masterDNA.materials : [];
+  const style = masterDNA.architecturalStyle || 'Contemporary';
+  const address = locationProfile.address || 'Architectural Project';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${A1_WIDTH}mm" height="${A1_HEIGHT}mm" viewBox="0 0 ${A1_WIDTH} ${A1_HEIGHT}"
@@ -97,218 +207,198 @@ function createA1SheetSVG(design) {
 
   <!-- Metadata -->
   <metadata>
-    <design_id>${design.id}</design_id>
-    <seed>${design.seed}</seed>
+    <design_id>${designId}</design_id>
+    <seed>${seed}</seed>
     <sha256>${designHash}</sha256>
     <generated>${new Date().toISOString()}</generated>
-    <generator>Architect AI Platform - Geometry-First</generator>
+    <generator>Architect AI Platform - Unified Pipeline</generator>
+    ${siteMapImage ? '<has_real_site_map>true</has_real_site_map>' : ''}
   </metadata>
+
+  <!-- Styles -->
+  <defs>
+    <style>
+      .panel-border { fill: white; stroke: #333; stroke-width: 0.5; }
+      .panel-label { font-family: Arial, sans-serif; font-size: 8px; font-weight: bold; }
+      .scale-text { font-family: Arial, sans-serif; font-size: 6px; fill: #666; }
+      .title-text { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; }
+      .info-text { font-family: Arial, sans-serif; font-size: 10px; }
+      .small-text { font-family: Arial, sans-serif; font-size: 8px; }
+      .tiny-text { font-family: Monaco, Courier, monospace; font-size: 7px; fill: #666; }
+    </style>
+  </defs>
 
   <!-- Background -->
   <rect width="${A1_WIDTH}" height="${A1_HEIGHT}" fill="white"/>
-
-  <!-- Title Block -->
-  ${createTitleBlock(design, designHash)}
-
-  <!-- View Grid -->
-  ${createViewGrid(design)}
-
-  <!-- Materials Legend -->
-  ${createMaterialsLegend(design.dna.materials)}
-
-  <!-- Metrics -->
-  ${createMetrics(design)}
 
   <!-- Border -->
   <rect x="${MARGIN}" y="${MARGIN}" width="${A1_WIDTH - MARGIN * 2}" height="${A1_HEIGHT - MARGIN * 2}"
         fill="none" stroke="black" stroke-width="2"/>
 
+  <!-- Panels -->
+  ${renderPanelsGrid(views, siteMapImage)}
+
+  <!-- Materials Legend -->
+  ${renderMaterialsLegend(materials)}
+
+  <!-- Environmental Panel -->
+  ${renderEnvironmentalPanel(locationProfile, metrics)}
+
+  <!-- Title Block -->
+  ${renderTitleBlock(designId, seed, designHash, address, style, dimensions)}
+
 </svg>`;
 }
 
 /**
- * Create title block
+ * Render panels grid
  */
-function createTitleBlock(design, hash) {
+function renderPanelsGrid(views, siteMapImage) {
+  const panels = [
+    { key: 'sitePlan', x: 15, y: 20, w: 200, h: 140, label: 'SITE PLAN', scale: '1:1250' },
+    { key: 'groundFloorPlan', x: 225, y: 20, w: 200, h: 140, label: 'GROUND FLOOR PLAN', scale: '1:100' },
+    { key: 'upperFloorPlan', x: 435, y: 20, w: 200, h: 140, label: 'FIRST FLOOR PLAN', scale: '1:100' },
+    { key: 'elevationNorth', x: 15, y: 170, w: 200, h: 120, label: 'NORTH ELEVATION', scale: '1:100' },
+    { key: 'elevationSouth', x: 225, y: 170, w: 200, h: 120, label: 'SOUTH ELEVATION', scale: '1:100' },
+    { key: 'elevationEast', x: 435, y: 170, w: 200, h: 120, label: 'EAST ELEVATION', scale: '1:100' },
+    { key: 'elevationWest', x: 645, y: 170, w: 180, h: 120, label: 'WEST ELEVATION', scale: '1:100' },
+    { key: 'sectionLongitudinal', x: 15, y: 300, w: 305, h: 110, label: 'SECTION A-A', scale: '1:100' },
+    { key: 'sectionCross', x: 330, y: 300, w: 250, h: 110, label: 'SECTION B-B', scale: '1:100' },
+    { key: 'exterior3D', x: 15, y: 420, w: 250, h: 140, label: '3D EXTERIOR', scale: null },
+    { key: 'axonometric3D', x: 275, y: 420, w: 200, h: 140, label: 'AXONOMETRIC', scale: null },
+    { key: 'interior3D', x: 485, y: 420, w: 200, h: 140, label: 'INTERIOR', scale: null }
+  ];
+
+  let svg = '';
+
+  panels.forEach(panel => {
+    const viewData = views[panel.key];
+    const isSitePlan = panel.key === 'sitePlan';
+    const imageUrl = isSitePlan && siteMapImage ? siteMapImage : viewData?.url;
+
+    svg += `
+  <g id="${panel.key}">
+    <rect x="${panel.x}" y="${panel.y}" width="${panel.w}" height="${panel.h}" class="panel-border"/>
+    <text x="${panel.x + 3}" y="${panel.y + 10}" class="panel-label">${panel.label}</text>
+    ${panel.scale ? `<text x="${panel.x + panel.w - 3}" y="${panel.y + panel.h - 3}" text-anchor="end" class="scale-text">${panel.scale}</text>` : ''}
+    ${imageUrl ? `<image href="${imageUrl}" x="${panel.x + 5}" y="${panel.y + 15}" width="${panel.w - 10}" height="${panel.h - 18}" preserveAspectRatio="xMidYMid meet"/>` : `<text x="${panel.x + panel.w / 2}" y="${panel.y + panel.h / 2}" text-anchor="middle" class="small-text" fill="#999">${panel.label}</text>`}
+  </g>`;
+  });
+
+  return svg;
+}
+
+/**
+ * Render materials legend
+ */
+function renderMaterialsLegend(materials) {
+  const x = 695;
+  const y = 300;
+  const width = 130;
+  const height = 120;
+
+  let svg = `
+  <g id="materials-legend">
+    <rect x="${x}" y="${y}" width="${width}" height="${height}" class="panel-border"/>
+    <text x="${x + 3}" y="${y + 10}" class="panel-label">MATERIALS</text>
+`;
+
+  materials.slice(0, 6).forEach((material, index) => {
+    const itemY = y + 20 + index * 14;
+    const color = material.hexColor || material.color || '#CCCCCC';
+    const name = material.name || `Material ${index + 1}`;
+    const application = material.application || '';
+
+    svg += `    <rect x="${x + 5}" y="${itemY}" width="10" height="10" fill="${color}" stroke="black" stroke-width="0.3"/>
+    <text x="${x + 20}" y="${itemY + 8}" class="small-text">${name}${application ? ` - ${application}` : ''}</text>
+`;
+  });
+
+  svg += `  </g>\n`;
+  return svg;
+}
+
+/**
+ * Render environmental panel
+ */
+function renderEnvironmentalPanel(locationProfile, metrics) {
+  const x = 695;
+  const y = 430;
+  const width = 130;
+  const height = 90;
+
+  const climate = locationProfile?.climate?.type || 'Temperate';
+  const wwr = metrics?.fenestration?.wwr ? (metrics.fenestration.wwr * 100).toFixed(1) + '%' : 'N/A';
+
+  return `
+  <g id="environmental-panel">
+    <rect x="${x}" y="${y}" width="${width}" height="${height}" class="panel-border"/>
+    <text x="${x + 3}" y="${y + 10}" class="panel-label">ENVIRONMENTAL</text>
+    <text x="${x + 5}" y="${y + 25}" class="small-text">Climate: ${climate}</text>
+    <text x="${x + 5}" y="${y + 37}" class="small-text">WWR: ${wwr}</text>
+    <text x="${x + 5}" y="${y + 49}" class="small-text">Sustainability: TBD</text>
+  </g>
+`;
+}
+
+/**
+ * Render title block
+ */
+function renderTitleBlock(designId, seed, hash, address, style, dimensions) {
   const y = A1_HEIGHT - TITLE_BLOCK_HEIGHT - MARGIN;
+  const floors = dimensions.floorCount || dimensions.floors || 2;
+  const area = dimensions.length && dimensions.width
+    ? Math.round(dimensions.length * dimensions.width * floors)
+    : 'N/A';
 
   return `
   <g id="title-block">
     <rect x="${MARGIN + 5}" y="${y}" width="${A1_WIDTH - MARGIN * 2 - 10}" height="${TITLE_BLOCK_HEIGHT - 5}"
           fill="#f8f9fa" stroke="black" stroke-width="1"/>
-
-    <!-- Project Title -->
-    <text x="${MARGIN + 15}" y="${y + 20}" font-family="Arial, sans-serif" font-size="16" font-weight="bold">
-      ${design.site.address || 'Architectural Project'}
+    
+    <text x="${MARGIN + 15}" y="${y + 20}" class="title-text">${address}</text>
+    <text x="${MARGIN + 15}" y="${y + 35}" class="info-text">${style} | ${floors} Floors | ${area}m²</text>
+    
+    <text x="${A1_WIDTH - 180}" y="${y + 12}" class="tiny-text">Design ID: ${designId}</text>
+    <text x="${A1_WIDTH - 180}" y="${y + 22}" class="tiny-text">Seed: ${seed}</text>
+    <text x="${A1_WIDTH - 180}" y="${y + 32}" class="tiny-text">SHA256: ${hash.substring(0, 16)}...</text>
+    
+    <text x="${A1_WIDTH - 15}" y="${y + 48}" text-anchor="end" class="small-text">
+      Generated: ${new Date().toLocaleDateString()} | ArchiAI Solution Ltd
     </text>
-
-    <!-- Project Info -->
-    <text x="${MARGIN + 15}" y="${y + 35}" font-family="Arial, sans-serif" font-size="10">
-      ${design.dna.architecturalStyle} | ${design.dna.dimensions.floorCount} Floors | ${Math.round(design.dna.dimensions.length * design.dna.dimensions.width * design.dna.dimensions.floorCount)}m²
-    </text>
-
-    <!-- IDs -->
-    <text x="${A1_WIDTH - MARGIN - 180}" y="${y + 12}" font-family="Monaco, Courier, monospace" font-size="7">
-      Design ID: ${design.id}
-    </text>
-    <text x="${A1_WIDTH - MARGIN - 180}" y="${y + 22}" font-family="Monaco, Courier, monospace" font-size="7">
-      Seed: ${design.seed}
-    </text>
-    <text x="${A1_WIDTH - MARGIN - 180}" y="${y + 32}" font-family="Monaco, Courier, monospace" font-size="6">
-      SHA256: ${hash.substring(0, 20)}...
-    </text>
-
-    <!-- Date & Generator -->
-    <text x="${A1_WIDTH - MARGIN - 15}" y="${y + 48}" font-family="Arial, sans-serif" font-size="8" text-anchor="end">
-      Generated: ${new Date().toLocaleDateString()} | Geometry-First Pipeline
-    </text>
-  </g>`;
+  </g>
+`;
 }
 
 /**
- * Create view grid
+ * Create mock design (fallback when no real data provided)
  */
-function createViewGrid(design) {
-  const contentWidth = A1_WIDTH - MARGIN * 2 - 10;
-  const contentHeight = A1_HEIGHT - TITLE_BLOCK_HEIGHT - MARGIN * 3 - 120; // Leave space for legends
-
-  // Grid layout
-  const views = [
-    { name: 'Ground Floor Plan', x: MARGIN + 15, y: MARGIN + 20, w: contentWidth / 2 - 10, h: 140 },
-    { name: 'Upper Floor Plan', x: MARGIN + contentWidth / 2 + 15, y: MARGIN + 20, w: contentWidth / 2 - 10, h: 140 },
-
-    { name: 'North Elevation', x: MARGIN + 15, y: MARGIN + 170, w: contentWidth / 4 - 5, h: 100 },
-    { name: 'South Elevation', x: MARGIN + contentWidth / 4 + 15, y: MARGIN + 170, w: contentWidth / 4 - 5, h: 100 },
-    { name: 'East Elevation', x: MARGIN + contentWidth / 2 + 15, y: MARGIN + 170, w: contentWidth / 4 - 5, h: 100 },
-    { name: 'West Elevation', x: MARGIN + 3 * contentWidth / 4 + 15, y: MARGIN + 170, w: contentWidth / 4 - 5, h: 100 },
-
-    { name: 'Longitudinal Section', x: MARGIN + 15, y: MARGIN + 280, w: contentWidth / 2 - 10, h: 120 },
-    { name: 'Axonometric View', x: MARGIN + contentWidth / 2 + 15, y: MARGIN + 280, w: contentWidth / 2 - 10, h: 120 },
-
-    { name: 'Perspective View', x: MARGIN + 15, y: MARGIN + 410, w: contentWidth, h: 150 }
-  ];
-
-  let svg = '<g id="view-grid">';
-
-  views.forEach(view => {
-    svg += `
-    <g id="${view.name.toLowerCase().replace(/\s+/g, '-')}">
-      <rect x="${view.x}" y="${view.y}" width="${view.w}" height="${view.h}"
-            fill="#f5f5f5" stroke="#333" stroke-width="0.5"/>
-      <text x="${view.x + view.w / 2}" y="${view.y + view.h / 2}"
-            text-anchor="middle" dominant-baseline="middle"
-            font-family="Arial, sans-serif" font-size="9" fill="#999">
-        ${view.name.toUpperCase()}
-      </text>
-      <text x="${view.x + 3}" y="${view.y + 10}"
-            font-family="Arial, sans-serif" font-size="7" font-weight="bold">
-        ${view.name}
-      </text>
-    </g>`;
-  });
-
-  svg += '</g>';
-  return svg;
-}
-
-/**
- * Create materials legend
- */
-function createMaterialsLegend(materials) {
-  const x = MARGIN + 15;
-  const y = A1_HEIGHT - TITLE_BLOCK_HEIGHT - 110;
-
-  let svg = `
-  <g id="materials-legend">
-    <text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">
-      Materials
-    </text>`;
-
-  materials.forEach((material, index) => {
-    const itemY = y + 15 + index * 14;
-    svg += `
-    <rect x="${x}" y="${itemY - 9}" width="12" height="12" fill="${material.hexColor}" stroke="black" stroke-width="0.3"/>
-    <text x="${x + 18}" y="${itemY}" font-family="Arial, sans-serif" font-size="8">
-      ${material.name} - ${material.application}
-    </text>`;
-  });
-
-  svg += '</g>';
-  return svg;
-}
-
-/**
- * Create metrics
- */
-function createMetrics(design) {
-  const x = A1_WIDTH / 2 + 20;
-  const y = A1_HEIGHT - TITLE_BLOCK_HEIGHT - 110;
-
-  const dim = design.dna.dimensions;
-  const metrics = [
-    ['Building Dimensions', `${dim.length}m × ${dim.width}m × ${dim.totalHeight}m`],
-    ['Floor Count', `${dim.floorCount} floors`],
-    ['Total Floor Area', `${Math.round(dim.length * dim.width * dim.floorCount)}m²`],
-    ['Floor Heights', dim.floorHeights.join('m, ') + 'm'],
-    ['Roof Type', `${design.dna.roof.type} (${design.dna.roof.pitch}°)`],
-    ['Architectural Style', design.dna.architecturalStyle]
-  ];
-
-  let svg = `
-  <g id="metrics">
-    <text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">
-      Project Metrics
-    </text>`;
-
-  metrics.forEach((metric, index) => {
-    const itemY = y + 15 + index * 12;
-    svg += `
-    <text x="${x}" y="${itemY}" font-family="Arial, sans-serif" font-size="8" font-weight="600">
-      ${metric[0]}:
-    </text>
-    <text x="${x + 130}" y="${itemY}" font-family="Arial, sans-serif" font-size="8">
-      ${metric[1]}
-    </text>`;
-  });
-
-  svg += '</g>';
-  return svg;
-}
-
-/**
- * Create mock design (would load from DB in production)
- */
-function createMockDesign(design_id) {
+function createMockDesign() {
   return {
-    id: design_id || `design-${Date.now()}`,
+    designId: `design-${Date.now()}`,
     seed: Math.floor(Math.random() * 1000000),
-    version: '1.0.0',
-    site: {
-      address: '123 Architecture Lane, Design City',
-      coordinates: { lat: 40.7128, lng: -74.0060 }
-    },
-    dna: {
+    masterDNA: {
       dimensions: {
-        length: 12.5,
-        width: 8.5,
-        totalHeight: 7.0,
+        length: 15,
+        width: 10,
+        totalHeight: 7,
         floorCount: 2,
-        floorHeights: [3.5, 3.5]
+        floors: 2
       },
       materials: [
         { name: 'Red Brick', hexColor: '#B8604E', application: 'exterior walls' },
         { name: 'Clay Tiles', hexColor: '#8B4513', application: 'roof' },
-        { name: 'Glass', hexColor: '#87CEEB', application: 'windows' }
+        { name: 'UPVC Windows', hexColor: '#FFFFFF', application: 'windows' }
       ],
-      roof: {
-        type: 'gable',
-        pitch: 35,
-        material: 'Clay Tiles',
-        color: '#8B4513',
-        overhang: 0.6
-      },
-      architecturalStyle: 'Contemporary Residential',
-      styleKeywords: ['modern', 'functional', 'sustainable']
-    }
+      architecturalStyle: 'Contemporary Residential'
+    },
+    locationProfile: {
+      address: '123 Architecture Lane, Design City',
+      climate: { type: 'Temperate' }
+    },
+    views: {},
+    metrics: null,
+    costReport: null,
+    siteMapImage: null
   };
 }

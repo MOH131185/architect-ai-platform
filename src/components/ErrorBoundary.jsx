@@ -6,7 +6,7 @@
  */
 
 import React, { Component } from 'react';
-import logger from '../utils/logger';
+import logger from '../utils/logger.js';
 
 class ErrorBoundary extends Component {
   constructor(props) {

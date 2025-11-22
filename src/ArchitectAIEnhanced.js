@@ -6,34 +6,36 @@ import {
   MapPin, Upload, Building, Building2, Sun, Compass, FileText,
   Palette, Square, Loader2, Sparkles, ArrowRight,
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
-  Users, Shield, Zap, BarChart3, Eye, AlertCircle, X, ZoomIn, ZoomOut, Maximize2,
+  Users, Shield, Zap, BarChart3, Eye, AlertCircle, AlertTriangle, X, ZoomIn, ZoomOut, Maximize2,
   Image, Edit3, Plus, Trash2, Download, Wand2, Map
 } from 'lucide-react';
-import { locationIntelligence } from './services/locationIntelligence';
-import siteAnalysisService from './services/siteAnalysisService';
+import './styles/premium.css';
+import { locationIntelligence } from './services/locationIntelligence.js';
+import siteAnalysisService from './services/siteAnalysisService.js';
 // eslint-disable-next-line no-unused-vars
-import enhancedAIIntegrationService from './services/enhancedAIIntegrationService';
-import bimService from './services/bimService';
-import { convertPdfFileToImageFile } from './utils/pdfToImages';
-import aiIntegrationService from './services/aiIntegrationService';
+import enhancedAIIntegrationService from './services/enhancedAIIntegrationService.js';
+import bimService from './services/bimService.js';
+import { convertPdfFileToImageFile } from './utils/pdfToImages.js';
 // 🆕 Design History Service for consistent 2D→3D generation
-import designHistoryService from './services/designHistoryService';
+import designHistoryService from './services/designHistoryService.js';
 // 🆕 Site polygon drawing with precision mode (keyboard input + orthogonal snapping)
-import PrecisionSiteDrawer from './components/PrecisionSiteDrawer';
+import PrecisionSiteDrawer from './components/PrecisionSiteDrawer.jsx';
 // 🆕 A1 Sheet One-Shot Workflow
-import dnaWorkflowOrchestrator from './services/dnaWorkflowOrchestrator';
-import A1SheetViewer from './components/A1SheetViewer';
-import ModifyDesignDrawer from './components/ModifyDesignDrawer';
-import { computeSiteMetrics } from './utils/geometry';
-import { exportToSVG } from './utils/svgExporter';
-import { exportToDXF } from './utils/dxfWriter';
-import { sanitizePromptInput, sanitizeDimensionInput } from './utils/promptSanitizer';
-import logger from './utils/logger';
+import dnaWorkflowOrchestrator from './services/dnaWorkflowOrchestrator.js';
+import A1SheetViewer from './components/A1SheetViewer.jsx';
+import ModifyDesignDrawer from './components/ModifyDesignDrawer.js';
+import { computeSiteMetrics } from './utils/geometry.js';
+import { exportToSVG } from './utils/svgExporter.js';
+import { exportToDXF } from './utils/dxfWriter.js';
+import { sanitizePromptInput, sanitizeDimensionInput } from './utils/promptSanitizer.js';
+import logger from './utils/logger.js';
 // 🔧 AI Modification & History System
-import designGenerationHistory from './services/designGenerationHistory';
-import AIModifyPanel from './components/AIModifyPanel';
+import designGenerationHistory from './services/designGenerationHistory.js';
+import AIModifyPanel from './components/AIModifyPanel.jsx';
 // 🆕 Site Boundary Information Display
-import SiteBoundaryInfo from './components/SiteBoundaryInfo';
+import SiteBoundaryInfo from './components/SiteBoundaryInfo.jsx';
+import DevDiagnosticsPanel from './components/DevDiagnosticsPanel.jsx';
+import { subscribeToImageQueueStatus } from './services/imageRequestQueue.js';
 
 // File download utility functions
 const downloadFile = (filename, content, mimeType) => {
@@ -570,6 +572,68 @@ const MapView = ({ center, zoom, onSitePolygonChange, existingPolygon, enableDra
 
       const newMap = new window.google.maps.Map(ref.current, mapOptions);
 
+      // Force map controls to be visible after map loads (keep Google's default styling)
+      window.google.maps.event.addListenerOnce(newMap, 'idle', () => {
+        // Inject styles to ensure controls are visible (but keep Google's default design)
+        const styleId = 'google-maps-controls-visible';
+        if (!document.getElementById(styleId)) {
+          const style = document.createElement('style');
+          style.id = styleId;
+          style.textContent = `
+            .gm-style .gm-map-type-control,
+            .gm-style .gm-map-type-control > div,
+            .gm-style .gm-map-type-control button,
+            .gm-style .gm-map-type-control a,
+            .gm-style-mtc,
+            .gm-style-mtc > div,
+            .gm-style-mtc button,
+            .gm-style-mtc a {
+              opacity: 1 !important;
+              visibility: visible !important;
+              display: block !important;
+            }
+            .gm-style .gm-map-type-control button,
+            .gm-style .gm-map-type-control a,
+            .gm-style-mtc button,
+            .gm-style-mtc a,
+            .gm-style .gm-map-type-control button span,
+            .gm-style .gm-map-type-control a span,
+            .gm-style-mtc button span,
+            .gm-style-mtc a span {
+              opacity: 1 !important;
+              visibility: visible !important;
+              display: inline-block !important;
+              color: #1F2937 !important;
+              font-weight: 500 !important;
+            }
+            .gm-style .gm-map-type-control button:not(:hover),
+            .gm-style .gm-map-type-control a:not(:hover),
+            .gm-style-mtc button:not(:hover),
+            .gm-style-mtc a:not(:hover),
+            .gm-style .gm-map-type-control button:not(:hover) span,
+            .gm-style .gm-map-type-control a:not(:hover) span,
+            .gm-style-mtc button:not(:hover) span,
+            .gm-style-mtc a:not(:hover) span {
+              opacity: 1 !important;
+              visibility: visible !important;
+              color: #1F2937 !important;
+            }
+            .gm-style .gm-map-type-control *,
+            .gm-style-mtc * {
+              color: #1F2937 !important;
+            }
+            .gm-style .gm-map-type-control button *,
+            .gm-style .gm-map-type-control a *,
+            .gm-style-mtc button *,
+            .gm-style-mtc a * {
+              color: #1F2937 !important;
+              opacity: 1 !important;
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      });
+
       // Explicitly maintain 45° tilt for satellite/hybrid views
       // This prevents the deprecation warning about automatic 45° switching
       newMap.addListener('zoom_changed', () => {
@@ -1062,7 +1126,17 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   const [showModifyDrawer, setShowModifyDrawer] = useState(false);
   const [currentDesignId, setCurrentDesignId] = useState(() => {
     // Initialize from sessionStorage to persist across refresh
-    return sessionStorage.getItem('currentDesignId') || null;
+    const storedId = sessionStorage.getItem('currentDesignId');
+    
+    // 🚨 CRITICAL FIX: Clean up invalid IDs from old generations
+    if (storedId === 'undefined' || storedId === 'null' || !storedId) {
+      console.warn('⚠️ Invalid currentDesignId detected in sessionStorage:', storedId);
+      console.warn('   Clearing invalid ID - modifications will be disabled for old sheets');
+      sessionStorage.removeItem('currentDesignId');
+      return null;
+    }
+    
+    return storedId;
   });
   const mapRef = useRef(null);
   const [downloadCount, setDownloadCount] = useState(0);
@@ -1086,15 +1160,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   // DALL·E 3 Consistency: Project-wide style signature
   const [projectStyleSignature, setProjectStyleSignature] = useState(null);
 
-  // ControlNet Multi-View State
-  const [floorPlanImage, setFloorPlanImage] = useState(null);
-  const [floorPlanImageName, setFloorPlanImageName] = useState('');
-
   // 🆕 Design History: Track current project for consistency across 2D/3D generations
   const [currentProjectId, setCurrentProjectId] = useState(null);
 
   // 🔧 AI Modification & Generation History
   const [showModificationPanel, setShowModificationPanel] = useState(false);
+  const [showDiagnosticsPanel, setShowDiagnosticsPanel] = useState(false);
 
   // 🆕 Site Polygon: User-drawn site boundary for context-aware design
   const [sitePolygon, setSitePolygon] = useState(null);
@@ -1104,6 +1175,35 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   // 🆕 Ref to track if geometry views have been integrated (prevent duplicate integration)
   const geometryViewsIntegratedRef = useRef(false);
 
+  useEffect(() => {
+    if (typeof subscribeToImageQueueStatus !== 'function') {
+      return undefined;
+    }
+
+    const unsubscribe = subscribeToImageQueueStatus((status) => {
+      if (!status) {
+        return;
+      }
+
+      if (status.cooldownActive) {
+        const seconds = Math.max(1, Math.ceil((status.cooldownRemainingMs || 0) / 1000));
+        setRateLimitPause({
+          active: true,
+          remainingSeconds: seconds,
+          reason: status.reason || 'Temporarily throttled by Together.ai'
+        });
+      } else {
+        setRateLimitPause({ active: false, remainingSeconds: 0, reason: '' });
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
+
   // Use refs to store current values for event handlers (prevents handler recreation)
   const imageZoomRef = useRef(1);
   const imagePanRef = useRef({ x: 0, y: 0 });
@@ -1111,6 +1211,22 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   const dragStartRef = useRef({ x: 0, y: 0 });
 
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') {
+      return;
+    }
+
+    const handleDiagnosticsToggle = (event) => {
+      if (event.ctrlKey && event.shiftKey && event.key?.toLowerCase() === 'd') {
+        event.preventDefault();
+        setShowDiagnosticsPanel((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleDiagnosticsToggle);
+    return () => window.removeEventListener('keydown', handleDiagnosticsToggle);
+  }, []);
 
   // Sync state with refs
   useEffect(() => {
@@ -1218,18 +1334,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
   // 🆕 Design History: Check for previous project on mount
   useEffect(() => {
-    try {
-      const latestProject = designHistoryService.getLatestDesignContext();
-      if (latestProject) {
-        console.log('🔄 Found previous project:', latestProject.projectId);
-        console.log('   📍 Location:', latestProject.location?.address);
-        console.log('   🏗️  Building:', latestProject.metadata?.buildingProgram);
-        console.log('   🎲 Seed:', latestProject.seed);
-        // Note: Not auto-loading to avoid confusion. User can manually continue if desired.
+    const checkDesignHistory = async () => {
+      try {
+        const latestProject = await designHistoryService.getLatestDesignContext();
+        if (latestProject) {
+          console.log('🔄 Found previous project:', latestProject.projectId);
+          console.log('   📍 Location:', latestProject.location?.address);
+          console.log('   🏗️  Building:', latestProject.metadata?.buildingProgram);
+          console.log('   🎲 Seed:', latestProject.seed);
+          // Note: Not auto-loading to avoid confusion. User can manually continue if desired.
+        }
+      } catch (error) {
+        console.error('Failed to check design history:', error);
       }
-    } catch (error) {
-      console.error('Failed to check design history:', error);
-    }
+    };
+    checkDesignHistory();
   }, []);
 
   // Image Modal Handlers
@@ -1349,10 +1468,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   // Landing page animation
   useEffect(() => {
     if (currentStep === 0) {
-      const timer = setTimeout(() => {
-        document.getElementById('hero-content')?.classList.add('opacity-100');
-      }, 100);
-      return () => clearTimeout(timer);
+      // Landing page animations are handled by CSS classes
+      document.body.style.overflow = 'auto';
     }
   }, [currentStep]);
 
@@ -1581,7 +1698,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       );
 
       // Recommend architectural style
-      const architecturalStyle = locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
+      const architecturalStyle = await locationIntelligence.recommendArchitecturalStyle(locationResult, seasonalClimateData.climate);
 
       // 🆕 STEP 3A: Detect building footprint from address
       console.log('🏢 Detecting building footprint from address...');
@@ -1710,6 +1827,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
   // Handle portfolio upload
   const handlePortfolioUpload = async (e) => {
+    if (!e?.target?.files) return;
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
@@ -1816,118 +1934,6 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       alert(`Error processing files: ${error.message}`);
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  /**
-   * Handle floor plan upload for ControlNet generation
-   */
-  // eslint-disable-next-line no-unused-vars
-  const handleFloorPlanUpload = (imageData, fileName) => {
-    setFloorPlanImage(imageData);
-    setFloorPlanImageName(fileName);
-
-    if (imageData) {
-      console.log('✅ Floor plan uploaded:', fileName);
-      // setUseControlNet(true); // Legacy: Automatically enable ControlNet when floor plan is uploaded
-    } else {
-      console.log('🗑️ Floor plan removed');
-      // setUseControlNet(false); // Legacy
-    }
-  };
-
-  /**
-   * Generate designs using ControlNet Multi-View workflow
-   */
-  // eslint-disable-next-line no-unused-vars
-  const generateControlNetDesigns = async () => {
-    setIsLoading(true);
-
-    try {
-      console.log('🎯 Starting ControlNet Multi-View generation...');
-
-      // Generate unified project seed
-      const projectSeed = Math.floor(Math.random() * 1000000);
-
-      // Prepare ControlNet parameters
-      const controlNetParams = {
-        project_name: `${projectDetails?.program || 'Building'} - ${locationData?.address || 'Project'}`,
-        location: locationData?.address || 'Not specified',
-        style: locationData?.recommendedStyle || 'Contemporary',
-        materials: 'Brick walls, roof tiles, window frames',
-        floors: projectDetails?.floors || 2,
-        main_entry_orientation: projectDetails?.entranceDirection || 'N',
-        control_image: floorPlanImage,
-        seed: projectSeed,
-        climate: locationData?.climate?.type || 'Temperate',
-        floor_area: parseInt(projectDetails?.area) || 200,
-        building_program: projectDetails?.program || 'house'
-      };
-
-      console.log('📋 ControlNet Parameters:', {
-        ...controlNetParams,
-        control_image: controlNetParams.control_image ? `[${floorPlanImageName}]` : 'none'
-      });
-
-      // Generate multi-view package
-      const result = await aiIntegrationService.generateControlNetMultiViewPackage(
-        controlNetParams
-      );
-
-      console.log('✅ ControlNet generation complete:', result);
-
-      // Store result and show display (legacy)
-      // setControlNetResult(result);
-      // setShowControlNetResults(true);
-
-      // Reset geometry views integration flag for new design
-      geometryViewsIntegratedRef.current = false;
-
-      // Also update generatedDesigns for compatibility
-      setGeneratedDesigns({
-        controlnet: result,
-        projectSeed: projectSeed,
-        timestamp: new Date().toISOString()
-      });
-
-      // 🆕 DESIGN HISTORY: Save ControlNet context for consistency
-      try {
-        console.log('💾 Saving ControlNet design context...');
-
-        const projectId = designHistoryService.saveDesignContext({
-          projectId: currentProjectId || undefined,
-          location: locationData,
-          buildingDNA: {
-            materials: { exterior: { primary: controlNetParams.materials.split(',')[0]?.trim() || 'Modern materials' } },
-            roof: { material: 'Contemporary roofing' },
-            windows: { style: 'Modern glazing' },
-            style: controlNetParams.style
-          },
-          prompt: `ControlNet: ${controlNetParams.project_name} in ${controlNetParams.location}`,
-          outputs: {
-            controlNetViews: result.visualizations?.views || result.views,
-            seed: projectSeed
-          },
-          floorPlanUrl: floorPlanImage,
-          seed: projectSeed,
-          buildingProgram: controlNetParams.building_program,
-          floorArea: controlNetParams.floor_area,
-          floors: controlNetParams.floors,
-          style: controlNetParams.style
-        });
-
-        setCurrentProjectId(projectId);
-        console.log('✅ ControlNet design context saved:', projectId);
-      } catch (historyError) {
-        console.error('⚠️  Failed to save ControlNet design history:', historyError);
-      }
-
-    } catch (error) {
-      console.error('❌ ControlNet generation failed:', error);
-      setToastMessage(`ControlNet generation failed: ${error.message}`);
-      setTimeout(() => setToastMessage(''), 5000);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -2081,7 +2087,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         locationData,
         portfolioAnalysis: null, // Will be updated after portfolio processing
         seed: projectSeed,
-        workflow: 'a1-sheet-one-shot'
+        workflow: 'multi-panel-a1'
       });
       // setCurrentSessionId(sessionId); // Legacy - session ID managed by history service
       console.log('📝 Started generation session:', sessionId);
@@ -2203,43 +2209,44 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       // Select optimal workflow based on available data
       updateProgress('Workflow', 4, 'Selecting optimal generation workflow...');
-      const workflow = selectOptimalWorkflow(projectContext);
+      selectOptimalWorkflow(projectContext);
 
       let aiResult;
 
       // Execute the selected workflow
       updateProgress('Generation', 5, 'Generating architectural designs...');
 
-      // Check if hybrid mode is enabled
-      const { isFeatureEnabled } = await import('./config/featureFlags');
-      const useHybridMode = isFeatureEnabled('hybridA1Mode');
-
-      if (useHybridMode) {
-        // HYBRID A1 MODE: Generate panels individually then composite
-        console.log('🎯 Using HYBRID A1 workflow (panel-based generation)');
-        updateProgress('Generation', 5, 'Generating individual architectural panels...');
-        aiResult = await dnaWorkflowOrchestrator.runHybridA1SheetWorkflow({
-          projectContext,
-          locationData,
-          portfolioAnalysis: realPortfolioAnalysis,
-          portfolioBlendPercent: 70,
-          seed: projectSeed,
-          siteShape: locationData?.sitePolygon
-        });
-      } else {
-        // STANDARD A1 MODE: Single-shot generation
-        console.log('📄 Using STANDARD A1 workflow (single-shot generation)');
-        updateProgress('Generation', 5, 'Generating single A1 comprehensive sheet...');
-        aiResult = await dnaWorkflowOrchestrator.runA1SheetWorkflow({
-          projectContext,
-          locationData,
-          portfolioAnalysis: realPortfolioAnalysis,
-          portfolioBlendPercent: 70,
-          seed: projectSeed
-        });
-      }
+      // Use Multi-Panel workflow by default
+      console.log('🎨 Using MULTI-PANEL A1 workflow (14-panel generation with sharp composition)');
+      updateProgress('Generation', 5, 'Generating 14 specialized architectural panels...');
+      aiResult = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
+        projectContext,
+        locationData,
+        portfolioFiles: uploadedPortfolioFiles || [],
+        siteSnapshot: locationData?.siteSnapshot || null,
+        baseSeed: projectSeed
+      });
 
       console.log('✅ AI design generation complete:', aiResult);
+
+      // Normalize multi-panel result to match expected format
+      if (aiResult.success && aiResult.composedSheetUrl) {
+        const panelBundle = aiResult.panelMap || aiResult.panels || aiResult.metadata?.panels || {};
+        const coordinates = aiResult.coordinates || aiResult.metadata?.coordinates || null;
+        aiResult.panelMap = panelBundle;
+        aiResult.panels = panelBundle;
+        aiResult.a1Sheet = {
+          url: aiResult.composedSheetUrl,
+          composedSheetUrl: aiResult.composedSheetUrl,
+          metadata: aiResult.metadata,
+          panels: panelBundle,
+          panelMap: panelBundle,
+          coordinates,
+          consistencyReport: aiResult.consistencyReport,
+          baselineBundle: aiResult.baselineBundle
+        };
+        console.log('✅ Multi-panel result normalized to A1 sheet format');
+      }
 
       // ========================================
       // A1-ONLY MODE: Always expect A1 sheet workflow
@@ -2262,6 +2269,34 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       console.log('✅ A1 Sheet available:', aiResult.a1Sheet.url?.substring(0, 80) + '...');
 
+      // ========================================
+      // Display Validation Feedback
+      // ========================================
+      if (aiResult.templateValidation) {
+        const templateScore = aiResult.templateValidation.score;
+        console.log(`📊 Template completeness: ${templateScore}%`);
+        
+        if (templateScore < 100) {
+          console.warn(`⚠️  Template validation: ${aiResult.templateValidation.missingMandatory.length} mandatory sections missing`);
+          if (aiResult.templateValidation.missingMandatory.length > 0) {
+            setToastMessage(`⚠️ A1 sheet may be missing: ${aiResult.templateValidation.missingMandatory.slice(0, 2).join(', ')}`);
+            setTimeout(() => setToastMessage(''), 6000);
+          }
+        }
+      }
+
+      if (aiResult.dnaConsistencyReport) {
+        const dnaScore = aiResult.dnaConsistencyReport.score;
+        console.log(`📊 DNA consistency: ${dnaScore.toFixed(1)}%`);
+        
+        if (dnaScore < 85) {
+          console.warn(`⚠️  DNA consistency below threshold (${dnaScore.toFixed(1)}% < 85%)`);
+          console.warn(`   Issues: ${aiResult.dnaConsistencyReport.issues.slice(0, 2).join(', ')}`);
+        } else {
+          console.log('✅ DNA consistency acceptable');
+        }
+      }
+
       // Set generation results with ONLY A1 sheet
       // Calculate project economics from DNA
       const dimensions = aiResult.masterDNA?.dimensions || {};
@@ -2269,14 +2304,41 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       const constructionCost = Math.round(floorArea * 1400); // £1400/m²
       const timeline = dimensions.floors > 3 ? '18-24 months' : '12-18 months';
 
+      // Generate designId BEFORE creating designData
+      let designId = null;
+      
+      // Try multiple sources in order of preference
+      if (aiResult?.masterDNA?.projectID && aiResult.masterDNA.projectID !== 'undefined') {
+        designId = aiResult.masterDNA.projectID;
+      } else if (aiResult?.masterDNA?.seed) {
+        designId = `design_seed_${aiResult.masterDNA.seed}`;
+      } else if (projectSeed) {
+        designId = `design_seed_${projectSeed}`;
+      } else {
+        // Ultimate fallback - guaranteed unique ID
+        designId = `design_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+      
+      // Double-check designId is valid
+      if (!designId || designId === 'undefined' || designId === 'null' || typeof designId !== 'string') {
+        console.error('⚠️ Invalid designId detected:', designId);
+        designId = `design_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('   Using fallback ID:', designId);
+      }
+      
+      console.log(`🔑 Generated designId: ${designId}`);
+
       const designData = {
-        workflow: 'a1-sheet-one-shot',
+        designId, // 🆕 Include designId in designData
+        workflow: 'multi-panel-a1',
         a1Sheet: aiResult.a1Sheet,
         masterDNA: aiResult.masterDNA,
         reasoning: aiResult.reasoning || {},
         projectContext: aiResult.projectContext || projectContext,
         locationData: aiResult.locationData || locationData,
         validation: aiResult.validation,
+        templateValidation: aiResult.templateValidation, // 🆕 Include template validation
+        dnaConsistencyReport: aiResult.dnaConsistencyReport, // 🆕 Include DNA consistency
         timestamp: new Date().toISOString(),
         cost: {
           construction: `£${constructionCost.toLocaleString()}`,
@@ -2286,17 +2348,22 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       };
 
       setGeneratedDesigns(designData);
+      
+      // Set currentDesignId immediately
+      setCurrentDesignId(designId);
+      sessionStorage.setItem('currentDesignId', designId);
+      console.log(`✅ CurrentDesignId set to: ${designId}`);
 
       // DESIGN HISTORY: Save base design to history store for modify workflow
       try {
-        const designId = designData?.masterDNA?.projectID || 
-                         aiResult?.masterDNA?.projectID || 
-                         `design_${Date.now()}`;
-        
-        setCurrentDesignId(designId);
+        // Use the designId we generated above
+        console.log(`💾 Saving design to history with ID: ${designId}`);
 
         // Extract base prompt from A1 sheet generation
         const { buildA1SheetPrompt } = await import('./services/a1SheetPromptGenerator');
+        const a1SheetValidator = (await import('./services/a1SheetValidator')).default;
+        const requiredSections = a1SheetValidator.getRequiredSections(projectContext);
+        
         const promptResult = buildA1SheetPrompt({
           masterDNA: aiResult.masterDNA,
           location: locationData,
@@ -2304,7 +2371,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
           portfolioBlendPercent: 70,
           projectMeta: projectDetails,
           projectContext: projectContext,
-          blendedStyle: aiResult.blendedStyle || realPortfolioAnalysis
+          blendedStyle: aiResult.blendedStyle || realPortfolioAnalysis,
+          requiredSections // Include required sections
         });
 
         const seedsByView = {
@@ -2312,7 +2380,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         };
 
         // Use designHistoryService instead of designHistoryStore for compatibility with AIModifyPanel
-        await designHistoryService.createDesign({
+        const saveResult = await designHistoryService.createDesign({
           designId,
           mainPrompt: promptResult.prompt,
           basePrompt: promptResult.prompt,
@@ -2322,12 +2390,56 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
           resultUrl: aiResult.a1Sheet.url,
           a1SheetUrl: aiResult.a1Sheet.url,
           projectContext: projectContext,
+          locationData: locationData,
+          blendedStyle: aiResult.blendedStyle,
           styleBlendPercent: 70,
           // Persist site snapshot metadata for pixel-exact parity during modifications
-          siteSnapshot: aiResult.sitePlanAttachment || null
+          siteSnapshot: aiResult.sitePlanAttachment || null,
+          a1Sheet: aiResult.a1Sheet
         });
 
         console.log('✅ Base design saved to history:', designId);
+        console.log('   Save result:', saveResult ? 'Success' : 'Failed');
+        console.log('   Saved designId:', saveResult);
+        
+        // Verify design was saved
+        const verifyDesign = await designHistoryService.getDesign(designId);
+        console.log('🔍 Verifying design in history...');
+        console.log('   Looking for designId:', designId);
+        console.log('   Found:', verifyDesign ? 'YES' : 'NO');
+
+        if (!verifyDesign) {
+          console.error('❌ CRITICAL: Design not found after save!');
+          console.error('   DesignId:', designId);
+          console.error('   Type:', typeof designId);
+          const allDesigns = await designHistoryService.listDesigns();
+          console.error('   All designs in history:', allDesigns.map(d => d.designId));
+          console.error('   Attempting re-save...');
+          
+          // Try to save again with a fresh ID
+          const fallbackId = `design_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          await designHistoryService.createDesign({
+            designId: fallbackId,
+            mainPrompt: promptResult.prompt,
+            basePrompt: promptResult.prompt,
+            masterDNA: designData?.masterDNA || aiResult?.masterDNA || {},
+            seed: projectSeed,
+            seedsByView,
+            resultUrl: aiResult.a1Sheet.url,
+            a1SheetUrl: aiResult.a1Sheet.url,
+            projectContext: projectContext,
+            locationData: locationData,
+            blendedStyle: aiResult.blendedStyle,
+            styleBlendPercent: 70,
+            siteSnapshot: aiResult.sitePlanAttachment || null,
+            a1Sheet: aiResult.a1Sheet
+          });
+          
+          setCurrentDesignId(fallbackId);
+          console.log('✅ Design re-saved with fallback ID:', fallbackId);
+        } else {
+          console.log('✅ Design verified in history');
+        }
 
         // Auto-show modification panel after successful generation
         setShowModificationPanel(true);
@@ -2456,98 +2568,172 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   };
 
   const renderLandingPage = () => (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="absolute inset-0">
-        <div className="absolute top-20 left-20 w-72 h-72 bg-blue-500 rounded-full opacity-10 blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full opacity-10 blur-3xl animate-pulse delay-1000"></div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-950 text-white relative overflow-hidden">
+      {/* Animated Background Layers */}
+      <div className="animated-bg"></div>
+      <div className="architecture-bg"></div>
+      
+          {/* Enhanced Floating Glass Orbs with Light Animation */}
+          <div className="absolute top-20 left-10 w-96 h-96 bg-blue-400/40 rounded-full blur-3xl animate-float animate-pulse" style={{ animation: 'float 8s ease-in-out infinite, pulse 4s ease-in-out infinite' }}></div>
+          <div className="absolute bottom-20 right-10 w-[500px] h-[500px] bg-cyan-400/35 rounded-full blur-3xl animate-float animate-pulse" style={{ animationDelay: '2s', animation: 'float 10s ease-in-out infinite, pulse 5s ease-in-out infinite' }}></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-300/30 rounded-full blur-3xl animate-float animate-pulse" style={{ animationDelay: '4s', animation: 'float 12s ease-in-out infinite, pulse 6s ease-in-out infinite' }}></div>
+          <div className="absolute top-1/4 right-1/4 w-[300px] h-[300px] bg-cyan-300/35 rounded-full blur-2xl animate-float" style={{ animationDelay: '1s', animation: 'float 7s ease-in-out infinite' }}></div>
+          <div className="absolute bottom-1/3 left-1/3 w-[400px] h-[400px] bg-blue-500/30 rounded-full blur-3xl animate-float animate-pulse" style={{ animationDelay: '3s', animation: 'float 9s ease-in-out infinite, pulse 4.5s ease-in-out infinite' }}></div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-16">
-        <div id="hero-content" className="opacity-0 transition-opacity duration-1000">
-          {/* Header */}
-          <div className="text-center mb-16">
-            <div className="flex justify-center items-center mb-6">
-              <Building className="w-12 h-12 text-blue-400 mr-3" />
-              <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                ArchitectAI Platform
-              </h1>
+      {/* Main Content */}
+      <div className="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24">
+        {/* Logo and Header - Enhanced */}
+        <div className="text-center mb-16 sm:mb-20 animate-fadeInUp">
+          <div className="flex flex-col sm:flex-row justify-center items-center mb-8 sm:mb-10 gap-4 sm:gap-6">
+            <div className="relative group">
+              <img 
+                src="/logo/logo-light.svg" 
+                alt="ARCHIAI SOLUTION Logo" 
+                className="w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32 logo-float transition-transform duration-500 group-hover:scale-110"
+                style={{ filter: 'drop-shadow(0 0 40px rgba(0, 168, 255, 0.8)) drop-shadow(0 0 60px rgba(0, 212, 255, 0.6))' }}
+              />
+              <div className="absolute inset-0 bg-blue-400/50 rounded-full blur-2xl -z-10 animate-pulse"></div>
+              <div className="absolute inset-0 bg-cyan-400/30 rounded-full blur-xl -z-10 animate-pulse" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute inset-0 bg-blue-300/20 rounded-full blur-lg -z-10 animate-pulse" style={{ animationDelay: '2s' }}></div>
             </div>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Transform any location into intelligent architectural designs in minutes, not months.
-              AI-powered design generation with full technical documentation.
-            </p>
+            <div>
+              <h1 className="premium-title text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-2">
+                ARCHIAI SOLUTION
+              </h1>
+              <div className="h-1 w-24 bg-gradient-to-r from-blue-400 to-cyan-400 mx-auto rounded-full mt-4"></div>
+            </div>
           </div>
+          <p className="premium-subtitle text-xl sm:text-2xl md:text-3xl max-w-4xl mx-auto mb-6 font-medium">
+            The First AI Company for Architects & Construction Engineers
+          </p>
+          <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-3xl mx-auto leading-relaxed">
+            Transform any location into intelligent architectural designs in minutes, not months.
+            <br className="hidden sm:block" />
+            <span className="text-white/80">AI-powered design generation with full technical documentation.</span>
+          </p>
+        </div>
 
-          {/* Key Metrics */}
-          <div className="grid md:grid-cols-4 gap-6 mb-16">
-            {[
-              { icon: Clock, label: "Design Time", value: "5 minutes", subtext: "vs 2-3 weeks traditional" },
-              { icon: TrendingUp, label: "Cost Reduction", value: "85%", subtext: "in design phase costs" },
-              { icon: Users, label: "Active Architects", value: "2,450+", subtext: "using our platform" },
-              { icon: BarChart3, label: "Projects Created", value: "12,000+", subtext: "successful designs" }
-            ].map((metric, idx) => (
-              <div key={idx} className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
-                <metric.icon className="w-8 h-8 text-blue-400 mb-3" />
-                <h3 className="text-3xl font-bold mb-1">{metric.value}</h3>
-                <p className="text-sm text-gray-300">{metric.label}</p>
-                <p className="text-xs text-gray-400 mt-1">{metric.subtext}</p>
+        {/* Key Metrics - Enhanced Premium Glass Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 sm:gap-6 mb-16 sm:mb-20">
+          {[
+            { icon: Clock, label: "Design Time", value: "5 min", subtext: "vs 2-3 weeks", color: "from-blue-400 to-cyan-400" },
+            { icon: TrendingUp, label: "Cost Savings", value: "85%", subtext: "design phase", color: "from-green-400 to-emerald-400" },
+            { icon: Users, label: "Architects", value: "2,450+", subtext: "active users", color: "from-purple-400 to-pink-400" },
+            { icon: BarChart3, label: "Projects", value: "12K+", subtext: "completed", color: "from-orange-400 to-red-400" }
+          ].map((metric, idx) => (
+            <div 
+              key={idx} 
+              className="liquid-glass-card p-5 sm:p-7 text-center group cursor-pointer animate-fadeInUp"
+              style={{ animationDelay: `${idx * 0.15}s` }}
+            >
+              <div className={`inline-flex p-3 rounded-2xl bg-gradient-to-br ${metric.color} mb-4 group-hover:scale-110 transition-transform duration-300`}>
+                <metric.icon className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
               </div>
-            ))}
-          </div>
+              <h3 className="text-3xl sm:text-4xl font-bold mb-2 text-glow-blue">{metric.value}</h3>
+              <p className="text-sm sm:text-base text-white/90 font-semibold mb-1">{metric.label}</p>
+              <p className="text-xs sm:text-sm text-white/60">{metric.subtext}</p>
+            </div>
+          ))}
+        </div>
 
-          {/* Feature Grid */}
-          <div className="grid md:grid-cols-3 gap-8 mb-16">
-            {[
-              {
-                icon: MapPin,
-                title: "Location Intelligence",
-                description: "Analyze climate, zoning, and local architecture to inform optimal design decisions"
-              },
-              {
-                icon: Sparkles,
-                title: "AI Design Generation",
-                description: "Create complete 2D/3D designs from requirements in minutes with style synthesis"
-              },
-              {
-                icon: FileCode,
-                title: "Technical Documentation",
-                description: "Auto-generate all structural and MEP drawings with code compliance"
-              },
-              {
-                icon: Palette,
-                title: "Style Blending",
-                description: "Seamlessly blend architect portfolios with location-appropriate styles"
-              },
-              {
-                icon: Zap,
-                title: "Real-time Modifications",
-                description: "Use natural language to instantly modify designs and see results"
-              },
-              {
-                icon: Shield,
-                title: "Industry Standards",
-                description: "Export to all major CAD formats: DWG, RVT, IFC with full compatibility"
-              }
-            ].map((feature, idx) => (
-              <div key={idx} className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all duration-300">
-                <feature.icon className="w-10 h-10 text-blue-400 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                <p className="text-sm text-gray-300">{feature.description}</p>
+        {/* Feature Grid - Enhanced Glass Cards */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 mb-16 sm:mb-20">
+          {[
+            {
+              icon: MapPin,
+              title: "Location Intelligence",
+              description: "Analyze climate, zoning, and local architecture to inform optimal design decisions",
+              gradient: "from-blue-500/30 to-cyan-500/30"
+            },
+            {
+              icon: Sparkles,
+              title: "AI Design Generation",
+              description: "Create complete 2D/3D designs from requirements in minutes with style synthesis",
+              gradient: "from-purple-500/30 to-pink-500/30"
+            },
+            {
+              icon: FileCode,
+              title: "Technical Documentation",
+              description: "Auto-generate all structural and MEP drawings with code compliance",
+              gradient: "from-green-500/30 to-emerald-500/30"
+            },
+            {
+              icon: Palette,
+              title: "Style Blending",
+              description: "Seamlessly blend architect portfolios with location-appropriate styles",
+              gradient: "from-orange-500/30 to-red-500/30"
+            },
+            {
+              icon: Zap,
+              title: "Real-time Modifications",
+              description: "Use natural language to instantly modify designs and see results",
+              gradient: "from-yellow-500/30 to-amber-500/30"
+            },
+            {
+              icon: Shield,
+              title: "Industry Standards",
+              description: "Export to all major CAD formats: DWG, RVT, IFC with full compatibility",
+              gradient: "from-indigo-500/30 to-blue-500/30"
+            }
+          ].map((feature, idx) => (
+            <div 
+              key={idx} 
+              className="liquid-glass-card p-7 sm:p-9 group animate-fadeInUp"
+              style={{ animationDelay: `${idx * 0.1}s` }}
+            >
+              <div className="flex items-start mb-5">
+                <div className={`p-4 rounded-2xl bg-gradient-to-br ${feature.gradient} group-hover:scale-110 transition-transform duration-300 border border-white/20`}>
+                  <feature.icon className="w-7 h-7 sm:w-9 sm:h-9 text-blue-300" />
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold ml-5 mt-1 text-white">{feature.title}</h3>
               </div>
-            ))}
-          </div>
+              <p className="text-sm sm:text-base text-white/75 leading-relaxed pl-1">{feature.description}</p>
+            </div>
+          ))}
+        </div>
 
-          {/* CTA Section */}
-          <div className="text-center">
+        {/* CTA Section - Enhanced Premium Button */}
+        <div className="text-center animate-fadeInUp mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
             <button
               onClick={() => setCurrentStep(1)}
-              className="group bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-4 rounded-full font-semibold text-lg hover:shadow-2xl hover:shadow-blue-500/25 transition-all duration-300 flex items-center mx-auto"
+              className="btn-premium group text-white px-10 sm:px-14 py-5 sm:py-6 rounded-full font-semibold text-lg sm:text-xl flex items-center mx-auto shadow-lg"
             >
+              <Sparkles className="w-6 h-6 mr-3 group-hover:rotate-12 transition-transform duration-300" />
               <span>Start Live Demo</span>
-              <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
+              <ArrowRight className="ml-3 w-6 h-6 group-hover:translate-x-2 transition-transform duration-300" />
             </button>
-            <p className="text-sm text-gray-400 mt-4">No login required • 5-minute walkthrough</p>
+            <button
+              className="btn-premium-secondary px-8 sm:px-12 py-5 sm:py-6 text-base sm:text-lg font-medium"
+            >
+              View Features
+            </button>
+          </div>
+          <p className="text-sm sm:text-base text-white/70 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            No login required • 5-minute walkthrough • Free to try
+          </p>
+        </div>
+
+        {/* Additional Trust Indicators - Enhanced */}
+        <div className="mt-20 sm:mt-24 pt-12 sm:pt-16 border-t border-white/15">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 text-center">
+            {[
+              { icon: Shield, title: "Enterprise Security", desc: "Bank-level encryption & data protection", color: "text-blue-400" },
+              { icon: Zap, title: "Lightning Fast", desc: "Generate designs in under 60 seconds", color: "text-yellow-400" },
+              { icon: Building2, title: "Industry Leading", desc: "Trusted by top architecture firms", color: "text-green-400" }
+            ].map((item, idx) => (
+              <div 
+                key={idx}
+                className="liquid-glass-card p-6 sm:p-8 group hover:scale-105 transition-transform duration-300"
+              >
+                <div className={`inline-flex p-4 rounded-2xl bg-gradient-to-br ${item.color === 'text-blue-400' ? 'from-blue-500/30 to-cyan-500/30' : item.color === 'text-yellow-400' ? 'from-yellow-500/30 to-amber-500/30' : 'from-green-500/30 to-emerald-500/30'} mb-4 group-hover:scale-110 transition-transform duration-300`}>
+                  <item.icon className={`w-8 h-8 ${item.color} mx-auto`} />
+                </div>
+                <h4 className="font-bold text-lg mb-2 text-white">{item.title}</h4>
+                <p className="text-sm text-white/75">{item.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -2561,26 +2747,29 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       case 1:
         return (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              <div className="flex items-center mb-6">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mr-4">
-                  <MapPin className="w-6 h-6 text-blue-600" />
+          <div className="space-y-8 animate-fadeInUp">
+            {/* Background Effects */}
+            <div className="animated-bg fixed inset-0 opacity-50"></div>
+            
+            <div className="liquid-glass-strong p-8 sm:p-10 relative">
+              <div className="flex items-center mb-8">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/30 to-cyan-500/30 border border-white/20 mr-5 group-hover:scale-110 transition-transform duration-300">
+                  <MapPin className="w-8 h-8 text-blue-300" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Location Analysis</h2>
-                  <p className="text-gray-600">Enter the project address to begin intelligent site analysis</p>
+                  <h2 className="text-3xl sm:text-4xl font-bold text-white mb-2 premium-title">Location Analysis</h2>
+                  <p className="text-white/75 text-lg">Enter the project address to begin intelligent site analysis</p>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Project Address</label>
+                  <label className="block text-sm font-semibold text-white/90 mb-3">Project Address</label>
                   <div className="relative">
                     <input
                       type="text"
                       placeholder={isDetectingLocation ? "Detecting your location..." : "Enter full address or let us detect your location..."}
-                      className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
+                      className="w-full px-5 py-4 pr-14 bg-navy-900/90 border border-white/20 rounded-xl focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-300 text-white placeholder-white/50"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       onKeyDown={(e) => {
@@ -2591,52 +2780,62 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       disabled={isDetectingLocation}
                     />
                     {isDetectingLocation && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-6 h-6 animate-spin text-blue-400" />
                       </div>
                     )}
                   </div>
                   {!address && !isDetectingLocation && (
-                    <div className="mt-2 flex items-center justify-between">
-                      <p className="text-sm text-gray-500">We'll automatically detect your location when you start</p>
+                    <div className="mt-3 flex items-center justify-between">
+                      <p className="text-sm text-white/60">We'll automatically detect your location when you start</p>
                       <button
                         onClick={detectUserLocation}
-                        className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center"
+                        className="btn-premium-secondary text-sm px-4 py-2 flex items-center"
                       >
-                        <MapPin className="w-4 h-4 mr-1" />
+                        <MapPin className="w-4 h-4 mr-2" />
                         Detect Location
                       </button>
                     </div>
                   )}
                 </div>
 
-                <div className="bg-blue-50 rounded-xl p-4">
-                  <h4 className="font-medium text-blue-900 mb-2 flex items-center">
-                    <Cpu className="w-4 h-4 mr-2" />
+                <div className="liquid-glass-card p-6 border border-blue-500/30">
+                  <h4 className="font-semibold text-white mb-4 flex items-center text-lg">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/40 to-cyan-500/40 mr-3">
+                      <Cpu className="w-5 h-5 text-blue-300" />
+                    </div>
                     AI will analyze:
                   </h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm text-blue-800">
-                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Climate patterns</div>
-                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Solar orientation</div>
-                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Local architecture</div>
-                    <div className="flex items-center"><Check className="w-4 h-4 mr-1" /> Zoning regulations</div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {[
+                      { icon: Check, text: "Climate patterns", color: "from-blue-400 to-cyan-400" },
+                      { icon: Check, text: "Solar orientation", color: "from-yellow-400 to-orange-400" },
+                      { icon: Check, text: "Local architecture", color: "from-purple-400 to-pink-400" },
+                      { icon: Check, text: "Zoning regulations", color: "from-green-400 to-emerald-400" }
+                    ].map((item, idx) => (
+                      <div key={idx} className="flex items-center text-white/90 p-2 rounded-lg bg-gradient-to-r from-white/5 to-white/10">
+                        <item.icon className="w-4 h-4 mr-2 text-blue-400" />
+                        <span>{item.text}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
                 <button
                   onClick={analyzeLocation}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-300 flex items-center justify-center font-medium"
+                  className="btn-premium w-full py-5 text-lg font-semibold flex items-center justify-center group"
                   disabled={isLoading}
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 animate-spin" />
+                      <Loader2 className="mr-3 animate-spin w-6 h-6" />
                       Analyzing Location Data...
                     </>
                   ) : (
                     <>
-                      <Compass className="mr-2" />
+                      <Compass className="mr-3 w-6 h-6 group-hover:rotate-12 transition-transform duration-300" />
                       Analyze Location
+                      <ArrowRight className="ml-3 w-6 h-6 group-hover:translate-x-2 transition-transform duration-300" />
                     </>
                   )}
                 </button>
@@ -2648,34 +2847,39 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       case 2:
         return (
           <ErrorBoundary>
-            <div className="space-y-8 animate-fadeIn">
-              {/* Header Section */}
-              <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 rounded-2xl shadow-2xl p-8 text-white relative overflow-hidden">
-                <div className="absolute inset-0 bg-black/10"></div>
+            <div className="space-y-8 animate-fadeInUp relative z-10">
+              {/* Header Section - Enhanced */}
+              <div className="liquid-glass-strong p-8 sm:p-10 text-white relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 via-purple-600/20 to-indigo-600/20"></div>
                 <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6">
                     <div>
-                      <h2 className="text-3xl font-bold mb-2">Location Intelligence Report</h2>
-                      <p className="text-blue-100 text-lg">{locationData?.address || 'Site Analysis Complete'}</p>
+                      <h2 className="text-4xl sm:text-5xl font-bold mb-3 premium-title">Location Intelligence Report</h2>
+                      <p className="text-white/80 text-lg flex items-center">
+                        <MapPin className="w-5 h-5 mr-2 text-blue-300" />
+                        {locationData?.address || 'Site Analysis Complete'}
+                      </p>
                     </div>
-                    <div className="flex items-center bg-white/20 backdrop-blur-md px-6 py-3 rounded-full border border-white/30">
-                      <Check className="w-6 h-6 mr-2" />
+                    <div className="flex items-center liquid-glass-card px-6 py-3 rounded-full border border-green-500/30 mt-4 sm:mt-0 animate-fadeInUp">
+                      <div className="w-3 h-3 bg-green-400 rounded-full mr-3 animate-pulse"></div>
+                      <Check className="w-5 h-5 mr-2 text-green-400" />
                       <span className="font-semibold">Analysis Complete</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 mt-6">
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <div className="text-sm text-blue-100 mb-1">Site Location</div>
-                      <div className="text-xl font-bold">Verified</div>
-                    </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <div className="text-sm text-blue-100 mb-1">Data Points</div>
-                      <div className="text-xl font-bold">12+ Sources</div>
-                    </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <div className="text-sm text-blue-100 mb-1">Confidence</div>
-                      <div className="text-xl font-bold">98%</div>
-                    </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
+                    {[
+                      { label: "Site Location", value: "Verified", icon: MapPin, color: "from-blue-400 to-cyan-400" },
+                      { label: "Data Points", value: "12+ Sources", icon: BarChart3, color: "from-purple-400 to-pink-400" },
+                      { label: "Confidence", value: "98%", icon: Shield, color: "from-green-400 to-emerald-400" }
+                    ].map((item, idx) => (
+                      <div key={idx} className="liquid-glass-card p-5 border border-white/20 animate-fadeInUp" style={{ animationDelay: `${idx * 0.1}s` }}>
+                        <div className={`inline-flex p-2 rounded-lg bg-gradient-to-br ${item.color} mb-3`}>
+                          <item.icon className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-sm text-white/70 mb-1">{item.label}</div>
+                        <div className="text-2xl font-bold text-white">{item.value}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -2683,176 +2887,178 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               {/* Main Analysis Cards */}
               <div className="grid lg:grid-cols-3 gap-6">
                 {/* Climate & Environment */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group">
-                  <div className="flex items-center mb-5 pb-4 border-b border-gray-100">
-                    <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl flex items-center justify-center mr-3 shadow-md group-hover:scale-110 transition-transform">
-                      <Sun className="w-6 h-6 text-white" />
+                <div className="liquid-glass-card p-7 hover:scale-105 transition-all duration-300 group animate-fadeInUp">
+                  <div className="flex items-center mb-6 pb-5 border-b border-white/20">
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-orange-400/30 to-amber-500/30 border border-white/20 mr-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <Sun className="w-7 h-7 text-orange-300" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-800 text-lg">Solar & Climate</h3>
-                      <p className="text-xs text-gray-500">Environmental Analysis</p>
+                      <h3 className="font-bold text-white text-xl">Solar & Climate</h3>
+                      <p className="text-xs text-white/60">Environmental Analysis</p>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg p-4 border border-blue-100">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Climate Type</p>
-                      <p className="font-bold text-gray-800 text-lg">{locationData?.climate.type}</p>
+                    <div className="liquid-glass p-4 border border-blue-500/30">
+                      <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">Climate Type</p>
+                      <p className="font-bold text-white text-xl">{locationData?.climate.type}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      {locationData?.climate.seasonal.winter && <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200 hover:shadow-md transition-shadow">
+                      {locationData?.climate.seasonal.winter && <div className="liquid-glass p-4 border border-blue-500/30 hover:scale-105 transition-transform">
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-bold text-sm text-blue-900">Winter</h4>
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <h4 className="font-bold text-sm text-white">Winter</h4>
+                          <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                         </div>
                         <div className="space-y-1 text-xs">
-                          <div className="flex justify-between"><span className="text-gray-600">Temp:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.winter.avgTemp}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Precip:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.winter.precipitation}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Solar:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.winter.solar}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Temp:</span><span className="font-semibold text-white">{locationData.climate.seasonal.winter.avgTemp}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Precip:</span><span className="font-semibold text-white">{locationData.climate.seasonal.winter.precipitation}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Solar:</span><span className="font-semibold text-white">{locationData.climate.seasonal.winter.solar}</span></div>
                         </div>
                       </div>}
-                      {locationData?.climate.seasonal.spring && <div className="bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl p-4 border border-green-200 hover:shadow-md transition-shadow">
+                      {locationData?.climate.seasonal.spring && <div className="liquid-glass p-4 border border-green-500/30 hover:scale-105 transition-transform">
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-bold text-sm text-green-900">Spring</h4>
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <h4 className="font-bold text-sm text-white">Spring</h4>
+                          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                         </div>
                         <div className="space-y-1 text-xs">
-                          <div className="flex justify-between"><span className="text-gray-600">Temp:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.spring.avgTemp}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Precip:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.spring.precipitation}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Solar:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.spring.solar}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Temp:</span><span className="font-semibold text-white">{locationData.climate.seasonal.spring.avgTemp}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Precip:</span><span className="font-semibold text-white">{locationData.climate.seasonal.spring.precipitation}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Solar:</span><span className="font-semibold text-white">{locationData.climate.seasonal.spring.solar}</span></div>
                         </div>
                       </div>}
-                      {locationData?.climate.seasonal.summer && <div className="bg-gradient-to-br from-red-50 to-orange-100 rounded-xl p-4 border border-red-200 hover:shadow-md transition-shadow">
+                      {locationData?.climate.seasonal.summer && <div className="liquid-glass p-4 border border-red-500/30 hover:scale-105 transition-transform">
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-bold text-sm text-red-900">Summer</h4>
-                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                          <h4 className="font-bold text-sm text-white">Summer</h4>
+                          <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>
                         </div>
                         <div className="space-y-1 text-xs">
-                          <div className="flex justify-between"><span className="text-gray-600">Temp:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.summer.avgTemp}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Precip:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.summer.precipitation}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Solar:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.summer.solar}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Temp:</span><span className="font-semibold text-white">{locationData.climate.seasonal.summer.avgTemp}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Precip:</span><span className="font-semibold text-white">{locationData.climate.seasonal.summer.precipitation}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Solar:</span><span className="font-semibold text-white">{locationData.climate.seasonal.summer.solar}</span></div>
                         </div>
                       </div>}
-                      {locationData?.climate.seasonal.fall && <div className="bg-gradient-to-br from-amber-50 to-yellow-100 rounded-xl p-4 border border-amber-200 hover:shadow-md transition-shadow">
+                      {locationData?.climate.seasonal.fall && <div className="liquid-glass p-4 border border-amber-500/30 hover:scale-105 transition-transform">
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-bold text-sm text-amber-900">Fall</h4>
-                          <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                          <h4 className="font-bold text-sm text-white">Fall</h4>
+                          <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
                         </div>
                         <div className="space-y-1 text-xs">
-                          <div className="flex justify-between"><span className="text-gray-600">Temp:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.fall.avgTemp}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Precip:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.fall.precipitation}</span></div>
-                          <div className="flex justify-between"><span className="text-gray-600">Solar:</span><span className="font-semibold text-gray-800">{locationData.climate.seasonal.fall.solar}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Temp:</span><span className="font-semibold text-white">{locationData.climate.seasonal.fall.avgTemp}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Precip:</span><span className="font-semibold text-white">{locationData.climate.seasonal.fall.precipitation}</span></div>
+                          <div className="flex justify-between"><span className="text-white/70">Solar:</span><span className="font-semibold text-white">{locationData.climate.seasonal.fall.solar}</span></div>
                         </div>
                       </div>}
                     </div>
-                    <div className="pt-3 border-t border-gray-100 bg-gray-50 rounded-lg p-3">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sun Path</p>
+                    <div className="pt-3 border-t border-white/20 liquid-glass p-3">
+                      <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">Sun Path</p>
                       <div className="flex justify-between text-sm">
-                        <div><span className="text-gray-600">Summer:</span> <span className="font-semibold text-gray-800">{locationData?.sunPath.summer}</span></div>
-                        <div><span className="text-gray-600">Winter:</span> <span className="font-semibold text-gray-800">{locationData?.sunPath.winter}</span></div>
+                        <div><span className="text-white/70">Summer:</span> <span className="font-semibold text-white">{locationData?.sunPath.summer}</span></div>
+                        <div><span className="text-white/70">Winter:</span> <span className="font-semibold text-white">{locationData?.sunPath.winter}</span></div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Zoning & Regulations */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group">
-                  <div className="flex items-center mb-5 pb-4 border-b border-gray-100">
-                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mr-3 shadow-md group-hover:scale-110 transition-transform">
-                      <Building className="w-6 h-6 text-white" />
+                <div className="liquid-glass-card p-7 hover:scale-105 transition-all duration-300 group animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
+                  <div className="flex items-center mb-6 pb-5 border-b border-white/20">
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/20 mr-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <Building className="w-7 h-7 text-purple-300" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-800 text-lg">Zoning & Architecture</h3>
-                      <p className="text-xs text-gray-500">Regulatory Compliance</p>
+                      <h3 className="font-bold text-white text-xl">Zoning & Architecture</h3>
+                      <p className="text-xs text-white/60">Regulatory Compliance</p>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-100">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Zoning Type</p>
-                      <p className="font-bold text-gray-800 text-lg">{locationData?.zoning.type}</p>
+                    <div className="liquid-glass p-4 border border-purple-500/30">
+                      <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">Zoning Type</p>
+                      <p className="font-bold text-white text-xl">{locationData?.zoning.type}</p>
                       {locationData?.zoning.note && (
-                        <p className="text-xs text-gray-600 italic mt-2 pt-2 border-t border-purple-100">{locationData.zoning.note}</p>
+                        <p className="text-xs text-white/70 italic mt-3 pt-3 border-t border-white/10">{locationData.zoning.note}</p>
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                        <p className="text-xs text-gray-500 mb-1">Max Height</p>
-                        <p className="font-bold text-gray-800">{locationData?.zoning.maxHeight}</p>
+                      <div className="liquid-glass p-3 border border-white/10">
+                        <p className="text-xs text-white/60 mb-1">Max Height</p>
+                        <p className="font-bold text-white">{locationData?.zoning.maxHeight}</p>
                       </div>
-                      <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                        <p className="text-xs text-gray-500 mb-1">Density</p>
-                        <p className="font-bold text-gray-800">{locationData?.zoning.density}</p>
+                      <div className="liquid-glass p-3 border border-white/10">
+                        <p className="text-xs text-white/60 mb-1">Density</p>
+                        <p className="font-bold text-white">{locationData?.zoning.density}</p>
                       </div>
                     </div>
-                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                      <p className="text-xs text-gray-500 mb-1">Setbacks</p>
-                      <p className="font-semibold text-sm text-gray-800">{locationData?.zoning.setbacks}</p>
+                    <div className="liquid-glass p-3 border border-white/10">
+                      <p className="text-xs text-white/60 mb-1">Setbacks</p>
+                      <p className="font-semibold text-sm text-white">{locationData?.zoning.setbacks}</p>
                     </div>
                     {locationData?.zoning.characteristics && (
-                      <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Characteristics</p>
-                        <p className="text-sm font-medium text-gray-800">{locationData.zoning.characteristics}</p>
+                      <div className="liquid-glass p-3 border border-blue-500/30">
+                        <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-1">Characteristics</p>
+                        <p className="text-sm font-medium text-white">{locationData.zoning.characteristics}</p>
                       </div>
                     )}
                     {locationData?.zoning.materials && (
-                      <div className="bg-amber-50 rounded-lg p-3 border border-amber-100">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Typical Materials</p>
-                        <p className="text-sm font-medium text-gray-800">{locationData.zoning.materials}</p>
+                      <div className="liquid-glass p-3 border border-amber-500/30">
+                        <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-1">Typical Materials</p>
+                        <p className="text-sm font-medium text-white">{locationData.zoning.materials}</p>
                       </div>
                     )}
                   </div>
                 </div>
 
                 {/* Market Context */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 hover:shadow-xl transition-all duration-300 group">
-                  <div className="flex items-center mb-5 pb-4 border-b border-gray-100">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center mr-3 shadow-md group-hover:scale-110 transition-transform">
-                      <TrendingUp className="w-6 h-6 text-white" />
+                <div className="liquid-glass-card p-7 hover:scale-105 transition-all duration-300 group animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+                  <div className="flex items-center mb-6 pb-5 border-b border-white/20">
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-green-500/30 to-emerald-500/30 border border-white/20 mr-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                      <TrendingUp className="w-7 h-7 text-green-300" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-800 text-lg">Market Analysis</h3>
-                      <p className="text-xs text-gray-500">Investment Insights</p>
+                      <h3 className="font-bold text-white text-xl">Market Analysis</h3>
+                      <p className="text-xs text-white/60">Investment Insights</p>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Construction Cost</p>
-                      <p className="font-bold text-gray-800 text-lg">{locationData?.marketContext.avgConstructionCost}</p>
+                    <div className="liquid-glass p-4 border border-green-500/30">
+                      <p className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">Construction Cost</p>
+                      <p className="font-bold text-white text-xl">{locationData?.marketContext.avgConstructionCost}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                        <p className="text-xs text-gray-500 mb-1">Demand</p>
-                        <p className="font-bold text-gray-800">{locationData?.marketContext.demandIndex}</p>
+                      <div className="liquid-glass p-3 border border-white/10">
+                        <p className="text-xs text-white/60 mb-1">Demand</p>
+                        <p className="font-bold text-white">{locationData?.marketContext.demandIndex}</p>
                       </div>
-                      <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                        <p className="text-xs text-gray-500 mb-1">ROI</p>
-                        <p className="font-bold text-green-600 text-lg">{locationData?.marketContext.roi}</p>
+                      <div className="liquid-glass p-3 border border-green-500/30">
+                        <p className="text-xs text-white/60 mb-1">ROI</p>
+                        <p className="font-bold text-green-400 text-lg">{locationData?.marketContext.roi}</p>
                       </div>
                     </div>
-                    <div className="pt-3 border-t border-gray-100 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-4 border border-yellow-100">
+                    <div className="pt-3 border-t border-white/20 liquid-glass p-4 border border-yellow-500/30">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Investment Grade</span>
+                        <span className="text-xs font-semibold text-white/70 uppercase tracking-wide">Investment Grade</span>
                         <div className="flex gap-1">
                           {[1,2,3,4,5].map((star) => (
-                            <div key={star} className={`w-5 h-5 ${star <= 4 ? 'text-yellow-500' : 'text-gray-300'}`}>★</div>
+                            <div key={star} className={`w-5 h-5 ${star <= 4 ? 'text-yellow-400' : 'text-white/30'}`}>★</div>
                           ))}
                         </div>
                       </div>
-                      <p className="text-xs text-gray-600 mt-2">Strong investment potential with favorable market conditions</p>
+                      <p className="text-xs text-white/70 mt-2">Strong investment potential with favorable market conditions</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Interactive 3D Map Preview with Site Polygon Drawing */}
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800 flex items-center">
-                    <MapPin className="w-5 h-5 text-blue-600 mr-2" />
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-xl font-bold text-white flex items-center">
+                    <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/30 to-cyan-500/30 border border-white/20 mr-3">
+                      <MapPin className="w-5 h-5 text-blue-300" />
+                    </div>
                     3D Location View & Site Boundary
                   </h3>
-                  <div className="text-sm text-gray-600">{locationData?.address}</div>
+                  <div className="text-sm text-white/70">{locationData?.address}</div>
                 </div>
-                <div className="bg-gray-100 rounded-xl min-h-[640px] h-[640px] md:h-[720px] lg:h-[800px] relative overflow-hidden shadow-lg border-2 border-gray-200">
+                <div className="liquid-glass rounded-xl min-h-[640px] h-[640px] md:h-[720px] lg:h-[800px] relative overflow-hidden shadow-lg border-2 border-white/20">
                   {locationData?.coordinates ? (
                     <>
                       <div ref={mapRef} className="absolute inset-0">
@@ -2864,10 +3070,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                           existingPolygon={sitePolygon}
                         />
                       </div>
-                      <div className="absolute top-20 left-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm max-w-sm z-10">
+                      <div className="absolute top-20 left-4 liquid-glass-card px-4 py-3 rounded-lg shadow-lg max-w-sm z-10 border border-white/20">
                         <div className="text-sm space-y-1">
-                          <div className="flex items-center font-medium text-gray-700">
-                            <div className="w-3 h-3 bg-blue-600 rounded-full mr-2 animate-pulse"></div>
+                          <div className="flex items-center font-medium text-white">
+                            <div className="w-3 h-3 bg-blue-400 rounded-full mr-2 animate-pulse"></div>
                             {sitePolygon ? (
                               <span>
                                 {siteMetrics?.shapeType ?
@@ -2877,7 +3083,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                             ) : 'Draw Site Boundary'}
                           </div>
                           {sitePolygon && (
-                            <div className="text-xs text-gray-600 ml-5">
+                            <div className="text-xs text-white/70 ml-5">
                               {siteMetrics?.source && (
                                 <div>
                                   Source: {siteMetrics.source === 'google_building_outline' ? 'Google Building Footprint' :
@@ -2886,12 +3092,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                                 </div>
                               )}
                               {siteMetrics?.source === 'google_building_outline' && (
-                                <span className="block text-green-600 mt-1 font-medium">
+                                <span className="block text-green-400 mt-1 font-medium">
                                   ✓ Auto-detected from address
                                 </span>
                               )}
                               {locationData?.siteAnalysis?.boundarySource && locationData.siteAnalysis.boundarySource !== 'manual' && !siteMetrics?.source && (
-                                <span className="block text-blue-600 mt-1">
+                                <span className="block text-blue-300 mt-1">
                                   ✏️ Drag vertices to adjust boundary
                                 </span>
                               )}
@@ -2900,34 +3106,34 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         </div>
                       </div>
                       {siteMetrics && siteMetrics.areaM2 && (
-                        <div className="absolute top-4 right-4 bg-white/90 backdrop-filter px-4 py-3 rounded-lg shadow-lg max-w-md z-10">
-                          <div className="text-xs text-gray-700 space-y-2">
-                            <div className="font-semibold text-sm mb-2 flex items-center">
-                              <span className="mr-2">📐</span> Site Geometry
+                        <div className="absolute top-4 right-4 liquid-glass-card px-5 py-4 rounded-lg shadow-lg max-w-md z-10 border border-white/30 bg-white/10 backdrop-blur-xl">
+                          <div className="text-xs text-white space-y-2">
+                            <div className="font-bold text-base mb-3 flex items-center text-white">
+                              <span className="mr-2 text-lg">📐</span> Site Geometry
                             </div>
 
                             {/* Area */}
-                            <div className="bg-blue-50 rounded p-2">
-                              <div className="text-xs text-gray-600">Total Area</div>
-                              <div className="font-bold text-xl text-blue-600">
+                            <div className="liquid-glass p-3 border border-blue-500/30 bg-blue-500/10">
+                              <div className="text-xs text-white/90 mb-1 font-semibold">Total Area</div>
+                              <div className="font-bold text-2xl text-blue-200">
                                 {siteMetrics.areaM2.toFixed(1)} m²
                               </div>
                             </div>
 
                             {/* Detected Shape Type */}
                             {siteMetrics.shapeType && (
-                              <div className="bg-green-50 rounded p-2 border border-green-200">
-                                <div className="text-xs text-gray-600 mb-1">Detected Shape</div>
-                                <div className="font-bold text-lg text-green-700 capitalize">
+                              <div className="liquid-glass p-3 border border-green-500/30 bg-green-500/10">
+                                <div className="text-xs text-white/90 mb-1 font-semibold">Detected Shape</div>
+                                <div className="font-bold text-lg text-green-200 capitalize">
                                   {siteMetrics.shapeType.replace('-', ' ')}
                                 </div>
                                 {siteMetrics.shapeDescription && (
-                                  <div className="text-xs text-gray-600 mt-1">
+                                  <div className="text-xs text-white/80 mt-1">
                                     {siteMetrics.shapeDescription}
                                   </div>
                                 )}
                                 {siteMetrics.vertexCount && (
-                                  <div className="text-xs text-gray-600 mt-1">
+                                  <div className="text-xs text-white/80 mt-1">
                                     {siteMetrics.vertexCount} corners • {siteMetrics.isConvex ? 'Convex' : 'Concave'}
                                   </div>
                                 )}
@@ -2936,13 +3142,13 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                             {/* Edge Lengths */}
                             {siteMetrics.edges && siteMetrics.edges.length > 0 && (
-                              <div className="border-t pt-2">
-                                <div className="font-medium text-xs mb-1">Edge Lengths:</div>
-                                <div className="grid grid-cols-2 gap-1 text-xs">
+                              <div className="border-t border-white/20 pt-2">
+                                <div className="font-medium text-xs mb-2 text-white">Edge Lengths:</div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
                                   {siteMetrics.edges.map((edge, idx) => (
-                                    <div key={idx} className="flex justify-between bg-gray-50 rounded px-2 py-1">
-                                      <span className="text-gray-600">Side {idx + 1}:</span>
-                                      <span className="font-mono font-medium text-blue-700">
+                                    <div key={idx} className="flex justify-between liquid-glass rounded px-2 py-1.5 border border-white/20 bg-white/5">
+                                      <span className="text-white/90 font-medium">Side {idx + 1}:</span>
+                                      <span className="font-mono font-semibold text-blue-200">
                                         {edge.length.toFixed(1)}m
                                       </span>
                                     </div>
@@ -2953,9 +3159,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                             {/* Perimeter */}
                             {siteMetrics.perimeterM && (
-                              <div className="flex justify-between items-center bg-gray-50 rounded px-2 py-1">
-                                <span className="text-gray-600">Perimeter:</span>
-                                <span className="font-mono font-medium text-gray-800">
+                              <div className="flex justify-between items-center liquid-glass rounded px-2 py-1.5 border border-white/20 bg-white/5">
+                                <span className="text-white/90 font-medium">Perimeter:</span>
+                                <span className="font-mono font-semibold text-white">
                                   {siteMetrics.perimeterM.toFixed(1)}m
                                 </span>
                               </div>
@@ -2963,9 +3169,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                             {/* Vertices */}
                             {siteMetrics.vertices && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Vertices:</span>
-                                <span className="font-medium text-gray-800">
+                              <div className="flex justify-between items-center liquid-glass rounded px-2 py-1.5 border border-white/20 bg-white/5">
+                                <span className="text-white/90 font-medium">Vertices:</span>
+                                <span className="font-semibold text-white">
                                   {siteMetrics.vertices}
                                 </span>
                               </div>
@@ -2973,9 +3179,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                             {/* Orientation */}
                             {siteMetrics.orientationDeg && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Orientation:</span>
-                                <span className="font-medium text-gray-800">
+                              <div className="flex justify-between items-center liquid-glass rounded px-2 py-1.5 border border-white/20 bg-white/5">
+                                <span className="text-white/90 font-medium">Orientation:</span>
+                                <span className="font-semibold text-white">
                                   {siteMetrics.orientationDeg.toFixed(0)}° from North
                                 </span>
                               </div>
@@ -2983,8 +3189,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                             {/* Data Source */}
                             {siteMetrics.source && (
-                              <div className="text-gray-500 text-xs mt-2 pt-2 border-t flex items-center justify-between">
-                                <span>
+                              <div className="text-white/80 text-xs mt-2 pt-2 border-t border-white/20 flex items-center justify-between">
+                                <span className="font-medium">
                                   {siteMetrics.source === 'google_building_outline' ? '🏢 Google Building Footprint' :
                                    siteMetrics.source === 'OpenStreetMap' ? '🗺️ OSM Data' :
                                    siteMetrics.source === 'Google Places' ? '🗺️ Google Data' :
@@ -2992,7 +3198,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                                    '📏 Estimated'}
                                 </span>
                                 {siteMetrics.source === 'google_building_outline' && (
-                                  <span className="text-green-600 font-medium">✓ Auto-detected</span>
+                                  <span className="text-green-300 font-semibold">✓ Auto-detected</span>
                                 )}
                               </div>
                             )}
@@ -3034,6 +3240,19 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               
                               if (sitePlanResult && sitePlanResult.dataUrl) {
                                 sessionStorage.setItem('a1SiteSnapshot', sitePlanResult.dataUrl);
+                                const snapshotMeta = {
+                                  capturedAt: sitePlanResult.metadata?.capturedAt || new Date().toISOString(),
+                                  size: sitePlanResult.metadata?.size,
+                                  source: 'user-captured',
+                                  polygonPointCount: sitePlanResult.metadata?.polygonPointCount || (currentPolygon?.length || 0),
+                                  mapType: sitePlanResult.metadata?.mapType || 'hybrid',
+                                  zoom: sitePlanResult.metadata?.zoom || currentZoom
+                                };
+                                try {
+                                  sessionStorage.setItem('a1SiteSnapshotMeta', JSON.stringify(snapshotMeta));
+                                } catch (storageError) {
+                                  console.warn('⚠️ Failed to persist site snapshot metadata', storageError);
+                                }
                                 console.log('✅ Site plan captured and saved to session storage');
                                 console.log(`   Size: ${sitePlanResult.metadata.size.width}×${sitePlanResult.metadata.size.height}px`);
                                 console.log(`   Polygon: ${sitePlanResult.metadata.hasPolygon ? 'yes' : 'no'}`);
@@ -3051,22 +3270,20 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                           <Map className="w-5 h-5" />
                           <span className="font-medium">Capture Map Now</span>
                         </button>
-                        <p className="text-xs text-gray-600 text-center mt-2 bg-white/90 backdrop-blur px-2 py-1 rounded">
-                          Capture for A1 sheet
-                        </p>
                       </div>
 
                       {locationData?.coordinates?.lat && (
-                        <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm z-10">
-                          <div className="text-xs text-gray-600">
-                            Lat: {locationData.coordinates.lat.toFixed(6)}<br/>
-                            Lng: {locationData.coordinates.lng.toFixed(6)}
+                        <div className="absolute bottom-4 right-4 liquid-glass-card px-4 py-3 rounded-lg shadow-lg z-10 border border-white/20 backdrop-blur-xl">
+                          <div className="text-xs text-white font-medium">
+                            <div className="text-white/70 mb-1">Coordinates:</div>
+                            <div className="font-mono text-white">Lat: {locationData.coordinates.lat.toFixed(6)}</div>
+                            <div className="font-mono text-white">Lng: {locationData.coordinates.lng.toFixed(6)}</div>
                           </div>
                         </div>
                       )}
                       {!sitePolygon && (
-                        <div className="absolute bottom-4 left-4 bg-blue-500/90 backdrop-blur px-3 py-2 rounded-lg shadow-sm z-10">
-                          <div className="text-xs text-white font-medium">
+                        <div className="absolute bottom-4 left-4 liquid-glass-card px-4 py-3 rounded-lg shadow-lg z-10 border border-blue-500/30 backdrop-blur-xl bg-blue-500/20">
+                          <div className="text-xs text-white font-semibold">
                             💡 Click the polygon tool above and draw your site boundary
                           </div>
                         </div>
@@ -3200,10 +3417,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
               <button
                 onClick={() => setCurrentStep(3)}
-                className="mt-8 w-full bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white px-8 py-5 rounded-2xl hover:from-blue-700 hover:via-purple-700 hover:to-indigo-700 transition-all duration-300 font-bold text-lg shadow-lg hover:shadow-xl flex items-center justify-center group"
+                className="btn-premium mt-8 w-full py-5 text-lg font-semibold flex items-center justify-center group"
               >
                 <span>Continue to Portfolio Upload</span>
-                <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="ml-3 w-6 h-6 group-hover:translate-x-2 transition-transform duration-300" />
               </button>
             </div>
           </ErrorBoundary>
@@ -3211,33 +3428,34 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       case 3:
         return (
-          <div className="space-y-8 animate-fadeIn">
-            {/* Header Section */}
-            <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 rounded-2xl shadow-2xl p-8 text-white relative overflow-hidden">
-              <div className="absolute inset-0 bg-black/10"></div>
+          <div className="space-y-8 animate-fadeInUp relative z-10">
+            {/* Header Section - Enhanced */}
+            <div className="liquid-glass-strong p-8 sm:p-10 text-white relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 via-pink-600/20 to-indigo-600/20"></div>
               <div className="relative z-10">
-                <div className="flex items-center mb-4">
-                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mr-4 border border-white/30">
-                    <Palette className="w-8 h-8" />
+                <div className="flex items-center mb-6">
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/20 mr-5">
+                    <Palette className="w-8 h-8 text-purple-300" />
                   </div>
                   <div>
-                    <h2 className="text-3xl font-bold mb-2">Portfolio & Style Selection</h2>
-                    <p className="text-purple-100 text-lg">Personalize your AI design generation</p>
+                    <h2 className="text-4xl sm:text-5xl font-bold mb-2 premium-title">Portfolio & Style Selection</h2>
+                    <p className="text-white/75 text-lg">Personalize your AI design generation</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 mt-6">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                    <div className="text-sm text-purple-100 mb-1">Files Uploaded</div>
-                    <div className="text-xl font-bold">{portfolioFiles.length}</div>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                    <div className="text-sm text-purple-100 mb-1">Style Blend</div>
-                    <div className="text-xl font-bold">{Math.round((materialWeight + characteristicWeight) * 50)}%</div>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                    <div className="text-sm text-purple-100 mb-1">Status</div>
-                    <div className="text-xl font-bold">{portfolioFiles.length > 0 ? 'Ready' : 'Pending'}</div>
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8">
+                  {[
+                    { label: "Files Uploaded", value: portfolioFiles.length, icon: Upload, color: "from-blue-400 to-cyan-400" },
+                    { label: "Style Blend", value: `${Math.round((materialWeight + characteristicWeight) * 50)}%`, icon: Sparkles, color: "from-purple-400 to-pink-400" },
+                    { label: "Status", value: portfolioFiles.length > 0 ? 'Ready' : 'Pending', icon: Check, color: "from-green-400 to-emerald-400" }
+                  ].map((item, idx) => (
+                    <div key={idx} className="liquid-glass-card p-5 border border-white/20 animate-fadeInUp" style={{ animationDelay: `${idx * 0.1}s` }}>
+                      <div className={`inline-flex p-2 rounded-lg bg-gradient-to-br ${item.color} mb-3`}>
+                        <item.icon className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="text-sm text-white/70 mb-1">{item.label}</div>
+                      <div className="text-2xl font-bold text-white">{item.value}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -3578,21 +3796,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       case 4:
         return (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              <div className="flex items-center mb-6">
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mr-4">
-                  <Square className="w-6 h-6 text-green-600" />
+          <div className="space-y-8 animate-fadeInUp relative z-10 pb-16">
+            <div className="liquid-glass-strong p-8 sm:p-10 pb-12">
+              <div className="flex items-center mb-8">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-green-500/30 to-emerald-500/30 border border-white/20 mr-5">
+                  <Square className="w-8 h-8 text-green-300" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Project Specifications</h2>
-                  <p className="text-gray-600">Define your project requirements for AI generation</p>
+                  <h2 className="text-4xl sm:text-5xl font-bold text-white mb-2 premium-title">Project Specifications</h2>
+                  <p className="text-white/75 text-lg">Define your project requirements for AI generation</p>
                 </div>
               </div>
               
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="total-surface-area" className="block text-sm font-medium text-gray-700 mb-2">Total Surface Area</label>
+                  <label htmlFor="total-surface-area" className="block text-sm font-semibold text-white/90 mb-3">Total Surface Area</label>
                   <div className="relative">
                     <input
                       id="total-surface-area"
@@ -3603,32 +3821,33 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         const sanitizedArea = sanitizeDimensionInput(e.target.value);
                         setProjectDetails({...projectDetails, area: sanitizedArea !== null ? sanitizedArea : e.target.value});
                       }}
-                      className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                      className="w-full px-5 py-4 pr-14 bg-navy-900/90 border border-white/20 rounded-xl focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all duration-300 text-white placeholder-white/50"
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">m²</span>
+                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-white/60 font-medium">m²</span>
                   </div>
                 </div>
                 
                 <div>
-                  <label htmlFor="building-program" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="building-program" className="block text-sm font-semibold text-white/90 mb-3">
                     Building Program
-                    {isGeneratingSpaces && <span className="ml-2 text-xs text-blue-600 animate-pulse">🤖 Generating spaces with AI...</span>}
+                    {isGeneratingSpaces && <span className="ml-2 text-xs text-blue-300 animate-pulse flex items-center mt-1">🤖 Generating spaces with AI...</span>}
                   </label>
                   <select
                     id="building-program"
                     value={projectDetails.program}
                     onChange={handleBuildingProgramChange}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                    className="w-full px-5 py-4 bg-navy-900/90 border border-white/20 rounded-xl focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all duration-300 text-white"
                     disabled={isGeneratingSpaces}
+                    style={{ color: '#FFFFFF' }}
                   >
-                    <option value="">Select program type...</option>
+                    <option value="" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>Select program type...</option>
 
-                    <optgroup label="🏡 Residential - Houses">
-                      <option value="detached-house">Detached House (Single-family)</option>
-                      <option value="semi-detached-house">Semi-detached House (Duplex)</option>
-                      <option value="terraced-house">Terraced House (Townhouse)</option>
-                      <option value="villa">Villa (Luxury Detached)</option>
-                      <option value="cottage">Cottage (Small Detached)</option>
+                    <optgroup label="🏡 Residential - Houses" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>
+                      <option value="detached-house" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>Detached House (Single-family)</option>
+                      <option value="semi-detached-house" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>Semi-detached House (Duplex)</option>
+                      <option value="terraced-house" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>Terraced House (Townhouse)</option>
+                      <option value="villa" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>Villa (Luxury Detached)</option>
+                      <option value="cottage" style={{ background: '#1E3A5F', color: '#FFFFFF' }}>Cottage (Small Detached)</option>
                     </optgroup>
 
                     <optgroup label="🏢 Residential - Multi-family">
@@ -3677,12 +3896,69 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       <option value="gym">Gym / Fitness Center</option>
                       <option value="sports-hall">Sports Hall</option>
                       <option value="swimming-pool">Swimming Pool Complex</option>
+                      <option value="tennis-club">Tennis Club</option>
+                      <option value="yoga-studio">Yoga Studio</option>
+                    </optgroup>
+
+                    <optgroup label="🏭 Industrial & Warehouse">
+                      <option value="warehouse">Warehouse</option>
+                      <option value="factory">Factory / Manufacturing</option>
+                      <option value="workshop">Workshop</option>
+                      <option value="logistics-center">Logistics Center</option>
+                      <option value="storage-facility">Storage Facility</option>
+                    </optgroup>
+
+                    <optgroup label="⛪ Religious">
+                      <option value="church">Church</option>
+                      <option value="mosque">Mosque</option>
+                      <option value="temple">Temple</option>
+                      <option value="synagogue">Synagogue</option>
+                      <option value="chapel">Chapel</option>
+                    </optgroup>
+
+                    <optgroup label="🚗 Transportation">
+                      <option value="parking-garage">Parking Garage</option>
+                      <option value="bus-station">Bus Station</option>
+                      <option value="train-station">Train Station</option>
+                      <option value="airport-terminal">Airport Terminal</option>
+                      <option value="service-station">Service Station</option>
+                    </optgroup>
+
+                    <optgroup label="🏪 Mixed-Use">
+                      <option value="mixed-use-residential-commercial">Mixed-Use (Residential + Commercial)</option>
+                      <option value="mixed-use-office-retail">Mixed-Use (Office + Retail)</option>
+                      <option value="live-work">Live-Work Space</option>
+                    </optgroup>
+
+                    <optgroup label="🏥 Senior & Care">
+                      <option value="nursing-home">Nursing Home</option>
+                      <option value="assisted-living">Assisted Living Facility</option>
+                      <option value="daycare">Daycare Center</option>
+                      <option value="retirement-community">Retirement Community</option>
+                    </optgroup>
+
+                    <optgroup label="🎯 Specialized">
+                      <option value="research-lab">Research Laboratory</option>
+                      <option value="data-center">Data Center</option>
+                      <option value="veterinary-clinic">Veterinary Clinic</option>
+                      <option value="funeral-home">Funeral Home</option>
+                      <option value="fire-station">Fire Station</option>
+                      <option value="police-station">Police Station</option>
+                      <option value="post-office">Post Office</option>
+                      <option value="bank">Bank</option>
+                      <option value="cinema">Cinema / Movie Theater</option>
+                      <option value="nightclub">Nightclub</option>
+                      <option value="spa">Spa / Wellness Center</option>
+                      <option value="greenhouse">Greenhouse</option>
+                      <option value="observatory">Observatory</option>
+                      <option value="aquarium">Aquarium</option>
+                      <option value="zoo-building">Zoo Building</option>
                     </optgroup>
                   </select>
                 </div>
 
                 <div>
-                  <label htmlFor="entrance-direction" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="entrance-direction" className="block text-sm font-semibold text-white/90 mb-3">
                     <Compass className="w-4 h-4 inline mr-1" />
                     Principal Entrance Direction
                   </label>
@@ -3690,21 +3966,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                     id="entrance-direction"
                     value={projectDetails.entranceDirection}
                     onChange={(e) => setProjectDetails({...projectDetails, entranceDirection: e.target.value})}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:outline-none transition-colors"
+                    className="w-full px-5 py-4 bg-navy-900/90 border border-white/20 rounded-xl focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all duration-300 text-white"
                   >
-                    <option value="">Select entrance orientation...</option>
-                    <option value="N">⬆️ North (N)</option>
-                    <option value="NE">↗️ North-East (NE)</option>
-                    <option value="E">➡️ East (E)</option>
-                    <option value="SE">↘️ South-East (SE)</option>
-                    <option value="S">⬇️ South (S)</option>
-                    <option value="SW">↙️ South-West (SW)</option>
-                    <option value="W">⬅️ West (W)</option>
-                    <option value="NW">↖️ North-West (NW)</option>
+                    <option value="" className="bg-gray-800 text-white">Select entrance orientation...</option>
+                    <option value="N" className="bg-gray-800 text-white">⬆️ North (N)</option>
+                    <option value="NE" className="bg-gray-800 text-white">↗️ North-East (NE)</option>
+                    <option value="E" className="bg-gray-800 text-white">➡️ East (E)</option>
+                    <option value="SE" className="bg-gray-800 text-white">↘️ South-East (SE)</option>
+                    <option value="S" className="bg-gray-800 text-white">⬇️ South (S)</option>
+                    <option value="SW" className="bg-gray-800 text-white">↙️ South-West (SW)</option>
+                    <option value="W" className="bg-gray-800 text-white">⬅️ West (W)</option>
+                    <option value="NW" className="bg-gray-800 text-white">↖️ North-West (NW)</option>
                   </select>
                   {projectDetails.entranceDirection && (
-                    <p className="mt-2 text-sm text-gray-600">
-                      <Sun className="w-4 h-4 inline mr-1 text-yellow-500" />
+                    <p className="mt-2 text-sm text-white/80">
+                      <Sun className="w-4 h-4 inline mr-1 text-yellow-300" />
                       {projectDetails.entranceDirection === 'S' || projectDetails.entranceDirection === 'SE' || projectDetails.entranceDirection === 'SW'
                         ? 'Good solar exposure - Optimal for passive solar heating'
                         : projectDetails.entranceDirection === 'N' || projectDetails.entranceDirection === 'NE' || projectDetails.entranceDirection === 'NW'
@@ -3716,10 +3992,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               </div>
 
               {/* Program Editor */}
-              <div className="mt-6 bg-white border-2 border-gray-200 rounded-xl p-6">
+              <div className="mt-6 liquid-glass-card border border-white/20 rounded-xl p-6 backdrop-blur-xl">
                 <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-semibold text-gray-800 flex items-center">
-                    <Square className="w-5 h-5 text-blue-600 mr-2" />
+                  <h4 className="font-semibold text-white flex items-center">
+                    <Square className="w-5 h-5 text-blue-300 mr-2" />
                     Program Spaces (Room Schedule)
                   </h4>
                   <div className="flex gap-2">
@@ -3757,14 +4033,14 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                 </div>
 
                 {programSpaces.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
+                  <div className="text-center py-8 text-white/70">
                     <p className="text-sm">No program spaces defined yet.</p>
                     <p className="text-xs mt-1">Click "Add Space" to define room types and areas.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {programSpaces.map((space, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 bg-gray-50 rounded-lg">
+                      <div key={index} className="grid grid-cols-12 gap-2 items-center p-3 liquid-glass border border-white/20 rounded-lg">
                         <div className="col-span-4">
                           <input
                             type="text"
@@ -3775,7 +4051,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               updated[index].name = e.target.value;
                               setProgramSpaces(updated);
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2 bg-navy-900/90 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/50"
                           />
                         </div>
                         <div className="col-span-3">
@@ -3788,7 +4064,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               updated[index].area = e.target.value;
                               setProgramSpaces(updated);
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2 bg-navy-900/90 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/50"
                           />
                         </div>
                         <div className="col-span-2">
@@ -3802,7 +4078,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               updated[index].count = parseInt(e.target.value) || 1;
                               setProgramSpaces(updated);
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2 bg-navy-900/90 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/50"
                           />
                         </div>
                         <div className="col-span-2">
@@ -3815,13 +4091,13 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               updated[index].level = e.target.value;
                               setProgramSpaces(updated);
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full px-3 py-2 bg-navy-900/90 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/50"
                           />
                         </div>
                         <div className="col-span-1">
                           <button
                             onClick={() => setProgramSpaces(programSpaces.filter((_, i) => i !== index))}
-                            className="w-full p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="w-full p-2 text-red-300 hover:bg-red-500/20 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4 mx-auto" />
                           </button>
@@ -3831,35 +4107,35 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                     
                     {/* Program Summary - Auto-calculated */}
                     {programSpaces.length > 0 && (
-                      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="mt-4 p-4 liquid-glass border border-blue-500/30 rounded-lg bg-blue-500/10">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold text-gray-800">Total Program Area:</span>
-                          <span className="text-lg font-bold text-blue-600">
+                          <span className="font-semibold text-white">Total Program Area:</span>
+                          <span className="text-lg font-bold text-blue-200">
                             {programSpaces.reduce((sum, space) => sum + (parseFloat(space.area || 0) * (space.count || 1)), 0).toFixed(0)} m²
                           </span>
                         </div>
                         {projectDetails.area && (
                           <>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-gray-600">Target Area:</span>
+                              <span className="text-sm text-white/80">Target Area:</span>
                               <span className={`text-sm font-semibold ${
                                 Math.abs(programSpaces.reduce((sum, space) => sum + (parseFloat(space.area || 0) * (space.count || 1)), 0) - parseFloat(projectDetails.area)) / parseFloat(projectDetails.area) > 0.05
-                                  ? 'text-orange-600' : 'text-green-600'
+                                  ? 'text-orange-300' : 'text-green-300'
                               }`}>
                                 {projectDetails.area} m²
                               </span>
                             </div>
                             <div className="flex items-center justify-between mt-1">
-                              <span className="text-xs text-gray-500">Difference:</span>
+                              <span className="text-xs text-white/70">Difference:</span>
                               <span className={`text-xs font-semibold ${
                                 Math.abs(programSpaces.reduce((sum, space) => sum + (parseFloat(space.area || 0) * (space.count || 1)), 0) - parseFloat(projectDetails.area)) / parseFloat(projectDetails.area) > 0.05
-                                  ? 'text-orange-600' : 'text-green-600'
+                                  ? 'text-orange-300' : 'text-green-300'
                               }`}>
                                 {((programSpaces.reduce((sum, space) => sum + (parseFloat(space.area || 0) * (space.count || 1)), 0) - parseFloat(projectDetails.area)) / parseFloat(projectDetails.area) * 100).toFixed(1)}{'%'}
                               </span>
                             </div>
                             {Math.abs(programSpaces.reduce((sum, space) => sum + (parseFloat(space.area || 0) * (space.count || 1)), 0) - parseFloat(projectDetails.area)) / parseFloat(projectDetails.area) > 0.05 && (
-                              <div className="mt-2 p-2 bg-orange-100 border border-orange-300 rounded text-xs text-orange-800">
+                              <div className="mt-2 p-2 liquid-glass border border-orange-400/50 rounded text-xs text-orange-200 bg-orange-500/10">
                                 ⚠️ Program total differs from target area by more than 5%. Please adjust.
                               </div>
                             )}
@@ -3931,6 +4207,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                             accept=".csv,.xlsx,.xls,.docx,.doc,.pdf"
                             className="hidden"
                             onChange={(e) => {
+                              if (!e?.target?.files) return;
                               const file = e.target.files[0];
                               if (file) {
                                 const fileName = file.name.toLowerCase();
@@ -4020,53 +4297,53 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               </div>
 
               {projectDetails.program && (
-                <div className="mt-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6">
-                  <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
-                    <Building className="w-5 h-5 text-green-600 mr-2" />
+                <div className="mt-6 liquid-glass-card border border-green-500/30 rounded-xl p-6 backdrop-blur-xl bg-green-500/10">
+                  <h4 className="font-semibold text-white mb-4 flex items-center">
+                    <Building className="w-5 h-5 text-green-300 mr-2" />
                     {projectDetails.program === 'clinic' ? 'Medical Clinic' : 'Program'} Requirements
                   </h4>
                   
                   {projectDetails.program === 'clinic' && (
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="space-y-3">
-                        <h5 className="font-medium text-gray-700">Spatial Requirements</h5>
-                        <ul className="space-y-2 text-sm text-gray-600">
+                        <h5 className="font-medium text-white">Spatial Requirements</h5>
+                        <ul className="space-y-2 text-sm text-white/90">
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             Reception area with waiting space (60-80m²)
                           </li>
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             4-6 consultation/examination rooms (15-20m² each)
                           </li>
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             Staff areas and administration (30-40m²)
                           </li>
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             Accessible restrooms and utility spaces
                           </li>
                         </ul>
                       </div>
                       
                       <div className="space-y-3">
-                        <h5 className="font-medium text-gray-700">Design Considerations</h5>
-                        <ul className="space-y-2 text-sm text-gray-600">
+                        <h5 className="font-medium text-white">Design Considerations</h5>
+                        <ul className="space-y-2 text-sm text-white/90">
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             Patient privacy and acoustic separation
                           </li>
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             Natural lighting for healing environment
                           </li>
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             Separate staff and patient circulation
                           </li>
                           <li className="flex items-start">
-                            <Check className="w-4 h-4 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                            <Check className="w-4 h-4 text-green-300 mr-2 mt-0.5 flex-shrink-0" />
                             ADA compliance and universal design
                           </li>
                         </ul>
@@ -4077,34 +4354,34 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               )}
 
               {/* AI Generation Preview */}
-              <div className="mt-6 bg-gray-100 rounded-xl p-6">
-                <h4 className="font-semibold text-gray-800 mb-3 flex items-center">
-                  <Cpu className="w-5 h-5 text-blue-600 mr-2" />
+              <div className="mt-6 liquid-glass-card border border-white/20 rounded-xl p-6 backdrop-blur-xl">
+                <h4 className="font-semibold text-white mb-3 flex items-center">
+                  <Cpu className="w-5 h-5 text-blue-300 mr-2" />
                   AI Generation Parameters
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div className="bg-white rounded-lg p-3">
-                    <p className="text-gray-600 text-xs">Location Style</p>
-                    <p className="font-medium">{styleChoice === 'blend' ? 'Adaptive' : 'Portfolio'}</p>
+                  <div className="liquid-glass border border-white/20 rounded-lg p-3">
+                    <p className="text-white/70 text-xs">Location Style</p>
+                    <p className="font-medium text-white">{styleChoice === 'blend' ? 'Adaptive' : 'Portfolio'}</p>
                   </div>
-                  <div className="bg-white rounded-lg p-3">
-                    <p className="text-gray-600 text-xs">Climate Optimized</p>
-                    <p className="font-medium">Yes</p>
+                  <div className="liquid-glass border border-white/20 rounded-lg p-3">
+                    <p className="text-white/70 text-xs">Climate Optimized</p>
+                    <p className="font-medium text-white">Yes</p>
                   </div>
-                  <div className="bg-white rounded-lg p-3">
-                    <p className="text-gray-600 text-xs">Sustainability</p>
-                    <p className="font-medium">LEED Gold+</p>
+                  <div className="liquid-glass border border-white/20 rounded-lg p-3">
+                    <p className="text-white/70 text-xs">Sustainability</p>
+                    <p className="font-medium text-white">LEED Gold+</p>
                   </div>
-                  <div className="bg-white rounded-lg p-3">
-                    <p className="text-gray-600 text-xs">Code Compliance</p>
-                    <p className="font-medium">Auto-verified</p>
+                  <div className="liquid-glass border border-white/20 rounded-lg p-3">
+                    <p className="text-white/70 text-xs">Code Compliance</p>
+                    <p className="font-medium text-white">Auto-verified</p>
                   </div>
                 </div>
               </div>
               
               <button
                 onClick={generateDesigns}
-                className="mt-6 w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-medium flex items-center justify-center disabled:opacity-50"
+                className="mt-6 w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-medium flex items-center justify-center disabled:opacity-50 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
                 disabled={!projectDetails.area || !projectDetails.program || isLoading}
               >
                 {isLoading ? (
@@ -4122,22 +4399,22 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
               {/* Progress Indicator */}
               {isLoading && generationProgress.step > 0 && (
-                <div className="mt-4 bg-gray-50 rounded-lg p-4">
+                <div className="mt-4 liquid-glass-card border border-white/20 rounded-lg p-4 backdrop-blur-xl">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-white">
                       {generationProgress.phase}: {generationProgress.message}
                     </span>
-                    <span className="text-sm font-semibold text-blue-600">
+                    <span className="text-sm font-semibold text-blue-300">
                       {generationProgress.percentage}%
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-white/10 rounded-full h-2 border border-white/20">
                     <div
                       className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full transition-all duration-500"
                       style={{ width: `${generationProgress.percentage}%` }}
                     />
                   </div>
-                  <div className="mt-2 text-xs text-gray-500">
+                  <div className="mt-2 text-xs text-white/70">
                     Step {generationProgress.step} of {generationProgress.totalSteps}
                   </div>
                 </div>
@@ -4145,24 +4422,24 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
               {/* Rate Limit Pause Indicator */}
               {rateLimitPause.active && (
-                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="mt-4 liquid-glass-card border border-yellow-400/50 rounded-lg p-4 backdrop-blur-xl bg-yellow-500/10">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
                       <div className="animate-pulse mr-3">
-                        <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                        <div className="w-3 h-3 bg-yellow-300 rounded-full"></div>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-yellow-800">
+                        <p className="text-sm font-medium text-yellow-200">
                           {rateLimitPause.reason}
                         </p>
-                        <p className="text-xs text-yellow-600 mt-1">
+                        <p className="text-xs text-yellow-300/80 mt-1">
                           Auto-pausing for {rateLimitPause.remainingSeconds}s before continuing...
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={cancelRateLimitPause}
-                      className="text-xs text-yellow-700 hover:text-yellow-900 underline"
+                      className="text-xs text-yellow-200 hover:text-yellow-100 underline"
                     >
                       Cancel
                     </button>
@@ -4175,56 +4452,131 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       case 5:
         return (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              <div className="flex items-center justify-between mb-6">
+          <div className="space-y-8 animate-fadeInUp relative z-10 pb-16">
+            <div className="liquid-glass-strong p-8 sm:p-10 pb-12">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8">
                 <div>
-                  <h2 className="text-3xl font-bold text-gray-800">AI-Generated Designs</h2>
-                  <p className="text-gray-600 mt-1">Complete architectural solution ready for export</p>
+                  <h2 className="text-4xl sm:text-5xl font-bold text-white mb-2 premium-title">AI-Generated Designs</h2>
+                  <p className="text-white/75 text-lg">Complete architectural solution ready for export</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 mt-4 sm:mt-0">
                   <button
                     onClick={() => setShowModifyDrawer(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="btn-premium-secondary flex items-center gap-2 px-5 py-3"
                   >
-                    <Edit3 className="w-4 h-4" />
+                    <Edit3 className="w-5 h-5" />
                     Modify A1 Sheet
                   </button>
-                  <div className="flex items-center bg-green-100 px-4 py-2 rounded-full">
-                    <Sparkles className="w-5 h-5 text-green-600 mr-2" />
-                    <span className="text-green-700 font-medium">Generation Complete</span>
+                  <div className="flex items-center liquid-glass-card px-5 py-3 rounded-full border border-green-500/30">
+                    <div className="w-3 h-3 bg-green-400 rounded-full mr-3 animate-pulse"></div>
+                    <Sparkles className="w-5 h-5 text-green-400 mr-2" />
+                    <span className="text-white font-semibold">Generation Complete</span>
                   </div>
                 </div>
               </div>
               
               {/* A1 Sheet Viewer - Show if A1 sheet workflow was used */}
-              {generatedDesigns?.workflow === 'a1-sheet-one-shot' && generatedDesigns?.a1Sheet && (
+              {generatedDesigns?.a1Sheet && (
                 <div className="mb-8">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-white mb-4 flex items-center justify-between">
                     <span className="flex items-center">
-                      <FileText className="w-5 h-5 mr-2" />
+                      <FileText className="w-5 h-5 mr-2 text-blue-300" />
                       A1 Comprehensive Architectural Sheet
                     </span>
                     <button
                       onClick={() => setShowModificationPanel(!showModificationPanel)}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg text-sm font-medium"
                     >
                       <Wand2 className="w-4 h-4" />
                       {showModificationPanel ? 'Hide' : 'Show'} AI Modify Panel
                     </button>
                   </h3>
+
+                  {/* 🆕 Validation Badges */}
+                  {(generatedDesigns.templateValidation || generatedDesigns.dnaConsistencyReport) && (
+                    <div className="mb-4 flex flex-wrap gap-3">
+                      {generatedDesigns.templateValidation && (
+                        <div className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                          generatedDesigns.templateValidation.valid 
+                            ? 'border-green-400/50 bg-green-500/20 text-green-200' 
+                            : 'border-yellow-400/50 bg-yellow-500/20 text-yellow-200'
+                        }`}>
+                          <span className="font-bold">Template: {generatedDesigns.templateValidation.score}%</span>
+                          {generatedDesigns.templateValidation.missingMandatory?.length > 0 && (
+                            <span className="ml-2 text-xs opacity-90">
+                              (Missing: {generatedDesigns.templateValidation.missingMandatory.slice(0, 2).join(', ')})
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {generatedDesigns.dnaConsistencyReport && (
+                        <div className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                          generatedDesigns.dnaConsistencyReport.consistent 
+                            ? 'border-green-400/50 bg-green-500/20 text-green-200' 
+                            : 'border-yellow-400/50 bg-yellow-500/20 text-yellow-200'
+                        }`}>
+                          <span className="font-bold">DNA Consistency: {generatedDesigns.dnaConsistencyReport.score.toFixed(1)}%</span>
+                          {generatedDesigns.dnaConsistencyReport.issues?.length > 0 && (
+                            <span className="ml-2 text-xs opacity-90">
+                              ({generatedDesigns.dnaConsistencyReport.issues.length} issues)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {generatedDesigns.a1Sheet?.qualityScore && (
+                        <div className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                          generatedDesigns.a1Sheet.qualityScore >= 85 
+                            ? 'border-green-400/50 bg-green-500/20 text-green-200' 
+                            : 'border-yellow-400/50 bg-yellow-500/20 text-yellow-200'
+                        }`}>
+                          <span className="font-bold">Quality: {generatedDesigns.a1Sheet.qualityScore}%</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <A1SheetViewer sheetData={generatedDesigns.a1Sheet} />
                 </div>
               )}
 
-              {/* 🔧 AI MODIFICATION PANEL - Modify A1 sheet with consistency lock */}
-              {showModificationPanel && currentDesignId && generatedDesigns?.a1Sheet && (
-                <div className="mb-8 bg-white rounded-lg shadow-lg p-6 border border-gray-200">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <Wand2 className="w-5 h-5 mr-2 text-purple-600" />
-                    AI Modify Design
+              {/* Warning for old designs with invalid ID */}
+              {showModificationPanel && (!currentDesignId || currentDesignId === 'undefined' || currentDesignId === 'null') && generatedDesigns?.a1Sheet && (
+                <div className="mb-8 liquid-glass-card border border-yellow-400/50 rounded-lg p-6 backdrop-blur-xl bg-yellow-500/10">
+                  <h3 className="text-lg font-semibold text-yellow-200 mb-2 flex items-center">
+                    <AlertTriangle className="w-5 h-5 mr-2" />
+                    Cannot Modify This Design
                   </h3>
-                  <p className="text-sm text-gray-600 mb-4">
+                  <p className="text-sm text-yellow-200/90 mb-3">
+                    This A1 sheet was generated before the recent fixes and cannot be modified.
+                  </p>
+                  <p className="text-sm text-yellow-200/90 mb-4">
+                    <strong>Solution:</strong> Generate a new A1 sheet to enable modifications.
+                    The new generation will have improved quality and full modification support.
+                  </p>
+                  <button
+                    onClick={() => {
+                      // Clear old data and go back to generation
+                      setGeneratedDesigns(null);
+                      setCurrentDesignId(null);
+                      sessionStorage.removeItem('currentDesignId');
+                      setCurrentStep(4); // Go back to specifications
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-yellow-600 to-orange-600 text-white rounded-lg hover:from-yellow-700 hover:to-orange-700 transition-all shadow-lg text-sm font-medium"
+                  >
+                    Generate New A1 Sheet
+                  </button>
+                </div>
+              )}
+
+              {/* 🔧 AI MODIFICATION PANEL - Modify A1 sheet with consistency lock */}
+              {showModificationPanel && currentDesignId && currentDesignId !== 'undefined' && currentDesignId !== 'null' && generatedDesigns?.a1Sheet && (
+                <div className="mb-8 liquid-glass-card border border-white/20 rounded-lg shadow-lg p-6 backdrop-blur-xl">
+                  <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+                    <Wand2 className="w-5 h-5 mr-2 text-purple-300" />
+                    AI Modify Design
+                    <span className="ml-3 text-xs text-white/70 font-mono">ID: {currentDesignId}</span>
+                  </h3>
+                  <p className="text-sm text-white/90 mb-4">
                     Request changes to your A1 sheet while maintaining consistency with the original design.
                   </p>
                   
@@ -4263,21 +4615,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
               {/* Design Overview Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-blue-50 rounded-xl p-4 text-center">
-                  <p className="text-3xl font-bold text-blue-600">{projectDetails.area}m²</p>
-                  <p className="text-sm text-gray-600">Total Area</p>
+                <div className="liquid-glass-card border border-blue-500/30 rounded-xl p-4 text-center backdrop-blur-xl bg-blue-500/10">
+                  <p className="text-3xl font-bold text-blue-200">{projectDetails.area}m²</p>
+                  <p className="text-sm text-white/80">Total Area</p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4 text-center">
-                  <p className="text-3xl font-bold text-green-600">{generatedDesigns?.floorPlan?.efficiency || generatedDesigns?.a1Sheet?.qualityScore + '%' || '85%'}</p>
-                  <p className="text-sm text-gray-600">Space Efficiency</p>
+                <div className="liquid-glass-card border border-green-500/30 rounded-xl p-4 text-center backdrop-blur-xl bg-green-500/10">
+                  <p className="text-3xl font-bold text-green-200">{generatedDesigns?.floorPlan?.efficiency || generatedDesigns?.a1Sheet?.qualityScore + '%' || '85%'}</p>
+                  <p className="text-sm text-white/80">Space Efficiency</p>
                 </div>
-                <div className="bg-purple-50 rounded-xl p-4 text-center">
-                  <p className="text-3xl font-bold text-purple-600">4.8/5</p>
-                  <p className="text-sm text-gray-600">Design Score</p>
+                <div className="liquid-glass-card border border-purple-500/30 rounded-xl p-4 text-center backdrop-blur-xl bg-purple-500/10">
+                  <p className="text-3xl font-bold text-purple-200">4.8/5</p>
+                  <p className="text-sm text-white/80">Design Score</p>
                 </div>
-                <div className="bg-orange-50 rounded-xl p-4 text-center">
-                  <p className="text-3xl font-bold text-orange-600">A+</p>
-                  <p className="text-sm text-gray-600">Energy Rating</p>
+                <div className="liquid-glass-card border border-orange-500/30 rounded-xl p-4 text-center backdrop-blur-xl bg-orange-500/10">
+                  <p className="text-3xl font-bold text-orange-200">A+</p>
+                  <p className="text-sm text-white/80">Energy Rating</p>
                 </div>
               </div>
 
@@ -4323,18 +4675,18 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               {/* Design Reasoning Cards - Make AI decisions visible */}
               {generatedDesigns?.reasoning && (
                 <div className="mb-8">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                    <Building2 className="w-5 h-5 mr-2" />
+                  <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
+                    <Building2 className="w-5 h-5 mr-2 text-blue-300" />
                     Design Reasoning & Philosophy
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* Site Response Card */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="liquid-glass-card border border-white/20 rounded-lg p-4 hover:shadow-lg transition-shadow backdrop-blur-xl">
                       <div className="flex items-center mb-2">
                         <span className="text-2xl mr-2">📍</span>
-                        <h4 className="font-semibold text-gray-700">Site Response</h4>
+                        <h4 className="font-semibold text-white">Site Response</h4>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-white/90">
                         {generatedDesigns.reasoning.siteResponse ||
                          (typeof generatedDesigns.reasoning.designPhilosophy === 'string' 
                            ? generatedDesigns.reasoning.designPhilosophy.substring(0, 100)
@@ -4345,12 +4697,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                     </div>
 
                     {/* Functional Layout Card */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="liquid-glass-card border border-white/20 rounded-lg p-4 hover:shadow-lg transition-shadow backdrop-blur-xl">
                       <div className="flex items-center mb-2">
                         <span className="text-2xl mr-2">📐</span>
-                        <h4 className="font-semibold text-gray-700">Spatial Design</h4>
+                        <h4 className="font-semibold text-white">Spatial Design</h4>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-white/90">
                         {generatedDesigns.reasoning.functionalLayout ||
                          (typeof generatedDesigns.reasoning.spatialOrganization === 'string'
                            ? generatedDesigns.reasoning.spatialOrganization.substring(0, 100)
@@ -4361,12 +4713,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                     </div>
 
                     {/* Material Selection Card */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="liquid-glass-card border border-white/20 rounded-lg p-4 hover:shadow-lg transition-shadow backdrop-blur-xl">
                       <div className="flex items-center mb-2">
                         <span className="text-2xl mr-2">🎨</span>
-                        <h4 className="font-semibold text-gray-700">Materials</h4>
+                        <h4 className="font-semibold text-white">Materials</h4>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-white/90">
                         {generatedDesigns.reasoning.materialSelection ||
                          (typeof generatedDesigns.reasoning.materialRecommendations === 'string'
                            ? generatedDesigns.reasoning.materialRecommendations.substring(0, 100)
@@ -4379,12 +4731,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                     </div>
 
                     {/* Sustainability Card */}
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="liquid-glass-card border border-white/20 rounded-lg p-4 hover:shadow-lg transition-shadow backdrop-blur-xl">
                       <div className="flex items-center mb-2">
                         <span className="text-2xl mr-2">🌱</span>
-                        <h4 className="font-semibold text-gray-700">Sustainability</h4>
+                        <h4 className="font-semibold text-white">Sustainability</h4>
                       </div>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-white/90">
                         {generatedDesigns.reasoning.sustainability ||
                          (typeof generatedDesigns.reasoning.environmentalConsiderations === 'string'
                            ? generatedDesigns.reasoning.environmentalConsiderations.substring(0, 100)
@@ -4494,11 +4846,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               ) : null}
 
               {/* Multi-Level Floor Plans (hidden if unified sheet or A1 sheet) */}
-              {!generatedDesigns?.isUnified && generatedDesigns?.workflow !== 'a1-sheet-one-shot' && (
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6">
-                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center justify-between">
+              {!generatedDesigns?.isUnified && generatedDesigns?.workflow !== 'a1-sheet-one-shot' && generatedDesigns?.workflow !== 'multi-panel-a1' && (
+                <div className="liquid-glass-card border border-white/20 rounded-xl p-6 backdrop-blur-xl">
+                  <h3 className="font-semibold text-white mb-4 flex items-center justify-between">
                     <span className="flex items-center">
-                      <FileText className="w-5 h-5 text-gray-600 mr-2" />
+                      <FileText className="w-5 h-5 text-blue-300 mr-2" />
                       Floor Plans ({generatedDesigns?.floorPlan.floorCount || 1} Level{generatedDesigns?.floorPlan.floorCount > 1 ? 's' : ''})
                     </span>
                   </h3>
@@ -4526,7 +4878,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                     {/* Ground Floor */}
                     {generatedDesigns?.floorPlan.levels?.ground ? (
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Ground Floor</p>
+                        <p className="text-sm font-medium text-white mb-2">Ground Floor</p>
                         {/* URL display hidden for cleaner UI */}
                         <div
                           className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
@@ -4564,15 +4916,15 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-gray-100 rounded-lg p-4 text-center">
-                        <p className="text-sm text-gray-600">No ground floor plan available</p>
+                      <div className="liquid-glass border border-white/20 rounded-lg p-4 text-center">
+                        <p className="text-sm text-white/80">No ground floor plan available</p>
                       </div>
                     )}
 
                     {/* Upper Floor */}
                     {generatedDesigns?.floorPlan.levels?.upper ? (
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Upper Floor</p>
+                        <p className="text-sm font-medium text-white mb-2">Upper Floor</p>
                         {/* URL display hidden for cleaner UI */}
                         <div
                           className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
@@ -4610,15 +4962,15 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-gray-100 rounded-lg p-4 text-center">
-                        <p className="text-sm text-gray-600">No upper floor plan available</p>
+                      <div className="liquid-glass border border-white/20 rounded-lg p-4 text-center">
+                        <p className="text-sm text-white/80">No upper floor plan available</p>
                       </div>
                     )}
 
                     {/* Roof Plan */}
                     {generatedDesigns?.floorPlan.levels?.roof && (
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Roof Plan</p>
+                        <p className="text-sm font-medium text-white mb-2">Roof Plan</p>
                         <div
                           className="bg-white rounded-lg h-80 flex items-center justify-center relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
                           onClick={() => openImageModal(generatedDesigns.floorPlan.levels.roof, 'Roof Plan')}
@@ -4640,17 +4992,17 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   </div>
 
                   <div className="mt-4 flex items-center justify-between text-sm">
-                    <p className="text-gray-600"><SafeText>{generatedDesigns?.floorPlan.circulation}</SafeText></p>
-                    <p className="text-gray-600">Efficiency: {generatedDesigns?.floorPlan.efficiency}</p>
+                    <p className="text-white/90"><SafeText>{generatedDesigns?.floorPlan.circulation}</SafeText></p>
+                    <p className="text-white/90">Efficiency: {generatedDesigns?.floorPlan.efficiency}</p>
                   </div>
 
                   {/* STEP 5: Consistency Indicator */}
-                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start">
-                    <Check className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <div className="mt-4 p-3 liquid-glass border border-blue-400/50 rounded-lg flex items-start bg-blue-500/10">
+                    <Check className="w-5 h-5 text-blue-300 mr-2 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-blue-900">2D Floor Plan Generated</p>
-                      <p className="text-xs text-blue-700 mt-1">
-                        Used as ControlNet guide for 3D visualization consistency →
+                      <p className="text-sm font-medium text-blue-200">2D Floor Plan Generated</p>
+                      <p className="text-xs text-blue-300/80 mt-1">
+                        Used as DNA anchor for 3D visualization consistency →
                       </p>
                     </div>
                   </div>
@@ -4658,21 +5010,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               )}
 
               {/* 3D Views: 2 Exterior + 1 Interior (hidden if unified sheet or A1 sheet) */}
-              {!generatedDesigns?.isUnified && generatedDesigns?.workflow !== 'a1-sheet-one-shot' && (
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+              {!generatedDesigns?.isUnified && generatedDesigns?.workflow !== 'a1-sheet-one-shot' && generatedDesigns?.workflow !== 'multi-panel-a1' && (
+                <div className="liquid-glass-card border border-white/20 rounded-xl p-6 backdrop-blur-xl">
                   {/* STEP 5: Consistency Indicator */}
-                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-start">
-                    <Layers className="w-5 h-5 text-green-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <div className="mb-4 p-3 liquid-glass border border-green-400/50 rounded-lg flex items-start bg-green-500/10">
+                    <Layers className="w-5 h-5 text-green-300 mr-2 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-green-900">3D Derived from 2D Floor Plan</p>
-                      <p className="text-xs text-green-700 mt-1">
-                        ControlNet ensured spatial consistency between floor plan layout and 3D views
+                      <p className="text-sm font-medium text-green-200">3D Derived from 2D Floor Plan</p>
+                      <p className="text-xs text-green-300/80 mt-1">
+                        A1 pipeline keeps plan geometry and 3D views perfectly aligned
                       </p>
                     </div>
                   </div>
 
-                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center">
-                    <Building className="w-5 h-5 text-purple-600 mr-2" />
+                  <h3 className="font-semibold text-white mb-4 flex items-center">
+                    <Building className="w-5 h-5 text-purple-300 mr-2" />
                     3D Visualizations (5 Views: Exterior, Interior, Axonometric, Perspective)
                   </h3>
 
@@ -4837,10 +5189,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   </div>
 
                   <div className="mt-4 space-y-2">
-                    <p className="text-sm font-medium text-gray-700"><SafeText>{generatedDesigns?.model3D.style}</SafeText></p>
+                    <p className="text-sm font-medium text-white"><SafeText>{generatedDesigns?.model3D.style}</SafeText></p>
                     <div className="flex flex-wrap gap-2">
                       {generatedDesigns?.model3D.materials.map((material, idx) => (
-                        <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                        <span key={idx} className="text-xs liquid-glass border border-purple-400/50 bg-purple-500/20 text-purple-200 px-2 py-1 rounded-full">
                           {material}
                         </span>
                       ))}
@@ -4850,21 +5202,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               )}
 
               {/* Elevations and Sections - Hidden when unified sheet or A1 sheet exists */}
-              {!generatedDesigns?.isUnified && generatedDesigns?.workflow !== 'a1-sheet-one-shot' && generatedDesigns?.technicalDrawings && (Object.keys(generatedDesigns.technicalDrawings.elevations || {}).length > 0 || Object.keys(generatedDesigns.technicalDrawings.sections || {}).length > 0) && (
+              {!generatedDesigns?.isUnified && generatedDesigns?.workflow !== 'a1-sheet-one-shot' && generatedDesigns?.workflow !== 'multi-panel-a1' && generatedDesigns?.technicalDrawings && (Object.keys(generatedDesigns.technicalDrawings.elevations || {}).length > 0 || Object.keys(generatedDesigns.technicalDrawings.sections || {}).length > 0) && (
                 <div className="mt-8">
-                  <h3 className="font-semibold text-gray-800 mb-6 flex items-center text-xl">
-                    <FileText className="w-6 h-6 text-gray-600 mr-2" />
+                  <h3 className="font-semibold text-white mb-6 flex items-center text-xl">
+                    <FileText className="w-6 h-6 text-blue-300 mr-2" />
                     Technical Drawings (Elevations & Sections)
                   </h3>
 
                   {/* Elevations */}
                   {Object.keys(generatedDesigns.technicalDrawings.elevations || {}).length > 0 && (
                     <div className="mb-8">
-                      <h4 className="font-medium text-gray-700 mb-4">Elevations</h4>
+                      <h4 className="font-medium text-white mb-4">Elevations</h4>
                       <div className="grid md:grid-cols-2 gap-4">
                         {generatedDesigns.technicalDrawings.elevations.north && (
-                          <div className="bg-white rounded-lg p-4">
-                            <p className="text-sm font-medium text-gray-700 mb-2">North Elevation</p>
+                          <div className="liquid-glass-card border border-white/20 rounded-lg p-4 backdrop-blur-xl">
+                            <p className="text-sm font-medium text-white mb-2">North Elevation</p>
                             <div
                               className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
                               onClick={() => openImageModal(generatedDesigns.technicalDrawings.elevations.north, 'North Elevation')}
@@ -4941,11 +5293,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   {/* Sections */}
                   {Object.keys(generatedDesigns.technicalDrawings.sections || {}).length > 0 && (
                     <div>
-                      <h4 className="font-medium text-gray-700 mb-4">Building Sections</h4>
+                      <h4 className="font-medium text-white mb-4">Building Sections</h4>
                       <div className="grid md:grid-cols-2 gap-4">
                         {generatedDesigns.technicalDrawings.sections.longitudinal && (
-                          <div className="bg-white rounded-lg p-4">
-                            <p className="text-sm font-medium text-gray-700 mb-2">Longitudinal Section</p>
+                          <div className="liquid-glass-card border border-white/20 rounded-lg p-4 backdrop-blur-xl">
+                            <p className="text-sm font-medium text-white mb-2">Longitudinal Section</p>
                             <div
                               className="bg-gray-50 rounded h-64 flex items-center justify-center overflow-hidden cursor-pointer hover:shadow-lg transition-shadow relative"
                               onClick={() => openImageModal(generatedDesigns.technicalDrawings.sections.longitudinal, 'Longitudinal Section')}
@@ -4988,21 +5340,21 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
               {/* Style Blending Analysis */}
               {generatedDesigns?.styleRationale && (
-                <div className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-8">
-                  <h3 className="text-2xl font-semibold text-gray-800 mb-6 flex items-center">
-                    <Sparkles className="w-6 h-6 text-indigo-600 mr-3" />
+                <div className="mt-8 liquid-glass-card border border-white/20 rounded-xl p-8 backdrop-blur-xl">
+                  <h3 className="text-2xl font-semibold text-white mb-6 flex items-center">
+                    <Sparkles className="w-6 h-6 text-indigo-300 mr-3" />
                     Style Integration Analysis
                   </h3>
 
                   <div className="grid md:grid-cols-3 gap-6">
                     {/* Local Architecture Impact */}
                     {generatedDesigns.styleRationale.localImpact && (
-                      <div className="bg-white/70 rounded-lg p-6">
+                      <div className="liquid-glass border border-white/20 rounded-lg p-6 backdrop-blur-xl">
                         <div className="flex items-center mb-3">
-                          <MapPin className="w-5 h-5 text-blue-600 mr-2" />
-                          <h4 className="font-semibold text-gray-700">Local Architecture Impact</h4>
+                          <MapPin className="w-5 h-5 text-blue-300 mr-2" />
+                          <h4 className="font-semibold text-white">Local Architecture Impact</h4>
                         </div>
-                        <p className="text-sm text-gray-600 leading-relaxed">
+                        <p className="text-sm text-white/90 leading-relaxed">
                           {generatedDesigns.styleRationale.localImpact}
                         </p>
                       </div>
@@ -5010,12 +5362,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                     {/* Portfolio Style Integration */}
                     {generatedDesigns.styleRationale.portfolioImpact && (
-                      <div className="bg-white/70 rounded-lg p-6">
+                      <div className="liquid-glass border border-white/20 rounded-lg p-6 backdrop-blur-xl">
                         <div className="flex items-center mb-3">
-                          <Home className="w-5 h-5 text-purple-600 mr-2" />
-                          <h4 className="font-semibold text-gray-700">Portfolio Style Integration</h4>
+                          <Home className="w-5 h-5 text-purple-300 mr-2" />
+                          <h4 className="font-semibold text-white">Portfolio Style Integration</h4>
                         </div>
-                        <p className="text-sm text-gray-600 leading-relaxed">
+                        <p className="text-sm text-white/90 leading-relaxed">
                           {generatedDesigns.styleRationale.portfolioImpact}
                         </p>
                       </div>
@@ -5023,12 +5375,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                     {/* Climate & Context Adaptation */}
                     {generatedDesigns.styleRationale.climateIntegration && (
-                      <div className="bg-white/70 rounded-lg p-6">
+                      <div className="liquid-glass border border-white/20 rounded-lg p-6 backdrop-blur-xl">
                         <div className="flex items-center mb-3">
-                          <Sun className="w-5 h-5 text-orange-600 mr-2" />
-                          <h4 className="font-semibold text-gray-700">Climate Adaptation</h4>
+                          <Sun className="w-5 h-5 text-orange-300 mr-2" />
+                          <h4 className="font-semibold text-white">Climate Adaptation</h4>
                         </div>
-                        <p className="text-sm text-gray-600 leading-relaxed">
+                        <p className="text-sm text-white/90 leading-relaxed">
                           {generatedDesigns.styleRationale.climateIntegration}
                         </p>
                       </div>
@@ -5036,22 +5388,22 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   </div>
 
                   {/* Blend Weight Summary */}
-                  <div className="mt-6 p-4 bg-white/50 rounded-lg border border-indigo-200">
+                  <div className="mt-6 p-4 liquid-glass border border-indigo-400/50 rounded-lg backdrop-blur-xl bg-indigo-500/10">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center">
-                        <Palette className="w-5 h-5 text-indigo-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-700">Design Synthesis</span>
+                        <Palette className="w-5 h-5 text-indigo-300 mr-2" />
+                        <span className="text-sm font-medium text-white">Design Synthesis</span>
                       </div>
                       <div className="flex gap-4">
-                        <span className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded-full">
+                        <span className="text-xs px-3 py-1 liquid-glass border border-green-400/50 bg-green-500/20 text-green-200 rounded-full">
                           Materials: {Math.round(materialWeight * 100)}% Portfolio
                         </span>
-                        <span className="text-xs px-3 py-1 bg-purple-100 text-purple-700 rounded-full">
+                        <span className="text-xs px-3 py-1 liquid-glass border border-purple-400/50 bg-purple-500/20 text-purple-200 rounded-full">
                           Characteristics: {Math.round(characteristicWeight * 100)}% Portfolio
                         </span>
                       </div>
                     </div>
-                    <p className="mt-3 text-sm text-gray-600 italic">
+                    <p className="mt-3 text-sm text-white/80 italic">
                       This design achieves a sophisticated balance between contextual responsiveness and signature style expression
                       through carefully calibrated material and characteristic integration.
                     </p>
@@ -5062,27 +5414,27 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               {/* Technical Specifications */}
               {generatedDesigns?.technical && (
               <div className="mt-8 grid md:grid-cols-3 gap-6">
-                <div className="bg-blue-50 rounded-xl p-6">
-                  <h4 className="font-semibold text-gray-800 mb-3">Structural System</h4>
-                  <p className="text-sm text-gray-700 mb-2"><SafeText>{generatedDesigns?.technical?.structural}</SafeText></p>
-                  <p className="text-sm text-gray-600"><SafeText>{generatedDesigns?.technical?.foundation}</SafeText></p>
+                <div className="liquid-glass-card border border-blue-500/30 rounded-xl p-6 backdrop-blur-xl bg-blue-500/10">
+                  <h4 className="font-semibold text-white mb-3">Structural System</h4>
+                  <p className="text-sm text-white/90 mb-2"><SafeText>{generatedDesigns?.technical?.structural}</SafeText></p>
+                  <p className="text-sm text-white/80"><SafeText>{generatedDesigns?.technical?.foundation}</SafeText></p>
                 </div>
 
-                <div className="bg-green-50 rounded-xl p-6">
-                  <h4 className="font-semibold text-gray-800 mb-3">MEP Systems</h4>
-                  <ul className="space-y-1 text-sm text-gray-700">
+                <div className="liquid-glass-card border border-green-500/30 rounded-xl p-6 backdrop-blur-xl bg-green-500/10">
+                  <h4 className="font-semibold text-white mb-3">MEP Systems</h4>
+                  <ul className="space-y-1 text-sm text-white/90">
                     <li><span className="font-medium">HVAC:</span> {generatedDesigns?.technical?.mep?.hvac}</li>
                     <li><span className="font-medium">Electrical:</span> {generatedDesigns?.technical?.mep?.electrical}</li>
                     <li><span className="font-medium">Plumbing:</span> {generatedDesigns?.technical?.mep?.plumbing}</li>
                   </ul>
                 </div>
 
-                <div className="bg-purple-50 rounded-xl p-6">
-                  <h4 className="font-semibold text-gray-800 mb-3">Sustainability Features</h4>
-                  <ul className="space-y-1 text-sm text-gray-700">
+                <div className="liquid-glass-card border border-purple-500/30 rounded-xl p-6 backdrop-blur-xl bg-purple-500/10">
+                  <h4 className="font-semibold text-white mb-3">Sustainability Features</h4>
+                  <ul className="space-y-1 text-sm text-white/90">
                     {generatedDesigns?.model3D?.sustainabilityFeatures?.map((feature, idx) => (
                       <li key={idx} className="flex items-start">
-                        <Check className="w-4 h-4 text-green-600 mr-1 mt-0.5 flex-shrink-0" />
+                        <Check className="w-4 h-4 text-green-300 mr-1 mt-0.5 flex-shrink-0" />
                         {feature}
                       </li>
                     ))}
@@ -5092,27 +5444,27 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               )}
 
               {/* Cost & Timeline */}
-              <div className="mt-6 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl p-6">
-                <h4 className="font-semibold text-gray-800 mb-4">Project Economics</h4>
+              <div className="mt-6 liquid-glass-card border border-orange-500/30 rounded-xl p-6 backdrop-blur-xl bg-orange-500/10">
+                <h4 className="font-semibold text-white mb-4">Project Economics</h4>
                 <div className="grid md:grid-cols-3 gap-6">
                   <div>
-                    <p className="text-sm text-gray-600">Estimated Construction Cost</p>
-                    <p className="text-2xl font-bold text-gray-800"><SafeText>{generatedDesigns?.cost.construction}</SafeText></p>
+                    <p className="text-sm text-white/80">Estimated Construction Cost</p>
+                    <p className="text-2xl font-bold text-white"><SafeText>{generatedDesigns?.cost.construction}</SafeText></p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Construction Timeline</p>
-                    <p className="text-2xl font-bold text-gray-800"><SafeText>{generatedDesigns?.cost.timeline}</SafeText></p>
+                    <p className="text-sm text-white/80">Construction Timeline</p>
+                    <p className="text-2xl font-bold text-white"><SafeText>{generatedDesigns?.cost.timeline}</SafeText></p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Annual Energy Savings</p>
-                    <p className="text-2xl font-bold text-green-600"><SafeText>{generatedDesigns?.cost.energySavings}</SafeText></p>
+                    <p className="text-sm text-white/80">Annual Energy Savings</p>
+                    <p className="text-2xl font-bold text-green-300"><SafeText>{generatedDesigns?.cost.energySavings}</SafeText></p>
                   </div>
                 </div>
               </div>
 
               {/* Export Options - UPDATED WITH WORKING DOWNLOADS + SVG/DXF */}
               <div className="mt-8">
-                <h4 className="font-semibold text-gray-800 mb-4">Export Options</h4>
+                <h4 className="font-semibold text-white mb-4">Export Options</h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   <button 
                     onClick={() => {
@@ -5122,11 +5474,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       setDownloadCount(prev => prev + 1);
                       showToast('✓ DWG file downloaded successfully!');
                     }}
-                    className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group cursor-pointer"
+                    className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-blue-400/50 transition-all group cursor-pointer backdrop-blur-xl"
                   >
-                    <FileCode className="w-8 h-8 text-gray-600 mb-2 group-hover:text-blue-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">DWG</span>
-                    <span className="text-xs text-gray-600 mt-1">AutoCAD 2D Drawings</span>
+                    <FileCode className="w-8 h-8 text-white/80 mb-2 group-hover:text-blue-300 transition-colors" />
+                    <span className="font-semibold text-white">DWG</span>
+                    <span className="text-xs text-white/70 mt-1">AutoCAD 2D Drawings</span>
                   </button>
                   
                   <button 
@@ -5137,11 +5489,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       setDownloadCount(prev => prev + 1);
                       showToast('✓ RVT file downloaded successfully!');
                     }}
-                    className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group cursor-pointer"
+                    className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-purple-400/50 transition-all group cursor-pointer backdrop-blur-xl"
                   >
-                    <Building className="w-8 h-8 text-gray-600 mb-2 group-hover:text-purple-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">RVT</span>
-                    <span className="text-xs text-gray-600 mt-1">Revit 3D Model</span>
+                    <Building className="w-8 h-8 text-white/80 mb-2 group-hover:text-purple-300 transition-colors" />
+                    <span className="font-semibold text-white">RVT</span>
+                    <span className="text-xs text-white/70 mt-1">Revit 3D Model</span>
                   </button>
                   
                   <button 
@@ -5152,11 +5504,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       setDownloadCount(prev => prev + 1);
                       showToast('✓ IFC file downloaded successfully!');
                     }}
-                    className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group cursor-pointer"
+                    className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-green-400/50 transition-all group cursor-pointer backdrop-blur-xl"
                   >
-                    <Layers className="w-8 h-8 text-gray-600 mb-2 group-hover:text-green-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">IFC</span>
-                    <span className="text-xs text-gray-600 mt-1">BIM Standard</span>
+                    <Layers className="w-8 h-8 text-white/80 mb-2 group-hover:text-green-300 transition-colors" />
+                    <span className="font-semibold text-white">IFC</span>
+                    <span className="text-xs text-white/70 mt-1">BIM Standard</span>
                   </button>
 
                   <button
@@ -5171,11 +5523,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       setDownloadCount(prev => prev + 1);
                       showToast('✓ PDF document opened for printing!');
                     }}
-                    className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group cursor-pointer"
+                    className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-red-400/50 transition-all group cursor-pointer backdrop-blur-xl"
                   >
-                    <FileText className="w-8 h-8 text-gray-600 mb-2 group-hover:text-red-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">PDF</span>
-                    <span className="text-xs text-gray-600 mt-1">Documentation Set</span>
+                    <FileText className="w-8 h-8 text-white/80 mb-2 group-hover:text-red-300 transition-colors" />
+                    <span className="font-semibold text-white">PDF</span>
+                    <span className="text-xs text-white/70 mt-1">Documentation Set</span>
                   </button>
 
                   {/* 🆕 SVG Export - Vector floor plans */}
@@ -5194,12 +5546,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       setDownloadCount(prev => prev + 1);
                       showToast('✓ SVG floor plans downloaded successfully!');
                     }}
-                    className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group cursor-pointer"
+                    className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-orange-400/50 transition-all group cursor-pointer backdrop-blur-xl disabled:opacity-50"
                     disabled={!vectorPlan}
                   >
-                    <FileCode className="w-8 h-8 text-gray-600 mb-2 group-hover:text-orange-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">SVG</span>
-                    <span className="text-xs text-gray-600 mt-1">Vector Plans</span>
+                    <FileCode className="w-8 h-8 text-white/80 mb-2 group-hover:text-orange-300 transition-colors" />
+                    <span className="font-semibold text-white">SVG</span>
+                    <span className="text-xs text-white/70 mt-1">Vector Plans</span>
                   </button>
 
                   {/* 🆕 DXF Export - CAD-compatible vector format */}
@@ -5218,12 +5570,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       setDownloadCount(prev => prev + 1);
                       showToast('✓ DXF floor plans downloaded successfully!');
                     }}
-                    className="flex flex-col items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors group cursor-pointer"
+                    className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-teal-400/50 transition-all group cursor-pointer backdrop-blur-xl disabled:opacity-50"
                     disabled={!vectorPlan}
                   >
-                    <FileCode className="w-8 h-8 text-gray-600 mb-2 group-hover:text-teal-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">DXF</span>
-                    <span className="text-xs text-gray-600 mt-1">CAD Exchange</span>
+                    <FileCode className="w-8 h-8 text-white/80 mb-2 group-hover:text-teal-300 transition-colors" />
+                    <span className="font-semibold text-white">DXF</span>
+                    <span className="text-xs text-white/70 mt-1">CAD Exchange</span>
                   </button>
 
                   {/* 🆕 MASTER SHEET (A1) - Single Output Sheet with all views */}
@@ -5246,19 +5598,19 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         showToast('⚠️ Failed to generate master sheet. Check console for details.');
                       }
                     }}
-                    className="flex flex-col items-center p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl hover:from-blue-100 hover:to-purple-100 transition-colors group cursor-pointer border-2 border-blue-200"
+                    className="flex flex-col items-center p-4 liquid-glass border-2 border-blue-400/50 rounded-xl hover:border-blue-300/70 transition-all group cursor-pointer backdrop-blur-xl bg-blue-500/10"
                   >
-                    <FileText className="w-8 h-8 text-blue-600 mb-2 group-hover:text-purple-600 transition-colors" />
-                    <span className="font-semibold text-gray-800">A1 Master Sheet</span>
-                    <span className="text-xs text-gray-600 mt-1">All Views + Metrics</span>
+                    <FileText className="w-8 h-8 text-blue-300 mb-2 group-hover:text-purple-300 transition-colors" />
+                    <span className="font-semibold text-white">A1 Master Sheet</span>
+                    <span className="text-xs text-white/70 mt-1">All Views + Metrics</span>
                   </button>
 
                 </div>
                 
-                <div className="mt-4 text-center text-sm text-gray-500">
+                <div className="mt-4 text-center text-sm text-white/70">
                   <p>Demo files for investor preview. Production version will include full technical drawings.</p>
                   {downloadCount > 0 && (
-                    <p className="mt-2 text-green-600 font-medium">
+                    <p className="mt-2 text-green-300 font-medium">
                       {downloadCount} file{downloadCount > 1 ? 's' : ''} downloaded
                     </p>
                   )}
@@ -5266,10 +5618,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
               </div>
 
               {/* AI Modification */}
-              <div className="mt-8 border-t pt-8">
+              <div className="mt-8 border-t border-white/20 pt-8">
                 <button
                   onClick={() => setShowModification(!showModification)}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-medium flex items-center justify-center"
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-medium flex items-center justify-center shadow-lg hover:shadow-xl"
                 >
                   <Sparkles className="mr-2" />
                   Modify A1 Sheet
@@ -5279,9 +5631,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   <div className="mt-4 space-y-4 animate-fadeIn">
                     <textarea
                       placeholder="Describe your modifications... (e.g., 'Make the waiting area 20% larger', 'Add a healing garden courtyard', 'Include more natural lighting in consultation rooms')"
-                      className="w-full p-4 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors h-32"
+                      className="w-full p-4 bg-navy-900/90 border-2 border-white/20 rounded-xl focus:border-purple-400/50 focus:outline-none transition-colors h-32 text-white placeholder-white/50 backdrop-blur-xl"
                     />
-                    <button className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 transition-colors">
+                    <button className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all shadow-lg">
                       Apply Modifications
                     </button>
                   </div>
@@ -5486,7 +5838,13 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   });
 
   const content = (
-    <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gray-50'} transition-colors duration-500`}>
+    <div className={`min-h-screen ${currentStep === 0 ? '' : 'bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-950'} transition-colors duration-500 relative`}>
+      {currentStep > 0 && (
+        <>
+          <div className="animated-bg fixed inset-0 opacity-50"></div>
+          <div className="architecture-bg fixed inset-0 opacity-15"></div>
+        </>
+      )}
       {/* Image Modal */}
       <ImageModal
         image={modalImage}
@@ -5510,12 +5868,17 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         </div>
       )}
       {currentStep > 0 && (
-          <div className="sticky top-0 bg-white shadow-sm z-40">
+          <div className="sticky top-0 liquid-glass-strong border-b border-white/20 z-40 backdrop-blur-xl">
             <div className="max-w-7xl mx-auto px-4 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
-                  <Building className="w-8 h-8 text-blue-600 mr-3" />
-                  <h1 className="text-2xl font-bold text-gray-800">ArchitectAI Platform</h1>
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500/30 to-cyan-500/30 border border-white/20 mr-3">
+                    <Building className="w-6 h-6 text-blue-300" />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-bold text-white">ARCHIAI SOLUTION</h1>
+                    <p className="text-xs text-white/60">AI Architecture Platform</p>
+                  </div>
 
                   {/* 🆕 Design History Project Indicator - Hidden for cleaner UI */}
                   {/* {currentProjectId && (
@@ -5551,27 +5914,30 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   ].map((item, idx) => (
                     <div key={idx} className="flex items-center">
                       <div className={`
-                        flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium
-                        ${currentStep >= item.step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}
+                        flex items-center justify-center w-9 h-9 rounded-full text-sm font-semibold transition-all duration-300
+                        ${currentStep >= item.step 
+                          ? 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/50' 
+                          : 'bg-white/10 text-white/50 border border-white/20'}
                       `}>
-                        {currentStep > item.step ? <Check className="w-4 h-4" /> : item.step}
+                        {currentStep > item.step ? <Check className="w-5 h-5" /> : item.step}
                       </div>
                       {idx < 4 && (
-                        <div className={`w-12 h-0.5 mx-1 ${currentStep > item.step ? 'bg-blue-600' : 'bg-gray-300'}`} />
+                        <div className={`w-12 h-1 mx-1 rounded-full transition-all duration-300 ${currentStep > item.step ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10'}`} />
                       )}
                     </div>
                   ))}
                 </div>
 
-                <div className="text-sm text-gray-600">
-                  Time: <span className="font-medium">{formatElapsedTime(elapsedTime)}</span> elapsed
+                <div className="text-sm text-white/70 flex items-center">
+                  <Clock className="w-4 h-4 mr-2" />
+                  <span className="font-medium">{formatElapsedTime(elapsedTime)}</span>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        <div className={currentStep > 0 ? 'max-w-7xl mx-auto px-4 py-8' : ''}>
+        <div className={`${currentStep > 0 ? 'max-w-7xl mx-auto px-4 py-8 relative z-10' : ''}`}>
           {renderStep()}
         </div>
 
@@ -5632,6 +5998,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
             location={locationData}
           />
         )}
+
+        {process.env.NODE_ENV !== 'production' && showDiagnosticsPanel && (
+          <DevDiagnosticsPanel onClose={() => setShowDiagnosticsPanel(false)} />
+        )}
       </div>
   );
 
@@ -5644,3 +6014,4 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 };
 
 export default ArchitectAIEnhanced;
+

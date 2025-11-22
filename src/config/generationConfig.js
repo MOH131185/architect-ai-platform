@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Global Generation Configuration
  *
@@ -200,7 +202,7 @@ export function setConfig(key, value) {
   const oldValue = target[lastKey];
   target[lastKey] = value;
 
-  console.log(`[CONFIG] Updated ${key}:`, { from: oldValue, to: value });
+  logger.info(`[CONFIG] Updated ${key}:`, { from: oldValue, to: value });
 }
 
 /**
@@ -244,20 +246,20 @@ export function getConsistencyRules() {
  */
 export function logConfiguration() {
   console.group('[CONFIG] Generation Configuration');
-  console.log('A1 Sheet Enabled:', GENERATION_CONFIG.a1SheetEnabled);
-  console.log('Auto-derive with Fallback:', GENERATION_CONFIG.autoDeriveWithFallback);
-  console.log('Enforce Consistent Seed:', GENERATION_CONFIG.enforceConsistentSeed);
-  console.log('DNA Strict Mode:', GENERATION_CONFIG.dnaStrictMode);
-  console.log('Complete Set (13 views):', GENERATION_CONFIG.generateCompleteSet);
-  console.log('Min Consistency Score:', GENERATION_CONFIG.consistencyRules.minConsistencyScore);
+  logger.info('A1 Sheet Enabled:', GENERATION_CONFIG.a1SheetEnabled);
+  logger.info('Auto-derive with Fallback:', GENERATION_CONFIG.autoDeriveWithFallback);
+  logger.info('Enforce Consistent Seed:', GENERATION_CONFIG.enforceConsistentSeed);
+  logger.info('DNA Strict Mode:', GENERATION_CONFIG.dnaStrictMode);
+  logger.info('Complete Set (13 views):', GENERATION_CONFIG.generateCompleteSet);
+  logger.info('Min Consistency Score:', GENERATION_CONFIG.consistencyRules.minConsistencyScore);
   console.groupEnd();
 }
 
 // Log in development
 if (process.env.NODE_ENV === 'development') {
-  console.log('[CONFIG] Generation configuration loaded');
-  console.log('   A1 Sheet:', GENERATION_CONFIG.a1SheetEnabled);
-  console.log('   Consistent Seed:', GENERATION_CONFIG.enforceConsistentSeed);
+  logger.info('[CONFIG] Generation configuration loaded');
+  logger.info('   A1 Sheet:', GENERATION_CONFIG.a1SheetEnabled);
+  logger.info('   Consistent Seed:', GENERATION_CONFIG.enforceConsistentSeed);
 }
 
 export default GENERATION_CONFIG;

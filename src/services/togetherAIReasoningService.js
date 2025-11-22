@@ -1,123 +1,102 @@
 /**
- * Together AI Reasoning Service - Complete Replacement for OpenAI
- *
- * Uses Meta Llama 3.1 405B Instruct Turbo - Best Together AI model for:
- * - Architectural design reasoning
- * - DNA generation
- * - Portfolio analysis
- * - Feasibility analysis
- * - General chat completions
- *
- * Drop-in replacement for openaiService.js
+ * Together AI Reasoning Service
+ * 
+ * REFACTORED: Now uses ModelRouter for optimal model selection
+ * Maintains backward compatibility while leveraging centralized routing
  */
 
-import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM';
+import modelRouter from './modelRouter.js';
+import promptLibrary from './promptLibrary.js';
+import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM.js';
+import logger from '../utils/logger.js';
+
 
 // Use server proxy for ALL API calls - API key is stored server-side
 const TOGETHER_API_URL = process.env.NODE_ENV === 'production'
   ? '/api/together-chat'  // Vercel serverless function
   : 'http://localhost:3001/api/together/chat';  // Local proxy server
 
+const LOCAL_PROXY_BASE = process.env.REACT_APP_API_PROXY_URL || 'http://localhost:3001';
+const OPENAI_PROXY_BASE = process.env.REACT_APP_API_PROXY_URL || 'http://localhost:3001';
+
+function buildChatEndpoints() {
+  return Array.from(new Set([
+    TOGETHER_API_URL,
+    `${LOCAL_PROXY_BASE}/api/together/chat`,
+    '/api/together/chat',
+    '/api/together-chat'
+  ].filter(Boolean)));
+}
+
+function buildOpenAIChatEndpoints() {
+  return Array.from(new Set([
+    `${OPENAI_PROXY_BASE}/api/openai/chat`,
+    `${OPENAI_PROXY_BASE}/api/openai-chat`,
+    '/api/openai/chat',
+    '/api/openai-chat'
+  ].filter(Boolean)));
+}
+
 class TogetherAIReasoningService {
   constructor() {
     // API key is handled server-side via proxy - no client-side key needed
-    console.log('🧠 Together AI Reasoning Service initialized (using server proxy)');
+    logger.info('🧠 Together AI Reasoning Service initialized (using server proxy)');
+    this.chatEndpoints = buildChatEndpoints();
 
-    // Use Meta Llama 3.1 405B Instruct Turbo - Best Together AI model for reasoning
-    // Superior performance on complex architectural tasks
-    this.defaultModel = 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo';
+    // Use Qwen 2.5 72B Instruct Turbo - Excellent reasoning, widely available
+    // Good balance of performance and availability across Together AI tiers
+    this.defaultModel = 'Qwen/Qwen2.5-72B-Instruct-Turbo';
   }
 
   /**
    * Generate updated DNA based on change request
-   * Used in modify workflow to update design DNA while preserving consistency
+   * REFACTORED: Uses ModelRouter and promptLibrary
    */
   async generateUpdatedDNA({ currentDNA, changeRequest, projectContext }) {
     try {
-      console.log('🧬 Generating updated DNA based on change request...');
+      logger.info('🧬 Generating updated DNA via ModelRouter...');
 
-      // 🆕 Extract project type and program spaces from context
-      const projectType = projectContext?.projectType || currentDNA?.projectType || null;
-      const programSpaces = projectContext?.programSpaces || currentDNA?.programSpaces || [];
-      
-      // 🆕 Build program schedule string if available
-      let programScheduleStr = '';
-      if (programSpaces && programSpaces.length > 0) {
-        const programTotal = programSpaces.reduce((sum, space) => 
-          sum + (parseFloat(space.area || 0) * (space.count || 1)), 0
-        );
-        programScheduleStr = `
-PROGRAM SCHEDULE (MUST BE PRESERVED):
-${programSpaces.map((space, idx) => 
-  `- ${space.name || `Space ${idx + 1}`}: ${space.area || 'TBD'}m² × ${space.count || 1} = ${(parseFloat(space.area || 0) * (space.count || 1)).toFixed(0)}m²${space.level ? ` (Level: ${space.level})` : ''}`
-).join('\n')}
-TOTAL PROGRAM AREA: ${programTotal.toFixed(0)}m²
-CRITICAL: Floor plans MUST include these exact spaces with these exact areas.`;
-      }
-
-      // 🆕 Build project type restrictions
-      let projectTypeRestrictions = '';
-      if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-        projectTypeRestrictions = `
-PROJECT TYPE RESTRICTIONS (CRITICAL - DO NOT VIOLATE):
-- Project Type: ${projectType.toUpperCase()}
-- FORBIDDEN: NO single-family house features, NO residential house layout, NO pitched roof unless specified
-- ${['office', 'retail', 'school', 'hospital'].includes(projectType.toLowerCase()) ? 'FORBIDDEN: NO residential features, NO bedrooms unless specified, NO kitchen unless specified' : ''}
-- The building MUST remain a ${projectType} building, NOT a house.`;
-      }
-
-      const prompt = `You are an expert architectural designer. Update the following Design DNA based on the requested modifications while maintaining architectural consistency.
-
-CURRENT DESIGN DNA:
-${JSON.stringify(currentDNA, null, 2)}
-
-REQUESTED MODIFICATION:
-${changeRequest}
-
-PROJECT CONTEXT:
-${JSON.stringify(projectContext, null, 2)}
-${projectTypeRestrictions}
-${programScheduleStr}
-
-REQUIREMENTS:
-1. Maintain consistency with existing design DNA
-2. Preserve dimensions, materials, and style unless explicitly changed
-3. Ensure all modifications are architecturally feasible
-4. Return updated DNA in the same JSON format as current DNA
-5. Only modify fields explicitly mentioned in the change request
-6. Preserve seed and projectID fields
-${projectTypeRestrictions ? '7. CRITICAL: Maintain project type as ' + projectType + ' - do NOT convert to residential house' : ''}
-${programScheduleStr ? '8. CRITICAL: Preserve program schedule spaces exactly as specified' : ''}
-
-Return ONLY the updated DNA JSON object, no additional text.`;
-
-      const response = await this.chatCompletion([
-        {
-          role: 'system',
-          content: `You are an expert architectural designer. Update Design DNA based on modifications while maintaining consistency. ${projectTypeRestrictions ? 'CRITICAL: The project type is ' + projectType + ' - do NOT convert to a house.' : ''} Return ONLY valid JSON.`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ], {
-        max_tokens: 2000,
-        temperature: 0.5,
-        response_format: { type: 'json_object' }
+      // Use prompt library for modification prompt
+      const modifyPrompt = promptLibrary.buildModificationPrompt({
+        currentDNA,
+        changeRequest,
+        projectContext
       });
 
-      const updatedDNAText = response.choices[0].message.content;
-      const updatedDNA = safeParseJsonFromLLM(updatedDNAText, currentDNA);
+      // Use ModelRouter for optimal model selection
+      const result = await modelRouter.callLLM('MODIFICATION_REASONING', {
+        systemPrompt: modifyPrompt.systemPrompt,
+        userPrompt: modifyPrompt.userPrompt,
+        schema: true,
+        temperature: 0.5,
+        maxTokens: 3000,
+        context: { priority: 'consistency', requireConsistency: true, originalSeed: currentDNA.seed }
+      });
+
+      if (!result.success) {
+        throw new Error(`DNA modification failed: ${result.error}`);
+      }
+
+      const updatedDNA = result.data;
 
       // Preserve critical fields
       updatedDNA.seed = updatedDNA.seed || currentDNA.seed;
       updatedDNA.projectID = updatedDNA.projectID || currentDNA.projectID;
 
-      console.log('✅ DNA updated successfully');
+      logger.info(`✅ DNA updated via ${result.metadata.model} in ${result.metadata.latencyMs}ms`);
+      
+      // Log changes if present
+      if (updatedDNA.changes && updatedDNA.changes.length > 0) {
+        logger.info(`   📝 Changes: ${updatedDNA.changes.length} fields modified`);
+        updatedDNA.changes.forEach(change => {
+          logger.info(`      - ${change.field}: ${change.oldValue} → ${change.newValue}`);
+        });
+      }
+
       return updatedDNA;
 
     } catch (error) {
-      console.error('❌ Failed to generate updated DNA:', error);
+      logger.error('❌ Failed to generate updated DNA:', error);
       // Return current DNA as fallback
       return currentDNA;
     }
@@ -162,7 +141,7 @@ Return ONLY the updated DNA JSON object, no additional text.`;
       return this.parseDesignReasoning(data.choices[0].message.content, projectContext);
 
     } catch (error) {
-      console.error('Together AI API error:', error);
+      logger.error('Together AI API error:', error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -386,7 +365,7 @@ Format as structured analysis with specific recommendations.
       return this.parseFeasibilityAnalysis(data.choices[0].message.content);
 
     } catch (error) {
-      console.error('Feasibility analysis error:', error);
+      logger.error('Feasibility analysis error:', error);
       return {
         feasibility: 'Unknown',
         constraints: ['Analysis unavailable'],
@@ -417,44 +396,79 @@ Format as structured analysis with specific recommendations.
    * @returns {Promise<Object>} Together AI API response
    */
   async chatCompletion(messages, options = {}) {
-    try {
-      console.log('🧠 [Together AI] Chat completion:', {
-        model: options.model || this.defaultModel,
-        messages: messages.length,
-        temperature: options.temperature,
-        response_format: options.response_format
-      });
+    logger.info('🧠 [Together AI] Chat completion:', {
+      model: options.model || this.defaultModel,
+      messages: messages.length,
+      temperature: options.temperature,
+      response_format: options.response_format
+    });
 
-      const response = await fetch(TOGETHER_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: options.model || this.defaultModel,
-          messages: messages,
-          max_tokens: options.max_tokens || 2000,
-          temperature: options.temperature !== undefined ? options.temperature : 0.7,
-          response_format: options.response_format, // CRITICAL: Pass through response_format
-          top_p: options.top_p,
-          top_k: options.top_k,
-          repetition_penalty: options.repetition_penalty
-        })
-      });
+    const model = options.model || this.defaultModel;
+    const isOpenAIModel = typeof model === 'string' && (
+      model.includes('gpt-4') || model.includes('gpt-4o') || model.includes('o1-') || model.startsWith('gpt-')
+    );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ [Together AI] API error:', response.status, errorData);
-        throw new Error(String('Together AI API error: ' + response.status + ' - ' + (errorData.error?.message || response.statusText)));
+    const endpoints = isOpenAIModel
+      ? buildOpenAIChatEndpoints()
+      : (this.chatEndpoints && this.chatEndpoints.length > 0
+        ? this.chatEndpoints
+        : buildChatEndpoints());
+
+    let lastError = null;
+
+    for (let index = 0; index < endpoints.length; index += 1) {
+      const endpoint = endpoints[index];
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model,
+            messages: messages,
+            max_tokens: options.max_tokens || 2000,
+            temperature: options.temperature !== undefined ? options.temperature : 0.7,
+            response_format: options.response_format, // CRITICAL: Pass through response_format
+            top_p: options.top_p,
+            top_k: options.top_k,
+            repetition_penalty: options.repetition_penalty
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.error?.message || errorData.error || response.statusText;
+          const fallbackable = response.status === 404 || response.status === 502;
+
+          const err = new Error(`Together AI API error: ${response.status} - ${errorMessage}`);
+          err.fallback = fallbackable;
+
+          if (fallbackable && index < endpoints.length - 1) {
+            logger.warn(`⚠️ [Together AI] Chat endpoint ${endpoint} unavailable (${response.status}) - trying fallback`);
+            lastError = err;
+            continue;
+          }
+
+          throw err;
+        }
+
+        const result = await response.json();
+        logger.info(`✅ [Together AI] Chat completion successful via ${endpoint}`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (error.fallback && index < endpoints.length - 1) {
+          logger.warn(`⚠️ [Together AI] Chat endpoint failed (${endpoint}): ${error.message}. Trying next fallback...`);
+          continue;
+        }
+        logger.error('❌ [Together AI] Chat completion error:', error);
+        throw error;
       }
-
-      const result = await response.json();
-      console.log('✅ [Together AI] Chat completion successful');
-      return result;
-    } catch (error) {
-      console.error('❌ [Together AI] Chat completion error:', error);
-      throw error;
     }
+
+    throw lastError || new Error('Together AI API error: all chat endpoints failed');
   }
 
   /**
@@ -465,7 +479,7 @@ Format as structured analysis with specific recommendations.
    */
   async summarizeDesignContext(projectRequirements) {
     try {
-      console.log('🎨 Creating Design Context with Meta Llama 3.1 405B for consistency...');
+      logger.info('🎨 Creating Design Context with Meta Llama 3.1 405B for consistency...');
 
       const {
         buildingProgram = 'residential building',
@@ -509,7 +523,7 @@ Provide a comprehensive JSON with:
       };
 
     } catch (error) {
-      console.error('Design context generation error:', error);
+      logger.error('Design context generation error:', error);
       return {
         designContext: 'Standard design context',
         error: error.message

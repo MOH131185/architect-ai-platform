@@ -5,7 +5,9 @@
  * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-import secureApiClient from './secureApiClient';
+import secureApiClient from './secureApiClient.js';
+import logger from '../utils/logger.js';
+
 
 const OPENAI_API_URL = process.env.NODE_ENV === 'production'
   ? '/api/openai-chat'
@@ -46,7 +48,7 @@ class PortfolioStyleDetectionService {
       return this.parseStyleDetection(response.choices[0].message.content, locationContext);
 
     } catch (error) {
-      console.error('Portfolio style detection error:', error);
+      logger.error('Portfolio style detection error:', error);
       return this.getFallbackStyleDetection(portfolioImages, locationContext);
     }
   }
@@ -114,7 +116,7 @@ Format your response as structured JSON with clear sections and specific archite
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.warn('Could not parse JSON from style detection response, using text format');
+      logger.warn('Could not parse JSON from style detection response, using text format');
     }
 
     // Fallback to structured text response
@@ -216,7 +218,7 @@ Format your response as structured JSON with clear sections and specific archite
       return this.parseCompatibilityAnalysis(data.choices[0].message.content);
 
     } catch (error) {
-      console.error('Style compatibility analysis error:', error);
+      logger.error('Style compatibility analysis error:', error);
       return this.getFallbackCompatibilityAnalysis(detectedStyle, locationContext);
     }
   }

@@ -5,7 +5,7 @@
  * Helps identify bottlenecks and optimize critical paths.
  */
 
-import logger from './logger';
+import logger from './logger.js';
 
 class PerformanceMonitor {
   constructor() {
@@ -397,31 +397,31 @@ class PerformanceMonitor {
 
     console.group('Metrics');
     for (const [label, stats] of Object.entries(report.metrics)) {
-      console.log(`${label}:`, stats);
+      logger.info(`${label}:`, stats);
     }
     console.groupEnd();
 
     if (Object.keys(report.counters).length > 0) {
       console.group('Counters');
       for (const [name, value] of Object.entries(report.counters)) {
-        console.log(`${name}: ${value}`);
+        logger.info(`${name}: ${value}`);
       }
       console.groupEnd();
     }
 
     if (report.memory) {
       console.group('Memory');
-      console.log(`Used: ${report.memory.usedMB} MB`);
-      console.log(`Total: ${report.memory.totalMB} MB`);
-      console.log(`Limit: ${report.memory.limitMB} MB`);
+      logger.info(`Used: ${report.memory.usedMB} MB`);
+      logger.info(`Total: ${report.memory.totalMB} MB`);
+      logger.info(`Limit: ${report.memory.limitMB} MB`);
       console.groupEnd();
     }
 
     if (report.navigation) {
       console.group('Navigation Timing');
-      console.log(`DOM Ready: ${report.navigation.domContentLoaded}ms`);
-      console.log(`Page Load: ${report.navigation.loadComplete}ms`);
-      console.log(`First Byte: ${report.navigation.firstByte}ms`);
+      logger.info(`DOM Ready: ${report.navigation.domContentLoaded}ms`);
+      logger.info(`Page Load: ${report.navigation.loadComplete}ms`);
+      logger.info(`First Byte: ${report.navigation.firstByte}ms`);
       console.groupEnd();
     }
 

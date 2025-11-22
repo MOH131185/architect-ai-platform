@@ -295,7 +295,7 @@ npm run check:env
 ### Views are inconsistent (different colors/materials)
 **Cause**: Legacy workflow bypassing DNA system
 **Fix**: Verify console shows "🧬 Using DNA-Enhanced FLUX workflow"
-**Check**: `geometryFirst` flag should be `true` in feature flags
+**Note**: `geometryFirst` flag is experimental and may not be fully functional (TypeScript core files incomplete)
 
 ### Together.ai "Insufficient credits" error
 **Cause**: Free tier doesn't support FLUX models
@@ -308,7 +308,7 @@ npm run check:env
 Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
-3. Run tests: `npm test` and `node test-geometry-first-local.js`
+3. Run tests: `npm test` (note: geometry-first tests may fail - feature is experimental)
 4. Submit a pull request
 
 ---

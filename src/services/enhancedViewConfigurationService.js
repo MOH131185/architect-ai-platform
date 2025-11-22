@@ -11,10 +11,12 @@
  */
 
 import facadeFeatureAnalyzer from './facadeFeatureAnalyzer.js';
+import logger from '../utils/logger.js';
+
 
 class EnhancedViewConfigurationService {
   constructor() {
-    console.log('🎨 Enhanced View Configuration Service initialized');
+    logger.info('🎨 Enhanced View Configuration Service initialized');
     this.facadeAnalyzer = facadeFeatureAnalyzer;
 
     // ControlNet configuration
@@ -487,9 +489,9 @@ Think: "Real Estate Photography" or "Architectural Digest photo shoot" - a profe
         control_mode: 'balanced',
         resize_mode: 'fill' // Preserve aspect, don't distort
       });
-      console.log('   ✅ Floor plan ControlNet added (scale: 1.1)');
+      logger.info('   ✅ Floor plan ControlNet added (scale: 1.1)');
     } else {
-      console.warn('   ⚠️ WARNING: Floor plan image missing - consistency may be reduced!');
+      logger.warn('   ⚠️ WARNING: Floor plan image missing - consistency may be reduced!');
     }
 
     // 2. Elevation ControlNet(s) - REQUIRED for exterior/perspective/axonometric views
@@ -498,8 +500,8 @@ Think: "Real Estate Photography" or "Architectural Digest photo shoot" - a profe
       const visibleSides = this.getVisibleElevations(viewOrientation);
       let elevationCount = 0;
 
-      console.log(`   🔍 View type: ${viewType}, orientation: ${viewOrientation}`);
-      console.log(`   🏠 Visible facades: ${visibleSides.join(', ')}`);
+      logger.info(`   🔍 View type: ${viewType}, orientation: ${viewOrientation}`);
+      logger.info(`   🏠 Visible facades: ${visibleSides.join(', ')}`);
 
       visibleSides.forEach(side => {
         const elevationImage = elevationImages[side];
@@ -514,25 +516,25 @@ Think: "Real Estate Photography" or "Architectural Digest photo shoot" - a profe
             resize_mode: 'fill'
           });
           elevationCount++;
-          console.log(`   ✅ ${side} elevation ControlNet added (scale: 0.9)`);
+          logger.info(`   ✅ ${side} elevation ControlNet added (scale: 0.9)`);
         } else {
-          console.warn(`   ⚠️ WARNING: ${side} elevation image missing - facade details may be inconsistent!`);
+          logger.warn(`   ⚠️ WARNING: ${side} elevation image missing - facade details may be inconsistent!`);
         }
       });
 
       // CRITICAL VALIDATION: For exterior views, at least one elevation should be present
       if (elevationCount === 0) {
-        console.error(`   ❌ CRITICAL: No elevation images provided for ${viewType} view!`);
-        console.error('   This will cause facade inconsistencies (wrong window counts, incorrect details).');
-        console.error('   Please provide elevation images for visible facades.');
+        logger.error(`   ❌ CRITICAL: No elevation images provided for ${viewType} view!`);
+        logger.error('   This will cause facade inconsistencies (wrong window counts, incorrect details).');
+        logger.error('   Please provide elevation images for visible facades.');
       } else if (elevationCount < visibleSides.length) {
-        console.warn(`   ⚠️ Only ${elevationCount}/${visibleSides.length} elevations provided - partial facade control.`);
+        logger.warn(`   ⚠️ Only ${elevationCount}/${visibleSides.length} elevations provided - partial facade control.`);
       } else {
-        console.log(`   ✅ All ${elevationCount} required elevations present - full facade control!`);
+        logger.info(`   ✅ All ${elevationCount} required elevations present - full facade control!`);
       }
     }
 
-    console.log(`   📊 Total ControlNet units: ${controlNetUnits.length}`);
+    logger.info(`   📊 Total ControlNet units: ${controlNetUnits.length}`);
 
     return controlNetUnits;
   }

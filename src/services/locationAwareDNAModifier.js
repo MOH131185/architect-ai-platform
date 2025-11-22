@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Location-Aware DNA Modifier Service
  *
@@ -13,14 +15,14 @@
 
 class LocationAwareDNAModifier {
   constructor() {
-    console.log('🌍 Location-Aware DNA Modifier initialized');
+    logger.info('🌍 Location-Aware DNA Modifier initialized');
   }
 
   /**
    * Main method to apply all location-based modifications to DNA
    */
   applyLocationContext(masterDNA, locationData, siteAnalysis) {
-    console.log('🌍 Applying location context to Master DNA...');
+    logger.info('🌍 Applying location context to Master DNA...');
 
     let modifiedDNA = { ...masterDNA };
 
@@ -35,10 +37,10 @@ class LocationAwareDNAModifier {
     // Add location context for prompts
     modifiedDNA.locationContext = this.generateLocationContext(locationData, siteAnalysis);
 
-    console.log('✅ Location context applied to DNA');
-    console.log('   Climate:', locationData?.climate?.type);
-    console.log('   Style:', locationData?.recommendedStyle);
-    console.log('   Site:', siteAnalysis?.plotGeometry?.shape);
+    logger.success(' Location context applied to DNA');
+    logger.info('   Climate:', locationData?.climate?.type);
+    logger.info('   Style:', locationData?.recommendedStyle);
+    logger.info('   Site:', siteAnalysis?.plotGeometry?.shape);
 
     return modifiedDNA;
   }
@@ -54,7 +56,7 @@ class LocationAwareDNAModifier {
     const avgTemp = climate.seasonal?.summer?.avgTemp || 20;
     const avgHumidity = climate.seasonal?.summer?.humidity || 50;
 
-    console.log(`🌡️ Applying ${climateType} climate adaptations (${avgTemp}°C, ${avgHumidity}% humidity)`);
+    logger.info(`🌡️ Applying ${climateType} climate adaptations (${avgTemp}°C, ${avgHumidity}% humidity)`);
 
     // TROPICAL/HOT CLIMATES (>25°C average)
     if (climateType === 'tropical' || climateType === 'desert' || avgTemp > 25) {
@@ -180,9 +182,9 @@ class LocationAwareDNAModifier {
     modified.consistencyRules = {
       ...modified.consistencyRules,
       climate: [
-        `ALL views must show ${modified.roof.overhang} overhang depth`,
-        `ALL views must show ${modified.roof.type} roof at ${modified.roof.pitch}`,
-        `ALL views must show ${modified.materials.exterior.primary} in ${modified.materials.exterior.color}`,
+        `ALL views must show ${modified.roof?.overhang || 'appropriate'} overhang depth`,
+        `ALL views must show ${modified.roof?.type || 'contextual'} roof at ${modified.roof?.pitch || 'standard pitch'}`,
+        `ALL views must show ${modified.materials?.exterior?.primary || 'contextual materials'} in ${modified.materials?.exterior?.color || 'natural colors'}`,
         `ALL elevations must show climate-appropriate window placement`
       ]
     };
@@ -198,7 +200,7 @@ class LocationAwareDNAModifier {
     if (!style) return dna;
 
     const modified = { ...dna };
-    console.log(`🏛️ Applying ${style} architectural style`);
+    logger.info(`🏛️ Applying ${style} architectural style`);
 
     const styleModifications = {
       'mediterranean': {
@@ -301,10 +303,10 @@ class LocationAwareDNAModifier {
     const modified = { ...dna };
     const { shape, dimensions, slope, orientation } = siteAnalysis.plotGeometry;
 
-    console.log(`📐 Adapting to ${shape} site (${dimensions?.width}m × ${dimensions?.length}m)`);
+    logger.info(`📐 Adapting to ${shape} site (${dimensions?.width}m × ${dimensions?.length}m)`);
 
     // Site shape adaptations
-    switch(shape?.toLowerCase()) {
+    switch (shape?.toLowerCase()) {
       case 'narrow':
       case 'rectangular-narrow':
         modified.dimensions = {
@@ -398,13 +400,13 @@ class LocationAwareDNAModifier {
     if (!zoning) return dna;
 
     const modified = { ...dna };
-    console.log(`🏛️ Applying ${zoning.type} zoning requirements`);
+    logger.info(`🏛️ Applying ${zoning.type} zoning requirements`);
 
     // Height restrictions
     if (zoning.maxHeight) {
       const maxFloors = Math.floor(parseFloat(zoning.maxHeight) / 3.0);
       if (modified.dimensions.floorCount > maxFloors) {
-        console.warn(`⚠️ Reducing floors from ${modified.dimensions.floorCount} to ${maxFloors} for zoning compliance`);
+        logger.warn(`⚠️ Reducing floors from ${modified.dimensions.floorCount} to ${maxFloors} for zoning compliance`);
         modified.dimensions.floorCount = maxFloors;
         modified.dimensions.totalHeight = maxFloors * 3.0;
       }
@@ -452,7 +454,7 @@ class LocationAwareDNAModifier {
     const modified = { ...dna };
     const optimalOrientation = sunPath.optimalOrientation || 'south';
 
-    console.log(`☀️ Optimizing for ${optimalOrientation} solar orientation`);
+    logger.info(`☀️ Optimizing for ${optimalOrientation} solar orientation`);
 
     // Window distribution based on orientation
     const hemisphere = sunPath.hemisphere || 'northern';
@@ -488,7 +490,7 @@ class LocationAwareDNAModifier {
     if (!localMaterials?.length) return dna;
 
     const modified = { ...dna };
-    console.log(`🏗️ Using local materials:`, localMaterials.join(', '));
+    logger.info(`🏗️ Using local materials:`, localMaterials.join(', '));
 
     // Map local materials to DNA
     const materialMapping = {
@@ -533,9 +535,8 @@ class LocationAwareDNAModifier {
 
     // Climate
     if (locationData.climate) {
-      context.push(`Climate: ${locationData.climate.type} (${
-        locationData.climate.description || 'moderate conditions'
-      })`);
+      context.push(`Climate: ${locationData.climate.type} (${locationData.climate.description || 'moderate conditions'
+        })`);
     }
 
     // Style
@@ -545,16 +546,14 @@ class LocationAwareDNAModifier {
 
     // Zoning
     if (locationData.zoning) {
-      context.push(`Zoning: ${locationData.zoning.type} (max height: ${
-        locationData.zoning.maxHeight || 'unrestricted'
-      })`);
+      context.push(`Zoning: ${locationData.zoning.type} (max height: ${locationData.zoning.maxHeight || 'unrestricted'
+        })`);
     }
 
     // Site
     if (siteAnalysis?.plotGeometry) {
-      context.push(`Site: ${siteAnalysis.plotGeometry.shape} plot, ${
-        siteAnalysis.plotGeometry.dimensions?.area || '500'
-      }m²`);
+      context.push(`Site: ${siteAnalysis.plotGeometry.shape} plot, ${siteAnalysis.plotGeometry.dimensions?.area || '500'
+        }m²`);
     }
 
     // Sun path

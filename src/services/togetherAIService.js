@@ -234,7 +234,10 @@ export async function generateArchitecturalImage(params) {
     prompt,
     seed,
     width = 1024,
-    height = 1024
+    height = 1024,
+    geometryRender = null,
+    geometryStrength = 0.0,
+    geometryDNA = null
   } = params;
 
   const flags = getFeatureFlags();
@@ -292,20 +295,45 @@ export async function generateArchitecturalImage(params) {
 
       // Schedule request through global queue for pacing
       const result = await imageRequestQueue.schedule(async () => {
+        // Build payload - only include geometry control params if geometryRender exists
+        const requestPayload = {
+          model,
+          prompt: enhancedPrompt,
+          width,
+          height,
+          seed: effectiveSeed,
+          num_inference_steps: steps,
+          guidance_scale: guidanceScale
+        };
+
+        // Add geometry control parameters only if geometryRender is provided and valid
+        // NOTE: Together.ai FLUX may use 'init_image' for img2img, not 'control_image'
+        // Geometry conditioning is experimental and may not work as expected
+        if (geometryRender && geometryRender.url) {
+          // Check if geometry render is a placeholder (1x1 pixel) - skip if so
+          const isPlaceholder = geometryRender.url.includes('AAAAB') || geometryRender.url.length < 200;
+
+          if (!isPlaceholder) {
+            // Use init_image for img2img conditioning (Together.ai parameter)
+            requestPayload.init_image = geometryRender.url;
+            requestPayload.image_strength = 1.0 - (geometryStrength || 0.5); // Inverted for Together.ai
+
+            // Add metadata for debugging (not sent to API, used for logging)
+            logger.info(`  Using geometry render as init_image (strength: ${requestPayload.image_strength})`, {
+              geometryType: geometryRender.type,
+              geometryModel: geometryRender.model
+            });
+          } else {
+            logger.warn('  Geometry render is placeholder, skipping geometry conditioning');
+          }
+        }
+
         const response = await fetch(`${API_BASE_URL}/api/together/image`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            model,
-            prompt: enhancedPrompt,
-            width,
-            height,
-            seed: effectiveSeed,
-            num_inference_steps: steps,
-            guidance_scale: guidanceScale
-          })
+          body: JSON.stringify(requestPayload)
         });
 
         // Handle rate limiting before normalization

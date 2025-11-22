@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Sun, MapPin, Building2, ArrowRight, ChevronLeft, AlertCircle } from 'lucide-react';
-import { useDesignContext } from '../context/DesignContext';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow';
-import { useLocationData } from '../hooks/useLocationData';
-import PrecisionSiteDrawer from '../components/PrecisionSiteDrawer';
-import SiteBoundaryInfo from '../components/SiteBoundaryInfo';
-import ErrorBoundary from '../components/ErrorBoundary';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
+import { useLocationData } from '../hooks/useLocationData.js';
+import PrecisionSiteDrawer from '../components/PrecisionSiteDrawer.jsx';
+import SiteBoundaryInfo from '../components/SiteBoundaryInfo.jsx';
+import ErrorBoundary from '../components/ErrorBoundary.jsx';
+import logger from '../utils/logger.js';
+
 
 /**
  * IntelligenceReport - Step 2: Display location intelligence analysis
@@ -24,6 +26,135 @@ const IntelligenceReport = () => {
   const { locationData } = useDesignContext();
   const { nextStep, prevStep } = useArchitectWorkflow();
   const { sitePolygon, siteMetrics, updateSitePolygon } = useLocationData();
+
+  // Map state for Google Maps integration
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState(null);
+
+  // Initialize Google Maps when location data is available
+  useEffect(() => {
+    if (!locationData || !locationData.coordinates) {
+      return;
+    }
+
+    // Check if Google Maps API is already loaded
+    if (window.google && window.google.maps) {
+      initializeMap();
+      return;
+    }
+
+    // Load Google Maps API if not already loaded
+    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      setMapError('Google Maps API key not configured');
+      logger.error('Google Maps API key missing');
+      return;
+    }
+
+    // Check if script is already being loaded
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    if (existingScript) {
+      // Wait for existing script to load
+      existingScript.addEventListener('load', initializeMap);
+      return () => existingScript.removeEventListener('load', initializeMap);
+    }
+
+    // Load Google Maps API script
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=drawing,geometry`;
+    script.async = true;
+    script.defer = true;
+
+    script.onload = () => {
+      logger.info('✅ Google Maps API loaded successfully');
+      initializeMap();
+    };
+
+    script.onerror = () => {
+      setMapError('Failed to load Google Maps API');
+      logger.error('Failed to load Google Maps API');
+    };
+
+    document.head.appendChild(script);
+
+    return () => {
+      // Cleanup on unmount
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [locationData]);
+
+  // Initialize the map instance
+  const initializeMap = () => {
+    if (!mapRef.current || !window.google || !window.google.maps) {
+      logger.info('⏳ Cannot initialize map - prerequisites not met');
+      return;
+    }
+
+    // Prevent double initialization
+    if (mapInstanceRef.current) {
+      logger.info('ℹ️ Map already initialized');
+      return;
+    }
+
+    try {
+      const { lat, lng } = locationData.coordinates;
+
+      const mapOptions = {
+        center: { lat, lng },
+        zoom: 18,
+        mapTypeId: 'hybrid', // Satellite view with labels
+        tilt: 0, // Top-down view for site drawing
+        heading: 0,
+        mapTypeControl: true,
+        mapTypeControlOptions: {
+          style: window.google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+          position: window.google.maps.ControlPosition.TOP_RIGHT
+        },
+        streetViewControl: true,
+        fullscreenControl: true,
+        zoomControl: true,
+        zoomControlOptions: {
+          position: window.google.maps.ControlPosition.RIGHT_CENTER
+        }
+      };
+
+      const map = new window.google.maps.Map(mapRef.current, mapOptions);
+
+      // Wait for map to be fully initialized before using it
+      window.google.maps.event.addListenerOnce(map, 'idle', () => {
+        mapInstanceRef.current = map;
+        setIsMapLoaded(true);
+        logger.info('✅ Google Maps fully initialized and ready at', lat, lng);
+
+        // Add a marker for the site center after map is ready
+        try {
+          new window.google.maps.Marker({
+            position: { lat, lng },
+            map: map,
+            title: locationData.address,
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#FF0000',
+              fillOpacity: 0.8,
+              strokeColor: '#FFFFFF',
+              strokeWeight: 2
+            }
+          });
+        } catch (markerError) {
+          console.warn('Failed to add center marker:', markerError);
+        }
+      });
+
+    } catch (error) {
+      logger.error('Error initializing map:', error);
+      setMapError('Failed to initialize map: ' + error.message);
+    }
+  };
 
   if (!locationData) {
     return (
@@ -149,24 +280,83 @@ const IntelligenceReport = () => {
           </div>
         </div>
 
-        {/* Site Boundary Drawing */}
+        {/* Site Boundary Drawing with Google Maps */}
         <div className="bg-white rounded-2xl shadow-xl p-6">
           <h3 className="text-xl font-bold text-gray-800 mb-4">Site Boundary (Optional)</h3>
 
           {siteMetrics && (
-            <SiteBoundaryInfo siteMetrics={siteMetrics} />
+            <SiteBoundaryInfo
+              shapeType={siteMetrics.shapeType}
+              confidence={siteMetrics.confidence}
+              source={siteMetrics.source}
+              area={siteMetrics.areaM2}
+              vertexCount={siteMetrics.vertexCount}
+            />
           )}
 
-          <PrecisionSiteDrawer
-            address={locationData.address}
-            coordinates={locationData.coordinates}
-            onSitePolygonChange={updateSitePolygon}
-            initialPolygon={sitePolygon}
-          />
+          {/* Google Maps Container */}
+          <div className="relative mt-4">
+            {mapError && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm">
+                  <strong>Map Error:</strong> {mapError}
+                </p>
+                <p className="text-red-600 text-xs mt-1">
+                  Site boundary editing requires Google Maps. Please check your API key configuration.
+                </p>
+              </div>
+            )}
+
+            {!isMapLoaded && !mapError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg z-10" style={{ height: '500px' }}>
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading Google Maps...</p>
+                </div>
+              </div>
+            )}
+
+            {/* Map Container - fixed height */}
+            <div
+              ref={mapRef}
+              className="w-full rounded-lg border-2 border-gray-200 shadow-inner"
+              style={{
+                height: '500px',
+                minHeight: '500px',
+                position: 'relative'
+              }}
+            />
+
+            {/* Precision Site Drawer - Overlays on map with editing controls */}
+            {isMapLoaded && mapInstanceRef.current && (
+              <PrecisionSiteDrawer
+                map={mapInstanceRef.current}
+                onPolygonComplete={updateSitePolygon}
+                initialPolygon={sitePolygon}
+                enabled={true}
+              />
+            )}
+          </div>
 
           <p className="text-sm text-gray-500 mt-4">
-            Draw your site boundary for more accurate designs, or skip to use auto-detected boundaries.
+            <strong>Draw your site boundary:</strong> Click on the map to place vertices.
+            Hold Shift for 90° angles. Right-click to finish. Hover over corner markers to see them enlarge, then drag to adjust.
+            Edit edge lengths and angles in the geometry panel on the right.
           </p>
+
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="font-semibold text-blue-900 mb-2">✨ Drawing & Editing Features:</h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Click to place vertices freely</li>
+              <li>• Hold <kbd className="px-2 py-1 bg-white rounded">Shift</kbd> to snap to 90° angles</li>
+              <li>• Type numbers + <kbd className="px-2 py-1 bg-white rounded">Enter</kbd> for exact distances</li>
+              <li>• Press <kbd className="px-2 py-1 bg-white rounded">ESC</kbd> to undo last point</li>
+              <li>• Right-click when done (3+ vertices required)</li>
+              <li>• <strong>Hover over numbered corner circles</strong> - they enlarge for easier grabbing</li>
+              <li>• <strong>Drag corners</strong> to reshape the boundary visually</li>
+              <li>• Edit precise lengths/angles in the side panel</li>
+            </ul>
+          </div>
         </div>
 
         {/* Architectural Recommendations */}

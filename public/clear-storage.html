@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clear ArchiAI Storage</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 2.5em;
+      text-align: center;
+    }
+    .stats {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 20px;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 10px 0;
+      font-size: 1.1em;
+    }
+    .stat-label {
+      font-weight: 600;
+    }
+    .stat-value {
+      font-family: 'Courier New', monospace;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      margin: 10px 0;
+      font-size: 1.1em;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+    }
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(245, 87, 108, 0.4);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: white;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(79, 172, 254, 0.4);
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+      color: white;
+    }
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(67, 233, 123, 0.4);
+    }
+    .message {
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 10px;
+      text-align: center;
+      font-weight: 600;
+    }
+    .message.success {
+      background: rgba(67, 233, 123, 0.3);
+    }
+    .message.error {
+      background: rgba(245, 87, 108, 0.3);
+    }
+    .items-list {
+      max-height: 300px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 15px;
+      border-radius: 10px;
+      margin: 20px 0;
+    }
+    .item {
+      padding: 10px;
+      margin: 5px 0;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 5px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .item-name {
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+    .item-size {
+      font-weight: 600;
+      color: #ffd700;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧹 ArchiAI Storage Manager</h1>
+    
+    <div class="stats" id="stats">
+      <div class="stat-row">
+        <span class="stat-label">📦 Total Items:</span>
+        <span class="stat-value" id="itemCount">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">💾 Total Size:</span>
+        <span class="stat-value" id="totalSize">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">📊 Usage:</span>
+        <span class="stat-value" id="usage">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">🕐 Oldest Item:</span>
+        <span class="stat-value" id="oldest">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">🕑 Newest Item:</span>
+        <span class="stat-value" id="newest">-</span>
+      </div>
+    </div>
+
+    <div class="items-list" id="itemsList"></div>
+
+    <div id="message"></div>
+
+    <button class="btn-primary" onclick="refreshStats()">🔄 Refresh Stats</button>
+    <button class="btn-success" onclick="cleanupOld()">🧹 Cleanup Old Items (50%)</button>
+    <button class="btn-danger" onclick="clearDesignHistory()">🗑️ Clear Design History Only</button>
+    <button class="btn-danger" onclick="clearAllStorage()">⚠️ Clear ALL ArchiAI Storage</button>
+  </div>
+
+  <script>
+    const PREFIX = 'archiAI_';
+
+    function getStorageStats() {
+      let total = 0;
+      let items = [];
+      
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key) && key.startsWith(PREFIX)) {
+          const size = localStorage[key].length + key.length;
+          total += size;
+          items.push({
+            key: key.replace(PREFIX, ''),
+            size: size,
+            sizeKB: (size / 1024).toFixed(2)
+          });
+        }
+      }
+
+      // Sort by size (largest first)
+      items.sort((a, b) => b.size - a.size);
+
+      const estimatedLimit = 5 * 1024 * 1024; // 5MB
+      const usage = Math.round((total / estimatedLimit) * 100);
+
+      // Get timestamps
+      let oldest = Date.now();
+      let newest = 0;
+
+      items.forEach(item => {
+        try {
+          const data = JSON.parse(localStorage.getItem(PREFIX + item.key));
+          if (data && data._timestamp) {
+            if (data._timestamp < oldest) oldest = data._timestamp;
+            if (data._timestamp > newest) newest = data._timestamp;
+          }
+        } catch (e) {}
+      });
+
+      return {
+        itemCount: items.length,
+        totalSizeKB: (total / 1024).toFixed(2),
+        usage: usage,
+        items: items,
+        oldest: oldest === Date.now() ? null : oldest,
+        newest: newest === 0 ? null : newest
+      };
+    }
+
+    function refreshStats() {
+      const stats = getStorageStats();
+      
+      document.getElementById('itemCount').textContent = stats.itemCount;
+      document.getElementById('totalSize').textContent = stats.totalSizeKB + ' KB';
+      document.getElementById('usage').textContent = stats.usage + '%';
+      document.getElementById('oldest').textContent = stats.oldest 
+        ? new Date(stats.oldest).toLocaleString() 
+        : 'N/A';
+      document.getElementById('newest').textContent = stats.newest 
+        ? new Date(stats.newest).toLocaleString() 
+        : 'N/A';
+
+      // Display items list
+      const itemsList = document.getElementById('itemsList');
+      itemsList.innerHTML = '<h3 style="margin-top: 0;">Storage Items (by size):</h3>';
+      
+      stats.items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <span class="item-name">${item.key}</span>
+          <span class="item-size">${item.sizeKB} KB</span>
+        `;
+        itemsList.appendChild(div);
+      });
+    }
+
+    function showMessage(text, type = 'success') {
+      const messageDiv = document.getElementById('message');
+      messageDiv.textContent = text;
+      messageDiv.className = `message ${type}`;
+      
+      setTimeout(() => {
+        messageDiv.textContent = '';
+        messageDiv.className = 'message';
+      }, 3000);
+    }
+
+    function cleanupOld() {
+      if (!confirm('Remove 50% of oldest items?')) return;
+
+      const keys = Object.keys(localStorage).filter(k => k.startsWith(PREFIX));
+      
+      if (keys.length === 0) {
+        showMessage('No items to clean up', 'error');
+        return;
+      }
+
+      // Sort by timestamp (oldest first)
+      const sorted = keys.sort((a, b) => {
+        try {
+          const aData = JSON.parse(localStorage[a]);
+          const bData = JSON.parse(localStorage[b]);
+          const aTime = aData?._timestamp || 0;
+          const bTime = bData?._timestamp || 0;
+          return aTime - bTime;
+        } catch {
+          return 0;
+        }
+      });
+
+      const toRemove = Math.max(1, Math.floor(sorted.length * 0.5));
+      const removed = sorted.slice(0, toRemove);
+
+      removed.forEach(key => localStorage.removeItem(key));
+
+      showMessage(`✅ Cleaned up ${removed.length} old items`, 'success');
+      refreshStats();
+    }
+
+    function clearDesignHistory() {
+      if (!confirm('Clear design history? This cannot be undone!')) return;
+
+      localStorage.removeItem(PREFIX + 'design_history');
+      showMessage('✅ Design history cleared', 'success');
+      refreshStats();
+    }
+
+    function clearAllStorage() {
+      if (!confirm('⚠️ Clear ALL ArchiAI storage? This cannot be undone!')) return;
+      if (!confirm('Are you absolutely sure? All designs and settings will be lost!')) return;
+
+      const keys = Object.keys(localStorage).filter(k => k.startsWith(PREFIX));
+      keys.forEach(key => localStorage.removeItem(key));
+
+      showMessage(`✅ Cleared ${keys.length} items`, 'success');
+      refreshStats();
+    }
+
+    // Initial load
+    refreshStats();
+  </script>
+</body>
+</html>
+

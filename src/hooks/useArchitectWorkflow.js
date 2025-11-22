@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { useDesignContext } from '../context/DesignContext';
-import logger from '../utils/logger';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import logger from '../utils/logger.js';
 
 /**
  * useArchitectWorkflow - Navigation & Workflow Management Hook

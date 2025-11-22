@@ -3,7 +3,7 @@ import {
   MapPin, Sparkles, FileCode, Palette, Zap, Shield,
   Building, Clock, TrendingUp, Users, BarChart3, ArrowRight
 } from 'lucide-react';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow';
+import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
 
 /**
  * LandingPage - Welcome page with hero section, features, and metrics

@@ -280,6 +280,95 @@ class ModelSelector {
           avgLatency: '10s',
           reliability: 0.93
         }
+      },
+
+      // Site Analysis & Climate Logic
+      SITE_ANALYSIS: {
+        primary: {
+          model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+          provider: 'together',
+          params: {
+            temperature: 0.3,
+            max_tokens: 2000,
+            response_format: { type: 'json_object' }
+          },
+          strengths: ['Structured output', 'Fast', 'Good at technical analysis'],
+          costPerCall: 0.02,
+          avgLatency: '10-15s',
+          reliability: 0.96
+        },
+        fallback: {
+          model: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo',
+          provider: 'together',
+          params: {
+            temperature: 0.3,
+            max_tokens: 2000,
+            response_format: { type: 'json_object' }
+          },
+          costPerCall: 0.09,
+          avgLatency: '30-40s',
+          reliability: 0.95
+        }
+      },
+
+      CLIMATE_LOGIC: {
+        primary: {
+          model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+          provider: 'together',
+          params: {
+            temperature: 0.2,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' }
+          },
+          costPerCall: 0.015,
+          avgLatency: '8-12s',
+          reliability: 0.97
+        }
+      },
+
+      // Blended Style Generation
+      BLENDED_STYLE_GENERATION: {
+        primary: {
+          model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+          provider: 'together',
+          params: {
+            temperature: 0.4,
+            max_tokens: 1500,
+            response_format: { type: 'json_object' }
+          },
+          costPerCall: 0.015,
+          avgLatency: '10-15s',
+          reliability: 0.96
+        }
+      },
+
+      // Architectural Reasoning (narrative)
+      ARCHITECTURAL_REASONING: {
+        primary: {
+          model: 'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo',
+          provider: 'together',
+          params: {
+            temperature: 0.7,
+            max_tokens: 2500,
+            response_format: { type: 'json_object' }
+          },
+          strengths: ['Rich reasoning', 'Creative insights', 'Comprehensive analysis'],
+          costPerCall: 0.08,
+          avgLatency: '30-40s',
+          reliability: 0.95
+        },
+        fallback: {
+          model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+          provider: 'together',
+          params: {
+            temperature: 0.7,
+            max_tokens: 2000,
+            response_format: { type: 'json_object' }
+          },
+          costPerCall: 0.025,
+          avgLatency: '12-18s',
+          reliability: 0.96
+        }
       }
     };
   }

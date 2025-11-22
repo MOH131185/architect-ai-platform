@@ -7,7 +7,7 @@
  * Should be initialized once in index.js or App.js
  */
 
-import logger from './logger';
+import logger from './logger.js';
 import errorHandler, {
   APIError,
   NetworkError,
@@ -15,7 +15,7 @@ import errorHandler, {
   ValidationError,
   GenerationError,
   ConfigurationError
-} from './errors';
+} from './errors.js';
 
 class GlobalErrorHandler {
   constructor() {

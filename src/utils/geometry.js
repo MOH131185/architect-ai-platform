@@ -288,3 +288,251 @@ export function computeSiteMetrics(polygon) {
   };
 }
 
+// ========================================
+// BOUNDARY VALIDATION AND COMPLIANCE
+// ========================================
+
+/**
+ * Check if a point is inside a polygon (ray casting algorithm)
+ * @param {{x: number, y: number}} point - Point in XY coordinates
+ * @param {Array<{x: number, y: number}>} polygon - Polygon vertices in XY
+ * @returns {boolean} True if point is inside polygon
+ */
+export function pointInPolygon(point, polygon) {
+  let inside = false;
+  const { x, y } = point;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+}
+
+/**
+ * Validate if a footprint is fully inside a boundary
+ * @param {Array<{x, y}>} footprint - Building footprint in XY coordinates (meters)
+ * @param {Array<{x, y}>} boundary - Site boundary in XY coordinates (meters)
+ * @returns {Object} Validation result with compliance percentage
+ */
+export function validateFootprintInsideBoundary(footprint, boundary) {
+  const result = {
+    isValid: true,
+    outsideVertices: [],
+    compliancePercentage: 100,
+    errors: []
+  };
+
+  // Check if all footprint vertices are inside boundary
+  for (let i = 0; i < footprint.length; i++) {
+    const vertex = footprint[i];
+    if (!pointInPolygon(vertex, boundary)) {
+      result.isValid = false;
+      result.outsideVertices.push({
+        index: i,
+        vertex,
+        message: `Vertex ${i + 1} at (${vertex.x.toFixed(2)}m, ${vertex.y.toFixed(2)}m) is outside site boundary`
+      });
+    }
+  }
+
+  // Calculate compliance percentage
+  const insideCount = footprint.length - result.outsideVertices.length;
+  result.compliancePercentage = (insideCount / footprint.length) * 100;
+
+  // Add summary error
+  if (!result.isValid) {
+    result.errors.push(
+      `Building footprint violates boundary: ${result.outsideVertices.length}/${footprint.length} vertices outside (${result.compliancePercentage.toFixed(1)}% compliance)`
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Apply directional setbacks to a site boundary
+ * @param {Array<{x, y}>} boundary - Site boundary in XY coordinates (meters)
+ * @param {Object} setbacks - Setbacks in meters for each direction
+ * @param {number} setbacks.front - Front setback
+ * @param {number} setbacks.rear - Rear setback
+ * @param {number} setbacks.sideLeft - Left side setback
+ * @param {number} setbacks.sideRight - Right side setback
+ * @param {number} [orientationDeg=0] - Building orientation (0 = North)
+ * @returns {Array<{x, y}>} Buildable area polygon
+ */
+export function applyDirectionalSetbacks(boundary, setbacks, orientationDeg = 0) {
+  // For now, use uniform setback (average)
+  // TODO: Implement directional setbacks based on orientation
+  const avgSetback = (
+    setbacks.front +
+    setbacks.rear +
+    setbacks.sideLeft +
+    setbacks.sideRight
+  ) / 4;
+
+  return insetPolygonUniform(boundary, avgSetback);
+}
+
+/**
+ * Inset a polygon uniformly by a given distance
+ * @param {Array<{x, y}>} polygon - Polygon in XY coordinates (meters)
+ * @param {number} distance - Inset distance in meters
+ * @returns {Array<{x, y}>} Inset polygon
+ */
+export function insetPolygonUniform(polygon, distance) {
+  const centroid = {
+    x: polygon.reduce((sum, p) => sum + p.x, 0) / polygon.length,
+    y: polygon.reduce((sum, p) => sum + p.y, 0) / polygon.length
+  };
+
+  // Move each vertex toward centroid by the setback distance
+  return polygon.map(vertex => {
+    const dx = centroid.x - vertex.x;
+    const dy = centroid.y - vertex.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist === 0 || dist < distance) return vertex;
+
+    const ratio = distance / dist;
+    return {
+      x: vertex.x + dx * ratio,
+      y: vertex.y + dy * ratio
+    };
+  });
+}
+
+/**
+ * Clip footprint to buildable boundary (auto-correct)
+ * @param {Array<{x, y}>} footprint - Proposed footprint in XY coordinates
+ * @param {Array<{x, y}>} buildableBoundary - Buildable area boundary in XY
+ * @returns {Array<{x, y}>} Corrected footprint
+ */
+export function clipFootprintToBoundary(footprint, buildableBoundary) {
+  // Simplified: move outside vertices to nearest boundary point
+  return footprint.map(vertex => {
+    if (pointInPolygon(vertex, buildableBoundary)) {
+      return vertex; // Already inside
+    }
+
+    // Find nearest point on boundary
+    return nearestPointOnPolygon(vertex, buildableBoundary);
+  });
+}
+
+/**
+ * Find nearest point on a polygon boundary to a given point
+ * @param {{x, y}} point - Point in XY coordinates
+ * @param {Array<{x, y}>} polygon - Polygon in XY coordinates
+ * @returns {{x, y}} Nearest point on polygon edge
+ */
+export function nearestPointOnPolygon(point, polygon) {
+  let minDist = Infinity;
+  let nearest = polygon[0];
+
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length;
+    const edgePoint = nearestPointOnSegment(point, polygon[i], polygon[j]);
+    const dist = distanceXY(point, edgePoint);
+
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = edgePoint;
+    }
+  }
+
+  return nearest;
+}
+
+/**
+ * Find nearest point on a line segment to a given point
+ * @param {{x, y}} point - Point
+ * @param {{x, y}} segmentStart - Segment start
+ * @param {{x, y}} segmentEnd - Segment end
+ * @returns {{x, y}} Nearest point on segment
+ */
+export function nearestPointOnSegment(point, segmentStart, segmentEnd) {
+  const dx = segmentEnd.x - segmentStart.x;
+  const dy = segmentEnd.y - segmentStart.y;
+
+  if (dx === 0 && dy === 0) return segmentStart;
+
+  const t = Math.max(0, Math.min(1,
+    ((point.x - segmentStart.x) * dx + (point.y - segmentStart.y) * dy) / (dx * dx + dy * dy)
+  ));
+
+  return {
+    x: segmentStart.x + t * dx,
+    y: segmentStart.y + t * dy
+  };
+}
+
+/**
+ * Calculate distance between two points in XY coordinates
+ * @param {{x, y}} p1 - Point 1
+ * @param {{x, y}} p2 - Point 2
+ * @returns {number} Distance in meters
+ */
+export function distanceXY(p1, p2) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Validate and auto-correct building footprint
+ * Ensures footprint respects site boundary and setbacks
+ * @param {Object} params - Validation parameters
+ * @param {Array<{lat, lng}>} params.siteBoundary - Site boundary in lat/lng
+ * @param {Object} params.setbacks - Setbacks in meters
+ * @param {Array<{x, y}>} params.proposedFootprint - Proposed footprint in XY (meters)
+ * @param {{lat, lng}} params.origin - Reference origin for coordinate conversion
+ * @returns {Object} Corrected footprint and validation results
+ */
+export function validateAndCorrectFootprint(params) {
+  const { siteBoundary, setbacks, proposedFootprint, origin } = params;
+
+  // Convert site boundary to XY coordinates
+  const boundaryXY = polygonToLocalXY(siteBoundary, origin);
+
+  // Apply setbacks to get buildable area
+  const buildableBoundary = applyDirectionalSetbacks(boundaryXY, setbacks);
+
+  // Validate proposed footprint
+  const validation = validateFootprintInsideBoundary(proposedFootprint, buildableBoundary);
+
+  // Auto-correct if needed
+  let correctedFootprint = proposedFootprint;
+  let wasCorrected = false;
+
+  if (!validation.isValid) {
+    console.warn(`⚠️  Footprint violates boundary/setbacks (${validation.compliancePercentage.toFixed(1)}% compliant), auto-correcting...`);
+    correctedFootprint = clipFootprintToBoundary(proposedFootprint, buildableBoundary);
+    wasCorrected = true;
+
+    // Re-validate corrected footprint
+    const revalidation = validateFootprintInsideBoundary(correctedFootprint, buildableBoundary);
+    console.log(`✅ Corrected footprint compliance: ${revalidation.compliancePercentage.toFixed(1)}%`);
+  } else {
+    console.log(`✅ Footprint respects boundaries and setbacks (100% compliant)`);
+  }
+
+  return {
+    correctedFootprint,
+    originalFootprint: proposedFootprint,
+    buildableBoundary,
+    boundaryXY,
+    validation,
+    wasCorrected,
+    origin
+  };
+}
+

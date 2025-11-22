@@ -19,12 +19,19 @@
  */
 
 import CryptoJS from 'crypto-js';
+import runtimeEnv from '../utils/runtimeEnv.js';
+import logger from '../utils/logger.js';
+
 
 class ProjectDNAPipeline {
   constructor() {
     this.storagePrefix = 'dna_pipeline_';
     this.historyPath = 'history'; // Virtual path for DNA storage
-    console.log('🧬 Project DNA Pipeline initialized');
+    logger.info('🧬 Project DNA Pipeline initialized');
+  }
+
+  getLocalStorage() {
+    return runtimeEnv.getLocal();
   }
 
   /**
@@ -41,10 +48,10 @@ class ProjectDNAPipeline {
     const hash = CryptoJS.SHA256(base).toString();
     const projectId = hash.substring(0, 10);
 
-    console.log(`🔑 Generated Project ID: ${projectId}`);
-    console.log(`   📍 Address: ${address}`);
-    console.log(`   🏠 Type: ${projectType}`);
-    console.log(`   ⏱️  Timestamp: ${new Date(timestamp).toISOString()}`);
+    logger.info(`🔑 Generated Project ID: ${projectId}`);
+    logger.info(`   📍 Address: ${address}`);
+    logger.info(`   🏠 Type: ${projectType}`);
+    logger.info(`   ⏱️  Timestamp: ${new Date(timestamp).toISOString()}`);
 
     return projectId;
   }
@@ -65,8 +72,8 @@ class ProjectDNAPipeline {
    * @returns {Promise<Object>} Save result with DNA reference
    */
   async saveProjectDNA(dnaData) {
-    console.log('\n💾 [DNA Pipeline] Saving Project DNA...');
-    console.log(`   🔑 Project ID: ${dnaData.projectId}`);
+    logger.info('\n💾 [DNA Pipeline] Saving Project DNA...');
+    logger.info(`   🔑 Project ID: ${dnaData.projectId}`);
 
     try {
       const {
@@ -129,18 +136,23 @@ class ProjectDNAPipeline {
         }
       };
 
+      const local = this.getLocalStorage();
+      if (!local) {
+        throw new Error('Local storage is not available (DNA pipeline requires browser storage).');
+      }
+
       // Store in localStorage (simulating file system storage)
       const storageKey = `${this.storagePrefix}${projectId}`;
-      localStorage.setItem(storageKey, JSON.stringify(dnaPackage));
+      local.setItem(storageKey, JSON.stringify(dnaPackage));
 
       // Also store in a master index
       this.addToMasterIndex(projectId, dnaPackage.context);
 
-      console.log('✅ [DNA Pipeline] Project DNA saved successfully');
-      console.log(`   📦 Storage Key: ${storageKey}`);
-      console.log(`   🎨 Design DNA Version: ${designDNA?.version || 'N/A'}`);
-      console.log(`   📏 Dimensions: ${designDNA?.dimensions?.length}m × ${designDNA?.dimensions?.width}m`);
-      console.log(`   🏗️  Floors: ${designDNA?.dimensions?.floor_count || projectContext?.floors}`);
+      logger.success(' [DNA Pipeline] Project DNA saved successfully');
+      logger.info(`   📦 Storage Key: ${storageKey}`);
+      logger.info(`   🎨 Design DNA Version: ${designDNA?.version || 'N/A'}`);
+      logger.info(`   📏 Dimensions: ${designDNA?.dimensions?.length}m × ${designDNA?.dimensions?.width}m`);
+      logger.info(`   🏗️  Floors: ${designDNA?.dimensions?.floor_count || projectContext?.floors}`);
 
       return {
         success: true,
@@ -150,7 +162,7 @@ class ProjectDNAPipeline {
       };
 
     } catch (error) {
-      console.error('❌ [DNA Pipeline] Failed to save Project DNA:', error);
+      logger.error('❌ [DNA Pipeline] Failed to save Project DNA:', error);
       return {
         success: false,
         error: error.message
@@ -167,29 +179,35 @@ class ProjectDNAPipeline {
    * @returns {Object|null} Complete DNA package or null if not found
    */
   loadProjectDNA(projectId) {
-    console.log(`\n📖 [DNA Pipeline] Loading Project DNA: ${projectId}`);
+    logger.info(`\n📖 [DNA Pipeline] Loading Project DNA: ${projectId}`);
 
     try {
+      const local = this.getLocalStorage();
+      if (!local) {
+        logger.warn('Local storage unavailable while loading DNA');
+        return null;
+      }
+
       const storageKey = `${this.storagePrefix}${projectId}`;
-      const stored = localStorage.getItem(storageKey);
+      const stored = local.getItem(storageKey);
 
       if (!stored) {
-        console.log('⚠️  [DNA Pipeline] No DNA found for this project');
+        logger.info('⚠️  [DNA Pipeline] No DNA found for this project');
         return null;
       }
 
       const dnaPackage = JSON.parse(stored);
 
-      console.log('✅ [DNA Pipeline] Project DNA loaded successfully');
-      console.log(`   📅 Created: ${dnaPackage.timestamp}`);
-      console.log(`   🏠 Type: ${dnaPackage.context?.buildingType}`);
-      console.log(`   📏 Size: ${dnaPackage.context?.floorArea}m²`);
-      console.log(`   🎨 Materials: ${dnaPackage.designDNA?.materials?.exterior?.primary || 'N/A'}`);
+      logger.success(' [DNA Pipeline] Project DNA loaded successfully');
+      logger.info(`   📅 Created: ${dnaPackage.timestamp}`);
+      logger.info(`   🏠 Type: ${dnaPackage.context?.buildingType}`);
+      logger.info(`   📏 Size: ${dnaPackage.context?.floorArea}m²`);
+      logger.info(`   🎨 Materials: ${dnaPackage.designDNA?.materials?.exterior?.primary || 'N/A'}`);
 
       return dnaPackage;
 
     } catch (error) {
-      console.error('❌ [DNA Pipeline] Failed to load Project DNA:', error);
+      logger.error('❌ [DNA Pipeline] Failed to load Project DNA:', error);
       return null;
     }
   }
@@ -204,7 +222,7 @@ class ProjectDNAPipeline {
    * @returns {Promise<Object>} Generation result with consistency data
    */
   async generateWithDNA(projectId, viewType, options = {}) {
-    console.log(`\n🎨 [DNA Pipeline] Generating ${viewType} with DNA reference...`);
+    logger.info(`\n🎨 [DNA Pipeline] Generating ${viewType} with DNA reference...`);
 
     const dnaPackage = this.loadProjectDNA(projectId);
     if (!dnaPackage) {
@@ -235,10 +253,10 @@ class ProjectDNAPipeline {
       ...options
     };
 
-    console.log('✅ [DNA Pipeline] Generation parameters prepared');
-    console.log(`   🖼️  Reference: ${dnaPackage.references.basePlanType}`);
-    console.log(`   📐 View: ${viewType}`);
-    console.log(`   🎯 Consistency Rules: ${generationParams.consistencyRules?.length || 0}`);
+    logger.success(' [DNA Pipeline] Generation parameters prepared');
+    logger.info(`   🖼️  Reference: ${dnaPackage.references.basePlanType}`);
+    logger.info(`   📐 View: ${viewType}`);
+    logger.info(`   🎯 Consistency Rules: ${generationParams.consistencyRules?.length || 0}`);
 
     // Return prepared params (actual generation handled by AI service)
     return {
@@ -259,11 +277,11 @@ class ProjectDNAPipeline {
    * @returns {Promise<Object>} Consistency check result with score
    */
   async checkHarmony(projectId, newImageUrl, viewType) {
-    console.log(`\n🔍 [DNA Pipeline] Checking harmony for ${viewType}...`);
+    logger.info(`\n🔍 [DNA Pipeline] Checking harmony for ${viewType}...`);
 
     const dnaPackage = this.loadProjectDNA(projectId);
     if (!dnaPackage) {
-      console.warn('⚠️  No baseline DNA found');
+      logger.warn('⚠️  No baseline DNA found');
       return {
         success: false,
         score: 0,
@@ -320,12 +338,15 @@ class ProjectDNAPipeline {
 
       // Save updated DNA package
       const storageKey = `${this.storagePrefix}${projectId}`;
-      localStorage.setItem(storageKey, JSON.stringify(dnaPackage));
+      const localUpdate = this.getLocalStorage();
+      if (localUpdate) {
+        localUpdate.setItem(storageKey, JSON.stringify(dnaPackage));
+      }
 
-      console.log(`${status === 'excellent' || status === 'good' ? '✅' : '⚠️'} [DNA Pipeline] Harmony check complete`);
-      console.log(`   📊 Similarity Score: ${(similarityScore * 100).toFixed(1)}%`);
-      console.log(`   🎯 Status: ${status.toUpperCase()}`);
-      console.log(`   📝 Message: ${message}`);
+      logger.info(`${status === 'excellent' || status === 'good' ? '✅' : '⚠️'} [DNA Pipeline] Harmony check complete`);
+      logger.info(`   📊 Similarity Score: ${(similarityScore * 100).toFixed(1)}%`);
+      logger.info(`   🎯 Status: ${status.toUpperCase()}`);
+      logger.info(`   📝 Message: ${message}`);
 
       return {
         success: true,
@@ -341,7 +362,7 @@ class ProjectDNAPipeline {
       };
 
     } catch (error) {
-      console.error('❌ [DNA Pipeline] Harmony check failed:', error);
+      logger.error('❌ [DNA Pipeline] Harmony check failed:', error);
       return {
         success: false,
         score: 0,
@@ -420,7 +441,7 @@ class ProjectDNAPipeline {
    * @returns {Object} Complete workflow status
    */
   getWorkflowStatus(projectId) {
-    console.log(`\n📊 [DNA Pipeline] Getting workflow status for ${projectId}...`);
+    logger.info(`\n📊 [DNA Pipeline] Getting workflow status for ${projectId}...`);
 
     const dnaPackage = this.loadProjectDNA(projectId);
     if (!dnaPackage) {
@@ -491,9 +512,9 @@ class ProjectDNAPipeline {
       completionPercentage: this.calculateCompletionPercentage(dnaPackage)
     };
 
-    console.log('✅ [DNA Pipeline] Workflow status retrieved');
-    console.log(`   📈 Completion: ${workflow.completionPercentage}%`);
-    console.log(`   🎯 Avg Consistency: ${(workflow.consistency.averageScore * 100).toFixed(1)}%`);
+    logger.success(' [DNA Pipeline] Workflow status retrieved');
+    logger.info(`   📈 Completion: ${workflow.completionPercentage}%`);
+    logger.info(`   🎯 Avg Consistency: ${(workflow.consistency.averageScore * 100).toFixed(1)}%`);
 
     return {
       success: true,
@@ -528,8 +549,13 @@ class ProjectDNAPipeline {
    * UTILITY: Add project to master index
    */
   addToMasterIndex(projectId, context) {
+    const local = this.getLocalStorage();
+    if (!local) {
+      return;
+    }
+
     const indexKey = `${this.storagePrefix}master_index`;
-    const stored = localStorage.getItem(indexKey);
+    const stored = local.getItem(indexKey);
     const index = stored ? JSON.parse(stored) : [];
 
     const entry = {
@@ -547,15 +573,19 @@ class ProjectDNAPipeline {
       index.push(entry);
     }
 
-    localStorage.setItem(indexKey, JSON.stringify(index));
+    local.setItem(indexKey, JSON.stringify(index));
   }
 
   /**
    * UTILITY: Get all projects from master index
    */
   getAllProjects() {
+    const local = this.getLocalStorage();
+    if (!local) {
+      return [];
+    }
     const indexKey = `${this.storagePrefix}master_index`;
-    const stored = localStorage.getItem(indexKey);
+    const stored = local.getItem(indexKey);
     return stored ? JSON.parse(stored) : [];
   }
 
@@ -628,20 +658,34 @@ class ProjectDNAPipeline {
    * UTILITY: Clear project DNA (for testing/debugging)
    */
   clearProjectDNA(projectId) {
+    const local = this.getLocalStorage();
+    if (!local) {
+      return;
+    }
     const storageKey = `${this.storagePrefix}${projectId}`;
-    localStorage.removeItem(storageKey);
-    console.log(`🗑️  Cleared DNA for project: ${projectId}`);
+    local.removeItem(storageKey);
+    logger.info(`🗑️  Cleared DNA for project: ${projectId}`);
   }
 
   /**
    * UTILITY: Clear all DNA data (use with caution)
    */
   clearAllDNA() {
-    const keys = Object.keys(localStorage).filter(key =>
-      key.startsWith(this.storagePrefix)
-    );
-    keys.forEach(key => localStorage.removeItem(key));
-    console.log(`🗑️  Cleared ${keys.length} DNA entries`);
+    const local = this.getLocalStorage();
+    if (!local) {
+      return;
+    }
+
+    const keys = [];
+    for (let i = 0; i < local.length; i += 1) {
+      const key = local.key(i);
+      if (key && key.startsWith(this.storagePrefix)) {
+        keys.push(key);
+      }
+    }
+
+    keys.forEach(key => local.removeItem(key));
+    logger.info(`🗑️  Cleared ${keys.length} DNA entries`);
   }
 }
 

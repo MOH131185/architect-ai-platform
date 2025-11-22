@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import axios from 'axios';
-import { useDesignContext } from '../context/DesignContext';
-import { locationIntelligence } from '../services/locationIntelligence';
-import siteAnalysisService from '../services/siteAnalysisService';
-import logger from '../utils/logger';
+import { useDesignContext } from '../context/DesignContext.jsx';
+import { locationIntelligence } from '../services/locationIntelligence.js';
+import siteAnalysisService from '../services/siteAnalysisService.js';
+import logger from '../utils/logger.js';
+import { buildSiteContext } from '../rings/ring1-site/siteContextBuilder.js';
 
 /**
  * useLocationData - Location Analysis Hook
@@ -29,6 +30,8 @@ export const useLocationData = () => {
     setSitePolygon,
     siteMetrics,
     setSiteMetrics,
+    locationAccuracy,
+    setLocationAccuracy,
     isDetectingLocation,
     setIsDetectingLocation,
     isLoading,
@@ -56,6 +59,36 @@ export const useLocationData = () => {
       const currentTemp = weatherData.main.temp;
       const tempVariation = 15;
 
+      // Extract wind data from OpenWeather API
+      const windData = weatherData.wind || {};
+      const windSpeed = windData.speed || 0; // m/s
+      const windDeg = windData.deg || 0; // degrees (0 = North, 90 = East, 180 = South, 270 = West)
+      const windGust = windData.gust || windSpeed; // m/s
+
+      // Convert wind direction degrees to cardinal direction
+      const getWindDirection = (deg) => {
+        const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+        const index = Math.round(deg / 22.5) % 16;
+        return directions[index];
+      };
+
+      // Convert m/s to km/h
+      const windSpeedKmh = (windSpeed * 3.6).toFixed(1);
+      const windGustKmh = (windGust * 3.6).toFixed(1);
+
+      // Determine facade orientation recommendation based on wind
+      const optimalFacadeOrientation = (() => {
+        // For prevailing winds, place service/utility areas on windward side
+        // Place main living areas on leeward (protected) side
+        if (windSpeed > 5) { // Moderate to strong winds (> 18 km/h)
+          if (windDeg >= 315 || windDeg < 45) return "Main rooms facing South (protected from North wind)";
+          if (windDeg >= 45 && windDeg < 135) return "Main rooms facing West (protected from East wind)";
+          if (windDeg >= 135 && windDeg < 225) return "Main rooms facing North (protected from South wind)";
+          if (windDeg >= 225 && windDeg < 315) return "Main rooms facing East (protected from West wind)";
+        }
+        return "South-facing for solar optimization (low wind impact)";
+      })();
+
       const finalProcessedData = {
         climate: {
           type: weatherData.weather[0]?.main || "Varied",
@@ -82,10 +115,20 @@ export const useLocationData = () => {
             },
           }
         },
+        wind: {
+          speed: `${windSpeedKmh} km/h`,
+          speedMs: windSpeed,
+          direction: getWindDirection(windDeg),
+          directionDeg: windDeg,
+          gust: `${windGustKmh} km/h`,
+          gustMs: windGust,
+          impact: windSpeed > 5 ? 'Moderate-High' : windSpeed > 3 ? 'Moderate' : 'Low',
+          facadeRecommendation: optimalFacadeOrientation
+        },
         sunPath: {
           summer: `Sunrise: ~6:00 AM`,
           winter: `Sunset: ~5:00 PM`,
-          optimalOrientation: "South-facing (general recommendation)"
+          optimalOrientation: optimalFacadeOrientation
         }
       };
 
@@ -105,16 +148,27 @@ export const useLocationData = () => {
               fall: { avgTemp: "19.5°C", precipitation: "25mm", solar: "65%" },
             }
           },
+          wind: {
+            speed: "12.5 km/h",
+            speedMs: 3.5,
+            direction: "SW",
+            directionDeg: 225,
+            gust: "18.0 km/h",
+            gustMs: 5.0,
+            impact: "Moderate",
+            facadeRecommendation: "Main rooms facing East (protected from West wind)"
+          },
           sunPath: {
             summer: "Sunrise: ~5:48 AM, Sunset: ~8:35 PM",
             winter: "Sunrise: ~7:20 AM, Sunset: ~5:00 PM",
-            optimalOrientation: "South-facing for winter sun"
+            optimalOrientation: "Main rooms facing East (protected from West wind)"
           }
         };
       }
 
       return {
         climate: { type: 'Error fetching seasonal data', seasonal: {} },
+        wind: { speed: 'N/A', direction: 'N/A', impact: 'Unknown' },
         sunPath: { summer: 'N/A', winter: 'N/A', optimalOrientation: 'N/A' }
       };
     }
@@ -193,7 +247,7 @@ export const useLocationData = () => {
       );
 
       // Step 5: Recommend architectural style
-      const architecturalStyle = locationIntelligence.recommendArchitecturalStyle(
+      const architecturalStyle = await locationIntelligence.recommendArchitecturalStyle(
         locationResult,
         seasonalClimateData.climate
       );
@@ -229,6 +283,7 @@ export const useLocationData = () => {
           vertexCount: footprintResult.shape.vertexCount,
           isConvex: footprintResult.shape.isConvex,
           source: 'google_building_outline',
+          confidence: 0.95, // High confidence for Google Building API
           detectedAt: footprintResult.metadata.detectedAt
         });
       } else {
@@ -247,7 +302,10 @@ export const useLocationData = () => {
           setSiteMetrics({
             areaM2: siteAnalysisResult.siteAnalysis.surfaceArea,
             unit: siteAnalysisResult.siteAnalysis.surfaceAreaUnit,
-            source: siteAnalysisResult.siteAnalysis.boundarySource
+            source: siteAnalysisResult.siteAnalysis.boundarySource,
+            shapeType: siteAnalysisResult.siteAnalysis.boundaryShapeType,
+            confidence: siteAnalysisResult.siteAnalysis.boundaryConfidence || 0.40,
+            vertexCount: siteAnalysisResult.siteAnalysis.siteBoundary?.length
           });
         }
       } else if (!siteAnalysisResult.success && !detectedBuildingFootprint) {
@@ -255,6 +313,7 @@ export const useLocationData = () => {
       }
 
       // Step 8: Generate site map snapshot
+      let siteMapUrl = null;
       try {
         logger.info('Generating Google Maps plan mode snapshot for A1 sheet', null, '🗺️');
         const { getSiteSnapshotWithMetadata } = await import('../services/siteMapSnapshotService');
@@ -270,14 +329,51 @@ export const useLocationData = () => {
         });
 
         if (snapshotResult && snapshotResult.dataUrl) {
+          siteMapUrl = snapshotResult.dataUrl;
           logger.info('Google Maps plan snapshot generated successfully', null, '✅');
-          return snapshotResult.dataUrl;
         }
       } catch (snapshotError) {
         logger.error('Failed to generate site map snapshot', snapshotError);
       }
 
-      return null;
+      // Step 9: Save location data and advance to next step
+      const sitePolygonForMap = sitePolygon || detectedBuildingFootprint || siteAnalysisResult?.siteAnalysis?.siteBoundary || null;
+
+      const siteDNA = buildSiteContext({
+        location: { address: formattedAddress, coordinates: { lat, lng } },
+        sitePolygon: sitePolygonForMap,
+        detectedBuildingFootprint,
+        siteAnalysis: siteAnalysisResult.siteAnalysis,
+        climate: seasonalClimateData.climate,
+        seasonalClimate: seasonalClimateData,
+        streetContext: siteAnalysisResult.siteAnalysis?.streetContext
+      });
+
+      const newLocationData = {
+        address: formattedAddress,
+        coordinates: { lat, lng },
+        address_components: addressComponents,
+        climate: seasonalClimateData.climate,
+        sunPath: siteDNA?.solar || seasonalClimateData.sunPath,
+        zoning: zoningData,
+        recommendedStyle: architecturalStyle.primary,
+        localStyles: architecturalStyle.alternatives,
+        sustainabilityScore: 85,
+        marketContext: marketContext,
+        architecturalProfile: architecturalStyle,
+        siteAnalysis: siteAnalysisResult.success ? siteAnalysisResult.siteAnalysis : null,
+        buildingFootprint: detectedBuildingFootprint,
+        detectedShape: detectedShapeType,
+        siteMapUrl: siteMapUrl,
+        mapImageUrl: siteMapUrl,
+        siteDNA
+      };
+
+      setLocationData(newLocationData);
+      logger.info('Location analysis complete, advancing to step 2', null, '✅');
+      goToStep(2);
+
+      return siteMapUrl;
     } catch (error) {
       logger.error("Error analyzing location", error);
 
@@ -301,12 +397,14 @@ export const useLocationData = () => {
     setSitePolygon,
     setSiteMetrics,
     setIsLoading,
+    setLocationData,
+    goToStep,
     showToast,
     getSeasonalClimateData
   ]);
 
   /**
-   * Detect user's current location using browser geolocation
+   * Detect user's current location using enhanced geolocation
    */
   const detectUserLocation = useCallback(async () => {
     if (hasDetectedLocation.current) {
@@ -322,58 +420,71 @@ export const useLocationData = () => {
     setIsDetectingLocation(true);
     hasDetectedLocation.current = true;
 
-    logger.info('Detecting user location', null, '📍');
+    logger.info('Detecting user location with high accuracy', null, '📍');
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
+    try {
+      // Use enhanced location service for better accuracy
+      const enhancedLocationService = (await import('../services/enhancedLocationService')).default;
 
-        logger.info('Location detected', { lat, lng }, '✅');
+      const locationResult = await enhancedLocationService.getUserLocationWithAddress(
+        process.env.REACT_APP_GOOGLE_MAPS_API_KEY
+      );
 
-        try {
-          // Reverse geocode to get address
-          const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-            params: {
-              latlng: `${lat},${lng}`,
-              key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-            },
-          });
+      logger.info('Enhanced location detected', {
+        address: locationResult.address,
+        accuracy: `${locationResult.accuracy.toFixed(1)}m`,
+        qualityScore: locationResult.qualityScore
+      }, '✅');
 
-          if (response.data.results && response.data.results.length > 0) {
-            const detectedAddress = response.data.results[0].formatted_address;
-            setAddress(detectedAddress);
-            logger.info('Address detected', { address: detectedAddress }, '📍');
-            showToast(`Location detected: ${detectedAddress}`);
-          }
-        } catch (error) {
-          logger.error('Failed to reverse geocode location', error);
-          showToast("Could not determine address from location.");
-        } finally {
-          setIsDetectingLocation(false);
-        }
-      },
-      (error) => {
-        logger.error('Geolocation error', error);
-        hasDetectedLocation.current = false;
-        setIsDetectingLocation(false);
+      // Set the detected address
+      setAddress(locationResult.address);
 
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            showToast("Location permission denied. Please enter address manually.");
-            break;
-          case error.POSITION_UNAVAILABLE:
-            showToast("Location information unavailable. Please enter address manually.");
-            break;
-          case error.TIMEOUT:
-            showToast("Location request timed out. Please enter address manually.");
-            break;
-          default:
-            showToast("An unknown error occurred. Please enter address manually.");
-            break;
-        }
+      // Store accuracy info
+      setLocationAccuracy({
+        accuracy: locationResult.accuracy,
+        qualityScore: locationResult.qualityScore,
+        addressType: locationResult.addressType
+      });
+
+      // Show quality feedback
+      const quality = enhancedLocationService.getLocationQuality(locationResult.qualityScore);
+      const accuracyText = enhancedLocationService.formatAccuracy(locationResult.accuracy);
+
+      if (quality.level === 'excellent' || quality.level === 'good') {
+        showToast(`Location detected: ${locationResult.address} (${accuracyText})`);
+      } else if (quality.level === 'fair') {
+        showToast(`Location detected (${accuracyText}): ${locationResult.address}\n⚠️ Please verify this address is correct`);
+      } else {
+        showToast(`⚠️ ${quality.description}\nDetected: ${locationResult.address}\nAccuracy: ${accuracyText}\nPlease verify or enter manually`);
       }
-    );
+
+      // Store accuracy info for later use
+      if (locationResult.qualityScore < 70) {
+        logger.warn('Location quality below recommended threshold', {
+          qualityScore: locationResult.qualityScore,
+          accuracy: locationResult.accuracy
+        });
+      }
+
+    } catch (error) {
+      logger.error('Enhanced location detection failed', error);
+      hasDetectedLocation.current = false;
+
+      // Provide specific error messages
+      if (error.message.includes('Geolocation is not supported')) {
+        showToast("Geolocation is not supported by your browser. Please enter address manually.");
+      } else if (error.message.includes('User denied')) {
+        showToast("Location permission denied. Please enable location access or enter address manually.");
+      } else if (error.message.includes('timeout')) {
+        showToast("Location request timed out. Please try again or enter address manually.");
+      } else if (error.message.includes('API key')) {
+        showToast("Location services unavailable. Please enter address manually.");
+      } else {
+        showToast(`Could not detect location: ${error.message}\nPlease enter address manually.`);
+      }
+    } finally {
+      setIsDetectingLocation(false);
+    }
   }, [hasDetectedLocation, setAddress, setIsDetectingLocation, showToast]);
 
   /**
@@ -406,6 +517,7 @@ export const useLocationData = () => {
     locationData,
     sitePolygon,
     siteMetrics,
+    locationAccuracy,
     isDetectingLocation,
     isLoading,
 

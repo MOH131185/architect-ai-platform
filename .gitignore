@@ -35,3 +35,7 @@ yarn-error.log*
 
 # Design history (project-specific data)
 design_history/
+
+# Python build artifacts (for FastAPI backend scaffolding)
+api/__pycache__/
+*.pyc

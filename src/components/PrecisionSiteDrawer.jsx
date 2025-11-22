@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { calculateDistance } from '../utils/geometry';
-import SiteGeometryPanel from './SiteGeometryPanel';
+import { calculateDistance } from '../utils/geometry.js';
+import SiteGeometryPanel from './SiteGeometryPanel.jsx';
+import logger from '../utils/logger.js';
+
 
 /**
  * Hybrid Site Boundary Drawing Component
@@ -156,7 +158,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
   // Cancel drawing
   const cancelDrawing = useCallback(() => {
-    console.log('🗑️ Clearing all drawing');
+    logger.info('🗑️ Clearing all drawing');
     setIsDrawing(false);
     setVertices([]);
     setCurrentVertex(null);
@@ -194,7 +196,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
   const undoLastVertex = useCallback(() => {
     setVertices(prev => {
       const newVertices = prev.slice(0, -1);
-      console.log(`↶ Undo: ${prev.length} → ${newVertices.length} vertices`);
+      logger.info(`↶ Undo: ${prev.length} → ${newVertices.length} vertices`);
       if (newVertices.length === 0) {
         setIsDrawing(false);
       }
@@ -204,7 +206,14 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
   // Create draggable corner markers for finished polygon
   const createCornerMarkers = useCallback((polygon) => {
-    console.log('🔧 Creating draggable corner markers...');
+    logger.info('🔧 Creating draggable corner markers...');
+    logger.info('   Map instance:', map ? '✓ Available' : '✗ Missing');
+    logger.info('   Polygon instance:', polygon ? '✓ Available' : '✗ Missing');
+
+    if (!map || !polygon) {
+      logger.error('❌ Cannot create corner markers - missing map or polygon');
+      return;
+    }
 
     // Clear existing corner markers
     cornerMarkersRef.current.forEach(marker => {
@@ -212,10 +221,11 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
         window.google.maps.event.clearInstanceListeners(marker);
         marker.setMap(null);
       } catch (e) {
-        console.warn('Error clearing marker:', e);
+        logger.warn('Error clearing marker:', e);
       }
     });
     cornerMarkersRef.current = [];
+    logger.info('   Cleared existing markers');
 
     const path = polygon.getPath();
     const currentVertices = [];
@@ -233,24 +243,49 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
         label: {
           text: (index + 1).toString(),
           color: 'white',
-          fontSize: '14px',
+          fontSize: '16px',
           fontWeight: 'bold'
         },
         icon: {
           path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 12,
+          scale: 18,  // Increased from 12 to 18 for easier dragging
           fillColor: '#1976D2',
-          fillOpacity: 1,
-          strokeColor: 'white',
-          strokeWeight: 3
+          fillOpacity: 0.9,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 4  // Increased from 3 to 4 for better visibility
         },
         title: `Drag to move corner ${index + 1}`,
         zIndex: 2000,
-        optimized: false  // Better dragging performance
+        optimized: false,  // Better dragging performance
+        cursor: 'move'  // Show move cursor on hover
       });
 
       // Capture index in a separate variable to avoid closure issues
       const markerIndex = index;
+
+      // Add hover effect - enlarge marker on mouseover
+      marker.addListener('mouseover', function() {
+        marker.setIcon({
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 22,  // Enlarge on hover
+          fillColor: '#2196F3',  // Lighter blue on hover
+          fillOpacity: 1,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 5
+        });
+      });
+
+      // Reset marker size on mouseout
+      marker.addListener('mouseout', function() {
+        marker.setIcon({
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 18,  // Return to normal size
+          fillColor: '#1976D2',
+          fillOpacity: 0.9,
+          strokeColor: '#FFFFFF',
+          strokeWeight: 4
+        });
+      });
 
       // Update polygon while dragging
       marker.addListener('drag', function(event) {
@@ -258,7 +293,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
           const newPos = event.latLng;
           path.setAt(markerIndex, newPos);
         } catch (e) {
-          console.error('Drag error:', e);
+          logger.error('Drag error:', e);
         }
       });
 
@@ -279,16 +314,28 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
           if (onPolygonComplete) {
             onPolygonComplete(updatedCoords);
           }
-          console.log(`🎯 Corner ${markerIndex + 1} moved to (${newPos.lat().toFixed(6)}, ${newPos.lng().toFixed(6)})`);
+          logger.info(`🎯 Corner ${markerIndex + 1} moved to (${newPos.lat().toFixed(6)}, ${newPos.lng().toFixed(6)})`);
+
+          // Return to normal size after drag
+          marker.setIcon({
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: '#1976D2',
+            fillOpacity: 0.9,
+            strokeColor: '#FFFFFF',
+            strokeWeight: 4
+          });
         } catch (e) {
-          console.error('Dragend error:', e);
+          logger.error('Dragend error:', e);
         }
       });
 
       cornerMarkersRef.current.push(marker);
     });
 
-    console.log(`✅ Created ${currentVertices.length} draggable corner markers`);
+    logger.success(` Successfully created ${currentVertices.length} draggable corner markers`);
+    logger.info(`   Markers are now visible on the map with numbers 1-${currentVertices.length}`);
+    logger.info(`   Hover over circles to see them enlarge, then drag to adjust corners`);
   }, [map, onPolygonComplete, setVertices]);
 
   // Finish drawing and make polygon editable with draggable corner markers
@@ -305,10 +352,10 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
       const editablePolygon = new window.google.maps.Polygon({
         paths: vertices,
         strokeColor: '#1976D2',
-        strokeOpacity: 0.9,
-        strokeWeight: 3,
+        strokeOpacity: 1,  // Increased from 0.9 to 1 for better visibility
+        strokeWeight: 4,  // Increased from 3 to 4 for thicker, more visible boundaries
         fillColor: '#2196F3',
-        fillOpacity: 0.25,
+        fillOpacity: 0.3,  // Increased from 0.25 to 0.3 for better contrast
         editable: false,  // Disable built-in handles, use custom markers instead
         draggable: false,
         map: map,
@@ -325,14 +372,14 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
         onPolygonComplete(vertices);
       }
 
-      console.log('✅ Polygon completed - drag the numbered circles to adjust corners');
+      logger.success(' Polygon completed - drag the numbered circles to adjust corners');
     }
   }, [vertices, onPolygonComplete, map, createCornerMarkers]);
 
   // Apply dimension and place vertex
   // Handle vertices change from Site Geometry panel
   const handleGeometryPanelChange = useCallback((newVertices) => {
-    console.log('📐 Geometry panel updated vertices:', newVertices.length);
+    logger.info('📐 Geometry panel updated vertices:', newVertices.length);
     setVertices(newVertices);
 
     // Update the polygon on the map
@@ -348,7 +395,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
   const applyDimensionAndPlace = useCallback(() => {
     if (!currentVertex || !dimensionInput || vertices.length === 0) {
-      console.warn('⚠️ Cannot apply dimension:', {
+      logger.warn('⚠️ Cannot apply dimension:', {
         hasCurrentVertex: !!currentVertex,
         hasDimensionInput: !!dimensionInput,
         verticesCount: vertices.length
@@ -358,7 +405,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
     const targetLength = parseFloat(dimensionInput);
     if (isNaN(targetLength) || targetLength <= 0) {
-      console.warn('⚠️ Invalid dimension input:', dimensionInput);
+      logger.warn('⚠️ Invalid dimension input:', dimensionInput);
       return;
     }
 
@@ -370,7 +417,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
     // Snap to 90 degrees if Shift is pressed
     const finalBearing = isShiftPressed ? snapToOrthogonal(bearing) : bearing;
 
-    console.log('📐 Applying dimension:', {
+    logger.info('📐 Applying dimension:', {
       length: targetLength + 'm',
       bearing: bearing.toFixed(1) + '°',
       finalBearing: finalBearing.toFixed(1) + '°',
@@ -382,7 +429,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
     setVertices(prev => [...prev, newVertex]);
     setDimensionInput('');
-    console.log('✅ Vertex placed at exact distance:', targetLength + 'm');
+    logger.info('✅ Vertex placed at exact distance:', targetLength + 'm');
 
   }, [currentVertex, dimensionInput, vertices, isShiftPressed, calculateBearing, snapToOrthogonal, calculateDestination]);
 
@@ -395,7 +442,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
       if (e.key === 'Shift') {
         e.preventDefault();
         setIsShiftPressed(true);
-        console.log('🔧 Shift pressed - orthogonal mode ON');
+        logger.info('🔧 Shift pressed - orthogonal mode ON');
       }
 
       // Only handle other keys when drawing has started
@@ -406,7 +453,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
         e.preventDefault();
         setDimensionInput(prev => {
           const newValue = prev + e.key;
-          console.log('📏 Dimension input:', newValue);
+          logger.info('📏 Dimension input:', newValue);
           return newValue;
         });
       }
@@ -416,7 +463,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
         e.preventDefault();
         setDimensionInput(prev => {
           const newValue = prev.slice(0, -1);
-          console.log('⌫ Backspace - dimension:', newValue || '(empty)');
+          logger.info('⌫ Backspace - dimension:', newValue || '(empty)');
           return newValue;
         });
       }
@@ -424,7 +471,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
       // Enter to apply dimension
       if (e.key === 'Enter' && dimensionInput && currentVertex) {
         e.preventDefault();
-        console.log('✅ Enter pressed - applying dimension:', dimensionInput);
+        logger.info('✅ Enter pressed - applying dimension:', dimensionInput);
         applyDimensionAndPlace();
       }
 
@@ -436,13 +483,13 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
         if (timeSinceLastEscape < 500 && lastEscapeTime > 0) {
           // Double ESC (within 500ms) - clear all drawing
-          console.log('⚡ Double ESC - clearing all drawing');
+          logger.info('⚡ Double ESC - clearing all drawing');
           cancelDrawing();
           setLastEscapeTime(0);
         } else {
           // Single ESC - undo last vertex
           if (vertices.length > 0) {
-            console.log('↶ ESC - undoing last vertex');
+            logger.info('↶ ESC - undoing last vertex');
             undoLastVertex();
             setDimensionInput(''); // Also clear dimension input
           }
@@ -462,7 +509,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
       if (e.key === 'Shift') {
         e.preventDefault();
         setIsShiftPressed(false);
-        console.log('🔧 Shift released - orthogonal mode OFF');
+        logger.info('🔧 Shift released - orthogonal mode OFF');
       }
     };
 
@@ -487,13 +534,13 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
       if (!isDrawing) {
         // Start drawing
-        console.log('🖱️ Starting drawing with mouse click');
+        logger.info('🖱️ Starting drawing with mouse click');
         setIsDrawing(true);
         setVertices([newVertex]);
       } else {
         // Always place vertex at click location (free drawing)
         // User can optionally type dimension + Enter for precision
-        console.log('🖱️ Placing vertex at click position');
+        logger.info('🖱️ Placing vertex at click position');
         setVertices(prev => [...prev, newVertex]);
         setDimensionInput(''); // Clear dimension input after placing vertex
       }
@@ -525,7 +572,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
           // Log snapping (throttled to avoid console spam)
           if (Math.random() < 0.01) { // Log ~1% of moves
-            console.log('🔧 Orthogonal snap:', bearing.toFixed(1) + '° → ' + snappedBearing.toFixed(1) + '°');
+            logger.info('🔧 Orthogonal snap:', bearing.toFixed(1) + '° → ' + snappedBearing.toFixed(1) + '°');
           }
         }
 
@@ -645,10 +692,10 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
         const drawingPolygon = new window.google.maps.Polygon({
           paths: vertices,
           strokeColor: '#1976D2',
-          strokeOpacity: 0.9,
-          strokeWeight: 2,
+          strokeOpacity: 0.8,  // Slightly more transparent during drawing
+          strokeWeight: 3,  // Increased from 2 to 3 for better visibility
           fillColor: '#2196F3',
-          fillOpacity: 0.15,
+          fillOpacity: 0.2,  // Increased from 0.15 to 0.2 for better visibility
           map: map,
           editable: false,  // Not editable during drawing
           geodesic: true  // Smooth curves on map projection
@@ -820,35 +867,35 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
   // Handle initial polygon (auto-detected or existing) - make it editable
   useEffect(() => {
     if (!map) {
-      console.log('⏳ Waiting for map to load...');
+      logger.loading(' Waiting for map to load...');
       return;
     }
     if (!window.google || !window.google.maps) {
-      console.log('⏳ Waiting for Google Maps API...');
+      logger.loading(' Waiting for Google Maps API...');
       return;
     }
     if (!initialPolygon || initialPolygon.length === 0) {
-      console.log('ℹ️ No initial polygon provided');
+      logger.info('ℹ️ No initial polygon provided');
       return;
     }
     if (initialPolygonLoadedRef.current) {
-      console.log('ℹ️ Initial polygon already loaded');
+      logger.info('ℹ️ Initial polygon already loaded');
       return;
     }
 
-    console.log('📐 Loading initial polygon with', initialPolygon.length, 'vertices');
-    console.log('   First vertex:', initialPolygon[0]);
+    logger.info('📐 Loading initial polygon with', initialPolygon.length, 'vertices');
+    logger.info('   First vertex:', initialPolygon[0]);
 
     // Set vertices from initial polygon
     setVertices(initialPolygon);
 
     // Clear any existing polygon
     if (polygonRef.current) {
-      console.log('   Clearing existing polygon');
+      logger.info('   Clearing existing polygon');
       try {
         polygonRef.current.setMap(null);
       } catch (e) {
-        console.warn('   Error clearing polygon:', e);
+        logger.warn('   Error clearing polygon:', e);
       }
     }
 
@@ -857,10 +904,10 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
       const editablePolygon = new window.google.maps.Polygon({
         paths: initialPolygon,
         strokeColor: '#1976D2',
-        strokeOpacity: 0.9,
-        strokeWeight: 3,
+        strokeOpacity: 1,  // Increased from 0.9 to 1 for better visibility
+        strokeWeight: 4,  // Increased from 3 to 4 for thicker, more visible boundaries
         fillColor: '#2196F3',
-        fillOpacity: 0.25,
+        fillOpacity: 0.3,  // Increased from 0.25 to 0.3 for better contrast
         editable: false,  // Disable built-in handles, use custom markers
         draggable: false,
         map: map,
@@ -869,16 +916,25 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
       });
 
       polygonRef.current = editablePolygon;
-      console.log('   ✅ Polygon created and displayed');
+      logger.info('   ✅ Polygon created and displayed');
 
-      // Create custom draggable corner markers
-      createCornerMarkers(editablePolygon);
+      // IMPORTANT: Create custom draggable corner markers after a small delay
+      // to ensure map is fully ready
+      setTimeout(() => {
+        logger.info('   🔧 Creating corner markers for auto-detected polygon...');
+        try {
+          createCornerMarkers(editablePolygon);
+          logger.info('   ✅ Corner markers created successfully');
+        } catch (error) {
+          logger.error('   ❌ Error creating corner markers:', error);
+        }
+      }, 100);
 
       initialPolygonLoadedRef.current = true;
-      console.log('✅ Initial polygon loaded - drag the numbered circles to move corners');
+      logger.success(' Initial polygon loaded - numbered circles will appear shortly');
 
     } catch (error) {
-      console.error('❌ Error creating editable polygon:', error);
+      logger.error('❌ Error creating editable polygon:', error);
     }
 
   }, [map, initialPolygon, onPolygonComplete, createCornerMarkers]);
@@ -905,7 +961,7 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
   return (
     <>
-      {/* Editing polygon indicator */}
+      {/* Editing polygon indicator - ALWAYS SHOW when polygon exists (auto-detected or manual) */}
       {!isDrawing && vertices.length > 0 && (
         <div
           style={{
@@ -915,41 +971,64 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
             transform: 'translateX(-50%)',
             background: 'rgba(76, 175, 80, 0.95)',
             color: 'white',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            fontSize: '12px',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            fontSize: '13px',
             zIndex: 1000,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
             fontWeight: 'bold',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '12px',
+            maxWidth: '90%',
+            textAlign: 'center'
           }}
         >
-          ✓ Polygon Complete - Drag corners to adjust
+          ✓ Site Boundary Ready - Hover over numbered circles to drag corners
           <button
             onClick={() => {
+              logger.info('🗑️ Clearing boundary for redraw...');
               setVertices([]);
               setIsDrawing(false);
               if (polygonRef.current) {
                 polygonRef.current.setMap(null);
+                polygonRef.current = null;
               }
               // Clear corner markers
-              cornerMarkersRef.current.forEach(marker => marker.setMap(null));
+              cornerMarkersRef.current.forEach(marker => {
+                try {
+                  window.google.maps.event.clearInstanceListeners(marker);
+                  marker.setMap(null);
+                } catch (e) {
+                  logger.warn('Error clearing marker:', e);
+                }
+              });
               cornerMarkersRef.current = [];
               initialPolygonLoadedRef.current = false;
+              logger.success(' Boundary cleared - click on map to redraw');
             }}
             style={{
-              background: 'rgba(255,255,255,0.2)',
-              border: 'none',
+              background: 'rgba(244, 67, 54, 0.9)',
+              border: '2px solid white',
               color: 'white',
               cursor: 'pointer',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '11px'
+              padding: '6px 14px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(211, 47, 47, 1)';
+              e.target.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'rgba(244, 67, 54, 0.9)';
+              e.target.style.transform = 'scale(1)';
             }}
           >
-            Clear & Redraw
+            🗑️ Clear & Redraw
           </button>
         </div>
       )}
@@ -962,24 +1041,26 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
             top: '50%',
             left: '20px',
             transform: 'translateY(-50%)',
-            background: 'rgba(255, 255, 255, 0.98)',
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(24px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
             padding: '16px',
             borderRadius: '12px',
             fontSize: '12px',
             zIndex: 1001,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             width: '200px',
             maxWidth: 'calc(50% - 40px)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(33, 150, 243, 0.2)'
+            color: '#FFFFFF'
           }}
         >
           <div style={{
             fontSize: '14px',
             fontWeight: 'bold',
             marginBottom: '12px',
-            color: '#1976D2',
-            borderBottom: '2px solid #E3F2FD',
+            color: '#FFFFFF',
+            borderBottom: '2px solid rgba(255, 255, 255, 0.3)',
             paddingBottom: '8px'
           }}>
             📐 Real-Time Measurements
@@ -988,8 +1069,8 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
           {/* Current edge being drawn */}
           {currentVertex && (
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ color: '#666', fontSize: '11px', marginBottom: '2px' }}>Current Edge:</div>
-              <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333' }}>
+              <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px', marginBottom: '2px' }}>Current Edge:</div>
+              <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#FFFFFF' }}>
                 {calculateDistance(
                   vertices[vertices.length - 1].lat, vertices[vertices.length - 1].lng,
                   currentVertex.lat, currentVertex.lng
@@ -1003,11 +1084,13 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
                   return (
                     <span style={{
                       marginLeft: '8px',
-                      background: '#FFE0B2',
+                      background: 'rgba(255, 193, 7, 0.3)',
+                      border: '1px solid rgba(255, 193, 7, 0.5)',
                       padding: '2px 6px',
                       borderRadius: '4px',
                       fontSize: '12px',
-                      color: '#E65100'
+                      color: '#FFD700',
+                      fontWeight: '600'
                     }}>
                       ∠{angle.toFixed(0)}°
                     </span>
@@ -1018,23 +1101,23 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
           )}
 
           <div style={{ marginBottom: '8px' }}>
-            <div style={{ color: '#666', fontSize: '11px', marginBottom: '2px' }}>Vertices:</div>
-            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333' }}>
+            <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px', marginBottom: '2px' }}>Vertices:</div>
+            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#FFFFFF' }}>
               {vertices.length} points
             </div>
           </div>
 
           <div style={{ marginBottom: '8px' }}>
-            <div style={{ color: '#666', fontSize: '11px', marginBottom: '2px' }}>Total Perimeter:</div>
-            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333' }}>
+            <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px', marginBottom: '2px' }}>Total Perimeter:</div>
+            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#FFFFFF' }}>
               {calculatePerimeter(vertices, !!currentVertex).toFixed(1)}m
             </div>
           </div>
 
           {vertices.length >= 2 && (
             <div style={{ marginBottom: '8px' }}>
-              <div style={{ color: '#666', fontSize: '11px', marginBottom: '2px' }}>Estimated Area:</div>
-              <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#333' }}>
+              <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px', marginBottom: '2px' }}>Estimated Area:</div>
+              <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#FFFFFF' }}>
                 {calculatePolygonArea(vertices, !!currentVertex).toFixed(0)}m²
               </div>
             </div>
@@ -1045,9 +1128,9 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
             <div style={{
               marginTop: '12px',
               paddingTop: '12px',
-              borderTop: '1px solid #E3F2FD'
+              borderTop: '1px solid rgba(255, 255, 255, 0.3)'
             }}>
-              <div style={{ color: '#666', fontSize: '11px', marginBottom: '6px' }}>Completed Edges:</div>
+              <div style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px', marginBottom: '6px', fontWeight: '500' }}>Completed Edges:</div>
               <div style={{ fontSize: '11px', maxHeight: '120px', overflowY: 'auto' }}>
                 {vertices.slice(1).map((vertex, index) => {
                   const distance = calculateDistance(
@@ -1060,14 +1143,39 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
                       display: 'flex',
                       justifyContent: 'space-between'
                     }}>
-                      <span style={{ color: '#999' }}>Edge {index + 1}:</span>
-                      <span style={{ fontWeight: '500' }}>{distance.toFixed(1)}m</span>
+                      <span style={{ color: 'rgba(255, 255, 255, 0.7)' }}>Edge {index + 1}:</span>
+                      <span style={{ fontWeight: '600', color: '#FFFFFF' }}>{distance.toFixed(1)}m</span>
                     </div>
                   );
                 })}
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Help Banner - always shown when drawing mode enabled */}
+      {enabled && !isDrawing && vertices.length === 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(33, 150, 243, 0.95)',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            zIndex: 1000,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            fontWeight: '500',
+            textAlign: 'center',
+            maxWidth: '90%',
+            border: '2px solid rgba(255, 255, 255, 0.3)'
+          }}
+        >
+          🖱️ <strong>Click on map</strong> to start drawing | Hold <strong>SHIFT</strong> for 90° straight lines | <strong>Right-click</strong> to finish (3+ points)
         </div>
       )}
 
@@ -1079,29 +1187,33 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
             bottom: '20px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: 'rgba(255, 255, 255, 0.95)',
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(24px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
             padding: '12px 20px',
             borderRadius: '8px',
             fontSize: '13px',
             zIndex: 1000,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             display: 'flex',
             alignItems: 'center',
-            gap: '16px'
+            gap: '16px',
+            color: '#FFFFFF'
           }}
         >
-          <div>
+          <div style={{ fontWeight: 'bold', color: '#FFFFFF' }}>
             <strong>Vertices:</strong> {vertices.length}
           </div>
 
           {isShiftPressed && (
             <div style={{
-              color: '#4CAF50',
+              color: '#90EE90',
               fontWeight: 'bold',
-              background: 'rgba(76, 175, 80, 0.1)',
+              background: 'rgba(76, 175, 80, 0.3)',
               padding: '4px 12px',
               borderRadius: '4px',
-              border: '2px solid #4CAF50',
+              border: '2px solid rgba(76, 175, 80, 0.6)',
               display: 'flex',
               alignItems: 'center',
               gap: '4px'
@@ -1112,15 +1224,15 @@ const PrecisionSiteDrawer = ({ map, onPolygonComplete, initialPolygon, enabled }
 
           {dimensionInput && (
             <div style={{
-              background: '#E3F2FD',
+              background: 'rgba(0, 168, 255, 0.2)',
               padding: '6px 16px',
               borderRadius: '6px',
-              color: '#1976D2',
+              color: '#FFFFFF',
               fontWeight: 'bold',
               fontFamily: 'monospace',
               fontSize: '16px',
-              border: '2px solid #1976D2',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              border: '2px solid rgba(0, 168, 255, 0.5)',
+              boxShadow: '0 2px 8px rgba(0, 168, 255, 0.3)'
             }}>
               📏 {dimensionInput}m
             </div>
