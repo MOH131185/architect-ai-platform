@@ -13,7 +13,7 @@
 import { isFeatureEnabled } from '../../config/featureFlags.js';
 import { hasCanonicalRenderPack } from '../canonical/CanonicalRenderPackService.js';
 import { crossViewConsistencyService } from '../consistency/CrossViewConsistencyService.js';
-import { runConsistencyGate as runCrossViewGate } from '../validation/CrossViewConsistencyGate.js';
+import { runConsistencyGate as _runCrossViewGate } from '../validation/CrossViewConsistencyGate.js';
 import {
   validateAllCrossViews as validateEdgeCrossViews,
   EdgeValidationError,
@@ -26,12 +26,19 @@ import {
   formatGeometryValidationForReport,
 } from './GeometrySignatureValidator.js';
 import {
-  validatePanelAgainstCanonical,
+  validatePanelAgainstCanonical as _validatePanelAgainstCanonical,
   batchValidatePanels,
   formatForDebugReport as formatPanelQA,
   getRequiredQAPanels,
-  hasCanonicalValidation,
+  hasCanonicalValidation as _hasCanonicalValidation,
 } from './PanelCanonicalQAService.js';
+import {
+  runExportGateCheck as runRenderSanityCheck,
+  SANITY_CHECK_PANEL_TYPES,
+  MIN_OCCUPANCY_RATIO,
+  MIN_BBOX_RATIO,
+  THIN_STRIP_WIDTH_THRESHOLD,
+} from './RenderSanityValidator.js';
 
 // ============================================================================
 // EXPORT GATE TYPES
@@ -71,6 +78,7 @@ export const DEFAULT_EXPORT_GATE_CONFIG = {
   skipCrossViewGate: false,
   skipEdgeBasedGate: false,
   skipSemanticGate: false,
+  skipRenderSanityGate: false, // NEW: Render sanity validation (occupancy, bbox, thin strip detection)
 };
 
 // ============================================================================
@@ -141,6 +149,69 @@ export async function validateForExport(
           `${result.panelType} failed QA but is not required: ${result.failures.join(', ')}`
         );
       }
+    }
+  }
+
+  // 3.5. RENDER SANITY VALIDATION (occupancy, bbox, thin strip detection)
+  //      Validates that technical drawings have sufficient content coverage
+  let renderSanityResult = null;
+
+  if (!mergedConfig.skipRenderSanityGate) {
+    try {
+      // Build panels with buffers for sanity check
+      const technicalPanels = [];
+
+      for (const panel of panels) {
+        const panelType = panel.type;
+        if (!SANITY_CHECK_PANEL_TYPES.includes(panelType)) {
+          continue;
+        }
+
+        // Get image buffer from URL or dataUrl
+        let imageBuffer = null;
+        const url = panel.imageUrl || panel.url || panel.dataUrl;
+
+        if (url) {
+          try {
+            if (url.startsWith('data:')) {
+              const base64Data = url.split(',')[1];
+              imageBuffer = Buffer.from(base64Data, 'base64');
+            } else {
+              const response = await fetch(url);
+              if (response.ok) {
+                const arrayBuffer = await response.arrayBuffer();
+                imageBuffer = Buffer.from(arrayBuffer);
+              }
+            }
+          } catch (fetchError) {
+            console.warn(
+              `[A1ExportGate] Failed to fetch ${panelType} for sanity check:`,
+              fetchError.message
+            );
+          }
+        }
+
+        if (imageBuffer) {
+          technicalPanels.push({ panelType, imageBuffer });
+        }
+      }
+
+      if (technicalPanels.length > 0) {
+        renderSanityResult = await runRenderSanityCheck(technicalPanels);
+
+        // Process sanity check results
+        if (!renderSanityResult.passed) {
+          for (const blockReason of renderSanityResult.blockReasons) {
+            blockReasons.push(`RENDER_SANITY_FAILED: ${blockReason.split('\n')[0]}`);
+          }
+        }
+
+        // Add any warnings
+        warnings.push(...renderSanityResult.warnings);
+      }
+    } catch (sanityError) {
+      console.error('[A1ExportGate] Render sanity check failed:', sanityError.message);
+      warnings.push(`Render sanity check skipped due to error: ${sanityError.message}`);
     }
   }
 
@@ -327,7 +398,7 @@ export async function validateForExport(
     }
   }
 
-  // 8. Compile debug report (now includes all validation metrics including edge-based)
+  // 8. Compile debug report (now includes all validation metrics including edge-based and render sanity)
   const debugReport = compileDebugReport({
     designFingerprint,
     timestamp,
@@ -336,6 +407,7 @@ export async function validateForExport(
     crossViewQA: crossViewResult,
     semanticQA: semanticResult,
     edgeBasedQA: edgeBasedResult,
+    renderSanityQA: renderSanityResult,
     blockReasons,
     warnings,
     config: mergedConfig,
@@ -404,6 +476,23 @@ export async function validateForExport(
           blocksExport: false,
           summary: { metricsComplete: true, reason: 'Edge-based consistency gate disabled' },
         },
+    // Render sanity validation (occupancy, bbox, thin strip detection)
+    renderSanityQA: renderSanityResult
+      ? {
+          passed: renderSanityResult.passed,
+          blockReasons: renderSanityResult.blockReasons,
+          warnings: renderSanityResult.warnings,
+          thresholds: {
+            minOccupancy: MIN_OCCUPANCY_RATIO,
+            minBboxRatio: MIN_BBOX_RATIO,
+            thinStripThreshold: THIN_STRIP_WIDTH_THRESHOLD,
+          },
+        }
+      : {
+          passed: null,
+          status: 'SKIPPED',
+          reason: 'Render sanity gate disabled or no technical panels found',
+        },
     debugReport,
     timestamp,
     designFingerprint,
@@ -465,6 +554,7 @@ function compileDebugReport({
   crossViewQA,
   semanticQA,
   edgeBasedQA,
+  renderSanityQA,
   blockReasons,
   warnings,
   config,
@@ -623,6 +713,27 @@ function compileDebugReport({
     };
   }
 
+  // Add render sanity validation section (occupancy, bbox, thin strip)
+  if (renderSanityQA) {
+    report.renderSanityValidation = {
+      enabled: true,
+      passed: renderSanityQA.passed,
+      thresholds: {
+        minOccupancyRatio: MIN_OCCUPANCY_RATIO,
+        minBboxRatio: MIN_BBOX_RATIO,
+        thinStripWidthThreshold: THIN_STRIP_WIDTH_THRESHOLD,
+      },
+      blockReasons: renderSanityQA.blockReasons || [],
+      warnings: renderSanityQA.warnings || [],
+    };
+  } else {
+    report.renderSanityValidation = {
+      enabled: false,
+      status: 'SKIPPED',
+      summary: 'Render sanity gate disabled or no technical panels found',
+    };
+  }
+
   return report;
 }
 
@@ -732,7 +843,7 @@ export function suggestRetryStrategy(gateResult) {
 // EXPORTS
 // ============================================================================
 
-export default {
+const A1ExportGate = {
   validateForExport,
   canExportQuickCheck,
   getExportStatusMessage,
@@ -740,3 +851,5 @@ export default {
   suggestRetryStrategy,
   DEFAULT_EXPORT_GATE_CONFIG,
 };
+
+export default A1ExportGate;
