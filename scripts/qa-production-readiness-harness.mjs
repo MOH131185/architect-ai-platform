@@ -572,16 +572,15 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
   const orchestratorUrl = pathToFileURL(orchestratorPath);
 
   // Check if we can import ES modules
-  let DNAWorkflowOrchestrator;
+  // Note: default export is already an instance, not a class
+  let orchestrator;
   try {
     const module = await import(orchestratorUrl);
-    DNAWorkflowOrchestrator = module.default;
+    orchestrator = module.default;
   } catch (importError) {
     console.error('Failed to import orchestrator:', importError.message);
     throw new Error(`Cannot import dnaWorkflowOrchestrator: ${importError.message}`);
   }
-
-  const orchestrator = new DNAWorkflowOrchestrator();
 
   // Build project context
   const baseSeed = runIndex * 1000 + buildingType.length * 137;
