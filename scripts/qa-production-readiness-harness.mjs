@@ -8,10 +8,15 @@
  * 3. A1 composition succeeds
  * 4. Cross-view consistency passes thresholds
  *
+ * Modes:
+ * - SYNTHETIC (default): Fast synthetic panel generation for harness testing
+ * - REAL (--real-generation): Calls actual AI APIs for end-to-end testing
+ *
  * Outputs:
  * - Panel PNGs saved to qa_results/run_N/panels/
  * - Composed A1 PNG saved to qa_results/run_N/a1_composed.png
  * - metrics.json with SSIM/pHash/edgeOverlap per panel pair
+ * - DEBUG_REPORT.json with all generation metadata (real mode only)
  * - Summary table and worst 5 failures
  *
  * Acceptance Criteria:
@@ -20,6 +25,7 @@
  *
  * Usage:
  *   node scripts/qa-production-readiness-harness.mjs [--runs=50] [--building-type=random]
+ *   node scripts/qa-production-readiness-harness.mjs --real-generation --runs=6 --fail-fast
  *
  * @module scripts/qa-production-readiness-harness
  */
@@ -28,6 +34,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sharp from 'sharp';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,6 +75,20 @@ const ACCEPTANCE_CRITERIA = {
   minRuns: 50,
 };
 
+// Real generation thresholds (stricter than synthetic)
+const REAL_THRESHOLDS = {
+  minSSIM: 0.6,      // Cross-panel structural similarity
+  minPHash: 0.55,    // Perceptual hash similarity
+  minEdgeOverlap: 0.15,  // Edge structure consistency
+};
+
+// Synthetic generation thresholds (for harness testing)
+const SYNTHETIC_THRESHOLDS = {
+  minSSIM: 0.3,
+  minPHash: 0.5,
+  minEdgeOverlap: 0,  // Synthetic images may have 0 edges
+};
+
 const DEFAULT_CONFIG = {
   runs: 50,
   maxRuns: 100,
@@ -75,8 +98,59 @@ const DEFAULT_CONFIG = {
   verbose: false,
   dryRun: false,
   retryLimit: 2,
-  timeoutMs: 300000,
+  timeoutMs: 600000,  // 10 minutes for real generation
+  realGeneration: false,  // NEW: Flag for real API generation
 };
+
+// =============================================================================
+// ENVIRONMENT LOADING
+// =============================================================================
+
+/**
+ * Load environment variables from .env and .env.local
+ */
+function loadEnv() {
+  const envFiles = [
+    path.join(PROJECT_ROOT, '.env'),
+    path.join(PROJECT_ROOT, '.env.local'),
+  ];
+
+  for (const envFile of envFiles) {
+    if (fs.existsSync(envFile)) {
+      const content = fs.readFileSync(envFile, 'utf-8');
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#')) {
+          const [key, ...valueParts] = trimmed.split('=');
+          if (key && valueParts.length > 0) {
+            const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+            if (!process.env[key]) {
+              process.env[key] = value;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Validate required API keys for real generation
+ */
+function validateApiKeys() {
+  const required = ['TOGETHER_API_KEY'];
+  const missing = required.filter(key => !process.env[key]);
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required API keys for real generation: ${missing.join(', ')}\nSet them in .env or .env.local`);
+  }
+
+  return {
+    togetherApiKey: process.env.TOGETHER_API_KEY,
+    openaiApiKey: process.env.OPENAI_REASONING_API_KEY || null,
+    meshyApiKey: process.env.MESHY_API_KEY || null,
+  };
+}
 
 // =============================================================================
 // ARGUMENT PARSING
@@ -99,6 +173,8 @@ function parseArgs() {
       config.verbose = true;
     } else if (arg === '--dry-run') {
       config.dryRun = true;
+    } else if (arg === '--real-generation') {
+      config.realGeneration = true;
     }
   }
 
@@ -427,9 +503,9 @@ function seedRandom(seed) {
 }
 
 /**
- * Generate all panels for a run
+ * Generate all panels for a run (SYNTHETIC)
  */
-async function generatePanels(buildingType, runIndex) {
+async function generateSyntheticPanels(buildingType, runIndex) {
   const panels = [];
   const baseSeed = runIndex * 1000 + buildingType.length * 137;
 
@@ -447,6 +523,204 @@ async function generatePanels(buildingType, runIndex) {
   }
 
   return panels;
+}
+
+// =============================================================================
+// REAL GENERATION (API CALLS)
+// =============================================================================
+
+/**
+ * Download image from URL to buffer
+ */
+async function downloadImage(url) {
+  if (url.startsWith('data:')) {
+    // Handle data URLs
+    const matches = url.match(/^data:image\/\w+;base64,(.+)$/);
+    if (matches) {
+      return Buffer.from(matches[1], 'base64');
+    }
+    throw new Error('Invalid data URL');
+  }
+
+  // Download from URL
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/**
+ * Convert Windows path to file:// URL for ESM dynamic imports
+ */
+function pathToFileURL(filePath) {
+  // On Windows, we need to convert the path to a file:// URL
+  if (process.platform === 'win32') {
+    // Convert backslashes to forward slashes and add file:///
+    const urlPath = filePath.replace(/\\/g, '/');
+    return `file:///${urlPath}`;
+  }
+  return `file://${filePath}`;
+}
+
+/**
+ * Generate panels using real API (calls dnaWorkflowOrchestrator)
+ */
+async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
+  // Dynamically import the orchestrator
+  const orchestratorPath = path.join(PROJECT_ROOT, 'src', 'services', 'design', 'dnaWorkflowOrchestrator.js');
+  const orchestratorUrl = pathToFileURL(orchestratorPath);
+
+  // Check if we can import ES modules
+  let DNAWorkflowOrchestrator;
+  try {
+    const module = await import(orchestratorUrl);
+    DNAWorkflowOrchestrator = module.default;
+  } catch (importError) {
+    console.error('Failed to import orchestrator:', importError.message);
+    throw new Error(`Cannot import dnaWorkflowOrchestrator: ${importError.message}`);
+  }
+
+  const orchestrator = new DNAWorkflowOrchestrator();
+
+  // Build project context
+  const baseSeed = runIndex * 1000 + buildingType.length * 137;
+  const projectContext = {
+    buildingType,
+    buildingProgram: buildingType,
+    floorArea: 150 + (runIndex % 100),  // 150-250 m²
+    floors: buildingType === 'bungalow' ? 1 : 2,
+    floorCount: buildingType === 'bungalow' ? 1 : 2,
+    designId: `qa_run_${runIndex}_${Date.now()}`,
+    programSpaces: getDefaultProgramSpaces(buildingType),
+  };
+
+  const locationData = {
+    address: '123 Test Street, London, UK',
+    coordinates: { lat: 51.5074, lng: -0.1278 },
+    climate: { type: 'temperate' },
+    zoning: { type: 'residential' },
+    recommendedStyle: 'contemporary',
+  };
+
+  if (verbose) {
+    console.log(`    Building context: ${buildingType}, ${projectContext.floorArea}m², ${projectContext.floors} floors`);
+  }
+
+  // Run the actual workflow
+  const result = await orchestrator.runA1SheetWorkflow({
+    projectContext,
+    locationData,
+    portfolioAnalysis: null,
+    portfolioBlendPercent: 70,
+    seed: baseSeed,
+    onProgress: (progress) => {
+      if (verbose) {
+        console.log(`    [${progress.stage}] ${progress.message} (${progress.percent}%)`);
+      }
+    },
+  });
+
+  if (!result.success) {
+    throw new Error(result.error || 'Generation failed');
+  }
+
+  // Extract panels from result
+  const panels = [];
+  const panelMetadata = result.a1Sheet?.metadata?.panels || [];
+
+  // Save DEBUG_REPORT.json
+  const debugReport = {
+    designId: projectContext.designId,
+    buildingType,
+    seed: baseSeed,
+    timestamp: new Date().toISOString(),
+    masterDNA: result.masterDNA,
+    blendedStyle: result.blendedStyle,
+    prompts: {},
+    seeds: {},
+    controlImages: {},
+    generationMetadata: result.generationMetadata,
+    validation: result.validation,
+    qaResults: result.qaResults,
+    qaSummary: result.qaSummary,
+  };
+
+  // Download and save each panel
+  for (const panelInfo of panelMetadata) {
+    const panelType = panelInfo.type || panelInfo.id;
+    const panelUrl = panelInfo.url || panelInfo.imageUrl;
+
+    if (!panelUrl) {
+      console.warn(`    Panel ${panelType} has no URL, skipping`);
+      continue;
+    }
+
+    try {
+      const buffer = await downloadImage(panelUrl);
+      panels.push({
+        type: panelType,
+        buffer,
+        seed: panelInfo.seed || baseSeed,
+        prompt: panelInfo.prompt,
+        url: panelUrl,
+      });
+
+      // Record prompt and seed for debug report
+      debugReport.prompts[panelType] = panelInfo.prompt;
+      debugReport.seeds[panelType] = panelInfo.seed;
+    } catch (downloadError) {
+      console.warn(`    Failed to download panel ${panelType}: ${downloadError.message}`);
+    }
+  }
+
+  // Also save the A1 composed sheet
+  let a1Buffer = null;
+  if (result.a1Sheet?.url) {
+    try {
+      a1Buffer = await downloadImage(result.a1Sheet.url);
+      debugReport.a1SheetUrl = result.a1Sheet.url;
+    } catch (downloadError) {
+      console.warn(`    Failed to download A1 sheet: ${downloadError.message}`);
+    }
+  }
+
+  // Save DEBUG_REPORT.json
+  const debugPath = path.join(runDir, 'DEBUG_REPORT.json');
+  fs.writeFileSync(debugPath, JSON.stringify(debugReport, null, 2));
+
+  return { panels, a1Buffer, debugReport };
+}
+
+/**
+ * Get default program spaces for a building type
+ */
+function getDefaultProgramSpaces(buildingType) {
+  const base = [
+    { name: 'Living Room', area: 25, level: 'Ground' },
+    { name: 'Kitchen', area: 16, level: 'Ground' },
+    { name: 'Dining', area: 14, level: 'Ground' },
+    { name: 'Hallway', area: 10, level: 'Ground' },
+    { name: 'WC', area: 4, level: 'Ground' },
+  ];
+
+  if (buildingType === 'bungalow') {
+    return [
+      ...base,
+      { name: 'Master Bedroom', area: 18, level: 'Ground' },
+      { name: 'Bedroom 2', area: 14, level: 'Ground' },
+      { name: 'Bathroom', area: 8, level: 'Ground' },
+    ];
+  }
+
+  return [
+    ...base,
+    { name: 'Master Bedroom', area: 18, level: 'First' },
+    { name: 'Bedroom 2', area: 14, level: 'First' },
+    { name: 'Bedroom 3', area: 12, level: 'First' },
+    { name: 'Bathroom', area: 8, level: 'First' },
+    { name: 'Landing', area: 8, level: 'First' },
+  ];
 }
 
 /**
@@ -501,12 +775,14 @@ async function composeA1Sheet(panels) {
 /**
  * Execute a single QA run
  */
-async function executeRun(runIndex, buildingType, outputDir, verbose) {
+async function executeRun(runIndex, buildingType, outputDir, verbose, realGeneration) {
   const runDir = path.join(outputDir, `run_${String(runIndex).padStart(3, '0')}`);
   const panelsDir = path.join(runDir, 'panels');
 
   // Create directories
   fs.mkdirSync(panelsDir, { recursive: true });
+
+  const thresholds = realGeneration ? REAL_THRESHOLDS : SYNTHETIC_THRESHOLDS;
 
   const result = {
     runIndex,
@@ -519,12 +795,29 @@ async function executeRun(runIndex, buildingType, outputDir, verbose) {
     errors: [],
     warnings: [],
     isProductionReady: false,
+    mode: realGeneration ? 'REAL' : 'SYNTHETIC',
+    debugReportPath: null,
   };
 
   try {
-    // 1. Generate panels
-    if (verbose) console.log(`    Generating ${PANEL_TYPES.length} panels...`);
-    const panels = await generatePanels(buildingType, runIndex);
+    let panels;
+    let preComposedA1 = null;
+
+    if (realGeneration) {
+      // REAL GENERATION MODE
+      if (verbose) console.log(`    [REAL] Calling AI APIs for ${buildingType}...`);
+
+      const realResult = await generateRealPanels(buildingType, runIndex, runDir, verbose);
+      panels = realResult.panels;
+      preComposedA1 = realResult.a1Buffer;
+      result.debugReportPath = path.join(runDir, 'DEBUG_REPORT.json');
+
+      if (verbose) console.log(`    [REAL] Generated ${panels.length} panels`);
+    } else {
+      // SYNTHETIC MODE
+      if (verbose) console.log(`    Generating ${PANEL_TYPES.length} synthetic panels...`);
+      panels = await generateSyntheticPanels(buildingType, runIndex);
+    }
 
     // 2. Save panel PNGs
     for (const panel of panels) {
@@ -534,6 +827,8 @@ async function executeRun(runIndex, buildingType, outputDir, verbose) {
         type: panel.type,
         path: panelPath,
         size: panel.buffer.length,
+        seed: panel.seed,
+        prompt: panel.prompt,
       });
     }
 
@@ -572,9 +867,15 @@ async function executeRun(runIndex, buildingType, outputDir, verbose) {
       }
     }
 
-    // 4. Compose A1 sheet
-    if (verbose) console.log(`    Composing A1 sheet...`);
-    const a1Buffer = await composeA1Sheet(panels);
+    // 4. Use pre-composed A1 if available (real mode), otherwise compose
+    let a1Buffer;
+    if (preComposedA1) {
+      a1Buffer = preComposedA1;
+    } else {
+      if (verbose) console.log(`    Composing A1 sheet...`);
+      a1Buffer = await composeA1Sheet(panels);
+    }
+
     const a1Path = path.join(runDir, 'a1_composed.png');
     fs.writeFileSync(a1Path, a1Buffer);
     result.a1Path = a1Path;
@@ -597,26 +898,28 @@ async function executeRun(runIndex, buildingType, outputDir, verbose) {
     };
 
     // 6. Check production readiness criteria
-    const hasAllPanels = result.panels.length === PANEL_TYPES.length;
+    const expectedPanelCount = realGeneration ? 5 : PANEL_TYPES.length;  // Real may have fewer
+    const hasMinPanels = result.panels.length >= expectedPanelCount;
     const hasA1 = result.a1Path !== null;
     const hasMetrics = result.pairMetrics.length > 0 && result.pairMetrics.every(m =>
       m.ssim !== null && m.pHashSimilarity !== null && m.edgeOverlap !== null
     );
-    // Thresholds: SSIM ≥0.3, pHash ≥0.5, edgeOverlap ≥0 (synthetic images may have 0 edges)
-    // For real AI-generated images, edgeOverlap would be higher (0.2+)
-    const metricsAboveThreshold = result.metrics.minSSIM >= 0.3 &&
-      result.metrics.minPHash >= 0.5 &&
-      result.metrics.minEdgeOverlap >= 0;  // 0 for synthetic, 0.2 for real
+
+    const metricsAboveThreshold =
+      result.metrics.minSSIM >= thresholds.minSSIM &&
+      result.metrics.minPHash >= thresholds.minPHash &&
+      result.metrics.minEdgeOverlap >= thresholds.minEdgeOverlap;
 
     result.checks = {
-      hasAllPanels,
+      hasMinPanels,
       hasA1,
       hasMetrics,
       metricsAboveThreshold,
       noErrors: result.errors.length === 0,
+      thresholds,
     };
 
-    result.isProductionReady = hasAllPanels && hasA1 && hasMetrics &&
+    result.isProductionReady = hasMinPanels && hasA1 && hasMetrics &&
       metricsAboveThreshold && result.errors.length === 0;
 
     result.status = result.isProductionReady ? 'READY' : 'NOT_READY';
@@ -624,9 +927,9 @@ async function executeRun(runIndex, buildingType, outputDir, verbose) {
 
   } catch (error) {
     result.errors.push(`Run failed: ${error.message}`);
-    result.status = 'ERROR';
+    result.status = 'FAIL';  // Explicit FAIL for real mode errors
     result.isProductionReady = false;
-    result.fixableByRegeneration = true;
+    result.fixableByRegeneration = false;  // Don't mark as fixable - it's a real failure
   }
 
   result.endTime = Date.now();
@@ -637,12 +940,14 @@ async function executeRun(runIndex, buildingType, outputDir, verbose) {
   fs.writeFileSync(metricsPath, JSON.stringify({
     runIndex,
     buildingType,
+    mode: result.mode,
     timestamp: new Date().toISOString(),
     duration: result.durationMs,
     status: result.status,
     isProductionReady: result.isProductionReady,
-    panels: result.panels.map(p => ({ type: p.type, path: p.path })),
+    panels: result.panels.map(p => ({ type: p.type, path: p.path, seed: p.seed })),
     a1Path: result.a1Path,
+    debugReportPath: result.debugReportPath,
     aggregateMetrics: result.metrics,
     pairMetrics: result.pairMetrics,
     checks: result.checks,
@@ -701,10 +1006,12 @@ class ResultsTracker {
         runIndex: r.runIndex,
         buildingType: r.buildingType,
         status: r.status,
+        mode: r.mode,
         errors: r.errors,
         metrics: r.metrics,
         panelsDir: r.panels?.[0]?.path ? path.dirname(r.panels[0].path) : null,
         a1Path: r.a1Path,
+        debugReportPath: r.debugReportPath,
         minSSIM: r.metrics?.minSSIM,
         minPHash: r.metrics?.minPHash,
         minEdge: r.metrics?.minEdgeOverlap,
@@ -774,7 +1081,7 @@ function printMetricsTable(results) {
   console.log('└────────────────────────────────┴────────────────────────────────────┘');
 }
 
-function printWorstFailures(failures) {
+function printWorstFailures(failures, realGeneration) {
   if (failures.length === 0) {
     console.log('\n✅ No failures to report!');
     return;
@@ -786,7 +1093,7 @@ function printWorstFailures(failures) {
 
   for (let i = 0; i < failures.length; i++) {
     const f = failures[i];
-    console.log(`\n[${i + 1}] Run #${f.runIndex} - ${f.buildingType}`);
+    console.log(`\n[${i + 1}] Run #${f.runIndex} - ${f.buildingType} [${f.mode}]`);
     console.log(`    Status: ${f.status}`);
     console.log(`    Metrics: SSIM=${f.minSSIM?.toFixed(3) || 'N/A'}, pHash=${f.minPHash?.toFixed(3) || 'N/A'}, Edge=${f.minEdge?.toFixed(3) || 'N/A'}`);
     if (f.errors.length > 0) {
@@ -798,6 +1105,9 @@ function printWorstFailures(failures) {
     if (f.a1Path) {
       console.log(`    A1 Sheet: ${f.a1Path}`);
     }
+    if (realGeneration && f.debugReportPath) {
+      console.log(`    Debug Report: ${f.debugReportPath}`);
+    }
   }
 }
 
@@ -806,12 +1116,28 @@ function printWorstFailures(failures) {
 // =============================================================================
 
 async function runProductionReadinessHarness(config) {
+  const mode = config.realGeneration ? 'REAL' : 'SYNTHETIC';
+
   console.log('\n╔═══════════════════════════════════════════════════════════════════════╗');
-  console.log('║         PRODUCTION READINESS QA HARNESS v2.0                          ║');
+  console.log(`║         PRODUCTION READINESS QA HARNESS v3.0 [${mode.padEnd(9)}]             ║`);
   console.log('║         Real Metrics • Real Panels • Real A1 Composition              ║');
   console.log('╚═══════════════════════════════════════════════════════════════════════╝\n');
 
+  // Load environment and validate API keys if real generation
+  if (config.realGeneration) {
+    console.log('Loading environment variables...');
+    loadEnv();
+
+    console.log('Validating API keys...');
+    const keys = validateApiKeys();
+    console.log(`  ✓ TOGETHER_API_KEY: ${keys.togetherApiKey ? 'set' : 'MISSING'}`);
+    console.log(`  ○ OPENAI_REASONING_API_KEY: ${keys.openaiApiKey ? 'set' : 'not set (optional)'}`);
+    console.log(`  ○ MESHY_API_KEY: ${keys.meshyApiKey ? 'set' : 'not set (optional)'}`);
+    console.log('');
+  }
+
   console.log('Configuration:');
+  console.log(`  - Mode: ${mode}`);
   console.log(`  - Runs: ${config.runs}`);
   console.log(`  - Building Type: ${config.buildingType}`);
   console.log(`  - Output: ${config.outputDir}`);
@@ -821,6 +1147,14 @@ async function runProductionReadinessHarness(config) {
   console.log('Acceptance Criteria:');
   console.log(`  - Success Rate: ≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}%`);
   console.log(`  - Unfixable Failures: ≤${ACCEPTANCE_CRITERIA.maxUnfixableFailures}`);
+
+  if (config.realGeneration) {
+    console.log('');
+    console.log('Real Generation Thresholds:');
+    console.log(`  - Min SSIM: ${REAL_THRESHOLDS.minSSIM}`);
+    console.log(`  - Min pHash: ${REAL_THRESHOLDS.minPHash}`);
+    console.log(`  - Min Edge Overlap: ${REAL_THRESHOLDS.minEdgeOverlap}`);
+  }
   console.log('');
 
   // Ensure output directory
@@ -837,7 +1171,7 @@ async function runProductionReadinessHarness(config) {
       ? BUILDING_TYPES[Math.floor(Math.random() * BUILDING_TYPES.length)]
       : config.buildingType;
 
-    console.log(`\n[Run ${runNumber}/${config.runs}] Building type: ${buildingType}`);
+    console.log(`\n[Run ${runNumber}/${config.runs}] Building type: ${buildingType} [${mode}]`);
 
     if (config.dryRun) {
       console.log(`  [DRY RUN] Would generate panels and compute metrics`);
@@ -846,6 +1180,7 @@ async function runProductionReadinessHarness(config) {
         buildingType,
         isProductionReady: true,
         status: 'DRY_RUN',
+        mode,
         metrics: {},
         panels: [],
         errors: [],
@@ -854,15 +1189,17 @@ async function runProductionReadinessHarness(config) {
     }
 
     try {
-      const result = await executeRun(runNumber, buildingType, config.outputDir, config.verbose);
+      const result = await executeRun(runNumber, buildingType, config.outputDir, config.verbose, config.realGeneration);
       tracker.addRun(result);
 
       if (result.isProductionReady) {
         console.log(`  ✅ READY (SSIM=${result.metrics.avgSSIM}, pHash=${result.metrics.avgPHash}, Edge=${result.metrics.avgEdgeOverlap})`);
       } else {
-        console.log(`  ❌ NOT READY: ${result.errors.length > 0 ? result.errors[0] : 'Metrics below threshold'}`);
+        console.log(`  ❌ ${result.status}: ${result.errors.length > 0 ? result.errors[0] : 'Metrics below threshold'}`);
         if (result.fixableByRegeneration) {
           console.log(`     → Fixable by regeneration`);
+        } else if (config.realGeneration) {
+          console.log(`     → UNFIXABLE - check ${result.debugReportPath || 'debug report'}`);
         }
 
         if (config.failFast) {
@@ -872,20 +1209,21 @@ async function runProductionReadinessHarness(config) {
       }
 
       // Progress
-      if (runNumber % 10 === 0) {
+      if (runNumber % 10 === 0 || config.realGeneration) {
         const interim = tracker.getSummary();
         console.log(`\n--- Progress: ${runNumber}/${config.runs} (${interim.successRatePercent} success) ---\n`);
       }
 
     } catch (error) {
-      console.error(`  ❌ ERROR: ${error.message}`);
+      console.error(`  ❌ FAIL: ${error.message}`);
       tracker.addRun({
         runIndex: runNumber,
         buildingType,
         isProductionReady: false,
-        status: 'ERROR',
+        status: 'FAIL',
+        mode,
         errors: [error.message],
-        fixableByRegeneration: true,
+        fixableByRegeneration: false,  // Real failures are not auto-fixable
         metrics: {},
         panels: [],
       });
@@ -898,23 +1236,27 @@ async function runProductionReadinessHarness(config) {
   console.log('\n');
   printSummaryTable(tracker);
   printMetricsTable(tracker);
-  printWorstFailures(tracker.getWorstFailures(5));
+  printWorstFailures(tracker.getWorstFailures(5), config.realGeneration);
 
   // Save final report
   const summary = tracker.getSummary();
   const report = {
     summary,
+    mode,
     runs: tracker.runs.map(r => ({
       runIndex: r.runIndex,
       buildingType: r.buildingType,
       status: r.status,
+      mode: r.mode,
       isProductionReady: r.isProductionReady,
       metrics: r.metrics,
       errors: r.errors,
       duration: r.durationMs,
+      debugReportPath: r.debugReportPath,
     })),
     worstFailures: tracker.getWorstFailures(5),
     acceptanceCriteria: ACCEPTANCE_CRITERIA,
+    thresholds: config.realGeneration ? REAL_THRESHOLDS : SYNTHETIC_THRESHOLDS,
     generatedAt: new Date().toISOString(),
   };
 
@@ -924,7 +1266,22 @@ async function runProductionReadinessHarness(config) {
   const latestPath = path.join(config.outputDir, 'qa-report-latest.json');
   fs.writeFileSync(latestPath, JSON.stringify(report, null, 2));
 
+  // Write index.json aggregating all runs
+  const indexPath = path.join(config.outputDir, 'index.json');
+  fs.writeFileSync(indexPath, JSON.stringify({
+    mode,
+    totalRuns: summary.totalRuns,
+    successRate: summary.successRatePercent,
+    unfixableFailures: summary.unfixableFailures,
+    avgSSIM: summary.avgSSIM,
+    avgPHash: summary.avgPHash,
+    avgEdgeOverlap: summary.avgEdgeOverlap,
+    generatedAt: new Date().toISOString(),
+    reportPath,
+  }, null, 2));
+
   console.log(`\nReport saved to: ${reportPath}`);
+  console.log(`Index saved to: ${indexPath}`);
 
   // Determine pass/fail
   const meetsAcceptance =
@@ -933,11 +1290,11 @@ async function runProductionReadinessHarness(config) {
 
   console.log('\n╔═══════════════════════════════════════════════════════════════════════╗');
   if (meetsAcceptance) {
-    console.log('║  ✅ PRODUCTION READINESS: ACCEPTABLE                                  ║');
+    console.log(`║  ✅ PRODUCTION READINESS: ACCEPTABLE [${mode}]`.padEnd(72) + '║');
     console.log(`║     Success Rate: ${summary.successRatePercent} (≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}% required)`.padEnd(72) + '║');
     console.log(`║     Unfixable Failures: ${summary.unfixableFailures} (≤${ACCEPTANCE_CRITERIA.maxUnfixableFailures} required)`.padEnd(72) + '║');
   } else {
-    console.log('║  ❌ PRODUCTION READINESS: NOT ACCEPTABLE                              ║');
+    console.log(`║  ❌ PRODUCTION READINESS: NOT ACCEPTABLE [${mode}]`.padEnd(72) + '║');
     if (summary.successRate < ACCEPTANCE_CRITERIA.minSuccessRate) {
       console.log(`║     ⚠ Success Rate: ${summary.successRatePercent} (needs ≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}%)`.padEnd(72) + '║');
     }
