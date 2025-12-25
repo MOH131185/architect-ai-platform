@@ -14,6 +14,7 @@
  */
 
 import { createHash } from 'crypto';
+import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -22,6 +23,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
+
+// Load environment variables from .env
+dotenv.config({ path: path.join(PROJECT_ROOT, '.env') });
 
 // Add src to module resolution
 process.env.NODE_PATH = path.join(PROJECT_ROOT, 'src');

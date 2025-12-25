@@ -16,7 +16,7 @@
  */
 
 import { normalizeToCanonical, PANEL_REGISTRY } from '../../config/panelRegistry.js';
-import logger from '../logging/logger.js';
+import logger from '../core/logger.js';
 
 import {
   detectBlank,
