@@ -1,0 +1,84 @@
+{
+  "name": "UK Detached House - DN15 8BQ",
+  "description": "Smoke test case for 2-storey detached house in Scunthorpe, UK",
+  "version": "1.0.0",
+  "scenario": {
+    "address": "DN15 8BQ",
+    "location": {
+      "lat": 53.5904,
+      "lng": -0.6559,
+      "region": "North Lincolnshire",
+      "country": "UK"
+    },
+    "buildingType": "detached_house",
+    "buildingTypeLabel": "Detached House",
+    "floors": 2,
+    "grossInternalArea": 150,
+    "areaUnit": "sqm",
+    "program": {
+      "ground_floor": [
+        { "name": "Living Room", "area": 25, "unit": "sqm" },
+        { "name": "Kitchen/Dining", "area": 20, "unit": "sqm" },
+        { "name": "Utility", "area": 6, "unit": "sqm" },
+        { "name": "WC", "area": 3, "unit": "sqm" },
+        { "name": "Hallway", "area": 8, "unit": "sqm" }
+      ],
+      "first_floor": [
+        { "name": "Master Bedroom", "area": 18, "unit": "sqm" },
+        { "name": "Bedroom 2", "area": 14, "unit": "sqm" },
+        { "name": "Bedroom 3", "area": 12, "unit": "sqm" },
+        { "name": "Bathroom", "area": 8, "unit": "sqm" },
+        { "name": "Landing", "area": 6, "unit": "sqm" }
+      ]
+    },
+    "style": {
+      "architecture": "contemporary",
+      "materials": [
+        { "name": "Red Brick", "hexColor": "#B8604E", "application": "exterior walls" },
+        { "name": "Slate Tiles", "hexColor": "#4A5568", "application": "pitched roof" },
+        { "name": "uPVC", "hexColor": "#F5F5F5", "application": "windows and doors" }
+      ],
+      "roofType": "pitched",
+      "roofPitch": 35
+    },
+    "climate": {
+      "type": "temperate_maritime",
+      "heatingDays": 220,
+      "coolingDays": 10,
+      "avgRainfall": 650
+    }
+  },
+  "generation": {
+    "seed": 424242,
+    "layoutTemplate": "target-board",
+    "highRes": false,
+    "skipMeshy": true,
+    "skipBlender": true,
+    "timeoutMs": 300000
+  },
+  "expectedPanels": [
+    "hero_3d",
+    "interior_3d",
+    "site_diagram",
+    "floor_plan_ground",
+    "floor_plan_first",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "material_palette",
+    "climate_card",
+    "axonometric"
+  ],
+  "qualityGates": {
+    "missingPanelThreshold": 0,
+    "blankPlanThreshold": 0.85,
+    "duplicateElevationPHashThreshold": 8,
+    "duplicateElevationSSIMThreshold": 0.92,
+    "thinStripAspectRatio": 4.0,
+    "minPanelWidth": 100,
+    "minPanelHeight": 100
+  }
+}

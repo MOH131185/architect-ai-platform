@@ -2,7 +2,11 @@
   "name": "architect-ai-platform",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "proxy": "http://localhost:3001",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.29.2",
+    "@fal-ai/serverless-client": "^0.10.4",
     "@googlemaps/react-wrapper": "^1.2.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
@@ -15,6 +19,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
+    "crypto-browserify": "^3.12.1",
     "crypto-js": "^4.2.0",
     "d3": "^7.9.0",
     "dompurify": "^3.3.0",
@@ -26,10 +31,13 @@
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "idb-keyval": "^6.2.2",
+    "jspdf": "^2.5.1",
     "lucide-react": "^0.525.0",
     "makerjs": "^0.18.1",
     "node-fetch": "^2.7.0",
     "pdfjs-dist": "^5.4.296",
+    "pixelmatch": "^5.3.0",
+    "prop-types": "^15.8.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^7.9.4",
@@ -37,22 +45,65 @@
     "sharp": "^0.33.5",
     "suncalc": "^1.9.0",
     "svg.js": "^2.7.1",
+    "svg2pdf.js": "^2.2.4",
     "tailwind-merge": "^3.4.0",
     "three": "^0.180.0",
     "xlsx": "^0.18.5"
   },
   "scripts": {
     "start": "react-scripts start",
-    "server": "node server.js",
+    "server": "node server.cjs",
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:integration": "node scripts/test-a1-one-shot.js",
+    "test:ci": "react-scripts test --watchAll=false --ci",
+    "test:coverage": "react-scripts test --watchAll=false --coverage",
     "eject": "react-scripts eject",
-    "check:env": "node scripts/check-env.js",
-    "check:contracts": "node scripts/check-contracts.js",
+    "check:env": "node scripts/check-env.cjs",
+    "check:contracts": "node scripts/check-contracts.cjs",
     "check:all": "npm run check:env && npm run check:contracts",
+    "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\" \"scripts/**/*.js\" \"server.cjs\"",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,json,css,md}\" \"api/**/*.{js,json}\" \"scripts/**/*.{js,json}\" \"*.{js,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{js,jsx,json,css,md}\" \"api/**/*.{js,json}\" \"scripts/**/*.{js,json}\" \"*.{js,json,md}\"",
     "prebuild": "npm run check:all",
-    "prepare": "husky"
+    "prepare": "husky",
+    "clean": "rm -rf build coverage .eslintcache node_modules/.cache .turbo",
+    "clean:all": "npm run clean && rm -rf node_modules package-lock.json",
+    "reset": "npm run clean:all && npm install",
+    "verify": "npm run check:all && npm run lint && npm run test:ci && npm run build",
+    "verify:pipeline": "node scripts/verify-pipeline.js",
+    "verify:quick": "node scripts/verify-pipeline.js --skip-lint",
+    "verify:full": "node scripts/verify-pipeline.js --verbose",
+    "smoke": "node scripts/smoke-test.js",
+    "smoke:full": "node scripts/smoke-test.js --full",
+    "smoke:a1": "node scripts/smoke/runA1Smoke.mjs",
+    "debug:a1": "node scripts/run_debug_a1.js",
+    "debug:one": "node scripts/debug-one-generation.js",
+    "qa:regress": "node scripts/qa-regression-harness.mjs --dry-run",
+    "qa:regress:full": "node scripts/qa-regression-harness.mjs",
+    "qa:regress:ci": "node scripts/qa-regression-harness.mjs --runs=5 --dry-run",
+    "qa:test": "react-scripts test --testPathPattern=src/__tests__/qa --watchAll=false --passWithNoTests",
+    "qa:metrics": "node scripts/test-image-qa.mjs",
+    "qa:blank": "node scripts/test-blank-detection.mjs",
+    "qa:consistency": "node scripts/qa-consistency.mjs",
+    "test:golden": "node tests/golden/cli.mjs",
+    "test:golden:live": "node tests/golden/cli.mjs --live",
+    "test:golden:update": "node tests/golden/cli.mjs --live --update",
+    "qa:visual": "node scripts/qa-visual-regression.mjs",
+    "qa:visual:update": "node scripts/qa-visual-regression.mjs --update-baselines",
+    "qa:visual:ui": "node scripts/qa-visual-regression.mjs --ui-only",
+    "qa:visual:a1": "node scripts/qa-visual-regression.mjs --a1-only",
+    "qa:real": "node scripts/qa-real-generation-playwright.mjs",
+    "qa:real:headed": "node scripts/qa-real-generation-playwright.mjs --headed",
+    "qa:real:fast": "node scripts/qa-real-generation-playwright.mjs --runs=2 --fail-fast",
+    "qa:real:ci": "node scripts/qa-real-generation-playwright.mjs --headless --api-live --fail-fast",
+    "qa:real:single": "node scripts/qa-real-generation-playwright.mjs --runs=1 --headed",
+    "qa:matrix": "node scripts/qa-real-e2e-matrix.mjs",
+    "qa:matrix:headed": "node scripts/qa-real-e2e-matrix.mjs --headed",
+    "qa:matrix:single": "node scripts/qa-real-e2e-matrix.mjs --config",
+    "qa:matrix:fast": "node scripts/qa-real-e2e-matrix.mjs --fast"
   },
   "eslintConfig": {
     "extends": [
@@ -75,13 +126,40 @@
   "devDependencies": {
     "@types/d3": "^7.4.3",
     "concurrently": "^9.2.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
     "husky": "^9.1.7",
-    "lint-staged": "^16.2.7"
+    "lint-staged": "^16.2.7",
+    "playwright": "^1.57.0",
+    "prettier": "^3.2.5"
   },
   "lint-staged": {
     "*.{js,jsx}": [
+      "prettier --write",
       "eslint --fix"
     ],
-    "*.{json,md,css}": []
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
+  },
+  "jest": {
+    "moduleNameMapper": {
+      "^@img/(sharp-[^/]+)/sharp\\.node$": "<rootDir>/node_modules/@img/$1/lib/$1.node"
+    },
+    "coverageThreshold": {
+      "global": {
+        "branches": 75,
+        "functions": 75,
+        "lines": 75,
+        "statements": 75
+      }
+    },
+    "collectCoverageFrom": [
+      "src/**/*.{js,jsx}",
+      "!src/index.js",
+      "!src/reportWebVitals.js",
+      "!src/**/*.test.{js,jsx}",
+      "!src/**/__tests__/**"
+    ]
   }
 }
