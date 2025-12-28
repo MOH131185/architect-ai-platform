@@ -1,78 +1,143 @@
 /**
- * Vercel Serverless Function: Image Proxy
- * 
- * Proxies images from Together.ai and other trusted sources to bypass CORS restrictions.
- * Used by A1SheetViewer component for downloading PNG files.
+ * Image Proxy API Endpoint - Vercel Serverless Function
+ *
+ * Proxies external images to avoid CORS issues.
+ * This is essential for loading images from CDNs like Together.ai.
+ *
+ * GET /api/proxy-image?url=<encoded-url>
+ *
+ * @route GET /api/proxy-image
  */
 
-export default async function handler(req, res) {
-  // Only allow GET requests
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+export const config = {
+  runtime: 'edge',
+  regions: ['iad1'], // Use a single region for consistency
+};
+
+export default async function handler(req) {
+  const url = new URL(req.url);
+  const imageUrl = url.searchParams.get('url');
+
+  if (!imageUrl) {
+    return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
+      status: 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   }
 
   try {
-    const { url } = req.query;
+    // Decode and validate URL
+    const decodedUrl = decodeURIComponent(imageUrl);
 
-    if (!url) {
-      return res.status(400).json({ error: 'URL parameter is required' });
+    // Basic URL validation
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(decodedUrl);
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid URL' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
-    // Validate URL is from trusted image sources
-    const isTrustedSource =
-      url.includes('api.together.ai') || // Together.ai short URLs and API
-      url.includes('api.together.xyz') || // Together.ai API images
-      url.includes('cdn.together.xyz') || // Together.ai CDN
-      url.includes('together-cdn.com') || // Together.ai CDN alternative
-      url.includes('oaidalleapiprodscus.blob.core.windows.net') || // DALL-E 3 (legacy fallback)
-      url.includes('s.maginary.ai') || // Maginary/Midjourney (legacy fallback)
-      url.includes('cdn.midjourney.com') || // Midjourney CDN (legacy fallback)
-      url.includes('cdn.discordapp.com'); // Discord CDN (legacy fallback)
-
-    if (!isTrustedSource) {
-      return res.status(403).json({ error: 'URL not from a trusted image source' });
+    // Only allow HTTPS
+    if (parsedUrl.protocol !== 'https:') {
+      return new Response(JSON.stringify({ error: 'Only HTTPS URLs are allowed' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
-    // Prepare fetch headers (include Together.ai auth if needed)
-    const fetchHeaders = {
-      'User-Agent': 'Mozilla/5.0 (compatible; ArchitectAI/1.0)'
-    };
+    // Allowlist of trusted domains
+    const trustedDomains = [
+      'api.together.ai', // Together.ai main API domain
+      'api.together.xyz', // Together.ai alternative domain
+      'together.xyz',
+      'together.ai', // Together.ai short URLs
+      'replicate.delivery',
+      'replicate.com',
+      'pbxt.replicate.delivery',
+      'oaidalleapiprodscus.blob.core.windows.net',
+      'imgur.com',
+      'i.imgur.com',
+      'cloudflare-ipfs.com',
+      'ipfs.io',
+      'arweave.net',
+    ];
 
-    // Add Together.ai authorization for Together.ai URLs
-    if (url.includes('api.together.ai') || url.includes('api.together.xyz')) {
-      const togetherApiKey = process.env.TOGETHER_API_KEY;
-      if (togetherApiKey) {
-        fetchHeaders['Authorization'] = `Bearer ${togetherApiKey}`;
-      }
+    const isDomainTrusted = trustedDomains.some(
+      (domain) => parsedUrl.hostname === domain || parsedUrl.hostname.endsWith(`.${domain}`)
+    );
+
+    if (!isDomainTrusted) {
+      return new Response(JSON.stringify({ error: 'Domain not in allowlist' }), {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
     }
 
     // Fetch the image
-    const response = await fetch(url, { headers: fetchHeaders });
+    const response = await fetch(decodedUrl, {
+      headers: {
+        'User-Agent': 'ArchitectAI-Proxy/1.0',
+      },
+    });
 
     if (!response.ok) {
-      console.error(`❌ Failed to fetch image: ${response.status} ${response.statusText}`);
-      return res.status(response.status).json({ error: 'Failed to fetch image' });
+      return new Response(
+        JSON.stringify({
+          error: `Upstream error: ${response.status}`,
+          url: decodedUrl,
+        }),
+        {
+          status: response.status,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        }
+      );
     }
 
-    // Get image buffer
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Set CORS headers to allow canvas access and proper content type
+    // Get content type
     const contentType = response.headers.get('content-type') || 'image/png';
-    
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', buffer.length);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET');
-    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
 
-    console.log(`✅ Image proxied successfully (${(buffer.length / 1024).toFixed(2)} KB)`);
-    res.send(buffer);
-
+    // Stream the response
+    return new Response(response.body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=86400', // Cache for 24 hours
+        'X-Proxy-Source': 'architect-ai',
+      },
+    });
   } catch (error) {
-    console.error('Image proxy error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('[Proxy Image] Error:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Proxy failed',
+        message: error.message,
+      }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
+    );
   }
 }
-
