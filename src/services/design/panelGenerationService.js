@@ -80,15 +80,79 @@ import {
   CANONICAL_PANEL_TYPES,
   AI_PANEL_TO_CANONICAL,
 } from '../canonical/CanonicalRenderPackService.js';
+import {
+  generateCanonical3DRenders,
+  getCanonical3DRender,
+  requireCanonical3DRender,
+  requiresCanonical3DRender,
+  getCanonical3DInitParams,
+  buildCanonical3DNegativePrompt,
+  hasCanonical3DRenders,
+  getCanonical3DDebugReport,
+  validateCanonical3DRenders,
+  MANDATORY_3D_PANELS,
+  CANONICAL_3D_VIEWS,
+  CANONICAL_3D_STRENGTH_POLICY,
+  CANONICAL_3D_NEGATIVE_PROMPTS,
+} from '../canonical/canonicalRenderService.js';
 import logger from '../core/logger.js';
 
 // PANEL_REGISTRY: Single Source of Truth for all panel types
+import debugRecorder from '../debug/DebugRunRecorder.js';
 import { extractOpeningEnumeration } from '../facade/facadeGenerationLayer.js';
-
+import {
+  generateControlPack,
+  getControlForPanel as getControlPackForPanel,
+  hasControlPack,
+  saveControlPackToDebugFolder,
+  getControlPackDebugReport,
+  CONTROL_PACK_VIEWS,
+  PANEL_TO_CONTROL_MAP,
+} from '../geometry/CanonicalControlPackService.js';
+import {
+  generateCanonicalControlRenders,
+  getControlImageForPanel,
+  requireControlImageForPanel,
+  hasControlRenders,
+  getControlImageDebugReport,
+} from '../geometry/canonicalControlRenderGenerator.js';
 import {
   generateControlImage as generateGeometryControlImage,
   getFluxImg2ImgParams,
 } from '../geometry/unifiedBuildingGeometry.js';
+import {
+  checkDriftRetryNeeded,
+  calculateDriftRetryParams,
+  generateDriftRetrySummary,
+  DRIFT_RETRY_CONFIG,
+  DRIFT_ELIGIBLE_PANELS,
+} from '../quality/DriftRetryPolicy.js';
+import {
+  ControlFidelityGate,
+  imageSimilarityService,
+  CONTROL_FIDELITY_THRESHOLDS,
+} from '../quality/ImageSimilarityService.js';
+import {
+  validatePanel,
+  validatePanelBatch,
+  getPanelsForRegeneration,
+  QUALITY_THRESHOLDS,
+} from '../quality/panelQualityValidator.js';
+import { generationPreflight, GenerationPreflight } from '../validation/GenerationPreflight.js';
+import {
+  getValidationGate,
+  assertValidGenerator,
+  confirmGenerator,
+  GeneratorMismatchError,
+  LegacyGeneratorError,
+} from '../validation/PanelValidationGate.js';
+
+import {
+  getBaselineForPanel,
+  requiresBaselineControl,
+  applyBaselineControl,
+  BASELINE_VIEW_TYPES,
+} from './BaselineRenderService.js';
 import {
   build3DPanelPrompt,
   buildPlanPrompt,
@@ -121,12 +185,6 @@ import {
 // NEW: Import unified geometry service for 3D view consistency (Phase B)
 
 // NEW: Import quality validation and retry service (Phase D - Quality Control)
-import {
-  validatePanel,
-  validatePanelBatch,
-  getPanelsForRegeneration,
-  QUALITY_THRESHOLDS,
-} from '../quality/panelQualityValidator.js';
 
 import {
   retryFailedPanel,
@@ -135,24 +193,8 @@ import {
 } from './panelRetryService.js';
 
 // NEW: Import canonical control render generator for SSOT geometry enforcement
-import {
-  generateCanonicalControlRenders,
-  getControlImageForPanel,
-  requireControlImageForPanel,
-  hasControlRenders,
-  getControlImageDebugReport,
-} from '../geometry/canonicalControlRenderGenerator.js';
 
 // NEW: Import CanonicalControlPackService for unified control pack (4 canonical views)
-import {
-  generateControlPack,
-  getControlForPanel as getControlPackForPanel,
-  hasControlPack,
-  saveControlPackToDebugFolder,
-  getControlPackDebugReport,
-  CONTROL_PACK_VIEWS,
-  PANEL_TO_CONTROL_MAP,
-} from '../geometry/CanonicalControlPackService.js';
 
 // NEW: Import CanonicalRenderPackService for per-panel-type canonical renders
 
@@ -160,13 +202,6 @@ import {
 
 // DELIVERABLE C: Hard Guards - PanelValidationGate
 // Prevents silent fallback to legacy generators for technical panels
-import {
-  getValidationGate,
-  assertValidGenerator,
-  confirmGenerator,
-  GeneratorMismatchError,
-  LegacyGeneratorError,
-} from '../validation/PanelValidationGate.js';
 
 // Pipeline Mode Configuration
 
@@ -176,53 +211,18 @@ import {
 
 // NEW: Import CanonicalRenderService for SINGLE SOURCE OF TRUTH 3D panel control
 // hero_3d, interior_3d, and axonometric MUST use init_image from canonical geometry
-import {
-  generateCanonical3DRenders,
-  getCanonical3DRender,
-  requireCanonical3DRender,
-  requiresCanonical3DRender,
-  getCanonical3DInitParams,
-  buildCanonical3DNegativePrompt,
-  hasCanonical3DRenders,
-  getCanonical3DDebugReport,
-  validateCanonical3DRenders,
-  MANDATORY_3D_PANELS,
-  CANONICAL_3D_VIEWS,
-  CANONICAL_3D_STRENGTH_POLICY,
-  CANONICAL_3D_NEGATIVE_PROMPTS,
-} from '../canonical/canonicalRenderService.js';
 
 // NEW: Import CanonicalGeometryPackService - SINGLE SOURCE OF TRUTH for all panel geometry
 
 // NEW: Import BaselineRenderService for forceBaselineControl mode
-import {
-  getBaselineForPanel,
-  requiresBaselineControl,
-  applyBaselineControl,
-  BASELINE_VIEW_TYPES,
-} from './BaselineRenderService.js';
 
 // NEW: Import DebugRunRecorder for real runtime data capture
-import debugRecorder from '../debug/DebugRunRecorder.js';
 
 // NEW: Import GenerationPreflight for strict validation gate
-import { generationPreflight, GenerationPreflight } from '../validation/GenerationPreflight.js';
 
 // NEW: Import ImageSimilarityService for control fidelity gate
-import {
-  ControlFidelityGate,
-  imageSimilarityService,
-  CONTROL_FIDELITY_THRESHOLDS,
-} from '../quality/ImageSimilarityService.js';
 
 // NEW: Import DriftRetryPolicy for hero_3d/interior_3d drift prevention
-import {
-  checkDriftRetryNeeded,
-  calculateDriftRetryParams,
-  generateDriftRetrySummary,
-  DRIFT_RETRY_CONFIG,
-  DRIFT_ELIGIBLE_PANELS,
-} from '../quality/DriftRetryPolicy.js';
 
 // NEW: Import CanonicalDesignState for CDS-first generation
 // Legacy test hook (string match): function isDataPanel(panelType) { return false; }
@@ -694,7 +694,9 @@ const PANEL_CONFIGS = (() => {
   const configs = {};
   for (const panelType of ALL_PANEL_TYPES) {
     const entry = getRegistryEntry(panelType);
-    if (!entry) {continue;}
+    if (!entry) {
+      continue;
+    }
 
     // Determine generation size based on category
     const is3D = entry.category === '3d' || entry.category === 'site';
@@ -3521,9 +3523,17 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
       logger.info(`\n🔒 Control Image Usage Report:`);
       logger.info(`   Strict mode enabled: ${controlReport.strictModeEnabled}`);
-      logger.info(
-        `   Control image source: ${geometryVolumeFirstEnabled ? 'geometry' : meshy3DModeEnabled ? 'meshy' : 'none'}`
-      );
+      // Report actual control image usage, not just feature flag state
+      const controlImageCount = controlReport.summary?.withControlImage || 0;
+      const actualControlSource =
+        controlImageCount > 0
+          ? geometryVolumeFirstEnabled
+            ? 'geometry'
+            : meshy3DModeEnabled
+              ? 'meshy'
+              : 'configured'
+          : 'none (no control images attached)';
+      logger.info(`   Control image source: ${actualControlSource}`);
       logger.info(`   Total panels tracked: ${controlReport.summary?.totalPanels || 0}`);
       logger.info(`   With control image: ${controlReport.summary?.withControlImage || 0}`);
       logger.info(`   Without control image: ${controlReport.summary?.withoutControlImage || 0}`);
