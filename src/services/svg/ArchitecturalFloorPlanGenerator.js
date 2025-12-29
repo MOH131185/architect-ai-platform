@@ -317,14 +317,36 @@ class ArchitecturalFloorPlanGenerator {
     // Transform group to handle margins
     parts.push(`<g transform="translate(${this.margin}, ${this.margin})">`);
 
-    // Draw exterior walls (with hatching)
-    parts.push(this.drawExteriorWalls(width, length));
+    // Check if we have polygon-based geometry data
+    const hasPolygons = rooms?.some((r) => r.polygon?.length >= 3);
+    const hasWalls = floorData.walls?.length > 0;
 
-    // Draw rooms
-    parts.push(this.drawRooms(rooms, width, length));
+    if (hasPolygons || hasWalls) {
+      console.log(
+        `[FloorPlanGenerator] Using polygon-based rendering: ${rooms?.length} rooms with polygons, ${floorData.walls?.length || 0} walls`
+      );
+    }
 
-    // Draw internal walls
-    parts.push(this.drawInternalWalls(rooms, width, length));
+    // Draw exterior walls (with hatching) - use geometry walls if available
+    if (hasWalls) {
+      parts.push(this.drawWallsFromGeometry(floorData.walls, 'exterior'));
+    } else {
+      parts.push(this.drawExteriorWalls(width, length));
+    }
+
+    // Draw rooms - use polygons if available for accurate geometry
+    if (hasPolygons) {
+      parts.push(this.drawRoomsWithPolygons(rooms));
+    } else {
+      parts.push(this.drawRooms(rooms, width, length));
+    }
+
+    // Draw internal walls - use geometry walls if available
+    if (hasWalls) {
+      parts.push(this.drawWallsFromGeometry(floorData.walls, 'interior'));
+    } else {
+      parts.push(this.drawInternalWalls(rooms, width, length));
+    }
 
     // Draw doors with swings
     if (this.showDoorSwings) {
@@ -489,6 +511,205 @@ class ArchitecturalFloorPlanGenerator {
 
     parts.push('</g>');
     return parts.join('\n');
+  }
+
+  /**
+   * Draw rooms using polygon data from populatedGeometry
+   * This produces accurate room shapes instead of rectangles
+   */
+  drawRoomsWithPolygons(rooms) {
+    if (!rooms || rooms.length === 0) {
+      return '';
+    }
+
+    const parts = ['<g class="rooms-polygons">'];
+
+    rooms.forEach((room, index) => {
+      if (!room.polygon || room.polygon.length < 3) {
+        // Fallback to rectangle if no polygon
+        const x = (room.x || 0) * this.scale;
+        const y = (room.y || 0) * this.scale;
+        const w = (room.width || 4) * this.scale;
+        const h = (room.length || 4) * this.scale;
+        parts.push(`
+          <rect x="${x}" y="${y}" width="${w}" height="${h}"
+                fill="${this.colors.roomFill}" stroke="none"
+                data-room="${room.name}" data-index="${index}"/>
+        `);
+        return;
+      }
+
+      // Convert polygon points to SVG coordinates
+      const points = room.polygon
+        .map((p) => {
+          // Handle both mm (>100) and meter (<100) units
+          const x = p.x > 100 ? (p.x / 1000) * this.scale : p.x * this.scale;
+          const y = p.y > 100 ? (p.y / 1000) * this.scale : p.y * this.scale;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        })
+        .join(' ');
+
+      parts.push(`
+        <polygon points="${points}"
+                 fill="${this.colors.roomFill}" stroke="none"
+                 data-room="${room.name}" data-index="${index}"/>
+      `);
+    });
+
+    parts.push('</g>');
+    return parts.join('\n');
+  }
+
+  /**
+   * Draw walls using geometry data from populatedGeometry
+   * Walls have start/end coordinates and thickness
+   * @param {Array} walls - Wall array with start, end, thickness, type
+   * @param {string} filterType - 'exterior', 'interior', or 'all'
+   */
+  drawWallsFromGeometry(walls, filterType = 'all') {
+    if (!walls || walls.length === 0) {
+      return '';
+    }
+
+    const parts = [`<g class="walls-geometry-${filterType}">`];
+
+    walls.forEach((wall) => {
+      if (!wall.start || !wall.end) {
+        return;
+      }
+
+      // Filter by wall type if specified
+      const wallType = (wall.type || 'exterior').toLowerCase();
+      if (
+        filterType === 'exterior' &&
+        !wallType.includes('exterior') &&
+        !wallType.includes('external')
+      ) {
+        return;
+      }
+      if (
+        filterType === 'interior' &&
+        (wallType.includes('exterior') || wallType.includes('external'))
+      ) {
+        return;
+      }
+
+      // Handle both mm and meter units
+      const startX =
+        wall.start.x > 100 ? (wall.start.x / 1000) * this.scale : wall.start.x * this.scale;
+      const startY =
+        wall.start.y > 100 ? (wall.start.y / 1000) * this.scale : wall.start.y * this.scale;
+      const endX = wall.end.x > 100 ? (wall.end.x / 1000) * this.scale : wall.end.x * this.scale;
+      const endY = wall.end.y > 100 ? (wall.end.y / 1000) * this.scale : wall.end.y * this.scale;
+
+      // Calculate wall thickness in pixels
+      const thickness =
+        wall.thickness > 1
+          ? (wall.thickness / 1000) * this.scale // mm to pixels
+          : wall.thickness * this.scale; // meters to pixels
+
+      // Calculate wall angle and perpendicular offset
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      if (length < 1) {return;} // Skip degenerate walls
+
+      // Perpendicular vector for wall thickness
+      const nx = -dy / length;
+      const ny = dx / length;
+      const halfThick = thickness / 2;
+
+      // Create wall polygon (rectangle with thickness)
+      const x1 = startX + nx * halfThick;
+      const y1 = startY + ny * halfThick;
+      const x2 = startX - nx * halfThick;
+      const y2 = startY - ny * halfThick;
+      const x3 = endX - nx * halfThick;
+      const y3 = endY - ny * halfThick;
+      const x4 = endX + nx * halfThick;
+      const y4 = endY + ny * halfThick;
+
+      const points = `${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${x3.toFixed(1)},${y3.toFixed(1)} ${x4.toFixed(1)},${y4.toFixed(1)}`;
+
+      const isExterior = wallType.includes('exterior') || wallType.includes('external');
+      const fillPattern = isExterior ? 'url(#exterior-wall-hatch)' : 'url(#interior-wall-hatch)';
+      const strokeColor = isExterior ? this.colors.wall : this.colors.internalWall;
+
+      parts.push(`
+        <polygon points="${points}"
+                 fill="${fillPattern}" stroke="${strokeColor}" stroke-width="0.5"
+                 data-wall-id="${wall.id || ''}" data-wall-type="${wallType}"/>
+      `);
+
+      // Draw openings in walls (doors, windows)
+      if (wall.openings && wall.openings.length > 0) {
+        wall.openings.forEach((opening) => {
+          parts.push(
+            this.drawWallOpening(opening, wall, startX, startY, endX, endY, length, thickness)
+          );
+        });
+      }
+    });
+
+    parts.push('</g>');
+    return parts.join('\n');
+  }
+
+  /**
+   * Draw an opening (door/window) in a wall
+   */
+  drawWallOpening(opening, wall, startX, startY, endX, endY, wallLength, wallThickness) {
+    // Position is distance from wall start to opening center
+    const position =
+      opening.position > 100
+        ? (opening.position / 1000) * this.scale
+        : opening.position * this.scale;
+
+    const openingWidth =
+      opening.width > 100
+        ? (opening.width / 1000) * this.scale
+        : (opening.width || 0.9) * this.scale;
+
+    // Calculate opening position along wall
+    const t = position / ((wallLength / this.scale) * (wall.start.x > 100 ? 1000 : 1));
+    const centerX = startX + (endX - startX) * Math.min(1, Math.max(0, t));
+    const centerY = startY + (endY - startY) * Math.min(1, Math.max(0, t));
+
+    // Direction along wall
+    const dx = ((endX - startX) / wallLength) * this.scale;
+    const dy = ((endY - startY) / wallLength) * this.scale;
+
+    const halfWidth = openingWidth / 2;
+    const x1 = centerX - dx * halfWidth;
+    const y1 = centerY - dy * halfWidth;
+    const x2 = centerX + dx * halfWidth;
+    const y2 = centerY + dy * halfWidth;
+
+    if (opening.type === 'door') {
+      // Door: clear opening with door swing
+      return `
+        <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
+              x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="${this.colors.background}" stroke-width="${wallThickness + 2}"/>
+        <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
+              x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="${this.colors.door}" stroke-width="2"/>
+      `;
+    } else {
+      // Window: parallel lines indicating glazing
+      return `
+        <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
+              x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="${this.colors.background}" stroke-width="${wallThickness + 2}"/>
+        <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
+              x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="${this.colors.window}" stroke-width="3"/>
+        <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
+              x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="${this.colors.wall}" stroke-width="1"/>
+      `;
+    }
   }
 
   /**
