@@ -40,9 +40,36 @@ import clipEmbeddingService from '../ai/clipEmbeddingService.js';
 import imageUpscalingService from '../ai/imageUpscalingService.js';
 import reasoningOrchestrator from '../ai/reasoningOrchestrator.js';
 import { generateArchitecturalImage } from '../ai/togetherAIService.js';
+import {
+  generateCanonical3DRenders,
+  hasCanonical3DRenders,
+} from '../canonical/canonicalRenderService.js';
+import {
+  initializeCCP,
+  setActiveContext,
+  clearActiveContext,
+  enhanceJobWithCCP,
+  generateConsistencyReport,
+  generateDesignFingerprint,
+  GEOMETRY_LOCK_INSTRUCTION,
+} from '../consistency/ccpPanelIntegration.js';
+import { generateDataPanels } from '../core/DataPanelService.js';
 import logger from '../core/logger.js';
+import debugRecorder from '../debug/DebugRunRecorder.js';
+import { FacadeGenerationLayer } from '../facade/facadeGenerationLayer.js';
+import { MVPFloorPlanGenerator } from '../geometry/floorPlanGeometryEngine.js';
+import { GeometryPrimerV3 } from '../geometry/geometryPrimer.js';
+import {
+  generateProjections,
+  generateRoofProfilesForFacades,
+} from '../geometry/geometryProjectionLayer.js';
+import {
+  buildMasterGeometry,
+  getGeometryRenderForPanel,
+} from '../geometry/masterGeometryBuilder.js';
 import { getSiteSnapshotWithMetadata } from '../location/siteMapSnapshotService.js';
 
+import architecturalSheetService from './architecturalSheetService.js';
 import baselineArtifactStore from './baselineArtifactStore.js';
 import { check3Dvs2DConsistency } from './bimConsistencyChecker.js';
 // REMOVED: multiModelImageService - fail-fast architecture, no SDXL fallback
@@ -60,8 +87,6 @@ import { orchestratePanelGeneration } from './panelOrchestrator.js';
 import { derivePanelSeedsFromDNA } from './seedDerivation.js';
 
 
-import architecturalSheetService from './architecturalSheetService.js';
-
 // Lazy import for geometry-first features (TypeScript dependencies)
 // import { generateMassingModel } from '../rings/ring4-3d/massingGenerator.js';
 
@@ -72,12 +97,6 @@ import enhancedDesignDNAService from './enhancedDesignDNAService.js';
 import { buildGeometryModel, createSceneSpec } from './geometryBuilder.js';
 import { generateGeometryDNA } from './geometryReasoningService.js';
 import { renderGeometryPlaceholders } from './geometryRenderService.js';
-
-import {
-  buildMasterGeometry,
-  getGeometryRenderForPanel,
-} from '../geometry/masterGeometryBuilder.js';
-
 import projectDNAPipeline from './projectDNAPipeline.js';
 import { generateAllTechnicalDrawings, isTechnicalPanel } from './technicalDrawingGenerator.js';
 import twoPassDNAGenerator from './twoPassDNAGenerator.js';
@@ -92,7 +111,6 @@ import { enforceGeometryFirstGate, extractGeometryStats } from '../validation/Ge
 import StrictPanelValidator, { buildRepairPrompt } from '../validation/strictPanelValidator.js';
 
 // Debug run recorder - captures real runtime data during generation
-import debugRecorder from '../debug/DebugRunRecorder.js';
 
 // Baseline render service - generates deterministic baselines before FLUX stylization
 import {
@@ -103,15 +121,6 @@ import {
 } from './BaselineRenderService.js';
 
 // Canonical Control Pack (CCP) - ensures ALL panels reference the SAME design
-import {
-  initializeCCP,
-  setActiveContext,
-  clearActiveContext,
-  enhanceJobWithCCP,
-  generateConsistencyReport,
-  generateDesignFingerprint,
-  GEOMETRY_LOCK_INSTRUCTION,
-} from '../consistency/ccpPanelIntegration.js';
 
 // =============================================================================
 // CANONICAL BASELINE MODE: DesignContract + ContractGate
@@ -136,19 +145,12 @@ import {
 } from './TypologyIntegrityGuard.js';
 
 // Import geometry generation engine for populating floor data
-import { MVPFloorPlanGenerator } from '../geometry/floorPlanGeometryEngine.js';
 
 // Import geometry projection layer for facades/sections/roofProfiles
-import {
-  generateProjections,
-  generateRoofProfilesForFacades,
-} from '../geometry/geometryProjectionLayer.js';
 
 // Import Facade Generation Layer for control images
-import { FacadeGenerationLayer } from '../facade/facadeGenerationLayer.js';
 
 // Import GeometryPrimerV3 for geometry normalization/fixing
-import { GeometryPrimerV3 } from '../geometry/geometryPrimer.js';
 
 // =============================================================================
 // NEW: Conditioned Image Pipeline (Phase 4/5)
@@ -167,13 +169,8 @@ import {
 } from '../pipeline/ConditionedImagePipeline.js';
 
 // DataPanelService - Generates deterministic SVG data panels (material_palette, climate_card)
-import { generateDataPanels } from '../core/DataPanelService.js';
 
 // Canonical Render Service - Generates 3D control images from geometry BEFORE CCP initialization
-import {
-  generateCanonical3DRenders,
-  hasCanonical3DRenders,
-} from '../canonical/canonicalRenderService.js';
 
 // =============================================================================
 // QA Services - StrictControlEnforcer + AutoCropService
@@ -407,7 +404,9 @@ class DNAWorkflowOrchestrator {
    * @returns {boolean} True if lock is stale
    */
   _isLockStale() {
-    if (!this.lockAcquiredAt) {return false;}
+    if (!this.lockAcquiredAt) {
+      return false;
+    }
     const elapsed = Date.now() - this.lockAcquiredAt;
     return elapsed > this.lockTimeout;
   }
@@ -1501,24 +1500,36 @@ class DNAWorkflowOrchestrator {
         let rawRooms = [];
         const floorKeyToIndex = (floorKey) => {
           const key = String(floorKey || '').toLowerCase();
-          if (!key) {return 0;}
-          if (key === 'ground' || key.includes('ground') || key.includes('gf')) {return 0;}
-          if (key === 'first' || key.includes('first') || key === 'upper' || key.includes('upper'))
-            {return 1;}
+          if (!key) {
+            return 0;
+          }
+          if (key === 'ground' || key.includes('ground') || key.includes('gf')) {
+            return 0;
+          }
+          if (
+            key === 'first' ||
+            key.includes('first') ||
+            key === 'upper' ||
+            key.includes('upper')
+          ) {
+            return 1;
+          }
           if (
             key === 'second' ||
             key.includes('second') ||
             key.includes('level2') ||
             key.includes('floor2')
-          )
-            {return 2;}
+          ) {
+            return 2;
+          }
           if (
             key === 'third' ||
             key.includes('third') ||
             key.includes('level3') ||
             key.includes('floor3')
-          )
-            {return 3;}
+          ) {
+            return 3;
+          }
           const numeric = Number.parseInt(key.replace(/[^0-9]/g, ''), 10);
           return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
         };
@@ -3103,7 +3114,9 @@ ${prompt}`);
 
         // Merge data panels into results - update existing failed panels or add new ones
         for (const [panelType, dataUrl] of Object.entries(dataPanels || {})) {
-          if (!dataUrl) {continue;}
+          if (!dataUrl) {
+            continue;
+          }
 
           // Find existing panel result for this type
           const existingIndex = panelResults.findIndex((p) => p.type === panelType);
@@ -3235,11 +3248,15 @@ ${prompt}`);
 
           for (let i = 0; i < panelResults.length; i++) {
             const panel = panelResults[i];
-            if (!panel.imageUrl && !panel.url) {continue;}
+            if (!panel.imageUrl && !panel.url) {
+              continue;
+            }
 
             const imageUrl = panel.imageUrl || panel.url;
             // Skip SVG data URLs - they're deterministic and can't be blank
-            if (imageUrl.startsWith('data:image/svg')) {continue;}
+            if (imageUrl.startsWith('data:image/svg')) {
+              continue;
+            }
 
             try {
               // Get image buffer for blank detection
@@ -3257,7 +3274,9 @@ ${prompt}`);
                 }
               }
 
-              if (!imageBuffer) {continue;}
+              if (!imageBuffer) {
+                continue;
+              }
 
               // Build control pack for deterministic regeneration
               const controlPackForPanel = {};
@@ -4241,6 +4260,21 @@ ${prompt}`);
       reportProgress('finalizing', 'A1 sheet generation complete!', 100);
 
       // 🔍 DIAGNOSTIC: Log the result structure before returning
+      // Build panelMap for A1SheetViewer (required for export)
+      const finalPanelMap = {};
+      for (const panel of updatedPanelResults || panelResults || []) {
+        const key = panel.type || panel.id;
+        finalPanelMap[key] = {
+          imageUrl: panel.imageUrl || panel.url,
+          url: panel.imageUrl || panel.url,
+          seed: panel.seed,
+          prompt: panel.prompt,
+          width: panel.width,
+          height: panel.height,
+          source: panel.source || 'ai',
+        };
+      }
+
       const resultToReturn = {
         success: true,
         workflow: 'a1-sheet-one-shot',
@@ -4251,11 +4285,17 @@ ${prompt}`);
         dnaConsistencyReport, // 🆕 Add DNA consistency report
         qaResults, // 🆕 Full QA pipeline results
         qaSummary, // 🆕 QA summary for UI display
+        // Include panels at top level for A1SheetViewer
+        panels: updatedPanelResults || panelResults || [],
+        panelMap: finalPanelMap,
         a1Sheet: {
           url: imageResult.url,
           seed: imageResult.seed,
           prompt,
           negativePrompt,
+          // Include panels in a1Sheet for A1SheetViewer extractPanelPayload
+          panels: updatedPanelResults || panelResults || [],
+          panelMap: finalPanelMap,
           metadata: {
             ...imageResult.metadata,
             insetSources: {
@@ -4303,6 +4343,13 @@ ${prompt}`);
         url: resultToReturn?.a1Sheet?.url || 'none',
         success: resultToReturn.success,
         workflow: resultToReturn.workflow,
+        // Panel data diagnostics
+        hasPanels: !!resultToReturn?.panels?.length,
+        panelCount: resultToReturn?.panels?.length || 0,
+        hasPanelMap: !!resultToReturn?.panelMap,
+        panelMapKeys: Object.keys(resultToReturn?.panelMap || {}),
+        hasA1SheetPanels: !!resultToReturn?.a1Sheet?.panels?.length,
+        a1SheetPanelCount: resultToReturn?.a1Sheet?.panels?.length || 0,
       });
 
       // DEBUG: Finish recording with success
