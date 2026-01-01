@@ -12,7 +12,7 @@
  * Part of Phase 1: Meshy + Blender + OpenAI Pipeline Refactor
  */
 
-import logger from '../logging/logger.js';
+import logger from '../core/logger.js';
 
 /**
  * Default configuration for auto-crop
@@ -173,6 +173,12 @@ export class AutoCropService {
         trimmed: {
           width: trimmedInfo.width,
           height: trimmedInfo.height,
+        },
+        // NEW: Persist trim offsets for debugging crop anomalies
+        // See: https://sharp.pixelplumbing.com/api-resize#trim
+        trimOffset: {
+          left: trimmedInfo.trimOffsetLeft || 0,
+          top: trimmedInfo.trimOffsetTop || 0,
         },
         final: {
           width: finalWidth,
