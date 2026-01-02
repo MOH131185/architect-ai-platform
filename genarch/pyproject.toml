@@ -1,0 +1,61 @@
+[project]
+name = "genarch"
+version = "0.1.0"
+description = "Deterministic floor plan and 3D mesh generator for architectural designs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Architect AI Platform", email = "dev@archiaisolution.pro"}
+]
+keywords = ["architecture", "floor-plan", "bsp", "cad", "3d-mesh", "dxf", "glb"]
+
+dependencies = [
+    "ezdxf>=1.0.0",
+    "trimesh>=4.0.0",
+    "numpy>=1.24.0",
+    "shapely>=2.0.0",
+    "networkx>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+mesh = [
+    "pyglet<2",
+    "manifold3d>=2.0.0",
+]
+
+[project.scripts]
+genarch = "genarch.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["genarch*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=genarch --cov-report=term-missing"
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I", "N"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
