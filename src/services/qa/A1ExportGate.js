@@ -12,6 +12,12 @@
 
 import { isFeatureEnabled } from '../../config/featureFlags.js';
 import { hasCanonicalRenderPack } from '../canonical/CanonicalRenderPackService.js';
+// NEW: Import canonicalRenderService for SSOT 3D panel validation
+import {
+  hasCanonical3DRenders,
+  validateCanonical3DRenders,
+  MANDATORY_3D_PANELS,
+} from '../canonical/canonicalRenderService.js';
 import { crossViewConsistencyService } from '../consistency/CrossViewConsistencyService.js';
 import { runConsistencyGate as _runCrossViewGate } from '../validation/CrossViewConsistencyGate.js';
 import {
@@ -20,6 +26,13 @@ import {
   EDGE_ERROR_CODES,
 } from '../validation/EdgeBasedConsistencyService.js';
 import { batchValidateSemantic } from '../validation/SemanticVisionValidator.js';
+// NEW: Import MANDATORY visual consistency gate (pHash + SSIM + edge-SSIM)
+import {
+  runVisualConsistencyGate,
+  VisualConsistencyError,
+  ERROR_CODES as VISUAL_ERROR_CODES,
+  VISUAL_CONSISTENCY_GATE_CONFIG,
+} from '../validation/VisualConsistencyGate.js';
 
 import {
   batchValidateGeometrySignatures,
@@ -107,11 +120,100 @@ export async function validateForExport(
   const warnings = [];
   const timestamp = Date.now();
 
+  // TASK 4: Validate panels input with clear error messages
+  if (!panels) {
+    blockReasons.push(
+      'MISSING_PANELS: No panels provided to export gate. ' +
+        'Ensure result.panels or result.panelMap is passed to validateForExport(). ' +
+        'Check that the generation workflow completed successfully.'
+    );
+  } else if (!Array.isArray(panels)) {
+    // Try to convert panelMap/panelsByKey object to array
+    if (typeof panels === 'object' && Object.keys(panels).length > 0) {
+      const panelKeys = Object.keys(panels);
+      warnings.push(
+        `PANELS_FORMAT: Received panels as object with keys: [${panelKeys.join(', ')}]. ` +
+          'Expected array format. Converting automatically.'
+      );
+      panels = panelKeys.map((type) => ({ type, ...panels[type] }));
+    } else {
+      blockReasons.push(
+        'INVALID_PANELS_FORMAT: panels must be an array of panel objects. ' +
+          `Received type: ${typeof panels}. Check data flow from workflow result.`
+      );
+    }
+  } else if (panels.length === 0) {
+    blockReasons.push(
+      'EMPTY_PANELS: panels array is empty. No panels to export. ' +
+        'Check that panel generation completed and panels are returned in workflow result.'
+    );
+  }
+
+  // Early return if panels are fundamentally broken
+  if (blockReasons.length > 0 && (!Array.isArray(panels) || panels.length === 0)) {
+    return {
+      canExport: false,
+      status: 'blocked',
+      blockReasons,
+      warnings,
+      panelQA: { results: [], summary: { passCount: 0, failCount: 0 } },
+      geometryQA: null,
+      debugReport: {
+        timestamp,
+        designFingerprint,
+        panelCount: 0,
+        blockReasons,
+        warnings,
+      },
+    };
+  }
+
   // 1. Check canonical render pack exists
   if (!hasCanonicalRenderPack(designFingerprint)) {
     blockReasons.push(
       'MISSING_CANONICAL_PACK: No canonical render pack found for this design. Generation must complete with geometry-first enabled.'
     );
+  }
+
+  // 1.5. CHECK CANONICAL 3D RENDERS (hero_3d/interior_3d/axonometric SSOT validation)
+  // ENFORCES: hero_3d, interior_3d, and axonometric must be derived from canonical geometry
+  const enforce3DCanonicalControl = isFeatureEnabled('enforce3DCanonicalControl') !== false; // Default ON
+  if (enforce3DCanonicalControl) {
+    if (!hasCanonical3DRenders(designFingerprint)) {
+      blockReasons.push(
+        'MISSING_CANONICAL_3D_RENDERS: hero_3d/interior_3d/axonometric panels require canonical geometry renders. ' +
+          'Generate canonical 3D renders before export.'
+      );
+    } else {
+      // Validate canonical renders exist and are valid
+      const canonical3DValidation = validateCanonical3DRenders(designFingerprint);
+      if (!canonical3DValidation.valid) {
+        for (const error of canonical3DValidation.errors) {
+          blockReasons.push(`CANONICAL_3D_VALIDATION_FAILED: ${error}`);
+        }
+      }
+      for (const warning of canonical3DValidation.warnings) {
+        warnings.push(`Canonical 3D warning: ${warning}`);
+      }
+    }
+
+    // Check that hero_3d and interior_3d panels in the generated set used canonical control
+    const mandatory3DPanels = MANDATORY_3D_PANELS.slice(0, 2); // hero_3d, interior_3d
+    for (const panel of panels) {
+      if (mandatory3DPanels.includes(panel.type)) {
+        const controlInfo = panel.controlImageInfo || {};
+        if (!controlInfo.isCanonicalRenderService && !controlInfo.isCanonical) {
+          blockReasons.push(
+            `MISSING_CANONICAL_CONTROL: Panel ${panel.type} must use canonical render from ` +
+              `canonicalRenderService. Found controlSource: ${controlInfo.controlSource || 'none'}`
+          );
+        } else if (!controlInfo.baselineKey) {
+          warnings.push(
+            `Panel ${panel.type} has canonical control but missing baselineKey tracking`
+          );
+        }
+      }
+    }
   }
 
   // 2. Check required panels are present
@@ -244,12 +346,94 @@ export async function validateForExport(
     }
   }
 
-  // 5. CROSS-VIEW CONSISTENCY GATE (visual metrics: pHash + diffRatio + SSIM)
+  // 5. MANDATORY VISUAL CONSISTENCY GATE (pHash + SSIM + edge-SSIM)
+  //    This gate is MANDATORY in production - it cannot be disabled
+  //    "Same fingerprint" is NOT evidence of visual consistency
+  let visualConsistencyResult = null;
+  const skipVisualGate = mergedConfig.skipCrossViewGate === true;
+
+  // CRITICAL: This gate is MANDATORY even if feature flags try to disable it
+  if (VISUAL_CONSISTENCY_GATE_CONFIG.mandatory || !skipVisualGate) {
+    // Convert panels array to map
+    const panelMap = {};
+    for (const panel of panels) {
+      panelMap[panel.type] = {
+        url: panel.imageUrl || panel.url || panel.dataUrl,
+        dataUrl: panel.dataUrl,
+        ...panel,
+      };
+    }
+
+    // Run MANDATORY visual consistency gate (pHash + SSIM + edge-SSIM)
+    try {
+      visualConsistencyResult = await runVisualConsistencyGate(panelMap);
+
+      // If gate failed and blocks export, add to block reasons
+      if (!visualConsistencyResult.passed && visualConsistencyResult.blocksExport) {
+        blockReasons.push(
+          `VISUAL_CONSISTENCY_FAILED: ${visualConsistencyResult.summary.passedPairs}/${visualConsistencyResult.summary.totalPairs} pairs passed`
+        );
+
+        // Add details for failed comparisons
+        const failedComparisons = visualConsistencyResult.comparisons.filter(
+          (c) => c.status === 'FAIL'
+        );
+        for (const comp of failedComparisons.slice(0, 5)) {
+          const metrics = comp.metrics || {};
+          blockReasons.push(
+            `  → ${comp.anchor}↔${comp.target} (${comp.category}): ` +
+              `pHash=${(metrics.pHash * 100 || 0).toFixed(1)}% | ` +
+              `SSIM=${(metrics.ssim * 100 || 0).toFixed(1)}% | ` +
+              `edgeSSIM=${(metrics.edgeSSIM * 100 || 0).toFixed(1)}%`
+          );
+        }
+
+        // Add errors
+        for (const error of visualConsistencyResult.errors || []) {
+          blockReasons.push(`VISUAL_CONSISTENCY_ERROR: ${error.message} (${error.code})`);
+        }
+      }
+
+      // Handle warnings
+      const warnedComparisons = visualConsistencyResult.comparisons.filter(
+        (c) => c.status === 'WARN'
+      );
+      if (warnedComparisons.length > 0) {
+        warnings.push(
+          `Visual consistency warnings: ${warnedComparisons.map((c) => `${c.anchor}↔${c.target}`).join(', ')}`
+        );
+      }
+
+      // If metrics incomplete, FAIL (per configuration)
+      if (!visualConsistencyResult.summary.metricsComplete) {
+        blockReasons.push(
+          'VISUAL_CONSISTENCY_BLOCKED: Some metrics could not be computed. ' +
+            'Export blocked per mandatory gate policy.'
+        );
+      }
+    } catch (error) {
+      // Computation error = FAIL
+      blockReasons.push(
+        `VISUAL_CONSISTENCY_BLOCKED: Gate computation failed - ${error.message}. ` +
+          'Export blocked per mandatory gate policy.'
+      );
+      visualConsistencyResult = {
+        passed: false,
+        status: 'ERROR',
+        blocksExport: true,
+        summary: { metricsComplete: false },
+        errors: [{ message: error.message, code: 'COMPUTATION_ERROR' }],
+      };
+    }
+  }
+
+  // 5b. LEGACY CROSS-VIEW CONSISTENCY GATE (for backward compatibility - lower priority)
   let crossViewResult = null;
   const crossViewEnabled = isFeatureEnabled('crossViewConsistencyGate');
   const blockOnFailure = isFeatureEnabled('blockExportOnConsistencyFailure');
 
-  if (crossViewEnabled && !mergedConfig.skipCrossViewGate) {
+  // Only run legacy gate if visual gate not already run or for additional checks
+  if (crossViewEnabled && !mergedConfig.skipCrossViewGate && !visualConsistencyResult) {
     // Convert panels array to map
     const panelMap = {};
     for (const panel of panels) {
@@ -405,6 +589,7 @@ export async function validateForExport(
     panelQA: panelQAResult,
     geometryQA: geometryQAResult,
     crossViewQA: crossViewResult,
+    visualConsistencyQA: visualConsistencyResult, // NEW: Mandatory visual consistency gate
     semanticQA: semanticResult,
     edgeBasedQA: edgeBasedResult,
     renderSanityQA: renderSanityResult,
@@ -432,6 +617,35 @@ export async function validateForExport(
           failedPanels: geometryQAResult.summary.failedPanels,
         }
       : null,
+    // NEW: Mandatory visual consistency gate (pHash + SSIM + edge-SSIM)
+    // This gate is MANDATORY - "same fingerprint" is NOT evidence of visual consistency
+    visualConsistencyQA: visualConsistencyResult
+      ? {
+          passed: visualConsistencyResult.passed,
+          status: visualConsistencyResult.status,
+          blocksExport: visualConsistencyResult.blocksExport,
+          summary: visualConsistencyResult.summary,
+          comparisons: (visualConsistencyResult.comparisons || []).map((c) => ({
+            pair: `${c.anchor}↔${c.target}`,
+            category: c.category,
+            status: c.status,
+            metricsComplete: c.metricsComplete,
+            pHash: c.metrics?.pHash,
+            ssim: c.metrics?.ssim,
+            edgeSSIM: c.metrics?.edgeSSIM,
+            combined: c.metrics?.combined,
+            threshold: c.threshold,
+          })),
+          errors: visualConsistencyResult.errors,
+          _note: 'Fingerprint matching is NOT evidence of visual consistency',
+        }
+      : {
+          passed: null,
+          status: 'SKIPPED',
+          blocksExport: false,
+          _note: 'Visual consistency gate was skipped (not recommended)',
+        },
+    // LEGACY: Cross-view consistency (deprecated - use visualConsistencyQA instead)
     crossViewQA: crossViewResult
       ? {
           passed: crossViewResult.passed,
@@ -440,6 +654,7 @@ export async function validateForExport(
           blockedPanels: crossViewResult.blockedPanels,
           warnedPanels: crossViewResult.warnedPanels,
           aggregate: crossViewResult.aggregate,
+          _deprecated: 'Use visualConsistencyQA instead',
         }
       : null,
     semanticQA: semanticResult
@@ -552,6 +767,7 @@ function compileDebugReport({
   panelQA,
   geometryQA,
   crossViewQA,
+  visualConsistencyQA, // NEW: Mandatory visual consistency gate
   semanticQA,
   edgeBasedQA,
   renderSanityQA,
@@ -580,7 +796,87 @@ function compileDebugReport({
     Object.assign(report, formatGeometryValidationForReport(geometryQA.results));
   }
 
-  // Add cross-view consistency section (visual metrics)
+  // Add MANDATORY visual consistency section (pHash + SSIM + edge-SSIM)
+  // IMPORTANT: "Same fingerprint" is NOT evidence of visual consistency
+  if (visualConsistencyQA) {
+    report.visualConsistency = {
+      // Gate status
+      enabled: true,
+      mandatory: true, // This gate is MANDATORY
+      status: visualConsistencyQA.status,
+      passed: visualConsistencyQA.passed,
+      blocksExport: visualConsistencyQA.blocksExport,
+
+      // CRITICAL NOTE
+      _fingerprintNote:
+        'Fingerprint matching is NOT evidence of visual consistency. ' +
+        'Only pHash + SSIM + edge-SSIM metrics determine visual consistency.',
+
+      // Summary
+      summary: {
+        totalPairs: visualConsistencyQA.summary?.totalPairs || 0,
+        passedPairs: visualConsistencyQA.summary?.passedPairs || 0,
+        warnedPairs: visualConsistencyQA.summary?.warnedPairs || 0,
+        failedPairs: visualConsistencyQA.summary?.failedPairs || 0,
+        metricsComplete: visualConsistencyQA.summary?.metricsComplete || false,
+        criticalCategoryStatus: visualConsistencyQA.summary?.criticalCategoryStatus || {},
+      },
+
+      // Per-comparison metrics (REQUIRED for debugging)
+      comparisons: (visualConsistencyQA.comparisons || []).map((c) => ({
+        pair: `${c.anchor}↔${c.target}`,
+        anchor: c.anchor,
+        target: c.target,
+        category: c.category,
+        status: c.status,
+        metricsComplete: c.metricsComplete,
+        // PRIMARY METRICS
+        pHashSimilarity: c.metrics?.pHash,
+        ssim: c.metrics?.ssim,
+        edgeSSIM: c.metrics?.edgeSSIM,
+        combinedScore: c.metrics?.combined,
+        // THRESHOLDS
+        threshold: c.threshold,
+        // DETAILS
+        pHashDistance: c.details?.pHashDistance,
+        pHashHashA: c.details?.pHashHashA,
+        pHashHashB: c.details?.pHashHashB,
+        ssimLuminance: c.details?.ssimLuminance,
+        ssimContrast: c.details?.ssimContrast,
+        ssimStructure: c.details?.ssimStructure,
+        edgeSSIMLuminance: c.details?.edgeSSIMLuminance,
+        edgeSSIMContrast: c.details?.edgeSSIMContrast,
+        edgeSSIMStructure: c.details?.edgeSSIMStructure,
+        // TIMING
+        computeTimeMs: c.computeTimeMs,
+        // ERROR (if any)
+        error: c.error,
+      })),
+
+      // Errors
+      errors: (visualConsistencyQA.errors || []).map((e) => ({
+        code: e.code,
+        message: e.message,
+      })),
+
+      // Configuration used
+      config: {
+        mandatory: true,
+        failOnComputationError: true,
+        criticalCategories: ['hero_elevation', 'elevation_elevation'],
+      },
+    };
+  } else {
+    report.visualConsistency = {
+      enabled: false,
+      mandatory: true,
+      status: 'SKIPPED',
+      _warning: 'Visual consistency gate was skipped. This is NOT recommended in production.',
+      _fingerprintNote: 'Fingerprint matching is NOT evidence of visual consistency.',
+    };
+  }
+
+  // Add cross-view consistency section (visual metrics) - LEGACY
   if (crossViewQA) {
     report.crossViewConsistency = {
       enabled: true,

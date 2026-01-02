@@ -21,9 +21,11 @@
  * }
  */
 
+import fs from 'fs';
 import path from 'path';
 
 import fetch from 'node-fetch';
+import { PDFDocument } from 'pdf-lib';
 
 import a1ComposePayload from '../../server/utils/a1ComposePayload.cjs';
 
@@ -32,12 +34,34 @@ import a1ComposePayload from '../../server/utils/a1ComposePayload.cjs';
 export const runtime = 'nodejs';
 export const config = {
   runtime: 'nodejs',
-  maxDuration: 60,
+  maxDuration: 120,
 };
 
 const { buildComposeSheetUrl } = a1ComposePayload;
 const DEFAULT_MAX_DATAURL_BYTES = 4.5 * 1024 * 1024;
 const DEFAULT_PUBLIC_URL_BASE = '/api/a1/compose-output';
+
+async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
+  if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
+    throw new Error('pngBuffer is required to build PDF');
+  }
+
+  const widthPx = Number(options.widthPx);
+  const heightPx = Number(options.heightPx);
+  const dpi = Number(options.dpi) || 300;
+  if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx) || widthPx <= 0 || heightPx <= 0) {
+    throw new Error('Invalid width/height for PDF');
+  }
+
+  const widthPt = (widthPx / dpi) * 72;
+  const heightPt = (heightPx / dpi) * 72;
+
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([widthPt, heightPt]);
+  const image = await pdf.embedPng(pngBuffer);
+  page.drawImage(image, { x: 0, y: 0, width: widthPt, height: heightPt });
+  return Buffer.from(await pdf.save({ useObjectStreams: false }));
+}
 
 function resolveComposeOutputDir() {
   if (process.env.A1_COMPOSE_OUTPUT_DIR) {
@@ -60,10 +84,42 @@ let panelRegistry = null;
 // Note: In Vercel, we need to use dynamic import for ES modules from src/
 let layoutConstants = null;
 let crossViewImageValidator = null;
+let a1BoardSpecModule = null;
+let renderSanityValidator = null;
+
+async function getA1BoardSpecModule() {
+  if (a1BoardSpecModule) {
+    return a1BoardSpecModule;
+  }
+
+  try {
+    a1BoardSpecModule = await import('../../src/services/a1/A1BoardSpec.js');
+    return a1BoardSpecModule;
+  } catch (e) {
+    console.warn('[A1 Compose] Could not import A1BoardSpec:', e.message);
+    return null;
+  }
+}
+
+async function getBoardSpec(layoutTemplate, floorCount) {
+  const mod = await getA1BoardSpecModule();
+  if (!mod?.getA1BoardSpec) {
+    return null;
+  }
+
+  try {
+    return mod.getA1BoardSpec({ layoutTemplate, floorCount });
+  } catch (e) {
+    console.warn('[A1 Compose] Failed to build A1BoardSpec:', e.message);
+    return null;
+  }
+}
 
 let didLogRuntime = false;
 function logRuntimeOnce() {
-  if (didLogRuntime) {return;}
+  if (didLogRuntime) {
+    return;
+  }
   didLogRuntime = true;
 
   const info = {
@@ -118,6 +174,20 @@ async function getCrossViewImageValidator() {
     return crossViewImageValidator;
   } catch (e) {
     console.warn('[A1 Compose] Could not import crossViewImageValidator:', e.message);
+    return null;
+  }
+}
+
+async function getRenderSanityValidator() {
+  if (renderSanityValidator) {
+    return renderSanityValidator;
+  }
+
+  try {
+    renderSanityValidator = await import('../../src/services/qa/RenderSanityValidator.js');
+    return renderSanityValidator;
+  } catch (e) {
+    console.warn('[A1 Compose] Could not import RenderSanityValidator:', e.message);
     return null;
   }
 }
@@ -373,7 +443,9 @@ function getFallbackConstants() {
 
       // Adjust required panels based on floor count
       const adjustedRequired = REQUIRED_PANELS.filter((type) => {
-        if (type === 'floor_plan_level2' && floorCount < 3) {return false;}
+        if (type === 'floor_plan_level2' && floorCount < 3) {
+          return false;
+        }
         return true;
       });
 
@@ -464,24 +536,120 @@ function generateOverlaySvg(coordinates, width, height, constants) {
 }
 
 /**
+ * Get commit hash for build stamp
+ * Checks environment variables set by CI/CD systems
+ * @returns {string} 7-character commit hash or 'dev'
+ */
+function getCommitHashForStamp() {
+  // Check Vercel first
+  if (process.env.VERCEL_GIT_COMMIT_SHA) {
+    return process.env.VERCEL_GIT_COMMIT_SHA.substring(0, 7);
+  }
+  // Check GitHub Actions
+  if (process.env.GITHUB_SHA) {
+    return process.env.GITHUB_SHA.substring(0, 7);
+  }
+  // Check custom env var
+  if (process.env.COMMIT_HASH) {
+    return process.env.COMMIT_HASH.substring(0, 7);
+  }
+  // Local development
+  return 'dev';
+}
+
+/**
+ * Get pipeline mode for build stamp
+ * If proof signals are provided, use resolvedMode for truthful naming
+ *
+ * @param {Object} [proof] - Proof signals from generation
+ * @returns {string} Pipeline mode
+ */
+function getPipelineModeForStamp(proof = null) {
+  // If proof signals provided, use the resolved mode (truthful naming)
+  if (proof?.resolvedMode) {
+    return proof.resolvedMode;
+  }
+
+  // Fallback to env var / defaults
+  if (process.env.PIPELINE_MODE) {
+    const mode = process.env.PIPELINE_MODE.toUpperCase();
+    // Normalize legacy aliases
+    if (mode === 'OPTION2' || mode === 'MESHY_DALLE3') {
+      return 'HYBRID_OPENAI';
+    }
+    return mode;
+  }
+  // Default
+  return 'HYBRID_OPENAI';
+}
+
+/**
+ * Safely truncate model name for stamp display
+ * Bulletproof: handles null, undefined, non-strings, empty strings
+ * @param {string} model - Full model name
+ * @param {number} maxChars - Max characters (default 18)
+ * @returns {string} - Truncated model name (never empty)
+ */
+function truncateModelName(model, maxChars = 18) {
+  const str = String(model ?? '').trim();
+  if (!str) {return 'unknown';}
+  if (str.length <= maxChars) {return str;}
+  return str.substring(0, maxChars - 1) + '…';
+}
+
+/**
  * Generate build stamp SVG for bottom-right corner
- * Deliverable #4: Build stamp printed onto the A1
+ * DELIVERABLE A: Build Stamp (visual proof)
+ *
+ * Contains:
+ * - RESOLVED PIPELINE_MODE (truthful naming: svg_openai_*, meshy_openai_*, or legacy)
+ * - Commit hash (7 chars)
+ * - runId (from designId)
+ * - Timestamp
+ * - OpenAI model used
+ * - Meshy indicator (used/not used)
+ * - Key feature flags summary
  *
  * @param {Object} params
  * @param {number} params.width - Sheet width
  * @param {number} params.height - Sheet height
- * @param {string} params.designId - Short design ID hash
+ * @param {string} params.designId - Short design ID hash (used as runId)
+ * @param {string} params.runId - Explicit run ID (preferred over designId)
  * @param {string} params.timestamp - Build timestamp
  * @param {string} params.layoutTemplate - Layout template name
  * @param {number} params.panelCount - Number of panels composed
+ * @param {Object} [params.flags] - Feature flags snapshot
+ * @param {Object} [params.proof] - Proof signals from generation
+ * @param {string} [params.proof.resolvedMode] - Actual resolved mode (svg_openai_*, meshy_openai_*, legacy)
+ * @param {string} [params.proof.openaiModelUsed] - OpenAI model actually used
+ * @param {boolean} [params.proof.meshyUsed] - Whether Meshy 3D was actually used
  * @returns {string} SVG string
  */
-function generateBuildStampSvg({ width, height, designId, timestamp, layoutTemplate, panelCount }) {
-  // Position: bottom-right corner, small and unobtrusive
-  const stampWidth = 180;
-  const stampHeight = 48;
+function generateBuildStampSvg({
+  width,
+  height,
+  designId,
+  runId,
+  timestamp,
+  layoutTemplate,
+  panelCount,
+  flags = {},
+  proof = {},
+}) {
+  // Position: bottom-right corner, larger to fit all info
+  const stampWidth = 240;
+  const stampHeight = 82;
   const x = width - stampWidth - 8;
   const y = height - stampHeight - 8;
+
+  // Get build metadata - use proof signals if available (truthful naming)
+  const commitHash = getCommitHashForStamp();
+  const pipelineMode = getPipelineModeForStamp(proof);
+  const effectiveRunId = runId || designId || 'unknown';
+
+  // Extract proof signals with defaults
+  const openaiModel = proof?.openaiModelUsed || 'gpt-image-1';
+  const meshyUsed = proof?.meshyUsed || false;
 
   // Format timestamp to be more compact
   const date = new Date(timestamp);
@@ -493,37 +661,124 @@ function generateBuildStampSvg({ width, height, designId, timestamp, layoutTempl
   const timeStr = date.toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   });
+
+  // Build flags summary (compact)
+  const flagsSummary = [];
+  if (flags.blenderTechnical) {flagsSummary.push('BL');}
+  if (flags.openaiStyler) {flagsSummary.push('OA');}
+  if (flags.autoCropPanels) {flagsSummary.push('AC');}
+  if (flags.geometryFirst) {flagsSummary.push('GF');}
+  const flagsStr = flagsSummary.length > 0 ? flagsSummary.join('+') : 'STD';
+
+  // Pipeline mode color based on resolved mode
+  // Green (#22c55e): meshy_openai_* modes (Meshy actually used)
+  // Blue (#3b82f6): svg_openai_* modes (SVG + OpenAI, no Meshy)
+  // Amber (#f59e0b): legacy mode
+  let modeColor;
+  if (pipelineMode.startsWith('meshy_')) {
+    modeColor = '#22c55e'; // Green - Meshy 3D was used
+  } else if (pipelineMode.startsWith('svg_')) {
+    modeColor = '#3b82f6'; // Blue - SVG + OpenAI (no Meshy)
+  } else if (pipelineMode === 'legacy') {
+    modeColor = '#f59e0b'; // Amber - Legacy mode
+  } else {
+    modeColor = '#6366f1'; // Indigo - fallback for unknown modes
+  }
+
+  // Truncate mode for display (max 22 chars)
+  const displayMode =
+    pipelineMode.length > 22 ? pipelineMode.substring(0, 20) + '..' : pipelineMode;
+  const modeBadgeWidth = 100;
+
+  // Meshy indicator
+  const meshyIndicator = meshyUsed ? '3D:✓' : '3D:✗';
+  const meshyColor = meshyUsed ? '#22c55e' : '#94a3b8';
+
+  // Layout constants for Row 4 (robust positioning)
+  const leftX = x + 8;
+  const rightX = x + stampWidth - 8;
+  const reservedMeshyWidth = 36; // "3D:✓" needs ~36px
+  const availableOaiWidth = rightX - leftX - reservedMeshyWidth - 4; // 4px gap
+  // Guard against negative/too-small width (SVG textLength quirks)
+  const safeOaiWidth = Math.max(availableOaiWidth, 10);
+
+  // Truncate model name for display
+  const displayModel = truncateModelName(openaiModel, 18);
+
+  // Professional font stack (system-safe, no web fonts)
+  const fontStack = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <!-- Build Stamp Background -->
     <rect x="${x}" y="${y}" width="${stampWidth}" height="${stampHeight}"
-      fill="#f8fafc" fill-opacity="0.95" stroke="#e2e8f0" stroke-width="1" rx="4" ry="4" />
+      fill="#f8fafc" fill-opacity="0.97" stroke="#e2e8f0" stroke-width="1" rx="4" ry="4" />
 
-    <!-- ArchiAI Logo/Brand -->
-    <text x="${x + 8}" y="${y + 14}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#0f172a">
+    <!-- Row 1: Brand + Pipeline Mode Badge -->
+    <text x="${leftX}" y="${y + 14}" font-family="${fontStack}" font-size="9" font-weight="700" fill="#0f172a">
       ARCHI.AI
     </text>
 
-    <!-- Build Hash -->
-    <text x="${x + stampWidth - 8}" y="${y + 14}" font-family="monospace" font-size="7" fill="#64748b" text-anchor="end">
-      #${designId}
+    <!-- Pipeline Mode Badge (resolved mode) -->
+    <rect x="${x + stampWidth - modeBadgeWidth - 8}" y="${y + 4}" width="${modeBadgeWidth}" height="16"
+      fill="${modeColor}" rx="3" ry="3" />
+    <text x="${x + stampWidth - modeBadgeWidth / 2 - 8}" y="${y + 15}" font-family="${fontStack}" font-size="7" font-weight="700" fill="white" text-anchor="middle">
+      ${displayMode}
     </text>
 
-    <!-- Build Date/Time -->
-    <text x="${x + 8}" y="${y + 28}" font-family="Arial, sans-serif" font-size="7" fill="#475569">
-      Built: ${dateStr} ${timeStr}
+    <!-- Row 2: Commit + RunId -->
+    <text x="${leftX}" y="${y + 28}" font-family="monospace" font-size="7" fill="#64748b">
+      ${commitHash}
+    </text>
+    <text x="${x + 50}" y="${y + 28}" font-family="monospace" font-size="7" fill="#475569">
+      run:${effectiveRunId.substring(0, 12)}
     </text>
 
-    <!-- Layout Template & Panel Count -->
-    <text x="${x + 8}" y="${y + 40}" font-family="Arial, sans-serif" font-size="6" fill="#94a3b8">
-      Layout: ${layoutTemplate} | Panels: ${panelCount}
+    <!-- Row 3: Timestamp -->
+    <text x="${leftX}" y="${y + 42}" font-family="${fontStack}" font-size="7" fill="#475569">
+      ${dateStr} ${timeStr}
+    </text>
+
+    <!-- Row 4: OpenAI Model + Meshy indicator (right-aligned) -->
+    <!-- textLength is best-effort overflow protection; truncation is primary defense -->
+    <text x="${leftX}" y="${y + 56}" font-family="${fontStack}" font-size="7" fill="#475569" dominant-baseline="alphabetic" textLength="${safeOaiWidth}" lengthAdjust="spacingAndGlyphs">
+      <tspan font-weight="400">OAI:</tspan><tspan font-weight="600">${displayModel}</tspan>
+    </text>
+    <text x="${rightX}" y="${y + 56}" font-family="${fontStack}" font-size="7" font-weight="600" fill="${meshyColor}" text-anchor="end" dominant-baseline="alphabetic">
+      ${meshyIndicator}
+    </text>
+
+    <!-- Row 5: Layout + Panels + Flags -->
+    <text x="${leftX}" y="${y + 70}" font-family="${fontStack}" font-size="6" fill="#94a3b8">
+      ${layoutTemplate} | ${panelCount}P | ${flagsStr}
     </text>
 
     <!-- Verification Badge -->
-    <circle cx="${x + stampWidth - 16}" cy="${y + 34}" r="8" fill="#22c55e" />
-    <text x="${x + stampWidth - 16}" y="${y + 37}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="white" text-anchor="middle">
+    <circle cx="${x + stampWidth - 16}" cy="${y + 64}" r="10" fill="${modeColor}" />
+    <text x="${x + stampWidth - 16}" y="${y + 68}" font-family="${fontStack}" font-size="10" font-weight="700" fill="white" text-anchor="middle">
       ✓
+    </text>
+  </svg>`;
+}
+
+function escapeXml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function generateBoardSpecStampSvg({ width, height, layoutTemplateUsed, boardSpecVersion }) {
+  const fontStack = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const text = `${layoutTemplateUsed || 'unknown'} | spec ${boardSpecVersion || 'unknown'}`;
+  const x = 10;
+  const y = Math.max(12, height - 10);
+  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    <text x="${x}" y="${y}" font-family="${fontStack}" font-size="8" fill="#94a3b8" fill-opacity="0.85">
+      ${escapeXml(text)}
     </text>
   </svg>`;
 }
@@ -565,15 +820,11 @@ export default async function handler(req, res) {
       REQUIRED_PANELS,
       toPixelRect,
       getPanelFitMode,
+      getGridSpec,
       validatePanelLayout,
     } = constants;
 
-    const {
-      designId,
-      siteOverlay = null,
-      layoutConfig = 'uk-riba-standard',
-      titleBlock = null,
-    } = req.body;
+    const { designId, siteOverlay = null, layoutConfig = 'board-v2', titleBlock = null } = req.body;
     let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
 
     if (!panels || panels.length === 0) {
@@ -670,7 +921,10 @@ export default async function handler(req, res) {
         ? explicitFloorCount
         : derivedFloorCount;
 
-    if (registry) {
+    // skipMissingPanelCheck: Allow composition with placeholders for missing panels (smoke tests, dev)
+    const skipMissingPanelCheck = req.body.skipMissingPanelCheck === true;
+
+    if (registry && !skipMissingPanelCheck) {
       const requiredPanels =
         typeof registry.getAIGeneratedPanels === 'function'
           ? registry.getAIGeneratedPanels(floorCount)
@@ -690,10 +944,16 @@ export default async function handler(req, res) {
           },
         });
       }
+    } else if (skipMissingPanelCheck) {
+      console.log(
+        `[A1 Compose] skipMissingPanelCheck=true - allowing composition with placeholders`
+      );
     }
 
     panels = panels.map((panel) => {
-      if (!panel) {return panel;}
+      if (!panel) {
+        return panel;
+      }
       if (!panel.imageUrl && panel.url) {
         return { ...panel, imageUrl: panel.url };
       }
@@ -739,6 +999,15 @@ export default async function handler(req, res) {
     // Ensures no floor plan has 0 rooms (which would result in empty borders)
     const DEBUG_RUNS = process.env.DEBUG_RUNS === '1';
 
+    // skipValidation: Skip ALL validation gates (for smoke tests, dev mode)
+    const skipValidation = skipMissingPanelCheck || req.body.skipValidation === true;
+
+    if (skipValidation) {
+      console.log(
+        `[A1 Compose] ⚠️ skipValidation=true - skipping floor plan, geometry, and cross-view validation`
+      );
+    }
+
     if (DEBUG_RUNS) {
       console.log('[DEBUG_RUNS] [A1 Compose] Starting pre-compose validation...');
     }
@@ -771,7 +1040,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (emptyFloorPlans.length > 0) {
+    if (emptyFloorPlans.length > 0 && !skipValidation) {
       console.error(`[A1 Compose] ❌ EMPTY FLOOR PLANS DETECTED!`);
       console.error(`   Empty plans: ${emptyFloorPlans.map((p) => p.panelType).join(', ')}`);
 
@@ -786,6 +1055,10 @@ export default async function handler(req, res) {
             'This typically means rooms were not distributed to upper floors. Check the program configuration and ensure rooms are assigned to all requested floors.',
         },
       });
+    } else if (emptyFloorPlans.length > 0) {
+      console.warn(
+        `[A1 Compose] ⚠️ Empty floor plans skipped (skipValidation=true): ${emptyFloorPlans.map((p) => p.panelType).join(', ')}`
+      );
     }
 
     console.log(
@@ -813,7 +1086,7 @@ export default async function handler(req, res) {
       if (hero3dRunId && elevationRunIds.length > 0) {
         const mismatches = elevationRunIds.filter((id) => id !== hero3dRunId);
 
-        if (mismatches.length > 0) {
+        if (mismatches.length > 0 && !skipValidation) {
           console.error(`[A1 Compose] ❌ GEOMETRY PACK MISMATCH DETECTED!`);
           console.error(`   hero_3d runId: ${hero3dRunId}`);
           console.error(`   Mismatched elevation runIds: ${[...new Set(mismatches)].join(', ')}`);
@@ -830,6 +1103,8 @@ export default async function handler(req, res) {
                 'Ensure all panels are generated from the same canonical geometry in a single run.',
             },
           });
+        } else if (mismatches.length > 0) {
+          console.warn(`[A1 Compose] ⚠️ Geometry pack mismatch skipped (skipValidation=true)`);
         }
 
         console.log(`[A1 Compose] ✅ Geometry pack consistency passed (runId: ${hero3dRunId})`);
@@ -837,73 +1112,77 @@ export default async function handler(req, res) {
     }
 
     // ====================================================================
-    // CROSS-VIEW CONSISTENCY GATE (BLOCKING)
+    // CROSS-VIEW CONSISTENCY GATE (BLOCKING - unless skipValidation)
     // ====================================================================
     // Panels must show the SAME building - reject if cross-view fails
     // Uses real image comparison: SSIM, pHash, pixelmatch
-    const imageValidator = await getCrossViewImageValidator();
-    if (imageValidator) {
-      console.log(
-        '[A1 Compose] Running real image cross-view consistency validation (SSIM/pHash/pixelmatch)...'
-      );
-
-      // Build panel map from request panels
-      const panelMap = {};
-      for (const panel of panels) {
-        if (panel.type && (panel.imageUrl || panel.buffer)) {
-          panelMap[panel.type] = {
-            url: panel.imageUrl,
-            buffer: panel.buffer,
-          };
-        }
-      }
-
-      try {
-        // NEW: Use real image comparison instead of heuristic validation
-        const crossViewResult = await imageValidator.validateAllPanels(panelMap);
-
-        if (!crossViewResult.pass) {
-          console.error(`[A1 Compose] Cross-view validation FAILED`);
-          console.error(`   Overall Score: ${(crossViewResult.overallScore * 100).toFixed(1)}%`);
-          console.error(
-            `   Failed Panels: ${crossViewResult.failedPanels.map((fp) => fp.panelType).join(', ')}`
-          );
-
-          // Generate structured error report
-          const errorReport = imageValidator.generateErrorReport(crossViewResult);
-
-          return res.status(400).json(errorReport);
-        }
-
+    if (!skipValidation) {
+      const imageValidator = await getCrossViewImageValidator();
+      if (imageValidator) {
         console.log(
-          `[A1 Compose] Cross-view validation PASSED (score: ${(crossViewResult.overallScore * 100).toFixed(1)}%)`
+          '[A1 Compose] Running real image cross-view consistency validation (SSIM/pHash/pixelmatch)...'
         );
-      } catch (crossViewError) {
-        console.error('[A1 Compose] Cross-view validation error:', crossViewError.message);
-        // Fail closed on validation errors (conservative approach)
+
+        // Build panel map from request panels
+        const panelMap = {};
+        for (const panel of panels) {
+          if (panel.type && (panel.imageUrl || panel.buffer)) {
+            panelMap[panel.type] = {
+              url: panel.imageUrl,
+              buffer: panel.buffer,
+            };
+          }
+        }
+
+        try {
+          // NEW: Use real image comparison instead of heuristic validation
+          const crossViewResult = await imageValidator.validateAllPanels(panelMap);
+
+          if (!crossViewResult.pass) {
+            console.error(`[A1 Compose] Cross-view validation FAILED`);
+            console.error(`   Overall Score: ${(crossViewResult.overallScore * 100).toFixed(1)}%`);
+            console.error(
+              `   Failed Panels: ${crossViewResult.failedPanels.map((fp) => fp.panelType).join(', ')}`
+            );
+
+            // Generate structured error report
+            const errorReport = imageValidator.generateErrorReport(crossViewResult);
+
+            return res.status(400).json(errorReport);
+          }
+
+          console.log(
+            `[A1 Compose] Cross-view validation PASSED (score: ${(crossViewResult.overallScore * 100).toFixed(1)}%)`
+          );
+        } catch (crossViewError) {
+          console.error('[A1 Compose] Cross-view validation error:', crossViewError.message);
+          // Fail closed on validation errors (conservative approach)
+          return res.status(500).json({
+            success: false,
+            error: 'CROSS_VIEW_VALIDATION_ERROR',
+            message: crossViewError.message,
+            details: {
+              recommendation: 'Validation system error. Please retry.',
+            },
+          });
+        }
+      } else {
+        // FAIL-CLOSED: If validator module can't be loaded, reject the composition
+        // This prevents A1 sheets from being exported without cross-view verification
+        console.error('[A1 Compose] Cross-view image validator not available - BLOCKING');
         return res.status(500).json({
           success: false,
-          error: 'CROSS_VIEW_VALIDATION_ERROR',
-          message: crossViewError.message,
+          error: 'CROSS_VIEW_VALIDATOR_UNAVAILABLE',
+          message:
+            'Cannot compose A1 sheet without cross-view consistency validation. Validator module failed to load.',
           details: {
-            recommendation: 'Validation system error. Please retry.',
+            recommendation:
+              'Check server deployment - ensure crossViewImageValidator.js is bundled correctly with sharp and pixelmatch.',
           },
         });
       }
     } else {
-      // FAIL-CLOSED: If validator module can't be loaded, reject the composition
-      // This prevents A1 sheets from being exported without cross-view verification
-      console.error('[A1 Compose] Cross-view image validator not available - BLOCKING');
-      return res.status(500).json({
-        success: false,
-        error: 'CROSS_VIEW_VALIDATOR_UNAVAILABLE',
-        message:
-          'Cannot compose A1 sheet without cross-view consistency validation. Validator module failed to load.',
-        details: {
-          recommendation:
-            'Check server deployment - ensure crossViewImageValidator.js is bundled correctly with sharp and pixelmatch.',
-        },
-      });
+      console.log(`[A1 Compose] ⚠️ Cross-view validation SKIPPED (skipValidation=true)`);
     }
 
     // Dynamic import of sharp (server-side only)
@@ -924,22 +1203,47 @@ export default async function handler(req, res) {
       });
     }
 
-    // LAYOUT TEMPLATE SELECTION - Phase 2: Support multiple A1 layouts
-    // NEW DEFAULT: 'target-board' (professional presentation) - mandatory correction E
-    // Options: 'target-board' (default) or 'uk-riba-standard' (legacy)
-    const layoutTemplate = req.body.layoutTemplate || 'target-board';
+    // LAYOUT TEMPLATE SELECTION (SSOT via A1BoardSpec / a1LayoutConstants)
+    const layoutTemplateRaw = req.body.layoutTemplate || layoutConfig || 'board-v2';
+    const boardSpecModule = await getA1BoardSpecModule();
+    const layoutTemplate =
+      typeof boardSpecModule?.normalizeLayoutTemplate === 'function'
+        ? boardSpecModule.normalizeLayoutTemplate(layoutTemplateRaw)
+        : String(layoutTemplateRaw || '')
+            .trim()
+            .toLowerCase();
 
-    // Get TARGET_BOARD_GRID_SPEC from constants or fallback
-    const TARGET_BOARD_GRID_SPEC =
-      constants.TARGET_BOARD_GRID_SPEC || getFallbackConstants().TARGET_BOARD_GRID_SPEC;
-    const layout = layoutTemplate === 'uk-riba-standard' ? GRID_SPEC : TARGET_BOARD_GRID_SPEC;
-
-    console.log(`[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout`);
-    if (layoutTemplate === 'target-board') {
-      console.log(
-        '[A1 Compose] TARGET BOARD features: Large hero, centered plans, compact 4-grid elevations'
-      );
+    // HARD LAYOUT GUARANTEE: uk-riba-standard is not supported for composition.
+    if (layoutTemplate === 'uk-riba-standard') {
+      return res.status(400).json({
+        success: false,
+        error: 'LAYOUT_TEMPLATE_UNSUPPORTED',
+        message:
+          'uk-riba-standard is not supported. A1 Board v2 is the only supported layout template.',
+        details: {
+          requested: layoutTemplateRaw,
+          layoutTemplateUsed: layoutTemplate,
+          supported: ['board-v2'],
+        },
+      });
     }
+
+    const fallbackTargetGrid =
+      constants.TARGET_BOARD_GRID_SPEC || getFallbackConstants().TARGET_BOARD_GRID_SPEC;
+    const layout =
+      typeof getGridSpec === 'function'
+        ? getGridSpec(layoutTemplate, { floorCount })
+        : fallbackTargetGrid;
+
+    const boardSpec = await getBoardSpec(layoutTemplate, floorCount);
+    const boardSpecVersion = boardSpec?.version || boardSpecModule?.A1_BOARD_SPEC_VERSION || null;
+    const qaSpec = boardSpec?.qa || {};
+    const qaEnabled = !skipValidation && qaSpec.enabled !== false;
+    const rotateToFit = qaEnabled && qaSpec.rotateToFit !== false;
+    const minSlotOccupancy = Number.isFinite(qaSpec.minOccupancy) ? qaSpec.minOccupancy : 0.55;
+    const fitPolicy = boardSpec?.fit || null;
+
+    console.log(`[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount})`);
 
     // FIX: Support high-resolution A1 print master (300 DPI: 9933×7016px)
     // When highRes: true is passed, use full A1 dimensions instead of working preview
@@ -969,20 +1273,83 @@ export default async function handler(req, res) {
 
     const panelMap = new Map(panels.map((p) => [p.type, p]));
 
+    // HARD QA GATE: Completeness (fail closed)
+    if (qaEnabled) {
+      const missingSlotContent = Object.keys(layout)
+        .filter((type) => type !== 'title_block')
+        .filter((type) => {
+          const panel = panelMap.get(type);
+          const hasContent = !!(panel?.buffer || panel?.imageUrl);
+          return !hasContent;
+        });
+
+      if (missingSlotContent.length > 0) {
+        console.error(`[A1 Compose] ❌ Missing slot content: ${missingSlotContent.join(', ')}`);
+        return res.status(400).json({
+          success: false,
+          error: 'MISSING_SLOT_CONTENT',
+          message: `Cannot compose A1 sheet - missing panel content for: ${missingSlotContent.join(', ')}`,
+          details: {
+            missingPanels: missingSlotContent,
+            layoutTemplate,
+            floorCount,
+          },
+        });
+      }
+    }
+
     // Process each panel
     for (const [type, slot] of Object.entries(layout)) {
       const slotRect = toPixelRect(slot, width, height);
       coordinates[type] = { ...slotRect, labelHeight: LABEL_HEIGHT };
 
-      const mode = getPanelFitMode(type);
+      const mode = (fitPolicy && (fitPolicy[type] || fitPolicy.default)) || getPanelFitMode(type);
       const panel = panelMap.get(type);
 
       if (type === 'title_block') {
+        if (panel?.imageUrl || panel?.buffer) {
+          try {
+            const buffer = panel.buffer || (await fetchImageBuffer(panel.imageUrl));
+            const resized = await placePanelImage({
+              sharp,
+              imageBuffer: buffer,
+              slotRect,
+              mode,
+              constants,
+              panelType: type,
+              qa: {
+                enabled: qaEnabled,
+                rotateToFit,
+                minSlotOccupancy,
+                useHighRes,
+                layoutTemplate,
+              },
+            });
+            composites.push({ input: resized, left: slotRect.x, top: slotRect.y });
+            continue;
+          } catch (err) {
+            console.error(`[A1 Compose] Failed to process panel ${type}:`, err.message);
+            if (qaEnabled) {
+              return res.status(400).json({
+                success: false,
+                error: 'PANEL_PROCESSING_FAILED',
+                message: `Panel ${type} failed QA/placement: ${err.message}`,
+                details: {
+                  panelType: type,
+                  layoutTemplate,
+                  floorCount,
+                  ...err.details,
+                },
+              });
+            }
+          }
+        }
+
         const titleBuffer = await buildTitleBlockBuffer(
           sharp,
           slotRect.width,
           slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
-          titleBlock,
+          { ...(titleBlock || {}), designId: expectedFingerprint },
           constants
         );
         composites.push({ input: titleBuffer, left: slotRect.x, top: slotRect.y });
@@ -999,15 +1366,43 @@ export default async function handler(req, res) {
             mode,
             constants,
             panelType: type, // Pass panel type for debug logging
+            qa: {
+              enabled: qaEnabled,
+              rotateToFit,
+              minSlotOccupancy,
+              useHighRes,
+              layoutTemplate,
+            },
           });
           composites.push({ input: resized, left: slotRect.x, top: slotRect.y });
           continue;
         } catch (err) {
           console.error(`[A1 Compose] Failed to process panel ${type}:`, err.message);
+          if (qaEnabled) {
+            return res.status(400).json({
+              success: false,
+              error: 'PANEL_PROCESSING_FAILED',
+              message: `Panel ${type} failed QA/placement: ${err.message}`,
+              details: {
+                panelType: type,
+                layoutTemplate,
+                floorCount,
+                ...err.details,
+              },
+            });
+          }
         }
       }
 
       // Build placeholder for missing panel
+      if (qaEnabled) {
+        return res.status(400).json({
+          success: false,
+          error: 'MISSING_SLOT_CONTENT',
+          message: `Cannot compose A1 sheet - missing panel content for: ${type}`,
+          details: { panelType: type, layoutTemplate, floorCount },
+        });
+      }
       const placeholder = await buildPlaceholder(
         sharp,
         slotRect.width,
@@ -1068,23 +1463,59 @@ export default async function handler(req, res) {
       top: 0,
     });
 
-    // BUILD STAMP: Add small stamp in bottom-right corner with build info
-    // Deliverable #4: Build stamp printed onto the A1
-    const buildTimestamp = new Date().toISOString();
-    const shortHash = designId ? designId.substring(0, 8) : 'N/A';
-    const buildStampSvg = generateBuildStampSvg({
+    // Layout guarantee stamp (always-on): layoutTemplateUsed + boardSpecVersion
+    const specStampSvg = generateBoardSpecStampSvg({
       width,
       height,
-      designId: shortHash,
-      timestamp: buildTimestamp,
-      layoutTemplate,
-      panelCount: panels.length,
+      layoutTemplateUsed: layoutTemplate,
+      boardSpecVersion,
     });
     composites.push({
-      input: Buffer.from(buildStampSvg),
+      input: Buffer.from(specStampSvg),
       left: 0,
       top: 0,
     });
+
+    // BUILD STAMP: Optional stamp in bottom-right corner with build info
+    // DELIVERABLE A: Build Stamp (visual proof)
+    // Contains: RESOLVED PIPELINE_MODE (truthful), commit hash, runId, timestamp, OpenAI model, Meshy indicator
+    const includeBuildStamp =
+      req.body.includeBuildStamp === true || process.env.A1_COMPOSE_INCLUDE_BUILD_STAMP === '1';
+
+    if (includeBuildStamp) {
+      const buildTimestamp = new Date().toISOString();
+      const shortHash = designId ? designId.substring(0, 8) : 'N/A';
+      const runIdFromRequest = req.body.runId || req.body.meta?.runId;
+
+      // Extract flags from request body (passed from orchestrator)
+      const flagsFromRequest = req.body.flags || req.body.meta?.flags || {};
+
+      // Extract proof signals from request body (passed from orchestrator)
+      // These contain truthful information about what generators were actually used
+      const proofFromRequest = req.body.proof || req.body.meta?.proof || {};
+
+      const buildStampSvg = generateBuildStampSvg({
+        width,
+        height,
+        designId: shortHash,
+        runId: runIdFromRequest,
+        timestamp: buildTimestamp,
+        layoutTemplate,
+        panelCount: panels.length,
+        flags: flagsFromRequest,
+        proof: proofFromRequest,
+      });
+
+      const resolvedMode = getPipelineModeForStamp(proofFromRequest);
+      console.log(
+        `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || 'gpt-image-1'}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`
+      );
+      composites.push({
+        input: Buffer.from(buildStampSvg),
+        left: 0,
+        top: 0,
+      });
+    }
 
     // Compose all panels onto background
     const composedBuffer = await background.composite(composites).png().toBuffer();
@@ -1119,6 +1550,48 @@ export default async function handler(req, res) {
     const { sheetUrl, transport, pngBytes, estimatedDataUrlBytes, sheetUrlBytes, outputFile } =
       composePayload;
 
+    // Print-ready PDF (A1 landscape) generated alongside high-res PNG exports
+    const includePdf = useHighRes && req.body.skipPdf !== true;
+    let pdfUrl = null;
+    let pdfBytes = 0;
+    let pdfOutputFile = null;
+
+    if (includePdf) {
+      try {
+        const pdfBuffer = await buildPrintReadyPdfFromPng(composedBuffer, {
+          widthPx: width,
+          heightPx: height,
+          dpi: boardSpec?.dimensions?.dpi || 300,
+        });
+
+        const safeDesignId =
+          String(designId || 'unknown')
+            .replace(/[^a-z0-9_-]/gi, '')
+            .slice(0, 60) || 'unknown';
+        const baseName = outputFile
+          ? outputFile.replace(/\.png$/i, '')
+          : `a1_${safeDesignId}_${Date.now()}`;
+
+        pdfOutputFile = `${baseName}.pdf`;
+        fs.mkdirSync(outputDir, { recursive: true });
+        fs.writeFileSync(path.join(outputDir, pdfOutputFile), pdfBuffer);
+
+        const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(/\/$/, '');
+        pdfUrl = `${base}/${pdfOutputFile}`;
+        pdfBytes = pdfBuffer.length;
+      } catch (pdfError) {
+        console.error('[A1 Compose] PDF generation failed:', pdfError.message);
+        // Fail closed for print exports unless explicitly skipping validation
+        if (!skipValidation) {
+          return res.status(500).json({
+            success: false,
+            error: 'PDF_GENERATION_FAILED',
+            message: pdfError.message,
+          });
+        }
+      }
+    }
+
     console.log(
       `[A1 Compose] Sheet composed: ${composites.length} elements, ${width}x${height}px (${transport})`
     );
@@ -1142,19 +1615,39 @@ export default async function handler(req, res) {
 
     console.log(`[A1 Compose] Response headers set: Cache-Control: no-store`);
 
+    // TASK 4: Build panelsByKey map for print export persistence
+    // This ensures print export can access the exact panels used in composition
+    const panelsByKey = {};
+    for (const panel of panels) {
+      if (panel.type) {
+        panelsByKey[panel.type] = {
+          type: panel.type,
+          url: panel.imageUrl || null,
+          hasBuffer: !!panel.buffer,
+          coordinates: coordinates[panel.type] || null,
+        };
+      }
+    }
+
     // Return the composition result
-    // STANDARD CONTRACT: { success, sheetUrl, composedSheetUrl (alias), coordinates, metadata }
+    // STANDARD CONTRACT: { success, sheetUrl, composedSheetUrl (alias), coordinates, metadata, panelsByKey }
     return res.status(200).json({
       success: true,
       sheetUrl,
       composedSheetUrl: sheetUrl, // backwards compat alias
       url: sheetUrl, // additional alias for client normalizer
+      pdfUrl,
       coordinates,
+      // TASK 4: Include panelsByKey for print export
+      panelsByKey,
       metadata: {
         width,
         height,
         panelCount: panels.length,
         composedAt: new Date().toISOString(),
+        layoutTemplate,
+        layoutTemplateUsed: layoutTemplate,
+        boardSpecVersion,
         layoutConfig,
         designId,
         designFingerprint: expectedFingerprint,
@@ -1163,6 +1656,10 @@ export default async function handler(req, res) {
         estimatedDataUrlBytes,
         sheetUrlBytes,
         outputFile,
+        pdfBytes,
+        pdfOutputFile,
+        // TASK 4: Add panel keys list for export verification
+        panelKeys: Object.keys(panelsByKey),
       },
     });
   } catch (error) {
@@ -1174,6 +1671,471 @@ export default async function handler(req, res) {
       details: process.env.NODE_ENV === 'development' ? { stack: error.stack } : undefined,
     });
   }
+}
+
+function computeSafeCoverCropRect(
+  sourceW,
+  sourceH,
+  targetW,
+  targetH,
+  { xAlign = 0.5, yAlign = 0.5 } = {}
+) {
+  if (
+    !Number.isFinite(sourceW) ||
+    !Number.isFinite(sourceH) ||
+    !Number.isFinite(targetW) ||
+    !Number.isFinite(targetH) ||
+    sourceW <= 0 ||
+    sourceH <= 0 ||
+    targetW <= 0 ||
+    targetH <= 0
+  ) {
+    return null;
+  }
+
+  const targetAspect = targetW / targetH;
+  const sourceAspect = sourceW / sourceH;
+
+  const clamp01 = (v) => Math.max(0, Math.min(1, Number(v)));
+  const ax = clamp01(xAlign);
+  const ay = clamp01(yAlign);
+
+  if (Math.abs(sourceAspect - targetAspect) < 1e-3) {
+    return null;
+  }
+
+  if (sourceAspect > targetAspect) {
+    // Crop width
+    const cropW = Math.max(1, Math.round(sourceH * targetAspect));
+    const left = Math.round((sourceW - cropW) * ax);
+    return {
+      left: Math.max(0, Math.min(sourceW - cropW, left)),
+      top: 0,
+      width: cropW,
+      height: sourceH,
+    };
+  }
+
+  // Crop height
+  const cropH = Math.max(1, Math.round(sourceW / targetAspect));
+  const top = Math.round((sourceH - cropH) * ay);
+  return {
+    left: 0,
+    top: Math.max(0, Math.min(sourceH - cropH, top)),
+    width: sourceW,
+    height: cropH,
+  };
+}
+
+/**
+ * TASK 1: Geometry-based SVG bounds calculation
+ * Parses SVG elements directly for accurate content bounds.
+ * This is more accurate than pixel-based detection for technical drawings.
+ *
+ * @param {string} svgText - SVG string to analyze
+ * @returns {{ minX: number, minY: number, maxX: number, maxY: number, width: number, height: number } | null}
+ */
+function computeSvgGeometryBounds(svgText) {
+  if (!svgText) {return null;}
+
+  const bounds = {
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+  };
+
+  const expandBounds = (x, y) => {
+    if (isFinite(x) && isFinite(y)) {
+      bounds.minX = Math.min(bounds.minX, x);
+      bounds.minY = Math.min(bounds.minY, y);
+      bounds.maxX = Math.max(bounds.maxX, x);
+      bounds.maxY = Math.max(bounds.maxY, y);
+    }
+  };
+
+  // Parse <rect> elements (skip background rects)
+  const rectMatches = svgText.matchAll(/<rect[^>]*>/gi);
+  for (const match of rectMatches) {
+    const fullMatch = match[0];
+    // Skip background rects (100% or very large)
+    if (fullMatch.includes('100%') || fullMatch.includes('fill-opacity="0"')) {continue;}
+
+    const xMatch = fullMatch.match(/\bx="([^"]*)"/);
+    const yMatch = fullMatch.match(/\by="([^"]*)"/);
+    const wMatch = fullMatch.match(/\bwidth="([^"]*)"/);
+    const hMatch = fullMatch.match(/\bheight="([^"]*)"/);
+
+    const x = xMatch ? parseFloat(xMatch[1]) : 0;
+    const y = yMatch ? parseFloat(yMatch[1]) : 0;
+    const w = wMatch ? parseFloat(wMatch[1]) : 0;
+    const h = hMatch ? parseFloat(hMatch[1]) : 0;
+
+    // Skip massive rects (likely backgrounds)
+    if (w > 5000 && h > 5000) {continue;}
+    if (w === 0 || h === 0) {continue;}
+
+    expandBounds(x, y);
+    expandBounds(x + w, y + h);
+  }
+
+  // Parse <line> elements
+  const lineMatches = svgText.matchAll(
+    /<line[^>]*?\bx1="([^"]*)"[^>]*?\by1="([^"]*)"[^>]*?\bx2="([^"]*)"[^>]*?\by2="([^"]*)"/gi
+  );
+  for (const match of lineMatches) {
+    expandBounds(parseFloat(match[1]) || 0, parseFloat(match[2]) || 0);
+    expandBounds(parseFloat(match[3]) || 0, parseFloat(match[4]) || 0);
+  }
+
+  // Parse <polygon> and <polyline> elements
+  const polyMatches = svgText.matchAll(/<poly(?:gon|line)[^>]*?\bpoints="([^"]*)"/gi);
+  for (const match of polyMatches) {
+    const points = match[1].trim().split(/[\s,]+/);
+    for (let i = 0; i < points.length - 1; i += 2) {
+      expandBounds(parseFloat(points[i]), parseFloat(points[i + 1]));
+    }
+  }
+
+  // Parse <path> elements - extract M, L, H, V coordinates
+  const pathMatches = svgText.matchAll(/<path[^>]*?\bd="([^"]*)"/gi);
+  for (const match of pathMatches) {
+    const pathData = match[1];
+    let currentX = 0;
+    let currentY = 0;
+
+    const cmdRegex = /([MLHVCSQTAZ])\s*([-\d.,\s]*)/gi;
+    let cmdMatch;
+    while ((cmdMatch = cmdRegex.exec(pathData)) !== null) {
+      const cmd = cmdMatch[1].toUpperCase();
+      const nums = (cmdMatch[2].match(/[-+]?[\d.]+/g) || []).map(Number);
+
+      switch (cmd) {
+        case 'M':
+        case 'L':
+          for (let i = 0; i < nums.length - 1; i += 2) {
+            currentX = nums[i];
+            currentY = nums[i + 1];
+            expandBounds(currentX, currentY);
+          }
+          break;
+        case 'H':
+          for (const x of nums) {
+            currentX = x;
+            expandBounds(currentX, currentY);
+          }
+          break;
+        case 'V':
+          for (const y of nums) {
+            currentY = y;
+            expandBounds(currentX, currentY);
+          }
+          break;
+        case 'C': // Cubic bezier
+          for (let i = 0; i < nums.length - 5; i += 6) {
+            expandBounds(nums[i], nums[i + 1]); // Control point 1
+            expandBounds(nums[i + 2], nums[i + 3]); // Control point 2
+            currentX = nums[i + 4];
+            currentY = nums[i + 5];
+            expandBounds(currentX, currentY); // End point
+          }
+          break;
+        case 'Q': // Quadratic bezier
+          for (let i = 0; i < nums.length - 3; i += 4) {
+            expandBounds(nums[i], nums[i + 1]); // Control point
+            currentX = nums[i + 2];
+            currentY = nums[i + 3];
+            expandBounds(currentX, currentY); // End point
+          }
+          break;
+      }
+    }
+  }
+
+  // Parse <circle> elements
+  const circleMatches = svgText.matchAll(
+    /<circle[^>]*?\bcx="([^"]*)"[^>]*?\bcy="([^"]*)"[^>]*?\br="([^"]*)"/gi
+  );
+  for (const match of circleMatches) {
+    const cx = parseFloat(match[1]) || 0;
+    const cy = parseFloat(match[2]) || 0;
+    const r = parseFloat(match[3]) || 0;
+    expandBounds(cx - r, cy - r);
+    expandBounds(cx + r, cy + r);
+  }
+
+  // Parse <text> elements (approximate bounds)
+  const textMatches = svgText.matchAll(/<text[^>]*?\bx="([^"]*)"[^>]*?\by="([^"]*)"/gi);
+  for (const match of textMatches) {
+    expandBounds(parseFloat(match[1]) || 0, parseFloat(match[2]) || 0);
+  }
+
+  // Validate bounds
+  if (!isFinite(bounds.minX) || !isFinite(bounds.maxX)) {
+    return null;
+  }
+
+  return {
+    minX: bounds.minX,
+    minY: bounds.minY,
+    maxX: bounds.maxX,
+    maxY: bounds.maxY,
+    width: bounds.maxX - bounds.minX,
+    height: bounds.maxY - bounds.minY,
+  };
+}
+
+function parseSvgViewBox(svgText) {
+  if (!svgText) {return null;}
+
+  const viewBoxMatch = svgText.match(/viewBox\s*=\s*["']([^"']+)["']/i);
+  if (viewBoxMatch) {
+    const parts = viewBoxMatch[1]
+      .trim()
+      .split(/\s+/)
+      .map((p) => Number.parseFloat(p));
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+      return {
+        minX: parts[0],
+        minY: parts[1],
+        width: parts[2],
+        height: parts[3],
+        hasViewBox: true,
+      };
+    }
+  }
+
+  const widthMatch = svgText.match(/\bwidth\s*=\s*["']([^"']+)["']/i);
+  const heightMatch = svgText.match(/\bheight\s*=\s*["']([^"']+)["']/i);
+  const w = widthMatch ? Number.parseFloat(widthMatch[1]) : NaN;
+  const h = heightMatch ? Number.parseFloat(heightMatch[1]) : NaN;
+  if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+    return { minX: 0, minY: 0, width: w, height: h, hasViewBox: false };
+  }
+
+  return null;
+}
+
+function rewriteSvgViewBox(svgText, viewBoxValue) {
+  if (!svgText || !viewBoxValue) {return svgText;}
+
+  if (/viewBox\s*=\s*["'][^"']*["']/i.test(svgText)) {
+    return svgText.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${viewBoxValue}"`);
+  }
+
+  return svgText.replace(/<svg\b/i, `<svg viewBox="${viewBoxValue}"`);
+}
+
+function computeForegroundBBoxFromRaw(data, width, height, channels, options = {}) {
+  const alphaThreshold = Number.isFinite(options.alphaThreshold) ? options.alphaThreshold : 8;
+  const diffThreshold = Number.isFinite(options.diffThreshold) ? options.diffThreshold : 24;
+
+  const samplePoints = [
+    [0, 0],
+    [width - 1, 0],
+    [0, height - 1],
+    [width - 1, height - 1],
+    [Math.floor(width / 2), 0],
+    [Math.floor(width / 2), height - 1],
+    [0, Math.floor(height / 2)],
+    [width - 1, Math.floor(height / 2)],
+  ].filter(([x, y]) => x >= 0 && y >= 0 && x < width && y < height);
+
+  const bgSamples = [];
+  for (const [x, y] of samplePoints) {
+    const idx = (y * width + x) * channels;
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    const a = channels >= 4 ? data[idx + 3] : 255;
+    if (a > alphaThreshold) {
+      bgSamples.push([r, g, b]);
+    }
+  }
+
+  const bg = bgSamples.length
+    ? bgSamples.reduce((acc, [r, g, b]) => ({ r: acc.r + r, g: acc.g + g, b: acc.b + b }), {
+        r: 0,
+        g: 0,
+        b: 0,
+      })
+    : { r: 255, g: 255, b: 255 };
+
+  const bgR = bgSamples.length ? bg.r / bgSamples.length : 255;
+  const bgG = bgSamples.length ? bg.g / bgSamples.length : 255;
+  const bgB = bgSamples.length ? bg.b / bgSamples.length : 255;
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = (y * width + x) * channels;
+      const a = channels >= 4 ? data[idx + 3] : 255;
+      if (a <= alphaThreshold) {continue;}
+
+      const r = data[idx];
+      const g = data[idx + 1];
+      const b = data[idx + 2];
+      const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
+      if (diff <= diffThreshold) {continue;}
+
+      if (x < minX) {minX = x;}
+      if (y < minY) {minY = y;}
+      if (x > maxX) {maxX = x;}
+      if (y > maxY) {maxY = y;}
+    }
+  }
+
+  if (maxX < 0 || maxY < 0) {
+    return null;
+  }
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    bg: { r: bgR, g: bgG, b: bgB },
+  };
+}
+
+/**
+ * TASK 1: Enhanced SVG viewBox rewriter
+ * Now uses geometry-based bounds calculation as PRIMARY method,
+ * with pixel-based fallback for edge cases.
+ */
+async function rewriteSvgViewBoxToContent({
+  sharp,
+  svgBuffer,
+  analysisDensity = 144,
+  analysisMaxSize = 512,
+  diffThreshold = 16, // REDUCED from 24 for better line detection
+  padRatio = 0.025, // INCREASED from 0.012 for better padding
+  useGeometryFirst = true, // TASK 1: Prefer geometry-based bounds
+}) {
+  const svgText = Buffer.isBuffer(svgBuffer) ? svgBuffer.toString('utf8') : String(svgBuffer || '');
+  if (!svgText || !svgText.includes('<svg')) {
+    return { buffer: svgBuffer, changed: false };
+  }
+
+  const parsed = parseSvgViewBox(svgText);
+  if (!parsed || !Number.isFinite(parsed.width) || !Number.isFinite(parsed.height)) {
+    return { buffer: svgBuffer, changed: false };
+  }
+
+  // TASK 1: Try geometry-based bounds first (more accurate for technical drawings)
+  if (useGeometryFirst) {
+    const geoBounds = computeSvgGeometryBounds(svgText);
+    if (geoBounds && geoBounds.width > 10 && geoBounds.height > 10) {
+      // Check if content is significantly smaller than viewBox (needs cropping)
+      const widthRatio = geoBounds.width / parsed.width;
+      const heightRatio = geoBounds.height / parsed.height;
+
+      // Only rewrite if content uses less than 90% of viewBox
+      if (widthRatio < 0.9 || heightRatio < 0.9) {
+        const padX = Math.max(0, geoBounds.width * padRatio);
+        const padY = Math.max(0, geoBounds.height * padRatio);
+
+        const newMinX = Math.max(parsed.minX, geoBounds.minX - padX);
+        const newMinY = Math.max(parsed.minY, geoBounds.minY - padY);
+        const newMaxX = Math.min(parsed.minX + parsed.width, geoBounds.maxX + padX);
+        const newMaxY = Math.min(parsed.minY + parsed.height, geoBounds.maxY + padY);
+
+        const finalW = Math.max(1, newMaxX - newMinX);
+        const finalH = Math.max(1, newMaxY - newMinY);
+        const viewBoxValue = `${newMinX.toFixed(3)} ${newMinY.toFixed(3)} ${finalW.toFixed(3)} ${finalH.toFixed(3)}`;
+
+        const rewritten = rewriteSvgViewBox(svgText, viewBoxValue);
+        if (rewritten && rewritten !== svgText) {
+          return {
+            buffer: Buffer.from(rewritten),
+            changed: true,
+            viewBox: viewBoxValue,
+            method: 'geometry', // Indicate method used
+          };
+        }
+      }
+    }
+  }
+
+  // Fallback to pixel-based analysis
+  const raster = await sharp(svgBuffer, { density: analysisDensity })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+
+  const rasterW = raster.info.width || 0;
+  const rasterH = raster.info.height || 0;
+  if (!rasterW || !rasterH) {
+    return { buffer: svgBuffer, changed: false };
+  }
+
+  const analysis = await sharp(raster.data)
+    .resize(analysisMaxSize, analysisMaxSize, { fit: 'inside', withoutEnlargement: true })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const bbox = computeForegroundBBoxFromRaw(
+    analysis.data,
+    analysis.info.width,
+    analysis.info.height,
+    analysis.info.channels,
+    { diffThreshold }
+  );
+
+  if (!bbox) {
+    return { buffer: svgBuffer, changed: false };
+  }
+
+  // TASK 1: Lowered threshold from 0.985 to 0.92 to allow more cropping
+  const coversAlmostAll =
+    bbox.width / analysis.info.width > 0.92 && bbox.height / analysis.info.height > 0.92;
+  if (coversAlmostAll) {
+    return { buffer: svgBuffer, changed: false };
+  }
+
+  const scaleX = rasterW / analysis.info.width;
+  const scaleY = rasterH / analysis.info.height;
+  const minXpx = Math.floor(bbox.minX * scaleX);
+  const minYpx = Math.floor(bbox.minY * scaleY);
+  const maxXpx = Math.ceil((bbox.maxX + 1) * scaleX) - 1;
+  const maxYpx = Math.ceil((bbox.maxY + 1) * scaleY) - 1;
+
+  const vbMinX = parsed.minX;
+  const vbMinY = parsed.minY;
+  const vbW = parsed.width;
+  const vbH = parsed.height;
+
+  const newMinX = vbMinX + (minXpx / rasterW) * vbW;
+  const newMinY = vbMinY + (minYpx / rasterH) * vbH;
+  const newW = ((maxXpx - minXpx + 1) / rasterW) * vbW;
+  const newH = ((maxYpx - minYpx + 1) / rasterH) * vbH;
+
+  const padX = Math.max(0, newW * padRatio);
+  const padY = Math.max(0, newH * padRatio);
+
+  const clampedMinX = Math.max(vbMinX, newMinX - padX);
+  const clampedMinY = Math.max(vbMinY, newMinY - padY);
+  const maxXvb = vbMinX + vbW;
+  const maxYvb = vbMinY + vbH;
+  const clampedMaxX = Math.min(maxXvb, newMinX + newW + padX);
+  const clampedMaxY = Math.min(maxYvb, newMinY + newH + padY);
+
+  const finalW = Math.max(1e-6, clampedMaxX - clampedMinX);
+  const finalH = Math.max(1e-6, clampedMaxY - clampedMinY);
+  const viewBoxValue = `${clampedMinX.toFixed(3)} ${clampedMinY.toFixed(3)} ${finalW.toFixed(3)} ${finalH.toFixed(3)}`;
+
+  const rewritten = rewriteSvgViewBox(svgText, viewBoxValue);
+  if (!rewritten || rewritten === svgText) {
+    return { buffer: svgBuffer, changed: false };
+  }
+
+  return { buffer: Buffer.from(rewritten), changed: true, viewBox: viewBoxValue };
 }
 
 /**
@@ -1188,9 +2150,10 @@ export default async function handler(req, res) {
  * @param {Function} params.sharp - Sharp module
  * @param {Buffer} params.imageBuffer - Input image buffer
  * @param {Object} params.slotRect - Target slot rectangle {x, y, width, height}
- * @param {string} params.mode - Fit mode (ignored - always uses 'contain')
+ * @param {'contain'|'cover'} params.mode - Fit mode ('cover' for hero/interior, 'contain' for drawings)
  * @param {Object} params.constants - Layout constants
  * @param {string} [params.panelType] - Panel type for debug logging
+ * @param {Object} [params.qa] - QA options (occupancy/rotate gates)
  * @returns {Promise<Buffer>} Resized image buffer
  */
 async function placePanelImage({
@@ -1200,17 +2163,28 @@ async function placePanelImage({
   mode,
   constants,
   panelType = 'unknown',
+  qa = null,
 }) {
   const { LABEL_HEIGHT, LABEL_PADDING } = constants;
   const targetWidth = slotRect.width;
   const targetHeight = Math.max(10, slotRect.height - LABEL_HEIGHT - LABEL_PADDING);
   const DEBUG_RUNS = process.env.DEBUG_RUNS === '1' || process.env.ARCHIAI_DEBUG === '1';
 
+  const headerSample = Buffer.isBuffer(imageBuffer)
+    ? imageBuffer.slice(0, 512).toString('utf8').toLowerCase()
+    : '';
+  const isSvgInput =
+    headerSample.includes('<svg') ||
+    (headerSample.includes('<?xml') && headerSample.includes('svg'));
+  const svgDensity = qa?.useHighRes ? 300 : 144;
+  const sharpForInput = (buf) =>
+    isSvgInput ? sharp(buf, { density: svgDensity }) : sharp(buf, { failOnError: false });
+
   // Get input image dimensions for debug logging
   let inputWidth = 0;
   let inputHeight = 0;
   try {
-    const metadata = await sharp(imageBuffer).metadata();
+    const metadata = await sharpForInput(imageBuffer).metadata();
     inputWidth = metadata.width || 0;
     inputHeight = metadata.height || 0;
 
@@ -1220,7 +2194,7 @@ async function placePanelImage({
         output: { width: targetWidth, height: targetHeight },
         inputAspect: inputWidth && inputHeight ? (inputWidth / inputHeight).toFixed(3) : 'N/A',
         outputAspect: (targetWidth / targetHeight).toFixed(3),
-        fit: 'contain',
+        fit: mode === 'cover' ? 'cover' : 'contain',
         willLetterbox:
           inputWidth && inputHeight
             ? Math.abs(inputWidth / inputHeight - targetWidth / targetHeight) > 0.01
@@ -1278,29 +2252,50 @@ async function placePanelImage({
   };
   const padding = TRIM_PADDING[panelType] || 8;
 
-  try {
-    // Build trim options - MANDATORY CORRECTION B
-    const trimOptions = {
-      threshold: 10,
-      background: '#ffffff',
-    };
+  const shouldTrimToContent = isTechnicalDrawing && mode !== 'cover';
+  let viewBoxRewrite = null;
 
-    // Add lineArt option for technical drawings (better edge detection)
-    if (isTechnicalDrawing) {
-      trimOptions.lineArt = true;
-    }
+  if (shouldTrimToContent) {
+    try {
+      let bufferForTrim = imageBuffer;
 
-    // Use toBuffer({ resolveWithObject: true }) to avoid double metadata decode
-    const trimResult = await sharp(imageBuffer)
-      .trim(trimOptions)
-      .toBuffer({ resolveWithObject: true });
+      // SVG viewBox rewrite (best-effort): preserves crispness by re-rasterizing
+      // the *cropped* viewBox at print density instead of scaling up a tiny trim.
+      if (isSvgInput) {
+        const rewritten = await rewriteSvgViewBoxToContent({
+          sharp,
+          svgBuffer: imageBuffer,
+          analysisDensity: qa?.useHighRes ? 144 : 96,
+        });
+        if (rewritten?.changed && rewritten?.buffer) {
+          bufferForTrim = rewritten.buffer;
+          viewBoxRewrite = rewritten.viewBox || null;
+        }
+      }
 
-    const trimmedBuffer = trimResult.data;
-    const trimmedInfo = trimResult.info;
+      // PNG bbox crop (trim-to-content). Flatten ensures transparent margins trim correctly.
+      const trimOptions = { threshold: 12, lineArt: true };
+      const trimResult = await sharpForInput(bufferForTrim)
+        .flatten({ background: '#ffffff' })
+        .trim(trimOptions)
+        .png()
+        .toBuffer({ resolveWithObject: true });
 
-    // Only use trimmed if result is valid (not too small)
-    if (trimmedInfo.width > 50 && trimmedInfo.height > 50) {
-      // Add small padding after trim for clean presentation
+      const trimmedBuffer = trimResult.data;
+      const trimmedInfo = trimResult.info;
+
+      if (trimmedInfo.width <= 50 || trimmedInfo.height <= 50) {
+        const err = new Error('Trim-to-content produced an invalid (too small) result');
+        err.code = 'DRAWING_PREFLIGHT_TRIM_INVALID';
+        err.details = {
+          code: err.code,
+          panelType,
+          viewBoxRewrite,
+          trimmed: { width: trimmedInfo.width, height: trimmedInfo.height },
+        };
+        throw err;
+      }
+
       if (padding > 0) {
         const paddedResult = await sharp(trimmedBuffer)
           .extend({
@@ -1310,42 +2305,110 @@ async function placePanelImage({
             right: padding,
             background: '#ffffff',
           })
+          .png()
           .toBuffer({ resolveWithObject: true });
 
         processedBuffer = paddedResult.data;
-
-        if (DEBUG_RUNS) {
-          console.log(`[A1 Compose] Panel ${panelType} auto-cropped:`, {
-            original: { width: inputWidth, height: inputHeight },
-            trimmed: { width: trimmedInfo.width, height: trimmedInfo.height },
-            padded: { width: paddedResult.info.width, height: paddedResult.info.height },
-            padding,
-            lineArt: isTechnicalDrawing,
-          });
-        }
-
-        // Update input dimensions for aspect ratio calculations
         inputWidth = paddedResult.info.width;
         inputHeight = paddedResult.info.height;
       } else {
         processedBuffer = trimmedBuffer;
         inputWidth = trimmedInfo.width;
         inputHeight = trimmedInfo.height;
+      }
 
-        if (DEBUG_RUNS) {
-          console.log(`[A1 Compose] Panel ${panelType} auto-cropped (no padding):`, {
-            original: { width: inputWidth, height: inputHeight },
-            trimmed: { width: trimmedInfo.width, height: trimmedInfo.height },
-            lineArt: isTechnicalDrawing,
-          });
-        }
+      if (DEBUG_RUNS) {
+        console.log(`[A1 Compose] Panel ${panelType} trim-to-content:`, {
+          viewBoxRewrite,
+          trimmed: { width: trimmedInfo.width, height: trimmedInfo.height },
+          padded: { width: inputWidth, height: inputHeight },
+          padding,
+        });
+      }
+    } catch (trimError) {
+      if (qa?.enabled) {
+        const err = new Error(`Trim-to-content failed: ${trimError.message}`);
+        err.code = trimError.code || 'DRAWING_PREFLIGHT_TRIM_FAILED';
+        err.details = {
+          code: err.code,
+          panelType,
+          viewBoxRewrite,
+          originalError: trimError.message,
+          ...(trimError.details || {}),
+        };
+        throw err;
+      }
+
+      if (DEBUG_RUNS) {
+        console.warn(`[A1 Compose] Trim-to-content skipped for ${panelType}:`, trimError.message);
       }
     }
-  } catch (trimError) {
-    // If trim fails, continue with original buffer (non-blocking)
-    if (DEBUG_RUNS) {
-      console.warn(`[A1 Compose] Auto-crop failed for ${panelType}:`, trimError.message);
+  }
+
+  const computeContainOccupancy = (imgW, imgH) => {
+    if (!Number.isFinite(imgW) || !Number.isFinite(imgH) || imgW <= 0 || imgH <= 0) {
+      return 0;
     }
+    const scale = Math.min(targetWidth / imgW, targetHeight / imgH);
+    const drawnW = imgW * scale;
+    const drawnH = imgH * scale;
+    const occ = (drawnW * drawnH) / (targetWidth * targetHeight);
+    return Math.max(0, Math.min(1, occ));
+  };
+
+  // Optional auto-rotate to maximize slot usage (QA-driven)
+  let rotated = false;
+  const canAutoRotate =
+    panelType.startsWith('floor_plan_') ||
+    panelType.startsWith('elevation_') ||
+    panelType.startsWith('section_');
+  if (qa?.enabled && qa?.rotateToFit && mode !== 'cover' && canAutoRotate) {
+    const occ0 = computeContainOccupancy(inputWidth, inputHeight);
+    const occ90 = computeContainOccupancy(inputHeight, inputWidth);
+    if (occ90 > occ0 + 0.08) {
+      const rotatedResult = await sharp(processedBuffer)
+        .rotate(90)
+        .png()
+        .toBuffer({ resolveWithObject: true });
+      processedBuffer = rotatedResult.data;
+      inputWidth = rotatedResult.info.width;
+      inputHeight = rotatedResult.info.height;
+      rotated = true;
+      if (DEBUG_RUNS) {
+        console.log(`[A1 Compose] Panel ${panelType} auto-rotated for occupancy`, {
+          occ0: occ0.toFixed(3),
+          occ90: occ90.toFixed(3),
+        });
+      }
+    }
+  }
+
+  // HARD QA GATE: Occupancy (fail closed on undersized drawings)
+  const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy) ? qa.minSlotOccupancy : 0.55;
+  const shouldEnforceOccupancy =
+    qa?.enabled &&
+    mode !== 'cover' &&
+    (panelType.startsWith('floor_plan_') ||
+      panelType.startsWith('elevation_') ||
+      panelType.startsWith('section_'));
+  const slotOccupancy = mode === 'cover' ? 1 : computeContainOccupancy(inputWidth, inputHeight);
+  if (shouldEnforceOccupancy && slotOccupancy < minSlotOccupancy) {
+    const err = new Error(
+      `Low slot occupancy ${(slotOccupancy * 100).toFixed(1)}% (min ${(minSlotOccupancy * 100).toFixed(1)}%)`
+    );
+    err.code = 'DRAWING_SLOT_OCCUPANCY_LOW';
+    err.details = {
+      code: err.code,
+      panelType,
+      slotOccupancy,
+      minSlotOccupancy,
+      rotated,
+      viewBoxRewrite,
+      input: { width: inputWidth, height: inputHeight, isSvgInput, svgDensity },
+      target: { width: targetWidth, height: targetHeight },
+      qa: { layoutTemplate: qa?.layoutTemplate || null },
+    };
+    throw err;
   }
 
   // Create white canvas for the slot
@@ -1358,23 +2421,67 @@ async function placePanelImage({
     },
   });
 
-  // CRITICAL: Always use fit:'contain' to prevent cropping
-  // This letterboxes the image with white padding instead of cropping
-  // NOTE: Using processedBuffer (auto-cropped) instead of raw imageBuffer
-  const resizedImage = await sharp(processedBuffer)
-    .resize(targetWidth, targetHeight, {
-      fit: 'contain', // ALWAYS contain - never crop
-      position: 'centre', // Center within slot
-      background: { r: 255, g: 255, b: 255, alpha: 1 }, // White letterbox padding
-    })
-    .png()
-    .toBuffer();
+  let resizedImage;
 
-  // Composite image onto white canvas (ensures any transparent areas are white)
-  return canvas
+  if (mode === 'cover') {
+    // Safe crop for photos: deterministic aspect crop + slight top bias for hero exterior.
+    const yAlign = panelType === 'hero_3d' ? 0.35 : 0.5;
+    const cropRect = computeSafeCoverCropRect(inputWidth, inputHeight, targetWidth, targetHeight, {
+      xAlign: 0.5,
+      yAlign,
+    });
+
+    const pipeline = sharp(processedBuffer, { failOnError: false });
+    resizedImage = cropRect
+      ? await pipeline
+          .extract(cropRect)
+          .resize(targetWidth, targetHeight, { fit: 'fill' })
+          .png()
+          .toBuffer()
+      : await pipeline
+          .resize(targetWidth, targetHeight, { fit: 'cover', position: 'centre' })
+          .png()
+          .toBuffer();
+  } else {
+    // Drawings/data: contain after trim-to-content (no cropping).
+    resizedImage = await sharp(processedBuffer, { failOnError: false })
+      .resize(targetWidth, targetHeight, {
+        fit: 'contain',
+        position: 'centre',
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .png()
+      .toBuffer();
+  }
+
+  const finalBuffer = await canvas
     .composite([{ input: resizedImage, left: 0, top: 0 }])
     .png()
     .toBuffer();
+
+  // HARD QA GATE: Render sanity for drawings (detect thin strips / near-empty content).
+  if (shouldEnforceOccupancy && qa?.enabled) {
+    const sanityModule = await getRenderSanityValidator();
+    if (typeof sanityModule?.validateRenderSanity === 'function') {
+      const sanity = await sanityModule.validateRenderSanity(finalBuffer, panelType);
+      if (sanity && sanity.isValid === false) {
+        const err = new Error(sanity.blockerMessage || `Render sanity failed for ${panelType}`);
+        err.code = 'DRAWING_RENDER_SANITY_FAILED';
+        err.details = {
+          code: err.code,
+          panelType,
+          rotated,
+          viewBoxRewrite,
+          slotOccupancy,
+          minSlotOccupancy,
+          sanity,
+        };
+        throw err;
+      }
+    }
+  }
+
+  return finalBuffer;
 }
 
 async function buildPlaceholder(sharp, width, height, type, constants) {
@@ -1399,6 +2506,13 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
 
   // Merge input with comprehensive RIBA template
   const tb = buildTitleBlockData(titleBlockInput || {});
+  const esc = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   const leftMargin = 12;
   const rightMargin = width - 12;
 
@@ -1410,65 +2524,65 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
       <!-- Practice Logo Area -->
       <rect x="8" y="8" width="${width - 16}" height="40" fill="#f1f5f9" rx="2" />
       <text x="${width / 2}" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a"
-        text-anchor="middle">${tb.practiceName}</text>
+        text-anchor="middle">${esc(tb.practiceName)}</text>
 
       <!-- Project Information Section -->
       <line x1="8" y1="56" x2="${width - 8}" y2="56" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="74" font-family="Arial, sans-serif" font-size="8" fill="#64748b">PROJECT</text>
-      <text x="${leftMargin}" y="90" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">${tb.projectName}</text>
-      <text x="${leftMargin}" y="106" font-family="Arial, sans-serif" font-size="9" fill="#475569">${tb.projectNumber}</text>
+      <text x="${leftMargin}" y="90" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">${esc(tb.projectName)}</text>
+      <text x="${leftMargin}" y="106" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(tb.projectNumber)}</text>
 
       <!-- Site Address -->
       <line x1="8" y1="114" x2="${width - 8}" y2="114" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="130" font-family="Arial, sans-serif" font-size="8" fill="#64748b">SITE ADDRESS</text>
-      <text x="${leftMargin}" y="146" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${tb.siteAddress || 'TBD'}</text>
+      <text x="${leftMargin}" y="146" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(tb.siteAddress || 'TBD')}</text>
 
       <!-- Drawing Information -->
       <line x1="8" y1="158" x2="${width - 8}" y2="158" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="174" font-family="Arial, sans-serif" font-size="8" fill="#64748b">DRAWING TITLE</text>
-      <text x="${leftMargin}" y="190" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#0f172a">${tb.drawingTitle}</text>
+      <text x="${leftMargin}" y="190" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#0f172a">${esc(tb.drawingTitle)}</text>
 
       <!-- Sheet / Revision Row -->
       <rect x="8" y="200" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${leftMargin + 4}" y="214" font-family="Arial, sans-serif" font-size="7" fill="#64748b">SHEET NO.</text>
-      <text x="${leftMargin + 4}" y="226" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${tb.sheetNumber}</text>
+      <text x="${leftMargin + 4}" y="226" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.sheetNumber)}</text>        
 
       <rect x="${width / 2 + 4}" y="200" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${width / 2 + 8}" y="214" font-family="Arial, sans-serif" font-size="7" fill="#64748b">REVISION</text>
-      <text x="${width / 2 + 8}" y="226" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${tb.revision}</text>
+      <text x="${width / 2 + 8}" y="226" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.revision)}</text>
 
       <!-- Scale / Date Row -->
       <rect x="8" y="236" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${leftMargin + 4}" y="250" font-family="Arial, sans-serif" font-size="7" fill="#64748b">SCALE</text>
-      <text x="${leftMargin + 4}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${tb.scale}</text>
+      <text x="${leftMargin + 4}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.scale)}</text>
 
       <rect x="${width / 2 + 4}" y="236" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${width / 2 + 8}" y="250" font-family="Arial, sans-serif" font-size="7" fill="#64748b">DATE</text>
-      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${tb.date}</text>
+      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.date || '—')}</text>
 
       <!-- RIBA Stage / Status -->
       <line x1="8" y1="276" x2="${width - 8}" y2="276" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="292" font-family="Arial, sans-serif" font-size="8" fill="#64748b">RIBA STAGE</text>
       <text x="${rightMargin}" y="292" font-family="Arial, sans-serif" font-size="9" font-weight="500" fill="#0f172a"
-        text-anchor="end">${tb.ribaStage}</text>
+        text-anchor="end">${esc(tb.ribaStage)}</text>
       <text x="${leftMargin}" y="306" font-family="Arial, sans-serif" font-size="8" fill="#64748b">STATUS</text>
       <text x="${rightMargin}" y="306" font-family="Arial, sans-serif" font-size="9" font-weight="500" fill="#0891b2"
-        text-anchor="end">${tb.status}</text>
+        text-anchor="end">${esc(tb.status)}</text>
 
       <!-- AI Generation Metadata -->
       ${
         tb.designId
           ? `
       <line x1="8" y1="${height - 44}" x2="${width - 8}" y2="${height - 44}" stroke="#e2e8f0" stroke-width="1" />
-      <text x="${leftMargin}" y="${height - 28}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">DESIGN ID: ${tb.designId}</text>
-      <text x="${leftMargin}" y="${height - 16}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">SEED: ${tb.seedValue || 'N/A'}</text>
+      <text x="${leftMargin}" y="${height - 28}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">DESIGN ID: ${esc(tb.designId)}</text>
+      <text x="${leftMargin}" y="${height - 16}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">SEED: ${esc(tb.seedValue || 'N/A')}</text>       
       `
           : ''
       }
 
       <!-- Copyright -->
       <text x="${width / 2}" y="${height - 6}" font-family="Arial, sans-serif" font-size="6" fill="#94a3b8"
-        text-anchor="middle">${tb.copyrightNote}</text>
+        text-anchor="middle">${esc(tb.copyrightNote)}</text>
     </svg>
   `;
 

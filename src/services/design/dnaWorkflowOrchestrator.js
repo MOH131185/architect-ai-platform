@@ -68,15 +68,46 @@ import {
   getGeometryRenderForPanel,
 } from '../geometry/masterGeometryBuilder.js';
 import { getSiteSnapshotWithMetadata } from '../location/siteMapSnapshotService.js';
+import { AutoCropService } from '../pipeline/AutoCropService.js';
+import {
+  initializePipeline,
+  generateA1Views,
+  buildEnhancedPrompt,
+  A1_VIEW_TYPES,
+} from '../pipeline/ConditionedImagePipeline.js';
+import {
+  isStrictModeEnabled,
+  validateControlPack,
+  assertControlPackValid,
+  buildImg2ImgParams,
+  validateAndHandleBlank,
+  REQUIRED_CONTROL_PANELS,
+} from '../qa/StrictControlEnforcer.js';
+import { distributeRoomsToFloors } from '../spatial/floorDistributor.js';
+import { enforceGeometryFirstGate, extractGeometryStats } from '../validation/GeometryFirstGate.js';
+import StrictPanelValidator, { buildRepairPrompt } from '../validation/strictPanelValidator.js';
 
 import architecturalSheetService from './architecturalSheetService.js';
 import baselineArtifactStore from './baselineArtifactStore.js';
+import {
+  generateBaselineRenders,
+  storeBaselines,
+  BASELINE_VIEW_TYPES,
+  BASELINE_PIPELINE_VERSION,
+} from './BaselineRenderService.js';
 import { check3Dvs2DConsistency } from './bimConsistencyChecker.js';
 // REMOVED: multiModelImageService - fail-fast architecture, no SDXL fallback
 
+import { ContractGate, createContractGate } from './ContractGate.js';
 import { runConsistencyGate } from './crossViewConsistencyGate.js';
+import {
+  DesignContract,
+  createDesignContract,
+  isDeterministicPanel,
+  isStylised3DPanel,
+  PANEL_CATEGORIES,
+} from './DesignContract.js';
 import designHistoryService from './designHistoryService.js';
-import { validatePanelConsistency, validateMultiPanelConsistency } from './driftValidator.js';
 import { validateGeometryRenders } from './geometryControlValidator.js';
 import {
   planA1Panels,
@@ -86,13 +117,13 @@ import {
 import { orchestratePanelGeneration } from './panelOrchestrator.js';
 import { derivePanelSeedsFromDNA } from './seedDerivation.js';
 
-
 // Lazy import for geometry-first features (TypeScript dependencies)
 // import { generateMassingModel } from '../rings/ring4-3d/massingGenerator.js';
 
 import { runFullQAPipeline, getQASummaryForUI } from './qualityAssuranceIntegration.js';
 import normalizeDNA from './dnaNormalization.js';
 import dnaValidator from './dnaValidator.js';
+import { validatePanelConsistency, validateMultiPanelConsistency } from './driftValidator.js';
 import enhancedDesignDNAService from './enhancedDesignDNAService.js';
 import { buildGeometryModel, createSceneSpec } from './geometryBuilder.js';
 import { generateGeometryDNA } from './geometryReasoningService.js';
@@ -105,20 +136,12 @@ import twoPassDNAGenerator from './twoPassDNAGenerator.js';
 
 // Geometry-First gate - MANDATORY validation before panel generation
 // Ensures geometry is complete: floors populated, rooms > 0 per floor, valid footprint
-import { enforceGeometryFirstGate, extractGeometryStats } from '../validation/GeometryFirstGate.js';
 
 // Strict panel validator - fail-fast validation with non-empty, control-pack, and facade checks
-import StrictPanelValidator, { buildRepairPrompt } from '../validation/strictPanelValidator.js';
 
 // Debug run recorder - captures real runtime data during generation
 
 // Baseline render service - generates deterministic baselines before FLUX stylization
-import {
-  generateBaselineRenders,
-  storeBaselines,
-  BASELINE_VIEW_TYPES,
-  BASELINE_PIPELINE_VERSION,
-} from './BaselineRenderService.js';
 
 // Canonical Control Pack (CCP) - ensures ALL panels reference the SAME design
 
@@ -126,17 +149,8 @@ import {
 // CANONICAL BASELINE MODE: DesignContract + ContractGate
 // Ensures ALL panels reference the SAME canonical geometry baseline
 // =============================================================================
-import {
-  DesignContract,
-  createDesignContract,
-  isDeterministicPanel,
-  isStylised3DPanel,
-  PANEL_CATEGORIES,
-} from './DesignContract.js';
-import { ContractGate, createContractGate } from './ContractGate.js';
 
 // FIX: Import floor distributor to ensure proper room distribution across floors
-import { distributeRoomsToFloors } from '../spatial/floorDistributor.js';
 
 // FIX: Import TypologyIntegrityGuard for terrace vs detached selection preservation
 import {
@@ -161,12 +175,6 @@ import {
 // - GeometryConditioner: Generates depth/edge maps for FLUX img2img
 // - StyleProfile: Blends location (30%) and portfolio (70%) styles
 // - ConditionedImagePipeline: Unified generation with conditioning
-import {
-  initializePipeline,
-  generateA1Views,
-  buildEnhancedPrompt,
-  A1_VIEW_TYPES,
-} from '../pipeline/ConditionedImagePipeline.js';
 
 // DataPanelService - Generates deterministic SVG data panels (material_palette, climate_card)
 
@@ -177,15 +185,6 @@ import {
 // =============================================================================
 // StrictControlEnforcer: Ensures ALL panels have canonical control images
 // AutoCropService: Trims white margins from panel images before A1 composition
-import {
-  isStrictModeEnabled,
-  validateControlPack,
-  assertControlPackValid,
-  buildImg2ImgParams,
-  validateAndHandleBlank,
-  REQUIRED_CONTROL_PANELS,
-} from '../qa/StrictControlEnforcer.js';
-import { AutoCropService } from '../pipeline/AutoCropService.js';
 
 // Import SVG builders for PDE technical drawings
 
@@ -1374,10 +1373,17 @@ class DNAWorkflowOrchestrator {
           const styleDescriptors = generateStyleDescriptors(styleProfile);
 
           // 2.01.6: Store context for panel generation
+          // FIX: runGeometryPipeline returns floorPlans/elevations/sections at top level, NOT under outputs2D
+          const outputs2D = {
+            floorPlans: geometryResult.floorPlans || {},
+            elevations: geometryResult.elevations || {},
+            sections: geometryResult.sections || {},
+          };
+
           conditionedPipelineContext = {
             canonicalState,
             model: geometryResult.model,
-            outputs2D: geometryResult.outputs2D,
+            outputs2D,
             styleProfile,
             styleDescriptors,
             conditioningImages,
@@ -1395,11 +1401,14 @@ class DNAWorkflowOrchestrator {
           };
 
           // Store 2D SVG outputs for A1 composition
-          masterDNA.conditioned2DOutputs = geometryResult.outputs2D;
+          masterDNA.conditioned2DOutputs = outputs2D;
 
           logger.success('✅ Conditioned pipeline initialized');
+          const plansCount = Object.keys(outputs2D.floorPlans || {}).length;
+          const elevationsCount = Object.keys(outputs2D.elevations || {}).length;
+          const sectionsCount = Object.keys(outputs2D.sections || {}).length;
           logger.info(
-            `      2D outputs ready: ${Object.keys(geometryResult.outputs2D?.floorPlans || {}).length} plans, ${Object.keys(geometryResult.outputs2D?.elevations || {}).length} elevations`
+            `      2D outputs ready: ${plansCount} plans, ${elevationsCount} elevations, ${sectionsCount} sections`
           );
         } catch (conditionedError) {
           logger.warn(
@@ -2780,6 +2789,15 @@ ${prompt}`);
           ...(masterDNA.conditioned2DOutputs?.elevations || {}),
           ...(masterDNA.conditioned2DOutputs?.sections || {}),
         };
+
+        // PHASE 5 FIX: Add site plan capture as control image for site_diagram
+        // This ensures the site_diagram panel uses the real Google Maps capture
+        if (sitePlanAttachment && sitePlanAttachment.startsWith('data:')) {
+          geometryRenders.site_plan = sitePlanAttachment;
+          geometryRenders.site_diagram = sitePlanAttachment;
+          geometryRenders.site = sitePlanAttachment;
+          logger.info('   🗺️ Site map attached to CCP for site_diagram control');
+        }
 
         // Collect Meshy renders if available
         const meshyRenders = masterDNA.meshyControlImages || masterDNA.meshy3D?.renders || {};
@@ -5889,6 +5907,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       logger.info('✅ ========================================\n');
       reportProgress('finalizing', 'Completed', 100);
 
+      // TASK 4: Extract panelsByKey from compose response (includes coordinates)
+      const panelsByKey = compositionResult.panelsByKey || panelsMap;
+
       return {
         success: true,
         designId,
@@ -5896,6 +5917,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         masterDNA,
         panels: generatedPanels,
         panelMap: panelsMap,
+        // TASK 4: Include panelsByKey from compose API with coordinates
+        panelsByKey,
         composedSheetUrl: compositionResult.composedSheetUrl,
         coordinates: compositionResult.coordinates,
         geometryDNA: geometryDNA || masterDNA.geometry || null,
