@@ -53,7 +53,8 @@ class PipelineConfig:
     # Quality gates
     validate_assets: bool = True  # Check assets before Phase 4
     drift_check: bool = True  # Check Phase 2/3 drift
-    drift_threshold: float = 0.15  # Max allowed drift score (0.0-1.0)
+    drift_threshold: float = 0.65  # Minimum F1 score required (0.0-1.0)
+    drift_tolerance_px: int = 3  # Dilation tolerance in pixels
 
     # External tools
     blender_path: Optional[str] = None
@@ -76,6 +77,7 @@ class PipelineConfig:
             "validate_assets": self.validate_assets,
             "drift_check": self.drift_check,
             "drift_threshold": self.drift_threshold,
+            "drift_tolerance_px": self.drift_tolerance_px,
         }
 
 
@@ -133,6 +135,7 @@ class PipelineRunner:
         )
         self.drift_checker = DriftChecker(
             threshold=config.drift_threshold,
+            tolerance_px=config.drift_tolerance_px,
             verbose=config.verbose,
         )
 

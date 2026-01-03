@@ -129,9 +129,10 @@ Examples:
 
     # Quality gates
     parser.add_argument(
-        "--no-validate",
+        "--skip-validate", "--no-validate",
         action="store_true",
-        help="Skip asset validation before Phase 4",
+        dest="no_validate",
+        help="Skip all validation before Phase 4 (drift + assets)",
     )
     parser.add_argument(
         "--no-drift-check",
@@ -141,8 +142,14 @@ Examples:
     parser.add_argument(
         "--drift-threshold",
         type=float,
-        default=0.15,
-        help="Maximum allowed drift score (0.0-1.0, default: 0.15)",
+        default=0.65,
+        help="Minimum F1 score required for drift check (0.0-1.0, default: 0.65)",
+    )
+    parser.add_argument(
+        "--drift-tolerance-px",
+        type=int,
+        default=3,
+        help="Dilation tolerance in pixels for drift check (default: 3)",
     )
 
     # External tools
@@ -170,8 +177,9 @@ Examples:
         verbose=args.verbose,
         strict=args.strict,
         validate_assets=not args.no_validate,
-        drift_check=not args.no_drift_check,
+        drift_check=not args.no_drift_check and not args.no_validate,
         drift_threshold=args.drift_threshold,
+        drift_tolerance_px=args.drift_tolerance_px,
         blender_path=args.blender_path,
     )
 
