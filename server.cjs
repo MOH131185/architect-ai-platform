@@ -15,6 +15,7 @@ const geometryJobManager = require('./server/geometry/renderJobManager.cjs');
 const genarchJobManager = require('./server/genarch/genarchJobManager.cjs');
 const { buildComposeSheetUrl } = require('./server/utils/a1ComposePayload.cjs');
 const { resolveAiApiLimiterMax, resolveImageGenerationLimiterMax } = require('./server/utils/rateLimitConfig.cjs');
+const { genarchAuth, geometryAuth } = require('./server/middleware/apiKeyAuth.cjs');
 
 // Load env vars from the project root regardless of where the server is started from.
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
@@ -608,7 +609,7 @@ app.get('/api/proxy/image', handleImageProxy);
 app.get('/api/proxy-image', handleImageProxy);
 
 // Geometry-first rendering endpoints
-app.post('/api/render-geometry', aiApiLimiter, async (req, res) => {
+app.post('/api/render-geometry', aiApiLimiter, geometryAuth, async (req, res) => {
   try {
     const { designState, options = {}, waitForResult = true } = req.body || {};
     if (!designState) {
@@ -638,7 +639,7 @@ app.post('/api/render-geometry', aiApiLimiter, async (req, res) => {
   }
 });
 
-app.get('/api/render-geometry/:jobId', (req, res) => {
+app.get('/api/render-geometry/:jobId', geometryAuth, (req, res) => {
   const job = geometryJobManager.getJob(req.params.jobId);
   if (!job) {
     return res.status(404).json({ error: 'Job not found' });
@@ -2197,7 +2198,7 @@ function serializeGeometryJob(job) {
  * - skipPhase4: Skip A1 PDF assembly (default: false)
  * - waitForResult: Wait for job to complete (default: false)
  */
-app.post('/api/genarch/jobs', aiApiLimiter, async (req, res) => {
+app.post('/api/genarch/jobs', aiApiLimiter, genarchAuth, async (req, res) => {
   try {
     const {
       prompt,
@@ -2277,7 +2278,7 @@ app.post('/api/genarch/jobs', aiApiLimiter, async (req, res) => {
  * GET /api/genarch/jobs
  * List all jobs (optionally filtered by status)
  */
-app.get('/api/genarch/jobs', (req, res) => {
+app.get('/api/genarch/jobs', genarchAuth, (req, res) => {
   try {
     const { status } = req.query;
     const jobs = genarchJobManager.listJobs(status || null);
@@ -2301,7 +2302,7 @@ app.get('/api/genarch/jobs', (req, res) => {
  * GET /api/genarch/jobs/:jobId
  * Get job status and progress
  */
-app.get('/api/genarch/jobs/:jobId', (req, res) => {
+app.get('/api/genarch/jobs/:jobId', genarchAuth, (req, res) => {
   try {
     const { jobId } = req.params;
     const job = genarchJobManager.getJob(jobId);
@@ -2332,7 +2333,7 @@ app.get('/api/genarch/jobs/:jobId', (req, res) => {
  * DELETE /api/genarch/jobs/:jobId
  * Cancel a running job
  */
-app.delete('/api/genarch/jobs/:jobId', (req, res) => {
+app.delete('/api/genarch/jobs/:jobId', genarchAuth, (req, res) => {
   try {
     const { jobId } = req.params;
     const cancelled = genarchJobManager.cancelJob(jobId);
@@ -2371,7 +2372,7 @@ app.delete('/api/genarch/jobs/:jobId', (req, res) => {
  * GET /api/genarch/runs/:jobId/*
  * Serve artifacts from a job's run folder
  */
-app.get('/api/genarch/runs/:jobId/*', (req, res) => {
+app.get('/api/genarch/runs/:jobId/*', genarchAuth, (req, res) => {
   try {
     const { jobId } = req.params;
     const filePath = req.params[0]; // Captures everything after :jobId/

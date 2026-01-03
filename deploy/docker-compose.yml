@@ -1,0 +1,84 @@
+# ArchitectAI Genarch Pipeline - Docker Compose
+# For local testing before deploying to RunPod
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.yml up -d
+#   docker compose -f deploy/docker-compose.yml logs -f genarch
+#   docker compose -f deploy/docker-compose.yml down
+
+version: '3.8'
+
+services:
+  genarch:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: archiaisolution-genarch
+    restart: unless-stopped
+
+    # GPU support (requires nvidia-docker2)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    ports:
+      - "3001:3001"
+
+    volumes:
+      # Persist generated runs
+      - ../runs:/app/runs
+      # Persist QA results
+      - ../qa_results:/app/qa_results
+      # Logs
+      - ../logs:/app/logs
+
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      # API Keys (set in .env file)
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+      - OPENAI_REASONING_API_KEY=${OPENAI_REASONING_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Genarch Auth
+      - GENARCH_API_KEY=${GENARCH_API_KEY}
+      - GEOMETRY_API_KEY=${GEOMETRY_API_KEY:-}
+      - API_KEY_AUTH_ENABLED=true
+      # CORS - add your domains
+      - ALLOWED_ORIGINS=http://localhost:3000,https://www.archiaisolution.pro,https://archiaisolution.pro
+      # Genarch config
+      - GENARCH_PYTHON_PATH=/app/venv/bin/python
+      - GENARCH_RUNS_DIR=/app/runs
+      - BLENDER_PATH=/usr/bin/blender
+      - GENARCH_MAX_JOB_AGE_HOURS=24
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Nginx reverse proxy with SSL
+  # Uncomment if you need HTTPS locally
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: archiaisolution-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - genarch

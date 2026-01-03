@@ -1,0 +1,56 @@
+# ArchitectAI Genarch Pipeline - Systemd Service
+# For RunPod or any Linux VPS
+#
+# Installation:
+#   sudo cp deploy/systemd/genarch.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable genarch
+#   sudo systemctl start genarch
+#
+# Management:
+#   sudo systemctl status genarch
+#   sudo systemctl restart genarch
+#   sudo journalctl -u genarch -f
+
+[Unit]
+Description=ArchitectAI Genarch Pipeline API Server
+Documentation=https://github.com/your-org/architect-ai-platform
+After=network.target
+
+[Service]
+Type=simple
+User=genarch
+Group=genarch
+WorkingDirectory=/opt/genarch
+
+# Environment file (create from .env.example)
+EnvironmentFile=/opt/genarch/.env
+
+# Node.js server
+ExecStart=/usr/bin/node /opt/genarch/server.cjs
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/genarch/runs /opt/genarch/qa_results /opt/genarch/logs
+
+# Resource limits
+LimitNOFILE=65535
+MemoryMax=8G
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=genarch
+
+[Install]
+WantedBy=multi-user.target
