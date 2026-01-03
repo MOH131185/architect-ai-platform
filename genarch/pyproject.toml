@@ -39,8 +39,11 @@ phase4 = [
 draw = [
     "matplotlib>=3.7.0",
 ]
+validation = [
+    "opencv-python>=4.8.0",
+]
 all = [
-    "genarch[phase4,draw,mesh]",
+    "genarch[phase4,draw,mesh,validation]",
 ]
 
 [project.scripts]

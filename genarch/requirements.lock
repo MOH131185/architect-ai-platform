@@ -1,0 +1,58 @@
+# genarch - Pinned Dependencies
+# Generated: 2026-01-03
+# Python: 3.10+
+#
+# Install: pip install -r requirements.lock
+# Or use: pip install -e ".[all]" for development
+
+# ============================================================
+# Core Dependencies (required)
+# ============================================================
+ezdxf==1.4.3              # DXF file export
+trimesh==4.10.1           # 3D mesh operations
+numpy==2.4.0              # Numerical operations
+shapely==2.1.2            # Polygon geometry
+networkx==3.6.1           # Graph algorithms (room connectivity)
+
+# ============================================================
+# Phase 4: A1 PDF Assembly
+# ============================================================
+reportlab==4.4.7          # PDF generation
+svglib==1.6.0             # SVG to ReportLab conversion
+Pillow==12.1.0            # Image processing
+
+# ============================================================
+# Validation (optional - for drift checking)
+# ============================================================
+# opencv-python==4.10.0   # Edge detection for drift check
+                          # Uncomment if using --drift-check with Phase 3
+
+# ============================================================
+# Development Dependencies
+# ============================================================
+pytest==9.0.2             # Testing framework
+pytest-cov==7.0.0         # Coverage reporting
+pypdf==6.5.0              # PDF validation in tests
+# black==24.10.0          # Code formatting
+# mypy==1.13.0            # Type checking
+# ruff==0.8.4             # Linting
+
+# ============================================================
+# Optional: Mesh Visualization
+# ============================================================
+# pyglet<2                # 3D mesh preview
+# manifold3d>=2.0.0       # Mesh boolean operations
+
+# ============================================================
+# Optional: Drawing/Plotting
+# ============================================================
+matplotlib==3.10.8        # For ezdxf[draw] DXF to SVG conversion
+
+# ============================================================
+# Transitive Dependencies (auto-installed)
+# ============================================================
+# These are installed automatically as dependencies:
+# - contourpy, cycler, kiwisolver (matplotlib)
+# - lxml, cssselect2, tinycss2 (svglib)
+# - scipy (trimesh mesh operations)
+# - PyMuPDF, PySide6 (ezdxf[draw])
