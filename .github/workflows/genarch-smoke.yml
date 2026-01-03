@@ -40,12 +40,25 @@ jobs:
           cd genarch
           pip install -e ".[dev]"
 
+      - name: Run environment checker
+        run: |
+          python scripts/genarch/check_env.py
+        continue-on-error: true  # genarch not installed in editable mode yet
+
       - name: Verify imports
         run: |
           python -c "import genarch; print(f'genarch {genarch.__version__}')"
           python -c "from genarch.pipeline import PipelineRunner; print('PipelineRunner OK')"
-          python -c "from genarch.validation import AssetValidator, DriftChecker; print('Validators OK')"
+          python -c "from genarch.validation import AssetValidator, DriftChecker, DriftMetrics; print('Validators OK')"
           python -c "from genarch.phase4 import A1SheetAssembler; print('Phase4 OK')"
+
+      - name: Verify CLI help outputs
+        run: |
+          cd genarch
+          python -m genarch --help
+          python -m genarch.pipeline --help
+          python -m genarch.validation --help
+          python -m genarch.phase4 --help
 
       - name: Check for syntax errors
         run: |
