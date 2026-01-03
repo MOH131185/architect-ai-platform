@@ -225,7 +225,8 @@ function runJob(job, { waitForResult = true } = {}) {
   args.push('--seed', String(job.options.seed));
 
   if (job.options.skipPhase2) args.push('--skip-phase2');
-  if (job.options.skipPhase3) args.push('--skip-phase3');
+  // Phase 3 is skipped by default; pass --phase3 to ENABLE it
+  if (!job.options.skipPhase3) args.push('--phase3');
   if (job.options.skipPhase4) args.push('--skip-phase4');
   if (job.options.strict) args.push('--strict');
   if (job.options.verbose) args.push('-v');
