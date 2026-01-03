@@ -1,7 +1,11 @@
 """
 Pipeline Runner - Orchestrates all genarch phases.
 
-Runs Phase 1 → 2 → 3 → 4 with caching and manifest tracking.
+Runs Phase 1 → 2 → 3 → 4 with caching, validation, and manifest tracking.
+
+Quality Gates:
+- Asset validation: Ensures required files exist before Phase 4
+- Drift check: Validates Phase 3 renders match Phase 2 geometry
 """
 
 import json
@@ -15,6 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from .cache import PipelineCache
+from ..validation import AssetValidator, DriftChecker
 
 
 @dataclass
@@ -45,6 +50,11 @@ class PipelineConfig:
     verbose: bool = False
     strict: bool = False
 
+    # Quality gates
+    validate_assets: bool = True  # Check assets before Phase 4
+    drift_check: bool = True  # Check Phase 2/3 drift
+    drift_threshold: float = 0.15  # Max allowed drift score (0.0-1.0)
+
     # External tools
     blender_path: Optional[str] = None
     python_path: Optional[str] = None
@@ -63,6 +73,9 @@ class PipelineConfig:
             "force": self.force,
             "verbose": self.verbose,
             "strict": self.strict,
+            "validate_assets": self.validate_assets,
+            "drift_check": self.drift_check,
+            "drift_threshold": self.drift_threshold,
         }
 
 
@@ -108,9 +121,20 @@ class PipelineRunner:
         # Track results
         self.results: Dict[str, Any] = {
             "phases": {},
+            "validation": {},
             "errors": [],
             "warnings": [],
         }
+
+        # Initialize validators
+        self.asset_validator = AssetValidator(
+            strict=config.strict,
+            verbose=config.verbose,
+        )
+        self.drift_checker = DriftChecker(
+            threshold=config.drift_threshold,
+            verbose=config.verbose,
+        )
 
     def _log(self, message: str, phase: Optional[str] = None) -> None:
         """Log message if verbose."""
@@ -174,6 +198,26 @@ class PipelineRunner:
             if not self._run_phase3():
                 success = False
                 self._warn("Phase 3 failed, continuing without AI perspective", "3")
+
+        # Drift validation (between Phase 2 and Phase 3)
+        if self.config.drift_check and not self.config.skip_phase3:
+            drift_passed = self._run_drift_check()
+            if not drift_passed:
+                if self.config.strict:
+                    self._error("Drift check failed, aborting", "validation")
+                    return False
+                else:
+                    self._warn("Drift check failed, continuing with warnings", "validation")
+
+        # Asset validation (before Phase 4)
+        if self.config.validate_assets and not self.config.skip_phase4:
+            assets_valid = self._run_asset_validation()
+            if not assets_valid:
+                if self.config.strict:
+                    self._error("Asset validation failed, aborting Phase 4", "validation")
+                    return False
+                else:
+                    self._warn("Asset validation has warnings", "validation")
 
         # Phase 4: A1 PDF assembly
         if not self.config.skip_phase4:
@@ -534,6 +578,92 @@ class PipelineRunner:
         self.results["phases"]["3"] = {"status": "skipped", "reason": "not_implemented"}
         return False
 
+    def _run_drift_check(self) -> bool:
+        """
+        Run drift validation between Phase 2 edges and Phase 3 renders.
+
+        This validates that AI-generated renders (Phase 3) match the
+        geometry from ControlNet inputs (Phase 2).
+
+        Returns:
+            True if drift is within threshold
+        """
+        self._log("Running drift check (Phase 2 vs Phase 3)", "validation")
+
+        try:
+            report = self.drift_checker.check_all(self.run_path)
+
+            # Save report
+            report_path = self.run_path / "drift_report.json"
+            report.save(report_path)
+            self._log(f"Drift report saved: {report_path}", "validation")
+
+            # Store results
+            self.results["validation"]["drift"] = {
+                "passed": report.passed,
+                "summary": report.summary,
+                "report_path": str(report_path),
+            }
+
+            if report.passed:
+                self._log(
+                    f"Drift check PASSED: {report.summary['passed']}/{report.summary['checked']} views OK",
+                    "validation"
+                )
+            else:
+                failed_views = [r.view_name for r in report.results if not r.passed]
+                self._warn(
+                    f"Drift check FAILED: views {failed_views} exceeded threshold {self.config.drift_threshold}",
+                    "validation"
+                )
+
+            return report.passed
+
+        except Exception as e:
+            self._error(f"Drift check error: {e}", "validation")
+            self.results["validation"]["drift"] = {"passed": False, "error": str(e)}
+            return False
+
+    def _run_asset_validation(self) -> bool:
+        """
+        Validate that required assets exist before Phase 4.
+
+        Returns:
+            True if all required assets exist
+        """
+        self._log("Validating assets for Phase 4", "validation")
+
+        try:
+            result = self.asset_validator.validate_for_phase4(self.run_path)
+
+            # Save report
+            report_path = self.run_path / "asset_report.json"
+            result.save(report_path)
+
+            # Store results
+            self.results["validation"]["assets"] = {
+                "passed": result.passed,
+                "errors": result.errors,
+                "warnings": result.warnings,
+                "summary": result.summary,
+            }
+
+            if result.passed:
+                self._log("Asset validation PASSED", "validation")
+            else:
+                for err in result.errors:
+                    self._error(err, "validation")
+
+            for warn in result.warnings:
+                self._warn(warn, "validation")
+
+            return result.passed
+
+        except Exception as e:
+            self._error(f"Asset validation error: {e}", "validation")
+            self.results["validation"]["assets"] = {"passed": False, "error": str(e)}
+            return False
+
     def _run_phase4(self) -> bool:
         """
         Run Phase 4: A1 PDF assembly.
@@ -629,6 +759,7 @@ class PipelineRunner:
             "duration_seconds": (end_time - start_time).total_seconds(),
             "config": self.config.to_dict(),
             "phases": self.results["phases"],
+            "validation": self.results.get("validation", {}),
             "errors": self.results["errors"],
             "warnings": self.results["warnings"],
             "outputs": {
