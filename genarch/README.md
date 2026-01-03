@@ -1,6 +1,38 @@
 # genarch - Generative Architecture Floor Plan Generator
 
-A deterministic Python package for generating floor plans (DXF) and 3D meshes (GLB/OBJ) from architectural constraints.
+A deterministic Python package for generating floor plans (DXF) and 3D meshes (GLB/OBJ) from architectural constraints, with end-to-end pipeline support for print-ready A1 PDF sheets.
+
+## One-Command Pipeline
+
+Generate a complete architectural package from a natural language prompt:
+
+```bash
+# Install all dependencies
+pip install -e ".[phase4]"
+
+# Generate floor plan + Blender renders + A1 PDF in one command
+python -m genarch.pipeline --prompt "modern minimalist villa 200sqm" --out runs/villa_001
+
+# Or from a constraints file
+python -m genarch.pipeline --constraints constraints.example.json --out runs/villa_001
+```
+
+**Output:**
+
+```
+runs/villa_001/
+├── plan.json           # Floor plan data
+├── plan.dxf            # Vector floor plan (AutoCAD)
+├── model.glb           # 3D mesh
+├── phase2/             # Blender ControlNet renders
+│   ├── elevation_N_clay.png
+│   ├── section_AA_clay.png
+│   └── hero_perspective_clay.png
+├── phase4/
+│   ├── A1_sheet.pdf    # Print-ready A1 PDF (841×594mm)
+│   └── sheet_manifest.json
+└── pipeline_manifest.json
+```
 
 ## Features
 
@@ -158,6 +190,34 @@ ruff check .
 mypy genarch
 ```
 
+## Pipeline Options
+
+```bash
+# Full pipeline with caching (skip unchanged phases)
+python -m genarch.pipeline --prompt "villa 200sqm" --out runs/villa
+
+# Force re-run all phases
+python -m genarch.pipeline --prompt "villa 200sqm" --out runs/villa --force
+
+# Skip Blender rendering (faster, no Phase 2)
+python -m genarch.pipeline --prompt "villa 200sqm" --out runs/villa --skip-phase2
+
+# Custom seed for reproducibility
+python -m genarch.pipeline --prompt "villa 200sqm" --out runs/villa --seed 123
+
+# Verbose output
+python -m genarch.pipeline --prompt "villa 200sqm" --out runs/villa -v
+```
+
+### Pipeline Phases
+
+| Phase | Command                    | Description                     |
+| ----- | -------------------------- | ------------------------------- |
+| 1     | `python -m genarch`        | Floor plan + 3D mesh generation |
+| 2     | Blender headless           | ControlNet snapshot rendering   |
+| 3     | (future)                   | AI perspective generation       |
+| 4     | `python -m genarch.phase4` | A1 PDF sheet assembly           |
+
 ## Architecture
 
 ```
@@ -166,7 +226,10 @@ genarch/
 ├── generator/        # Generation algorithms (BSP, adjacency, openings)
 ├── validator/        # Validation (geometry, connectivity, UK regs)
 ├── exporters/        # Export formats (DXF, mesh, JSON)
-└── utils/            # Utilities (geometry, units, IDs, random)
+├── utils/            # Utilities (geometry, units, IDs, random)
+├── pipeline/         # End-to-end orchestration with caching
+├── phase4/           # A1 PDF sheet assembly
+└── tests/            # Unit and smoke tests
 ```
 
 ## License

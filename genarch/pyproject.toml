@@ -25,6 +25,7 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "pypdf>=3.0.0",
 ]
 mesh = [
     "pyglet<2",
@@ -37,6 +38,9 @@ phase4 = [
 ]
 draw = [
     "matplotlib>=3.7.0",
+]
+all = [
+    "genarch[phase4,draw,mesh]",
 ]
 
 [project.scripts]
