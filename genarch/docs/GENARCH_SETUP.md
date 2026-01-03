@@ -66,6 +66,35 @@ python -c "import genarch; print(genarch.__version__)"
 
 # Run quick test
 python -m genarch --help
+
+# Run environment checker (validates all dependencies)
+python scripts/genarch/check_env.py
+
+# With Blender check
+python scripts/genarch/check_env.py --phase2
+
+# Check all (including ComfyUI)
+python scripts/genarch/check_env.py --all
+```
+
+### Dependency Lock Files
+
+The project includes both pinned and unpinned dependency files:
+
+```bash
+# Install from pinned versions (recommended for reproducibility)
+pip install -r requirements.lock
+
+# Install from unpinned versions (for development)
+pip install -r requirements.in
+
+# Install dev dependencies
+pip install -r requirements-dev.lock
+
+# Regenerate lock files (requires pip-tools)
+pip install pip-tools
+pip-compile requirements.in -o requirements.lock
+pip-compile requirements-dev.in -o requirements-dev.lock
 ```
 
 ---
@@ -429,6 +458,57 @@ export COMFYUI_URL="http://localhost:8188"
 
 # Add to ~/.bashrc or ~/.zshrc for persistence
 echo 'export BLENDER_PATH="/path/to/blender"' >> ~/.bashrc
+```
+
+---
+
+## Smoke Tests & Validation
+
+Quick verification commands that don't require Blender or ComfyUI:
+
+```bash
+# Verify CLI help (no deps required)
+python -m genarch --help
+python -m genarch.pipeline --help
+python -m genarch.validation --help
+python -m genarch.phase4 --help
+
+# Run environment checker
+python scripts/genarch/check_env.py
+
+# Phase 1 only (no external deps)
+python -m genarch.pipeline \
+    --prompt "test house 100sqm" \
+    --out runs/smoke_test \
+    --skip-phase2 \
+    --skip-phase4 \
+    -v
+
+# Phase 1 + Phase 4 (no Blender)
+python -m genarch.pipeline \
+    --prompt "test house 100sqm" \
+    --out runs/smoke_test \
+    --skip-phase2 \
+    -v
+
+# Validate existing run
+python -m genarch.validation --run runs/smoke_test --assets -v
+```
+
+### Expected Output Structure
+
+```
+runs/smoke_test/
+├── constraints.json      # Auto-generated from prompt
+├── plan.json             # Floor plan data
+├── plan.dxf              # Vector floor plan
+├── model.glb             # 3D mesh (if scipy installed)
+├── model.obj             # 3D mesh alternate format
+├── run.json              # Run metadata
+├── pipeline_manifest.json
+└── phase4/               # If --skip-phase4 not set
+    ├── A1_sheet.pdf
+    └── sheet_manifest.json
 ```
 
 ---

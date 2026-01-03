@@ -22,20 +22,14 @@ svglib==1.6.0             # SVG to ReportLab conversion
 Pillow==12.1.0            # Image processing
 
 # ============================================================
-# Validation (optional - for drift checking)
+# Validation (drift checking with F1/precision/recall)
 # ============================================================
-# opencv-python==4.10.0   # Edge detection for drift check
-                          # Uncomment if using --drift-check with Phase 3
+opencv-python==4.10.0.84  # Edge detection for drift validation
 
 # ============================================================
-# Development Dependencies
+# Mesh Operations (required for model.glb export)
 # ============================================================
-pytest==9.0.2             # Testing framework
-pytest-cov==7.0.0         # Coverage reporting
-pypdf==6.5.0              # PDF validation in tests
-# black==24.10.0          # Code formatting
-# mypy==1.13.0            # Type checking
-# ruff==0.8.4             # Linting
+scipy==1.14.1             # Spatial algorithms, mesh ops
 
 # ============================================================
 # Optional: Mesh Visualization
