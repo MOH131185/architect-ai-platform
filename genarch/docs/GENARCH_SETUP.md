@@ -506,6 +506,40 @@ cat runs/run_001/drift_report.json
 
 ---
 
+## REST API Integration
+
+For programmatic access, genarch provides a REST API via the Express server:
+
+```bash
+# Start the Express server (port 3001)
+npm run server
+
+# Create a job
+curl -X POST http://localhost:3001/api/genarch/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "modern villa 200sqm", "seed": 42}'
+
+# Poll for status
+curl http://localhost:3001/api/genarch/jobs/<job_id>
+
+# Download A1 PDF when complete
+curl -O http://localhost:3001/api/genarch/runs/<job_id>/phase4/A1_sheet.pdf
+```
+
+**API Endpoints:**
+
+| Method | Endpoint                  | Description            |
+| ------ | ------------------------- | ---------------------- |
+| POST   | `/api/genarch/jobs`       | Create and start a job |
+| GET    | `/api/genarch/jobs`       | List all jobs          |
+| GET    | `/api/genarch/jobs/:id`   | Get job status         |
+| DELETE | `/api/genarch/jobs/:id`   | Cancel a job           |
+| GET    | `/api/genarch/runs/:id/*` | Download artifacts     |
+
+See `docs/GENARCH_API.md` for complete API documentation.
+
+---
+
 ## Version Compatibility Matrix
 
 | genarch | Python | Blender | ComfyUI | Notes           |
