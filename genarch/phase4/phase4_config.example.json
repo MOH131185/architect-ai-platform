@@ -1,0 +1,98 @@
+{
+  "$schema": "https://genarch.dev/schemas/phase4-config-v1.json",
+  "version": "4.0.0",
+  "description": "Phase 4 A1 Sheet Assembler configuration",
+
+  "page": {
+    "format": "A1",
+    "orientation": "landscape",
+    "description": "A1 landscape: 841mm × 594mm (2384 × 1684 points)"
+  },
+
+  "margins": {
+    "margin_mm": 15,
+    "gutter_mm": 8,
+    "description": "Page margins and panel gutters in millimeters"
+  },
+
+  "panels": {
+    "floor_plan": {
+      "width_mm": 460,
+      "height_mm": 480,
+      "position": "left",
+      "content": "vector",
+      "description": "Vector floor plan with scale bar and north arrow"
+    },
+    "perspective": {
+      "width_mm": 340,
+      "height_mm": 200,
+      "position": "top-right",
+      "content": "raster",
+      "description": "Perspective render from Phase 3 or Phase 2 fallback"
+    },
+    "north_elevation": {
+      "width_mm": 340,
+      "height_mm": 140,
+      "position": "middle-right",
+      "content": "raster",
+      "description": "North elevation from Phase 2"
+    },
+    "section": {
+      "width_mm": 340,
+      "height_mm": 140,
+      "position": "bottom-right",
+      "content": "raster",
+      "description": "Section A-A from Phase 2"
+    },
+    "title_block": {
+      "width_mm": 811,
+      "height_mm": 40,
+      "position": "bottom",
+      "content": "metadata",
+      "description": "Project title, client, scale, date, area, seed"
+    }
+  },
+
+  "scales": {
+    "architectural": [50, 75, 100, 150, 200],
+    "default": 100,
+    "auto_select": true,
+    "description": "Architectural scales (1:N)"
+  },
+
+  "quality": {
+    "dpi_threshold": 300,
+    "dpi_warning": 200,
+    "description": "DPI thresholds for raster quality warnings"
+  },
+
+  "asset_patterns": {
+    "perspective": [
+      "phase3/views/perspective/perspective_final.png",
+      "phase3/perspective_final.png",
+      "phase2/hero_perspective_canny.png",
+      "phase2/hero_perspective_clay.png"
+    ],
+    "north_elevation": [
+      "phase2/views/north_elev/lineart.png",
+      "phase2/views/north_elev/clay.png",
+      "phase2/elevation_N_canny.png",
+      "phase2/elevation_N_clay.png"
+    ],
+    "section": [
+      "phase2/views/section_a/lineart.png",
+      "phase2/views/section_a/clay.png",
+      "phase2/section_AA_canny.png",
+      "phase2/section_AA_clay.png"
+    ],
+    "floor_plan": ["plan.svg", "plan.dxf"],
+    "description": "Asset resolution patterns in order of preference"
+  },
+
+  "fallback": {
+    "generate_svg_from_plan_json": true,
+    "rasterize_dxf_as_last_resort": true,
+    "show_placeholders": true,
+    "description": "Fallback behavior when assets are missing"
+  }
+}

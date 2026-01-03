@@ -30,6 +30,14 @@ mesh = [
     "pyglet<2",
     "manifold3d>=2.0.0",
 ]
+phase4 = [
+    "reportlab>=4.0.0",
+    "svglib>=1.5.0",
+    "Pillow>=10.0.0",
+]
+draw = [
+    "matplotlib>=3.7.0",
+]
 
 [project.scripts]
 genarch = "genarch.__main__:main"
