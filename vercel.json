@@ -59,6 +59,22 @@
     {
       "source": "/api/a1/compose",
       "destination": "/api/a1/compose.js"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/health.js"
+    },
+    {
+      "source": "/api/genarch/jobs",
+      "destination": "/api/genarch/jobs/index.js"
+    },
+    {
+      "source": "/api/genarch/jobs/:jobId",
+      "destination": "/api/genarch/jobs/[jobId].js"
+    },
+    {
+      "source": "/api/genarch/runs/:path*",
+      "destination": "/api/genarch/runs/[...params].js"
     }
   ],
   "headers": [
