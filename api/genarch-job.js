@@ -1,79 +1,84 @@
 /**
  * Genarch Pipeline Job API - Vercel Serverless Function
  *
- * NOTE: This is a simplified endpoint for Vercel deployment.
- * For production use with long-running jobs, use the Express server (server.cjs).
- *
- * In development mode, this proxies to the Express server.
- * In production (Vercel), this returns an error since genarch requires
- * Python and long-running processes that exceed serverless limits.
- *
- * For production deployment of genarch:
- * - Deploy genarch as a separate Python service (Cloud Run, EC2, etc.)
- * - Or use a queue-based architecture (SQS, Cloud Tasks)
+ * Proxies requests to the genarch service running on RunPod.
+ * Configuration:
+ *   - RUNPOD_GENARCH_URL: Base URL of the RunPod genarch service
+ *   - GENARCH_API_KEY: API key for authenticating with genarch service
  */
 
 export default async function handler(req, res) {
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  // Check if we're in development mode
-  const isDev = process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1';
+  const RUNPOD_URL = process.env.RUNPOD_GENARCH_URL;
+  const GENARCH_KEY = process.env.GENARCH_API_KEY;
 
-  if (!isDev) {
-    // Production (Vercel) - Cannot run genarch pipeline
-    return res.status(501).json({
+  // Check if RunPod is configured
+  if (!RUNPOD_URL) {
+    return res.status(503).json({
       success: false,
-      error: 'NOT_IMPLEMENTED_IN_SERVERLESS',
+      error: "GENARCH_NOT_CONFIGURED",
       message:
-        'The genarch pipeline requires Python and cannot run in Vercel serverless functions.',
-      hint: 'For development, use npm run server to start the Express server. For production, deploy genarch as a separate Python service.',
-      documentation: 'See docs/GENARCH_SETUP.md for deployment options.',
+        "The genarch service is not configured. Set RUNPOD_GENARCH_URL environment variable.",
+      hint: "Deploy genarch to RunPod and configure the URL in Vercel environment variables.",
     });
   }
-
-  // Development mode - Proxy to Express server
-  const EXPRESS_URL = process.env.EXPRESS_SERVER_URL || 'http://localhost:3001';
 
   try {
     // Build the proxy URL
     const { jobId } = req.query;
-    let url = `${EXPRESS_URL}/api/genarch/jobs`;
+    let url = `${RUNPOD_URL}/api/genarch/jobs`;
 
     if (jobId) {
-      url = `${EXPRESS_URL}/api/genarch/jobs/${jobId}`;
+      url = `${RUNPOD_URL}/api/genarch/jobs/${jobId}`;
     }
 
-    // Forward the request
-    const fetchOptions = {
-      method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    // Forward the request with authentication
+    const headers = {
+      "Content-Type": "application/json",
     };
 
-    if (req.method === 'POST' && req.body) {
+    if (GENARCH_KEY) {
+      headers["Authorization"] = `Bearer ${GENARCH_KEY}`;
+    }
+
+    const fetchOptions = {
+      method: req.method,
+      headers,
+    };
+
+    if (req.method === "POST" && req.body) {
       fetchOptions.body = JSON.stringify(req.body);
     }
 
+    console.log(`[Genarch Proxy] ${req.method} ${url}`);
     const response = await fetch(url, fetchOptions);
-    const data = await response.json();
 
-    return res.status(response.status).json(data);
+    // Handle non-JSON responses
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const data = await response.json();
+      return res.status(response.status).json(data);
+    } else {
+      const text = await response.text();
+      return res.status(response.status).send(text);
+    }
   } catch (error) {
-    console.error('[Genarch Proxy] Error:', error.message);
+    console.error("[Genarch Proxy] Error:", error.message);
 
     return res.status(503).json({
       success: false,
-      error: 'EXPRESS_SERVER_UNAVAILABLE',
-      message: 'Could not connect to Express server. Run npm run server to start it.',
+      error: "GENARCH_SERVICE_UNAVAILABLE",
+      message: "Could not connect to the genarch service on RunPod.",
       details: error.message,
+      hint: "Check that the RunPod pod is running and the URL is correct.",
     });
   }
 }
