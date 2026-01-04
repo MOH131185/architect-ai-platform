@@ -6,10 +6,9 @@
  * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-import secureApiClient from './secureApiClient.js';
-import materialDetectionService from './materialDetectionService.js';
-import logger from '../utils/logger.js';
-
+import secureApiClient from "./secureApiClient.js";
+import materialDetectionService from "./materialDetectionService.js";
+import logger from "../utils/logger.js";
 
 class EnhancedPortfolioService {
   constructor() {
@@ -21,41 +20,50 @@ class EnhancedPortfolioService {
    * Analyze portfolio (PDF or images) to extract architectural style with material detection
    */
   async analyzePortfolio(portfolioFiles, locationContext) {
-
     try {
-      logger.info('📁 Analyzing portfolio:', portfolioFiles.length, 'files');
+      logger.info("📁 Analyzing portfolio:", portfolioFiles.length, "files");
 
       // Convert files to base64 images
       const images = await this.processPortfolioFiles(portfolioFiles);
-      logger.info('✅ Processed', images.length, 'images from portfolio');
+      logger.info("✅ Processed", images.length, "images from portfolio");
 
       if (images.length === 0) {
-        logger.warn('No images extracted from portfolio');
+        logger.warn("No images extracted from portfolio");
         return this.getFallbackPortfolioAnalysis(locationContext);
       }
 
       // Analyze with GPT-4 Vision
-      const visionAnalysis = await this.analyzeWithVision(images, locationContext);
-      logger.success(' Vision analysis complete');
+      const visionAnalysis = await this.analyzeWithVision(
+        images,
+        locationContext,
+      );
+      logger.success(" Vision analysis complete");
 
       // Enhanced material detection using materialDetectionService
-      const materialAnalysis = await this.enhancedMaterialAnalysis(images, visionAnalysis, locationContext);
-      logger.success(' Material detection complete');
+      const materialAnalysis = await this.enhancedMaterialAnalysis(
+        images,
+        visionAnalysis,
+        locationContext,
+      );
+      logger.success(" Material detection complete");
 
       // Combine analyses with confidence scoring
-      const combinedAnalysis = this.combineAnalyses(visionAnalysis, materialAnalysis, locationContext);
-      logger.success(' Portfolio analysis complete with confidence scores');
+      const combinedAnalysis = this.combineAnalyses(
+        visionAnalysis,
+        materialAnalysis,
+        locationContext,
+      );
+      logger.success(" Portfolio analysis complete with confidence scores");
 
       return {
         success: true,
         ...combinedAnalysis,
         imageCount: images.length,
         timestamp: new Date().toISOString(),
-        analysisMethod: 'enhanced-vision-material'
+        analysisMethod: "enhanced-vision-material",
       };
-
     } catch (error) {
-      logger.error('Portfolio analysis error:', error);
+      logger.error("Portfolio analysis error:", error);
       return this.getFallbackPortfolioAnalysis(locationContext);
     }
   }
@@ -68,22 +76,22 @@ class EnhancedPortfolioService {
 
     for (const file of files) {
       try {
-        if (file.type === 'application/pdf') {
+        if (file.type === "application/pdf") {
           // Handle PDF - extract first few pages as images
           const pdfImages = await this.extractImagesFromPDF(file);
           images.push(...pdfImages);
-        } else if (file.type.startsWith('image/')) {
+        } else if (file.type.startsWith("image/")) {
           // Handle image files
           const base64 = await this.fileToBase64(file);
           images.push({
-            type: 'image',
+            type: "image",
             data: base64,
             mimeType: file.type,
-            name: file.name
+            name: file.name,
           });
         }
       } catch (error) {
-        logger.error('Error processing file:', file.name, error);
+        logger.error("Error processing file:", file.name, error);
       }
     }
 
@@ -101,10 +109,13 @@ class EnhancedPortfolioService {
       reader.onload = async (e) => {
         try {
           // Compress image to reduce payload size
-          const compressed = await this.compressImage(e.target.result, file.type);
+          const compressed = await this.compressImage(
+            e.target.result,
+            file.type,
+          );
           resolve(compressed);
         } catch (error) {
-          logger.warn('Image compression failed, using original:', error);
+          logger.warn("Image compression failed, using original:", error);
           resolve(e.target.result);
         }
       };
@@ -133,14 +144,14 @@ class EnhancedPortfolioService {
           height = MAX_SIZE;
         }
 
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
 
         // Compress to JPEG with 0.7 quality
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        const compressed = canvas.toDataURL("image/jpeg", 0.7);
         resolve(compressed);
       };
       img.onerror = () => resolve(dataUrl); // Fallback to original
@@ -154,7 +165,7 @@ class EnhancedPortfolioService {
   async extractImagesFromPDF(pdfFile) {
     try {
       // Use pdfjs-dist for browser-based PDF rendering
-      const pdfjsLib = await import('pdfjs-dist/build/pdf');
+      const pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
 
       // Set worker path - use local copy from public folder (v5.4.296)
       if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -181,25 +192,25 @@ class EnhancedPortfolioService {
 
           // Create canvas for rendering
           const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for better quality
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
           canvas.width = viewport.width;
           canvas.height = viewport.height;
 
           // Render PDF page to canvas
           await page.render({
             canvasContext: context,
-            viewport: viewport
+            viewport: viewport,
           }).promise;
 
           // Convert canvas to compressed JPEG (0.7 quality for balance between size and quality)
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
 
           images.push({
-            type: 'image',
+            type: "image",
             data: dataUrl,
-            mimeType: 'image/jpeg',
-            name: `${pdfFile.name}_page_${pageNum}.jpg`
+            mimeType: "image/jpeg",
+            name: `${pdfFile.name}_page_${pageNum}.jpg`,
           });
 
           logger.success(` Extracted page ${pageNum} from PDF`);
@@ -209,16 +220,19 @@ class EnhancedPortfolioService {
       }
 
       if (images.length > 0) {
-        logger.success(` Successfully extracted ${images.length} pages from PDF`);
+        logger.success(
+          ` Successfully extracted ${images.length} pages from PDF`,
+        );
       } else {
-        logger.warn('⚠️  No images extracted from PDF');
+        logger.warn("⚠️  No images extracted from PDF");
       }
 
       return images;
-
     } catch (error) {
-      logger.error('❌ PDF extraction error:', error);
-      logger.warn('⚠️  PDF processing failed. Please upload JPG/PNG images directly.');
+      logger.error("❌ PDF extraction error:", error);
+      logger.warn(
+        "⚠️  PDF processing failed. Please upload JPG/PNG images directly.",
+      );
       return [];
     }
   }
@@ -229,43 +243,46 @@ class EnhancedPortfolioService {
   async analyzeWithVision(images, locationContext) {
     try {
       // Build vision message with multiple images
-      const imageContent = images.map(img => ({
-        type: 'image_url',
+      const imageContent = images.map((img) => ({
+        type: "image_url",
         image_url: {
-          url: img.data // base64 data URL
-        }
+          url: img.data, // base64 data URL
+        },
       }));
 
-      const prompt = this.buildPortfolioAnalysisPrompt(locationContext, images.length);
+      const prompt = this.buildPortfolioAnalysisPrompt(
+        locationContext,
+        images.length,
+      );
 
       const data = await secureApiClient.openaiChat({
-        model: 'gpt-4o', // Use gpt-4o which supports vision
+        model: "gpt-4o", // Use gpt-4o which supports vision
         messages: [
           {
-            role: 'system',
-            content: 'You are an expert architectural analyst specializing in style detection from portfolio images. Analyze architectural designs to identify styles, materials, spatial patterns, and design philosophies.'
+            role: "system",
+            content:
+              "You are an expert architectural analyst specializing in style detection from portfolio images. Analyze architectural designs to identify styles, materials, spatial patterns, and design philosophies.",
           },
           {
-            role: 'user',
+            role: "user",
             content: [
               {
-                type: 'text',
-                text: prompt
+                type: "text",
+                text: prompt,
               },
-              ...imageContent
-            ]
-          }
+              ...imageContent,
+            ],
+          },
         ],
         max_tokens: 2000,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
       const analysisText = data.choices[0].message.content;
 
       return this.parsePortfolioAnalysis(analysisText, locationContext);
-
     } catch (error) {
-      logger.error('Vision analysis error:', error);
+      logger.error("Vision analysis error:", error);
       throw error;
     }
   }
@@ -278,9 +295,9 @@ class EnhancedPortfolioService {
 Analyze these ${imageCount} architectural portfolio images in detail, extracting specific material colors and patterns.
 
 LOCATION CONTEXT:
-- Address: ${locationContext?.address || 'Not specified'}
-- Region: ${locationContext?.region || 'Not specified'}
-- Climate: ${locationContext?.climate?.type || 'Not specified'}
+- Address: ${locationContext?.address || "Not specified"}
+- Region: ${locationContext?.region || "Not specified"}
+- Climate: ${locationContext?.climate?.type || "Not specified"}
 
 Please provide a comprehensive analysis in the following JSON format:
 
@@ -433,44 +450,56 @@ Analyze all images carefully and provide detailed, specific observations.
         return {
           ...parsed,
           rawAnalysis: analysisText,
-          source: 'openai-vision'
+          source: "openai-vision",
         };
       }
     } catch (error) {
-      logger.warn('Could not parse JSON from portfolio analysis:', error);
+      logger.warn("Could not parse JSON from portfolio analysis:", error);
     }
 
     // Fallback to text-based extraction
     return {
       primaryStyle: {
-        name: this.extractValue(analysisText, 'style') || 'Contemporary',
-        confidence: 'Medium',
-        characteristics: this.extractList(analysisText, 'characteristics')
+        name: this.extractValue(analysisText, "style") || "Contemporary",
+        confidence: "Medium",
+        characteristics: this.extractList(analysisText, "characteristics"),
       },
       materials: {
-        exterior: this.extractList(analysisText, 'materials'),
+        exterior: this.extractList(analysisText, "materials"),
         structural: [],
-        detailing: []
+        detailing: [],
       },
       designElements: {
-        spatialOrganization: this.extractValue(analysisText, 'spatial') || 'Modern spatial flow',
-        windowPatterns: this.extractValue(analysisText, 'windows') || 'Contemporary fenestration',
-        roofForm: this.extractValue(analysisText, 'roof') || 'Modern roof form',
-        colorPalette: this.extractList(analysisText, 'color'),
-        proportions: 'Contemporary proportions'
+        spatialOrganization:
+          this.extractValue(analysisText, "spatial") || "Modern spatial flow",
+        windowPatterns:
+          this.extractValue(analysisText, "windows") ||
+          "Contemporary fenestration",
+        roofForm: this.extractValue(analysisText, "roof") || "Modern roof form",
+        colorPalette: this.extractList(analysisText, "color"),
+        proportions: "Contemporary proportions",
       },
       styleConsistency: {
-        rating: 'Moderately Consistent',
-        evolution: 'Consistent design language',
-        signatureElements: this.extractList(analysisText, 'signature')
+        rating: "Moderately Consistent",
+        evolution: "Consistent design language",
+        signatureElements: this.extractList(analysisText, "signature"),
       },
       recommendations: {
-        stylisticDirection: 'Continue with established design language adapted to location',
-        materialPalette: ['Local materials', 'Sustainable options', 'Climate-appropriate'],
-        keyPrinciples: ['Contextual design', 'Sustainability', 'Quality craftsmanship']
+        stylisticDirection:
+          "Continue with established design language adapted to location",
+        materialPalette: [
+          "Local materials",
+          "Sustainable options",
+          "Climate-appropriate",
+        ],
+        keyPrinciples: [
+          "Contextual design",
+          "Sustainability",
+          "Quality craftsmanship",
+        ],
       },
       rawAnalysis: analysisText,
-      source: 'openai-vision-text'
+      source: "openai-vision-text",
     };
   }
 
@@ -478,7 +507,7 @@ Analyze all images carefully and provide detailed, specific observations.
    * Extract value from text
    */
   extractValue(text, keyword) {
-    const regex = new RegExp(`${keyword}[:\\s]+([^\\n.]+)`, 'i');
+    const regex = new RegExp(`${keyword}[:\\s]+([^\\n.]+)`, "i");
     const match = text.match(regex);
     return match ? match[1].trim() : null;
   }
@@ -487,10 +516,13 @@ Analyze all images carefully and provide detailed, specific observations.
    * Extract list from text
    */
   extractList(text, keyword) {
-    const regex = new RegExp(`${keyword}[:\\s]+([^\\n]+)`, 'i');
+    const regex = new RegExp(`${keyword}[:\\s]+([^\\n]+)`, "i");
     const match = text.match(regex);
     if (match) {
-      return match[1].split(',').map(item => item.trim()).filter(item => item.length > 0);
+      return match[1]
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
     }
     return [];
   }
@@ -503,98 +535,126 @@ Analyze all images carefully and provide detailed, specific observations.
       success: false,
       isFallback: true,
       primaryStyle: {
-        name: 'Contemporary',
-        confidence: 'Medium',
-        period: '2000-Present',
+        name: "Contemporary",
+        confidence: "Medium",
+        period: "2000-Present",
         characteristics: [
-          'Clean lines and simple forms',
-          'Large windows for natural light',
-          'Neutral color palette',
-          'Modern materials integration'
-        ]
+          "Clean lines and simple forms",
+          "Large windows for natural light",
+          "Neutral color palette",
+          "Modern materials integration",
+        ],
       },
       materials: {
-        exterior: ['Brick', 'Render', 'Timber cladding', 'Glass'],
-        structural: ['Steel frame', 'Concrete', 'Timber'],
-        detailing: ['Metal', 'Glass', 'Stone']
+        exterior: ["Brick", "Render", "Timber cladding", "Glass"],
+        structural: ["Steel frame", "Concrete", "Timber"],
+        detailing: ["Metal", "Glass", "Stone"],
       },
       designElements: {
-        spatialOrganization: 'Open plan living with distinct functional zones',
-        windowPatterns: 'Large windows and sliding doors for indoor-outdoor connection',
-        roofForm: 'Flat or low-pitched contemporary roof',
-        colorPalette: ['White', 'Grey', 'Natural wood', 'Black accents'],
-        proportions: 'Contemporary proportions with horizontal emphasis'
+        spatialOrganization: "Open plan living with distinct functional zones",
+        windowPatterns:
+          "Large windows and sliding doors for indoor-outdoor connection",
+        roofForm: "Flat or low-pitched contemporary roof",
+        colorPalette: ["White", "Grey", "Natural wood", "Black accents"],
+        proportions: "Contemporary proportions with horizontal emphasis",
       },
       styleConsistency: {
-        rating: 'Moderately Consistent',
-        evolution: 'Contemporary approach with contextual variations',
-        signatureElements: ['Clean geometry', 'Material honesty', 'Light and space']
+        rating: "Moderately Consistent",
+        evolution: "Contemporary approach with contextual variations",
+        signatureElements: [
+          "Clean geometry",
+          "Material honesty",
+          "Light and space",
+        ],
       },
       sustainabilityFeatures: {
-        passive: ['Natural ventilation', 'Daylighting', 'Thermal mass'],
-        active: ['Solar panels', 'Heat pumps'],
-        materials: ['Sustainable timber', 'Recycled materials', 'Low-carbon concrete']
+        passive: ["Natural ventilation", "Daylighting", "Thermal mass"],
+        active: ["Solar panels", "Heat pumps"],
+        materials: [
+          "Sustainable timber",
+          "Recycled materials",
+          "Low-carbon concrete",
+        ],
       },
       locationCompatibility: {
-        climateSuitability: 'Adaptable to UK climate with appropriate detailing',
-        culturalFit: 'Contemporary design suitable for urban and suburban contexts',
+        climateSuitability:
+          "Adaptable to UK climate with appropriate detailing",
+        culturalFit:
+          "Contemporary design suitable for urban and suburban contexts",
         adaptationsNeeded: [
-          'Weather-resistant materials for UK climate',
-          'Enhanced insulation for energy efficiency',
-          'Contextual response to local vernacular'
-        ]
+          "Weather-resistant materials for UK climate",
+          "Enhanced insulation for energy efficiency",
+          "Contextual response to local vernacular",
+        ],
       },
       recommendations: {
-        stylisticDirection: 'Contemporary design with local material integration',
+        stylisticDirection:
+          "Contemporary design with local material integration",
         materialPalette: [
-          'Local brick or stone',
-          'Timber cladding',
-          'High-performance glazing',
-          'Metal roofing'
+          "Local brick or stone",
+          "Timber cladding",
+          "High-performance glazing",
+          "Metal roofing",
         ],
         keyPrinciples: [
-          'Contextual design respecting local character',
-          'Passive-first sustainability approach',
-          'High-quality materials and craftsmanship',
-          'Timeless contemporary aesthetic'
-        ]
+          "Contextual design respecting local character",
+          "Passive-first sustainability approach",
+          "High-quality materials and craftsmanship",
+          "Timeless contemporary aesthetic",
+        ],
       },
-      message: 'Fallback analysis - upload portfolio images for detailed analysis',
-      timestamp: new Date().toISOString()
+      message:
+        "Fallback analysis - upload portfolio images for detailed analysis",
+      timestamp: new Date().toISOString(),
     };
   }
 
   /**
    * Blend portfolio style with location recommendations
    */
-  blendStyleWithLocation(portfolioAnalysis, locationAnalysis, materialWeight = 0.5, characteristicWeight = 0.5) {
-    logger.info('🎨 Blending portfolio style with location context...');
-    logger.info('   Material weight:', materialWeight, '(portfolio influence)');
-    logger.info('   Characteristic weight:', characteristicWeight, '(portfolio influence)');
+  blendStyleWithLocation(
+    portfolioAnalysis,
+    locationAnalysis,
+    materialWeight = 0.5,
+    characteristicWeight = 0.5,
+  ) {
+    logger.info("🎨 Blending portfolio style with location context...");
+    logger.info("   Material weight:", materialWeight, "(portfolio influence)");
+    logger.info(
+      "   Characteristic weight:",
+      characteristicWeight,
+      "(portfolio influence)",
+    );
 
     const portfolioMaterials = portfolioAnalysis.materials?.exterior || [];
     const locationMaterials = locationAnalysis.materials?.walls || [];
 
-    const portfolioCharacteristics = portfolioAnalysis.primaryStyle?.characteristics || [];
-    const locationCharacteristics = locationAnalysis.architecturalData?.traditionalStyles?.[0]?.characteristics || [];
+    const portfolioCharacteristics =
+      portfolioAnalysis.primaryStyle?.characteristics || [];
+    const locationCharacteristics =
+      locationAnalysis.architecturalData?.traditionalStyles?.[0]
+        ?.characteristics || [];
 
     // Blend materials (weighted combination)
     const blendedMaterials = this.weightedBlend(
       portfolioMaterials,
       locationMaterials,
-      materialWeight
+      materialWeight,
     );
 
     // Blend characteristics (weighted combination)
     const blendedCharacteristics = this.weightedBlend(
       portfolioCharacteristics,
       locationCharacteristics,
-      characteristicWeight
+      characteristicWeight,
     );
 
     // Create style description
-    const portfolioStyleName = portfolioAnalysis.primaryStyle?.name || 'Contemporary';
-    const locationStyleName = locationAnalysis.architecturalData?.traditionalStyles?.[0]?.name || 'Local Vernacular';
+    const portfolioStyleName =
+      portfolioAnalysis.primaryStyle?.name || "Contemporary";
+    const locationStyleName =
+      locationAnalysis.architecturalData?.traditionalStyles?.[0]?.name ||
+      "Local Vernacular";
 
     let styleDescription;
     if (materialWeight > 0.7 && characteristicWeight > 0.7) {
@@ -617,8 +677,8 @@ Analyze all images carefully and provide detailed, specific observations.
         materialWeight,
         characteristicWeight,
         blendedMaterials,
-        blendedCharacteristics
-      )
+        blendedCharacteristics,
+      ),
     };
   }
 
@@ -630,10 +690,7 @@ Analyze all images carefully and provide detailed, specific observations.
     const count1 = Math.round(array1.length * weight1);
     const count2 = Math.round(array2.length * weight2);
 
-    const result = [
-      ...array1.slice(0, count1),
-      ...array2.slice(0, count2)
-    ];
+    const result = [...array1.slice(0, count1), ...array2.slice(0, count2)];
 
     // Remove duplicates
     return [...new Set(result)];
@@ -642,7 +699,14 @@ Analyze all images carefully and provide detailed, specific observations.
   /**
    * Generate blend description
    */
-  generateBlendDescription(portfolioStyle, locationStyle, materialWeight, characteristicWeight, materials, characteristics) {
+  generateBlendDescription(
+    portfolioStyle,
+    locationStyle,
+    materialWeight,
+    characteristicWeight,
+    materials,
+    characteristics,
+  ) {
     const avgWeight = (materialWeight + characteristicWeight) / 2;
 
     let description = `This design blends `;
@@ -658,8 +722,8 @@ Analyze all images carefully and provide detailed, specific observations.
       description += `The design achieves a harmonious balance between your established style and the local architectural context.`;
     }
 
-    description += `\n\nKey materials: ${materials.slice(0, 4).join(', ')}.`;
-    description += `\nDefining characteristics: ${characteristics.slice(0, 4).join(', ')}.`;
+    description += `\n\nKey materials: ${materials.slice(0, 4).join(", ")}.`;
+    description += `\nDefining characteristics: ${characteristics.slice(0, 4).join(", ")}.`;
 
     return description;
   }
@@ -674,23 +738,21 @@ Analyze all images carefully and provide detailed, specific observations.
     // Process each image for material detection
     for (const image of images) {
       try {
-        const materials = await materialDetectionService.extractMaterialsFromImage(
-          image.data,
-          {
-            projectType: locationContext?.projectType || 'residential',
-            location: locationContext?.address || 'unknown'
-          }
-        );
+        const materials =
+          await materialDetectionService.extractMaterialsFromImage(image.data, {
+            projectType: locationContext?.projectType || "residential",
+            location: locationContext?.address || "unknown",
+          });
 
         // Aggregate materials with confidence scores
-        materials.materials.forEach(mat => {
+        materials.materials.forEach((mat) => {
           const key = `${mat.name}_${mat.hexColor}`;
           if (!materialConfidence[key]) {
             materialConfidence[key] = {
               ...mat,
               occurrences: 0,
               totalConfidence: 0,
-              images: []
+              images: [],
             };
           }
           materialConfidence[key].occurrences++;
@@ -700,33 +762,43 @@ Analyze all images carefully and provide detailed, specific observations.
 
         detectedMaterials.push(materials);
       } catch (error) {
-        logger.warn('Material detection error for image:', image.name, error);
+        logger.warn("Material detection error for image:", image.name, error);
       }
     }
 
     // Calculate average confidence scores
-    const consolidatedMaterials = Object.values(materialConfidence).map(mat => ({
-      ...mat,
-      averageConfidence: Math.round(mat.totalConfidence / mat.occurrences),
-      frequency: (mat.occurrences / images.length) * 100
-    }));
+    const consolidatedMaterials = Object.values(materialConfidence).map(
+      (mat) => ({
+        ...mat,
+        averageConfidence: Math.round(mat.totalConfidence / mat.occurrences),
+        frequency: (mat.occurrences / images.length) * 100,
+      }),
+    );
 
     // Get climate compatibility scores
-    const climate = locationContext?.climate?.type || 'temperate_maritime';
-    const materialRecommendations = await materialDetectionService.recommendMaterials({
-      location: locationContext?.address,
-      climate,
-      projectType: locationContext?.projectType || 'residential',
-      budget: 'medium',
-      sustainabilityTarget: 'high',
-      portfolioMaterials: consolidatedMaterials.map(m => m.name)
-    });
+    const climate = locationContext?.climate?.type || "temperate_maritime";
+    const materialRecommendations =
+      await materialDetectionService.recommendMaterials({
+        location: locationContext?.address,
+        climate,
+        projectType: locationContext?.projectType || "residential",
+        budget: "medium",
+        sustainabilityTarget: "high",
+        portfolioMaterials: consolidatedMaterials.map((m) => m.name),
+      });
 
     return {
-      detectedMaterials: consolidatedMaterials.sort((a, b) => b.averageConfidence - a.averageConfidence),
+      detectedMaterials: consolidatedMaterials.sort(
+        (a, b) => b.averageConfidence - a.averageConfidence,
+      ),
       materialRecommendations,
-      climateCompatibility: this.assessClimateCompatibility(consolidatedMaterials, climate),
-      sustainabilityScores: this.calculateSustainabilityScores(consolidatedMaterials)
+      climateCompatibility: this.assessClimateCompatibility(
+        consolidatedMaterials,
+        climate,
+      ),
+      sustainabilityScores: this.calculateSustainabilityScores(
+        consolidatedMaterials,
+      ),
     };
   }
 
@@ -736,17 +808,22 @@ Analyze all images carefully and provide detailed, specific observations.
   combineAnalyses(visionAnalysis, materialAnalysis, locationContext) {
     // Extract confidence scores from vision analysis
     const styleConfidence = visionAnalysis.primaryStyle?.confidence || 50;
-    const materialConfidence = materialAnalysis.detectedMaterials[0]?.averageConfidence || 50;
-    const overallConfidence = Math.round((styleConfidence + materialConfidence) / 2);
+    const materialConfidence =
+      materialAnalysis.detectedMaterials[0]?.averageConfidence || 50;
+    const overallConfidence = Math.round(
+      (styleConfidence + materialConfidence) / 2,
+    );
 
     // Merge material data with hex colors
     const enhancedMaterials = {
       exterior: this.mergeMaterialData(
         visionAnalysis.materials?.exterior || [],
-        materialAnalysis.detectedMaterials.filter(m => m.application === 'facade')
+        materialAnalysis.detectedMaterials.filter(
+          (m) => m.application === "facade",
+        ),
       ),
       structural: visionAnalysis.materials?.structural || [],
-      detailing: visionAnalysis.materials?.detailing || []
+      detailing: visionAnalysis.materials?.detailing || [],
     };
 
     // Enhanced style analysis with confidence
@@ -754,13 +831,15 @@ Analyze all images carefully and provide detailed, specific observations.
       ...visionAnalysis.primaryStyle,
       confidence: styleConfidence,
       confidenceLevel: this.getConfidenceLevel(styleConfidence),
-      materialConsistency: this.assessMaterialConsistency(materialAnalysis.detectedMaterials)
+      materialConsistency: this.assessMaterialConsistency(
+        materialAnalysis.detectedMaterials,
+      ),
     };
 
     // Create comprehensive color palette with hex codes
     const colorPalette = this.extractColorPalette(
       visionAnalysis.designElements?.colorPalette || [],
-      materialAnalysis.detectedMaterials
+      materialAnalysis.detectedMaterials,
     );
 
     return {
@@ -770,29 +849,31 @@ Analyze all images carefully and provide detailed, specific observations.
         detectedMaterials: materialAnalysis.detectedMaterials,
         recommendations: materialAnalysis.materialRecommendations,
         climateCompatibility: materialAnalysis.climateCompatibility,
-        sustainabilityScores: materialAnalysis.sustainabilityScores
+        sustainabilityScores: materialAnalysis.sustainabilityScores,
       },
       designElements: {
         ...visionAnalysis.designElements,
-        colorPalette
+        colorPalette,
       },
       styleConsistency: {
         ...visionAnalysis.styleConsistency,
-        materialConsistencyScore: this.assessMaterialConsistency(materialAnalysis.detectedMaterials),
-        overallConsistencyScore: overallConfidence
+        materialConsistencyScore: this.assessMaterialConsistency(
+          materialAnalysis.detectedMaterials,
+        ),
+        overallConsistencyScore: overallConfidence,
       },
       confidenceMetrics: {
         styleConfidence,
         materialConfidence,
         overallConfidence,
-        analysisQuality: this.getConfidenceLevel(overallConfidence)
+        analysisQuality: this.getConfidenceLevel(overallConfidence),
       },
       recommendations: this.generateEnhancedRecommendations(
         visionAnalysis,
         materialAnalysis,
         locationContext,
-        overallConfidence
-      )
+        overallConfidence,
+      ),
     };
   }
 
@@ -803,35 +884,36 @@ Analyze all images carefully and provide detailed, specific observations.
     const merged = [];
 
     // Convert vision materials to enhanced format if they're strings
-    const visionEnhanced = visionMaterials.map(mat => {
-      if (typeof mat === 'string') {
+    const visionEnhanced = visionMaterials.map((mat) => {
+      if (typeof mat === "string") {
         // Find matching detected material
-        const detected = detectedMaterials.find(d =>
-          d.name.toLowerCase().includes(mat.toLowerCase()) ||
-          mat.toLowerCase().includes(d.name.toLowerCase())
+        const detected = detectedMaterials.find(
+          (d) =>
+            d.name.toLowerCase().includes(mat.toLowerCase()) ||
+            mat.toLowerCase().includes(d.name.toLowerCase()),
         );
 
         return {
           name: mat,
-          hexColor: detected?.hexColor || '#808080',
-          pattern: detected?.pattern || 'unknown',
-          texture: detected?.texture || 'standard',
-          confidence: detected?.averageConfidence || 50
+          hexColor: detected?.hexColor || "#808080",
+          pattern: detected?.pattern || "unknown",
+          texture: detected?.texture || "standard",
+          confidence: detected?.averageConfidence || 50,
         };
       }
       return mat;
     });
 
     // Add detected materials not in vision analysis
-    detectedMaterials.forEach(detected => {
-      if (!visionEnhanced.find(v => v.name === detected.name)) {
+    detectedMaterials.forEach((detected) => {
+      if (!visionEnhanced.find((v) => v.name === detected.name)) {
         merged.push({
           name: detected.name,
           hexColor: detected.hexColor,
           pattern: detected.pattern,
           texture: detected.texture,
           confidence: detected.averageConfidence,
-          source: 'material-detection'
+          source: "material-detection",
         });
       }
     });
@@ -846,25 +928,25 @@ Analyze all images carefully and provide detailed, specific observations.
     const palette = [];
 
     // Add colors from vision analysis
-    visionColors.forEach(color => {
-      if (typeof color === 'object' && color.hex) {
+    visionColors.forEach((color) => {
+      if (typeof color === "object" && color.hex) {
         palette.push(color);
-      } else if (typeof color === 'string') {
+      } else if (typeof color === "string") {
         palette.push({
           color,
-          hex: this.estimateHexFromName(color)
+          hex: this.estimateHexFromName(color),
         });
       }
     });
 
     // Add unique colors from detected materials
-    detectedMaterials.forEach(mat => {
-      if (mat.hexColor && !palette.find(p => p.hex === mat.hexColor)) {
+    detectedMaterials.forEach((mat) => {
+      if (mat.hexColor && !palette.find((p) => p.hex === mat.hexColor)) {
         palette.push({
           color: mat.name,
           hex: mat.hexColor,
-          source: 'material-detection',
-          confidence: mat.averageConfidence
+          source: "material-detection",
+          confidence: mat.averageConfidence,
         });
       }
     });
@@ -879,8 +961,9 @@ Analyze all images carefully and provide detailed, specific observations.
     if (materials.length === 0) return 0;
 
     // Check how consistent materials are across images
-    const highFrequencyMaterials = materials.filter(m => m.frequency > 60);
-    const consistencyScore = (highFrequencyMaterials.length / materials.length) * 100;
+    const highFrequencyMaterials = materials.filter((m) => m.frequency > 60);
+    const consistencyScore =
+      (highFrequencyMaterials.length / materials.length) * 100;
 
     return Math.round(consistencyScore);
   }
@@ -889,17 +972,25 @@ Analyze all images carefully and provide detailed, specific observations.
    * Assess climate compatibility of detected materials
    */
   assessClimateCompatibility(materials, climate) {
-    const compatibilityScores = materials.map(mat => {
-      const materialKey = mat.name.toLowerCase().replace(/ /g, '_');
-      return materialDetectionService.calculateClimateCompatibility(materialKey, climate);
+    const compatibilityScores = materials.map((mat) => {
+      const materialKey = mat.name.toLowerCase().replace(/ /g, "_");
+      return materialDetectionService.calculateClimateCompatibility(
+        materialKey,
+        climate,
+      );
     });
 
-    const averageScore = compatibilityScores.reduce((a, b) => a + b, 0) / compatibilityScores.length;
+    const averageScore =
+      compatibilityScores.reduce((a, b) => a + b, 0) /
+      compatibilityScores.length;
 
     return {
       score: Math.round(averageScore * 100),
-      rating: averageScore > 0.8 ? 'Excellent' : averageScore > 0.6 ? 'Good' : 'Fair',
-      incompatibleMaterials: materials.filter((mat, i) => compatibilityScores[i] < 0.5)
+      rating:
+        averageScore > 0.8 ? "Excellent" : averageScore > 0.6 ? "Good" : "Fair",
+      incompatibleMaterials: materials.filter(
+        (mat, i) => compatibilityScores[i] < 0.5,
+      ),
     };
   }
 
@@ -907,14 +998,22 @@ Analyze all images carefully and provide detailed, specific observations.
    * Calculate sustainability scores for detected materials
    */
   calculateSustainabilityScores(materials) {
-    return materials.map(mat => {
-      const materialKey = mat.name.toLowerCase().replace(/ /g, '_');
-      const score = materialDetectionService.getSustainabilityScore(materialKey);
+    return materials.map((mat) => {
+      const materialKey = mat.name.toLowerCase().replace(/ /g, "_");
+      const score =
+        materialDetectionService.getSustainabilityScore(materialKey);
 
       return {
         material: mat.name,
         score,
-        rating: score > 80 ? 'Excellent' : score > 60 ? 'Good' : score > 40 ? 'Fair' : 'Poor'
+        rating:
+          score > 80
+            ? "Excellent"
+            : score > 60
+              ? "Good"
+              : score > 40
+                ? "Fair"
+                : "Poor",
       };
     });
   }
@@ -923,50 +1022,62 @@ Analyze all images carefully and provide detailed, specific observations.
    * Get confidence level description
    */
   getConfidenceLevel(score) {
-    if (score >= 90) return 'Very High';
-    if (score >= 75) return 'High';
-    if (score >= 60) return 'Medium';
-    if (score >= 40) return 'Low';
-    return 'Very Low';
+    if (score >= 90) return "Very High";
+    if (score >= 75) return "High";
+    if (score >= 60) return "Medium";
+    if (score >= 40) return "Low";
+    return "Very Low";
   }
 
   /**
    * Generate enhanced recommendations with confidence
    */
-  generateEnhancedRecommendations(visionAnalysis, materialAnalysis, locationContext, confidence) {
+  generateEnhancedRecommendations(
+    visionAnalysis,
+    materialAnalysis,
+    locationContext,
+    confidence,
+  ) {
     const recommendations = {
-      stylisticDirection: visionAnalysis.recommendations?.stylisticDirection || 'Contemporary design',
+      stylisticDirection:
+        visionAnalysis.recommendations?.stylisticDirection ||
+        "Contemporary design",
       materialPalette: [],
       keyPrinciples: visionAnalysis.recommendations?.keyPrinciples || [],
       confidenceLevel: confidence,
-      adaptations: []
+      adaptations: [],
     };
 
     // Add recommended materials with reasoning
     if (materialAnalysis.materialRecommendations?.primary) {
-      materialAnalysis.materialRecommendations.primary.forEach(mat => {
+      materialAnalysis.materialRecommendations.primary.forEach((mat) => {
         recommendations.materialPalette.push({
           material: mat.name,
-          hexColor: mat.hexColors?.[0] || '#808080',
+          hexColor: mat.hexColors?.[0] || "#808080",
           reason: mat.reasoning,
           climateSuitability: mat.score,
-          application: 'primary facade'
+          application: "primary facade",
         });
       });
     }
 
     // Add climate-specific adaptations
-    if (materialAnalysis.climateCompatibility?.incompatibleMaterials?.length > 0) {
+    if (
+      materialAnalysis.climateCompatibility?.incompatibleMaterials?.length > 0
+    ) {
       recommendations.adaptations.push(
-        `Replace ${materialAnalysis.climateCompatibility.incompatibleMaterials.map(m => m.name).join(', ')} with climate-appropriate alternatives`
+        `Replace ${materialAnalysis.climateCompatibility.incompatibleMaterials.map((m) => m.name).join(", ")} with climate-appropriate alternatives`,
       );
     }
 
     // Add sustainability recommendations
-    const poorSustainability = materialAnalysis.sustainabilityScores?.filter(s => s.rating === 'Poor') || [];
+    const poorSustainability =
+      materialAnalysis.sustainabilityScores?.filter(
+        (s) => s.rating === "Poor",
+      ) || [];
     if (poorSustainability.length > 0) {
       recommendations.adaptations.push(
-        `Consider sustainable alternatives to ${poorSustainability.map(s => s.material).join(', ')}`
+        `Consider sustainable alternatives to ${poorSustainability.map((s) => s.material).join(", ")}`,
       );
     }
 
@@ -978,26 +1089,26 @@ Analyze all images carefully and provide detailed, specific observations.
    */
   estimateHexFromName(colorName) {
     const colorMap = {
-      'white': '#FFFFFF',
-      'black': '#000000',
-      'grey': '#808080',
-      'gray': '#808080',
-      'red': '#FF0000',
-      'brick': '#B8604E',
-      'brown': '#8B4513',
-      'wood': '#8B4513',
-      'stone': '#D3D3D3',
-      'glass': '#87CEEB',
-      'metal': '#C0C0C0',
-      'green': '#008000',
-      'blue': '#0000FF'
+      white: "#FFFFFF",
+      black: "#000000",
+      grey: "#808080",
+      gray: "#808080",
+      red: "#FF0000",
+      brick: "#B8604E",
+      brown: "#8B4513",
+      wood: "#8B4513",
+      stone: "#D3D3D3",
+      glass: "#87CEEB",
+      metal: "#C0C0C0",
+      green: "#008000",
+      blue: "#0000FF",
     };
 
     const lower = colorName.toLowerCase();
     for (const [key, value] of Object.entries(colorMap)) {
       if (lower.includes(key)) return value;
     }
-    return '#808080'; // Default grey
+    return "#808080"; // Default grey
   }
 }
 

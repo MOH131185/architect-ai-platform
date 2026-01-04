@@ -18,8 +18,8 @@
  * @module types/CanonicalDesignState
  */
 
-import logger from '../services/core/logger.js';
-import { distributeRoomsToFloors } from '../services/spatial/floorDistributor.js';
+import logger from "../utils/logger.js";
+import { distributeRoomsToFloors } from "../services/spatial/floorDistributor.js";
 
 // =============================================================================
 // CONSTANTS
@@ -29,19 +29,34 @@ import { distributeRoomsToFloors } from '../services/spatial/floorDistributor.js
  * Valid entrance directions
  * @type {string[]}
  */
-export const ENTRANCE_DIRECTIONS = ['N', 'S', 'E', 'W', 'NE', 'NW', 'SE', 'SW'];
+export const ENTRANCE_DIRECTIONS = ["N", "S", "E", "W", "NE", "NW", "SE", "SW"];
 
 /**
  * Valid footprint shapes
  * @type {string[]}
  */
-export const FOOTPRINT_SHAPES = ['rectangular', 'L', 'T', 'U', 'courtyard', 'custom'];
+export const FOOTPRINT_SHAPES = [
+  "rectangular",
+  "L",
+  "T",
+  "U",
+  "courtyard",
+  "custom",
+];
 
 /**
  * Valid roof types
  * @type {string[]}
  */
-export const ROOF_TYPES = ['flat', 'gable', 'hip', 'shed', 'mansard', 'butterfly', 'sawtooth'];
+export const ROOF_TYPES = [
+  "flat",
+  "gable",
+  "hip",
+  "shed",
+  "mansard",
+  "butterfly",
+  "sawtooth",
+];
 
 /**
  * Default floor height in meters
@@ -125,41 +140,41 @@ export const MIN_CIRCULATION_WIDTH_MM = 900;
  */
 export const SPACE_TYPE_MAP = {
   // Public spaces - typically on ground floor, near entrance
-  living: 'public',
-  lounge: 'public',
-  sitting: 'public',
-  dining: 'public',
-  kitchen: 'public',
-  entrance: 'public',
-  reception: 'public',
-  waiting: 'public',
-  foyer: 'public',
-  gallery: 'public',
+  living: "public",
+  lounge: "public",
+  sitting: "public",
+  dining: "public",
+  kitchen: "public",
+  entrance: "public",
+  reception: "public",
+  waiting: "public",
+  foyer: "public",
+  gallery: "public",
 
   // Private spaces - typically on upper floors or rear of building
-  bedroom: 'private',
-  master_bedroom: 'private',
-  guest_bedroom: 'private',
-  bathroom: 'private',
-  ensuite: 'private',
-  wc: 'private',
-  study: 'private',
-  office: 'private',
-  consultation: 'private',
-  treatment: 'private',
+  bedroom: "private",
+  master_bedroom: "private",
+  guest_bedroom: "private",
+  bathroom: "private",
+  ensuite: "private",
+  wc: "private",
+  study: "private",
+  office: "private",
+  consultation: "private",
+  treatment: "private",
 
   // Circulation/Service spaces
-  circulation: 'circulation',
-  landing: 'circulation',
-  hallway: 'circulation',
-  corridor: 'circulation',
-  stairwell: 'circulation',
-  utility: 'circulation',
-  storage: 'circulation',
-  garage: 'circulation',
+  circulation: "circulation",
+  landing: "circulation",
+  hallway: "circulation",
+  corridor: "circulation",
+  stairwell: "circulation",
+  utility: "circulation",
+  storage: "circulation",
+  garage: "circulation",
 
   // Default
-  generic: 'public',
+  generic: "public",
 };
 
 /**
@@ -169,44 +184,44 @@ export const SPACE_TYPE_MAP = {
  */
 export const ZONE_TYPE_MAP = {
   // Public zone - main living areas, near entrance
-  living: 'public',
-  lounge: 'public',
-  sitting: 'public',
-  dining: 'public',
-  kitchen: 'public',
-  entrance: 'public',
-  reception: 'public',
-  waiting: 'public',
-  foyer: 'public',
-  gallery: 'public',
+  living: "public",
+  lounge: "public",
+  sitting: "public",
+  dining: "public",
+  kitchen: "public",
+  entrance: "public",
+  reception: "public",
+  waiting: "public",
+  foyer: "public",
+  gallery: "public",
 
   // Private zone - bedrooms, bathrooms, quiet spaces
-  bedroom: 'private',
-  master_bedroom: 'private',
-  guest_bedroom: 'private',
-  bathroom: 'private',
-  ensuite: 'private',
-  wc: 'private',
-  study: 'private',
-  office: 'private',
-  consultation: 'private',
-  treatment: 'private',
-  nursery: 'private',
+  bedroom: "private",
+  master_bedroom: "private",
+  guest_bedroom: "private",
+  bathroom: "private",
+  ensuite: "private",
+  wc: "private",
+  study: "private",
+  office: "private",
+  consultation: "private",
+  treatment: "private",
+  nursery: "private",
 
   // Service zone - circulation, utilities, storage
-  circulation: 'service',
-  landing: 'service',
-  hallway: 'service',
-  corridor: 'service',
-  stairwell: 'service',
-  utility: 'service',
-  storage: 'service',
-  garage: 'service',
-  laundry: 'service',
-  pantry: 'service',
+  circulation: "service",
+  landing: "service",
+  hallway: "service",
+  corridor: "service",
+  stairwell: "service",
+  utility: "service",
+  storage: "service",
+  garage: "service",
+  laundry: "service",
+  pantry: "service",
 
   // Default
-  generic: 'public',
+  generic: "public",
 };
 
 /**
@@ -432,15 +447,15 @@ export function createEmptySite(defaults = {}) {
     boundary: defaults.boundary || [],
     areaM2: defaults.areaM2 || 0,
     orientationDeg: defaults.orientationDeg || 0,
-    entranceSide: defaults.entranceSide || 'S',
+    entranceSide: defaults.entranceSide || "S",
     setbacks: {
       front: defaults.setbacks?.front || 3,
       rear: defaults.setbacks?.rear || 6,
       left: defaults.setbacks?.left || 1.5,
       right: defaults.setbacks?.right || 1.5,
     },
-    climate: defaults.climate || { zone: 'temperate' },
-    sunPath: defaults.sunPath || { optimalOrientation: 'south' },
+    climate: defaults.climate || { zone: "temperate" },
+    sunPath: defaults.sunPath || { optimalOrientation: "south" },
   };
 }
 
@@ -500,7 +515,7 @@ function estimateRoomDimensions(areaM2, program) {
  * @returns {string} - 'public', 'private', or 'circulation'
  */
 function getSpaceType(program) {
-  return SPACE_TYPE_MAP[program] || SPACE_TYPE_MAP['generic'];
+  return SPACE_TYPE_MAP[program] || SPACE_TYPE_MAP["generic"];
 }
 
 /**
@@ -509,7 +524,7 @@ function getSpaceType(program) {
  * @returns {string} - 'public', 'private', or 'service'
  */
 function getZoneType(program) {
-  return ZONE_TYPE_MAP[program] || ZONE_TYPE_MAP['generic'];
+  return ZONE_TYPE_MAP[program] || ZONE_TYPE_MAP["generic"];
 }
 
 /**
@@ -518,14 +533,17 @@ function getZoneType(program) {
  * @returns {CanonicalRoom}
  */
 export function createRoom(roomData) {
-  const id = roomData.id || `room_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const id =
+    roomData.id ||
+    `room_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const program = roomData.program || detectProgramFromName(roomData.name);
-  const targetAreaM2 = roomData.targetAreaM2 ?? roomData.area ?? roomData.area_m2 ?? 20;
+  const targetAreaM2 =
+    roomData.targetAreaM2 ?? roomData.area ?? roomData.area_m2 ?? 20;
   const dimensions = estimateRoomDimensions(targetAreaM2, program);
 
   return {
     id,
-    name: roomData.name || 'Room',
+    name: roomData.name || "Room",
     program,
     roomType: program, // Alias for program - used by BuildingModel
     targetAreaM2,
@@ -534,7 +552,8 @@ export function createRoom(roomData) {
     spaceType: roomData.spaceType || getSpaceType(program),
     zoneType: roomData.zoneType || getZoneType(program), // 'public', 'private', or 'service'
     adjacentTo: roomData.adjacentTo || [],
-    daylightOrientation: roomData.daylightOrientation || roomData.orientation || 'any',
+    daylightOrientation:
+      roomData.daylightOrientation || roomData.orientation || "any",
     requiresExternalWall: roomData.requiresExternalWall !== false,
     constraints: roomData.constraints || {},
   };
@@ -548,17 +567,18 @@ export function createRoom(roomData) {
  */
 export function createLevel(index, defaults = {}) {
   const names = {
-    '-1': 'Basement',
-    0: 'Ground Floor',
-    1: 'First Floor',
-    2: 'Second Floor',
-    3: 'Third Floor',
+    "-1": "Basement",
+    0: "Ground Floor",
+    1: "First Floor",
+    2: "Second Floor",
+    3: "Third Floor",
   };
   return {
     index,
     name: defaults.name || names[String(index)] || `Floor ${index}`,
     floorHeightM:
-      defaults.floorHeightM || (index === 0 ? DEFAULT_GROUND_FLOOR_HEIGHT : DEFAULT_FLOOR_HEIGHT),
+      defaults.floorHeightM ||
+      (index === 0 ? DEFAULT_GROUND_FLOOR_HEIGHT : DEFAULT_FLOOR_HEIGHT),
     rooms: defaults.rooms || [],
     grossAreaM2: defaults.grossAreaM2 || 0,
   };
@@ -571,8 +591,8 @@ export function createLevel(index, defaults = {}) {
  */
 export function createEmptyProgram(defaults = {}) {
   return {
-    buildingType: defaults.buildingType || 'residential_house',
-    buildingCategory: defaults.buildingCategory || 'residential',
+    buildingType: defaults.buildingType || "residential_house",
+    buildingCategory: defaults.buildingCategory || "residential",
     totalAreaM2: defaults.totalAreaM2 || 150,
     levelCount: defaults.levelCount || 2,
     levels: defaults.levels || [],
@@ -586,14 +606,14 @@ export function createEmptyProgram(defaults = {}) {
  */
 export function createEmptyMassing(defaults = {}) {
   return {
-    footprintShape: defaults.footprintShape || 'rectangular',
+    footprintShape: defaults.footprintShape || "rectangular",
     footprintPolygon: defaults.footprintPolygon || null,
     // NEW: Explicit building dimensions from DNA (prevents recalculation from area)
     widthM: defaults.widthM || null, // Building width (X-axis, facade facing street)
     depthM: defaults.depthM || null, // Building depth (Y-axis, front to back)
-    roofType: defaults.roofType || 'gable',
+    roofType: defaults.roofType || "gable",
     roofPitchDeg: defaults.roofPitchDeg || 35,
-    ridgeDirection: defaults.ridgeDirection || 'E-W',
+    ridgeDirection: defaults.ridgeDirection || "E-W",
     totalHeightM: defaults.totalHeightM || 8,
     eaveHeightM: defaults.eaveHeightM || 6,
     wings: defaults.wings || null,
@@ -613,9 +633,9 @@ export function createEmptyStyleRef(defaults = {}) {
       portfolio: defaults.blendWeights?.portfolio ?? 0.6,
       variation: defaults.blendWeights?.variation ?? 0.1,
     },
-    vernacularStyle: defaults.vernacularStyle || 'contemporary',
-    materials: defaults.materials || ['brick', 'render'],
-    windowStyle: defaults.windowStyle || 'casement',
+    vernacularStyle: defaults.vernacularStyle || "contemporary",
+    materials: defaults.materials || ["brick", "render"],
+    windowStyle: defaults.windowStyle || "casement",
   };
 }
 
@@ -630,7 +650,7 @@ export function createEmptyConstraints(defaults = {}) {
     circulationWidthMm: defaults.circulationWidthMm || MIN_CIRCULATION_WIDTH_MM,
     windowToWallRatio: defaults.windowToWallRatio || 0.2,
     maxStructuralSpanM: defaults.maxStructuralSpanM || 6,
-    gridModuleM: defaults.gridModuleM || '1.2m',
+    gridModuleM: defaults.gridModuleM || "1.2m",
   };
 }
 
@@ -644,7 +664,7 @@ export function computeDesignFingerprint(data) {
     // Use a simple hash function for browser compatibility
     const str = JSON.stringify(data, (key, value) => {
       // Exclude volatile fields from fingerprint
-      if (key === 'createdAt' || key === 'timestamp' || key === 'generatedAt') {
+      if (key === "createdAt" || key === "timestamp" || key === "generatedAt") {
         return undefined;
       }
       return value;
@@ -659,10 +679,13 @@ export function computeDesignFingerprint(data) {
 
     // Convert to positive hex-like string and pad
     const positiveHash = Math.abs(hash);
-    const fingerprint = `fp_${positiveHash.toString(16).padStart(8, '0')}_${Date.now().toString(36)}`;
+    const fingerprint = `fp_${positiveHash.toString(16).padStart(8, "0")}_${Date.now().toString(36)}`;
     return fingerprint;
   } catch (err) {
-    logger.warn('[computeDesignFingerprint] Failed to compute fingerprint:', err.message);
+    logger.warn(
+      "[computeDesignFingerprint] Failed to compute fingerprint:",
+      err.message,
+    );
     return `fp_fallback_${Date.now().toString(36)}`;
   }
 }
@@ -702,15 +725,15 @@ export function createEmptyFacadeModel() {
     openings: [],
     roofProfile: {
       points: [],
-      type: 'flat',
+      type: "flat",
     },
   });
 
   return {
-    north: createEmptyFacade('N'),
-    south: createEmptyFacade('S'),
-    east: createEmptyFacade('E'),
-    west: createEmptyFacade('W'),
+    north: createEmptyFacade("N"),
+    south: createEmptyFacade("S"),
+    east: createEmptyFacade("E"),
+    west: createEmptyFacade("W"),
     windowToWallRatio: { N: 0, S: 0, E: 0, W: 0 },
     totalOpenings: 0,
   };
@@ -738,10 +761,10 @@ export function createCanonicalDesignState(data = {}) {
   const state = {
     meta: {
       designId: data.meta?.designId || generateDesignId(),
-      version: '2.0', // Version bump for new schema
+      version: "2.0", // Version bump for new schema
       createdAt: data.meta?.createdAt || new Date().toISOString(),
       dnaHash: data.meta?.dnaHash || null,
-      generatorVersion: data.meta?.generatorVersion || '2.0',
+      generatorVersion: data.meta?.generatorVersion || "2.0",
     },
     designFingerprint: null, // Will be computed after all data is set
     site: createEmptySite(data.site),
@@ -780,82 +803,82 @@ export function createCanonicalDesignState(data = {}) {
  */
 function detectProgramFromName(name) {
   if (!name) {
-    return 'generic';
+    return "generic";
   }
   const n = name.toLowerCase();
 
   // Circulation spaces - check these first (before 'hall' catches 'hallway')
-  if (n.includes('hallway') || n.includes('corridor')) {
-    return 'hallway';
+  if (n.includes("hallway") || n.includes("corridor")) {
+    return "hallway";
   }
-  if (n.includes('landing') || n.includes('stair')) {
-    return 'landing';
+  if (n.includes("landing") || n.includes("stair")) {
+    return "landing";
   }
 
   // Living spaces
-  if (n.includes('living') || n.includes('lounge') || n.includes('sitting')) {
-    return 'living';
+  if (n.includes("living") || n.includes("lounge") || n.includes("sitting")) {
+    return "living";
   }
-  if (n.includes('kitchen')) {
-    return 'kitchen';
+  if (n.includes("kitchen")) {
+    return "kitchen";
   }
-  if (n.includes('dining')) {
-    return 'dining';
+  if (n.includes("dining")) {
+    return "dining";
   }
 
   // Bedrooms and private spaces
-  if (n.includes('master') || n.includes('main bed')) {
-    return 'master_bedroom';
+  if (n.includes("master") || n.includes("main bed")) {
+    return "master_bedroom";
   }
-  if (n.includes('bedroom') || n.includes('bed ')) {
-    return 'bedroom';
+  if (n.includes("bedroom") || n.includes("bed ")) {
+    return "bedroom";
   }
-  if (n.includes('bathroom') || n.includes('bath ')) {
-    return 'bathroom';
+  if (n.includes("bathroom") || n.includes("bath ")) {
+    return "bathroom";
   }
-  if (n.includes('en-suite') || n.includes('ensuite')) {
-    return 'ensuite';
+  if (n.includes("en-suite") || n.includes("ensuite")) {
+    return "ensuite";
   }
-  if (n.includes('wc') || n.includes('toilet') || n.includes('cloakroom')) {
-    return 'wc';
+  if (n.includes("wc") || n.includes("toilet") || n.includes("cloakroom")) {
+    return "wc";
   }
 
   // Service spaces
-  if (n.includes('utility')) {
-    return 'utility';
+  if (n.includes("utility")) {
+    return "utility";
   }
-  if (n.includes('garage')) {
-    return 'garage';
+  if (n.includes("garage")) {
+    return "garage";
   }
-  if (n.includes('storage')) {
-    return 'storage';
+  if (n.includes("storage")) {
+    return "storage";
   }
 
   // Entrance and public areas - check after 'hallway'
-  if (n.includes('hall') || n.includes('entrance') || n.includes('foyer')) {
-    return 'entrance';
+  if (n.includes("hall") || n.includes("entrance") || n.includes("foyer")) {
+    return "entrance";
   }
 
   // Workspaces
-  if (n.includes('study') || n.includes('office')) {
-    return 'study';
+  if (n.includes("study") || n.includes("office")) {
+    return "study";
   }
 
   // Commercial/healthcare spaces
-  if (n.includes('reception')) {
-    return 'reception';
+  if (n.includes("reception")) {
+    return "reception";
   }
-  if (n.includes('waiting')) {
-    return 'waiting';
+  if (n.includes("waiting")) {
+    return "waiting";
   }
-  if (n.includes('consultation') || n.includes('consulting')) {
-    return 'consultation';
+  if (n.includes("consultation") || n.includes("consulting")) {
+    return "consultation";
   }
-  if (n.includes('treatment')) {
-    return 'treatment';
+  if (n.includes("treatment")) {
+    return "treatment";
   }
 
-  return 'generic';
+  return "generic";
 }
 
 /**
@@ -874,10 +897,10 @@ export function fromLegacyDNA(
   legacyDNA,
   siteSnapshot = null,
   projectContext = {},
-  programFromUI = null
+  programFromUI = null,
 ) {
   if (!legacyDNA) {
-    logger.warn('[fromLegacyDNA] No DNA provided, returning empty state');
+    logger.warn("[fromLegacyDNA] No DNA provided, returning empty state");
     return createCanonicalDesignState();
   }
 
@@ -887,11 +910,18 @@ export function fromLegacyDNA(
   // Build site from siteSnapshot and DNA
   const site = createEmptySite({
     boundary: siteSnapshot?.sitePolygon || structured.site?.polygon || [],
-    areaM2: siteSnapshot?.areaM2 || structured.site?.area_m2 || projectContext.area || 0,
+    areaM2:
+      siteSnapshot?.areaM2 ||
+      structured.site?.area_m2 ||
+      projectContext.area ||
+      0,
     orientationDeg: structured.site?.orientation || 0,
-    entranceSide: legacyDNA.entranceDirection || projectContext.entranceDirection || 'S',
-    climate: siteSnapshot?.climate || { zone: structured.site?.climate_zone || 'temperate' },
-    sunPath: { optimalOrientation: structured.site?.sun_path || 'south' },
+    entranceSide:
+      legacyDNA.entranceDirection || projectContext.entranceDirection || "S",
+    climate: siteSnapshot?.climate || {
+      zone: structured.site?.climate_zone || "temperate",
+    },
+    sunPath: { optimalOrientation: structured.site?.sun_path || "south" },
   });
 
   // Get floor count from various sources
@@ -905,14 +935,14 @@ export function fromLegacyDNA(
     legacyDNA.dimensions?.floorCount ||
     2;
 
-  logger.info('[DEBUG fromLegacyDNA] Floor count resolved', {
+  logger.info("[DEBUG fromLegacyDNA] Floor count resolved", {
     resolved: floorCount,
     sources: {
-      'legacyDNA.dimensions.floors': legacyDNA.dimensions?.floors,
-      'legacyDNA.dimensions.floorCount': legacyDNA.dimensions?.floorCount,
-      'structured.program.floors': structured.program?.floors,
-      'projectContext.floors': projectContext.floors,
-      'projectContext.floorCount': projectContext.floorCount,
+      "legacyDNA.dimensions.floors": legacyDNA.dimensions?.floors,
+      "legacyDNA.dimensions.floorCount": legacyDNA.dimensions?.floorCount,
+      "structured.program.floors": structured.program?.floors,
+      "projectContext.floors": projectContext.floors,
+      "projectContext.floorCount": projectContext.floorCount,
     },
   });
 
@@ -926,72 +956,96 @@ export function fromLegacyDNA(
   // ============================================================================
 
   let rawRooms = [];
-  let roomSource = 'none';
+  let roomSource = "none";
 
   // Priority 1: Direct programFromUI parameter (HARD CONSTRAINT)
   if (Array.isArray(programFromUI) && programFromUI.length > 0) {
     rawRooms = programFromUI;
-    roomSource = 'programFromUI (direct parameter)';
-    logger.info('[fromLegacyDNA] ✓ Using programFromUI as hard constraint', {
+    roomSource = "programFromUI (direct parameter)";
+    logger.info("[fromLegacyDNA] ✓ Using programFromUI as hard constraint", {
       roomCount: rawRooms.length,
       source: roomSource,
-      rooms: rawRooms.map((r) => `${r.name} (${r.level || r.floor})`).join(', '),
+      rooms: rawRooms
+        .map((r) => `${r.name} (${r.level || r.floor})`)
+        .join(", "),
     });
   }
   // Priority 2: projectContext.programSpaces (ARRAY - NOT .spaces!)
-  else if (Array.isArray(projectContext.programSpaces) && projectContext.programSpaces.length > 0) {
+  else if (
+    Array.isArray(projectContext.programSpaces) &&
+    projectContext.programSpaces.length > 0
+  ) {
     rawRooms = projectContext.programSpaces;
-    roomSource = 'projectContext.programSpaces (array)';
-    logger.info('[fromLegacyDNA] ✓ Using programSpaces from projectContext', {
+    roomSource = "projectContext.programSpaces (array)";
+    logger.info("[fromLegacyDNA] ✓ Using programSpaces from projectContext", {
       roomCount: rawRooms.length,
       source: roomSource,
-      rooms: rawRooms.map((r) => `${r.name} (${r.level || r.floor})`).join(', '),
+      rooms: rawRooms
+        .map((r) => `${r.name} (${r.level || r.floor})`)
+        .join(", "),
     });
   }
   // Priority 3: legacyDNA.programRooms (rooms with proper floor distribution from dnaWorkflowOrchestrator)
   // CRITICAL FIX: This is where distributed rooms from STEP 2.07 are stored
-  else if (Array.isArray(legacyDNA.programRooms) && legacyDNA.programRooms.length > 0) {
+  else if (
+    Array.isArray(legacyDNA.programRooms) &&
+    legacyDNA.programRooms.length > 0
+  ) {
     rawRooms = legacyDNA.programRooms.map((r) => ({
       name: r.name,
       area_m2: r.area || r.area_m2 || 20,
       floor: r.floor ?? r.levelIndex ?? 0,
-      orientation: r.orientation || 'any',
-      program: r.program || 'generic',
+      orientation: r.orientation || "any",
+      program: r.program || "generic",
     }));
-    roomSource = 'legacyDNA.programRooms (distributed)';
-    logger.info('[fromLegacyDNA] ✓ Using programRooms with floor distribution', {
-      roomCount: rawRooms.length,
-      source: roomSource,
-      byFloor: rawRooms.reduce((acc, r) => {
-        const f = r.floor === 0 ? 'Ground' : r.floor === 1 ? 'First' : `Floor ${r.floor}`;
-        acc[f] = (acc[f] || 0) + 1;
-        return acc;
-      }, {}),
-    });
+    roomSource = "legacyDNA.programRooms (distributed)";
+    logger.info(
+      "[fromLegacyDNA] ✓ Using programRooms with floor distribution",
+      {
+        roomCount: rawRooms.length,
+        source: roomSource,
+        byFloor: rawRooms.reduce((acc, r) => {
+          const f =
+            r.floor === 0
+              ? "Ground"
+              : r.floor === 1
+                ? "First"
+                : `Floor ${r.floor}`;
+          acc[f] = (acc[f] || 0) + 1;
+          return acc;
+        }, {}),
+      },
+    );
   }
   // Priority 4: legacyDNA.rooms
   else if (Array.isArray(legacyDNA.rooms) && legacyDNA.rooms.length > 0) {
     rawRooms = legacyDNA.rooms;
-    roomSource = 'legacyDNA.rooms';
-    logger.info('[fromLegacyDNA] Using rooms from legacyDNA.rooms', {
+    roomSource = "legacyDNA.rooms";
+    logger.info("[fromLegacyDNA] Using rooms from legacyDNA.rooms", {
       roomCount: rawRooms.length,
       source: roomSource,
     });
   }
   // Priority 4: structured.program?.rooms
-  else if (Array.isArray(structured.program?.rooms) && structured.program.rooms.length > 0) {
+  else if (
+    Array.isArray(structured.program?.rooms) &&
+    structured.program.rooms.length > 0
+  ) {
     rawRooms = structured.program.rooms;
-    roomSource = 'structured.program.rooms';
-    logger.info('[fromLegacyDNA] Using rooms from structured.program.rooms', {
+    roomSource = "structured.program.rooms";
+    logger.info("[fromLegacyDNA] Using rooms from structured.program.rooms", {
       roomCount: rawRooms.length,
       source: roomSource,
     });
   }
   // Priority 5: legacyDNA.program?.spaces
-  else if (Array.isArray(legacyDNA.program?.spaces) && legacyDNA.program.spaces.length > 0) {
+  else if (
+    Array.isArray(legacyDNA.program?.spaces) &&
+    legacyDNA.program.spaces.length > 0
+  ) {
     rawRooms = legacyDNA.program.spaces;
-    roomSource = 'legacyDNA.program.spaces';
-    logger.info('[fromLegacyDNA] Using rooms from legacyDNA.program.spaces', {
+    roomSource = "legacyDNA.program.spaces";
+    logger.info("[fromLegacyDNA] Using rooms from legacyDNA.program.spaces", {
       roomCount: rawRooms.length,
       source: roomSource,
     });
@@ -999,8 +1053,8 @@ export function fromLegacyDNA(
   // FALLBACK: Check for projectContext.programSpaces.spaces (legacy nested format)
   else if (projectContext.programSpaces?.spaces?.length > 0) {
     rawRooms = projectContext.programSpaces.spaces;
-    roomSource = 'projectContext.programSpaces.spaces (legacy nested)';
-    logger.info('[fromLegacyDNA] Using rooms from legacy nested format', {
+    roomSource = "projectContext.programSpaces.spaces (legacy nested)";
+    logger.info("[fromLegacyDNA] Using rooms from legacy nested format", {
       roomCount: rawRooms.length,
       source: roomSource,
     });
@@ -1008,7 +1062,7 @@ export function fromLegacyDNA(
 
   // Log warning if no rooms found
   if (rawRooms.length === 0) {
-    logger.warn('[fromLegacyDNA] ⚠️ NO ROOMS FOUND from any source!', {
+    logger.warn("[fromLegacyDNA] ⚠️ NO ROOMS FOUND from any source!", {
       hasProgramFromUI: !!programFromUI,
       programFromUILength: programFromUI?.length || 0,
       hasProgramSpaces: !!projectContext.programSpaces,
@@ -1026,10 +1080,11 @@ export function fromLegacyDNA(
   const normalizedRooms = [];
 
   rawRooms.forEach((r) => {
-    const baseName = r.name || r.roomName || r.label || 'Room';
-    const area = parseFloat(r.area_m2 || r.area || r.areaM2 || r.targetArea) || 20;
+    const baseName = r.name || r.roomName || r.label || "Room";
+    const area =
+      parseFloat(r.area_m2 || r.area || r.areaM2 || r.targetArea) || 20;
     const floor = normalizeFloorString(r.floor ?? r.level ?? r.levelIndex ?? 0);
-    const orientation = r.orientation || r.daylightOrientation || 'any';
+    const orientation = r.orientation || r.daylightOrientation || "any";
     const program = r.program || detectProgramFromName(baseName);
     const count = parseInt(r.count, 10) || 1;
 
@@ -1057,16 +1112,17 @@ export function fromLegacyDNA(
 
   // Log detailed floor distribution
   const byFloorMap = normalizedRooms.reduce((acc, r) => {
-    const floorName = r.floor === 0 ? 'Ground' : r.floor === 1 ? 'First' : `Floor ${r.floor}`;
+    const floorName =
+      r.floor === 0 ? "Ground" : r.floor === 1 ? "First" : `Floor ${r.floor}`;
     acc[floorName] = (acc[floorName] || 0) + 1;
     return acc;
   }, {});
 
-  logger.info('[fromLegacyDNA] Normalized rooms by floor', {
+  logger.info("[fromLegacyDNA] Normalized rooms by floor", {
     totalRooms: normalizedRooms.length,
     byFloor: byFloorMap,
     source: roomSource,
-    rooms: normalizedRooms.map((r) => `${r.name}@floor${r.floor}`).join(', '),
+    rooms: normalizedRooms.map((r) => `${r.name}@floor${r.floor}`).join(", "),
   });
 
   // IMPORTANT: Do NOT fall back to empty rooms when program exists
@@ -1079,10 +1135,13 @@ export function fromLegacyDNA(
   // ============================================================================
   let redistributedRooms = normalizedRooms;
   const allRoomsOnGroundFloor = normalizedRooms.every((r) => r.floor === 0);
-  const needsRedistribution = hasProgramInput && floorCount > 1 && allRoomsOnGroundFloor;
+  const needsRedistribution =
+    hasProgramInput && floorCount > 1 && allRoomsOnGroundFloor;
 
   if (needsRedistribution) {
-    logger.info('[fromLegacyDNA] 🔄 Redistributing rooms: all on floor 0 but floorCount > 1');
+    logger.info(
+      "[fromLegacyDNA] 🔄 Redistributing rooms: all on floor 0 but floorCount > 1",
+    );
 
     try {
       const distributionResult = distributeRoomsToFloors(
@@ -1094,17 +1153,21 @@ export function fromLegacyDNA(
         })),
         {
           buildingType:
-            legacyDNA.buildingType || structured.typology?.building_type || 'single-family',
+            legacyDNA.buildingType ||
+            structured.typology?.building_type ||
+            "single-family",
           floorCount: floorCount,
           siteArea: projectContext.area || 150,
           enforceCirculation: true,
-        }
+        },
       );
 
       if (distributionResult.success) {
         // Rebuild normalizedRooms with updated floor assignments
         redistributedRooms = [];
-        for (const [floorIdx, rooms] of Object.entries(distributionResult.floors)) {
+        for (const [floorIdx, rooms] of Object.entries(
+          distributionResult.floors,
+        )) {
           for (const room of rooms) {
             redistributedRooms.push({
               ...room,
@@ -1113,15 +1176,18 @@ export function fromLegacyDNA(
           }
         }
 
-        logger.info('[fromLegacyDNA] ✓ Redistribution complete', {
+        logger.info("[fromLegacyDNA] ✓ Redistribution complete", {
           originalByFloor: byFloorMap,
           newByFloor: distributionResult.summary.roomsPerFloor,
         });
       }
     } catch (err) {
-      logger.warn('[fromLegacyDNA] Room redistribution failed, using original assignment', {
-        error: err.message,
-      });
+      logger.warn(
+        "[fromLegacyDNA] Room redistribution failed, using original assignment",
+        {
+          error: err.message,
+        },
+      );
     }
   }
 
@@ -1135,16 +1201,22 @@ export function fromLegacyDNA(
           targetAreaM2: r.area_m2,
           daylightOrientation: r.orientation,
           program: r.program,
-        })
+        }),
       );
 
     // Log if level has no rooms but program input exists
     if (levelRooms.length === 0 && hasProgramInput) {
-      logger.warn(`[fromLegacyDNA] Level ${i} has 0 rooms but program input exists`, {
-        floorIndex: i,
-        totalNormalizedRooms: redistributedRooms.length,
-        floorDistribution: redistributedRooms.map((r) => ({ name: r.name, floor: r.floor })),
-      });
+      logger.warn(
+        `[fromLegacyDNA] Level ${i} has 0 rooms but program input exists`,
+        {
+          floorIndex: i,
+          totalNormalizedRooms: redistributedRooms.length,
+          floorDistribution: redistributedRooms.map((r) => ({
+            name: r.name,
+            floor: r.floor,
+          })),
+        },
+      );
     }
 
     levels.push(createLevel(i, { rooms: levelRooms }));
@@ -1153,9 +1225,13 @@ export function fromLegacyDNA(
   // Build program
   const program = createEmptyProgram({
     buildingType:
-      legacyDNA.buildingType || structured.typology?.building_type || 'residential_house',
+      legacyDNA.buildingType ||
+      structured.typology?.building_type ||
+      "residential_house",
     buildingCategory:
-      legacyDNA.buildingCategory || structured.typology?.building_category || 'residential',
+      legacyDNA.buildingCategory ||
+      structured.typology?.building_category ||
+      "residential",
     totalAreaM2:
       projectContext.totalArea ||
       legacyDNA.dimensions?.totalArea ||
@@ -1167,9 +1243,12 @@ export function fromLegacyDNA(
   // Build massing - CRITICAL: Extract explicit dimensions from DNA to prevent corruption
   // DNA uses: dimensions.length (width), dimensions.width (depth)
   // Note: DNA naming is confusing - "length" is the building width (facade), "width" is depth (front-to-back)
-  const dnaLength = legacyDNA.dimensions?.length || structured.geometry?.dimensions?.length;
-  const dnaWidth = legacyDNA.dimensions?.width || structured.geometry?.dimensions?.width;
-  const dnaDepth = legacyDNA.dimensions?.depth || structured.geometry?.dimensions?.depth;
+  const dnaLength =
+    legacyDNA.dimensions?.length || structured.geometry?.dimensions?.length;
+  const dnaWidth =
+    legacyDNA.dimensions?.width || structured.geometry?.dimensions?.width;
+  const dnaDepth =
+    legacyDNA.dimensions?.depth || structured.geometry?.dimensions?.depth;
 
   // FIX: Calculate fallback dimensions from total area when DNA doesn't provide them
   // This ensures BuildingModel always gets explicit dimensions
@@ -1180,8 +1259,9 @@ export function fromLegacyDNA(
       legacyDNA.totalArea ||
       structured.program?.total_area_m2 ||
       program.levels.reduce(
-        (sum, lvl) => sum + lvl.rooms.reduce((s, r) => s + (r.targetAreaM2 || 20), 0),
-        0
+        (sum, lvl) =>
+          sum + lvl.rooms.reduce((s, r) => s + (r.targetAreaM2 || 20), 0),
+        0,
       ) ||
       150;
     const footprintAreaM2 = totalAreaM2 / floorCount;
@@ -1189,7 +1269,7 @@ export function fromLegacyDNA(
     const aspectRatio = 1.5;
     fallbackWidthM = Math.sqrt(footprintAreaM2 * aspectRatio);
     fallbackDepthM = footprintAreaM2 / fallbackWidthM;
-    logger.info('[fromLegacyDNA] Calculated fallback dimensions from area', {
+    logger.info("[fromLegacyDNA] Calculated fallback dimensions from area", {
       totalAreaM2,
       footprintAreaM2,
       fallbackWidthM: Math.round(fallbackWidthM * 10) / 10,
@@ -1198,19 +1278,25 @@ export function fromLegacyDNA(
   }
 
   const massing = createEmptyMassing({
-    footprintShape: structured.geometry?.massing?.footprint_shape || 'rectangular',
+    footprintShape:
+      structured.geometry?.massing?.footprint_shape || "rectangular",
     // FIXED: Pass explicit dimensions from DNA - with fallback calculation
     widthM: dnaLength || dnaWidth || fallbackWidthM, // Building facade width
-    depthM: dnaDepth || (dnaWidth && dnaLength ? dnaWidth : null) || fallbackDepthM, // Building depth
-    roofType: structured.geometry?.roof?.type || structured.geometry_rules?.roof_type || 'gable',
+    depthM:
+      dnaDepth || (dnaWidth && dnaLength ? dnaWidth : null) || fallbackDepthM, // Building depth
+    roofType:
+      structured.geometry?.roof?.type ||
+      structured.geometry_rules?.roof_type ||
+      "gable",
     roofPitchDeg: structured.geometry?.roof?.pitch_degrees || 35,
-    totalHeightM: legacyDNA.dimensions?.height || legacyDNA.dimensions?.totalHeight || 8,
+    totalHeightM:
+      legacyDNA.dimensions?.height || legacyDNA.dimensions?.totalHeight || 8,
     eaveHeightM:
       (legacyDNA.dimensions?.groundFloorHeight || 3) +
       (floorCount - 1) * (legacyDNA.dimensions?.upperFloorHeight || 2.7),
   });
 
-  logger.info('[fromLegacyDNA] Massing dimensions extracted', {
+  logger.info("[fromLegacyDNA] Massing dimensions extracted", {
     dnaLength,
     dnaWidth,
     dnaDepth,
@@ -1221,9 +1307,14 @@ export function fromLegacyDNA(
   // Build style reference
   const style = createEmptyStyleRef({
     vernacularStyle:
-      legacyDNA.architecturalStyle || structured.style?.architecture || 'contemporary',
-    materials: structured.style?.materials || legacyDNA.materials?.map((m) => m.name) || ['brick'],
-    windowStyle: structured.style?.windows?.pattern?.includes('sash') ? 'sash' : 'casement',
+      legacyDNA.architecturalStyle ||
+      structured.style?.architecture ||
+      "contemporary",
+    materials: structured.style?.materials ||
+      legacyDNA.materials?.map((m) => m.name) || ["brick"],
+    windowStyle: structured.style?.windows?.pattern?.includes("sash")
+      ? "sash"
+      : "casement",
   });
 
   // Build constraints with adjacency matrix
@@ -1245,21 +1336,22 @@ export function fromLegacyDNA(
     area: r.area_m2,
     targetAreaM2: r.area_m2,
     levelIndex: r.floor, // 0 = ground, 1 = first, etc.
-    levelName: r.floor === 0 ? 'Ground' : r.floor === 1 ? 'First' : `Floor ${r.floor}`,
+    levelName:
+      r.floor === 0 ? "Ground" : r.floor === 1 ? "First" : `Floor ${r.floor}`,
     category: inferCategoryFromProgram(r.program),
     program: r.program,
     orientation: r.orientation,
-    zoneType: ZONE_TYPE_MAP[r.program] || 'public',
-    spaceType: SPACE_TYPE_MAP[r.program] || 'public',
+    zoneType: ZONE_TYPE_MAP[r.program] || "public",
+    spaceType: SPACE_TYPE_MAP[r.program] || "public",
   }));
 
-  logger.info('[fromLegacyDNA] Created programRooms array', {
+  logger.info("[fromLegacyDNA] Created programRooms array", {
     totalRooms: programRooms.length,
     byLevel: programRooms.reduce((acc, r) => {
       acc[r.levelName] = (acc[r.levelName] || 0) + 1;
       return acc;
     }, {}),
-    rooms: programRooms.map((r) => `${r.name}@${r.levelName}`).join(', '),
+    rooms: programRooms.map((r) => `${r.name}@${r.levelName}`).join(", "),
   });
 
   // ============================================================================
@@ -1269,41 +1361,50 @@ export function fromLegacyDNA(
   // QA CHECK 1: HARD FAIL if no program rooms
   if (programRooms.length === 0) {
     logger.error(
-      '❌ QA FAIL: No program rooms in CanonicalDesignState – geometry will receive empty program!'
+      "❌ QA FAIL: No program rooms in CanonicalDesignState – geometry will receive empty program!",
     );
-    logger.error('   This will result in a generic shoebox building.');
-    logger.error('   Check: programSpaces from UI → projectContext.programSpaces → fromLegacyDNA');
+    logger.error("   This will result in a generic shoebox building.");
+    logger.error(
+      "   Check: programSpaces from UI → projectContext.programSpaces → fromLegacyDNA",
+    );
     // Note: We don't throw here to allow graceful degradation, but this is a critical warning
   }
 
   // QA CHECK 2: Warn if levelCount doesn't match rooms distribution
   const maxLevelInRooms =
-    programRooms.length > 0 ? Math.max(...programRooms.map((r) => r.levelIndex || 0)) : 0;
+    programRooms.length > 0
+      ? Math.max(...programRooms.map((r) => r.levelIndex || 0))
+      : 0;
   const effectiveLevelCount = maxLevelInRooms + 1;
 
   if (effectiveLevelCount < floorCount) {
     logger.warn(
-      `⚠️  QA WARNING: levelCount (${floorCount}) > floors with rooms (${effectiveLevelCount})`
+      `⚠️  QA WARNING: levelCount (${floorCount}) > floors with rooms (${effectiveLevelCount})`,
     );
     logger.warn(
-      `   Rooms are only assigned to floors 0-${maxLevelInRooms}, but ${floorCount} floors requested.`
+      `   Rooms are only assigned to floors 0-${maxLevelInRooms}, but ${floorCount} floors requested.`,
     );
     logger.warn(`   Consider redistributing rooms or adjusting floor count.`);
   }
 
   // QA CHECK 3: Warn if total room area is too small
-  const totalRoomArea = programRooms.reduce((sum, r) => sum + (r.targetAreaM2 || 0), 0);
+  const totalRoomArea = programRooms.reduce(
+    (sum, r) => sum + (r.targetAreaM2 || 0),
+    0,
+  );
   if (totalRoomArea < 30 && programRooms.length > 0) {
-    logger.warn(`⚠️  QA WARNING: Total room area (${totalRoomArea.toFixed(1)}m²) seems very small`);
+    logger.warn(
+      `⚠️  QA WARNING: Total room area (${totalRoomArea.toFixed(1)}m²) seems very small`,
+    );
   }
 
   return {
     meta: {
       designId: generateDesignId(),
-      version: '1.0',
+      version: "1.0",
       createdAt: new Date().toISOString(),
       dnaHash: null,
-      generatorVersion: '2.0',
+      generatorVersion: "2.0",
     },
     site,
     program,
@@ -1313,7 +1414,9 @@ export function fromLegacyDNA(
     // TOP-LEVEL programRooms for easy access by BuildingModel
     programRooms,
     levelCount: floorCount,
-    levels: program.levels.map((l) => l.name || (l.index === 0 ? 'Ground' : `Floor ${l.index}`)),
+    levels: program.levels.map(
+      (l) => l.name || (l.index === 0 ? "Ground" : `Floor ${l.index}`),
+    ),
   };
 }
 
@@ -1323,34 +1426,34 @@ export function fromLegacyDNA(
  * @returns {string} - 'public', 'private', or 'service'
  */
 function inferCategoryFromProgram(program) {
-  const p = (program || '').toLowerCase();
+  const p = (program || "").toLowerCase();
 
   // Service/circulation
   if (
-    p.includes('hall') ||
-    p.includes('landing') ||
-    p.includes('circulation') ||
-    p.includes('stair') ||
-    p.includes('utility') ||
-    p.includes('storage')
+    p.includes("hall") ||
+    p.includes("landing") ||
+    p.includes("circulation") ||
+    p.includes("stair") ||
+    p.includes("utility") ||
+    p.includes("storage")
   ) {
-    return 'service';
+    return "service";
   }
 
   // Private
   if (
-    p.includes('bedroom') ||
-    p.includes('bathroom') ||
-    p.includes('ensuite') ||
-    p.includes('wc') ||
-    p.includes('study') ||
-    p.includes('nursery')
+    p.includes("bedroom") ||
+    p.includes("bathroom") ||
+    p.includes("ensuite") ||
+    p.includes("wc") ||
+    p.includes("study") ||
+    p.includes("nursery")
   ) {
-    return 'private';
+    return "private";
   }
 
   // Public (default)
-  return 'public';
+  return "public";
 }
 
 /**
@@ -1371,8 +1474,8 @@ export function toLegacyDNA(state) {
       area_m2: room.targetAreaM2,
       area: room.targetAreaM2,
       floor: levelIndex,
-      orientation: room.daylightOrientation || 'any',
-    }))
+      orientation: room.daylightOrientation || "any",
+    })),
   );
 
   // Calculate dimensions
@@ -1391,23 +1494,25 @@ export function toLegacyDNA(state) {
       totalHeight: state.massing.totalHeightM,
       floorCount: state.program.levelCount,
       footprintArea,
-      groundFloorHeight: state.program.levels[0]?.floorHeightM || DEFAULT_GROUND_FLOOR_HEIGHT,
-      upperFloorHeight: state.program.levels[1]?.floorHeightM || DEFAULT_FLOOR_HEIGHT,
+      groundFloorHeight:
+        state.program.levels[0]?.floorHeightM || DEFAULT_GROUND_FLOOR_HEIGHT,
+      upperFloorHeight:
+        state.program.levels[1]?.floorHeightM || DEFAULT_FLOOR_HEIGHT,
       totalArea: state.program.totalAreaM2,
     },
 
     // Materials
     materials: state.style.materials.map((mat, idx) => ({
       name: mat,
-      hexColor: idx === 0 ? '#B8604E' : idx === 1 ? '#8B4513' : '#CCCCCC',
-      application: idx === 0 ? 'exterior walls' : idx === 1 ? 'roof' : 'trim',
+      hexColor: idx === 0 ? "#B8604E" : idx === 1 ? "#8B4513" : "#CCCCCC",
+      application: idx === 0 ? "exterior walls" : idx === 1 ? "roof" : "trim",
     })),
 
     // Roof
     roof: {
       type: state.massing.roofType,
       pitch: state.massing.roofPitchDeg,
-      material: state.style.materials[1] || 'tiles',
+      material: state.style.materials[1] || "tiles",
     },
 
     // Rooms (flattened)
@@ -1434,8 +1539,8 @@ export function toLegacyDNA(state) {
 
     // Climate
     climateDesign: {
-      zone: state.site.climate?.zone || 'temperate',
-      orientation: state.site.sunPath?.optimalOrientation || 'south',
+      zone: state.site.climate?.zone || "temperate",
+      orientation: state.site.sunPath?.optimalOrientation || "south",
     },
 
     // Geometry rules
@@ -1461,7 +1566,7 @@ export function toLegacyDNA(state) {
       style: {
         architecture: state.style.vernacularStyle,
         materials: state.style.materials,
-        windows: { pattern: 'regular grid', proportion: '3:5' },
+        windows: { pattern: "regular grid", proportion: "3:5" },
       },
       geometry_rules: {
         roof_type: state.massing.roofType,
@@ -1474,7 +1579,7 @@ export function toLegacyDNA(state) {
     _canonical: state,
 
     // Version
-    version: '2.0',
+    version: "2.0",
   };
 }
 
@@ -1488,7 +1593,7 @@ export function toLegacyDNA(state) {
  * @returns {number}
  */
 function normalizeFloorString(floor) {
-  if (typeof floor === 'number') {
+  if (typeof floor === "number") {
     return floor;
   }
   if (!floor) {
@@ -1529,16 +1634,16 @@ function buildAdjacencyMatrix(levels) {
 
   // Default adjacency rules based on room program
   const defaultAdjacencies = {
-    living: ['entrance', 'dining', 'kitchen'],
-    kitchen: ['dining', 'utility', 'living'],
-    dining: ['kitchen', 'living'],
-    master_bedroom: ['ensuite', 'bathroom'],
-    bedroom: ['bathroom', 'circulation'],
-    entrance: ['living', 'circulation'],
-    circulation: ['entrance', 'bedroom', 'bathroom'],
-    reception: ['waiting', 'office'],
-    waiting: ['reception', 'consultation'],
-    consultation: ['waiting', 'treatment'],
+    living: ["entrance", "dining", "kitchen"],
+    kitchen: ["dining", "utility", "living"],
+    dining: ["kitchen", "living"],
+    master_bedroom: ["ensuite", "bathroom"],
+    bedroom: ["bathroom", "circulation"],
+    entrance: ["living", "circulation"],
+    circulation: ["entrance", "bedroom", "bathroom"],
+    reception: ["waiting", "office"],
+    waiting: ["reception", "consultation"],
+    consultation: ["waiting", "treatment"],
   };
 
   // Collect all rooms with their IDs
@@ -1546,7 +1651,7 @@ function buildAdjacencyMatrix(levels) {
 
   // Build matrix
   allRooms.forEach((room) => {
-    const program = room.program || 'generic';
+    const program = room.program || "generic";
     const defaultAdj = defaultAdjacencies[program] || [];
 
     // Find rooms that match default adjacencies
@@ -1586,36 +1691,38 @@ export function validateCanonicalDesignState(state, options = {}) {
   const warnings = [];
 
   if (!state) {
-    errors.push('State is null or undefined');
+    errors.push("State is null or undefined");
     return { valid: false, errors, warnings };
   }
 
   // Meta validation
   if (!state.meta?.designId) {
-    errors.push('meta.designId is required');
+    errors.push("meta.designId is required");
   }
 
   // Site validation
   if (!state.site) {
-    errors.push('site section is required');
+    errors.push("site section is required");
   } else {
     if (!ENTRANCE_DIRECTIONS.includes(state.site.entranceSide)) {
-      warnings.push(`Invalid entranceSide: ${state.site.entranceSide}, using 'S'`);
+      warnings.push(
+        `Invalid entranceSide: ${state.site.entranceSide}, using 'S'`,
+      );
     }
     if (state.site.areaM2 <= 0) {
-      warnings.push('site.areaM2 should be positive');
+      warnings.push("site.areaM2 should be positive");
     }
   }
 
   // Program validation
   if (!state.program) {
-    errors.push('program section is required');
+    errors.push("program section is required");
   } else {
     if (state.program.levelCount < 1) {
-      errors.push('program.levelCount must be at least 1');
+      errors.push("program.levelCount must be at least 1");
     }
     if (!state.program.levels || state.program.levels.length === 0) {
-      errors.push('program.levels must have at least one level');
+      errors.push("program.levels must have at least one level");
     } else {
       // Validate each level has rooms
       state.program.levels.forEach((level, i) => {
@@ -1632,7 +1739,7 @@ export function validateCanonicalDesignState(state, options = {}) {
       const areaRatio = totalRoomArea / (state.program.totalAreaM2 || 1);
       if (areaRatio < 0.7 || areaRatio > 1.3) {
         warnings.push(
-          `Room areas (${totalRoomArea.toFixed(0)}m²) differ significantly from totalAreaM2 (${state.program.totalAreaM2}m²)`
+          `Room areas (${totalRoomArea.toFixed(0)}m²) differ significantly from totalAreaM2 (${state.program.totalAreaM2}m²)`,
         );
       }
     }
@@ -1640,7 +1747,7 @@ export function validateCanonicalDesignState(state, options = {}) {
 
   // Massing validation
   if (!state.massing) {
-    errors.push('massing section is required');
+    errors.push("massing section is required");
   } else {
     if (!FOOTPRINT_SHAPES.includes(state.massing.footprintShape)) {
       warnings.push(`Unknown footprintShape: ${state.massing.footprintShape}`);
@@ -1649,19 +1756,24 @@ export function validateCanonicalDesignState(state, options = {}) {
       warnings.push(`Unknown roofType: ${state.massing.roofType}`);
     }
     if (state.massing.totalHeightM <= 0) {
-      errors.push('massing.totalHeightM must be positive');
+      errors.push("massing.totalHeightM must be positive");
     }
   }
 
   // Style validation
   if (!state.style) {
-    errors.push('style section is required');
+    errors.push("style section is required");
   } else {
     const weights = state.style.blendWeights;
     if (weights) {
-      const sum = (weights.location || 0) + (weights.portfolio || 0) + (weights.variation || 0);
+      const sum =
+        (weights.location || 0) +
+        (weights.portfolio || 0) +
+        (weights.variation || 0);
       if (Math.abs(sum - 1.0) > 0.01) {
-        warnings.push(`Style blend weights should sum to 1.0 (got ${sum.toFixed(2)})`);
+        warnings.push(
+          `Style blend weights should sum to 1.0 (got ${sum.toFixed(2)})`,
+        );
       }
     }
   }
@@ -1670,12 +1782,13 @@ export function validateCanonicalDesignState(state, options = {}) {
   if (state.constraints) {
     if (state.constraints.circulationWidthMm < MIN_CIRCULATION_WIDTH_MM) {
       warnings.push(
-        `circulationWidthMm (${state.constraints.circulationWidthMm}) below UK minimum (${MIN_CIRCULATION_WIDTH_MM})`
+        `circulationWidthMm (${state.constraints.circulationWidthMm}) below UK minimum (${MIN_CIRCULATION_WIDTH_MM})`,
       );
     }
   }
 
-  const valid = errors.length === 0 && (!options.strict || warnings.length === 0);
+  const valid =
+    errors.length === 0 && (!options.strict || warnings.length === 0);
 
   return { valid, errors, warnings };
 }
@@ -1686,11 +1799,11 @@ export function validateCanonicalDesignState(state, options = {}) {
  * @param {string} [context] - Context for error message
  * @throws {Error} If validation fails
  */
-export function validateOrThrow(state, context = 'CanonicalDesignState') {
+export function validateOrThrow(state, context = "CanonicalDesignState") {
   const result = validateCanonicalDesignState(state);
 
   if (!result.valid) {
-    const errorMsg = `${context} validation failed: ${result.errors.join('; ')}`;
+    const errorMsg = `${context} validation failed: ${result.errors.join("; ")}`;
     logger.error(errorMsg);
     throw new Error(errorMsg);
   }
@@ -1713,13 +1826,19 @@ export function validateOrThrow(state, context = 'CanonicalDesignState') {
  * @returns {boolean}
  */
 export function hasCompleteGeometry(state) {
-  if (!state) {return false;}
-  if (!state.geometryModel) {return false;}
-  if (!state.geometryModel.floors || state.geometryModel.floors.length === 0) {return false;}
+  if (!state) {
+    return false;
+  }
+  if (!state.geometryModel) {
+    return false;
+  }
+  if (!state.geometryModel.floors || state.geometryModel.floors.length === 0) {
+    return false;
+  }
 
   // Check each floor has rooms
   const hasRooms = state.geometryModel.floors.every(
-    (floor) => floor.rooms && floor.rooms.length > 0
+    (floor) => floor.rooms && floor.rooms.length > 0,
   );
 
   return hasRooms;
@@ -1732,11 +1851,17 @@ export function hasCompleteGeometry(state) {
  * @returns {boolean}
  */
 export function hasCompleteFacade(state) {
-  if (!state) {return false;}
-  if (!state.facadeModel) {return false;}
+  if (!state) {
+    return false;
+  }
+  if (!state.facadeModel) {
+    return false;
+  }
 
-  const orientations = ['north', 'south', 'east', 'west'];
-  return orientations.every((dir) => state.facadeModel[dir] && state.facadeModel[dir].width > 0);
+  const orientations = ["north", "south", "east", "west"];
+  return orientations.every(
+    (dir) => state.facadeModel[dir] && state.facadeModel[dir].width > 0,
+  );
 }
 
 /**
@@ -1746,11 +1871,16 @@ export function hasCompleteFacade(state) {
  * @returns {boolean}
  */
 export function hasCanonicalRenders(state) {
-  if (!state) {return false;}
-  if (!state.canonicalRenders) {return false;}
+  if (!state) {
+    return false;
+  }
+  if (!state.canonicalRenders) {
+    return false;
+  }
 
   // Check at least one floor plan SVG exists
-  const hasFloorPlans = Object.keys(state.canonicalRenders.floorPlansSVG || {}).length > 0;
+  const hasFloorPlans =
+    Object.keys(state.canonicalRenders.floorPlansSVG || {}).length > 0;
 
   return hasFloorPlans;
 }
@@ -1765,23 +1895,23 @@ export function isReadyForPanelGeneration(state) {
   const missing = [];
 
   if (!state) {
-    return { ready: false, missing: ['state'] };
+    return { ready: false, missing: ["state"] };
   }
 
   if (!state.designFingerprint) {
-    missing.push('designFingerprint');
+    missing.push("designFingerprint");
   }
 
   if (!state.geometryModel || !hasCompleteGeometry(state)) {
-    missing.push('geometryModel (complete floors with rooms)');
+    missing.push("geometryModel (complete floors with rooms)");
   }
 
   if (!state.facadeModel || !hasCompleteFacade(state)) {
-    missing.push('facadeModel (all four orientations)');
+    missing.push("facadeModel (all four orientations)");
   }
 
   if (!state.canonicalRenders || !hasCanonicalRenders(state)) {
-    missing.push('canonicalRenders');
+    missing.push("canonicalRenders");
   }
 
   return {

@@ -10,9 +10,15 @@
  * @module geometry/BuildingModel
  */
 
-import logger from '../services/core/logger.js';
-import { ZONE_TYPE_MAP } from '../types/CanonicalDesignState.js';
-import { MM_PER_M, toMM, toMSafe, areaToMM2, validateUnit } from '../utils/unitConversion.js';
+import logger from "../utils/logger.js";
+import { ZONE_TYPE_MAP } from "../types/CanonicalDesignState.js";
+import {
+  MM_PER_M,
+  toMM,
+  toMSafe,
+  areaToMM2,
+  validateUnit,
+} from "../utils/unitConversion.js";
 
 // =============================================================================
 // CONSTANTS
@@ -45,11 +51,11 @@ const STAIR_CORE = {
 
 /** Room adjacency rules - higher score = should be closer */
 const ADJACENCY_RULES = {
-  Entry: { 'Living Room': 10, Hall: 10, Circulation: 8 },
-  'Living Room': { Kitchen: 8, Dining: 8, Entry: 10 },
-  Kitchen: { Dining: 10, 'Living Room': 8, Utility: 6 },
-  Dining: { Kitchen: 10, 'Living Room': 8 },
-  'Master Bedroom': { 'En-Suite': 10, 'Walk-in Wardrobe': 8 },
+  Entry: { "Living Room": 10, Hall: 10, Circulation: 8 },
+  "Living Room": { Kitchen: 8, Dining: 8, Entry: 10 },
+  Kitchen: { Dining: 10, "Living Room": 8, Utility: 6 },
+  Dining: { Kitchen: 10, "Living Room": 8 },
+  "Master Bedroom": { "En-Suite": 10, "Walk-in Wardrobe": 8 },
   Bedroom: { Bathroom: 4 },
   Circulation: { Entry: 8 },
 };
@@ -58,32 +64,32 @@ const ADJACENCY_RULES = {
 const FLOOR_PRIORITY = {
   // Ground floor rooms (priority 0)
   ground: [
-    'entry',
-    'hall',
-    'living',
-    'kitchen',
-    'dining',
-    'utility',
-    'garage',
-    'reception',
-    'lobby',
-    'wc',
-    'cloakroom',
+    "entry",
+    "hall",
+    "living",
+    "kitchen",
+    "dining",
+    "utility",
+    "garage",
+    "reception",
+    "lobby",
+    "wc",
+    "cloakroom",
   ],
   // Upper floor rooms (priority 1+)
   upper: [
-    'bedroom',
-    'master',
-    'bathroom',
-    'en-suite',
-    'ensuite',
-    'study',
-    'office',
-    'nursery',
-    'guest',
+    "bedroom",
+    "master",
+    "bathroom",
+    "en-suite",
+    "ensuite",
+    "study",
+    "office",
+    "nursery",
+    "guest",
   ],
   // Can go anywhere
-  flexible: ['storage', 'circulation', 'stair'],
+  flexible: ["storage", "circulation", "stair"],
 };
 
 // =============================================================================
@@ -107,7 +113,7 @@ export class BuildingModel {
    */
   constructor(canonicalState) {
     if (!canonicalState) {
-      throw new Error('BuildingModel requires CanonicalDesignState');
+      throw new Error("BuildingModel requires CanonicalDesignState");
     }
 
     this.designId = canonicalState.meta?.designId || `bm_${Date.now()}`;
@@ -122,7 +128,7 @@ export class BuildingModel {
    * @private
    */
   _buildFromCanonical(state) {
-    logger.info('[BuildingModel] Building from CanonicalDesignState', {
+    logger.info("[BuildingModel] Building from CanonicalDesignState", {
       designId: this.designId,
       levels: state.program?.levelCount,
     });
@@ -144,12 +150,12 @@ export class BuildingModel {
 
     // 6. Store style reference
     this.style = {
-      vernacular: state.style?.vernacularStyle || 'contemporary',
-      materials: state.style?.materials || ['brick', 'render'],
-      windowStyle: state.style?.windowStyle || 'casement',
+      vernacular: state.style?.vernacularStyle || "contemporary",
+      materials: state.style?.materials || ["brick", "render"],
+      windowStyle: state.style?.windowStyle || "casement",
     };
 
-    logger.info('[BuildingModel] Model built successfully', {
+    logger.info("[BuildingModel] Model built successfully", {
       floors: this.floors.length,
       totalRooms: this.floors.reduce((sum, f) => sum + f.rooms.length, 0),
       facadeSummary: this.facadeSummary,
@@ -176,18 +182,32 @@ export class BuildingModel {
     // ==========================================================================
     // PRIORITY 1: Use explicit massing dimensions from DNA (prevents corruption)
     // ==========================================================================
-    if (massing.widthM && massing.depthM && massing.widthM > 1 && massing.depthM > 1) {
+    if (
+      massing.widthM &&
+      massing.depthM &&
+      massing.widthM > 1 &&
+      massing.depthM > 1
+    ) {
       const widthM = massing.widthM;
       const depthM = massing.depthM;
 
-      logger.info('[BuildingModel] ✅ Using EXPLICIT massing dimensions from DNA', {
+      logger.info(
+        "[BuildingModel] ✅ Using EXPLICIT massing dimensions from DNA",
+        {
+          widthM,
+          depthM,
+          footprintAreaM2: widthM * depthM,
+          source: "massing.widthM/depthM",
+        },
+      );
+
+      return this._buildEnvelopeWithDimensions(
+        state,
         widthM,
         depthM,
-        footprintAreaM2: widthM * depthM,
-        source: 'massing.widthM/depthM',
-      });
-
-      return this._buildEnvelopeWithDimensions(state, widthM, depthM, levelCount, site);
+        levelCount,
+        site,
+      );
     }
 
     // ==========================================================================
@@ -201,28 +221,34 @@ export class BuildingModel {
       const widthM = dna.dimensions.width;
       const depthM = dna.dimensions.length;
 
-      logger.info('[BuildingModel] ✅ Using DNA dimensions directly', {
+      logger.info("[BuildingModel] ✅ Using DNA dimensions directly", {
         widthM,
         depthM,
         footprintAreaM2: widthM * depthM,
-        source: 'dna.dimensions',
+        source: "dna.dimensions",
         dnaLength: dna.dimensions.length,
         dnaWidth: dna.dimensions.width,
       });
 
-      return this._buildEnvelopeWithDimensions(state, widthM, depthM, levelCount, site);
+      return this._buildEnvelopeWithDimensions(
+        state,
+        widthM,
+        depthM,
+        levelCount,
+        site,
+      );
     }
 
     // ==========================================================================
     // FALLBACK: Calculate from area (original logic - may be inaccurate)
     // ==========================================================================
     logger.warn(
-      '[BuildingModel] ⚠️ No explicit dimensions found - calculating from area (may be inaccurate)',
+      "[BuildingModel] ⚠️ No explicit dimensions found - calculating from area (may be inaccurate)",
       {
         hasMassingWidthM: !!massing.widthM,
         hasMassingDepthM: !!massing.depthM,
         hasDNADimensions: !!(dna.dimensions?.length && dna.dimensions?.width),
-      }
+      },
     );
 
     // Calculate footprint area using site-aware logic
@@ -234,9 +260,9 @@ export class BuildingModel {
     if (program.perFloorArea?.ground) {
       // Use ground floor area as footprint
       footprintAreaM2 = program.perFloorArea.ground;
-      logger.info('[BuildingModel] Using per-floor area for footprint', {
+      logger.info("[BuildingModel] Using per-floor area for footprint", {
         groundArea: footprintAreaM2,
-        source: 'perFloorArea',
+        source: "perFloorArea",
       });
     } else if (siteAreaM2 > 0) {
       // Apply site coverage constraint (max 55%)
@@ -244,7 +270,7 @@ export class BuildingModel {
       const maxFootprint = siteAreaM2 * COVERAGE_MAX;
       const idealFootprint = totalAreaM2 / levelCount;
       footprintAreaM2 = Math.min(maxFootprint, idealFootprint);
-      logger.info('[BuildingModel] Using site-constrained footprint', {
+      logger.info("[BuildingModel] Using site-constrained footprint", {
         siteArea: siteAreaM2,
         maxFootprint,
         idealFootprint,
@@ -272,7 +298,7 @@ export class BuildingModel {
 
       if (latM > 0 && lngM > 0) {
         aspectRatio = Math.max(0.5, Math.min(2.0, lngM / latM));
-        logger.info('[BuildingModel] Using site-derived aspect ratio', {
+        logger.info("[BuildingModel] Using site-derived aspect ratio", {
           latM: latM.toFixed(1),
           lngM: lngM.toFixed(1),
           aspectRatio: aspectRatio.toFixed(2),
@@ -292,13 +318,15 @@ export class BuildingModel {
     for (let i = 0; i < levelCount; i++) {
       const heightM =
         program.levels?.[i]?.floorHeightM ||
-        (i === 0 ? DEFAULT_GROUND_FLOOR_HEIGHT / MM_PER_M : DEFAULT_FLOOR_HEIGHT / MM_PER_M);
+        (i === 0
+          ? DEFAULT_GROUND_FLOOR_HEIGHT / MM_PER_M
+          : DEFAULT_FLOOR_HEIGHT / MM_PER_M);
       floorHeights.push(Math.round(heightM * MM_PER_M));
     }
     const totalHeightMM = floorHeights.reduce((sum, h) => sum + h, 0);
 
     // Entrance side
-    const entranceSide = site.entranceSide || 'S';
+    const entranceSide = site.entranceSide || "S";
 
     // Build rectangular footprint centered at origin
     const footprint = [
@@ -344,13 +372,15 @@ export class BuildingModel {
     for (let i = 0; i < levelCount; i++) {
       const heightM =
         program.levels?.[i]?.floorHeightM ||
-        (i === 0 ? DEFAULT_GROUND_FLOOR_HEIGHT / MM_PER_M : DEFAULT_FLOOR_HEIGHT / MM_PER_M);
+        (i === 0
+          ? DEFAULT_GROUND_FLOOR_HEIGHT / MM_PER_M
+          : DEFAULT_FLOOR_HEIGHT / MM_PER_M);
       floorHeights.push(Math.round(heightM * MM_PER_M));
     }
     const totalHeightMM = floorHeights.reduce((sum, h) => sum + h, 0);
 
     // Entrance side
-    const entranceSide = site.entranceSide || 'S';
+    const entranceSide = site.entranceSide || "S";
 
     // Build rectangular footprint centered at origin
     const footprint = [
@@ -391,7 +421,7 @@ export class BuildingModel {
     // ROOM EXTRACTION - PREFER TOP-LEVEL programRooms
     // ========================================================================
     let allRooms = [];
-    let roomSource = 'none';
+    let roomSource = "none";
 
     // Priority 1: Top-level programRooms (from fromLegacyDNA)
     if (Array.isArray(state.programRooms) && state.programRooms.length > 0) {
@@ -400,10 +430,10 @@ export class BuildingModel {
         originalFloor: r.levelIndex ?? 0,
         targetAreaM2: r.targetAreaM2 || r.area || 20,
       }));
-      roomSource = 'state.programRooms (top-level)';
-      logger.info('[BuildingModel] ✓ Using top-level programRooms', {
+      roomSource = "state.programRooms (top-level)";
+      logger.info("[BuildingModel] ✓ Using top-level programRooms", {
         count: allRooms.length,
-        rooms: allRooms.map((r) => `${r.name}@L${r.originalFloor}`).join(', '),
+        rooms: allRooms.map((r) => `${r.name}@L${r.originalFloor}`).join(", "),
       });
     }
     // Priority 2: Nested levels[].rooms (legacy fallback)
@@ -415,9 +445,9 @@ export class BuildingModel {
           }
         }
       }
-      roomSource = 'state.program.levels[].rooms (nested)';
+      roomSource = "state.program.levels[].rooms (nested)";
       if (allRooms.length > 0) {
-        logger.info('[BuildingModel] Using nested levels[].rooms', {
+        logger.info("[BuildingModel] Using nested levels[].rooms", {
           count: allRooms.length,
         });
       }
@@ -431,33 +461,39 @@ export class BuildingModel {
     // ========================================================================
     if (!hasProgramInput) {
       logger.error(
-        '╔══════════════════════════════════════════════════════════════════════════════╗'
+        "╔══════════════════════════════════════════════════════════════════════════════╗",
       );
       logger.error(
-        '║  ❌ HARD FAIL: No program rooms in CanonicalDesignState                       ║'
+        "║  ❌ HARD FAIL: No program rooms in CanonicalDesignState                       ║",
       );
       logger.error(
-        '║     Aborting geometry generation to prevent generic shoebox fallback.        ║'
+        "║     Aborting geometry generation to prevent generic shoebox fallback.        ║",
       );
       logger.error(
-        '╚══════════════════════════════════════════════════════════════════════════════╝'
+        "╚══════════════════════════════════════════════════════════════════════════════╝",
       );
-      logger.error('[BuildingModel] Diagnostic info:', {
+      logger.error("[BuildingModel] Diagnostic info:", {
         hasProgramRooms: !!state.programRooms,
         programRoomsLength: state.programRooms?.length || 0,
         hasLevels: !!program.levels,
         levelsLength: program.levels?.length || 0,
         roomSource,
       });
-      logger.error('[BuildingModel] Check the data flow:');
-      logger.error('   1. useProgramSpaces → stores assignedSpaces in DesignContext');
-      logger.error('   2. useGeneration → reads programSpaces from context');
-      logger.error('   3. dnaWorkflowOrchestrator → passes projectContext.programSpaces');
-      logger.error('   4. fromLegacyDNA → should extract rooms from projectContext.programSpaces');
+      logger.error("[BuildingModel] Check the data flow:");
+      logger.error(
+        "   1. useProgramSpaces → stores assignedSpaces in DesignContext",
+      );
+      logger.error("   2. useGeneration → reads programSpaces from context");
+      logger.error(
+        "   3. dnaWorkflowOrchestrator → passes projectContext.programSpaces",
+      );
+      logger.error(
+        "   4. fromLegacyDNA → should extract rooms from projectContext.programSpaces",
+      );
 
       // Do not abort: allow envelope-only geometry (tests + early workflow steps may have 0 rooms).
       logger.warn(
-        '[BuildingModel] No program rooms provided; continuing with envelope-only geometry'
+        "[BuildingModel] No program rooms provided; continuing with envelope-only geometry",
       );
     }
 
@@ -473,14 +509,17 @@ export class BuildingModel {
 
     // Check if rooms need auto-level assignment:
     // - All rooms on floor 0 but levelCount > 1
-    const roomsOnGroundOnly = allRooms.every((r) => (r.originalFloor ?? 0) === 0);
-    const needsAutoAssignment = hasProgramInput && levelCount > 1 && roomsOnGroundOnly;
+    const roomsOnGroundOnly = allRooms.every(
+      (r) => (r.originalFloor ?? 0) === 0,
+    );
+    const needsAutoAssignment =
+      hasProgramInput && levelCount > 1 && roomsOnGroundOnly;
 
     if (needsAutoAssignment) {
-      logger.info('[BuildingModel] Auto-assigning rooms across floors', {
+      logger.info("[BuildingModel] Auto-assigning rooms across floors", {
         totalRooms: totalProgramRooms,
         levelCount,
-        reason: 'All rooms on ground floor but levelCount > 1',
+        reason: "All rooms on ground floor but levelCount > 1",
       });
 
       // Redistribute rooms across floors
@@ -492,7 +531,7 @@ export class BuildingModel {
       }
     }
 
-    logger.info('[BuildingModel] Building floors', {
+    logger.info("[BuildingModel] Building floors", {
       levelCount,
       levelsProvided: levels.length,
       totalProgramRooms,
@@ -501,15 +540,17 @@ export class BuildingModel {
       roomSource,
       byFloor: Object.entries(roomsByLevel)
         .map(([k, v]) => `L${k}:${v.length}`)
-        .join(', '),
+        .join(", "),
     });
 
     let currentZ = 0;
 
     for (let floorIndex = 0; floorIndex < levelCount; floorIndex++) {
       const levelData = levels[floorIndex] || { rooms: [], floorHeightM: 2.8 };
-      const floorHeight = this.envelope.floorHeights[floorIndex] || DEFAULT_FLOOR_HEIGHT;
-      const levelName = floorIndex === 0 ? 'Ground Floor' : `Floor ${floorIndex}`;
+      const floorHeight =
+        this.envelope.floorHeights[floorIndex] || DEFAULT_FLOOR_HEIGHT;
+      const levelName =
+        floorIndex === 0 ? "Ground Floor" : `Floor ${floorIndex}`;
 
       // ========================================================================
       // GET ROOMS FOR THIS FLOOR - prefer roomsByLevel from programRooms
@@ -517,12 +558,14 @@ export class BuildingModel {
       let roomsInput = roomsByLevel[floorIndex] || levelData.rooms || [];
 
       // Log zone distribution for this floor
-      const publicCount = roomsInput.filter((r) => (r.category || r.zoneType) === 'public').length;
+      const publicCount = roomsInput.filter(
+        (r) => (r.category || r.zoneType) === "public",
+      ).length;
       const privateCount = roomsInput.filter(
-        (r) => (r.category || r.zoneType) === 'private'
+        (r) => (r.category || r.zoneType) === "private",
       ).length;
       const serviceCount = roomsInput.filter(
-        (r) => (r.category || r.zoneType) === 'service'
+        (r) => (r.category || r.zoneType) === "service",
       ).length;
 
       logger.info(`[BuildingModel] Zone-based layout for floor ${floorIndex}`, {
@@ -532,7 +575,7 @@ export class BuildingModel {
         public: publicCount,
         private: privateCount,
         service: serviceCount,
-        rooms: roomsInput.map((r) => r.name).join(', '),
+        rooms: roomsInput.map((r) => r.name).join(", "),
       });
 
       // Add circulation room for stair core on multi-floor buildings
@@ -574,7 +617,12 @@ export class BuildingModel {
       floor.walls = this._buildWalls(floor.rooms, floorIndex);
 
       // Build openings (windows and doors)
-      floor.openings = this._buildOpenings(floor.walls, floor.rooms, floorIndex, state);
+      floor.openings = this._buildOpenings(
+        floor.walls,
+        floor.rooms,
+        floorIndex,
+        state,
+      );
 
       // Log opening counts per facade
       const facadeCounts = { N: 0, S: 0, E: 0, W: 0 };
@@ -606,10 +654,12 @@ export class BuildingModel {
     for (let i = 0; i < levelCount; i++) {
       levels.push({
         index: i,
-        name: i === 0 ? 'Ground Floor' : `Floor ${i}`,
+        name: i === 0 ? "Ground Floor" : `Floor ${i}`,
         rooms: [],
         floorHeightM:
-          i === 0 ? DEFAULT_GROUND_FLOOR_HEIGHT / MM_PER_M : DEFAULT_FLOOR_HEIGHT / MM_PER_M,
+          i === 0
+            ? DEFAULT_GROUND_FLOOR_HEIGHT / MM_PER_M
+            : DEFAULT_FLOOR_HEIGHT / MM_PER_M,
       });
     }
 
@@ -619,14 +669,14 @@ export class BuildingModel {
     const flexibleRooms = [];
 
     for (const room of allRooms) {
-      const roomNameLower = (room.name || '').toLowerCase();
-      const programLower = (room.program || '').toLowerCase();
+      const roomNameLower = (room.name || "").toLowerCase();
+      const programLower = (room.program || "").toLowerCase();
 
       const isGround = FLOOR_PRIORITY.ground.some(
-        (g) => roomNameLower.includes(g) || programLower.includes(g)
+        (g) => roomNameLower.includes(g) || programLower.includes(g),
       );
       const isUpper = FLOOR_PRIORITY.upper.some(
-        (u) => roomNameLower.includes(u) || programLower.includes(u)
+        (u) => roomNameLower.includes(u) || programLower.includes(u),
       );
 
       if (isGround && !isUpper) {
@@ -658,7 +708,10 @@ export class BuildingModel {
       let minAreaFloor = 0;
       let minArea = Infinity;
       for (let i = 0; i < levelCount; i++) {
-        const floorArea = levels[i].rooms.reduce((sum, r) => sum + (r.targetAreaM2 || 20), 0);
+        const floorArea = levels[i].rooms.reduce(
+          (sum, r) => sum + (r.targetAreaM2 || 20),
+          0,
+        );
         if (floorArea < minArea) {
           minArea = floorArea;
           minAreaFloor = i;
@@ -667,7 +720,7 @@ export class BuildingModel {
       levels[minAreaFloor].rooms.push(room);
     }
 
-    logger.info('[BuildingModel] Auto-level assignment complete', {
+    logger.info("[BuildingModel] Auto-level assignment complete", {
       ground: levels[0].rooms.map((r) => r.name),
       upper: levels.slice(1).map((l) => l.rooms.map((r) => r.name)),
     });
@@ -683,9 +736,9 @@ export class BuildingModel {
     // Check if circulation room already exists
     const hasCirculation = rooms.some(
       (r) =>
-        (r.name || '').toLowerCase().includes('circulation') ||
-        (r.name || '').toLowerCase().includes('stair') ||
-        (r.name || '').toLowerCase().includes('hall')
+        (r.name || "").toLowerCase().includes("circulation") ||
+        (r.name || "").toLowerCase().includes("stair") ||
+        (r.name || "").toLowerCase().includes("hall"),
     );
 
     if (hasCirculation) {
@@ -694,12 +747,13 @@ export class BuildingModel {
 
     // Add circulation/stair core room
     const circulationRoom = {
-      name: floorIndex === 0 ? 'Entry Hall' : 'Landing',
-      program: 'circulation',
-      roomType: 'circulation',
-      spaceType: 'circulation',
-      zoneType: 'service',
-      targetAreaM2: (STAIR_CORE.WIDTH * STAIR_CORE.LENGTH) / (MM_PER_M * MM_PER_M) + 4, // ~7m²
+      name: floorIndex === 0 ? "Entry Hall" : "Landing",
+      program: "circulation",
+      roomType: "circulation",
+      spaceType: "circulation",
+      zoneType: "service",
+      targetAreaM2:
+        (STAIR_CORE.WIDTH * STAIR_CORE.LENGTH) / (MM_PER_M * MM_PER_M) + 4, // ~7m²
       estimatedWidth: 3.7,
       estimatedLength: 1.9,
       isCirculation: true,
@@ -734,14 +788,14 @@ export class BuildingModel {
     // Greedy adjacency-based ordering
     while (remaining.length > 0) {
       const lastRoom = sorted[sorted.length - 1];
-      const lastName = lastRoom.name || '';
+      const lastName = lastRoom.name || "";
 
       // Find best adjacent room
       let bestIndex = 0;
       let bestScore = -1;
 
       for (let i = 0; i < remaining.length; i++) {
-        const candidateName = remaining[i].name || '';
+        const candidateName = remaining[i].name || "";
         const adjacencyScore = this._getAdjacencyScore(lastName, candidateName);
 
         if (adjacencyScore > bestScore) {
@@ -777,7 +831,7 @@ export class BuildingModel {
     const r1Lower = room1Name.toLowerCase();
     const r2Lower = room2Name.toLowerCase();
 
-    if (r1Lower.includes('bedroom') && r2Lower.includes('bedroom')) {
+    if (r1Lower.includes("bedroom") && r2Lower.includes("bedroom")) {
       return 5;
     }
 
@@ -798,7 +852,7 @@ export class BuildingModel {
   _buildRooms(roomsData, floorIndex) {
     const rooms = [];
     const { width, depth } = this.envelope;
-    const entranceSide = this.envelope.entranceSide || 'S';
+    const entranceSide = this.envelope.entranceSide || "S";
 
     // Internal margins (wall thickness)
     const margin = WALL_THICKNESS.EXTERNAL;
@@ -809,7 +863,9 @@ export class BuildingModel {
     // Helper function to determine zone type from room data using ZONE_TYPE_MAP
     const getZoneTypeFromRoom = (room) => {
       // Priority: explicit zoneType > ZONE_TYPE_MAP lookup by program > by name > 'public' fallback
-      if (room.zoneType) {return room.zoneType;}
+      if (room.zoneType) {
+        return room.zoneType;
+      }
 
       // Try program field (e.g., 'hallway', 'bedroom')
       const programKey = room.program?.toLowerCase?.();
@@ -818,7 +874,7 @@ export class BuildingModel {
       }
 
       // Try name field (e.g., 'Hallway', 'Master Bedroom')
-      const nameKey = room.name?.toLowerCase?.().replace(/[^a-z]/g, '');
+      const nameKey = room.name?.toLowerCase?.().replace(/[^a-z]/g, "");
       if (nameKey && ZONE_TYPE_MAP[nameKey]) {
         return ZONE_TYPE_MAP[nameKey];
       }
@@ -833,13 +889,19 @@ export class BuildingModel {
       }
 
       // Default fallback
-      return 'public';
+      return "public";
     };
 
     // Group rooms by zone type
-    const publicRooms = roomsData.filter((r) => getZoneTypeFromRoom(r) === 'public');
-    const privateRooms = roomsData.filter((r) => getZoneTypeFromRoom(r) === 'private');
-    const serviceRooms = roomsData.filter((r) => getZoneTypeFromRoom(r) === 'service');
+    const publicRooms = roomsData.filter(
+      (r) => getZoneTypeFromRoom(r) === "public",
+    );
+    const privateRooms = roomsData.filter(
+      (r) => getZoneTypeFromRoom(r) === "private",
+    );
+    const serviceRooms = roomsData.filter(
+      (r) => getZoneTypeFromRoom(r) === "service",
+    );
 
     logger.info(`[BuildingModel] Zone-based layout for floor ${floorIndex}`, {
       public: publicRooms.length,
@@ -857,10 +919,11 @@ export class BuildingModel {
     // Entrance side determines zone ordering
     // For S entrance: service at bottom (min Y), then public, then private at top
     // For N entrance: private at bottom, then public, then service at top (near entrance)
-    const entranceAtBottom = entranceSide === 'S' || entranceSide === 'SE' || entranceSide === 'SW';
+    const entranceAtBottom =
+      entranceSide === "S" || entranceSide === "SE" || entranceSide === "SW";
     const zoneOrder = entranceAtBottom
-      ? ['service', 'public', 'private']
-      : ['private', 'public', 'service'];
+      ? ["service", "public", "private"]
+      : ["private", "public", "service"];
 
     const zonesByType = {
       service: serviceRooms,
@@ -874,7 +937,10 @@ export class BuildingModel {
 
     // Allocate zone depths based on requested room areas (prevents wasted depth when a zone is absent)
     const totalRequestedAreaM2 = presentZones.reduce((sum, zone) => {
-      return sum + zone.rooms.reduce((acc, room) => acc + (room.targetAreaM2 || 20), 0);
+      return (
+        sum +
+        zone.rooms.reduce((acc, room) => acc + (room.targetAreaM2 || 20), 0)
+      );
     }, 0);
 
     const interZoneGaps = wallGap * Math.max(0, presentZones.length - 1);
@@ -882,18 +948,21 @@ export class BuildingModel {
 
     let remainingDepth = depthForZones;
     presentZones.forEach((zone, idx) => {
-      const zoneAreaM2 = zone.rooms.reduce((acc, room) => acc + (room.targetAreaM2 || 20), 0);
+      const zoneAreaM2 = zone.rooms.reduce(
+        (acc, room) => acc + (room.targetAreaM2 || 20),
+        0,
+      );
 
       // FIX: Check if zone contains circulation rooms (hallway, corridor, landing)
       // These need minimum depth to accommodate their high aspect ratio
       const hasCirculation = zone.rooms.some(
         (r) =>
           r.isCirculation ||
-          r.program === 'circulation' ||
-          r.program === 'hallway' ||
-          r.program === 'corridor' ||
-          r.name?.toLowerCase().includes('hall') ||
-          r.name?.toLowerCase().includes('corridor')
+          r.program === "circulation" ||
+          r.program === "hallway" ||
+          r.program === "corridor" ||
+          r.name?.toLowerCase().includes("hall") ||
+          r.name?.toLowerCase().includes("corridor"),
       );
       const minZoneDepth = hasCirculation ? 2000 : 500; // 2m min for circulation zones
 
@@ -903,14 +972,17 @@ export class BuildingModel {
       }
 
       if (totalRequestedAreaM2 <= 0) {
-        zone.depth = Math.max(minZoneDepth, Math.floor(depthForZones / presentZones.length));
+        zone.depth = Math.max(
+          minZoneDepth,
+          Math.floor(depthForZones / presentZones.length),
+        );
         remainingDepth -= zone.depth;
         return;
       }
 
       const allocated = Math.max(
         minZoneDepth,
-        Math.round(depthForZones * (zoneAreaM2 / totalRequestedAreaM2))
+        Math.round(depthForZones * (zoneAreaM2 / totalRequestedAreaM2)),
       );
       zone.depth = Math.min(allocated, remainingDepth);
       remainingDepth -= zone.depth;
@@ -926,7 +998,7 @@ export class BuildingModel {
         zone.depth,
         floorIndex,
         roomIndex,
-        zone.zoneType
+        zone.zoneType,
       );
       rooms.push(...zoneRooms);
       roomIndex += zoneRooms.length;
@@ -935,17 +1007,22 @@ export class BuildingModel {
 
     // If no rooms were created but we have room data, fall back to simple strip packing
     if (rooms.length === 0 && roomsData.length > 0) {
-      logger.warn('[BuildingModel] Zone layout produced no rooms, using fallback');
+      logger.warn(
+        "[BuildingModel] Zone layout produced no rooms, using fallback",
+      );
       return this._buildRoomsFallback(roomsData, floorIndex);
     }
 
     // If some rooms were dropped due to packing constraints, retry using full-floor fallback.
     if (roomsData.length > 0 && rooms.length < roomsData.length) {
-      logger.warn('[BuildingModel] Zone layout dropped rooms; retrying with fallback', {
-        floorIndex,
-        expectedRooms: roomsData.length,
-        builtRooms: rooms.length,
-      });
+      logger.warn(
+        "[BuildingModel] Zone layout dropped rooms; retrying with fallback",
+        {
+          floorIndex,
+          expectedRooms: roomsData.length,
+          builtRooms: rooms.length,
+        },
+      );
       return this._buildRoomsFallback(roomsData, floorIndex);
     }
 
@@ -964,7 +1041,7 @@ export class BuildingModel {
     zoneDepth,
     floorIndex,
     startingIndex,
-    zoneType
+    zoneType,
   ) {
     const rooms = [];
     const wallGap = WALL_THICKNESS.INTERNAL;
@@ -996,7 +1073,9 @@ export class BuildingModel {
         roomDepth = roomData.estimatedLength * MM_PER_M;
       } else {
         // Calculate from area with program-specific aspect ratio
-        const aspectRatio = this._getAspectRatioForProgram(roomData.program || 'generic');
+        const aspectRatio = this._getAspectRatioForProgram(
+          roomData.program || "generic",
+        );
         roomWidth = Math.sqrt(areaMM2 * aspectRatio);
         roomDepth = areaMM2 / roomWidth;
       }
@@ -1032,11 +1111,14 @@ export class BuildingModel {
           roomDepth = maxDepth;
           roomWidth = Math.min(areaMM2 / roomDepth, zoneWidth);
         } else {
-          logger.warn(`[BuildingModel] Room ${roomData.name} doesn't fit in zone ${zoneType}`, {
-            floorIndex,
-            zoneType,
-            remainingDepthMM: Math.max(0, startY + zoneDepth - currentY),
-          });
+          logger.warn(
+            `[BuildingModel] Room ${roomData.name} doesn't fit in zone ${zoneType}`,
+            {
+              floorIndex,
+              zoneType,
+              remainingDepthMM: Math.max(0, startY + zoneDepth - currentY),
+            },
+          );
           break;
         }
       }
@@ -1055,9 +1137,9 @@ export class BuildingModel {
       rooms.push({
         id: `room_${floorIndex}_${roomIndex}`,
         name: roomData.name || `Room ${roomIndex + 1}`,
-        program: roomData.program || 'generic',
-        roomType: roomData.roomType || roomData.program || 'generic',
-        spaceType: roomData.spaceType || 'public',
+        program: roomData.program || "generic",
+        roomType: roomData.roomType || roomData.program || "generic",
+        spaceType: roomData.spaceType || "public",
         zoneType: roomData.zoneType || zoneType,
         polygon,
         area: roomWidth * roomDepth,
@@ -1125,8 +1207,12 @@ export class BuildingModel {
     const availableWidth = width - 2 * margin;
     const availableDepth = depth - 2 * margin;
 
-    const availableAreaM2 = (availableWidth * availableDepth) / (MM_PER_M * MM_PER_M);
-    const requestedAreaM2 = roomsData.reduce((sum, room) => sum + (room.targetAreaM2 || 20), 0);
+    const availableAreaM2 =
+      (availableWidth * availableDepth) / (MM_PER_M * MM_PER_M);
+    const requestedAreaM2 = roomsData.reduce(
+      (sum, room) => sum + (room.targetAreaM2 || 20),
+      0,
+    );
     const PACKING_EFFICIENCY = 0.85;
 
     let areaScale =
@@ -1164,7 +1250,9 @@ export class BuildingModel {
           roomWidth = roomData.estimatedWidth * MM_PER_M * linearScale;
           roomDepth = roomData.estimatedLength * MM_PER_M * linearScale;
         } else {
-          const aspectRatio = this._getAspectRatioForProgram(roomData.program || 'generic');
+          const aspectRatio = this._getAspectRatioForProgram(
+            roomData.program || "generic",
+          );
           roomWidth = Math.sqrt(areaMM2 * aspectRatio);
           roomDepth = areaMM2 / roomWidth;
         }
@@ -1203,10 +1291,10 @@ export class BuildingModel {
         packedRooms.push({
           id: `room_${floorIndex}_${roomIndex}`,
           name: roomData.name || `Room ${roomIndex + 1}`,
-          program: roomData.program || 'generic',
-          roomType: roomData.roomType || roomData.program || 'generic',
-          spaceType: roomData.spaceType || 'public',
-          zoneType: roomData.zoneType || 'public',
+          program: roomData.program || "generic",
+          roomType: roomData.roomType || roomData.program || "generic",
+          spaceType: roomData.spaceType || "public",
+          zoneType: roomData.zoneType || "public",
           polygon,
           area: roomWidth * roomDepth,
           areaM2: (roomWidth * roomDepth) / (MM_PER_M * MM_PER_M),
@@ -1243,7 +1331,7 @@ export class BuildingModel {
     }
 
     if (!packed.complete) {
-      logger.warn('[BuildingModel] Fallback packing incomplete after retries', {
+      logger.warn("[BuildingModel] Fallback packing incomplete after retries", {
         floorIndex,
         placed: packed.rooms.length,
         requested: roomsData.length,
@@ -1267,7 +1355,7 @@ export class BuildingModel {
 
     // External walls from footprint
     const footprint = this.envelope.footprint;
-    const facades = ['S', 'E', 'N', 'W']; // Clockwise from south
+    const facades = ["S", "E", "N", "W"]; // Clockwise from south
 
     for (let i = 0; i < footprint.length; i++) {
       const start = footprint[i];
@@ -1279,7 +1367,7 @@ export class BuildingModel {
         start: { ...start },
         end: { ...end },
         thickness: WALL_THICKNESS.EXTERNAL,
-        type: 'external',
+        type: "external",
         facade,
         length: Math.sqrt((end.x - start.x) ** 2 + (end.y - start.y) ** 2),
       });
@@ -1316,7 +1404,7 @@ export class BuildingModel {
               start: { x: bb1.maxX, y: y1 },
               end: { x: bb1.maxX, y: y2 },
               thickness: WALL_THICKNESS.INTERNAL,
-              type: 'internal',
+              type: "internal",
               facade: null,
               length: overlap,
               connectsRooms: [room1.name, room2.name],
@@ -1336,7 +1424,7 @@ export class BuildingModel {
               start: { x: bb2.maxX, y: y1 },
               end: { x: bb2.maxX, y: y2 },
               thickness: WALL_THICKNESS.INTERNAL,
-              type: 'internal',
+              type: "internal",
               facade: null,
               length: overlap,
               connectsRooms: [room1.name, room2.name],
@@ -1358,7 +1446,7 @@ export class BuildingModel {
               start: { x: x1, y: bb1.maxY },
               end: { x: x2, y: bb1.maxY },
               thickness: WALL_THICKNESS.INTERNAL,
-              type: 'internal',
+              type: "internal",
               facade: null,
               length: overlap,
               connectsRooms: [room1.name, room2.name],
@@ -1378,7 +1466,7 @@ export class BuildingModel {
               start: { x: x1, y: bb2.maxY },
               end: { x: x2, y: bb2.maxY },
               thickness: WALL_THICKNESS.INTERNAL,
-              type: 'internal',
+              type: "internal",
               facade: null,
               length: overlap,
               connectsRooms: [room1.name, room2.name],
@@ -1390,8 +1478,8 @@ export class BuildingModel {
     }
 
     logger.debug(`[BuildingModel] Floor ${floorIndex} walls built`, {
-      external: walls.filter((w) => w.type === 'external').length,
-      internal: walls.filter((w) => w.type === 'internal').length,
+      external: walls.filter((w) => w.type === "external").length,
+      internal: walls.filter((w) => w.type === "internal").length,
     });
 
     return walls;
@@ -1408,14 +1496,14 @@ export class BuildingModel {
     // Find circulation room for door placement
     const circulationRoom = rooms.find(
       (r) =>
-        r.name?.toLowerCase().includes('hall') ||
-        r.name?.toLowerCase().includes('landing') ||
-        r.name?.toLowerCase().includes('circulation')
+        r.name?.toLowerCase().includes("hall") ||
+        r.name?.toLowerCase().includes("landing") ||
+        r.name?.toLowerCase().includes("circulation"),
     );
 
     // Add windows to external walls
     for (const wall of walls) {
-      if (wall.type !== 'external') {
+      if (wall.type !== "external") {
         continue;
       }
 
@@ -1431,7 +1519,7 @@ export class BuildingModel {
         openings.push({
           id: `opening_${floorIndex}_${openingId++}`,
           wallId: wall.id,
-          type: 'window',
+          type: "window",
           position: {
             x: normalizedX,
             z: (900 + 700) / (this.envelope.floorHeights[floorIndex] || 2800), // sillHeight + half window height
@@ -1450,7 +1538,9 @@ export class BuildingModel {
     // Add entrance door on ground floor
     if (floorIndex === 0) {
       const entranceFacade = this.envelope.entranceSide;
-      const entranceWall = walls.find((w) => w.facade === entranceFacade && w.type === 'external');
+      const entranceWall = walls.find(
+        (w) => w.facade === entranceFacade && w.type === "external",
+      );
 
       if (entranceWall) {
         const positionMM = entranceWall.length / 2; // Center of wall
@@ -1459,7 +1549,7 @@ export class BuildingModel {
         openings.push({
           id: `opening_${floorIndex}_${openingId++}`,
           wallId: entranceWall.id,
-          type: 'door',
+          type: "door",
           position: {
             x: normalizedX,
             z: 1050 / (this.envelope.floorHeights[floorIndex] || 2800), // Half door height
@@ -1490,7 +1580,7 @@ export class BuildingModel {
           openings.push({
             id: `opening_${floorIndex}_${openingId++}`,
             wallId: sharedWall.id,
-            type: 'door',
+            type: "door",
             position: sharedWall.length / 2,
             width: 900,
             height: 2100,
@@ -1501,12 +1591,16 @@ export class BuildingModel {
           });
         } else {
           // No direct wall, add door on wall nearest to circulation
-          const nearestWall = this._findNearestInternalWall(circulationRoom, room, walls);
+          const nearestWall = this._findNearestInternalWall(
+            circulationRoom,
+            room,
+            walls,
+          );
           if (nearestWall) {
             openings.push({
               id: `opening_${floorIndex}_${openingId++}`,
               wallId: nearestWall.id,
-              type: 'door',
+              type: "door",
               position: nearestWall.length / 2,
               width: 900,
               height: 2100,
@@ -1521,14 +1615,14 @@ export class BuildingModel {
     } else {
       // Fallback: one door per internal wall
       for (const wall of walls) {
-        if (wall.type !== 'internal') {
+        if (wall.type !== "internal") {
           continue;
         }
 
         openings.push({
           id: `opening_${floorIndex}_${openingId++}`,
           wallId: wall.id,
-          type: 'door',
+          type: "door",
           position: wall.length / 2,
           width: 900,
           height: 2100,
@@ -1541,9 +1635,9 @@ export class BuildingModel {
 
     // Add direct connection doors (Kitchen↔Dining, Master↔En-Suite)
     const directConnections = [
-      ['Kitchen', 'Dining'],
-      ['Master Bedroom', 'En-Suite'],
-      ['Living Room', 'Kitchen'],
+      ["Kitchen", "Dining"],
+      ["Master Bedroom", "En-Suite"],
+      ["Living Room", "Kitchen"],
     ];
 
     for (const [room1Name, room2Name] of directConnections) {
@@ -1559,7 +1653,7 @@ export class BuildingModel {
             openings.push({
               id: `opening_${floorIndex}_${openingId++}`,
               wallId: sharedWall.id,
-              type: 'door',
+              type: "door",
               position: sharedWall.length / 2,
               width: 900,
               height: 2100,
@@ -1590,7 +1684,7 @@ export class BuildingModel {
     const tolerance = WALL_THICKNESS.INTERNAL * 2;
 
     for (const wall of walls) {
-      if (wall.type !== 'internal') {
+      if (wall.type !== "internal") {
         continue;
       }
 
@@ -1630,17 +1724,22 @@ export class BuildingModel {
     let nearestDist = Infinity;
 
     for (const wall of walls) {
-      if (wall.type !== 'internal') {
+      if (wall.type !== "internal") {
         continue;
       }
 
       const wallCenterX = (wall.start.x + wall.end.x) / 2;
       const wallCenterY = (wall.start.y + wall.end.y) / 2;
 
-      const roomCenterX = (toRoom.boundingBox.minX + toRoom.boundingBox.maxX) / 2;
-      const roomCenterY = (toRoom.boundingBox.minY + toRoom.boundingBox.maxY) / 2;
+      const roomCenterX =
+        (toRoom.boundingBox.minX + toRoom.boundingBox.maxX) / 2;
+      const roomCenterY =
+        (toRoom.boundingBox.minY + toRoom.boundingBox.maxY) / 2;
 
-      const dist = Math.hypot(wallCenterX - roomCenterX, wallCenterY - roomCenterY);
+      const dist = Math.hypot(
+        wallCenterX - roomCenterX,
+        wallCenterY - roomCenterY,
+      );
       if (dist < nearestDist) {
         nearestDist = dist;
         nearestWall = wall;
@@ -1656,7 +1755,7 @@ export class BuildingModel {
    */
   _buildRoof(state) {
     const massing = state.massing || {};
-    const roofType = massing.roofType || 'gable';
+    const roofType = massing.roofType || "gable";
     const pitchDeg = massing.roofPitchDeg || 35;
 
     const { width, depth, height } = this.envelope;
@@ -1666,12 +1765,12 @@ export class BuildingModel {
     const ridgeHeight = halfWidth * Math.tan((pitchDeg * Math.PI) / 180);
 
     // Ridge direction based on building proportions
-    const ridgeDirection = width >= depth ? 'NS' : 'EW';
+    const ridgeDirection = width >= depth ? "NS" : "EW";
 
     // Generate roof profiles for each facade
     const profiles = {};
 
-    if (roofType === 'flat') {
+    if (roofType === "flat") {
       const flatProfile = [
         { x: -halfWidth, z: height },
         { x: halfWidth, z: height },
@@ -1680,8 +1779,8 @@ export class BuildingModel {
       profiles.S = flatProfile;
       profiles.E = flatProfile;
       profiles.W = flatProfile;
-    } else if (roofType === 'gable') {
-      if (ridgeDirection === 'NS') {
+    } else if (roofType === "gable") {
+      if (ridgeDirection === "NS") {
         // Ridge runs N-S, gables on E and W
         profiles.N = [
           { x: -halfWidth, z: height },
@@ -1708,7 +1807,7 @@ export class BuildingModel {
         ];
         profiles.S = profiles.N;
       }
-    } else if (roofType === 'hip') {
+    } else if (roofType === "hip") {
       const inset = Math.min(halfWidth, depth / 2) * 0.3;
       profiles.N = [
         { x: -halfWidth, z: height },
@@ -1756,20 +1855,22 @@ export class BuildingModel {
     let stairY = 0;
 
     if (entranceOpening) {
-      const entranceWall = groundFloor.walls.find((w) => w.id === entranceOpening.wallId);
+      const entranceWall = groundFloor.walls.find(
+        (w) => w.id === entranceOpening.wallId,
+      );
       if (entranceWall) {
         stairX = (entranceWall.start.x + entranceWall.end.x) / 2;
         stairY = (entranceWall.start.y + entranceWall.end.y) / 2;
 
         // Offset into building
         const offset = 2500;
-        if (entranceFacade === 'N') {
+        if (entranceFacade === "N") {
           stairY -= offset;
-        } else if (entranceFacade === 'S') {
+        } else if (entranceFacade === "S") {
           stairY += offset;
-        } else if (entranceFacade === 'E') {
+        } else if (entranceFacade === "E") {
           stairX -= offset;
-        } else if (entranceFacade === 'W') {
+        } else if (entranceFacade === "W") {
           stairX += offset;
         }
       }
@@ -1777,13 +1878,13 @@ export class BuildingModel {
 
     return [
       {
-        id: 'stair_1',
+        id: "stair_1",
         position: { x: stairX, y: stairY },
         width: 1000,
         length: 3000,
-        direction: 'up',
+        direction: "up",
         connectsFloors: Array.from({ length: this.floors.length }, (_, i) => i),
-        type: this.floors.length > 2 ? 'U-shape' : 'straight',
+        type: this.floors.length > 2 ? "U-shape" : "straight",
       },
     ];
   }
@@ -1807,9 +1908,9 @@ export class BuildingModel {
           continue;
         }
 
-        if (opening.type === 'window') {
+        if (opening.type === "window") {
           summary[facade].windowCount++;
-        } else if (opening.type === 'door' && !opening.isInternal) {
+        } else if (opening.type === "door" && !opening.isInternal) {
           summary[facade].doorCount++;
         }
       }
@@ -1840,7 +1941,7 @@ export class BuildingModel {
     const walls = [];
     for (const floor of this.floors) {
       for (const wall of floor.walls) {
-        if (wall.facade === facade && wall.type === 'external') {
+        if (wall.facade === facade && wall.type === "external") {
           walls.push({ ...wall, floorIndex: floor.index, zBase: floor.zBase });
         }
       }
@@ -1858,7 +1959,11 @@ export class BuildingModel {
     for (const floor of this.floors) {
       for (const opening of floor.openings) {
         if (opening.facade === facade) {
-          openings.push({ ...opening, floorIndex: floor.index, zBase: floor.zBase });
+          openings.push({
+            ...opening,
+            floorIndex: floor.index,
+            zBase: floor.zBase,
+          });
         }
       }
     }
@@ -1897,30 +2002,33 @@ export class BuildingModel {
 
     // Check floors exist
     if (this.floors.length === 0) {
-      errors.push('No floors defined');
+      errors.push("No floors defined");
     }
 
     // Check rooms exist
     const totalRooms = this.floors.reduce((sum, f) => sum + f.rooms.length, 0);
     if (totalRooms === 0) {
-      warnings.push('No rooms defined');
+      warnings.push("No rooms defined");
     }
 
     // Check walls exist
     const totalWalls = this.floors.reduce((sum, f) => sum + f.walls.length, 0);
     if (totalWalls === 0) {
-      errors.push('No walls generated');
+      errors.push("No walls generated");
     }
 
     // Check openings exist
-    const totalOpenings = this.floors.reduce((sum, f) => sum + f.openings.length, 0);
+    const totalOpenings = this.floors.reduce(
+      (sum, f) => sum + f.openings.length,
+      0,
+    );
     if (totalOpenings === 0) {
-      warnings.push('No openings generated');
+      warnings.push("No openings generated");
     }
 
     // Check stairs for multi-floor
     if (this.floors.length > 1 && this.stairs.length === 0) {
-      warnings.push('Multi-floor building has no stairs');
+      warnings.push("Multi-floor building has no stairs");
     }
 
     return {
@@ -1942,7 +2050,9 @@ export class BuildingModel {
    * CRITICAL: Call this when done with a BuildingModel to prevent memory leaks
    */
   dispose() {
-    logger.info('[BuildingModel] Disposing model resources', { designId: this.designId });
+    logger.info("[BuildingModel] Disposing model resources", {
+      designId: this.designId,
+    });
 
     // Clear envelope
     this.envelope = null;
@@ -1950,9 +2060,15 @@ export class BuildingModel {
     // Clear each floor's data
     if (this.floors) {
       this.floors.forEach((floor) => {
-        if (floor.rooms) {floor.rooms.length = 0;}
-        if (floor.walls) {floor.walls.length = 0;}
-        if (floor.openings) {floor.openings.length = 0;}
+        if (floor.rooms) {
+          floor.rooms.length = 0;
+        }
+        if (floor.walls) {
+          floor.walls.length = 0;
+        }
+        if (floor.openings) {
+          floor.openings.length = 0;
+        }
       });
       this.floors.length = 0;
     }
@@ -1968,7 +2084,9 @@ export class BuildingModel {
     // Clear facade summary
     this.facadeSummary = null;
 
-    logger.info('[BuildingModel] Model disposed successfully', { designId: this.designId });
+    logger.info("[BuildingModel] Model disposed successfully", {
+      designId: this.designId,
+    });
   }
 }
 
