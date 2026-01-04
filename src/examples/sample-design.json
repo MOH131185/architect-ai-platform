@@ -1,0 +1,581 @@
+{
+  "design_id": "sample_modern_house_2025",
+  "timestamp": "2025-10-27T12:00:00.000Z",
+  "version": "1.0.0",
+
+  "site": {
+    "lat": 40.7128,
+    "lon": -74.0060,
+    "north": 0,
+    "areaM2": 450,
+    "polygon": [
+      [0, 0],
+      [15000, 0],
+      [15000, 30000],
+      [0, 30000]
+    ],
+    "address": "New York, NY, USA"
+  },
+
+  "dna": {
+    "seed": 123456,
+    "style": "Modern",
+    "module_mm": 300,
+    "wwr": 0.32,
+    "roof": {
+      "type": "gable",
+      "pitch": 35,
+      "material": "tiles",
+      "color": "#8B4513"
+    },
+    "materials": [
+      {
+        "name": "Red brick",
+        "hexColor": "#B8604E",
+        "application": "exterior walls"
+      },
+      {
+        "name": "White trim",
+        "hexColor": "#FFFFFF",
+        "application": "window frames, fascia"
+      },
+      {
+        "name": "Clay tiles",
+        "hexColor": "#8B4513",
+        "application": "gable roof"
+      },
+      {
+        "name": "Oak flooring",
+        "hexColor": "#D4A574",
+        "application": "interior floors"
+      }
+    ],
+    "climate": {
+      "type": "temperate",
+      "zone": "4A"
+    }
+  },
+
+  "dimensions": {
+    "length": 12,
+    "width": 8,
+    "height": 6,
+    "floorCount": 2
+  },
+
+  "levels": [
+    {
+      "z": 0,
+      "height_mm": 3000,
+      "name": "Ground Floor"
+    },
+    {
+      "z": 3000,
+      "height_mm": 3000,
+      "name": "First Floor"
+    }
+  ],
+
+  "rooms": [
+    {
+      "id": "ground_living",
+      "name": "Living Room",
+      "level": 0,
+      "poly": [
+        [0, 0],
+        [6000, 0],
+        [6000, 4800],
+        [0, 4800]
+      ],
+      "area": 28.8,
+      "center": [3000, 2400],
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 6000,
+        "height": 4800
+      }
+    },
+    {
+      "id": "ground_kitchen",
+      "name": "Kitchen",
+      "level": 0,
+      "poly": [
+        [6000, 0],
+        [12000, 0],
+        [12000, 3600],
+        [6000, 3600]
+      ],
+      "area": 21.6,
+      "center": [9000, 1800],
+      "bounds": {
+        "x": 6000,
+        "y": 0,
+        "width": 6000,
+        "height": 3600
+      }
+    },
+    {
+      "id": "ground_dining",
+      "name": "Dining Room",
+      "level": 0,
+      "poly": [
+        [6000, 3600],
+        [12000, 3600],
+        [12000, 8000],
+        [6000, 8000]
+      ],
+      "area": 26.4,
+      "center": [9000, 5800],
+      "bounds": {
+        "x": 6000,
+        "y": 3600,
+        "width": 6000,
+        "height": 4400
+      }
+    },
+    {
+      "id": "ground_hallway",
+      "name": "Hallway",
+      "level": 0,
+      "poly": [
+        [0, 4800],
+        [6000, 4800],
+        [6000, 8000],
+        [0, 8000]
+      ],
+      "area": 19.2,
+      "center": [3000, 6400],
+      "bounds": {
+        "x": 0,
+        "y": 4800,
+        "width": 6000,
+        "height": 3200
+      }
+    },
+    {
+      "id": "upper_bedroom1",
+      "name": "Master Bedroom",
+      "level": 1,
+      "poly": [
+        [0, 0],
+        [6000, 0],
+        [6000, 5400],
+        [0, 5400]
+      ],
+      "area": 32.4,
+      "center": [3000, 2700],
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 6000,
+        "height": 5400
+      }
+    },
+    {
+      "id": "upper_bedroom2",
+      "name": "Bedroom 2",
+      "level": 1,
+      "poly": [
+        [6000, 0],
+        [12000, 0],
+        [12000, 4200],
+        [6000, 4200]
+      ],
+      "area": 25.2,
+      "center": [9000, 2100],
+      "bounds": {
+        "x": 6000,
+        "y": 0,
+        "width": 6000,
+        "height": 4200
+      }
+    },
+    {
+      "id": "upper_bathroom",
+      "name": "Bathroom",
+      "level": 1,
+      "poly": [
+        [6000, 4200],
+        [9000, 4200],
+        [9000, 8000],
+        [6000, 8000]
+      ],
+      "area": 11.4,
+      "center": [7500, 6100],
+      "bounds": {
+        "x": 6000,
+        "y": 4200,
+        "width": 3000,
+        "height": 3800
+      }
+    },
+    {
+      "id": "upper_hallway",
+      "name": "Upper Hallway",
+      "level": 1,
+      "poly": [
+        [0, 5400],
+        [12000, 5400],
+        [12000, 8000],
+        [9000, 8000],
+        [9000, 4200],
+        [0, 4200]
+      ],
+      "area": 14.4,
+      "center": [6000, 6100],
+      "bounds": {
+        "x": 0,
+        "y": 4200,
+        "width": 12000,
+        "height": 3800
+      }
+    }
+  ],
+
+  "doors": [
+    {
+      "id": "door_entrance",
+      "room_a": "ground_hallway",
+      "room_b": null,
+      "at": [3000, 8000],
+      "width_mm": 900,
+      "height_mm": 2100,
+      "swing": "R",
+      "type": "main_entrance"
+    },
+    {
+      "id": "door_living_hallway",
+      "room_a": "ground_living",
+      "room_b": "ground_hallway",
+      "at": [3000, 4800],
+      "width_mm": 900,
+      "height_mm": 2100,
+      "swing": "R",
+      "type": "interior"
+    },
+    {
+      "id": "door_kitchen_dining",
+      "room_a": "ground_kitchen",
+      "room_b": "ground_dining",
+      "at": [9000, 3600],
+      "width_mm": 900,
+      "height_mm": 2100,
+      "swing": "L",
+      "type": "interior"
+    },
+    {
+      "id": "door_dining_hallway",
+      "room_a": "ground_dining",
+      "room_b": "ground_hallway",
+      "at": [6000, 6400],
+      "width_mm": 900,
+      "height_mm": 2100,
+      "swing": "R",
+      "type": "interior"
+    },
+    {
+      "id": "door_master_hallway",
+      "room_a": "upper_bedroom1",
+      "room_b": "upper_hallway",
+      "at": [3000, 5400],
+      "width_mm": 900,
+      "height_mm": 2100,
+      "swing": "R",
+      "type": "interior"
+    },
+    {
+      "id": "door_bedroom2_hallway",
+      "room_a": "upper_bedroom2",
+      "room_b": "upper_hallway",
+      "at": [9000, 4200],
+      "width_mm": 900,
+      "height_mm": 2100,
+      "swing": "L",
+      "type": "interior"
+    },
+    {
+      "id": "door_bathroom_hallway",
+      "room_a": "upper_bathroom",
+      "room_b": "upper_hallway",
+      "at": [7500, 8000],
+      "width_mm": 800,
+      "height_mm": 2100,
+      "swing": "R",
+      "type": "interior"
+    }
+  ],
+
+  "windows": [
+    {
+      "id": "window_living_north_1",
+      "room": "ground_living",
+      "wall": "N",
+      "center": [1500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_living_north_2",
+      "room": "ground_living",
+      "wall": "N",
+      "center": [4500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_kitchen_north_1",
+      "room": "ground_kitchen",
+      "wall": "N",
+      "center": [7500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_kitchen_north_2",
+      "room": "ground_kitchen",
+      "wall": "N",
+      "center": [10500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_dining_south_1",
+      "room": "ground_dining",
+      "wall": "S",
+      "center": [7500, 8000],
+      "width_mm": 1500,
+      "height_mm": 1500,
+      "sill_mm": 750,
+      "head_mm": 2250,
+      "type": "Sliding"
+    },
+    {
+      "id": "window_dining_south_2",
+      "room": "ground_dining",
+      "wall": "S",
+      "center": [10500, 8000],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_master_north_1",
+      "room": "upper_bedroom1",
+      "wall": "N",
+      "center": [1500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_master_north_2",
+      "room": "upper_bedroom1",
+      "wall": "N",
+      "center": [4500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_bedroom2_north_1",
+      "room": "upper_bedroom2",
+      "wall": "N",
+      "center": [7500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_bedroom2_north_2",
+      "room": "upper_bedroom2",
+      "wall": "N",
+      "center": [10500, 0],
+      "width_mm": 1200,
+      "height_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2100,
+      "type": "Casement"
+    },
+    {
+      "id": "window_bathroom_south_1",
+      "room": "upper_bathroom",
+      "wall": "S",
+      "center": [7500, 8000],
+      "width_mm": 800,
+      "height_mm": 800,
+      "sill_mm": 1500,
+      "head_mm": 2300,
+      "type": "Awning"
+    }
+  ],
+
+  "roof": {
+    "type": "gable",
+    "pitch": 35,
+    "material": "tiles",
+    "color": "#8B4513",
+    "geometry": {
+      "type": "gable",
+      "ridge": {
+        "start": [0, 4, 8.33],
+        "end": [12, 4, 8.33]
+      },
+      "eaves": [
+        [0, 0, 6],
+        [12, 0, 6],
+        [12, 8, 6],
+        [0, 8, 6]
+      ],
+      "faces": [
+        [[0, 0, 6], [0, 8, 6], [0, 4, 8.33]],
+        [[12, 0, 6], [12, 8, 6], [12, 4, 8.33]],
+        [[0, 0, 6], [12, 0, 6], [12, 4, 8.33], [0, 4, 8.33]],
+        [[0, 8, 6], [12, 8, 6], [12, 4, 8.33], [0, 4, 8.33]]
+      ]
+    }
+  },
+
+  "cameras": {
+    "axon": {
+      "type": "orthographic",
+      "azimuth": 45,
+      "elevation": 30,
+      "zoom": 50
+    },
+    "persp": {
+      "type": "perspective",
+      "azimuth": 135,
+      "elevation": 20,
+      "fov": 60,
+      "distance": 25
+    },
+    "interior_main": {
+      "type": "perspective",
+      "position": [3.0, 1.5, 2.4],
+      "lookAt": [9.0, 1.8, 5.8],
+      "fov": 75
+    }
+  },
+
+  "visualizations": {
+    "floorPlans": [
+      {
+        "type": "ground",
+        "level": 0,
+        "url": null,
+        "prompt": "Ground floor plan - Living Room 28.8m², Kitchen 21.6m², Dining 26.4m², Hallway 19.2m²"
+      },
+      {
+        "type": "upper",
+        "level": 1,
+        "url": null,
+        "prompt": "First floor plan - Master Bedroom 32.4m², Bedroom 2 25.2m², Bathroom 11.4m², Hallway 14.4m²"
+      }
+    ],
+    "technicalDrawings": [
+      {
+        "type": "elevation",
+        "orientation": "north",
+        "url": null,
+        "prompt": "North elevation - Main entrance, 10 windows, red brick facade"
+      },
+      {
+        "type": "elevation",
+        "orientation": "south",
+        "url": null,
+        "prompt": "South elevation - Large dining windows, gable end, red brick"
+      },
+      {
+        "type": "elevation",
+        "orientation": "east",
+        "url": null,
+        "prompt": "East elevation - Gable roof profile, minimal windows"
+      },
+      {
+        "type": "elevation",
+        "orientation": "west",
+        "url": null,
+        "prompt": "West elevation - Gable roof profile, minimal windows"
+      },
+      {
+        "type": "section",
+        "name": "A-A",
+        "url": null,
+        "prompt": "Longitudinal section - 2 floors, 3m floor heights, gable roof 35° pitch"
+      },
+      {
+        "type": "section",
+        "name": "B-B",
+        "url": null,
+        "prompt": "Cross section - 2 floors, gable roof, interior spaces visible"
+      }
+    ],
+    "exterior3D": [
+      {
+        "type": "axonometric",
+        "url": null,
+        "prompt": "Axonometric view - Modern house, red brick, gable roof, 2 stories"
+      },
+      {
+        "type": "perspective",
+        "url": null,
+        "prompt": "Perspective view - Modern house from street, red brick exterior, landscaped front"
+      },
+      {
+        "type": "site",
+        "url": null,
+        "prompt": "Site context - House on lot, driveway, landscaping, aerial view"
+      }
+    ],
+    "interior3D": [
+      {
+        "type": "living",
+        "room": "ground_living",
+        "url": null,
+        "prompt": "Living room interior - Large windows, oak flooring, modern furniture"
+      },
+      {
+        "type": "kitchen",
+        "room": "ground_kitchen",
+        "url": null,
+        "prompt": "Kitchen interior - Modern appliances, island, north-facing windows"
+      }
+    ]
+  },
+
+  "metadata": {
+    "totalArea": 179.4,
+    "groundFloorArea": 96.0,
+    "upperFloorArea": 83.4,
+    "circulationRatio": 0.187,
+    "wwr_actual": 0.31,
+    "roomCount": 8,
+    "doorCount": 7,
+    "windowCount": 11,
+    "generated": "geometry-first",
+    "validated": true,
+    "validationErrors": [],
+    "validationWarnings": []
+  }
+}

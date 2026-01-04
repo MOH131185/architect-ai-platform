@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storage Cleanup Utility</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { color: #333; margin-top: 0; }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    button:hover { background: #45a049; }
+    button.danger {
+      background: #f44336;
+    }
+    button.danger:hover {
+      background: #da190b;
+    }
+    #output {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .stats {
+      margin: 20px 0;
+      padding: 15px;
+      background: #e3f2fd;
+      border-left: 4px solid #2196F3;
+      border-radius: 4px;
+    }
+    .warning {
+      margin: 20px 0;
+      padding: 15px;
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧹 Storage Cleanup Utility</h1>
+
+    <div class="warning">
+      <strong>⚠️ Warning:</strong> This will permanently delete design history data. Make sure you have backups if needed.
+    </div>
+
+    <div class="stats" id="stats">
+      <strong>Current Storage Status:</strong>
+      <div id="storage-info">Loading...</div>
+    </div>
+
+    <div>
+      <button onclick="analyzeStorage()">📊 Analyze Storage</button>
+      <button onclick="cleanupDuplicates()">🔧 Fix Double-Prefix Issue</button>
+      <button onclick="clearOldDesigns()" class="danger">🗑️ Clear Old Designs (Keep Latest 2)</button>
+      <button onclick="clearAllStorage()" class="danger">⚠️ Clear ALL Storage</button>
+    </div>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    function log(message, type = 'info') {
+      const output = document.getElementById('output');
+      const timestamp = new Date().toLocaleTimeString();
+      const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+      output.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function updateStats() {
+      const info = document.getElementById('storage-info');
+      let totalSize = 0;
+      let itemCount = 0;
+      const keys = [];
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('archiAI_')) {
+          const value = localStorage.getItem(key);
+          totalSize += (key.length + value.length) * 2; // Approximate bytes (UTF-16)
+          itemCount++;
+          keys.push({ key, size: value.length });
+        }
+      }
+
+      const totalMB = (totalSize / (1024 * 1024)).toFixed(2);
+      const usagePercent = Math.round((totalSize / (5 * 1024 * 1024)) * 100);
+
+      info.innerHTML = `
+        <div><strong>Total Items:</strong> ${itemCount}</div>
+        <div><strong>Total Size:</strong> ${totalMB} MB</div>
+        <div><strong>Usage:</strong> ${usagePercent}% of ~5MB limit</div>
+      `;
+    }
+
+    function analyzeStorage() {
+      log('Analyzing localStorage...', 'info');
+
+      const items = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('archiAI_')) {
+          const value = localStorage.getItem(key);
+          const sizeKB = (value.length / 1024).toFixed(2);
+          items.push({ key, sizeKB: parseFloat(sizeKB) });
+        }
+      }
+
+      items.sort((a, b) => b.sizeKB - a.sizeKB);
+
+      log(`\nFound ${items.length} items with 'archiAI_' prefix:`);
+      items.forEach((item, i) => {
+        log(`  ${i + 1}. ${item.key}: ${item.sizeKB} KB`);
+      });
+
+      updateStats();
+    }
+
+    function cleanupDuplicates() {
+      log('Looking for double-prefixed keys...', 'info');
+
+      const oldKey = 'archiAI_archiAI_design_history';
+      const newKey = 'archiAI_design_history';
+
+      const oldData = localStorage.getItem(oldKey);
+      const newData = localStorage.getItem(newKey);
+
+      if (oldData) {
+        log(`Found old double-prefixed key: ${oldKey} (${(oldData.length / 1024).toFixed(2)} KB)`, 'info');
+
+        // If new key doesn't exist, migrate data
+        if (!newData) {
+          log('Migrating data to correct key...', 'info');
+          localStorage.setItem(newKey, oldData);
+          log('Data migrated successfully', 'success');
+        }
+
+        // Remove old key
+        localStorage.removeItem(oldKey);
+        log('Removed double-prefixed key', 'success');
+        log('Cleanup complete!', 'success');
+      } else {
+        log('No double-prefixed keys found', 'success');
+      }
+
+      updateStats();
+    }
+
+    function clearOldDesigns() {
+      log('Clearing old designs...', 'info');
+
+      const key = 'archiAI_design_history';
+      const data = localStorage.getItem(key);
+
+      if (!data) {
+        log('No design history found', 'info');
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(data);
+        let designs = parsed._data || parsed;
+
+        if (!Array.isArray(designs)) {
+          log('Design history is not an array, skipping', 'error');
+          return;
+        }
+
+        const originalCount = designs.length;
+        log(`Found ${originalCount} designs`, 'info');
+
+        if (originalCount <= 2) {
+          log('Already at or below limit (2 designs), no cleanup needed', 'success');
+          return;
+        }
+
+        // Keep only the 2 most recent designs
+        designs.sort((a, b) => {
+          const timeA = new Date(a.createdAt || a.timestamp || 0).getTime();
+          const timeB = new Date(b.createdAt || b.timestamp || 0).getTime();
+          return timeB - timeA;
+        });
+
+        const kept = designs.slice(0, 2);
+
+        // Save updated data
+        const updated = { _data: kept, _timestamp: Date.now(), _schemaVersion: 2 };
+        localStorage.setItem(key, JSON.stringify(updated));
+
+        log(`Kept ${kept.length} most recent designs`, 'success');
+        log(`Removed ${originalCount - kept.length} old designs`, 'success');
+
+      } catch (error) {
+        log(`Error: ${error.message}`, 'error');
+      }
+
+      updateStats();
+    }
+
+    function clearAllStorage() {
+      if (!confirm('Are you sure you want to clear ALL storage? This cannot be undone!')) {
+        log('Cancelled by user', 'info');
+        return;
+      }
+
+      log('Clearing all archiAI storage...', 'info');
+
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('archiAI_')) {
+          keysToRemove.push(key);
+        }
+      }
+
+      keysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+        log(`Removed: ${key}`, 'success');
+      });
+
+      log(`\nCleared ${keysToRemove.length} items`, 'success');
+      updateStats();
+    }
+
+    // Initialize on load
+    window.addEventListener('load', () => {
+      updateStats();
+      log('Storage cleanup utility ready', 'success');
+    });
+  </script>
+</body>
+</html>

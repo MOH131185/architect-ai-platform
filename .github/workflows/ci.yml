@@ -1,0 +1,61 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [20.x]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run environment checks
+      run: npm run check:env
+      env:
+        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY || 'test-key' }}
+        REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'test-key' }}
+        REACT_APP_OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY || 'test-key' }}
+    
+    - name: Run contract checks
+      run: npm run check:contracts
+    
+    - name: Run A1-only generation test
+      run: node test-a1-only-generation.js
+      continue-on-error: true
+      env:
+        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+    
+    - name: Run A1 modify consistency test
+      run: node test-a1-modify-consistency.js
+      continue-on-error: true
+      env:
+        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+    
+    - name: Run unit tests
+      run: npm test -- --watchAll=false --coverage
+      continue-on-error: true
+    
+    - name: Build
+      run: npm run build
+      env:
+        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY || 'test-key' }}
+        REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'test-key' }}
+        REACT_APP_OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY || 'test-key' }}
+

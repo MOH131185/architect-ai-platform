@@ -1,0 +1,26 @@
+# genarch - Top-level dependencies (unpinned)
+# Compile with: pip-compile requirements.in -o requirements.lock
+#
+# Usage:
+#   pip install -r requirements.lock
+
+# Core dependencies
+ezdxf>=1.0.0
+trimesh>=4.0.0
+numpy>=1.24.0
+shapely>=2.0.0
+networkx>=3.0
+
+# Phase 4 (A1 PDF assembly)
+reportlab>=4.0.0
+svglib>=1.5.0
+Pillow>=10.0.0
+
+# Validation (drift check - requires opencv)
+opencv-python>=4.8.0
+
+# Mesh export (model.glb)
+scipy>=1.10.0
+
+# Optional: visualization
+matplotlib>=3.7.0

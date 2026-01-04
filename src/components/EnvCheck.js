@@ -5,11 +5,14 @@ import React from 'react';
  * Shows which env vars are loaded (for debugging)
  */
 const EnvCheck = () => {
+  // SECURITY: Only check client-safe environment variables
+  // API keys for AI services should NEVER be exposed in client code
   const envVars = {
-    'Google Maps': process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
-    'OpenWeather': process.env.REACT_APP_OPENWEATHER_API_KEY,
-    'OpenAI': process.env.REACT_APP_OPENAI_API_KEY,
-    'Replicate': process.env.REACT_APP_REPLICATE_API_KEY,
+    'Google Maps': process.env.REACT_APP_GOOGLE_MAPS_API_KEY, // OK - domain-restricted
+    'OpenWeather': process.env.REACT_APP_OPENWEATHER_API_KEY, // OK - read-only API
+    // 'OpenAI': '🔒 Server-side only',
+    // 'Replicate': '🔒 Server-side only',
+    // 'Together AI': '🔒 Server-side only',
   };
 
   const maskKey = (key) => {

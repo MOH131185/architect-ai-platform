@@ -1,57 +1,61 @@
 /**
  * Enhanced Portfolio Analysis Service
  * Handles PDF and multi-image portfolios with OpenAI GPT-4 Vision
+ * Now includes material hex color extraction and confidence scoring
+ *
+ * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+import secureApiClient from './secureApiClient.js';
+import materialDetectionService from './materialDetectionService.js';
+import logger from '../utils/logger.js';
 
-// Use Vercel serverless function in production, local proxy in development
-const OPENAI_API_URL = process.env.NODE_ENV === 'production'
-  ? '/api/openai-chat'
-  : 'http://localhost:3001/api/openai/chat';
 
 class EnhancedPortfolioService {
   constructor() {
-    this.apiKey = OPENAI_API_KEY;
-    if (!this.apiKey) {
-      console.warn('OpenAI API key not found. Portfolio analysis will use fallback.');
-    }
+    // No API key needed - handled by server
+    this.isAvailable = true; // Server will handle availability
   }
 
   /**
-   * Analyze portfolio (PDF or images) to extract architectural style
+   * Analyze portfolio (PDF or images) to extract architectural style with material detection
    */
   async analyzePortfolio(portfolioFiles, locationContext) {
-    if (!this.apiKey) {
-      console.warn('No OpenAI API key - using fallback portfolio analysis');
-      return this.getFallbackPortfolioAnalysis(locationContext);
-    }
 
     try {
-      console.log('📁 Analyzing portfolio:', portfolioFiles.length, 'files');
+      logger.info('📁 Analyzing portfolio:', portfolioFiles.length, 'files');
 
       // Convert files to base64 images
       const images = await this.processPortfolioFiles(portfolioFiles);
-      console.log('✅ Processed', images.length, 'images from portfolio');
+      logger.info('✅ Processed', images.length, 'images from portfolio');
 
       if (images.length === 0) {
-        console.warn('No images extracted from portfolio');
+        logger.warn('No images extracted from portfolio');
         return this.getFallbackPortfolioAnalysis(locationContext);
       }
 
       // Analyze with GPT-4 Vision
-      const analysis = await this.analyzeWithVision(images, locationContext);
-      console.log('✅ Portfolio analysis complete');
+      const visionAnalysis = await this.analyzeWithVision(images, locationContext);
+      logger.success(' Vision analysis complete');
+
+      // Enhanced material detection using materialDetectionService
+      const materialAnalysis = await this.enhancedMaterialAnalysis(images, visionAnalysis, locationContext);
+      logger.success(' Material detection complete');
+
+      // Combine analyses with confidence scoring
+      const combinedAnalysis = this.combineAnalyses(visionAnalysis, materialAnalysis, locationContext);
+      logger.success(' Portfolio analysis complete with confidence scores');
 
       return {
         success: true,
-        ...analysis,
+        ...combinedAnalysis,
         imageCount: images.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        analysisMethod: 'enhanced-vision-material'
       };
 
     } catch (error) {
-      console.error('Portfolio analysis error:', error);
+      logger.error('Portfolio analysis error:', error);
       return this.getFallbackPortfolioAnalysis(locationContext);
     }
   }
@@ -79,7 +83,7 @@ class EnhancedPortfolioService {
           });
         }
       } catch (error) {
-        console.error('Error processing file:', file.name, error);
+        logger.error('Error processing file:', file.name, error);
       }
     }
 
@@ -100,7 +104,7 @@ class EnhancedPortfolioService {
           const compressed = await this.compressImage(e.target.result, file.type);
           resolve(compressed);
         } catch (error) {
-          console.warn('Image compression failed, using original:', error);
+          logger.warn('Image compression failed, using original:', error);
           resolve(e.target.result);
         }
       };
@@ -145,14 +149,78 @@ class EnhancedPortfolioService {
   }
 
   /**
-   * Extract images from PDF (simplified - requires pdf.js library)
-   * For now, we'll just return empty array and suggest user upload images directly
+   * Extract images from PDF by converting pages to images
    */
   async extractImagesFromPDF(pdfFile) {
-    console.warn('PDF processing not yet implemented. Please upload images directly.');
-    // TODO: Implement PDF.js to extract pages as images
-    // For now, return empty array
-    return [];
+    try {
+      // Use pdfjs-dist for browser-based PDF rendering
+      const pdfjsLib = await import('pdfjs-dist/build/pdf');
+
+      // Set worker path - use local copy from public folder (v5.4.296)
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.mjs`;
+      }
+
+      // Read PDF file as ArrayBuffer
+      const arrayBuffer = await pdfFile.arrayBuffer();
+
+      logger.info(`📄 Processing PDF: ${pdfFile.name}`);
+
+      // Load PDF document
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+
+      logger.info(`📄 PDF has ${pdf.numPages} pages`);
+
+      const images = [];
+      const maxPages = Math.min(3, pdf.numPages); // Extract first 3 pages only
+
+      for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+        try {
+          const page = await pdf.getPage(pageNum);
+
+          // Create canvas for rendering
+          const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for better quality
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+
+          // Render PDF page to canvas
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise;
+
+          // Convert canvas to compressed JPEG (0.7 quality for balance between size and quality)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+          images.push({
+            type: 'image',
+            data: dataUrl,
+            mimeType: 'image/jpeg',
+            name: `${pdfFile.name}_page_${pageNum}.jpg`
+          });
+
+          logger.success(` Extracted page ${pageNum} from PDF`);
+        } catch (pageError) {
+          logger.error(`❌ Error extracting page ${pageNum}:`, pageError);
+        }
+      }
+
+      if (images.length > 0) {
+        logger.success(` Successfully extracted ${images.length} pages from PDF`);
+      } else {
+        logger.warn('⚠️  No images extracted from PDF');
+      }
+
+      return images;
+
+    } catch (error) {
+      logger.error('❌ PDF extraction error:', error);
+      logger.warn('⚠️  PDF processing failed. Please upload JPG/PNG images directly.');
+      return [];
+    }
   }
 
   /**
@@ -170,56 +238,44 @@ class EnhancedPortfolioService {
 
       const prompt = this.buildPortfolioAnalysisPrompt(locationContext, images.length);
 
-      const response = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o', // Use gpt-4o which supports vision
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert architectural analyst specializing in style detection from portfolio images. Analyze architectural designs to identify styles, materials, spatial patterns, and design philosophies.'
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: prompt
-                },
-                ...imageContent
-              ]
-            }
-          ],
-          max_tokens: 2000,
-          temperature: 0.3
-        })
+      const data = await secureApiClient.openaiChat({
+        model: 'gpt-4o', // Use gpt-4o which supports vision
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert architectural analyst specializing in style detection from portfolio images. Analyze architectural designs to identify styles, materials, spatial patterns, and design philosophies.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: prompt
+              },
+              ...imageContent
+            ]
+          }
+        ],
+        max_tokens: 2000,
+        temperature: 0.3
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`OpenAI API error: ${response.status} - ${JSON.stringify(errorData)}`);
-      }
-
-      const data = await response.json();
       const analysisText = data.choices[0].message.content;
 
       return this.parsePortfolioAnalysis(analysisText, locationContext);
 
     } catch (error) {
-      console.error('Vision analysis error:', error);
+      logger.error('Vision analysis error:', error);
       throw error;
     }
   }
 
   /**
-   * Build comprehensive portfolio analysis prompt
+   * Build comprehensive portfolio analysis prompt with material hex extraction
    */
   buildPortfolioAnalysisPrompt(locationContext, imageCount) {
     return `
-Analyze these ${imageCount} architectural portfolio images in detail.
+Analyze these ${imageCount} architectural portfolio images in detail, extracting specific material colors and patterns.
 
 LOCATION CONTEXT:
 - Address: ${locationContext?.address || 'Not specified'}
@@ -229,47 +285,139 @@ LOCATION CONTEXT:
 Please provide a comprehensive analysis in the following JSON format:
 
 {
+  "buildingProgram": {
+    "type": "Most common building type in portfolio (e.g., 'clinic', 'office', 'detached-house', 'apartment-building', etc.)",
+    "confidence": 85,  // Confidence score 0-100
+    "variety": ["Other building types found", "..."],
+    "characteristics": ["Key programmatic features", "Spatial organization patterns", "..."]
+  },
   "primaryStyle": {
     "name": "Identified architectural style (e.g., Modern, Contemporary, Traditional, etc.)",
-    "confidence": "High/Medium/Low",
+    "confidence": 85,  // Confidence score 0-100
     "period": "Approximate period or era",
     "characteristics": ["Key characteristic 1", "Key characteristic 2", "..."]
   },
   "materials": {
-    "exterior": ["Material 1", "Material 2", "..."],
-    "structural": ["Material 1", "Material 2", "..."],
-    "detailing": ["Material 1", "Material 2", "..."]
+    "exterior": [
+      {
+        "name": "Red Brick",
+        "hexColor": "#B8604E",
+        "pattern": "flemish bond",
+        "texture": "rough/smooth/textured",
+        "percentage": 60,  // Percentage of facade
+        "confidence": 90  // Detection confidence 0-100
+      }
+    ],
+    "structural": [
+      {
+        "name": "Steel Frame",
+        "hexColor": "#808080",
+        "visible": true,
+        "confidence": 75
+      }
+    ],
+    "detailing": [
+      {
+        "name": "Portland Stone",
+        "hexColor": "#E8E0D5",
+        "application": "window sills, cornices",
+        "confidence": 85
+      }
+    ]
   },
   "designElements": {
     "spatialOrganization": "Description of spatial patterns and organization",
-    "windowPatterns": "Description of window types and arrangements",
-    "roofForm": "Description of roof type and form",
-    "colorPalette": ["Color 1", "Color 2", "..."],
+    "windowPatterns": {
+      "type": "Large format glazing",
+      "frameColor": "#000000",
+      "glazingTint": "#87CEEB",
+      "arrangement": "regular grid/asymmetric/rhythmic"
+    },
+    "roofForm": {
+      "type": "pitched/flat/complex",
+      "material": "clay tiles/slate/metal",
+      "color": "#8B4513",
+      "angle": "35 degrees"
+    },
+    "colorPalette": [
+      {"color": "Warm Grey", "hex": "#808070"},
+      {"color": "Natural Wood", "hex": "#8B4513"},
+      {"color": "White Render", "hex": "#F5F5F5"}
+    ],
     "proportions": "Description of proportional systems used"
   },
   "styleConsistency": {
     "rating": "Consistent/Moderately Consistent/Varied",
+    "consistencyScore": 85,  // 0-100 score
     "evolution": "Description of any style evolution across projects",
-    "signatureElements": ["Signature element 1", "Signature element 2", "..."]
+    "signatureElements": [
+      {
+        "element": "Cantilevered balconies",
+        "frequency": 80,  // Percentage occurrence in portfolio
+        "confidence": 90
+      }
+    ]
   },
   "sustainabilityFeatures": {
-    "passive": ["Feature 1", "Feature 2", "..."],
-    "active": ["Feature 1", "Feature 2", "..."],
-    "materials": ["Sustainable material/approach 1", "..."]
+    "passive": [
+      {
+        "feature": "Natural ventilation",
+        "effectiveness": "high",
+        "confidence": 85
+      }
+    ],
+    "active": ["Solar panels", "Heat pumps"],
+    "materials": [
+      {
+        "material": "Sustainable timber",
+        "certification": "FSC",
+        "confidence": 70
+      }
+    ]
+  },
+  "materialQuality": {
+    "constructionQuality": "high/medium/standard",
+    "detailingLevel": "exceptional/good/standard",
+    "maintenanceRequirement": "low/medium/high",
+    "qualityScore": 85  // 0-100
   },
   "locationCompatibility": {
     "climateSuitability": "Assessment of how well the style suits the target climate",
+    "climateSuitabilityScore": 80,  // 0-100
     "culturalFit": "Assessment of cultural and contextual appropriateness",
+    "culturalFitScore": 75,  // 0-100
     "adaptationsNeeded": ["Adaptation 1", "Adaptation 2", "..."]
   },
   "recommendations": {
     "stylisticDirection": "Recommended stylistic approach for the new project",
-    "materialPalette": ["Recommended material 1", "Recommended material 2", "..."],
-    "keyPrinciples": ["Design principle 1", "Design principle 2", "..."]
+    "materialPalette": [
+      {
+        "material": "Local brick",
+        "suggestedHex": "#B8604E",
+        "reason": "Climate compatible and locally available"
+      }
+    ],
+    "keyPrinciples": ["Design principle 1", "Design principle 2", "..."],
+    "confidenceLevel": 85  // Overall analysis confidence 0-100
   }
 }
 
-Analyze all images carefully and provide detailed, specific observations. Focus on identifying consistent design patterns, signature elements, and the architect's design philosophy.
+IMPORTANT: For building program detection:
+- Look for visual clues: signage, waiting areas (clinics), office layouts, residential features
+- Common types: 'clinic', 'dental-clinic', 'office', 'detached-house', 'apartment-building', 'hotel', 'school', 'retail', 'restaurant'
+- If multiple types are present, identify the most common one
+- Provide high confidence (>80) only if clear visual evidence exists
+
+For each material detected, provide:
+1. Specific material name (not generic like "brick" but "red clay brick" or "London stock brick")
+2. Accurate hex color code based on the dominant color visible
+3. Pattern or bond if applicable (stretcher bond, stack bond, etc.)
+4. Texture description (smooth, rough, brushed, weathered, etc.)
+5. Confidence score (0-100) for how certain you are about the detection
+6. Percentage of facade or area covered by this material
+
+For colors, provide specific hex codes, not generic color names.
+Analyze all images carefully and provide detailed, specific observations.
     `.trim();
   }
 
@@ -289,7 +437,7 @@ Analyze all images carefully and provide detailed, specific observations. Focus 
         };
       }
     } catch (error) {
-      console.warn('Could not parse JSON from portfolio analysis:', error);
+      logger.warn('Could not parse JSON from portfolio analysis:', error);
     }
 
     // Fallback to text-based extraction
@@ -420,9 +568,9 @@ Analyze all images carefully and provide detailed, specific observations. Focus 
    * Blend portfolio style with location recommendations
    */
   blendStyleWithLocation(portfolioAnalysis, locationAnalysis, materialWeight = 0.5, characteristicWeight = 0.5) {
-    console.log('🎨 Blending portfolio style with location context...');
-    console.log('   Material weight:', materialWeight, '(portfolio influence)');
-    console.log('   Characteristic weight:', characteristicWeight, '(portfolio influence)');
+    logger.info('🎨 Blending portfolio style with location context...');
+    logger.info('   Material weight:', materialWeight, '(portfolio influence)');
+    logger.info('   Characteristic weight:', characteristicWeight, '(portfolio influence)');
 
     const portfolioMaterials = portfolioAnalysis.materials?.exterior || [];
     const locationMaterials = locationAnalysis.materials?.walls || [];
@@ -514,6 +662,342 @@ Analyze all images carefully and provide detailed, specific observations. Focus 
     description += `\nDefining characteristics: ${characteristics.slice(0, 4).join(', ')}.`;
 
     return description;
+  }
+
+  /**
+   * Enhanced material analysis using materialDetectionService
+   */
+  async enhancedMaterialAnalysis(images, visionAnalysis, locationContext) {
+    const detectedMaterials = [];
+    const materialConfidence = {};
+
+    // Process each image for material detection
+    for (const image of images) {
+      try {
+        const materials = await materialDetectionService.extractMaterialsFromImage(
+          image.data,
+          {
+            projectType: locationContext?.projectType || 'residential',
+            location: locationContext?.address || 'unknown'
+          }
+        );
+
+        // Aggregate materials with confidence scores
+        materials.materials.forEach(mat => {
+          const key = `${mat.name}_${mat.hexColor}`;
+          if (!materialConfidence[key]) {
+            materialConfidence[key] = {
+              ...mat,
+              occurrences: 0,
+              totalConfidence: 0,
+              images: []
+            };
+          }
+          materialConfidence[key].occurrences++;
+          materialConfidence[key].totalConfidence += mat.confidence;
+          materialConfidence[key].images.push(image.name);
+        });
+
+        detectedMaterials.push(materials);
+      } catch (error) {
+        logger.warn('Material detection error for image:', image.name, error);
+      }
+    }
+
+    // Calculate average confidence scores
+    const consolidatedMaterials = Object.values(materialConfidence).map(mat => ({
+      ...mat,
+      averageConfidence: Math.round(mat.totalConfidence / mat.occurrences),
+      frequency: (mat.occurrences / images.length) * 100
+    }));
+
+    // Get climate compatibility scores
+    const climate = locationContext?.climate?.type || 'temperate_maritime';
+    const materialRecommendations = await materialDetectionService.recommendMaterials({
+      location: locationContext?.address,
+      climate,
+      projectType: locationContext?.projectType || 'residential',
+      budget: 'medium',
+      sustainabilityTarget: 'high',
+      portfolioMaterials: consolidatedMaterials.map(m => m.name)
+    });
+
+    return {
+      detectedMaterials: consolidatedMaterials.sort((a, b) => b.averageConfidence - a.averageConfidence),
+      materialRecommendations,
+      climateCompatibility: this.assessClimateCompatibility(consolidatedMaterials, climate),
+      sustainabilityScores: this.calculateSustainabilityScores(consolidatedMaterials)
+    };
+  }
+
+  /**
+   * Combine vision and material analyses with confidence scoring
+   */
+  combineAnalyses(visionAnalysis, materialAnalysis, locationContext) {
+    // Extract confidence scores from vision analysis
+    const styleConfidence = visionAnalysis.primaryStyle?.confidence || 50;
+    const materialConfidence = materialAnalysis.detectedMaterials[0]?.averageConfidence || 50;
+    const overallConfidence = Math.round((styleConfidence + materialConfidence) / 2);
+
+    // Merge material data with hex colors
+    const enhancedMaterials = {
+      exterior: this.mergeMaterialData(
+        visionAnalysis.materials?.exterior || [],
+        materialAnalysis.detectedMaterials.filter(m => m.application === 'facade')
+      ),
+      structural: visionAnalysis.materials?.structural || [],
+      detailing: visionAnalysis.materials?.detailing || []
+    };
+
+    // Enhanced style analysis with confidence
+    const enhancedStyle = {
+      ...visionAnalysis.primaryStyle,
+      confidence: styleConfidence,
+      confidenceLevel: this.getConfidenceLevel(styleConfidence),
+      materialConsistency: this.assessMaterialConsistency(materialAnalysis.detectedMaterials)
+    };
+
+    // Create comprehensive color palette with hex codes
+    const colorPalette = this.extractColorPalette(
+      visionAnalysis.designElements?.colorPalette || [],
+      materialAnalysis.detectedMaterials
+    );
+
+    return {
+      primaryStyle: enhancedStyle,
+      materials: enhancedMaterials,
+      materialAnalysis: {
+        detectedMaterials: materialAnalysis.detectedMaterials,
+        recommendations: materialAnalysis.materialRecommendations,
+        climateCompatibility: materialAnalysis.climateCompatibility,
+        sustainabilityScores: materialAnalysis.sustainabilityScores
+      },
+      designElements: {
+        ...visionAnalysis.designElements,
+        colorPalette
+      },
+      styleConsistency: {
+        ...visionAnalysis.styleConsistency,
+        materialConsistencyScore: this.assessMaterialConsistency(materialAnalysis.detectedMaterials),
+        overallConsistencyScore: overallConfidence
+      },
+      confidenceMetrics: {
+        styleConfidence,
+        materialConfidence,
+        overallConfidence,
+        analysisQuality: this.getConfidenceLevel(overallConfidence)
+      },
+      recommendations: this.generateEnhancedRecommendations(
+        visionAnalysis,
+        materialAnalysis,
+        locationContext,
+        overallConfidence
+      )
+    };
+  }
+
+  /**
+   * Merge material data from vision and detection services
+   */
+  mergeMaterialData(visionMaterials, detectedMaterials) {
+    const merged = [];
+
+    // Convert vision materials to enhanced format if they're strings
+    const visionEnhanced = visionMaterials.map(mat => {
+      if (typeof mat === 'string') {
+        // Find matching detected material
+        const detected = detectedMaterials.find(d =>
+          d.name.toLowerCase().includes(mat.toLowerCase()) ||
+          mat.toLowerCase().includes(d.name.toLowerCase())
+        );
+
+        return {
+          name: mat,
+          hexColor: detected?.hexColor || '#808080',
+          pattern: detected?.pattern || 'unknown',
+          texture: detected?.texture || 'standard',
+          confidence: detected?.averageConfidence || 50
+        };
+      }
+      return mat;
+    });
+
+    // Add detected materials not in vision analysis
+    detectedMaterials.forEach(detected => {
+      if (!visionEnhanced.find(v => v.name === detected.name)) {
+        merged.push({
+          name: detected.name,
+          hexColor: detected.hexColor,
+          pattern: detected.pattern,
+          texture: detected.texture,
+          confidence: detected.averageConfidence,
+          source: 'material-detection'
+        });
+      }
+    });
+
+    return [...visionEnhanced, ...merged];
+  }
+
+  /**
+   * Extract comprehensive color palette with hex codes
+   */
+  extractColorPalette(visionColors, detectedMaterials) {
+    const palette = [];
+
+    // Add colors from vision analysis
+    visionColors.forEach(color => {
+      if (typeof color === 'object' && color.hex) {
+        palette.push(color);
+      } else if (typeof color === 'string') {
+        palette.push({
+          color,
+          hex: this.estimateHexFromName(color)
+        });
+      }
+    });
+
+    // Add unique colors from detected materials
+    detectedMaterials.forEach(mat => {
+      if (mat.hexColor && !palette.find(p => p.hex === mat.hexColor)) {
+        palette.push({
+          color: mat.name,
+          hex: mat.hexColor,
+          source: 'material-detection',
+          confidence: mat.averageConfidence
+        });
+      }
+    });
+
+    return palette;
+  }
+
+  /**
+   * Assess material consistency across portfolio
+   */
+  assessMaterialConsistency(materials) {
+    if (materials.length === 0) return 0;
+
+    // Check how consistent materials are across images
+    const highFrequencyMaterials = materials.filter(m => m.frequency > 60);
+    const consistencyScore = (highFrequencyMaterials.length / materials.length) * 100;
+
+    return Math.round(consistencyScore);
+  }
+
+  /**
+   * Assess climate compatibility of detected materials
+   */
+  assessClimateCompatibility(materials, climate) {
+    const compatibilityScores = materials.map(mat => {
+      const materialKey = mat.name.toLowerCase().replace(/ /g, '_');
+      return materialDetectionService.calculateClimateCompatibility(materialKey, climate);
+    });
+
+    const averageScore = compatibilityScores.reduce((a, b) => a + b, 0) / compatibilityScores.length;
+
+    return {
+      score: Math.round(averageScore * 100),
+      rating: averageScore > 0.8 ? 'Excellent' : averageScore > 0.6 ? 'Good' : 'Fair',
+      incompatibleMaterials: materials.filter((mat, i) => compatibilityScores[i] < 0.5)
+    };
+  }
+
+  /**
+   * Calculate sustainability scores for detected materials
+   */
+  calculateSustainabilityScores(materials) {
+    return materials.map(mat => {
+      const materialKey = mat.name.toLowerCase().replace(/ /g, '_');
+      const score = materialDetectionService.getSustainabilityScore(materialKey);
+
+      return {
+        material: mat.name,
+        score,
+        rating: score > 80 ? 'Excellent' : score > 60 ? 'Good' : score > 40 ? 'Fair' : 'Poor'
+      };
+    });
+  }
+
+  /**
+   * Get confidence level description
+   */
+  getConfidenceLevel(score) {
+    if (score >= 90) return 'Very High';
+    if (score >= 75) return 'High';
+    if (score >= 60) return 'Medium';
+    if (score >= 40) return 'Low';
+    return 'Very Low';
+  }
+
+  /**
+   * Generate enhanced recommendations with confidence
+   */
+  generateEnhancedRecommendations(visionAnalysis, materialAnalysis, locationContext, confidence) {
+    const recommendations = {
+      stylisticDirection: visionAnalysis.recommendations?.stylisticDirection || 'Contemporary design',
+      materialPalette: [],
+      keyPrinciples: visionAnalysis.recommendations?.keyPrinciples || [],
+      confidenceLevel: confidence,
+      adaptations: []
+    };
+
+    // Add recommended materials with reasoning
+    if (materialAnalysis.materialRecommendations?.primary) {
+      materialAnalysis.materialRecommendations.primary.forEach(mat => {
+        recommendations.materialPalette.push({
+          material: mat.name,
+          hexColor: mat.hexColors?.[0] || '#808080',
+          reason: mat.reasoning,
+          climateSuitability: mat.score,
+          application: 'primary facade'
+        });
+      });
+    }
+
+    // Add climate-specific adaptations
+    if (materialAnalysis.climateCompatibility?.incompatibleMaterials?.length > 0) {
+      recommendations.adaptations.push(
+        `Replace ${materialAnalysis.climateCompatibility.incompatibleMaterials.map(m => m.name).join(', ')} with climate-appropriate alternatives`
+      );
+    }
+
+    // Add sustainability recommendations
+    const poorSustainability = materialAnalysis.sustainabilityScores?.filter(s => s.rating === 'Poor') || [];
+    if (poorSustainability.length > 0) {
+      recommendations.adaptations.push(
+        `Consider sustainable alternatives to ${poorSustainability.map(s => s.material).join(', ')}`
+      );
+    }
+
+    return recommendations;
+  }
+
+  /**
+   * Estimate hex color from color name
+   */
+  estimateHexFromName(colorName) {
+    const colorMap = {
+      'white': '#FFFFFF',
+      'black': '#000000',
+      'grey': '#808080',
+      'gray': '#808080',
+      'red': '#FF0000',
+      'brick': '#B8604E',
+      'brown': '#8B4513',
+      'wood': '#8B4513',
+      'stone': '#D3D3D3',
+      'glass': '#87CEEB',
+      'metal': '#C0C0C0',
+      'green': '#008000',
+      'blue': '#0000FF'
+    };
+
+    const lower = colorName.toLowerCase();
+    for (const [key, value] of Object.entries(colorMap)) {
+      if (lower.includes(key)) return value;
+    }
+    return '#808080'; // Default grey
   }
 }
 

@@ -1,21 +1,22 @@
 /**
  * Portfolio Style Detection Service
  * Uses OpenAI to analyze uploaded portfolio images and detect architectural styles
+ *
+ * SECURITY: All API calls go through server proxy - no API keys in client code
  */
 
-const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
+import secureApiClient from './secureApiClient.js';
+import logger from '../utils/logger.js';
 
-// Use Vercel serverless function in production, local proxy in development
+
 const OPENAI_API_URL = process.env.NODE_ENV === 'production'
-  ? '/api/openai-chat'  // Vercel serverless function
-  : 'http://localhost:3001/api/openai/chat';  // Local proxy server
+  ? '/api/openai-chat'
+  : 'http://localhost:3001/api/openai-chat';
 
 class PortfolioStyleDetectionService {
   constructor() {
-    this.apiKey = OPENAI_API_KEY;
-    if (!this.apiKey) {
-      console.warn('OpenAI API key not found. Portfolio style detection will use fallback responses.');
-    }
+    // No API key needed - handled by server
+    this.isAvailable = true; // Server will handle availability
   }
 
   /**
@@ -25,44 +26,29 @@ class PortfolioStyleDetectionService {
    * @returns {Promise<Object>} Detected style and recommendations
    */
   async detectArchitecturalStyle(portfolioImages, locationContext) {
-    if (!this.apiKey) {
-      return this.getFallbackStyleDetection(portfolioImages, locationContext);
-    }
-
     try {
       const prompt = this.buildStyleDetectionPrompt(portfolioImages, locationContext);
-      
-      const response = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4-vision-preview',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert architectural analyst specializing in style detection and design pattern recognition. Analyze architectural images to identify design styles, materials, and spatial characteristics.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
+
+      const response = await secureApiClient.openaiChat({
+        model: 'gpt-4-vision-preview',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert architectural analyst specializing in style detection and design pattern recognition. Analyze architectural images to identify design styles, materials, and spatial characteristics.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
           ],
           max_tokens: 1500,
           temperature: 0.3
-        })
-      });
+        });
 
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return this.parseStyleDetection(data.choices[0].message.content, locationContext);
+      return this.parseStyleDetection(response.choices[0].message.content, locationContext);
 
     } catch (error) {
-      console.error('Portfolio style detection error:', error);
+      logger.error('Portfolio style detection error:', error);
       return this.getFallbackStyleDetection(portfolioImages, locationContext);
     }
   }
@@ -130,7 +116,7 @@ Format your response as structured JSON with clear sections and specific archite
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.warn('Could not parse JSON from style detection response, using text format');
+      logger.warn('Could not parse JSON from style detection response, using text format');
     }
 
     // Fallback to structured text response
@@ -232,7 +218,7 @@ Format your response as structured JSON with clear sections and specific archite
       return this.parseCompatibilityAnalysis(data.choices[0].message.content);
 
     } catch (error) {
-      console.error('Style compatibility analysis error:', error);
+      logger.error('Style compatibility analysis error:', error);
       return this.getFallbackCompatibilityAnalysis(detectedStyle, locationContext);
     }
   }

@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Dimensioning and Annotation Service
  * Adds measurements, labels, and technical annotations to floor plans and technical drawings
@@ -6,7 +8,7 @@
 
 class DimensioningService {
   constructor() {
-    console.log('Dimensioning Service initialized');
+    logger.info('Dimensioning Service initialized');
   }
 
   /**
@@ -17,13 +19,13 @@ class DimensioningService {
    * @returns {Promise<Object>} Annotated image data with dimensions
    */
   async annotateFloorPlan(imageUrl, bimModel, floorLevel = 'ground') {
-    console.log(`📐 Adding dimensions to ${floorLevel} floor plan...`);
+    logger.info(`📐 Adding dimensions to ${floorLevel} floor plan...`);
 
     const { geometry, views } = bimModel;
     const floorPlan = views.floorPlans[`floor_${floorLevel === 'ground' ? 0 : floorLevel === 'upper' ? 1 : 2}`];
 
     if (!floorPlan) {
-      console.warn(`Floor plan for ${floorLevel} not found in BIM model`);
+      logger.warn(`Floor plan for ${floorLevel} not found in BIM model`);
       return { success: false, error: 'Floor plan not found' };
     }
 
@@ -158,7 +160,7 @@ class DimensioningService {
    * Add dimensions to elevation drawing
    */
   async annotateElevation(imageUrl, bimModel, direction = 'north') {
-    console.log(`📐 Adding dimensions to ${direction} elevation...`);
+    logger.info(`📐 Adding dimensions to ${direction} elevation...`);
 
     const { geometry, views } = bimModel;
     const elevation = views.elevations[direction];
@@ -252,7 +254,7 @@ class DimensioningService {
    * Add dimensions to section drawing
    */
   async annotateSection(imageUrl, bimModel, sectionType = 'longitudinal') {
-    console.log(`📐 Adding dimensions to ${sectionType} section...`);
+    logger.info(`📐 Adding dimensions to ${sectionType} section...`);
 
     const { geometry, views } = bimModel;
     const section = views.sections[sectionType];
@@ -480,6 +482,90 @@ class DimensioningService {
     }
 
     svg += `  </g>\n`;
+    return svg;
+  }
+
+  /**
+   * Generate SVG overlay for a floor plan (simplified version for quick annotation)
+   * @param {Object} params - Parameters
+   * @param {number} params.width - SVG width in pixels
+   * @param {number} params.height - SVG height in pixels
+   * @param {number} params.area - Building area in m²
+   * @param {string} params.program - Building program type
+   * @param {Array} params.rooms - Array of rooms with dimensions
+   * @param {Object} params.dimensions - Building dimensions (length, width, height)
+   * @returns {string} SVG markup
+   */
+  generateSVGOverlay({ width, height, area, program, rooms = [], dimensions = {} }) {
+    const buildingLength = dimensions?.length || Math.sqrt(area * 1.5);
+    const buildingWidth = dimensions?.width || area / buildingLength;
+    const buildingHeight = dimensions?.height || 7;
+
+    let svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg" style="position: absolute; top: 0; left: 0; pointer-events: none;">
+  <defs>
+    <marker id="arrowEnd" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,8 L8,4 z" fill="#FF0000" />
+    </marker>
+    <marker id="arrowStart" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M8,0 L8,8 L0,4 z" fill="#FF0000" />
+    </marker>
+  </defs>
+  <style>
+    .dimension-line { stroke: #FF0000; stroke-width: 2; fill: none; }
+    .dimension-text { fill: #FF0000; font-family: Arial, sans-serif; font-size: 14px; font-weight: bold; }
+    .room-label { fill: #0066CC; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; }
+    .area-text { fill: #0066CC; font-family: Arial, sans-serif; font-size: 12px; }
+  </style>
+
+  <!-- Overall Dimensions -->
+  <!-- Horizontal dimension (top) -->
+  <line x1="100" y1="50" x2="${width - 100}" y2="50" class="dimension-line" marker-start="url(#arrowStart)" marker-end="url(#arrowEnd)" />
+  <text x="${width / 2}" y="40" text-anchor="middle" class="dimension-text">${buildingLength.toFixed(2)}m</text>
+
+  <!-- Vertical dimension (left) -->
+  <line x1="50" y1="100" x2="50" y2="${height - 100}" class="dimension-line" marker-start="url(#arrowStart)" marker-end="url(#arrowEnd)" />
+  <text x="30" y="${height / 2}" text-anchor="middle" class="dimension-text" transform="rotate(-90, 30, ${height / 2})">${buildingWidth.toFixed(2)}m</text>
+
+  <!-- North Arrow -->
+  <g transform="translate(${width - 80}, 100)">
+    <line x1="0" y1="0" x2="0" y2="-40" stroke="#000" stroke-width="2" />
+    <polygon points="0,-40 -8,-25 8,-25" fill="#000" />
+    <text x="0" y="15" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold">N</text>
+  </g>
+
+  <!-- Building Info -->
+  <g transform="translate(80, ${height - 80})">
+    <rect x="-5" y="-25" width="280" height="55" fill="white" opacity="0.9" stroke="#000" stroke-width="1" />
+    <text x="0" y="0" font-family="Arial" font-size="14" font-weight="bold">Total Area: ${Math.round(area)}m²</text>
+    <text x="0" y="20" font-family="Arial" font-size="12">Dimensions: ${buildingLength.toFixed(1)}m × ${buildingWidth.toFixed(1)}m × ${buildingHeight.toFixed(1)}m</text>
+  </g>
+
+  <!-- Scale Bar -->
+  <g transform="translate(${width - 200}, ${height - 50})">
+    <line x1="0" y1="0" x2="100" y2="0" stroke="#000" stroke-width="3" />
+    <line x1="0" y1="-5" x2="0" y2="5" stroke="#000" stroke-width="2" />
+    <line x1="50" y1="-3" x2="50" y2="3" stroke="#000" stroke-width="2" />
+    <line x1="100" y1="-5" x2="100" y2="5" stroke="#000" stroke-width="2" />
+    <text x="50" y="20" text-anchor="middle" font-family="Arial" font-size="12">Scale 1:100</text>
+  </g>
+
+  <!-- Room Labels (if available) -->`;
+
+    if (rooms && rooms.length > 0) {
+      rooms.forEach((room, index) => {
+        const x = 150 + (index % 2) * 300;
+        const y = 150 + Math.floor(index / 2) * 100;
+        svg += `
+  <g transform="translate(${x}, ${y})">
+    <text x="0" y="0" class="room-label">${room.name || `Room ${index + 1}`}</text>
+    <text x="0" y="20" class="area-text">${room.dimensions || room.area || 'N/A'}</text>
+  </g>`;
+      });
+    }
+
+    svg += `
+</svg>`;
+
     return svg;
   }
 }

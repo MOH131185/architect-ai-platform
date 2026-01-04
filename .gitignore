@@ -32,3 +32,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .vercel
+
+# Design history (project-specific data)
+design_history/
+
+# Python build artifacts (for FastAPI backend scaffolding)
+api/__pycache__/
+*.pyc

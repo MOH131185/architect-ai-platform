@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArchiAI Solution - Logo Preview</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      text-align: center;
+      color: white;
+      font-size: 48px;
+      margin-bottom: 20px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.9);
+      font-size: 20px;
+      margin-bottom: 60px;
+      font-weight: 300;
+    }
+    
+    .logo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+    
+    .logo-card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .logo-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    }
+    
+    .logo-card.dark {
+      background: #1e293b;
+    }
+    
+    .logo-card.full {
+      grid-column: 1 / -1;
+    }
+    
+    .logo-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e293b;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    
+    .logo-card.dark .logo-title {
+      color: white;
+    }
+    
+    .logo-description {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 30px;
+      text-align: center;
+      line-height: 1.6;
+    }
+    
+    .logo-card.dark .logo-description {
+      color: #94a3b8;
+    }
+    
+    .logo-display {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 200px;
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+    
+    .logo-card.dark .logo-display {
+      background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+    }
+    
+    .logo-card.full .logo-display {
+      min-height: 160px;
+    }
+    
+    .logo-display img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    .logo-specs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      font-size: 13px;
+    }
+    
+    .spec-item {
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+      border-left: 3px solid #3b82f6;
+    }
+    
+    .logo-card.dark .spec-item {
+      background: #334155;
+      border-left-color: #60a5fa;
+    }
+    
+    .spec-label {
+      font-weight: 600;
+      color: #3b82f6;
+      margin-bottom: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .logo-card.dark .spec-label {
+      color: #60a5fa;
+    }
+    
+    .spec-value {
+      color: #1e293b;
+      font-weight: 500;
+    }
+    
+    .logo-card.dark .spec-value {
+      color: #e2e8f0;
+    }
+    
+    .design-notes {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-top: 40px;
+    }
+    
+    .design-notes h2 {
+      color: #1e293b;
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+    
+    .design-notes ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    .design-notes li {
+      padding: 12px 0;
+      padding-left: 30px;
+      position: relative;
+      color: #475569;
+      line-height: 1.6;
+    }
+    
+    .design-notes li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: #3b82f6;
+      font-weight: bold;
+      font-size: 18px;
+    }
+    
+    .color-palette {
+      display: flex;
+      gap: 15px;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+    
+    .color-swatch {
+      flex: 1;
+      min-width: 120px;
+      height: 100px;
+      border-radius: 12px;
+      display: flex;
+      align-items: flex-end;
+      padding: 15px;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    @media (max-width: 768px) {
+      .logo-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      h1 {
+        font-size: 32px;
+      }
+      
+      .subtitle {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🏛️ ArchiAI Solution Logo Suite</h1>
+    <p class="subtitle">Inspired by isometric architectural blueprints and technical drawings</p>
+    
+    <div class="logo-grid">
+      <!-- Logo Light -->
+      <div class="logo-card">
+        <h3 class="logo-title">Light Version</h3>
+        <p class="logo-description">Primary logo for dark backgrounds, navigation bars, and hero sections</p>
+        <div class="logo-display">
+          <img src="logo-light.svg" alt="ArchiAI Solution Logo Light" style="width: 200px;">
+        </div>
+        <div class="logo-specs">
+          <div class="spec-item">
+            <span class="spec-label">Size</span>
+            <span class="spec-value">200×200px</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Format</span>
+            <span class="spec-value">SVG (Vector)</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Use Case</span>
+            <span class="spec-value">Dark BG</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Colors</span>
+            <span class="spec-value">Blue Gradient</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Logo Dark -->
+      <div class="logo-card dark">
+        <h3 class="logo-title">Dark Version</h3>
+        <p class="logo-description">Alternative logo for light backgrounds and print materials</p>
+        <div class="logo-display">
+          <img src="logo-dark.svg" alt="ArchiAI Solution Logo Dark" style="width: 200px;">
+        </div>
+        <div class="logo-specs">
+          <div class="spec-item">
+            <span class="spec-label">Size</span>
+            <span class="spec-value">200×200px</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Format</span>
+            <span class="spec-value">SVG (Vector)</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Use Case</span>
+            <span class="spec-value">Light BG</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Colors</span>
+            <span class="spec-value">Gray Gradient</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Logo Monochrome -->
+      <div class="logo-card">
+        <h3 class="logo-title">Monochrome Version</h3>
+        <p class="logo-description">Single-color version for print, stamps, and simplified applications</p>
+        <div class="logo-display">
+          <img src="logo-monochrome.svg" alt="ArchiAI Solution Logo Monochrome" style="width: 200px;">
+        </div>
+        <div class="logo-specs">
+          <div class="spec-item">
+            <span class="spec-label">Size</span>
+            <span class="spec-value">200×200px</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Format</span>
+            <span class="spec-value">SVG (Vector)</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Use Case</span>
+            <span class="spec-value">Print/B&W</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Colors</span>
+            <span class="spec-value">Black Only</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Favicon -->
+      <div class="logo-card">
+        <h3 class="logo-title">Favicon</h3>
+        <p class="logo-description">Compact version for browser tabs and mobile app icons</p>
+        <div class="logo-display">
+          <img src="../favicon.svg" alt="ArchiAI Solution Favicon" style="width: 64px;">
+        </div>
+        <div class="logo-specs">
+          <div class="spec-item">
+            <span class="spec-label">Size</span>
+            <span class="spec-value">32×32px</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Format</span>
+            <span class="spec-value">SVG (Vector)</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Use Case</span>
+            <span class="spec-value">Browser Tab</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Colors</span>
+            <span class="spec-value">Blue Gradient</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Full Logo with Text -->
+      <div class="logo-card full">
+        <h3 class="logo-title">Full Logo with Text</h3>
+        <p class="logo-description">Complete branding with company name and tagline for headers, marketing materials, and presentations</p>
+        <div class="logo-display">
+          <img src="logo-full.svg" alt="ArchiAI Solution Full Logo" style="height: 120px;">
+        </div>
+        <div class="logo-specs">
+          <div class="spec-item">
+            <span class="spec-label">Size</span>
+            <span class="spec-value">450×140px</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Format</span>
+            <span class="spec-value">SVG (Vector)</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Use Case</span>
+            <span class="spec-value">Headers/Marketing</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Text</span>
+            <span class="spec-value">ArchiAI Solution Ltd.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Design Notes -->
+    <div class="design-notes">
+      <h2>🎨 Design Elements & Inspiration</h2>
+      <ul>
+        <li><strong>Isometric 3D Building:</strong> Modern architectural structure with detailed windows and multiple facades, inspired by technical architectural drawings</li>
+        <li><strong>Blueprint Roll:</strong> Rolled architectural drawing with grid lines, representing traditional drafting and precision</li>
+        <li><strong>AI Neural Network Nodes:</strong> Connected sparkles representing artificial intelligence and machine learning</li>
+        <li><strong>Architectural Compass:</strong> Drafting tool accent symbolizing precision, measurement, and professional design</li>
+        <li><strong>Blue Gradient:</strong> Professional brand colors (#3B82F6 to #1E40AF) conveying trust, technology, and innovation</li>
+        <li><strong>Technical Aesthetic:</strong> Clean, professional look matching UK RIBA architectural standards</li>
+        <li><strong>Scalable Design:</strong> Works perfectly from 16px favicon to large format prints</li>
+      </ul>
+      
+      <h2 style="margin-top: 40px;">🎨 Color Palette</h2>
+      <div class="color-palette">
+        <div class="color-swatch" style="background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);">
+          Primary Blue<br>#3B82F6
+        </div>
+        <div class="color-swatch" style="background: linear-gradient(135deg, #2563EB 0%, #1E40AF 100%);">
+          Deep Blue<br>#1E40AF
+        </div>
+        <div class="color-swatch" style="background: linear-gradient(135deg, #60A5FA 0%, #93C5FD 100%);">
+          Light Blue<br>#60A5FA
+        </div>
+        <div class="color-swatch" style="background: linear-gradient(135deg, #DBEAFE 0%, #F0F9FF 100%); color: #1E40AF;">
+          Sky Blue<br>#DBEAFE
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

@@ -1,0 +1,341 @@
+/**
+ * Animated Background Styles
+ * 
+ * Blueprint grids, architectural patterns, and animated backgrounds
+ */
+
+/* Blueprint Grid Pattern */
+.blueprint-grid {
+  background-color: #0a0e27;
+  background-image: 
+    linear-gradient(rgba(37, 99, 235, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+  position: relative;
+}
+
+.blueprint-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(37, 99, 235, 0.2) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.2) 2px, transparent 2px);
+  background-size: 100px 100px;
+  pointer-events: none;
+}
+
+/* Architectural Line Pattern */
+.architectural-lines {
+  background-color: #0f172a;
+  background-image: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(37, 99, 235, 0.03) 10px,
+      rgba(37, 99, 235, 0.03) 11px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 10px,
+      rgba(37, 99, 235, 0.03) 10px,
+      rgba(37, 99, 235, 0.03) 11px
+    );
+}
+
+/* Animated Background - Slow Zoom */
+@keyframes slowZoom {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.animated-background {
+  animation: slowZoom 30s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Animated Background - Slow Zoom Out */
+@keyframes slowZoomOut {
+  0%, 100% {
+    transform: scale(1.1);
+  }
+  50% {
+    transform: scale(1);
+  }
+}
+
+.animated-background-reverse {
+  animation: slowZoomOut 30s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Parallax Layer */
+@keyframes parallaxFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.parallax-layer {
+  animation: parallaxFloat 20s ease-in-out infinite;
+  will-change: transform;
+}
+
+.parallax-layer-slow {
+  animation: parallaxFloat 30s ease-in-out infinite;
+  will-change: transform;
+}
+
+.parallax-layer-fast {
+  animation: parallaxFloat 15s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Gradient Background Animations */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-gradient {
+  background: linear-gradient(135deg, #0a0e27, #1e293b, #2563eb, #1e293b, #0a0e27);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+}
+
+/* Architectural Background with Image */
+.architectural-background {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.architectural-background::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(10, 14, 39, 0.95) 0%,
+    rgba(30, 41, 59, 0.8) 50%,
+    rgba(37, 99, 235, 0.3) 100%
+  );
+  pointer-events: none;
+}
+
+/* Hero Background with Multiple Layers */
+.hero-background {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0a0e27 0%, #1e293b 50%, #2563eb 100%);
+}
+
+.hero-background-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.3;
+  mix-blend-mode: luminosity;
+}
+
+/* Spotlight Effect */
+.spotlight-effect {
+  position: relative;
+}
+
+.spotlight-effect::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(37, 99, 235, 0.15) 0%,
+    transparent 50%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.spotlight-effect:hover::after {
+  opacity: 1;
+}
+
+/* Glass Morphism Background */
+.glass-background {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-background-dark {
+  background: rgba(10, 14, 39, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+/* Gradient Border Animation */
+@keyframes gradientBorderRotate {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.gradient-border {
+  position: relative;
+  background: linear-gradient(135deg, #2563eb, #60a5fa, #93c5fd, #60a5fa, #2563eb);
+  background-size: 300% 300%;
+  animation: gradientBorderRotate 3s linear infinite;
+  padding: 2px;
+  border-radius: inherit;
+}
+
+.gradient-border-content {
+  background: #0a0e27;
+  border-radius: inherit;
+  width: 100%;
+  height: 100%;
+}
+
+/* Shimmer Effect */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-effect {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(37, 99, 235, 0.2) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 8s linear infinite;
+}
+
+/* Glow Effect */
+.glow-effect {
+  box-shadow: 
+    0 0 20px rgba(37, 99, 235, 0.3),
+    0 0 40px rgba(37, 99, 235, 0.1);
+}
+
+.glow-effect-strong {
+  box-shadow: 
+    0 0 30px rgba(37, 99, 235, 0.5),
+    0 0 60px rgba(37, 99, 235, 0.3),
+    0 0 90px rgba(37, 99, 235, 0.1);
+}
+
+/* Pulse Glow Animation */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 
+      0 0 20px rgba(37, 99, 235, 0.3),
+      0 0 40px rgba(37, 99, 235, 0.1);
+  }
+  50% {
+    box-shadow: 
+      0 0 30px rgba(37, 99, 235, 0.5),
+      0 0 60px rgba(37, 99, 235, 0.3);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* Architectural Grid Overlay */
+.architectural-grid {
+  position: relative;
+}
+
+.architectural-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(37, 99, 235, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(37, 99, 235, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.1) 1px, transparent 1px);
+  background-size: 
+    20px 20px,
+    20px 20px,
+    100px 100px,
+    100px 100px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Depth Layers */
+.depth-layer-1 {
+  transform: translateZ(10px);
+}
+
+.depth-layer-2 {
+  transform: translateZ(20px);
+}
+
+.depth-layer-3 {
+  transform: translateZ(30px);
+}
+
+/* Fade Gradient Overlays */
+.fade-top {
+  background: linear-gradient(to bottom, rgba(10, 14, 39, 1) 0%, transparent 100%);
+}
+
+.fade-bottom {
+  background: linear-gradient(to top, rgba(10, 14, 39, 1) 0%, transparent 100%);
+}
+
+.fade-left {
+  background: linear-gradient(to right, rgba(10, 14, 39, 1) 0%, transparent 100%);
+}
+
+.fade-right {
+  background: linear-gradient(to left, rgba(10, 14, 39, 1) 0%, transparent 100%);
+}
+
+/* Radial Fade */
+.radial-fade {
+  background: radial-gradient(
+    circle at center,
+    transparent 0%,
+    rgba(10, 14, 39, 0.8) 70%,
+    rgba(10, 14, 39, 1) 100%
+  );
+}
+

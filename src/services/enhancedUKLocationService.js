@@ -3,7 +3,9 @@
  * Combines UK Architecture Database with Google Maps API for comprehensive analysis
  */
 
-import ukArchitectureDatabase from '../data/ukArchitectureDatabase';
+import ukArchitectureDatabase from '../data/ukArchitectureDatabase.js';
+import logger from '../utils/logger.js';
+
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 const OPENWEATHER_API_KEY = process.env.REACT_APP_OPENWEATHER_API_KEY;
@@ -18,35 +20,35 @@ class EnhancedUKLocationService {
    */
   async analyzeUKLocation(address, coordinates) {
     try {
-      console.log('🇬🇧 Starting comprehensive UK location analysis...');
+      logger.info('🇬🇧 Starting comprehensive UK location analysis...');
 
       // 1. Detect UK region/city
       const region = await this.detectUKRegion(address, coordinates);
-      console.log('✅ Region detected:', region);
+      logger.info('✅ Region detected:', region);
 
       // 2. Get architectural styles for region
       const architecturalData = this.getRegionalArchitecture(region);
-      console.log('✅ Architectural data retrieved');
+      logger.info('✅ Architectural data retrieved');
 
       // 3. Get sun path and orientation data
       const sunData = await this.getSunPathData(coordinates, region);
-      console.log('✅ Sun path data calculated');
+      logger.info('✅ Sun path data calculated');
 
       // 4. Get wind and climate data
       const climateData = await this.getDetailedClimateData(coordinates, region);
-      console.log('✅ Climate data retrieved');
+      logger.info('✅ Climate data retrieved');
 
       // 5. Get building regulations for region
       const regulations = this.getBuildingRegulations(region);
-      console.log('✅ Building regulations identified');
+      logger.info('✅ Building regulations identified');
 
       // 6. Get material recommendations
       const materials = this.getMaterialRecommendations(region, climateData);
-      console.log('✅ Material recommendations generated');
+      logger.info('✅ Material recommendations generated');
 
       // 7. Get sustainable design recommendations
       const sustainability = this.getSustainabilityRecommendations(region, climateData, sunData);
-      console.log('✅ Sustainability recommendations generated');
+      logger.info('✅ Sustainability recommendations generated');
 
       return {
         success: true,
@@ -61,7 +63,7 @@ class EnhancedUKLocationService {
       };
 
     } catch (error) {
-      console.error('UK location analysis error:', error);
+      logger.error('UK location analysis error:', error);
       return {
         success: false,
         error: error.message,

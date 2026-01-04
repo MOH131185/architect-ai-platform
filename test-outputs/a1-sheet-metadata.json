@@ -1,0 +1,26 @@
+{
+  "format": "A1",
+  "orientation": "portrait",
+  "dimensions": {
+    "mm": {
+      "width": 594,
+      "height": 841
+    },
+    "px": {
+      "width": 7016,
+      "height": 9933
+    },
+    "dpi": 300,
+    "printDPI": 300,
+    "printPx": {
+      "width": 7016,
+      "height": 9933
+    },
+    "ratio": 0.707
+  },
+  "generatedAt": "2025-11-02T11:42:40.824Z",
+  "dnaVersion": "1.0",
+  "portfolioBlend": 70,
+  "location": "42 Edgbaston Park Road, Birmingham, B15 2TX, UK",
+  "style": "Modern Contemporary with Traditional Brick"
+}

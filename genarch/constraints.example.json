@@ -1,0 +1,132 @@
+{
+  "$schema": "https://genarch.dev/schemas/constraints-v1.json",
+  "name": "Modern Minimalist Villa",
+  "description": "A contemporary single-story villa with open-plan living, 3 bedrooms, and 2 bathrooms",
+  "envelope": [
+    { "x": 0, "y": 0 },
+    { "x": 15, "y": 0 },
+    { "x": 15, "y": 13.5 },
+    { "x": 0, "y": 13.5 }
+  ],
+  "total_area_m2": 200,
+  "building_type": "residential",
+  "floor_count": 1,
+  "floor_height_m": 3.0,
+  "external_wall_thickness_m": 0.35,
+  "internal_wall_thickness_m": 0.1,
+  "entrance_facade": "south",
+  "rooms": [
+    {
+      "name": "Living/Kitchen",
+      "area_m2": 45,
+      "adjacency": ["Entrance", "Hallway"],
+      "exterior_wall_preference": true,
+      "min_width_m": 4.0,
+      "comment": "Open plan living and kitchen with south-facing glazing"
+    },
+    {
+      "name": "Master Bedroom",
+      "area_m2": 18,
+      "adjacency": ["Bathroom 1", "Hallway"],
+      "exterior_wall_preference": true,
+      "min_width_m": 3.5,
+      "comment": "En-suite master with views"
+    },
+    {
+      "name": "Bedroom 2",
+      "area_m2": 14,
+      "adjacency": ["Hallway"],
+      "exterior_wall_preference": true,
+      "min_width_m": 3.0
+    },
+    {
+      "name": "Bedroom 3",
+      "area_m2": 12,
+      "adjacency": ["Hallway"],
+      "exterior_wall_preference": true,
+      "min_width_m": 2.8
+    },
+    {
+      "name": "Bathroom 1",
+      "area_m2": 6,
+      "adjacency": ["Master Bedroom", "Hallway"],
+      "exterior_wall_preference": false,
+      "min_width_m": 2.0,
+      "comment": "En-suite to master bedroom"
+    },
+    {
+      "name": "Bathroom 2",
+      "area_m2": 4,
+      "adjacency": ["Hallway"],
+      "exterior_wall_preference": false,
+      "min_width_m": 1.8,
+      "comment": "Family bathroom"
+    },
+    {
+      "name": "Hallway",
+      "area_m2": 15,
+      "adjacency": [
+        "Entrance",
+        "Living/Kitchen",
+        "Master Bedroom",
+        "Bedroom 2",
+        "Bedroom 3",
+        "Bathroom 1",
+        "Bathroom 2",
+        "Storage"
+      ],
+      "exterior_wall_preference": false,
+      "min_width_m": 1.2,
+      "comment": "Central circulation spine connecting all rooms"
+    },
+    {
+      "name": "Storage",
+      "area_m2": 6,
+      "adjacency": ["Hallway"],
+      "exterior_wall_preference": false,
+      "min_width_m": 1.5,
+      "comment": "Utility/storage room"
+    },
+    {
+      "name": "Entrance",
+      "area_m2": 8,
+      "adjacency": ["Hallway", "Living/Kitchen"],
+      "exterior_wall_preference": true,
+      "min_width_m": 2.0,
+      "comment": "Entry vestibule with coat storage"
+    }
+  ],
+  "openings": {
+    "main_entrance": {
+      "type": "entrance",
+      "width_m": 1.0,
+      "height_m": 2.1,
+      "sill_height_m": 0
+    },
+    "default_window": {
+      "type": "window",
+      "width_m": 1.2,
+      "height_m": 1.2,
+      "sill_height_m": 0.9
+    },
+    "default_door": {
+      "type": "door",
+      "width_m": 0.9,
+      "height_m": 2.1,
+      "sill_height_m": 0
+    },
+    "patio_door": {
+      "type": "patio",
+      "width_m": 2.4,
+      "height_m": 2.1,
+      "sill_height_m": 0
+    }
+  },
+  "coordinate_system": {
+    "x_direction": "East",
+    "y_direction": "North",
+    "z_direction": "Up",
+    "origin": "Southwest corner of envelope",
+    "units": "meters"
+  }
+}

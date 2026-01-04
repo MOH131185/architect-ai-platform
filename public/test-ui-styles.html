@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Styles Test - ARCHIAI SOLUTION</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #0A1929 0%, #1A2B3D 50%, #2A3B4D 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .test-card {
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 24px;
+            padding: 2rem;
+            color: white;
+            margin: 2rem 0;
+        }
+        .test-button {
+            background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 9999px;
+            padding: 1rem 2rem;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="color: white; font-size: 3rem; margin-bottom: 2rem;">UI Styles Test</h1>
+    
+    <div class="test-card">
+        <h2 style="color: white; margin-bottom: 1rem;">Glass Card Test</h2>
+        <p style="color: rgba(255, 255, 255, 0.8);">If you see this card with a glass effect, CSS is working!</p>
+    </div>
+    
+    <button class="test-button">Premium Button Test</button>
+    
+    <div style="margin-top: 2rem; color: white;">
+        <p>If you see:</p>
+        <ul>
+            <li>✓ Dark blue gradient background</li>
+            <li>✓ Glass card with blur effect</li>
+            <li>✓ Blue gradient button</li>
+            <li>✓ White text</li>
+        </ul>
+        <p>Then CSS is loading correctly!</p>
+    </div>
+</body>
+</html>
+

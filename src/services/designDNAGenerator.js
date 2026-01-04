@@ -1,3 +1,5 @@
+import logger from '../utils/logger.js';
+
 /**
  * Design DNA Generator with OpenAI
  * Creates ultra-detailed building specifications for 80%+ consistency
@@ -13,7 +15,7 @@ class DesignDNAGenerator {
    * This creates EXACT specifications for perfect consistency across all outputs
    */
   async generateComprehensiveDesignDNA(projectContext) {
-    console.log('🧬 Generating comprehensive Design DNA with OpenAI...');
+    logger.info('🧬 Generating comprehensive Design DNA with OpenAI...');
 
     try {
       // Prepare context for OpenAI
@@ -41,7 +43,7 @@ class DesignDNAGenerator {
       });
 
       if (!response.ok) {
-        console.warn('OpenAI API error, using enhanced fallback');
+        logger.warn('OpenAI API error, using enhanced fallback');
         return this.generateEnhancedFallbackDNA(projectContext);
       }
 
@@ -55,15 +57,15 @@ class DesignDNAGenerator {
         const jsonMatch = dnaText.match(/\{[\s\S]*\}/);
         designDNA = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(dnaText);
       } catch (e) {
-        console.warn('Failed to parse OpenAI JSON, using enhanced fallback');
+        logger.warn('Failed to parse OpenAI JSON, using enhanced fallback');
         return this.generateEnhancedFallbackDNA(projectContext);
       }
 
-      console.log('✅ Comprehensive Design DNA generated with OpenAI');
+      logger.success(' Comprehensive Design DNA generated with OpenAI');
       return designDNA;
 
     } catch (error) {
-      console.error('Design DNA generation error:', error);
+      logger.error('Design DNA generation error:', error);
       return this.generateEnhancedFallbackDNA(projectContext);
     }
   }

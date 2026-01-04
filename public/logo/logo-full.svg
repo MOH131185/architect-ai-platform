@@ -1,0 +1,30 @@
+<svg width="300" height="120" viewBox="0 0 300 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Blueprint Paper Background -->
+  <g id="blueprint">
+    <!-- Paper/Blueprint -->
+    <rect x="20" y="20" width="80" height="60" fill="none" stroke="#1e3a8a" stroke-width="1.5" rx="2"/>
+    <!-- Rolled Edge -->
+    <path d="M 100 20 Q 105 15 110 20 L 110 80 Q 105 85 100 80 Z" fill="#1e3a8a" opacity="0.1"/>
+    <path d="M 100 20 Q 105 15 110 20" stroke="#1e3a8a" stroke-width="1.5" fill="none"/>
+    
+    <!-- House on Blueprint -->
+    <g id="house">
+      <!-- Roof -->
+      <path d="M 40 35 L 60 25 L 80 35 Z" fill="none" stroke="#1e3a8a" stroke-width="2"/>
+      <!-- Walls -->
+      <rect x="45" y="35" width="30" height="25" fill="none" stroke="#1e3a8a" stroke-width="2"/>
+      <!-- Door -->
+      <rect x="55" y="50" width="10" height="10" fill="none" stroke="#1e3a8a" stroke-width="1.5"/>
+    </g>
+  </g>
+  
+  <!-- Company Name -->
+  <text x="20" y="105" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#1e293b">
+    ArchiAI Solution Ltd.
+  </text>
+  
+  <!-- Tagline -->
+  <text x="20" y="115" font-family="Arial, sans-serif" font-size="12" fill="#10b981">
+    AI for Architecture &amp; Design
+  </text>
+</svg>

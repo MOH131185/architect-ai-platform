@@ -1,13 +1,19 @@
 // src/services/locationIntelligence.js
-import { architecturalStyleService } from '../data/globalArchitecturalDatabase';
+// Enhanced with street view material detection and surrounding area analysis
+import { architecturalStyleService } from '../data/globalArchitecturalDatabase.js';
+import materialDetectionService from './materialDetectionService.js';
+import { getClimateDesignRules as buildClimateDesignRules } from '../rings/ring1-site/climateRules.js';
+import logger from '../utils/logger.js';
+
 
 export const locationIntelligence = {
-  recommendArchitecturalStyle(location, climate) {
+  async recommendArchitecturalStyle(location, climate, options = {}) {
     const components = location.address_components;
     const country = components.find(c => c.types.includes('country'))?.long_name || '';
     const state = components.find(c => c.types.includes('administrative_area_level_1'))?.long_name || '';
     const city = components.find(c => c.types.includes('locality') || c.types.includes('postal_town'))?.long_name || '';
     const postcode = components.find(c => c.types.includes('postal_code'))?.long_name || '';
+    const streetName = components.find(c => c.types.includes('route'))?.long_name || '';
 
     // Get location-specific styles from database
     const locationStyles = architecturalStyleService.getStylesByLocation(country, state, city, postcode);
@@ -18,16 +24,485 @@ export const locationIntelligence = {
     // Get local regulations
     const regulations = architecturalStyleService.getRegulations(country);
 
-    // Combine all data
+    // Enhanced: Detect materials from surrounding area
+    const surroundingMaterials = await this.detectSurroundingMaterials({
+      address: location.formatted_address,
+      coordinates: location.geometry?.location,
+      city,
+      postcode,
+      streetName,
+      country
+    });
+
+    // Enhanced: Get material recommendations with climate compatibility
+    const materialRecommendations = await this.getEnhancedMaterialRecommendations({
+      location: location.formatted_address,
+      climate: climate.type,
+      surroundingMaterials: surroundingMaterials.detected,
+      localStyles: locationStyles.materials,
+      projectType: options.projectType || 'residential'
+    });
+
+    // Combine all data with enhanced material intelligence
     return {
       primary: locationStyles.styles?.contemporary[0] || 'Contemporary Local',
       alternatives: locationStyles.styles?.contemporary.slice(1) || [],
       historical: locationStyles.styles?.historical || [],
       vernacular: locationStyles.styles?.vernacular || [],
-      materials: locationStyles.materials || [],
+      materials: materialRecommendations.recommended || locationStyles.materials || [],
+      detectedMaterials: surroundingMaterials.detected,
+      materialCompatibility: materialRecommendations.compatibility,
       characteristics: [...(locationStyles.characteristics || []), ...(climateFeatures.features || [])],
       regulations: regulations,
-      climateAdaptations: climateFeatures
+      climateAdaptations: climateFeatures,
+      materialContext: {
+        surrounding: surroundingMaterials,
+        recommendations: materialRecommendations,
+        localAvailability: surroundingMaterials.availability
+      }
+    };
+  },
+
+  /**
+   * Detect materials from surrounding buildings using street view data simulation
+   * In production, this would integrate with Google Street View API
+   */
+  async detectSurroundingMaterials(locationData) {
+    const { city, postcode, streetName, country } = locationData;
+
+    try {
+      // Get region-specific material patterns
+      const regionKey = this.getRegionKey(city, postcode, country);
+
+      // Simulate street view material detection based on location patterns
+      const detectedMaterials = await this.analyzeStreetMaterials(regionKey, streetName);
+
+      // Get local material availability
+      const availability = materialDetectionService.checkLocalAvailability(regionKey);
+
+      // Analyze architectural consistency in the area
+      const areaConsistency = this.analyzeAreaConsistency(detectedMaterials);
+
+      return {
+        detected: detectedMaterials,
+        availability,
+        areaConsistency,
+        dominantStyle: this.identifyDominantStyle(detectedMaterials),
+        colorPalette: this.extractAreaColorPalette(detectedMaterials)
+      };
+    } catch (error) {
+      logger.warn('Material detection fallback:', error);
+      return this.getFallbackMaterials(locationData);
+    }
+  },
+
+  /**
+   * Analyze street materials based on location patterns
+   */
+  async analyzeStreetMaterials(regionKey, streetName) {
+    // UK-specific material patterns by region
+    const regionalMaterials = {
+      'london': [
+        { name: 'London Stock Brick', hexColor: '#8B7355', percentage: 45, confidence: 85 },
+        { name: 'Portland Stone', hexColor: '#E8E0D5', percentage: 15, confidence: 80 },
+        { name: 'Render', hexColor: '#F5F5F5', percentage: 20, confidence: 75 },
+        { name: 'Slate Roof', hexColor: '#404040', percentage: 20, confidence: 90 }
+      ],
+      'yorkshire': [
+        { name: 'Yorkshire Sandstone', hexColor: '#D2B48C', percentage: 35, confidence: 90 },
+        { name: 'Red Brick', hexColor: '#B8604E', percentage: 30, confidence: 85 },
+        { name: 'Welsh Slate', hexColor: '#36454F', percentage: 20, confidence: 85 },
+        { name: 'Render', hexColor: '#FFFEF0', percentage: 15, confidence: 70 }
+      ],
+      'manchester': [
+        { name: 'Red Brick', hexColor: '#A0522D', percentage: 55, confidence: 90 },
+        { name: 'Terracotta', hexColor: '#CD5C5C', percentage: 15, confidence: 75 },
+        { name: 'Cast Iron', hexColor: '#414141', percentage: 10, confidence: 70 },
+        { name: 'Slate', hexColor: '#2F4F4F', percentage: 20, confidence: 85 }
+      ],
+      'cotswolds': [
+        { name: 'Cotswold Stone', hexColor: '#F4E4BC', percentage: 70, confidence: 95 },
+        { name: 'Stone Slate', hexColor: '#C19A6B', percentage: 25, confidence: 90 },
+        { name: 'Timber', hexColor: '#8B4513', percentage: 5, confidence: 70 }
+      ],
+      'default': [
+        { name: 'Brick', hexColor: '#B8604E', percentage: 50, confidence: 70 },
+        { name: 'Render', hexColor: '#F5F5F5', percentage: 30, confidence: 65 },
+        { name: 'Slate', hexColor: '#404040', percentage: 20, confidence: 75 }
+      ]
+    };
+
+    // Get materials for region
+    let materials = regionalMaterials[regionKey] || regionalMaterials['default'];
+
+    // Adjust for street type (high streets have more variety)
+    if (streetName && (streetName.includes('High Street') || streetName.includes('Market'))) {
+      materials = materials.map(m => ({
+        ...m,
+        confidence: Math.max(60, m.confidence - 10) // Lower confidence due to variety
+      }));
+
+      // Add commercial materials
+      materials.push(
+        { name: 'Large Format Glass', hexColor: '#87CEEB', percentage: 15, confidence: 70 },
+        { name: 'Metal Shopfront', hexColor: '#C0C0C0', percentage: 10, confidence: 75 }
+      );
+    }
+
+    return materials;
+  },
+
+  /**
+   * Analyze architectural consistency in the area
+   */
+  analyzeAreaConsistency(materials) {
+    if (!materials || materials.length === 0) return 'unknown';
+
+    // Calculate consistency based on material dominance
+    const totalPercentage = materials.reduce((sum, m) => sum + m.percentage, 0);
+    const dominantMaterial = materials.find(m => m.percentage > 40);
+
+    if (dominantMaterial) {
+      return {
+        rating: 'high',
+        score: 85,
+        description: `Area shows consistent use of ${dominantMaterial.name}`,
+        recommendation: 'Consider using similar materials for contextual harmony'
+      };
+    } else if (materials.length <= 3) {
+      return {
+        rating: 'medium',
+        score: 65,
+        description: 'Area has moderate material variety',
+        recommendation: 'Balance between matching local character and introducing subtle variations'
+      };
+    } else {
+      return {
+        rating: 'low',
+        score: 40,
+        description: 'Area shows diverse material palette',
+        recommendation: 'More flexibility in material choices while respecting general character'
+      };
+    }
+  },
+
+  /**
+   * Identify dominant architectural style from materials
+   */
+  identifyDominantStyle(materials) {
+    const materialNames = materials.map(m => m.name.toLowerCase());
+
+    if (materialNames.some(m => m.includes('cotswold')) ||
+        materialNames.some(m => m.includes('yorkshire sandstone'))) {
+      return 'Traditional English Vernacular';
+    }
+    if (materialNames.some(m => m.includes('london stock'))) {
+      return 'Georgian/Victorian London';
+    }
+    if (materialNames.filter(m => m.includes('brick')).length > 1) {
+      return 'British Industrial Heritage';
+    }
+    if (materialNames.some(m => m.includes('glass')) &&
+        materialNames.some(m => m.includes('metal'))) {
+      return 'Contemporary Commercial';
+    }
+    return 'Mixed Contemporary';
+  },
+
+  /**
+   * Extract color palette from area materials
+   */
+  extractAreaColorPalette(materials) {
+    return materials
+      .sort((a, b) => b.percentage - a.percentage)
+      .slice(0, 5)
+      .map(m => ({
+        color: m.name,
+        hex: m.hexColor,
+        usage: `${m.percentage}%`,
+        confidence: m.confidence
+      }));
+  },
+
+  /**
+   * Get enhanced material recommendations with climate and context
+   */
+  async getEnhancedMaterialRecommendations(context) {
+    const { location, climate, surroundingMaterials, localStyles, projectType } = context;
+
+    try {
+      // Use materialDetectionService for comprehensive recommendations
+      const recommendations = await materialDetectionService.recommendMaterials({
+        location,
+        climate,
+        projectType,
+        budget: 'medium',
+        sustainabilityTarget: 'high',
+        portfolioMaterials: [],
+        siteConstraints: []
+      });
+
+      // Assess compatibility with surrounding materials
+      const compatibility = this.assessMaterialCompatibility(
+        recommendations.primary,
+        surroundingMaterials
+      );
+
+      // Blend recommendations with local context
+      const contextualMaterials = this.blendWithLocalContext(
+        recommendations,
+        surroundingMaterials,
+        localStyles
+      );
+
+      return {
+        recommended: contextualMaterials,
+        compatibility,
+        climateScore: this.calculateClimateScore(contextualMaterials, climate),
+        sustainabilityScore: this.calculateSustainabilityScore(contextualMaterials),
+        localAvailability: this.checkLocalAvailability(contextualMaterials)
+      };
+    } catch (error) {
+      logger.warn('Material recommendation fallback:', error);
+      return {
+        recommended: localStyles || ['Brick', 'Stone', 'Timber'],
+        compatibility: { score: 70, rating: 'Good' },
+        climateScore: 75,
+        sustainabilityScore: 60
+      };
+    }
+  },
+
+  /**
+   * Assess compatibility between recommended and surrounding materials
+   */
+  assessMaterialCompatibility(recommended, surrounding) {
+    if (!recommended || !surrounding) return { score: 50, rating: 'Unknown' };
+
+    let compatibilityScore = 0;
+    let matches = 0;
+
+    recommended.forEach(recMat => {
+      const similar = surrounding.find(surMat =>
+        this.areMaterialsSimilar(recMat.name, surMat.name) ||
+        this.areColorsSimilar(recMat.hexColors?.[0], surMat.hexColor)
+      );
+      if (similar) {
+        compatibilityScore += similar.confidence;
+        matches++;
+      }
+    });
+
+    const score = matches > 0 ? Math.round(compatibilityScore / matches) : 50;
+
+    return {
+      score,
+      rating: score > 80 ? 'Excellent' : score > 60 ? 'Good' : score > 40 ? 'Fair' : 'Poor',
+      matches,
+      recommendation: this.getCompatibilityRecommendation(score)
+    };
+  },
+
+  /**
+   * Check if materials are similar
+   */
+  areMaterialsSimilar(mat1, mat2) {
+    if (!mat1 || !mat2) return false;
+    const m1 = mat1.toLowerCase();
+    const m2 = mat2.toLowerCase();
+
+    // Direct match
+    if (m1 === m2) return true;
+
+    // Category match
+    const categories = {
+      brick: ['brick', 'clay', 'masonry'],
+      stone: ['stone', 'granite', 'limestone', 'sandstone', 'marble'],
+      timber: ['timber', 'wood', 'cedar', 'oak'],
+      metal: ['metal', 'steel', 'aluminum', 'iron', 'copper'],
+      glass: ['glass', 'glazing', 'curtain wall']
+    };
+
+    for (const [category, terms] of Object.entries(categories)) {
+      if (terms.some(t => m1.includes(t)) && terms.some(t => m2.includes(t))) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Check if colors are similar
+   */
+  areColorsSimilar(hex1, hex2, threshold = 50) {
+    if (!hex1 || !hex2) return false;
+
+    // Convert hex to RGB
+    const rgb1 = this.hexToRgb(hex1);
+    const rgb2 = this.hexToRgb(hex2);
+
+    if (!rgb1 || !rgb2) return false;
+
+    // Calculate color distance
+    const distance = Math.sqrt(
+      Math.pow(rgb1.r - rgb2.r, 2) +
+      Math.pow(rgb1.g - rgb2.g, 2) +
+      Math.pow(rgb1.b - rgb2.b, 2)
+    );
+
+    return distance < threshold;
+  },
+
+  /**
+   * Convert hex to RGB
+   */
+  hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  },
+
+  /**
+   * Get compatibility recommendation
+   */
+  getCompatibilityRecommendation(score) {
+    if (score > 80) {
+      return 'Excellent material harmony with surrounding architecture';
+    } else if (score > 60) {
+      return 'Good contextual fit with minor adaptations recommended';
+    } else if (score > 40) {
+      return 'Consider incorporating more local materials for better integration';
+    } else {
+      return 'Significant material contrast - ensure deliberate design intent';
+    }
+  },
+
+  /**
+   * Blend recommended materials with local context
+   */
+  blendWithLocalContext(recommendations, surrounding, localStyles) {
+    const blended = [];
+
+    // Add primary recommendations
+    if (recommendations.primary) {
+      recommendations.primary.forEach(mat => blended.push({
+        ...mat,
+        source: 'climate-optimized',
+        priority: 1
+      }));
+    }
+
+    // Add compatible surrounding materials
+    surrounding
+      .filter(s => s.confidence > 70)
+      .slice(0, 2)
+      .forEach(mat => {
+        if (!blended.find(b => this.areMaterialsSimilar(b.name, mat.name))) {
+          blended.push({
+            name: mat.name,
+            hexColors: [mat.hexColor],
+            source: 'local-context',
+            priority: 2
+          });
+        }
+      });
+
+    // Add local style materials if not already included
+    if (localStyles) {
+      localStyles.slice(0, 2).forEach(style => {
+        if (!blended.find(b => this.areMaterialsSimilar(b.name, style))) {
+          blended.push({
+            name: style,
+            source: 'traditional',
+            priority: 3
+          });
+        }
+      });
+    }
+
+    return blended.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+  },
+
+  /**
+   * Calculate climate score for materials
+   */
+  calculateClimateScore(materials, climate) {
+    if (!materials || materials.length === 0) return 50;
+
+    const scores = materials.map(mat => {
+      const materialKey = mat.name.toLowerCase().replace(/ /g, '_');
+      return materialDetectionService.calculateClimateCompatibility(materialKey, climate);
+    });
+
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100);
+  },
+
+  /**
+   * Calculate sustainability score for materials
+   */
+  calculateSustainabilityScore(materials) {
+    if (!materials || materials.length === 0) return 50;
+
+    const scores = materials.map(mat => {
+      const materialKey = mat.name.toLowerCase().replace(/ /g, '_');
+      return materialDetectionService.getSustainabilityScore(materialKey);
+    });
+
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  },
+
+  /**
+   * Check local availability of materials
+   */
+  checkLocalAvailability(materials) {
+    return materials.map(mat => ({
+      material: mat.name,
+      availability: mat.source === 'local-context' ? 'High' : 'Medium',
+      leadTime: mat.source === 'local-context' ? '1-2 weeks' : '2-4 weeks'
+    }));
+  },
+
+  /**
+   * Get region key from location data
+   */
+  getRegionKey(city, postcode, country) {
+    if (country === 'United Kingdom') {
+      if (city?.toLowerCase().includes('london')) return 'london';
+      if (postcode?.startsWith('YO') || city?.toLowerCase().includes('york')) return 'yorkshire';
+      if (city?.toLowerCase().includes('manchester')) return 'manchester';
+      if (postcode?.startsWith('GL') || city?.toLowerCase().includes('cotswold')) return 'cotswolds';
+    }
+    return 'default';
+  },
+
+  /**
+   * Get fallback materials when detection fails
+   */
+  getFallbackMaterials(locationData) {
+    return {
+      detected: [
+        { name: 'Brick', hexColor: '#B8604E', percentage: 50, confidence: 60 },
+        { name: 'Render', hexColor: '#F5F5F5', percentage: 30, confidence: 55 },
+        { name: 'Slate', hexColor: '#404040', percentage: 20, confidence: 65 }
+      ],
+      availability: {
+        high: ['brick', 'concrete'],
+        medium: ['stone', 'timber'],
+        low: []
+      },
+      areaConsistency: {
+        rating: 'medium',
+        score: 60,
+        description: 'Standard material variety'
+      },
+      dominantStyle: 'Contemporary Mixed',
+      colorPalette: [
+        { color: 'Brick Red', hex: '#B8604E', usage: '50%', confidence: 60 },
+        { color: 'Light Grey', hex: '#F5F5F5', usage: '30%', confidence: 55 }
+      ]
     };
   },
 
@@ -394,5 +869,9 @@ export const locationIntelligence = {
     };
 
     return notes[country] || notes.default;
+  },
+
+  getClimateDesignRules(climateType, context = {}) {
+    return buildClimateDesignRules(climateType, context);
   }
 };

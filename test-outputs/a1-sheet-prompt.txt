@@ -1,0 +1,296 @@
+UK PROFESSIONAL ARCHITECTURAL DRAWING SET showing a complete 3-story modern contemporary with traditional brick residential building design on A1 sheet (PORTRAIT 594×841mm format, 7016×9933px at 300 DPI).
+
+🎯 CRITICAL: This must follow UK RIBA and Building Regulations standards with photorealistic 3D renders, detailed colored floor plans, technical elevations/sections with material annotations, and proper UK architectural conventions.
+
+COMPLIANCE: UK Building Regulations Part A (Structure), Part B (Fire Safety), Part L (Conservation), Part M (Accessibility). RIBA Plan of Work Stage 3 - Spatial Coordination. British Standard BS 1192 CAD standards.
+
+═══════════════════════════════════════════════════════════════
+BOARD LAYOUT - Single comprehensive sheet with these visual elements:
+═══════════════════════════════════════════════════════════════
+
+The board is organized in a grid layout with white/light gray background, thin black separation lines, and clear hierarchy. All sections visible on one sheet.
+
+═══════════════════════════════════════════════════════════════
+VISUAL CONTENT OF THE BOARD:
+═══════════════════════════════════════════════════════════════
+
+**TOP LEFT - LOCATION PLAN & 3D HERO VIEW:**
+Location Plan (1:1250): MUST INCLUDE actual Google Maps satellite/hybrid view of the site at 42 Edgbaston Park Road, Birmingham, B15 2TX, UK with coordinates 52.4537°N, 1.9288°W. Show site boundaries in RED, neighboring properties in context, north arrow pointing up, scale bar.
+Main 3D View: Photorealistic render of the 3-story Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors building from SW corner showing front and side facades. EXACT MATERIALS throughout: Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors. Building dimensions EXACTLY 15.25m × 10.15m × 7.4m total height. Natural daylight, realistic shadows, UK suburban context with gardens and neighboring houses. Human figures for scale (1.7m height).
+
+CONSISTENT DESIGN DNA: Contemporary Brick & Timber style. Materials MUST match in ALL views: Red brick, Timber cladding, Clay tiles. Window count: 4 north, 3 south. Clean lines with brick base and timber upper accents.
+
+**TOP CENTER - FLOOR PLANS (Scale 1:100) - MANDATORY DIMENSION LINES REQUIRED:**
+GROUND FLOOR PLAN: TRUE ORTHOGRAPHIC TOP VIEW (NO perspective, NO isometric, NO 3D). Colored architectural plan showing Living Room 5.5m × 4.0m, Kitchen 4.0m × 3.5m, Dining 3.5m × 3.0m. Walls in BLACK (Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors), 300mm external/100mm internal thickness. Room names and areas labeled (m²). Door swings, window cills marked. Grid references (A-D horizontal, 1-4 vertical). North arrow.
+
+⚠️ CRITICAL: DIMENSION LINES MUST BE VISIBLE:
+- Dimension lines with arrowheads pointing to wall edges
+- Overall building dimensions: 15.25m × 10.15m CLEARLY LABELED
+- Room dimensions: Each room must show width × length in meters (e.g., "5.5m × 4.0m")
+- Grid-to-grid dimensions between columns
+- Opening dimensions: Window widths and door widths marked
+- NO dimension lines = INVALID DRAWING
+
+FIRST FLOOR PLAN: Showing Master Bedroom 4.5m × 4.0m, Bedroom 2 3.5m × 3.0m, Bedroom 3 3.0m × 2.5m, identical drawing conventions. Stair direction arrows. Same grid references as ground floor. MUST INCLUDE dimension lines with arrowheads showing overall 15.25m × 10.15m and individual room dimensions.
+
+**TOP RIGHT - AXONOMETRIC 3D VIEW & 3D EXTERIOR VIEW:**
+A 3D isometric/axonometric view showing the complete building from above at 30° angle. Shows all four facades simultaneously, roof structure visible, Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors clearly depicted. Clean technical illustration style with light shading.
+Additional 3D EXTERIOR VIEW: Photorealistic perspective from street level showing main entrance and architectural character.
+
+**MIDDLE LEFT - SITE PLAN & SUN PATH (Scale 1:200):**
+BLOCK PLAN showing building footprint (RED) within property boundaries with actual site polygon shape. Site boundaries in RED, adjoining properties in GREY. North arrow (pointing UP), scale bar, vehicular access marked with arrow. Trees as circles with shadows. Dimensions to boundaries. OS Grid Reference: 52.4537°N, 1.9288°W. Planning application reference: PP/2025/P760823
+Sun Path Diagram: Shows summer and winter sun angles, south-facing orientation for passive solar gain.
+
+**MIDDLE CENTER - ELEVATIONS (Scale 1:100) - MANDATORY DIMENSION LINES REQUIRED:
+
+ALL FOUR ELEVATIONS MUST BE PRESENT: NORTH, SOUTH, EAST, WEST. Each must show TRUE ORTHOGRAPHIC FLAT PROJECTION (NO perspective, NO 3D effect).**
+
+NORTH ELEVATION (FRONT): North: main entrance centered 4 windows. Building height EXACTLY 7.4m. Materials CONSISTENTLY Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors. Windows and doors with dimensions. Roof pitch angle noted. Ground level line (0.00), floor levels (+2.47m), ridge level (+7.4m). MUST INCLUDE dimension lines with arrowheads showing vertical heights and horizontal widths.
+
+REAR ELEVATION (SOUTH): South: large patio doors 3 windows. MUST show same building height 7.4m, same materials Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors, same roof form. Different window arrangement from front. MUST INCLUDE dimension lines identical to front elevation format.
+
+EAST ELEVATION: Building depth 10.15m visible. IDENTICAL materials and heights to front/rear. Dimension lines showing depth 10.15m, height 7.4m, floor levels. All materials annotated with specifications.
+
+WEST ELEVATION: Building depth 10.15m visible. IDENTICAL materials and heights to front/rear. Dimension lines showing depth 10.15m, height 7.4m, floor levels. All materials annotated with specifications.
+
+ALL ELEVATIONS: Flat orthographic projections with material hatching patterns per BS 1192. Consistent Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors throughout ALL views. NO missing elevations - all four facades must be shown.
+
+⚠️ CRITICAL DIMENSION REQUIREMENTS FOR ALL ELEVATIONS:
+- Vertical dimension lines with arrowheads showing: Ground level to first floor 2.47m, First floor to roof ridge 4.93m, Total height 7.4m CLEARLY LABELED
+- Horizontal dimension lines showing: Overall building width 15.25m (or depth 10.15m for side elevations), Window spacings and widths, Door widths
+- Level markers: Ground (0.00), Floor (+2.47m), Ridge (+7.4m)
+- Roof pitch angle annotation (e.g., "35° pitch")
+- NO dimension lines = INVALID DRAWING
+
+**MIDDLE RIGHT - SECTION DRAWINGS (Two cuts) - MANDATORY DIMENSION LINES REQUIRED:
+
+BOTH SECTIONS MUST BE PRESENT: SECTION A-A (Longitudinal) and SECTION B-B (Transverse). Each must show TRUE ORTHOGRAPHIC CUT VIEW (NO perspective, NO 3D effect).**
+
+SECTION A-A (LONGITUDINAL): A colored section cut showing interior spaces vertically. Shows floor heights (2.47m per floor), foundation, floor slabs, roof structure, stair detail, wall construction. This is a slice through the building showing what's inside.
+
+⚠️ CRITICAL: DIMENSION LINES MUST BE VISIBLE:
+- Vertical dimension lines with arrowheads showing: Foundation depth (typically 0.5-1.0m), Ground floor height 2.47m CLEARLY LABELED, Upper floor height 2.47m CLEARLY LABELED (if applicable), Total height to ridge 7.4m CLEARLY LABELED
+- Horizontal dimension lines showing: Overall building length 15.25m, Room widths along cut line, Wall thicknesses: 0.3m exterior, 0.15m interior
+- Level markers: Ground (0.00), Floor (+2.47m), Ridge (+7.4m)
+- NO dimension lines = INVALID DRAWING
+
+SECTION B-B (TRANSVERSE): Perpendicular section cut showing structural spans, internal walls, windows/doors in section.
+
+⚠️ CRITICAL: DIMENSION LINES MUST BE VISIBLE:
+- Vertical dimension lines identical to Section A-A format
+- Horizontal dimension lines showing: Overall building width 10.15m CLEARLY LABELED, Room depths along cut line, Wall thicknesses and structural spans
+- Level markers consistent with Section A-A
+- NO dimension lines = INVALID DRAWING
+
+BOTH SECTIONS MUST SHOW: Foundation detail, floor slab construction, wall construction layers, roof structure, windows/doors in section view, stair detail (if cut through stairs).
+
+**TECHNICAL PERFORMANCE SPECIFICATIONS:**
+
+WALL CONSTRUCTION:
+  • External brick: 102.5mm facing brick
+  • Cavity: 100mm with full-fill insulation
+  • Internal: 100mm blockwork with plaster finish
+  • U-value: 0.18 W/m²K
+
+
+ROOF CONSTRUCTION:
+  • Clay tiles on battens
+  • 50mm air gap with breather membrane
+  • 200mm mineral wool insulation between rafters
+  • 100mm PIR insulation under rafters
+  • U-value: 0.13 W/m²K
+
+
+These technical specifications ensure compliance with UK Building Regulations and climate-responsive design principles.
+
+**BOTTOM LEFT - INTERIOR PERSPECTIVE:**
+A photorealistic 3D render showing the interior living space. Natural light streaming through windows, modern furniture, interior finishes visible, connection to exterior through large windows. High-quality architectural visualization.
+
+**BOTTOM CENTER - PROFESSIONAL DATA PANELS:**
+
+╔═══════════════════════════════════════════════════════════════╗
+║ MATERIAL PALETTE & SPECIFICATIONS                              ║
+╠═══════════════════════════════════════════════════════════════╣
+
+║ PRIMARY FACADE:                                                ║
+║   • Material: Red brick
+║   • Color: #B8604E       ║
+║   • Application: All external walls, consistent across views   ║
+║                                                                ║
+║ ROOF SYSTEM:                                                   ║
+║   • Material: Timber cladding
+║   • Color: #8B4513    ║
+║   • Pitch: 35° (constant ALL views)  ║
+║                                                                ║
+║ TRIM & ACCENTS:                                                ║
+║   • Frame color: #FFFFFF    ║
+║   • Accent color: #8B7355 ║
+║   • Glazing: 25% of facade area ║
+║                                                                ║
+║ FACADE ARTICULATION:                                           ║
+║   Clean lines with brick base and timber upper accents
+║                                                                ║
+╚═══════════════════════════════════════════════════════════════╝
+
+╔═══════════════════════════════════════════════════════════════╗
+║ ENVIRONMENTAL PERFORMANCE & COMPLIANCE                         ║
+╠═══════════════════════════════════════════════════════════════╣
+║ CLIMATE ZONE: Temperate Oceanic                                   ║
+║ ORIENTATION: South-facing (passive solar) ║
+║ WALL CONSTRUCTION:
+║   • External brick: 102.5mm facing brick
+║   • Cavity: 100mm with full-fill insulation
+║   • Internal: 100mm blockwork with plaster finish
+║   • U-value: 0.18 W/m²K
+║║ ROOF CONSTRUCTION:
+║   • Clay tiles on battens
+║   • 50mm air gap with breather membrane
+║   • 200mm mineral wool insulation between rafters
+║   • 100mm PIR insulation under rafters
+║   • U-value: 0.13 W/m²K
+║
+║ UK BUILDING REGULATIONS COMPLIANCE:                            ║
+║   Part A (Structure): Eurocode EN 1990-1999                    ║
+║   Part B (Fire): 30min resistance, escape routes <9m           ║
+║   Part L (Conservation): U-values Wall 0.18, Roof 0.13 W/m²K   ║
+║   Part M (Access): Level threshold, 900mm doors, accessible WC ║
+║                                                                ║
+║ ENERGY PERFORMANCE:                                            ║
+║   Target: EPC Band B (81-91)                                   ║
+║   CO₂ Emissions: <15 kg/m²/year                                ║
+║   Renewable: Solar-ready roof orientation                      ║
+╚═══════════════════════════════════════════════════════════════╝
+
+╔═══════════════════════════════════════════════════════════════╗
+║ PROJECT DATA SUMMARY                                           ║
+╠═══════════════════════════════════════════════════════════════╣
+║ Gross Internal Area:    464m²                         ║
+║ Site Area:               450m²                            ║
+║ Building Footprint:      15.25m × 10.15m                ║
+║ Total Height:            7.4m (to ridge)                 ║
+║ Storeys:                 3-story                          ║
+║ Floor-to-Floor:          2.47m   ║
+║ Construction Type:       Red brick #B8604E for exterior walls, Cl...   ║
+║ Estimated Cost:          £649,600                       ║
+║ Construction Duration:   5 months (est.) ║
+╚═══════════════════════════════════════════════════════════════╝
+
+**BOTTOM RIGHT - UK RIBA PROFESSIONAL TITLE BLOCK:**
+
+╔═══════════════════════════════════════════════════════════════╗
+║                    ARCHITECTURAL TITLE BLOCK                   ║
+╠═══════════════════════════════════════════════════════════════╣
+║ PROJECT INFORMATION:                                           ║
+║   Project Name:      Modern 3-Bedroom Family House                            ║
+║   Client:            Private Client                             ║
+║   Site Address:      42 Edgbaston Park Road, Birmingham, B15 2TX, UK                           ║
+║                                                                ║
+║ DESIGN TEAM:                                                   ║
+║   Lead Architect:    ArchiAI Solutions Ltd                          ║
+║   ARB Registration:  ARB 123456                              ║
+║   Practice:          London, UK                        ║
+║   Contact:           +44 20 7946 0000                          ║
+║   Email:             info@architecture.uk                      ║
+║                                                                ║
+║ DRAWING INFORMATION:                                           ║
+║   Drawing Title:     PROPOSED DEVELOPMENT                      ║
+║                      General Arrangement - A1 Master Sheet     ║
+║   Drawing Number:    GA-01-P760823                       ║
+║   Scale:             AS SHOWN @ A1 (841×594mm)                 ║
+║   Date Issued:       02/11/2025                            ║
+║   Drawn By:          CAD / AI-Assisted                         ║
+║   Checked By:        PM                                        ║
+║   Revision:          A                         ║
+║                                                                ║
+║ STATUTORY INFORMATION:                                         ║
+║   RIBA Work Stage:   Stage 3 - Spatial Coordination (Concept Design / Planning)  ║
+║   Planning Ref:      PP/2025/P760823                            ║
+║   Building Regs:     BR/2025/P760823                     ║
+║   Status:            FOR PLANNING APPLICATION                  ║
+║                                                                ║
+║ NOTES:                                                         ║
+║   • All dimensions in metres unless noted                      ║
+║   • Do not scale from this drawing                             ║
+║   • Check all dimensions on site before construction           ║
+║   • Report any discrepancies to architect immediately          ║
+║                                                                ║
+║ COPYRIGHT © 2025 ArchiAI Solutions Ltd       ║
+║ This drawing remains the property of the architect and must    ║
+║ not be reproduced without written permission.                  ║
+╚═══════════════════════════════════════════════════════════════╝
+
+SHEET COMPOSITION REQUIREMENTS:
+- Title block positioned bottom-right corner with professional border
+- All text legible at minimum 2.5mm height when printed @ A1
+- QR code or design hash (SHA256) in title block corner for verification
+- Revision triangle symbol if revised (include)
+- North arrow symbol on all plan views
+- Scale bars on all measured drawings (1:100, 1:200, etc.)
+- Professional line weights: Heavy (walls) 0.5mm, Medium (details) 0.25mm, Light (grids) 0.13mm
+
+═══════════════════════════════════════════════════════════════
+CRITICAL UK CONSISTENCY REQUIREMENTS:
+═══════════════════════════════════════════════════════════════
+
+ABSOLUTE CONSISTENCY ACROSS ALL VIEWS:
+- Building dimensions: EXACTLY 15.25m × 10.15m × 7.4m total height in ALL views (plans, elevations, sections, 3D)
+- Materials: EXACTLY Red brick #B8604E for exterior walls, Clay tiles #8B4513 for gable roof 35°, Timber cladding #8B7355 for feature panels, Triple glazing #E8F4F8 for windows and doors throughout - same color, texture, appearance in EVERY view
+- Window positions: IDENTICAL placement across floor plans, elevations, and 3D renders
+- Roof form: SAME pitch angle, ridge height 7.4m, and materials in ALL views
+- Floor heights: CONSISTENT 2.47m per floor throughout
+
+MATERIAL ENFORCEMENT RULES (EXACT HEX COLORS REQUIRED):
+
+- Facade material: EXACTLY #B8604E in ALL exterior views (plans, elevations, 3D)
+- Roof material: EXACTLY #8B4513 in ALL roof views (elevations, sections, 3D, axonometric)
+- Trim/accents: EXACTLY #FFFFFF for ALL window frames, door frames, fascia
+- Accent color: EXACTLY #8B7355 for ALL doors and accent elements
+- NO color variation allowed - same hex codes across ALL 10+ views
+- Glazing ratio: 25% of facade area (consistent in ALL elevations)
+
+GEOMETRIC CONSTRAINT SPECIFICATIONS:
+- Building footprint: 15.25m × 10.15m EXACTLY (tolerance ±0.0m - NO variations)
+- Total height: 7.4m EXACTLY from ground to ridge (ALL elevations and 3D views)
+- Floor-to-floor: 2.47m EXACTLY (every floor in ALL sections)
+- Window dimensions: standard size IDENTICAL in ALL views
+- Door dimensions: 0.9m × 2.1m IDENTICAL in ALL views
+- Wall thickness: 0.3m exterior, 0.15m interior EXACTLY (ALL plans and sections)
+
+CROSS-VIEW CONSISTENCY CHECKLIST:
+✓ Floor Plans → Elevations: Every window on plan MUST appear on corresponding elevation at EXACT same position
+✓ Floor Plans → Sections: Room dimensions on plan MUST match section cuts EXACTLY
+✓ Elevations → 3D Views: Every facade feature (windows, doors, materials) MUST match 3D renders EXACTLY
+✓ Sections → 3D Views: Interior ceiling heights in sections MUST match 3D interior views EXACTLY
+✓ Axonometric → Perspective: Same building geometry, just different camera angles - ZERO dimensional changes
+✓ Site Plan → All Views: Building footprint 15.25m × 10.15m MUST match ALL views EXACTLY
+✓ Material Palette → All Views: Hex colors from palette MUST be used consistently - NO substitutions
+
+UK ARCHITECTURAL STANDARDS:
+- Title block: Full RIBA format with architect details, ARB number, client, drawing number
+- Scales: Clearly marked on EVERY drawing (1:100 plans/elevations, 1:200 site, 1:50 details)
+- North arrows: On ALL plans, pointing UP
+- Grid references: Consistent A-D, 1-4 grid on all plans
+- Dimensions: To grid lines, overall dimensions, opening sizes
+- Levels: Ground 0.00, floor levels marked, FFL and SSL noted
+
+DRAWING CONVENTIONS (BS 1192):
+- Walls: Black fill for cut walls, grey for walls beyond
+- Windows: Double lines with cill projection
+- Doors: Arc showing swing direction
+- Materials: Standard UK hatching patterns
+- Text: 2.5mm minimum height, Arial/Helvetica font
+
+REGULATORY COMPLIANCE SHOWN:
+- Building Regulations Parts A, B, L, M compliance notes
+- Planning application reference number
+- Fire escape routes on plans (green arrows)
+- Accessible routes and facilities marked
+- U-values and thermal performance noted
+
+Project: Modern 3-Bedroom Family House
+Client: Private Client
+Location: 42 Edgbaston Park Road, Birmingham, B15 2TX, UK
+Architect: ArchiAI Solutions Ltd (ARB: ARB 123456)
+Drawing: GA-01-P760823
+
+ALL VIEWS MUST BE PERFECTLY CONSISTENT - this is ONE BUILDING shown from multiple viewpoints, not different designs!

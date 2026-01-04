@@ -1,0 +1,90 @@
+{
+  "$schema": "https://genarch.dev/schemas/phase2-config-v1.json",
+  "version": "2.0.0",
+  "description": "Phase 2 ControlNet rendering configuration",
+  "resolution": [2048, 2048],
+  "views": {
+    "floor_plan": {
+      "enabled": true,
+      "type": "orthographic",
+      "orientation": "top_down",
+      "margin_factor": 1.2,
+      "description": "Orthographic top-down floor plan view"
+    },
+    "section_AA": {
+      "enabled": true,
+      "type": "orthographic",
+      "cut_axis": "Y",
+      "cut_position": "center",
+      "margin_factor": 1.2,
+      "description": "Orthographic section through center, looking East"
+    },
+    "hero_perspective": {
+      "enabled": true,
+      "type": "perspective",
+      "focal_length": 35,
+      "pitch": 55,
+      "yaw": 45,
+      "distance_factor": 1.5,
+      "description": "Hero perspective from southwest, elevated"
+    },
+    "elevation_N": {
+      "enabled": true,
+      "type": "orthographic",
+      "margin_factor": 1.2,
+      "description": "North elevation (looking South)"
+    },
+    "elevation_S": {
+      "enabled": true,
+      "type": "orthographic",
+      "margin_factor": 1.2,
+      "description": "South elevation (looking North)"
+    },
+    "elevation_E": {
+      "enabled": true,
+      "type": "orthographic",
+      "margin_factor": 1.2,
+      "description": "East elevation (looking West)"
+    },
+    "elevation_W": {
+      "enabled": true,
+      "type": "orthographic",
+      "margin_factor": 1.2,
+      "description": "West elevation (looking East)"
+    }
+  },
+  "passes": {
+    "clay": {
+      "enabled": true,
+      "color": [0.6, 0.6, 0.6],
+      "description": "Flat gray clay render for edge detection"
+    },
+    "normal": {
+      "enabled": true,
+      "description": "World-space normals mapped to RGB"
+    },
+    "depth": {
+      "enabled": true,
+      "normalize": true,
+      "description": "Normalized depth (0=near, 1=far)"
+    },
+    "mask": {
+      "enabled": true,
+      "description": "Binary silhouette mask"
+    }
+  },
+  "postprocess": {
+    "canny": {
+      "enabled": true,
+      "low_threshold": 50,
+      "high_threshold": 150,
+      "description": "Canny edge detection for ControlNet"
+    },
+    "mlsd": {
+      "enabled": false,
+      "length_threshold": 10,
+      "distance_threshold": 20,
+      "description": "Line segment detection (disabled by default)"
+    }
+  }
+}
