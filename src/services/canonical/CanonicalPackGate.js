@@ -5,6 +5,59 @@
  */
 
 /**
+ * Error class for canonical pack gate failures
+ */
+export class CanonicalPackGateError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = "CanonicalPackGateError";
+    this.code = code;
+  }
+}
+
+/**
+ * Gate error codes
+ */
+export const GATE_ERROR_CODES = {
+  PACK_NOT_FOUND: "PACK_NOT_FOUND",
+  PACK_INCOMPLETE: "PACK_INCOMPLETE",
+  VALIDATION_FAILED: "VALIDATION_FAILED",
+  GATE_DISABLED: "GATE_DISABLED",
+};
+
+/**
+ * Check if canonical pack gate is enabled
+ * @returns {boolean}
+ */
+export function isCanonicalPackGateEnabled() {
+  // Gate is enabled by default for quality assurance
+  return true;
+}
+
+/**
+ * Validate before generation
+ * @param {Object} pack - Canonical pack
+ * @param {string} panelType - Panel type
+ * @returns {{valid: boolean, errors: string[]}}
+ */
+export function validateBeforeGeneration(pack, panelType) {
+  if (!isCanonicalPackGateEnabled()) {
+    return { valid: true, errors: [] };
+  }
+
+  const errors = [];
+
+  if (!pack) {
+    errors.push("No canonical pack provided");
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
  * Check if pack is ready for generation
  * @param {Object} pack - Canonical pack
  * @returns {{ready: boolean, errors: string[]}}
@@ -63,6 +116,10 @@ export function passesQualityGate(pack) {
 }
 
 export default {
+  CanonicalPackGateError,
+  GATE_ERROR_CODES,
+  isCanonicalPackGateEnabled,
+  validateBeforeGeneration,
   isReadyForGeneration,
   validatePackCompleteness,
   passesQualityGate,

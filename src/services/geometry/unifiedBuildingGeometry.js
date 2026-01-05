@@ -42,8 +42,37 @@ export function validateUnifiedGeometry(geometry) {
   return { valid: true, errors: [] };
 }
 
+/**
+ * Generate control image from geometry
+ * @param {Object} geometry - Building geometry
+ * @param {string} viewType - View type
+ * @returns {Promise<string|null>} Control image URL
+ */
+export async function generateControlImage(geometry, viewType) {
+  console.log(
+    `[UnifiedBuildingGeometry] generateControlImage: ${viewType} (stub)`,
+  );
+  return null;
+}
+
+/**
+ * Get FLUX img2img parameters for geometry control
+ * @param {Object} geometry - Building geometry
+ * @param {string} viewType - View type
+ * @returns {Object} Img2img parameters
+ */
+export function getFluxImg2ImgParams(geometry, viewType) {
+  return {
+    strength: 0.6,
+    controlImage: null,
+    viewType,
+  };
+}
+
 export default {
   createUnifiedGeometry,
   getFloorGeometry,
   validateUnifiedGeometry,
+  generateControlImage,
+  getFluxImg2ImgParams,
 };

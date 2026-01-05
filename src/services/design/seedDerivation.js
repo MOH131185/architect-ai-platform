@@ -52,8 +52,34 @@ export function getSeedMap(dna, panelTypes) {
   return seedMap;
 }
 
+/**
+ * Derive seeds for multiple panels
+ * @param {number} baseSeed - Base seed
+ * @param {number} count - Number of panels
+ * @returns {number[]} Array of panel seeds
+ */
+export function derivePanelSeeds(baseSeed, count) {
+  const seeds = [];
+  for (let i = 0; i < count; i++) {
+    seeds.push(derivePanelSeed(baseSeed, i));
+  }
+  return seeds;
+}
+
+/**
+ * Derive panel seeds from DNA
+ * @param {Object} dna - Design DNA
+ * @param {string[]} panelTypes - Panel types
+ * @returns {Object} Map of panel type to seed
+ */
+export function derivePanelSeedsFromDNA(dna, panelTypes) {
+  return getSeedMap(dna, panelTypes);
+}
+
 export default {
   deriveBaseSeed,
   derivePanelSeed,
+  derivePanelSeeds,
+  derivePanelSeedsFromDNA,
   getSeedMap,
 };

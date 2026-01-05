@@ -5,7 +5,7 @@
  * Includes specialized error types for API, validation, and generation failures.
  */
 
-import logger from './logger.js';
+import logger from "./logger.js";
 
 // Base error class with additional context
 class BaseError extends Error {
@@ -30,7 +30,7 @@ class BaseError extends Error {
       code: this.code,
       statusCode: this.statusCode,
       details: this.details,
-      timestamp: this.timestamp
+      timestamp: this.timestamp,
     };
   }
 }
@@ -38,16 +38,16 @@ class BaseError extends Error {
 // API-related errors
 export class APIError extends BaseError {
   constructor(message, statusCode = 500, details = {}) {
-    super(message, 'API_ERROR', statusCode, details);
-    this.service = details.service || 'unknown';
-    this.endpoint = details.endpoint || 'unknown';
+    super(message, "API_ERROR", statusCode, details);
+    this.service = details.service || "unknown";
+    this.endpoint = details.endpoint || "unknown";
   }
 }
 
 // Validation errors
 export class ValidationError extends BaseError {
   constructor(message, field, value) {
-    super(message, 'VALIDATION_ERROR', 400, { field, value });
+    super(message, "VALIDATION_ERROR", 400, { field, value });
     this.field = field;
     this.value = value;
   }
@@ -57,7 +57,7 @@ export class ValidationError extends BaseError {
 export class RateLimitError extends BaseError {
   constructor(service, retryAfter = 6000) {
     const message = `Rate limit exceeded for ${service}. Retry after ${retryAfter}ms`;
-    super(message, 'RATE_LIMIT_ERROR', 429, { service, retryAfter });
+    super(message, "RATE_LIMIT_ERROR", 429, { service, retryAfter });
     this.retryAfter = retryAfter;
   }
 }
@@ -65,7 +65,7 @@ export class RateLimitError extends BaseError {
 // Generation failures
 export class GenerationError extends BaseError {
   constructor(message, step, details = {}) {
-    super(message, 'GENERATION_ERROR', 500, { step, ...details });
+    super(message, "GENERATION_ERROR", 500, { step, ...details });
     this.step = step;
   }
 }
@@ -73,7 +73,7 @@ export class GenerationError extends BaseError {
 // Configuration errors
 export class ConfigurationError extends BaseError {
   constructor(message, missingConfig) {
-    super(message, 'CONFIGURATION_ERROR', 500, { missingConfig });
+    super(message, "CONFIGURATION_ERROR", 500, { missingConfig });
     this.missingConfig = missingConfig;
   }
 }
@@ -81,7 +81,10 @@ export class ConfigurationError extends BaseError {
 // Network errors
 export class NetworkError extends BaseError {
   constructor(message, url, originalError) {
-    super(message, 'NETWORK_ERROR', 0, { url, originalError: originalError?.message });
+    super(message, "NETWORK_ERROR", 0, {
+      url,
+      originalError: originalError?.message,
+    });
     this.url = url;
     this.originalError = originalError;
   }
@@ -91,15 +94,23 @@ export class NetworkError extends BaseError {
 export class TimeoutError extends BaseError {
   constructor(operation, timeoutMs) {
     const message = `Operation '${operation}' timed out after ${timeoutMs}ms`;
-    super(message, 'TIMEOUT_ERROR', 408, { operation, timeoutMs });
+    super(message, "TIMEOUT_ERROR", 408, { operation, timeoutMs });
   }
 }
 
 // DNA validation errors
 export class DNAValidationError extends ValidationError {
   constructor(message, violations) {
-    super(message, 'dna', violations);
+    super(message, "dna", violations);
     this.violations = violations;
+  }
+}
+
+// Preflight check errors
+export class PreflightError extends BaseError {
+  constructor(message, issues = []) {
+    super(message, "PREFLIGHT_ERROR", 400, { issues });
+    this.issues = issues;
   }
 }
 
@@ -111,7 +122,7 @@ class ErrorHandler {
       maxRetries: 3,
       baseDelay: 1000,
       maxDelay: 30000,
-      backoffMultiplier: 2
+      backoffMultiplier: 2,
     };
   }
 
@@ -123,11 +134,11 @@ class ErrorHandler {
   // Handle error with appropriate fallback
   async handle(error, context = {}) {
     // Log the error
-    logger.error(`Error in ${context.operation || 'unknown operation'}`, {
+    logger.error(`Error in ${context.operation || "unknown operation"}`, {
       error: error.message,
       code: error.code,
       details: error.details,
-      stack: error.stack
+      stack: error.stack,
     });
 
     // Check for registered fallback handler
@@ -136,9 +147,9 @@ class ErrorHandler {
       try {
         return await fallbackHandler(error, context);
       } catch (fallbackError) {
-        logger.error('Fallback handler failed', {
+        logger.error("Fallback handler failed", {
           originalError: error.message,
-          fallbackError: fallbackError.message
+          fallbackError: fallbackError.message,
         });
       }
     }
@@ -159,10 +170,12 @@ class ErrorHandler {
     // Generic error response
     return {
       success: false,
-      error: error.toJSON ? error.toJSON() : {
-        message: error.message,
-        code: 'UNKNOWN_ERROR'
-      }
+      error: error.toJSON
+        ? error.toJSON()
+        : {
+            message: error.message,
+            code: "UNKNOWN_ERROR",
+          },
     };
   }
 
@@ -171,23 +184,28 @@ class ErrorHandler {
     const { retryCount = 0 } = context;
 
     if (retryCount >= this.retryConfig.maxRetries) {
-      throw new Error(`Max retries (${this.retryConfig.maxRetries}) exceeded for rate-limited operation`);
+      throw new Error(
+        `Max retries (${this.retryConfig.maxRetries}) exceeded for rate-limited operation`,
+      );
     }
 
     const delay = Math.min(
-      this.retryConfig.baseDelay * Math.pow(this.retryConfig.backoffMultiplier, retryCount),
-      this.retryConfig.maxDelay
+      this.retryConfig.baseDelay *
+        Math.pow(this.retryConfig.backoffMultiplier, retryCount),
+      this.retryConfig.maxDelay,
     );
 
-    logger.warn(`Rate limit hit, retrying after ${delay}ms (attempt ${retryCount + 1}/${this.retryConfig.maxRetries})`);
+    logger.warn(
+      `Rate limit hit, retrying after ${delay}ms (attempt ${retryCount + 1}/${this.retryConfig.maxRetries})`,
+    );
 
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     // Return retry instruction
     return {
       shouldRetry: true,
       retryAfter: delay,
-      retryCount: retryCount + 1
+      retryCount: retryCount + 1,
     };
   }
 
@@ -195,23 +213,24 @@ class ErrorHandler {
   async handleNetworkError(error, context) {
     const { retryCount = 0 } = context;
 
-    if (retryCount >= 2) { // Less retries for network errors
+    if (retryCount >= 2) {
+      // Less retries for network errors
       return {
         success: false,
         error: error.toJSON(),
-        fallback: true
+        fallback: true,
       };
     }
 
     const delay = 2000 * (retryCount + 1);
     logger.warn(`Network error, retrying after ${delay}ms`);
 
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     return {
       shouldRetry: true,
       retryAfter: delay,
-      retryCount: retryCount + 1
+      retryCount: retryCount + 1,
     };
   }
 
@@ -221,26 +240,29 @@ class ErrorHandler {
       success: false,
       error: {
         ...error.toJSON(),
-        userMessage: this.getUserFriendlyMessage(error)
+        userMessage: this.getUserFriendlyMessage(error),
       },
-      showToUser: true
+      showToUser: true,
     };
   }
 
   // Get user-friendly error messages
   getUserFriendlyMessage(error) {
     const messages = {
-      'API_ERROR': 'Service temporarily unavailable. Please try again.',
-      'VALIDATION_ERROR': `Invalid input: ${error.message}`,
-      'RATE_LIMIT_ERROR': 'Too many requests. Please wait a moment.',
-      'GENERATION_ERROR': 'Failed to generate design. Please try again.',
-      'CONFIGURATION_ERROR': 'System configuration error. Please contact support.',
-      'NETWORK_ERROR': 'Connection failed. Please check your internet.',
-      'TIMEOUT_ERROR': 'Request took too long. Please try again.',
-      'DNA_VALIDATION_ERROR': 'Design validation failed. Adjusting parameters.'
+      API_ERROR: "Service temporarily unavailable. Please try again.",
+      VALIDATION_ERROR: `Invalid input: ${error.message}`,
+      RATE_LIMIT_ERROR: "Too many requests. Please wait a moment.",
+      GENERATION_ERROR: "Failed to generate design. Please try again.",
+      CONFIGURATION_ERROR:
+        "System configuration error. Please contact support.",
+      NETWORK_ERROR: "Connection failed. Please check your internet.",
+      TIMEOUT_ERROR: "Request took too long. Please try again.",
+      DNA_VALIDATION_ERROR: "Design validation failed. Adjusting parameters.",
     };
 
-    return messages[error.code] || 'An unexpected error occurred. Please try again.';
+    return (
+      messages[error.code] || "An unexpected error occurred. Please try again."
+    );
   }
 
   // Wrap async functions with error handling
@@ -261,7 +283,7 @@ class ErrorHandler {
         service,
         endpoint: response.url,
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
       };
 
       if (response.status === 429) {
@@ -269,7 +291,11 @@ class ErrorHandler {
       }
 
       if (response.status >= 500) {
-        return new APIError(`${service} service error: ${response.statusText}`, response.status, details);
+        return new APIError(
+          `${service} service error: ${response.statusText}`,
+          response.status,
+          details,
+        );
       }
 
       if (response.status === 404) {
@@ -277,10 +303,17 @@ class ErrorHandler {
       }
 
       if (response.status === 401 || response.status === 403) {
-        return new ConfigurationError(`${service} authentication failed`, `${service}_API_KEY`);
+        return new ConfigurationError(
+          `${service} authentication failed`,
+          `${service}_API_KEY`,
+        );
       }
 
-      return new APIError(`${service} request failed`, response.status, details);
+      return new APIError(
+        `${service} request failed`,
+        response.status,
+        details,
+      );
     }
     return null;
   }
@@ -290,9 +323,9 @@ class ErrorHandler {
 const errorHandler = new ErrorHandler();
 
 // Utility function to safely execute with timeout
-export async function withTimeout(promise, timeoutMs, operation = 'Operation') {
+export async function withTimeout(promise, timeoutMs, operation = "Operation") {
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new TimeoutError(operation, timeoutMs)), timeoutMs)
+    setTimeout(() => reject(new TimeoutError(operation, timeoutMs)), timeoutMs),
   );
 
   return Promise.race([promise, timeoutPromise]);
@@ -303,15 +336,11 @@ export function safeJSONParse(text, fallback = null) {
   try {
     return JSON.parse(text);
   } catch (error) {
-    logger.warn('JSON parse failed', { text: text?.substring(0, 100) });
+    logger.warn("JSON parse failed", { text: text?.substring(0, 100) });
     return fallback;
   }
 }
 
 // Export everything
 export default errorHandler;
-export {
-  BaseError,
-  errorHandler,
-  ErrorHandler
-};
+export { BaseError, errorHandler, ErrorHandler };

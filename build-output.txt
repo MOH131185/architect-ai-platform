@@ -1,0 +1,17 @@
+
+> architect-ai-platform@0.1.0 prebuild
+> echo 'Skipping prebuild checks for faster deployment'
+
+'Skipping prebuild checks for faster deployment'
+
+> architect-ai-platform@0.1.0 build
+> react-scripts build
+
+(node:2014188) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Creating an optimized production build...
+Failed to compile.
+
+Module not found: Error: Can't resolve '../validation/PanelValidationGate.js' in 'C:\Users\21366\OneDrive\Documents\GitHub\architect-ai-platform\src\services\design'
+
+

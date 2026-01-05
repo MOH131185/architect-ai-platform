@@ -4,8 +4,8 @@
  */
 
 import React, { useState } from "react";
-import { Card } from "./ui/Card";
-import { Button } from "./ui/Button";
+import Card from "./ui/Card";
+import Button from "./ui/Button";
 import { Download, FileText, Box, Loader2 } from "lucide-react";
 
 const EXPORT_FORMATS = [

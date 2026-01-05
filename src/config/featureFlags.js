@@ -4,7 +4,7 @@
  * Controls experimental and progressive features
  */
 
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
 export const FEATURE_FLAGS = {
   /**
@@ -87,7 +87,7 @@ export const FEATURE_FLAGS = {
 
   /**
    * Minimum interval between Together.ai image generation requests (ms)
-   * 
+   *
    * Default: 9000ms (9 seconds) to avoid rate limiting
    * Can be increased if experiencing 429 errors
    *
@@ -98,7 +98,7 @@ export const FEATURE_FLAGS = {
 
   /**
    * Cooldown delay between panel batches (ms)
-   * 
+   *
    * Default: 30000ms (30 seconds) to give API breathing room
    *
    * @type {number}
@@ -108,7 +108,7 @@ export const FEATURE_FLAGS = {
 
   /**
    * Whether to respect Retry-After headers from Together.ai API
-   * 
+   *
    * When enabled, automatically waits for the duration specified in Retry-After header
    * before retrying rate-limited requests
    *
@@ -119,7 +119,7 @@ export const FEATURE_FLAGS = {
 
   /**
    * FLUX model to use for A1 sheet generation
-   * 
+   *
    * Options:
    * - 'black-forest-labs/FLUX.1-dev' - High-quality model with img2img support (default)
    * - 'black-forest-labs/FLUX.1-kontext-max' - Best for comprehensive architectural sheets (opt-in)
@@ -128,19 +128,18 @@ export const FEATURE_FLAGS = {
    * @type {string}
    * @default 'black-forest-labs/FLUX.1-dev'
    */
-  fluxImageModel: 'black-forest-labs/FLUX.1-dev',
+  fluxImageModel: "black-forest-labs/FLUX.1-dev",
 
   /**
    * A1 sheet orientation
-   * 
+   *
    * - 'portrait' - Vertical orientation (594×841mm)
    * - 'landscape' - Horizontal orientation (841×594mm, default for Hybrid A1)
    *
    * @type {string}
    * @default 'landscape'
    */
-  a1Orientation: 'landscape'
-  ,
+  a1Orientation: "landscape",
   /**
    * Overlay captured site snapshot onto A1 sheet image
    * Default disabled to rely on AI-generated site panel only
@@ -156,7 +155,7 @@ export const FEATURE_FLAGS = {
   /**
    * Use FLUX.1-kontext-max for A1 sheet generation
    * Requires Build Tier 2+ on Together.ai
-   * 
+   *
    * @type {boolean}
    * @default false
    */
@@ -165,7 +164,7 @@ export const FEATURE_FLAGS = {
   /**
    * Use ModelRouter for all LLM/image calls
    * Enables env-driven model selection (GPT-5, Claude, Together)
-   * 
+   *
    * @type {boolean}
    * @default true
    */
@@ -174,7 +173,7 @@ export const FEATURE_FLAGS = {
   /**
    * Show consistency warnings in UI before exports
    * Validates DNA, geometry, views, and A1 sheet structure
-   * 
+   *
    * @type {boolean}
    * @default true
    */
@@ -227,7 +226,7 @@ export const FEATURE_FLAGS = {
  */
 export function isFeatureEnabled(flagName) {
   if (!(flagName in FEATURE_FLAGS)) {
-    logger.warn('Unknown feature flag: ' + flagName);
+    logger.warn("Unknown feature flag: " + flagName);
     return false;
   }
   return FEATURE_FLAGS[flagName] === true;
@@ -238,26 +237,37 @@ export function isFeatureEnabled(flagName) {
  */
 export function setFeatureFlag(flagName, value) {
   if (!(flagName in FEATURE_FLAGS)) {
-    logger.warn('Unknown feature flag: ' + flagName);
+    logger.warn("Unknown feature flag: " + flagName);
     return;
   }
 
   const oldValue = FEATURE_FLAGS[flagName];
   FEATURE_FLAGS[flagName] = value;
 
-  logger.debug('Feature flag updated: ' + flagName, {
+  logger.debug("Feature flag updated: " + flagName, {
     from: oldValue,
-    to: value
+    to: value,
   });
 
   // Persist to sessionStorage for current session
   try {
-    const flags = JSON.parse(sessionStorage.getItem('featureFlags') || '{}');
+    const flags = JSON.parse(sessionStorage.getItem("featureFlags") || "{}");
     flags[flagName] = value;
-    sessionStorage.setItem('featureFlags', JSON.stringify(flags));
+    sessionStorage.setItem("featureFlags", JSON.stringify(flags));
   } catch (error) {
-    logger.error('Failed to persist feature flag', { error, flagName });
+    logger.error("Failed to persist feature flag", { error, flagName });
   }
+}
+
+/**
+ * Get a feature flag value (for non-boolean flags)
+ */
+export function getFeatureValue(flagName) {
+  if (!(flagName in FEATURE_FLAGS)) {
+    logger.warn("Unknown feature flag: " + flagName);
+    return undefined;
+  }
+  return FEATURE_FLAGS[flagName];
 }
 
 /**
@@ -272,9 +282,9 @@ export function getAllFeatureFlags() {
  */
 export function resetFeatureFlags() {
   try {
-    sessionStorage.removeItem('featureFlags');
+    sessionStorage.removeItem("featureFlags");
   } catch (error) {
-    logger.error('Failed to clear feature flags', { error });
+    logger.error("Failed to clear feature flags", { error });
   }
 
   FEATURE_FLAGS.a1Only = false;
@@ -284,8 +294,8 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.togetherImageMinIntervalMs = 9000;
   FEATURE_FLAGS.togetherBatchCooldownMs = 30000;
   FEATURE_FLAGS.respectRetryAfter = true;
-  FEATURE_FLAGS.fluxImageModel = 'black-forest-labs/FLUX.1-dev';
-  FEATURE_FLAGS.a1Orientation = 'landscape';
+  FEATURE_FLAGS.fluxImageModel = "black-forest-labs/FLUX.1-dev";
+  FEATURE_FLAGS.a1Orientation = "landscape";
   FEATURE_FLAGS.overlaySiteSnapshotOnA1 = true;
   FEATURE_FLAGS.compositeSiteSnapshotOnModify = false;
   FEATURE_FLAGS.useFluxKontextForA1 = false;
@@ -294,7 +304,9 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.twoPassDNA = true;
   FEATURE_FLAGS.geometryVolumeFirst = false;
 
-  logger.info('Feature flags reset to defaults (ModelRouter enabled, consistency warnings enabled, two-pass DNA enabled, geometry volume disabled)');
+  logger.info(
+    "Feature flags reset to defaults (ModelRouter enabled, consistency warnings enabled, two-pass DNA enabled, geometry volume disabled)",
+  );
 }
 
 /**
@@ -302,18 +314,18 @@ export function resetFeatureFlags() {
  */
 export function loadFeatureFlagsFromStorage() {
   try {
-    const stored = sessionStorage.getItem('featureFlags');
+    const stored = sessionStorage.getItem("featureFlags");
     if (stored) {
       const flags = JSON.parse(stored);
-      Object.keys(flags).forEach(key => {
+      Object.keys(flags).forEach((key) => {
         if (key in FEATURE_FLAGS) {
           FEATURE_FLAGS[key] = flags[key];
         }
       });
-      logger.debug('Feature flags loaded from storage', flags);
+      logger.debug("Feature flags loaded from storage", flags);
     }
   } catch (error) {
-    logger.error('Failed to load feature flags', { error });
+    logger.error("Failed to load feature flags", { error });
   }
 }
 
@@ -326,39 +338,60 @@ FEATURE_FLAGS.a1Only = false;
  * Development helper: Log current feature flag status
  */
 export function logFeatureFlags() {
-  logger.group('Feature Flags Status');
+  logger.group("Feature Flags Status");
   Object.entries(FEATURE_FLAGS).forEach(([key, value]) => {
-    const icon = value ? '[ON]' : '[OFF]';
-    logger.debug(icon + ' ' + key + ': ' + value);
+    const icon = value ? "[ON]" : "[OFF]";
+    logger.debug(icon + " " + key + ": " + value);
   });
   logger.groupEnd();
 }
 
 // Log feature flags in development mode
-if (process.env.NODE_ENV === 'development') {
-  logger.info('Feature Flags initialized');
-  logger.debug('   a1Only: ' + FEATURE_FLAGS.a1Only);
-  logger.debug('   geometryFirst: ' + FEATURE_FLAGS.geometryFirst);
-  logger.debug('   hybridA1Mode: ' + FEATURE_FLAGS.hybridA1Mode + ' ← Enable for panel-based generation');
-  logger.debug('   fluxImageModel: ' + FEATURE_FLAGS.fluxImageModel + ' ← FLUX.1-dev for A1 sheets (img2img compatible)');
-  logger.debug('   a1Orientation: ' + FEATURE_FLAGS.a1Orientation + ' ← Landscape by default (Hybrid A1)');
-  logger.debug('   togetherImageMinIntervalMs: ' + FEATURE_FLAGS.togetherImageMinIntervalMs + ' ms');
-  logger.debug('   togetherBatchCooldownMs: ' + FEATURE_FLAGS.togetherBatchCooldownMs + ' ms');
-  logger.debug('   respectRetryAfter: ' + FEATURE_FLAGS.respectRetryAfter);
-  logger.debug('   Use setFeatureFlag() to override');
+if (process.env.NODE_ENV === "development") {
+  logger.info("Feature Flags initialized");
+  logger.debug("   a1Only: " + FEATURE_FLAGS.a1Only);
+  logger.debug("   geometryFirst: " + FEATURE_FLAGS.geometryFirst);
+  logger.debug(
+    "   hybridA1Mode: " +
+      FEATURE_FLAGS.hybridA1Mode +
+      " ← Enable for panel-based generation",
+  );
+  logger.debug(
+    "   fluxImageModel: " +
+      FEATURE_FLAGS.fluxImageModel +
+      " ← FLUX.1-dev for A1 sheets (img2img compatible)",
+  );
+  logger.debug(
+    "   a1Orientation: " +
+      FEATURE_FLAGS.a1Orientation +
+      " ← Landscape by default (Hybrid A1)",
+  );
+  logger.debug(
+    "   togetherImageMinIntervalMs: " +
+      FEATURE_FLAGS.togetherImageMinIntervalMs +
+      " ms",
+  );
+  logger.debug(
+    "   togetherBatchCooldownMs: " +
+      FEATURE_FLAGS.togetherBatchCooldownMs +
+      " ms",
+  );
+  logger.debug("   respectRetryAfter: " + FEATURE_FLAGS.respectRetryAfter);
+  logger.debug("   Use setFeatureFlag() to override");
 }
 
 export default FEATURE_FLAGS;
 
 // CommonJS compatibility for Node.js testing
-if (typeof module !== 'undefined' && module.exports) {
+if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     FEATURE_FLAGS,
     isFeatureEnabled,
     setFeatureFlag,
+    getFeatureValue,
     getAllFeatureFlags,
     resetFeatureFlags,
     loadFeatureFlagsFromStorage,
-    logFeatureFlags
+    logFeatureFlags,
   };
 }

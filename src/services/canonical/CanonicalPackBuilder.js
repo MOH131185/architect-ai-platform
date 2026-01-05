@@ -4,6 +4,19 @@
  * Builds complete canonical packs for A1 sheet generation.
  */
 
+// In-memory pack storage
+let currentPack = null;
+
+/**
+ * Pack status constants
+ */
+export const PACK_STATUS = {
+  EMPTY: "EMPTY",
+  PARTIAL: "PARTIAL",
+  COMPLETE: "COMPLETE",
+  ERROR: "ERROR",
+};
+
 /**
  * Build complete canonical pack
  * @param {Object} designState - Design state
@@ -12,7 +25,7 @@
  */
 export async function buildCanonicalPack(designState, options = {}) {
   console.log("[CanonicalPackBuilder] buildCanonicalPack (stub)");
-  return {
+  currentPack = {
     id: `pack_${Date.now()}`,
     timestamp: new Date().toISOString(),
     designState,
@@ -20,6 +33,35 @@ export async function buildCanonicalPack(designState, options = {}) {
     geometry: {},
     metadata: options,
   };
+  return currentPack;
+}
+
+/**
+ * Check if canonical pack exists
+ * @param {Object} state - Optional design state
+ * @returns {boolean}
+ */
+export function hasCanonicalPack(state) {
+  return currentPack !== null || !!state?.canonicalPack;
+}
+
+/**
+ * Get current canonical pack
+ * @returns {Object|null}
+ */
+export function getCanonicalPack() {
+  return currentPack;
+}
+
+/**
+ * Get canonical render for panel
+ * @param {Object} pack - Canonical pack
+ * @param {string} panelType - Panel type
+ * @returns {string|null} Render URL
+ */
+export function getCanonicalRender(pack, panelType) {
+  if (!pack?.renders) return null;
+  return pack.renders[panelType] || null;
 }
 
 /**
@@ -54,7 +96,11 @@ export function getPackStatus(pack) {
 }
 
 export default {
+  PACK_STATUS,
   buildCanonicalPack,
+  hasCanonicalPack,
+  getCanonicalPack,
+  getCanonicalRender,
   mergeCanonicalPacks,
   getPackStatus,
 };

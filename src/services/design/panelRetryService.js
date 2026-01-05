@@ -5,12 +5,25 @@
  */
 
 /**
+ * Maximum retries constant
+ */
+export const MAX_RETRIES = 3;
+
+/**
  * Default retry configuration
  */
 export const DEFAULT_RETRY_CONFIG = {
-  maxRetries: 3,
+  maxRetries: MAX_RETRIES,
   backoffMs: 2000,
   backoffMultiplier: 1.5,
+};
+
+// Track retry statistics
+let retryStats = {
+  totalRetries: 0,
+  successfulRetries: 0,
+  failedRetries: 0,
+  panelRetries: {},
 };
 
 /**
@@ -70,6 +83,49 @@ export async function retryPanelGeneration(
 }
 
 /**
+ * Retry a failed panel
+ * @param {Object} panel - Failed panel
+ * @param {Function} generateFn - Generation function
+ * @param {Object} options - Retry options
+ * @returns {Promise<Object>} Regenerated panel
+ */
+export async function retryFailedPanel(panel, generateFn, options = {}) {
+  const panelType = panel?.type || "unknown";
+  retryStats.totalRetries++;
+  retryStats.panelRetries[panelType] =
+    (retryStats.panelRetries[panelType] || 0) + 1;
+
+  try {
+    const result = await retryPanelGeneration(generateFn, panel, options);
+    retryStats.successfulRetries++;
+    return result;
+  } catch (error) {
+    retryStats.failedRetries++;
+    throw error;
+  }
+}
+
+/**
+ * Get retry statistics
+ * @returns {Object} Retry statistics
+ */
+export function getRetryStatistics() {
+  return { ...retryStats };
+}
+
+/**
+ * Reset retry statistics
+ */
+export function resetRetryStatistics() {
+  retryStats = {
+    totalRetries: 0,
+    successfulRetries: 0,
+    failedRetries: 0,
+    panelRetries: {},
+  };
+}
+
+/**
  * Check if error is retryable
  * @param {Error} error - Error to check
  * @returns {boolean}
@@ -98,8 +154,12 @@ export function isRetryableError(error) {
 }
 
 export default {
+  MAX_RETRIES,
+  DEFAULT_RETRY_CONFIG,
   executeWithRetry,
   retryPanelGeneration,
+  retryFailedPanel,
+  getRetryStatistics,
+  resetRetryStatistics,
   isRetryableError,
-  DEFAULT_RETRY_CONFIG,
 };
