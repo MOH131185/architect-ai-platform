@@ -42,7 +42,7 @@ const Navbar = ({
             {logo || (
               <a href="/" className="flex items-center gap-2">
                 <img 
-                  src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
+                  src={`${process.env.PUBLIC_URL || ''}/logo/logo.png`}
                   alt="ArchiAI Solution Ltd." 
                   className="h-8 w-8"
                   onError={(e) => {

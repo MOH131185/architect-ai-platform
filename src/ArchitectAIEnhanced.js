@@ -2587,7 +2587,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
           <div className="flex flex-col sm:flex-row justify-center items-center mb-8 sm:mb-10 gap-4 sm:gap-6">
             <div className="relative group">
               <img 
-                src="/logo/logo-light.svg" 
+                src="/logo/logo.png"
                 alt="ARCHIAI SOLUTION Logo" 
                 className="w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32 logo-float transition-transform duration-500 group-hover:scale-110"
                 style={{ filter: 'drop-shadow(0 0 40px rgba(0, 168, 255, 0.8)) drop-shadow(0 0 60px rgba(0, 212, 255, 0.6))' }}

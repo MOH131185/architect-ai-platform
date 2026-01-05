@@ -64,7 +64,7 @@ const LandingPage = ({ onStart }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img
-                src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
+                src={`${process.env.PUBLIC_URL || ''}/logo/logo.png`}
                 alt="ArchiAI Solution Ltd."
                 className="w-10 h-10"
                 onError={(e) => {
@@ -365,7 +365,7 @@ const LandingPage = ({ onStart }) => {
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
               <img
-                src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
+                src={`${process.env.PUBLIC_URL || ''}/logo/logo.png`}
                 alt="ArchiAI Solution Ltd."
                 className="w-8 h-8"
                 onError={(e) => {
