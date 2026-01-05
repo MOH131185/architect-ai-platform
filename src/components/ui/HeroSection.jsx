@@ -24,7 +24,7 @@ export const HeroSection = ({ onStartDemo, onTryDemo }) => {
           <div className="flex justify-center items-center mb-8">
             <div className="relative">
               <img
-                src="/logo/logo-light.svg"
+                src="/logo/logo.png"
                 alt="ARCHIAI SOLUTION Logo"
                 className="w-20 h-20 sm:w-24 sm:h-24 md:w-32 md:h-32 logo-float"
                 style={{ filter: 'drop-shadow(0 0 20px rgba(0, 122, 255, 0.5))' }}

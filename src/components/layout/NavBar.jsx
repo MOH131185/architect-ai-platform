@@ -48,7 +48,7 @@ const NavBar = ({
             whileTap={{ scale: 0.95 }}
           >
             <img
-              src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
+              src={`${process.env.PUBLIC_URL || ''}/logo/logo.png`}
               alt="ArchiAI Solution Ltd."
               className="w-10 h-10"
               onError={(e) => {
