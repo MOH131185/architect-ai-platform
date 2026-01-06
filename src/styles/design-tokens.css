@@ -1,0 +1,237 @@
+/**
+ * Design Tokens - Architectural Blueprint Theme
+ *
+ * Unified design system for visual consistency across the platform.
+ * Dark, dim, blueprint-inspired palette. Professional architectural tone.
+ * NO bright gradients, NO flashy glow, NO SaaS neon.
+ */
+
+:root {
+  /* ========================================================================
+     BASE BACKGROUNDS
+     Dark navy tones with subtle blue undertone
+     ======================================================================== */
+  --bg-base: #0a0e27; /* Primary background - deep navy */
+  --bg-elevated: #0f172a; /* Elevated surfaces */
+  --bg-surface: #1e293b; /* Cards, panels */
+  --bg-surface-hover: #334155; /* Hover state for surfaces */
+
+  /* Glass/Overlay backgrounds */
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-glass-strong: rgba(255, 255, 255, 0.08);
+  --bg-glass-card: rgba(255, 255, 255, 0.06);
+  --bg-glass-hover: rgba(255, 255, 255, 0.1);
+
+  /* ========================================================================
+     ACCENT COLORS
+     Muted royal blue - technical, not flashy
+     ======================================================================== */
+  --accent-600: #2563eb; /* Primary accent - royal blue */
+  --accent-500: #3b82f6; /* Secondary accent */
+  --accent-400: #60a5fa; /* Tertiary/light accent */
+  --accent-300: #93c5fd; /* Very light accent */
+
+  /* Accent with opacity (for borders, subtle highlights) */
+  --accent-600-20: rgba(37, 99, 235, 0.2);
+  --accent-600-30: rgba(37, 99, 235, 0.3);
+  --accent-500-10: rgba(59, 130, 246, 0.1);
+  --accent-500-20: rgba(59, 130, 246, 0.2);
+  --accent-400-15: rgba(96, 165, 250, 0.15);
+
+  /* ========================================================================
+     TEXT HIERARCHY
+     White with controlled opacity for depth
+     ======================================================================== */
+  --text-primary: rgba(255, 255, 255, 1);
+  --text-secondary: rgba(255, 255, 255, 0.85);
+  --text-tertiary: rgba(255, 255, 255, 0.7);
+  --text-muted: rgba(255, 255, 255, 0.55);
+  --text-subtle: rgba(255, 255, 255, 0.4);
+
+  /* ========================================================================
+     BORDERS
+     Subtle white-transparent for glass effect
+     ======================================================================== */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-accent: rgba(37, 99, 235, 0.3);
+  --border-accent-subtle: rgba(37, 99, 235, 0.2);
+
+  /* ========================================================================
+     SHADOWS
+     Minimal, no glow - pure depth shadows
+     ======================================================================== */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.6);
+
+  /* Subtle accent shadow (for interactive elements only) */
+  --shadow-accent: 0 4px 16px rgba(37, 99, 235, 0.15);
+
+  /* ========================================================================
+     BLUEPRINT GRID
+     Very subtle technical grid pattern
+     ======================================================================== */
+  --grid-color-fine: rgba(37, 99, 235, 0.06);
+  --grid-color-major: rgba(37, 99, 235, 0.1);
+  --grid-size-fine: 20px;
+  --grid-size-major: 100px;
+
+  /* ========================================================================
+     BUTTON STYLES
+     ======================================================================== */
+  /* Primary button - solid accent */
+  --btn-primary-bg: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+  --btn-primary-bg-hover: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  --btn-primary-border: rgba(96, 165, 250, 0.3);
+  --btn-primary-shadow: 0 4px 16px rgba(37, 99, 235, 0.2);
+
+  /* Secondary button - glass outline */
+  --btn-secondary-bg: rgba(255, 255, 255, 0.05);
+  --btn-secondary-bg-hover: rgba(255, 255, 255, 0.1);
+  --btn-secondary-border: rgba(255, 255, 255, 0.2);
+  --btn-secondary-border-hover: rgba(96, 165, 250, 0.4);
+
+  /* ========================================================================
+     TYPOGRAPHY
+     Technical, precise fonts
+     ======================================================================== */
+  --font-heading:
+    "Space Grotesk", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  /* ========================================================================
+     TRANSITIONS
+     Smooth but not bouncy - professional feel
+     ======================================================================== */
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 400ms ease;
+
+  /* ========================================================================
+     SEMANTIC COLORS (for status indicators)
+     Muted versions - not neon
+     ======================================================================== */
+  --status-success: #10b981;
+  --status-warning: #f59e0b;
+  --status-error: #ef4444;
+  --status-info: #3b82f6;
+
+  --status-success-bg: rgba(16, 185, 129, 0.15);
+  --status-warning-bg: rgba(245, 158, 11, 0.15);
+  --status-error-bg: rgba(239, 68, 68, 0.15);
+  --status-info-bg: rgba(59, 130, 246, 0.15);
+}
+
+/* ============================================================================
+   UTILITY CLASSES
+   ============================================================================ */
+
+/* Blueprint Background */
+.bg-blueprint {
+  background-color: var(--bg-base);
+  background-image:
+    linear-gradient(var(--grid-color-fine) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color-fine) 1px, transparent 1px),
+    linear-gradient(var(--grid-color-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color-major) 1px, transparent 1px);
+  background-size:
+    var(--grid-size-fine) var(--grid-size-fine),
+    var(--grid-size-fine) var(--grid-size-fine),
+    var(--grid-size-major) var(--grid-size-major),
+    var(--grid-size-major) var(--grid-size-major);
+}
+
+/* Vignette overlay */
+.bg-vignette::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 50%,
+    rgba(10, 14, 39, 0.4) 100%
+  );
+  pointer-events: none;
+}
+
+/* Glass card - matching app page */
+.glass-card {
+  background: var(--bg-glass-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+}
+
+.glass-card:hover {
+  background: var(--bg-glass-hover);
+  border-color: var(--border-strong);
+}
+
+/* Glass card strong */
+.glass-card-strong {
+  background: var(--bg-glass-strong);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+}
+
+/* Primary button */
+.btn-blueprint-primary {
+  background: var(--btn-primary-bg);
+  border: 1px solid var(--btn-primary-border);
+  box-shadow: var(--btn-primary-shadow);
+  color: var(--text-primary);
+  transition: all var(--transition-base);
+}
+
+.btn-blueprint-primary:hover {
+  background: var(--btn-primary-bg-hover);
+  transform: translateY(-1px);
+}
+
+/* Secondary button */
+.btn-blueprint-secondary {
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--btn-secondary-border);
+  color: var(--text-secondary);
+  transition: all var(--transition-base);
+}
+
+.btn-blueprint-secondary:hover {
+  background: var(--btn-secondary-bg-hover);
+  border-color: var(--btn-secondary-border-hover);
+}
+
+/* Icon container - subtle accent background */
+.icon-container {
+  background: var(--accent-500-10);
+  border: 1px solid var(--accent-600-20);
+  border-radius: 12px;
+}
+
+/* Text utilities */
+.text-blueprint-primary {
+  color: var(--text-primary);
+}
+.text-blueprint-secondary {
+  color: var(--text-secondary);
+}
+.text-blueprint-tertiary {
+  color: var(--text-tertiary);
+}
+.text-blueprint-muted {
+  color: var(--text-muted);
+}
+.text-blueprint-subtle {
+  color: var(--text-subtle);
+}
+.text-blueprint-accent {
+  color: var(--accent-400);
+}
