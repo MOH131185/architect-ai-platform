@@ -7,7 +7,11 @@
  * ENHANCED: Now uses structured DNA context for all prompts
  */
 
-import { isFeatureEnabled, FEATURE_FLAGS, getFeatureValue } from '../../config/featureFlags.js';
+import {
+  isFeatureEnabled,
+  FEATURE_FLAGS,
+  getFeatureValue,
+} from "../../config/featureFlags.js";
 import {
   PANEL_TYPE,
   ALL_PANEL_TYPES,
@@ -18,26 +22,26 @@ import {
   getAIGeneratedPanels,
   getFloorPlanPanels,
   validatePanelSet,
-} from '../../config/panelRegistry.js';
+} from "../../config/panelRegistry.js";
 import {
   getCurrentPipelineMode,
   isOption2Mode,
   logPipelineConfig,
   TECHNICAL_PANELS as PIPELINE_TECHNICAL_PANELS,
   STYLED_3D_PANELS as PIPELINE_3D_PANELS,
-} from '../../config/pipelineMode.js';
+} from "../../config/pipelineMode.js";
 import {
   isReadyForPanelGeneration,
   hasCanonicalRenders,
   computeDesignFingerprint,
-} from '../../types/CanonicalDesignState.js';
-import { PreflightError } from '../../utils/errors.js';
-import { buildPanelPrompt as buildSpecializedPanelPrompt } from '../a1/panelPromptBuilders.js';
+} from "../../types/CanonicalDesignState.js";
+import { PreflightError } from "../../utils/errors.js";
+import { buildPanelPrompt as buildSpecializedPanelPrompt } from "../a1/panelPromptBuilders.js";
 import {
   transferStyle,
   applyStyleToPrompt,
   calculateDynamicWeights,
-} from '../ai/adaptiveStyleTransfer.js';
+} from "../ai/adaptiveStyleTransfer.js";
 import {
   resolveControlImage,
   assertCanonicalControl,
@@ -45,7 +49,7 @@ import {
   requiresMandatoryCanonicalControl,
   extractDebugReportFields,
   MANDATORY_CANONICAL_CONTROL_PANELS,
-} from '../canonical/CanonicalControlResolver.js';
+} from "../canonical/CanonicalControlResolver.js";
 import {
   buildCanonicalPack as buildGeometryPack,
   getCanonicalPack as getGeometryPack,
@@ -56,20 +60,20 @@ import {
   CanonicalPackError,
   ERROR_CODES as GEOMETRY_PACK_ERROR_CODES,
   CANONICAL_PANEL_TYPES as GEOMETRY_PANEL_TYPES,
-} from '../canonical/CanonicalGeometryPackService.js';
+} from "../canonical/CanonicalGeometryPackService.js";
 import {
   buildCanonicalPack,
   hasCanonicalPack as hasBuiltCanonicalPack,
   getCanonicalPack,
   getCanonicalRender,
   PACK_STATUS,
-} from '../canonical/CanonicalPackBuilder.js';
+} from "../canonical/CanonicalPackBuilder.js";
 import {
   validateBeforeGeneration as validateCanonicalPackGate,
   isCanonicalPackGateEnabled,
   CanonicalPackGateError,
   GATE_ERROR_CODES,
-} from '../canonical/CanonicalPackGate.js';
+} from "../canonical/CanonicalPackGate.js";
 import {
   generateCanonicalRenderPack,
   getCanonicalRenderForPanel,
@@ -79,7 +83,7 @@ import {
   getCanonicalRenderPackDebugReport,
   CANONICAL_PANEL_TYPES,
   AI_PANEL_TO_CANONICAL,
-} from '../canonical/CanonicalRenderPackService.js';
+} from "../canonical/CanonicalRenderPackService.js";
 import {
   generateCanonical3DRenders,
   getCanonical3DRender,
@@ -94,12 +98,12 @@ import {
   CANONICAL_3D_VIEWS,
   CANONICAL_3D_STRENGTH_POLICY,
   CANONICAL_3D_NEGATIVE_PROMPTS,
-} from '../canonical/canonicalRenderService.js';
-import logger from '../core/logger.js';
+} from "../canonical/canonicalRenderService.js";
+import logger from "../core/logger.js";
 
 // PANEL_REGISTRY: Single Source of Truth for all panel types
-import debugRecorder from '../debug/DebugRunRecorder.js';
-import { extractOpeningEnumeration } from '../facade/facadeGenerationLayer.js';
+import debugRecorder from "../debug/DebugRunRecorder.js";
+import { extractOpeningEnumeration } from "../facade/facadeGenerationLayer.js";
 import {
   generateControlPack,
   getControlForPanel as getControlPackForPanel,
@@ -108,61 +112,64 @@ import {
   getControlPackDebugReport,
   CONTROL_PACK_VIEWS,
   PANEL_TO_CONTROL_MAP,
-} from '../geometry/CanonicalControlPackService.js';
+} from "../geometry/CanonicalControlPackService.js";
 import {
   generateCanonicalControlRenders,
   getControlImageForPanel,
   requireControlImageForPanel,
   hasControlRenders,
   getControlImageDebugReport,
-} from '../geometry/canonicalControlRenderGenerator.js';
+} from "../geometry/canonicalControlRenderGenerator.js";
 import {
   generateControlImage as generateGeometryControlImage,
   getFluxImg2ImgParams,
-} from '../geometry/unifiedBuildingGeometry.js';
+} from "../geometry/unifiedBuildingGeometry.js";
 import {
   checkDriftRetryNeeded,
   calculateDriftRetryParams,
   generateDriftRetrySummary,
   DRIFT_RETRY_CONFIG,
   DRIFT_ELIGIBLE_PANELS,
-} from '../quality/DriftRetryPolicy.js';
+} from "../quality/DriftRetryPolicy.js";
 import {
   ControlFidelityGate,
   imageSimilarityService,
   CONTROL_FIDELITY_THRESHOLDS,
-} from '../quality/ImageSimilarityService.js';
+} from "../quality/ImageSimilarityService.js";
 import {
   validatePanel,
   validatePanelBatch,
   getPanelsForRegeneration,
   QUALITY_THRESHOLDS,
-} from '../quality/panelQualityValidator.js';
-import { generationPreflight, GenerationPreflight } from '../validation/GenerationPreflight.js';
+} from "../quality/panelQualityValidator.js";
+import {
+  generationPreflight,
+  GenerationPreflight,
+} from "../validation/GenerationPreflight.js";
 import {
   getValidationGate,
   assertValidGenerator,
   confirmGenerator,
   GeneratorMismatchError,
   LegacyGeneratorError,
-} from '../validation/PanelValidationGate.js';
+} from "../validation/PanelValidationGate.js";
 
 import {
   getBaselineForPanel,
   requiresBaselineControl,
   applyBaselineControl,
   BASELINE_VIEW_TYPES,
-} from './BaselineRenderService.js';
+} from "./BaselineRenderService.js";
 import {
   build3DPanelPrompt,
   buildPlanPrompt,
   buildElevationPrompt,
   buildSectionPrompt,
   buildNegativePrompt as buildStandardNegativePrompt,
-} from './dnaPromptContext.js';
-import { validateGeometryRenders } from './geometryControlValidator.js';
-import { normalizeMaterialsString } from './materialUtils.js';
-import { derivePanelSeed, derivePanelSeeds } from './seedDerivation.js';
+} from "./dnaPromptContext.js";
+import { validateGeometryRenders } from "./geometryControlValidator.js";
+import { normalizeMaterialsString } from "./materialUtils.js";
+import { derivePanelSeed, derivePanelSeeds } from "../seedDerivation.js";
 
 // NEW: Import adaptive style transfer for 0.6/0.3/0.1 blend
 
@@ -171,7 +178,7 @@ import {
   generateElevationSVG,
   generateSectionSVG,
   generateFloorPlanSVG,
-} from './technicalDrawingGenerator.js';
+} from "./technicalDrawingGenerator.js";
 // Legacy test hook (string match): import { generateElevationSVG, generateSectionSVG } from './technicalDrawingGenerator.js';
 
 // NEW: Import enhanced SVG generators (Phase A - Professional A1 Quality)
@@ -180,7 +187,7 @@ import {
   generateEnhancedFloorPlanSVG,
   generateEnhancedElevationSVG,
   generateEnhancedSectionSVG,
-} from './enhancedTechnicalDrawingAdapter.js';
+} from "./enhancedTechnicalDrawingAdapter.js";
 
 // NEW: Import unified geometry service for 3D view consistency (Phase B)
 
@@ -190,7 +197,7 @@ import {
   retryFailedPanel,
   getRetryStatistics,
   MAX_RETRIES as PANEL_MAX_RETRIES,
-} from './panelRetryService.js';
+} from "./panelRetryService.js";
 
 // NEW: Import canonical control render generator for SSOT geometry enforcement
 
@@ -224,6 +231,14 @@ import {
 
 // NEW: Import DriftRetryPolicy for hero_3d/interior_3d drift prevention
 
+// NEW: Import Design Fingerprint Service for hero-as-control enforcement
+import {
+  getFingerprint,
+  hasFingerprint,
+  getHeroControlForPanel,
+  HERO_REFERENCE_PANELS,
+} from "./designFingerprintService.js";
+
 // NEW: Import CanonicalDesignState for CDS-first generation
 // Legacy test hook (string match): function isDataPanel(panelType) { return false; }
 
@@ -232,11 +247,11 @@ import {
  * @returns {'presentation' | 'technical'} The output mode
  */
 function getOutputMode() {
-  return FEATURE_FLAGS.outputMode || 'presentation';
+  return FEATURE_FLAGS.outputMode || "presentation";
 }
 
 function safeGetFeatureValue(flagName) {
-  if (typeof getFeatureValue === 'function') {
+  if (typeof getFeatureValue === "function") {
     return getFeatureValue(flagName);
   }
   return FEATURE_FLAGS?.[flagName];
@@ -263,7 +278,7 @@ const styleProfileCache = new Map();
  */
 const CONTROL_IMAGE_RETRY_CONFIG = {
   maxRetries: 2,
-  strengthBands: ['initial', 'retry1', 'retry2'],
+  strengthBands: ["initial", "retry1", "retry2"],
 };
 
 /**
@@ -275,21 +290,28 @@ const CONTROL_IMAGE_RETRY_CONFIG = {
  * @param {Object} options - Retry options
  * @returns {Object} Generation result with retry metadata
  */
-async function retryWithIncreasedControlStrength(job, generateFn, baseParams, options = {}) {
+async function retryWithIncreasedControlStrength(
+  job,
+  generateFn,
+  baseParams,
+  options = {},
+) {
   const { maxRetries = CONTROL_IMAGE_RETRY_CONFIG.maxRetries } = options;
-  const designFingerprint = job.designFingerprint || job.meta?.designFingerprint;
-  const strengthBands = safeGetFeatureValue('controlStrengthBands') || {
+  const designFingerprint =
+    job.designFingerprint || job.meta?.designFingerprint;
+  const strengthBands = safeGetFeatureValue("controlStrengthBands") || {
     initial: 0.6,
     retry1: 0.75,
     retry2: 0.9,
   };
-  const strengthMultipliers = safeGetFeatureValue('controlStrengthMultipliers') || {};
+  const strengthMultipliers =
+    safeGetFeatureValue("controlStrengthMultipliers") || {};
 
   const retryHistory = [];
   let lastError = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const strengthBand = attempt === 0 ? 'initial' : `retry${attempt}`;
+    const strengthBand = attempt === 0 ? "initial" : `retry${attempt}`;
     const baseStrength = strengthBands[strengthBand] || strengthBands.initial;
     const multiplier = strengthMultipliers[job.type] || 1.0;
     const finalStrength = Math.min(1.0, baseStrength * multiplier);
@@ -297,16 +319,20 @@ async function retryWithIncreasedControlStrength(job, generateFn, baseParams, op
     // Get control image with appropriate strength for this attempt
     let controlImage = null;
     if (designFingerprint && hasControlRenders(designFingerprint)) {
-      controlImage = getControlImageForPanel(designFingerprint, job.type, attempt);
+      controlImage = getControlImageForPanel(
+        designFingerprint,
+        job.type,
+        attempt,
+      );
     }
 
     if (attempt > 0) {
       logger.info(`🔄 RETRY ${attempt}/${maxRetries} for ${job.type}`, {
         strengthBand,
-        previousStrength: retryHistory[attempt - 1]?.strength || 'N/A',
+        previousStrength: retryHistory[attempt - 1]?.strength || "N/A",
         newStrength: finalStrength,
         hasControlImage: !!controlImage,
-        reason: lastError?.message || 'Unknown',
+        reason: lastError?.message || "Unknown",
       });
     }
 
@@ -323,7 +349,7 @@ async function retryWithIncreasedControlStrength(job, generateFn, baseParams, op
 
     try {
       const response = await generateFn(retryParams);
-      const imageUrl = response?.url || response?.imageUrls?.[0] || '';
+      const imageUrl = response?.url || response?.imageUrls?.[0] || "";
 
       if (!imageUrl) {
         throw new Error(`No image URL returned for panel ${job.type}`);
@@ -347,7 +373,7 @@ async function retryWithIncreasedControlStrength(job, generateFn, baseParams, op
 
       if (attempt > 0) {
         logger.success(
-          `✅ Retry ${attempt} succeeded for ${job.type} (strength: ${finalStrength})`
+          `✅ Retry ${attempt} succeeded for ${job.type} (strength: ${finalStrength})`,
         );
       }
 
@@ -363,8 +389,9 @@ async function retryWithIncreasedControlStrength(job, generateFn, baseParams, op
       });
 
       // Don't retry on certain errors
-      const isRateLimit = error.message.includes('429') || error.message.includes('rate limit');
-      const isTimeout = error.message.includes('timeout');
+      const isRateLimit =
+        error.message.includes("429") || error.message.includes("rate limit");
+      const isTimeout = error.message.includes("timeout");
 
       if (isRateLimit || isTimeout) {
         logger.warn(`⚠️ Non-retryable error for ${job.type}: ${error.message}`);
@@ -372,7 +399,9 @@ async function retryWithIncreasedControlStrength(job, generateFn, baseParams, op
       }
 
       if (attempt === maxRetries) {
-        logger.error(`❌ All ${maxRetries + 1} attempts failed for ${job.type}`);
+        logger.error(
+          `❌ All ${maxRetries + 1} attempts failed for ${job.type}`,
+        );
       }
     }
   }
@@ -436,23 +465,27 @@ export function generateControlImageUsageReport(designFingerprint) {
   return {
     designFingerprint,
     timestamp: new Date().toISOString(),
-    strictModeEnabled: isFeatureEnabled('strictControlImageMode'),
-    debugReportEnabled: isFeatureEnabled('enableControlImageDebugReport'),
-    strengthBands: safeGetFeatureValue('controlStrengthBands'),
-    strengthMultipliers: safeGetFeatureValue('controlStrengthMultipliers'),
-    maxRetries: safeGetFeatureValue('maxControlImageRetries'),
+    strictModeEnabled: isFeatureEnabled("strictControlImageMode"),
+    debugReportEnabled: isFeatureEnabled("enableControlImageDebugReport"),
+    strengthBands: safeGetFeatureValue("controlStrengthBands"),
+    strengthMultipliers: safeGetFeatureValue("controlStrengthMultipliers"),
+    maxRetries: safeGetFeatureValue("maxControlImageRetries"),
     canonicalGeometry: canonicalReport,
     panelUsage: tracker?.panels || {},
     summary: tracker
       ? {
           totalPanels: Object.keys(tracker.panels).length,
-          withControlImage: Object.values(tracker.panels).filter((p) => p.controlImageUsed).length,
-          withoutControlImage: Object.values(tracker.panels).filter((p) => !p.controlImageUsed)
-            .length,
-          retried: Object.values(tracker.panels).filter((p) => p.retryInfo?.totalAttempts > 1)
-            .length,
+          withControlImage: Object.values(tracker.panels).filter(
+            (p) => p.controlImageUsed,
+          ).length,
+          withoutControlImage: Object.values(tracker.panels).filter(
+            (p) => !p.controlImageUsed,
+          ).length,
+          retried: Object.values(tracker.panels).filter(
+            (p) => p.retryInfo?.totalAttempts > 1,
+          ).length,
         }
-      : { error: 'No tracking data found' },
+      : { error: "No tracking data found" },
   };
 }
 
@@ -478,7 +511,7 @@ export function clearControlImageUsageTracker(designFingerprint) {
  */
 function generateSchedulesSVG({
   programSpaces = [],
-  projectType = 'Residential',
+  projectType = "Residential",
   area = 200,
   width = 1500,
   height = 1500,
@@ -487,12 +520,12 @@ function generateSchedulesSVG({
     programSpaces.length > 0
       ? programSpaces
       : [
-          { name: 'Living Room', area: 25, level: 'Ground' },
-          { name: 'Kitchen', area: 18, level: 'Ground' },
-          { name: 'Dining', area: 15, level: 'Ground' },
-          { name: 'Bedroom 1', area: 16, level: 'First' },
-          { name: 'Bedroom 2', area: 14, level: 'First' },
-          { name: 'Bathroom', area: 8, level: 'First' },
+          { name: "Living Room", area: 25, level: "Ground" },
+          { name: "Kitchen", area: 18, level: "Ground" },
+          { name: "Dining", area: 15, level: "Ground" },
+          { name: "Bedroom 1", area: 16, level: "First" },
+          { name: "Bedroom 2", area: 14, level: "First" },
+          { name: "Bathroom", area: 8, level: "First" },
         ];
 
   const rowHeight = 45;
@@ -505,16 +538,16 @@ function generateSchedulesSVG({
       const y = startY + (i + 1) * rowHeight;
       const roomName = room.name || room.type || room.label || `Room ${i + 1}`;
       const roomArea = room.area || room.sqm || 20;
-      const level = room.level || room.floor || 'Ground';
+      const level = room.level || room.floor || "Ground";
       return `
-      <rect x="100" y="${y}" width="${tableWidth}" height="${rowHeight}" fill="${i % 2 === 0 ? '#f8f9fa' : '#ffffff'}" stroke="#dee2e6"/>
+      <rect x="100" y="${y}" width="${tableWidth}" height="${rowHeight}" fill="${i % 2 === 0 ? "#f8f9fa" : "#ffffff"}" stroke="#dee2e6"/>
       <text x="120" y="${y + 30}" font-family="Arial, sans-serif" font-size="18" fill="#333">${roomName}</text>
       <text x="${tableWidth * 0.5}" y="${y + 30}" font-family="Arial, sans-serif" font-size="18" fill="#333" text-anchor="middle">${roomArea} m²</text>
       <text x="${tableWidth * 0.75}" y="${y + 30}" font-family="Arial, sans-serif" font-size="18" fill="#333" text-anchor="middle">${level}</text>
       <text x="${tableWidth * 0.95}" y="${y + 30}" font-family="Arial, sans-serif" font-size="18" fill="#333" text-anchor="end">Standard</text>
     `;
     })
-    .join('');
+    .join("");
 
   const totalArea = rooms.reduce((sum, r) => sum + (r.area || r.sqm || 20), 0);
   const tableEndY = startY + (Math.min(rooms.length, 10) + 1) * rowHeight;
@@ -588,19 +621,19 @@ function generateSchedulesSVG({
  * @param {string} outputMode - 'presentation' (default) or 'technical'
  * @returns {boolean}
  */
-function isDataPanel(panelType, outputMode = 'presentation') {
+function isDataPanel(panelType, outputMode = "presentation") {
   // Schedules and notes always use SVG (text tables that FLUX can't generate)
-  if (panelType === 'schedules_notes') {
+  if (panelType === "schedules_notes") {
     return true;
   }
 
   // Decorative/info panels - these don't require geometry control images
   // They display data, colors, or climate info rather than architectural views
   if (
-    panelType === 'material_palette' ||
-    panelType === 'climate_card' ||
-    panelType === 'title_block' ||
-    panelType === 'legend'
+    panelType === "material_palette" ||
+    panelType === "climate_card" ||
+    panelType === "title_block" ||
+    panelType === "legend"
   ) {
     return true;
   }
@@ -609,34 +642,34 @@ function isDataPanel(panelType, outputMode = 'presentation') {
   // CANONICAL BASELINE MODE: Use deterministic SVG for ALL 2D technical drawings
   // This ensures 100% cross-view consistency - same geometry in every panel
   // ==========================================================================
-  const useCanonicalBaseline = isFeatureEnabled('useCanonicalBaseline');
-  const strictDeterministic2D = isFeatureEnabled('strictDeterministic2D');
+  const useCanonicalBaseline = isFeatureEnabled("useCanonicalBaseline");
+  const strictDeterministic2D = isFeatureEnabled("strictDeterministic2D");
 
   if (useCanonicalBaseline || strictDeterministic2D) {
     // Floor plans: DETERMINISTIC SVG only (no FLUX)
-    if (panelType.startsWith('floor_plan_')) {
+    if (panelType.startsWith("floor_plan_")) {
       logger.debug(`[CanonicalBaseline] ${panelType} → SVG (deterministic 2D)`);
       return true;
     }
 
     // Elevations: DETERMINISTIC SVG only (no FLUX)
-    if (panelType.startsWith('elevation_')) {
+    if (panelType.startsWith("elevation_")) {
       logger.debug(`[CanonicalBaseline] ${panelType} → SVG (deterministic 2D)`);
       return true;
     }
 
     // Sections: DETERMINISTIC SVG only (no FLUX)
     if (
-      panelType === 'section_AA' ||
-      panelType === 'section_BB' ||
-      panelType.startsWith('section_')
+      panelType === "section_AA" ||
+      panelType === "section_BB" ||
+      panelType.startsWith("section_")
     ) {
       logger.debug(`[CanonicalBaseline] ${panelType} → SVG (deterministic 2D)`);
       return true;
     }
 
     // Site plan and roof plan: DETERMINISTIC SVG only
-    if (panelType === 'site_plan' || panelType === 'roof_plan') {
+    if (panelType === "site_plan" || panelType === "roof_plan") {
       logger.debug(`[CanonicalBaseline] ${panelType} → SVG (deterministic 2D)`);
       return true;
     }
@@ -644,36 +677,38 @@ function isDataPanel(panelType, outputMode = 'presentation') {
     // 3D views (hero_3d, interior_3d, site_diagram, axonometric): Use FLUX with baseline
     // These are NOT data panels - they use FLUX img2img with canonical baseline as control
     if (
-      panelType === 'hero_3d' ||
-      panelType === 'interior_3d' ||
-      panelType === 'site_diagram' ||
-      panelType === 'axonometric'
+      panelType === "hero_3d" ||
+      panelType === "interior_3d" ||
+      panelType === "site_diagram" ||
+      panelType === "axonometric"
     ) {
-      logger.debug(`[CanonicalBaseline] ${panelType} → FLUX img2img (stylised 3D)`);
+      logger.debug(
+        `[CanonicalBaseline] ${panelType} → FLUX img2img (stylised 3D)`,
+      );
       return false;
     }
   }
 
   // In PRESENTATION mode (default): Only schedules use SVG
   // Elevations, sections, and floor plans use FLUX for photorealistic output
-  if (outputMode === 'presentation') {
+  if (outputMode === "presentation") {
     return false;
   }
 
   // In TECHNICAL mode: Use SVG for all technical drawings
-  if (outputMode === 'technical') {
+  if (outputMode === "technical") {
     // Floor plans use enhanced SVG technical drawings
-    if (panelType.startsWith('floor_plan_')) {
+    if (panelType.startsWith("floor_plan_")) {
       return true;
     }
 
     // Elevations use enhanced SVG technical drawings
-    if (panelType.startsWith('elevation_')) {
+    if (panelType.startsWith("elevation_")) {
       return true;
     }
 
     // Sections use enhanced SVG technical drawings
-    if (panelType === 'section_AA' || panelType === 'section_BB') {
+    if (panelType === "section_AA" || panelType === "section_BB") {
       return true;
     }
   }
@@ -699,13 +734,13 @@ const PANEL_CONFIGS = (() => {
     }
 
     // Determine generation size based on category
-    const is3D = entry.category === '3d' || entry.category === 'site';
-    const isData = entry.generator === 'data';
+    const is3D = entry.category === "3d" || entry.category === "site";
+    const isData = entry.generator === "data";
 
     configs[panelType] = {
       width: is3D ? 2000 : 1500,
       height: is3D ? 2000 : 1500,
-      model: is3D || isData ? 'flux-1-kontext-max' : 'flux-1-schnell',
+      model: is3D || isData ? "flux-1-kontext-max" : "flux-1-schnell",
     };
   }
   return configs;
@@ -760,8 +795,11 @@ const BASE_PANEL_SEQUENCE = [
  * @param {Array} expectedPanels - Array of expected panel types
  * @returns {Object} Coverage validation result
  */
-export function validateBlenderCoverage(blenderViews, expectedPanels = BASE_PANEL_SEQUENCE) {
-  logger.info('Validating Blender view coverage', {
+export function validateBlenderCoverage(
+  blenderViews,
+  expectedPanels = BASE_PANEL_SEQUENCE,
+) {
+  logger.info("Validating Blender view coverage", {
     blenderViewCount: blenderViews.length,
     expectedPanelCount: expectedPanels.length,
   });
@@ -800,7 +838,9 @@ export function validateBlenderCoverage(blenderViews, expectedPanels = BASE_PANE
   });
 
   // Determine if coverage is sufficient
-  const criticalMissing = coverage.missing.filter((m) => m.severity === 'critical');
+  const criticalMissing = coverage.missing.filter(
+    (m) => m.severity === "critical",
+  );
   const coverageRate = coverage.present.length / coverage.total;
   const passed = criticalMissing.length === 0 && coverageRate >= 0.8; // 80% minimum
 
@@ -812,10 +852,10 @@ export function validateBlenderCoverage(blenderViews, expectedPanels = BASE_PANE
     criticalMissing,
     summary: `${coverage.present.length}/${coverage.total} panels have Blender views`,
     recommendation: passed
-      ? 'proceed'
+      ? "proceed"
       : criticalMissing.length > 0
-        ? 'fail_critical_missing'
-        : 'proceed_with_warnings',
+        ? "fail_critical_missing"
+        : "proceed_with_warnings",
   };
 }
 
@@ -827,12 +867,12 @@ function buildBlenderViewKey(view) {
   const type = view.type;
   const metadata = view.metadata || {};
 
-  if (type === 'plan') {
-    return `plan:${metadata.level || 'unknown'}`;
-  } else if (type === 'elevation') {
-    return `elevation:${metadata.orientation || 'unknown'}`;
-  } else if (type === 'section') {
-    return `section:${view.id || metadata.axis || 'unknown'}`;
+  if (type === "plan") {
+    return `plan:${metadata.level || "unknown"}`;
+  } else if (type === "elevation") {
+    return `elevation:${metadata.orientation || "unknown"}`;
+  } else if (type === "section") {
+    return `section:${view.id || metadata.axis || "unknown"}`;
   } else {
     return `${type}:*`;
   }
@@ -843,21 +883,21 @@ function buildBlenderViewKey(view) {
  * @private
  */
 function panelTypeToBlenderKey(panelType) {
-  if (panelType.startsWith('floor_plan_')) {
-    const level = panelType.replace('floor_plan_', '');
+  if (panelType.startsWith("floor_plan_")) {
+    const level = panelType.replace("floor_plan_", "");
     return `plan:${level}`;
-  } else if (panelType.startsWith('elevation_')) {
-    const orientation = panelType.replace('elevation_', '');
+  } else if (panelType.startsWith("elevation_")) {
+    const orientation = panelType.replace("elevation_", "");
     return `elevation:${orientation}`;
-  } else if (panelType.startsWith('section_')) {
-    const sectionId = panelType.replace('section_', 'section_');
+  } else if (panelType.startsWith("section_")) {
+    const sectionId = panelType.replace("section_", "section_");
     return `section:${sectionId}`;
-  } else if (panelType === 'hero_3d') {
-    return 'hero:*';
-  } else if (panelType === 'interior_3d') {
-    return 'interior:*';
-  } else if (panelType === 'site_diagram') {
-    return 'site:*';
+  } else if (panelType === "hero_3d") {
+    return "hero:*";
+  } else if (panelType === "interior_3d") {
+    return "interior:*";
+  } else if (panelType === "site_diagram") {
+    return "site:*";
   } else {
     return `${panelType}:*`;
   }
@@ -870,20 +910,20 @@ function panelTypeToBlenderKey(panelType) {
 function getPanelSeverity(panelType) {
   // Critical panels: floor plans, elevations, sections
   if (
-    panelType.startsWith('floor_plan_') ||
-    panelType.startsWith('elevation_') ||
-    panelType.startsWith('section_')
+    panelType.startsWith("floor_plan_") ||
+    panelType.startsWith("elevation_") ||
+    panelType.startsWith("section_")
   ) {
-    return 'critical';
+    return "critical";
   }
 
   // Important panels: 3D views
-  if (panelType === 'hero_3d' || panelType === 'interior_3d') {
-    return 'important';
+  if (panelType === "hero_3d" || panelType === "interior_3d") {
+    return "important";
   }
 
   // Optional panels: diagrams, site
-  return 'optional';
+  return "optional";
 }
 
 /**
@@ -893,36 +933,49 @@ function getPanelSeverity(panelType) {
  */
 function buildStyleLock(masterDNA) {
   if (!masterDNA) {
-    return 'Contemporary residential building';
+    return "Contemporary residential building";
   }
 
-  const style = masterDNA.architecturalStyle || masterDNA.style?.architecture || 'Contemporary';
+  const style =
+    masterDNA.architecturalStyle ||
+    masterDNA.style?.architecture ||
+    "Contemporary";
 
   // Extract primary materials
   const materials = masterDNA.materials?.exterior || masterDNA.materials || [];
-  let primaryMaterial = 'brick';
+  let primaryMaterial = "brick";
 
   if (Array.isArray(materials) && materials.length > 0) {
     // Materials array might contain objects like {name: 'brick', color: '#...'} or strings
     const firstMaterial = materials[0];
     primaryMaterial =
-      typeof firstMaterial === 'object'
-        ? firstMaterial.name || firstMaterial.material || firstMaterial.type || 'brick'
+      typeof firstMaterial === "object"
+        ? firstMaterial.name ||
+          firstMaterial.material ||
+          firstMaterial.type ||
+          "brick"
         : String(firstMaterial);
-  } else if (typeof materials === 'object' && materials !== null) {
+  } else if (typeof materials === "object" && materials !== null) {
     // Materials might be an object like {primary: 'brick', secondary: 'glass'}
-    primaryMaterial = materials.primary || materials.name || materials.main || 'brick';
-  } else if (typeof materials === 'string') {
-    primaryMaterial = materials.split(',')[0].trim();
+    primaryMaterial =
+      materials.primary || materials.name || materials.main || "brick";
+  } else if (typeof materials === "string") {
+    primaryMaterial = materials.split(",")[0].trim();
   }
 
   // Extract roof type
-  const roofType = masterDNA.roof?.type || masterDNA.geometry_rules?.roof_type || 'gable';
+  const roofType =
+    masterDNA.roof?.type || masterDNA.geometry_rules?.roof_type || "gable";
 
   // Extract color palette
   const primaryColor =
-    masterDNA.colors?.primary || masterDNA.materials?.colors?.primary || '#D4C5B0';
-  const accentColor = masterDNA.colors?.accent || masterDNA.materials?.colors?.accent || '#2C3E50';
+    masterDNA.colors?.primary ||
+    masterDNA.materials?.colors?.primary ||
+    "#D4C5B0";
+  const accentColor =
+    masterDNA.colors?.accent ||
+    masterDNA.materials?.colors?.accent ||
+    "#2C3E50";
 
   // Build deterministic style lock
   // REPEATED for emphasis in prompt
@@ -941,15 +994,15 @@ function normalizeDimensions(masterDNA = {}) {
 
 function normalizeProgram(programSpaces = []) {
   if (!Array.isArray(programSpaces) || programSpaces.length === 0) {
-    return 'lobby, living, kitchen, bedrooms, services';
+    return "lobby, living, kitchen, bedrooms, services";
   }
   return programSpaces
     .map((p) => {
-      const name = p.name || p.type || 'space';
+      const name = p.name || p.type || "space";
       const area = p.area ? `${p.area} sqm` : null;
       return area ? `${name} (${area})` : name;
     })
-    .join(', ');
+    .join(", ");
 }
 
 function buildPanelPrompt(panelType, context = {}) {
@@ -964,175 +1017,181 @@ function buildPanelPrompt(panelType, context = {}) {
   } = context;
 
   // Use new structured prompt builders for better consistency
-  if (panelType === 'hero_3d' || panelType === 'interior_3d' || panelType === 'site_diagram') {
+  if (
+    panelType === "hero_3d" ||
+    panelType === "interior_3d" ||
+    panelType === "site_diagram"
+  ) {
     const additionalContext =
-      panelType === 'hero_3d'
-        ? `Entrance on ${entranceOrientation || 'north'} side. Show building from optimal viewing angle.`
-        : panelType === 'interior_3d'
-          ? `View from main entrance area. Show ${buildingType || 'residential'} interior spaces.`
+      panelType === "hero_3d"
+        ? `Entrance on ${entranceOrientation || "north"} side. Show building from optimal viewing angle.`
+        : panelType === "interior_3d"
+          ? `View from main entrance area. Show ${buildingType || "residential"} interior spaces.`
           : `Site context with building footprint. Show site boundaries and access.`;
 
     return build3DPanelPrompt(panelType, masterDNA, additionalContext);
   }
 
-  if (panelType.includes('floor_plan')) {
-    const level = panelType.includes('ground')
-      ? 'ground'
-      : panelType.includes('first')
-        ? 'first'
-        : panelType.includes('level2')
-          ? 'second'
-          : 'ground';
+  if (panelType.includes("floor_plan")) {
+    const level = panelType.includes("ground")
+      ? "ground"
+      : panelType.includes("first")
+        ? "first"
+        : panelType.includes("level2")
+          ? "second"
+          : "ground";
 
-    const additionalContext = `Entrance on ${entranceOrientation || 'north'} side. Building type: ${buildingType || 'residential'}.`;
+    const additionalContext = `Entrance on ${entranceOrientation || "north"} side. Building type: ${buildingType || "residential"}.`;
     return buildPlanPrompt(level, masterDNA, additionalContext);
   }
 
-  if (panelType.includes('elevation')) {
-    const direction = panelType.includes('north')
-      ? 'north'
-      : panelType.includes('south')
-        ? 'south'
-        : panelType.includes('east')
-          ? 'east'
-          : 'west';
+  if (panelType.includes("elevation")) {
+    const direction = panelType.includes("north")
+      ? "north"
+      : panelType.includes("south")
+        ? "south"
+        : panelType.includes("east")
+          ? "east"
+          : "west";
 
     const additionalContext =
-      direction === (entranceOrientation || 'north').toLowerCase()
+      direction === (entranceOrientation || "north").toLowerCase()
         ? `This is the MAIN ENTRANCE facade. Show entrance door prominently.`
         : `This facade is different from the entrance side.`;
 
     return buildElevationPrompt(direction, masterDNA, additionalContext);
   }
 
-  if (panelType.includes('section')) {
-    const sectionType = panelType.includes('AA') ? 'longitudinal' : 'cross';
+  if (panelType.includes("section")) {
+    const sectionType = panelType.includes("AA") ? "longitudinal" : "cross";
     const sectionContext = geometryHint
       ? `Use provided geometry (${geometryHint.type}) to lock cut position, heights, and roofline.`
-      : '';
+      : "";
     return buildSectionPrompt(sectionType, masterDNA, sectionContext);
   }
 
   // Fallback to legacy format for material_palette and climate_card
-  const style = masterDNA?.architecturalStyle || 'Contemporary';
-  const projectType = buildingType || masterDNA?.projectType || 'residential';
+  const style = masterDNA?.architecturalStyle || "Contemporary";
+  const projectType = buildingType || masterDNA?.projectType || "residential";
   const materials = normalizeMaterialsString(masterDNA);
   const program = normalizeProgram(programSpaces);
   const dims = normalizeDimensions(masterDNA);
-  const entrance = entranceOrientation || 'street-facing';
+  const entrance = entranceOrientation || "street-facing";
   const footprint = `${dims.length}m x ${dims.width}m`;
   const height = `${dims.height}m total, ${dims.floors} floors`;
 
   switch (panelType) {
-    case 'hero_3d':
+    case "hero_3d":
       return [
         `Hero exterior 3D view of a ${projectType} building in ${style} style`,
         `Materials: ${materials}`,
         `Footprint ${footprint}, height ${height}`,
         `Entrance on ${entrance} side, coherent massing, consistent with plans`,
-        'High fidelity, natural lighting, no people, single building only',
-        'Show surrounding site context lightly without changing building geometry',
-      ].join('. ');
-    case 'interior_3d':
+        "High fidelity, natural lighting, no people, single building only",
+        "Show surrounding site context lightly without changing building geometry",
+      ].join(". ");
+    case "interior_3d":
       return [
         `Interior 3D view of main lobby/living core for ${projectType} in ${style} style`,
         `Materials: ${materials}`,
         `Consistent openings and structure per plans; view aligns with entrance side ${entrance}`,
-        'Show furniture layout logically matching program; single building only; no people',
-      ].join('. ');
-    case 'floor_plan_ground':
+        "Show furniture layout logically matching program; single building only; no people",
+      ].join(". ");
+    case "floor_plan_ground":
       return [
         `Ground floor plan, true orthographic overhead`,
         `Scale 1:100 @ A1, footprint ${footprint}`,
         `Rooms: ${program}`,
         `Entrance on ${entrance} side; align doors/windows to elevations`,
-        'Wall thickness ext 0.3m, int 0.15m; clear labels and north arrow',
-      ].join('. ');
-    case 'floor_plan_first':
+        "Wall thickness ext 0.3m, int 0.15m; clear labels and north arrow",
+      ].join(". ");
+    case "floor_plan_first":
       return [
         `First floor plan (Level 1), true orthographic overhead`,
         `Scale 1:100 @ A1, footprint ${footprint}`,
         `Align stairs/shafts with ground floor; bedrooms/private rooms prioritized`,
         `Entrance stack over ${entrance} side; consistent window/door positions`,
-        'Wall thickness ext 0.3m, int 0.15m; clear labels and dimensions',
-      ].join('. ');
-    case 'floor_plan_level2':
+        "Wall thickness ext 0.3m, int 0.15m; clear labels and dimensions",
+      ].join(". ");
+    case "floor_plan_level2":
       return [
         `Second floor plan (Level 2), true orthographic overhead`,
         `Scale 1:100 @ A1, footprint ${footprint}`,
         `Align vertical cores with lower levels; bedrooms/private or service per program`,
         `Entrance stack over ${entrance} side; window/door positions match elevations`,
-        'Wall thickness ext 0.3m, int 0.15m; clear labels and dimensions',
-      ].join('. ');
-    case 'elevation_north':
-    case 'elevation_south':
-    case 'elevation_east':
-    case 'elevation_west': {
-      const dir = panelType.split('_')[1];
+        "Wall thickness ext 0.3m, int 0.15m; clear labels and dimensions",
+      ].join(". ");
+    case "elevation_north":
+    case "elevation_south":
+    case "elevation_east":
+    case "elevation_west": {
+      const dir = panelType.split("_")[1];
       return [
         `${dir.toUpperCase()} elevation, flat orthographic`,
         `Style ${style}, materials: ${materials}`,
         `Show entrance on ${entrance} side where applicable`,
         `Align openings with floor plans; reveal facade articulation and roofline`,
-        'No perspective; clean line weights; include grade line',
-      ].join('. ');
+        "No perspective; clean line weights; include grade line",
+      ].join(". ");
     }
-    case 'section_AA':
+    case "section_AA":
       return [
-        'Section A-A (longitudinal) cutting through entrance and main circulation',
+        "Section A-A (longitudinal) cutting through entrance and main circulation",
         `Show floor-to-floor heights (${height}), slab thickness, stairs alignment`,
         `Materials: ${materials}; annotate key levels and roof build-up`,
-        'True orthographic, no perspective, clean line weights',
-      ].join('. ');
-    case 'section_BB':
+        "True orthographic, no perspective, clean line weights",
+      ].join(". ");
+    case "section_BB":
       return [
-        'Section B-B (cross section) cutting perpendicular to A-A',
+        "Section B-B (cross section) cutting perpendicular to A-A",
         `Show structural grid if implied; align openings with elevations`,
         `Heights: ${height}; materials: ${materials}`,
-        'True orthographic, no perspective, clear labels for levels',
-      ].join('. ');
-    case 'site_diagram': {
-      const siteDesc = siteBoundary ? 'Use provided site boundary polygon; ' : '';
+        "True orthographic, no perspective, clear labels for levels",
+      ].join(". ");
+    case "site_diagram": {
+      const siteDesc = siteBoundary
+        ? "Use provided site boundary polygon; "
+        : "";
       return [
         `${siteDesc}Site diagram with north arrow and scale`,
         `Place building footprint ${footprint} oriented to entrance ${entrance}`,
-        'Show context roads/blocks lightly; no redesign of building massing',
-        'Clear labels: site boundary, setback hints, legend minimal',
-      ].join('. ');
+        "Show context roads/blocks lightly; no redesign of building massing",
+        "Clear labels: site boundary, setback hints, legend minimal",
+      ].join(". ");
     }
-    case 'material_palette': {
+    case "material_palette": {
       const matList = normalizeMaterialsString(masterDNA);
       return [
-        'Material palette board showing primary building materials',
+        "Material palette board showing primary building materials",
         `Materials: ${matList}`,
-        'Display as color swatches with hex codes and material names',
-        'Professional material board layout with labels',
-        'Show texture samples and finish specifications',
-        'Clean grid layout, no perspective, flat presentation',
-      ].join('. ');
+        "Display as color swatches with hex codes and material names",
+        "Professional material board layout with labels",
+        "Show texture samples and finish specifications",
+        "Clean grid layout, no perspective, flat presentation",
+      ].join(". ");
     }
-    case 'climate_card': {
-      const climate = context.climate || { type: 'temperate oceanic' };
-      const climateType = climate.type || 'temperate oceanic';
+    case "climate_card": {
+      const climate = context.climate || { type: "temperate oceanic" };
+      const climateType = climate.type || "temperate oceanic";
       return [
         `Climate analysis card for ${climateType} climate`,
-        'Show solar orientation diagram with compass rose',
-        'Display seasonal temperature ranges and precipitation',
-        'Include sun path diagram (summer/winter solstice)',
-        'Energy performance metrics and sustainability features',
-        'Professional infographic style with clear data visualization',
-        'No perspective, flat 2D presentation with icons and charts',
-      ].join('. ');
+        "Show solar orientation diagram with compass rose",
+        "Display seasonal temperature ranges and precipitation",
+        "Include sun path diagram (summer/winter solstice)",
+        "Energy performance metrics and sustainability features",
+        "Professional infographic style with clear data visualization",
+        "No perspective, flat 2D presentation with icons and charts",
+      ].join(". ");
     }
-    case 'schedules_notes': {
+    case "schedules_notes": {
       return [
-        'Architectural schedules and notes sheet',
-        'Show door and window schedules in tabular format',
-        'Include room finish schedule and general notes',
-        'Display area schedule and key plan',
-        'Professional data presentation with clean typography',
-        'No perspective, flat 2D presentation',
-      ].join('. ');
+        "Architectural schedules and notes sheet",
+        "Show door and window schedules in tabular format",
+        "Include room finish schedule and general notes",
+        "Display area schedule and key plan",
+        "Professional data presentation with clean typography",
+        "No perspective, flat 2D presentation",
+      ].join(". ");
     }
     default:
       return `Panel ${panelType} for ${projectType} in ${style} style.`;
@@ -1168,10 +1227,10 @@ function buildPanelSequence(masterDNA = {}) {
   const includeFirstFloor = floors > 1;
   const includeSecondFloor = floors > 2;
   return BASE_PANEL_SEQUENCE.filter((key) => {
-    if (key === 'floor_plan_first' && !includeFirstFloor) {
+    if (key === "floor_plan_first" && !includeFirstFloor) {
       return false;
     }
-    if (key === 'floor_plan_level2' && !includeSecondFloor) {
+    if (key === "floor_plan_level2" && !includeSecondFloor) {
       return false;
     }
     return true;
@@ -1212,17 +1271,21 @@ export async function planA1Panels({
   // =========================================================================
   // STRICT PREFLIGHT GATE: Block generation if DNA/geometry is invalid
   // =========================================================================
-  const strictPreflightEnabled = isFeatureEnabled('strictPreflightGate') !== false; // Default ON
+  const strictPreflightEnabled =
+    isFeatureEnabled("strictPreflightGate") !== false; // Default ON
 
   if (strictPreflightEnabled) {
-    logger.info('[PanelGeneration] Running preflight validation gate...');
+    logger.info("[PanelGeneration] Running preflight validation gate...");
 
     // Build program schedule from available sources
     const programSchedule = {
       buildingType: buildingType || masterDNA?.buildingType,
       floors:
         masterDNA?.dimensions?.floors ||
-        programSpaces?.reduce((max, s) => Math.max(max, (s.floor || 0) + 1), 1) ||
+        programSpaces?.reduce(
+          (max, s) => Math.max(max, (s.floor || 0) + 1),
+          1,
+        ) ||
         1,
       area:
         masterDNA?.dimensions?.length_m *
@@ -1233,17 +1296,24 @@ export async function planA1Panels({
 
     try {
       // This will throw PreflightError if validation fails
-      const preflightResult = generationPreflight.validate(masterDNA, programSchedule);
+      const preflightResult = generationPreflight.validate(
+        masterDNA,
+        programSchedule,
+      );
 
       if (!preflightResult.valid) {
         // Log warnings but continue if no errors were thrown
-        preflightResult.warnings?.forEach((w) => logger.warn(`[Preflight Warning] ${w}`));
+        preflightResult.warnings?.forEach((w) =>
+          logger.warn(`[Preflight Warning] ${w}`),
+        );
       }
 
-      logger.info('[PanelGeneration] Preflight validation PASSED ✓');
+      logger.info("[PanelGeneration] Preflight validation PASSED ✓");
     } catch (error) {
       if (error instanceof PreflightError || error.isPreflightError) {
-        logger.error(`[PanelGeneration] Preflight validation FAILED: ${error.code}`);
+        logger.error(
+          `[PanelGeneration] Preflight validation FAILED: ${error.code}`,
+        );
         logger.error(`   Message: ${error.message}`);
         logger.error(`   Debug payload available for download`);
 
@@ -1260,7 +1330,7 @@ export async function planA1Panels({
   // CANONICAL DESIGN STATE (CDS) CHECK
   // When strictCDS feature flag is enabled, require complete CDS for generation
   // =========================================================================
-  const strictCDSEnabled = isFeatureEnabled('strictCanonicalDesignState');
+  const strictCDSEnabled = isFeatureEnabled("strictCanonicalDesignState");
   let useCDSRenders = false;
 
   if (canonicalDesignState) {
@@ -1268,37 +1338,39 @@ export async function planA1Panels({
 
     if (cdsReadiness.ready) {
       useCDSRenders = true;
-      logger.info('[PanelGeneration] ✓ CanonicalDesignState ready - using canonical renders');
+      logger.info(
+        "[PanelGeneration] ✓ CanonicalDesignState ready - using canonical renders",
+      );
       logger.info(`   Fingerprint: ${canonicalDesignState.designFingerprint}`);
       logger.info(
-        `   Floor plans: ${Object.keys(canonicalDesignState.canonicalRenders?.floorPlansSVG || {}).length}`
+        `   Floor plans: ${Object.keys(canonicalDesignState.canonicalRenders?.floorPlansSVG || {}).length}`,
       );
       logger.info(
-        `   Elevations: ${Object.keys(canonicalDesignState.canonicalRenders?.elevationsSVG || {}).length}`
+        `   Elevations: ${Object.keys(canonicalDesignState.canonicalRenders?.elevationsSVG || {}).length}`,
       );
     } else if (strictCDSEnabled) {
       // Strict mode - fail if CDS is incomplete
       throw new PreflightError(
-        'CDS_INCOMPLETE',
-        `CanonicalDesignState is incomplete: missing ${cdsReadiness.missing.join(', ')}`,
+        "CDS_INCOMPLETE",
+        `CanonicalDesignState is incomplete: missing ${cdsReadiness.missing.join(", ")}`,
         {
           missing: cdsReadiness.missing,
           designFingerprint: canonicalDesignState.designFingerprint,
-        }
+        },
       );
     } else {
       logger.warn(
-        '[PanelGeneration] CanonicalDesignState provided but incomplete:',
-        cdsReadiness.missing
+        "[PanelGeneration] CanonicalDesignState provided but incomplete:",
+        cdsReadiness.missing,
       );
-      logger.warn('   Falling back to legacy geometry pipeline');
+      logger.warn("   Falling back to legacy geometry pipeline");
     }
   } else if (strictCDSEnabled) {
     // Strict mode requires CDS
     throw new PreflightError(
-      'CDS_MISSING',
-      'CanonicalDesignState is required when strictCanonicalDesignState is enabled',
-      { feature: 'strictCanonicalDesignState' }
+      "CDS_MISSING",
+      "CanonicalDesignState is required when strictCanonicalDesignState is enabled",
+      { feature: "strictCanonicalDesignState" },
     );
   }
 
@@ -1306,7 +1378,7 @@ export async function planA1Panels({
   const cdsFingerprint = canonicalDesignState?.designFingerprint || null;
 
   const seedSource =
-    typeof baseSeed === 'number' || typeof baseSeed === 'string'
+    typeof baseSeed === "number" || typeof baseSeed === "string"
       ? baseSeed
       : Math.floor(Math.random() * 1000000);
 
@@ -1324,10 +1396,10 @@ export async function planA1Panels({
   }
 
   // LOG: Show which panels are being planned
-  console.log('📋 Planning A1 Panels:');
+  console.log("📋 Planning A1 Panels:");
   console.log(`   DesignFingerprint: ${designFingerprint}`);
   console.log(`   Total panels: ${panelSequence.length}`);
-  console.log(`   Panels: ${panelSequence.join(', ')}`);
+  console.log(`   Panels: ${panelSequence.join(", ")}`);
   console.log(`   Seed source: ${seedSource}`);
 
   // NEW: Generate style profile using adaptive style transfer (0.6/0.3/0.1 blend)
@@ -1337,11 +1409,12 @@ export async function planA1Panels({
 
   if (conditionedPipeline?.enabled && conditionedPipeline?.styleDescriptors) {
     // Phase 4/5: Use StyleProfile from conditioned pipeline
-    console.log('🎨 Using StyleProfile from Conditioned Image Pipeline...');
+    console.log("🎨 Using StyleProfile from Conditioned Image Pipeline...");
     styleProfile = {
       styleInjection: conditionedPipeline.styleDescriptors.unified,
       styleTokens: conditionedPipeline.styleDescriptors.detailed,
-      dominantStyle: conditionedPipeline.styleProfile?.archetype || 'contemporary',
+      dominantStyle:
+        conditionedPipeline.styleProfile?.archetype || "contemporary",
       preferredMaterials: conditionedPipeline.styleProfile?.materials?.primary
         ? [conditionedPipeline.styleProfile.materials.primary.name]
         : [],
@@ -1349,14 +1422,18 @@ export async function planA1Panels({
       conditionedStyleDescriptors: conditionedPipeline.styleDescriptors,
     };
     console.log(`   ✅ Style archetype: ${styleProfile.dominantStyle}`);
-    console.log(`   📝 Unified style: ${styleProfile.styleInjection?.substring(0, 80)}...`);
+    console.log(
+      `   📝 Unified style: ${styleProfile.styleInjection?.substring(0, 80)}...`,
+    );
   } else if (!styleProfile) {
     try {
-      console.log('🎨 Generating style profile (0.6 Portfolio / 0.3 Local / 0.1 Variation)...');
+      console.log(
+        "🎨 Generating style profile (0.6 Portfolio / 0.3 Local / 0.1 Variation)...",
+      );
       const dynamicWeights = calculateDynamicWeights({
         portfolioItems,
         isHistoricArea: locationData?.zoning?.historic || false,
-        creativityLevel: 'normal',
+        creativityLevel: "normal",
       });
       styleProfile = await transferStyle({
         portfolioItems,
@@ -1370,21 +1447,27 @@ export async function planA1Panels({
       console.log(`   ✅ Style profile: ${styleProfile.dominantStyle}`);
       console.log(`   📝 Style tokens: ${styleProfile.styleTokens}`);
     } catch (error) {
-      console.warn(`   ⚠️ Style transfer failed: ${error.message}, using defaults`);
+      console.warn(
+        `   ⚠️ Style transfer failed: ${error.message}, using defaults`,
+      );
       styleProfile = {
-        styleInjection: '',
-        styleTokens: 'contemporary, modern, clean lines',
-        dominantStyle: 'contemporary',
+        styleInjection: "",
+        styleTokens: "contemporary, modern, clean lines",
+        dominantStyle: "contemporary",
       };
     }
   }
 
   const panelSeedMap = derivePanelSeeds(seedSource, panelSequence);
-  const geometryValidation = validateGeometryRenders(geometryRenders, panelSequence);
+  const geometryValidation = validateGeometryRenders(
+    geometryRenders,
+    panelSequence,
+  );
   const safeGeometryRenders = geometryValidation.filtered;
 
   return panelSequence.map((panelType) => {
-    const seed = panelSeedMap[panelType] ?? derivePanelSeed(seedSource, panelType);
+    const seed =
+      panelSeedMap[panelType] ?? derivePanelSeed(seedSource, panelType);
     const geometryHint = selectGeometryRender(panelType, safeGeometryRenders);
 
     // Determine geometry strength based on panel type
@@ -1393,13 +1476,13 @@ export async function planA1Panels({
     // Therefore, geometryStrength should be LOW (0.2-0.3).
     let geometryStrength = 0;
     if (geometryHint) {
-      if (panelType.includes('floor_plan')) {
+      if (panelType.includes("floor_plan")) {
         // Floor plans need EXTREME structure to respect the footprint
         // High geometry strength forces AI to "ink" the lines rather than invent
         geometryStrength = 0.75; // Resulting image_strength = 0.25 (Strict adherence)
-      } else if (panelType.includes('section')) {
+      } else if (panelType.includes("section")) {
         geometryStrength = 0.75; // Resulting image_strength = 0.25
-      } else if (panelType.includes('elevation')) {
+      } else if (panelType.includes("elevation")) {
         geometryStrength = 0.75; // Resulting image_strength = 0.25
       } else {
         geometryStrength = 0.35; // Resulting image_strength = 0.65 (Standard for 3D)
@@ -1416,16 +1499,19 @@ export async function planA1Panels({
     // NEW: Extract FGL opening enumeration for elevation panels
     let fglOpenings = null;
     let fglRoofProfile = null;
-    if (fglData && panelType.includes('elevation')) {
+    if (fglData && panelType.includes("elevation")) {
       const directionMap = {
-        elevation_north: 'N',
-        elevation_south: 'S',
-        elevation_east: 'E',
-        elevation_west: 'W',
+        elevation_north: "N",
+        elevation_south: "S",
+        elevation_east: "E",
+        elevation_west: "W",
       };
       const direction = directionMap[panelType];
       if (direction && fglData.windowPlacements) {
-        fglOpenings = extractOpeningEnumeration(fglData.windowPlacements, direction);
+        fglOpenings = extractOpeningEnumeration(
+          fglData.windowPlacements,
+          direction,
+        );
       }
       if (fglData.roofProfile) {
         fglRoofProfile = fglData.roofProfile;
@@ -1470,7 +1556,9 @@ export async function planA1Panels({
     if (
       styleProfile &&
       styleProfile.styleTokens &&
-      (panelType === 'hero_3d' || panelType === 'interior_3d' || panelType === 'site_diagram')
+      (panelType === "hero_3d" ||
+        panelType === "interior_3d" ||
+        panelType === "site_diagram")
     ) {
       // Inject style tokens into 3D views for portfolio style influence
       const styleBoost =
@@ -1479,49 +1567,56 @@ export async function planA1Panels({
       jobPrompt = styleBoost + jobPrompt;
 
       // Add preferred materials from style profile
-      if (styleProfile.preferredMaterials && styleProfile.preferredMaterials.length > 0) {
-        jobPrompt += `. Preferred materials: ${styleProfile.preferredMaterials.join(', ')}`;
+      if (
+        styleProfile.preferredMaterials &&
+        styleProfile.preferredMaterials.length > 0
+      ) {
+        jobPrompt += `. Preferred materials: ${styleProfile.preferredMaterials.join(", ")}`;
       }
     }
 
     // Enforce "Single Building" constraint in prompt to prevent row-of-houses hallucination
-    if (!jobPrompt.includes('single building')) {
-      jobPrompt += ', single detached building structure, centered composition, continuous facade';
+    if (!jobPrompt.includes("single building")) {
+      jobPrompt +=
+        ", single detached building structure, centered composition, continuous facade";
     }
 
     // Add specific constraints for elevations and sections to prevent splitting
-    if (panelType.includes('elevation') || panelType.includes('section')) {
-      jobPrompt += ', one unified mass, no separate buildings, no row houses, no detached elements';
+    if (panelType.includes("elevation") || panelType.includes("section")) {
+      jobPrompt +=
+        ", one unified mass, no separate buildings, no row houses, no detached elements";
       // NOTE: No weighted syntax - FLUX ignores negative prompts entirely.
       // The positive constraints above are more effective for FLUX.
       jobNegativePrompt +=
-        ', multiple buildings, row of houses, attached units, split mass, townhouses';
+        ", multiple buildings, row of houses, attached units, split mass, townhouses";
     }
 
     // Add specific constraints for floor plans
-    if (panelType.includes('floor_plan')) {
+    if (panelType.includes("floor_plan")) {
       jobPrompt +=
-        ', single contiguous floor plan, connected rooms, one building footprint, clear wall thickness';
+        ", single contiguous floor plan, connected rooms, one building footprint, clear wall thickness";
       // NOTE: No weighted syntax - FLUX ignores negative prompts entirely.
       // The positive constraints above are more effective for FLUX.
       jobNegativePrompt +=
-        ', disconnected rooms, multiple buildings, isometric view, perspective, separated spaces';
+        ", disconnected rooms, multiple buildings, isometric view, perspective, separated spaces";
     }
 
     // NEW: Select FGL control image for elevation panels
     let fglControlImage = null;
-    if (fglData?.controlImages && panelType.includes('elevation')) {
+    if (fglData?.controlImages && panelType.includes("elevation")) {
       // Map panel type to direction (e.g., 'elevation_north' -> 'N')
       const directionMap = {
-        elevation_north: 'N',
-        elevation_south: 'S',
-        elevation_east: 'E',
-        elevation_west: 'W',
+        elevation_north: "N",
+        elevation_south: "S",
+        elevation_east: "E",
+        elevation_west: "W",
       };
       const direction = directionMap[panelType];
       if (direction && fglData.controlImages[direction]) {
         fglControlImage = fglData.controlImages[direction];
-        logger.info(`   🎯 FGL control image attached for ${panelType} (${direction})`);
+        logger.info(
+          `   🎯 FGL control image attached for ${panelType} (${direction})`,
+        );
       }
     }
 
@@ -1533,27 +1628,31 @@ export async function planA1Panels({
       // Map panel type to Meshy render key
       const meshyPanelMap = {
         // Elevations map to Meshy facade renders
-        elevation_north: 'back', // Assuming south is primary entrance
-        elevation_south: 'front',
-        elevation_east: 'right',
-        elevation_west: 'left',
+        elevation_north: "back", // Assuming south is primary entrance
+        elevation_south: "front",
+        elevation_east: "right",
+        elevation_west: "left",
         // 3D views map to Meshy perspective renders
-        hero_3d: 'perspective',
-        site_diagram: 'isometric',
-        interior_3d: 'perspective', // Fallback to exterior perspective
+        hero_3d: "perspective",
+        site_diagram: "isometric",
+        interior_3d: "perspective", // Fallback to exterior perspective
       };
 
       const meshyKey = meshyPanelMap[panelType];
       if (meshyKey && meshyControlImages[meshyKey]) {
         meshyControlImage = meshyControlImages[meshyKey];
         logger.info(
-          `   🎨 Meshy control image attached for ${panelType} (${meshyKey}, strength: ${meshyControlStrength})`
+          `   🎨 Meshy control image attached for ${panelType} (${meshyKey}, strength: ${meshyControlStrength})`,
         );
       }
     }
 
     // Also check for roof view for site diagram
-    if (!meshyControlImage && meshyControlImages?.roof && panelType === 'site_diagram') {
+    if (
+      !meshyControlImage &&
+      meshyControlImages?.roof &&
+      panelType === "site_diagram"
+    ) {
       meshyControlImage = meshyControlImages.roof;
       logger.info(`   🎨 Meshy roof view attached for ${panelType}`);
     }
@@ -1565,28 +1664,31 @@ export async function planA1Panels({
     // Conditioning images are edge/depth/silhouette maps from the BuildingModel
     let conditionedControlImage = null;
     let conditionedControlStrength = 0;
-    if (conditionedPipeline?.enabled && conditionedPipeline?.conditioningImages) {
+    if (
+      conditionedPipeline?.enabled &&
+      conditionedPipeline?.conditioningImages
+    ) {
       const conditioningImages = conditionedPipeline.conditioningImages;
       const strengths = conditionedPipeline.conditioningStrengths || {};
 
       // Map panel type to conditioning image key
       const conditioningPanelMap = {
         // Floor plans use edge detection for sharp lines
-        floor_plan_ground: 'floor_plan_L0',
-        floor_plan_first: 'floor_plan_L1',
-        floor_plan_level2: 'floor_plan_L2',
+        floor_plan_ground: "floor_plan_L0",
+        floor_plan_first: "floor_plan_L1",
+        floor_plan_level2: "floor_plan_L2",
         // Elevations use edge detection for facade structure
-        elevation_north: 'elevation_N',
-        elevation_south: 'elevation_S',
-        elevation_east: 'elevation_E',
-        elevation_west: 'elevation_W',
+        elevation_north: "elevation_N",
+        elevation_south: "elevation_S",
+        elevation_east: "elevation_E",
+        elevation_west: "elevation_W",
         // Sections use edge detection for cut views
-        section_AA: 'section_longitudinal',
-        section_BB: 'section_transverse',
+        section_AA: "section_longitudinal",
+        section_BB: "section_transverse",
         // 3D views use depth/silhouette for form control
-        hero_3d: 'exterior_3d',
-        interior_3d: 'exterior_3d', // Use exterior for consistency
-        site_diagram: 'axonometric',
+        hero_3d: "exterior_3d",
+        interior_3d: "exterior_3d", // Use exterior for consistency
+        site_diagram: "axonometric",
       };
 
       const conditioningKey = conditioningPanelMap[panelType];
@@ -1594,17 +1696,21 @@ export async function planA1Panels({
         conditionedControlImage = conditioningImages[conditioningKey];
         // Get view-specific strength (floor_plan: 0.7, exterior_3d: 0.4, etc.)
         const baseStrength =
-          strengths[conditioningKey] || (panelType.includes('floor_plan') ? 0.7 : 0.5);
+          strengths[conditioningKey] ||
+          (panelType.includes("floor_plan") ? 0.7 : 0.5);
         conditionedControlStrength = baseStrength;
         logger.info(
-          `   🏗️ Conditioned control image for ${panelType} (${conditioningKey}, strength: ${conditionedControlStrength})`
+          `   🏗️ Conditioned control image for ${panelType} (${conditioningKey}, strength: ${conditionedControlStrength})`,
         );
       }
     }
 
     // Determine final control image using priority: Conditioned > Meshy > FGL > Geometry
     const finalControlImage =
-      conditionedControlImage || meshyControlImage || fglControlImage || geometryHint;
+      conditionedControlImage ||
+      meshyControlImage ||
+      fglControlImage ||
+      geometryHint;
     let finalControlStrength = geometryStrength;
     if (conditionedControlImage) {
       finalControlStrength = conditionedControlStrength;
@@ -1660,34 +1766,38 @@ export async function planA1Panels({
 }
 
 function selectGeometryRender(panelType, geometryRenders) {
-  if (!geometryRenders || typeof geometryRenders !== 'object') {
+  if (!geometryRenders || typeof geometryRenders !== "object") {
     return null;
   }
 
   // Map floor plans to Blender plan views
-  if (panelType === 'floor_plan_ground') {
+  if (panelType === "floor_plan_ground") {
     return geometryRenders.plan_ground || null;
   }
-  if (panelType === 'floor_plan_first') {
+  if (panelType === "floor_plan_first") {
     return geometryRenders.plan_first || null;
   }
-  if (panelType === 'floor_plan_level2') {
+  if (panelType === "floor_plan_level2") {
     return geometryRenders.plan_level2 || null;
   }
 
-  if (panelType.includes('elevation')) {
-    const dir = panelType.includes('north')
-      ? 'elevation_north'
-      : panelType.includes('south')
-        ? 'elevation_south'
-        : panelType.includes('east')
-          ? 'elevation_east'
-          : 'elevation_west';
+  if (panelType.includes("elevation")) {
+    const dir = panelType.includes("north")
+      ? "elevation_north"
+      : panelType.includes("south")
+        ? "elevation_south"
+        : panelType.includes("east")
+          ? "elevation_east"
+          : "elevation_west";
     // Fallback to old names if new ones missing, but prioritize correct Blender names
-    return geometryRenders[dir] || geometryRenders[`orthographic_${dir.split('_')[1]}`] || null;
+    return (
+      geometryRenders[dir] ||
+      geometryRenders[`orthographic_${dir.split("_")[1]}`] ||
+      null
+    );
   }
 
-  if (panelType === 'hero_3d') {
+  if (panelType === "hero_3d") {
     return (
       geometryRenders.hero_exterior ||
       geometryRenders.perspective_hero ||
@@ -1696,19 +1806,27 @@ function selectGeometryRender(panelType, geometryRenders) {
     );
   }
 
-  if (panelType === 'interior_3d') {
-    return geometryRenders.interior_primary || geometryRenders.perspective_interior || null;
+  if (panelType === "interior_3d") {
+    return (
+      geometryRenders.interior_primary ||
+      geometryRenders.perspective_interior ||
+      null
+    );
   }
 
-  if (panelType === 'section_AA') {
-    return geometryRenders.section_a || geometryRenders.section_longitudinal || null;
+  if (panelType === "section_AA") {
+    return (
+      geometryRenders.section_a || geometryRenders.section_longitudinal || null
+    );
   }
 
-  if (panelType === 'section_BB') {
-    return geometryRenders.section_b || geometryRenders.section_transverse || null;
+  if (panelType === "section_BB") {
+    return (
+      geometryRenders.section_b || geometryRenders.section_transverse || null
+    );
   }
 
-  if (panelType === 'site_diagram' || panelType === 'axonometric_3d') {
+  if (panelType === "site_diagram" || panelType === "axonometric_3d") {
     return geometryRenders.axonometric || null;
   }
 
@@ -1723,18 +1841,23 @@ function selectGeometryRender(panelType, geometryRenders) {
 const MAX_GENERATION_TIME_MS = 15 * 60 * 1000;
 const PANEL_GENERATION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes per panel
 
-export async function generateA1PanelsSequential(jobs, togetherClient, options = {}) {
-  if (!togetherClient || typeof togetherClient.generateImage !== 'function') {
-    throw new Error('togetherClient.generateImage is required');
+export async function generateA1PanelsSequential(
+  jobs,
+  togetherClient,
+  options = {},
+) {
+  if (!togetherClient || typeof togetherClient.generateImage !== "function") {
+    throw new Error("togetherClient.generateImage is required");
   }
 
   const results = [];
   const startTime = Date.now();
   let rateLimitHitCount = 0;
   const strictGeometryRequired =
-    isFeatureEnabled('requireCompleteGeometryDNA') || isFeatureEnabled('strictNoFallback');
+    isFeatureEnabled("requireCompleteGeometryDNA") ||
+    isFeatureEnabled("strictNoFallback");
   const strict3DControlRequired =
-    isFeatureEnabled('geometryControlled3D') || strictGeometryRequired;
+    isFeatureEnabled("geometryControlled3D") || strictGeometryRequired;
 
   // Track timeouts and failures
   const failures = [];
@@ -1744,8 +1867,9 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
   // This ensures ALL panels use the SAME building massing/roofline
   // =========================================================================
   const firstJob = jobs[0];
-  const designFingerprint = firstJob?.designFingerprint || firstJob?.meta?.designFingerprint;
-  const useControlPack = isFeatureEnabled('canonicalControlPack');
+  const designFingerprint =
+    firstJob?.designFingerprint || firstJob?.meta?.designFingerprint;
+  const useControlPack = isFeatureEnabled("canonicalControlPack");
   let controlPackGenerated = false;
 
   // =========================================================================
@@ -1753,9 +1877,14 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
   // FAIL FAST: No silent fallback - pack MUST exist
   // =========================================================================
   const useStrictCanonicalPack =
-    isFeatureEnabled('strictCanonicalGeometryPack') || isFeatureEnabled('requireCanonicalPack');
+    isFeatureEnabled("strictCanonicalGeometryPack") ||
+    isFeatureEnabled("requireCanonicalPack");
 
-  if (useControlPack && designFingerprint && !hasGeometryPack(designFingerprint)) {
+  if (
+    useControlPack &&
+    designFingerprint &&
+    !hasGeometryPack(designFingerprint)
+  ) {
     // Try to get BuildingModel source from first job's CDS or DNA
     const buildingModelSource =
       firstJob?.meta?.canonicalDesignState ||
@@ -1764,43 +1893,61 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
     if (!buildingModelSource) {
       const errorMsg = `[FAIL FAST] No buildingModel source available for canonical pack generation. designFingerprint: ${designFingerprint}`;
-      logger.error('📦 [CanonicalGeometryPack] ' + errorMsg);
+      logger.error("📦 [CanonicalGeometryPack] " + errorMsg);
 
       if (useStrictCanonicalPack) {
-        throw new CanonicalPackError(errorMsg, GEOMETRY_PACK_ERROR_CODES.BUILD_FAILED, {
-          designFingerprint,
-          reason: 'no_building_model_source',
-        });
+        throw new CanonicalPackError(
+          errorMsg,
+          GEOMETRY_PACK_ERROR_CODES.BUILD_FAILED,
+          {
+            designFingerprint,
+            reason: "no_building_model_source",
+          },
+        );
       }
     }
 
-    logger.info('📦 [CanonicalGeometryPack] Building MANDATORY canonical geometry pack...', {
-      designFingerprint,
-      source: firstJob?.meta?.canonicalDesignState ? 'CDS' : 'DNA',
-      strictMode: useStrictCanonicalPack,
-    });
+    logger.info(
+      "📦 [CanonicalGeometryPack] Building MANDATORY canonical geometry pack...",
+      {
+        designFingerprint,
+        source: firstJob?.meta?.canonicalDesignState ? "CDS" : "DNA",
+        strictMode: useStrictCanonicalPack,
+      },
+    );
 
     try {
       // Build canonical geometry pack - this creates floor plans, elevations, sections, massing
-      const geometryPack = await buildGeometryPack(buildingModelSource, designFingerprint, {
-        runId: options.runId || `gen_${Date.now()}`,
-        width: 1024,
-        height: 1024,
-      });
-
-      logger.info('📦 [CanonicalGeometryPack] ✅ Canonical geometry pack built successfully', {
+      const geometryPack = await buildGeometryPack(
+        buildingModelSource,
         designFingerprint,
-        totalPanels: geometryPack.manifest?.summary?.totalPanels,
-        requiredPresent: geometryPack.manifest?.summary?.requiredPresent?.length,
-        allRequiredPresent: geometryPack.manifest?.summary?.allRequiredPresent,
-      });
+        {
+          runId: options.runId || `gen_${Date.now()}`,
+          width: 1024,
+          height: 1024,
+        },
+      );
+
+      logger.info(
+        "📦 [CanonicalGeometryPack] ✅ Canonical geometry pack built successfully",
+        {
+          designFingerprint,
+          totalPanels: geometryPack.manifest?.summary?.totalPanels,
+          requiredPresent:
+            geometryPack.manifest?.summary?.requiredPresent?.length,
+          allRequiredPresent:
+            geometryPack.manifest?.summary?.allRequiredPresent,
+        },
+      );
 
       controlPackGenerated = true;
 
       // Save pack to debug folder if debug mode enabled
-      if (options.debugDir || isFeatureEnabled('saveControlPackToDebug')) {
+      if (options.debugDir || isFeatureEnabled("saveControlPackToDebug")) {
         const debugDir = options.debugDir || `debug_runs`;
-        await geometryPack.savePackToDisk?.(designFingerprint, debugDir).catch(() => {});
+        await geometryPack
+          .savePackToDisk?.(designFingerprint, debugDir)
+          .catch(() => {});
       }
 
       // Also generate legacy control pack for backward compatibility
@@ -1813,19 +1960,19 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           });
         } catch (legacyError) {
           logger.debug(
-            '📦 [ControlPack] Legacy control pack generation skipped:',
-            legacyError.message
+            "📦 [ControlPack] Legacy control pack generation skipped:",
+            legacyError.message,
           );
         }
       }
     } catch (controlPackError) {
       logger.error(
-        '📦 [CanonicalGeometryPack] ❌ FAIL FAST - Failed to build canonical geometry pack',
+        "📦 [CanonicalGeometryPack] ❌ FAIL FAST - Failed to build canonical geometry pack",
         {
           designFingerprint,
           error: controlPackError.message,
           code: controlPackError.code,
-        }
+        },
       );
 
       // FAIL FAST: Do NOT continue without canonical pack in strict mode
@@ -1836,23 +1983,36 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         throw new CanonicalPackError(
           `[FAIL FAST] Cannot generate panels without canonical geometry pack: ${controlPackError.message}`,
           GEOMETRY_PACK_ERROR_CODES.BUILD_FAILED,
-          { designFingerprint, originalError: controlPackError.message }
+          { designFingerprint, originalError: controlPackError.message },
         );
       }
 
       // Non-strict mode: Log warning but continue (legacy behavior)
       logger.warn(
-        '📦 [CanonicalGeometryPack] Continuing without canonical pack (strict mode disabled)'
+        "📦 [CanonicalGeometryPack] Continuing without canonical pack (strict mode disabled)",
       );
     }
-  } else if (useControlPack && designFingerprint && hasGeometryPack(designFingerprint)) {
-    logger.info('📦 [CanonicalGeometryPack] Using cached canonical geometry pack', {
+  } else if (
+    useControlPack &&
+    designFingerprint &&
+    hasGeometryPack(designFingerprint)
+  ) {
+    logger.info(
+      "📦 [CanonicalGeometryPack] Using cached canonical geometry pack",
+      {
+        designFingerprint,
+      },
+    );
+    controlPackGenerated = true;
+  } else if (
+    useControlPack &&
+    designFingerprint &&
+    hasControlPack(designFingerprint)
+  ) {
+    // Legacy fallback to old control pack
+    logger.info("📦 [ControlPack] Using cached legacy control pack", {
       designFingerprint,
     });
-    controlPackGenerated = true;
-  } else if (useControlPack && designFingerprint && hasControlPack(designFingerprint)) {
-    // Legacy fallback to old control pack
-    logger.info('📦 [ControlPack] Using cached legacy control pack', { designFingerprint });
     controlPackGenerated = true;
   }
 
@@ -1861,9 +2021,12 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
   // When requireCanonicalPack is enabled, BLOCK generation without canonical pack
   // =========================================================================
   if (isCanonicalPackGateEnabled() && designFingerprint) {
-    logger.info('🚧 [CanonicalPackGate] Validating canonical pack before generation...', {
-      designFingerprint,
-    });
+    logger.info(
+      "🚧 [CanonicalPackGate] Validating canonical pack before generation...",
+      {
+        designFingerprint,
+      },
+    );
 
     try {
       // This will throw CanonicalPackGateError if validation fails
@@ -1872,30 +2035,35 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         strictMode: false, // Use minimum required panels
       });
 
-      logger.info('🚧 [CanonicalPackGate] ✅ Validation passed', {
+      logger.info("🚧 [CanonicalPackGate] ✅ Validation passed", {
         designFingerprint,
         panelCount: gateResult.panelCount,
       });
     } catch (gateError) {
       if (gateError instanceof CanonicalPackGateError) {
-        logger.error('🚧 [CanonicalPackGate] ❌ BLOCKED - Canonical pack validation failed', {
-          designFingerprint,
-          code: gateError.code,
-          message: gateError.message,
-          suggestedAction: gateError.getSuggestedAction(),
-        });
+        logger.error(
+          "🚧 [CanonicalPackGate] ❌ BLOCKED - Canonical pack validation failed",
+          {
+            designFingerprint,
+            code: gateError.code,
+            message: gateError.message,
+            suggestedAction: gateError.getSuggestedAction(),
+          },
+        );
 
         // Re-throw with clear message for UI
         throw new Error(
           `[CanonicalPackGate] ${gateError.message}\n\n` +
             `Suggested action: ${gateError.getSuggestedAction()}\n\n` +
-            `Error code: ${gateError.code}`
+            `Error code: ${gateError.code}`,
         );
       }
       throw gateError;
     }
   } else if (isCanonicalPackGateEnabled() && !designFingerprint) {
-    logger.warn('🚧 [CanonicalPackGate] No designFingerprint - cannot validate canonical pack');
+    logger.warn(
+      "🚧 [CanonicalPackGate] No designFingerprint - cannot validate canonical pack",
+    );
   }
 
   for (let i = 0; i < jobs.length; i++) {
@@ -1904,10 +2072,14 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
     // Check if we've exceeded maximum generation time
     if (elapsedTime > MAX_GENERATION_TIME_MS) {
-      logger.error(`\u274c Panel generation timeout after ${Math.round(elapsedTime / 1000)}s`);
-      logger.error(`   Generated ${results.length}/${jobs.length} panels before timeout`);
+      logger.error(
+        `\u274c Panel generation timeout after ${Math.round(elapsedTime / 1000)}s`,
+      );
+      logger.error(
+        `   Generated ${results.length}/${jobs.length} panels before timeout`,
+      );
       throw new Error(
-        `Generation timeout: Only ${results.length}/${jobs.length} panels completed in 15 minutes. This indicates API rate limiting or network issues. Please retry in 2 minutes.`
+        `Generation timeout: Only ${results.length}/${jobs.length} panels completed in 15 minutes. This indicates API rate limiting or network issues. Please retry in 2 minutes.`,
       );
     }
 
@@ -1921,18 +2093,18 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
     // DELIVERABLE C: HARD GUARDS - PanelValidationGate
     // Determine intended generator and validate BEFORE generation
     // =========================================================================
-    let intendedGenerator = 'flux'; // Default to legacy flux
+    let intendedGenerator = "flux"; // Default to legacy flux
 
     // Determine generator based on panel type and output mode
     const outputModeForGuard = getOutputMode();
     if (isDataPanel(job.type, outputModeForGuard)) {
-      intendedGenerator = 'svg'; // Data panels use deterministic SVG
+      intendedGenerator = "svg"; // Data panels use deterministic SVG
     } else if (PIPELINE_TECHNICAL_PANELS.includes(job.type)) {
-      intendedGenerator = isOption2Mode() ? 'blender' : 'flux';
+      intendedGenerator = isOption2Mode() ? "blender" : "flux";
       // In current implementation, technical panels use SVG which is OK
-      intendedGenerator = 'svg';
+      intendedGenerator = "svg";
     } else if (PIPELINE_3D_PANELS.includes(job.type)) {
-      intendedGenerator = isOption2Mode() ? 'openai' : 'flux';
+      intendedGenerator = isOption2Mode() ? "openai" : "flux";
     }
 
     // Validate the intended generator (throws in strict mode if wrong)
@@ -1943,7 +2115,9 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         validationError instanceof GeneratorMismatchError ||
         validationError instanceof LegacyGeneratorError
       ) {
-        logger.error(`🚫 [PanelValidationGate] BLOCKED: ${validationError.message}`);
+        logger.error(
+          `🚫 [PanelValidationGate] BLOCKED: ${validationError.message}`,
+        );
         throw validationError;
       }
       // Non-validation errors pass through
@@ -1967,27 +2141,36 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       // When useCDSRenders is enabled, use pre-rendered SVGs from CanonicalDesignState
       // This ensures 100% deterministic output from the geometry engine only (no AI)
       // =========================================================================
-      if (job.meta?.useCDSRenders && job.meta?.canonicalDesignState?.canonicalRenders) {
+      if (
+        job.meta?.useCDSRenders &&
+        job.meta?.canonicalDesignState?.canonicalRenders
+      ) {
         const cdsRenders = job.meta.canonicalDesignState.canonicalRenders;
         const cdsFingerprint =
-          job.meta.cdsFingerprint || job.meta.canonicalDesignState.designFingerprint;
+          job.meta.cdsFingerprint ||
+          job.meta.canonicalDesignState.designFingerprint;
 
         // Floor plans - use pre-rendered SVG from CDS
-        if (job.type.startsWith('floor_plan_')) {
-          const floorLevel = job.type.replace('floor_plan_', '');
+        if (job.type.startsWith("floor_plan_")) {
+          const floorLevel = job.type.replace("floor_plan_", "");
           const floorIndex =
-            floorLevel === 'ground'
+            floorLevel === "ground"
               ? 0
-              : floorLevel === 'first'
+              : floorLevel === "first"
                 ? 1
-                : parseInt(floorLevel.replace('level', '')) || 0;
+                : parseInt(floorLevel.replace("level", "")) || 0;
 
-          if (cdsRenders.floorPlansSVG && cdsRenders.floorPlansSVG[floorIndex]) {
+          if (
+            cdsRenders.floorPlansSVG &&
+            cdsRenders.floorPlansSVG[floorIndex]
+          ) {
             logger.info(
-              `🔒 [CDS] Using canonical floor plan SVG for ${job.type} (fingerprint: ${cdsFingerprint})`
+              `🔒 [CDS] Using canonical floor plan SVG for ${job.type} (fingerprint: ${cdsFingerprint})`,
             );
             imageUrl = cdsRenders.floorPlansSVG[floorIndex];
-            logger.success(`✅ ${job.type} loaded from CanonicalDesignState (deterministic)`);
+            logger.success(
+              `✅ ${job.type} loaded from CanonicalDesignState (deterministic)`,
+            );
 
             results.push({
               ...job,
@@ -1996,8 +2179,8 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               width,
               height,
               seed: seedUsed,
-              status: 'success',
-              source: 'cds_canonical',
+              status: "success",
+              source: "cds_canonical",
               cdsFingerprint,
               generatedAt: panelStartTime.toISOString(),
               durationMs: Date.now() - panelStartTime.getTime(),
@@ -2005,22 +2188,27 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             continue; // Skip to next panel
           } else {
             logger.warn(
-              `   ⚠️ CDS floor plan SVG not found for index ${floorIndex}, falling back to generation`
+              `   ⚠️ CDS floor plan SVG not found for index ${floorIndex}, falling back to generation`,
             );
           }
         }
 
         // Elevations - use pre-rendered SVG from CDS
-        if (job.type.startsWith('elevation_')) {
-          const orientation = job.type.replace('elevation_', '');
+        if (job.type.startsWith("elevation_")) {
+          const orientation = job.type.replace("elevation_", "");
           const orientationKey = orientation.charAt(0).toUpperCase(); // N, S, E, W
 
-          if (cdsRenders.elevationsSVG && cdsRenders.elevationsSVG[orientationKey]) {
+          if (
+            cdsRenders.elevationsSVG &&
+            cdsRenders.elevationsSVG[orientationKey]
+          ) {
             logger.info(
-              `🔒 [CDS] Using canonical elevation SVG for ${job.type} (fingerprint: ${cdsFingerprint})`
+              `🔒 [CDS] Using canonical elevation SVG for ${job.type} (fingerprint: ${cdsFingerprint})`,
             );
             imageUrl = cdsRenders.elevationsSVG[orientationKey];
-            logger.success(`✅ ${job.type} loaded from CanonicalDesignState (deterministic)`);
+            logger.success(
+              `✅ ${job.type} loaded from CanonicalDesignState (deterministic)`,
+            );
 
             results.push({
               ...job,
@@ -2029,8 +2217,8 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               width,
               height,
               seed: seedUsed,
-              status: 'success',
-              source: 'cds_canonical',
+              status: "success",
+              source: "cds_canonical",
               cdsFingerprint,
               generatedAt: panelStartTime.toISOString(),
               durationMs: Date.now() - panelStartTime.getTime(),
@@ -2038,21 +2226,23 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             continue; // Skip to next panel
           } else {
             logger.warn(
-              `   ⚠️ CDS elevation SVG not found for ${orientationKey}, falling back to generation`
+              `   ⚠️ CDS elevation SVG not found for ${orientationKey}, falling back to generation`,
             );
           }
         }
 
         // Sections - use pre-rendered SVG from CDS
-        if (job.type === 'section_AA' || job.type === 'section_BB') {
-          const sectionKey = job.type === 'section_AA' ? 'A-A' : 'B-B';
+        if (job.type === "section_AA" || job.type === "section_BB") {
+          const sectionKey = job.type === "section_AA" ? "A-A" : "B-B";
 
           if (cdsRenders.sectionsSVG && cdsRenders.sectionsSVG[sectionKey]) {
             logger.info(
-              `🔒 [CDS] Using canonical section SVG for ${job.type} (fingerprint: ${cdsFingerprint})`
+              `🔒 [CDS] Using canonical section SVG for ${job.type} (fingerprint: ${cdsFingerprint})`,
             );
             imageUrl = cdsRenders.sectionsSVG[sectionKey];
-            logger.success(`✅ ${job.type} loaded from CanonicalDesignState (deterministic)`);
+            logger.success(
+              `✅ ${job.type} loaded from CanonicalDesignState (deterministic)`,
+            );
 
             results.push({
               ...job,
@@ -2061,8 +2251,8 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               width,
               height,
               seed: seedUsed,
-              status: 'success',
-              source: 'cds_canonical',
+              status: "success",
+              source: "cds_canonical",
               cdsFingerprint,
               generatedAt: panelStartTime.toISOString(),
               durationMs: Date.now() - panelStartTime.getTime(),
@@ -2070,29 +2260,32 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             continue; // Skip to next panel
           } else {
             logger.warn(
-              `   ⚠️ CDS section SVG not found for ${sectionKey}, falling back to generation`
+              `   ⚠️ CDS section SVG not found for ${sectionKey}, falling back to generation`,
             );
           }
         }
       }
 
       if (isDataPanel(job.type, outputMode)) {
-        if (job.type === 'schedules_notes') {
+        if (job.type === "schedules_notes") {
           // Schedules and notes - text tables
           logger.info(`📊 Generating ${job.type} as SVG (data panel)`);
           imageUrl = generateSchedulesSVG({
             programSpaces: job.programSpaces || job.meta?.programSpaces || [],
-            projectType: job.projectType || job.meta?.projectType || 'Residential',
+            projectType:
+              job.projectType || job.meta?.projectType || "Residential",
             area: job.area || job.meta?.area || 200,
             width: job.width,
             height: job.height,
           });
           logger.success(`✅ ${job.type} SVG generated successfully`);
-        } else if (job.type.startsWith('floor_plan_')) {
+        } else if (job.type.startsWith("floor_plan_")) {
           // Floor plan panels - enhanced SVG technical drawings
           // FIX: Floor plans now use SVG generation for professional CAD-quality output
-          const floorLevel = job.type.replace('floor_plan_', '');
-          logger.info(`📐 Generating ${job.type} as enhanced SVG floor plan (${floorLevel})`);
+          const floorLevel = job.type.replace("floor_plan_", "");
+          logger.info(
+            `📐 Generating ${job.type} as enhanced SVG floor plan (${floorLevel})`,
+          );
 
           // GEOMETRY-FIRST: Merge populatedGeometry for floor plan rendering
           const populatedGeometry =
@@ -2103,15 +2296,21 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
           // DIAGNOSTIC: Log geometry data availability for debugging
           const floorIndex =
-            floorLevel === 'ground' ? 0 : floorLevel === 'first' ? 1 : parseInt(floorLevel) || 0;
+            floorLevel === "ground"
+              ? 0
+              : floorLevel === "first"
+                ? 1
+                : parseInt(floorLevel) || 0;
           const floors =
             populatedGeometry?.floors ||
             (Array.isArray(populatedGeometry) ? populatedGeometry : null);
-          const floor = Array.isArray(floors) ? floors[floorIndex] : floors?.[floorIndex];
+          const floor = Array.isArray(floors)
+            ? floors[floorIndex]
+            : floors?.[floorIndex];
           const hasRooms = floor?.rooms?.length > 0;
           const hasWalls = floor?.walls?.length > 0;
           logger.info(
-            `   🔍 Geometry data for floor ${floorLevel}: populatedGeometry=${!!populatedGeometry}, rooms=${hasRooms ? floor.rooms.length : 0}, walls=${hasWalls ? floor.walls.length : 0}`
+            `   🔍 Geometry data for floor ${floorLevel}: populatedGeometry=${!!populatedGeometry}, rooms=${hasRooms ? floor.rooms.length : 0}, walls=${hasWalls ? floor.walls.length : 0}`,
           );
 
           // Fail fast when strict geometry is required to avoid placeholder floor plans
@@ -2120,103 +2319,133 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             (!floors || floors.length === 0 || !hasRooms || !hasWalls)
           ) {
             throw new Error(
-              `Missing populatedGeometry for ${job.type} (${floorLevel}). Strict geometry mode requires rooms and walls.`
+              `Missing populatedGeometry for ${job.type} (${floorLevel}). Strict geometry mode requires rooms and walls.`,
             );
           }
 
           if (!hasRooms) {
             logger.warn(
-              `   ⚠️ No room geometry for floor ${floorLevel} - will use fallback placeholder SVG`
+              `   ⚠️ No room geometry for floor ${floorLevel} - will use fallback placeholder SVG`,
             );
           }
 
           // Merge geometry data into DNA snapshot
           const dnaWithGeometry = {
             ...job.dnaSnapshot,
-            populatedGeometry: populatedGeometry || job.dnaSnapshot?.populatedGeometry,
+            populatedGeometry:
+              populatedGeometry || job.dnaSnapshot?.populatedGeometry,
           };
 
           // NEW: Try enhanced generator first (with furniture, door swings, dimensions)
           // Falls back to basic generator if enhanced returns null (feature flag disabled or error)
-          let floorPlanResult = generateEnhancedFloorPlanSVG(dnaWithGeometry, floorLevel, {
-            buildingType: job.meta?.buildingType || 'residential',
-            programSpaces: job.meta?.programSpaces || [],
-            locationData: job.meta?.locationData,
-            sitePolygon: job.meta?.sitePolygon,
-            scale: 50,
-          });
-
-          if (!floorPlanResult) {
-            // Fallback to basic generator
-            logger.debug(`   ↩️ Enhanced generator returned null, using basic generator`);
-            floorPlanResult = generateFloorPlanSVG(dnaWithGeometry, floorLevel, {
-              buildingType: job.meta?.buildingType || 'residential',
+          let floorPlanResult = generateEnhancedFloorPlanSVG(
+            dnaWithGeometry,
+            floorLevel,
+            {
+              buildingType: job.meta?.buildingType || "residential",
               programSpaces: job.meta?.programSpaces || [],
               locationData: job.meta?.locationData,
               sitePolygon: job.meta?.sitePolygon,
-              enhanced: true,
-              showDimensions: true,
-              showRoomLabels: true,
-            });
+              scale: 50,
+            },
+          );
+
+          if (!floorPlanResult) {
+            // Fallback to basic generator
+            logger.debug(
+              `   ↩️ Enhanced generator returned null, using basic generator`,
+            );
+            floorPlanResult = generateFloorPlanSVG(
+              dnaWithGeometry,
+              floorLevel,
+              {
+                buildingType: job.meta?.buildingType || "residential",
+                programSpaces: job.meta?.programSpaces || [],
+                locationData: job.meta?.locationData,
+                sitePolygon: job.meta?.sitePolygon,
+                enhanced: true,
+                showDimensions: true,
+                showRoomLabels: true,
+              },
+            );
           } else {
-            logger.info(`   🪑 Enhanced floor plan with furniture symbols generated`);
+            logger.info(
+              `   🪑 Enhanced floor plan with furniture symbols generated`,
+            );
           }
 
           imageUrl = floorPlanResult?.dataUrl || floorPlanResult;
-          logger.success(`✅ ${job.type} SVG floor plan generated (${floorLevel})`);
-        } else if (job.type.startsWith('elevation_')) {
+          logger.success(
+            `✅ ${job.type} SVG floor plan generated (${floorLevel})`,
+          );
+        } else if (job.type.startsWith("elevation_")) {
           // Elevation panels - enhanced SVG technical drawings with geometryDNA
-          const orientation = job.type.replace('elevation_', '');
-          logger.info(`📐 Generating ${job.type} as enhanced SVG elevation (${orientation})`);
+          const orientation = job.type.replace("elevation_", "");
+          logger.info(
+            `📐 Generating ${job.type} as enhanced SVG elevation (${orientation})`,
+          );
 
           // [DEBUG-PGS] Log geometry sources for elevation
-          console.warn(`[DEBUG-PGS] Elevation ${orientation} - checking geometry sources:`, {
-            'job.meta?.geometryDNA': !!job.meta?.geometryDNA,
-            'job.meta.geometryDNA.facades': job.meta?.geometryDNA?.facades
-              ? Object.keys(job.meta.geometryDNA.facades)
-              : 'null',
-            'job.dnaSnapshot': !!job.dnaSnapshot,
-            'job.dnaSnapshot.facades': job.dnaSnapshot?.facades
-              ? Object.keys(job.dnaSnapshot.facades)
-              : 'null',
-          });
+          console.warn(
+            `[DEBUG-PGS] Elevation ${orientation} - checking geometry sources:`,
+            {
+              "job.meta?.geometryDNA": !!job.meta?.geometryDNA,
+              "job.meta.geometryDNA.facades": job.meta?.geometryDNA?.facades
+                ? Object.keys(job.meta.geometryDNA.facades)
+                : "null",
+              "job.dnaSnapshot": !!job.dnaSnapshot,
+              "job.dnaSnapshot.facades": job.dnaSnapshot?.facades
+                ? Object.keys(job.dnaSnapshot.facades)
+                : "null",
+            },
+          );
 
           // GEOMETRY-FIRST: Merge geometryDNA facades into dnaSnapshot for deterministic SVG rendering
           // The SVG generator expects masterDNA.facades[N/S/E/W] with wallLines, openingRects, roofLines, levels
-          const facades = job.meta?.geometryDNA?.facades || job.dnaSnapshot?.facades || null;
+          const facades =
+            job.meta?.geometryDNA?.facades || job.dnaSnapshot?.facades || null;
           const roofProfiles =
-            job.meta?.geometryDNA?.roofProfiles || job.dnaSnapshot?.roofProfiles || null;
+            job.meta?.geometryDNA?.roofProfiles ||
+            job.dnaSnapshot?.roofProfiles ||
+            null;
           const populatedGeometry =
-            job.meta?.geometryDNA?.populatedGeometry || job.dnaSnapshot?.populatedGeometry || null;
+            job.meta?.geometryDNA?.populatedGeometry ||
+            job.dnaSnapshot?.populatedGeometry ||
+            null;
 
           // DIAGNOSTIC: Log geometry data availability for debugging
           const facadeKey = orientation.charAt(0).toUpperCase();
           const hasFacade = facades && facades[facadeKey];
-          const hasWallLines = hasFacade && facades[facadeKey].wallLines?.length > 0;
-          const hasOpenings = hasFacade && facades[facadeKey].openingRects?.length > 0;
+          const hasWallLines =
+            hasFacade && facades[facadeKey].wallLines?.length > 0;
+          const hasOpenings =
+            hasFacade && facades[facadeKey].openingRects?.length > 0;
           logger.info(
-            `   🔍 Geometry data for ${orientation}: facade=${!!hasFacade}, wallLines=${hasWallLines}, openings=${hasOpenings}, roofProfiles=${!!roofProfiles}`
+            `   🔍 Geometry data for ${orientation}: facade=${!!hasFacade}, wallLines=${hasWallLines}, openings=${hasOpenings}, roofProfiles=${!!roofProfiles}`,
           );
 
           // Fail fast when strict geometry is required to avoid blank elevations
-          if (strictGeometryRequired && (!hasFacade || !hasWallLines || !hasOpenings)) {
+          if (
+            strictGeometryRequired &&
+            (!hasFacade || !hasWallLines || !hasOpenings)
+          ) {
             throw new Error(
-              `Missing facade geometry for elevation ${orientation}. Strict geometry mode requires wall lines and openings.`
+              `Missing facade geometry for elevation ${orientation}. Strict geometry mode requires wall lines and openings.`,
             );
           }
 
           // DIAGNOSTIC: Log geometry source for debugging
           console.warn(`[GEOM DEBUG] Elevation ${orientation}:`, {
-            'job.meta.geometryDNA.facades': !!job.meta?.geometryDNA?.facades,
-            'job.dnaSnapshot.facades': !!job.dnaSnapshot?.facades,
-            facadeKeys: facades ? Object.keys(facades) : 'null',
+            "job.meta.geometryDNA.facades": !!job.meta?.geometryDNA?.facades,
+            "job.dnaSnapshot.facades": !!job.dnaSnapshot?.facades,
+            facadeKeys: facades ? Object.keys(facades) : "null",
             wallLinesCount: facades?.[facadeKey]?.wallLines?.length || 0,
             openingsCount: facades?.[facadeKey]?.openingRects?.length || 0,
           });
 
           if (!hasFacade) {
             logger.warn(
-              `   ⚠️ No facade geometry for ${orientation} - will use fallback placeholder SVG`
+              `   ⚠️ No facade geometry for ${orientation} - will use fallback placeholder SVG`,
             );
           }
 
@@ -2229,84 +2458,116 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
           // NEW: Try enhanced generator first (with material patterns, window details)
           // Falls back to basic generator if enhanced returns null
-          let elevationResult = generateEnhancedElevationSVG(dnaWithGeometry, orientation, {
-            buildingType: job.meta?.buildingType || 'residential',
-            programSpaces: job.meta?.programSpaces || [],
-            scale: 50,
-          });
+          let elevationResult = generateEnhancedElevationSVG(
+            dnaWithGeometry,
+            orientation,
+            {
+              buildingType: job.meta?.buildingType || "residential",
+              programSpaces: job.meta?.programSpaces || [],
+              scale: 50,
+            },
+          );
 
           if (!elevationResult) {
             // Fallback to basic generator
-            logger.debug(`   ↩️ Enhanced generator returned null, using basic generator`);
-            elevationResult = generateElevationSVG(dnaWithGeometry, orientation, {
-              buildingType: job.meta?.buildingType || 'residential',
-              programSpaces: job.meta?.programSpaces || [],
-              enhanced: true,
-              showHatching: true,
-              showDimensions: true,
-              showMaterials: true,
-            });
+            logger.debug(
+              `   ↩️ Enhanced generator returned null, using basic generator`,
+            );
+            elevationResult = generateElevationSVG(
+              dnaWithGeometry,
+              orientation,
+              {
+                buildingType: job.meta?.buildingType || "residential",
+                programSpaces: job.meta?.programSpaces || [],
+                enhanced: true,
+                showHatching: true,
+                showDimensions: true,
+                showMaterials: true,
+              },
+            );
           } else {
-            logger.info(`   🧱 Enhanced elevation with material patterns generated`);
+            logger.info(
+              `   🧱 Enhanced elevation with material patterns generated`,
+            );
           }
 
           imageUrl = elevationResult?.dataUrl || elevationResult;
-          logger.success(`✅ ${job.type} SVG elevation generated (${orientation})`);
-        } else if (job.type === 'section_AA' || job.type === 'section_BB') {
+          logger.success(
+            `✅ ${job.type} SVG elevation generated (${orientation})`,
+          );
+        } else if (job.type === "section_AA" || job.type === "section_BB") {
           // Section panels - enhanced SVG technical drawings with geometryDNA
-          const sectionType = job.type === 'section_AA' ? 'longitudinal' : 'transverse';
-          const cutPosition = job.type === 'section_AA' ? 0.5 : 0.5; // Center cut
-          logger.info(`📐 Generating ${job.type} as enhanced SVG section (${sectionType})`);
+          const sectionType =
+            job.type === "section_AA" ? "longitudinal" : "transverse";
+          const cutPosition = job.type === "section_AA" ? 0.5 : 0.5; // Center cut
+          logger.info(
+            `📐 Generating ${job.type} as enhanced SVG section (${sectionType})`,
+          );
 
           // [DEBUG-PGS] Log geometry sources for section
-          const sectionKeyDebug = job.type === 'section_AA' ? 'A-A' : 'B-B';
-          console.warn(`[DEBUG-PGS] Section ${sectionKeyDebug} - checking geometry sources:`, {
-            'job.meta?.geometryDNA': !!job.meta?.geometryDNA,
-            'job.meta.geometryDNA.sections': job.meta?.geometryDNA?.sections
-              ? Object.keys(job.meta.geometryDNA.sections)
-              : 'null',
-            'job.dnaSnapshot': !!job.dnaSnapshot,
-            'job.dnaSnapshot.sections': job.dnaSnapshot?.sections
-              ? Object.keys(job.dnaSnapshot.sections)
-              : 'null',
-          });
+          const sectionKeyDebug = job.type === "section_AA" ? "A-A" : "B-B";
+          console.warn(
+            `[DEBUG-PGS] Section ${sectionKeyDebug} - checking geometry sources:`,
+            {
+              "job.meta?.geometryDNA": !!job.meta?.geometryDNA,
+              "job.meta.geometryDNA.sections": job.meta?.geometryDNA?.sections
+                ? Object.keys(job.meta.geometryDNA.sections)
+                : "null",
+              "job.dnaSnapshot": !!job.dnaSnapshot,
+              "job.dnaSnapshot.sections": job.dnaSnapshot?.sections
+                ? Object.keys(job.dnaSnapshot.sections)
+                : "null",
+            },
+          );
 
           // GEOMETRY-FIRST: Merge geometryDNA sections into dnaSnapshot for deterministic SVG rendering
           // The SVG generator expects masterDNA.sections[A-A/B-B] with wallCuts, slabLines, roofCut, groundLine, levels
-          const sections = job.meta?.geometryDNA?.sections || job.dnaSnapshot?.sections || null;
+          const sections =
+            job.meta?.geometryDNA?.sections ||
+            job.dnaSnapshot?.sections ||
+            null;
           const roofProfiles =
-            job.meta?.geometryDNA?.roofProfiles || job.dnaSnapshot?.roofProfiles || null;
+            job.meta?.geometryDNA?.roofProfiles ||
+            job.dnaSnapshot?.roofProfiles ||
+            null;
           const populatedGeometry =
-            job.meta?.geometryDNA?.populatedGeometry || job.dnaSnapshot?.populatedGeometry || null;
+            job.meta?.geometryDNA?.populatedGeometry ||
+            job.dnaSnapshot?.populatedGeometry ||
+            null;
 
           // DIAGNOSTIC: Log geometry data availability for debugging
-          const sectionKey = job.type === 'section_AA' ? 'A-A' : 'B-B';
+          const sectionKey = job.type === "section_AA" ? "A-A" : "B-B";
           const hasSection = sections && sections[sectionKey];
-          const hasWallCuts = hasSection && sections[sectionKey].wallCuts?.length > 0;
-          const hasSlabs = hasSection && sections[sectionKey].slabLines?.length > 0;
+          const hasWallCuts =
+            hasSection && sections[sectionKey].wallCuts?.length > 0;
+          const hasSlabs =
+            hasSection && sections[sectionKey].slabLines?.length > 0;
           logger.info(
-            `   🔍 Geometry data for ${sectionKey}: section=${!!hasSection}, wallCuts=${hasWallCuts}, slabs=${hasSlabs}, roofProfiles=${!!roofProfiles}`
+            `   🔍 Geometry data for ${sectionKey}: section=${!!hasSection}, wallCuts=${hasWallCuts}, slabs=${hasSlabs}, roofProfiles=${!!roofProfiles}`,
           );
 
           // Fail fast when strict geometry is required to avoid blank sections
-          if (strictGeometryRequired && (!hasSection || !hasWallCuts || !hasSlabs)) {
+          if (
+            strictGeometryRequired &&
+            (!hasSection || !hasWallCuts || !hasSlabs)
+          ) {
             throw new Error(
-              `Missing section geometry for ${sectionKey}. Strict geometry mode requires wall cuts and slab lines.`
+              `Missing section geometry for ${sectionKey}. Strict geometry mode requires wall cuts and slab lines.`,
             );
           }
 
           // DIAGNOSTIC: Log geometry source for debugging
           console.warn(`[GEOM DEBUG] Section ${sectionKey}:`, {
-            'job.meta.geometryDNA.sections': !!job.meta?.geometryDNA?.sections,
-            'job.dnaSnapshot.sections': !!job.dnaSnapshot?.sections,
-            sectionKeys: sections ? Object.keys(sections) : 'null',
+            "job.meta.geometryDNA.sections": !!job.meta?.geometryDNA?.sections,
+            "job.dnaSnapshot.sections": !!job.dnaSnapshot?.sections,
+            sectionKeys: sections ? Object.keys(sections) : "null",
             wallCutsCount: sections?.[sectionKey]?.wallCuts?.length || 0,
             slabsCount: sections?.[sectionKey]?.slabLines?.length || 0,
           });
 
           if (!hasSection) {
             logger.warn(
-              `   ⚠️ No section geometry for ${sectionKey} - will use fallback placeholder SVG`
+              `   ⚠️ No section geometry for ${sectionKey} - will use fallback placeholder SVG`,
             );
           }
 
@@ -2323,32 +2584,38 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             dnaWithGeometry,
             sectionType,
             {
-              buildingType: job.meta?.buildingType || 'residential',
+              buildingType: job.meta?.buildingType || "residential",
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
             },
-            cutPosition
+            cutPosition,
           );
 
           if (!sectionResult) {
             // Fallback to basic generator
-            logger.debug(`   ↩️ Enhanced generator returned null, using basic generator`);
+            logger.debug(
+              `   ↩️ Enhanced generator returned null, using basic generator`,
+            );
             sectionResult = generateSectionSVG(
               dnaWithGeometry,
               sectionType,
               {
-                buildingType: job.meta?.buildingType || 'residential',
+                buildingType: job.meta?.buildingType || "residential",
                 programSpaces: job.meta?.programSpaces || [],
                 enhanced: true,
               },
-              cutPosition
+              cutPosition,
             );
           } else {
-            logger.info(`   🏗️ Enhanced section with structural details generated`);
+            logger.info(
+              `   🏗️ Enhanced section with structural details generated`,
+            );
           }
 
           imageUrl = sectionResult?.dataUrl || sectionResult;
-          logger.success(`✅ ${job.type} SVG section generated (${sectionType})`);
+          logger.success(
+            `✅ ${job.type} SVG section generated (${sectionType})`,
+          );
         }
       } else {
         // Standard FLUX generation for visual panels
@@ -2362,11 +2629,11 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           seed: job.seed,
         };
         const is3DPanel = [
-          'hero_3d',
-          'interior_3d',
-          'axon_3d',
-          'axonometric',
-          'axonometric_3d',
+          "hero_3d",
+          "interior_3d",
+          "axon_3d",
+          "axonometric",
+          "axonometric_3d",
         ].includes(job.type);
         let controlAttached = false;
         const designId =
@@ -2386,7 +2653,11 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
           // Check if canonical renders exist for this design
           if (hasCanonical3DRenders(designId)) {
-            const canonical3DParams = getCanonical3DInitParams(designId, job.type, retryAttempt);
+            const canonical3DParams = getCanonical3DInitParams(
+              designId,
+              job.type,
+              retryAttempt,
+            );
 
             if (canonical3DParams?.init_image) {
               generateParams.init_image = canonical3DParams.init_image;
@@ -2394,8 +2665,9 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
               // Add canonical negative prompts to prevent geometry deviation
               if (canonical3DParams.negative_prompt_additions?.length > 0) {
-                const currentNegative = generateParams.negativePrompt || '';
-                const additions = canonical3DParams.negative_prompt_additions.join(', ');
+                const currentNegative = generateParams.negativePrompt || "";
+                const additions =
+                  canonical3DParams.negative_prompt_additions.join(", ");
                 generateParams.negativePrompt = currentNegative
                   ? `${currentNegative}, ${additions}`
                   : additions;
@@ -2404,7 +2676,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               // Store canonical control metadata for DEBUG_REPORT
               const canonicalMeta = canonical3DParams._canonical || {};
               job._canonicalControl = {
-                controlSource: 'canonical_render_service',
+                controlSource: "canonical_render_service",
                 controlStrength: canonical3DParams.strength,
                 baselineKey: canonicalMeta.baselineKey,
                 hash: canonicalMeta.hash,
@@ -2415,8 +2687,8 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
                 strengthBand: canonicalMeta.strengthBand,
               };
               job._controlSource = {
-                type: 'canonical_render_service',
-                source: 'canonical_geometry',
+                type: "canonical_render_service",
+                source: "canonical_geometry",
                 strength: canonical3DParams.strength,
                 strengthBand: canonicalMeta.strengthBand,
                 baselineKey: canonicalMeta.baselineKey,
@@ -2430,20 +2702,78 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
               logger.info(
                 `🔒 [CANONICAL RENDER SERVICE] SSOT control for ${job.type} ` +
-                  `(fingerprint: ${designId?.substring(0, 12)}..., strength: ${canonical3DParams.strength.toFixed(2)}, band: ${canonicalMeta.strengthBand})`
+                  `(fingerprint: ${designId?.substring(0, 12)}..., strength: ${canonical3DParams.strength.toFixed(2)}, band: ${canonicalMeta.strengthBand})`,
               );
               logger.info(
-                `   🎯 baselineKey=${canonicalMeta.baselineKey}, hash=${canonicalMeta.hash}`
+                `   🎯 baselineKey=${canonicalMeta.baselineKey}, hash=${canonicalMeta.hash}`,
               );
               logger.info(
-                `   🚫 Negative prompts added: ${canonical3DParams.negative_prompt_additions?.length || 0} canonical restrictions`
+                `   🚫 Negative prompts added: ${canonical3DParams.negative_prompt_additions?.length || 0} canonical restrictions`,
               );
             }
           } else {
             // Canonical 3D renders not yet generated - log warning but continue to fallback
             logger.warn(
               `[CANONICAL RENDER SERVICE] No canonical 3D renders for ${job.type}. ` +
-                `designFingerprint: ${designId}. Falling back to other control sources.`
+                `designFingerprint: ${designId}. Falling back to other control sources.`,
+            );
+          }
+        }
+
+        // ========================================
+        // HERO REFERENCE CONTROL (HIGH PRIORITY - Design Fingerprint System)
+        // ========================================
+        // When useHeroAsControl is enabled, use hero_3d as init_image for subsequent panels
+        // This ensures ALL panels show THE SAME building derived from the hero render.
+        // ENFORCES: Panels in HERO_REFERENCE_PANELS use hero_3d with panel-specific strength.
+        const runId = job.runId || job.meta?.runId;
+        if (
+          !controlAttached &&
+          isFeatureEnabled("useHeroAsControl") &&
+          job.type !== "hero_3d" &&
+          HERO_REFERENCE_PANELS.includes(job.type) &&
+          runId &&
+          hasFingerprint(runId)
+        ) {
+          const fingerprint = getFingerprint(runId);
+          const heroControl = getHeroControlForPanel(fingerprint, job.type);
+
+          if (heroControl?.imageUrl) {
+            generateParams.init_image = heroControl.imageUrl;
+            generateParams.strength = heroControl.strength;
+
+            // Store hero control metadata for DEBUG_REPORT
+            job._canonicalControl = {
+              controlSource: "hero_3d_fingerprint",
+              controlStrength: heroControl.strength,
+              heroImageHash: fingerprint.heroImageHash,
+              runId,
+              isHeroReference: true,
+              fingerprintId: fingerprint.id,
+            };
+            job._controlSource = {
+              type: "hero_reference",
+              source: "hero_3d_fingerprint",
+              strength: heroControl.strength,
+              heroImageHash: fingerprint.heroImageHash,
+              runId,
+              fingerprintId: fingerprint.id,
+              isHeroReference: true,
+            };
+
+            controlAttached = true;
+
+            logger.info(
+              `🔒 [HERO REFERENCE] Using hero_3d as control for ${job.type} ` +
+                `(strength: ${heroControl.strength.toFixed(2)}, fingerprint: ${fingerprint.id})`,
+            );
+            logger.info(
+              `   🎯 Design Fingerprint: ${fingerprint.styleDescriptor}, roof: ${fingerprint.roofProfile}`,
+            );
+          } else {
+            logger.warn(
+              `[HERO REFERENCE] Hero control not available for ${job.type} - ` +
+                `fingerprint exists but hero image URL missing. Falling back to other control sources.`,
             );
           }
         }
@@ -2457,7 +2787,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         if (
           !controlAttached &&
           requiresMandatoryCanonicalControl(job.type) &&
-          isFeatureEnabled('strictCanonicalControlMode')
+          isFeatureEnabled("strictCanonicalControlMode")
         ) {
           const canonicalPack = await getCanonicalPack(designId);
 
@@ -2466,7 +2796,10 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             job.type,
             canonicalPack,
             designId,
-            { strictMode: isFeatureEnabled('strictCanonicalControlMode') !== false } // Default ON
+            {
+              strictMode:
+                isFeatureEnabled("strictCanonicalControlMode") !== false,
+            }, // Default ON
           );
 
           if (canonicalControl) {
@@ -2475,7 +2808,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               job.type,
               canonicalPack,
               designId,
-              { strictMode: true }
+              { strictMode: true },
             );
 
             if (canonicalInitParams) {
@@ -2485,34 +2818,37 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               // Store canonical control metadata for DEBUG_REPORT
               job._canonicalControl = canonicalInitParams._canonicalControl;
               job._controlSource = {
-                type: 'canonical',
-                source: 'canonical_pack',
+                type: "canonical",
+                source: "canonical_pack",
                 strength: canonicalInitParams.strength,
                 designFingerprint: designId,
-                controlImagePath: canonicalInitParams._canonicalControl?.controlImagePath,
-                controlImageSha256: canonicalInitParams._canonicalControl?.controlImageSha256,
-                canonicalFingerprint: canonicalInitParams._canonicalControl?.canonicalFingerprint,
+                controlImagePath:
+                  canonicalInitParams._canonicalControl?.controlImagePath,
+                controlImageSha256:
+                  canonicalInitParams._canonicalControl?.controlImageSha256,
+                canonicalFingerprint:
+                  canonicalInitParams._canonicalControl?.canonicalFingerprint,
               };
 
               controlAttached = true;
 
               logger.info(
                 `🔒 [CANONICAL CONTROL] MANDATORY control for ${job.type} ` +
-                  `(fingerprint: ${designId?.substring(0, 12)}..., strength: ${canonicalInitParams.strength.toFixed(2)})`
+                  `(fingerprint: ${designId?.substring(0, 12)}..., strength: ${canonicalInitParams.strength.toFixed(2)})`,
               );
               logger.info(
-                `   📋 controlSource=canonical, sha256=${canonicalInitParams._canonicalControl?.controlImageSha256}`
+                `   📋 controlSource=canonical, sha256=${canonicalInitParams._canonicalControl?.controlImageSha256}`,
               );
             }
           } else {
             // assertCanonicalControl should have thrown - this is a fallback
             logger.error(
               `[CANONICAL CONTROL] FATAL: No canonical control for mandatory panel ${job.type}. ` +
-                `This panel CANNOT proceed without a canonical init_image.`
+                `This panel CANNOT proceed without a canonical init_image.`,
             );
             throw new Error(
               `Cannot generate ${job.type}: MANDATORY canonical control image is required. ` +
-                `Ensure canonical pack exists for designFingerprint: ${designId}`
+                `Ensure canonical pack exists for designFingerprint: ${designId}`,
             );
           }
         }
@@ -2522,20 +2858,26 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         // ========================================
         // When forceBaselineControl is enabled, baselines are MANDATORY for supported views
         // This ensures FLUX only stylizes, never invents geometry
-        const forceBaselineControl = isFeatureEnabled('forceBaselineControl');
-        if (forceBaselineControl && requiresBaselineControl(job.type) && designId) {
+        const forceBaselineControl = isFeatureEnabled("forceBaselineControl");
+        if (
+          forceBaselineControl &&
+          requiresBaselineControl(job.type) &&
+          designId
+        ) {
           try {
             const baseline = await getBaselineForPanel(designId, job.type);
             if (baseline?.dataUrl) {
               // Apply baseline control - modifies prompt to "stylize only" mode
               generateParams = applyBaselineControl(generateParams, baseline);
               logger.info(
-                `   🔒 BASELINE CONTROL: Using baseline for ${job.type} (strength: ${baseline.strength.toFixed(2)}, source: ${baseline.source})`
+                `   🔒 BASELINE CONTROL: Using baseline for ${job.type} (strength: ${baseline.strength.toFixed(2)}, source: ${baseline.source})`,
               );
-              logger.info(`   ✨ STYLIZE-ONLY mode active - FLUX will preserve all geometry`);
+              logger.info(
+                `   ✨ STYLIZE-ONLY mode active - FLUX will preserve all geometry`,
+              );
               controlAttached = true;
               job._controlSource = {
-                type: 'baseline',
+                type: "baseline",
                 source: baseline.source,
                 strength: baseline.strength,
                 pipelineVersion: baseline.pipelineVersion,
@@ -2543,24 +2885,27 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             } else if (BASELINE_VIEW_TYPES.includes(job.type.toLowerCase())) {
               // STRICT MODE: Baseline is REQUIRED for these view types
               logger.error(
-                `   ❌ BASELINE MISSING for ${job.type} - generation may invent geometry!`
+                `   ❌ BASELINE MISSING for ${job.type} - generation may invent geometry!`,
               );
               const error = new Error(
                 `[BASELINE CONTROL] No baseline render found for panel ${job.type}. ` +
                   `DesignId: ${designId}. ` +
                   `forceBaselineControl requires baselines to be generated BEFORE FLUX calls. ` +
-                  `Run generateBaselineRenders() first.`
+                  `Run generateBaselineRenders() first.`,
               );
-              error.code = 'MISSING_BASELINE';
+              error.code = "MISSING_BASELINE";
               error.panelType = job.type;
               error.designId = designId;
               throw error;
             }
           } catch (baselineError) {
-            if (baselineError.code === 'MISSING_BASELINE') {
+            if (baselineError.code === "MISSING_BASELINE") {
               throw baselineError; // Re-throw missing baseline errors
             }
-            logger.warn(`   ⚠️ Baseline lookup failed for ${job.type}:`, baselineError.message);
+            logger.warn(
+              `   ⚠️ Baseline lookup failed for ${job.type}:`,
+              baselineError.message,
+            );
             // Fall through to other control sources
           }
         }
@@ -2575,40 +2920,46 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           job.meta?.useCDSRenders &&
           job.meta?.canonicalDesignState?.canonicalRenders?.massing3DViewsPNG
         ) {
-          const massingRenders = job.meta.canonicalDesignState.canonicalRenders.massing3DViewsPNG;
+          const massingRenders =
+            job.meta.canonicalDesignState.canonicalRenders.massing3DViewsPNG;
           const cdsFingerprint =
-            job.meta.cdsFingerprint || job.meta.canonicalDesignState.designFingerprint;
+            job.meta.cdsFingerprint ||
+            job.meta.canonicalDesignState.designFingerprint;
 
           // Map panel type to massing render key
           const massingKeyMap = {
-            hero_3d: 'perspective',
-            interior_3d: 'interior', // or fallback to perspective
-            site_diagram: 'axonometric',
-            axonometric: 'axonometric',
-            axonometric_3d: 'axonometric',
-            axon_3d: 'axonometric',
+            hero_3d: "perspective",
+            interior_3d: "interior", // or fallback to perspective
+            site_diagram: "axonometric",
+            axonometric: "axonometric",
+            axonometric_3d: "axonometric",
+            axon_3d: "axonometric",
           };
 
           const massingKey = massingKeyMap[job.type];
           let massingRender = massingKey ? massingRenders[massingKey] : null;
 
           // Fallback for interior_3d to perspective if no interior view
-          if (!massingRender && job.type === 'interior_3d' && massingRenders['perspective']) {
-            massingRender = massingRenders['perspective'];
+          if (
+            !massingRender &&
+            job.type === "interior_3d" &&
+            massingRenders["perspective"]
+          ) {
+            massingRender = massingRenders["perspective"];
           }
 
           if (massingRender) {
             generateParams.init_image = massingRender;
             generateParams.strength = 0.65; // Allow FLUX to stylize but preserve geometry
             logger.info(
-              `🔒 [CDS] Using canonical massing 3D render for ${job.type} (fingerprint: ${cdsFingerprint}, strength: 0.65)`
+              `🔒 [CDS] Using canonical massing 3D render for ${job.type} (fingerprint: ${cdsFingerprint}, strength: 0.65)`,
             );
             logger.info(
-              `   ✨ STYLIZE-ONLY mode: FLUX will add materials/lighting to canonical geometry`
+              `   ✨ STYLIZE-ONLY mode: FLUX will add materials/lighting to canonical geometry`,
             );
             controlAttached = true;
             job._controlSource = {
-              type: 'cds_massing',
+              type: "cds_massing",
               source: massingKey,
               strength: 0.65,
               cdsFingerprint,
@@ -2623,19 +2974,22 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         if (!controlAttached && job.meta?.conditionedControlImage) {
           generateParams.conditioning = {
             dataUrl: job.meta.conditionedControlImage,
-            type: job.meta?.conditioningType || 'edge',
+            type: job.meta?.conditioningType || "edge",
             strength: job.meta?.conditionedControlStrength || 0.5,
           };
           logger.info(
-            `[ConditionedImagePipeline] Using ${generateParams.conditioning.type} conditioning for ${job.type}, strength=${generateParams.conditioning.strength}`
+            `[ConditionedImagePipeline] Using ${generateParams.conditioning.type} conditioning for ${job.type}, strength=${generateParams.conditioning.strength}`,
           );
           controlAttached = true;
         }
         // NEW: If FGL control image exists for this panel, use it as init_image (fallback)
         else if (job.meta?.fglControlImage?.dataUrl) {
           generateParams.init_image = job.meta.fglControlImage.dataUrl;
-          generateParams.strength = job.meta.fglControlImage.controlStrength || 0.85;
-          logger.info(`   🎯 Using FGL control image (strength: ${generateParams.strength})`);
+          generateParams.strength =
+            job.meta.fglControlImage.controlStrength || 0.85;
+          logger.info(
+            `   🎯 Using FGL control image (strength: ${generateParams.strength})`,
+          );
           controlAttached = true;
         }
 
@@ -2643,25 +2997,33 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         // This ensures hero_3d, interior_3d, and axon_3d show the SAME building
         if (is3DPanel && !controlAttached && job.dnaSnapshot) {
           try {
-            const viewType = job.type.replace('_3d', '');
-            const controlImage = generateGeometryControlImage(job.dnaSnapshot, viewType, {
-              width: job.width,
-              height: job.height,
-              lineOnly: true,
-            });
-
-            if (controlImage?.dataUrl) {
-              const img2imgParams = getFluxImg2ImgParams(controlImage, job.prompt, {
-                strength: 0.6, // 40% geometry, 60% generation freedom
+            const viewType = job.type.replace("_3d", "");
+            const controlImage = generateGeometryControlImage(
+              job.dnaSnapshot,
+              viewType,
+              {
                 width: job.width,
                 height: job.height,
-              });
+                lineOnly: true,
+              },
+            );
+
+            if (controlImage?.dataUrl) {
+              const img2imgParams = getFluxImg2ImgParams(
+                controlImage,
+                job.prompt,
+                {
+                  strength: 0.6, // 40% geometry, 60% generation freedom
+                  width: job.width,
+                  height: job.height,
+                },
+              );
 
               if (img2imgParams) {
                 generateParams.init_image = img2imgParams.init_image;
                 generateParams.strength = img2imgParams.strength;
                 logger.info(
-                  `   🎯 Using geometry control image for ${job.type} (strength: ${generateParams.strength})`
+                  `   🎯 Using geometry control image for ${job.type} (strength: ${generateParams.strength})`,
                 );
                 controlAttached = true;
               }
@@ -2670,20 +3032,20 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             // ========================================
             // STRICT CONTROL IMAGE MODE: No silent fallback
             // ========================================
-            const strictMode = isFeatureEnabled('strictControlImageMode');
+            const strictMode = isFeatureEnabled("strictControlImageMode");
             if (strictMode) {
               const error = new Error(
                 `[STRICT MODE] Control image generation failed for ${job.type}: ${geoError.message}. ` +
-                  `strictControlImageMode is enabled - no fallback to text-only generation allowed.`
+                  `strictControlImageMode is enabled - no fallback to text-only generation allowed.`,
               );
-              error.code = 'CONTROL_IMAGE_FAILED';
+              error.code = "CONTROL_IMAGE_FAILED";
               error.panelType = job.type;
               error.originalError = geoError;
               throw error;
             }
             logger.warn(
               `   ⚠️ Geometry control failed for ${job.type}, using text-only generation:`,
-              geoError.message
+              geoError.message,
             );
           }
         }
@@ -2692,30 +3054,37 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         // CANONICAL GEOMETRY PACK: HIGHEST PRIORITY - SINGLE SOURCE OF TRUTH
         // Uses CanonicalGeometryPackService with byte-based hash verification
         // ========================================
-        const strictMode = isFeatureEnabled('strictControlImageMode') || useStrictCanonicalPack;
-        const jobDesignFingerprint = job.designFingerprint || job.meta?.designFingerprint;
+        const strictMode =
+          isFeatureEnabled("strictControlImageMode") || useStrictCanonicalPack;
+        const jobDesignFingerprint =
+          job.designFingerprint || job.meta?.designFingerprint;
 
-        if (!controlAttached && jobDesignFingerprint && hasGeometryPack(jobDesignFingerprint)) {
+        if (
+          !controlAttached &&
+          jobDesignFingerprint &&
+          hasGeometryPack(jobDesignFingerprint)
+        ) {
           try {
             const retryAttempt = job._controlRetryAttempt || 0;
             const geometryControl = getGeometryControlForPanel(
               jobDesignFingerprint,
               job.type,
-              retryAttempt
+              retryAttempt,
             );
 
             if (geometryControl?.dataUrl) {
               generateParams.init_image = geometryControl.dataUrl;
               generateParams.strength = geometryControl.strength;
-              const attemptLabel = retryAttempt === 0 ? 'initial' : `retry${retryAttempt}`;
+              const attemptLabel =
+                retryAttempt === 0 ? "initial" : `retry${retryAttempt}`;
               logger.info(
-                `   🎯 Using CANONICAL GEOMETRY PACK for ${job.type} (strength: ${geometryControl.strength.toFixed(2)}, band: ${attemptLabel}, type: ${geometryControl.canonicalType})`
+                `   🎯 Using CANONICAL GEOMETRY PACK for ${job.type} (strength: ${geometryControl.strength.toFixed(2)}, band: ${attemptLabel}, type: ${geometryControl.canonicalType})`,
               );
               controlAttached = true;
 
               // Track control source with SHA256 hash from actual image bytes
               job._controlSource = {
-                type: 'canonical_geometry_pack',
+                type: "canonical_geometry_pack",
                 source: geometryControl.source,
                 strength: geometryControl.strength,
                 strengthBand: attemptLabel,
@@ -2728,7 +3097,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
               // Log control source and hash for debug/verification
               logger.debug(
-                `   🎯 Control logging: source=${geometryControl.source}, imageHash=${geometryControl.imageHash?.slice(0, 16)}...`
+                `   🎯 Control logging: source=${geometryControl.source}, imageHash=${geometryControl.imageHash?.slice(0, 16)}...`,
               );
             }
           } catch (geometryPackError) {
@@ -2736,7 +3105,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             if (strictMode) {
               logger.error(
                 `   ❌ [FAIL FAST] Canonical geometry pack lookup failed for ${job.type}:`,
-                geometryPackError.message
+                geometryPackError.message,
               );
               throw new CanonicalPackError(
                 `[FAIL FAST] Cannot generate ${job.type} without canonical control image: ${geometryPackError.message}`,
@@ -2745,12 +3114,12 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
                   panelType: job.type,
                   designFingerprint: jobDesignFingerprint,
                   originalError: geometryPackError.message,
-                }
+                },
               );
             }
             logger.warn(
               `   ⚠️ Canonical geometry pack lookup failed for ${job.type}:`,
-              geometryPackError.message
+              geometryPackError.message,
             );
           }
         }
@@ -2769,21 +3138,22 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             const controlPackImage = getControlPackForPanel(
               jobDesignFingerprint,
               job.type,
-              retryAttempt
+              retryAttempt,
             );
 
             if (controlPackImage?.dataUrl) {
               generateParams.init_image = controlPackImage.dataUrl;
               generateParams.strength = controlPackImage.strength;
-              const attemptLabel = retryAttempt === 0 ? 'initial' : `retry${retryAttempt}`;
+              const attemptLabel =
+                retryAttempt === 0 ? "initial" : `retry${retryAttempt}`;
               logger.info(
-                `   📦 Using LEGACY CONTROL PACK for ${job.type} (strength: ${controlPackImage.strength.toFixed(2)}, band: ${attemptLabel}, view: ${controlPackImage.controlViewType})`
+                `   📦 Using LEGACY CONTROL PACK for ${job.type} (strength: ${controlPackImage.strength.toFixed(2)}, band: ${attemptLabel}, view: ${controlPackImage.controlViewType})`,
               );
               controlAttached = true;
 
               // Track control source with full hash info for logging
               job._controlSource = {
-                type: 'control_pack',
+                type: "control_pack",
                 source: controlPackImage.controlSource,
                 strength: controlPackImage.strength,
                 strengthBand: attemptLabel,
@@ -2794,7 +3164,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               };
 
               logger.debug(
-                `   📦 Control logging: controlSource=${controlPackImage.controlSource}, controlHash=${controlPackImage.controlHash}`
+                `   📦 Control logging: controlSource=${controlPackImage.controlSource}, controlHash=${controlPackImage.controlHash}`,
               );
             }
           } catch (controlPackError) {
@@ -2802,17 +3172,20 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             if (strictMode) {
               logger.error(
                 `   ❌ [FAIL FAST] Control pack lookup failed for ${job.type}:`,
-                controlPackError.message
+                controlPackError.message,
               );
               throw new CanonicalPackError(
                 `[FAIL FAST] Cannot generate ${job.type} without control image: ${controlPackError.message}`,
                 GEOMETRY_PACK_ERROR_CODES.CONTROL_NOT_FOUND,
-                { panelType: job.type, designFingerprint: jobDesignFingerprint }
+                {
+                  panelType: job.type,
+                  designFingerprint: jobDesignFingerprint,
+                },
               );
             }
             logger.warn(
               `   ⚠️ Control pack lookup failed for ${job.type}:`,
-              controlPackError.message
+              controlPackError.message,
             );
           }
         }
@@ -2820,24 +3193,29 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         // ========================================
         // CANONICAL CONTROL RENDER: Legacy SSOT geometry fallback
         // ========================================
-        if (!controlAttached && jobDesignFingerprint && hasControlRenders(jobDesignFingerprint)) {
+        if (
+          !controlAttached &&
+          jobDesignFingerprint &&
+          hasControlRenders(jobDesignFingerprint)
+        ) {
           try {
             const retryAttempt = job._controlRetryAttempt || 0;
             const canonicalControl = getControlImageForPanel(
               jobDesignFingerprint,
               job.type,
-              retryAttempt
+              retryAttempt,
             );
             if (canonicalControl?.dataUrl) {
               generateParams.init_image = canonicalControl.dataUrl;
               generateParams.strength = canonicalControl.strength;
-              const attemptLabel = retryAttempt === 0 ? 'initial' : `retry${retryAttempt}`;
+              const attemptLabel =
+                retryAttempt === 0 ? "initial" : `retry${retryAttempt}`;
               logger.info(
-                `   🔒 Using CANONICAL control image for ${job.type} (strength: ${generateParams.strength.toFixed(2)}, band: ${attemptLabel}, source: ${canonicalControl.source})`
+                `   🔒 Using CANONICAL control image for ${job.type} (strength: ${generateParams.strength.toFixed(2)}, band: ${attemptLabel}, source: ${canonicalControl.source})`,
               );
               controlAttached = true;
               job._controlSource = {
-                type: 'canonical',
+                type: "canonical",
                 source: canonicalControl.source,
                 strength: canonicalControl.strength,
                 strengthBand: attemptLabel,
@@ -2850,17 +3228,20 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             if (strictMode) {
               logger.error(
                 `   ❌ [FAIL FAST] Canonical control lookup failed for ${job.type}:`,
-                canonicalError.message
+                canonicalError.message,
               );
               throw new CanonicalPackError(
                 `[FAIL FAST] Cannot generate ${job.type} without canonical control: ${canonicalError.message}`,
                 GEOMETRY_PACK_ERROR_CODES.CONTROL_NOT_FOUND,
-                { panelType: job.type, designFingerprint: jobDesignFingerprint }
+                {
+                  panelType: job.type,
+                  designFingerprint: jobDesignFingerprint,
+                },
               );
             }
             logger.warn(
               `   ⚠️ Canonical control lookup failed for ${job.type}:`,
-              canonicalError.message
+              canonicalError.message,
             );
           }
         }
@@ -2878,21 +3259,22 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             const canonicalInitParams = getCanonicalInitImageParams(
               jobDesignFingerprint,
               job.type,
-              retryAttempt
+              retryAttempt,
             );
 
             if (canonicalInitParams?.init_image) {
               generateParams.init_image = canonicalInitParams.init_image;
               generateParams.strength = canonicalInitParams.strength;
-              const attemptLabel = retryAttempt === 0 ? 'initial' : `retry${retryAttempt}`;
+              const attemptLabel =
+                retryAttempt === 0 ? "initial" : `retry${retryAttempt}`;
               const canonicalMeta = canonicalInitParams._canonical || {};
               logger.info(
-                `   📐 Using CANONICAL RENDER PACK for ${job.type} (strength: ${canonicalInitParams.strength.toFixed(2)}, band: ${attemptLabel}, type: ${canonicalMeta.canonicalType})`
+                `   📐 Using CANONICAL RENDER PACK for ${job.type} (strength: ${canonicalInitParams.strength.toFixed(2)}, band: ${attemptLabel}, type: ${canonicalMeta.canonicalType})`,
               );
               controlAttached = true;
 
               job._controlSource = {
-                type: 'canonical_render_pack',
+                type: "canonical_render_pack",
                 source: canonicalMeta.canonicalType,
                 strength: canonicalInitParams.strength,
                 strengthBand: attemptLabel,
@@ -2905,17 +3287,20 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             if (strictMode) {
               logger.error(
                 `   ❌ [FAIL FAST] Canonical render pack lookup failed for ${job.type}:`,
-                canonicalRenderError.message
+                canonicalRenderError.message,
               );
               throw new CanonicalPackError(
                 `[FAIL FAST] Cannot generate ${job.type} without canonical render: ${canonicalRenderError.message}`,
                 GEOMETRY_PACK_ERROR_CODES.CONTROL_NOT_FOUND,
-                { panelType: job.type, designFingerprint: jobDesignFingerprint }
+                {
+                  panelType: job.type,
+                  designFingerprint: jobDesignFingerprint,
+                },
               );
             }
             logger.warn(
               `   ⚠️ Canonical render pack lookup failed for ${job.type}:`,
-              canonicalRenderError.message
+              canonicalRenderError.message,
             );
           }
         }
@@ -2929,14 +3314,14 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           if (requiresControl) {
             const error = new Error(
               `[STRICT MODE] No control image attached for panel ${job.type}. ` +
-                `DesignFingerprint: ${jobDesignFingerprint || 'MISSING'}. ` +
+                `DesignFingerprint: ${jobDesignFingerprint || "MISSING"}. ` +
                 `strictControlImageMode requires ALL panels to use control images from SSOT geometry. ` +
                 `Checked sources: conditioned=${!!job.meta?.conditionedControlImage}, ` +
-                `fgl=${!!job.meta?.fglControlImage}, geometry=${is3DPanel ? 'attempted' : 'skipped'}, ` +
+                `fgl=${!!job.meta?.fglControlImage}, geometry=${is3DPanel ? "attempted" : "skipped"}, ` +
                 `controlPack=${hasControlPack(jobDesignFingerprint)}, ` +
-                `canonical=${hasControlRenders(jobDesignFingerprint)}`
+                `canonical=${hasControlRenders(jobDesignFingerprint)}`,
             );
-            error.code = 'MISSING_CONTROL_IMAGE';
+            error.code = "MISSING_CONTROL_IMAGE";
             error.panelType = job.type;
             error.designFingerprint = jobDesignFingerprint;
             throw error;
@@ -2944,15 +3329,21 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         }
 
         // Fail fast if strict control is required and no control source was attached (legacy check)
-        if (is3DPanel && !controlAttached && strict3DControlRequired && !strictMode) {
+        if (
+          is3DPanel &&
+          !controlAttached &&
+          strict3DControlRequired &&
+          !strictMode
+        ) {
           throw new Error(
-            `Missing control image for 3D panel ${job.type} (geometryControlled3D enforced). Provide conditioned, FGL, or geometry control.`
+            `Missing control image for 3D panel ${job.type} (geometryControlled3D enforced). Provide conditioned, FGL, or geometry control.`,
           );
         }
 
         // Track control attachment status for debug report
         job._controlAttached = controlAttached;
-        job._controlSource = job._controlSource || (controlAttached ? { type: 'other' } : null);
+        job._controlSource =
+          job._controlSource || (controlAttached ? { type: "other" } : null);
 
         const responsePromise = togetherClient.generateImage(generateParams);
 
@@ -2964,15 +3355,15 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               () =>
                 reject(
                   new Error(
-                    `Panel ${job.type} generation timeout after ${PANEL_GENERATION_TIMEOUT_MS / 1000}s`
-                  )
+                    `Panel ${job.type} generation timeout after ${PANEL_GENERATION_TIMEOUT_MS / 1000}s`,
+                  ),
                 ),
-              PANEL_GENERATION_TIMEOUT_MS
-            )
+              PANEL_GENERATION_TIMEOUT_MS,
+            ),
           ),
         ]);
 
-        imageUrl = response?.url || response?.imageUrls?.[0] || '';
+        imageUrl = response?.url || response?.imageUrls?.[0] || "";
 
         if (!imageUrl) {
           throw new Error(`No image URL returned for panel ${job.type}`);
@@ -2981,9 +3372,9 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         width = response?.metadata?.width || response?.width || job.width;
         height = response?.metadata?.height || response?.height || job.height;
         seedUsed =
-          typeof response?.seedUsed === 'number'
+          typeof response?.seedUsed === "number"
             ? response.seedUsed
-            : typeof response?.seed === 'number'
+            : typeof response?.seed === "number"
               ? response.seed
               : job.seed;
 
@@ -2992,13 +3383,22 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         // ========================================
         // For img2img panels, verify output preserves control geometry
         // If diffRatio exceeds threshold, retry or fallback to control image
-        const controlFidelityEnabled = isFeatureEnabled('controlFidelityGate');
-        const controlImageUsed = generateParams.init_image || job._controlAttached;
+        const controlFidelityEnabled = isFeatureEnabled("controlFidelityGate");
+        const controlImageUsed =
+          generateParams.init_image || job._controlAttached;
 
-        if (controlFidelityEnabled && controlImageUsed && generateParams.init_image) {
-          logger.info(`   🔍 Running control fidelity check for ${job.type}...`);
+        if (
+          controlFidelityEnabled &&
+          controlImageUsed &&
+          generateParams.init_image
+        ) {
+          logger.info(
+            `   🔍 Running control fidelity check for ${job.type}...`,
+          );
 
-          const controlFidelityGate = new ControlFidelityGate(imageSimilarityService);
+          const controlFidelityGate = new ControlFidelityGate(
+            imageSimilarityService,
+          );
 
           const fidelityResult = await controlFidelityGate.validate({
             panelType: job.type,
@@ -3009,7 +3409,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             // Regenerate function for retry
             regenerateFn: async (retryParams) => {
               logger.info(
-                `   🔄 [Fidelity Retry] Regenerating ${job.type} with strength ${retryParams.strength.toFixed(2)}`
+                `   🔄 [Fidelity Retry] Regenerating ${job.type} with strength ${retryParams.strength.toFixed(2)}`,
               );
               const retryResponse = await togetherClient.generateImage({
                 ...generateParams,
@@ -3026,25 +3426,27 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           // Record fidelity metrics in debug report
           job._fidelityResult = fidelityResult;
 
-          if (fidelityResult.status === 'CONTROL_FALLBACK') {
+          if (fidelityResult.status === "CONTROL_FALLBACK") {
             // Use control image as fallback
-            logger.warn(`   ⚠️ Control fidelity failed - using control image as fallback`);
+            logger.warn(
+              `   ⚠️ Control fidelity failed - using control image as fallback`,
+            );
             imageUrl = fidelityResult.outputImage;
             job._controlFallback = true;
-          } else if (fidelityResult.status === 'PASS_RETRY') {
+          } else if (fidelityResult.status === "PASS_RETRY") {
             // Use retry result
             logger.info(`   ✅ Control fidelity passed on retry`);
             imageUrl = fidelityResult.outputImage;
           } else if (fidelityResult.passed) {
             logger.info(
-              `   ✅ Control fidelity passed (diffRatio: ${fidelityResult.metrics?.diffRatio?.toFixed(4) || 'N/A'})`
+              `   ✅ Control fidelity passed (diffRatio: ${fidelityResult.metrics?.diffRatio?.toFixed(4) || "N/A"})`,
             );
           }
 
           // Log metrics for debug report
           if (fidelityResult.metrics) {
             logger.debug(
-              `   📊 Fidelity metrics: diffRatio=${fidelityResult.metrics.diffRatio.toFixed(4)}, threshold=${fidelityResult.metrics.threshold}, similarity=${fidelityResult.metrics.similarityScore.toFixed(4)}`
+              `   📊 Fidelity metrics: diffRatio=${fidelityResult.metrics.diffRatio.toFixed(4)}, threshold=${fidelityResult.metrics.threshold}, similarity=${fidelityResult.metrics.similarityScore.toFixed(4)}`,
             );
           }
         }
@@ -3066,18 +3468,21 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
       // NEW (Phase D): Quality Validation and Auto-Retry
       // Only validate visual panels (not SVG data panels)
-      if (!isDataPanel(job.type, outputMode) && isFeatureEnabled('panelQualityValidation')) {
+      if (
+        !isDataPanel(job.type, outputMode) &&
+        isFeatureEnabled("panelQualityValidation")
+      ) {
         const validationResult = validatePanel(panelResult, job.dnaSnapshot);
         panelResult.validation = validationResult;
 
         if (!validationResult.passed) {
           logger.warn(
-            `   ⚠️ Panel ${job.type} failed validation (score: ${(validationResult.score * 100).toFixed(1)}%)`
+            `   ⚠️ Panel ${job.type} failed validation (score: ${(validationResult.score * 100).toFixed(1)}%)`,
           );
-          logger.warn(`   Issues: ${validationResult.issues.join(', ')}`);
+          logger.warn(`   Issues: ${validationResult.issues.join(", ")}`);
 
           // Auto-retry if enabled and panel has critical issues
-          if (isFeatureEnabled('autoRetryFailedPanels')) {
+          if (isFeatureEnabled("autoRetryFailedPanels")) {
             logger.info(`   🔄 Attempting auto-retry for ${job.type}...`);
 
             const retryResult = await retryFailedPanel(
@@ -3098,7 +3503,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
                   width: retryResponse?.metadata?.width || job.width,
                   height: retryResponse?.metadata?.height || job.height,
                 };
-              }
+              },
             );
 
             if (retryResult.success) {
@@ -3114,7 +3519,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
                 },
               };
               logger.success(
-                `   ✅ Retry succeeded for ${job.type} after ${retryResult.attempts} attempt(s)`
+                `   ✅ Retry succeeded for ${job.type} after ${retryResult.attempts} attempt(s)`,
               );
             } else {
               // Keep original but mark as failed validation
@@ -3123,12 +3528,14 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
                 history: retryResult.history,
                 improved: false,
               };
-              logger.warn(`   ⚠️ Retry failed for ${job.type} - using original`);
+              logger.warn(
+                `   ⚠️ Retry failed for ${job.type} - using original`,
+              );
             }
           }
         } else {
           logger.info(
-            `   ✓ Quality check passed (score: ${(validationResult.score * 100).toFixed(1)}%)`
+            `   ✓ Quality check passed (score: ${(validationResult.score * 100).toFixed(1)}%)`,
           );
         }
       }
@@ -3136,16 +3543,19 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       // ========================================
       // RECORD CONTROL IMAGE USAGE FOR DEBUG REPORT
       // ========================================
-      const debugReportEnabled = isFeatureEnabled('enableControlImageDebugReport');
+      const debugReportEnabled = isFeatureEnabled(
+        "enableControlImageDebugReport",
+      );
       if (debugReportEnabled) {
-        const fpForTracking = job.designFingerprint || job.meta?.designFingerprint;
+        const fpForTracking =
+          job.designFingerprint || job.meta?.designFingerprint;
         if (fpForTracking) {
           recordControlImageUsage(fpForTracking, job.type, {
             controlImageUsed: job._controlAttached || false,
             controlSource: job._controlSource || null,
             panelType: job.type,
             seed: seedUsed,
-            imageUrl: imageUrl?.substring(0, 100) + '...', // Truncate for report
+            imageUrl: imageUrl?.substring(0, 100) + "...", // Truncate for report
             retryInfo: panelResult.retryInfo || null,
             generatedAt: new Date().toISOString(),
           });
@@ -3172,19 +3582,35 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
         used: job._controlAttached || false,
         source: job._controlSource || null,
         // Explicit control logging as required
-        controlSource: job._controlSource?.source || job._controlSource?.type || 'none',
-        controlHash: job._controlSource?.controlHash || job._canonicalControl?.hash || null,
+        controlSource:
+          job._controlSource?.source || job._controlSource?.type || "none",
+        controlHash:
+          job._controlSource?.controlHash ||
+          job._canonicalControl?.hash ||
+          null,
         controlDataUrlHash: job._controlSource?.controlDataUrlHash || null,
-        controlViewType: job._controlSource?.viewType || job._canonicalControl?.viewType || null,
+        controlViewType:
+          job._controlSource?.viewType ||
+          job._canonicalControl?.viewType ||
+          null,
         controlStrength:
-          job._controlSource?.strength || job._canonicalControl?.controlStrength || null,
+          job._controlSource?.strength ||
+          job._canonicalControl?.controlStrength ||
+          null,
         controlStrengthBand:
-          job._controlSource?.strengthBand || job._canonicalControl?.strengthBand || null,
+          job._controlSource?.strengthBand ||
+          job._canonicalControl?.strengthBand ||
+          null,
         // NEW: baselineKey from canonicalRenderService (MANDATORY for hero_3d/interior_3d/axonometric)
-        baselineKey: job._controlSource?.baselineKey || job._canonicalControl?.baselineKey || null,
+        baselineKey:
+          job._controlSource?.baselineKey ||
+          job._canonicalControl?.baselineKey ||
+          null,
         // NEW: Canonical control fields for DEBUG_REPORT (MANDATORY for hero_3d/interior_3d)
         controlImagePath:
-          job._controlSource?.controlImagePath || job._canonicalControl?.controlImagePath || null,
+          job._controlSource?.controlImagePath ||
+          job._canonicalControl?.controlImagePath ||
+          null,
         controlImageSha256:
           job._controlSource?.controlImageSha256 ||
           job._canonicalControl?.controlImageSha256 ||
@@ -3194,13 +3620,16 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           job._canonicalControl?.canonicalFingerprint ||
           null,
         isCanonical:
-          job._controlSource?.type === 'canonical' ||
-          job._controlSource?.type === 'canonical_render_service' ||
+          job._controlSource?.type === "canonical" ||
+          job._controlSource?.type === "canonical_render_service" ||
           job._canonicalControl?.isCanonical ||
           false,
-        isCanonicalRenderService: job._controlSource?.type === 'canonical_render_service' || false,
+        isCanonicalRenderService:
+          job._controlSource?.type === "canonical_render_service" || false,
         designFingerprint:
-          job._controlSource?.designFingerprint || job._canonicalControl?.designFingerprint || null,
+          job._controlSource?.designFingerprint ||
+          job._canonicalControl?.designFingerprint ||
+          null,
         canonicalRenderServiceRunId: job._canonicalControl?.runId || null,
       };
 
@@ -3211,8 +3640,13 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       // ========================================
       // If interior_3d was just generated, compare it to hero_3d.
       // If similarity fails and retries are available, retry with stronger control.
-      if (job.type === 'interior_3d' && DRIFT_ELIGIBLE_PANELS.includes(job.type)) {
-        const hero3dResult = results.find((r) => r.panelType === 'hero_3d' || r.type === 'hero_3d');
+      if (
+        job.type === "interior_3d" &&
+        DRIFT_ELIGIBLE_PANELS.includes(job.type)
+      ) {
+        const hero3dResult = results.find(
+          (r) => r.panelType === "hero_3d" || r.type === "hero_3d",
+        );
         const currentDriftAttempt = job._driftRetryAttempt || 0;
 
         if (
@@ -3224,22 +3658,24 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             // Compare interior_3d to hero_3d
             const similarityResult = await imageSimilarityService.compareImages(
               hero3dResult.imageUrl,
-              panelResult.imageUrl
+              panelResult.imageUrl,
             );
 
             // Check if drift retry is needed
             const driftCheck = checkDriftRetryNeeded(
-              'interior_3d',
+              "interior_3d",
               similarityResult,
-              currentDriftAttempt
+              currentDriftAttempt,
             );
 
             if (driftCheck.needsRetry) {
-              const retryParams = calculateDriftRetryParams(currentDriftAttempt + 1);
+              const retryParams = calculateDriftRetryParams(
+                currentDriftAttempt + 1,
+              );
 
               logger.warn(
                 `🔄 [DRIFT RETRY] interior_3d similarity ${driftCheck.currentScore?.toFixed(3)} < ${driftCheck.failThreshold?.toFixed(3)} (${driftCheck.failedMetric}). ` +
-                  `Retrying with strength ${retryParams.strength.toFixed(2)}, guidance ${retryParams.guidance.toFixed(1)}`
+                  `Retrying with strength ${retryParams.strength.toFixed(2)}, guidance ${retryParams.guidance.toFixed(1)}`,
               );
 
               // Remove the failed result
@@ -3267,8 +3703,14 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
               job.guidanceScale = retryParams.guidance;
 
               // Log drift retry summary
-              const summary = generateDriftRetrySummary('interior_3d', driftCheck, retryParams);
-              logger.info(`   📊 Drift Retry Summary: ${JSON.stringify(summary)}`);
+              const summary = generateDriftRetrySummary(
+                "interior_3d",
+                driftCheck,
+                retryParams,
+              );
+              logger.info(
+                `   📊 Drift Retry Summary: ${JSON.stringify(summary)}`,
+              );
 
               // Retry this panel
               i--;
@@ -3276,13 +3718,13 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             } else {
               // Drift check passed
               logger.info(
-                `✅ [DRIFT CHECK] interior_3d similarity OK (attempt ${currentDriftAttempt})`
+                `✅ [DRIFT CHECK] interior_3d similarity OK (attempt ${currentDriftAttempt})`,
               );
             }
           } catch (driftError) {
             // Log but don't fail generation on drift check errors
             logger.warn(
-              `⚠️ [DRIFT CHECK] Error comparing interior_3d to hero_3d: ${driftError.message}`
+              `⚠️ [DRIFT CHECK] Error comparing interior_3d to hero_3d: ${driftError.message}`,
             );
           }
         }
@@ -3296,30 +3738,34 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           negativePrompt: job.negativePrompt,
           seed: seedUsed,
           controlImageUsed: job._controlAttached || false,
-          controlImageSource: job._controlSource?.type || 'none',
+          controlImageSource: job._controlSource?.type || "none",
           controlStrength: job._controlSource?.strength || null,
           controlImageUrl: job._controlSource?.dataUrl || null,
-          strengthBand: job._controlSource?.strengthBand || 'initial',
+          strengthBand: job._controlSource?.strengthBand || "initial",
           retryAttempt: job._controlRetryAttempt || 0,
-          model: 'black-forest-labs/FLUX.1-dev',
-          provider: 'together.ai',
+          model: "black-forest-labs/FLUX.1-dev",
+          provider: "together.ai",
           width: panelResult.width,
           height: panelResult.height,
           imageUrl: panelResult.imageUrl,
           success: true,
           startedAt: panelStartTime?.toISOString(),
           completedAt: new Date().toISOString(),
-          durationMs: panelStartTime ? Date.now() - panelStartTime.getTime() : null,
+          durationMs: panelStartTime
+            ? Date.now() - panelStartTime.getTime()
+            : null,
           validationPassed: panelResult.validation?.passed ?? null,
           validationScore: panelResult.validation?.score ?? null,
           validationIssues: panelResult.validation?.issues || [],
           // Control fidelity metrics (from ImageSimilarityService)
           controlFidelity: panelResult.controlFidelity || null,
-          fidelityStatus: panelResult.controlFidelity?.status || 'NOT_CHECKED',
+          fidelityStatus: panelResult.controlFidelity?.status || "NOT_CHECKED",
           fidelityDiffRatio: panelResult.controlFidelity?.diffRatio || null,
           fidelityThreshold: panelResult.controlFidelity?.threshold || null,
-          fidelitySimilarity: panelResult.controlFidelity?.similarityScore || null,
-          fidelityFallbackUsed: panelResult.controlFidelity?.fallbackUsed || false,
+          fidelitySimilarity:
+            panelResult.controlFidelity?.similarityScore || null,
+          fidelityFallbackUsed:
+            panelResult.controlFidelity?.fallbackUsed || false,
           // NEW: Canonical control fields for DEBUG_REPORT (ACCEPTANCE CRITERIA)
           // hero_3d/interior_3d MUST show controlSource=canonical and sha256 match
           canonicalControlPath:
@@ -3339,16 +3785,21 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
             job._canonicalControl?.designFingerprint ||
             null,
           isCanonicalControl:
-            job._controlSource?.type === 'canonical' ||
-            job._controlSource?.type === 'canonical_render_service' ||
+            job._controlSource?.type === "canonical" ||
+            job._controlSource?.type === "canonical_render_service" ||
             false,
           // NEW: baselineKey from canonicalRenderService (REQUIRED for hero_3d/interior_3d/axonometric)
           baselineKey:
-            job._canonicalControl?.baselineKey || job._controlSource?.baselineKey || null,
-          controlHash: job._canonicalControl?.hash || job._controlSource?.controlHash || null,
+            job._canonicalControl?.baselineKey ||
+            job._controlSource?.baselineKey ||
+            null,
+          controlHash:
+            job._canonicalControl?.hash ||
+            job._controlSource?.controlHash ||
+            null,
           // Track canonical render service specifically
           isCanonicalRenderService:
-            job._controlSource?.type === 'canonical_render_service' || false,
+            job._controlSource?.type === "canonical_render_service" || false,
           canonicalRenderServiceRunId: job._canonicalControl?.runId || null,
           // NEW: Drift retry tracking for hero_3d/interior_3d
           driftRetryAttempt: job._driftRetryAttempt || 0,
@@ -3356,7 +3807,8 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           driftFailedMetric: job._driftFailedMetric || null,
           strengthEscalation: job._controlSource?.strengthEscalation || null,
           guidanceScale: job.guidanceScale || null,
-          promptConstraintAdded: !!job._driftRetryAttempt && job._driftRetryAttempt > 0,
+          promptConstraintAdded:
+            !!job._driftRetryAttempt && job._driftRetryAttempt > 0,
         });
       }
 
@@ -3368,16 +3820,17 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       // AUTO-RETRY WITH INCREASED CONTROL STRENGTH
       // ========================================
       const isControlImageError =
-        error.code === 'MISSING_CONTROL_IMAGE' ||
-        error.code === 'CONTROL_IMAGE_FAILED' ||
-        error.message.includes('control image');
+        error.code === "MISSING_CONTROL_IMAGE" ||
+        error.code === "CONTROL_IMAGE_FAILED" ||
+        error.message.includes("control image");
 
-      const maxControlRetries = safeGetFeatureValue('maxControlImageRetries') || 2;
+      const maxControlRetries =
+        safeGetFeatureValue("maxControlImageRetries") || 2;
       const currentRetryAttempt = job._controlRetryAttempt || 0;
 
       if (isControlImageError && currentRetryAttempt < maxControlRetries) {
         logger.info(
-          `🔄 Retrying ${job.type} with increased control strength (attempt ${currentRetryAttempt + 1}/${maxControlRetries})`
+          `🔄 Retrying ${job.type} with increased control strength (attempt ${currentRetryAttempt + 1}/${maxControlRetries})`,
         );
 
         // Mark the retry attempt on the job
@@ -3390,27 +3843,32 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 
       // Detect rate limiting
       const isRateLimit =
-        error.message.includes('429') ||
-        error.message.includes('rate limit') ||
-        error.message.includes('Rate limit') ||
-        error.message.includes('too many requests');
+        error.message.includes("429") ||
+        error.message.includes("rate limit") ||
+        error.message.includes("Rate limit") ||
+        error.message.includes("too many requests");
 
       if (isRateLimit) {
         rateLimitHitCount++;
-        logger.warn(`\u26a0\ufe0f Rate limit hit (count: ${rateLimitHitCount})`);
+        logger.warn(
+          `\u26a0\ufe0f Rate limit hit (count: ${rateLimitHitCount})`,
+        );
 
         // If we hit rate limit 3+ times, abort to avoid long wait
         if (rateLimitHitCount >= 3) {
           logger.error(
-            `\u274c Too many rate limit errors (${rateLimitHitCount}). Aborting generation.`
+            `\u274c Too many rate limit errors (${rateLimitHitCount}). Aborting generation.`,
           );
           throw new Error(
-            `Generation aborted due to repeated rate limiting. Generated ${results.length}/${jobs.length} panels. Please wait 2-3 minutes and try again.`
+            `Generation aborted due to repeated rate limiting. Generated ${results.length}/${jobs.length} panels. Please wait 2-3 minutes and try again.`,
           );
         }
 
         // Exponential backoff for rate limits
-        const backoffDelay = Math.min(30000, 10000 * Math.pow(2, rateLimitHitCount - 1));
+        const backoffDelay = Math.min(
+          30000,
+          10000 * Math.pow(2, rateLimitHitCount - 1),
+        );
         logger.info(`   Waiting ${backoffDelay / 1000}s before retry...`);
         await new Promise((resolve) => setTimeout(resolve, backoffDelay));
 
@@ -3420,7 +3878,11 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       }
 
       // Non-rate-limit error - record and continue
-      failures.push({ type: job.type, error: error.message, isControlImageError });
+      failures.push({
+        type: job.type,
+        error: error.message,
+        isControlImageError,
+      });
 
       // DEBUG: Record failed panel with REAL runtime values
       if (debugRecorder.isRecording()) {
@@ -3430,10 +3892,10 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           negativePrompt: job.negativePrompt,
           seed: job.seed,
           controlImageUsed: job._controlAttached || false,
-          controlImageSource: job._controlSource?.type || 'none',
+          controlImageSource: job._controlSource?.type || "none",
           controlStrength: job._controlSource?.strength || null,
-          model: 'black-forest-labs/FLUX.1-dev',
-          provider: 'together.ai',
+          model: "black-forest-labs/FLUX.1-dev",
+          provider: "together.ai",
           width: job.width,
           height: job.height,
           imageUrl: null,
@@ -3441,7 +3903,9 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
           error: error.message,
           startedAt: panelStartTime?.toISOString(),
           completedAt: new Date().toISOString(),
-          durationMs: panelStartTime ? Date.now() - panelStartTime.getTime() : null,
+          durationMs: panelStartTime
+            ? Date.now() - panelStartTime.getTime()
+            : null,
         });
         debugRecorder.recordError(error, { panel: job.type, panelIndex: i });
       }
@@ -3449,7 +3913,7 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       // If too many failures, abort
       if (failures.length > jobs.length / 2) {
         throw new Error(
-          `Too many panel generation failures (${failures.length}/${jobs.length}). Last error: ${error.message}`
+          `Too many panel generation failures (${failures.length}/${jobs.length}). Last error: ${error.message}`,
         );
       }
     }
@@ -3464,37 +3928,45 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
   logger.info(`   Rate limit hits: ${rateLimitHitCount}`);
 
   // NEW (Phase D): Quality validation summary
-  if (isFeatureEnabled('panelQualityValidation')) {
+  if (isFeatureEnabled("panelQualityValidation")) {
     const validatedPanels = results.filter((r) => r.validation);
-    const passedCount = validatedPanels.filter((r) => r.validation?.passed).length;
+    const passedCount = validatedPanels.filter(
+      (r) => r.validation?.passed,
+    ).length;
     const retriedPanels = results.filter((r) => r.retryInfo);
-    const improvedCount = retriedPanels.filter((r) => r.retryInfo?.improved).length;
+    const improvedCount = retriedPanels.filter(
+      (r) => r.retryInfo?.improved,
+    ).length;
 
     const avgScore =
       validatedPanels.length > 0
-        ? validatedPanels.reduce((sum, r) => sum + (r.validation?.score || 0), 0) /
-          validatedPanels.length
+        ? validatedPanels.reduce(
+            (sum, r) => sum + (r.validation?.score || 0),
+            0,
+          ) / validatedPanels.length
         : 1;
 
     logger.info(`\n📊 Quality Validation Summary:`);
     logger.info(`   Validated panels: ${validatedPanels.length}`);
     logger.info(
-      `   Passed: ${passedCount}/${validatedPanels.length} (${validatedPanels.length > 0 ? Math.round((passedCount / validatedPanels.length) * 100) : 100}%)`
+      `   Passed: ${passedCount}/${validatedPanels.length} (${validatedPanels.length > 0 ? Math.round((passedCount / validatedPanels.length) * 100) : 100}%)`,
     );
     logger.info(`   Average score: ${(avgScore * 100).toFixed(1)}%`);
     logger.info(
-      `   Minimum threshold: ${(QUALITY_THRESHOLDS.minConsistencyScore * 100).toFixed(1)}%`
+      `   Minimum threshold: ${(QUALITY_THRESHOLDS.minConsistencyScore * 100).toFixed(1)}%`,
     );
 
     if (retriedPanels.length > 0) {
       const totalRetryAttempts = retriedPanels.reduce(
         (sum, r) => sum + (r.retryInfo?.attempts || 0),
-        0
+        0,
       );
       logger.info(`\n🔄 Auto-Retry Statistics:`);
       logger.info(`   Panels retried: ${retriedPanels.length}`);
       logger.info(`   Total retry attempts: ${totalRetryAttempts}`);
-      logger.info(`   Successfully improved: ${improvedCount}/${retriedPanels.length}`);
+      logger.info(
+        `   Successfully improved: ${improvedCount}/${retriedPanels.length}`,
+      );
     }
   }
 
@@ -3506,20 +3978,24 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
   // ========================================
   // CONTROL IMAGE DEBUG REPORT
   // ========================================
-  const debugReportEnabled = isFeatureEnabled('enableControlImageDebugReport');
-  const strictModeEnabled = isFeatureEnabled('strictControlImageMode');
+  const debugReportEnabled = isFeatureEnabled("enableControlImageDebugReport");
+  const strictModeEnabled = isFeatureEnabled("strictControlImageMode");
 
   // Check if any control image source is actually available
-  const geometryVolumeFirstEnabled = isFeatureEnabled('geometryVolumeFirst');
-  const meshy3DModeEnabled = isFeatureEnabled('meshy3DMode');
-  const controlImageSourceAvailable = geometryVolumeFirstEnabled || meshy3DModeEnabled;
+  const geometryVolumeFirstEnabled = isFeatureEnabled("geometryVolumeFirst");
+  const meshy3DModeEnabled = isFeatureEnabled("meshy3DMode");
+  const controlImageSourceAvailable =
+    geometryVolumeFirstEnabled || meshy3DModeEnabled;
 
   if (debugReportEnabled || strictModeEnabled) {
     // Get first job's designFingerprint
-    const firstDesignFingerprint = jobs[0]?.designFingerprint || jobs[0]?.meta?.designFingerprint;
+    const firstDesignFingerprint =
+      jobs[0]?.designFingerprint || jobs[0]?.meta?.designFingerprint;
 
     if (firstDesignFingerprint) {
-      const controlReport = generateControlImageUsageReport(firstDesignFingerprint);
+      const controlReport = generateControlImageUsageReport(
+        firstDesignFingerprint,
+      );
 
       logger.info(`\n🔒 Control Image Usage Report:`);
       logger.info(`   Strict mode enabled: ${controlReport.strictModeEnabled}`);
@@ -3528,34 +4004,45 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
       const actualControlSource =
         controlImageCount > 0
           ? geometryVolumeFirstEnabled
-            ? 'geometry'
+            ? "geometry"
             : meshy3DModeEnabled
-              ? 'meshy'
-              : 'configured'
-          : 'none (no control images attached)';
+              ? "meshy"
+              : "configured"
+          : "none (no control images attached)";
       logger.info(`   Control image source: ${actualControlSource}`);
-      logger.info(`   Total panels tracked: ${controlReport.summary?.totalPanels || 0}`);
-      logger.info(`   With control image: ${controlReport.summary?.withControlImage || 0}`);
-      logger.info(`   Without control image: ${controlReport.summary?.withoutControlImage || 0}`);
+      logger.info(
+        `   Total panels tracked: ${controlReport.summary?.totalPanels || 0}`,
+      );
+      logger.info(
+        `   With control image: ${controlReport.summary?.withControlImage || 0}`,
+      );
+      logger.info(
+        `   Without control image: ${controlReport.summary?.withoutControlImage || 0}`,
+      );
       logger.info(`   Control-retried: ${controlReport.summary?.retried || 0}`);
 
       if (controlReport.summary?.withoutControlImage > 0 && strictModeEnabled) {
         if (!controlImageSourceAvailable) {
           // No control image source configured - this is expected, not a violation
           logger.info(
-            `   ℹ️ No control image source configured (geometryVolumeFirst=false, meshy3DMode=false)`
+            `   ℹ️ No control image source configured (geometryVolumeFirst=false, meshy3DMode=false)`,
           );
           logger.info(
-            `   ℹ️ Enable geometryVolumeFirst or meshy3DMode for control image enforcement`
+            `   ℹ️ Enable geometryVolumeFirst or meshy3DMode for control image enforcement`,
           );
         } else {
           // Control image source was available but some panels didn't use it - this IS a violation
           logger.error(
-            `   ❌ STRICT MODE VIOLATION: ${controlReport.summary.withoutControlImage} panels generated without control images`
+            `   ❌ STRICT MODE VIOLATION: ${controlReport.summary.withoutControlImage} panels generated without control images`,
           );
         }
-      } else if (controlReport.summary?.withControlImage === controlReport.summary?.totalPanels) {
-        logger.success(`   ✅ ALL panels used control images from SSOT geometry`);
+      } else if (
+        controlReport.summary?.withControlImage ===
+        controlReport.summary?.totalPanels
+      ) {
+        logger.success(
+          `   ✅ ALL panels used control images from SSOT geometry`,
+        );
       }
 
       // Attach report to results metadata
@@ -3575,7 +4062,9 @@ export async function generateA1PanelsSequential(jobs, togetherClient, options =
 export function clearStyleCache(designFingerprint) {
   if (designFingerprint) {
     styleProfileCache.delete(designFingerprint);
-    logger.info(`🎨 Style profile cache cleared for design: ${designFingerprint}`);
+    logger.info(
+      `🎨 Style profile cache cleared for design: ${designFingerprint}`,
+    );
   } else {
     // Clear all style caches (useful at session start)
     const count = styleProfileCache.size;

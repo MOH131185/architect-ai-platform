@@ -9,9 +9,21 @@
  * @module services/canonical/CanonicalControlResolver
  */
 
-import { isFeatureEnabled } from '../../config/featureFlags.js';
-import { normalizeToCanonical } from '../../config/panelRegistry.js';
-import logger from '../core/logger.js';
+import {
+  isFeatureEnabled,
+  getFeatureValue,
+} from "../../config/featureFlags.js";
+import { normalizeToCanonical } from "../../config/panelRegistry.js";
+import logger from "../core/logger.js";
+
+// Import Design Fingerprint Service for hero reference resolution
+import {
+  getFingerprint,
+  hasFingerprint,
+  getHeroControlForPanel,
+  HERO_REFERENCE_PANELS,
+  HERO_CONTROL_STRENGTH,
+} from "../design/designFingerprintService.js";
 
 // =============================================================================
 // CONSTANTS
@@ -21,41 +33,41 @@ import logger from '../core/logger.js';
  * Panels that MUST have canonical control images
  * These panels cannot use arbitrary init_image - only canonical renders
  */
-export const MANDATORY_CANONICAL_CONTROL_PANELS = ['hero_3d', 'interior_3d'];
+export const MANDATORY_CANONICAL_CONTROL_PANELS = ["hero_3d", "interior_3d"];
 
 /**
  * Mapping from AI panel type to canonical pack panel type
  */
 export const PANEL_TO_CANONICAL_MAP = {
   // 3D views use massing/axonometric from canonical pack
-  hero_3d: 'canonical_massing_3d',
-  interior_3d: 'canonical_massing_3d', // Interior uses massing as base (no interior in pack)
+  hero_3d: "canonical_massing_3d",
+  interior_3d: "canonical_massing_3d", // Interior uses massing as base (no interior in pack)
 
   // Floor plans map directly
-  floor_plan_ground: 'canonical_floor_plan_ground',
-  floor_plan_first: 'canonical_floor_plan_first',
-  floor_plan_second: 'canonical_floor_plan_second',
+  floor_plan_ground: "canonical_floor_plan_ground",
+  floor_plan_first: "canonical_floor_plan_first",
+  floor_plan_second: "canonical_floor_plan_second",
 
   // Elevations map directly
-  elevation_north: 'canonical_elevation_north',
-  elevation_south: 'canonical_elevation_south',
-  elevation_east: 'canonical_elevation_east',
-  elevation_west: 'canonical_elevation_west',
+  elevation_north: "canonical_elevation_north",
+  elevation_south: "canonical_elevation_south",
+  elevation_east: "canonical_elevation_east",
+  elevation_west: "canonical_elevation_west",
 
   // Sections map directly
-  section_AA: 'canonical_section_aa',
-  section_BB: 'canonical_section_bb',
+  section_AA: "canonical_section_aa",
+  section_BB: "canonical_section_bb",
 };
 
 /**
  * Error codes for canonical control resolution
  */
 export const RESOLVER_ERROR_CODES = {
-  MISSING_CANONICAL_PACK: 'MISSING_CANONICAL_PACK',
-  MISSING_CONTROL_IMAGE: 'MISSING_CONTROL_IMAGE',
-  FINGERPRINT_MISMATCH: 'FINGERPRINT_MISMATCH',
-  INVALID_PANEL_TYPE: 'INVALID_PANEL_TYPE',
-  CORRUPT_CONTROL_DATA: 'CORRUPT_CONTROL_DATA',
+  MISSING_CANONICAL_PACK: "MISSING_CANONICAL_PACK",
+  MISSING_CONTROL_IMAGE: "MISSING_CONTROL_IMAGE",
+  FINGERPRINT_MISMATCH: "FINGERPRINT_MISMATCH",
+  INVALID_PANEL_TYPE: "INVALID_PANEL_TYPE",
+  CORRUPT_CONTROL_DATA: "CORRUPT_CONTROL_DATA",
 };
 
 // =============================================================================
@@ -70,11 +82,13 @@ export const RESOLVER_ERROR_CODES = {
  * @returns {string} Hash string (hex)
  */
 export function computeControlImageHash(content) {
-  if (!content) {return 'null_content';}
+  if (!content) {
+    return "null_content";
+  }
 
   // Simple fast hash for browser/Node compatibility
   let hash = 0;
-  const str = typeof content === 'string' ? content : String(content);
+  const str = typeof content === "string" ? content : String(content);
   const len = Math.min(str.length, 10000); // Sample first 10k chars
 
   for (let i = 0; i < len; i++) {
@@ -84,7 +98,7 @@ export function computeControlImageHash(content) {
   }
 
   // Return hex string with 'sha256_' prefix for clarity
-  return `sha256_${Math.abs(hash).toString(16).padStart(8, '0')}`;
+  return `sha256_${Math.abs(hash).toString(16).padStart(8, "0")}`;
 }
 
 /**
@@ -95,7 +109,11 @@ export function computeControlImageHash(content) {
  * @param {string} contentHash - Content hash
  * @returns {string} Combined hash
  */
-export function computeCanonicalFingerprint(designFingerprint, panelType, contentHash) {
+export function computeCanonicalFingerprint(
+  designFingerprint,
+  panelType,
+  contentHash,
+) {
   const combined = `${designFingerprint}:${panelType}:${contentHash}`;
   let hash = 0;
   for (let i = 0; i < combined.length; i++) {
@@ -103,7 +121,7 @@ export function computeCanonicalFingerprint(designFingerprint, panelType, conten
     hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
-  return `canon_${Math.abs(hash).toString(16).padStart(12, '0')}`;
+  return `canon_${Math.abs(hash).toString(16).padStart(12, "0")}`;
 }
 
 // =============================================================================
@@ -122,7 +140,11 @@ export function computeCanonicalFingerprint(designFingerprint, panelType, conten
  * @param {string} designFingerprint - Expected design fingerprint
  * @returns {Object|null} Control image data or null if not found/invalid
  */
-export function resolveControlImage(panelType, canonicalPack, designFingerprint) {
+export function resolveControlImage(
+  panelType,
+  canonicalPack,
+  designFingerprint,
+) {
   const canonical = normalizeToCanonical(panelType) || panelType;
 
   // Validate inputs
@@ -131,13 +153,17 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
     return null;
   }
 
-  if (!canonicalPack || typeof canonicalPack !== 'object') {
-    logger.warn(`[CanonicalControlResolver] Missing or invalid canonical pack for ${canonical}`);
+  if (!canonicalPack || typeof canonicalPack !== "object") {
+    logger.warn(
+      `[CanonicalControlResolver] Missing or invalid canonical pack for ${canonical}`,
+    );
     return null;
   }
 
   if (!designFingerprint) {
-    logger.warn(`[CanonicalControlResolver] Missing design fingerprint for ${canonical}`);
+    logger.warn(
+      `[CanonicalControlResolver] Missing design fingerprint for ${canonical}`,
+    );
     return null;
   }
 
@@ -145,7 +171,9 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
   const canonicalPanelType = PANEL_TO_CANONICAL_MAP[canonical];
   if (!canonicalPanelType) {
     // Panel type doesn't require canonical control
-    logger.debug(`[CanonicalControlResolver] ${canonical} has no canonical mapping - skipping`);
+    logger.debug(
+      `[CanonicalControlResolver] ${canonical} has no canonical mapping - skipping`,
+    );
     return null;
   }
 
@@ -154,7 +182,7 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
   if (packFingerprint && packFingerprint !== designFingerprint) {
     logger.error(
       `[CanonicalControlResolver] FINGERPRINT MISMATCH for ${canonical}! ` +
-        `Expected: ${designFingerprint}, Got: ${packFingerprint}`
+        `Expected: ${designFingerprint}, Got: ${packFingerprint}`,
     );
     return null;
   }
@@ -165,7 +193,7 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
 
   if (!controlData) {
     logger.warn(
-      `[CanonicalControlResolver] No ${canonicalPanelType} in canonical pack for ${canonical}`
+      `[CanonicalControlResolver] No ${canonicalPanelType} in canonical pack for ${canonical}`,
     );
     return null;
   }
@@ -174,7 +202,7 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
   const controlUrl = controlData.dataUrl || controlData.url || controlData.path;
   if (!controlUrl) {
     logger.warn(
-      `[CanonicalControlResolver] ${canonicalPanelType} has no URL/dataUrl for ${canonical}`
+      `[CanonicalControlResolver] ${canonicalPanelType} has no URL/dataUrl for ${canonical}`,
     );
     return null;
   }
@@ -184,7 +212,7 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
   const canonicalFingerprint = computeCanonicalFingerprint(
     designFingerprint,
     canonicalPanelType,
-    contentHash
+    contentHash,
   );
 
   // Build resolved control image
@@ -196,7 +224,7 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
     // Metadata for verification
     panelType: canonical,
     canonicalPanelType,
-    controlSource: 'canonical',
+    controlSource: "canonical",
 
     // Fingerprint verification (CRITICAL for hero_3d/interior_3d)
     designFingerprint,
@@ -222,7 +250,7 @@ export function resolveControlImage(panelType, canonicalPack, designFingerprint)
 
   logger.info(
     `[CanonicalControlResolver] Resolved ${canonical} → ${canonicalPanelType} ` +
-      `(fingerprint: ${designFingerprint.substring(0, 12)}..., hash: ${contentHash})`
+      `(fingerprint: ${designFingerprint.substring(0, 12)}..., hash: ${contentHash})`,
   );
 
   return resolvedControl;
@@ -249,18 +277,27 @@ export function requiresMandatoryCanonicalControl(panelType) {
  * @returns {Object} Resolved control image
  * @throws {Error} If mandatory control is missing
  */
-export function assertCanonicalControl(panelType, canonicalPack, designFingerprint, options = {}) {
+export function assertCanonicalControl(
+  panelType,
+  canonicalPack,
+  designFingerprint,
+  options = {},
+) {
   const { strictMode = true } = options;
   const canonical = normalizeToCanonical(panelType) || panelType;
   const isMandatory = requiresMandatoryCanonicalControl(canonical);
 
-  const resolved = resolveControlImage(panelType, canonicalPack, designFingerprint);
+  const resolved = resolveControlImage(
+    panelType,
+    canonicalPack,
+    designFingerprint,
+  );
 
   if (!resolved && isMandatory && strictMode) {
     const error = new Error(
       `[CanonicalControlResolver] FATAL: Cannot generate ${canonical} without canonical control image. ` +
-        `Panels ${MANDATORY_CANONICAL_CONTROL_PANELS.join(', ')} MUST use init_image from the same designFingerprint. ` +
-        `Ensure canonical pack exists and matches fingerprint: ${designFingerprint}`
+        `Panels ${MANDATORY_CANONICAL_CONTROL_PANELS.join(", ")} MUST use init_image from the same designFingerprint. ` +
+        `Ensure canonical pack exists and matches fingerprint: ${designFingerprint}`,
     );
     error.code = RESOLVER_ERROR_CODES.MISSING_CONTROL_IMAGE;
     error.panelType = canonical;
@@ -273,7 +310,7 @@ export function assertCanonicalControl(panelType, canonicalPack, designFingerpri
 
   if (!resolved && isMandatory) {
     logger.warn(
-      `[CanonicalControlResolver] Missing mandatory control for ${canonical} (non-strict mode)`
+      `[CanonicalControlResolver] Missing mandatory control for ${canonical} (non-strict mode)`,
     );
   }
 
@@ -293,7 +330,7 @@ export function validateInitImageIsCanonical(
   panelType,
   initImage,
   canonicalPack,
-  designFingerprint
+  designFingerprint,
 ) {
   const canonical = normalizeToCanonical(panelType) || panelType;
   const isMandatory = requiresMandatoryCanonicalControl(canonical);
@@ -302,7 +339,7 @@ export function validateInitImageIsCanonical(
     panelType: canonical,
     isMandatory,
     valid: false,
-    controlSource: 'unknown',
+    controlSource: "unknown",
     reason: null,
     canonicalFingerprint: null,
     controlImageSha256: null,
@@ -310,10 +347,14 @@ export function validateInitImageIsCanonical(
   };
 
   // Get expected canonical control
-  const resolved = resolveControlImage(panelType, canonicalPack, designFingerprint);
+  const resolved = resolveControlImage(
+    panelType,
+    canonicalPack,
+    designFingerprint,
+  );
 
   if (!resolved) {
-    result.reason = 'NO_CANONICAL_CONTROL_AVAILABLE';
+    result.reason = "NO_CANONICAL_CONTROL_AVAILABLE";
     result.valid = !isMandatory; // Invalid only if mandatory
     return result;
   }
@@ -325,22 +366,22 @@ export function validateInitImageIsCanonical(
   // Check if init_image matches canonical
   if (providedHash === canonicalHash) {
     result.valid = true;
-    result.controlSource = 'canonical';
-    result.reason = 'HASH_MATCH';
+    result.controlSource = "canonical";
+    result.reason = "HASH_MATCH";
     result.canonicalFingerprint = resolved.canonicalFingerprint;
     result.controlImageSha256 = canonicalHash;
     result.controlImagePath = resolved.controlImagePath;
   } else {
     result.valid = false;
-    result.controlSource = 'non_canonical';
-    result.reason = 'HASH_MISMATCH';
+    result.controlSource = "non_canonical";
+    result.reason = "HASH_MISMATCH";
     result.expectedHash = canonicalHash;
     result.providedHash = providedHash;
 
     if (isMandatory) {
       logger.error(
         `[CanonicalControlResolver] VIOLATION: ${canonical} using non-canonical init_image! ` +
-          `Expected hash: ${canonicalHash}, Got: ${providedHash}`
+          `Expected hash: ${canonicalHash}, Got: ${providedHash}`,
       );
     }
   }
@@ -364,16 +405,21 @@ export function buildCanonicalInitParams(
   panelType,
   canonicalPack,
   designFingerprint,
-  options = {}
+  options = {},
 ) {
   const {
     strength = 0.65, // Default strength for stylization
     strictMode = true,
   } = options;
 
-  const resolved = assertCanonicalControl(panelType, canonicalPack, designFingerprint, {
-    strictMode,
-  });
+  const resolved = assertCanonicalControl(
+    panelType,
+    canonicalPack,
+    designFingerprint,
+    {
+      strictMode,
+    },
+  );
 
   if (!resolved) {
     return null;
@@ -403,7 +449,7 @@ export function buildCanonicalInitParams(
 
     // Metadata for DEBUG_REPORT (REQUIRED)
     _canonicalControl: {
-      controlSource: 'canonical',
+      controlSource: "canonical",
       controlImagePath: resolved.controlImagePath,
       controlImageSha256: resolved.controlImageSha256,
       canonicalFingerprint: resolved.canonicalFingerprint,
@@ -431,7 +477,7 @@ export function extractDebugReportFields(resolvedControl) {
       controlImagePath: null,
       controlImageSha256: null,
       canonicalFingerprint: null,
-      controlSource: 'none',
+      controlSource: "none",
       isCanonical: false,
       verified: false,
     };
@@ -441,11 +487,197 @@ export function extractDebugReportFields(resolvedControl) {
     controlImagePath: resolvedControl.controlImagePath,
     controlImageSha256: resolvedControl.controlImageSha256,
     canonicalFingerprint: resolvedControl.canonicalFingerprint,
-    controlSource: resolvedControl.controlSource || 'canonical',
+    controlSource: resolvedControl.controlSource || "canonical",
     isCanonical: resolvedControl.isCanonical || false,
     verified: resolvedControl.verifiedFingerprint || false,
     designFingerprint: resolvedControl.designFingerprint,
     canonicalPanelType: resolvedControl.canonicalPanelType,
+  };
+}
+
+// =============================================================================
+// HERO REFERENCE RESOLUTION (Design Fingerprint System)
+// =============================================================================
+
+/**
+ * Check if a panel type can use hero_3d as a control reference.
+ *
+ * @param {string} panelType - Panel type
+ * @returns {boolean} True if panel can use hero reference
+ */
+export function canUseHeroReference(panelType) {
+  const canonical = normalizeToCanonical(panelType) || panelType;
+  return HERO_REFERENCE_PANELS.includes(canonical);
+}
+
+/**
+ * Resolve hero reference control for a panel type.
+ *
+ * When useHeroAsControl is enabled, this provides the hero_3d image
+ * as a control image for subsequent panels to ensure visual consistency.
+ *
+ * @param {string} panelType - Panel type to get control for
+ * @param {string} runId - Generation run ID to find fingerprint
+ * @returns {Object|null} Hero reference control or null if not available
+ */
+export function resolveHeroReference(panelType, runId) {
+  const canonical = normalizeToCanonical(panelType) || panelType;
+
+  // Check if feature is enabled
+  if (!isFeatureEnabled("useHeroAsControl")) {
+    logger.debug(`[HeroReference] useHeroAsControl disabled for ${canonical}`);
+    return null;
+  }
+
+  // hero_3d cannot use itself as reference
+  if (canonical === "hero_3d") {
+    return null;
+  }
+
+  // Check if panel type uses hero reference
+  if (!canUseHeroReference(canonical)) {
+    logger.debug(`[HeroReference] ${canonical} not in HERO_REFERENCE_PANELS`);
+    return null;
+  }
+
+  // Check if fingerprint exists for this run
+  if (!runId || !hasFingerprint(runId)) {
+    logger.debug(`[HeroReference] No fingerprint found for runId: ${runId}`);
+    return null;
+  }
+
+  const fingerprint = getFingerprint(runId);
+  const heroControl = getHeroControlForPanel(fingerprint, canonical);
+
+  if (!heroControl?.imageUrl) {
+    logger.warn(
+      `[HeroReference] Hero image URL missing from fingerprint for ${canonical}`,
+    );
+    return null;
+  }
+
+  // Build resolved hero reference
+  const resolvedHeroRef = {
+    url: heroControl.imageUrl,
+    dataUrl: heroControl.imageUrl,
+    panelType: canonical,
+    controlSource: "hero_reference",
+    strength: heroControl.strength,
+
+    // Hero reference metadata
+    heroImageHash: fingerprint.heroImageHash,
+    fingerprintId: fingerprint.id,
+    runId,
+    isHeroReference: true,
+
+    // Design details for verification
+    styleDescriptor: fingerprint.styleDescriptor,
+    roofProfile: fingerprint.roofProfile,
+    massingType: fingerprint.massingType,
+
+    // Timestamp
+    resolvedAt: Date.now(),
+  };
+
+  logger.info(
+    `[HeroReference] Resolved hero control for ${canonical} ` +
+      `(strength: ${heroControl.strength.toFixed(2)}, fingerprint: ${fingerprint.id})`,
+  );
+
+  return resolvedHeroRef;
+}
+
+/**
+ * Build init_image parameters using hero reference.
+ *
+ * @param {string} panelType - Panel type
+ * @param {string} runId - Generation run ID
+ * @param {Object} options - Options
+ * @returns {Object|null} Init image params or null
+ */
+export function buildHeroReferenceInitParams(panelType, runId, options = {}) {
+  const resolved = resolveHeroReference(panelType, runId);
+
+  if (!resolved) {
+    return null;
+  }
+
+  // Get strength from feature flags or defaults
+  const canonical = normalizeToCanonical(panelType) || panelType;
+  const featureFlagStrengths = getFeatureValue("heroControlStrength") || {};
+  const strength =
+    featureFlagStrengths[canonical] ||
+    HERO_CONTROL_STRENGTH[canonical] ||
+    resolved.strength ||
+    0.6;
+
+  return {
+    init_image: resolved.url,
+    strength,
+
+    // Metadata for DEBUG_REPORT
+    _heroReference: {
+      controlSource: "hero_reference",
+      panelType: canonical,
+      strength,
+      heroImageHash: resolved.heroImageHash,
+      fingerprintId: resolved.fingerprintId,
+      runId,
+      isHeroReference: true,
+      styleDescriptor: resolved.styleDescriptor,
+      roofProfile: resolved.roofProfile,
+    },
+  };
+}
+
+/**
+ * Get all panels that should use hero reference for a given run.
+ *
+ * @param {string} runId - Generation run ID
+ * @returns {string[]} Panel types that should use hero reference
+ */
+export function getPanelsUsingHeroReference(runId) {
+  if (
+    !isFeatureEnabled("useHeroAsControl") ||
+    !runId ||
+    !hasFingerprint(runId)
+  ) {
+    return [];
+  }
+
+  return HERO_REFERENCE_PANELS.filter((panelType) => {
+    const fingerprint = getFingerprint(runId);
+    return fingerprint?.heroImageUrl ? true : false;
+  });
+}
+
+/**
+ * Extract hero reference fields for DEBUG_REPORT.
+ *
+ * @param {Object} resolvedHeroRef - Resolved hero reference
+ * @returns {Object} Fields for DEBUG_REPORT
+ */
+export function extractHeroReferenceDebugFields(resolvedHeroRef) {
+  if (!resolvedHeroRef) {
+    return {
+      controlSource: "none",
+      isHeroReference: false,
+      heroImageHash: null,
+      fingerprintId: null,
+    };
+  }
+
+  return {
+    controlSource: resolvedHeroRef.controlSource || "hero_reference",
+    isHeroReference: resolvedHeroRef.isHeroReference || true,
+    heroImageHash: resolvedHeroRef.heroImageHash,
+    fingerprintId: resolvedHeroRef.fingerprintId,
+    strength: resolvedHeroRef.strength,
+    styleDescriptor: resolvedHeroRef.styleDescriptor,
+    roofProfile: resolvedHeroRef.roofProfile,
+    massingType: resolvedHeroRef.massingType,
+    runId: resolvedHeroRef.runId,
+    resolvedAt: resolvedHeroRef.resolvedAt,
   };
 }
 
@@ -458,6 +690,13 @@ export default {
   resolveControlImage,
   assertCanonicalControl,
   buildCanonicalInitParams,
+
+  // Hero reference resolution (Design Fingerprint System)
+  resolveHeroReference,
+  buildHeroReferenceInitParams,
+  canUseHeroReference,
+  getPanelsUsingHeroReference,
+  extractHeroReferenceDebugFields,
 
   // Validation
   requiresMandatoryCanonicalControl,
@@ -474,4 +713,6 @@ export default {
   MANDATORY_CANONICAL_CONTROL_PANELS,
   PANEL_TO_CANONICAL_MAP,
   RESOLVER_ERROR_CODES,
+  HERO_REFERENCE_PANELS,
+  HERO_CONTROL_STRENGTH,
 };
