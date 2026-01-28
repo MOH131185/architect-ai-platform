@@ -39,3 +39,16 @@ design_history/
 # Python build artifacts (for FastAPI backend scaffolding)
 api/__pycache__/
 *.pyc
+
+# Windows system files
+nul
+
+# Claude Code session temporary directories
+tmpclaude-*/
+
+# Generated output directories
+genarch_runs/
+qa_results/
+
+# Agent/IDE cache
+.agent/
