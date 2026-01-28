@@ -2387,8 +2387,12 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           ) {
             try {
               const debugDir = `debug_runs/${masterDNA?.designFingerprint || "unknown"}/geometry_masks`;
-              const fs = await import("fs").catch(() => null);
-              const path = await import("path").catch(() => null);
+              const fs = await import(/* webpackIgnore: true */ "fs").catch(
+                () => null,
+              );
+              const path = await import(/* webpackIgnore: true */ "path").catch(
+                () => null,
+              );
 
               if (fs && path && typeof fs.mkdirSync === "function") {
                 // Create debug directory
