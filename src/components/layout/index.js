@@ -1,6 +1,5 @@
-export { default as AppShell } from './AppShell';
-export { default as NavBar } from './NavBar';
-export { default as Footer } from './Footer';
-export { default as PageTransition } from './PageTransition';
-export { default as HeroBackground } from './HeroBackground';
-
+export { default as AppShell } from "./AppShell.jsx";
+export { default as NavBar } from "./NavBar.jsx";
+export { default as Footer } from "./Footer.jsx";
+export { default as PageTransition } from "./PageTransition.jsx";
+export { default as HeroBackground } from "./HeroBackground.jsx";
