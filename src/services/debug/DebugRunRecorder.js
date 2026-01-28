@@ -30,28 +30,40 @@
  */
 
 // Node.js 'module' import is handled conditionally below
-import { isFeatureEnabled, getAllFeatureFlags } from '../../config/featureFlags.js';
+import {
+  isFeatureEnabled,
+  getAllFeatureFlags,
+} from "../../config/featureFlags.js";
 import {
   normalizeToCanonical,
   assertValidPanelType,
   ALL_PANEL_TYPES,
-} from '../../config/panelRegistry.js';
-import logger from '../core/logger.js';
+} from "../../config/panelRegistry.js";
+import logger from "../core/logger.js";
 
 // Detect environment (browser vs Node.js)
-const isNode = typeof process !== 'undefined' && process.versions && process.versions.node;
+const isNode =
+  typeof process !== "undefined" && process.versions && process.versions.node;
 
 // Create require for Node.js built-in modules (only in Node.js environment)
 // In browser, this will be null and fs operations will be skipped
+// Use eval to completely hide from Webpack's static analysis
 let _require = null;
+let _fs = null;
+let _path = null;
 if (isNode) {
   try {
-    // Dynamic import to avoid browser bundler errors
-    // eslint-disable-next-line no-undef
-    _require = typeof require !== 'undefined' ? require : null;
+    // Use eval + indirect string to hide from Webpack bundler
+    // eslint-disable-next-line no-eval
+    const nodeRequire = eval("require");
+    _require = nodeRequire;
+    _fs = nodeRequire("f" + "s");
+    _path = nodeRequire("pat" + "h");
   } catch (e) {
     // Browser environment - require not available
     _require = null;
+    _fs = null;
+    _path = null;
   }
 }
 
@@ -59,8 +71,8 @@ if (isNode) {
 // CONSTANTS
 // =============================================================================
 
-const DEBUG_REPORT_VERSION = '2.1.0';
-const DEBUG_RUNS_DIR = 'debug_runs';
+const DEBUG_REPORT_VERSION = "2.1.0";
+const DEBUG_RUNS_DIR = "debug_runs";
 
 /**
  * Check if debug capture is enabled via environment variable
@@ -71,20 +83,23 @@ const DEBUG_RUNS_DIR = 'debug_runs';
  */
 function isDebugEnabled() {
   // Node.js environment
-  if (typeof process !== 'undefined' && process.env) {
-    if (process.env.ARCHIAI_DEBUG === '1' || process.env.ARCHIAI_DEBUG === 'true') {
+  if (typeof process !== "undefined" && process.env) {
+    if (
+      process.env.ARCHIAI_DEBUG === "1" ||
+      process.env.ARCHIAI_DEBUG === "true"
+    ) {
       return true;
     }
   }
 
   // Browser environment
-  if (typeof window !== 'undefined') {
-    if (window.ARCHIAI_DEBUG === true || window.ARCHIAI_DEBUG === '1') {
+  if (typeof window !== "undefined") {
+    if (window.ARCHIAI_DEBUG === true || window.ARCHIAI_DEBUG === "1") {
       return true;
     }
     try {
-      const sessionFlag = sessionStorage.getItem('ARCHIAI_DEBUG');
-      if (sessionFlag === '1' || sessionFlag === 'true') {
+      const sessionFlag = sessionStorage.getItem("ARCHIAI_DEBUG");
+      if (sessionFlag === "1" || sessionFlag === "true") {
         return true;
       }
     } catch (e) {
@@ -108,9 +123,9 @@ function generateRunId() {
  * Create slug from building type
  */
 function createSlug(buildingType) {
-  return (buildingType || 'unknown')
+  return (buildingType || "unknown")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/[^a-z0-9]+/g, "_")
     .substring(0, 30);
 }
 
@@ -118,14 +133,16 @@ function createSlug(buildingType) {
  * Simple hash function for strings (for control image hashes)
  */
 function simpleHash(str) {
-  if (!str) {return null;}
+  if (!str) {
+    return null;
+  }
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
-  return Math.abs(hash).toString(16).padStart(8, '0');
+  return Math.abs(hash).toString(16).padStart(8, "0");
 }
 
 // =============================================================================
@@ -136,7 +153,7 @@ class DebugRunRecorder {
   constructor() {
     this.currentRun = null;
     this._checkEnabled(); // Set initial enabled state from env var
-    this.writeToFileSystem = typeof window === 'undefined'; // Only in Node.js
+    this.writeToFileSystem = typeof window === "undefined"; // Only in Node.js
   }
 
   /**
@@ -146,7 +163,9 @@ class DebugRunRecorder {
   _checkEnabled() {
     this.isEnabled = isDebugEnabled();
     if (this.isEnabled) {
-      logger.info('📊 [DebugRunRecorder] Debug capture ENABLED (ARCHIAI_DEBUG=1)');
+      logger.info(
+        "📊 [DebugRunRecorder] Debug capture ENABLED (ARCHIAI_DEBUG=1)",
+      );
     }
   }
 
@@ -212,7 +231,7 @@ class DebugRunRecorder {
 
       seeds: {
         baseSeed: null,
-        derivationFormula: 'baseSeed + (panelIndex * 137) % 1000000',
+        derivationFormula: "baseSeed + (panelIndex * 137) % 1000000",
         panelSeeds: {},
       },
 
@@ -318,7 +337,7 @@ class DebugRunRecorder {
         _capturedAt: new Date().toISOString(),
       };
     } catch (e) {
-      return { _error: 'Failed to capture feature flags' };
+      return { _error: "Failed to capture feature flags" };
     }
   }
 
@@ -344,11 +363,11 @@ class DebugRunRecorder {
 
     // Handle specific step types
     switch (stepName) {
-      case 'dna_generation_start':
+      case "dna_generation_start":
         this.currentRun.dnaGeneration.startedAt = step.timestamp;
         break;
 
-      case 'dna_generation_complete':
+      case "dna_generation_complete":
         this.currentRun.dnaGeneration.completedAt = step.timestamp;
         this.currentRun.dnaGeneration.durationMs = payload.durationMs;
         if (payload.masterDNA) {
@@ -362,16 +381,16 @@ class DebugRunRecorder {
         }
         break;
 
-      case 'model_router_choice':
+      case "model_router_choice":
         if (payload.task && payload.model) {
           this.currentRun.modelRouter[payload.task] = {
             model: payload.model,
-            provider: payload.provider || 'together.ai',
+            provider: payload.provider || "together.ai",
           };
         }
         break;
 
-      case 'seed_derivation':
+      case "seed_derivation":
         if (payload.baseSeed !== undefined) {
           this.currentRun.seeds.baseSeed = payload.baseSeed;
         }
@@ -383,7 +402,7 @@ class DebugRunRecorder {
         }
         break;
 
-      case 'baseline_cache_check':
+      case "baseline_cache_check":
         this.currentRun.baselineCache.cacheKey = payload.cacheKey || null;
         this.currentRun.baselineCache.cacheHit = payload.cacheHit || false;
         if (payload.viewsRetrieved) {
@@ -394,11 +413,11 @@ class DebugRunRecorder {
         }
         break;
 
-      case 'a1_compose_start':
+      case "a1_compose_start":
         this.currentRun.a1Compose.startedAt = step.timestamp;
         break;
 
-      case 'a1_compose_complete':
+      case "a1_compose_complete":
         this.currentRun.a1Compose.completedAt = step.timestamp;
         this.currentRun.a1Compose.durationMs = payload.durationMs;
         if (payload.slotMapping) {
@@ -429,9 +448,13 @@ class DebugRunRecorder {
     const originalKey = panelKey;
     const canonicalKey = normalizeToCanonical(panelKey);
     if (!canonicalKey) {
-      logger.warn(`[DebugRunRecorder] Unknown panel type "${panelKey}" - recording as-is`);
+      logger.warn(
+        `[DebugRunRecorder] Unknown panel type "${panelKey}" - recording as-is`,
+      );
     } else if (canonicalKey !== originalKey) {
-      logger.debug(`[DebugRunRecorder] Normalized panel "${originalKey}" → "${canonicalKey}"`);
+      logger.debug(
+        `[DebugRunRecorder] Normalized panel "${originalKey}" → "${canonicalKey}"`,
+      );
     }
     // Use canonical key if available, otherwise use original
     panelKey = canonicalKey || panelKey;
@@ -455,14 +478,14 @@ class DebugRunRecorder {
 
       controlImage: {
         used: data.controlImageUsed ?? false,
-        source: data.controlImageSource || 'none',
+        source: data.controlImageSource || "none",
         strength: data.controlStrength ?? null,
-        strengthBand: data.strengthBand || 'initial',
+        strengthBand: data.strengthBand || "initial",
         retryAttempt: data.retryAttempt ?? 0,
         hash: controlImageHash,
         urlPreview: data.controlImageUrl
           ? data.controlImageUrl.substring(0, 150) +
-            (data.controlImageUrl.length > 150 ? '...' : '')
+            (data.controlImageUrl.length > 150 ? "..." : "")
           : null,
         urlLength: data.controlImageUrl ? data.controlImageUrl.length : 0,
       },
@@ -473,13 +496,16 @@ class DebugRunRecorder {
         url: data.canonicalControlUrl || null,
         // REQUIRED: controlImagePath for DEBUG_REPORT
         path: data.canonicalControlPath || data.controlImagePath || null,
-        source: data.canonicalControlSource || (data.isCanonicalControl ? 'canonical' : 'none'),
+        source:
+          data.canonicalControlSource ||
+          (data.isCanonicalControl ? "canonical" : "none"),
         svgRendered: data.canonicalSvgRendered ?? false,
         hash: data.canonicalControlUrl
           ? simpleHash(data.canonicalControlUrl.substring(0, 1000))
           : null,
         // REQUIRED: controlImageSha256 for DEBUG_REPORT
-        controlImageSha256: data.canonicalControlSha256 || data.controlImageSha256 || null,
+        controlImageSha256:
+          data.canonicalControlSha256 || data.controlImageSha256 || null,
         // REQUIRED: canonicalFingerprint for DEBUG_REPORT
         canonicalFingerprint: data.canonicalFingerprint || null,
         // Design fingerprint - must match canonical pack
@@ -503,8 +529,8 @@ class DebugRunRecorder {
       },
 
       generation: {
-        model: data.model || 'black-forest-labs/FLUX.1-dev',
-        provider: data.provider || 'together.ai',
+        model: data.model || "black-forest-labs/FLUX.1-dev",
+        provider: data.provider || "together.ai",
         width: data.width ?? null,
         height: data.height ?? null,
         steps: data.steps ?? null,
@@ -517,7 +543,8 @@ class DebugRunRecorder {
         success: data.success ?? null,
         imageUrl: data.imageUrl || null,
         imageUrlPreview: data.imageUrl
-          ? data.imageUrl.substring(0, 150) + (data.imageUrl.length > 150 ? '...' : '')
+          ? data.imageUrl.substring(0, 150) +
+            (data.imageUrl.length > 150 ? "..." : "")
           : null,
         imageUrlLength: data.imageUrl ? data.imageUrl.length : 0,
         error: data.error || null,
@@ -535,28 +562,40 @@ class DebugRunRecorder {
         checked:
           data.controlFidelityChecked ??
           data.controlFidelity?.checked ??
-          (data.fidelityStatus !== undefined && data.fidelityStatus !== 'NOT_CHECKED'),
+          (data.fidelityStatus !== undefined &&
+            data.fidelityStatus !== "NOT_CHECKED"),
         // Accept multiple naming conventions for flexibility
         diffRatio:
-          data.diffRatio ?? data.fidelityDiffRatio ?? data.controlFidelity?.diffRatio ?? null,
+          data.diffRatio ??
+          data.fidelityDiffRatio ??
+          data.controlFidelity?.diffRatio ??
+          null,
         similarityScore:
           data.similarityScore ??
           data.fidelitySimilarity ??
           data.controlFidelity?.similarityScore ??
           null,
-        threshold: data.fidelityThreshold ?? data.controlFidelity?.threshold ?? null,
-        status: data.fidelityStatus ?? data.controlFidelity?.status ?? 'UNCHECKED', // PASS | FAIL | RETRY | CONTROL_FALLBACK | UNCHECKED
-        retryCount: data.fidelityRetryCount ?? data.controlFidelity?.retryCount ?? 0,
+        threshold:
+          data.fidelityThreshold ?? data.controlFidelity?.threshold ?? null,
+        status:
+          data.fidelityStatus ?? data.controlFidelity?.status ?? "UNCHECKED", // PASS | FAIL | RETRY | CONTROL_FALLBACK | UNCHECKED
+        retryCount:
+          data.fidelityRetryCount ?? data.controlFidelity?.retryCount ?? 0,
         strengthUsed:
           data.fidelityStrengthUsed ??
           data.controlFidelity?.strengthUsed ??
           data.controlStrength ??
           null,
-        fallbackUsed: data.fidelityFallbackUsed ?? data.controlFidelity?.fallbackUsed ?? false,
+        fallbackUsed:
+          data.fidelityFallbackUsed ??
+          data.controlFidelity?.fallbackUsed ??
+          false,
       },
 
       // Overall panel generation status
-      status: data.panelStatus || (data.success ? 'SUCCESS' : data.error ? 'ERROR' : 'UNKNOWN'),
+      status:
+        data.panelStatus ||
+        (data.success ? "SUCCESS" : data.error ? "ERROR" : "UNKNOWN"),
 
       cache: {
         key: data.cacheKey || null,
@@ -578,7 +617,7 @@ class DebugRunRecorder {
     }
     this.currentRun.controlImageReport.panelDetails[panelKey] = {
       controlUsed: data.controlImageUsed ?? false,
-      controlSource: data.controlImageSource || 'none',
+      controlSource: data.controlImageSource || "none",
       controlStrength: data.controlStrength ?? null,
       retries: data.retryAttempt ?? 0,
     };
@@ -589,7 +628,7 @@ class DebugRunRecorder {
     }
 
     logger.debug(
-      `   📝 Recorded panel: ${panelKey} (seed: ${data.seed}, control: ${data.controlImageSource || 'none'})`
+      `   📝 Recorded panel: ${panelKey} (seed: ${data.seed}, control: ${data.controlImageSource || "none"})`,
     );
   }
 
@@ -643,7 +682,12 @@ class DebugRunRecorder {
       return;
     }
 
-    const { designFingerprint, source, controlImages = {}, validation = {} } = ccpData;
+    const {
+      designFingerprint,
+      source,
+      controlImages = {},
+      validation = {},
+    } = ccpData;
 
     this.currentRun.canonicalControlPack = {
       designFingerprint,
@@ -663,8 +707,10 @@ class DebugRunRecorder {
       this.currentRun.canonicalControlPack.panels[panelType] = {
         url: control.url || control.dataUrl || null,
         path: control.path || null,
-        source: control.source || source || 'unknown',
-        hash: control.hash || (control.url ? simpleHash(control.url.substring(0, 1000)) : null),
+        source: control.source || source || "unknown",
+        hash:
+          control.hash ||
+          (control.url ? simpleHash(control.url.substring(0, 1000)) : null),
         svgRendered: control.svgRendered ?? false,
         strength: control.strength ?? null,
         viewType: control.viewType || null,
@@ -673,7 +719,7 @@ class DebugRunRecorder {
     }
 
     logger.info(
-      `📋 [DebugRunRecorder] Recorded CCP: ${Object.keys(controlImages).length} canonical controls (source: ${source})`
+      `📋 [DebugRunRecorder] Recorded CCP: ${Object.keys(controlImages).length} canonical controls (source: ${source})`,
     );
   }
 
@@ -699,10 +745,13 @@ class DebugRunRecorder {
         passed: summary.passed || results.filter((r) => r.pass).length,
         blank: summary.blank || results.filter((r) => r.isBlank).length,
         blankPanels:
-          summary.blankPanels || results.filter((r) => r.isBlank).map((r) => r.panelType),
+          summary.blankPanels ||
+          results.filter((r) => r.isBlank).map((r) => r.panelType),
         passRate:
           summary.passRate ||
-          (results.length > 0 ? results.filter((r) => r.pass).length / results.length : 1),
+          (results.length > 0
+            ? results.filter((r) => r.pass).length / results.length
+            : 1),
       },
       details: {},
     };
@@ -715,7 +764,7 @@ class DebugRunRecorder {
           blackRatio: r.blackRatio ?? null,
           blanknessScore: r.blanknessScore ?? null,
           isBlank: r.isBlank ?? false,
-          verdict: r.verdict || 'OK',
+          verdict: r.verdict || "OK",
           regenerated: r.regenerated ?? false,
         };
       }
@@ -723,36 +772,40 @@ class DebugRunRecorder {
 
     // Log blankness table
     if (results.some((r) => r.checked)) {
-      logger.info('\n' + '='.repeat(70));
-      logger.info('BLANKNESS DETECTION - Technical Drawings');
-      logger.info('='.repeat(70));
-      logger.info('| Panel Type           | White% | Black% | Blank? | Status |');
-      logger.info('|----------------------|--------|--------|--------|--------|');
+      logger.info("\n" + "=".repeat(70));
+      logger.info("BLANKNESS DETECTION - Technical Drawings");
+      logger.info("=".repeat(70));
+      logger.info(
+        "| Panel Type           | White% | Black% | Blank? | Status |",
+      );
+      logger.info(
+        "|----------------------|--------|--------|--------|--------|",
+      );
 
       for (const r of results.filter((r) => r.checked)) {
-        const type = (r.panelType || 'unknown').padEnd(20);
+        const type = (r.panelType || "unknown").padEnd(20);
         const white =
           r.whiteRatio !== undefined
-            ? (r.whiteRatio * 100).toFixed(1).padStart(6) + '%'
-            : '  ERROR';
+            ? (r.whiteRatio * 100).toFixed(1).padStart(6) + "%"
+            : "  ERROR";
         const black =
           r.blackRatio !== undefined
-            ? (r.blackRatio * 100).toFixed(1).padStart(6) + '%'
-            : '  ERROR';
-        const blank = r.isBlank ? '  YES ' : '   NO ';
-        const status = r.error ? ' ERROR' : r.pass ? '  PASS' : '  FAIL';
+            ? (r.blackRatio * 100).toFixed(1).padStart(6) + "%"
+            : "  ERROR";
+        const blank = r.isBlank ? "  YES " : "   NO ";
+        const status = r.error ? " ERROR" : r.pass ? "  PASS" : "  FAIL";
         logger.info(`| ${type} | ${white} | ${black} | ${blank} | ${status} |`);
       }
 
-      logger.info('='.repeat(70));
+      logger.info("=".repeat(70));
       const summary = this.currentRun.blanknessReport.summary;
       logger.info(
-        `Summary: ${summary.passed}/${summary.checked} passed, ${summary.blank} blank panels detected`
+        `Summary: ${summary.passed}/${summary.checked} passed, ${summary.blank} blank panels detected`,
       );
       if (summary.blankPanels.length > 0) {
-        logger.warn(`Blank panels: ${summary.blankPanels.join(', ')}`);
+        logger.warn(`Blank panels: ${summary.blankPanels.join(", ")}`);
       }
-      logger.info('='.repeat(70) + '\n');
+      logger.info("=".repeat(70) + "\n");
     }
   }
 
@@ -775,15 +828,18 @@ class DebugRunRecorder {
       summary: {
         total: summary.total || results.length,
         passed: summary.passed || results.filter((r) => r.pass).length,
-        failed: summary.failed || results.filter((r) => !r.pass && !r.error).length,
+        failed:
+          summary.failed || results.filter((r) => !r.pass && !r.error).length,
         errors: summary.errors || results.filter((r) => r.error).length,
         passRate:
           summary.passRate ||
-          (results.length > 0 ? results.filter((r) => r.pass).length / results.length : 0),
+          (results.length > 0
+            ? results.filter((r) => r.pass).length / results.length
+            : 0),
       },
       table: results.map((r) => ({
         panelType: r.panelType,
-        category: r.category || 'unknown',
+        category: r.category || "unknown",
         ssim: r.metrics?.ssim ?? null,
         pHashDistance: r.metrics?.pHashDistance ?? null,
         pHashSimilarity: r.metrics?.pHashSimilarity ?? null,
@@ -796,27 +852,36 @@ class DebugRunRecorder {
     };
 
     // Log formatted QA table
-    logger.info('\n' + '='.repeat(80));
-    logger.info('QA TABLE - Image Metrics Comparison');
-    logger.info('='.repeat(80));
-    logger.info('| Panel Type           | SSIM   | pHash Dist | Diff Ratio | Status |');
-    logger.info('|----------------------|--------|------------|------------|--------|');
+    logger.info("\n" + "=".repeat(80));
+    logger.info("QA TABLE - Image Metrics Comparison");
+    logger.info("=".repeat(80));
+    logger.info(
+      "| Panel Type           | SSIM   | pHash Dist | Diff Ratio | Status |",
+    );
+    logger.info(
+      "|----------------------|--------|------------|------------|--------|",
+    );
 
     for (const r of this.currentRun.qaResults.table) {
-      const type = (r.panelType || 'unknown').padEnd(20);
-      const ssim = r.ssim !== null ? r.ssim.toFixed(3).padStart(6) : ' ERROR';
-      const pHash = r.pHashDistance !== null ? String(r.pHashDistance).padStart(10) : '     ERROR';
+      const type = (r.panelType || "unknown").padEnd(20);
+      const ssim = r.ssim !== null ? r.ssim.toFixed(3).padStart(6) : " ERROR";
+      const pHash =
+        r.pHashDistance !== null
+          ? String(r.pHashDistance).padStart(10)
+          : "     ERROR";
       const diff =
-        r.pixelDiffRatio !== null ? r.pixelDiffRatio.toFixed(3).padStart(10) : '     ERROR';
-      const status = r.error ? ' ERROR' : r.pass ? ' PASS ' : ' FAIL ';
+        r.pixelDiffRatio !== null
+          ? r.pixelDiffRatio.toFixed(3).padStart(10)
+          : "     ERROR";
+      const status = r.error ? " ERROR" : r.pass ? " PASS " : " FAIL ";
       logger.info(`| ${type} | ${ssim} | ${pHash} | ${diff} | ${status} |`);
     }
 
-    logger.info('='.repeat(80));
+    logger.info("=".repeat(80));
     logger.info(
-      `Summary: ${this.currentRun.qaResults.summary.passed}/${this.currentRun.qaResults.summary.total} passed (${(this.currentRun.qaResults.summary.passRate * 100).toFixed(1)}%)`
+      `Summary: ${this.currentRun.qaResults.summary.passed}/${this.currentRun.qaResults.summary.total} passed (${(this.currentRun.qaResults.summary.passRate * 100).toFixed(1)}%)`,
     );
-    logger.info('='.repeat(80) + '\n');
+    logger.info("=".repeat(80) + "\n");
   }
 
   /**
@@ -827,7 +892,7 @@ class DebugRunRecorder {
    * @param {Object} params.result - Final result object
    * @returns {Object} The complete debug report
    */
-  finishRun({ status = 'success', result = null } = {}) {
+  finishRun({ status = "success", result = null } = {}) {
     if (!this.currentRun) {
       return null;
     }
@@ -852,7 +917,7 @@ class DebugRunRecorder {
     const total = this.currentRun.controlImageReport.totalPanels;
     const withControl = this.currentRun.controlImageReport.withControlImage;
     this.currentRun.controlImageReport.complianceScore =
-      total > 0 ? ((withControl / total) * 100).toFixed(1) + '%' : 'N/A';
+      total > 0 ? ((withControl / total) * 100).toFixed(1) + "%" : "N/A";
 
     const report = { ...this.currentRun };
 
@@ -861,7 +926,7 @@ class DebugRunRecorder {
     logger.info(`   Duration: ${this.currentRun.timing.totalDurationMs}ms`);
     logger.info(`   Panels: ${Object.keys(this.currentRun.panels).length}`);
     logger.info(
-      `   Control Image Compliance: ${this.currentRun.controlImageReport.complianceScore}`
+      `   Control Image Compliance: ${this.currentRun.controlImageReport.complianceScore}`,
     );
 
     // Try to write to filesystem if in Node.js environment
@@ -885,17 +950,20 @@ class DebugRunRecorder {
   _writeToFileSystem(report) {
     try {
       // Only available in Node.js environment
-      if (!_require) {
-        logger.debug('[DebugRunRecorder] _writeToFileSystem skipped - not in Node.js environment');
+      if (!_fs || !_path) {
+        logger.debug(
+          "[DebugRunRecorder] _writeToFileSystem skipped - not in Node.js environment",
+        );
         return;
       }
 
-      // Use _require for Node.js built-in modules
-      const fs = _require('fs');
-      const path = _require('path');
+      // Use pre-loaded Node.js built-in modules
+      const fs = _fs;
+      const path = _path;
 
       // Use runId as the directory name for clear organization
-      const dirName = report.runId || report.directoryName || `run_${Date.now()}`;
+      const dirName =
+        report.runId || report.directoryName || `run_${Date.now()}`;
       const debugDir = path.join(process.cwd(), DEBUG_RUNS_DIR, dirName);
 
       // Create directory recursively
@@ -904,11 +972,11 @@ class DebugRunRecorder {
       }
 
       // Write main report
-      const reportPath = path.join(debugDir, 'DEBUG_REPORT.json');
+      const reportPath = path.join(debugDir, "DEBUG_REPORT.json");
       fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
       // Also write a summary file with key metrics
-      const summaryPath = path.join(debugDir, 'SUMMARY.txt');
+      const summaryPath = path.join(debugDir, "SUMMARY.txt");
       const summary = this._generateSummary(report);
       fs.writeFileSync(summaryPath, summary);
 
@@ -919,7 +987,7 @@ class DebugRunRecorder {
       return reportPath;
     } catch (e) {
       // Filesystem not available (browser environment) or other error
-      logger.debug('   Filesystem write not available:', e.message);
+      logger.debug("   Filesystem write not available:", e.message);
       return null;
     }
   }
@@ -929,66 +997,66 @@ class DebugRunRecorder {
    */
   _generateSummary(report) {
     const lines = [
-      '='.repeat(60),
-      'ARCHIAI DEBUG RUN SUMMARY',
-      '='.repeat(60),
-      '',
+      "=".repeat(60),
+      "ARCHIAI DEBUG RUN SUMMARY",
+      "=".repeat(60),
+      "",
       `Run ID: ${report.runId}`,
-      `Design ID: ${report.metadata?.designId || 'N/A'}`,
-      `Building Type: ${report.metadata?.buildingType || 'N/A'}`,
+      `Design ID: ${report.metadata?.designId || "N/A"}`,
+      `Building Type: ${report.metadata?.buildingType || "N/A"}`,
       `Timestamp: ${report.metadata?.timestamp || report._capturedAt}`,
-      `Total Duration: ${report.timing?.totalDurationMs || 'N/A'}ms`,
-      `Status: ${report.status || 'unknown'}`,
-      '',
-      '-'.repeat(40),
-      'SEEDS',
-      '-'.repeat(40),
-      `Base Seed: ${report.seeds?.baseSeed || 'N/A'}`,
+      `Total Duration: ${report.timing?.totalDurationMs || "N/A"}ms`,
+      `Status: ${report.status || "unknown"}`,
+      "",
+      "-".repeat(40),
+      "SEEDS",
+      "-".repeat(40),
+      `Base Seed: ${report.seeds?.baseSeed || "N/A"}`,
       `Panel Seeds: ${Object.keys(report.seeds?.panelSeeds || {}).length} panels`,
-      '',
-      '-'.repeat(40),
-      'PANELS',
-      '-'.repeat(40),
+      "",
+      "-".repeat(40),
+      "PANELS",
+      "-".repeat(40),
     ];
 
     const panels = report.panels || {};
     Object.entries(panels).forEach(([key, panel]) => {
-      const statusEmoji = panel.result?.success ? '✅' : '❌';
-      const controlSource = panel.controlImage?.source || 'none';
+      const statusEmoji = panel.result?.success ? "✅" : "❌";
+      const controlSource = panel.controlImage?.source || "none";
       const strength = panel.controlImage?.strength
         ? panel.controlImage.strength.toFixed(2)
-        : 'N/A';
-      const controlHash = panel.controlImage?.hash || 'none';
+        : "N/A";
+      const controlHash = panel.controlImage?.hash || "none";
       const diffRatio =
         panel.controlFidelity?.diffRatio !== null
           ? panel.controlFidelity.diffRatio.toFixed(3)
-          : 'N/A';
-      const fidelityStatus = panel.controlFidelity?.status || 'UNCHECKED';
-      const panelStatus = panel.status || 'UNKNOWN';
+          : "N/A";
+      const fidelityStatus = panel.controlFidelity?.status || "UNCHECKED";
+      const panelStatus = panel.status || "UNKNOWN";
 
       lines.push(
         `${statusEmoji} ${key}:`,
-        `   Seed: ${panel.seed || 'N/A'}`,
+        `   Seed: ${panel.seed || "N/A"}`,
         `   Control: ${controlSource} (strength: ${strength})`,
         `   Control Hash: ${controlHash}`,
         `   Diff Ratio: ${diffRatio}`,
         `   Fidelity Status: ${fidelityStatus}`,
         `   Panel Status: ${panelStatus}`,
-        `   Duration: ${panel.generation?.durationMs || 'N/A'}ms`,
-        ''
+        `   Duration: ${panel.generation?.durationMs || "N/A"}ms`,
+        "",
       );
     });
 
     lines.push(
-      '-'.repeat(40),
-      'CONTROL IMAGE REPORT',
-      '-'.repeat(40),
+      "-".repeat(40),
+      "CONTROL IMAGE REPORT",
+      "-".repeat(40),
       `Total Panels: ${report.controlImageReport?.totalPanels || 0}`,
       `With Control: ${report.controlImageReport?.withControlImage || 0}`,
       `Without Control: ${report.controlImageReport?.withoutControlImage || 0}`,
       `Retried: ${report.controlImageReport?.retriedPanels || 0}`,
-      `Compliance: ${report.controlImageReport?.complianceScore || 'N/A'}`,
-      ''
+      `Compliance: ${report.controlImageReport?.complianceScore || "N/A"}`,
+      "",
     );
 
     // Control Fidelity Summary (NEW - required fields per user)
@@ -997,9 +1065,12 @@ class DebugRunRecorder {
       const fidelity = panel.controlFidelity;
       if (fidelity?.checked) {
         fidelitySummary.total++;
-        if (fidelity.status === 'PASS' || fidelity.status === 'CONTROL_FALLBACK') {
+        if (
+          fidelity.status === "PASS" ||
+          fidelity.status === "CONTROL_FALLBACK"
+        ) {
           fidelitySummary.passed++;
-        } else if (fidelity.status === 'FAIL') {
+        } else if (fidelity.status === "FAIL") {
           fidelitySummary.failed++;
         }
       } else {
@@ -1008,19 +1079,19 @@ class DebugRunRecorder {
     });
 
     lines.push(
-      '-'.repeat(40),
-      'CONTROL FIDELITY SUMMARY (OUTPUT vs CONTROL)',
-      '-'.repeat(40),
+      "-".repeat(40),
+      "CONTROL FIDELITY SUMMARY (OUTPUT vs CONTROL)",
+      "-".repeat(40),
       `Total Checked: ${fidelitySummary.total}`,
       `Passed: ${fidelitySummary.passed}`,
       `Failed: ${fidelitySummary.failed}`,
       `Unchecked: ${fidelitySummary.unchecked}`,
-      `Pass Rate: ${fidelitySummary.total > 0 ? ((fidelitySummary.passed / fidelitySummary.total) * 100).toFixed(1) + '%' : 'N/A'}`,
-      '',
-      '-'.repeat(40),
-      'ERRORS',
-      '-'.repeat(40),
-      `Total Errors: ${report.errors?.length || 0}`
+      `Pass Rate: ${fidelitySummary.total > 0 ? ((fidelitySummary.passed / fidelitySummary.total) * 100).toFixed(1) + "%" : "N/A"}`,
+      "",
+      "-".repeat(40),
+      "ERRORS",
+      "-".repeat(40),
+      `Total Errors: ${report.errors?.length || 0}`,
     );
 
     if (report.errors?.length > 0) {
@@ -1031,27 +1102,37 @@ class DebugRunRecorder {
 
     // QA Results section
     if (report.qaResults?.table?.length > 0) {
-      lines.push('', '-'.repeat(40), 'QA RESULTS - IMAGE METRICS', '-'.repeat(40));
-      lines.push('Panel Type           | SSIM   | pHash | DiffRatio | Status');
-      lines.push('-'.repeat(60));
+      lines.push(
+        "",
+        "-".repeat(40),
+        "QA RESULTS - IMAGE METRICS",
+        "-".repeat(40),
+      );
+      lines.push("Panel Type           | SSIM   | pHash | DiffRatio | Status");
+      lines.push("-".repeat(60));
       for (const r of report.qaResults.table) {
-        const type = (r.panelType || 'unknown').padEnd(20);
-        const ssim = r.ssim !== null ? r.ssim.toFixed(3).padStart(6) : 'ERROR ';
-        const pHash = r.pHashDistance !== null ? String(r.pHashDistance).padStart(5) : 'ERROR';
+        const type = (r.panelType || "unknown").padEnd(20);
+        const ssim = r.ssim !== null ? r.ssim.toFixed(3).padStart(6) : "ERROR ";
+        const pHash =
+          r.pHashDistance !== null
+            ? String(r.pHashDistance).padStart(5)
+            : "ERROR";
         const diff =
-          r.pixelDiffRatio !== null ? r.pixelDiffRatio.toFixed(3).padStart(9) : '   ERROR ';
-        const status = r.error ? 'ERROR' : r.pass ? 'PASS' : 'FAIL';
+          r.pixelDiffRatio !== null
+            ? r.pixelDiffRatio.toFixed(3).padStart(9)
+            : "   ERROR ";
+        const status = r.error ? "ERROR" : r.pass ? "PASS" : "FAIL";
         lines.push(`${type} | ${ssim} | ${pHash} | ${diff} | ${status}`);
       }
-      lines.push('-'.repeat(60));
+      lines.push("-".repeat(60));
       const summary = report.qaResults.summary || {};
       lines.push(
-        `Summary: ${summary.passed || 0}/${summary.total || 0} passed (${((summary.passRate || 0) * 100).toFixed(1)}%)`
+        `Summary: ${summary.passed || 0}/${summary.total || 0} passed (${((summary.passRate || 0) * 100).toFixed(1)}%)`,
       );
     }
 
-    lines.push('', '='.repeat(60));
-    return lines.join('\n');
+    lines.push("", "=".repeat(60));
+    return lines.join("\n");
   }
 
   /**
@@ -1078,7 +1159,7 @@ class DebugRunRecorder {
     }
 
     const json = JSON.stringify(report, null, 2);
-    return new Blob([json], { type: 'application/json' });
+    return new Blob([json], { type: "application/json" });
   }
 
   /**
