@@ -72,7 +72,6 @@ import {
   validateBeforeGeneration as validateCanonicalPackGate,
   isCanonicalPackGateEnabled,
   CanonicalPackGateError,
-  GATE_ERROR_CODES,
 } from "../canonical/CanonicalPackGate.js";
 import {
   generateCanonicalRenderPack,
@@ -1267,6 +1266,8 @@ export async function planA1Panels({
   conditionedPipeline = null,
   // NEW: Canonical Design State for geometry-first generation
   canonicalDesignState = null, // Complete CDS with geometryModel, facadeModel, canonicalRenders
+  // NEW: Procedural geometry masks for floor plan consistency
+  geometryMasks = null, // SVG masks from ProceduralGeometryService
 }) {
   // =========================================================================
   // STRICT PREFLIGHT GATE: Block generation if DNA/geometry is invalid
@@ -1705,14 +1706,62 @@ export async function planA1Panels({
       }
     }
 
-    // Determine final control image using priority: Conditioned > Meshy > FGL > Geometry
+    // ========================================
+    // PROCEDURAL GEOMETRY MASKS (HIGHEST PRIORITY for floor plans)
+    // ========================================
+    // Geometry masks provide strict wall/window/door layouts as SVG initImage
+    // This ensures 100% floor plan consistency by giving AI a strict geometry to "ink"
+    let geometryMaskImage = null;
+    let geometryMaskStrength = 0;
+    let useGeometryMask = false;
+
+    if (geometryMasks && panelType.startsWith("floor_plan_")) {
+      // Map panel type to floor index
+      const floorIndexMap = {
+        floor_plan_ground: 0,
+        floor_plan_first: 1,
+        floor_plan_level2: 2,
+      };
+      const floorIndex = floorIndexMap[panelType] ?? 0;
+
+      if (geometryMasks.floors?.[floorIndex]?.dataUrl) {
+        geometryMaskImage = geometryMasks.floors[floorIndex].dataUrl;
+        // LOW strength = PRESERVE mode (strict adherence) - see ProceduralGeometryService for semantics
+        geometryMaskStrength = 0.25;
+        useGeometryMask = true;
+        logger.info(
+          `   🎯 Geometry mask attached for ${panelType} (floor ${floorIndex}, strength: ${geometryMaskStrength} PRESERVE)`,
+        );
+      }
+    }
+
+    // For hero_3d, use ground floor geometry for shape consistency (looser strength)
+    if (
+      geometryMasks &&
+      panelType === "hero_3d" &&
+      geometryMasks.groundFloorDataUrl
+    ) {
+      geometryMaskImage = geometryMasks.groundFloorDataUrl;
+      // MEDIUM strength = MODIFY mode (allows 3D interpretation) - see ProceduralGeometryService for semantics
+      geometryMaskStrength = 0.45;
+      useGeometryMask = true;
+      logger.info(
+        `   🎯 Geometry mask attached for hero_3d (ground floor, strength: ${geometryMaskStrength} MODIFY)`,
+      );
+    }
+
+    // Determine final control image using priority: GeometryMask > Conditioned > Meshy > FGL > Geometry
+    // NOTE: Geometry masks take HIGHEST priority for floor plans to ensure strict layout consistency
     const finalControlImage =
+      (useGeometryMask && geometryMaskImage) ||
       conditionedControlImage ||
       meshyControlImage ||
       fglControlImage ||
       geometryHint;
     let finalControlStrength = geometryStrength;
-    if (conditionedControlImage) {
+    if (useGeometryMask && geometryMaskImage) {
+      finalControlStrength = geometryMaskStrength;
+    } else if (conditionedControlImage) {
       finalControlStrength = conditionedControlStrength;
     } else if (meshyControlImage) {
       finalControlStrength = meshyControlStrength;
@@ -1749,9 +1798,14 @@ export async function planA1Panels({
         conditionedControlImage, // Edge/depth/silhouette map from BuildingModel
         conditionedControlStrength, // View-specific strength from CONDITIONING_STRENGTHS
         hasConditionedControl: !!conditionedControlImage,
+        // PROCEDURAL GEOMETRY MASKS (highest priority for floor plans)
+        geometryMaskImage, // SVG data URL for floor plan geometry
+        geometryMaskStrength, // Control strength (0.65 for floor plans, 0.45 for hero_3d)
+        useGeometryMask, // Flag to indicate geometry mask should be used
+        hasGeometryMask: !!geometryMaskImage, // Boolean flag for downstream services
         // Store 2D SVG outputs for A1 composition if available
         outputs2D: conditionedPipeline?.outputs2D || null,
-        // Combined control image (Conditioned > Meshy > FGL > Geometry)
+        // Combined control image (GeometryMask > Conditioned > Meshy > FGL > Geometry)
         controlImage: finalControlImage,
         controlStrength: finalControlStrength,
         // Include designFingerprint in meta for downstream validation
@@ -1853,6 +1907,10 @@ export async function generateA1PanelsSequential(
   const results = [];
   const startTime = Date.now();
   let rateLimitHitCount = 0;
+
+  // NEW: Extract styleReferenceUrl from options (Hero image for style consistency)
+  // This is set by the workflow orchestrator after hero_3d completes
+  const { styleReferenceUrl, floorPlanMaskUrl } = options;
   const strictGeometryRequired =
     isFeatureEnabled("requireCompleteGeometryDNA") ||
     isFeatureEnabled("strictNoFallback");
@@ -2636,6 +2694,103 @@ export async function generateA1PanelsSequential(
           "axonometric_3d",
         ].includes(job.type);
         let controlAttached = false;
+
+        // ========================================
+        // STRICT GATE: Fail fast if geometry mask is expected but init_image missing
+        // ========================================
+        // When useGeometryMask=true was set during planning, the geometry mask MUST be present.
+        // Missing init_image indicates ProceduralGeometryService failed to generate the SVG,
+        // which would result in AI-invented floor plans (wobbly walls, inconsistent layouts).
+        // FAIL FAST to prevent silent degradation to inconsistent outputs.
+        //
+        // EXPANDED: Now also applies to section panels (section_AA, section_BB) for consistent cuts
+        const isTechnicalPanel =
+          job.type.startsWith("floor_plan_") || job.type.startsWith("section_");
+
+        if (
+          isFeatureEnabled("strictGeometryMaskGate") &&
+          job.meta?.useGeometryMask &&
+          !job.meta?.controlImage &&
+          isTechnicalPanel
+        ) {
+          const panelCategory = job.type.startsWith("floor_plan_")
+            ? "Floor plan"
+            : "Section";
+          const errorMsg =
+            `[GEOMETRY MASK GATE] ${panelCategory} panel ${job.type} has useGeometryMask=true but no init_image (controlImage) attached. ` +
+            `This indicates ProceduralGeometryService failed to generate the geometry mask SVG. ` +
+            `Aborting to prevent inconsistent ${panelCategory.toLowerCase()}s. ` +
+            `Debug: geometryMaskImage=${!!job.meta?.geometryMaskImage}, hasGeometryMask=${!!job.meta?.hasGeometryMask}`;
+
+          logger.error(`🚫 ${errorMsg}`);
+
+          throw new Error(errorMsg);
+        }
+
+        // ADDITIONAL STRICT GATE: For technical panels without geometry masks,
+        // require canonical control pack if strictCanonicalGeometryPack is enabled
+        if (
+          isFeatureEnabled("strictCanonicalGeometryPack") &&
+          isTechnicalPanel &&
+          !job.meta?.controlImage &&
+          !job.meta?.useGeometryMask
+        ) {
+          const jobDesignFingerprint =
+            job.designFingerprint || job.meta?.designFingerprint;
+
+          if (!jobDesignFingerprint || !hasGeometryPack(jobDesignFingerprint)) {
+            const errorMsg =
+              `[CANONICAL PACK GATE] Technical panel ${job.type} requires canonical control but no pack found. ` +
+              `designFingerprint: ${jobDesignFingerprint || "MISSING"}. ` +
+              `Enable geometry mask generation or provide canonical geometry pack.`;
+
+            logger.error(`🚫 ${errorMsg}`);
+            throw new Error(errorMsg);
+          }
+        }
+
+        // ========================================
+        // PROCEDURAL GEOMETRY MASKS (HIGHEST PRIORITY for floor_plan_* panels)
+        // ========================================
+        // Geometry masks from ProceduralGeometryService ensure 100% floor plan consistency
+        // by giving the AI a strict geometry to "ink" rather than invent layouts.
+        // This takes precedence over ALL other control sources for floor plans.
+        if (
+          job.meta?.useGeometryMask &&
+          job.meta?.controlImage &&
+          (job.type.startsWith("floor_plan_") || job.type === "hero_3d")
+        ) {
+          generateParams.init_image = job.meta.controlImage;
+          // Use controlStrength from planning phase, fallback to PRESERVE mode (0.25) for floor plans
+          // See ProceduralGeometryService.js for strength semantics documentation
+          const defaultStrength = job.type.startsWith("floor_plan_")
+            ? 0.25
+            : 0.45;
+          generateParams.strength = job.meta.controlStrength || defaultStrength;
+
+          // Store geometry mask metadata for DEBUG_REPORT
+          job._canonicalControl = {
+            controlSource: "procedural_geometry_mask",
+            controlStrength: generateParams.strength,
+            isGeometryMask: true,
+            maskType: job.type.startsWith("floor_plan_")
+              ? "floor_plan"
+              : "hero_footprint",
+          };
+          job._controlSource = {
+            type: "geometry_mask",
+            source: "ProceduralGeometryService",
+            strength: generateParams.strength,
+            isGeometryMask: true,
+          };
+
+          controlAttached = true;
+
+          logger.info(
+            `🎯 [GEOMETRY MASK] Procedural geometry mask attached for ${job.type} ` +
+              `(strength: ${generateParams.strength.toFixed(2)}, init_image: SVG data URL)`,
+          );
+        }
         const designId =
           job.designId ||
           job.meta?.designId ||
@@ -3344,6 +3499,74 @@ export async function generateA1PanelsSequential(
         job._controlAttached = controlAttached;
         job._controlSource =
           job._controlSource || (controlAttached ? { type: "other" } : null);
+
+        // ========================================
+        // STYLE REFERENCE (IP-ADAPTER) FOR MATERIAL CONSISTENCY
+        // ========================================
+        // When styleReferenceUrl is provided (from hero_3d), inject IP-Adapter
+        // for elevation and section panels to lock material/texture appearance.
+        // This ensures brick color, window frames, and roof materials match hero.
+        const isElevationOrSection =
+          job.type.startsWith("elevation_") || job.type.startsWith("section_");
+
+        if (styleReferenceUrl && isElevationOrSection) {
+          // CRITICAL FIX: Pass styleReferenceUrl directly as parameter
+          // Together.ai doesn't support control_nets/IP-Adapter - uses init_image instead
+          // togetherAIService.js will convert this to initImage with strength 0.35
+          generateParams.styleReferenceUrl = styleReferenceUrl;
+
+          // Also track control_nets for debug/logging (not sent to Together API)
+          if (!generateParams.control_nets) {
+            generateParams.control_nets = [];
+          }
+          generateParams.control_nets.push({
+            type: "ip_adapter",
+            image_url: styleReferenceUrl,
+            weight: 0.65, // For documentation/debug only
+          });
+
+          logger.info(
+            `🎨 [STYLE REFERENCE] Style lock attached for ${job.type} ` +
+              `(init_image strength: 0.35, source: hero_3d)`,
+          );
+          logger.info(
+            `   🖼️ Style reference URL: ${styleReferenceUrl.substring(0, 50)}...`,
+          );
+
+          // Track style reference in control source
+          job._styleReference = {
+            type: "init_image",
+            source: "hero_3d",
+            strength: 0.35,
+            imageUrl: styleReferenceUrl,
+          };
+        }
+
+        // ========================================
+        // FLOOR PLAN MASK FOR INTERIOR_3D WINDOW ALIGNMENT
+        // ========================================
+        // When floorPlanMaskUrl is provided, use it as init_image for interior_3d
+        // to ensure windows align with floor plan openings exactly.
+        if (
+          floorPlanMaskUrl &&
+          job.type === "interior_3d" &&
+          !generateParams.init_image
+        ) {
+          generateParams.init_image = floorPlanMaskUrl;
+          generateParams.strength = 0.55; // Moderate control for window alignment
+
+          logger.info(
+            `🏠 [FLOOR PLAN MASK] Using floor_plan_ground as init_image for interior_3d ` +
+              `(strength: 0.55)`,
+          );
+
+          job._controlSource = {
+            type: "floor_plan_mask",
+            source: "floor_plan_ground",
+            strength: 0.55,
+          };
+          controlAttached = true;
+        }
 
         const responsePromise = togetherClient.generateImage(generateParams);
 
