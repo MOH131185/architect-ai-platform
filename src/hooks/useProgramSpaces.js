@@ -21,7 +21,11 @@ export const useProgramSpaces = () => {
     isGeneratingSpaces,
     setIsGeneratingSpaces,
     showToast,
-    siteMetrics  // For auto-level assignment based on site area
+    siteMetrics,  // For auto-level assignment based on site area
+    // Level count control
+    lockedLevelCount,
+    setAutoDetectedLevelCount,
+    setLevelMetrics
   } = useDesignContext();
 
   /**
@@ -257,31 +261,47 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                 try {
                   const autoLevelAssignmentService = (await import('../services/autoLevelAssignmentService')).default;
 
-                  const result = autoLevelAssignmentService.autoAssignComplete(
-                    spaces,
+                  // First, calculate the auto-detected level count (always do this for display)
+                  const autoCalc = autoLevelAssignmentService.calculateOptimalLevels(
+                    spaces.reduce((sum, s) => sum + (parseFloat(s.area || 0) * (s.count || 1)), 0),
                     siteArea,
-                    sanitizedProgram,
-                    {} // constraints will come from location data in context
+                    { buildingType: sanitizedProgram, subType: sanitizedProgram }
                   );
 
-                  if (result.success) {
-                    logger.info('✅ Auto-assignment complete:', {
-                      floors: result.floorCount,
-                      footprint: `${result.floorMetrics.actualFootprint.toFixed(0)}m²`,
-                      coverage: `${result.floorMetrics.siteCoveragePercent.toFixed(1)}%`
-                    }, '✅');
-
-                    logger.info(`   ${result.summary.reasoning}`);
-
-                    // Use auto-assigned spaces
-                    spaces = result.assignedSpaces;
-
-                    // Store floor count for later use
-                    spaces._calculatedFloorCount = result.floorCount;
-                    spaces._floorMetrics = result.floorMetrics;
-                  } else {
-                    logger.warn('Auto-assignment failed, using AI-assigned levels');
+                  // Store auto-detected value in context for UI display
+                  if (setAutoDetectedLevelCount) {
+                    setAutoDetectedLevelCount(autoCalc.optimalFloors);
                   }
+                  if (setLevelMetrics) {
+                    setLevelMetrics(autoCalc);
+                  }
+
+                  // Use locked level count if set, otherwise use auto-detected
+                  const floorCountToUse = lockedLevelCount !== null ? lockedLevelCount : autoCalc.optimalFloors;
+
+                  logger.info(`   Using floor count: ${floorCountToUse} (locked: ${lockedLevelCount !== null}, auto: ${autoCalc.optimalFloors})`);
+
+                  // Assign spaces to levels using the chosen floor count
+                  const assignedSpaces = autoLevelAssignmentService.autoAssignSpacesToLevels(
+                    spaces,
+                    floorCountToUse,
+                    sanitizedProgram
+                  );
+
+                  logger.info('✅ Auto-assignment complete:', {
+                    floors: floorCountToUse,
+                    footprint: `${autoCalc.actualFootprint.toFixed(0)}m²`,
+                    coverage: `${autoCalc.siteCoveragePercent.toFixed(1)}%`
+                  }, '✅');
+
+                  logger.info(`   ${autoCalc.reasoning}`);
+
+                  // Use auto-assigned spaces
+                  spaces = assignedSpaces;
+
+                  // Store floor count for later use
+                  spaces._calculatedFloorCount = floorCountToUse;
+                  spaces._floorMetrics = autoCalc;
                 } catch (autoError) {
                   logger.warn('Auto-level assignment error, using AI-assigned levels:', autoError.message);
                 }
@@ -311,7 +331,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     } finally {
       setIsGeneratingSpaces(false);
     }
-  }, [getDefaultProgramSpaces, setIsGeneratingSpaces]);
+  }, [getDefaultProgramSpaces, setIsGeneratingSpaces, lockedLevelCount, setAutoDetectedLevelCount, setLevelMetrics]);
 
   /**
    * Auto-generate program spaces when building type or area changes

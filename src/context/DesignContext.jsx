@@ -43,6 +43,14 @@ export const DesignProvider = ({ children }) => {
   });
   const [programSpaces, setProgramSpaces] = useState([]);
 
+  // ===== LEVEL COUNT CONTROL =====
+  // null = auto-detect based on site/program area, number = manually locked
+  const [lockedLevelCount, setLockedLevelCount] = useState(null);
+  // Stores the auto-calculated value for UI display even when locked
+  const [autoDetectedLevelCount, setAutoDetectedLevelCount] = useState(null);
+  // Stores floor metrics for UI display (footprint, coverage, etc.)
+  const [levelMetrics, setLevelMetrics] = useState(null);
+
   // ===== GENERATION RESULTS =====
   const [generatedDesigns, setGeneratedDesigns] = useState(null);
   const [currentDesignId, setCurrentDesignId] = useState(() => {
@@ -137,6 +145,9 @@ export const DesignProvider = ({ children }) => {
     setProjectStyleSignature(null);
     setProjectDetails({ area: '', program: '', entranceDirection: '' });
     setProgramSpaces([]);
+    setLockedLevelCount(null);
+    setAutoDetectedLevelCount(null);
+    setLevelMetrics(null);
     setGeneratedDesigns(null);
     setCurrentDesignId(null);
     setCurrentProjectId(null);
@@ -229,6 +240,14 @@ export const DesignProvider = ({ children }) => {
     setProjectDetails,
     programSpaces,
     setProgramSpaces,
+
+    // Level Count Control
+    lockedLevelCount,
+    setLockedLevelCount,
+    autoDetectedLevelCount,
+    setAutoDetectedLevelCount,
+    levelMetrics,
+    setLevelMetrics,
 
     // Generation Results
     generatedDesigns,

@@ -6,12 +6,12 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Navigation, ArrowRight, Loader2 } from 'lucide-react';
+import { MapPin, Navigation, ArrowRight } from 'lucide-react';
 import { SiteBoundaryEditor } from '../site';
 import Button from '../ui/Button.jsx';
 import Input from '../ui/Input.jsx';
 import Card from '../ui/Card.jsx';
-import BlueprintPanel from '../ui/BlueprintPanel.jsx';
+// BlueprintPanel available from '../ui/BlueprintPanel.jsx' if needed
 import IconWrapper from '../ui/IconWrapper.jsx';
 import StepContainer from '../layout/StepContainer.jsx';
 import { fadeInUp, staggerChildren } from '../../styles/animations.js';

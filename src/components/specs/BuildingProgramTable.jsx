@@ -13,6 +13,7 @@ import logger from '../../utils/logger.js';
 
 const BuildingProgramTable = ({
   programSpaces = [],
+  floorCount = 2,
   onChange,
   onAdd,
   onRemove,
@@ -41,6 +42,35 @@ const BuildingProgramTable = ({
   const totalArea = programSpaces.reduce((sum, space) => {
     return sum + ((space.area || 0) * (space.count || 1));
   }, 0);
+
+  const normalizedFloorCount = Math.max(1, parseInt(floorCount, 10) || 1);
+
+  const ordinal = (n) => {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return `${n}st`;
+    if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
+    if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
+    return `${n}th`;
+  };
+
+  const baseLevelOptions = (() => {
+    const levels = ['Ground'];
+    if (normalizedFloorCount >= 2) levels.push('First');
+    if (normalizedFloorCount >= 3) levels.push('Second');
+    if (normalizedFloorCount >= 4) levels.push('Third');
+    for (let i = 5; i <= normalizedFloorCount; i++) {
+      levels.push(ordinal(i - 1));
+    }
+    levels.push('Basement');
+    return levels;
+  })();
+
+  const extraLevels = Array.from(
+    new Set(programSpaces.map((s) => s.level).filter((l) => typeof l === 'string' && l.trim()))
+  ).filter((level) => !baseLevelOptions.includes(level));
+
+  const levelOptions = [...baseLevelOptions, ...extraLevels];
 
   return (
     <div className="space-y-4">
@@ -126,13 +156,17 @@ const BuildingProgramTable = ({
                       onChange={(e) => handleFieldChange(index, 'level', e.target.value)}
                       disabled={isReadOnly}
                       className="bg-navy-700 border border-navy-600 focus:border-royal-400 text-white text-sm px-3 py-2 rounded outline-none transition-colors disabled:opacity-50"
-                      style={{ color: '#FFFFFF', backgroundColor: '#1E293B' }}
+                      style={{ color: '#FFFFFF', backgroundColor: '#1E293B' }}  
                     >
-                      <option value="Ground" style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}>Ground</option>
-                      <option value="First" style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}>First</option>
-                      <option value="Second" style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}>Second</option>
-                      <option value="Third" style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}>Third</option>
-                      <option value="Basement" style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}>Basement</option>
+                      {levelOptions.map((level) => (
+                        <option
+                          key={level}
+                          value={level}
+                          style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}
+                        >
+                          {level}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td className="px-4 py-3">

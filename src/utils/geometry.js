@@ -257,6 +257,7 @@ export function localXYToPolygon(points, origin) {
 export function computeSiteMetrics(polygon) {
   if (!polygon || polygon.length < 3) {
     return {
+      sitePolygon: polygon || [],
       areaM2: 0,
       orientationDeg: 0,
       centroid: { lat: 0, lng: 0 },
@@ -277,6 +278,7 @@ export function computeSiteMetrics(polygon) {
   const perimeterM = calculatePerimeter(polygon);
 
   return {
+    sitePolygon: polygon,
     areaM2,
     orientationDeg,
     centroid,

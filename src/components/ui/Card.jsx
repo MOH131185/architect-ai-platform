@@ -37,7 +37,8 @@ const Card = ({
     ? 'cursor-pointer hover:shadow-glow hover:border-royal-600 hover:-translate-y-1'
     : '';
   
-  const glassEffect = glass || variant === 'glass';
+  // eslint-disable-next-line no-unused-vars
+  const glassEffect = glass || variant === 'glass'; // Reserved for future glass styling
   const gradientBorder = gradient;
   
   const combinedClasses = `${baseClasses} ${variantClasses[variant]} ${paddingClasses[padding]} ${hoverClasses} ${className}`;

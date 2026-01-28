@@ -1475,6 +1475,88 @@ function buildGeometryFromDNA(dna, targetFloor = 0) {
   };
 }
 
+/**
+ * Public API: Generate floor plan SVG from floor data
+ *
+ * This is the primary export for canonical floor plan generation.
+ * Used by CanonicalDesignState to populate canonicalRenders.floorPlansSVG
+ *
+ * @param {Object} floorData - Floor data containing rooms, walls, doors, stairs
+ * @param {Object} options - Generation options
+ * @param {boolean} options.showFurniture - Include furniture symbols (default: true)
+ * @param {boolean} options.showDimensions - Show dimension lines (default: true)
+ * @param {boolean} options.showNorthArrow - Show north arrow (default: true)
+ * @param {number} options.scale - Pixels per meter (default: 50)
+ * @param {number} options.northRotation - North arrow rotation in degrees (default: 0)
+ * @returns {string} SVG string
+ */
+export function generateFloorPlanSVG(floorData, options = {}) {
+  const {
+    showFurniture = true,
+    showDimensions = true,
+    showNorthArrow = true,
+    scale = 50,
+    northRotation = 0,
+  } = options;
+
+  // Convert floorData to geometry format expected by generator
+  const geometry = {
+    rooms: floorData.rooms || [],
+    walls: floorData.walls || [],
+    doors: floorData.doors || [],
+    stairs: floorData.stairs || [],
+    dimensions: floorData.dimensions || {
+      width: floorData.width || 15,
+      length: floorData.length || 10,
+    },
+    floor: floorData.floorIndex ?? floorData.floor ?? 0,
+    floorLabel: floorData.floorLabel || `Floor ${floorData.floorIndex ?? 0}`,
+    northRotation,
+  };
+
+  const generator = new ArchitecturalFloorPlanGenerator({
+    scale,
+    showLabels: true,
+    showGrid: false,
+    showFurniture,
+    showDimensions,
+    showNorthArrow,
+    northRotation,
+  });
+
+  return generator.generate(geometry, geometry.floor, options);
+}
+
+/**
+ * Generate all floor plan SVGs for a building
+ *
+ * @param {Object} masterDNA - Master design DNA
+ * @param {Array} programSpaces - Program spaces array
+ * @param {Object} options - Generation options
+ * @returns {Object} Map of floor index to SVG string { 0: "...", 1: "...", ... }
+ */
+export function generateAllFloorPlanSVGs(masterDNA, programSpaces = [], options = {}) {
+  const floorCount = masterDNA.dimensions?.floors || masterDNA.dimensions?.floorCount || 1;
+  const floorPlansSVG = {};
+
+  for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
+    try {
+      const svg = generateFromDNA(masterDNA, floorIndex, {
+        ...options,
+        showFurniture: options.showFurniture ?? true,
+        showDimensions: options.showDimensions ?? true,
+        showNorthArrow: floorIndex === 0, // Only show north arrow on ground floor
+      });
+      floorPlansSVG[floorIndex] = svg;
+    } catch (error) {
+      console.warn(`Failed to generate SVG for floor ${floorIndex}:`, error.message);
+      floorPlansSVG[floorIndex] = null;
+    }
+  }
+
+  return floorPlansSVG;
+}
+
 // Export
 // FloorPlanValidationError is already exported at class definition
 export default ArchitecturalFloorPlanGenerator;

@@ -22,7 +22,7 @@ import { createModifyRequest } from '../types/schemas.js';
 import Button from './ui/Button.jsx';
 import Card from './ui/Card.jsx';
 import GradientBorderBox from './ui/GradientBorderBox.jsx';
-import { slideInRight, fadeInUp, listItem } from '../styles/animations.js';
+import { slideInRight, fadeInUp } from '../styles/animations.js';
 
 const AIModifyPanel = ({
   designId,

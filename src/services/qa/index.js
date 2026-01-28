@@ -168,3 +168,35 @@ export {
   // Default export
   default as PanelValidationGate,
 } from './PanelValidationGate.js';
+
+// ============================================================================
+// Opus AI-Powered QA System (NEW - Phase 6)
+// Uses Claude Opus 4.5 for intelligent sheet and panel validation
+// ============================================================================
+
+// Opus Sheet Critic - Post-composition A1 sheet validation
+export {
+  SHEET_CRITIC_JSON_SCHEMA,
+  OpusSheetCritic,
+  default as opusSheetCritic,
+} from './OpusSheetCritic.js';
+
+// Opus Panel Validator - Per-panel classification and design consistency
+export {
+  PANEL_CATEGORIES,
+  PANEL_VALIDATOR_JSON_SCHEMA,
+  OpusPanelValidator,
+  default as opusPanelValidator,
+} from './OpusPanelValidator.js';
+
+// QA Gates - Automated quality assurance checks
+export {
+  GATE_CONFIG,
+  checkContrastGate,
+  checkTextSizeGate,
+  checkDuplicateGate,
+  checkTinyCardGate,
+  checkMinimumSizeGate,
+  runAllQAGates,
+  default as qaGates,
+} from './QAGates.js';

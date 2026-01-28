@@ -20,7 +20,7 @@ import {
   snapPolygonClosure,
   polygonToGeoJSON,
   simplifyPolygon
-} from './GeometryMath';
+} from './GeometryMath.js';
 
 /**
  * Custom hook for polygon tools and calculations
@@ -87,13 +87,13 @@ export function usePolygonTools(initialPolygon = []) {
    */
   const addVertex = useCallback((point, insertIndex = null) => {
     const newPolygon = [...polygon];
-    
+
     if (insertIndex !== null && insertIndex >= 0 && insertIndex <= polygon.length) {
       newPolygon.splice(insertIndex, 0, point);
     } else {
       newPolygon.push(point);
     }
-    
+
     updatePolygon(newPolygon);
   }, [polygon, updatePolygon]);
 

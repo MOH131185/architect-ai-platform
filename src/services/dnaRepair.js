@@ -142,6 +142,29 @@ export function fillProgramDefaults(dna, projectSpec) {
 
   const program = dna.program;
 
+  const normalizeRoomFloor = (room) => {
+    const rawFloor = room?.floor ?? room?.level ?? room?.levelName ?? room?.storey ?? room?.storeyName;
+    if (typeof rawFloor === 'number' && Number.isFinite(rawFloor)) {
+      if (rawFloor <= -1) return 'basement';
+      if (rawFloor === 0) return 'ground';
+      if (rawFloor === 1) return 'first';
+      if (rawFloor === 2) return 'second';
+      if (rawFloor === 3) return 'third';
+      return `${rawFloor}th`;
+    }
+
+    const normalized = String(rawFloor || '').trim().toLowerCase();
+    if (!normalized) return 'ground';
+
+    if (normalized === 'g' || normalized.startsWith('ground')) return 'ground';
+    if (normalized === 'b' || normalized.includes('basement') || normalized.includes('lower')) return 'basement';
+    if (normalized === '1' || normalized === '1st' || normalized.startsWith('first')) return 'first';
+    if (normalized === '2' || normalized === '2nd' || normalized.startsWith('second')) return 'second';
+    if (normalized === '3' || normalized === '3rd' || normalized.startsWith('third')) return 'third';
+
+    return normalized;
+  };
+
   // Fill floors
   if (!program.floors || program.floors < 1) {
     program.floors = projectSpec?.floors || 2;
@@ -154,7 +177,7 @@ export function fillProgramDefaults(dna, projectSpec) {
       program.rooms = projectSpec.programSpaces.map(space => ({
         name: space.name || 'Room',
         area_m2: space.area || 20,
-        floor: space.floor || 'ground',
+        floor: normalizeRoomFloor(space),
         orientation: space.preferredOrientation || 'any'
       }));
       logger.info('Filled program.rooms from projectSpec');

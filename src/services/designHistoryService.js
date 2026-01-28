@@ -15,9 +15,11 @@ import { saveSiteSnapshot, deleteSiteSnapshot } from '../utils/siteSnapshotStore
 import logger from '../utils/logger.js';
 import {
   compressMasterDNA as compressMasterDNAHelper,
+  sanitizePanelLayout,
   sanitizePanelMap,
   sanitizeSheetMetadata as sanitizeSheetMetadataHelper,
-  stripDataUrl as stripDataUrlHelper
+  stripDataUrl as stripDataUrlHelper,
+  stripDataUrlsDeep
 } from '../utils/designHistorySanitizer.js';
 
 
@@ -59,10 +61,167 @@ function sanitizeGeometryRenders(renders) {
 }
 
 function resolvePanelLayout(panels) {
-  if (!Array.isArray(panels)) {
-    return null;
+  return sanitizePanelLayout(panels);
+}
+
+const MAX_HISTORY_BYTES = 4.5 * 1024 * 1024;
+
+function estimatePayloadBytes(value) {
+  try {
+    const json = JSON.stringify(value);
+
+    if (typeof Blob !== 'undefined') {
+      return new Blob([json]).size;
+    }
+
+    if (typeof TextEncoder !== 'undefined') {
+      return new TextEncoder().encode(json).length;
+    }
+
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.byteLength(json, 'utf8');
+    }
+
+    return json.length;
+  } catch (error) {
+    logger.warn('⚠️ Failed to estimate storage payload size', error);
+    return Number.POSITIVE_INFINITY;
   }
-  return cloneData(panels);
+}
+
+function getEntryTimestamp(entry) {
+  const raw = entry?.updatedAt || entry?.createdAt || entry?.timestamp || null;
+  const parsed = raw ? new Date(raw).getTime() : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function trimHistoryForStorage(history, maxBytes = MAX_HISTORY_BYTES) {
+  if (!Array.isArray(history)) {
+    return history;
+  }
+
+  let candidate = history;
+  const originalBytes = estimatePayloadBytes(candidate);
+  if (originalBytes <= maxBytes) {
+    return candidate;
+  }
+
+  const applied = [];
+
+  const apply = (label, transform) => {
+    const currentBytes = estimatePayloadBytes(candidate);
+    if (currentBytes <= maxBytes) {
+      return;
+    }
+
+    candidate = transform(candidate);
+    applied.push(label);
+  };
+
+  apply('drop masterDNAFull', (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      if (!('masterDNAFull' in entry)) return entry;
+      const { masterDNAFull, ...rest } = entry;
+      return rest;
+    })
+  );
+
+  apply('drop projectContext', (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      if (!('projectContext' in entry)) return entry;
+      return { ...entry, projectContext: {} };
+    })
+  );
+
+  apply('drop locationData', (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      if (!('locationData' in entry)) return entry;
+      return { ...entry, locationData: {} };
+    })
+  );
+
+  apply('drop blendedStyle', (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      if (!('blendedStyle' in entry)) return entry;
+      return { ...entry, blendedStyle: null };
+    })
+  );
+
+  apply('cap versions to 1', (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      if (!Array.isArray(entry.versions) || entry.versions.length <= 1) return entry;
+      return { ...entry, versions: entry.versions.slice(0, 1) };
+    })
+  );
+
+  apply('remove panel maps', (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+
+      const next = { ...entry };
+
+      if ('panelMap' in next) next.panelMap = null;
+      if ('panels' in next) next.panels = null;
+      if ('panelLayout' in next) next.panelLayout = null;
+
+      if (next.a1Sheet && typeof next.a1Sheet === 'object') {
+        const nextA1 = { ...next.a1Sheet };
+        if ('panelMap' in nextA1) nextA1.panelMap = null;
+        if ('panels' in nextA1) nextA1.panels = null;
+        if ('layoutPanels' in nextA1) nextA1.layoutPanels = null;
+
+        if (nextA1.metadata && typeof nextA1.metadata === 'object') {
+          const nextMeta = { ...nextA1.metadata };
+          if ('panelMap' in nextMeta) delete nextMeta.panelMap;
+          if ('panels' in nextMeta) delete nextMeta.panels;
+          if ('panelLayout' in nextMeta) delete nextMeta.panelLayout;
+          if ('panelsArray' in nextMeta) delete nextMeta.panelsArray;
+          nextA1.metadata = nextMeta;
+        }
+
+        next.a1Sheet = nextA1;
+      }
+
+      return next;
+    })
+  );
+
+  if (estimatePayloadBytes(candidate) > maxBytes) {
+    // Last resort: keep only the most recent design entry (non-design entries are preserved).
+    const designEntries = candidate.filter(
+      (entry) => entry && typeof entry === 'object' && (entry.designId || entry.id)
+    );
+
+    if (designEntries.length > 1) {
+      const newest = [...designEntries].sort((a, b) => getEntryTimestamp(b) - getEntryTimestamp(a))[0];
+      const removed = designEntries.filter((entry) => entry !== newest);
+
+      removed.forEach((entry) => {
+        if (entry?.siteSnapshot?.key) {
+          deleteSiteSnapshot(entry.siteSnapshot.key);
+        }
+      });
+
+      candidate = candidate.filter((entry) => !(entry && typeof entry === 'object' && (entry.designId || entry.id)));
+      candidate.push(newest);
+      applied.push('keep only most recent design');
+    }
+  }
+
+  const finalBytes = estimatePayloadBytes(candidate);
+  logger.warn('⚠️ Trimmed design history to fit storage budget', {
+    originalKB: (originalBytes / 1024).toFixed(2),
+    finalKB: (finalBytes / 1024).toFixed(2),
+    maxKB: (maxBytes / 1024).toFixed(2),
+    applied
+  });
+
+  return candidate;
 }
 
 class DesignHistoryService {
@@ -105,6 +264,8 @@ class DesignHistoryService {
         }
       };
 
+      stripDataUrlsDeep(historyEntry);
+
       // Get existing history
       const history = await this.getAllHistory();
 
@@ -115,11 +276,13 @@ class DesignHistoryService {
         logger.info(`📝 Updated design history for project: ${projectId}`);
       } else {
         history.push(historyEntry);
-        logger.success(` Saved design history for project: ${projectId}`);
+        logger.success(` Saved design history for project: ${projectId}`);      
       }
 
-      // Save to localStorage with StorageManager (automatic quota handling)
-      await storageManager.setItem(this.storageKey, history);
+      stripDataUrlsDeep(history);
+
+      // Save to localStorage with StorageManager (automatic quota handling)    
+      await storageManager.setItem(this.storageKey, trimHistoryForStorage(history));
 
       return projectId;
 
@@ -207,8 +370,10 @@ class DesignHistoryService {
         if (keys.length > 0) {
           const repaired = keys.map(k => stored[k]);
 
+          stripDataUrlsDeep(repaired);
+
           // Re-save with correct format
-          await storageManager.setItem(this.storageKey, repaired);
+          await storageManager.setItem(this.storageKey, trimHistoryForStorage(repaired));
           logger.success(` Migrated ${repaired.length} design history entries`);
 
           return repaired;
@@ -507,22 +672,28 @@ CONSISTENCY REQUIREMENTS:
         logger.success(` Kept ${history.length} most recent designs`);
       }
 
+      // Ensure no embedded data URLs survive into localStorage payloads
+      stripDataUrlsDeep(design, { logSummary: true, label: 'design history entry' });
+      stripDataUrlsDeep(history, { logSummary: true, label: 'design_history' });
+      history = trimHistoryForStorage(history);
+
       // Check if setItem succeeded
-      const saved = await storageManager.setItem(this.storageKey, history);
+      const saved = await storageManager.setItem(this.storageKey, history);     
       if (!saved) {
-        const stats = storageManager.getStats();
+        const stats = await storageManager.getStats();
+        const storageUsage = await storageManager.getStorageUsage();
         logger.error('❌ Failed to save design to storage:', {
           designId: design.designId,
           historyLength: history.length,
-          storageUsage: storageManager.getStorageUsage(),
+          storageUsage,
           stats: stats
         });
         logger.error('📊 Storage diagnostics:');
-        logger.error('   - Items in storage:', stats?.itemCount || 0);
-        logger.error('   - Total size:', stats?.totalSizeKB || 0, 'KB');
-        logger.error('   - Usage:', stats?.usagePercent || 0, '%');
+        logger.error(`   - Items in storage: ${stats?.itemCount ?? 0}`);
+        logger.error(`   - Total size: ${stats?.totalSizeKB ?? 0} KB`);
+        logger.error(`   - Usage: ${stats?.usagePercent ?? 0} %`);
         logger.error('   - Check browser console above for detailed storage error');
-        throw new Error(`Failed to save design to storage. Storage usage: ${storageManager.getStorageUsage()}%. Check console for detailed error.`);
+        throw new Error(`Failed to save design to storage. Storage usage: ${storageUsage}%. Check console for detailed error.`);
       }
 
       logger.success(` Created design: ${design.designId}`);
@@ -666,6 +837,8 @@ CONSISTENCY REQUIREMENTS:
         createdAt: new Date().toISOString()
       };
 
+      stripDataUrlsDeep(version);
+
       if (!design.versions) {
         design.versions = [];
       }
@@ -677,16 +850,19 @@ CONSISTENCY REQUIREMENTS:
       const index = history.findIndex(d => d.designId === designId);
       if (index >= 0) {
         history[index] = design;
-        const saved = await storageManager.setItem(this.storageKey, history);
+        stripDataUrlsDeep(history);
+        const trimmedHistory = trimHistoryForStorage(history);
+        const saved = await storageManager.setItem(this.storageKey, trimmedHistory);
         if (!saved) {
+          const storageUsage = await storageManager.getStorageUsage();
           logger.error('❌ Failed to save version to storage:', {
             designId,
             versionId,
-            storageUsage: storageManager.getStorageUsage()
+            storageUsage
           });
-          throw new Error(`Failed to save version to storage. Storage usage: ${storageManager.getStorageUsage()}%`);
+          throw new Error(`Failed to save version to storage. Storage usage: ${storageUsage}%`);
         }
-        logger.success(` Added version ${versionId} to design ${designId}`);
+        logger.success(` Added version ${versionId} to design ${designId}`);    
       }
 
       return versionId;
@@ -783,7 +959,7 @@ CONSISTENCY REQUIREMENTS:
       const merged = [...existing];
 
       entries.forEach(entry => {
-        const index = merged.findIndex(e => e.projectId === entry.projectId);
+        const index = merged.findIndex(e => e.projectId === entry.projectId);   
         if (index >= 0) {
           merged[index] = entry; // Update existing
         } else {
@@ -791,8 +967,9 @@ CONSISTENCY REQUIREMENTS:
         }
       });
 
-      await storageManager.setItem(this.storageKey, merged);
-      logger.info(`📤 Imported ${entries.length} design history entries`);
+      stripDataUrlsDeep(merged, { logSummary: true, label: 'design_history import' });
+      await storageManager.setItem(this.storageKey, trimHistoryForStorage(merged));
+      logger.info(`📤 Imported ${entries.length} design history entries`);      
 
     } catch (error) {
       logger.error('❌ Failed to import design history:', error);

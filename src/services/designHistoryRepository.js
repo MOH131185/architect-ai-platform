@@ -8,7 +8,14 @@
 import storageManager from '../utils/storageManager.js';
 import { deleteSiteSnapshot } from '../utils/siteSnapshotStore.js';
 import logger from '../utils/logger.js';
-import { stripDataUrl, compressMasterDNA, sanitizeSheetMetadata, sanitizePanelMap } from '../utils/designHistorySanitizer.js';
+import {
+  stripDataUrl,
+  compressMasterDNA,
+  sanitizeSheetMetadata,
+  sanitizePanelMap,
+  stripDataUrlsDeep
+} from '../utils/designHistorySanitizer.js';
+import baselineArtifactStore from './baselineArtifactStore.js';
 
 const MAX_DESIGNS = 2;
 const MAX_VERSIONS_PER_DESIGN = 3;
@@ -185,6 +192,7 @@ function sanitizeSiteSnapshot(snapshot) {
   }
 
   const sanitized = cloneData(snapshot) || {};
+  stripDataUrlsDeep(sanitized);
 
   if (sanitized.dataUrl) {
     sanitized.dataUrl = stripDataUrl(sanitized.dataUrl);
@@ -275,6 +283,8 @@ function sanitizeVersionEntry(versionData = {}) {
     sanitized.panelMap = sanitizePanelMap(versionData.panelMap);
   }
 
+  stripDataUrlsDeep(sanitized);
+
   return sanitized;
 }
 
@@ -291,9 +301,10 @@ function trimVersionsForStorage(versions = []) {
 }
 
 function buildDesignPayload(design, existingDesign = null) {
-  const designId = design.id || design.designId || `design_${Date.now()}`;
+  const designId = design.id || design.designId || `design_${Date.now()}`;      
 
-  const canonicalDNA = cloneData(design.dna || design.masterDNA || {}) || {};
+  const canonicalDNA = cloneData(design.dna || design.masterDNA || {}) || {};   
+  stripDataUrlsDeep(canonicalDNA);
   const compressedDNA = compressMasterDNA(canonicalDNA);
   const sheetUrl = stripDataUrl(
     design.resultUrl ||
@@ -350,6 +361,24 @@ function buildDesignPayload(design, existingDesign = null) {
     sheetMetadata.panelCoordinates ||
     null;
 
+  const sanitizedProjectContext = cloneData(design.projectContext) || {};
+  stripDataUrlsDeep(sanitizedProjectContext);
+
+  const sanitizedLocationData = cloneData(design.locationData) || {};
+  stripDataUrlsDeep(sanitizedLocationData);
+
+  const sanitizedOverlays = cloneData(design.overlays) || [];
+  stripDataUrlsDeep(sanitizedOverlays);
+
+  const sanitizedBlendedStyle = cloneData(design.blendedStyle) || null;
+  stripDataUrlsDeep(sanitizedBlendedStyle);
+
+  const clonedA1Sheet = design.a1Sheet ? cloneData(design.a1Sheet) || {} : {};
+  stripDataUrlsDeep(clonedA1Sheet);
+  if (clonedA1Sheet && typeof clonedA1Sheet === 'object' && clonedA1Sheet.dataUrl) {
+    delete clonedA1Sheet.dataUrl;
+  }
+
   const payload = {
     id: designId,
     designId,
@@ -363,25 +392,25 @@ function buildDesignPayload(design, existingDesign = null) {
     seed: design.seed || Date.now(),
     sheetType: design.sheetType || 'ARCH',
     sheetMetadata,
-    overlays: cloneData(design.overlays) || [],
+    overlays: sanitizedOverlays,
     createdAt: design.createdAt || existingDesign?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     versions,
-    projectContext: cloneData(design.projectContext) || {},
-    locationData: cloneData(design.locationData) || {},
+    projectContext: sanitizedProjectContext,
+    locationData: sanitizedLocationData,
     siteSnapshot: sanitizeSiteSnapshot(design.siteSnapshot || existingDesign?.siteSnapshot),
-    blendedStyle: cloneData(design.blendedStyle) || null,
+    blendedStyle: sanitizedBlendedStyle,
     composedSheetUrl: sheetUrl,
     resultUrl: sheetUrl,
     a1Sheet: {
-      ...(design.a1Sheet ? cloneData(design.a1Sheet) || {} : {}),
+      ...(clonedA1Sheet || {}),
       url: sheetUrl,
       composedSheetUrl: sheetUrl,
       metadata: sheetMetadata,
       panelMap: resolvedPanelMap || null,
       panels: resolvedPanelMap || null,
       coordinates: panelCoordinates,
-      geometryRenders: design.geometryRenders || design.a1Sheet?.geometryRenders || null,
+      geometryRenders: geometryRenders || null,
       geometryDNA: design.geometryDNA || canonicalDNA.geometry || canonicalDNA.geometryDNA || null
     },
     panelMap: resolvedPanelMap || null,
@@ -486,7 +515,7 @@ class DesignHistoryRepository {
   constructor(backend = null) {
     this.backend = backend || new LocalStorageBackend();
   }
-  
+
   /**
    * Generate deterministic design ID
    * @param {Object} dna - Master DNA
@@ -503,7 +532,7 @@ class DesignHistoryRepository {
         seed,
         siteHash: siteSnapshot?.sha256 || null
       });
-      
+
       // Simple hash function (for deterministic IDs)
       let hash = 0;
       for (let i = 0; i < hashInput.length; i++) {
@@ -511,10 +540,10 @@ class DesignHistoryRepository {
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash; // Convert to 32bit integer
       }
-      
+
       return `design_${Math.abs(hash).toString(36)}_${Date.now().toString(36)}`;
     }
-    
+
     // Fallback: UUID-like ID
     return `design_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
@@ -545,7 +574,7 @@ class DesignHistoryRepository {
       design.siteSnapshot,
       design.seed
     );
-    
+
     const allDesigns = await this.backend.list();
     const existingIndex = allDesigns.findIndex(d => (d.id || d.designId) === designId);
     const existingDesign = existingIndex >= 0 ? allDesigns[existingIndex] : null;
@@ -556,7 +585,7 @@ class DesignHistoryRepository {
 
     const updatedDesigns = [...allDesigns];
 
-  if (existingIndex >= 0) {
+    if (existingIndex >= 0) {
       const mergedDesign = {
         ...existingDesign,
         ...sanitizedDesign,
@@ -603,7 +632,7 @@ class DesignHistoryRepository {
 
     return designId;
   }
-  
+
   /**
    * Update design version
    * @param {string} designId - Design ID
@@ -613,13 +642,13 @@ class DesignHistoryRepository {
   async updateDesignVersion(designId, versionData) {
     const allDesigns = await this.backend.list();
     const index = allDesigns.findIndex(d => (d.id || d.designId) === designId);
-    
+
     if (index === -1) {
       throw new Error(`Design ${designId} not found`);
     }
-    
+
     const design = allDesigns[index];
-    
+
     const versionId = `v${(design.versions?.length || 0) + 1}`;
     const sanitizedVersion = sanitizeVersionEntry({
       ...versionData,
@@ -628,17 +657,17 @@ class DesignHistoryRepository {
     });
 
     const versions = trimVersionsForStorage([sanitizedVersion, ...(design.versions || [])]);
-    
+
     const updatedDesign = enforceDesignSize(
       buildDesignPayload({ ...design, designId, versions }, design)
     );
-    
+
     const cappedDesigns = enforceHistoryCap([
       ...allDesigns.slice(0, index),
       updatedDesign,
       ...allDesigns.slice(index + 1)
     ]);
-    
+
     const saved = await this.persistDesigns(cappedDesigns);
     if (!saved) {
       const usage = await storageManager.getStorageUsage();
@@ -646,7 +675,7 @@ class DesignHistoryRepository {
     }
     return versionId;
   }
-  
+
   /**
    * Get design by ID
    * @param {string} designId - Design ID
@@ -655,7 +684,7 @@ class DesignHistoryRepository {
   async getDesignById(designId) {
     return this.backend.get(designId);
   }
-  
+
   /**
    * List all designs
    * @returns {Promise<Array>} Array of design summaries
@@ -674,7 +703,7 @@ class DesignHistoryRepository {
       hasGeometryBaseline: !!(d.geometryDNA || d.geometryRenders)
     }));
   }
-  
+
   /**
    * Delete design
    * @param {string} designId - Design ID
@@ -705,7 +734,7 @@ class DesignHistoryRepository {
 
     return true;
   }
-  
+
   /**
    * Migrate from legacy storage format
    * @param {string} legacyKey - Legacy storage key
@@ -716,7 +745,7 @@ class DesignHistoryRepository {
     if (!Array.isArray(legacy) || legacy.length === 0) {
       return 0;
     }
-    
+
     let migrated = 0;
     for (const oldDesign of legacy) {
       try {
@@ -752,14 +781,14 @@ class DesignHistoryRepository {
             coordinates: oldDesign.panelCoordinates || oldDesign.a1Sheet?.coordinates || null
           }
         };
-        
+
         await this.saveDesign(newDesign);
         migrated++;
       } catch (error) {
         logger.warn(`Failed to migrate design ${oldDesign.designId}:`, error);
       }
     }
-    
+
     logger.success(`Migrated ${migrated} designs from legacy storage`);
     return migrated;
   }

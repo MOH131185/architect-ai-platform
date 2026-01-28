@@ -296,7 +296,7 @@ export function computePanelCoordinates(layout, sheetWidth, sheetHeight) {
   });
 }
 
-export default {
+const sheetLayoutConfig = {
   SHEET_LAYOUTS,
   BASE_NEGATIVE_PROMPTS,
   LAYOUT_DRIFT_NEGATIVES,
@@ -307,4 +307,6 @@ export default {
   validatePanelConfiguration,
   computePanelCoordinates
 };
+
+export default sheetLayoutConfig;
 

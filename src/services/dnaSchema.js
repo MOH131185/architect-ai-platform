@@ -16,6 +16,29 @@ import logger from '../utils/logger.js';
  * Converts raw project inputs into structured JSON format
  */
 export function buildDNARequestPayload(locationData, siteMetrics, programSpec, portfolioSummary) {
+  const normalizeRoomFloor = (room) => {
+    const rawFloor = room?.floor ?? room?.level ?? room?.levelName ?? room?.storey ?? room?.storeyName;
+    if (typeof rawFloor === 'number' && Number.isFinite(rawFloor)) {
+      if (rawFloor <= -1) return 'basement';
+      if (rawFloor === 0) return 'ground';
+      if (rawFloor === 1) return 'first';
+      if (rawFloor === 2) return 'second';
+      if (rawFloor === 3) return 'third';
+      return `${rawFloor}th`;
+    }
+
+    const normalized = String(rawFloor || '').trim().toLowerCase();
+    if (!normalized) return 'ground';
+
+    if (normalized === 'g' || normalized.startsWith('ground')) return 'ground';
+    if (normalized === 'b' || normalized.includes('basement') || normalized.includes('lower')) return 'basement';
+    if (normalized === '1' || normalized === '1st' || normalized.startsWith('first')) return 'first';
+    if (normalized === '2' || normalized === '2nd' || normalized.startsWith('second')) return 'second';
+    if (normalized === '3' || normalized === '3rd' || normalized.startsWith('third')) return 'third';
+
+    return normalized;
+  };
+
   const payload = {
     site: {
       polygon: siteMetrics?.sitePolygon || [],
@@ -30,7 +53,7 @@ export function buildDNARequestPayload(locationData, siteMetrics, programSpec, p
       rooms: (programSpec?.programSpaces || []).map(room => ({
         name: room.name || 'Room',
         area_m2: room.area || 20,
-        floor: room.floor || 'ground',
+        floor: normalizeRoomFloor(room),
         orientation: room.preferredOrientation || 'any'
       }))
     },
@@ -154,12 +177,27 @@ export function normalizeRawDNA(rawDNA) {
 }
 
 /**
+ * House type maximum floor limits (UK typical)
+ */
+const HOUSE_TYPE_MAX_FLOORS = {
+  'detached-house': 3,
+  'semi-detached-house': 3,
+  'terraced-house': 4,
+  'villa': 3,
+  'cottage': 2,
+  'mansion': 3,
+  'multi-family': 6,
+  'duplex': 3
+};
+
+/**
  * Validate DNA schema structure
- * Returns { valid: boolean, missing: string[], errors: string[] }
+ * Returns { valid: boolean, missing: string[], errors: string[], warnings: string[] }
  */
 export function validateDNASchema(dna) {
   const missing = [];
   const errors = [];
+  const warnings = [];
 
   // Check top-level keys
   const requiredKeys = ['site', 'program', 'style', 'geometry_rules'];
@@ -187,6 +225,15 @@ export function validateDNASchema(dna) {
     if (!Array.isArray(dna.program.rooms) || dna.program.rooms.length === 0) {
       errors.push('program.rooms must be a non-empty array');
     }
+
+    // Validate floor count against house type constraints
+    const houseType = dna.program.houseType || dna.program.buildingType;
+    if (houseType && HOUSE_TYPE_MAX_FLOORS[houseType]) {
+      const maxFloors = HOUSE_TYPE_MAX_FLOORS[houseType];
+      if (dna.program.floors > maxFloors) {
+        warnings.push(`Floor count ${dna.program.floors} exceeds typical max ${maxFloors} for ${houseType}`);
+      }
+    }
   }
 
   // Check style fields
@@ -209,10 +256,12 @@ export function validateDNASchema(dna) {
   const valid = missing.length === 0 && errors.length === 0;
 
   if (!valid) {
-    logger.warn('DNA schema validation failed', { missing, errors });
+    logger.warn('DNA schema validation failed', { missing, errors, warnings });
+  } else if (warnings.length > 0) {
+    logger.info('DNA schema validation passed with warnings', { warnings });
   }
 
-  return { valid, missing, errors };
+  return { valid, missing, errors, warnings };
 }
 
 /**

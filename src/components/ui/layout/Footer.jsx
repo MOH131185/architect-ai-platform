@@ -1,5 +1,6 @@
 import React from 'react';
 import { clsx } from 'clsx';
+import CompanyLogo from '../CompanyLogo.jsx';
 import { twMerge } from 'tailwind-merge';
 
 // Utility to merge Tailwind classes
@@ -26,13 +27,9 @@ const Footer = ({ className, ...props }) => {
           {/* Logo & Copyright */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <img 
-                src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
-                alt="ArchiAI Solution Ltd." 
-                className="h-8 w-8"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
+              <CompanyLogo
+                size={40}
+                className="mr-2"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-gray-900">

@@ -5,7 +5,7 @@
  * Redesigned with new UI components and design system.
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertCircle, X } from 'lucide-react';
 import { useArchitectAIWorkflow } from '../hooks/useArchitectAIWorkflow.js';
@@ -34,7 +34,7 @@ import ResultsStep from './steps/ResultsStep.jsx';
 import LandingPage from './LandingPage.jsx';
 
 // Import new UI components and layout
-import { Button, Card, Section } from './ui';
+import { Card } from './ui';
 import { AppShell, PageTransition } from './layout';
 import '../styles/deepgram.css';
 
@@ -116,10 +116,7 @@ const ArchitectAIWizardContainer = () => {
     setSiteMetrics,
     locationAccuracy,
     setLocationAccuracy,
-    drawingMode,
-    setDrawingMode,
-    precisionMode,
-    setPrecisionMode,
+    // Note: drawingMode, precisionMode available from useWizardState if needed
 
     // Portfolio
     portfolioFiles,
@@ -166,6 +163,77 @@ const ArchitectAIWizardContainer = () => {
       });
     };
   }, [portfolioFiles]);
+
+  // Auto-detect optimal floor count from site + area (unless locked by user)
+  useEffect(() => {
+    const siteArea = siteMetrics?.areaM2;
+    const totalArea = parseFloat(projectDetails?.area);
+
+    const hasInputs =
+      typeof siteArea === 'number' &&
+      Number.isFinite(siteArea) &&
+      siteArea > 0 &&
+      Number.isFinite(totalArea) &&
+      totalArea > 0;
+
+    if (!hasInputs) {
+      setProjectDetails((prev) => {
+        if (!prev) return prev;
+        if (prev.autoDetectedFloorCount === null && prev.floorMetrics === null) return prev;
+        return { ...prev, autoDetectedFloorCount: null, floorMetrics: null };
+      });
+      return;
+    }
+
+    const buildingType =
+      sanitizePromptInput(projectDetails.program || projectDetails.subType || projectDetails.category, {
+        maxLength: 120,
+        allowNewlines: false,
+      }) || 'mixed-use';
+
+    try {
+      const floorMetrics = autoLevelAssignmentService.calculateOptimalLevels(totalArea, siteArea, {
+        buildingType,
+        subType: projectDetails.subType || null,
+        circulationFactor: 1.0, // total area already includes circulation allowance
+      });
+
+      setProjectDetails((prev) => {
+        if (!prev) return prev;
+
+        const next = {
+          ...prev,
+          autoDetectedFloorCount: floorMetrics.optimalFloors,
+          floorMetrics,
+        };
+
+        if (!prev.floorCountLocked) {
+          next.floorCount = floorMetrics.optimalFloors;
+        }
+
+        const unchanged =
+          prev.floorCount === next.floorCount &&
+          prev.autoDetectedFloorCount === next.autoDetectedFloorCount &&
+          prev.floorCountLocked === next.floorCountLocked &&
+          prev.floorMetrics?.optimalFloors === next.floorMetrics?.optimalFloors &&
+          prev.floorMetrics?.siteCoveragePercent === next.floorMetrics?.siteCoveragePercent &&
+          prev.floorMetrics?.actualFootprint === next.floorMetrics?.actualFootprint &&
+          prev.floorMetrics?.maxFloorsAllowed === next.floorMetrics?.maxFloorsAllowed;
+
+        return unchanged ? prev : next;
+      });
+    } catch (err) {
+      logger.warn('Auto floor detection failed', err?.message || err);
+    }
+  }, [
+    projectDetails?.area,
+    projectDetails?.program,
+    projectDetails?.subType,
+    projectDetails?.category,
+    projectDetails?.floorCountLocked,
+    siteMetrics?.areaM2,
+    setProjectDetails,
+  ]);
 
   // Step definitions
   const steps = [
@@ -426,17 +494,9 @@ const ArchitectAIWizardContainer = () => {
   const handleBoundaryUpdated = useCallback((boundaryData) => {
     if (!boundaryData) return;
 
-    setSitePolygon(boundaryData.polygon || []);
-
-    // Extract metrics from the formatted metrics structure
-    const metrics = boundaryData.metrics || {};
-    setSiteMetrics({
-      area: metrics.area?.value || 0,
-      perimeter: metrics.perimeter?.value || 0,
-      centroid: metrics.centroid || null,
-      segments: metrics.segments || [],
-      angles: metrics.segments?.map(s => s.angle?.value) || [],
-    });
+    const polygon = boundaryData.polygon || [];
+    setSitePolygon(polygon);
+    setSiteMetrics(polygon && polygon.length >= 3 ? computeSiteMetrics(polygon) : null);
   }, []);
 
   /**
@@ -555,11 +615,34 @@ const ArchitectAIWizardContainer = () => {
 
       const togetherAIReasoningService = (await import('../services/togetherAIReasoningService')).default;
 
-      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${sanitizedProgram} totaling ~${sanitizedArea} m² (include ~15% circulation). Assign floor levels logically (public/amenity on Ground, private on upper). Use only JSON array, no comments.`;
+      const isFloorCountLocked = !!projectDetails.floorCountLocked;
+      const desiredFloorCount = Math.max(1, parseInt(projectDetails.floorCount, 10) || 1);
+      const suggestedFloorCount = projectDetails.autoDetectedFloorCount || desiredFloorCount || 2;
+      const floorCountForPrompt = isFloorCountLocked ? desiredFloorCount : suggestedFloorCount;
+
+      const ordinal = (n) => {
+        const mod10 = n % 10;
+        const mod100 = n % 100;
+        if (mod10 === 1 && mod100 !== 11) return `${n}st`;
+        if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
+        if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
+        return `${n}th`;
+      };
+
+      const levelNames = (() => {
+        const levels = ['Ground'];
+        if (floorCountForPrompt >= 2) levels.push('First');
+        if (floorCountForPrompt >= 3) levels.push('Second');
+        if (floorCountForPrompt >= 4) levels.push('Third');
+        for (let i = 5; i <= floorCountForPrompt; i++) levels.push(ordinal(i - 1));
+        return levels;
+      })();
+
+      const prompt = `You are an architectural programming expert. Generate a JSON array of spaces for a ${sanitizedProgram} totaling ~${sanitizedArea} m². Ensure the total area (area×count sum) is within ±5% of ${sanitizedArea}. Assign each space to ONE of these level names only: ${levelNames.join(', ')}. Public/amenity spaces on Ground; private/sleeping spaces on upper levels. Return ONLY the JSON array, no commentary.`;
 
       const response = await togetherAIReasoningService.chatCompletion(
         [
-          { role: 'system', content: 'Return ONLY JSON array of spaces with name, area, count, level.' },
+          { role: 'system', content: 'Return ONLY a JSON array of objects with: name (string), area (number), count (number), level (string), notes (optional string).' },
           { role: 'user', content: prompt }
         ],
         { max_tokens: 900, temperature: 0.55 }
@@ -593,51 +676,109 @@ const ArchitectAIWizardContainer = () => {
       let spaces = parsed.map((space, index) => ({
         id: `space_${Date.now()}_${index}`,
         spaceType: space.spaceType || space.type || space.name,
-        label: space.name || space.label || `Space ${index + 1}`,
-        area: parseFloat(space.area) || 0,
-        count: space.count || 1,
+        name: String(space.name || space.label || `Space ${index + 1}`),
+        label: String(space.label || space.name || `Space ${index + 1}`),
+        area: Math.max(0, parseFloat(space.area) || 0),
+        count: Math.max(1, parseInt(space.count, 10) || 1),
         level: space.level || 'Ground',
         notes: space.notes || ''
       }));
 
       // Auto level assignment with site area
       const siteArea = siteMetrics?.areaM2 || 0;
+      const fallbackFloorCount = Math.max(1, parseInt(projectDetails.floorCount, 10) || 1);
       if (siteArea > 0 && spaces.length > 0) {
-        const assignment = autoLevelAssignmentService.autoAssignComplete(
-          spaces,
-          siteArea,
-          sanitizedProgram,
-          { maxFloors: 6 }
-        );
-        spaces = assignment.assignedSpaces;
-        spaces._calculatedFloorCount = assignment.floorCount;
-        spaces._floorMetrics = assignment.floorMetrics;
+        const hasExplicitCirculation = spaces.some((s) => {
+          const name = String(s.name || s.label || '').toLowerCase();
+          return (
+            name.includes('circulation') ||
+            name.includes('corridor') ||
+            name.includes('hallway') ||
+            name.includes('stairs') ||
+            name.includes('staircase')
+          );
+        });
 
-        setProjectDetails((prev) => ({
-          ...prev,
-          floorCount: assignment.floorCount || prev.floorCount
-        }));
+        const totalProgramArea = spaces.reduce(
+          (sum, s) => sum + (parseFloat(s.area || 0) * (s.count || 1)),
+          0
+        );
+
+        const floorMetrics = autoLevelAssignmentService.calculateOptimalLevels(totalProgramArea, siteArea, {
+          buildingType: sanitizedProgram,
+          subType: projectDetails.subType || null,
+          maxFloors: 10,
+          circulationFactor: hasExplicitCirculation ? 1.0 : 1.15,
+        });
+
+        const autoFloors = floorMetrics.optimalFloors;
+        const floorCountToUse = isFloorCountLocked
+          ? fallbackFloorCount
+          : (autoFloors || fallbackFloorCount);
+
+        const assigned = autoLevelAssignmentService.autoAssignSpacesToLevels(
+          spaces,
+          floorCountToUse,
+          sanitizedProgram
+        );
+
+        assigned._calculatedFloorCount = floorCountToUse;
+        assigned._floorMetrics = floorMetrics;
+        spaces = assigned;
+
+        setProjectDetails((prev) => {
+          const next = {
+            ...prev,
+            autoDetectedFloorCount: autoFloors,
+            floorMetrics,
+          };
+          if (!prev.floorCountLocked) {
+            next.floorCount = floorCountToUse;
+          }
+          return next;
+        });
 
         setProgramWarnings((prev) => [
           ...prev,
-          `AI assigned ${assignment.floorCount} levels based on ${Math.round(siteArea)} m² site`
+          isFloorCountLocked
+            ? `Auto-detected ${autoFloors} levels from ${Math.round(siteArea)} m² site (locked to ${floorCountToUse})`
+            : `Auto-detected ${floorCountToUse} levels from ${Math.round(siteArea)} m² site`,
         ]);
+      } else {
+        spaces._calculatedFloorCount = fallbackFloorCount;
+        spaces._floorMetrics = projectDetails.floorMetrics || null;
       }
 
       setProgramSpaces(spaces);
 
-      logger.success('Program spaces generated', { count: spaces.length });
+      logger.success('Program spaces generated', { count: spaces.length });     
     } catch (err) {
       logger.error('Space generation failed', err);
       setProgramSpaces([]);
     } finally {
       setIsGeneratingSpaces(false);
     }
-  }, [projectDetails, locationData]);
+  }, [projectDetails, locationData, siteMetrics]);
 
   const handleProgramSpacesChange = useCallback((spaces) => {
-    setProgramSpaces(spaces);
-  }, []);
+    const normalizedSpaces = (spaces || []).map((space, index) => ({
+      ...space,
+      id: space.id || `space_${Date.now()}_${index}`,
+      name: String(space.name || space.label || `Space ${index + 1}`),
+      label: String(space.label || space.name || `Space ${index + 1}`),
+      area: Math.max(0, parseFloat(space.area) || 0),
+      count: Math.max(1, parseInt(space.count, 10) || 1),
+      level: space.level || 'Ground',
+    }));
+
+    normalizedSpaces._calculatedFloorCount =
+      spaces?._calculatedFloorCount ||
+      projectDetails.floorCount ||
+      2;
+    normalizedSpaces._floorMetrics = spaces?._floorMetrics || projectDetails.floorMetrics || null;
+
+    setProgramSpaces(normalizedSpaces);
+  }, [projectDetails.floorCount, projectDetails.floorMetrics]);
 
   const handleImportProgram = useCallback(async () => {
     try {
@@ -655,7 +796,17 @@ const ArchitectAIWizardContainer = () => {
           const result = await ProgramImportExportService.importProgram(file);
 
           if (result.success) {
-            setProgramSpaces(result.spaces);
+            const normalizedSpaces = (result.spaces || []).map((space, index) => ({
+              ...space,
+              id: space.id || `space_${Date.now()}_${index}`,
+              name: String(space.name || space.label || `Space ${index + 1}`),
+              label: String(space.label || space.name || `Space ${index + 1}`),
+              area: Math.max(0, parseFloat(space.area) || 0),
+              count: Math.max(1, parseInt(space.count, 10) || 1),
+              level: space.level || 'Ground',
+            }));
+
+            setProgramSpaces(normalizedSpaces);
             logger.success('Program imported', { count: result.spaces.length });
 
             if (result.warnings.length > 0) {
@@ -700,9 +851,33 @@ const ArchitectAIWizardContainer = () => {
     try {
       const { inferEntranceDirection } = await import('../utils/entranceOrientation');
 
+      let roadSegments = null;
+      try {
+        const queryPoint = siteMetrics?.centroid || locationData?.coordinates;
+        if (queryPoint?.lat && queryPoint?.lng) {
+          const url = `/api/google/places/nearby?location=${queryPoint.lat},${queryPoint.lng}&radius=80&type=route`;
+          const resp = await fetch(url);
+          const data = await resp.json();
+
+          if (data?.status === 'OK' && Array.isArray(data?.results)) {
+            roadSegments = data.results
+              .map((road) => ({
+                name: road.name,
+                midpoint: road.geometry?.location || null,
+              }))
+              .filter((road) => road.midpoint && typeof road.midpoint.lat === 'number' && typeof road.midpoint.lng === 'number');
+          }
+        }
+      } catch (roadErr) {
+        logger.debug(
+          'Road lookup unavailable, falling back to geometry-only entrance detection',
+          roadErr?.message || roadErr
+        );
+      }
+
       const result = inferEntranceDirection({
         sitePolygon,
-        roadSegments: null,
+        roadSegments,
         sunPath: locationData?.sunPath
       });
 
@@ -723,7 +898,7 @@ const ArchitectAIWizardContainer = () => {
     } finally {
       setIsDetectingEntrance(false);
     }
-  }, [sitePolygon, locationData]);
+  }, [sitePolygon, locationData, siteMetrics]);
 
   /**
    * Generation handler
@@ -774,7 +949,9 @@ const ArchitectAIWizardContainer = () => {
         buildingSubType: projectDetails.subType,
         buildingNotes: projectDetails.customNotes,
         floorArea: parseFloat(projectDetails.area),
+        area: parseFloat(projectDetails.area), // Alias for services expecting `area`
         floorCount: projectDetails.floorCount || 2,
+        floors: projectDetails.floorCount || 2, // Alias for services expecting `floors`
         entranceOrientation: projectDetails.entranceDirection,
         entranceDirection: projectDetails.entranceDirection, // Maintain backward compatibility
         programSpaces,
@@ -783,6 +960,8 @@ const ArchitectAIWizardContainer = () => {
           confidence: projectDetails.entranceConfidence,
           warnings: programWarnings
         },
+        sitePolygon,
+        siteMetrics, // Alias for downstream generators expecting `siteMetrics`
         sitePolygonMetrics: siteMetrics,
         portfolioBlend: {
           materialWeight,
@@ -830,7 +1009,10 @@ const ArchitectAIWizardContainer = () => {
 
       logger.success('Generation complete', { designId: sheetResult.designId });
     } catch (err) {
-      logger.error('Generation failed', err);
+      logger.error(`Generation failed: ${err.message}`);
+      if (err.stack) {
+        logger.error(`   Stack: ${err.stack.split('\n').slice(0, 3).join('\n')}`);
+      }
     }
   }, [
     locationData,
@@ -1012,6 +1194,7 @@ const ArchitectAIWizardContainer = () => {
           <SpecsStep
             projectDetails={projectDetails}
             programSpaces={programSpaces}
+            programWarnings={programWarnings}
             isGeneratingSpaces={isGeneratingSpaces}
             isDetectingEntrance={isDetectingEntrance}
             autoDetectResult={autoDetectResult}

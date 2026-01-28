@@ -730,6 +730,80 @@ export function createEmptyCanonicalRenders() {
 }
 
 /**
+ * Set floor plan SVGs on a CanonicalDesignState
+ * @param {CanonicalDesignState} state - State to update (mutated in place)
+ * @param {Object.<number, string>} floorPlansSVG - SVGs keyed by floor index
+ * @returns {CanonicalDesignState} The updated state
+ */
+export function setFloorPlanSVGs(state, floorPlansSVG) {
+  if (!state) {
+    throw new Error('State is required');
+  }
+
+  // Initialize canonicalRenders if not present
+  if (!state.canonicalRenders) {
+    state.canonicalRenders = createEmptyCanonicalRenders();
+  }
+
+  // Set floor plan SVGs
+  state.canonicalRenders.floorPlansSVG = floorPlansSVG || {};
+
+  return state;
+}
+
+/**
+ * Populate canonical renders on a state from generation results
+ * @param {CanonicalDesignState} state - State to update
+ * @param {Object} renders - Render results
+ * @param {Object.<number, string>} renders.floorPlansSVG - Floor plan SVGs
+ * @param {Object.<string, string>} renders.elevationsSVG - Elevation SVGs
+ * @param {Object.<string, string>} renders.sectionsSVG - Section SVGs
+ * @param {Object.<string, string>} renders.massing3DViewsPNG - 3D view PNGs
+ * @returns {CanonicalDesignState} The updated state
+ */
+export function populateCanonicalRenders(state, renders = {}) {
+  if (!state) {
+    throw new Error('State is required');
+  }
+
+  // Initialize canonicalRenders if not present
+  if (!state.canonicalRenders) {
+    state.canonicalRenders = createEmptyCanonicalRenders();
+  }
+
+  // Merge renders
+  if (renders.floorPlansSVG) {
+    state.canonicalRenders.floorPlansSVG = {
+      ...state.canonicalRenders.floorPlansSVG,
+      ...renders.floorPlansSVG,
+    };
+  }
+
+  if (renders.elevationsSVG) {
+    state.canonicalRenders.elevationsSVG = {
+      ...state.canonicalRenders.elevationsSVG,
+      ...renders.elevationsSVG,
+    };
+  }
+
+  if (renders.sectionsSVG) {
+    state.canonicalRenders.sectionsSVG = {
+      ...state.canonicalRenders.sectionsSVG,
+      ...renders.sectionsSVG,
+    };
+  }
+
+  if (renders.massing3DViewsPNG) {
+    state.canonicalRenders.massing3DViewsPNG = {
+      ...state.canonicalRenders.massing3DViewsPNG,
+      ...renders.massing3DViewsPNG,
+    };
+  }
+
+  return state;
+}
+
+/**
  * Create complete CanonicalDesignState
  * @param {Object} [data] - Initial data
  * @returns {CanonicalDesignState}
@@ -1814,6 +1888,10 @@ export default {
   createEmptyGeometryModel,
   createEmptyFacadeModel,
   createEmptyCanonicalRenders,
+
+  // Canonical renders helpers
+  setFloorPlanSVGs,
+  populateCanonicalRenders,
 
   // Fingerprint
   computeDesignFingerprint,

@@ -17,6 +17,13 @@ class SecureApiClient {
     this.baseURL = process.env.NODE_ENV === 'production'
       ? '' // In production, use relative URLs (same domain)
       : 'http://localhost:3001'; // In development, use proxy server
+
+    // Environment-aware endpoint paths
+    const isDev = process.env.NODE_ENV !== 'production';
+    this.endpoints = {
+      togetherChat: isDev ? '/api/together/chat' : '/api/together-chat',
+      togetherImage: isDev ? '/api/together/image' : '/api/together-image'
+    };
   }
 
   /**
@@ -145,7 +152,7 @@ class SecureApiClient {
    * @returns {Promise<Object>} Chat completion response
    */
   async togetherChat(params) {
-    return this.makeRequest('/api/together/chat', {
+    return this.makeRequest(this.endpoints.togetherChat, {
       method: 'POST',
       body: JSON.stringify(params)
     });
@@ -157,7 +164,7 @@ class SecureApiClient {
    * @returns {Promise<Object>} Generated image response with proxied URL
    */
   async togetherImage(params) {
-    const response = await this.makeRequest('/api/together/image', {
+    const response = await this.makeRequest(this.endpoints.togetherImage, {
       method: 'POST',
       body: JSON.stringify(params)
     });

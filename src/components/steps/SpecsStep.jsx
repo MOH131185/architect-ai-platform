@@ -6,11 +6,11 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Sparkles, ArrowRight, ArrowLeft, Download, Upload } from 'lucide-react';
+import { Settings, Sparkles, ArrowRight, ArrowLeft, Download, Upload, Lock, Unlock, Layers } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Input from '../ui/Input.jsx';
 import Card from '../ui/Card.jsx';
-import BlueprintPanel from '../ui/BlueprintPanel.jsx';
+// BlueprintPanel available from '../ui/BlueprintPanel.jsx' if needed
 import IconWrapper from '../ui/IconWrapper.jsx';
 import BuildingTypeSelector from '../specs/BuildingTypeSelector.jsx';
 import EntranceDirectionSelector from '../specs/EntranceDirectionSelector.jsx';
@@ -18,10 +18,12 @@ import BuildingProgramTable from '../specs/BuildingProgramTable.jsx';
 import ProgramReviewCards from '../specs/ProgramReviewCards.jsx';
 import StepContainer from '../layout/StepContainer.jsx';
 import { fadeInUp, staggerChildren } from '../../styles/animations.js';
+import autoLevelAssignmentService from '../../services/autoLevelAssignmentService.js';
 
 const SpecsStep = ({
   projectDetails,
   programSpaces,
+  programWarnings = [],
   onProjectDetailsChange,
   onProgramSpacesChange,
   onGenerateProgramSpaces,
@@ -35,7 +37,6 @@ const SpecsStep = ({
   autoDetectResult,
   validationState,
 }) => {
-  const [programWarnings, setProgramWarnings] = useState([]);
   const [showProgramReview, setShowProgramReview] = useState(false);
 
   const canProceed = projectDetails.area && projectDetails.category && projectDetails.subType;
@@ -58,7 +59,19 @@ const SpecsStep = ({
 
   const handleProgramRowChange = useCallback((index, field, value) => {
     const updated = [...programSpaces];
-    updated[index] = { ...updated[index], [field]: value };
+    const nextRow = { ...updated[index], [field]: value };
+    if (field === 'label') {
+      nextRow.name = value;
+    }
+    if (field === 'name') {
+      nextRow.label = value;
+    }
+    updated[index] = nextRow;
+
+    // Preserve program-level metadata on arrays (used by downstream generators)
+    updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
+    updated._floorMetrics = programSpaces._floorMetrics;
+
     onProgramSpacesChange(updated);
   }, [programSpaces, onProgramSpacesChange]);
 
@@ -66,17 +79,23 @@ const SpecsStep = ({
     const newSpace = {
       id: `space_${Date.now()}`,
       spaceType: 'generic',
+      name: '',
       label: '',
       area: 0,
       count: 1,
       level: 'Ground',
       notes: ''
     };
-    onProgramSpacesChange([...programSpaces, newSpace]);
+    const updated = [...programSpaces, newSpace];
+    updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
+    updated._floorMetrics = programSpaces._floorMetrics;
+    onProgramSpacesChange(updated);
   }, [programSpaces, onProgramSpacesChange]);
 
   const handleRemoveSpace = useCallback((index) => {
     const updated = programSpaces.filter((_, i) => i !== index);
+    updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
+    updated._floorMetrics = programSpaces._floorMetrics;
     onProgramSpacesChange(updated);
   }, [programSpaces, onProgramSpacesChange]);
 
@@ -84,6 +103,10 @@ const SpecsStep = ({
     const updated = [...programSpaces];
     const [removed] = updated.splice(fromIndex, 1);
     updated.splice(toIndex, 0, removed);
+
+    updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
+    updated._floorMetrics = programSpaces._floorMetrics;
+
     onProgramSpacesChange(updated);
   }, [programSpaces, onProgramSpacesChange]);
 
@@ -156,14 +179,113 @@ const SpecsStep = ({
                   required
                 />
                 <Input
-                  label="Number of Floors"
+                  label=""
                   type="number"
                   value={projectDetails.floorCount || 2}
-                  onChange={(e) => onProjectDetailsChange({ ...projectDetails, floorCount: parseInt(e.target.value) || 2 })}
-                  placeholder="e.g., 2"
+                  onChange={(e) => {
+                    const maxFloors = projectDetails.floorMetrics?.maxFloorsAllowed || 10;
+                    const nextCount = Math.max(1, Math.min(maxFloors, parseInt(e.target.value, 10) || 1));
+                    onProjectDetailsChange({
+                      ...projectDetails,
+                      floorCount: nextCount,
+                      floorCountLocked: true,
+                    });
+
+                    if (programSpaces?.length > 0) {
+                      const buildingType =
+                        projectDetails.program || projectDetails.subType || projectDetails.category || 'mixed-use';
+                      const reassigned = autoLevelAssignmentService.autoAssignSpacesToLevels(
+                        programSpaces,
+                        nextCount,
+                        buildingType
+                      );
+                      reassigned._calculatedFloorCount = nextCount;
+                      reassigned._floorMetrics = projectDetails.floorMetrics || programSpaces._floorMetrics || null;
+                      onProgramSpacesChange(reassigned);
+                    }
+                  }}
+                  placeholder="Number of levels"
                   min="1"
                   fullWidth
+                  disabled={!projectDetails.floorCountLocked}
+                  icon={<Layers className="w-4 h-4" />}
                 />
+
+                <div className="flex items-center gap-3 -mt-2">
+                  {!projectDetails.floorCountLocked && (
+                    <div className="flex-1 px-4 py-3 rounded-lg bg-navy-800/60 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-semibold">
+                          {projectDetails.autoDetectedFloorCount || projectDetails.floorCount || 2} floors
+                        </span>
+                        <span className="text-xs text-gray-400">auto</span>
+                      </div>
+                      {projectDetails.floorMetrics?.reasoning && (
+                        <p className="mt-1 text-xs text-gray-400 line-clamp-2">
+                          {projectDetails.floorMetrics.reasoning}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => {
+                      const currentlyLocked = !!projectDetails.floorCountLocked;
+                      const autoFloors = projectDetails.autoDetectedFloorCount;
+                      const nextLocked = !currentlyLocked;
+
+                      const floorCount = nextLocked
+                        ? Math.max(1, parseInt(projectDetails.floorCount, 10) || (autoFloors || 2))
+                        : (autoFloors || projectDetails.floorCount || 2);
+
+                      onProjectDetailsChange({
+                        ...projectDetails,
+                        floorCountLocked: nextLocked,
+                        floorCount,
+                      });
+
+                      if (!nextLocked && programSpaces?.length > 0 && autoFloors) {
+                        const buildingType =
+                          projectDetails.program || projectDetails.subType || projectDetails.category || 'mixed-use';
+                        const reassigned = autoLevelAssignmentService.autoAssignSpacesToLevels(
+                          programSpaces,
+                          autoFloors,
+                          buildingType
+                        );
+                        reassigned._calculatedFloorCount = autoFloors;
+                        reassigned._floorMetrics = projectDetails.floorMetrics || programSpaces._floorMetrics || null;
+                        onProgramSpacesChange(reassigned);
+                      }
+                    }}
+                    icon={projectDetails.floorCountLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  >
+                    {projectDetails.floorCountLocked ? 'Unlock' : 'Lock'}
+                  </Button>
+                </div>
+
+                {projectDetails.floorCountLocked &&
+                  projectDetails.autoDetectedFloorCount &&
+                  projectDetails.autoDetectedFloorCount !== projectDetails.floorCount && (
+                    <p className="-mt-2 text-xs text-amber-300">
+                      Auto suggests {projectDetails.autoDetectedFloorCount} levels for this site.
+                    </p>
+                  )}
+
+                {projectDetails.floorMetrics && (
+                  <div className="-mt-2 text-xs text-gray-400 flex flex-wrap gap-4">
+                    <span>
+                      Footprint ~{projectDetails.floorMetrics.actualFootprint?.toFixed?.(0) || '—'}m²
+                    </span>
+                    <span>
+                      Coverage {projectDetails.floorMetrics.siteCoveragePercent?.toFixed?.(0) || '—'}%
+                    </span>
+                    {projectDetails.floorMetrics.maxFloorsAllowed && (
+                      <span>Max floors {projectDetails.floorMetrics.maxFloorsAllowed}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -246,6 +368,7 @@ const SpecsStep = ({
               ) : (
                 <BuildingProgramTable
                   programSpaces={programSpaces}
+                  floorCount={projectDetails.floorCount || projectDetails.autoDetectedFloorCount || 2}
                   onChange={handleProgramRowChange}
                   onAdd={handleAddSpace}
                   onRemove={handleRemoveSpace}

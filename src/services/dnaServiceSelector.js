@@ -48,13 +48,13 @@ class DNAServiceSelector {
       let service;
       switch(serviceName) {
         case 'enhancedDesignDNAService':
-          service = (await import('./enhancedDesignDNAService')).default;
+          service = (await import('./enhancedDesignDNAService.js')).default;
           break;
         case 'enhancedDNAGenerator':
-          service = (await import('./enhancedDNAGenerator')).default;
+          service = (await import('./enhancedDNAGenerator.js')).default;
           break;
         default:
-          service = (await import('./designDNAGenerator')).default;
+          service = (await import('./designDNAGenerator.js')).default;
       }
 
       logger.info(`🧬 Using ${serviceName} for DNA generation`);

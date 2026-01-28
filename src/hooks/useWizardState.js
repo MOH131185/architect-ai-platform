@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
 export const useWizardState = () => {
     // Step navigation
@@ -27,6 +27,9 @@ export const useWizardState = () => {
         customNotes: '',
         area: '',
         floorCount: 2,
+        floorCountLocked: false,
+        autoDetectedFloorCount: null,
+        floorMetrics: null,
         footprintArea: '',
         entranceDirection: 'N',
         entranceAutoDetected: false,

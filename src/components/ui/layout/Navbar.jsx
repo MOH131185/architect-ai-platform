@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Menu, X, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import CompanyLogo from '../CompanyLogo.jsx';
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -41,14 +42,7 @@ const Navbar = ({
           <div className="flex-shrink-0">
             {logo || (
               <a href="/" className="flex items-center gap-2">
-                <img 
-                  src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
-                  alt="ArchiAI Solution Ltd." 
-                  className="h-8 w-8"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                  }}
-                />
+                <CompanyLogo className="h-8 w-8" alt="ArchiAI Solution Ltd." />
                 <div className="flex flex-col">
                   <span className="text-lg font-bold text-gray-900">
                     ArchiAI Solution

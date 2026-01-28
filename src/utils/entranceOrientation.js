@@ -5,7 +5,7 @@
  * road access, and solar orientation.
  */
 
-import { computeSiteMetrics, calculateEdgeLengths, computeOrientation } from './geometry.js';
+import { computeSiteMetrics, calculateEdgeLengths, calculateDistance } from './geometry.js';
 
 /**
  * Cardinal directions with degree ranges
@@ -46,6 +46,31 @@ function bearingToDirection(bearing) {
   return 'N'; // Default
 }
 
+function normalizeBearing(bearing) {
+  return ((bearing % 360) + 360) % 360;
+}
+
+/**
+ * Determine polygon winding (clockwise vs counter-clockwise)
+ * Uses lng as X, lat as Y; sign is stable for winding checks.
+ */
+function isPolygonCounterClockwise(sitePolygon) {
+  if (!sitePolygon || sitePolygon.length < 3) return true;
+
+  let area = 0;
+  for (let i = 0; i < sitePolygon.length; i++) {
+    const j = (i + 1) % sitePolygon.length;
+    const xi = sitePolygon[i].lng;
+    const yi = sitePolygon[i].lat;
+    const xj = sitePolygon[j].lng;
+    const yj = sitePolygon[j].lat;
+    area += xi * yj - xj * yi;
+  }
+
+  // Positive signed area => counter-clockwise
+  return area > 0;
+}
+
 /**
  * Calculate bearing between two points
  * @param {{lat: number, lng: number}} point1 - Start point
@@ -78,6 +103,8 @@ function findLongestEdge(sitePolygon) {
   const edges = calculateEdgeLengths(sitePolygon);
   if (edges.length === 0) return null;
 
+  const isCCW = isPolygonCounterClockwise(sitePolygon);
+
   // Find longest edge
   let longestEdge = edges[0];
   for (const edge of edges) {
@@ -86,14 +113,15 @@ function findLongestEdge(sitePolygon) {
     }
   }
 
-  // Calculate perpendicular bearing (inward-facing)
+  // Calculate perpendicular bearing (street-facing normal).
+  // For CCW polygons, the exterior is on the right-hand side of each edge.
   const edgeBearing = calculateBearing(longestEdge.start, longestEdge.end);
-  const perpendicularBearing = (edgeBearing + 90) % 360;
+  const outwardBearing = normalizeBearing(edgeBearing + (isCCW ? 90 : -90));
 
   return {
     edge: longestEdge,
     edgeBearing,
-    perpendicularBearing,
+    outwardBearing,
     length: longestEdge.length
   };
 }
@@ -129,6 +157,7 @@ function calculateSolarScore(direction, sunPath) {
  */
 export function inferEntranceDirection({ sitePolygon, roadSegments = null, sunPath = null }) {
   const rationale = [];
+  let dominantStrategy = 'default';
   let direction = 'N';
   let confidence = 0.5;
   let bearing = 0;
@@ -136,16 +165,17 @@ export function inferEntranceDirection({ sitePolygon, roadSegments = null, sunPa
   // Strategy 1: Use longest edge (likely street-facing)
   if (sitePolygon && sitePolygon.length >= 3) {
     const longestEdge = findLongestEdge(sitePolygon);
-    
+
     if (longestEdge) {
-      direction = bearingToDirection(longestEdge.perpendicularBearing);
-      bearing = longestEdge.perpendicularBearing;
+      direction = bearingToDirection(longestEdge.outwardBearing);
+      bearing = longestEdge.outwardBearing;
       confidence = 0.7;
-      
+      dominantStrategy = 'longest_edge';
+
       rationale.push({
         strategy: 'longest_edge',
         weight: 0.7,
-        message: `Longest site edge (${longestEdge.length.toFixed(1)}m) suggests ${DIRECTIONS[direction]?.label} entrance`
+        message: `Longest site edge (${longestEdge.length.toFixed(1)}m) suggests ${DIRECTIONS[direction]?.label} street frontage`
       });
     }
   }
@@ -156,24 +186,37 @@ export function inferEntranceDirection({ sitePolygon, roadSegments = null, sunPa
     const metrics = computeSiteMetrics(sitePolygon);
     const centroid = metrics.centroid;
 
-    // Calculate bearings to roads
-    const roadBearings = roadSegments.map(road => {
-      const roadCenter = road.midpoint || road.center || { lat: road.lat, lng: road.lng };
-      return calculateBearing(centroid, roadCenter);
-    });
+    const candidates = roadSegments
+      .map((road) => {
+        const roadCenter = road.midpoint || road.center || road.geometry || { lat: road.lat, lng: road.lng };
+        if (!roadCenter || typeof roadCenter.lat !== 'number' || typeof roadCenter.lng !== 'number') {
+          return null;
+        }
 
-    if (roadBearings.length > 0) {
-      const avgRoadBearing = roadBearings.reduce((sum, b) => sum + b, 0) / roadBearings.length;
-      const roadDirection = bearingToDirection(avgRoadBearing);
-      
-      confidence = Math.max(confidence, 0.85);
+        const distanceM = calculateDistance(centroid.lat, centroid.lng, roadCenter.lat, roadCenter.lng);
+        return {
+          name: road.name || road.primaryRoad || road.label || null,
+          center: roadCenter,
+          distanceM,
+          bearing: calculateBearing(centroid, roadCenter),
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.distanceM - b.distanceM);
+
+    const nearest = candidates[0];
+    if (nearest) {
+      const roadDirection = bearingToDirection(nearest.bearing);
+
+      confidence = Math.max(confidence, 0.88);
       direction = roadDirection;
-      bearing = avgRoadBearing;
+      bearing = nearest.bearing;
+      dominantStrategy = 'road_proximity';
 
-      rationale.push({
+      rationale.unshift({
         strategy: 'road_proximity',
         weight: 0.85,
-        message: `Nearest road access from ${DIRECTIONS[roadDirection]?.label}`
+        message: `${nearest.name ? `${nearest.name} ` : ''}road access ${nearest.distanceM.toFixed(0)}m away towards ${DIRECTIONS[roadDirection]?.label}`
       });
     }
   }
@@ -202,6 +245,7 @@ export function inferEntranceDirection({ sitePolygon, roadSegments = null, sunPa
     direction = 'N';
     bearing = 0;
     confidence = 0.5;
+    dominantStrategy = 'default';
   }
 
   return {
@@ -212,7 +256,7 @@ export function inferEntranceDirection({ sitePolygon, roadSegments = null, sunPa
     label: DIRECTIONS[direction]?.label || 'North',
     metadata: {
       strategies: rationale.map(r => r.strategy),
-      dominantStrategy: rationale[0]?.strategy || 'default'
+      dominantStrategy
     }
   };
 }

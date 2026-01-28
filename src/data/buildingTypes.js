@@ -11,7 +11,11 @@ export const BUILDING_CATEGORIES = {
     label: 'Residential',
     icon: 'Home',
     subTypes: [
-      { id: 'single-family', label: 'Single-Family House', icon: 'Home' },
+      // UK house types with specific coverage ratios and floor limits
+      { id: 'detached-house', label: 'Detached House', icon: 'Home' },
+      { id: 'semi-detached-house', label: 'Semi-Detached House', icon: 'Building' },
+      { id: 'terraced-house', label: 'Terraced House', icon: 'Building2' },
+      // Other residential types
       { id: 'multi-family', label: 'Multi-Family', icon: 'Building2' },
       { id: 'villa', label: 'Villa', icon: 'Castle' },
       { id: 'cottage', label: 'Cottage', icon: 'TreePine' },
@@ -24,6 +28,17 @@ export const BUILDING_CATEGORIES = {
       minFloors: 1,
       maxFloors: 4,
       requiresNotes: false
+    },
+    // Sub-type specific constraints for floor and coverage calculations
+    subTypeConstraints: {
+      'detached-house': { minFloors: 1, maxFloors: 3, coverageRatio: 0.35 },
+      'semi-detached-house': { minFloors: 1, maxFloors: 3, coverageRatio: 0.40 },
+      'terraced-house': { minFloors: 2, maxFloors: 4, coverageRatio: 0.50 },
+      'villa': { minFloors: 1, maxFloors: 3, coverageRatio: 0.30 },
+      'cottage': { minFloors: 1, maxFloors: 2, coverageRatio: 0.25 },
+      'mansion': { minFloors: 1, maxFloors: 3, coverageRatio: 0.30 },
+      'multi-family': { minFloors: 2, maxFloors: 6, coverageRatio: 0.55 },
+      'duplex': { minFloors: 2, maxFloors: 3, coverageRatio: 0.45 }
     }
   },
   COMMERCIAL: {
@@ -272,19 +287,34 @@ export function validateBuildingSpecs(categoryId, specs) {
 export function getBuildingTypeDisplayName(categoryId, subTypeId) {
   const category = getCategoryById(categoryId);
   if (!category) return 'Unknown';
-  
+
   if (!subTypeId) return category.label;
-  
+
   const subType = getSubTypeById(categoryId, subTypeId);
   return subType ? subType.label : category.label;
 }
 
-export default {
+/**
+ * Get sub-type specific constraints (coverage ratio, floor limits)
+ * @param {string} categoryId - Category ID
+ * @param {string} subTypeId - Sub-type ID
+ * @returns {Object|null} Sub-type constraints or null
+ */
+export function getSubTypeConstraints(categoryId, subTypeId) {
+  const category = getCategoryById(categoryId);
+  if (!category || !category.subTypeConstraints) return null;
+  return category.subTypeConstraints[subTypeId] || null;
+}
+
+const buildingTypesExports = {
   BUILDING_CATEGORIES,
   getAllCategories,
   getCategoryById,
   getSubTypeById,
   validateBuildingSpecs,
-  getBuildingTypeDisplayName
+  getBuildingTypeDisplayName,
+  getSubTypeConstraints
 };
+
+export default buildingTypesExports;
 

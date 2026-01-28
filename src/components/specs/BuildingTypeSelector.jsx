@@ -37,7 +37,7 @@ const BuildingTypeSelector = ({
 
   const getIcon = (iconName) => {
     const Icon = LucideIcons[iconName];
-    return Icon ? <Icon className="w-6 h-6" /> : <LucideIcons.Building2 className="w-6 h-6" />;
+    return Icon ? <Icon className="w-8 h-8" /> : <LucideIcons.Building2 className="w-8 h-8" />;
   };
 
   return (
@@ -52,11 +52,10 @@ const BuildingTypeSelector = ({
             <motion.button
               key={category.id}
               onClick={() => handleCategoryClick(category.id)}
-              className={`p-4 rounded-2xl border-2 transition-all duration-300 text-left ${
-                isSelected
+              className={`p-4 rounded-2xl border-2 transition-all duration-300 text-left ${isSelected
                   ? 'border-royal-500 bg-royal-600/20'
                   : 'border-navy-700 bg-navy-800/60 hover:border-royal-500/50'
-              } focus:ring-2 focus:ring-royal-400 focus:outline-none`}
+                } focus:ring-2 focus:ring-royal-400 focus:outline-none`}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -65,8 +64,8 @@ const BuildingTypeSelector = ({
                   {getIcon(category.icon)}
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-white">{category.label}</h3>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <h3 className="text-2xl font-bold text-white leading-tight">{category.label}</h3>
+                  <p className="text-sm text-gray-400 mt-1">
                     {category.subTypes.length} types
                   </p>
                 </div>
@@ -110,11 +109,10 @@ const BuildingTypeSelector = ({
                   <motion.button
                     key={subType.id}
                     onClick={() => handleSubTypeClick(expandedCategory, subType.id)}
-                    className={`p-3 rounded-xl border transition-all duration-200 text-left ${
-                      isSelected
+                    className={`p-3 rounded-xl border transition-all duration-200 text-left ${isSelected
                         ? 'border-royal-400 bg-royal-500/20'
                         : 'border-navy-600 bg-navy-800/40 hover:border-royal-400/50'
-                    } focus:ring-2 focus:ring-royal-300 focus:outline-none`}
+                      } focus:ring-2 focus:ring-royal-300 focus:outline-none`}
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                   >

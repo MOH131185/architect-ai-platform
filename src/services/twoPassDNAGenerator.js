@@ -21,6 +21,40 @@ class TwoPassDNAGenerator {
   }
 
   /**
+   * Sanitize JSON string to fix common LLM output issues
+   * - Removes control characters inside string literals
+   * - Fixes unescaped newlines/tabs in strings
+   * - Handles trailing commas
+   */
+  sanitizeJsonString(jsonStr) {
+    if (!jsonStr) return jsonStr;
+
+    // Remove any BOM or zero-width characters
+    let sanitized = jsonStr.replace(/^\uFEFF/, '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+    // Fix control characters inside JSON strings
+    // This regex finds string literals and escapes control chars within them
+    sanitized = sanitized.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+      // Inside the string, escape unescaped control characters
+      return match
+        .replace(/\r\n/g, '\\n')   // Windows newlines
+        .replace(/\r/g, '\\n')     // Old Mac newlines
+        .replace(/\n/g, '\\n')     // Unix newlines (unescaped)
+        .replace(/\t/g, '\\t')     // Tabs
+        .replace(/[\x00-\x1F\x7F]/g, (char) => {
+          // Escape other control characters
+          const hex = char.charCodeAt(0).toString(16).padStart(4, '0');
+          return `\\u${hex}`;
+        });
+    });
+
+    // Remove trailing commas before } or ]
+    sanitized = sanitized.replace(/,(\s*[}\]])/g, '$1');
+
+    return sanitized;
+  }
+
+  /**
    * Generate Master Design DNA using two-pass approach
    * Pass A: Author - generate structured JSON
    * Pass B: Reviewer - validate and repair
@@ -199,7 +233,7 @@ Generate the DNA now (JSON only):`;
       );
 
       const content = response.choices?.[0]?.message?.content || '';
-      
+
       // Extract JSON from response (handle markdown code blocks)
       let jsonStr = content.trim();
       if (jsonStr.startsWith('```')) {
@@ -209,6 +243,9 @@ Generate the DNA now (JSON only):`;
         }
       }
 
+      // Sanitize JSON string - fix common LLM JSON issues
+      jsonStr = this.sanitizeJsonString(jsonStr);
+
       const rawDNA = JSON.parse(jsonStr);
       logger.success('✅ Pass A: Raw DNA generated');
 
@@ -216,11 +253,10 @@ Generate the DNA now (JSON only):`;
 
     } catch (error) {
       logger.error('❌ Pass A failed:', error.message);
-      
+
       // Try to extract partial JSON if parsing failed
       if (error.message.includes('JSON')) {
         logger.warn('   Attempting to extract JSON from response...');
-        // Could implement more sophisticated JSON extraction here
       }
 
       return null;

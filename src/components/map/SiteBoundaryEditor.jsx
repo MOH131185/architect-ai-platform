@@ -13,12 +13,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useGoogleMap } from './useGoogleMap.js';
 import { usePolygonTools } from './usePolygonTools.js';
 import { createPolygonEditor } from './polygonEditor.js';
-import { 
-  fetchAutoBoundary, 
-  calculateBounds, 
-  boundsToGoogleBounds,
-  generateMapSnapshotURL,
-  createPolygonStyleOptions
+import {
+  fetchAutoBoundary,
+  calculateBounds,
+  boundsToGoogleBounds
 } from './mapUtils';
 import { calculateEdgeLengths } from '../../utils/geometry.js';
 import {
@@ -61,18 +59,19 @@ export function SiteBoundaryEditor({
   const [editingAngleIndex, setEditingAngleIndex] = useState(null);
   const [tempLengthValue, setTempLengthValue] = useState('');
   const [tempAngleValue, setTempAngleValue] = useState('');
-  const [showValidation, setShowValidation] = useState(false);
+  // eslint-disable-next-line no-unused-vars
+  const [showValidation, _setShowValidation] = useState(false);
   const [showSegmentEditor, setShowSegmentEditor] = useState(false);
   const [autoFixEnabled, setAutoFixEnabled] = useState(true);
 
   // Google Maps hook - pass container ref directly
+  // Note: fitBounds is available from hook but we use map.fitBounds() directly
   const {
     map,
     google,
     isLoaded,
     isLoading,
     error: mapError,
-    fitBounds,
     geocodeAddress
   } = useGoogleMap({
     apiKey,
@@ -82,13 +81,10 @@ export function SiteBoundaryEditor({
   });
 
   // Polygon tools hook
+  // Note: addVertex, removeVertex, updateVertex, metrics available if needed
   const {
     polygon,
-    metrics,
     setPolygon,
-    addVertex,
-    removeVertex,
-    updateVertex,
     adjustLength,
     adjustAngle,
     clearPolygon,
@@ -401,8 +397,9 @@ export function SiteBoundaryEditor({
   }, [editingAngleIndex, tempAngleValue, adjustAngle, autoFixEnabled, polygon, setPolygon]);
 
   /**
-   * Export as GeoJSON
+   * Export as GeoJSON (available for future UI integration)
    */
+  // eslint-disable-next-line no-unused-vars
   const handleExportGeoJSON = useCallback(() => {
     const geoJSON = exportGeoJSON();
     const blob = new Blob([JSON.stringify(geoJSON, null, 2)], { type: 'application/json' });

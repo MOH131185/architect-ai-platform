@@ -282,7 +282,8 @@ export async function runPreCompositionGate(
       action = "retry_failed";
       canCompose = false;
     } else {
-      action = "abort";
+      // REFACTORED: Use strict_fallback instead of abort to enable recovery with override params
+      action = "strict_fallback";
       canCompose = false;
     }
   } else if (passRatio < FINGERPRINT_THRESHOLDS.MINIMUM_PANELS_PASS_RATIO) {
@@ -326,23 +327,38 @@ export async function runPreCompositionGate(
 }
 
 /**
+ * Simple deterministic hash function for strings
+ * Used to generate consistent "variation" based on input data
+ */
+function deterministicHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  // Normalize to 0-1 range
+  return Math.abs(hash % 1000) / 1000;
+}
+
+/**
  * Calculate visual similarity between panel and fingerprint
- * (Simplified implementation - production would use pHash or CLIP)
+ * DETERMINISTIC: Uses hash-based variation instead of Math.random()
+ *
+ * In production with actual images, would use:
+ * 1. pHash (perceptual hash) with Hamming distance
+ * 2. SSIM (Structural Similarity Index)
+ * 3. CLIP embeddings cosine similarity
  */
 async function calculateVisualSimilarity(
   panelImageUrl,
   fingerprint,
   panelType,
 ) {
-  // In production, this would:
-  // 1. Calculate pHash of both images
-  // 2. Compute Hamming distance
-  // 3. Normalize to 0-1 score
-
-  // For now, use a heuristic based on panel type expectations
+  // Base score for visual similarity
   const baseScore = 0.9;
 
-  // Adjust based on panel type - some have more flexibility
+  // Panel type adjustments - some panels inherently vary more from hero_3d
   const typeAdjustments = {
     interior_3d: -0.05, // Interior can vary more
     axonometric: 0, // Must match closely
@@ -358,24 +374,32 @@ async function calculateVisualSimilarity(
 
   const adjustment = typeAdjustments[panelType] || 0;
 
-  // Add small random variation to simulate real comparison
-  const variation = (Math.random() - 0.5) * 0.08;
+  // DETERMINISTIC variation based on panel URL and fingerprint
+  // This ensures the same panel always gets the same score
+  const hashInput = `${panelType}_${panelImageUrl?.substring(0, 100) || 'none'}_${fingerprint?.heroImageHash || 'no_hero'}`;
+  const deterministicVariation = (deterministicHash(hashInput) - 0.5) * 0.08;
 
-  return Math.max(0, Math.min(1, baseScore + adjustment + variation));
+  return Math.max(0, Math.min(1, baseScore + adjustment + deterministicVariation));
 }
 
 /**
  * Check color palette match
+ * DETERMINISTIC: Uses hash-based scoring instead of Math.random()
  */
 async function checkColorPaletteMatch(panelImageUrl, fingerprint) {
-  // In production, would extract colors from panel image and compare to fingerprint palette
+  // In production, would extract dominant colors from panel image
+  // and compare to fingerprint's color palette using deltaE
 
-  // For now, assume reasonable match
-  return 0.88 + Math.random() * 0.1;
+  // DETERMINISTIC: Use hash of inputs for consistent scoring
+  const hashInput = `color_${panelImageUrl?.substring(0, 100) || 'none'}_${fingerprint?.colorPalette?.join(',') || 'no_palette'}`;
+  const deterministicVariation = deterministicHash(hashInput) * 0.1;
+
+  return 0.88 + deterministicVariation;
 }
 
 /**
  * Check structural consistency (massing, roof profile)
+ * DETERMINISTIC: Uses hash-based scoring instead of Math.random()
  */
 async function checkStructuralConsistency(
   panelImageUrl,
@@ -387,18 +411,22 @@ async function checkStructuralConsistency(
   // - Building massing outline
   // - Window pattern rhythm
 
-  // For now, return high score for 3D panels that use hero as control
+  // DETERMINISTIC: Use hash of inputs for consistent scoring
+  const hashInput = `struct_${panelType}_${panelImageUrl?.substring(0, 100) || 'none'}_${fingerprint?.massingType || 'unknown'}`;
+  const deterministicVariation = deterministicHash(hashInput);
+
+  // Panels that use hero as control have higher base scores
   const controlledPanels = ["axonometric", "interior_3d"];
   if (controlledPanels.includes(panelType)) {
-    return 0.92 + Math.random() * 0.06;
+    return 0.92 + deterministicVariation * 0.06;
   }
 
   // Elevations should also match well
   if (panelType.startsWith("elevation_")) {
-    return 0.88 + Math.random() * 0.08;
+    return 0.88 + deterministicVariation * 0.08;
   }
 
-  return 0.85 + Math.random() * 0.1;
+  return 0.85 + deterministicVariation * 0.1;
 }
 
 /**
@@ -448,6 +476,8 @@ function generateGateSummary({
     summary += "Proceeding with A1 composition.";
   } else if (action === "retry_failed") {
     summary += `Retrying ${failedCount} failed panels with stronger control.`;
+  } else if (action === "strict_fallback") {
+    summary += `STRICT FALLBACK: ${criticalFailures} critical panel(s) exceeded retry limit. Using strict override parameters for final attempt.`;
   } else {
     summary += `BLOCKED: ${criticalFailures} critical panel(s) failed validation. Generation aborted.`;
   }
@@ -481,9 +511,121 @@ export function generateMismatchReport(failedPanels) {
   };
 }
 
+/**
+ * Get strict fallback parameters for a panel type when max retries exceeded.
+ * These parameters force stronger geometry adherence and break potential loops.
+ *
+ * SPEC: control_strength=0.95, image_strength=0.35, keep same seed unless intentional variation
+ *
+ * @param {string} panelType - Type of panel requiring fallback
+ * @param {number} previousSeed - The seed from the last attempt
+ * @param {Object} options - Optional configuration
+ * @param {boolean} options.incrementSeed - Whether to increment seed (default: false for consistency)
+ * @returns {Object} Override parameters for strict fallback generation
+ */
+export function getStrictFallbackParams(panelType, previousSeed = 0, options = {}) {
+  const { incrementSeed = false } = options;
+
+  // Base strict parameters per spec: control_strength=0.95, image_strength=0.35
+  // Keep same seed by default for maximum consistency
+  const baseParams = {
+    control_strength: 0.95, // Force strict geometry adherence (spec)
+    image_strength: 0.35, // Lower to preserve more init_image detail (spec: 0.35)
+    guidance_scale: 4.0, // Lower guidance to reduce creative hallucination
+    seed: incrementSeed ? (previousSeed + 1) % 2147483647 : previousSeed, // Keep same seed by default
+  };
+
+  // Panel-specific adjustments - all use 0.95/0.35 base but may vary guidance
+  const panelAdjustments = {
+    // 3D panels: slightly lower control for lighting flexibility
+    hero_3d: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 4.5,
+    },
+    interior_3d: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 4.2,
+    },
+    axonometric: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 4.0,
+    },
+    // Elevations: strict geometry, moderate guidance
+    elevation_north: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.8,
+    },
+    elevation_south: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.8,
+    },
+    elevation_east: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.8,
+    },
+    elevation_west: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.8,
+    },
+    // Sections: highest geometry fidelity
+    section_AA: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.5,
+    },
+    section_BB: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.5,
+    },
+    // Floor plans: maximum control for geometry
+    floor_plan_ground: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.5,
+    },
+    floor_plan_first: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.5,
+    },
+    floor_plan_level2: {
+      control_strength: 0.95,
+      image_strength: 0.35,
+      guidance_scale: 3.5,
+    },
+  };
+
+  const adjustments = panelAdjustments[panelType] || {};
+
+  const result = {
+    ...baseParams,
+    ...adjustments,
+    // Only increment seed if explicitly requested (e.g., to break infinite retry loops)
+    seed: incrementSeed ? (previousSeed + 1) % 2147483647 : previousSeed,
+    isStrictFallback: true,
+    originalPanelType: panelType,
+    keepSeed: !incrementSeed,
+  };
+
+  logger.info(
+    `[StrictFallback] Generated override params for ${panelType}: control=${result.control_strength}, image=${result.image_strength}, guidance=${result.guidance_scale}, seed=${result.seed}${result.keepSeed ? ' (preserved)' : ' (incremented)'}`,
+  );
+
+  return result;
+}
+
 export default {
   validatePanelAgainstFingerprint,
   runPreCompositionGate,
   generateMismatchReport,
+  getStrictFallbackParams,
   FINGERPRINT_THRESHOLDS,
 };

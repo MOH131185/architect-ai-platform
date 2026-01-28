@@ -13,9 +13,156 @@
 
 import logger from '../utils/logger.js';
 
+/**
+ * Sub-type specific coverage ratios
+ * These ratios reflect typical site coverage for each house/building type
+ */
+const SUBTYPE_COVERAGE_RATIOS = {
+  // Residential
+  'detached-house': 0.35,      // More garden space typical
+  'semi-detached-house': 0.40, // Moderate coverage
+  'terraced-house': 0.50,      // Higher coverage, narrower plots
+  'villa': 0.30,               // Large grounds
+  'cottage': 0.25,             // Rural setting
+  'mansion': 0.30,             // Large grounds
+  'multi-family': 0.55,        // Higher density
+  'duplex': 0.45,              // Moderate coverage
+  'apartment-building': 0.60,  // Urban higher density
+  'condominium': 0.55,         // Mid-density
+  'residential-tower': 0.40,   // Small footprint, tall
+
+  // Healthcare
+  'clinic': 0.50,              // Needs parking + accessibility
+  'dental-clinic': 0.50,
+  'health-center': 0.55,
+  'hospital': 0.45,            // Large campus, lower coverage
+  'pharmacy': 0.60,            // Retail-like
+
+  // Commercial
+  'office': 0.55,              // Typical office coverage
+  'coworking': 0.55,
+  'retail': 0.65,              // High coverage
+  'shopping-center': 0.60,
+  'restaurant': 0.60,
+  'cafe': 0.60,
+
+  // Educational
+  'school': 0.40,              // Needs playgrounds/sports fields
+  'kindergarten': 0.35,        // Outdoor play areas essential
+  'training-center': 0.50,
+  'library': 0.50,
+
+  // Hospitality
+  'hotel': 0.50,
+  'hostel': 0.55,
+  'bed-breakfast': 0.40,
+
+  // Industrial
+  'warehouse': 0.70,           // Maximum coverage
+  'factory': 0.65,
+  'workshop': 0.60,
+  'logistics-center': 0.65,
+
+  // Cultural & Public
+  'museum': 0.45,
+  'gallery': 0.50,
+  'theater': 0.55,
+  'community-center': 0.50,
+
+  // Sports & Recreation
+  'gym': 0.60,
+  'sports-hall': 0.50,
+  'swimming-pool': 0.55,
+
+  // Religious
+  'church': 0.40,
+  'mosque': 0.45,
+  'temple': 0.40
+};
+
+/**
+ * Sub-type specific maximum floor limits (UK typical)
+ */
+const SUBTYPE_MAX_FLOORS = {
+  // Residential
+  'detached-house': 3,
+  'semi-detached-house': 3,
+  'terraced-house': 4,
+  'villa': 3,
+  'cottage': 2,
+  'mansion': 3,
+  'multi-family': 6,
+  'duplex': 3,
+  'apartment-building': 8,
+  'condominium': 10,
+  'residential-tower': 20,
+
+  // Healthcare
+  'clinic': 3,
+  'dental-clinic': 2,
+  'health-center': 3,
+  'hospital': 12,
+  'pharmacy': 2,
+
+  // Commercial
+  'office': 10,
+  'coworking': 6,
+  'retail': 3,
+  'shopping-center': 4,
+  'restaurant': 2,
+  'cafe': 2,
+
+  // Educational
+  'school': 4,
+  'kindergarten': 2,
+  'training-center': 4,
+  'library': 4,
+
+  // Hospitality
+  'hotel': 15,
+  'hostel': 6,
+  'bed-breakfast': 3,
+
+  // Industrial
+  'warehouse': 2,
+  'factory': 3,
+  'workshop': 2,
+  'logistics-center': 2,
+
+  // Cultural & Public
+  'museum': 4,
+  'gallery': 3,
+  'theater': 3,
+  'community-center': 3,
+
+  // Sports & Recreation
+  'gym': 3,
+  'sports-hall': 2,
+  'swimming-pool': 2,
+
+  // Religious
+  'church': 2,
+  'mosque': 2,
+  'temple': 2
+};
+
+
 class AutoLevelAssignmentService {
   constructor() {
     logger.info('🏢 Auto Level Assignment Service initialized');
+  }
+
+  _getSpaceName(space) {
+    if (!space || typeof space !== 'object') return '';
+    const candidate =
+      space.name ||
+      space.label ||
+      space.roomName ||
+      space.spaceName ||
+      space.spaceType ||
+      space.type ||
+      '';
+    return String(candidate || '').trim();
   }
 
   /**
@@ -23,11 +170,13 @@ class AutoLevelAssignmentService {
    * @param {number} totalProgramArea - Total area of all program spaces (m²)
    * @param {number} siteArea - Site area from location (m²)
    * @param {Object} options - Optional parameters
+   * @param {string} options.subType - Specific sub-type ID (e.g., 'detached-house')
    * @returns {Object} Floor count and metrics
    */
   calculateOptimalLevels(totalProgramArea, siteArea, options = {}) {
     const {
       buildingType = 'mixed-use',
+      subType = null,  // NEW: Specific sub-type ID for precise ratios
       maxHeight = Infinity,
       maxFloors = 10,
       minFloorHeight = 2.7,  // meters
@@ -39,13 +188,20 @@ class AutoLevelAssignmentService {
     logger.info('Calculating optimal floor count', {
       programArea: totalProgramArea,
       siteArea,
-      buildingType
+      buildingType,
+      subType
     }, '🏢');
 
-    // Step 1: Adjust coverage ratio based on building type and density
+    // Step 1: Adjust coverage ratio - prioritize sub-type specific ratio
     let adjustedCoverage = coverageRatio;
 
-    if (buildingType.toLowerCase().includes('house') || buildingType.toLowerCase().includes('villa')) {
+    // First check sub-type specific coverage (most accurate)
+    if (subType && SUBTYPE_COVERAGE_RATIOS[subType]) {
+      adjustedCoverage = SUBTYPE_COVERAGE_RATIOS[subType];
+      logger.info(`   Using sub-type specific coverage: ${subType} = ${(adjustedCoverage * 100).toFixed(0)}%`);
+    }
+    // Fallback to keyword matching for building type
+    else if (buildingType.toLowerCase().includes('house') || buildingType.toLowerCase().includes('villa')) {
       adjustedCoverage = 0.4; // 40% for low-density residential
     } else if (buildingType.toLowerCase().includes('retail') || buildingType.toLowerCase().includes('commercial')) {
       adjustedCoverage = 0.7; // 70% for commercial
@@ -72,10 +228,19 @@ class AutoLevelAssignmentService {
 
     logger.info(`   Min floors needed: ${minFloorsNeeded}`);
 
-    // Step 5: Check height restrictions
+    // Step 5: Check height restrictions and sub-type limits
     let maxFloorsAllowed = maxFloors;
+
+    // First, apply sub-type specific max floors if available (UK typical limits)
+    if (subType && SUBTYPE_MAX_FLOORS[subType]) {
+      maxFloorsAllowed = Math.min(maxFloorsAllowed, SUBTYPE_MAX_FLOORS[subType]);
+      logger.info(`   Max floors (sub-type ${subType}): ${maxFloorsAllowed}`);
+    }
+
+    // Then apply height restrictions if specified
     if (maxHeight !== Infinity) {
-      maxFloorsAllowed = Math.floor(maxHeight / typicalFloorHeight);
+      const heightBasedMax = Math.floor(maxHeight / typicalFloorHeight);
+      maxFloorsAllowed = Math.min(maxFloorsAllowed, heightBasedMax);
       logger.info(`   Max floors allowed (height): ${maxFloorsAllowed}`);
     }
 
@@ -104,6 +269,8 @@ class AutoLevelAssignmentService {
       fitsWithinSite,
       floorHeight: typicalFloorHeight,
       totalHeight: optimalFloors * typicalFloorHeight,
+      coverageRatio: adjustedCoverage,  // Include for UI display
+      subType,                           // Include for reference
       reasoning: this._generateFloorCountReasoning(
         optimalFloors,
         totalProgramArea,
@@ -125,9 +292,9 @@ class AutoLevelAssignmentService {
     reasons.push(`${floors} floors optimal to fit ${programArea.toFixed(0)}m² program within ${siteArea.toFixed(0)}m² site`);
 
     if (footprint > maxFootprint * 0.9) {
-      reasons.push(`Footprint utilization high (${(footprint/maxFootprint*100).toFixed(0)}%) - efficient site usage`);
+      reasons.push(`Footprint utilization high (${(footprint / maxFootprint * 100).toFixed(0)}%) - efficient site usage`);
     } else if (footprint < maxFootprint * 0.5) {
-      reasons.push(`Footprint utilization low (${(footprint/maxFootprint*100).toFixed(0)}%) - consider reducing floors or increasing program`);
+      reasons.push(`Footprint utilization low (${(footprint / maxFootprint * 100).toFixed(0)}%) - consider reducing floors or increasing program`);
     }
 
     if (floors === 1) {
@@ -205,7 +372,7 @@ class AutoLevelAssignmentService {
     };
 
     spaces.forEach(space => {
-      const name = space.name.toLowerCase();
+      const name = this._getSpaceName(space).toLowerCase();
       const type = buildingType.toLowerCase();
 
       // Ground floor priorities (PUBLIC ACCESS, ACCESSIBILITY, HEAVY SERVICES)
@@ -357,9 +524,11 @@ class AutoLevelAssignmentService {
 
     // Step 5: Add circulation spaces if needed
     levels.forEach((level, idx) => {
-      const hasStaircase = assigned.some(s =>
-        s.level === level && (s.name.toLowerCase().includes('stair') || s.name.toLowerCase().includes('circulation'))
-      );
+      const hasStaircase = assigned.some((s) => {
+        if (s.level !== level) return false;
+        const name = this._getSpaceName(s).toLowerCase();
+        return name.includes('stair') || name.includes('circulation');
+      });
 
       if (!hasStaircase && levels.length > 1) {
         // Add staircase/circulation

@@ -349,7 +349,7 @@ class AIModificationService {
     }
 
     // Get original design from history - DO NOT CREATE NEW DESIGN
-    const designHistory = await import('./designHistoryService').then(m => m.default);
+    const designHistory = await import('./designHistoryService.js').then(m => m.default);
 
     // 🚨 CRITICAL: Get existing design - throw error if not found (don't create new one)
     const originalDesign = designHistory.getDesign(designId);
@@ -1048,7 +1048,7 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
       let ensuredSiteSnapshot = siteSnapshot;
       try {
         if (siteSnapshot && (!siteSnapshot.dataUrl || siteSnapshot.dataUrl.includes('[DATA_URL_REMOVED'))) {
-          const { getSiteSnapshot } = await import('./siteMapSnapshotService');
+          const { getSiteSnapshot } = await import('./siteMapSnapshotService.js');
           if (siteSnapshot.center) {
             const refreshedDataUrl = await getSiteSnapshot({
               coordinates: siteSnapshot.center,
@@ -1402,7 +1402,7 @@ inconsistent style, mixed art styles, cartoon, sketch`;
     } = params;
 
     // Get original design
-    const designHistory = await import('./designHistoryService').then(m => m.default);
+    const designHistory = await import('./designHistoryService.js').then(m => m.default);
     const originalDesign = designHistory.getDesign(designId);
 
     if (!originalDesign) {

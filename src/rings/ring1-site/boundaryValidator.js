@@ -3,7 +3,7 @@ import {
   polygonToLocalXY,
   validateFootprintInsideBoundary,
   applyDirectionalSetbacks
-} from '../../utils/geometry';
+} from '../../utils/geometry.js';
 
 const DEFAULT_SETBACKS = {
   front: 3,

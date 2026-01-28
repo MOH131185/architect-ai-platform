@@ -440,7 +440,10 @@ export const useGeneration = () => {
       }, 1000);
 
     } catch (error) {
-      logger.error('Generation failed', error);
+      logger.error(`Generation failed: ${error.message}`);
+      if (error.stack) {
+        logger.error(`   Stack: ${error.stack.split('\n').slice(0, 3).join('\n')}`);
+      }
       showToast(`Generation failed: ${error.message}`);
 
       setIsLoading(false);

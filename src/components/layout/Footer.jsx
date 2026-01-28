@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Layers, Github, Twitter, Linkedin } from 'lucide-react';
+import { Github, Twitter, Linkedin } from 'lucide-react';
 import { fadeInUp } from '../../styles/animations.js';
+import CompanyLogo from '../ui/CompanyLogo.jsx';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -22,9 +23,7 @@ const Footer = () => {
           {/* Brand */}
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-royal-600 to-royal-400 flex items-center justify-center">
-                <Layers className="w-6 h-6 text-white" />
-              </div>
+              <CompanyLogo size={40} alt="ArchiAI Solution logo" />
               <div>
                 <h3 className="text-xl font-bold text-white font-heading">
                   ArchitectAI

@@ -103,6 +103,14 @@ export class DNAValidationError extends ValidationError {
   }
 }
 
+// Preflight check errors
+export class PreflightError extends BaseError {
+  constructor(message, checkName, details = {}) {
+    super(message, 'PREFLIGHT_ERROR', 400, { checkName, ...details });
+    this.checkName = checkName;
+  }
+}
+
 // Error handler utility
 class ErrorHandler {
   constructor() {

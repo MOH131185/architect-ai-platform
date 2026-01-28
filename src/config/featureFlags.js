@@ -174,6 +174,28 @@ export const FEATURE_FLAGS = {
   useModelRouter: true,
 
   /**
+   * Use Vercel AI Gateway for AI calls
+   *
+   * When enabled:
+   * - Routes chat/reasoning requests through Vercel AI Gateway
+   * - Routes image generation through AI Gateway (BFL FLUX models)
+   * - Requires AI_GATEWAY_API_KEY environment variable
+   * - Model mapping: Qwen → alibaba/qwen3-*, FLUX → bfl/flux-*
+   *
+   * When disabled (default):
+   * - Uses Together.ai directly for all AI calls
+   *
+   * Benefits of AI Gateway:
+   * - Unified billing through Vercel
+   * - Model fallback/routing support
+   * - No separate Together.ai account needed
+   *
+   * @type {boolean}
+   * @default false
+   */
+  useVercelAIGateway: false,
+
+  /**
    * Show consistency warnings in UI before exports
    * Validates DNA, geometry, views, and A1 sheet structure
    *
@@ -181,6 +203,17 @@ export const FEATURE_FLAGS = {
    * @default true
    */
   showConsistencyWarnings: true,
+
+  /**
+   * Show Geometry Debug Viewer (DEV)
+   *
+   * When enabled:
+   * - Shows geometry debug viewer in results UI
+   *
+   * @type {boolean}
+   * @default false
+   */
+  showGeometryDebugViewer: false,
 
   /**
    * Two-Pass DNA Generation (STRICT MODE)
@@ -200,6 +233,65 @@ export const FEATURE_FLAGS = {
    * @default true
    */
   twoPassDNA: true,
+
+  /**
+   * Strict Preflight Gate (Panel Planning)
+   *
+   * When enabled:
+   * - Runs a strict preflight validation gate before planning panels
+   * - Blocks generation if DNA/program is invalid
+   *
+   * @type {boolean}
+   * @default true
+   */
+  strictPreflightGate: true,
+
+  /**
+   * Strict Geometry Mask Gate (Floor Plan Generation)
+   *
+   * When enabled:
+   * - Throws error if floor_plan_* panel has useGeometryMask=true but no init_image
+   * - Prevents silent fallback to AI-invented floor plans
+   * - Ensures 100% floor plan consistency via ProceduralGeometryService
+   *
+   * When disabled:
+   * - Falls back to AI-generated floor plans if geometry mask is missing
+   * - May result in inconsistent wall placements and room layouts
+   *
+   * @type {boolean}
+   * @default true
+   */
+  strictGeometryMaskGate: true,
+
+  /**
+   * Save Geometry Mask Debug Artifacts
+   *
+   * When enabled:
+   * - Saves SVG, PNG, and metadata JSON per floor to debug folder
+   * - Uses designFingerprint for folder isolation
+   * - Useful for debugging geometry mask generation issues
+   *
+   * Debug artifacts saved:
+   * - `geometry_mask_floor_0.svg` - Raw SVG string
+   * - `geometry_mask_floor_0.png` - Rasterized PNG (if rasterization available)
+   * - `geometry_mask_metadata.json` - Per-floor metadata (rooms, doors, circulation)
+   *
+   * @type {boolean}
+   * @default false
+   */
+  saveGeometryMaskDebug: false,
+
+  /**
+   * Strict Canonical Design State Requirement (CDS)
+   *
+   * When enabled:
+   * - Requires a complete CanonicalDesignState (geometry-first pipeline)
+   * - Blocks generation if CDS is missing/incomplete
+   *
+   * @type {boolean}
+   * @default false
+   */
+  strictCanonicalDesignState: false,
 
   /**
    * Geometry Volume First (3D MASSING AGENT)
@@ -223,9 +315,9 @@ export const FEATURE_FLAGS = {
    */
   // geometryVolumeFirst: false // ❌ REMOVED - Duplicate of line 46
 
-  // =========================================================================
+  // =========================================================================  
   // DESIGN FINGERPRINT SYSTEM - Cross-Panel Consistency Enforcement
-  // =========================================================================
+  // =========================================================================  
 
   /**
    * Extract Design Fingerprint from hero_3d
@@ -329,6 +421,45 @@ export const FEATURE_FLAGS = {
     elevation_east: 0.6,
     elevation_west: 0.6,
   },
+
+  // =========================================================================  
+  // QA / REVIEW SYSTEMS (Opt-in)
+  // =========================================================================  
+
+  /**
+   * QA Gates (Automated)
+   *
+   * When enabled:
+   * - Runs automated QA gates on panels/sheets (contrast, duplicates, sizing)
+   *
+   * @type {boolean}
+   * @default false
+   */
+  qaGates: false,
+
+  /**
+   * Opus Sheet Critic (AI-Powered)
+   *
+   * When enabled:
+   * - Uses Claude Opus 4.5 to critique composed A1 sheets
+   * - Requires network access and valid API route
+   *
+   * @type {boolean}
+   * @default false
+   */
+  opusSheetCritic: false,
+
+  /**
+   * Opus Panel Validator (AI-Powered)
+   *
+   * When enabled:
+   * - Uses Claude Opus 4.5 to validate individual panels (type correctness, drift)
+   * - Requires network access and valid API route
+   *
+   * @type {boolean}
+   * @default false
+   */
+  opusPanelValidator: false,
 };
 
 /**
@@ -415,7 +546,12 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useFluxKontextForA1 = false;
   FEATURE_FLAGS.useModelRouter = true;
   FEATURE_FLAGS.showConsistencyWarnings = true;
+  FEATURE_FLAGS.showGeometryDebugViewer = false;
   FEATURE_FLAGS.twoPassDNA = true;
+  FEATURE_FLAGS.strictPreflightGate = true;
+  FEATURE_FLAGS.strictGeometryMaskGate = true;
+  FEATURE_FLAGS.saveGeometryMaskDebug = false;
+  FEATURE_FLAGS.strictCanonicalDesignState = false;
   FEATURE_FLAGS.geometryVolumeFirst = false;
   // Design Fingerprint System defaults
   FEATURE_FLAGS.extractDesignFingerprint = true;
@@ -431,6 +567,10 @@ export function resetFeatureFlags() {
     elevation_east: 0.6,
     elevation_west: 0.6,
   };
+  // QA / Review systems defaults
+  FEATURE_FLAGS.qaGates = false;
+  FEATURE_FLAGS.opusSheetCritic = false;
+  FEATURE_FLAGS.opusPanelValidator = false;
 
   logger.info(
     "Feature flags reset to defaults (ModelRouter enabled, fingerprint system enabled, two-pass DNA enabled)",

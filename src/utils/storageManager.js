@@ -291,6 +291,42 @@ class StorageManager {
           });
           return true;
         } catch (retryError) {
+          // Last resort: if cleanup couldn't remove anything else, drop the existing value for
+          // this key and retry once. This can recover from older oversized values that can't be
+          // overwritten due to temporary quota allocation behavior in some browsers.
+          try {
+            const keysAfterCleanup = await this.backend.getAllKeys();
+            const otherKeys = keysAfterCleanup.filter(k => k !== key);
+
+            if (otherKeys.length === 0) {
+              const existingValue = await this.backend.getItem(key);
+              const serialized = JSON.stringify(dataToStore);
+
+              if (existingValue && existingValue.length > serialized.length) {
+                const retrySize = new Blob([serialized]).size;
+                logger.warn(`Only ${key} remains in storage; dropping previous value and retrying`, {
+                  existingSizeKB: (existingValue.length / 1024).toFixed(2),
+                  attemptedSizeKB: (retrySize / 1024).toFixed(2)
+                });
+
+                await this.backend.removeItem(key);
+                await this.backend.setItem(key, serialized);
+
+                logger.success(`Successfully stored ${key} after dropping previous value`, {
+                  sizeKB: (retrySize / 1024).toFixed(2),
+                  newUsage: `${await this.getStorageUsage()}%`
+                });
+                return true;
+              }
+            }
+          } catch (finalAttemptError) {
+            logger.warn('Final storage recovery attempt failed', {
+              key,
+              errorName: finalAttemptError?.name,
+              errorMessage: finalAttemptError?.message
+            });
+          }
+
           logger.error(`Failed to store ${key} even after cleanup`, {
             error: retryError.name,
             message: retryError.message,

@@ -832,4 +832,8 @@ class ModelSelector {
   }
 }
 
-module.exports = new ModelSelector();
+// Create singleton instance
+const modelSelector = new ModelSelector();
+
+// ES6 export
+export default modelSelector;

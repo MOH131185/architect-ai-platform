@@ -4,8 +4,45 @@
  * Shared constants for A1 sheet composition.
  * Used by both a1LayoutComposer.js (service) and api/a1/compose.js (endpoint).
  *
+ * For strict 12-column grid specification with minimum sizes and QA thresholds,
+ * see: A1GridSpec12Column.js
+ *
  * @module services/a1/a1LayoutConstants
  */
+
+// Import 12-column grid specification for strict QA mode
+import {
+  SHEET as SHEET_12COL,
+  MINIMUM_SIZES,
+  TEXT_SIZES,
+  PANEL_PRIORITY_ORDER,
+  STYLE_ZONES,
+  GRID_12COL,
+  QA_THRESHOLDS,
+  getStyleZone,
+  validatePanelSize,
+  calculateScaleToFill,
+  getPanelsInPriorityOrder,
+} from "./A1GridSpec12Column.js";
+
+// Re-export 12-column spec for consumers
+export {
+  SHEET_12COL,
+  MINIMUM_SIZES,
+  TEXT_SIZES,
+  PANEL_PRIORITY_ORDER,
+  STYLE_ZONES,
+  GRID_12COL,
+  QA_THRESHOLDS,
+  getStyleZone,
+  validatePanelSize,
+  calculateScaleToFill,
+  getPanelsInPriorityOrder,
+};
+
+// Phase 2+: Target board layout (SSOT) for composition
+// Default to strict 12-column hybrid grid (competition top row + technical below).
+export const TARGET_BOARD_GRID_SPEC = GRID_12COL;
 
 // A1 sheet dimensions at 300 DPI (landscape orientation)
 export const A1_WIDTH = 9933;
@@ -184,6 +221,103 @@ export const PANEL_LABELS = {
 };
 
 /**
+ * Professional drawing numbers (RIBA-style)
+ */
+export const DRAWING_NUMBERS = {
+  hero_3d: "3D-01",
+  interior_3d: "3D-02",
+  axonometric: "3D-03",
+  site_diagram: "SP-01",
+  floor_plan_ground: "GA-00-01",
+  floor_plan_first: "GA-01-01",
+  floor_plan_level2: "GA-02-01",
+  elevation_north: "EL-N-01",
+  elevation_south: "EL-S-01",
+  elevation_east: "EL-E-01",
+  elevation_west: "EL-W-01",
+  section_AA: "SC-AA-01",
+  section_BB: "SC-BB-01",
+  schedules_notes: "SC-01",
+  material_palette: "MP-01",
+  climate_card: "AN-01",
+  title_block: "A1-001",
+};
+
+/**
+ * Professional scales per view type
+ */
+export const PANEL_SCALES = {
+  hero_3d: "NTS",
+  interior_3d: "NTS",
+  axonometric: "NTS",
+  site_diagram: "1:500",
+  floor_plan_ground: "1:100",
+  floor_plan_first: "1:100",
+  floor_plan_level2: "1:100",
+  elevation_north: "1:100",
+  elevation_south: "1:100",
+  elevation_east: "1:100",
+  elevation_west: "1:100",
+  section_AA: "1:50",
+  section_BB: "1:50",
+  schedules_notes: "N/A",
+  material_palette: "N/A",
+  climate_card: "N/A",
+  title_block: "N/A",
+};
+
+/**
+ * Return panel annotation metadata used by composition overlay (caption band)
+ */
+export function getPanelAnnotation(panelType) {
+  const label = PANEL_LABELS[panelType] || String(panelType || "").toUpperCase();
+  const drawingNumber = DRAWING_NUMBERS[panelType] || "";
+  const scale = PANEL_SCALES[panelType] || "NTS";
+  return {
+    label,
+    drawingNumber,
+    scale,
+    fullAnnotation: drawingNumber
+      ? `${drawingNumber}  ${label}  SCALE: ${scale}`
+      : `${label}  SCALE: ${scale}`,
+  };
+}
+
+/**
+ * Get a normalized grid spec for a given layout template and floor count.
+ * IMPORTANT: Returned layout keys drive composition slot requirements.
+ */
+export function getGridSpec(layoutTemplate = "board-v2", options = {}) {
+  const floorCount = Number.isFinite(options.floorCount)
+    ? options.floorCount
+    : Number(options.floors) || 2;
+
+  const template = String(layoutTemplate || "")
+    .trim()
+    .toLowerCase();
+
+  const base =
+    template === "grid-spec" ||
+    template === "grid_spec" ||
+    template === "legacy" ||
+    template === "v1"
+      ? GRID_SPEC
+      : TARGET_BOARD_GRID_SPEC;
+
+  const spec = { ...base };
+
+  // Remove optional slots that should not be required/placed for fewer floors
+  if (floorCount < 2) {
+    delete spec.floor_plan_first;
+  }
+  if (floorCount < 3) {
+    delete spec.floor_plan_level2;
+  }
+
+  return spec;
+}
+
+/**
  * Panels that use 'cover' fit mode (photorealistic renders)
  * All others use 'contain' (technical drawings)
  */
@@ -213,16 +347,23 @@ export function toPixelRect(layoutEntry, sheetWidth, sheetHeight) {
  * @param {Object} options - Validation options
  * @param {Object} options.layoutSpec - Layout specification (defaults to GRID_SPEC)
  * @param {number} options.floorCount - Number of floors (defaults to 2)
- * @returns {Object} {valid: boolean, errors: string[], warnings: string[], missingPanels: string[]}
+ * @param {boolean} options.enforceMinimumSizes - Check minimum size requirements (defaults to false)
+ * @param {number} options.sheetWidth - Sheet width for size calculations (defaults to A1_WIDTH)
+ * @param {number} options.sheetHeight - Sheet height for size calculations (defaults to A1_HEIGHT)
+ * @returns {Object} {valid: boolean, errors: string[], warnings: string[], missingPanels: string[], sizeViolations: string[]}
  */
 export function validatePanelLayout(panels, options = {}) {
   const {
     layoutSpec = GRID_SPEC,
     floorCount = 2,
     allowUnknownTypes = false,
+    enforceMinimumSizes = false,
+    sheetWidth = A1_WIDTH,
+    sheetHeight = A1_HEIGHT,
   } = options;
   const errors = [];
   const warnings = [];
+  const sizeViolations = [];
 
   // Check for required panels based on floor count
   const requiredPanels = getRequiredPanels(floorCount);
@@ -256,6 +397,17 @@ export function validatePanelLayout(panels, options = {}) {
       x2: layout.x + layout.width,
       y2: layout.y + layout.height,
     });
+
+    // Check minimum size requirements if enabled
+    if (enforceMinimumSizes) {
+      const pixelWidth = Math.round(layout.width * sheetWidth);
+      const pixelHeight = Math.round(layout.height * sheetHeight);
+      const sizeCheck = validatePanelSize(panel.type, pixelWidth, pixelHeight);
+      if (!sizeCheck.valid) {
+        sizeViolations.push(sizeCheck.message);
+        warnings.push(`Size warning: ${sizeCheck.message}`);
+      }
+    }
   }
 
   // Check for overlaps between panels
@@ -291,6 +443,7 @@ export function validatePanelLayout(panels, options = {}) {
     warnings,
     panelCount: panels.length,
     missingPanels,
+    sizeViolations,
   };
 }
 
@@ -316,12 +469,17 @@ export default {
   FRAME_RADIUS,
   GRAPHICS_STANDARDS,
   GRID_SPEC,
+  TARGET_BOARD_GRID_SPEC,
   REQUIRED_PANELS,
   PANEL_LABELS,
+  DRAWING_NUMBERS,
+  PANEL_SCALES,
   COVER_FIT_PANELS,
   toPixelRect,
   validatePanelLayout,
   getPanelFitMode,
+  getPanelAnnotation,
+  getGridSpec,
 };
 
 export const TITLE_BLOCK_TEMPLATE = {

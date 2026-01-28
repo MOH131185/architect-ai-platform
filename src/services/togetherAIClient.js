@@ -160,20 +160,23 @@ class TogetherAIClient {
    * @param {number} params.imageStrength - Image strength for img2img
    * @returns {Promise<Object>} { imageUrls, seedUsed, model, latencyMs, traceId }
    */
-  async generateImage({
-    prompt,
-    seed,
-    sheetType = 'ARCH',
-    sheetConfig = {},
-    model = 'black-forest-labs/FLUX.1-dev',
-    width = 1792,
-    height = 1269,
-    steps = 48,
-    guidanceScale = 7.8,
-    negativePrompt = '',
-    initImage = null,
-    imageStrength = null
-  }) {
+  async generateImage(params = {}) {
+    const {
+      prompt,
+      seed,
+      sheetType = 'ARCH',
+      sheetConfig = {},
+      model = 'black-forest-labs/FLUX.1-dev',
+    } = params;
+
+    const width = params.width ?? 1792;
+    const height = params.height ?? 1269;
+    const steps = params.steps ?? params.numInferenceSteps ?? params.num_inference_steps ?? 48;
+    const guidanceScale = params.guidanceScale ?? params.guidance_scale ?? 7.8;
+    const negativePrompt = params.negativePrompt ?? params.negative_prompt ?? '';
+    const initImage = params.initImage ?? params.init_image ?? null;
+    const imageStrength =
+      params.imageStrength ?? params.image_strength ?? params.strength ?? null;
     const traceId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const startTime = Date.now();
     
@@ -320,8 +323,10 @@ export function createTogetherAIClient(env) {
 }
 
 // Export for backward compatibility
-export default {
+const togetherAIClientExports = {
   createTogetherAIClient,
   RateLimiter
 };
+
+export default togetherAIClientExports;
 

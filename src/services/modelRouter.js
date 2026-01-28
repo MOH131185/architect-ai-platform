@@ -16,8 +16,18 @@ import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM.js';
 import runtimeEnv from '../utils/runtimeEnv.js';
 import logger from '../utils/logger.js';
 
-
 const API_BASE_URL = process.env.REACT_APP_API_PROXY_URL || 'http://localhost:3001';
+
+// Environment detection for endpoint selection
+const isDev = typeof window !== 'undefined' &&
+  (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1');
+
+// Endpoint paths (dev: /api/together/*, prod: /api/together-*)
+const ENDPOINTS = {
+  togetherChat: isDev ? '/api/together/chat' : '/api/together-chat',
+  togetherImage: isDev ? '/api/together/image' : '/api/together-image',
+  openaiChat: '/api/openai/chat'
+};
 
 const DEFAULT_EMERGENCY_ENV_KEY = 'OPENAI_MODEL_REASONING';
 
@@ -90,7 +100,7 @@ function getAvailableProviders() {
   // In browser, we can't directly access process.env server keys
   // Instead, we'll try to detect availability through proxy health checks
   // For now, assume Together is always available (primary), OpenAI optional
-  
+
   const available = {
     together: true, // Always available (primary provider)
     openai: false,  // Will be detected via proxy
@@ -152,7 +162,7 @@ async function detectProviderAvailability() {
 
   // Check Together.ai
   try {
-    const response = await fetch(`${API_BASE_URL}/api/together/chat`, {
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherChat}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -192,9 +202,9 @@ class ModelRouter {
     this.selector = modelSelector;
     this.availableProviders = getAvailableProviders();
     this.performanceCache = new Map(); // Track model performance
-    
+
     logger.info('🧭 ModelRouter initialized');
-    
+
     // Async detection in background
     detectProviderAvailability().then(providers => {
       this.availableProviders = providers;
@@ -363,7 +373,7 @@ class ModelRouter {
       const modelConfig = this.selector.selectModel(taskType, context);
       if (modelConfig.fallback && context.fallbackEnabled !== false) {
         logger.info(`🔄 [ModelRouter] Attempting fallback model...`);
-        
+
         try {
           return await this.callLLM(taskType, {
             ...params,
@@ -443,7 +453,7 @@ class ModelRouter {
       }
 
       // Call Together image API (currently only provider for images)
-      const response = await fetch(`${API_BASE_URL}/api/together/image`, {
+      const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherImage}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(callParams)
@@ -486,7 +496,7 @@ class ModelRouter {
       const modelConfig = this.selector.selectModel(taskType, context);
       if (modelConfig.fallback && context.fallbackEnabled !== false) {
         logger.info(`🔄 [ModelRouter] Attempting fallback image model...`);
-        
+
         try {
           return await this.callImage(taskType, {
             ...params,
@@ -513,7 +523,7 @@ class ModelRouter {
    * Call Together.ai chat API
    */
   async callTogetherChat(model, messages, params) {
-    const response = await fetch(`${API_BASE_URL}/api/together/chat`, {
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherChat}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -535,7 +545,7 @@ class ModelRouter {
    * Call OpenAI chat API
    */
   async callOpenAIChat(model, messages, params) {
-    const response = await fetch(`${API_BASE_URL}/api/openai/chat`, {
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.openaiChat}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -559,7 +569,7 @@ class ModelRouter {
   trackPerformance(taskType, model, latencyMs) {
     const key = `${taskType}:${model}`;
     const existing = this.performanceCache.get(key) || { count: 0, totalLatency: 0, failures: 0 };
-    
+
     existing.count++;
     existing.totalLatency += latencyMs;
     existing.avgLatency = existing.totalLatency / existing.count;

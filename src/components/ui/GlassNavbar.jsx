@@ -1,20 +1,20 @@
 import React from 'react';
-import { Building2 } from 'lucide-react';
+import CompanyLogo from './CompanyLogo.jsx';
 
 /**
  * GlassNavbar - Premium liquid glass navigation bar
  */
-export const GlassNavbar = ({ logoPath = '/logo/logo-light.svg' }) => {
+export const GlassNavbar = () => {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 liquid-glass-strong border-b border-white/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center space-x-3">
-            <img
-              src={logoPath}
-              alt="ARCHIAI SOLUTION"
-              className="h-8 w-8 logo-float"
+            <CompanyLogo
+              size={48}
+              className="logo-float"
+              alt="ArchiAI Solution logo"
             />
             <div>
               <span className="text-lg font-bold text-white">ARCHIAI</span>

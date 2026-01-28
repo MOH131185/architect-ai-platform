@@ -1,20 +1,61 @@
 import React, { useEffect } from 'react';
-import { Sparkles, ChevronLeft, Loader2, Clock, AlertCircle } from 'lucide-react';
+import { Sparkles, ChevronLeft, Clock, AlertCircle, Check, Search, MapPin } from 'lucide-react';
 import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
 import { useGeneration } from '../hooks/useGeneration.js';
+import { motion } from 'framer-motion';
+
+// DNA Helix Animation Component
+const DNAHelix = ({ className = "" }) => (
+  <div className={`flex items-center justify-center space-x-1 ${className}`}>
+    {[...Array(8)].map((_, i) => (
+      <motion.div
+        key={i}
+        className="w-2 h-8 bg-indigo-500 rounded-full opacity-60"
+        animate={{
+          scaleY: [0.5, 1.5, 0.5],
+          opacity: [0.5, 1, 0.5],
+          backgroundColor: ["#6366f1", "#a855f7", "#6366f1"]
+        }}
+        transition={{
+          duration: 1.5,
+          repeat: Infinity,
+          delay: i * 0.15,
+          ease: "easeInOut"
+        }}
+      />
+    ))}
+  </div>
+);
+
+// Magnifier Analysis Animation Component
+const MagnifierScan = () => (
+  <div className="relative w-16 h-16 flex items-center justify-center">
+    <MapPin className="w-8 h-8 text-gray-400" />
+    <motion.div
+      className="absolute top-0 left-0"
+      animate={{
+        x: [0, 20, 0, -20, 0],
+        y: [0, -20, 0, 20, 0],
+      }}
+      transition={{
+        duration: 4,
+        repeat: Infinity,
+        ease: "linear"
+      }}
+    >
+      <Search className="w-10 h-10 text-indigo-600 fill-indigo-100/50" />
+    </motion.div>
+  </div>
+);
 
 /**
  * AIGeneration - Step 5: AI design generation with progress tracking
  *
  * Features:
  * - Generate button to start AI workflow
- * - Multi-phase progress tracking
+ * - Multi-phase progress tracking with DNA & Analysis animations
  * - Elapsed time display
  * - Phase-by-phase status messages
- * - Rate limit notifications
- * - Generation statistics
- *
- * @component
  */
 const AIGeneration = () => {
   const { prevStep } = useArchitectWorkflow();
@@ -28,16 +69,17 @@ const AIGeneration = () => {
   // Track elapsed time
   useEffect(() => {
     if (!isLoading) return;
-
     const interval = setInterval(() => {
       // Elapsed time is managed by useGeneration hook
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isLoading]);
 
   const progressPercentage = generationProgress.percentage || 0;
   const phases = ['Initialization', 'Setup', 'Validation', 'Analysis', 'Workflow', 'Generation', 'Complete'];
+
+  // Determine current active animation
+  const currentStepName = phases[generationProgress.step] || 'Init';
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -107,89 +149,103 @@ const AIGeneration = () => {
             </button>
           </>
         ) : (
-          <div className="space-y-6">
-            {/* Progress Bar */}
+          <div className="space-y-8">
+            {/* Visual Animation Area */}
+            <div className="flex items-center justify-center py-8 min-h-[120px]">
+              {currentStepName === 'Analysis' ? (
+                <MagnifierScan />
+              ) : (
+                <DNAHelix className="h-16" />
+              )}
+            </div>
+
+            {/* Progress Bar with DNA Styling */}
             <div>
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-gray-700">
-                  {generationProgress.message || 'Initializing...'}
+                <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  {currentStepName === 'Analysis' ? <Search className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                  {generationProgress.message || 'Processing...'}
                 </span>
                 <span className="text-sm font-semibold text-indigo-600">
                   {progressPercentage}%
                 </span>
               </div>
-              <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300 rounded-full"
-                  style={{ width: `${progressPercentage}%` }}
-                ></div>
+
+              {/* DNA Chain Background for Progress Bar */}
+              <div className="w-full h-4 bg-gray-100 rounded-full relative overflow-hidden ring-1 ring-gray-200">
+                {/* Background Pattern */}
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #6366f1 0, #6366f1 10px, transparent 10px, transparent 20px)' }}></div>
+
+                {/* Active Progress */}
+                <motion.div
+                  className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 relative"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercentage}%` }}
+                  transition={{ type: "spring", stiffness: 50 }}
+                >
+                  <div className="absolute inset-0 w-full h-full animate-pulse opacity-50 bg-white/20"></div>
+                </motion.div>
               </div>
             </div>
 
-            {/* Phase Indicators */}
-            <div className="space-y-2">
+            {/* Visual Phases List */}
+            <div className="space-y-3">
               {phases.map((phase, index) => {
                 const isComplete = index < generationProgress.step;
                 const isCurrent = index === generationProgress.step;
-                const isPending = index > generationProgress.step;
 
                 return (
                   <div
                     key={phase}
-                    className={`flex items-center p-3 rounded-xl transition-all ${
-                      isCurrent
-                        ? 'bg-indigo-50 border-2 border-indigo-300'
+                    className={`flex items-center p-3 rounded-xl transition-all border ${isCurrent
+                        ? 'bg-indigo-50 border-indigo-200 shadow-sm'
                         : isComplete
-                        ? 'bg-green-50 border border-green-200'
-                        : 'bg-gray-50 border border-gray-200'
-                    }`}
+                          ? 'bg-white border-green-100 text-green-700'
+                          : 'bg-white border-transparent opacity-50'
+                      }`}
                   >
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                        isCurrent
-                          ? 'bg-indigo-600 text-white'
+                      className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 transition-colors ${isCurrent
+                          ? 'bg-indigo-100 text-indigo-600'
                           : isComplete
-                          ? 'bg-green-600 text-white'
-                          : 'bg-gray-300 text-gray-600'
-                      }`}
+                            ? 'bg-green-100 text-green-600'
+                            : 'bg-gray-100 text-gray-400'
+                        }`}
                     >
                       {isComplete ? (
-                        '✓'
+                        <Check className="w-4 h-4" />
                       ) : isCurrent ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        // Small DNA or active indicator
+                        <div className="w-2 h-2 bg-indigo-600 rounded-full animate-ping" />
                       ) : (
-                        index + 1
+                        <div className="w-2 h-2 bg-gray-300 rounded-full" />
                       )}
                     </div>
-                    <span
-                      className={`font-medium ${
-                        isCurrent
-                          ? 'text-indigo-900'
-                          : isComplete
-                          ? 'text-green-900'
-                          : 'text-gray-500'
-                      }`}
-                    >
+
+                    <span className={`font-medium ${isCurrent ? 'text-indigo-900' : ''}`}>
                       {phase}
                     </span>
+
+                    {isCurrent && phase === 'Analysis' && (
+                      <span className="ml-auto text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full animate-pulse">
+                        Scanning Location...
+                      </span>
+                    )}
+
+                    {isCurrent && (phase === 'Workflow' || phase === 'Generation') && (
+                      <span className="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full animate-pulse">
+                        Generating DNA...
+                      </span>
+                    )}
                   </div>
                 );
               })}
             </div>
 
             {/* Elapsed Time */}
-            <div className="flex items-center justify-center text-sm text-gray-600 pt-4">
+            <div className="flex items-center justify-center text-sm text-gray-500">
               <Clock className="w-4 h-4 mr-2" />
               <span>Elapsed time: {elapsedTime}s</span>
-            </div>
-
-            {/* Info Message */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <p className="text-sm text-amber-800">
-                <span className="font-semibold">Please wait...</span> AI is analyzing your requirements,
-                generating design DNA, and creating your comprehensive A1 architectural sheet.
-                Do not close this window.
-              </p>
             </div>
           </div>
         )}

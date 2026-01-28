@@ -7,7 +7,7 @@ import {
   Palette, Square, Loader2, Sparkles, ArrowRight,
   Check, Home, Layers, Cpu, FileCode, Clock, TrendingUp,
   Users, Shield, Zap, BarChart3, Eye, AlertCircle, AlertTriangle, X, ZoomIn, ZoomOut, Maximize2,
-  Image, Edit3, Plus, Trash2, Download, Wand2, Map
+  Image, Edit3, Plus, Trash2, Download, Wand2, Map, Lock, Unlock
 } from 'lucide-react';
 import './styles/premium.css';
 import { locationIntelligence } from './services/locationIntelligence.js';
@@ -29,6 +29,8 @@ import { exportToSVG } from './utils/svgExporter.js';
 import { exportToDXF } from './utils/dxfWriter.js';
 import { sanitizePromptInput, sanitizeDimensionInput } from './utils/promptSanitizer.js';
 import logger from './utils/logger.js';
+// 🏢 Auto Level Assignment for floor count calculation
+import autoLevelAssignmentService from './services/autoLevelAssignmentService.js';
 // 🔧 AI Modification & History System
 import designGenerationHistory from './services/designGenerationHistory.js';
 import AIModifyPanel from './components/AIModifyPanel.jsx';
@@ -906,9 +908,18 @@ const ArchitectAIEnhanced = () => {
   const [blendWeight, setBlendWeight] = useState(0.5); // DEPRECATED: Keep for backward compatibility
   const [materialWeight, setMaterialWeight] = useState(0.5); // NEW: 0=100% local materials, 1=100% portfolio materials
   const [characteristicWeight, setCharacteristicWeight] = useState(0.5); // NEW: 0=100% local characteristics, 1=100% portfolio characteristics
-  const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '' });
+  const [projectDetails, setProjectDetails] = useState({ area: '', program: '', entranceDirection: '', floorCount: 2 });
   const [programSpaces, setProgramSpaces] = useState([]);
   const [isGeneratingSpaces, setIsGeneratingSpaces] = useState(false);
+  // 🏢 Floor count calculation state
+  const [calculatedFloors, setCalculatedFloors] = useState({
+    optimalFloors: 2,
+    minFloorsNeeded: 1,
+    maxFloorsAllowed: 4,
+    reasoning: '',
+    coverageRatio: 0.4
+  });
+  const [floorCountLocked, setFloorCountLocked] = useState(false);
 
   // 🆕 Pre-populate program spaces based on building program
   // 🎨 AI-ENHANCED Program Space Generator
@@ -1203,6 +1214,53 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       }
     };
   }, []);
+
+  // 🏢 Auto-calculate floor count when area, building program, or site metrics change
+  useEffect(() => {
+    // Only calculate if we have both area and building program
+    if (!projectDetails.area || !projectDetails.program) {
+      return;
+    }
+
+    const totalArea = parseInt(projectDetails.area);
+    const siteArea = siteMetrics?.areaM2 || totalArea * 2.5; // Default: assume site is 2.5x building area
+
+    if (isNaN(totalArea) || totalArea <= 0) {
+      return;
+    }
+
+    try {
+      const result = autoLevelAssignmentService.calculateOptimalLevels(
+        totalArea,
+        siteArea,
+        {
+          buildingType: projectDetails.program,
+          subType: projectDetails.program, // Use program as subType for house types
+          maxFloors: 10
+        }
+      );
+
+      setCalculatedFloors(result);
+
+      // Auto-update floor count if not locked
+      if (!floorCountLocked) {
+        setProjectDetails(prev => ({
+          ...prev,
+          floorCount: result.optimalFloors
+        }));
+      }
+
+      logger.info('Floor count calculated', {
+        area: totalArea,
+        siteArea,
+        program: projectDetails.program,
+        floors: result.optimalFloors,
+        locked: floorCountLocked
+      }, '🏢');
+    } catch (error) {
+      logger.warn('Floor calculation failed', error);
+    }
+  }, [projectDetails.area, projectDetails.program, siteMetrics?.areaM2, floorCountLocked]);
 
   // Use refs to store current values for event handlers (prevents handler recreation)
   const imageZoomRef = useRef(1);
@@ -2152,6 +2210,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         area: projectDetails?.area || '200',
         entranceDirection: projectDetails?.entranceDirection || 'S',
         floorArea: parseInt(projectDetails?.area) || 200,
+        // 🏢 Floor count and house type for DNA generation
+        floorCount: projectDetails?.floorCount || calculatedFloors.optimalFloors || 2,
+        houseType: projectDetails?.program, // e.g., 'detached-house', 'semi-detached-house', 'terraced-house'
+        floorCountLocked: floorCountLocked,
         // STEP 1: Unified seed for ALL outputs in this project
         projectSeed: projectSeed,
         // DALL·E 3: Include style signature for consistent generation
@@ -3955,6 +4017,68 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       <option value="zoo-building">Zoo Building</option>
                     </optgroup>
                   </select>
+                </div>
+
+                {/* Floor Count Section - Auto-calculated with manual lock option */}
+                <div className="bg-[#0a1628]/60 rounded-xl p-4 border border-white/10">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-white/90 font-medium flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-blue-300" />
+                      Number of Floors
+                    </label>
+
+                    {/* Lock Toggle */}
+                    <button
+                      onClick={() => setFloorCountLocked(!floorCountLocked)}
+                      className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm transition-all ${
+                        floorCountLocked
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-white/10 text-white/60 hover:bg-white/20'
+                      }`}
+                    >
+                      {floorCountLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                      {floorCountLocked ? 'Locked' : 'Auto'}
+                    </button>
+                  </div>
+
+                  {/* Floor Count Display/Input */}
+                  <div className="flex items-center gap-4">
+                    {floorCountLocked ? (
+                      // Manual input when locked
+                      <input
+                        type="number"
+                        min={1}
+                        max={calculatedFloors.maxFloorsAllowed || 6}
+                        value={projectDetails.floorCount || 2}
+                        onChange={(e) => setProjectDetails(prev => ({
+                          ...prev,
+                          floorCount: Math.max(1, parseInt(e.target.value) || 1)
+                        }))}
+                        className="w-20 bg-[#0a1628] border border-white/20 rounded-lg px-3 py-2 text-white text-center text-2xl font-bold"
+                      />
+                    ) : (
+                      // Auto-calculated display
+                      <div className="text-2xl font-bold text-white">
+                        {calculatedFloors.optimalFloors || projectDetails.floorCount || '—'}
+                      </div>
+                    )}
+                    <span className="text-white/50">floor{(projectDetails.floorCount || calculatedFloors.optimalFloors) !== 1 ? 's' : ''}</span>
+                  </div>
+
+                  {/* Reasoning explanation */}
+                  {calculatedFloors.reasoning && !floorCountLocked && projectDetails.area && projectDetails.program && (
+                    <p className="text-xs text-white/40 mt-2">
+                      {calculatedFloors.reasoning}
+                    </p>
+                  )}
+
+                  {/* Warning if manual exceeds max */}
+                  {floorCountLocked && projectDetails.floorCount > (calculatedFloors.maxFloorsAllowed || 6) && (
+                    <p className="text-xs text-amber-400 mt-2">
+                      <AlertTriangle className="w-3 h-3 inline mr-1" />
+                      Exceeds typical max ({calculatedFloors.maxFloorsAllowed}) for this building type
+                    </p>
+                  )}
                 </div>
 
                 <div>

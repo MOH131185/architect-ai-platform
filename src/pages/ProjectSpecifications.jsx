@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Building2, ArrowRight, ChevronLeft, Loader2, Plus, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo } from 'react';
+import { Building2, ArrowRight, ChevronLeft, Loader2, Plus, Trash2, Lock, Unlock, Layers } from 'lucide-react';
 import { useDesignContext } from '../context/DesignContext.jsx';
 import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
 import { useProgramSpaces } from '../hooks/useProgramSpaces.js';
@@ -32,6 +32,15 @@ const ProjectSpecifications = () => {
     validateProgramSpaces
   } = useProgramSpaces();
 
+  // Level count control from context
+  const {
+    lockedLevelCount,
+    setLockedLevelCount,
+    autoDetectedLevelCount,
+    levelMetrics,
+    siteMetrics
+  } = useDesignContext();
+
   // Auto-generate program spaces when building type or area changes
   useEffect(() => {
     if (projectDetails.program && projectDetails.area && programSpaces.length === 0) {
@@ -48,6 +57,40 @@ const ProjectSpecifications = () => {
 
   const validation = validateProgramSpaces();
   const totalArea = getTotalArea();
+
+  // Determine current floor count (locked or auto-detected)
+  const currentFloorCount = lockedLevelCount !== null ? lockedLevelCount : (autoDetectedLevelCount || 2);
+  const isLevelLocked = lockedLevelCount !== null;
+
+  // Generate dynamic level options based on current floor count
+  const levelOptions = useMemo(() => {
+    const options = ['Ground'];
+    if (currentFloorCount >= 2) options.push('First');
+    if (currentFloorCount >= 3) options.push('Second');
+    if (currentFloorCount >= 4) options.push('Third');
+    for (let i = 5; i <= currentFloorCount; i++) {
+      options.push(`${i - 1}th`);
+    }
+    options.push('Basement'); // Always allow basement
+    return options;
+  }, [currentFloorCount]);
+
+  // Handle lock/unlock toggle
+  const handleLevelLockToggle = () => {
+    if (isLevelLocked) {
+      // Unlock - return to auto-detect
+      setLockedLevelCount(null);
+    } else {
+      // Lock at current auto-detected value
+      setLockedLevelCount(autoDetectedLevelCount || 2);
+    }
+  };
+
+  // Handle manual level count change
+  const handleLevelCountChange = (newCount) => {
+    const count = Math.max(1, Math.min(10, parseInt(newCount) || 1));
+    setLockedLevelCount(count);
+  };
 
   const buildingTypes = [
     // Residential - Houses
@@ -210,6 +253,82 @@ const ProjectSpecifications = () => {
               ))}
             </select>
           </div>
+
+          {/* Number of Levels Control */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <Layers className="w-4 h-4 inline mr-1" />
+              Number of Levels
+            </label>
+            <div className="flex items-center gap-3">
+              {isLevelLocked ? (
+                // Manual mode - show input
+                <div className="flex-1 flex items-center gap-2">
+                  <button
+                    onClick={() => handleLevelCountChange(currentFloorCount - 1)}
+                    className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 font-bold transition-colors"
+                    disabled={currentFloorCount <= 1}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="number"
+                    value={currentFloorCount}
+                    onChange={(e) => handleLevelCountChange(e.target.value)}
+                    min="1"
+                    max="10"
+                    className="w-16 px-3 py-2 text-center border-2 border-green-500 rounded-xl font-semibold text-lg"
+                  />
+                  <button
+                    onClick={() => handleLevelCountChange(currentFloorCount + 1)}
+                    className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 font-bold transition-colors"
+                    disabled={currentFloorCount >= 10}
+                  >
+                    +
+                  </button>
+                </div>
+              ) : (
+                // Auto mode - show detected value
+                <div className="flex-1 px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+                  <span className="text-green-700 font-semibold">
+                    {autoDetectedLevelCount || '—'} floors
+                  </span>
+                  <span className="text-green-600 text-sm ml-2">(auto-detected)</span>
+                </div>
+              )}
+
+              {/* Lock/Unlock Button */}
+              <button
+                onClick={handleLevelLockToggle}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-all ${isLevelLocked
+                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-300'
+                  }`}
+                title={isLevelLocked ? 'Unlock to auto-detect' : 'Lock to set manually'}
+              >
+                {isLevelLocked ? (
+                  <><Lock className="w-4 h-4" /> Unlock</>
+                ) : (
+                  <><Unlock className="w-4 h-4" /> Lock</>
+                )}
+              </button>
+            </div>
+
+            {/* Floor Metrics Display */}
+            {levelMetrics && siteMetrics && (
+              <div className="mt-2 text-xs text-gray-500 flex gap-4">
+                <span>
+                  Footprint: ~{levelMetrics.actualFootprint?.toFixed(0) || '—'}m²
+                </span>
+                <span>
+                  Coverage: {levelMetrics.siteCoveragePercent?.toFixed(0) || '—'}%
+                </span>
+                {levelMetrics.siteCoveragePercent > 60 && (
+                  <span className="text-amber-600">⚠️ High coverage</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -280,10 +399,9 @@ const ProjectSpecifications = () => {
                           onChange={(e) => updateProgramSpace(index, { level: e.target.value })}
                           className="w-full px-2 py-1 border border-gray-200 rounded focus:border-green-500 focus:outline-none"
                         >
-                          <option value="Ground">Ground</option>
-                          <option value="First">First</option>
-                          <option value="Second">Second</option>
-                          <option value="Basement">Basement</option>
+                          {levelOptions.map(level => (
+                            <option key={level} value={level}>{level}</option>
+                          ))}
                         </select>
                       </td>
                       <td className="py-2 px-3">

@@ -1,8 +1,11 @@
 /**
  * Multi-Model Image Service
- * 
+ *
  * Handles image generation with FLUX primary and SDXL fallback.
  * Supports geometry-conditioned generation (img2img/controlnet).
+ *
+ * NEW: Supports style reference for material consistency (elevations/sections)
+ *      and floor plan mask for interior_3d window alignment.
  */
 
 import { generateArchitecturalImage as generateWithFLUX } from './togetherAIService.js';
@@ -15,19 +18,21 @@ class MultiModelImageService {
 
   /**
    * Generate image with FLUX primary, SDXL fallback
-   * 
- * @param {Object} params - Generation parameters
- * @param {string} params.viewType - View type (e.g., 'hero_3d', 'elevation_north')
- * @param {string} params.prompt - Text prompt
- * @param {string} params.negativePrompt - Negative prompt
- * @param {number} params.seed - Generation seed
- * @param {number} params.width - Image width
- * @param {number} params.height - Image height
- * @param {Object} params.designDNA - Design DNA
- * @param {Object|string} params.geometryRender - Optional geometry render (control image)
- * @param {number} params.geometryStrength - Geometry influence (0-1, default 0.7)
- * @returns {Promise<Object>} Generation result
- */
+   *
+   * @param {Object} params - Generation parameters
+   * @param {string} params.viewType - View type (e.g., 'hero_3d', 'elevation_north')
+   * @param {string} params.prompt - Text prompt
+   * @param {string} params.negativePrompt - Negative prompt
+   * @param {number} params.seed - Generation seed
+   * @param {number} params.width - Image width
+   * @param {number} params.height - Image height
+   * @param {Object} params.designDNA - Design DNA
+   * @param {Object|string} params.geometryRender - Optional geometry render (control image)
+   * @param {number} params.geometryStrength - Geometry influence (0-1, default 0.7)
+   * @param {string} params.styleReferenceUrl - Optional hero image URL for style consistency (elevations/sections)
+   * @param {string} params.floorPlanMaskUrl - Optional floor plan URL for interior_3d window alignment
+   * @returns {Promise<Object>} Generation result
+   */
   async generateImage(params) {
     const {
       viewType,
@@ -38,13 +43,29 @@ class MultiModelImageService {
       height,
       designDNA,
       geometryRender = null,
-      geometryStrength = 0.7
+      geometryStrength = 0.7,
+      styleReferenceUrl = null,
+      floorPlanMaskUrl = null
     } = params;
+
+    // Determine if this panel should use style reference
+    const isElevationOrSection = viewType.startsWith('elevation_') || viewType.startsWith('section_');
+    const shouldUseStyleReference = isElevationOrSection && styleReferenceUrl;
+
+    // Determine if interior_3d should use floor plan mask
+    const shouldUseFloorPlanMask = viewType === 'interior_3d' && floorPlanMaskUrl;
+
+    if (shouldUseStyleReference) {
+      logger.info(`🎨 [STYLE LOCK] Style reference will be applied for ${viewType}`);
+    }
+    if (shouldUseFloorPlanMask) {
+      logger.info(`🏠 [FLOOR PLAN LOCK] Floor plan mask will be applied for ${viewType}`);
+    }
 
     // Try FLUX first
     try {
       logger.info(`🎨 Attempting FLUX generation for ${viewType}...`);
-      
+
       const fluxParams = {
         viewType,
         prompt,
@@ -54,7 +75,11 @@ class MultiModelImageService {
         height,
         designDNA,
         geometryRender: geometryRender ? { url: geometryRender.url || geometryRender, type: geometryRender.type || null, model: geometryRender.model || null } : null,
-        geometryStrength
+        geometryStrength,
+        // NEW: Style reference for material consistency
+        styleReferenceUrl: shouldUseStyleReference ? styleReferenceUrl : null,
+        // NEW: Floor plan mask for interior_3d window alignment
+        floorPlanMaskUrl: shouldUseFloorPlanMask ? floorPlanMaskUrl : null
       };
 
       const result = await generateWithFLUX(fluxParams);

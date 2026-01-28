@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import { fadeInDown } from '../../styles/animations.js';
 import Button from '../ui/Button.jsx';
 import { Layers } from 'lucide-react';
-import logger from '../../utils/logger.js';
+import CompanyLogo from '../ui/CompanyLogo.jsx';
 
 
 const NavBar = ({
@@ -14,24 +14,23 @@ const NavBar = ({
   className = '',
 }) => {
   const [scrolled, setScrolled] = useState(false);
-  
+
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
     };
-    
+
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
-  
-  const navClasses = `fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-    scrolled && !transparent
-      ? 'bg-navy-950/90 backdrop-blur-lg border-b border-navy-800 shadow-xl'
-      : transparent
+
+  const navClasses = `fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled && !transparent
+    ? 'bg-navy-950/90 backdrop-blur-lg border-b border-navy-800 shadow-xl'
+    : transparent
       ? 'bg-transparent'
       : 'bg-navy-950/50 backdrop-blur-sm'
-  } ${className}`;
-  
+    } ${className}`;
+
   return (
     <motion.nav
       className={navClasses}
@@ -47,14 +46,9 @@ const NavBar = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <img
-              src={`${process.env.PUBLIC_URL || ''}/logo/logo-icon.svg`}
-              alt="ArchiAI Solution Ltd."
-              className="w-10 h-10"
-              onError={(e) => {
-                logger.error('Logo failed to load:', e.target.src);
-                e.target.style.display = 'none';
-              }}
+            <CompanyLogo
+              size={56}
+              className="mr-2"
             />
             <div>
               <h1 className="text-xl font-bold text-white font-heading">
@@ -65,14 +59,14 @@ const NavBar = ({
               </p>
             </div>
           </motion.div>
-          
+
           {/* Navigation Links */}
           <div className="hidden md:flex items-center gap-8">
             <NavLink href="#features">Features</NavLink>
             <NavLink href="#how-it-works">How It Works</NavLink>
             <NavLink href="#about">About</NavLink>
           </div>
-          
+
           {/* CTA Button */}
           {showNewDesign && (
             <div className="flex items-center gap-4">

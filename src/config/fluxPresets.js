@@ -187,7 +187,7 @@ export function validatePreset(preset) {
   };
 }
 
-export default {
+const fluxPresets = {
   A1_ARCH_FINAL,
   getA1Preset,
   getModifyStrength,
@@ -195,4 +195,6 @@ export default {
   shouldRetryForDrift,
   validatePreset
 };
+
+export default fluxPresets;
 

@@ -11,7 +11,7 @@ import Button from '../ui/Button.jsx';
 import Card from '../ui/Card.jsx';
 import StatCard from '../ui/StatCard.jsx';
 import IconWrapper from '../ui/IconWrapper.jsx';
-import Section from '../ui/Section.jsx';
+// Section component available from '../ui/Section.jsx' if needed
 import StepContainer from '../layout/StepContainer.jsx';
 import { fadeInUp, staggerChildren, cardReveal } from '../../styles/animations.js';
 

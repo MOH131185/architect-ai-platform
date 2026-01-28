@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { MapPin, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const LocationAccuracyBadge = ({ accuracy, qualityScore, address }) => {

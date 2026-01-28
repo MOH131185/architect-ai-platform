@@ -371,7 +371,19 @@ ${floor === 'ground' ? `
 ✓ This is how people enter from outside - WITHOUT IT THE BUILDING IS UNUSABLE!
 
 Then show these required annotations:` : 'Required Annotations:'}
-✓ Room names in clean sans-serif font (Arial/Helvetica style, 10-12pt equivalent)
+
+MANDATORY TEXT SIZES (for A1 print legibility):
+✓ Room names: 16pt BOLD UPPERCASE with area (e.g., "LIVING ROOM 24m²")
+✓ Dimension text: 12pt BOLD
+✓ Annotations: 10pt regular
+✓ All text BLACK, Arial/Helvetica font
+
+MANDATORY LINEWEIGHTS:
+✓ Exterior walls: HEAVY BLACK (6px / 0.7mm)
+✓ Interior walls: BOLD (4px / 0.5mm)
+✓ Dimension lines: THIN (1.5px / 0.18mm)
+
+Other Required Elements:
 ✓ Dimension lines with arrows showing room sizes
 ✓ 1 METER GRID LINES (light grey, every 1m) - REQUIRED for scale reference
 ✓ Furniture shown as simple 2D symbols (sofa, table, bed outlines)
@@ -586,14 +598,20 @@ Annotations required:
 - Glazing area percentage marked (e.g., "28% facade area")
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎨 DRAWING STYLE
+🎨 DRAWING STYLE (CAD-STANDARD LINEWEIGHTS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Line Weights:
-- Heavy lines (thick): Building outline, ground line, roof line
-- Medium lines: Window/door frames, floor lines
-- Thin lines: Dimension lines, hatching, annotations
+MANDATORY Line Weights (must be visually distinct):
+- HEAVY BLACK (6px / 0.7mm): Building outline, ground line, roof line
+- BOLD (4px / 0.5mm): Window/door frames, floor lines
+- MEDIUM (2px / 0.25mm): Secondary elements, internal divisions
+- THIN (1.5px / 0.18mm): Dimension lines, hatching, annotations
 - Dashed lines: Hidden elements (if any)
+
+MANDATORY Text Sizes:
+- Level labels: 14pt BOLD (e.g., "GROUND FLOOR +0.00")
+- Dimension text: 12pt BOLD
+- Material annotations: 10pt
 
 Hatching Patterns:
 - ${dna.materials?.exterior?.primary} walls: Appropriate material hatch
@@ -1017,13 +1035,19 @@ Site Context:
 ✓ Orientation annotation (e.g., "Building oriented to South")
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎨 DRAWING STYLE
+🎨 DRAWING STYLE (CAD-STANDARD LINEWEIGHTS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Line Weights:
-- Heavy lines: Building footprint outline
-- Medium lines: Site boundary, roads
-- Thin lines: Dimensions, annotations, grid
+MANDATORY Line Weights (must be visually distinct):
+- HEAVY BLACK (6px / 0.7mm): Building footprint outline
+- BOLD (4px / 0.5mm): Site boundary, roads
+- MEDIUM (2px / 0.25mm): Secondary features, landscaping
+- THIN (1.5px / 0.18mm): Dimensions, annotations, grid
+
+MANDATORY Text Sizes:
+- Site labels: 14pt BOLD
+- Dimension text: 12pt BOLD
+- Annotations: 10pt
 
 Format: Professional architectural site plan, CAD/technical drawing style, black linework on white background, orthographic top-down view, fully annotated with north arrow and scale.
 

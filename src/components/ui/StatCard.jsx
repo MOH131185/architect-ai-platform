@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { motion, useAnimation } from 'framer-motion';
+import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import { cardReveal } from '../../styles/animations.js';
 
@@ -15,7 +15,6 @@ const StatCard = ({
   ...props
 }) => {
   const [displayValue, setDisplayValue] = useState(0);
-  const controls = useAnimation();
   
   useEffect(() => {
     if (!animate) {

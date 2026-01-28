@@ -13,8 +13,22 @@
 import logger from "../../utils/logger.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 
-const DRAWING_STYLE_SUFFIX =
-  "pure white background, thin clean black lines, no shadows, no title block, no text outside the drawing";
+// CAD-standard lineweight specification for technical drawings
+const LINEWEIGHT_SPEC = `
+MANDATORY LINEWEIGHT HIERARCHY (must be visually distinct):
+- Building outline/section cuts: HEAVY BLACK (6px / 0.7mm print)
+- Primary walls: BOLD (4px / 0.5mm)
+- Interior walls/secondary: MEDIUM (2px / 0.25mm)
+- Dimension lines: THIN (1.5px / 0.18mm)
+
+MANDATORY TEXT SIZES:
+- Room labels: 16pt BOLD UPPERCASE with area (e.g., "LIVING ROOM 5.5×4.0m")
+- Dimension text: 12pt BOLD
+- Annotations: 10pt regular
+- All text BLACK, Arial/Helvetica font`;
+
+const DRAWING_STYLE_SUFFIX = `pure white background, clean black lines with clear lineweight hierarchy, no shadows, no title block, no text outside the drawing.
+${LINEWEIGHT_SPEC}`;
 const RENDER_STYLE_SUFFIX =
   "same materials and colors as other views, soft neutral sky, no watermark, no text";
 
@@ -260,11 +274,18 @@ export function buildGroundFloorPrompt({
       ? programSpaces.map((p) => p.name || p.type).join(", ")
       : "lobby, living, kitchen, services";
 
+  // Inject fingerprint constraint for cross-panel consistency
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
+
   const prompt = `Ground floor plan - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
 Program: ${roomList}
 
+${fingerprintConstraint ? `DESIGN FINGERPRINT (building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
 - TRUE OVERHEAD 2D VIEW (NOT perspective, NOT isometric)
 - Wall thickness: exterior 0.3m, interior 0.15m
@@ -298,11 +319,18 @@ export function buildFirstFloorPrompt({
   const dims = normalizeDimensions(masterDNA);
   const projectType = projectContext?.buildingProgram || "residential";
 
+  // Inject fingerprint constraint for cross-panel consistency
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
+
   const prompt = `First floor plan (Level 1) - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
 Program: Upper floor spaces (bedrooms, private rooms, or upper program)
 
+${fingerprintConstraint ? `DESIGN FINGERPRINT (building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
 - TRUE OVERHEAD 2D VIEW (NOT perspective, NOT isometric)
 - Wall thickness: exterior 0.3m, interior 0.15m
@@ -334,11 +362,18 @@ export function buildSecondFloorPrompt({
 }) {
   const dims = normalizeDimensions(masterDNA);
 
+  // Inject fingerprint constraint for cross-panel consistency
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
+
   const prompt = `Second floor plan (Level 2) - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
 Program: Top floor spaces or roof plan
 
+${fingerprintConstraint ? `DESIGN FINGERPRINT (building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
 - TRUE OVERHEAD 2D VIEW (NOT perspective, NOT isometric)
 - Wall thickness: exterior 0.3m, interior 0.15m
