@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "proxy": "http://localhost:3001",
+  "engines": {
+    "node": ">=18.0.0 <21.0.0"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.29.2",
     "@fal-ai/serverless-client": "^0.10.4",
@@ -57,6 +60,7 @@
     "server": "node server.cjs",
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "build": "react-scripts build",
+    "build:vercel": "CI=false react-scripts build",
     "test": "react-scripts test",
     "test:integration": "node scripts/test-a1-one-shot.js",
     "test:ci": "react-scripts test --watchAll=false --ci",
