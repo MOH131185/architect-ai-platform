@@ -48,18 +48,19 @@ export default async function handler(req, res) {
     // Enforce rate limiting
     await enforceRateLimit();
 
-    const {
-      model = 'black-forest-labs/FLUX.1-dev',
-      prompt,
-      negativePrompt = '',
-      width = 1792,
-      height = 1269,
-      seed,
-      num_inference_steps = 48,
-      guidanceScale = 7.8,
-      initImage = null,
-      imageStrength = 0.18
-    } = req.body;
+    const body = req.body || {};
+
+    const model = body.model || 'black-forest-labs/FLUX.1-dev';
+    const prompt = body.prompt;
+    const negativePrompt = body.negativePrompt ?? body.negative_prompt ?? '';
+    const width = body.width ?? 1792;
+    const height = body.height ?? 1269;
+    const seed = body.seed;
+    const numInferenceSteps = body.steps ?? body.numInferenceSteps ?? body.num_inference_steps ?? 48;
+    const guidanceScale = body.guidanceScale ?? body.guidance_scale ?? 7.8;
+    const initImage = body.initImage ?? body.init_image ?? null;
+    const imageStrength =
+      body.imageStrength ?? body.image_strength ?? body.strength ?? 0.18;
 
     if (!prompt) {
       return res.status(400).json({ 
@@ -81,7 +82,7 @@ export default async function handler(req, res) {
     const validatedWidth = Math.min(Math.max(width, 64), 1792);
     const validatedHeight = Math.min(Math.max(height, 64), 1792);
     const maxSteps = model.includes('schnell') ? 12 : 50;
-    const validatedSteps = Math.min(Math.max(num_inference_steps, 1), maxSteps);
+    const validatedSteps = Math.min(Math.max(numInferenceSteps, 1), maxSteps);
 
     const generationMode = initImage ? 'image-to-image' : 'text-to-image';
     console.log(`🎨 [FLUX.1] Generating image (${generationMode}) with model ${model}, seed ${effectiveSeed}...`);
@@ -111,22 +112,61 @@ export default async function handler(req, res) {
 
     // Add image-to-image parameters if initImage provided
     if (initImage) {
+      // 🎯 GEOMETRY MODE: Convert SVG to PNG before sending to Together API
+      // Together.ai expects PNG/JPEG, not SVG. If we detect SVG, rasterize it with sharp.
       let normalizedInitImage = initImage;
 
-      if (typeof initImage === 'string' && initImage.startsWith('data:')) {
+      if (typeof initImage === 'string' && initImage.startsWith('data:image/svg+xml')) {
         try {
-          const base64Data = initImage.split(',')[1];
+          const sharp = (await import('sharp')).default;
+          console.log('🎯 [Geometry Mode] Detected SVG init_image - rasterizing to PNG...');
+
+          // Extract base64 SVG data
+          const svgBase64 = initImage.split(',')[1];
+          if (svgBase64) {
+            const svgBuffer = Buffer.from(svgBase64, 'base64');
+
+            // Determine target dimensions from request or use defaults
+            const targetWidth = validatedWidth || 1500;
+            const targetHeight = validatedHeight || 1500;
+
+            // Rasterize SVG to PNG at target dimensions
+            const pngBuffer = await sharp(svgBuffer)
+              .resize(targetWidth, targetHeight, {
+                fit: 'contain',
+                background: { r: 0, g: 0, b: 0, alpha: 1 }, // Black background
+              })
+              .png()
+              .toBuffer();
+
+            normalizedInitImage = pngBuffer.toString('base64');
+            console.log(
+              `✅ [Geometry Mode] SVG rasterized to PNG: ${targetWidth}x${targetHeight}, ${(pngBuffer.length / 1024).toFixed(1)}KB`
+            );
+          }
+        } catch (svgError) {
+          console.warn('⚠️ [Geometry Mode] SVG rasterization failed:', svgError.message);
+          console.warn('⚠️ Falling back to original SVG (may fail with Together API)');
+          // Fall through to standard normalization
+        }
+      }
+
+      // Standard normalization: Strip data URL prefix if present (Together.ai prefers raw base64)
+      if (typeof normalizedInitImage === 'string' && normalizedInitImage.startsWith('data:')) {
+        try {
+          const base64Data = normalizedInitImage.split(',')[1];
           if (base64Data) {
             normalizedInitImage = base64Data;
             console.log('🔧 Normalized init_image: stripped data URL prefix');
           }
         } catch (e) {
-          console.warn('⚠️  Failed to normalize init_image, using as-is:', e.message);
+          console.warn('⚠️ Failed to normalize init_image, using as-is:', e.message);
         }
       }
 
       requestBody.init_image = normalizedInitImage;
       requestBody.image_strength = imageStrength;
+      console.log(`🔄 Image-to-image mode: strength ${imageStrength}`);
     }
 
     const response = await fetch('https://api.together.xyz/v1/images/generations', {

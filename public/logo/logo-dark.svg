@@ -1,30 +1,133 @@
-<svg width="300" height="120" viewBox="0 0 300 120" xmlns="http://www.w3.org/2000/svg">
-  <!-- Blueprint Paper Background (Dark theme) -->
-  <g id="blueprint">
-    <!-- Paper/Blueprint -->
-    <rect x="20" y="20" width="80" height="60" fill="none" stroke="#1e3a8a" stroke-width="1.5" rx="2"/>
-    <!-- Rolled Edge -->
-    <path d="M 100 20 Q 105 15 110 20 L 110 80 Q 105 85 100 80 Z" fill="#1e3a8a" opacity="0.1"/>
-    <path d="M 100 20 Q 105 15 110 20" stroke="#1e3a8a" stroke-width="1.5" fill="none"/>
-    
-    <!-- House on Blueprint -->
-    <g id="house">
-      <!-- Roof -->
-      <path d="M 40 35 L 60 25 L 80 35 Z" fill="none" stroke="#1e3a8a" stroke-width="2"/>
-      <!-- Walls -->
-      <rect x="45" y="35" width="30" height="25" fill="none" stroke="#1e3a8a" stroke-width="2"/>
-      <!-- Door -->
-      <rect x="55" y="50" width="10" height="10" fill="none" stroke="#1e3a8a" stroke-width="1.5"/>
+<svg width="200" height="200" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ArchiAI Solution logo (for light backgrounds)">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" />
+      <stop offset="1" stop-color="#e2e8f0" />
+    </linearGradient>
+
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="rgba(37, 99, 235, 0)" />
+      <stop offset="0.5" stop-color="rgba(37, 99, 235, 0.14)" />
+      <stop offset="1" stop-color="rgba(37, 99, 235, 0)" />
+    </linearGradient>
+
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.0" flood-color="#2563eb" flood-opacity="0.18" />
+    </filter>
+
+    <clipPath id="paperClip">
+      <rect x="14" y="16" width="34" height="32" rx="3" />
+      <path d="M48 16 Q52 12 56 16 L56 48 Q52 52 48 48 Z" />
+    </clipPath>
+  </defs>
+
+  <style>
+    svg {
+      --frame: rgba(15, 23, 42, 0.12);
+      --paper: #0f172a;
+      --accent: #2563eb;
+      --roll: rgba(15, 23, 42, 0.08);
+    }
+
+    .frame {
+      fill: none;
+      stroke: var(--frame);
+      stroke-width: 1.5;
+    }
+
+    .stroke {
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 200;
+      stroke-dashoffset: 200;
+      animation: draw 1.05s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    .paper {
+      stroke: var(--paper);
+      stroke-width: 2.4;
+    }
+
+    .roll-top {
+      stroke: var(--paper);
+      stroke-width: 2.4;
+      animation-delay: 0.08s;
+    }
+
+    .house {
+      stroke: var(--accent);
+      stroke-width: 2.6;
+      animation-delay: 0.18s;
+    }
+
+    .door {
+      stroke: var(--accent);
+      stroke-width: 2.2;
+      animation-delay: 0.25s;
+    }
+
+    .roll-fill {
+      fill: var(--roll);
+      opacity: 0;
+      animation: fadeIn 0.55s ease forwards;
+      animation-delay: 0.45s;
+    }
+
+    .shimmer {
+      opacity: 0;
+    }
+
+    @keyframes draw {
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    @keyframes fadeIn {
+      to {
+        opacity: 1;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .stroke {
+        animation: none;
+        stroke-dasharray: none;
+        stroke-dashoffset: 0;
+      }
+      .roll-fill {
+        animation: none;
+        opacity: 1;
+      }
+      .shimmer {
+        display: none;
+      }
+    }
+  </style>
+
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#bg)" />
+  <rect class="frame" x="2" y="2" width="60" height="60" rx="13" />
+
+  <g filter="url(#softGlow)">
+    <!-- Blueprint paper -->
+    <path class="stroke paper" d="M17 16 H45 a3 3 0 0 1 3 3 V45 a3 3 0 0 1 -3 3 H17 a3 3 0 0 1 -3 -3 V19 a3 3 0 0 1 3 -3 Z" />
+    <path class="roll-fill" d="M48 16 Q52 12 56 16 L56 48 Q52 52 48 48 Z" />
+    <path class="stroke roll-top" d="M48 16 Q52 12 56 16" />
+
+    <!-- House -->
+    <path class="stroke house" d="M26 34 L32 28 L38 34" />
+    <path class="stroke house" d="M27.5 34 V42.5 H36.5 V34" />
+    <path class="stroke door" d="M31 42.5 V38.5 H33 V42.5" />
+  </g>
+
+  <!-- Simple shimmer across the blueprint -->
+  <g clip-path="url(#paperClip)" aria-hidden="true">
+    <g transform="rotate(20 32 32)">
+      <rect class="shimmer" x="-96" y="0" width="192" height="64" fill="url(#shine)">
+        <animate attributeName="x" values="-96;96" dur="3.6s" repeatCount="indefinite" begin="1.1s" />
+        <animate attributeName="opacity" values="0;0.22;0" dur="3.6s" repeatCount="indefinite" begin="1.1s" />
+      </rect>
     </g>
   </g>
-  
-  <!-- Company Name (Dark theme) -->
-  <text x="20" y="105" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#1e293b">
-    ArchiAI Solution Ltd.
-  </text>
-  
-  <!-- Tagline -->
-  <text x="20" y="115" font-family="Arial, sans-serif" font-size="12" fill="#10b981">
-    AI for Architecture &amp; Design
-  </text>
 </svg>

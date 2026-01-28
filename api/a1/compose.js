@@ -29,6 +29,62 @@ import { PDFDocument } from 'pdf-lib';
 
 import a1ComposePayload from '../../server/utils/a1ComposePayload.cjs';
 
+// QA System imports (lazy-loaded for Vercel compatibility)
+let OpusSheetCritic = null;
+let QAGates = null;
+
+async function getOpusSheetCritic() {
+  if (OpusSheetCritic) return OpusSheetCritic;
+  try {
+    const module = await import('../../src/services/qa/OpusSheetCritic.js');
+    OpusSheetCritic = module.default || module.OpusSheetCritic;
+    return OpusSheetCritic;
+  } catch (e) {
+    console.warn('[A1 Compose] OpusSheetCritic not available:', e.message);
+    return null;
+  }
+}
+
+async function getQAGates() {
+  if (QAGates) return QAGates;
+  try {
+    const module = await import('../../src/services/qa/QAGates.js');
+    QAGates = module;
+    return QAGates;
+  } catch (e) {
+    console.warn('[A1 Compose] QAGates not available:', e.message);
+    return null;
+  }
+}
+
+// 12-column grid spec imports (lazy-loaded)
+let A1GridSpec = null;
+async function getA1GridSpec() {
+  if (A1GridSpec) return A1GridSpec;
+  try {
+    const module = await import('../../src/services/a1/A1GridSpec12Column.js');
+    A1GridSpec = module;
+    return A1GridSpec;
+  } catch (e) {
+    console.warn('[A1 Compose] A1GridSpec12Column not available:', e.message);
+    return null;
+  }
+}
+
+// Scale-to-fill configuration
+const SCALE_TO_FILL_CONFIG = {
+  enabled: true,
+  minScale: 0.8,
+  maxScale: 1.2,
+  // Panels that should use scale-to-fill (not cover/crop)
+  applicablePanels: [
+    'floor_plan_ground', 'floor_plan_first', 'floor_plan_level2', 'floor_plan_upper',
+    'elevation_north', 'elevation_south', 'elevation_east', 'elevation_west',
+    'section_AA', 'section_BB', 'axonometric', 'site_plan', 'site_diagram',
+    'material_palette', 'climate_card', 'schedules_notes',
+  ],
+};
+
 // CRITICAL: Force Node.js runtime for Sharp image processing
 // Without this, Vercel uses Edge runtime which doesn't support Sharp
 export const runtime = 'nodejs';
@@ -215,8 +271,13 @@ function getFallbackConstants() {
   // Working resolution (for faster composition, upscale on export)
   const WORKING_WIDTH = 1792;
   const WORKING_HEIGHT = 1269;
-  const LABEL_HEIGHT = 26;
+  // Caption/label dimensions (enhanced for better legibility)
+  const LABEL_HEIGHT = 32; // Increased from 26px for better visibility
   const LABEL_PADDING = 6;
+  const CAPTION_FONT_SIZE = 12; // Font size for panel captions
+  const CAPTION_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+  // Frame styling (2px stroke, 4px radius per plan spec)
+  const FRAME_STROKE_WIDTH = 2;
   const FRAME_STROKE_COLOR = '#d1d5db';
   const FRAME_RADIUS = 4;
 
@@ -224,9 +285,10 @@ function getFallbackConstants() {
     // Row 1 (y: 0.02 to 0.24)
     site_diagram: { x: 0.02, y: 0.02, width: 0.22, height: 0.22 },
     hero_3d: { x: 0.26, y: 0.02, width: 0.34, height: 0.22 },
-    interior_3d: { x: 0.62, y: 0.02, width: 0.24, height: 0.22 },
-    material_palette: { x: 0.88, y: 0.02, width: 0.1, height: 0.1 },
-    climate_card: { x: 0.88, y: 0.13, width: 0.1, height: 0.11 },
+    interior_3d: { x: 0.62, y: 0.02, width: 0.22, height: 0.22 },
+    // Data panels (enlarged for legibility - ~2.2% sheet area each)
+    material_palette: { x: 0.86, y: 0.02, width: 0.12, height: 0.18 },
+    climate_card: { x: 0.86, y: 0.21, width: 0.12, height: 0.18 },
     // Row 2 (y: 0.26 to 0.48)
     floor_plan_ground: { x: 0.02, y: 0.26, width: 0.32, height: 0.22 },
     floor_plan_first: { x: 0.36, y: 0.26, width: 0.32, height: 0.22 },
@@ -248,11 +310,12 @@ function getFallbackConstants() {
   const TARGET_BOARD_GRID_SPEC = {
     // Row 1: Hero + Interior + Right Sidebar (y: 0.02 to 0.28)
     hero_3d: { x: 0.02, y: 0.02, width: 0.36, height: 0.26 },
-    interior_3d: { x: 0.4, y: 0.02, width: 0.3, height: 0.26 },
-    axonometric: { x: 0.72, y: 0.02, width: 0.14, height: 0.12 },
-    site_diagram: { x: 0.72, y: 0.15, width: 0.14, height: 0.13 },
-    material_palette: { x: 0.88, y: 0.02, width: 0.1, height: 0.12 },
-    climate_card: { x: 0.88, y: 0.15, width: 0.1, height: 0.13 },
+    interior_3d: { x: 0.4, y: 0.02, width: 0.28, height: 0.26 },
+    axonometric: { x: 0.7, y: 0.02, width: 0.14, height: 0.12 },
+    site_diagram: { x: 0.7, y: 0.15, width: 0.14, height: 0.13 },
+    // Data panels (enlarged for legibility - ~2.2% sheet area each)
+    material_palette: { x: 0.86, y: 0.02, width: 0.12, height: 0.18 },
+    climate_card: { x: 0.86, y: 0.21, width: 0.12, height: 0.18 },
     // Row 2: Floor Plans - Larger (y: 0.30 to 0.55)
     floor_plan_ground: { x: 0.02, y: 0.3, width: 0.34, height: 0.25 },
     floor_plan_first: { x: 0.38, y: 0.3, width: 0.34, height: 0.25 },
@@ -415,8 +478,13 @@ function getFallbackConstants() {
     // Working resolution (preview)
     WORKING_WIDTH,
     WORKING_HEIGHT,
+    // Caption/label styling
     LABEL_HEIGHT,
     LABEL_PADDING,
+    CAPTION_FONT_SIZE,
+    CAPTION_FONT_FAMILY,
+    // Frame styling
+    FRAME_STROKE_WIDTH,
     FRAME_STROKE_COLOR,
     FRAME_RADIUS,
     GRID_SPEC,
@@ -492,7 +560,15 @@ async function fetchImageBuffer(url) {
 }
 
 function generateOverlaySvg(coordinates, width, height, constants) {
-  const { LABEL_HEIGHT, FRAME_STROKE_COLOR, FRAME_RADIUS, getPanelAnnotation } = constants;
+  const {
+    LABEL_HEIGHT,
+    FRAME_STROKE_WIDTH = 2,
+    FRAME_STROKE_COLOR,
+    FRAME_RADIUS,
+    CAPTION_FONT_SIZE = 12,
+    CAPTION_FONT_FAMILY = 'Arial, Helvetica, sans-serif',
+    getPanelAnnotation,
+  } = constants;
   let frames = '';
   let labels = '';
 
@@ -501,30 +577,30 @@ function generateOverlaySvg(coordinates, width, height, constants) {
     const labelY = coord.y + coord.height - Math.round(LABEL_HEIGHT / 2) + 4;
     const labelTop = coord.y + coord.height - LABEL_HEIGHT;
 
-    // Panel frame
+    // Panel frame (2px stroke per plan spec)
     frames += `<rect x="${coord.x}" y="${coord.y}" width="${coord.width}" height="${coord.height}"
-      fill="none" stroke="${FRAME_STROKE_COLOR}" stroke-width="3" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />`;
+      fill="none" stroke="${FRAME_STROKE_COLOR}" stroke-width="${FRAME_STROKE_WIDTH}" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />`;
 
-    // Label background band
+    // Caption background band (32px height)
     labels += `<rect x="${coord.x}" y="${labelTop}" width="${coord.width}" height="${LABEL_HEIGHT}"
       fill="#f8fafc" fill-opacity="0.95" />`;
 
     // Drawing number (left-aligned)
     if (annotation.drawingNumber) {
-      labels += `<text x="${coord.x + 6}" y="${labelY}"
-        font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#475569"
+      labels += `<text x="${coord.x + 8}" y="${labelY}"
+        font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE - 1}" font-weight="600" fill="#475569"
         dominant-baseline="middle" text-anchor="start">${annotation.drawingNumber}</text>`;
     }
 
     // Panel label (centered)
     labels += `<text x="${coord.x + coord.width / 2}" y="${labelY}"
-      font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a"
+      font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE}" font-weight="700" fill="#0f172a"
       dominant-baseline="middle" text-anchor="middle">${annotation.label}</text>`;
 
     // Scale (right-aligned) - only for scaled drawings
     if (annotation.scale && annotation.scale !== 'N/A') {
-      labels += `<text x="${coord.x + coord.width - 6}" y="${labelY}"
-        font-family="Arial, sans-serif" font-size="9" fill="#64748b"
+      labels += `<text x="${coord.x + coord.width - 8}" y="${labelY}"
+        font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE - 2}" fill="#64748b"
         dominant-baseline="middle" text-anchor="end">${annotation.scale}</text>`;
     }
   }
@@ -592,8 +668,8 @@ function getPipelineModeForStamp(proof = null) {
  */
 function truncateModelName(model, maxChars = 18) {
   const str = String(model ?? '').trim();
-  if (!str) {return 'unknown';}
-  if (str.length <= maxChars) {return str;}
+  if (!str) { return 'unknown'; }
+  if (str.length <= maxChars) { return str; }
   return str.substring(0, maxChars - 1) + '…';
 }
 
@@ -666,10 +742,10 @@ function generateBuildStampSvg({
 
   // Build flags summary (compact)
   const flagsSummary = [];
-  if (flags.blenderTechnical) {flagsSummary.push('BL');}
-  if (flags.openaiStyler) {flagsSummary.push('OA');}
-  if (flags.autoCropPanels) {flagsSummary.push('AC');}
-  if (flags.geometryFirst) {flagsSummary.push('GF');}
+  if (flags.blenderTechnical) { flagsSummary.push('BL'); }
+  if (flags.openaiStyler) { flagsSummary.push('OA'); }
+  if (flags.autoCropPanels) { flagsSummary.push('AC'); }
+  if (flags.geometryFirst) { flagsSummary.push('GF'); }
   const flagsStr = flagsSummary.length > 0 ? flagsSummary.join('+') : 'STD';
 
   // Pipeline mode color based on resolved mode
@@ -970,9 +1046,9 @@ export default async function handler(req, res) {
       );
       const blockingMissing = registry
         ? missingPanels.filter((type) => {
-            const entry = registry.getRegistryEntry ? registry.getRegistryEntry(type) : null;
-            return entry ? entry.generator !== 'data' : true;
-          })
+          const entry = registry.getRegistryEntry ? registry.getRegistryEntry(type) : null;
+          return entry ? entry.generator !== 'data' : true;
+        })
         : missingPanels;
 
       if (blockingMissing.length > 0 || nonMissingErrors.length > 0) {
@@ -1206,30 +1282,25 @@ export default async function handler(req, res) {
     // LAYOUT TEMPLATE SELECTION (SSOT via A1BoardSpec / a1LayoutConstants)
     const layoutTemplateRaw = req.body.layoutTemplate || layoutConfig || 'board-v2';
     const boardSpecModule = await getA1BoardSpecModule();
-    const layoutTemplate =
+
+    // LAYOUT TEMPLATE NORMALIZATION: Map uk-riba-standard → board-v2
+    // uk-riba-standard is the orchestrator's preferred layout name but compose only supports board-v2
+    let layoutTemplate =
       typeof boardSpecModule?.normalizeLayoutTemplate === 'function'
         ? boardSpecModule.normalizeLayoutTemplate(layoutTemplateRaw)
         : String(layoutTemplateRaw || '')
-            .trim()
-            .toLowerCase();
+          .trim()
+          .toLowerCase();
 
-    // HARD LAYOUT GUARANTEE: uk-riba-standard is not supported for composition.
+    // Normalize uk-riba-standard to the supported board-v2 layout
     if (layoutTemplate === 'uk-riba-standard') {
-      return res.status(400).json({
-        success: false,
-        error: 'LAYOUT_TEMPLATE_UNSUPPORTED',
-        message:
-          'uk-riba-standard is not supported. A1 Board v2 is the only supported layout template.',
-        details: {
-          requested: layoutTemplateRaw,
-          layoutTemplateUsed: layoutTemplate,
-          supported: ['board-v2'],
-        },
-      });
+      console.log('[A1 Compose] Normalizing layout: uk-riba-standard → board-v2');
+      layoutTemplate = 'board-v2';
     }
 
     const fallbackTargetGrid =
       constants.TARGET_BOARD_GRID_SPEC || getFallbackConstants().TARGET_BOARD_GRID_SPEC;
+
     const layout =
       typeof getGridSpec === 'function'
         ? getGridSpec(layoutTemplate, { floorCount })
@@ -1629,8 +1700,83 @@ export default async function handler(req, res) {
       }
     }
 
+    // ====================================================================
+    // QA GATES: Run automated quality assurance checks
+    // ====================================================================
+    let qaResults = null;
+    let critiqueResults = null;
+    const runQA = !skipValidation && req.body.runQA !== false;
+
+    if (runQA) {
+      try {
+        const qaGatesModule = await getQAGates();
+        if (qaGatesModule && qaGatesModule.runAllQAGates) {
+          console.log('[A1 Compose] Running QA gates...');
+
+          // Build panel data for QA gates
+          const qaPanels = panels.map(p => ({
+            type: p.type,
+            buffer: p.buffer || null,
+            pHash: p.pHash || null,
+            rect: coordinates[p.type] ? {
+              width: Math.round(coordinates[p.type].width),
+              height: Math.round(coordinates[p.type].height),
+            } : null,
+          }));
+
+          const sheetDimensions = { width, height };
+          qaResults = await qaGatesModule.runAllQAGates(qaPanels, sheetDimensions, {
+            skipContrastCheck: req.body.skipContrastCheck,
+          });
+
+          console.log(`[A1 Compose] QA gates complete: ${qaResults.summary?.passed}/${qaResults.summary?.total} passed`);
+
+          if (qaResults.failures?.length > 0) {
+            console.warn(`[A1 Compose] QA failures: ${qaResults.failures.map(f => f.gate).join(', ')}`);
+          }
+        }
+      } catch (qaError) {
+        console.warn('[A1 Compose] QA gates failed:', qaError.message);
+        qaResults = { error: qaError.message, skipped: true };
+      }
+
+      // ====================================================================
+      // OPUS SHEET CRITIC: AI-powered sheet validation
+      // ====================================================================
+      const runCritique = req.body.runCritique !== false;
+      if (runCritique && sheetUrl) {
+        try {
+          const CriticClass = await getOpusSheetCritic();
+          if (CriticClass) {
+            console.log('[A1 Compose] Running Opus Sheet Critic...');
+
+            const critic = new CriticClass();
+            const requiredPanels = Object.keys(panelsByKey);
+
+            // Pass design fingerprint if available
+            const designFingerprint = expectedFingerprint || null;
+
+            critiqueResults = await critic.critiqueSheet(sheetUrl, requiredPanels, {
+              designFingerprint,
+              layoutTemplate,
+              strictMode: req.body.strictCritique || false,
+            });
+
+            console.log(`[A1 Compose] Opus critique complete: overall_pass=${critiqueResults.overall_pass}`);
+
+            if (!critiqueResults.overall_pass) {
+              console.warn(`[A1 Compose] Critique issues: ${critiqueResults.layout_issues?.length || 0} layout, ${critiqueResults.regenerate_panels?.length || 0} regen`);
+            }
+          }
+        } catch (critiqueError) {
+          console.warn('[A1 Compose] Opus Sheet Critic failed:', critiqueError.message);
+          critiqueResults = { error: critiqueError.message, skipped: true };
+        }
+      }
+    }
+
     // Return the composition result
-    // STANDARD CONTRACT: { success, sheetUrl, composedSheetUrl (alias), coordinates, metadata, panelsByKey }
+    // STANDARD CONTRACT: { success, sheetUrl, composedSheetUrl (alias), coordinates, metadata, panelsByKey, qa, critique }
     return res.status(200).json({
       success: true,
       sheetUrl,
@@ -1640,6 +1786,27 @@ export default async function handler(req, res) {
       coordinates,
       // TASK 4: Include panelsByKey for print export
       panelsByKey,
+      // QA Results (automated gates)
+      qa: qaResults ? {
+        allPassed: qaResults.allPassed,
+        summary: qaResults.summary,
+        failures: qaResults.failures || [],
+        warnings: qaResults.warnings || [],
+        skipped: qaResults.skipped || false,
+        error: qaResults.error || null,
+      } : null,
+      // Opus Sheet Critic results (AI-powered validation)
+      critique: critiqueResults ? {
+        overallPass: critiqueResults.overall_pass,
+        layoutIssues: critiqueResults.layout_issues || [],
+        missingItems: critiqueResults.missing_items || [],
+        illegibleItems: critiqueResults.illegible_items || [],
+        regeneratePanels: critiqueResults.regenerate_panels || [],
+        ribaCompliance: critiqueResults.riba_compliance || null,
+        visualScore: critiqueResults.visual_score || null,
+        skipped: critiqueResults.skipped || false,
+        error: critiqueResults.error || null,
+      } : null,
       metadata: {
         width,
         height,
@@ -1660,6 +1827,9 @@ export default async function handler(req, res) {
         pdfOutputFile,
         // TASK 4: Add panel keys list for export verification
         panelKeys: Object.keys(panelsByKey),
+        // QA summary flags for quick checks
+        qaAllPassed: qaResults?.allPassed ?? null,
+        critiqueOverallPass: critiqueResults?.overall_pass ?? null,
       },
     });
   } catch (error) {
@@ -1736,7 +1906,7 @@ function computeSafeCoverCropRect(
  * @returns {{ minX: number, minY: number, maxX: number, maxY: number, width: number, height: number } | null}
  */
 function computeSvgGeometryBounds(svgText) {
-  if (!svgText) {return null;}
+  if (!svgText) { return null; }
 
   const bounds = {
     minX: Infinity,
@@ -1759,7 +1929,7 @@ function computeSvgGeometryBounds(svgText) {
   for (const match of rectMatches) {
     const fullMatch = match[0];
     // Skip background rects (100% or very large)
-    if (fullMatch.includes('100%') || fullMatch.includes('fill-opacity="0"')) {continue;}
+    if (fullMatch.includes('100%') || fullMatch.includes('fill-opacity="0"')) { continue; }
 
     const xMatch = fullMatch.match(/\bx="([^"]*)"/);
     const yMatch = fullMatch.match(/\by="([^"]*)"/);
@@ -1772,8 +1942,8 @@ function computeSvgGeometryBounds(svgText) {
     const h = hMatch ? parseFloat(hMatch[1]) : 0;
 
     // Skip massive rects (likely backgrounds)
-    if (w > 5000 && h > 5000) {continue;}
-    if (w === 0 || h === 0) {continue;}
+    if (w > 5000 && h > 5000) { continue; }
+    if (w === 0 || h === 0) { continue; }
 
     expandBounds(x, y);
     expandBounds(x + w, y + h);
@@ -1886,7 +2056,7 @@ function computeSvgGeometryBounds(svgText) {
 }
 
 function parseSvgViewBox(svgText) {
-  if (!svgText) {return null;}
+  if (!svgText) { return null; }
 
   const viewBoxMatch = svgText.match(/viewBox\s*=\s*["']([^"']+)["']/i);
   if (viewBoxMatch) {
@@ -1917,7 +2087,7 @@ function parseSvgViewBox(svgText) {
 }
 
 function rewriteSvgViewBox(svgText, viewBoxValue) {
-  if (!svgText || !viewBoxValue) {return svgText;}
+  if (!svgText || !viewBoxValue) { return svgText; }
 
   if (/viewBox\s*=\s*["'][^"']*["']/i.test(svgText)) {
     return svgText.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${viewBoxValue}"`);
@@ -1955,10 +2125,10 @@ function computeForegroundBBoxFromRaw(data, width, height, channels, options = {
 
   const bg = bgSamples.length
     ? bgSamples.reduce((acc, [r, g, b]) => ({ r: acc.r + r, g: acc.g + g, b: acc.b + b }), {
-        r: 0,
-        g: 0,
-        b: 0,
-      })
+      r: 0,
+      g: 0,
+      b: 0,
+    })
     : { r: 255, g: 255, b: 255 };
 
   const bgR = bgSamples.length ? bg.r / bgSamples.length : 255;
@@ -1974,18 +2144,18 @@ function computeForegroundBBoxFromRaw(data, width, height, channels, options = {
     for (let x = 0; x < width; x += 1) {
       const idx = (y * width + x) * channels;
       const a = channels >= 4 ? data[idx + 3] : 255;
-      if (a <= alphaThreshold) {continue;}
+      if (a <= alphaThreshold) { continue; }
 
       const r = data[idx];
       const g = data[idx + 1];
       const b = data[idx + 2];
       const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
-      if (diff <= diffThreshold) {continue;}
+      if (diff <= diffThreshold) { continue; }
 
-      if (x < minX) {minX = x;}
-      if (y < minY) {minY = y;}
-      if (x > maxX) {maxX = x;}
-      if (y > maxY) {maxY = y;}
+      if (x < minX) { minX = x; }
+      if (y < minY) { minY = y; }
+      if (x > maxX) { maxX = x; }
+      if (y > maxY) { maxY = y; }
     }
   }
 
@@ -2434,24 +2604,84 @@ async function placePanelImage({
     const pipeline = sharp(processedBuffer, { failOnError: false });
     resizedImage = cropRect
       ? await pipeline
-          .extract(cropRect)
-          .resize(targetWidth, targetHeight, { fit: 'fill' })
-          .png()
-          .toBuffer()
+        .extract(cropRect)
+        .resize(targetWidth, targetHeight, { fit: 'fill' })
+        .png()
+        .toBuffer()
       : await pipeline
-          .resize(targetWidth, targetHeight, { fit: 'cover', position: 'centre' })
+        .resize(targetWidth, targetHeight, { fit: 'cover', position: 'centre' })
+        .png()
+        .toBuffer();
+  } else {
+    // Drawings/data: scale-to-fill with bounds (0.8x - 1.2x) for better slot usage
+    const useScaleToFill = SCALE_TO_FILL_CONFIG.enabled &&
+      SCALE_TO_FILL_CONFIG.applicablePanels.includes(panelType);
+
+    if (useScaleToFill && inputWidth > 0 && inputHeight > 0) {
+      // Calculate scale to fill target area, bounded by min/max
+      const scaleX = targetWidth / inputWidth;
+      const scaleY = targetHeight / inputHeight;
+      let scale = Math.max(scaleX, scaleY); // Scale to fill (larger dimension)
+
+      // Clamp to bounds
+      scale = Math.min(scale, SCALE_TO_FILL_CONFIG.maxScale);
+      scale = Math.max(scale, SCALE_TO_FILL_CONFIG.minScale);
+
+      const scaledWidth = Math.round(inputWidth * scale);
+      const scaledHeight = Math.round(inputHeight * scale);
+
+      // Center crop if scaled exceeds target
+      const cropLeft = Math.max(0, Math.round((scaledWidth - targetWidth) / 2));
+      const cropTop = Math.max(0, Math.round((scaledHeight - targetHeight) / 2));
+
+      if (DEBUG_RUNS) {
+        console.log(`[A1 Compose] Panel ${panelType} scale-to-fill:`, {
+          input: { width: inputWidth, height: inputHeight },
+          scaled: { width: scaledWidth, height: scaledHeight },
+          scale: scale.toFixed(3),
+          crop: { left: cropLeft, top: cropTop },
+        });
+      }
+
+      // First resize with scale, then extract center portion if needed
+      const scaledBuffer = await sharp(processedBuffer, { failOnError: false })
+        .resize(scaledWidth, scaledHeight, { fit: 'fill' })
+        .png()
+        .toBuffer();
+
+      // Extract center crop if scaled is larger than target
+      if (scaledWidth > targetWidth || scaledHeight > targetHeight) {
+        resizedImage = await sharp(scaledBuffer)
+          .extract({
+            left: cropLeft,
+            top: cropTop,
+            width: Math.min(targetWidth, scaledWidth),
+            height: Math.min(targetHeight, scaledHeight),
+          })
           .png()
           .toBuffer();
-  } else {
-    // Drawings/data: contain after trim-to-content (no cropping).
-    resizedImage = await sharp(processedBuffer, { failOnError: false })
-      .resize(targetWidth, targetHeight, {
-        fit: 'contain',
-        position: 'centre',
-        background: { r: 255, g: 255, b: 255, alpha: 1 },
-      })
-      .png()
-      .toBuffer();
+      } else {
+        // Scaled fits within target, use contain positioning
+        resizedImage = await sharp(scaledBuffer)
+          .resize(targetWidth, targetHeight, {
+            fit: 'contain',
+            position: 'centre',
+            background: { r: 255, g: 255, b: 255, alpha: 1 },
+          })
+          .png()
+          .toBuffer();
+      }
+    } else {
+      // Standard contain for non-applicable panels or missing dimensions
+      resizedImage = await sharp(processedBuffer, { failOnError: false })
+        .resize(targetWidth, targetHeight, {
+          fit: 'contain',
+          position: 'centre',
+          background: { r: 255, g: 255, b: 255, alpha: 1 },
+        })
+        .png()
+        .toBuffer();
+    }
   }
 
   const finalBuffer = await canvas
@@ -2570,15 +2800,14 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
         text-anchor="end">${esc(tb.status)}</text>
 
       <!-- AI Generation Metadata -->
-      ${
-        tb.designId
-          ? `
+      ${tb.designId
+      ? `
       <line x1="8" y1="${height - 44}" x2="${width - 8}" y2="${height - 44}" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="${height - 28}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">DESIGN ID: ${esc(tb.designId)}</text>
       <text x="${leftMargin}" y="${height - 16}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">SEED: ${esc(tb.seedValue || 'N/A')}</text>       
       `
-          : ''
-      }
+      : ''
+    }
 
       <!-- Copyright -->
       <text x="${width / 2}" y="${height - 6}" font-family="Arial, sans-serif" font-size="6" fill="#94a3b8"

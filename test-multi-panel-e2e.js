@@ -15,6 +15,8 @@ if (typeof process !== 'undefined' && process.env) {
   process.env.NODE_ENV = 'test';
 }
 
+import { getRequiredPanels } from './src/services/a1/a1LayoutConstants.js';
+
 // ============================================================================
 // Mock Services
 // ============================================================================
@@ -219,6 +221,8 @@ async function runTest() {
 
     // Test overrides with mocks
     const testOverrides = {
+      useTwoPassDNA: false,
+      panelDelayMs: 0,
       dnaGenerator: mockDNAGenerator,
       dnaValidator: mockDNAValidator,
       togetherAIService: mockTogetherAI,
@@ -256,14 +260,13 @@ async function runTest() {
     }
 
     // Test 2: Correct number of panels generated (floor-count dependent)
-    // 2-floor building should generate 13 panels (no floor_plan_level2)
-    // 3+ floor building should generate 14 panels
-    const expectedPanelCount = 13; // 2-floor building
+    const floorCount = result.masterDNA?.dimensions?.floors || 2;
+    const expectedPanelCount = getRequiredPanels(floorCount).length;
     if (result.panels && result.panels.length === expectedPanelCount) {
-      console.log(`✅ Test 2: Generated ${result.panels.length} panels (expected ${expectedPanelCount} for 2-floor building)`);
+      console.log(`✅ Test 2: Generated ${result.panels.length} panels (expected ${expectedPanelCount})`);
       passedTests++;
-    } else if (result.panels && result.panels.length >= 12 && result.panels.length <= 14) {
-      console.log(`✅ Test 2: Generated ${result.panels.length} panels (acceptable range: 12-14)`);
+    } else if (result.panels && result.panels.length >= expectedPanelCount - 1 && result.panels.length <= expectedPanelCount + 1) {
+      console.log(`✅ Test 2: Generated ${result.panels.length} panels (acceptable range: ${expectedPanelCount - 1}-${expectedPanelCount + 1})`);
       passedTests++;
     } else {
       console.log(`❌ Test 2: Generated ${result.panels?.length || 0} panels (expected ${expectedPanelCount})`);
@@ -311,22 +314,22 @@ async function runTest() {
       failedTests++;
     }
 
-    // Test 7: Composed sheet dimensions
-    if (result.metadata && result.metadata.panelCount >= 12 && result.metadata.panelCount <= 14) {
-      console.log(`✅ Test 7: Metadata shows ${result.metadata.panelCount} panels (valid range)`);
+    // Test 7: Composed sheet metadata panel count
+    if (result.metadata && result.metadata.panelCount === expectedPanelCount) {
+      console.log(`✅ Test 7: Metadata shows ${result.metadata.panelCount} panels`);
       passedTests++;
     } else {
-      console.log(`❌ Test 7: Metadata panel count ${result.metadata?.panelCount || 0} outside valid range (12-14)`);
+      console.log(`❌ Test 7: Metadata panel count ${result.metadata?.panelCount || 0} does not match expected ${expectedPanelCount}`);
       failedTests++;
     }
 
     // Test 8: Coordinates returned
     const coordCount = result.coordinates ? Object.keys(result.coordinates).length : 0;
-    if (coordCount >= 12 && coordCount <= 14) {
-      console.log(`✅ Test 8: Coordinates returned for ${coordCount} panels (valid range)`);
+    if (coordCount === expectedPanelCount) {
+      console.log(`✅ Test 8: Coordinates returned for ${coordCount} panels`);
       passedTests++;
     } else {
-      console.log(`❌ Test 8: Coordinates count ${coordCount} outside valid range (12-14)`);
+      console.log(`❌ Test 8: Coordinates count ${coordCount} does not match expected ${expectedPanelCount}`);
       failedTests++;
     }
 

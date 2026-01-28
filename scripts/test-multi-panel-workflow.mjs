@@ -1,21 +1,10 @@
 import dnaWorkflowOrchestrator from '../src/services/dnaWorkflowOrchestrator.js';
+import { getRequiredPanels } from '../src/services/a1/a1LayoutConstants.js';
 
-const PANEL_TYPES = [
-  'hero_3d',
-  'interior_3d',
-  'site_diagram',
-  'floor_plan_ground',
-  'floor_plan_first',
-  'floor_plan_level2',
-  'elevation_north',
-  'elevation_south',
-  'elevation_east',
-  'elevation_west',
-  'section_AA',
-  'section_BB',
-  'material_palette',
-  'climate_card'
-];
+process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+
+const FLOOR_COUNT = 2;
+const PANEL_TYPES = getRequiredPanels(FLOOR_COUNT);
 
 function buildPanelJobs() {
   return PANEL_TYPES.map((type, index) => ({
@@ -52,12 +41,13 @@ async function main() {
   };
 
   const mockTogetherService = {
-    generateArchitecturalImage: async ({ type, width, height, seed }) => {
-      generatedImages[type] = { width, height, seed };
+    generateArchitecturalImage: async ({ viewType, width, height, seed }) => {      
+      generatedImages[viewType] = { width, height, seed };
       return {
-        url: `https://example.com/${type}.png`,
+        url: `https://example.com/${viewType}.png`,
         seedUsed: seed,
-        metadata: { width, height }
+        metadata: { width, height },
+        model: 'mock'
       };
     }
   };
@@ -101,32 +91,38 @@ async function main() {
     }
   };
 
-  dnaWorkflowOrchestrator.dnaGenerator = {
-    async generateDesignDNA() {
+  const mockDNAGenerator = {
+    async generateMasterDesignDNA() {
       return {
-        dimensions: {
-          length: 20,
-          width: 15,
-          height: 9,
-          floors: 3
-        }
+        success: true,
+        masterDNA: {
+          dimensions: { length: 20, width: 15, height: 9, floors: FLOOR_COUNT },
+          entranceDirection: 'N',
+          rooms: [{ name: 'Living Room', area: 30, level: 'Ground' }],
+        },
       };
-    }
+    },
   };
 
-  dnaWorkflowOrchestrator.validator = {
-    async validateDNA() {
-      return { isValid: true };
-    }
+  const mockDNAValidator = {
+    validateDesignDNA() {
+      return { isValid: true, errors: [], warnings: [] };
+    },
+    autoFixDesignDNA() {
+      return null;
+    },
   };
 
-  const result = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
+  const result = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({        
     locationData: { climate: { type: 'temperate' }, sitePolygon: [] },
-    projectContext: { buildingProgram: 'house', programSpaces: [] },
+    projectContext: { buildingProgram: 'house', floors: FLOOR_COUNT, programSpaces: [] },
     siteSnapshot: { dataUrl: 'data:image/png;base64,SITE' },
     baseSeed: 42
   }, {
     overrides: {
+      useTwoPassDNA: false,
+      dnaGenerator: mockDNAGenerator,
+      dnaValidator: mockDNAValidator,
       seedUtils: mockSeedUtils,
       panelService: mockPanelService,
       togetherAIService: mockTogetherService,
@@ -134,7 +130,8 @@ async function main() {
       composeClient: mockComposeClient,
       baselineStore: mockBaselineStore,
       historyService: mockHistoryService,
-      panelTypes: PANEL_TYPES
+      panelTypes: PANEL_TYPES,
+      panelDelayMs: 0
     }
   });
 

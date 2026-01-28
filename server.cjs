@@ -16,6 +16,7 @@ const genarchJobManager = require('./server/genarch/genarchJobManager.cjs');
 const { buildComposeSheetUrl } = require('./server/utils/a1ComposePayload.cjs');
 const { resolveAiApiLimiterMax, resolveImageGenerationLimiterMax } = require('./server/utils/rateLimitConfig.cjs');
 const { genarchAuth, geometryAuth } = require('./server/middleware/apiKeyAuth.cjs');
+const { mountImageProxy } = require('./server/utils/imageProxy.cjs');
 
 // Load env vars from the project root regardless of where the server is started from.
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
@@ -51,20 +52,20 @@ const corsOptions = {
     const allowedOrigins = process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(',')
       : [
-          'http://localhost:3000', // React dev server
-          'http://localhost:3000/', // React dev server (with trailing slash)
-          'http://localhost:3001', // Local API server
-          'http://localhost:3001/', // Local API server (with trailing slash)
-          'https://www.archiaisolution.pro', // Production domain
-          'https://www.archiaisolution.pro/', // Production domain (with trailing slash)
-          'https://archiaisolution.pro',
-          'https://archiaisolution.pro/',
-          // Tightened regex: only match architect-ai-platform-* Vercel previews
-          /^https:\/\/architect-ai-platform-[a-z0-9]+-[a-z0-9]+\.vercel\.app\/?$/,
-        ];
+        'http://localhost:3000', // React dev server
+        'http://localhost:3000/', // React dev server (with trailing slash)
+        'http://localhost:3001', // Local API server
+        'http://localhost:3001/', // Local API server (with trailing slash)
+        'https://www.archiaisolution.pro', // Production domain
+        'https://www.archiaisolution.pro/', // Production domain (with trailing slash)
+        'https://archiaisolution.pro',
+        'https://archiaisolution.pro/',
+        // Tightened regex: only match architect-ai-platform-* Vercel previews
+        /^https:\/\/architect-ai-platform-[a-z0-9]+-[a-z0-9]+\.vercel\.app\/?$/,
+      ];
 
     // Allow requests with no origin (like Postman or server-side requests)
-    if (!origin) {return callback(null, true);}
+    if (!origin) { return callback(null, true); }
 
     // Normalize origin (remove trailing slash for comparison)
     const normalizedOrigin = origin.replace(/\/$/, '');
@@ -895,8 +896,8 @@ async function handleAnthropicMessages(req, res) {
 }
 
 // Register both route paths for Anthropic Claude API
-app.post('/api/anthropic/messages', aiApiLimiter, handleAnthropicMessages);     
-app.post('/api/anthropic-messages', aiApiLimiter, handleAnthropicMessages);     
+app.post('/api/anthropic/messages', aiApiLimiter, handleAnthropicMessages);
+app.post('/api/anthropic-messages', aiApiLimiter, handleAnthropicMessages);
 
 // OpenAI image stylization endpoint (A1 3D panels, control-image edits)
 app.post('/api/openai-image-stylize', imageGenerationLimiter, async (req, res) => {
@@ -910,7 +911,7 @@ app.post('/api/openai-image-stylize', imageGenerationLimiter, async (req, res) =
 });
 
 // Together AI image generation endpoint (FLUX.1)
-app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {   
+app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {
   const togetherApiKey = process.env.TOGETHER_API_KEY;
 
   if (!togetherApiKey) {
@@ -919,18 +920,18 @@ app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {
   }
 
   try {
-    const {
-      model = 'black-forest-labs/FLUX.1-schnell',
-      prompt,
-      negativePrompt = '', // Separate negative prompt parameter
-      width = 1024,
-      height = 1024,
-      seed,
-      num_inference_steps = 4,
-      guidanceScale = 7.8, // Guidance scale for prompt adherence
-      initImage = null,
-      imageStrength = 0.55,
-    } = req.body;
+    const body = req.body || {};
+
+    const model = body.model || 'black-forest-labs/FLUX.1-schnell';
+    const prompt = body.prompt;
+    const negativePrompt = body.negativePrompt ?? body.negative_prompt ?? ''; // Separate negative prompt parameter
+    const width = body.width ?? 1024;
+    const height = body.height ?? 1024;
+    const seed = body.seed;
+    const num_inference_steps = body.num_inference_steps ?? body.numInferenceSteps ?? body.steps ?? 4;
+    const guidanceScale = body.guidanceScale ?? body.guidance_scale ?? 7.8; // Guidance scale for prompt adherence
+    const initImage = body.initImage ?? body.init_image ?? null;
+    const imageStrength = body.imageStrength ?? body.image_strength ?? body.strength ?? 0.55;
 
     // Detect model type for different API parameter handling
     const isFlux2Pro = model.includes('FLUX.2-pro');
@@ -1021,31 +1022,69 @@ app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {
 
     // Add image-to-image parameters if initImage provided (FLUX.1 only - FLUX.2-pro may not support)
     if (initImage && !isFlux2Pro) {
-      // ðŸ”§ NORMALIZE INIT_IMAGE: Strip data URL prefix if present (Together.ai may prefer raw base64)
+      // 🎯 GEOMETRY MODE: Convert SVG to PNG before sending to Together API
+      // Together.ai expects PNG/JPEG, not SVG. If we detect SVG, rasterize it with sharp.
       let normalizedInitImage = initImage;
-      if (typeof initImage === 'string' && initImage.startsWith('data:')) {
+
+      if (typeof initImage === 'string' && initImage.startsWith('data:image/svg+xml')) {
+        try {
+          const sharp = require('sharp');
+          console.log(`   🎯 [Geometry Mode] Detected SVG init_image - rasterizing to PNG...`);
+
+          // Extract base64 SVG data
+          const svgBase64 = initImage.split(',')[1];
+          if (svgBase64) {
+            const svgBuffer = Buffer.from(svgBase64, 'base64');
+
+            // Determine target dimensions from request or use defaults
+            const targetWidth = validatedWidth || 1500;
+            const targetHeight = validatedHeight || 1500;
+
+            // Rasterize SVG to PNG at target dimensions
+            const pngBuffer = await sharp(svgBuffer)
+              .resize(targetWidth, targetHeight, {
+                fit: 'contain',
+                background: { r: 0, g: 0, b: 0, alpha: 1 }, // Black background
+              })
+              .png()
+              .toBuffer();
+
+            normalizedInitImage = pngBuffer.toString('base64');
+            console.log(
+              `   ✅ [Geometry Mode] SVG rasterized to PNG: ${targetWidth}x${targetHeight}, ${(pngBuffer.length / 1024).toFixed(1)}KB`
+            );
+          }
+        } catch (svgError) {
+          console.warn(`   ⚠️ [Geometry Mode] SVG rasterization failed:`, svgError.message);
+          console.warn(`   ⚠️ Falling back to original SVG (may fail with Together API)`);
+          // Fall through to standard normalization
+        }
+      }
+
+      // Standard normalization: Strip data URL prefix if present (Together.ai prefers raw base64)
+      if (typeof normalizedInitImage === 'string' && normalizedInitImage.startsWith('data:')) {
         try {
           // Extract base64 data after comma (e.g., "data:image/jpeg;base64,<data>")
-          const base64Data = initImage.split(',')[1];
+          const base64Data = normalizedInitImage.split(',')[1];
           if (base64Data) {
             normalizedInitImage = base64Data;
             console.log(
-              `   ðŸ”§ Normalized init_image: stripped data URL prefix (${(initImage.length / 1024).toFixed(1)}KB â†’ ${(normalizedInitImage.length / 1024).toFixed(1)}KB)`
+              `   🔧 Normalized init_image: stripped data URL prefix (${(initImage.length / 1024).toFixed(1)}KB → ${(normalizedInitImage.length / 1024).toFixed(1)}KB)`
             );
           }
         } catch (e) {
           // If parsing fails, use original
-          console.warn(`   âš ï¸  Failed to normalize init_image, using as-is:`, e.message);
+          console.warn(`   ⚠️ Failed to normalize init_image, using as-is:`, e.message);
         }
       }
 
       requestBody.init_image = normalizedInitImage; // Together.ai uses init_image field
       requestBody.image_strength = imageStrength; // Controls how much to preserve from init image
       console.log(
-        `   ðŸ”„ Image-to-image mode: strength ${imageStrength} (preserves init image while synthesizing)`
+        `   🔄 Image-to-image mode: strength ${imageStrength} (preserves init image while synthesizing)`
       );
     } else if (initImage && isFlux2Pro) {
-      console.log(`   âš ï¸  FLUX.2-pro: img2img not verified - skipping init_image parameter`);
+      console.log(`   ⚠️ FLUX.2-pro: img2img not verified - skipping init_image parameter`);
     }
 
     // Create AbortController for 3-minute timeout (FLUX.1-kontext-max can take 60-120s)
@@ -1786,11 +1825,15 @@ const PANEL_LAYOUT_V2 = {
   interior_3d: { x: 0.58, y: 0.02, width: 0.28, height: 0.30 },
   material_palette: { x: 0.87, y: 0.02, width: 0.11, height: 0.16 },
   climate_card: { x: 0.87, y: 0.19, width: 0.11, height: 0.13 },
+  // Axonometric view - right side of top row
+  axonometric: { x: 0.02, y: 0.19, width: 0.18, height: 0.13 },
 
   // Middle row - Floor plans (canonical keys: plan_ground, plan_first, plan_level2)
   plan_ground: { x: 0.02, y: 0.33, width: 0.28, height: 0.24 },
   plan_first: { x: 0.31, y: 0.33, width: 0.28, height: 0.24 },
   plan_level2: { x: 0.60, y: 0.33, width: 0.26, height: 0.24 },
+  // Schedules & notes panel - replaces plan_level2 for 2-floor buildings
+  schedules_notes: { x: 0.60, y: 0.33, width: 0.26, height: 0.24 },
 
   // Lower row - Elevations
   elevation_north: { x: 0.02, y: 0.58, width: 0.23, height: 0.18 },
@@ -1817,18 +1860,30 @@ const KEY_NORMALIZATION_MAP = {
   plan_ground: 'plan_ground',
   plan_first: 'plan_first',
   plan_level2: 'plan_level2',
-  // Other panels (already canonical)
+  // 3D views
   site_diagram: 'site_diagram',
   hero_3d: 'hero_3d',
   interior_3d: 'interior_3d',
+  axonometric: 'axonometric',
+  axon: 'axonometric',
+  axonometric_3d: 'axonometric',
+  // Data panels
   material_palette: 'material_palette',
   climate_card: 'climate_card',
+  schedules_notes: 'schedules_notes',
+  schedules: 'schedules_notes',
+  notes: 'schedules_notes',
+  // Elevations
   elevation_north: 'elevation_north',
   elevation_south: 'elevation_south',
   elevation_east: 'elevation_east',
   elevation_west: 'elevation_west',
+  // Sections
   section_AA: 'section_AA',
   section_BB: 'section_BB',
+  section_aa: 'section_AA',
+  section_bb: 'section_BB',
+  // Title block
   title_block: 'title_block',
 };
 
@@ -2045,7 +2100,7 @@ app.post('/api/a1/compose', async (req, res) => {
         }
 
         const imageUrl = panel.imageUrl || panel.url;
-        if (!imageUrl) {return;}
+        if (!imageUrl) { return; }
 
         // Fetch image
         let buffer;
@@ -2056,7 +2111,7 @@ app.post('/api/a1/compose', async (req, res) => {
         } else {
           // Handle remote URL
           const response = await fetch(imageUrl);
-          if (!response.ok) {throw new Error(`Failed to fetch ${imageUrl}`);}
+          if (!response.ok) { throw new Error(`Failed to fetch ${imageUrl}`); }
           const arrayBuffer = await response.arrayBuffer();
           buffer = Buffer.from(arrayBuffer);
         }
@@ -2174,9 +2229,9 @@ function serializeGeometryJob(job) {
     logs:
       job.status === 'failed'
         ? {
-            stdout: job.logs?.stdout?.slice(-2000) || '',
-            stderr: job.logs?.stderr?.slice(-2000) || '',
-          }
+          stdout: job.logs?.stdout?.slice(-2000) || '',
+          stderr: job.logs?.stderr?.slice(-2000) || '',
+        }
         : undefined,
   };
 }
@@ -2368,14 +2423,11 @@ app.delete('/api/genarch/jobs/:jobId', genarchAuth, (req, res) => {
   }
 });
 
-/**
- * GET /api/genarch/runs/:jobId/*
- * Serve artifacts from a job's run folder
- */
-app.get('/api/genarch/runs/:jobId/*', genarchAuth, (req, res) => {
+// Genarch runs file serving - using regex pattern to avoid path-to-regexp issues
+app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
   try {
-    const { jobId } = req.params;
-    const filePath = req.params[0]; // Captures everything after :jobId/
+    const jobId = req.params[0];
+    const filePath = req.params[1];
 
     if (!filePath) {
       return res.status(400).json({
