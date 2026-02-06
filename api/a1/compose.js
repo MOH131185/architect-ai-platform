@@ -21,13 +21,19 @@
  * }
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-import fetch from 'node-fetch';
-import { PDFDocument } from 'pdf-lib';
+import fetch from "node-fetch";
+import { PDFDocument } from "pdf-lib";
 
-import a1ComposePayload from '../../server/utils/a1ComposePayload.cjs';
+import a1ComposePayload from "../../server/utils/a1ComposePayload.cjs";
+
+// Shared compose core – single source of truth for layout grids and panel key normalisation
+import {
+  normalizeKey as composeCoreNormalizeKey,
+  resolveLayout as composeCoreResolveLayout,
+} from "../../src/services/a1/composeCore.js";
 
 // QA System imports (lazy-loaded for Vercel compatibility)
 let OpusSheetCritic = null;
@@ -36,11 +42,11 @@ let QAGates = null;
 async function getOpusSheetCritic() {
   if (OpusSheetCritic) return OpusSheetCritic;
   try {
-    const module = await import('../../src/services/qa/OpusSheetCritic.js');
+    const module = await import("../../src/services/qa/OpusSheetCritic.js");
     OpusSheetCritic = module.default || module.OpusSheetCritic;
     return OpusSheetCritic;
   } catch (e) {
-    console.warn('[A1 Compose] OpusSheetCritic not available:', e.message);
+    console.warn("[A1 Compose] OpusSheetCritic not available:", e.message);
     return null;
   }
 }
@@ -48,11 +54,11 @@ async function getOpusSheetCritic() {
 async function getQAGates() {
   if (QAGates) return QAGates;
   try {
-    const module = await import('../../src/services/qa/QAGates.js');
+    const module = await import("../../src/services/qa/QAGates.js");
     QAGates = module;
     return QAGates;
   } catch (e) {
-    console.warn('[A1 Compose] QAGates not available:', e.message);
+    console.warn("[A1 Compose] QAGates not available:", e.message);
     return null;
   }
 }
@@ -62,11 +68,11 @@ let A1GridSpec = null;
 async function getA1GridSpec() {
   if (A1GridSpec) return A1GridSpec;
   try {
-    const module = await import('../../src/services/a1/A1GridSpec12Column.js');
+    const module = await import("../../src/services/a1/A1GridSpec12Column.js");
     A1GridSpec = module;
     return A1GridSpec;
   } catch (e) {
-    console.warn('[A1 Compose] A1GridSpec12Column not available:', e.message);
+    console.warn("[A1 Compose] A1GridSpec12Column not available:", e.message);
     return null;
   }
 }
@@ -78,35 +84,52 @@ const SCALE_TO_FILL_CONFIG = {
   maxScale: 1.2,
   // Panels that should use scale-to-fill (not cover/crop)
   applicablePanels: [
-    'floor_plan_ground', 'floor_plan_first', 'floor_plan_level2', 'floor_plan_upper',
-    'elevation_north', 'elevation_south', 'elevation_east', 'elevation_west',
-    'section_AA', 'section_BB', 'axonometric', 'site_plan', 'site_diagram',
-    'material_palette', 'climate_card', 'schedules_notes',
+    "floor_plan_ground",
+    "floor_plan_first",
+    "floor_plan_level2",
+    "floor_plan_upper",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "axonometric",
+    "site_plan",
+    "site_diagram",
+    "material_palette",
+    "climate_card",
+    "schedules_notes",
   ],
 };
 
 // CRITICAL: Force Node.js runtime for Sharp image processing
 // Without this, Vercel uses Edge runtime which doesn't support Sharp
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 export const config = {
-  runtime: 'nodejs',
+  runtime: "nodejs",
   maxDuration: 120,
 };
 
 const { buildComposeSheetUrl } = a1ComposePayload;
 const DEFAULT_MAX_DATAURL_BYTES = 4.5 * 1024 * 1024;
-const DEFAULT_PUBLIC_URL_BASE = '/api/a1/compose-output';
+const DEFAULT_PUBLIC_URL_BASE = "/api/a1/compose-output";
 
 async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
   if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
-    throw new Error('pngBuffer is required to build PDF');
+    throw new Error("pngBuffer is required to build PDF");
   }
 
   const widthPx = Number(options.widthPx);
   const heightPx = Number(options.heightPx);
   const dpi = Number(options.dpi) || 300;
-  if (!Number.isFinite(widthPx) || !Number.isFinite(heightPx) || widthPx <= 0 || heightPx <= 0) {
-    throw new Error('Invalid width/height for PDF');
+  if (
+    !Number.isFinite(widthPx) ||
+    !Number.isFinite(heightPx) ||
+    widthPx <= 0 ||
+    heightPx <= 0
+  ) {
+    throw new Error("Invalid width/height for PDF");
   }
 
   const widthPt = (widthPx / dpi) * 72;
@@ -125,11 +148,11 @@ function resolveComposeOutputDir() {
   }
 
   if (process.env.VERCEL || process.env.AWS_REGION) {
-    const baseDir = process.platform === 'win32' ? process.cwd() : '/tmp';
-    return path.join(baseDir, 'a1_compose_outputs');
+    const baseDir = process.platform === "win32" ? process.cwd() : "/tmp";
+    return path.join(baseDir, "a1_compose_outputs");
   }
 
-  return path.join(process.cwd(), 'qa_results', 'a1_compose_outputs');
+  return path.join(process.cwd(), "qa_results", "a1_compose_outputs");
 }
 
 // PANEL_REGISTRY: Single Source of Truth for all panel types
@@ -149,10 +172,10 @@ async function getA1BoardSpecModule() {
   }
 
   try {
-    a1BoardSpecModule = await import('../../src/services/a1/A1BoardSpec.js');
+    a1BoardSpecModule = await import("../../src/services/a1/A1BoardSpec.js");
     return a1BoardSpecModule;
   } catch (e) {
-    console.warn('[A1 Compose] Could not import A1BoardSpec:', e.message);
+    console.warn("[A1 Compose] Could not import A1BoardSpec:", e.message);
     return null;
   }
 }
@@ -166,7 +189,7 @@ async function getBoardSpec(layoutTemplate, floorCount) {
   try {
     return mod.getA1BoardSpec({ layoutTemplate, floorCount });
   } catch (e) {
-    console.warn('[A1 Compose] Failed to build A1BoardSpec:', e.message);
+    console.warn("[A1 Compose] Failed to build A1BoardSpec:", e.message);
     return null;
   }
 }
@@ -205,10 +228,10 @@ async function getPanelRegistry() {
   }
 
   try {
-    panelRegistry = await import('../../src/config/panelRegistry.js');
+    panelRegistry = await import("../../src/config/panelRegistry.js");
     return panelRegistry;
   } catch (e) {
-    console.warn('[A1 Compose] Could not import panelRegistry:', e.message);
+    console.warn("[A1 Compose] Could not import panelRegistry:", e.message);
     return null;
   }
 }
@@ -224,12 +247,14 @@ async function getCrossViewImageValidator() {
 
   try {
     // NEW: Use real image comparison module instead of heuristic validator
-    crossViewImageValidator = await import(
-      '../../src/services/validation/crossViewImageValidator.js'
-    );
+    crossViewImageValidator =
+      await import("../../src/services/validation/crossViewImageValidator.js");
     return crossViewImageValidator;
   } catch (e) {
-    console.warn('[A1 Compose] Could not import crossViewImageValidator:', e.message);
+    console.warn(
+      "[A1 Compose] Could not import crossViewImageValidator:",
+      e.message,
+    );
     return null;
   }
 }
@@ -240,10 +265,14 @@ async function getRenderSanityValidator() {
   }
 
   try {
-    renderSanityValidator = await import('../../src/services/qa/RenderSanityValidator.js');
+    renderSanityValidator =
+      await import("../../src/services/qa/RenderSanityValidator.js");
     return renderSanityValidator;
   } catch (e) {
-    console.warn('[A1 Compose] Could not import RenderSanityValidator:', e.message);
+    console.warn(
+      "[A1 Compose] Could not import RenderSanityValidator:",
+      e.message,
+    );
     return null;
   }
 }
@@ -255,10 +284,14 @@ async function getLayoutConstants() {
 
   // Try dynamic import of shared constants
   try {
-    layoutConstants = await import('../../src/services/a1/a1LayoutConstants.js');
+    layoutConstants =
+      await import("../../src/services/a1/a1LayoutConstants.js");
     return layoutConstants;
   } catch (e) {
-    console.warn('[A1 Compose] Could not import shared constants, using fallback:', e.message);
+    console.warn(
+      "[A1 Compose] Could not import shared constants, using fallback:",
+      e.message,
+    );
     // Fallback inline constants (should match a1LayoutConstants.js)
     return getFallbackConstants();
   }
@@ -275,10 +308,10 @@ function getFallbackConstants() {
   const LABEL_HEIGHT = 32; // Increased from 26px for better visibility
   const LABEL_PADDING = 6;
   const CAPTION_FONT_SIZE = 12; // Font size for panel captions
-  const CAPTION_FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+  const CAPTION_FONT_FAMILY = "Arial, Helvetica, sans-serif";
   // Frame styling (2px stroke, 4px radius per plan spec)
   const FRAME_STROKE_WIDTH = 2;
-  const FRAME_STROKE_COLOR = '#d1d5db';
+  const FRAME_STROKE_COLOR = "#d1d5db";
   const FRAME_RADIUS = 4;
 
   const GRID_SPEC = {
@@ -332,113 +365,113 @@ function getFallbackConstants() {
   };
 
   const PANEL_LABELS = {
-    hero_3d: 'HERO 3D VIEW',
-    interior_3d: 'INTERIOR 3D VIEW',
-    site_diagram: 'SITE DIAGRAM',
-    floor_plan_ground: 'GROUND FLOOR PLAN',
-    floor_plan_first: 'FIRST FLOOR PLAN',
-    floor_plan_level2: 'SECOND FLOOR PLAN',
-    elevation_north: 'NORTH ELEVATION',
-    elevation_south: 'SOUTH ELEVATION',
-    elevation_east: 'EAST ELEVATION',
-    elevation_west: 'WEST ELEVATION',
-    section_AA: 'SECTION A-A',
-    section_BB: 'SECTION B-B',
-    schedules_notes: 'SCHEDULES & NOTES',
-    title_block: 'PROJECT INFO',
-    material_palette: 'MATERIAL PALETTE',
-    climate_card: 'CLIMATE ANALYSIS',
-    materials: 'MATERIALS',
+    hero_3d: "HERO 3D VIEW",
+    interior_3d: "INTERIOR 3D VIEW",
+    site_diagram: "SITE DIAGRAM",
+    floor_plan_ground: "GROUND FLOOR PLAN",
+    floor_plan_first: "FIRST FLOOR PLAN",
+    floor_plan_level2: "SECOND FLOOR PLAN",
+    elevation_north: "NORTH ELEVATION",
+    elevation_south: "SOUTH ELEVATION",
+    elevation_east: "EAST ELEVATION",
+    elevation_west: "WEST ELEVATION",
+    section_AA: "SECTION A-A",
+    section_BB: "SECTION B-B",
+    schedules_notes: "SCHEDULES & NOTES",
+    title_block: "PROJECT INFO",
+    material_palette: "MATERIAL PALETTE",
+    climate_card: "CLIMATE ANALYSIS",
+    materials: "MATERIALS",
   };
 
   // Professional drawing numbers (RIBA standard format)
   const DRAWING_NUMBERS = {
-    hero_3d: '3D-01',
-    interior_3d: '3D-02',
-    site_diagram: 'SP-01',
-    floor_plan_ground: 'GA-00-01',
-    floor_plan_first: 'GA-01-01',
-    floor_plan_level2: 'GA-02-01',
-    elevation_north: 'EL-N-01',
-    elevation_south: 'EL-S-01',
-    elevation_east: 'EL-E-01',
-    elevation_west: 'EL-W-01',
-    section_AA: 'SC-AA-01',
-    section_BB: 'SC-BB-01',
-    schedules_notes: 'SC-01',
-    material_palette: 'MP-01',
-    climate_card: 'AN-01',
+    hero_3d: "3D-01",
+    interior_3d: "3D-02",
+    site_diagram: "SP-01",
+    floor_plan_ground: "GA-00-01",
+    floor_plan_first: "GA-01-01",
+    floor_plan_level2: "GA-02-01",
+    elevation_north: "EL-N-01",
+    elevation_south: "EL-S-01",
+    elevation_east: "EL-E-01",
+    elevation_west: "EL-W-01",
+    section_AA: "SC-AA-01",
+    section_BB: "SC-BB-01",
+    schedules_notes: "SC-01",
+    material_palette: "MP-01",
+    climate_card: "AN-01",
   };
 
   // Professional scales per view type
   const PANEL_SCALES = {
-    hero_3d: 'NTS',
-    interior_3d: 'NTS',
-    site_diagram: '1:500',
-    floor_plan_ground: '1:100',
-    floor_plan_first: '1:100',
-    floor_plan_level2: '1:100',
-    elevation_north: '1:100',
-    elevation_south: '1:100',
-    elevation_east: '1:100',
-    elevation_west: '1:100',
-    section_AA: '1:50',
-    section_BB: '1:50',
-    schedules_notes: 'N/A',
-    material_palette: 'N/A',
-    climate_card: 'N/A',
+    hero_3d: "NTS",
+    interior_3d: "NTS",
+    site_diagram: "1:500",
+    floor_plan_ground: "1:100",
+    floor_plan_first: "1:100",
+    floor_plan_level2: "1:100",
+    elevation_north: "1:100",
+    elevation_south: "1:100",
+    elevation_east: "1:100",
+    elevation_west: "1:100",
+    section_AA: "1:50",
+    section_BB: "1:50",
+    schedules_notes: "N/A",
+    material_palette: "N/A",
+    climate_card: "N/A",
   };
 
   const REQUIRED_PANELS = [
-    'hero_3d',
-    'interior_3d',
-    'site_diagram',
-    'floor_plan_ground',
-    'floor_plan_first',
-    'floor_plan_level2',
-    'elevation_north',
-    'elevation_south',
-    'elevation_east',
-    'elevation_west',
-    'section_AA',
-    'section_BB',
-    'material_palette',
-    'climate_card',
+    "hero_3d",
+    "interior_3d",
+    "site_diagram",
+    "floor_plan_ground",
+    "floor_plan_first",
+    "floor_plan_level2",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "material_palette",
+    "climate_card",
   ];
 
-  const COVER_FIT_PANELS = ['hero_3d', 'interior_3d', 'site_diagram'];
+  const COVER_FIT_PANELS = ["hero_3d", "interior_3d", "site_diagram"];
 
   // RIBA-compliant title block template
   const TITLE_BLOCK_TEMPLATE = {
-    projectName: '',
-    projectNumber: '',
-    clientName: '',
-    siteAddress: '',
-    drawingTitle: 'A1 DESIGN SHEET',
-    sheetNumber: 'A1-001',
-    revision: 'P01',
-    status: 'PRELIMINARY',
-    scale: 'AS NOTED',
-    date: '',
-    drawnBy: 'AI ARCHITECT',
-    checkedBy: '',
-    practiceName: 'ArchiAI Solutions',
-    practiceAddress: '',
-    arbNumber: '',
-    ribaStage: 'STAGE 2',
-    standardsRef: 'BS EN ISO 7200',
-    copyrightNote: '© 2024 ArchiAI Solutions',
-    designId: '',
-    seedValue: '',
+    projectName: "",
+    projectNumber: "",
+    clientName: "",
+    siteAddress: "",
+    drawingTitle: "A1 DESIGN SHEET",
+    sheetNumber: "A1-001",
+    revision: "P01",
+    status: "PRELIMINARY",
+    scale: "AS NOTED",
+    date: "",
+    drawnBy: "AI ARCHITECT",
+    checkedBy: "",
+    practiceName: "ArchiAI Solutions",
+    practiceAddress: "",
+    arbNumber: "",
+    ribaStage: "STAGE 2",
+    standardsRef: "BS EN ISO 7200",
+    copyrightNote: "© 2024 ArchiAI Solutions",
+    designId: "",
+    seedValue: "",
     consistencyScore: 0,
-    generationTimestamp: '',
+    generationTimestamp: "",
   };
 
   // Helper functions
   const getPanelAnnotation = (panelType) => {
     const label = PANEL_LABELS[panelType] || panelType.toUpperCase();
-    const drawingNumber = DRAWING_NUMBERS[panelType] || '';
-    const scale = PANEL_SCALES[panelType] || 'NTS';
+    const drawingNumber = DRAWING_NUMBERS[panelType] || "";
+    const scale = PANEL_SCALES[panelType] || "NTS";
     return {
       label,
       drawingNumber,
@@ -451,21 +484,25 @@ function getFallbackConstants() {
     const now = new Date();
     return {
       ...TITLE_BLOCK_TEMPLATE,
-      projectName: context.projectName || 'Untitled Project',
+      projectName: context.projectName || "Untitled Project",
       projectNumber:
         context.projectNumber ||
-        `P${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-      clientName: context.clientName || '',
-      siteAddress: context.address || context.siteAddress || '',
+        `P${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      clientName: context.clientName || "",
+      siteAddress: context.address || context.siteAddress || "",
       drawingTitle: context.buildingType
         ? `${context.buildingType.toUpperCase()} - A1 DESIGN SHEET`
-        : 'A1 DESIGN SHEET',
+        : "A1 DESIGN SHEET",
       date: now
-        .toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
         .toUpperCase(),
-      ribaStage: context.ribaStage || 'STAGE 2',
-      designId: context.designId || '',
-      seedValue: context.seed ? String(context.seed) : '',
+      ribaStage: context.ribaStage || "STAGE 2",
+      designId: context.designId || "",
+      seedValue: context.seed ? String(context.seed) : "",
       consistencyScore: context.consistencyScore || 0,
       generationTimestamp: now.toISOString(),
     };
@@ -501,7 +538,8 @@ function getFallbackConstants() {
       width: Math.round(layoutEntry.width * width),
       height: Math.round(layoutEntry.height * height),
     }),
-    getPanelFitMode: (panelType) => (COVER_FIT_PANELS.includes(panelType) ? 'cover' : 'contain'),
+    getPanelFitMode: (panelType) =>
+      COVER_FIT_PANELS.includes(panelType) ? "cover" : "contain",
     getPanelAnnotation,
     buildTitleBlockData,
     // Phase 2: Resilient validation - allow missing panels with placeholder
@@ -511,13 +549,15 @@ function getFallbackConstants() {
 
       // Adjust required panels based on floor count
       const adjustedRequired = REQUIRED_PANELS.filter((type) => {
-        if (type === 'floor_plan_level2' && floorCount < 3) {
+        if (type === "floor_plan_level2" && floorCount < 3) {
           return false;
         }
         return true;
       });
 
-      const missingPanels = adjustedRequired.filter((type) => !providedTypes.has(type));
+      const missingPanels = adjustedRequired.filter(
+        (type) => !providedTypes.has(type),
+      );
 
       // CORRECTION E: Be resilient to missing panels - warn but don't block
       // Missing panels will be shown as placeholders
@@ -526,7 +566,9 @@ function getFallbackConstants() {
         errors: [],
         warnings:
           missingPanels.length > 0
-            ? [`Missing panels (will use placeholders): ${missingPanels.join(', ')}`]
+            ? [
+                `Missing panels (will use placeholders): ${missingPanels.join(", ")}`,
+              ]
             : [],
         panelCount: panels.length,
         missingPanels,
@@ -541,13 +583,13 @@ function getFallbackConstants() {
  */
 async function fetchImageBuffer(url) {
   if (!url) {
-    throw new Error('Image URL is required');
+    throw new Error("Image URL is required");
   }
 
   // Handle data URLs
-  if (url.startsWith('data:')) {
-    const base64Data = url.split(',')[1];
-    return Buffer.from(base64Data, 'base64');
+  if (url.startsWith("data:")) {
+    const base64Data = url.split(",")[1];
+    return Buffer.from(base64Data, "base64");
   }
 
   // Fetch from URL
@@ -566,11 +608,11 @@ function generateOverlaySvg(coordinates, width, height, constants) {
     FRAME_STROKE_COLOR,
     FRAME_RADIUS,
     CAPTION_FONT_SIZE = 12,
-    CAPTION_FONT_FAMILY = 'Arial, Helvetica, sans-serif',
+    CAPTION_FONT_FAMILY = "Arial, Helvetica, sans-serif",
     getPanelAnnotation,
   } = constants;
-  let frames = '';
-  let labels = '';
+  let frames = "";
+  let labels = "";
 
   for (const [id, coord] of Object.entries(coordinates)) {
     const annotation = getPanelAnnotation(id);
@@ -598,7 +640,7 @@ function generateOverlaySvg(coordinates, width, height, constants) {
       dominant-baseline="middle" text-anchor="middle">${annotation.label}</text>`;
 
     // Scale (right-aligned) - only for scaled drawings
-    if (annotation.scale && annotation.scale !== 'N/A') {
+    if (annotation.scale && annotation.scale !== "N/A") {
       labels += `<text x="${coord.x + coord.width - 8}" y="${labelY}"
         font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE - 2}" fill="#64748b"
         dominant-baseline="middle" text-anchor="end">${annotation.scale}</text>`;
@@ -630,7 +672,7 @@ function getCommitHashForStamp() {
     return process.env.COMMIT_HASH.substring(0, 7);
   }
   // Local development
-  return 'dev';
+  return "dev";
 }
 
 /**
@@ -650,13 +692,13 @@ function getPipelineModeForStamp(proof = null) {
   if (process.env.PIPELINE_MODE) {
     const mode = process.env.PIPELINE_MODE.toUpperCase();
     // Normalize legacy aliases
-    if (mode === 'OPTION2' || mode === 'MESHY_DALLE3') {
-      return 'HYBRID_OPENAI';
+    if (mode === "OPTION2" || mode === "MESHY_DALLE3") {
+      return "HYBRID_OPENAI";
     }
     return mode;
   }
   // Default
-  return 'HYBRID_OPENAI';
+  return "HYBRID_OPENAI";
 }
 
 /**
@@ -667,10 +709,14 @@ function getPipelineModeForStamp(proof = null) {
  * @returns {string} - Truncated model name (never empty)
  */
 function truncateModelName(model, maxChars = 18) {
-  const str = String(model ?? '').trim();
-  if (!str) { return 'unknown'; }
-  if (str.length <= maxChars) { return str; }
-  return str.substring(0, maxChars - 1) + '…';
+  const str = String(model ?? "").trim();
+  if (!str) {
+    return "unknown";
+  }
+  if (str.length <= maxChars) {
+    return str;
+  }
+  return str.substring(0, maxChars - 1) + "…";
 }
 
 /**
@@ -721,56 +767,66 @@ function generateBuildStampSvg({
   // Get build metadata - use proof signals if available (truthful naming)
   const commitHash = getCommitHashForStamp();
   const pipelineMode = getPipelineModeForStamp(proof);
-  const effectiveRunId = runId || designId || 'unknown';
+  const effectiveRunId = runId || designId || "unknown";
 
   // Extract proof signals with defaults
-  const openaiModel = proof?.openaiModelUsed || 'gpt-image-1';
+  const openaiModel = proof?.openaiModelUsed || "gpt-image-1";
   const meshyUsed = proof?.meshyUsed || false;
 
   // Format timestamp to be more compact
   const date = new Date(timestamp);
-  const dateStr = date.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: '2-digit',
+  const dateStr = date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "2-digit",
   });
-  const timeStr = date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+  const timeStr = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 
   // Build flags summary (compact)
   const flagsSummary = [];
-  if (flags.blenderTechnical) { flagsSummary.push('BL'); }
-  if (flags.openaiStyler) { flagsSummary.push('OA'); }
-  if (flags.autoCropPanels) { flagsSummary.push('AC'); }
-  if (flags.geometryFirst) { flagsSummary.push('GF'); }
-  const flagsStr = flagsSummary.length > 0 ? flagsSummary.join('+') : 'STD';
+  if (flags.blenderTechnical) {
+    flagsSummary.push("BL");
+  }
+  if (flags.openaiStyler) {
+    flagsSummary.push("OA");
+  }
+  if (flags.autoCropPanels) {
+    flagsSummary.push("AC");
+  }
+  if (flags.geometryFirst) {
+    flagsSummary.push("GF");
+  }
+  const flagsStr = flagsSummary.length > 0 ? flagsSummary.join("+") : "STD";
 
   // Pipeline mode color based on resolved mode
   // Green (#22c55e): meshy_openai_* modes (Meshy actually used)
   // Blue (#3b82f6): svg_openai_* modes (SVG + OpenAI, no Meshy)
   // Amber (#f59e0b): legacy mode
   let modeColor;
-  if (pipelineMode.startsWith('meshy_')) {
-    modeColor = '#22c55e'; // Green - Meshy 3D was used
-  } else if (pipelineMode.startsWith('svg_')) {
-    modeColor = '#3b82f6'; // Blue - SVG + OpenAI (no Meshy)
-  } else if (pipelineMode === 'legacy') {
-    modeColor = '#f59e0b'; // Amber - Legacy mode
+  if (pipelineMode.startsWith("meshy_")) {
+    modeColor = "#22c55e"; // Green - Meshy 3D was used
+  } else if (pipelineMode.startsWith("svg_")) {
+    modeColor = "#3b82f6"; // Blue - SVG + OpenAI (no Meshy)
+  } else if (pipelineMode === "legacy") {
+    modeColor = "#f59e0b"; // Amber - Legacy mode
   } else {
-    modeColor = '#6366f1'; // Indigo - fallback for unknown modes
+    modeColor = "#6366f1"; // Indigo - fallback for unknown modes
   }
 
   // Truncate mode for display (max 22 chars)
   const displayMode =
-    pipelineMode.length > 22 ? pipelineMode.substring(0, 20) + '..' : pipelineMode;
+    pipelineMode.length > 22
+      ? pipelineMode.substring(0, 20) + ".."
+      : pipelineMode;
   const modeBadgeWidth = 100;
 
   // Meshy indicator
-  const meshyIndicator = meshyUsed ? '3D:✓' : '3D:✗';
-  const meshyColor = meshyUsed ? '#22c55e' : '#94a3b8';
+  const meshyIndicator = meshyUsed ? "3D:✓" : "3D:✗";
+  const meshyColor = meshyUsed ? "#22c55e" : "#94a3b8";
 
   // Layout constants for Row 4 (robust positioning)
   const leftX = x + 8;
@@ -839,17 +895,22 @@ function generateBuildStampSvg({
 }
 
 function escapeXml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-function generateBoardSpecStampSvg({ width, height, layoutTemplateUsed, boardSpecVersion }) {
+function generateBoardSpecStampSvg({
+  width,
+  height,
+  layoutTemplateUsed,
+  boardSpecVersion,
+}) {
   const fontStack = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-  const text = `${layoutTemplateUsed || 'unknown'} | spec ${boardSpecVersion || 'unknown'}`;
+  const text = `${layoutTemplateUsed || "unknown"} | spec ${boardSpecVersion || "unknown"}`;
   const x = 10;
   const y = Math.max(12, height - 10);
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -861,18 +922,22 @@ function generateBoardSpecStampSvg({ width, height, layoutTemplateUsed, boardSpe
 
 export default async function handler(req, res) {
   // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
+  if (req.method !== "POST") {
     return res
       .status(405)
-      .json({ success: false, error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' });
+      .json({
+        success: false,
+        error: "METHOD_NOT_ALLOWED",
+        message: "Method not allowed",
+      });
   }
 
   try {
@@ -900,16 +965,27 @@ export default async function handler(req, res) {
       validatePanelLayout,
     } = constants;
 
-    const { designId, siteOverlay = null, layoutConfig = 'board-v2', titleBlock = null } = req.body;
+    const {
+      designId,
+      siteOverlay = null,
+      layoutConfig = "board-v2",
+      titleBlock = null,
+    } = req.body;
     let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
 
     if (!panels || panels.length === 0) {
       return res
         .status(400)
-        .json({ success: false, error: 'NO_PANELS', message: 'No panels provided' });
+        .json({
+          success: false,
+          error: "NO_PANELS",
+          message: "No panels provided",
+        });
     }
 
-    console.log(`[A1 Compose] Composing ${panels.length} panels for design ${designId}`);
+    console.log(
+      `[A1 Compose] Composing ${panels.length} panels for design ${designId}`,
+    );
 
     // ====================================================================
     // CRITICAL: DESIGN FINGERPRINT VALIDATION
@@ -920,7 +996,8 @@ export default async function handler(req, res) {
     const fingerprintMismatches = [];
 
     for (const panel of panels) {
-      const panelFingerprint = panel.designFingerprint || panel.meta?.designFingerprint;
+      const panelFingerprint =
+        panel.designFingerprint || panel.meta?.designFingerprint;
       if (panelFingerprint && panelFingerprint !== expectedFingerprint) {
         fingerprintMismatches.push({
           panelType: panel.type,
@@ -937,17 +1014,19 @@ export default async function handler(req, res) {
 
       return res.status(400).json({
         success: false,
-        error: 'FINGERPRINT_MISMATCH',
+        error: "FINGERPRINT_MISMATCH",
         message: `Panels from different design runs cannot be composed together. Expected fingerprint: ${expectedFingerprint}`,
         details: {
           mismatches: fingerprintMismatches,
           recommendation:
-            'This indicates a race condition in concurrent generation. Please regenerate all panels together.',
+            "This indicates a race condition in concurrent generation. Please regenerate all panels together.",
         },
       });
     }
 
-    console.log(`[A1 Compose] ✅ Fingerprint validation passed: ${expectedFingerprint}`);
+    console.log(
+      `[A1 Compose] ✅ Fingerprint validation passed: ${expectedFingerprint}`,
+    );
 
     // ====================================================================
     // CRITICAL: PANEL_REGISTRY VALIDATION (Runtime Assertion)
@@ -970,19 +1049,28 @@ export default async function handler(req, res) {
         .filter(Boolean);
 
       if (unknownPanelTypes.length > 0) {
-        console.warn(`[A1 Compose] Ignoring unknown panel types: ${unknownPanelTypes.join(', ')}`);
+        console.warn(
+          `[A1 Compose] Ignoring unknown panel types: ${unknownPanelTypes.join(", ")}`,
+        );
       }
 
       panels = normalizedPanels;
     } else {
-      console.warn('[A1 Compose] PANEL_REGISTRY not available, using raw panel types');
+      // Fallback: use composeCore normalizeKey when panelRegistry is unavailable
+      console.warn(
+        "[A1 Compose] PANEL_REGISTRY not available, using composeCore normalizeKey fallback",
+      );
+      panels = panels.map((panel) => ({
+        ...panel,
+        type: composeCoreNormalizeKey(panel.type),
+      }));
     }
 
     if (!panels || panels.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'NO_PANELS',
-        message: 'No valid panels provided after normalization',
+        error: "NO_PANELS",
+        message: "No valid panels provided after normalization",
         details: {
           unknownPanelTypes,
         },
@@ -991,7 +1079,8 @@ export default async function handler(req, res) {
 
     const explicitFloorCount = Number(req.body.floorCount);
     const derivedFloorCount =
-      panels.filter((p) => String(p.type || '').startsWith('floor_plan_')).length || 2;
+      panels.filter((p) => String(p.type || "").startsWith("floor_plan_"))
+        .length || 2;
     const floorCount =
       Number.isFinite(explicitFloorCount) && explicitFloorCount > 0
         ? explicitFloorCount
@@ -1002,18 +1091,22 @@ export default async function handler(req, res) {
 
     if (registry && !skipMissingPanelCheck) {
       const requiredPanels =
-        typeof registry.getAIGeneratedPanels === 'function'
+        typeof registry.getAIGeneratedPanels === "function"
           ? registry.getAIGeneratedPanels(floorCount)
           : registry.getRequiredPanels(floorCount);
       const providedTypes = new Set(panels.map((p) => p.type));
-      const missingPanels = requiredPanels.filter((type) => !providedTypes.has(type));
+      const missingPanels = requiredPanels.filter(
+        (type) => !providedTypes.has(type),
+      );
 
       if (missingPanels.length > 0) {
-        console.warn(`[A1 Compose] Missing required panels: ${missingPanels.join(', ')}`);
+        console.warn(
+          `[A1 Compose] Missing required panels: ${missingPanels.join(", ")}`,
+        );
         return res.status(400).json({
           success: false,
-          error: 'MISSING_REQUIRED_PANELS',
-          message: `Cannot compose A1 sheet - missing: ${missingPanels.join(', ')}. Please regenerate missing panels first.`,
+          error: "MISSING_REQUIRED_PANELS",
+          message: `Cannot compose A1 sheet - missing: ${missingPanels.join(", ")}. Please regenerate missing panels first.`,
           details: {
             missingPanels,
             unknownPanelTypes,
@@ -1022,7 +1115,7 @@ export default async function handler(req, res) {
       }
     } else if (skipMissingPanelCheck) {
       console.log(
-        `[A1 Compose] skipMissingPanelCheck=true - allowing composition with placeholders`
+        `[A1 Compose] skipMissingPanelCheck=true - allowing composition with placeholders`,
       );
     }
 
@@ -1042,21 +1135,25 @@ export default async function handler(req, res) {
     if (!validation.valid) {
       const missingPanels = validation.missingPanels || [];
       const nonMissingErrors = validation.errors.filter(
-        (err) => !err.startsWith('Missing panels:')
+        (err) => !err.startsWith("Missing panels:"),
       );
       const blockingMissing = registry
         ? missingPanels.filter((type) => {
-          const entry = registry.getRegistryEntry ? registry.getRegistryEntry(type) : null;
-          return entry ? entry.generator !== 'data' : true;
-        })
+            const entry = registry.getRegistryEntry
+              ? registry.getRegistryEntry(type)
+              : null;
+            return entry ? entry.generator !== "data" : true;
+          })
         : missingPanels;
 
       if (blockingMissing.length > 0 || nonMissingErrors.length > 0) {
-        console.warn(`[A1 Compose] Layout validation failed: ${validation.errors.join('; ')}`);
+        console.warn(
+          `[A1 Compose] Layout validation failed: ${validation.errors.join("; ")}`,
+        );
         return res.status(400).json({
           success: false,
-          error: 'PANEL_VALIDATION_FAILED',
-          message: validation.errors.join('; '),
+          error: "PANEL_VALIDATION_FAILED",
+          message: validation.errors.join("; "),
           details: {
             missingPanels: blockingMissing,
             unknownPanelTypes,
@@ -1065,7 +1162,9 @@ export default async function handler(req, res) {
       }
 
       if (missingPanels.length > 0) {
-        console.warn(`[A1 Compose] Optional panels missing: ${missingPanels.join(', ')}`);
+        console.warn(
+          `[A1 Compose] Optional panels missing: ${missingPanels.join(", ")}`,
+        );
       }
     }
 
@@ -1073,23 +1172,28 @@ export default async function handler(req, res) {
     // PRE-COMPOSE GATE: FLOOR PLAN ROOM COUNT VALIDATION (BLOCKING)
     // ====================================================================
     // Ensures no floor plan has 0 rooms (which would result in empty borders)
-    const DEBUG_RUNS = process.env.DEBUG_RUNS === '1';
+    const DEBUG_RUNS = process.env.DEBUG_RUNS === "1";
 
     // skipValidation: Skip ALL validation gates (for smoke tests, dev mode)
-    const skipValidation = skipMissingPanelCheck || req.body.skipValidation === true;
+    const skipValidation =
+      skipMissingPanelCheck || req.body.skipValidation === true;
 
     if (skipValidation) {
       console.log(
-        `[A1 Compose] ⚠️ skipValidation=true - skipping floor plan, geometry, and cross-view validation`
+        `[A1 Compose] ⚠️ skipValidation=true - skipping floor plan, geometry, and cross-view validation`,
       );
     }
 
     if (DEBUG_RUNS) {
-      console.log('[DEBUG_RUNS] [A1 Compose] Starting pre-compose validation...');
+      console.log(
+        "[DEBUG_RUNS] [A1 Compose] Starting pre-compose validation...",
+      );
     }
 
     const emptyFloorPlans = [];
-    const floorPlanPanels = panels.filter((p) => p.type?.includes('floor_plan'));
+    const floorPlanPanels = panels.filter((p) =>
+      p.type?.includes("floor_plan"),
+    );
 
     for (const panel of floorPlanPanels) {
       const roomCount = panel.meta?.roomCount || panel.roomCount || 0;
@@ -1118,45 +1222,54 @@ export default async function handler(req, res) {
 
     if (emptyFloorPlans.length > 0 && !skipValidation) {
       console.error(`[A1 Compose] ❌ EMPTY FLOOR PLANS DETECTED!`);
-      console.error(`   Empty plans: ${emptyFloorPlans.map((p) => p.panelType).join(', ')}`);
+      console.error(
+        `   Empty plans: ${emptyFloorPlans.map((p) => p.panelType).join(", ")}`,
+      );
 
       return res.status(400).json({
         success: false,
-        error: 'EMPTY_FLOOR_PLANS',
+        error: "EMPTY_FLOOR_PLANS",
         message:
-          'Cannot compose A1 sheet - one or more floor plans have 0 rooms, which indicates a room assignment failure.',
+          "Cannot compose A1 sheet - one or more floor plans have 0 rooms, which indicates a room assignment failure.",
         details: {
           emptyFloorPlans,
           recommendation:
-            'This typically means rooms were not distributed to upper floors. Check the program configuration and ensure rooms are assigned to all requested floors.',
+            "This typically means rooms were not distributed to upper floors. Check the program configuration and ensure rooms are assigned to all requested floors.",
         },
       });
     } else if (emptyFloorPlans.length > 0) {
       console.warn(
-        `[A1 Compose] ⚠️ Empty floor plans skipped (skipValidation=true): ${emptyFloorPlans.map((p) => p.panelType).join(', ')}`
+        `[A1 Compose] ⚠️ Empty floor plans skipped (skipValidation=true): ${emptyFloorPlans.map((p) => p.panelType).join(", ")}`,
       );
     }
 
     console.log(
-      `[A1 Compose] ✅ Floor plan room validation passed (${floorPlanPanels.length} plans checked)`
+      `[A1 Compose] ✅ Floor plan room validation passed (${floorPlanPanels.length} plans checked)`,
     );
 
     // ====================================================================
     // PRE-COMPOSE GATE: GEOMETRY PACK CONSISTENCY (BLOCKING)
     // ====================================================================
     // Ensures hero_3d and elevations share the same geometry runId
-    const hero3dPanel = panels.find((p) => p.type === 'hero_3d');
-    const elevationPanels = panels.filter((p) => p.type?.includes('elevation_'));
+    const hero3dPanel = panels.find((p) => p.type === "hero_3d");
+    const elevationPanels = panels.filter((p) =>
+      p.type?.includes("elevation_"),
+    );
 
     if (hero3dPanel && elevationPanels.length > 0) {
       const hero3dRunId = hero3dPanel.meta?.runId || hero3dPanel.runId;
-      const elevationRunIds = elevationPanels.map((p) => p.meta?.runId || p.runId).filter(Boolean);
+      const elevationRunIds = elevationPanels
+        .map((p) => p.meta?.runId || p.runId)
+        .filter(Boolean);
 
       if (DEBUG_RUNS) {
-        console.log(`[DEBUG_RUNS] [A1 Compose] Geometry pack consistency check:`, {
-          hero3dRunId,
-          elevationRunIds,
-        });
+        console.log(
+          `[DEBUG_RUNS] [A1 Compose] Geometry pack consistency check:`,
+          {
+            hero3dRunId,
+            elevationRunIds,
+          },
+        );
       }
 
       if (hero3dRunId && elevationRunIds.length > 0) {
@@ -1165,25 +1278,31 @@ export default async function handler(req, res) {
         if (mismatches.length > 0 && !skipValidation) {
           console.error(`[A1 Compose] ❌ GEOMETRY PACK MISMATCH DETECTED!`);
           console.error(`   hero_3d runId: ${hero3dRunId}`);
-          console.error(`   Mismatched elevation runIds: ${[...new Set(mismatches)].join(', ')}`);
+          console.error(
+            `   Mismatched elevation runIds: ${[...new Set(mismatches)].join(", ")}`,
+          );
 
           return res.status(400).json({
             success: false,
-            error: 'GEOMETRY_PACK_MISMATCH',
+            error: "GEOMETRY_PACK_MISMATCH",
             message:
-              'Cannot compose A1 sheet - hero_3d and elevations were generated from different geometry packs.',
+              "Cannot compose A1 sheet - hero_3d and elevations were generated from different geometry packs.",
             details: {
               hero3dRunId,
               elevationRunIds: [...new Set(elevationRunIds)],
               recommendation:
-                'Ensure all panels are generated from the same canonical geometry in a single run.',
+                "Ensure all panels are generated from the same canonical geometry in a single run.",
             },
           });
         } else if (mismatches.length > 0) {
-          console.warn(`[A1 Compose] ⚠️ Geometry pack mismatch skipped (skipValidation=true)`);
+          console.warn(
+            `[A1 Compose] ⚠️ Geometry pack mismatch skipped (skipValidation=true)`,
+          );
         }
 
-        console.log(`[A1 Compose] ✅ Geometry pack consistency passed (runId: ${hero3dRunId})`);
+        console.log(
+          `[A1 Compose] ✅ Geometry pack consistency passed (runId: ${hero3dRunId})`,
+        );
       }
     }
 
@@ -1196,7 +1315,7 @@ export default async function handler(req, res) {
       const imageValidator = await getCrossViewImageValidator();
       if (imageValidator) {
         console.log(
-          '[A1 Compose] Running real image cross-view consistency validation (SSIM/pHash/pixelmatch)...'
+          "[A1 Compose] Running real image cross-view consistency validation (SSIM/pHash/pixelmatch)...",
         );
 
         // Build panel map from request panels
@@ -1212,65 +1331,77 @@ export default async function handler(req, res) {
 
         try {
           // NEW: Use real image comparison instead of heuristic validation
-          const crossViewResult = await imageValidator.validateAllPanels(panelMap);
+          const crossViewResult =
+            await imageValidator.validateAllPanels(panelMap);
 
           if (!crossViewResult.pass) {
             console.error(`[A1 Compose] Cross-view validation FAILED`);
-            console.error(`   Overall Score: ${(crossViewResult.overallScore * 100).toFixed(1)}%`);
             console.error(
-              `   Failed Panels: ${crossViewResult.failedPanels.map((fp) => fp.panelType).join(', ')}`
+              `   Overall Score: ${(crossViewResult.overallScore * 100).toFixed(1)}%`,
+            );
+            console.error(
+              `   Failed Panels: ${crossViewResult.failedPanels.map((fp) => fp.panelType).join(", ")}`,
             );
 
             // Generate structured error report
-            const errorReport = imageValidator.generateErrorReport(crossViewResult);
+            const errorReport =
+              imageValidator.generateErrorReport(crossViewResult);
 
             return res.status(400).json(errorReport);
           }
 
           console.log(
-            `[A1 Compose] Cross-view validation PASSED (score: ${(crossViewResult.overallScore * 100).toFixed(1)}%)`
+            `[A1 Compose] Cross-view validation PASSED (score: ${(crossViewResult.overallScore * 100).toFixed(1)}%)`,
           );
         } catch (crossViewError) {
-          console.error('[A1 Compose] Cross-view validation error:', crossViewError.message);
+          console.error(
+            "[A1 Compose] Cross-view validation error:",
+            crossViewError.message,
+          );
           // Fail closed on validation errors (conservative approach)
           return res.status(500).json({
             success: false,
-            error: 'CROSS_VIEW_VALIDATION_ERROR',
+            error: "CROSS_VIEW_VALIDATION_ERROR",
             message: crossViewError.message,
             details: {
-              recommendation: 'Validation system error. Please retry.',
+              recommendation: "Validation system error. Please retry.",
             },
           });
         }
       } else {
         // FAIL-CLOSED: If validator module can't be loaded, reject the composition
         // This prevents A1 sheets from being exported without cross-view verification
-        console.error('[A1 Compose] Cross-view image validator not available - BLOCKING');
+        console.error(
+          "[A1 Compose] Cross-view image validator not available - BLOCKING",
+        );
         return res.status(500).json({
           success: false,
-          error: 'CROSS_VIEW_VALIDATOR_UNAVAILABLE',
+          error: "CROSS_VIEW_VALIDATOR_UNAVAILABLE",
           message:
-            'Cannot compose A1 sheet without cross-view consistency validation. Validator module failed to load.',
+            "Cannot compose A1 sheet without cross-view consistency validation. Validator module failed to load.",
           details: {
             recommendation:
-              'Check server deployment - ensure crossViewImageValidator.js is bundled correctly with sharp and pixelmatch.',
+              "Check server deployment - ensure crossViewImageValidator.js is bundled correctly with sharp and pixelmatch.",
           },
         });
       }
     } else {
-      console.log(`[A1 Compose] ⚠️ Cross-view validation SKIPPED (skipValidation=true)`);
+      console.log(
+        `[A1 Compose] ⚠️ Cross-view validation SKIPPED (skipValidation=true)`,
+      );
     }
 
     // Dynamic import of sharp (server-side only)
     let sharp;
     try {
-      sharp = (await import('sharp')).default;
+      sharp = (await import("sharp")).default;
     } catch (e) {
-      console.error('[A1 Compose] sharp not available:', e.message);
+      console.error("[A1 Compose] sharp not available:", e.message);
       return res.status(500).json({
         success: false,
-        error: 'SHARP_UNAVAILABLE',
-        message: 'Server-side composition not available - sharp module not installed',
+        error: "SHARP_UNAVAILABLE",
+        message:
+          "Server-side composition not available - sharp module not installed",
         details: {
           originalError: e.message,
           recommendation:
@@ -1279,52 +1410,51 @@ export default async function handler(req, res) {
       });
     }
 
-    // LAYOUT TEMPLATE SELECTION (SSOT via A1BoardSpec / a1LayoutConstants)
-    const layoutTemplateRaw = req.body.layoutTemplate || layoutConfig || 'board-v2';
+    // LAYOUT TEMPLATE SELECTION – delegate to shared composeCore (SSOT)
+    const layoutTemplateRaw =
+      req.body.layoutTemplate || layoutConfig || "board-v2";
+    const useHighRes =
+      req.body.highRes === true || req.body.printMaster === true;
+
+    // Use composeCore for normalisation and grid resolution
+    const composeCoreResolved = composeCoreResolveLayout({
+      layoutTemplate: layoutTemplateRaw,
+      floorCount,
+      highRes: useHighRes,
+    });
+
+    let layoutTemplate = composeCoreResolved.layoutTemplate;
+    let layout = composeCoreResolved.layout;
+    const width = composeCoreResolved.width;
+    const height = composeCoreResolved.height;
+
+    // Optional A1BoardSpec overlay (advanced QA / fit policies)
     const boardSpecModule = await getA1BoardSpecModule();
-
-    // LAYOUT TEMPLATE NORMALIZATION: Map uk-riba-standard → board-v2
-    // uk-riba-standard is the orchestrator's preferred layout name but compose only supports board-v2
-    let layoutTemplate =
-      typeof boardSpecModule?.normalizeLayoutTemplate === 'function'
-        ? boardSpecModule.normalizeLayoutTemplate(layoutTemplateRaw)
-        : String(layoutTemplateRaw || '')
-          .trim()
-          .toLowerCase();
-
-    // Normalize uk-riba-standard to the supported board-v2 layout
-    if (layoutTemplate === 'uk-riba-standard') {
-      console.log('[A1 Compose] Normalizing layout: uk-riba-standard → board-v2');
-      layoutTemplate = 'board-v2';
-    }
-
-    const fallbackTargetGrid =
-      constants.TARGET_BOARD_GRID_SPEC || getFallbackConstants().TARGET_BOARD_GRID_SPEC;
-
-    const layout =
-      typeof getGridSpec === 'function'
-        ? getGridSpec(layoutTemplate, { floorCount })
-        : fallbackTargetGrid;
-
     const boardSpec = await getBoardSpec(layoutTemplate, floorCount);
-    const boardSpecVersion = boardSpec?.version || boardSpecModule?.A1_BOARD_SPEC_VERSION || null;
+    const boardSpecVersion =
+      boardSpec?.version || boardSpecModule?.A1_BOARD_SPEC_VERSION || null;
     const qaSpec = boardSpec?.qa || {};
     const qaEnabled = !skipValidation && qaSpec.enabled !== false;
     const rotateToFit = qaEnabled && qaSpec.rotateToFit !== false;
-    const minSlotOccupancy = Number.isFinite(qaSpec.minOccupancy) ? qaSpec.minOccupancy : 0.55;
+    const minSlotOccupancy = Number.isFinite(qaSpec.minOccupancy)
+      ? qaSpec.minOccupancy
+      : 0.55;
     const fitPolicy = boardSpec?.fit || null;
 
-    console.log(`[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount})`);
+    // If boardSpec provides its own grid, prefer it over composeCore default
+    if (boardSpec?.grid && typeof boardSpec.grid === "object") {
+      layout = boardSpec.grid;
+      console.log("[A1 Compose] Using A1BoardSpec grid override");
+    }
 
-    // FIX: Support high-resolution A1 print master (300 DPI: 9933×7016px)
-    // When highRes: true is passed, use full A1 dimensions instead of working preview
-    const useHighRes = req.body.highRes === true || req.body.printMaster === true;
-    const width = useHighRes ? A1_WIDTH : WORKING_WIDTH;
-    const height = useHighRes ? A1_HEIGHT : WORKING_HEIGHT;
+    console.log(
+      `[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount}, ${width}x${height}px)`,
+    );
+    console.log(`[A1 Compose] Layout resolved via composeCore SSOT`);
 
     if (useHighRes) {
       console.log(
-        `[A1 Compose] HIGH-RES MODE: Using print master resolution ${A1_WIDTH}×${A1_HEIGHT}px (300 DPI)`
+        `[A1 Compose] HIGH-RES MODE: Using print master resolution ${A1_WIDTH}×${A1_HEIGHT}px (300 DPI)`,
       );
     }
 
@@ -1347,7 +1477,7 @@ export default async function handler(req, res) {
     // HARD QA GATE: Completeness (fail closed)
     if (qaEnabled) {
       const missingSlotContent = Object.keys(layout)
-        .filter((type) => type !== 'title_block')
+        .filter((type) => type !== "title_block")
         .filter((type) => {
           const panel = panelMap.get(type);
           const hasContent = !!(panel?.buffer || panel?.imageUrl);
@@ -1355,11 +1485,13 @@ export default async function handler(req, res) {
         });
 
       if (missingSlotContent.length > 0) {
-        console.error(`[A1 Compose] ❌ Missing slot content: ${missingSlotContent.join(', ')}`);
+        console.error(
+          `[A1 Compose] ❌ Missing slot content: ${missingSlotContent.join(", ")}`,
+        );
         return res.status(400).json({
           success: false,
-          error: 'MISSING_SLOT_CONTENT',
-          message: `Cannot compose A1 sheet - missing panel content for: ${missingSlotContent.join(', ')}`,
+          error: "MISSING_SLOT_CONTENT",
+          message: `Cannot compose A1 sheet - missing panel content for: ${missingSlotContent.join(", ")}`,
           details: {
             missingPanels: missingSlotContent,
             layoutTemplate,
@@ -1374,13 +1506,16 @@ export default async function handler(req, res) {
       const slotRect = toPixelRect(slot, width, height);
       coordinates[type] = { ...slotRect, labelHeight: LABEL_HEIGHT };
 
-      const mode = (fitPolicy && (fitPolicy[type] || fitPolicy.default)) || getPanelFitMode(type);
+      const mode =
+        (fitPolicy && (fitPolicy[type] || fitPolicy.default)) ||
+        getPanelFitMode(type);
       const panel = panelMap.get(type);
 
-      if (type === 'title_block') {
+      if (type === "title_block") {
         if (panel?.imageUrl || panel?.buffer) {
           try {
-            const buffer = panel.buffer || (await fetchImageBuffer(panel.imageUrl));
+            const buffer =
+              panel.buffer || (await fetchImageBuffer(panel.imageUrl));
             const resized = await placePanelImage({
               sharp,
               imageBuffer: buffer,
@@ -1396,14 +1531,21 @@ export default async function handler(req, res) {
                 layoutTemplate,
               },
             });
-            composites.push({ input: resized, left: slotRect.x, top: slotRect.y });
+            composites.push({
+              input: resized,
+              left: slotRect.x,
+              top: slotRect.y,
+            });
             continue;
           } catch (err) {
-            console.error(`[A1 Compose] Failed to process panel ${type}:`, err.message);
+            console.error(
+              `[A1 Compose] Failed to process panel ${type}:`,
+              err.message,
+            );
             if (qaEnabled) {
               return res.status(400).json({
                 success: false,
-                error: 'PANEL_PROCESSING_FAILED',
+                error: "PANEL_PROCESSING_FAILED",
                 message: `Panel ${type} failed QA/placement: ${err.message}`,
                 details: {
                   panelType: type,
@@ -1421,15 +1563,20 @@ export default async function handler(req, res) {
           slotRect.width,
           slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
           { ...(titleBlock || {}), designId: expectedFingerprint },
-          constants
+          constants,
         );
-        composites.push({ input: titleBuffer, left: slotRect.x, top: slotRect.y });
+        composites.push({
+          input: titleBuffer,
+          left: slotRect.x,
+          top: slotRect.y,
+        });
         continue;
       }
 
       if (panel?.imageUrl || panel?.buffer) {
         try {
-          const buffer = panel.buffer || (await fetchImageBuffer(panel.imageUrl));
+          const buffer =
+            panel.buffer || (await fetchImageBuffer(panel.imageUrl));
           const resized = await placePanelImage({
             sharp,
             imageBuffer: buffer,
@@ -1445,14 +1592,21 @@ export default async function handler(req, res) {
               layoutTemplate,
             },
           });
-          composites.push({ input: resized, left: slotRect.x, top: slotRect.y });
+          composites.push({
+            input: resized,
+            left: slotRect.x,
+            top: slotRect.y,
+          });
           continue;
         } catch (err) {
-          console.error(`[A1 Compose] Failed to process panel ${type}:`, err.message);
+          console.error(
+            `[A1 Compose] Failed to process panel ${type}:`,
+            err.message,
+          );
           if (qaEnabled) {
             return res.status(400).json({
               success: false,
-              error: 'PANEL_PROCESSING_FAILED',
+              error: "PANEL_PROCESSING_FAILED",
               message: `Panel ${type} failed QA/placement: ${err.message}`,
               details: {
                 panelType: type,
@@ -1469,7 +1623,7 @@ export default async function handler(req, res) {
       if (qaEnabled) {
         return res.status(400).json({
           success: false,
-          error: 'MISSING_SLOT_CONTENT',
+          error: "MISSING_SLOT_CONTENT",
           message: `Cannot compose A1 sheet - missing panel content for: ${type}`,
           details: { panelType: type, layoutTemplate, floorCount },
         });
@@ -1479,9 +1633,13 @@ export default async function handler(req, res) {
         slotRect.width,
         slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
         type,
-        constants
+        constants,
       );
-      composites.push({ input: placeholder, left: slotRect.x, top: slotRect.y });
+      composites.push({
+        input: placeholder,
+        left: slotRect.x,
+        top: slotRect.y,
+      });
     }
 
     // Add site overlay if provided
@@ -1499,15 +1657,15 @@ export default async function handler(req, res) {
           console.log(`[A1 Compose] Site overlay resize:`, {
             input: { width: metadata.width, height: metadata.height },
             output: { width: slotRect.width, height: targetHeight },
-            fit: 'contain',
+            fit: "contain",
           });
         }
 
         // CRITICAL: Use fit:'contain' to prevent cropping site overlays
         const resizedOverlay = await sharp(overlayBuffer)
           .resize(slotRect.width, targetHeight, {
-            fit: 'contain', // ALWAYS contain - never crop
-            position: 'centre', // Center within slot
+            fit: "contain", // ALWAYS contain - never crop
+            position: "centre", // Center within slot
             background: { r: 255, g: 255, b: 255, alpha: 1 }, // White letterbox padding
           })
           .png()
@@ -1520,9 +1678,11 @@ export default async function handler(req, res) {
         });
 
         coordinates.site_overlay = { ...slotRect, labelHeight: LABEL_HEIGHT };
-        console.log(`[A1 Compose] Added site overlay at (${slotRect.x}, ${slotRect.y})`);
+        console.log(
+          `[A1 Compose] Added site overlay at (${slotRect.x}, ${slotRect.y})`,
+        );
       } catch (err) {
-        console.error('[A1 Compose] Failed to add site overlay:', err.message);
+        console.error("[A1 Compose] Failed to add site overlay:", err.message);
       }
     }
 
@@ -1551,11 +1711,12 @@ export default async function handler(req, res) {
     // DELIVERABLE A: Build Stamp (visual proof)
     // Contains: RESOLVED PIPELINE_MODE (truthful), commit hash, runId, timestamp, OpenAI model, Meshy indicator
     const includeBuildStamp =
-      req.body.includeBuildStamp === true || process.env.A1_COMPOSE_INCLUDE_BUILD_STAMP === '1';
+      req.body.includeBuildStamp === true ||
+      process.env.A1_COMPOSE_INCLUDE_BUILD_STAMP === "1";
 
     if (includeBuildStamp) {
       const buildTimestamp = new Date().toISOString();
-      const shortHash = designId ? designId.substring(0, 8) : 'N/A';
+      const shortHash = designId ? designId.substring(0, 8) : "N/A";
       const runIdFromRequest = req.body.runId || req.body.meta?.runId;
 
       // Extract flags from request body (passed from orchestrator)
@@ -1579,7 +1740,7 @@ export default async function handler(req, res) {
 
       const resolvedMode = getPipelineModeForStamp(proofFromRequest);
       console.log(
-        `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || 'gpt-image-1'}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`
+        `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || "gpt-image-1"}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`,
       );
       composites.push({
         input: Buffer.from(buildStampSvg),
@@ -1589,12 +1750,17 @@ export default async function handler(req, res) {
     }
 
     // Compose all panels onto background
-    const composedBuffer = await background.composite(composites).png().toBuffer();
+    const composedBuffer = await background
+      .composite(composites)
+      .png()
+      .toBuffer();
 
     const maxDataUrlBytes =
-      parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || '', 10) || DEFAULT_MAX_DATAURL_BYTES;
+      parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || "", 10) ||
+      DEFAULT_MAX_DATAURL_BYTES;
     const outputDir = resolveComposeOutputDir();
-    const publicUrlBase = process.env.A1_COMPOSE_PUBLIC_URL_BASE || DEFAULT_PUBLIC_URL_BASE;
+    const publicUrlBase =
+      process.env.A1_COMPOSE_PUBLIC_URL_BASE || DEFAULT_PUBLIC_URL_BASE;
 
     const composePayload = buildComposeSheetUrl({
       pngBuffer: composedBuffer,
@@ -1607,10 +1773,10 @@ export default async function handler(req, res) {
     if (!composePayload.sheetUrl) {
       return res.status(413).json({
         success: false,
-        error: composePayload.error || 'PAYLOAD_TOO_LARGE',
+        error: composePayload.error || "PAYLOAD_TOO_LARGE",
         message:
           composePayload.message ||
-          'Composed sheet is too large to return as a base64 data URL. Configure external storage for composed PNGs.',
+          "Composed sheet is too large to return as a base64 data URL. Configure external storage for composed PNGs.",
         details: {
           ...composePayload,
           maxDataUrlBytes,
@@ -1618,8 +1784,14 @@ export default async function handler(req, res) {
       });
     }
 
-    const { sheetUrl, transport, pngBytes, estimatedDataUrlBytes, sheetUrlBytes, outputFile } =
-      composePayload;
+    const {
+      sheetUrl,
+      transport,
+      pngBytes,
+      estimatedDataUrlBytes,
+      sheetUrlBytes,
+      outputFile,
+    } = composePayload;
 
     // Print-ready PDF (A1 landscape) generated alongside high-res PNG exports
     const includePdf = useHighRes && req.body.skipPdf !== true;
@@ -1636,27 +1808,30 @@ export default async function handler(req, res) {
         });
 
         const safeDesignId =
-          String(designId || 'unknown')
-            .replace(/[^a-z0-9_-]/gi, '')
-            .slice(0, 60) || 'unknown';
+          String(designId || "unknown")
+            .replace(/[^a-z0-9_-]/gi, "")
+            .slice(0, 60) || "unknown";
         const baseName = outputFile
-          ? outputFile.replace(/\.png$/i, '')
+          ? outputFile.replace(/\.png$/i, "")
           : `a1_${safeDesignId}_${Date.now()}`;
 
         pdfOutputFile = `${baseName}.pdf`;
         fs.mkdirSync(outputDir, { recursive: true });
         fs.writeFileSync(path.join(outputDir, pdfOutputFile), pdfBuffer);
 
-        const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(/\/$/, '');
+        const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(
+          /\/$/,
+          "",
+        );
         pdfUrl = `${base}/${pdfOutputFile}`;
         pdfBytes = pdfBuffer.length;
       } catch (pdfError) {
-        console.error('[A1 Compose] PDF generation failed:', pdfError.message);
+        console.error("[A1 Compose] PDF generation failed:", pdfError.message);
         // Fail closed for print exports unless explicitly skipping validation
         if (!skipValidation) {
           return res.status(500).json({
             success: false,
-            error: 'PDF_GENERATION_FAILED',
+            error: "PDF_GENERATION_FAILED",
             message: pdfError.message,
           });
         }
@@ -1664,7 +1839,7 @@ export default async function handler(req, res) {
     }
 
     console.log(
-      `[A1 Compose] Sheet composed: ${composites.length} elements, ${width}x${height}px (${transport})`
+      `[A1 Compose] Sheet composed: ${composites.length} elements, ${width}x${height}px (${transport})`,
     );
 
     // ====================================================================
@@ -1674,15 +1849,18 @@ export default async function handler(req, res) {
     // - Browser doesn't cache the response (no-store)
     // - Vercel edge doesn't cache the response (CDN-Cache-Control)
     // - Each request gets fresh composition (no stale panels)
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('CDN-Cache-Control', 'no-store');
-    res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate",
+    );
+    res.setHeader("CDN-Cache-Control", "no-store");
+    res.setHeader("Vercel-CDN-Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
 
     // Add design fingerprint header for debugging
-    res.setHeader('X-Design-Fingerprint', expectedFingerprint || 'unknown');
-    res.setHeader('X-Composition-Timestamp', new Date().toISOString());
+    res.setHeader("X-Design-Fingerprint", expectedFingerprint || "unknown");
+    res.setHeader("X-Composition-Timestamp", new Date().toISOString());
 
     console.log(`[A1 Compose] Response headers set: Cache-Control: no-store`);
 
@@ -1711,32 +1889,42 @@ export default async function handler(req, res) {
       try {
         const qaGatesModule = await getQAGates();
         if (qaGatesModule && qaGatesModule.runAllQAGates) {
-          console.log('[A1 Compose] Running QA gates...');
+          console.log("[A1 Compose] Running QA gates...");
 
           // Build panel data for QA gates
-          const qaPanels = panels.map(p => ({
+          const qaPanels = panels.map((p) => ({
             type: p.type,
             buffer: p.buffer || null,
             pHash: p.pHash || null,
-            rect: coordinates[p.type] ? {
-              width: Math.round(coordinates[p.type].width),
-              height: Math.round(coordinates[p.type].height),
-            } : null,
+            rect: coordinates[p.type]
+              ? {
+                  width: Math.round(coordinates[p.type].width),
+                  height: Math.round(coordinates[p.type].height),
+                }
+              : null,
           }));
 
           const sheetDimensions = { width, height };
-          qaResults = await qaGatesModule.runAllQAGates(qaPanels, sheetDimensions, {
-            skipContrastCheck: req.body.skipContrastCheck,
-          });
+          qaResults = await qaGatesModule.runAllQAGates(
+            qaPanels,
+            sheetDimensions,
+            {
+              skipContrastCheck: req.body.skipContrastCheck,
+            },
+          );
 
-          console.log(`[A1 Compose] QA gates complete: ${qaResults.summary?.passed}/${qaResults.summary?.total} passed`);
+          console.log(
+            `[A1 Compose] QA gates complete: ${qaResults.summary?.passed}/${qaResults.summary?.total} passed`,
+          );
 
           if (qaResults.failures?.length > 0) {
-            console.warn(`[A1 Compose] QA failures: ${qaResults.failures.map(f => f.gate).join(', ')}`);
+            console.warn(
+              `[A1 Compose] QA failures: ${qaResults.failures.map((f) => f.gate).join(", ")}`,
+            );
           }
         }
       } catch (qaError) {
-        console.warn('[A1 Compose] QA gates failed:', qaError.message);
+        console.warn("[A1 Compose] QA gates failed:", qaError.message);
         qaResults = { error: qaError.message, skipped: true };
       }
 
@@ -1748,7 +1936,7 @@ export default async function handler(req, res) {
         try {
           const CriticClass = await getOpusSheetCritic();
           if (CriticClass) {
-            console.log('[A1 Compose] Running Opus Sheet Critic...');
+            console.log("[A1 Compose] Running Opus Sheet Critic...");
 
             const critic = new CriticClass();
             const requiredPanels = Object.keys(panelsByKey);
@@ -1756,20 +1944,31 @@ export default async function handler(req, res) {
             // Pass design fingerprint if available
             const designFingerprint = expectedFingerprint || null;
 
-            critiqueResults = await critic.critiqueSheet(sheetUrl, requiredPanels, {
-              designFingerprint,
-              layoutTemplate,
-              strictMode: req.body.strictCritique || false,
-            });
+            critiqueResults = await critic.critiqueSheet(
+              sheetUrl,
+              requiredPanels,
+              {
+                designFingerprint,
+                layoutTemplate,
+                strictMode: req.body.strictCritique || false,
+              },
+            );
 
-            console.log(`[A1 Compose] Opus critique complete: overall_pass=${critiqueResults.overall_pass}`);
+            console.log(
+              `[A1 Compose] Opus critique complete: overall_pass=${critiqueResults.overall_pass}`,
+            );
 
             if (!critiqueResults.overall_pass) {
-              console.warn(`[A1 Compose] Critique issues: ${critiqueResults.layout_issues?.length || 0} layout, ${critiqueResults.regenerate_panels?.length || 0} regen`);
+              console.warn(
+                `[A1 Compose] Critique issues: ${critiqueResults.layout_issues?.length || 0} layout, ${critiqueResults.regenerate_panels?.length || 0} regen`,
+              );
             }
           }
         } catch (critiqueError) {
-          console.warn('[A1 Compose] Opus Sheet Critic failed:', critiqueError.message);
+          console.warn(
+            "[A1 Compose] Opus Sheet Critic failed:",
+            critiqueError.message,
+          );
           critiqueResults = { error: critiqueError.message, skipped: true };
         }
       }
@@ -1787,26 +1986,30 @@ export default async function handler(req, res) {
       // TASK 4: Include panelsByKey for print export
       panelsByKey,
       // QA Results (automated gates)
-      qa: qaResults ? {
-        allPassed: qaResults.allPassed,
-        summary: qaResults.summary,
-        failures: qaResults.failures || [],
-        warnings: qaResults.warnings || [],
-        skipped: qaResults.skipped || false,
-        error: qaResults.error || null,
-      } : null,
+      qa: qaResults
+        ? {
+            allPassed: qaResults.allPassed,
+            summary: qaResults.summary,
+            failures: qaResults.failures || [],
+            warnings: qaResults.warnings || [],
+            skipped: qaResults.skipped || false,
+            error: qaResults.error || null,
+          }
+        : null,
       // Opus Sheet Critic results (AI-powered validation)
-      critique: critiqueResults ? {
-        overallPass: critiqueResults.overall_pass,
-        layoutIssues: critiqueResults.layout_issues || [],
-        missingItems: critiqueResults.missing_items || [],
-        illegibleItems: critiqueResults.illegible_items || [],
-        regeneratePanels: critiqueResults.regenerate_panels || [],
-        ribaCompliance: critiqueResults.riba_compliance || null,
-        visualScore: critiqueResults.visual_score || null,
-        skipped: critiqueResults.skipped || false,
-        error: critiqueResults.error || null,
-      } : null,
+      critique: critiqueResults
+        ? {
+            overallPass: critiqueResults.overall_pass,
+            layoutIssues: critiqueResults.layout_issues || [],
+            missingItems: critiqueResults.missing_items || [],
+            illegibleItems: critiqueResults.illegible_items || [],
+            regeneratePanels: critiqueResults.regenerate_panels || [],
+            ribaCompliance: critiqueResults.riba_compliance || null,
+            visualScore: critiqueResults.visual_score || null,
+            skipped: critiqueResults.skipped || false,
+            error: critiqueResults.error || null,
+          }
+        : null,
       metadata: {
         width,
         height,
@@ -1833,12 +2036,15 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error('[A1 Compose] Error:', error);
+    console.error("[A1 Compose] Error:", error);
     return res.status(500).json({
       success: false,
-      error: 'COMPOSITION_FAILED',
+      error: "COMPOSITION_FAILED",
       message: error.message,
-      details: process.env.NODE_ENV === 'development' ? { stack: error.stack } : undefined,
+      details:
+        process.env.NODE_ENV === "development"
+          ? { stack: error.stack }
+          : undefined,
     });
   }
 }
@@ -1848,7 +2054,7 @@ function computeSafeCoverCropRect(
   sourceH,
   targetW,
   targetH,
-  { xAlign = 0.5, yAlign = 0.5 } = {}
+  { xAlign = 0.5, yAlign = 0.5 } = {},
 ) {
   if (
     !Number.isFinite(sourceW) ||
@@ -1906,7 +2112,9 @@ function computeSafeCoverCropRect(
  * @returns {{ minX: number, minY: number, maxX: number, maxY: number, width: number, height: number } | null}
  */
 function computeSvgGeometryBounds(svgText) {
-  if (!svgText) { return null; }
+  if (!svgText) {
+    return null;
+  }
 
   const bounds = {
     minX: Infinity,
@@ -1929,7 +2137,9 @@ function computeSvgGeometryBounds(svgText) {
   for (const match of rectMatches) {
     const fullMatch = match[0];
     // Skip background rects (100% or very large)
-    if (fullMatch.includes('100%') || fullMatch.includes('fill-opacity="0"')) { continue; }
+    if (fullMatch.includes("100%") || fullMatch.includes('fill-opacity="0"')) {
+      continue;
+    }
 
     const xMatch = fullMatch.match(/\bx="([^"]*)"/);
     const yMatch = fullMatch.match(/\by="([^"]*)"/);
@@ -1942,8 +2152,12 @@ function computeSvgGeometryBounds(svgText) {
     const h = hMatch ? parseFloat(hMatch[1]) : 0;
 
     // Skip massive rects (likely backgrounds)
-    if (w > 5000 && h > 5000) { continue; }
-    if (w === 0 || h === 0) { continue; }
+    if (w > 5000 && h > 5000) {
+      continue;
+    }
+    if (w === 0 || h === 0) {
+      continue;
+    }
 
     expandBounds(x, y);
     expandBounds(x + w, y + h);
@@ -1951,7 +2165,7 @@ function computeSvgGeometryBounds(svgText) {
 
   // Parse <line> elements
   const lineMatches = svgText.matchAll(
-    /<line[^>]*?\bx1="([^"]*)"[^>]*?\by1="([^"]*)"[^>]*?\bx2="([^"]*)"[^>]*?\by2="([^"]*)"/gi
+    /<line[^>]*?\bx1="([^"]*)"[^>]*?\by1="([^"]*)"[^>]*?\bx2="([^"]*)"[^>]*?\by2="([^"]*)"/gi,
   );
   for (const match of lineMatches) {
     expandBounds(parseFloat(match[1]) || 0, parseFloat(match[2]) || 0);
@@ -1959,7 +2173,9 @@ function computeSvgGeometryBounds(svgText) {
   }
 
   // Parse <polygon> and <polyline> elements
-  const polyMatches = svgText.matchAll(/<poly(?:gon|line)[^>]*?\bpoints="([^"]*)"/gi);
+  const polyMatches = svgText.matchAll(
+    /<poly(?:gon|line)[^>]*?\bpoints="([^"]*)"/gi,
+  );
   for (const match of polyMatches) {
     const points = match[1].trim().split(/[\s,]+/);
     for (let i = 0; i < points.length - 1; i += 2) {
@@ -1981,27 +2197,27 @@ function computeSvgGeometryBounds(svgText) {
       const nums = (cmdMatch[2].match(/[-+]?[\d.]+/g) || []).map(Number);
 
       switch (cmd) {
-        case 'M':
-        case 'L':
+        case "M":
+        case "L":
           for (let i = 0; i < nums.length - 1; i += 2) {
             currentX = nums[i];
             currentY = nums[i + 1];
             expandBounds(currentX, currentY);
           }
           break;
-        case 'H':
+        case "H":
           for (const x of nums) {
             currentX = x;
             expandBounds(currentX, currentY);
           }
           break;
-        case 'V':
+        case "V":
           for (const y of nums) {
             currentY = y;
             expandBounds(currentX, currentY);
           }
           break;
-        case 'C': // Cubic bezier
+        case "C": // Cubic bezier
           for (let i = 0; i < nums.length - 5; i += 6) {
             expandBounds(nums[i], nums[i + 1]); // Control point 1
             expandBounds(nums[i + 2], nums[i + 3]); // Control point 2
@@ -2010,7 +2226,7 @@ function computeSvgGeometryBounds(svgText) {
             expandBounds(currentX, currentY); // End point
           }
           break;
-        case 'Q': // Quadratic bezier
+        case "Q": // Quadratic bezier
           for (let i = 0; i < nums.length - 3; i += 4) {
             expandBounds(nums[i], nums[i + 1]); // Control point
             currentX = nums[i + 2];
@@ -2024,7 +2240,7 @@ function computeSvgGeometryBounds(svgText) {
 
   // Parse <circle> elements
   const circleMatches = svgText.matchAll(
-    /<circle[^>]*?\bcx="([^"]*)"[^>]*?\bcy="([^"]*)"[^>]*?\br="([^"]*)"/gi
+    /<circle[^>]*?\bcx="([^"]*)"[^>]*?\bcy="([^"]*)"[^>]*?\br="([^"]*)"/gi,
   );
   for (const match of circleMatches) {
     const cx = parseFloat(match[1]) || 0;
@@ -2035,7 +2251,9 @@ function computeSvgGeometryBounds(svgText) {
   }
 
   // Parse <text> elements (approximate bounds)
-  const textMatches = svgText.matchAll(/<text[^>]*?\bx="([^"]*)"[^>]*?\by="([^"]*)"/gi);
+  const textMatches = svgText.matchAll(
+    /<text[^>]*?\bx="([^"]*)"[^>]*?\by="([^"]*)"/gi,
+  );
   for (const match of textMatches) {
     expandBounds(parseFloat(match[1]) || 0, parseFloat(match[2]) || 0);
   }
@@ -2056,7 +2274,9 @@ function computeSvgGeometryBounds(svgText) {
 }
 
 function parseSvgViewBox(svgText) {
-  if (!svgText) { return null; }
+  if (!svgText) {
+    return null;
+  }
 
   const viewBoxMatch = svgText.match(/viewBox\s*=\s*["']([^"']+)["']/i);
   if (viewBoxMatch) {
@@ -2087,18 +2307,33 @@ function parseSvgViewBox(svgText) {
 }
 
 function rewriteSvgViewBox(svgText, viewBoxValue) {
-  if (!svgText || !viewBoxValue) { return svgText; }
+  if (!svgText || !viewBoxValue) {
+    return svgText;
+  }
 
   if (/viewBox\s*=\s*["'][^"']*["']/i.test(svgText)) {
-    return svgText.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${viewBoxValue}"`);
+    return svgText.replace(
+      /viewBox\s*=\s*["'][^"']*["']/i,
+      `viewBox="${viewBoxValue}"`,
+    );
   }
 
   return svgText.replace(/<svg\b/i, `<svg viewBox="${viewBoxValue}"`);
 }
 
-function computeForegroundBBoxFromRaw(data, width, height, channels, options = {}) {
-  const alphaThreshold = Number.isFinite(options.alphaThreshold) ? options.alphaThreshold : 8;
-  const diffThreshold = Number.isFinite(options.diffThreshold) ? options.diffThreshold : 24;
+function computeForegroundBBoxFromRaw(
+  data,
+  width,
+  height,
+  channels,
+  options = {},
+) {
+  const alphaThreshold = Number.isFinite(options.alphaThreshold)
+    ? options.alphaThreshold
+    : 8;
+  const diffThreshold = Number.isFinite(options.diffThreshold)
+    ? options.diffThreshold
+    : 24;
 
   const samplePoints = [
     [0, 0],
@@ -2124,11 +2359,14 @@ function computeForegroundBBoxFromRaw(data, width, height, channels, options = {
   }
 
   const bg = bgSamples.length
-    ? bgSamples.reduce((acc, [r, g, b]) => ({ r: acc.r + r, g: acc.g + g, b: acc.b + b }), {
-      r: 0,
-      g: 0,
-      b: 0,
-    })
+    ? bgSamples.reduce(
+        (acc, [r, g, b]) => ({ r: acc.r + r, g: acc.g + g, b: acc.b + b }),
+        {
+          r: 0,
+          g: 0,
+          b: 0,
+        },
+      )
     : { r: 255, g: 255, b: 255 };
 
   const bgR = bgSamples.length ? bg.r / bgSamples.length : 255;
@@ -2144,18 +2382,30 @@ function computeForegroundBBoxFromRaw(data, width, height, channels, options = {
     for (let x = 0; x < width; x += 1) {
       const idx = (y * width + x) * channels;
       const a = channels >= 4 ? data[idx + 3] : 255;
-      if (a <= alphaThreshold) { continue; }
+      if (a <= alphaThreshold) {
+        continue;
+      }
 
       const r = data[idx];
       const g = data[idx + 1];
       const b = data[idx + 2];
       const diff = Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB);
-      if (diff <= diffThreshold) { continue; }
+      if (diff <= diffThreshold) {
+        continue;
+      }
 
-      if (x < minX) { minX = x; }
-      if (y < minY) { minY = y; }
-      if (x > maxX) { maxX = x; }
-      if (y > maxY) { maxY = y; }
+      if (x < minX) {
+        minX = x;
+      }
+      if (y < minY) {
+        minY = y;
+      }
+      if (x > maxX) {
+        maxX = x;
+      }
+      if (y > maxY) {
+        maxY = y;
+      }
     }
   }
 
@@ -2188,13 +2438,19 @@ async function rewriteSvgViewBoxToContent({
   padRatio = 0.025, // INCREASED from 0.012 for better padding
   useGeometryFirst = true, // TASK 1: Prefer geometry-based bounds
 }) {
-  const svgText = Buffer.isBuffer(svgBuffer) ? svgBuffer.toString('utf8') : String(svgBuffer || '');
-  if (!svgText || !svgText.includes('<svg')) {
+  const svgText = Buffer.isBuffer(svgBuffer)
+    ? svgBuffer.toString("utf8")
+    : String(svgBuffer || "");
+  if (!svgText || !svgText.includes("<svg")) {
     return { buffer: svgBuffer, changed: false };
   }
 
   const parsed = parseSvgViewBox(svgText);
-  if (!parsed || !Number.isFinite(parsed.width) || !Number.isFinite(parsed.height)) {
+  if (
+    !parsed ||
+    !Number.isFinite(parsed.width) ||
+    !Number.isFinite(parsed.height)
+  ) {
     return { buffer: svgBuffer, changed: false };
   }
 
@@ -2213,8 +2469,14 @@ async function rewriteSvgViewBoxToContent({
 
         const newMinX = Math.max(parsed.minX, geoBounds.minX - padX);
         const newMinY = Math.max(parsed.minY, geoBounds.minY - padY);
-        const newMaxX = Math.min(parsed.minX + parsed.width, geoBounds.maxX + padX);
-        const newMaxY = Math.min(parsed.minY + parsed.height, geoBounds.maxY + padY);
+        const newMaxX = Math.min(
+          parsed.minX + parsed.width,
+          geoBounds.maxX + padX,
+        );
+        const newMaxY = Math.min(
+          parsed.minY + parsed.height,
+          geoBounds.maxY + padY,
+        );
 
         const finalW = Math.max(1, newMaxX - newMinX);
         const finalH = Math.max(1, newMaxY - newMinY);
@@ -2226,7 +2488,7 @@ async function rewriteSvgViewBoxToContent({
             buffer: Buffer.from(rewritten),
             changed: true,
             viewBox: viewBoxValue,
-            method: 'geometry', // Indicate method used
+            method: "geometry", // Indicate method used
           };
         }
       }
@@ -2245,7 +2507,10 @@ async function rewriteSvgViewBoxToContent({
   }
 
   const analysis = await sharp(raster.data)
-    .resize(analysisMaxSize, analysisMaxSize, { fit: 'inside', withoutEnlargement: true })
+    .resize(analysisMaxSize, analysisMaxSize, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -2255,7 +2520,7 @@ async function rewriteSvgViewBoxToContent({
     analysis.info.width,
     analysis.info.height,
     analysis.info.channels,
-    { diffThreshold }
+    { diffThreshold },
   );
 
   if (!bbox) {
@@ -2264,7 +2529,8 @@ async function rewriteSvgViewBoxToContent({
 
   // TASK 1: Lowered threshold from 0.985 to 0.92 to allow more cropping
   const coversAlmostAll =
-    bbox.width / analysis.info.width > 0.92 && bbox.height / analysis.info.height > 0.92;
+    bbox.width / analysis.info.width > 0.92 &&
+    bbox.height / analysis.info.height > 0.92;
   if (coversAlmostAll) {
     return { buffer: svgBuffer, changed: false };
   }
@@ -2305,7 +2571,11 @@ async function rewriteSvgViewBoxToContent({
     return { buffer: svgBuffer, changed: false };
   }
 
-  return { buffer: Buffer.from(rewritten), changed: true, viewBox: viewBoxValue };
+  return {
+    buffer: Buffer.from(rewritten),
+    changed: true,
+    viewBox: viewBoxValue,
+  };
 }
 
 /**
@@ -2332,23 +2602,29 @@ async function placePanelImage({
   slotRect,
   mode,
   constants,
-  panelType = 'unknown',
+  panelType = "unknown",
   qa = null,
 }) {
   const { LABEL_HEIGHT, LABEL_PADDING } = constants;
   const targetWidth = slotRect.width;
-  const targetHeight = Math.max(10, slotRect.height - LABEL_HEIGHT - LABEL_PADDING);
-  const DEBUG_RUNS = process.env.DEBUG_RUNS === '1' || process.env.ARCHIAI_DEBUG === '1';
+  const targetHeight = Math.max(
+    10,
+    slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
+  );
+  const DEBUG_RUNS =
+    process.env.DEBUG_RUNS === "1" || process.env.ARCHIAI_DEBUG === "1";
 
   const headerSample = Buffer.isBuffer(imageBuffer)
-    ? imageBuffer.slice(0, 512).toString('utf8').toLowerCase()
-    : '';
+    ? imageBuffer.slice(0, 512).toString("utf8").toLowerCase()
+    : "";
   const isSvgInput =
-    headerSample.includes('<svg') ||
-    (headerSample.includes('<?xml') && headerSample.includes('svg'));
+    headerSample.includes("<svg") ||
+    (headerSample.includes("<?xml") && headerSample.includes("svg"));
   const svgDensity = qa?.useHighRes ? 300 : 144;
   const sharpForInput = (buf) =>
-    isSvgInput ? sharp(buf, { density: svgDensity }) : sharp(buf, { failOnError: false });
+    isSvgInput
+      ? sharp(buf, { density: svgDensity })
+      : sharp(buf, { failOnError: false });
 
   // Get input image dimensions for debug logging
   let inputWidth = 0;
@@ -2362,18 +2638,25 @@ async function placePanelImage({
       console.log(`[A1 Compose] Panel ${panelType} resize:`, {
         input: { width: inputWidth, height: inputHeight },
         output: { width: targetWidth, height: targetHeight },
-        inputAspect: inputWidth && inputHeight ? (inputWidth / inputHeight).toFixed(3) : 'N/A',
+        inputAspect:
+          inputWidth && inputHeight
+            ? (inputWidth / inputHeight).toFixed(3)
+            : "N/A",
         outputAspect: (targetWidth / targetHeight).toFixed(3),
-        fit: mode === 'cover' ? 'cover' : 'contain',
+        fit: mode === "cover" ? "cover" : "contain",
         willLetterbox:
           inputWidth && inputHeight
-            ? Math.abs(inputWidth / inputHeight - targetWidth / targetHeight) > 0.01
+            ? Math.abs(inputWidth / inputHeight - targetWidth / targetHeight) >
+              0.01
             : false,
       });
     }
   } catch (metaError) {
     if (DEBUG_RUNS) {
-      console.warn(`[A1 Compose] Could not read metadata for ${panelType}:`, metaError.message);
+      console.warn(
+        `[A1 Compose] Could not read metadata for ${panelType}:`,
+        metaError.message,
+      );
     }
   }
 
@@ -2384,19 +2667,19 @@ async function placePanelImage({
 
   // Determine if this is a technical drawing (uses lineArt mode for better edge detection)
   const isTechnicalDrawing = [
-    'floor_plan_ground',
-    'floor_plan_first',
-    'floor_plan_level2',
-    'floor_plan_upper',
-    'elevation_north',
-    'elevation_south',
-    'elevation_east',
-    'elevation_west',
-    'section_AA',
-    'section_BB',
-    'axonometric',
-    'site_plan',
-    'site_diagram',
+    "floor_plan_ground",
+    "floor_plan_first",
+    "floor_plan_level2",
+    "floor_plan_upper",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "axonometric",
+    "site_plan",
+    "site_diagram",
   ].includes(panelType);
 
   // Panel-specific padding after trim
@@ -2422,7 +2705,7 @@ async function placePanelImage({
   };
   const padding = TRIM_PADDING[panelType] || 8;
 
-  const shouldTrimToContent = isTechnicalDrawing && mode !== 'cover';
+  const shouldTrimToContent = isTechnicalDrawing && mode !== "cover";
   let viewBoxRewrite = null;
 
   if (shouldTrimToContent) {
@@ -2446,7 +2729,7 @@ async function placePanelImage({
       // PNG bbox crop (trim-to-content). Flatten ensures transparent margins trim correctly.
       const trimOptions = { threshold: 12, lineArt: true };
       const trimResult = await sharpForInput(bufferForTrim)
-        .flatten({ background: '#ffffff' })
+        .flatten({ background: "#ffffff" })
         .trim(trimOptions)
         .png()
         .toBuffer({ resolveWithObject: true });
@@ -2455,8 +2738,10 @@ async function placePanelImage({
       const trimmedInfo = trimResult.info;
 
       if (trimmedInfo.width <= 50 || trimmedInfo.height <= 50) {
-        const err = new Error('Trim-to-content produced an invalid (too small) result');
-        err.code = 'DRAWING_PREFLIGHT_TRIM_INVALID';
+        const err = new Error(
+          "Trim-to-content produced an invalid (too small) result",
+        );
+        err.code = "DRAWING_PREFLIGHT_TRIM_INVALID";
         err.details = {
           code: err.code,
           panelType,
@@ -2473,7 +2758,7 @@ async function placePanelImage({
             bottom: padding,
             left: padding,
             right: padding,
-            background: '#ffffff',
+            background: "#ffffff",
           })
           .png()
           .toBuffer({ resolveWithObject: true });
@@ -2498,7 +2783,7 @@ async function placePanelImage({
     } catch (trimError) {
       if (qa?.enabled) {
         const err = new Error(`Trim-to-content failed: ${trimError.message}`);
-        err.code = trimError.code || 'DRAWING_PREFLIGHT_TRIM_FAILED';
+        err.code = trimError.code || "DRAWING_PREFLIGHT_TRIM_FAILED";
         err.details = {
           code: err.code,
           panelType,
@@ -2510,13 +2795,21 @@ async function placePanelImage({
       }
 
       if (DEBUG_RUNS) {
-        console.warn(`[A1 Compose] Trim-to-content skipped for ${panelType}:`, trimError.message);
+        console.warn(
+          `[A1 Compose] Trim-to-content skipped for ${panelType}:`,
+          trimError.message,
+        );
       }
     }
   }
 
   const computeContainOccupancy = (imgW, imgH) => {
-    if (!Number.isFinite(imgW) || !Number.isFinite(imgH) || imgW <= 0 || imgH <= 0) {
+    if (
+      !Number.isFinite(imgW) ||
+      !Number.isFinite(imgH) ||
+      imgW <= 0 ||
+      imgH <= 0
+    ) {
       return 0;
     }
     const scale = Math.min(targetWidth / imgW, targetHeight / imgH);
@@ -2529,10 +2822,10 @@ async function placePanelImage({
   // Optional auto-rotate to maximize slot usage (QA-driven)
   let rotated = false;
   const canAutoRotate =
-    panelType.startsWith('floor_plan_') ||
-    panelType.startsWith('elevation_') ||
-    panelType.startsWith('section_');
-  if (qa?.enabled && qa?.rotateToFit && mode !== 'cover' && canAutoRotate) {
+    panelType.startsWith("floor_plan_") ||
+    panelType.startsWith("elevation_") ||
+    panelType.startsWith("section_");
+  if (qa?.enabled && qa?.rotateToFit && mode !== "cover" && canAutoRotate) {
     const occ0 = computeContainOccupancy(inputWidth, inputHeight);
     const occ90 = computeContainOccupancy(inputHeight, inputWidth);
     if (occ90 > occ0 + 0.08) {
@@ -2545,28 +2838,34 @@ async function placePanelImage({
       inputHeight = rotatedResult.info.height;
       rotated = true;
       if (DEBUG_RUNS) {
-        console.log(`[A1 Compose] Panel ${panelType} auto-rotated for occupancy`, {
-          occ0: occ0.toFixed(3),
-          occ90: occ90.toFixed(3),
-        });
+        console.log(
+          `[A1 Compose] Panel ${panelType} auto-rotated for occupancy`,
+          {
+            occ0: occ0.toFixed(3),
+            occ90: occ90.toFixed(3),
+          },
+        );
       }
     }
   }
 
   // HARD QA GATE: Occupancy (fail closed on undersized drawings)
-  const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy) ? qa.minSlotOccupancy : 0.55;
+  const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy)
+    ? qa.minSlotOccupancy
+    : 0.55;
   const shouldEnforceOccupancy =
     qa?.enabled &&
-    mode !== 'cover' &&
-    (panelType.startsWith('floor_plan_') ||
-      panelType.startsWith('elevation_') ||
-      panelType.startsWith('section_'));
-  const slotOccupancy = mode === 'cover' ? 1 : computeContainOccupancy(inputWidth, inputHeight);
+    mode !== "cover" &&
+    (panelType.startsWith("floor_plan_") ||
+      panelType.startsWith("elevation_") ||
+      panelType.startsWith("section_"));
+  const slotOccupancy =
+    mode === "cover" ? 1 : computeContainOccupancy(inputWidth, inputHeight);
   if (shouldEnforceOccupancy && slotOccupancy < minSlotOccupancy) {
     const err = new Error(
-      `Low slot occupancy ${(slotOccupancy * 100).toFixed(1)}% (min ${(minSlotOccupancy * 100).toFixed(1)}%)`
+      `Low slot occupancy ${(slotOccupancy * 100).toFixed(1)}% (min ${(minSlotOccupancy * 100).toFixed(1)}%)`,
     );
-    err.code = 'DRAWING_SLOT_OCCUPANCY_LOW';
+    err.code = "DRAWING_SLOT_OCCUPANCY_LOW";
     err.details = {
       code: err.code,
       panelType,
@@ -2593,28 +2892,38 @@ async function placePanelImage({
 
   let resizedImage;
 
-  if (mode === 'cover') {
+  if (mode === "cover") {
     // Safe crop for photos: deterministic aspect crop + slight top bias for hero exterior.
-    const yAlign = panelType === 'hero_3d' ? 0.35 : 0.5;
-    const cropRect = computeSafeCoverCropRect(inputWidth, inputHeight, targetWidth, targetHeight, {
-      xAlign: 0.5,
-      yAlign,
-    });
+    const yAlign = panelType === "hero_3d" ? 0.35 : 0.5;
+    const cropRect = computeSafeCoverCropRect(
+      inputWidth,
+      inputHeight,
+      targetWidth,
+      targetHeight,
+      {
+        xAlign: 0.5,
+        yAlign,
+      },
+    );
 
     const pipeline = sharp(processedBuffer, { failOnError: false });
     resizedImage = cropRect
       ? await pipeline
-        .extract(cropRect)
-        .resize(targetWidth, targetHeight, { fit: 'fill' })
-        .png()
-        .toBuffer()
+          .extract(cropRect)
+          .resize(targetWidth, targetHeight, { fit: "fill" })
+          .png()
+          .toBuffer()
       : await pipeline
-        .resize(targetWidth, targetHeight, { fit: 'cover', position: 'centre' })
-        .png()
-        .toBuffer();
+          .resize(targetWidth, targetHeight, {
+            fit: "cover",
+            position: "centre",
+          })
+          .png()
+          .toBuffer();
   } else {
     // Drawings/data: scale-to-fill with bounds (0.8x - 1.2x) for better slot usage
-    const useScaleToFill = SCALE_TO_FILL_CONFIG.enabled &&
+    const useScaleToFill =
+      SCALE_TO_FILL_CONFIG.enabled &&
       SCALE_TO_FILL_CONFIG.applicablePanels.includes(panelType);
 
     if (useScaleToFill && inputWidth > 0 && inputHeight > 0) {
@@ -2632,7 +2941,10 @@ async function placePanelImage({
 
       // Center crop if scaled exceeds target
       const cropLeft = Math.max(0, Math.round((scaledWidth - targetWidth) / 2));
-      const cropTop = Math.max(0, Math.round((scaledHeight - targetHeight) / 2));
+      const cropTop = Math.max(
+        0,
+        Math.round((scaledHeight - targetHeight) / 2),
+      );
 
       if (DEBUG_RUNS) {
         console.log(`[A1 Compose] Panel ${panelType} scale-to-fill:`, {
@@ -2645,7 +2957,7 @@ async function placePanelImage({
 
       // First resize with scale, then extract center portion if needed
       const scaledBuffer = await sharp(processedBuffer, { failOnError: false })
-        .resize(scaledWidth, scaledHeight, { fit: 'fill' })
+        .resize(scaledWidth, scaledHeight, { fit: "fill" })
         .png()
         .toBuffer();
 
@@ -2664,8 +2976,8 @@ async function placePanelImage({
         // Scaled fits within target, use contain positioning
         resizedImage = await sharp(scaledBuffer)
           .resize(targetWidth, targetHeight, {
-            fit: 'contain',
-            position: 'centre',
+            fit: "contain",
+            position: "centre",
             background: { r: 255, g: 255, b: 255, alpha: 1 },
           })
           .png()
@@ -2675,8 +2987,8 @@ async function placePanelImage({
       // Standard contain for non-applicable panels or missing dimensions
       resizedImage = await sharp(processedBuffer, { failOnError: false })
         .resize(targetWidth, targetHeight, {
-          fit: 'contain',
-          position: 'centre',
+          fit: "contain",
+          position: "centre",
           background: { r: 255, g: 255, b: 255, alpha: 1 },
         })
         .png()
@@ -2692,11 +3004,16 @@ async function placePanelImage({
   // HARD QA GATE: Render sanity for drawings (detect thin strips / near-empty content).
   if (shouldEnforceOccupancy && qa?.enabled) {
     const sanityModule = await getRenderSanityValidator();
-    if (typeof sanityModule?.validateRenderSanity === 'function') {
-      const sanity = await sanityModule.validateRenderSanity(finalBuffer, panelType);
+    if (typeof sanityModule?.validateRenderSanity === "function") {
+      const sanity = await sanityModule.validateRenderSanity(
+        finalBuffer,
+        panelType,
+      );
       if (sanity && sanity.isValid === false) {
-        const err = new Error(sanity.blockerMessage || `Render sanity failed for ${panelType}`);
-        err.code = 'DRAWING_RENDER_SANITY_FAILED';
+        const err = new Error(
+          sanity.blockerMessage || `Render sanity failed for ${panelType}`,
+        );
+        err.code = "DRAWING_RENDER_SANITY_FAILED";
         err.details = {
           code: err.code,
           panelType,
@@ -2722,27 +3039,36 @@ async function buildPlaceholder(sharp, width, height, type, constants) {
       <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="Arial, sans-serif" font-weight="700"
         text-anchor="middle" fill="#9ca3af">PANEL MISSING – REGENERATE</text>
       <text x="${width / 2}" y="${height / 2 + 18}" font-size="14" font-family="Arial, sans-serif"
-        text-anchor="middle" fill="#b91c1c">${(type || '').toUpperCase()}</text>
+        text-anchor="middle" fill="#b91c1c">${(type || "").toUpperCase()}</text>
     </svg>
   `;
   return sharp(Buffer.from(svg))
     .png()
-    .resize(width, height, { fit: 'contain', background: { r: 245, g: 245, b: 245 } })
+    .resize(width, height, {
+      fit: "contain",
+      background: { r: 245, g: 245, b: 245 },
+    })
     .toBuffer();
 }
 
-async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {}, constants) {
+async function buildTitleBlockBuffer(
+  sharp,
+  width,
+  height,
+  titleBlockInput = {},
+  constants,
+) {
   const { FRAME_STROKE_COLOR, FRAME_RADIUS, buildTitleBlockData } = constants;
 
   // Merge input with comprehensive RIBA template
   const tb = buildTitleBlockData(titleBlockInput || {});
   const esc = (value) =>
-    String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const leftMargin = 12;
   const rightMargin = width - 12;
 
@@ -2765,7 +3091,7 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
       <!-- Site Address -->
       <line x1="8" y1="114" x2="${width - 8}" y2="114" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="130" font-family="Arial, sans-serif" font-size="8" fill="#64748b">SITE ADDRESS</text>
-      <text x="${leftMargin}" y="146" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(tb.siteAddress || 'TBD')}</text>
+      <text x="${leftMargin}" y="146" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(tb.siteAddress || "TBD")}</text>
 
       <!-- Drawing Information -->
       <line x1="8" y1="158" x2="${width - 8}" y2="158" stroke="#e2e8f0" stroke-width="1" />
@@ -2788,7 +3114,7 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
 
       <rect x="${width / 2 + 4}" y="236" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${width / 2 + 8}" y="250" font-family="Arial, sans-serif" font-size="7" fill="#64748b">DATE</text>
-      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.date || '—')}</text>
+      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.date || "—")}</text>
 
       <!-- RIBA Stage / Status -->
       <line x1="8" y1="276" x2="${width - 8}" y2="276" stroke="#e2e8f0" stroke-width="1" />
@@ -2800,14 +3126,15 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
         text-anchor="end">${esc(tb.status)}</text>
 
       <!-- AI Generation Metadata -->
-      ${tb.designId
-      ? `
+      ${
+        tb.designId
+          ? `
       <line x1="8" y1="${height - 44}" x2="${width - 8}" y2="${height - 44}" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="${height - 28}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">DESIGN ID: ${esc(tb.designId)}</text>
-      <text x="${leftMargin}" y="${height - 16}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">SEED: ${esc(tb.seedValue || 'N/A')}</text>       
+      <text x="${leftMargin}" y="${height - 16}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">SEED: ${esc(tb.seedValue || "N/A")}</text>       
       `
-      : ''
-    }
+          : ""
+      }
 
       <!-- Copyright -->
       <text x="${width / 2}" y="${height - 6}" font-family="Arial, sans-serif" font-size="6" fill="#94a3b8"
@@ -2817,6 +3144,9 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlockInput = {},
 
   return sharp(Buffer.from(svg))
     .png()
-    .resize(width, height, { fit: 'contain', background: { r: 255, g: 255, b: 255 } })
+    .resize(width, height, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255 },
+    })
     .toBuffer();
 }
