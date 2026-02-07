@@ -45,6 +45,7 @@ nul
 
 # Claude Code session temporary directories
 tmpclaude-*/
+tmpclaude-*-cwd
 
 # Generated output directories
 genarch_runs/

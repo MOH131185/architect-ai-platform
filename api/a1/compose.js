@@ -2873,6 +2873,7 @@ async function placePanelImage({
       const sanity = await sanityModule.validateRenderSanity(
         finalBuffer,
         panelType,
+        { originalWidth: inputWidth, originalHeight: inputHeight },
       );
       if (sanity && sanity.isValid === false) {
         const err = new Error(

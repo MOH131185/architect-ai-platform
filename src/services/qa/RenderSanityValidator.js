@@ -223,7 +223,7 @@ export async function computeSanityMetrics(imageBuffer) {
  * @param {string} panelType - Type of panel (e.g., 'floor_plan_ground', 'elevation_north')
  * @returns {Promise<SanityValidationResult>} Validation result
  */
-export async function validateRenderSanity(imageBuffer, panelType) {
+export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
   const failures = [];
   const warnings = [];
 
@@ -289,10 +289,17 @@ export async function validateRenderSanity(imageBuffer, panelType) {
     const fitMode = getPanelFitMode(panelType);
     if (fitMode === "contain") {
       const { aspect: slotAspect } = getSlotDimensions(panelType);
-      // Get original image dimensions from sharp metadata (before the analysis resize)
-      const originalMeta = await sharp(imageBuffer).metadata();
-      const origW = originalMeta.width || 1;
-      const origH = originalMeta.height || 1;
+      // Prefer caller-supplied original dimensions (compose path passes pre-resize sizes);
+      // fall back to sharp metadata (A1ExportGate path with original image buffers).
+      let origW, origH;
+      if (opts.originalWidth && opts.originalHeight) {
+        origW = opts.originalWidth;
+        origH = opts.originalHeight;
+      } else {
+        const originalMeta = await sharp(imageBuffer).metadata();
+        origW = originalMeta.width || 1;
+        origH = originalMeta.height || 1;
+      }
       const imageAspect = origW / origH;
       const deviation =
         Math.abs(imageAspect - slotAspect) / Math.max(slotAspect, 0.01);

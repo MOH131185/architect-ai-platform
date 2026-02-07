@@ -421,16 +421,29 @@ export async function generateArchitecturalImage(params) {
             const styleCues = [];
             if (designDNA) {
               const mats = designDNA.materials || designDNA.materialPalette;
-              if (Array.isArray(mats)) {
+              if (typeof mats === "string") {
+                // Plain string like "brick, glass"
+                if (mats) styleCues.push(`materials: ${mats}`);
+              } else if (Array.isArray(mats)) {
                 const matDescriptors = mats
                   .slice(0, 3)
-                  .map(
-                    (m) =>
-                      `${m.name || m.material}${m.hexColor ? ` (${m.hexColor})` : ""}`,
-                  )
+                  .map((m) => {
+                    if (typeof m === "string") return m;
+                    if (m && typeof m === "object") {
+                      const name = m.name || m.material || m.type || "unknown";
+                      return `${name}${m.hexColor ? ` (${m.hexColor})` : ""}`;
+                    }
+                    return null;
+                  })
+                  .filter(Boolean)
                   .join(", ");
                 if (matDescriptors)
                   styleCues.push(`materials: ${matDescriptors}`);
+              } else if (mats && typeof mats === "object") {
+                // Object with .primary/.secondary keys (legacy DNA)
+                const parts = [mats.primary, mats.secondary].filter(Boolean);
+                if (parts.length > 0)
+                  styleCues.push(`materials: ${parts.join(", ")}`);
               }
               if (designDNA.style?.name)
                 styleCues.push(`style: ${designDNA.style.name}`);

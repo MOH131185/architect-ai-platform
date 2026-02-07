@@ -245,8 +245,8 @@ import {
 // receives images that already fit without cropping or letterboxing.
 //
 // Dimensions are derived from composeCore.getSlotDimensions() which uses the
-// slot width/height ratio at a base long-edge of 1440px, rounded to FLUX-safe
-// multiples of 64 and clamped to Together.ai limits [256, 1440].
+// slot width/height ratio at a base long-edge of 1408px, rounded to FLUX-safe
+// multiples of 64 and clamped to Together.ai limits [256, 1408].
 //
 // Model selection: kontext-max for 3D/diagrams, schnell for 2D technical
 import { getSlotDimensions } from "../a1/composeCore.js";
