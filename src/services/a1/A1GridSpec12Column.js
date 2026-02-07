@@ -1,13 +1,17 @@
 /**
- * A1 Grid Specification - 12-Column System
+ * A1 Grid Specification - 12-Column System (QA metadata layer)
  *
- * Strict specification for A1 architectural sheet composition.
- * Implements UK RIBA-compliant grid with hybrid styling:
- * - Competition board aesthetic for top row (hero, 3D views)
- * - Technical planning set style for bottom rows (plans, elevations, sections)
+ * Grid coordinates are RE-EXPORTED from composeCore.js (SSOT).
+ * This module adds QA-only metadata: minimum sizes, text sizes,
+ * style zones, priority order, and validation helpers.
+ *
+ * DO NOT define independent grid coordinates here – they must match composeCore.
  *
  * @module services/a1/A1GridSpec12Column
  */
+
+// Re-export authoritative grid from composeCore (SSOT)
+import { GRID_12COL as _GRID_12COL } from "./composeCore.js";
 
 // =============================================================================
 // SHEET DIMENSIONS (300 DPI A1 Landscape)
@@ -174,33 +178,8 @@ export function getStyleZone(panelType) {
  * │              (cols 1-4) | (cols 5-8) | (cols 9-10)| (cols 11-12)  │
  * └─────────────────────────────────────────────────────────────────────┘
  */
-export const GRID_12COL = {
-  // Row 1: Hero zone (competition aesthetic) - 28% height
-  site_diagram: { x: 0.015, y: 0.015, width: 0.22, height: 0.265 },
-  hero_3d: { x: 0.245, y: 0.015, width: 0.42, height: 0.265 },
-  interior_3d: { x: 0.675, y: 0.015, width: 0.185, height: 0.125 },
-  axonometric: { x: 0.675, y: 0.15, width: 0.185, height: 0.13 },
-  // Data panels (enlarged for legibility - ~2.2% sheet area each vs 1% before)
-  material_palette: { x: 0.87, y: 0.015, width: 0.12, height: 0.18 },
-  climate_card: { x: 0.87, y: 0.205, width: 0.12, height: 0.175 },
-
-  // Row 2: Floor plans (technical) - 24% height
-  floor_plan_ground: { x: 0.015, y: 0.295, width: 0.32, height: 0.225 },
-  floor_plan_first: { x: 0.345, y: 0.295, width: 0.32, height: 0.225 },
-  floor_plan_level2: { x: 0.675, y: 0.295, width: 0.31, height: 0.225 },
-
-  // Row 3: Elevations (technical) - 22% height
-  elevation_north: { x: 0.015, y: 0.535, width: 0.235, height: 0.205 },
-  elevation_south: { x: 0.26, y: 0.535, width: 0.235, height: 0.205 },
-  elevation_east: { x: 0.505, y: 0.535, width: 0.235, height: 0.205 },
-  elevation_west: { x: 0.75, y: 0.535, width: 0.235, height: 0.205 },
-
-  // Row 4: Sections + info (technical + data) - 26% height
-  section_AA: { x: 0.015, y: 0.755, width: 0.32, height: 0.23 },
-  section_BB: { x: 0.345, y: 0.755, width: 0.32, height: 0.23 },
-  schedules_notes: { x: 0.675, y: 0.755, width: 0.155, height: 0.23 },
-  title_block: { x: 0.84, y: 0.755, width: 0.145, height: 0.23 },
-};
+// Re-exported from composeCore.js – DO NOT redefine here.
+export const GRID_12COL = _GRID_12COL;
 
 // =============================================================================
 // FRAME AND CAPTION STYLING

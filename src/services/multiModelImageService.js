@@ -145,8 +145,27 @@ class MultiModelImageService {
       );
 
       // ----------------------------------------------------------------
-      // SDXL fallback – style-conditioned for elevations/sections
+      // Style coherence gate: Block SDXL fallback for elevations/sections
+      // when no styleReferenceUrl is available. An unstyled SDXL render
+      // produces a different visual language than the FLUX hero, causing
+      // mixed-style collage artifacts on the final A1 sheet.
+      //
+      // Note: needsStyleLock already implies !!styleReferenceUrl, so we
+      // check isElevationOrSection directly to catch the case where the
+      // hero hasn't generated yet (styleReferenceUrl is null/undefined).
       // ----------------------------------------------------------------
+      if (isElevationOrSection(viewType) && !styleReferenceUrl) {
+        logger.error(
+          `❌ [STYLE GATE] Blocking SDXL fallback for ${viewType} – ` +
+            `no styleReferenceUrl available; unstyled fallback would break ` +
+            `style coherence with FLUX hero.`,
+        );
+        throw new Error(
+          `FLUX generation failed for ${viewType} and style-safe SDXL fallback ` +
+            `is unavailable (no hero style reference): ${fluxError.message}`,
+        );
+      }
+
       logger.info(
         `   Attempting style-conditioned SDXL fallback for ${viewType}...`,
       );
@@ -161,7 +180,6 @@ class MultiModelImageService {
           height,
           geometryRender,
           geometryStrength,
-          // Phase 2: pass styleReferenceUrl to SDXL for elevation/section consistency
           styleReferenceUrl: needsStyleLock ? styleReferenceUrl : null,
         });
 

@@ -238,6 +238,19 @@ import {
   HERO_REFERENCE_PANELS,
 } from "./designFingerprintService.js";
 
+// =============================================================================
+// PANEL_CONFIGS - Derived from PANEL_REGISTRY + GRID_12COL slot aspect ratios
+// =============================================================================
+// Generation sizes match the board-v2 slot aspect ratio so that compose
+// receives images that already fit without cropping or letterboxing.
+//
+// Dimensions are derived from composeCore.getSlotDimensions() which uses the
+// slot width/height ratio at a base long-edge of 1440px, rounded to FLUX-safe
+// multiples of 64 and clamped to Together.ai limits [256, 1440].
+//
+// Model selection: kontext-max for 3D/diagrams, schnell for 2D technical
+import { getSlotDimensions } from "../a1/composeCore.js";
+
 // NEW: Import CanonicalDesignState for CDS-first generation
 // Legacy test hook (string match): function isDataPanel(panelType) { return false; }
 
@@ -715,15 +728,6 @@ function isDataPanel(panelType, outputMode = "presentation") {
   return false;
 }
 
-// =============================================================================
-// PANEL_CONFIGS - Derived from PANEL_REGISTRY (SSOT)
-// =============================================================================
-// Generation sizes differ from composition sizes. These are the AI generation
-// resolutions that get downscaled during A1 composition.
-//
-// 3D panels: 2000×2000 (high quality, square format)
-// 2D technical: 1500×1500 (clean lines, square format)
-// Model selection: kontext-max for 3D/diagrams, schnell for 2D technical
 const PANEL_CONFIGS = (() => {
   const configs = {};
   for (const panelType of ALL_PANEL_TYPES) {
@@ -732,13 +736,15 @@ const PANEL_CONFIGS = (() => {
       continue;
     }
 
-    // Determine generation size based on category
     const is3D = entry.category === "3d" || entry.category === "site";
     const isData = entry.generator === "data";
 
+    // Derive width/height from board-v2 slot aspect ratio (no more square defaults)
+    const { width, height } = getSlotDimensions(panelType, { baseEdge: 1408 });
+
     configs[panelType] = {
-      width: is3D ? 2000 : 1500,
-      height: is3D ? 2000 : 1500,
+      width,
+      height,
       model: is3D || isData ? "flux-1-kontext-max" : "flux-1-schnell",
     };
   }

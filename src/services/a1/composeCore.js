@@ -149,8 +149,94 @@ export const PANEL_SCALES = {
   title_block: "N/A",
 };
 
-// Panels that use "cover" fit (photorealistic); everything else uses "contain"
-export const COVER_FIT_PANELS = ["hero_3d", "interior_3d", "site_diagram"];
+// ---------------------------------------------------------------------------
+// Unified per-panel fit policy (SSOT – replaces COVER_FIT_PANELS + SCALE_TO_FILL_CONFIG)
+// "cover"   = aspect-crop to fill slot (photorealistic panels)
+// "contain" = letterbox inside slot, white margins (technical/data panels)
+// ---------------------------------------------------------------------------
+
+export const PANEL_FIT_POLICY = {
+  hero_3d: "cover",
+  interior_3d: "cover",
+  site_diagram: "cover",
+  axonometric: "contain",
+  material_palette: "contain",
+  climate_card: "contain",
+  floor_plan_ground: "contain",
+  floor_plan_first: "contain",
+  floor_plan_level2: "contain",
+  elevation_north: "contain",
+  elevation_south: "contain",
+  elevation_east: "contain",
+  elevation_west: "contain",
+  section_AA: "contain",
+  section_BB: "contain",
+  schedules_notes: "contain",
+  title_block: "contain",
+};
+
+// Legacy alias (consumed by existing code that references COVER_FIT_PANELS)
+export const COVER_FIT_PANELS = Object.entries(PANEL_FIT_POLICY)
+  .filter(([, mode]) => mode === "cover")
+  .map(([key]) => key);
+
+// ---------------------------------------------------------------------------
+// Slot-derived generation dimensions
+// ---------------------------------------------------------------------------
+
+/**
+ * Round dimension to nearest multiple of `step` (model-safe rounding).
+ * FLUX models work best with dimensions divisible by 64.
+ * @param {number} value
+ * @param {number} step – alignment quantum (default 64)
+ * @returns {number}
+ */
+function roundTo(value, step = 64) {
+  return Math.round(value / step) * step;
+}
+
+/**
+ * Compute generation target width/height for a panel from its GRID_12COL slot.
+ *
+ * Uses the slot aspect ratio at a base generation resolution (long edge = `baseEdge`),
+ * clamped to FLUX model-safe multiples of 64 and within Together.ai limits [256, 1440].
+ *
+ * @param {string} panelType – canonical panel key
+ * @param {Object}  [opts]
+ * @param {number}  [opts.baseEdge=1408] – target long-edge pixel size (must be ≤1408 and divisible by 64)
+ * @param {string}  [opts.layoutTemplate="board-v2"]
+ * @returns {{ width: number, height: number, aspect: number }}
+ */
+export function getSlotDimensions(panelType, opts = {}) {
+  const { baseEdge = 1408, layoutTemplate = "board-v2" } = opts;
+  const grid = layoutTemplate === "legacy" ? GRID_SPEC : GRID_12COL;
+  const slot = grid[panelType];
+
+  if (!slot) {
+    // Unknown panel – return safe square
+    return { width: 1024, height: 1024, aspect: 1 };
+  }
+
+  const aspect = slot.width / slot.height; // >1 landscape, <1 portrait
+
+  let w, h;
+  if (aspect >= 1) {
+    w = baseEdge;
+    h = Math.round(baseEdge / aspect);
+  } else {
+    h = baseEdge;
+    w = Math.round(baseEdge * aspect);
+  }
+
+  // Model-safe rounding: multiples of 64, within Together.ai range [256, 1408].
+  // 1408 = 22 * 64 is the largest multiple of 64 that fits within the 1440 API limit.
+  const MAX_EDGE = 1408; // 22 * 64
+  const MIN_EDGE = 256; //  4 * 64
+  w = Math.max(MIN_EDGE, Math.min(MAX_EDGE, roundTo(w, 64)));
+  h = Math.max(MIN_EDGE, Math.min(MAX_EDGE, roundTo(h, 64)));
+
+  return { width: w, height: h, aspect };
+}
 
 // ---------------------------------------------------------------------------
 // Canonical panel key normalisation
@@ -293,11 +379,11 @@ export function toPixelRect(entry, sheetWidth, sheetHeight) {
 }
 
 /**
- * Determine fit mode for a panel type.
+ * Determine fit mode for a panel type (reads from PANEL_FIT_POLICY SSOT).
  * @returns {"cover"|"contain"}
  */
 export function getPanelFitMode(panelType) {
-  return COVER_FIT_PANELS.includes(panelType) ? "cover" : "contain";
+  return PANEL_FIT_POLICY[panelType] || "contain";
 }
 
 /**
@@ -379,6 +465,7 @@ export default {
   DRAWING_NUMBERS,
   PANEL_SCALES,
   COVER_FIT_PANELS,
+  PANEL_FIT_POLICY,
   // Functions
   normalizeKey,
   normalizeLayoutTemplate,
@@ -386,6 +473,7 @@ export default {
   toPixelRect,
   getPanelFitMode,
   getPanelAnnotation,
+  getSlotDimensions,
   isStrictPanel,
   STRICT_PANELS,
   LENIENT_PANELS,

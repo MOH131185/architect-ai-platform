@@ -1,16 +1,10 @@
 /**
- * DNA Workflow Orchestrator
+ * @deprecated DEAD CODE – Shadow copy. The active orchestrator is
+ * src/services/dnaWorkflowOrchestrator.js (one level up).
+ * This file is not imported anywhere and will be removed in the next
+ * cleanup pass. Do not add new code here.
  *
- * High-level orchestrator that integrates the Project DNA Pipeline with the application.
- * Provides a simple API for the main application to generate consistent architectural designs.
- *
- * Workflow:
- * 1. Initialize Project → Generate Project ID
- * 2. Generate Floor Plan → Save DNA Reference
- * 3. Generate 3D Views → Use DNA Reference + Check Consistency
- * 4. Generate Elevations → Use DNA Reference + Check Consistency
- * 5. Generate Sections → Use DNA Reference + Check Consistency
- * 6. Export Results → Complete project with consistency report
+ * DNA Workflow Orchestrator (INACTIVE COPY)
  */
 
 import {

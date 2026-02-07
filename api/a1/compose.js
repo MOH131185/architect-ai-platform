@@ -29,10 +29,12 @@ import { PDFDocument } from "pdf-lib";
 
 import a1ComposePayload from "../../server/utils/a1ComposePayload.cjs";
 
-// Shared compose core – single source of truth for layout grids and panel key normalisation
+// Shared compose core – single source of truth for layout grids, panel key
+// normalisation, and per-panel fit policy.
 import {
   normalizeKey as composeCoreNormalizeKey,
   resolveLayout as composeCoreResolveLayout,
+  getPanelFitMode as composeCoreGetPanelFitMode,
 } from "../../src/services/a1/composeCore.js";
 
 // QA System imports (lazy-loaded for Vercel compatibility)
@@ -63,45 +65,14 @@ async function getQAGates() {
   }
 }
 
-// 12-column grid spec imports (lazy-loaded)
-let A1GridSpec = null;
-async function getA1GridSpec() {
-  if (A1GridSpec) return A1GridSpec;
-  try {
-    const module = await import("../../src/services/a1/A1GridSpec12Column.js");
-    A1GridSpec = module;
-    return A1GridSpec;
-  } catch (e) {
-    console.warn("[A1 Compose] A1GridSpec12Column not available:", e.message);
-    return null;
-  }
-}
+// A1GridSpec12Column lazy-load removed – GRID_12COL is imported from
+// composeCore.js (the SSOT) and A1GridSpec12Column re-exports it.
+// All callsites that used getA1GridSpec() have been replaced with
+// composeCoreGetPanelFitMode / composeCore imports.
 
-// Scale-to-fill configuration
-const SCALE_TO_FILL_CONFIG = {
-  enabled: true,
-  minScale: 0.8,
-  maxScale: 1.2,
-  // Panels that should use scale-to-fill (not cover/crop)
-  applicablePanels: [
-    "floor_plan_ground",
-    "floor_plan_first",
-    "floor_plan_level2",
-    "floor_plan_upper",
-    "elevation_north",
-    "elevation_south",
-    "elevation_east",
-    "elevation_west",
-    "section_AA",
-    "section_BB",
-    "axonometric",
-    "site_plan",
-    "site_diagram",
-    "material_palette",
-    "climate_card",
-    "schedules_notes",
-  ],
-};
+// Fit policy is now sourced from composeCore.getPanelFitMode() (SSOT).
+// SCALE_TO_FILL_CONFIG removed – panels are generated at slot aspect ratio
+// so contain fits without cropping or letterboxing.
 
 // CRITICAL: Force Node.js runtime for Sharp image processing
 // Without this, Vercel uses Edge runtime which doesn't support Sharp
@@ -163,36 +134,8 @@ let panelRegistry = null;
 // Note: In Vercel, we need to use dynamic import for ES modules from src/
 let layoutConstants = null;
 let crossViewImageValidator = null;
-let a1BoardSpecModule = null;
+// A1BoardSpec removed – file never existed; fit/QA policy sourced from composeCore.
 let renderSanityValidator = null;
-
-async function getA1BoardSpecModule() {
-  if (a1BoardSpecModule) {
-    return a1BoardSpecModule;
-  }
-
-  try {
-    a1BoardSpecModule = await import("../../src/services/a1/A1BoardSpec.js");
-    return a1BoardSpecModule;
-  } catch (e) {
-    console.warn("[A1 Compose] Could not import A1BoardSpec:", e.message);
-    return null;
-  }
-}
-
-async function getBoardSpec(layoutTemplate, floorCount) {
-  const mod = await getA1BoardSpecModule();
-  if (!mod?.getA1BoardSpec) {
-    return null;
-  }
-
-  try {
-    return mod.getA1BoardSpec({ layoutTemplate, floorCount });
-  } catch (e) {
-    console.warn("[A1 Compose] Failed to build A1BoardSpec:", e.message);
-    return null;
-  }
-}
 
 let didLogRuntime = false;
 function logRuntimeOnce() {
@@ -931,13 +874,11 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({
-        success: false,
-        error: "METHOD_NOT_ALLOWED",
-        message: "Method not allowed",
-      });
+    return res.status(405).json({
+      success: false,
+      error: "METHOD_NOT_ALLOWED",
+      message: "Method not allowed",
+    });
   }
 
   try {
@@ -960,10 +901,13 @@ export default async function handler(req, res) {
       GRID_SPEC,
       REQUIRED_PANELS,
       toPixelRect,
-      getPanelFitMode,
+      getPanelFitMode: _legacyFitMode, // shadowed by composeCore SSOT below
       getGridSpec,
       validatePanelLayout,
     } = constants;
+
+    // Use composeCore fit policy as SSOT (replaces legacy + boardSpec + SCALE_TO_FILL)
+    const getPanelFitMode = composeCoreGetPanelFitMode;
 
     const {
       designId,
@@ -974,13 +918,11 @@ export default async function handler(req, res) {
     let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
 
     if (!panels || panels.length === 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "NO_PANELS",
-          message: "No panels provided",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "NO_PANELS",
+        message: "No panels provided",
+      });
     }
 
     console.log(
@@ -1428,24 +1370,11 @@ export default async function handler(req, res) {
     const width = composeCoreResolved.width;
     const height = composeCoreResolved.height;
 
-    // Optional A1BoardSpec overlay (advanced QA / fit policies)
-    const boardSpecModule = await getA1BoardSpecModule();
-    const boardSpec = await getBoardSpec(layoutTemplate, floorCount);
-    const boardSpecVersion =
-      boardSpec?.version || boardSpecModule?.A1_BOARD_SPEC_VERSION || null;
-    const qaSpec = boardSpec?.qa || {};
-    const qaEnabled = !skipValidation && qaSpec.enabled !== false;
-    const rotateToFit = qaEnabled && qaSpec.rotateToFit !== false;
-    const minSlotOccupancy = Number.isFinite(qaSpec.minOccupancy)
-      ? qaSpec.minOccupancy
-      : 0.55;
-    const fitPolicy = boardSpec?.fit || null;
-
-    // If boardSpec provides its own grid, prefer it over composeCore default
-    if (boardSpec?.grid && typeof boardSpec.grid === "object") {
-      layout = boardSpec.grid;
-      console.log("[A1 Compose] Using A1BoardSpec grid override");
-    }
+    // QA defaults (A1BoardSpec removed – composeCore is SSOT for fit/layout)
+    const boardSpecVersion = null;
+    const qaEnabled = !skipValidation;
+    const rotateToFit = qaEnabled;
+    const minSlotOccupancy = 0.55;
 
     console.log(
       `[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount}, ${width}x${height}px)`,
@@ -1506,9 +1435,7 @@ export default async function handler(req, res) {
       const slotRect = toPixelRect(slot, width, height);
       coordinates[type] = { ...slotRect, labelHeight: LABEL_HEIGHT };
 
-      const mode =
-        (fitPolicy && (fitPolicy[type] || fitPolicy.default)) ||
-        getPanelFitMode(type);
+      const mode = getPanelFitMode(type);
       const panel = panelMap.get(type);
 
       if (type === "title_block") {
@@ -1804,7 +1731,7 @@ export default async function handler(req, res) {
         const pdfBuffer = await buildPrintReadyPdfFromPng(composedBuffer, {
           widthPx: width,
           heightPx: height,
-          dpi: boardSpec?.dimensions?.dpi || 300,
+          dpi: 300,
         });
 
         const safeDesignId =
@@ -2921,79 +2848,17 @@ async function placePanelImage({
           .png()
           .toBuffer();
   } else {
-    // Drawings/data: scale-to-fill with bounds (0.8x - 1.2x) for better slot usage
-    const useScaleToFill =
-      SCALE_TO_FILL_CONFIG.enabled &&
-      SCALE_TO_FILL_CONFIG.applicablePanels.includes(panelType);
-
-    if (useScaleToFill && inputWidth > 0 && inputHeight > 0) {
-      // Calculate scale to fill target area, bounded by min/max
-      const scaleX = targetWidth / inputWidth;
-      const scaleY = targetHeight / inputHeight;
-      let scale = Math.max(scaleX, scaleY); // Scale to fill (larger dimension)
-
-      // Clamp to bounds
-      scale = Math.min(scale, SCALE_TO_FILL_CONFIG.maxScale);
-      scale = Math.max(scale, SCALE_TO_FILL_CONFIG.minScale);
-
-      const scaledWidth = Math.round(inputWidth * scale);
-      const scaledHeight = Math.round(inputHeight * scale);
-
-      // Center crop if scaled exceeds target
-      const cropLeft = Math.max(0, Math.round((scaledWidth - targetWidth) / 2));
-      const cropTop = Math.max(
-        0,
-        Math.round((scaledHeight - targetHeight) / 2),
-      );
-
-      if (DEBUG_RUNS) {
-        console.log(`[A1 Compose] Panel ${panelType} scale-to-fill:`, {
-          input: { width: inputWidth, height: inputHeight },
-          scaled: { width: scaledWidth, height: scaledHeight },
-          scale: scale.toFixed(3),
-          crop: { left: cropLeft, top: cropTop },
-        });
-      }
-
-      // First resize with scale, then extract center portion if needed
-      const scaledBuffer = await sharp(processedBuffer, { failOnError: false })
-        .resize(scaledWidth, scaledHeight, { fit: "fill" })
-        .png()
-        .toBuffer();
-
-      // Extract center crop if scaled is larger than target
-      if (scaledWidth > targetWidth || scaledHeight > targetHeight) {
-        resizedImage = await sharp(scaledBuffer)
-          .extract({
-            left: cropLeft,
-            top: cropTop,
-            width: Math.min(targetWidth, scaledWidth),
-            height: Math.min(targetHeight, scaledHeight),
-          })
-          .png()
-          .toBuffer();
-      } else {
-        // Scaled fits within target, use contain positioning
-        resizedImage = await sharp(scaledBuffer)
-          .resize(targetWidth, targetHeight, {
-            fit: "contain",
-            position: "centre",
-            background: { r: 255, g: 255, b: 255, alpha: 1 },
-          })
-          .png()
-          .toBuffer();
-      }
-    } else {
-      // Standard contain for non-applicable panels or missing dimensions
-      resizedImage = await sharp(processedBuffer, { failOnError: false })
-        .resize(targetWidth, targetHeight, {
-          fit: "contain",
-          position: "centre",
-          background: { r: 255, g: 255, b: 255, alpha: 1 },
-        })
-        .png()
-        .toBuffer();
-    }
+    // Contain mode: letterbox inside slot with white margins.
+    // Panels are generated at slot aspect ratio, so contain should fill
+    // with minimal or no letterboxing. No scale-to-fill center-crop needed.
+    resizedImage = await sharp(processedBuffer, { failOnError: false })
+      .resize(targetWidth, targetHeight, {
+        fit: "contain",
+        position: "centre",
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .png()
+      .toBuffer();
   }
 
   const finalBuffer = await canvas

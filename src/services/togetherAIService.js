@@ -400,21 +400,55 @@ export async function generateArchitecturalImage(params) {
           }
         }
 
-        // NEW: Style reference for elevations/sections (when no geometry control present)
-        // Uses hero_3d as init_image to transfer material appearance (brick, windows, roof)
+        // Style reference for elevations/sections – transfer material appearance
+        // from hero_3d (brick, windows, roof). Applied EVEN when geometry control
+        // is present: geometry controls layout, style ref controls appearance.
         const isElevationOrSection =
           viewType.startsWith("elevation_") || viewType.startsWith("section_");
-        if (!initImageApplied && styleReferenceUrl && isElevationOrSection) {
-          requestPayload.initImage = styleReferenceUrl;
-          requestPayload.imageStrength = 0.35; // Moderate influence - preserve geometry, transfer style
-          initImageApplied = true;
-
-          logger.info(
-            `  🎨 [STYLE LOCK] Using hero_3d as style reference init_image (strength: 0.35)`,
-          );
-          logger.info(
-            `     Style reference ensures material consistency: brick color, window frames, roof tiles`,
-          );
+        if (styleReferenceUrl && isElevationOrSection) {
+          if (!initImageApplied) {
+            // No geometry control – use styleRef as sole init_image
+            requestPayload.initImage = styleReferenceUrl;
+            requestPayload.imageStrength = 0.35;
+            initImageApplied = true;
+            logger.info(
+              `  🎨 [STYLE LOCK] Using hero_3d as style reference init_image (strength: 0.35)`,
+            );
+          } else {
+            // Geometry control already applied – embed style cues from designDNA
+            // into the prompt prefix so FLUX picks up material/color from text
+            // even though the init_image slot is taken by geometry.
+            const styleCues = [];
+            if (designDNA) {
+              const mats = designDNA.materials || designDNA.materialPalette;
+              if (Array.isArray(mats)) {
+                const matDescriptors = mats
+                  .slice(0, 3)
+                  .map(
+                    (m) =>
+                      `${m.name || m.material}${m.hexColor ? ` (${m.hexColor})` : ""}`,
+                  )
+                  .join(", ");
+                if (matDescriptors)
+                  styleCues.push(`materials: ${matDescriptors}`);
+              }
+              if (designDNA.style?.name)
+                styleCues.push(`style: ${designDNA.style.name}`);
+              if (designDNA.roof?.type)
+                styleCues.push(`roof: ${designDNA.roof.type}`);
+            }
+            if (styleCues.length > 0) {
+              const prefix = `[STYLE LOCK: ${styleCues.join("; ")}] `;
+              requestPayload.prompt = prefix + requestPayload.prompt;
+              logger.info(
+                `  🎨 [STYLE+GEOM] Geometry init_image active; injected style prefix (${prefix.length} chars)`,
+              );
+            } else {
+              logger.info(
+                `  🎨 [STYLE+GEOM] Geometry init_image active; no designDNA style cues available for prompt augmentation`,
+              );
+            }
+          }
         }
 
         // NEW: Floor plan mask for interior_3d window alignment

@@ -11,7 +11,7 @@
  * @module services/qa/RenderSanityValidator
  */
 
-import sharp from 'sharp';
+import sharp from "sharp";
 
 // ============================================================================
 // THRESHOLD CONSTANTS
@@ -63,16 +63,16 @@ export const ANALYSIS_SIZE = 512;
  * These are technical drawings where thin strips / tiny content are problematic.
  */
 export const SANITY_CHECK_PANEL_TYPES = [
-  'floor_plan_ground',
-  'floor_plan_first',
-  'floor_plan_upper',
-  'elevation_north',
-  'elevation_south',
-  'elevation_east',
-  'elevation_west',
-  'section_AA',
-  'section_BB',
-  'site_plan',
+  "floor_plan_ground",
+  "floor_plan_first",
+  "floor_plan_upper",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+  "site_plan",
 ];
 
 // ============================================================================
@@ -124,7 +124,7 @@ export const SANITY_CHECK_PANEL_TYPES = [
 export async function computeSanityMetrics(imageBuffer) {
   // Resize to analysis size and get raw pixel data
   const { data, info } = await sharp(imageBuffer)
-    .resize(ANALYSIS_SIZE, ANALYSIS_SIZE, { fit: 'fill' })
+    .resize(ANALYSIS_SIZE, ANALYSIS_SIZE, { fit: "fill" })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -150,15 +150,25 @@ export async function computeSanityMetrics(imageBuffer) {
 
       // Check if pixel is foreground (not white/near-white)
       const isWhite =
-        r >= WHITE_PIXEL_THRESHOLD && g >= WHITE_PIXEL_THRESHOLD && b >= WHITE_PIXEL_THRESHOLD;
+        r >= WHITE_PIXEL_THRESHOLD &&
+        g >= WHITE_PIXEL_THRESHOLD &&
+        b >= WHITE_PIXEL_THRESHOLD;
 
       if (!isWhite) {
         foregroundPixels++;
         // Update bounding box
-        if (x < minX) {minX = x;}
-        if (x > maxX) {maxX = x;}
-        if (y < minY) {minY = y;}
-        if (y > maxY) {maxY = y;}
+        if (x < minX) {
+          minX = x;
+        }
+        if (x > maxX) {
+          maxX = x;
+        }
+        if (y < minY) {
+          minY = y;
+        }
+        if (y > maxY) {
+          maxY = y;
+        }
       }
     }
   }
@@ -224,7 +234,9 @@ export async function validateRenderSanity(imageBuffer, panelType) {
       panelType,
       metrics: null,
       failures: [],
-      warnings: [`Panel type '${panelType}' is not subject to render sanity checks`],
+      warnings: [
+        `Panel type '${panelType}' is not subject to render sanity checks`,
+      ],
       blockerMessage: null,
     };
   }
@@ -235,36 +247,63 @@ export async function validateRenderSanity(imageBuffer, panelType) {
   // Rule 1: Minimum occupancy ratio
   if (metrics.occupancyRatio < MIN_OCCUPANCY_RATIO) {
     failures.push(
-      `OCCUPANCY_TOO_LOW: occupancy=${(metrics.occupancyRatio * 100).toFixed(2)}% < ${MIN_OCCUPANCY_RATIO * 100}% threshold`
+      `OCCUPANCY_TOO_LOW: occupancy=${(metrics.occupancyRatio * 100).toFixed(2)}% < ${MIN_OCCUPANCY_RATIO * 100}% threshold`,
     );
   }
 
   // Rule 2: Minimum bounding box width ratio
   if (metrics.boundingBox.widthRatio < MIN_BBOX_RATIO) {
     failures.push(
-      `BBOX_WIDTH_TOO_SMALL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${MIN_BBOX_RATIO * 100}% threshold`
+      `BBOX_WIDTH_TOO_SMALL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${MIN_BBOX_RATIO * 100}% threshold`,
     );
   }
 
   // Rule 3: Minimum bounding box height ratio
   if (metrics.boundingBox.heightRatio < MIN_BBOX_RATIO) {
     failures.push(
-      `BBOX_HEIGHT_TOO_SMALL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${MIN_BBOX_RATIO * 100}% threshold`
+      `BBOX_HEIGHT_TOO_SMALL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${MIN_BBOX_RATIO * 100}% threshold`,
     );
   }
 
   // Rule 4: Thin strip detection (vertical)
   if (metrics.boundingBox.widthRatio < THIN_STRIP_WIDTH_THRESHOLD) {
     failures.push(
-      `THIN_STRIP_VERTICAL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${THIN_STRIP_WIDTH_THRESHOLD * 100}% (thin vertical strip detected)`
+      `THIN_STRIP_VERTICAL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${THIN_STRIP_WIDTH_THRESHOLD * 100}% (thin vertical strip detected)`,
     );
   }
 
   // Rule 5: Thin strip detection (horizontal)
   if (metrics.boundingBox.heightRatio < THIN_STRIP_HEIGHT_THRESHOLD) {
     failures.push(
-      `THIN_STRIP_HORIZONTAL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${THIN_STRIP_HEIGHT_THRESHOLD * 100}% (thin horizontal strip detected)`
+      `THIN_STRIP_HORIZONTAL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${THIN_STRIP_HEIGHT_THRESHOLD * 100}% (thin horizontal strip detected)`,
     );
+  }
+
+  // Rule 6: Aspect contract sanity – detect when a non-cover panel was
+  // generated as a square but the slot is rectangular (or vice-versa).
+  // Tolerance: warn if generated aspect deviates >30% from slot aspect.
+  // Uses original image metadata (not the 512×512 analysis canvas).
+  try {
+    const { getSlotDimensions, getPanelFitMode } =
+      await import("../a1/composeCore.js");
+    const fitMode = getPanelFitMode(panelType);
+    if (fitMode === "contain") {
+      const { aspect: slotAspect } = getSlotDimensions(panelType);
+      // Get original image dimensions from sharp metadata (before the analysis resize)
+      const originalMeta = await sharp(imageBuffer).metadata();
+      const origW = originalMeta.width || 1;
+      const origH = originalMeta.height || 1;
+      const imageAspect = origW / origH;
+      const deviation =
+        Math.abs(imageAspect - slotAspect) / Math.max(slotAspect, 0.01);
+      if (deviation > 0.3) {
+        warnings.push(
+          `ASPECT_MISMATCH: image=${imageAspect.toFixed(2)} (${origW}×${origH}) vs slot=${slotAspect.toFixed(2)} (${(deviation * 100).toFixed(0)}% deviation)`,
+        );
+      }
+    }
+  } catch {
+    // composeCore not available – skip aspect check
   }
 
   // Build blocker message
@@ -308,7 +347,7 @@ function buildBlockerMessage(panelType, metrics, failures) {
     `Action required: Regenerate ${panelType} with proper content coverage.`,
   ];
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 // ============================================================================
@@ -323,7 +362,9 @@ function buildBlockerMessage(panelType, metrics, failures) {
  */
 export async function validateBatch(panels) {
   const results = await Promise.all(
-    panels.map(({ panelType, imageBuffer }) => validateRenderSanity(imageBuffer, panelType))
+    panels.map(({ panelType, imageBuffer }) =>
+      validateRenderSanity(imageBuffer, panelType),
+    ),
   );
 
   const allValid = results.every((r) => r.isValid);
@@ -346,10 +387,10 @@ export async function validatePanelsFromUrls(panels) {
       try {
         let imageBuffer;
 
-        if (url.startsWith('data:')) {
+        if (url.startsWith("data:")) {
           // Handle data URL
-          const base64Data = url.split(',')[1];
-          imageBuffer = Buffer.from(base64Data, 'base64');
+          const base64Data = url.split(",")[1];
+          imageBuffer = Buffer.from(base64Data, "base64");
         } else {
           // Handle regular URL
           const response = await fetch(url);
@@ -369,7 +410,7 @@ export async function validatePanelsFromUrls(panels) {
           loadError: error.message,
         };
       }
-    })
+    }),
   );
 
   // Filter out load errors and validate the rest
@@ -409,7 +450,7 @@ export async function runExportGateCheck(panels) {
 
   const blockReasons = results
     .filter((r) => !r.isValid)
-    .map((r) => r.blockerMessage || `${r.panelType}: ${r.failures.join(', ')}`);
+    .map((r) => r.blockerMessage || `${r.panelType}: ${r.failures.join(", ")}`);
 
   const warnings = results.flatMap((r) => r.warnings);
 
