@@ -1680,6 +1680,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                   geometryDNA,
                   geometryStrength: strictParams.control_strength,
                   styleReferenceUrl: heroStyleReferenceUrl,
+                  styleReferenceStrength: heroStyleReferenceUrl
+                    ? HERO_CONTROL_STRENGTH[panelType] || 0.6
+                    : null,
                   floorPlanMaskUrl: retryFloorPlanMaskUrl,
                 });
 
