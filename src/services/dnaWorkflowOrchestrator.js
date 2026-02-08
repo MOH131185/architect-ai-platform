@@ -1693,8 +1693,17 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       // Enrich floor plan panels with roomCount from DNA so compose API
       // validation passes (it checks roomCount > 0 for floor_plan_* panels)
       const dnaRooms = masterDNA?.rooms || masterDNA?.program?.rooms || [];
+      // Use the designFingerprint that planA1Panels assigned to panels.
+      // This MUST match panel.meta.designFingerprint or the compose API
+      // will reject with FINGERPRINT_MISMATCH.
+      const panelFingerprint =
+        masterDNA?.designFingerprint ||
+        generatedPanels[0]?.meta?.designFingerprint ||
+        designId;
+
       const composePayload = {
         designId,
+        designFingerprint: panelFingerprint,
         panels: generatedPanels.map((p) => {
           const meta = { ...(p.meta || {}) };
           if (p.type?.includes("floor_plan") && !meta.roomCount) {
