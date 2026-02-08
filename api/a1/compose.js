@@ -541,7 +541,18 @@ async function fetchImageBuffer(url) {
     throw new Error(`Failed to fetch image: ${response.status}`);
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  const buf = Buffer.from(await response.arrayBuffer());
+
+  // Guard: reject HTML/text responses that slipped through a 200 OK
+  // (e.g. CDN error pages). Sharp would try SVG-parse them and crash.
+  if (buf.length > 4) {
+    const head = buf.slice(0, 64).toString("utf8").trim().toLowerCase();
+    if (head.startsWith("<!doctype") || head.startsWith("<html")) {
+      throw new Error("Received HTML instead of image data");
+    }
+  }
+
+  return buf;
 }
 
 function generateOverlaySvg(coordinates, width, height, constants) {
@@ -574,19 +585,19 @@ function generateOverlaySvg(coordinates, width, height, constants) {
     if (annotation.drawingNumber) {
       labels += `<text x="${coord.x + 8}" y="${labelY}"
         font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE - 1}" font-weight="600" fill="#475569"
-        dominant-baseline="middle" text-anchor="start">${annotation.drawingNumber}</text>`;
+        dominant-baseline="middle" text-anchor="start">${escapeXml(annotation.drawingNumber)}</text>`;
     }
 
     // Panel label (centered)
     labels += `<text x="${coord.x + coord.width / 2}" y="${labelY}"
       font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE}" font-weight="700" fill="#0f172a"
-      dominant-baseline="middle" text-anchor="middle">${annotation.label}</text>`;
+      dominant-baseline="middle" text-anchor="middle">${escapeXml(annotation.label)}</text>`;
 
     // Scale (right-aligned) - only for scaled drawings
     if (annotation.scale && annotation.scale !== "N/A") {
       labels += `<text x="${coord.x + coord.width - 8}" y="${labelY}"
         font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE - 2}" fill="#64748b"
-        dominant-baseline="middle" text-anchor="end">${annotation.scale}</text>`;
+        dominant-baseline="middle" text-anchor="end">${escapeXml(annotation.scale)}</text>`;
     }
   }
 
