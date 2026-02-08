@@ -1690,13 +1690,34 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           "Fetch API is not available and no composeClient override was provided",
         );
       }
+      // Enrich floor plan panels with roomCount from DNA so compose API
+      // validation passes (it checks roomCount > 0 for floor_plan_* panels)
+      const dnaRooms = masterDNA?.rooms || masterDNA?.program?.rooms || [];
       const composePayload = {
         designId,
-        panels: generatedPanels.map((p) => ({
-          type: p.type,
-          imageUrl: p.imageUrl,
-          label: p.type.toUpperCase().replace(/_/g, " "),
-        })),
+        panels: generatedPanels.map((p) => {
+          const meta = { ...(p.meta || {}) };
+          if (p.type?.includes("floor_plan") && !meta.roomCount) {
+            const floorIndex =
+              p.type === "floor_plan_ground"
+                ? 0
+                : p.type === "floor_plan_first"
+                  ? 1
+                  : 2;
+            const floorRooms = dnaRooms.filter((r) => {
+              const level = r.floor ?? r.level ?? 0;
+              return level === floorIndex;
+            });
+            meta.roomCount = floorRooms.length || dnaRooms.length || 1;
+            meta.wallCount = meta.roomCount * 4; // approximate
+          }
+          return {
+            type: p.type,
+            imageUrl: p.imageUrl,
+            label: p.type.toUpperCase().replace(/_/g, " "),
+            meta,
+          };
+        }),
         siteOverlay: siteSnapshot?.dataUrl
           ? { imageUrl: siteSnapshot.dataUrl }
           : null,
@@ -1713,7 +1734,18 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       );
 
       if (!composeResponse.ok) {
-        throw new Error(`Composition failed: ${composeResponse.status}`);
+        let errorDetail = "";
+        try {
+          const errorBody = await composeResponse.json();
+          errorDetail =
+            errorBody.message || errorBody.error || JSON.stringify(errorBody);
+          logger.error(`❌ Compose API error: ${errorDetail}`);
+        } catch (_) {
+          /* ignore parse errors */
+        }
+        throw new Error(
+          `Composition failed: ${composeResponse.status} – ${errorDetail}`,
+        );
       }
 
       const compositionResult = await composeResponse.json();
