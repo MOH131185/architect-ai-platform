@@ -1155,6 +1155,35 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           panelStartPercent,
         );
 
+        // DATA PANELS: Skip FLUX — these will be rendered as deterministic SVG
+        // during the composition step (schedules, materials, climate are text-heavy
+        // and FLUX produces semi-legible text). The compose API renders them server-side.
+        const DATA_PANELS = [
+          "schedules_notes",
+          "material_palette",
+          "climate_card",
+        ];
+        if (DATA_PANELS.includes(job.type)) {
+          logger.info(
+            `   📊 [SVG] Skipping FLUX for data panel ${job.type} — will render as SVG during composition`,
+          );
+          const panelResult = {
+            id: job.id,
+            type: job.type,
+            imageUrl: null,
+            svgPanel: true,
+            seed: job.seed,
+            prompt: job.prompt,
+            width: job.width,
+            height: job.height,
+            dnaSnapshot: job.dnaSnapshot,
+            meta: { ...job.meta, model: "svg", generatorUsed: "svg" },
+          };
+          generatedPanels.push(panelResult);
+          reportProgress("rendering", `${job.type} (SVG)`, panelDonePercent);
+          continue;
+        }
+
         try {
           // Check if we have a geometry render for this panel type
           let geometryRender = null;
@@ -1339,6 +1368,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                     geometryHint: futureJob.meta?.geometryHint || null,
                     designFingerprint,
                     fingerprintConstraint,
+                    hasStyleReference: !!heroStyleReferenceUrl,
                   });
 
                   if (rebuilt && rebuilt.prompt) {
@@ -1786,6 +1816,10 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           ? { imageUrl: siteSnapshot.dataUrl }
           : null,
         layoutConfig: "uk-riba-standard",
+        // Pass DNA data for SVG rendering of data panels (schedules, materials, climate)
+        masterDNA,
+        projectContext,
+        locationData,
       };
 
       const composeResponse = await fetchImpl(

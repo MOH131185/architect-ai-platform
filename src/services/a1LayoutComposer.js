@@ -50,6 +50,9 @@ export async function composeA1Sheet({
   siteOverlay = null,
   layoutConfig = null,
   titleBlock = null,
+  masterDNA = null,
+  projectContext = null,
+  locationData = null,
 }) {
   // Use dynamic import for sharp (server-side only)
   let sharp;
@@ -105,6 +108,61 @@ export async function composeA1Sheet({
 
     const panel = panelMap.get(type);
     const mode = getPanelFitMode(type);
+
+    // DATA PANELS: Render deterministic SVG for text-heavy data panels
+    const svgPanelHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
+    if (
+      type === "schedules_notes" &&
+      ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
+    ) {
+      const schedulesBuffer = await buildSchedulesBuffer(
+        sharp,
+        slotRect.width,
+        svgPanelHeight,
+        masterDNA,
+        projectContext,
+      );
+      composites.push({
+        input: schedulesBuffer,
+        left: slotRect.x,
+        top: slotRect.y,
+      });
+      continue;
+    }
+    if (
+      type === "material_palette" &&
+      ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
+    ) {
+      const materialBuffer = await buildMaterialPaletteBuffer(
+        sharp,
+        slotRect.width,
+        svgPanelHeight,
+        masterDNA,
+      );
+      composites.push({
+        input: materialBuffer,
+        left: slotRect.x,
+        top: slotRect.y,
+      });
+      continue;
+    }
+    if (
+      type === "climate_card" &&
+      ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
+    ) {
+      const climateBuffer = await buildClimateCardBuffer(
+        sharp,
+        slotRect.width,
+        svgPanelHeight,
+        locationData,
+      );
+      composites.push({
+        input: climateBuffer,
+        left: slotRect.x,
+        top: slotRect.y,
+      });
+      continue;
+    }
 
     if (panel?.buffer) {
       const resizedBuffer = await placePanelImage({
@@ -413,6 +471,214 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlock = {}) {
       <text x="16" y="96" font-family="Arial, sans-serif" font-size="14" fill="#374151">${escapeXml(locationDesc)}</text>
       <text x="16" y="126" font-family="Arial, sans-serif" font-size="14" fill="#374151">${escapeXml(scale)}</text>
       <text x="16" y="${height - 16}" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">Date: ${escapeXml(date)}</text>
+    </svg>
+  `;
+
+  return sharp(Buffer.from(svg))
+    .png()
+    .resize(width, height, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255 },
+    })
+    .toBuffer();
+}
+
+/**
+ * Build deterministic SVG for Schedules & Notes panel
+ */
+async function buildSchedulesBuffer(
+  sharp,
+  width,
+  height,
+  masterDNA,
+  projectContext,
+) {
+  const rooms =
+    masterDNA?.rooms ||
+    masterDNA?.program?.rooms ||
+    projectContext?.programSpaces ||
+    [];
+  const materials = masterDNA?.materials || [];
+  const leftMargin = 12;
+  const colArea = Math.round(width * 0.55);
+  const colFloor = Math.round(width * 0.8);
+  const rowHeight = 18;
+  const headerY = 40;
+
+  let roomRows = "";
+  const displayRooms = (Array.isArray(rooms) ? rooms : []).slice(0, 12);
+  displayRooms.forEach((room, idx) => {
+    const y = headerY + 20 + idx * rowHeight;
+    const name =
+      typeof room === "string"
+        ? room
+        : room.name || room.type || `Room ${idx + 1}`;
+    const area = room.dimensions || room.area || "";
+    const floor =
+      room.floor != null ? (room.floor === 0 ? "GF" : `L${room.floor}`) : "";
+    roomRows += `
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}.</text>
+      <text x="${leftMargin + 20}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${escapeXml(name)}</text>
+      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(String(area))}</text>
+      <text x="${colFloor}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(floor)}</text>`;
+  });
+
+  const roomsEndY = headerY + 20 + displayRooms.length * rowHeight + 10;
+
+  let matRows = "";
+  const displayMats = (Array.isArray(materials) ? materials : []).slice(0, 6);
+  displayMats.forEach((mat, idx) => {
+    const y = roomsEndY + 36 + idx * rowHeight;
+    const name =
+      typeof mat === "string"
+        ? mat
+        : mat.name || mat.type || `Material ${idx + 1}`;
+    const application = mat.application || "";
+    matRows += `
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}. ${escapeXml(name)}</text>
+      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(application)}</text>`;
+  });
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">ROOM SCHEDULE</text>
+      <text x="${leftMargin}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">NO.</text>
+      <text x="${leftMargin + 20}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">ROOM</text>
+      <text x="${colArea}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">AREA</text>
+      <text x="${colFloor}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">FLOOR</text>
+      <line x1="8" y1="${headerY + 4}" x2="${width - 8}" y2="${headerY + 4}" stroke="#e2e8f0" stroke-width="1" />
+      ${roomRows}
+      <line x1="8" y1="${roomsEndY}" x2="${width - 8}" y2="${roomsEndY}" stroke="#e2e8f0" stroke-width="1" />
+      <rect x="8" y="${roomsEndY + 4}" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="${roomsEndY + 20}" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIALS SCHEDULE</text>
+      ${matRows}
+    </svg>
+  `;
+
+  return sharp(Buffer.from(svg))
+    .png()
+    .resize(width, height, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255 },
+    })
+    .toBuffer();
+}
+
+/**
+ * Build deterministic SVG for Material Palette panel
+ */
+async function buildMaterialPaletteBuffer(sharp, width, height, masterDNA) {
+  const materials = masterDNA?.materials || [];
+  const displayMats = (Array.isArray(materials) ? materials : []).slice(0, 8);
+
+  const cols = 2;
+  const margin = 12;
+  const headerH = 36;
+  const swatchW = Math.floor((width - margin * 3) / cols);
+  const swatchH = 40;
+  const gap = 8;
+
+  let swatches = "";
+  displayMats.forEach((mat, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = margin + col * (swatchW + margin);
+    const y = headerH + 12 + row * (swatchH + gap + 20);
+
+    const name =
+      typeof mat === "string"
+        ? mat
+        : mat.name || mat.type || `Material ${idx + 1}`;
+    const hexColor = mat.hexColor || "#cccccc";
+    const application = mat.application || "";
+
+    swatches += `
+      <rect x="${x}" y="${y}" width="${swatchW}" height="${swatchH}" fill="${escapeXml(hexColor)}" stroke="#e2e8f0" stroke-width="1" rx="3" />
+      <text x="${x}" y="${y + swatchH + 12}" font-family="Arial, sans-serif" font-size="9" font-weight="600" fill="#1f2937">${escapeXml(name)}</text>
+      <text x="${x}" y="${y + swatchH + 24}" font-family="Arial, sans-serif" font-size="8" fill="#64748b">${escapeXml(hexColor)} — ${escapeXml(application)}</text>`;
+  });
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
+      ${swatches}
+    </svg>
+  `;
+
+  return sharp(Buffer.from(svg))
+    .png()
+    .resize(width, height, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255 },
+    })
+    .toBuffer();
+}
+
+/**
+ * Build deterministic SVG for Climate Card panel
+ */
+async function buildClimateCardBuffer(sharp, width, height, locationData) {
+  const climate = locationData?.climate || {};
+  const sunPath = locationData?.sunPath || {};
+  const address = locationData?.address || "Location TBD";
+  const climateType = climate.type || climate.zone || "Temperate";
+  const seasonal = climate.seasonal || {};
+  const orientation = sunPath.optimalOrientation || "South-facing";
+
+  const leftMargin = 12;
+  const lineH = 20;
+  let y = 46;
+
+  const rows = [
+    { label: "LOCATION", value: address },
+    { label: "CLIMATE TYPE", value: climateType },
+    { label: "OPTIMAL ORIENTATION", value: orientation },
+  ];
+
+  if (seasonal.summer) {
+    rows.push({
+      label: "SUMMER",
+      value:
+        typeof seasonal.summer === "string"
+          ? seasonal.summer
+          : `${seasonal.summer.tempHigh || seasonal.summer.avgTemp || "—"}°C`,
+    });
+  }
+  if (seasonal.winter) {
+    rows.push({
+      label: "WINTER",
+      value:
+        typeof seasonal.winter === "string"
+          ? seasonal.winter
+          : `${seasonal.winter.tempLow || seasonal.winter.avgTemp || "—"}°C`,
+    });
+  }
+  if (sunPath.summer) {
+    rows.push({ label: "SUMMER SUN PATH", value: sunPath.summer });
+  }
+  if (sunPath.winter) {
+    rows.push({ label: "WINTER SUN PATH", value: sunPath.winter });
+  }
+
+  let dataRows = "";
+  rows.forEach((row) => {
+    dataRows += `
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">${escapeXml(row.label)}</text>
+      <text x="${leftMargin}" y="${y + 13}" font-family="Arial, sans-serif" font-size="10" fill="#1f2937">${escapeXml(String(row.value).substring(0, 60))}</text>
+      <line x1="8" y1="${y + 18}" x2="${width - 8}" y2="${y + 18}" stroke="#f1f5f9" stroke-width="1" />`;
+    y += lineH + 16;
+  });
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &amp; ENVIRONMENT</text>
+      ${dataRows}
     </svg>
   `;
 

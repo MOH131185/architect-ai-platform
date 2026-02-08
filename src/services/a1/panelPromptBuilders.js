@@ -405,6 +405,7 @@ export function buildElevationPrompt(orientation) {
     projectContext,
     consistencyLock,
     geometryHint,
+    hasStyleReference,
   }) => {
     const dims = normalizeDimensions(masterDNA);
     const materials = normalizeMaterials(masterDNA);
@@ -501,8 +502,16 @@ REQUIREMENTS:
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
+    // When a style reference (hero init_image) is active, use RENDER_STYLE_SUFFIX
+    // to avoid conflicting signals (init_image says "photorealistic brick" while
+    // DRAWING_STYLE_SUFFIX says "clean black lines on white"). Without style ref,
+    // use DRAWING_STYLE_SUFFIX for clean technical drawings.
+    const styleSuffix = hasStyleReference
+      ? RENDER_STYLE_SUFFIX
+      : DRAWING_STYLE_SUFFIX;
+
     return {
-      prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
+      prompt: `${prompt}\nSTYLE: ${styleSuffix}`,
       negativePrompt:
         "perspective, angled view, fisheye, 3d, low quality, sketchy, blurry, different roof type, different building, inconsistent design, flat roof when gable specified, gable roof when flat specified",
     };
@@ -699,6 +708,7 @@ export function buildAxonometricPrompt({
   projectContext,
   consistencyLock,
   geometryHint,
+  hasStyleReference,
 }) {
   const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
@@ -742,7 +752,7 @@ REQUIREMENTS:
 - ${geomConstraint}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
-STYLE: ${DRAWING_STYLE_SUFFIX}`;
+STYLE: ${hasStyleReference ? RENDER_STYLE_SUFFIX : DRAWING_STYLE_SUFFIX}`;
 
   return {
     prompt,

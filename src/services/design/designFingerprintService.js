@@ -61,12 +61,12 @@ const fingerprintStore = new Map();
 export const HERO_CONTROL_STRENGTH = {
   interior_3d: 0.55, // Medium - allow interior variation
   axonometric: 0.7, // High - must match massing exactly
-  elevation_north: 0.6, // Medium-high - facade must match
-  elevation_south: 0.6,
-  elevation_east: 0.6,
-  elevation_west: 0.6,
-  section_AA: 0.5, // Medium - structural interpretation allowed
-  section_BB: 0.5,
+  elevation_north: 0.7, // High - facade massing must match hero
+  elevation_south: 0.7,
+  elevation_east: 0.7,
+  elevation_west: 0.7,
+  section_AA: 0.6, // Medium-high - structural massing must match
+  section_BB: 0.6,
 };
 
 /**
@@ -686,7 +686,11 @@ export function getVerbatimPromptLock(fingerprint) {
  * @returns {boolean} True if lock is intact and unmodified
  */
 export function verifyPromptLockIntegrity(fingerprint) {
-  if (!fingerprint || !fingerprint.promptLockVerbatim || !fingerprint.promptLockHash) {
+  if (
+    !fingerprint ||
+    !fingerprint.promptLockVerbatim ||
+    !fingerprint.promptLockHash
+  ) {
     return false;
   }
   const currentHash = generateSimpleHash(fingerprint.promptLockVerbatim);
