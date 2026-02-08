@@ -1385,7 +1385,7 @@ export default async function handler(req, res) {
     const boardSpecVersion = null;
     const qaEnabled = !skipValidation;
     const rotateToFit = qaEnabled;
-    const minSlotOccupancy = 0.55;
+    const minSlotOccupancy = 0.4;
 
     console.log(
       `[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount}, ${width}x${height}px)`,
@@ -2790,7 +2790,7 @@ async function placePanelImage({
   // HARD QA GATE: Occupancy (fail closed on undersized drawings)
   const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy)
     ? qa.minSlotOccupancy
-    : 0.55;
+    : 0.4; // Lowered from 0.55 – AI-generated panels rarely match slot aspect exactly
   const shouldEnforceOccupancy =
     qa?.enabled &&
     mode !== "cover" &&
