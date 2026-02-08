@@ -20,9 +20,11 @@ import sharp from "sharp";
 /**
  * Minimum foreground occupancy ratio (non-white pixels / total pixels).
  * Below this threshold, the panel is considered "empty" or "too sparse".
- * Value: 0.08 = 8% of pixels must be non-white foreground content.
+ * Value: 0.04 = 4% of pixels must be non-white foreground content.
+ * Note: AI-generated floor plans are naturally sparse (white paper + thin lines),
+ * so the threshold must be low enough to allow legitimate sparse drawings.
  */
-export const MIN_OCCUPANCY_RATIO = 0.08;
+export const MIN_OCCUPANCY_RATIO = 0.04;
 
 /**
  * Minimum bounding box dimension ratio relative to canvas size.
