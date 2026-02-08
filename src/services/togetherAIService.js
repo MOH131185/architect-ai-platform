@@ -249,6 +249,8 @@ export async function generateArchitecturalImage(params) {
     geometryDNA = null,
     // NEW: Style reference for material consistency (elevations/sections use hero_3d as anchor)
     styleReferenceUrl = null,
+    // NEW: Per-panel strength from HERO_CONTROL_STRENGTH (axonometric: 0.7, elevations: 0.6, sections: 0.5)
+    styleReferenceStrength = null,
     // NEW: Floor plan mask for interior_3d window alignment
     floorPlanMaskUrl = null,
   } = params;
@@ -409,10 +411,14 @@ export async function generateArchitecturalImage(params) {
           if (!initImageApplied) {
             // No geometry control – use styleRef as sole init_image
             requestPayload.initImage = styleReferenceUrl;
-            requestPayload.imageStrength = 0.35;
+            // Use per-panel strength from HERO_CONTROL_STRENGTH (e.g., axonometric: 0.7, elevations: 0.6)
+            // Falls back to 0.35 for panels without explicit strength
+            const effectiveStyleStrength =
+              styleReferenceStrength != null ? styleReferenceStrength : 0.35;
+            requestPayload.imageStrength = effectiveStyleStrength;
             initImageApplied = true;
             logger.info(
-              `  🎨 [STYLE LOCK] Using hero_3d as style reference init_image (strength: 0.35)`,
+              `  🎨 [STYLE LOCK] Using hero_3d as style reference init_image (strength: ${effectiveStyleStrength})`,
             );
           } else {
             // Geometry control already applied – embed style cues from designDNA

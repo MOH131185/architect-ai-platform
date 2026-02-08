@@ -81,12 +81,18 @@ class MultiModelImageService {
       geometryRender = null,
       geometryStrength = 0.7,
       styleReferenceUrl = null,
+      styleReferenceStrength = null,
       floorPlanMaskUrl = null,
     } = params;
 
     const category = getPanelCategory(viewType);
+    // Widen style lock to include axonometric and interior_3d (not just elevations/sections)
+    const STYLE_LOCK_PANELS = ["axonometric", "interior_3d"];
+    const canonical = normalizeToCanonical(viewType) || viewType;
     const needsStyleLock =
-      isElevationOrSection(viewType) && !!styleReferenceUrl;
+      (isElevationOrSection(viewType) ||
+        STYLE_LOCK_PANELS.includes(canonical)) &&
+      !!styleReferenceUrl;
     const needsFloorPlanMask = viewType === "interior_3d" && !!floorPlanMaskUrl;
 
     if (needsStyleLock) {
@@ -125,6 +131,7 @@ class MultiModelImageService {
           : null,
         geometryStrength,
         styleReferenceUrl: needsStyleLock ? styleReferenceUrl : null,
+        styleReferenceStrength: needsStyleLock ? styleReferenceStrength : null,
         floorPlanMaskUrl: needsFloorPlanMask ? floorPlanMaskUrl : null,
       };
 

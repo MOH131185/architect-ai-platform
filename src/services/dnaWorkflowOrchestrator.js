@@ -1243,6 +1243,10 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             geometryStrength: effectiveGeometryStrength, // Use computed strength
             // NEW: Style reference for material consistency (elevations/sections)
             styleReferenceUrl: effectiveStyleReference,
+            // NEW: Per-panel strength from HERO_CONTROL_STRENGTH (axonometric: 0.7, elevations: 0.6, sections: 0.5)
+            styleReferenceStrength: effectiveStyleReference
+              ? HERO_CONTROL_STRENGTH[job.type] || 0.6
+              : null,
             // NEW: Floor plan mask for interior_3d window alignment
             floorPlanMaskUrl: effectiveFloorPlanMask,
           });

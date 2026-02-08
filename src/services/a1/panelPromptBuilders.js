@@ -523,19 +523,29 @@ export function buildSectionAAPrompt({
   const floorHeights = dims.floorHeights
     .map((h, i) => `Floor ${i}: ${h}m`)
     .join(", ");
+  const roofType =
+    masterDNA?.roof?.type ||
+    masterDNA?._structured?.geometry_rules?.roof_type ||
+    "gable";
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
 
   const prompt = `Section A-A (longitudinal) - orthographic building section
 Total height: ${dims.height}m
 Floor heights: ${floorHeights}
 Materials: ${materials.join(", ")}
+Roof type: ${roofType}
 
+${fingerprintConstraint ? `DESIGN FINGERPRINT (match building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
 - TRUE ORTHOGRAPHIC SECTION (NOT perspective)
 - Cut through entrance and main circulation
 - Show all floor levels with slab thickness
 - Staircase visible in section
 - Ceiling heights labeled
-- Foundation and roof structure
+- Foundation and roof structure (${roofType} - MUST match hero)
 - Material indications
 - Dimension lines for floor-to-floor heights
 - Interior spaces visible in section
@@ -546,7 +556,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
     negativePrompt:
-      "photorealistic, perspective, 3d, low contrast, messy lines, blurry",
+      "photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building",
   };
 }
 
@@ -561,20 +571,31 @@ export function buildSectionBBPrompt({
 }) {
   const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
+  const roofType =
+    masterDNA?.roof?.type ||
+    masterDNA?._structured?.geometry_rules?.roof_type ||
+    "gable";
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
 
   const prompt = `Section B-B (transverse/cross section) - orthographic building section
 Width: ${dims.width}m
 Total height: ${dims.height}m
 Materials: ${materials.join(", ")}
+Roof type: ${roofType}
 
+${fingerprintConstraint ? `DESIGN FINGERPRINT (match building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
 - TRUE ORTHOGRAPHIC SECTION (NOT perspective)
 - Cut perpendicular to Section A-A
+- Building profile MUST match Section A-A (same roof height, same floor levels)
 - Show structural grid if applicable
 - All floor levels with slab thickness
 - Window openings in section
 - Ceiling heights labeled
-- Foundation and roof structure
+- Foundation and roof structure (${roofType} - MUST match hero)
 - Material indications
 - Dimension lines
 - Align with elevations (window positions match)
@@ -584,7 +605,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
     negativePrompt:
-      "photorealistic, perspective, 3d, low contrast, messy lines, blurry",
+      "photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building",
   };
 }
 
@@ -757,7 +778,7 @@ export function buildSchedulesNotesPrompt({
           .join("\n")
       : "1. Living Room: 35m²\n2. Kitchen: 20m²\n3. Bedroom 1: 18m²\n4. Bathroom: 8m²";
 
-  const prompt = `Schedules and notes panel - architectural documentation
+  const prompt = `Schedules and notes panel - CRISP BLACK TEXT ON WHITE BACKGROUND
 Project type: ${projectType}
 Building: ${dims.length}m × ${dims.width}m × ${dims.height}m
 
@@ -768,15 +789,17 @@ MATERIALS:
 ${materials.map((m, i) => `${i + 1}. ${m}`).join("\n")}
 
 REQUIREMENTS:
+- MAXIMUM CONTRAST: Pure black text (#000000) on pure white (#FFFFFF)
+- LARGE BOLD TEXT: clearly readable at arm's length
+- NO faint or light grey text - ALL text must be bold black
 - Clean tabular layout for room schedule
 - Column headers: Room Name, Area (m²), Floor Level, Notes
 - Material finishes schedule table
 - Door and window schedules (if applicable)
 - General notes section with standard construction notes
 - Abbreviations legend
-- Professional typography (sans-serif)
-- Grid-based table layout
-- High contrast text on white background
+- Professional typography (sans-serif, BOLD weight)
+- Grid-based table layout with solid black lines
 - Flat 2D presentation (NO perspective)
 - A1 sheet formatting conventions
 
@@ -786,7 +809,7 @@ STYLE: ${DRAWING_STYLE_SUFFIX}`;
   return {
     prompt,
     negativePrompt:
-      "perspective, 3d, photorealistic, messy layout, handwritten, low contrast, blurry text",
+      "perspective, 3d, photorealistic, messy layout, handwritten, low contrast, blurry text, faint text, light grey text, gradient background",
   };
 }
 
