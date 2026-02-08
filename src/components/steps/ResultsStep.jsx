@@ -5,26 +5,27 @@
  * Phase 5: Added ExportPanel for professional CAD/BIM exports
  */
 
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
-import { motion } from 'framer-motion';
-import { Download, Home, FileCode, Bug } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Download, Home, FileCode, Bug } from "lucide-react";
 
-import { isFeatureEnabled } from '../../config/featureFlags.js';
-import debugRecorder from '../../services/debug/DebugRunRecorder.js';
-import { fadeInUp, staggerChildren } from '../../styles/animations.js';
-import A1PanelGallery from '../A1PanelGallery.jsx';
-import A1SheetViewer from '../A1SheetViewer.jsx';
-import AIModifyPanel from '../AIModifyPanel.jsx';
-import ExportPanel from '../ExportPanel.jsx';
-import GeometryDebugViewer from '../GeometryDebugViewer.jsx';
-import StepContainer from '../layout/StepContainer.jsx';
-import Button from '../ui/Button.jsx';
-import Card from '../ui/Card.jsx';
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import debugRecorder from "../../services/debug/DebugRunRecorder.js";
+import { fadeInUp, staggerChildren } from "../../styles/animations.js";
+import A1PanelGallery from "../A1PanelGallery.jsx";
+import A1SheetViewer from "../A1SheetViewer.jsx";
+import AIModifyPanel from "../AIModifyPanel.jsx";
+import ExportPanel from "../ExportPanel.jsx";
+import GeometryDebugViewer from "../GeometryDebugViewer.jsx";
+import StepContainer from "../layout/StepContainer.jsx";
+import Button from "../ui/Button.jsx";
+import Card from "../ui/Card.jsx";
 
 const ResultsStep = ({
   result,
   designId,
+  generationElapsedSeconds = 0,
   onModify,
   onExport,
   onExportCAD: _onExportCAD,
@@ -33,39 +34,46 @@ const ResultsStep = ({
   onStartNew,
 }) => {
   const [showExportPanel, setShowExportPanel] = useState(false);
+  const formatElapsedTime = (seconds) => {
+    const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
 
   // Handle debug report download
   const handleDownloadDebugReport = () => {
     const report = debugRecorder.getCurrentReport();
     if (!report) {
-      console.warn('No debug report available');
+      console.warn("No debug report available");
       return;
     }
     const downloadUrl = debugRecorder.getReportDownloadUrl();
     if (!downloadUrl) {
-      console.warn('Failed to create download URL');
+      console.warn("Failed to create download URL");
       return;
     }
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = downloadUrl;
-    link.download = `DEBUG_REPORT_${report.runId || designId || 'unknown'}.json`;
+    link.download = `DEBUG_REPORT_${report.runId || designId || "unknown"}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(downloadUrl);
   };
 
-  const showGeometryDebug = isFeatureEnabled('showGeometryDebugViewer');
+  const showGeometryDebug = isFeatureEnabled("showGeometryDebugViewer");
 
   // Extract data for ExportPanel
   const geometryDNA = result?.geometryDNA || result?.masterDNA?.geometryDNA;
-  const populatedGeometry = result?.populatedGeometry || result?.masterDNA?.populatedGeometry;
+  const populatedGeometry =
+    result?.populatedGeometry || result?.masterDNA?.populatedGeometry;
   const masterDNA = result?.masterDNA;
   const meshy3D = result?.masterDNA?.meshy3D || result?.meshy3D;
   const projectInfo = {
-    name: result?.projectName || 'Building Design',
-    address: result?.locationData?.address || '',
-    client: result?.client || '',
+    name: result?.projectName || "Building Design",
+    address: result?.locationData?.address || "",
+    client: result?.client || "",
   };
 
   // TASK 4: Construct a1SheetData from result.panels for print export
@@ -74,7 +82,7 @@ const ResultsStep = ({
   const a1SheetData = React.useMemo(() => {
     // Handle null result case
     if (!result) {
-      return { panels: [], metadata: { source: 'no_result' } };
+      return { panels: [], metadata: { source: "no_result" } };
     }
     // Priority 1: Direct a1Sheet from result
     if (result?.a1Sheet?.panels) {
@@ -82,23 +90,31 @@ const ResultsStep = ({
     }
 
     // Priority 2: Construct from result.panels array
-    if (result?.panels && Array.isArray(result.panels) && result.panels.length > 0) {
+    if (
+      result?.panels &&
+      Array.isArray(result.panels) &&
+      result.panels.length > 0
+    ) {
       return {
         panels: result.panels.map((p) => ({
           type: p.type,
-          label: p.type?.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+          label: p.type
+            ?.replace(/_/g, " ")
+            .replace(/\b\w/g, (l) => l.toUpperCase()),
           url: p.imageUrl || p.url || p.dataUrl,
           dataUrl: p.imageUrl || p.url || p.dataUrl,
           svg: p.svg || null,
           // TASK 4: Include coordinates from panelsByKey if available
           coordinates:
-            result.panelsByKey?.[p.type]?.coordinates || result.coordinates?.[p.type] || null,
+            result.panelsByKey?.[p.type]?.coordinates ||
+            result.coordinates?.[p.type] ||
+            null,
         })),
         metadata: {
           designId: result.designId,
           composedSheetUrl: result.composedSheetUrl,
           panelCount: result.panels.length,
-          source: 'panels_array',
+          source: "panels_array",
         },
       };
     }
@@ -106,12 +122,12 @@ const ResultsStep = ({
     // Priority 3: Construct from result.panelsByKey (includes coordinates from compose API)
     if (
       result?.panelsByKey &&
-      typeof result.panelsByKey === 'object' &&
+      typeof result.panelsByKey === "object" &&
       Object.keys(result.panelsByKey).length > 0
     ) {
       const panels = Object.entries(result.panelsByKey).map(([type, data]) => ({
         type,
-        label: type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        label: type.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
         url: data.imageUrl || data.url || data.dataUrl,
         dataUrl: data.imageUrl || data.url || data.dataUrl,
         svg: data.svg || null,
@@ -123,7 +139,7 @@ const ResultsStep = ({
           designId: result.designId,
           composedSheetUrl: result.composedSheetUrl,
           panelCount: panels.length,
-          source: 'panelsByKey',
+          source: "panelsByKey",
         },
       };
     }
@@ -131,12 +147,12 @@ const ResultsStep = ({
     // Priority 4: Construct from result.panelMap object
     if (
       result?.panelMap &&
-      typeof result.panelMap === 'object' &&
+      typeof result.panelMap === "object" &&
       Object.keys(result.panelMap).length > 0
     ) {
       const panels = Object.entries(result.panelMap).map(([type, data]) => ({
         type,
-        label: type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        label: type.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
         url: data.imageUrl || data.url || data.dataUrl,
         dataUrl: data.imageUrl || data.url || data.dataUrl,
         svg: data.svg || null,
@@ -148,22 +164,23 @@ const ResultsStep = ({
           designId: result.designId,
           composedSheetUrl: result.composedSheetUrl,
           panelCount: panels.length,
-          source: 'panelMap',
+          source: "panelMap",
         },
       };
     }
 
     // Fallback: Empty structure with clear warning metadata
     console.warn(
-      '[ResultsStep] No panels found in result. Available keys:',
-      Object.keys(result || {})
+      "[ResultsStep] No panels found in result. Available keys:",
+      Object.keys(result || {}),
     );
     return {
       panels: [],
       metadata: {
         designId: result?.designId,
-        source: 'fallback_empty',
-        warning: 'No panels found - check result.panels, result.panelsByKey, or result.panelMap',
+        source: "fallback_empty",
+        warning:
+          "No panels found - check result.panels, result.panelsByKey, or result.panelMap",
       },
     };
   }, [result]);
@@ -174,7 +191,11 @@ const ResultsStep = ({
   }
 
   return (
-    <StepContainer backgroundVariant="results" enableParallax={true} maxWidth="7xl">
+    <StepContainer
+      backgroundVariant="results"
+      enableParallax={true}
+      maxWidth="7xl"
+    >
       <motion.div
         className="space-y-8"
         variants={staggerChildren}
@@ -183,8 +204,17 @@ const ResultsStep = ({
       >
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
-          <h2 className="text-4xl font-bold text-white mb-4 font-heading">Your Design is Ready</h2>
-          <p className="text-xl text-gray-400">Professional A1 sheet with 98%+ consistency</p>
+          <h2 className="text-4xl font-bold text-white mb-4 font-heading">
+            Your Design is Ready
+          </h2>
+          <p className="text-xl text-gray-400">
+            Professional A1 sheet with 98%+ consistency
+          </p>
+          {generationElapsedSeconds > 0 && (
+            <p className="text-sm text-gray-500 mt-2">
+              Generation time: {formatElapsedTime(generationElapsedSeconds)}
+            </p>
+          )}
         </motion.div>
 
         {/* Action Bar */}
@@ -195,7 +225,7 @@ const ResultsStep = ({
                 <Button
                   variant="primary"
                   size="md"
-                  onClick={() => onExport('PNG')}
+                  onClick={() => onExport("PNG")}
                   icon={<Download className="w-5 h-5" />}
                 >
                   Download A1 Sheet
@@ -206,7 +236,7 @@ const ResultsStep = ({
                   onClick={() => setShowExportPanel(!showExportPanel)}
                   icon={<FileCode className="w-5 h-5" />}
                 >
-                  {showExportPanel ? 'Hide Export Panel' : 'CAD/BIM Export'}
+                  {showExportPanel ? "Hide Export Panel" : "CAD/BIM Export"}
                 </Button>
                 {/* Debug Report Download - shows when report is available */}
                 {debugRecorder.getCurrentReport() && (
@@ -246,11 +276,15 @@ const ResultsStep = ({
               a1SheetData={a1SheetData}
               meshy3D={meshy3D}
               projectInfo={projectInfo}
-              onExportStart={(format) => console.log(`Starting ${format} export...`)}
+              onExportStart={(format) =>
+                console.log(`Starting ${format} export...`)
+              }
               onExportComplete={(format, filename) =>
                 console.log(`Completed ${format} export: ${filename}`)
               }
-              onExportError={(format, error) => console.error(`${format} export failed:`, error)}
+              onExportError={(format, error) =>
+                console.error(`${format} export failed:`, error)
+              }
             />
           </motion.div>
         )}
@@ -278,7 +312,9 @@ const ResultsStep = ({
           {showGeometryDebug && (
             <GeometryDebugViewer
               designId={designId}
-              geometryRenders={result?.geometryRenders || result?.a1Sheet?.geometryRenders}
+              geometryRenders={
+                result?.geometryRenders || result?.a1Sheet?.geometryRenders
+              }
               geometryDNA={result?.geometryDNA || result?.masterDNA?.geometry}
               panelMap={result?.panelMap || result?.a1Sheet?.panelMap}
               loadFromHistory={!result?.geometryRenders}

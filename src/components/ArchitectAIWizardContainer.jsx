@@ -5,7 +5,7 @@
  * Redesigned with new UI components and design system.
  */
 
-import React, { useRef, useCallback, useEffect } from "react";
+import React, { useRef, useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, X } from "lucide-react";
 import { useArchitectAIWorkflow } from "../hooks/useArchitectAIWorkflow.js";
@@ -164,6 +164,77 @@ const ArchitectAIWizardContainer = () => {
   // Refs
   const fileInputRef = useRef(null);
   const mapRef = useRef(null);
+  const [generationStartAtMs, setGenerationStartAtMs] = useState(null);
+  const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
+  const [isGenerationTimerRunning, setIsGenerationTimerRunning] =
+    useState(false);
+
+  const hasA1Output = Boolean(
+    result?.a1Sheet?.url ||
+    result?.a1Sheet?.composedSheetUrl ||
+    result?.composedSheetUrl ||
+    result?.url,
+  );
+
+  const hasPanelOutput = Boolean(
+    (Array.isArray(result?.panels) && result.panels.length > 0) ||
+    (result?.panelMap && Object.keys(result.panelMap).length > 0) ||
+    (Array.isArray(result?.a1Sheet?.panels) &&
+      result.a1Sheet.panels.length > 0) ||
+    (result?.a1Sheet?.panelMap &&
+      Object.keys(result.a1Sheet.panelMap).length > 0),
+  );
+
+  // Real-time timer while generation is in progress
+  useEffect(() => {
+    if (!isGenerationTimerRunning || !generationStartAtMs) {
+      return undefined;
+    }
+
+    setGenerationElapsedSeconds(
+      Math.floor((Date.now() - generationStartAtMs) / 1000),
+    );
+
+    const intervalId = window.setInterval(() => {
+      setGenerationElapsedSeconds(
+        Math.floor((Date.now() - generationStartAtMs) / 1000),
+      );
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [generationStartAtMs, isGenerationTimerRunning]);
+
+  // Stop timer only when results step is active and both A1 + panels are available
+  useEffect(() => {
+    if (!isGenerationTimerRunning || !generationStartAtMs) {
+      return undefined;
+    }
+
+    if (currentStep !== 6 || !hasA1Output || !hasPanelOutput) {
+      return undefined;
+    }
+
+    const stopTimeoutId = window.setTimeout(() => {
+      const finalElapsedSeconds = Math.floor(
+        (Date.now() - generationStartAtMs) / 1000,
+      );
+      setGenerationElapsedSeconds(finalElapsedSeconds);
+      setIsGenerationTimerRunning(false);
+      logger.info(
+        "Generation timer stopped",
+        { elapsedSeconds: finalElapsedSeconds },
+        "⏱️",
+      );
+    }, 250);
+
+    return () => window.clearTimeout(stopTimeoutId);
+  }, [
+    currentStep,
+    generationStartAtMs,
+    hasA1Output,
+    hasPanelOutput,
+    isGenerationTimerRunning,
+  ]);
 
   /**
    * Cleanup object URLs on unmount to prevent memory leaks
@@ -1067,6 +1138,11 @@ const ArchitectAIWizardContainer = () => {
    * Generation handler
    */
   const handleGenerate = useCallback(async () => {
+    const startedAt = Date.now();
+    setGenerationStartAtMs(startedAt);
+    setGenerationElapsedSeconds(0);
+    setIsGenerationTimerRunning(true);
+
     try {
       logger.info("Starting generation workflow", null, "🚀");
 
@@ -1184,6 +1260,7 @@ const ArchitectAIWizardContainer = () => {
           `   Stack: ${err.stack.split("\n").slice(0, 3).join("\n")}`,
         );
       }
+      setIsGenerationTimerRunning(false);
     }
   }, [
     locationData,
@@ -1303,6 +1380,9 @@ const ArchitectAIWizardContainer = () => {
     setProgramSpaces([]);
     setProgramWarnings([]);
     setGeneratedDesignId(null);
+    setGenerationStartAtMs(null);
+    setGenerationElapsedSeconds(0);
+    setIsGenerationTimerRunning(false);
   }, []);
 
   /**
@@ -1388,6 +1468,7 @@ const ArchitectAIWizardContainer = () => {
           <GenerateStep
             isGenerating={loading}
             progress={progress}
+            elapsedSeconds={generationElapsedSeconds}
             generationComplete={!!result}
             onGenerate={handleGenerate}
             onBack={handleBack}
@@ -1400,6 +1481,7 @@ const ArchitectAIWizardContainer = () => {
           <ResultsStep
             result={result}
             designId={generatedDesignId}
+            generationElapsedSeconds={generationElapsedSeconds}
             onModify={handleModify}
             onExport={handleExport}
             onExportCAD={handleExportCAD}
