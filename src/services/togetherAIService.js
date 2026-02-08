@@ -136,7 +136,7 @@ export async function generateArchitecturalReasoning(params) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "Qwen/Qwen2.5-72B-Instruct-Turbo", // Best for technical/architectural reasoning
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo", // Best for technical/architectural reasoning
         messages: [
           {
             role: "system",

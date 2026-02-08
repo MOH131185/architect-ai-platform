@@ -16,7 +16,7 @@ const AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 
 // Model mapping from Together.ai to AI Gateway equivalents
 const MODEL_MAPPING = {
-  "Qwen/Qwen2.5-72B-Instruct-Turbo": "alibaba/qwen3-235b-a22b-instruct",
+  "meta-llama/Llama-3.3-70B-Instruct-Turbo": "alibaba/qwen3-235b-a22b-instruct",
   "Qwen/Qwen2.5-72B-Instruct": "alibaba/qwen3-235b-a22b-instruct",
   "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo":
     "meta/llama-3.3-70b-instruct",
@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     }
 
     // Map model to AI Gateway equivalent
-    const requestedModel = model || "Qwen/Qwen2.5-72B-Instruct-Turbo";
+    const requestedModel = model || "meta-llama/Llama-3.3-70B-Instruct-Turbo";
     const gatewayModel =
       MODEL_MAPPING[requestedModel] || MODEL_MAPPING["default"];
 

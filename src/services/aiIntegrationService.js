@@ -4,16 +4,15 @@
  * Legacy ControlNet workflows are retained for backwards compatibility but are deprecated.
  */
 
-import togetherAIReasoningService from './togetherAIReasoningService.js';
-import portfolioStyleDetection from './portfolioStyleDetection.js';
-import { locationIntelligence } from './locationIntelligence.js';
-import bimService from './bimService.js';
-import dimensioningService from './dimensioningService.js';
-import { enforce2DFloorPlan } from '../utils/floorPlan2DEnforcement.js';
-import togetherAIService from './togetherAIService.js';
-import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM.js';
-import logger from '../utils/logger.js';
-
+import togetherAIReasoningService from "./togetherAIReasoningService.js";
+import portfolioStyleDetection from "./portfolioStyleDetection.js";
+import { locationIntelligence } from "./locationIntelligence.js";
+import bimService from "./bimService.js";
+import dimensioningService from "./dimensioningService.js";
+import { enforce2DFloorPlan } from "../utils/floorPlan2DEnforcement.js";
+import togetherAIService from "./togetherAIService.js";
+import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
+import logger from "../utils/logger.js";
 
 // Together AI is now the DEFAULT for all reasoning (except location/weather)
 const USE_TOGETHER = true; // Always use Together AI for reasoning
@@ -55,20 +54,27 @@ class AIIntegrationService {
    * @returns {Promise<Object>} Complete visualization package with all 6 views
    */
   async generateControlNetMultiViewPackage(projectParams) {
-    logger.info('\n🎯 [AI Integration] Starting ControlNet Multi-View workflow...');
-    logger.warn('⚠️ ControlNet multi-view workflow is deprecated. Please migrate to the A1-only pipeline.');
+    logger.info(
+      "\n🎯 [AI Integration] Starting ControlNet Multi-View workflow...",
+    );
+    logger.warn(
+      "⚠️ ControlNet multi-view workflow is deprecated. Please migrate to the A1-only pipeline.",
+    );
 
     try {
-      const { default: controlNetService } = await import('./controlNetMultiViewService.js');
+      const { default: controlNetService } =
+        await import("./controlNetMultiViewService.js");
 
       // Delegate to ControlNet service
-      const result = await controlNetService.generateConsistentMultiViewPackage(projectParams);
+      const result =
+        await controlNetService.generateConsistentMultiViewPackage(
+          projectParams,
+        );
 
-      logger.success(' [AI Integration] ControlNet workflow complete');
+      logger.success(" [AI Integration] ControlNet workflow complete");
       return result;
-
     } catch (error) {
-      logger.error('❌ [AI Integration] ControlNet workflow failed:', error);
+      logger.error("❌ [AI Integration] ControlNet workflow failed:", error);
       throw error;
     }
   }
@@ -82,37 +88,48 @@ class AIIntegrationService {
    */
   convertToControlNetParams(existingContext, floorPlanImageUrl) {
     const {
-      buildingProgram = 'house',
+      buildingProgram = "house",
       floorArea = 200,
       location = {},
       portfolio = {},
       buildingDNA = {},
-      projectSeed
+      projectSeed,
     } = existingContext;
 
     // Extract materials from building DNA or portfolio
     const materials = [
-      buildingDNA.materials?.exterior?.primary || 'brick',
-      buildingDNA.roof?.material || 'tile roof',
-      buildingDNA.windows?.color ? `${buildingDNA.windows.color} window frames` : 'window frames'
-    ].join(', ');
+      buildingDNA.materials?.exterior?.primary || "brick",
+      buildingDNA.roof?.material || "tile roof",
+      buildingDNA.windows?.color
+        ? `${buildingDNA.windows.color} window frames`
+        : "window frames",
+    ].join(", ");
 
     // Determine entrance orientation from DNA or default to North
-    const entranceDir = buildingDNA.entrance?.facade ||
-                       (buildingDNA.entrance?.direction ? this.normalizeOrientation(buildingDNA.entrance.direction) : 'North');
+    const entranceDir =
+      buildingDNA.entrance?.facade ||
+      (buildingDNA.entrance?.direction
+        ? this.normalizeOrientation(buildingDNA.entrance.direction)
+        : "North");
 
     return {
       project_name: existingContext.projectName || `${buildingProgram} project`,
-      location: location.address || 'Not specified',
-      style: portfolio.detectedStyle || buildingDNA.style_features?.architectural_style || 'Contemporary',
+      location: location.address || "Not specified",
+      style:
+        portfolio.detectedStyle ||
+        buildingDNA.style_features?.architectural_style ||
+        "Contemporary",
       materials: materials,
-      floors: buildingDNA.dimensions?.floors || buildingDNA.dimensions?.floorCount || 2,
+      floors:
+        buildingDNA.dimensions?.floors ||
+        buildingDNA.dimensions?.floorCount ||
+        2,
       main_entry_orientation: entranceDir,
       control_image: floorPlanImageUrl,
       seed: projectSeed || Math.floor(Math.random() * 1000000),
-      climate: location.climate?.type || 'Temperate',
+      climate: location.climate?.type || "Temperate",
       floor_area: floorArea,
-      building_program: buildingProgram
+      building_program: buildingProgram,
     };
   }
 
@@ -121,16 +138,24 @@ class AIIntegrationService {
    */
   normalizeOrientation(direction) {
     const normalized = {
-      'north': 'North', 'n': 'North',
-      'south': 'South', 's': 'South',
-      'east': 'East', 'e': 'East',
-      'west': 'West', 'w': 'West',
-      'northeast': 'NE', 'ne': 'NE',
-      'southeast': 'SE', 'se': 'SE',
-      'southwest': 'SW', 'sw': 'SW',
-      'northwest': 'NW', 'nw': 'NW'
+      north: "North",
+      n: "North",
+      south: "South",
+      s: "South",
+      east: "East",
+      e: "East",
+      west: "West",
+      w: "West",
+      northeast: "NE",
+      ne: "NE",
+      southeast: "SE",
+      se: "SE",
+      southwest: "SW",
+      sw: "SW",
+      northwest: "NW",
+      nw: "NW",
     };
-    return normalized[direction.toLowerCase()] || 'North';
+    return normalized[direction.toLowerCase()] || "North";
   }
 
   /**
@@ -143,49 +168,58 @@ class AIIntegrationService {
   async generateStyleSignature(portfolio, specs, location) {
     // Return cached signature if exists (one per project session)
     if (this.styleSignatureCache) {
-      logger.success(' Using cached style signature');
+      logger.success(" Using cached style signature");
       return this.styleSignatureCache;
     }
 
     try {
-      logger.info('🎨 Generating style signature via GPT-4o...');
+      logger.info("🎨 Generating style signature via GPT-4o...");
 
       // CRITICAL: Use blended style materials (respects user's material weight settings)
       const blendedStyle = portfolio?.blendedStyle;
       const buildingDNA = specs?.buildingDNA;
 
       // Extract materials from blended style (already weighted by user preferences)
-      const blendedMaterials = blendedStyle?.materials?.slice(0, 5).join(', ') ||
-                               buildingDNA?.materials?.exterior?.primary ||
-                               buildingDNA?.materials ||
-                               'brick, glass, timber';
+      const blendedMaterials =
+        blendedStyle?.materials?.slice(0, 5).join(", ") ||
+        buildingDNA?.materials?.exterior?.primary ||
+        buildingDNA?.materials ||
+        "brick, glass, timber";
 
       const prompt = `You are an architectural style consultant. Based on the following project information, create a detailed style signature that will ensure visual consistency across all architectural drawings and renderings.
 
 PROJECT INFORMATION:
-Building Type: ${specs.buildingProgram || 'residential'}
+Building Type: ${specs.buildingProgram || "residential"}
 Floor Area: ${specs.floorArea || specs.area || 200}m²
-Location: ${location.address || 'Not specified'}
-Climate: ${location.climate?.type || 'temperate'}
+Location: ${location.address || "Not specified"}
+Climate: ${location.climate?.type || "temperate"}
 
 MANDATORY MATERIALS TO USE (from blended style - MUST USE THESE EXACT MATERIALS):
 ${blendedMaterials}
 
-${blendedStyle ? `
+${
+  blendedStyle
+    ? `
 STYLE GUIDE (from location and portfolio blend):
 Style Name: ${blendedStyle.styleName}
-Characteristics: ${blendedStyle.characteristics?.slice(0, 3).join(', ') || 'Modern, functional design'}
-Description: ${blendedStyle.description || 'Contemporary design'}
-` : ''}
+Characteristics: ${blendedStyle.characteristics?.slice(0, 3).join(", ") || "Modern, functional design"}
+Description: ${blendedStyle.description || "Contemporary design"}
+`
+    : ""
+}
 
-${buildingDNA ? `
+${
+  buildingDNA
+    ? `
 BUILDING DNA (for dimensional consistency):
 Dimensions: ${buildingDNA.dimensions?.length || 15}m × ${buildingDNA.dimensions?.width || 10}m
 Floors: ${buildingDNA.dimensions?.floorCount || buildingDNA.dimensions?.floors || 2}
-Roof: ${buildingDNA.roof?.type || 'gable'} ${buildingDNA.roof?.material || ''}
-Windows: ${buildingDNA.windows?.type || 'modern'} - ${buildingDNA.windows?.color || 'white'}
-Color Palette: ${buildingDNA.colorPalette?.primary || buildingDNA.colors?.facade || 'Natural tones'}
-` : ''}
+Roof: ${buildingDNA.roof?.type || "gable"} ${buildingDNA.roof?.material || ""}
+Windows: ${buildingDNA.windows?.type || "modern"} - ${buildingDNA.windows?.color || "white"}
+Color Palette: ${buildingDNA.colorPalette?.primary || buildingDNA.colors?.facade || "Natural tones"}
+`
+    : ""
+}
 
 Generate a comprehensive style signature that includes:
 
@@ -213,26 +247,36 @@ Generate a comprehensive style signature that includes:
 
 Return as JSON with these exact keys: materialsPalette (array), colorPalette (object), facadeArticulation (string), glazingRatio (string), lineWeightRules (object), diagramConventions (string), lighting (string), camera (string), postProcessing (string)`;
 
-      const response = await this.ai.chatCompletion([
-        { role: 'system', content: 'You are an expert architectural style consultant. Always respond with valid JSON.' },
-        { role: 'user', content: prompt }
-      ], {
-        model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
-        temperature: 0.3, // Low temperature for consistency
-        response_format: { type: 'json_object' }
-      });
+      const response = await this.ai.chatCompletion(
+        [
+          {
+            role: "system",
+            content:
+              "You are an expert architectural style consultant. Always respond with valid JSON.",
+          },
+          { role: "user", content: prompt },
+        ],
+        {
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+          temperature: 0.3, // Low temperature for consistency
+          response_format: { type: "json_object" },
+        },
+      );
 
       const signatureText = response.choices[0].message.content;
-      const signature = safeParseJsonFromLLM(signatureText, this.getFallbackStyleSignature(specs, location));
+      const signature = safeParseJsonFromLLM(
+        signatureText,
+        this.getFallbackStyleSignature(specs, location),
+      );
 
       // Add metadata
       signature.timestamp = new Date().toISOString();
       signature.projectId = specs.projectId || Date.now().toString();
 
-      logger.info('✅ Style signature generated:', {
-        materials: signature.materialsPalette?.slice(0, 2).join(', '),
+      logger.info("✅ Style signature generated:", {
+        materials: signature.materialsPalette?.slice(0, 2).join(", "),
         facadeStyle: signature.facadeArticulation,
-        lighting: signature.lighting
+        lighting: signature.lighting,
       });
 
       // Cache for this project session
@@ -240,7 +284,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
 
       return signature;
     } catch (error) {
-      logger.error('❌ Style signature generation failed:', error);
+      logger.error("❌ Style signature generation failed:", error);
       // Return fallback signature
       return this.getFallbackStyleSignature(specs, location);
     }
@@ -254,14 +298,28 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
    * @param {Object} extractedDetails - Extracted visual details from master image (for consistency)
    * @returns {Object} Complete prompt kit with positive and negative prompts
    */
-  buildPromptKit(styleSignature, viewType, projectMeta = {}, extractedDetails = null) {
+  buildPromptKit(
+    styleSignature,
+    viewType,
+    projectMeta = {},
+    extractedDetails = null,
+  ) {
     // eslint-disable-next-line no-unused-vars
-    const { buildingProgram = 'building', area = 200, location = {}, buildingDNA = null } = projectMeta;
+    const {
+      buildingProgram = "building",
+      area = 200,
+      location = {},
+      buildingDNA = null,
+    } = projectMeta;
 
     // Base prompt components from style signature
-    const materials = styleSignature.materialsPalette?.join(', ') || 'glass, steel, concrete';
-    const colors = Object.values(styleSignature.colorPalette || {}).join(', ') || 'neutral tones';
-    const facadeStyle = styleSignature.facadeArticulation || 'contemporary facade';
+    const materials =
+      styleSignature.materialsPalette?.join(", ") || "glass, steel, concrete";
+    const colors =
+      Object.values(styleSignature.colorPalette || {}).join(", ") ||
+      "neutral tones";
+    const facadeStyle =
+      styleSignature.facadeArticulation || "contemporary facade";
 
     // CRITICAL: Extract Building DNA for PERFECT consistency across all views
     const dna = buildingDNA || {};
@@ -274,24 +332,36 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
     const dnaEntrance = dna.entrance || {};
 
     // Build consistency strings from DNA
-    let dimensionStr = dimensions.length && dimensions.width ?
-      `${dimensions.length} × ${dimensions.width} footprint` : '';
-    let floorStr = dimensions.floors || dimensions.floorCount ?
-      `${dimensions.floors || dimensions.floorCount} floors` : '';
-    let heightStr = dimensions.height ?
-      `${dimensions.height} total height` : '';
-    let roofStr = dnaRoof.type ?
-      `${dnaRoof.type}${dnaRoof.material ? ` with ${dnaRoof.material}` : ''}${dnaRoof.pitch ? ` at ${dnaRoof.pitch}` : ''}` : '';
-    let windowStr = dnaWindows.type ?
-      `${dnaWindows.color || 'standard'} ${dnaWindows.type} windows${dnaWindows.pattern ? ` in ${dnaWindows.pattern}` : ''}` : '';
-    let materialStr = dnaMaterials.exterior?.primary ?
-      `${dnaMaterials.exterior.primary}${dnaMaterials.exterior.color ? ` in ${dnaMaterials.exterior.color} color` : ''}${dnaMaterials.exterior.texture ? ` with ${dnaMaterials.exterior.texture}` : ''}` : '';
-    let entranceStr = dnaEntrance.facade && dnaEntrance.position ?
-      `${dnaEntrance.facade}-facing entrance at ${dnaEntrance.position}` : '';
+    let dimensionStr =
+      dimensions.length && dimensions.width
+        ? `${dimensions.length} × ${dimensions.width} footprint`
+        : "";
+    let floorStr =
+      dimensions.floors || dimensions.floorCount
+        ? `${dimensions.floors || dimensions.floorCount} floors`
+        : "";
+    let heightStr = dimensions.height
+      ? `${dimensions.height} total height`
+      : "";
+    let roofStr = dnaRoof.type
+      ? `${dnaRoof.type}${dnaRoof.material ? ` with ${dnaRoof.material}` : ""}${dnaRoof.pitch ? ` at ${dnaRoof.pitch}` : ""}`
+      : "";
+    let windowStr = dnaWindows.type
+      ? `${dnaWindows.color || "standard"} ${dnaWindows.type} windows${dnaWindows.pattern ? ` in ${dnaWindows.pattern}` : ""}`
+      : "";
+    let materialStr = dnaMaterials.exterior?.primary
+      ? `${dnaMaterials.exterior.primary}${dnaMaterials.exterior.color ? ` in ${dnaMaterials.exterior.color} color` : ""}${dnaMaterials.exterior.texture ? ` with ${dnaMaterials.exterior.texture}` : ""}`
+      : "";
+    let entranceStr =
+      dnaEntrance.facade && dnaEntrance.position
+        ? `${dnaEntrance.facade}-facing entrance at ${dnaEntrance.position}`
+        : "";
 
     // 🎯 CRITICAL: If we have extracted details from master image, use them for PERFECT consistency
     if (extractedDetails && !extractedDetails.fallback) {
-      logger.info(`🎯 Using EXTRACTED VISUAL DETAILS for ${viewType} (ensures perfect consistency)`);
+      logger.info(
+        `🎯 Using EXTRACTED VISUAL DETAILS for ${viewType} (ensures perfect consistency)`,
+      );
 
       // Override DNA strings with EXACT extracted details from master image
       if (extractedDetails.materials?.facade) {
@@ -302,7 +372,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
       }
 
       if (extractedDetails.roof?.type) {
-        roofStr = `${extractedDetails.roof.type}${extractedDetails.roof.pitch ? ` ${extractedDetails.roof.pitch}` : ''} roof`;
+        roofStr = `${extractedDetails.roof.type}${extractedDetails.roof.pitch ? ` ${extractedDetails.roof.pitch}` : ""} roof`;
         if (extractedDetails.roof.material) {
           roofStr += ` with ${extractedDetails.roof.material}`;
         }
@@ -315,7 +385,7 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
       }
 
       if (extractedDetails.windows?.type) {
-        windowStr = `${extractedDetails.windows.frame_color || ''} ${extractedDetails.windows.type} windows`;
+        windowStr = `${extractedDetails.windows.frame_color || ""} ${extractedDetails.windows.type} windows`;
         if (extractedDetails.windows.pattern) {
           windowStr += ` in ${extractedDetails.windows.pattern}`;
         }
@@ -340,170 +410,288 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
         floors: floorStr,
         roof: roofStr,
         windows: windowStr,
-        materials: materialStr
+        materials: materialStr,
       });
     }
 
     // Shared negative prompts
     const sharedNegatives = [
-      'inconsistent styles',
-      'mismatched materials',
-      'text artifacts',
-      'watermarks',
-      'deformed annotations',
-      'unrealistic shadows',
-      'fisheye distortion',
-      'extreme HDR',
-      'chromatic aberration',
-      'blurry details',
-      'low quality'
+      "inconsistent styles",
+      "mismatched materials",
+      "text artifacts",
+      "watermarks",
+      "deformed annotations",
+      "unrealistic shadows",
+      "fisheye distortion",
+      "extreme HDR",
+      "chromatic aberration",
+      "blurry details",
+      "low quality",
     ];
 
     // View-specific prompt kits
     switch (viewType) {
-      case 'plan':
-      case 'floor_plan':
+      case "plan":
+      case "floor_plan":
         return {
-          prompt: `BLACK LINE DRAWING ON WHITE BACKGROUND showing OVERHEAD ORTHOGRAPHIC VIEW of building interior space layout for ${buildingProgram}, ${area}m²${dimensionStr ? `, ${dimensionStr}` : ''}${floorStr ? `, ${floorStr}` : ''}${entranceStr ? `, ${entranceStr}` : ''}${materialStr ? `, using ${materialStr}` : ''}${roofStr ? `, ${roofStr}` : ''}${windowStr ? `, ${windowStr}` : ''}, drawn as if looking STRAIGHT DOWN FROM DIRECTLY ABOVE like a geographic map, showing walls as simple black rectangles forming rooms, windows as breaks in the walls, doors as gaps in the walls, all drawn with ZERO perspective, ZERO depth, ZERO height shown, using ONLY horizontal and vertical lines parallel to the page edges, ${styleSignature.lineWeightRules?.walls || '0.5mm'} line weight for walls, scale 1:100, north arrow, dimension lines, FLAT ORTHOGONAL PROJECTION ONLY like a city planning document`,
-          negativePrompt: [...sharedNegatives, 'colors', 'shadows', '3D', 'perspective', 'depth', 'textures', 'photos', 'isometric', 'axonometric', 'diagonal walls', 'angled view', 'slanted lines', 'tilted view', 'bird eye', 'rendered', 'shading', 'gradients', 'vanishing point', 'oblique', 'dimetric', 'trimetric', 'cutaway', 'sectional view', 'elevation', 'any angle', 'any tilt', 'realistic materials', 'architectural rendering', '3D model', 'SketchUp style', 'perspective projection', 'depth perception', 'height representation', 'vertical walls visible', '3D isometric', '3D diagram'].join(', '),
-          size: '1024x1024',
-          camera: 'PURE ORTHOGRAPHIC OVERHEAD, PARALLEL PROJECTION, NO PERSPECTIVE, GEOGRAPHIC MAP VIEW',
-          viewType: 'plan'
+          prompt: `BLACK LINE DRAWING ON WHITE BACKGROUND showing OVERHEAD ORTHOGRAPHIC VIEW of building interior space layout for ${buildingProgram}, ${area}m²${dimensionStr ? `, ${dimensionStr}` : ""}${floorStr ? `, ${floorStr}` : ""}${entranceStr ? `, ${entranceStr}` : ""}${materialStr ? `, using ${materialStr}` : ""}${roofStr ? `, ${roofStr}` : ""}${windowStr ? `, ${windowStr}` : ""}, drawn as if looking STRAIGHT DOWN FROM DIRECTLY ABOVE like a geographic map, showing walls as simple black rectangles forming rooms, windows as breaks in the walls, doors as gaps in the walls, all drawn with ZERO perspective, ZERO depth, ZERO height shown, using ONLY horizontal and vertical lines parallel to the page edges, ${styleSignature.lineWeightRules?.walls || "0.5mm"} line weight for walls, scale 1:100, north arrow, dimension lines, FLAT ORTHOGONAL PROJECTION ONLY like a city planning document`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "colors",
+            "shadows",
+            "3D",
+            "perspective",
+            "depth",
+            "textures",
+            "photos",
+            "isometric",
+            "axonometric",
+            "diagonal walls",
+            "angled view",
+            "slanted lines",
+            "tilted view",
+            "bird eye",
+            "rendered",
+            "shading",
+            "gradients",
+            "vanishing point",
+            "oblique",
+            "dimetric",
+            "trimetric",
+            "cutaway",
+            "sectional view",
+            "elevation",
+            "any angle",
+            "any tilt",
+            "realistic materials",
+            "architectural rendering",
+            "3D model",
+            "SketchUp style",
+            "perspective projection",
+            "depth perception",
+            "height representation",
+            "vertical walls visible",
+            "3D isometric",
+            "3D diagram",
+          ].join(", "),
+          size: "1024x1024",
+          camera:
+            "PURE ORTHOGRAPHIC OVERHEAD, PARALLEL PROJECTION, NO PERSPECTIVE, GEOGRAPHIC MAP VIEW",
+          viewType: "plan",
         };
 
-      case 'floor_plan_ground':
+      case "floor_plan_ground":
         return {
-          prompt: `Architectural GROUND FLOOR PLAN, BLACK LINEWORK ON WHITE, TRUE 2D ORTHOGRAPHIC OVERHEAD (NO 3D/NO AXONOMETRIC). ${buildingProgram}, ${area}m²${dimensionStr ? `, ${dimensionStr}` : ''}${materialStr ? `, using ${materialStr}` : ''}${roofStr ? `, ${roofStr}` : ''}${windowStr ? `, ${windowStr}` : ''}. MUST include MAIN ENTRANCE on street-facing frontage, labeled Entry/Foyer near street side; include stairs with 'UP' arrow; NO bedrooms on ground floor; room labels and dimensions; north arrow; scale 1:100.`,
-          negativePrompt: [...sharedNegatives, 'upper floor entrance', 'bedrooms on ground floor', '3D', 'perspective', 'axonometric'].join(', '),
-          size: '1024x1024',
-          camera: 'PURE ORTHOGRAPHIC OVERHEAD',
-          viewType: 'plan'
+          prompt: `Architectural GROUND FLOOR PLAN, BLACK LINEWORK ON WHITE, TRUE 2D ORTHOGRAPHIC OVERHEAD (NO 3D/NO AXONOMETRIC). ${buildingProgram}, ${area}m²${dimensionStr ? `, ${dimensionStr}` : ""}${materialStr ? `, using ${materialStr}` : ""}${roofStr ? `, ${roofStr}` : ""}${windowStr ? `, ${windowStr}` : ""}. MUST include MAIN ENTRANCE on street-facing frontage, labeled Entry/Foyer near street side; include stairs with 'UP' arrow; NO bedrooms on ground floor; room labels and dimensions; north arrow; scale 1:100.`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "upper floor entrance",
+            "bedrooms on ground floor",
+            "3D",
+            "perspective",
+            "axonometric",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "PURE ORTHOGRAPHIC OVERHEAD",
+          viewType: "plan",
         };
 
-      case 'floor_plan_upper':
+      case "floor_plan_upper":
         return {
-          prompt: `Architectural UPPER FLOOR PLAN, BLACK LINEWORK ON WHITE, TRUE 2D ORTHOGRAPHIC OVERHEAD (NO 3D/NO AXONOMETRIC). ${buildingProgram}, ${area}m²${dimensionStr ? `, ${dimensionStr}` : ''}. ABSOLUTELY NO MAIN ENTRANCE from outside; include Landing at stairs; bedrooms and bathrooms only (no kitchen/living); room labels and dimensions; north arrow; scale 1:100.`,
-          negativePrompt: [...sharedNegatives, 'main entrance', 'ground floor entrance', 'kitchen', 'living room', '3D', 'perspective', 'axonometric'].join(', '),
-          size: '1024x1024',
-          camera: 'PURE ORTHOGRAPHIC OVERHEAD',
-          viewType: 'plan'
+          prompt: `Architectural UPPER FLOOR PLAN, BLACK LINEWORK ON WHITE, TRUE 2D ORTHOGRAPHIC OVERHEAD (NO 3D/NO AXONOMETRIC). ${buildingProgram}, ${area}m²${dimensionStr ? `, ${dimensionStr}` : ""}. ABSOLUTELY NO MAIN ENTRANCE from outside; include Landing at stairs; bedrooms and bathrooms only (no kitchen/living); room labels and dimensions; north arrow; scale 1:100.`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "main entrance",
+            "ground floor entrance",
+            "kitchen",
+            "living room",
+            "3D",
+            "perspective",
+            "axonometric",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "PURE ORTHOGRAPHIC OVERHEAD",
+          viewType: "plan",
         };
 
-      case 'section':
-      case 'section_longitudinal':
-      case 'section_cross':
+      case "section":
+      case "section_longitudinal":
+      case "section_cross":
         return {
-          prompt: `Architectural section drawing, ${buildingProgram}, black-and-white line drawing, ${styleSignature.lineWeightRules?.walls || '0.5mm'} wall cuts, ${styleSignature.lineWeightRules?.windows || '0.3mm'} fenestration, uniform white background, consistent line hierarchy, scale bar, floor levels marked, ${styleSignature.diagramConventions || 'minimal interior detail'}, professional architectural drawing, orthographic projection, clean linework, no colors`,
-          negativePrompt: [...sharedNegatives, 'colors', 'shadows', '3D perspective', 'realistic textures', 'photos'].join(', '),
-          size: '1024x1024',
-          camera: 'orthographic section view',
-          viewType: 'section'
+          prompt: `Architectural section drawing, ${buildingProgram}, black-and-white line drawing, ${styleSignature.lineWeightRules?.walls || "0.5mm"} wall cuts, ${styleSignature.lineWeightRules?.windows || "0.3mm"} fenestration, uniform white background, consistent line hierarchy, scale bar, floor levels marked, ${styleSignature.diagramConventions || "minimal interior detail"}, professional architectural drawing, orthographic projection, clean linework, no colors`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "colors",
+            "shadows",
+            "3D perspective",
+            "realistic textures",
+            "photos",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "orthographic section view",
+          viewType: "section",
         };
 
-      case 'elevation':
-      case 'elevation_north':
-      case 'elevation_south':
-      case 'elevation_east':
-      case 'elevation_west':
-        const direction = viewType.split('_')[1] || 'front';
+      case "elevation":
+      case "elevation_north":
+      case "elevation_south":
+      case "elevation_east":
+      case "elevation_west":
+        const direction = viewType.split("_")[1] || "front";
         return {
-          prompt: `Architectural elevation drawing, ${direction} facade, ${buildingProgram}${floorStr ? `, ${floorStr}` : ''}${heightStr ? `, ${heightStr}` : ''}${materialStr ? `, ${materialStr} walls` : ''}${roofStr ? `, ${roofStr}` : ''}${windowStr ? `, ${windowStr}` : ''}, black-and-white line drawing, ${facadeStyle}, ${styleSignature.glazingRatio || '40%'} glazing ratio, ${styleSignature.lineWeightRules?.walls || '0.5mm'} wall lines, uniform white background, consistent line hierarchy, ground line, professional architectural drawing, orthographic projection, no textures, clean linework`,
-          negativePrompt: [...sharedNegatives, 'colors', 'shadows', '3D perspective', 'realistic textures', 'photos'].join(', '),
-          size: '1024x1024',
-          camera: 'orthographic front view',
-          viewType: 'elevation'
+          prompt: `Architectural elevation drawing, ${direction} facade, ${buildingProgram}${floorStr ? `, ${floorStr}` : ""}${heightStr ? `, ${heightStr}` : ""}${materialStr ? `, ${materialStr} walls` : ""}${roofStr ? `, ${roofStr}` : ""}${windowStr ? `, ${windowStr}` : ""}, black-and-white line drawing, ${facadeStyle}, ${styleSignature.glazingRatio || "40%"} glazing ratio, ${styleSignature.lineWeightRules?.walls || "0.5mm"} wall lines, uniform white background, consistent line hierarchy, ground line, professional architectural drawing, orthographic projection, no textures, clean linework`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "colors",
+            "shadows",
+            "3D perspective",
+            "realistic textures",
+            "photos",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "orthographic front view",
+          viewType: "elevation",
         };
 
-      case 'axonometric':
-      case 'axon':
+      case "axonometric":
+      case "axon":
         return {
-          prompt: `Architectural axonometric drawing, ${buildingProgram}, parallel projection at 30° angle, ${materials}, ${facadeStyle}, ${styleSignature.lineWeightRules?.walls || '0.5mm'} consistent line weights, no atmospheric perspective, uniform lighting, clean geometric lines, professional architectural diagram, isometric precision, minimal shadows, white background`,
-          negativePrompt: [...sharedNegatives, 'vanishing points', 'perspective distortion', 'fisheye', 'atmospheric perspective'].join(', '),
-          size: '1024x1024',
-          camera: '30° parallel projection',
-          viewType: 'axonometric'
+          prompt: `Architectural axonometric drawing, ${buildingProgram}, parallel projection at 30° angle, ${materials}, ${facadeStyle}, ${styleSignature.lineWeightRules?.walls || "0.5mm"} consistent line weights, no atmospheric perspective, uniform lighting, clean geometric lines, professional architectural diagram, isometric precision, minimal shadows, white background`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "vanishing points",
+            "perspective distortion",
+            "fisheye",
+            "atmospheric perspective",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "30° parallel projection",
+          viewType: "axonometric",
         };
 
-      case 'exterior':
-      case 'exterior_front':
+      case "exterior":
+      case "exterior_front":
         return {
-          prompt: `Professional architectural photography, FRONT VIEW of ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ''}${floorStr ? `, ${floorStr} building` : ''}${materialStr ? `, ${materialStr}` : `, ${materials}`}${roofStr ? `, ${roofStr}` : ''}${windowStr ? `, ${windowStr}` : ''}, ${colors}, ${facadeStyle}, ${styleSignature.glazingRatio || '40%'} glazing, ${styleSignature.lighting || 'soft overcast daylight'}, ${styleSignature.camera || '35mm lens, eye level 1.6m height'}, photorealistic rendering, high detail, professional composition, ${styleSignature.postProcessing || 'natural color grading'}, sharp focus, main entrance visible, architectural photography quality`,
-          negativePrompt: [...sharedNegatives, 'side view', 'corner view', 'oblique angle'].join(', '),
-          size: '1024x1536', // Portrait for exterior
-          camera: styleSignature.camera || '35mm lens, eye level',
-          viewType: 'exterior'
+          prompt: `Professional architectural photography, FRONT VIEW of ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ""}${floorStr ? `, ${floorStr} building` : ""}${materialStr ? `, ${materialStr}` : `, ${materials}`}${roofStr ? `, ${roofStr}` : ""}${windowStr ? `, ${windowStr}` : ""}, ${colors}, ${facadeStyle}, ${styleSignature.glazingRatio || "40%"} glazing, ${styleSignature.lighting || "soft overcast daylight"}, ${styleSignature.camera || "35mm lens, eye level 1.6m height"}, photorealistic rendering, high detail, professional composition, ${styleSignature.postProcessing || "natural color grading"}, sharp focus, main entrance visible, architectural photography quality`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "side view",
+            "corner view",
+            "oblique angle",
+          ].join(", "),
+          size: "1024x1536", // Portrait for exterior
+          camera: styleSignature.camera || "35mm lens, eye level",
+          viewType: "exterior",
         };
 
-      case 'exterior_side':
+      case "exterior_side":
         return {
-          prompt: `Professional architectural photography, SIDE VIEW from corner angle of ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ''}${floorStr ? `, ${floorStr} building` : ''}${materialStr ? `, ${materialStr}` : `, ${materials}`}${roofStr ? `, ${roofStr}` : ''}${windowStr ? `, ${windowStr}` : ''}, ${colors}, ${facadeStyle}, ${styleSignature.glazingRatio || '40%'} glazing, ${styleSignature.lighting || 'soft overcast daylight'}, ${styleSignature.camera || '35mm lens, eye level 1.6m height'}, 45-degree corner perspective showing both front and side facades, photorealistic rendering, high detail, professional composition, ${styleSignature.postProcessing || 'natural color grading'}, sharp focus, architectural photography quality`,
-          negativePrompt: [...sharedNegatives, 'frontal view only', 'elevation drawing'].join(', '),
-          size: '1024x1536', // Portrait for exterior
-          camera: '35mm lens, eye level, 45-degree angle',
-          viewType: 'exterior'
+          prompt: `Professional architectural photography, SIDE VIEW from corner angle of ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ""}${floorStr ? `, ${floorStr} building` : ""}${materialStr ? `, ${materialStr}` : `, ${materials}`}${roofStr ? `, ${roofStr}` : ""}${windowStr ? `, ${windowStr}` : ""}, ${colors}, ${facadeStyle}, ${styleSignature.glazingRatio || "40%"} glazing, ${styleSignature.lighting || "soft overcast daylight"}, ${styleSignature.camera || "35mm lens, eye level 1.6m height"}, 45-degree corner perspective showing both front and side facades, photorealistic rendering, high detail, professional composition, ${styleSignature.postProcessing || "natural color grading"}, sharp focus, architectural photography quality`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "frontal view only",
+            "elevation drawing",
+          ].join(", "),
+          size: "1024x1536", // Portrait for exterior
+          camera: "35mm lens, eye level, 45-degree angle",
+          viewType: "exterior",
         };
 
-      case 'exterior_front_3d':
+      case "exterior_front_3d":
         return {
-          prompt: `Photorealistic 3D EXTERIOR FRONT view, ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ''}${floorStr ? `, ${floorStr} building` : ''}${materialStr ? `, ${materialStr}` : `, ${materials}`}, FRONT facade centered, MAIN ENTRANCE prominently visible, materials and colors match technical drawings`,
-          negativePrompt: [...sharedNegatives, 'side-only view', 'rear facade', 'axonometric', 'isometric'].join(', '),
-          size: '1024x1024',
-          camera: 'eye level 1.6m, frontal composition',
-          viewType: 'exterior'
+          prompt: `Photorealistic 3D EXTERIOR FRONT view, ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ""}${floorStr ? `, ${floorStr} building` : ""}${materialStr ? `, ${materialStr}` : `, ${materials}`}, FRONT facade centered, MAIN ENTRANCE prominently visible, materials and colors match technical drawings`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "side-only view",
+            "rear facade",
+            "axonometric",
+            "isometric",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "eye level 1.6m, frontal composition",
+          viewType: "exterior",
         };
 
-      case 'exterior_side_3d':
+      case "exterior_side_3d":
         return {
-          prompt: `Photorealistic 3D EXTERIOR SIDE view (45° corner), ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ''}${floorStr ? `, ${floorStr} building` : ''}${materialStr ? `, ${materialStr}` : `, ${materials}`}, SIDE facade emphasized, do not center main entrance (may be partial), materials/colors match technical drawings`,
-          negativePrompt: [...sharedNegatives, 'front-only view', 'elevation drawing', 'axonometric', 'isometric'].join(', '),
-          size: '1024x1024',
-          camera: 'eye level 1.6m, 45° corner angle',
-          viewType: 'exterior'
+          prompt: `Photorealistic 3D EXTERIOR SIDE view (45° corner), ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ""}${floorStr ? `, ${floorStr} building` : ""}${materialStr ? `, ${materialStr}` : `, ${materials}`}, SIDE facade emphasized, do not center main entrance (may be partial), materials/colors match technical drawings`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "front-only view",
+            "elevation drawing",
+            "axonometric",
+            "isometric",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "eye level 1.6m, 45° corner angle",
+          viewType: "exterior",
         };
 
-      case 'axonometric_3d':
+      case "axonometric_3d":
         return {
           prompt: `Architectural AXONOMETRIC 3D, PARALLEL PROJECTION (NO PERSPECTIVE), 45° plan rotation, ~30° tilt, ${materials}, technical illustration style, shows roof geometry and two facades, ${colors}`,
-          negativePrompt: [...sharedNegatives, 'vanishing points', '2-point perspective', '1-point perspective', 'fisheye'].join(', '),
-          size: '1024x1024',
-          camera: 'parallel projection, 45°/30° axon',
-          viewType: 'axonometric'
+          negativePrompt: [
+            ...sharedNegatives,
+            "vanishing points",
+            "2-point perspective",
+            "1-point perspective",
+            "fisheye",
+          ].join(", "),
+          size: "1024x1024",
+          camera: "parallel projection, 45°/30° axon",
+          viewType: "axonometric",
         };
 
-      case 'perspective_3d':
+      case "perspective_3d":
         return {
           prompt: `Photorealistic 2-POINT PERSPECTIVE architectural view, eye level 1.6m, two vanishing points, realistic convergence, DIFFERENT from axonometric (must show perspective depth), ${materials}, ${colors}`,
-          negativePrompt: [...sharedNegatives, 'parallel projection', 'axonometric', 'isometric'].join(', '),
-          size: '1536x1024',
-          camera: 'eye level, 2-point perspective',
-          viewType: 'perspective'
+          negativePrompt: [
+            ...sharedNegatives,
+            "parallel projection",
+            "axonometric",
+            "isometric",
+          ].join(", "),
+          size: "1536x1024",
+          camera: "eye level, 2-point perspective",
+          viewType: "perspective",
         };
 
-      case 'perspective':
+      case "perspective":
         return {
-          prompt: `Professional architectural photography, AERIAL PERSPECTIVE VIEW from elevated vantage point, ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ''}${floorStr ? `, ${floorStr} building` : ''}${materialStr ? `, ${materialStr}` : `, ${materials}`}${roofStr ? `, ${roofStr}` : ''}${windowStr ? `, ${windowStr}` : ''}, ${colors}, ${facadeStyle}, showing roof and surrounding context, bird's eye angle 25-35 degrees above horizon, ${styleSignature.lighting || 'soft overcast daylight'}, photorealistic rendering, high detail, professional architectural visualization, ${styleSignature.postProcessing || 'natural color grading'}, sharp focus, contextual landscape visible, dramatic composition`,
-          negativePrompt: [...sharedNegatives, 'ground level', 'eye level', 'frontal view', 'elevation'].join(', '),
-          size: '1536x1024', // Landscape for perspective
-          camera: 'Elevated angle, 25-35° above horizon, wider context',
-          viewType: 'perspective'
+          prompt: `Professional architectural photography, AERIAL PERSPECTIVE VIEW from elevated vantage point, ${buildingProgram}${dimensionStr ? `, ${dimensionStr} proportions` : ""}${floorStr ? `, ${floorStr} building` : ""}${materialStr ? `, ${materialStr}` : `, ${materials}`}${roofStr ? `, ${roofStr}` : ""}${windowStr ? `, ${windowStr}` : ""}, ${colors}, ${facadeStyle}, showing roof and surrounding context, bird's eye angle 25-35 degrees above horizon, ${styleSignature.lighting || "soft overcast daylight"}, photorealistic rendering, high detail, professional architectural visualization, ${styleSignature.postProcessing || "natural color grading"}, sharp focus, contextual landscape visible, dramatic composition`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "ground level",
+            "eye level",
+            "frontal view",
+            "elevation",
+          ].join(", "),
+          size: "1536x1024", // Landscape for perspective
+          camera: "Elevated angle, 25-35° above horizon, wider context",
+          viewType: "perspective",
         };
 
-      case 'interior':
+      case "interior":
         return {
-          prompt: `Professional interior architectural photography, ${buildingProgram} interior, ${materials}, ${colors}, ${styleSignature.lighting || 'soft natural daylight through windows'}, ${styleSignature.camera || '35mm lens, eye level 1.6m height'}, photorealistic rendering, high detail, professional composition, ${styleSignature.postProcessing || 'warm natural color grading'}, sharp focus, architectural photography quality, spacious feeling`,
-          negativePrompt: [...sharedNegatives, 'cluttered', 'dark', 'narrow'].join(', '),
-          size: '1536x1024', // Landscape for interior
-          camera: styleSignature.camera || '35mm lens, eye level',
-          viewType: 'interior'
+          prompt: `Professional interior architectural photography, ${buildingProgram} interior, ${materials}, ${colors}, ${styleSignature.lighting || "soft natural daylight through windows"}, ${styleSignature.camera || "35mm lens, eye level 1.6m height"}, photorealistic rendering, high detail, professional composition, ${styleSignature.postProcessing || "warm natural color grading"}, sharp focus, architectural photography quality, spacious feeling`,
+          negativePrompt: [
+            ...sharedNegatives,
+            "cluttered",
+            "dark",
+            "narrow",
+          ].join(", "),
+          size: "1536x1024", // Landscape for interior
+          camera: styleSignature.camera || "35mm lens, eye level",
+          viewType: "interior",
         };
 
       default:
         return {
           prompt: `Professional architectural visualization, ${buildingProgram}, ${materials}, ${colors}, ${facadeStyle}, photorealistic, high quality`,
-          negativePrompt: sharedNegatives.join(', '),
-          size: '1024x1024',
-          camera: 'standard view',
-          viewType: 'default'
+          negativePrompt: sharedNegatives.join(", "),
+          size: "1024x1024",
+          camera: "standard view",
+          viewType: "default",
         };
     }
   }
@@ -513,26 +701,32 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
    */
   getFallbackStyleSignature(specs, location) {
     return {
-      materialsPalette: ['polished concrete', 'anodized aluminum', 'double-glazed clear glass', 'natural wood'],
+      materialsPalette: [
+        "polished concrete",
+        "anodized aluminum",
+        "double-glazed clear glass",
+        "natural wood",
+      ],
       colorPalette: {
-        facade: 'warm gray concrete',
-        roof: 'dark charcoal',
-        trim: 'white',
-        accent: 'natural wood tone'
+        facade: "warm gray concrete",
+        roof: "dark charcoal",
+        trim: "white",
+        accent: "natural wood tone",
       },
-      facadeArticulation: 'horizontal emphasis with ribbon windows',
-      glazingRatio: '40%',
+      facadeArticulation: "horizontal emphasis with ribbon windows",
+      glazingRatio: "40%",
       lineWeightRules: {
-        walls: '0.5mm',
-        windows: '0.3mm',
-        annotations: '0.1mm'
+        walls: "0.5mm",
+        windows: "0.3mm",
+        annotations: "0.1mm",
       },
-      diagramConventions: 'minimal furniture, emphasis on circulation and spatial flow',
-      lighting: 'soft overcast daylight, 10am, even illumination',
-      camera: '35mm lens, eye level 1.6m height, straight-on view',
-      postProcessing: 'photorealistic with subtle natural color grading',
+      diagramConventions:
+        "minimal furniture, emphasis on circulation and spatial flow",
+      lighting: "soft overcast daylight, 10am, even illumination",
+      camera: "35mm lens, eye level 1.6m height, straight-on view",
+      postProcessing: "photorealistic with subtle natural color grading",
       isFallback: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -545,25 +739,30 @@ Return as JSON with these exact keys: materialsPalette (array), colorPalette (ob
    */
   async extractVisualDetailsFromImage(imageUrl, buildingDNA = {}) {
     try {
-      logger.info(`\n🔍 Extracting exact visual details from master image using GPT-4o Vision...`);
+      logger.info(
+        `\n🔍 Extracting exact visual details from master image using GPT-4o Vision...`,
+      );
 
       const dna = buildingDNA || {};
-      const expectedMaterials = dna.materials?.exterior?.primary || 'materials';
-      const expectedRoof = dna.roof?.type || 'roof';
-      const expectedWindows = dna.windows?.type || 'windows';
-      const expectedFloors = dna.dimensions?.floors || dna.dimensions?.floorCount || 'floors';
+      const expectedMaterials = dna.materials?.exterior?.primary || "materials";
+      const expectedRoof = dna.roof?.type || "roof";
+      const expectedWindows = dna.windows?.type || "windows";
+      const expectedFloors =
+        dna.dimensions?.floors || dna.dimensions?.floorCount || "floors";
 
-      const response = await this.ai.chatCompletion([
-        {
-          role: 'system',
-          content: 'You are an expert architectural visual analyst. Extract EXACT visual details from images with extreme precision. Return ONLY valid JSON.'
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Analyze this architectural building image and extract EXACT visual details for perfect consistency across multiple views.
+      const response = await this.ai.chatCompletion(
+        [
+          {
+            role: "system",
+            content:
+              "You are an expert architectural visual analyst. Extract EXACT visual details from images with extreme precision. Return ONLY valid JSON.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this architectural building image and extract EXACT visual details for perfect consistency across multiple views.
 
 Expected building DNA (use as reference):
 - Materials: ${expectedMaterials}
@@ -613,50 +812,65 @@ Extract and return ONLY a JSON object with these EXACT details:
   "distinctive_features": ["list", "of", "unique", "features"]
 }
 
-Be EXTREMELY specific with colors, materials, and patterns. These details will be used to generate perfectly consistent architectural views.`
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: imageUrl,
-                detail: 'high'
-              }
-            }
-          ]
-        }
-      ], {
-        model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
-        temperature: 0.1, // Very low for consistency
-        max_tokens: 1500,
-        response_format: { type: 'json_object' }
-      });
+Be EXTREMELY specific with colors, materials, and patterns. These details will be used to generate perfectly consistent architectural views.`,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageUrl,
+                  detail: "high",
+                },
+              },
+            ],
+          },
+        ],
+        {
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+          temperature: 0.1, // Very low for consistency
+          max_tokens: 1500,
+          response_format: { type: "json_object" },
+        },
+      );
 
-      const extractedDetails = safeParseJsonFromLLM(response.choices[0].message.content, {
-        materials: {},
-        roof: {},
-        windows: {},
-        colors: {},
-        floors_visible: 1
-      });
+      const extractedDetails = safeParseJsonFromLLM(
+        response.choices[0].message.content,
+        {
+          materials: {},
+          roof: {},
+          windows: {},
+          colors: {},
+          floors_visible: 1,
+        },
+      );
 
       // 🔧 CRITICAL FIX: Override extracted floor count with Building DNA floor count
       // GPT-4o Vision sometimes misidentifies floor count from master image
       // Design DNA is authoritative source for building specifications
-      const totalFloors = buildingDNA?.dimensions?.floors || buildingDNA?.dimensions?.floorCount;
+      const totalFloors =
+        buildingDNA?.dimensions?.floors || buildingDNA?.dimensions?.floorCount;
       if (totalFloors && extractedDetails.floors_visible !== totalFloors) {
-        logger.info(`   🔧 Overriding extracted floors (${extractedDetails.floors_visible}) with Design DNA floors (${totalFloors})`);
+        logger.info(
+          `   🔧 Overriding extracted floors (${extractedDetails.floors_visible}) with Design DNA floors (${totalFloors})`,
+        );
         extractedDetails.floors_visible = totalFloors;
       }
 
       logger.success(` Visual details extracted successfully:`);
-      logger.info(`   📦 Facade: ${extractedDetails.materials?.facade || 'N/A'}`);
-      logger.info(`   🏠 Roof: ${extractedDetails.roof?.type || 'N/A'} - ${extractedDetails.roof?.color || 'N/A'}`);
-      logger.info(`   🪟 Windows: ${extractedDetails.windows?.type || 'N/A'} - ${extractedDetails.windows?.frame_color || 'N/A'}`);
-      logger.info(`   🎨 Colors: ${Object.keys(extractedDetails.colors || {}).length} extracted`);
-      logger.info(`   📏 Floors: ${extractedDetails.floors_visible || 'N/A'}`);
+      logger.info(
+        `   📦 Facade: ${extractedDetails.materials?.facade || "N/A"}`,
+      );
+      logger.info(
+        `   🏠 Roof: ${extractedDetails.roof?.type || "N/A"} - ${extractedDetails.roof?.color || "N/A"}`,
+      );
+      logger.info(
+        `   🪟 Windows: ${extractedDetails.windows?.type || "N/A"} - ${extractedDetails.windows?.frame_color || "N/A"}`,
+      );
+      logger.info(
+        `   🎨 Colors: ${Object.keys(extractedDetails.colors || {}).length} extracted`,
+      );
+      logger.info(`   📏 Floors: ${extractedDetails.floors_visible || "N/A"}`);
 
       return extractedDetails;
-
     } catch (error) {
       logger.error(`❌ Failed to extract visual details:`, error.message);
       logger.info(`⚠️  Falling back to Building DNA only`);
@@ -664,18 +878,18 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       // Return basic structure from DNA as fallback
       return {
         materials: {
-          facade: buildingDNA.materials?.exterior?.primary || 'brick',
-          facade_hex: buildingDNA.colorPalette?.primary || '#D4762E'
+          facade: buildingDNA.materials?.exterior?.primary || "brick",
+          facade_hex: buildingDNA.colorPalette?.primary || "#D4762E",
         },
         roof: {
-          type: buildingDNA.roof?.type || 'gable',
-          material: buildingDNA.roof?.material || 'slate'
+          type: buildingDNA.roof?.type || "gable",
+          material: buildingDNA.roof?.material || "slate",
         },
         windows: {
-          type: buildingDNA.windows?.type || 'sash',
-          frame_color: buildingDNA.windows?.color || 'white'
+          type: buildingDNA.windows?.type || "sash",
+          frame_color: buildingDNA.windows?.color || "white",
         },
-        fallback: true
+        fallback: true,
       };
     }
   }
@@ -687,18 +901,18 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   isTechnicalView(viewType) {
     const technicalViews = [
-      'plan',
-      'floor_plan',
-      'elevation',
-      'elevation_north',
-      'elevation_south',
-      'elevation_east',
-      'elevation_west',
-      'section',
-      'section_longitudinal',
-      'section_cross',
-      'axonometric',
-      'axon'
+      "plan",
+      "floor_plan",
+      "elevation",
+      "elevation_north",
+      "elevation_south",
+      "elevation_east",
+      "elevation_west",
+      "section",
+      "section_longitudinal",
+      "section_cross",
+      "axonometric",
+      "axon",
     ];
     return technicalViews.includes(viewType);
   }
@@ -713,43 +927,65 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateConsistentImages(viewRequests, context) {
     try {
-      logger.info(`🎨 Generating ${viewRequests.length} consistent images with HYBRID MODEL SELECTION`);
-      logger.info(`   🎯 Strategy: DALL-E 3 for technical views, Midjourney for photorealistic renders`);
-      logger.info(`   📐 Technical views (floor plans, elevations, sections, axonometric) → DALL-E 3`);
-      logger.info(`   📸 Photorealistic views (exterior, interior, perspective) → Midjourney (optional)`);
+      logger.info(
+        `🎨 Generating ${viewRequests.length} consistent images with HYBRID MODEL SELECTION`,
+      );
+      logger.info(
+        `   🎯 Strategy: DALL-E 3 for technical views, Midjourney for photorealistic renders`,
+      );
+      logger.info(
+        `   📐 Technical views (floor plans, elevations, sections, axonometric) → DALL-E 3`,
+      );
+      logger.info(
+        `   📸 Photorealistic views (exterior, interior, perspective) → Midjourney (optional)`,
+      );
 
       // Ensure style signature exists
-      const styleSignature = context.styleSignature ||
-        await this.generateStyleSignature(
+      const styleSignature =
+        context.styleSignature ||
+        (await this.generateStyleSignature(
           context.portfolio || {},
           context.specs || context,
-          context.location || {}
-        );
+          context.location || {},
+        ));
 
       const results = [];
       let masterImageUrl = null;
       let extractedVisualDetails = null;
 
       // 🎯 STEP 1: Find and generate master exterior image FIRST
-      const masterIndex = viewRequests.findIndex(req =>
-        req.viewType === 'exterior' || req.viewType === 'exterior_front' || req.viewType === 'exterior_side'
+      const masterIndex = viewRequests.findIndex(
+        (req) =>
+          req.viewType === "exterior" ||
+          req.viewType === "exterior_front" ||
+          req.viewType === "exterior_side",
       );
 
       if (masterIndex !== -1 && masterIndex > 0) {
         // Move master to front for sequential generation
         const [masterReq] = viewRequests.splice(masterIndex, 1);
         viewRequests.unshift(masterReq);
-        logger.info(`📌 Moved ${masterReq.viewType} to first position as master reference image`);
+        logger.info(
+          `📌 Moved ${masterReq.viewType} to first position as master reference image`,
+        );
       }
 
       for (let i = 0; i < viewRequests.length; i++) {
         const req = viewRequests[i];
-        const isMaster = i === 0 && (req.viewType === 'exterior' || req.viewType === 'exterior_front' || req.viewType === 'exterior_side');
+        const isMaster =
+          i === 0 &&
+          (req.viewType === "exterior" ||
+            req.viewType === "exterior_front" ||
+            req.viewType === "exterior_side");
 
         if (isMaster) {
-          logger.info(`\n🎨 [MASTER] Generating master ${req.viewType} for visual reference...`);
+          logger.info(
+            `\n🎨 [MASTER] Generating master ${req.viewType} for visual reference...`,
+          );
         } else {
-          logger.info(`\n🎨 [${i + 1}/${viewRequests.length}] Generating ${req.viewType}${extractedVisualDetails ? ' using extracted details' : ''}...`);
+          logger.info(
+            `\n🎨 [${i + 1}/${viewRequests.length}] Generating ${req.viewType}${extractedVisualDetails ? " using extracted details" : ""}...`,
+          );
         }
 
         // Build prompt kit for this view (with extracted details if available)
@@ -757,7 +993,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           styleSignature,
           req.viewType,
           req.meta || context,
-          extractedVisualDetails // Pass extracted details for consistency
+          extractedVisualDetails, // Pass extracted details for consistency
         );
 
         let retries = 0;
@@ -770,7 +1006,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         while (!success && retries < maxRetries) {
           try {
             if (retries > 0) {
-              logger.info(`   🔄 Retry attempt ${retries}/${maxRetries - 1} for ${req.viewType}...`);
+              logger.info(
+                `   🔄 Retry attempt ${retries}/${maxRetries - 1} for ${req.viewType}...`,
+              );
             }
 
             // 🎯 HYBRID MODEL SELECTION: Route based on view type
@@ -778,33 +1016,44 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
 
             if (isTechnical) {
               // 📐 TECHNICAL VIEWS → DALL-E 3 (better at following precise instructions)
-              logger.info(`   📐 Using DALL-E 3 for ${req.viewType} (technical precision)...`);
+              logger.info(
+                `   📐 Using DALL-E 3 for ${req.viewType} (technical precision)...`,
+              );
 
               try {
                 const result = await this.openaiImage.generateImage({
                   prompt: promptKit.prompt,
-                  size: promptKit.size || '1024x1024',
-                  quality: 'hd',
-                  style: 'natural'
+                  size: promptKit.size || "1024x1024",
+                  quality: "hd",
+                  style: "natural",
                 });
 
                 // DALL-E 3 returns an array of image objects
                 if (result && result.length > 0) {
-                  images = [{
-                    url: result[0].url,
-                    revised_prompt: result[0].revised_prompt || promptKit.prompt,
-                    model: 'dalle3'
-                  }];
+                  images = [
+                    {
+                      url: result[0].url,
+                      revised_prompt:
+                        result[0].revised_prompt || promptKit.prompt,
+                      model: "dalle3",
+                    },
+                  ];
                 } else {
-                  throw new Error('No images returned from DALL-E 3');
+                  throw new Error("No images returned from DALL-E 3");
                 }
 
-                logger.info(`   ✅ DALL-E 3 generation successful for ${req.viewType}`);
+                logger.info(
+                  `   ✅ DALL-E 3 generation successful for ${req.viewType}`,
+                );
               } catch (dalle3Error) {
-                logger.error(`   ❌ DALL-E 3 failed for ${req.viewType}:`, dalle3Error.message);
-                throw new Error(`DALL-E 3 generation failed for ${req.viewType}: ${dalle3Error.message}`);
+                logger.error(
+                  `   ❌ DALL-E 3 failed for ${req.viewType}:`,
+                  dalle3Error.message,
+                );
+                throw new Error(
+                  `DALL-E 3 generation failed for ${req.viewType}: ${dalle3Error.message}`,
+                );
               }
-
             }
 
             success = true;
@@ -812,50 +1061,73 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             let imageUrl = images[0]?.url;
 
             // 🎨 CRITICAL FIX #3: Apply 2D enforcement for floor plans (convert 3D axonometric to 2D blueprint)
-            if (imageUrl && (req.viewType === 'plan' || req.viewType === 'floor_plan')) {
-              logger.info(`   🔧 Applying 2D floor plan enforcement (convert 3D to flat blueprint)...`);
+            if (
+              imageUrl &&
+              (req.viewType === "plan" || req.viewType === "floor_plan")
+            ) {
+              logger.info(
+                `   🔧 Applying 2D floor plan enforcement (convert 3D to flat blueprint)...`,
+              );
               try {
                 const processedImageUrl = await enforce2DFloorPlan(imageUrl, {
                   applyBlueprintTint: true,
                   contrastBoost: 1.5,
                   desaturate: true,
-                  lineThickness: 1.2
+                  lineThickness: 1.2,
                 });
                 imageUrl = processedImageUrl;
                 images[0].url = processedImageUrl; // Update the images array
                 logger.info(`   ✅ Floor plan converted to 2D blueprint style`);
               } catch (enforce2DError) {
-                logger.error(`   ❌ 2D enforcement failed:`, enforce2DError.message);
-                logger.warn(`   ⚠️  Using original floor plan image (DALL·E 3 generated)`);
+                logger.error(
+                  `   ❌ 2D enforcement failed:`,
+                  enforce2DError.message,
+                );
+                logger.warn(
+                  `   ⚠️  Using original floor plan image (DALL·E 3 generated)`,
+                );
                 // Continue with original image
               }
             }
 
             // 🔍 CRITICAL FIX #2: Validate view correctness using GPT-4 Vision
             if (imageUrl) {
-              logger.info(`   🔍 Validating view correctness with GPT-4 Vision...`);
+              logger.info(
+                `   🔍 Validating view correctness with GPT-4 Vision...`,
+              );
               try {
                 // Note: Together AI doesn't have vision API, skip classification
                 const classification = null;
 
                 if (classification.isCorrect) {
-                  logger.info(`   ✅ View verified: ${classification.actualView} (confidence: ${classification.confidence})`);
+                  logger.info(
+                    `   ✅ View verified: ${classification.actualView} (confidence: ${classification.confidence})`,
+                  );
                 } else {
-                  logger.warn(`   ⚠️  View mismatch: expected ${req.viewType}, got ${classification.actualView}`);
+                  logger.warn(
+                    `   ⚠️  View mismatch: expected ${req.viewType}, got ${classification.actualView}`,
+                  );
                   logger.warn(`   Reason: ${classification.reason}`);
 
                   // Auto-regenerate up to 2 times for 2D views (floor_plan, elevation_*, section_*)
-                  const is2DView = req.viewType === 'plan' || req.viewType === 'floor_plan' ||
-                                   req.viewType.startsWith('elevation_') || req.viewType.startsWith('section_');
+                  const is2DView =
+                    req.viewType === "plan" ||
+                    req.viewType === "floor_plan" ||
+                    req.viewType.startsWith("elevation_") ||
+                    req.viewType.startsWith("section_");
                   const maxRegenAttempts = is2DView ? 2 : 1;
 
                   if (retries < maxRegenAttempts) {
-                    logger.info(`   🔄 Auto-regenerating with enhanced prompt (attempt ${retries + 1}/${maxRegenAttempts})...`);
+                    logger.info(
+                      `   🔄 Auto-regenerating with enhanced prompt (attempt ${retries + 1}/${maxRegenAttempts})...`,
+                    );
                     retries++;
                     success = false;
                     continue; // Retry with same parameters
                   } else {
-                    logger.warn(`   ⚠️  Keeping mismatched view after ${maxRegenAttempts} retries (user will be warned)`);
+                    logger.warn(
+                      `   ⚠️  Keeping mismatched view after ${maxRegenAttempts} retries (user will be warned)`,
+                    );
                   }
                 }
 
@@ -864,7 +1136,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
                   images[0].classification = classification;
                 }
               } catch (classifyError) {
-                logger.error(`   ❌ View classification failed:`, classifyError.message);
+                logger.error(
+                  `   ❌ View classification failed:`,
+                  classifyError.message,
+                );
                 logger.info(`   ⚠️  Continuing without validation`);
               }
             }
@@ -872,61 +1147,86 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             // 🎯 STEP 2: If this is the master image, extract visual details
             if (isMaster && imageUrl) {
               masterImageUrl = imageUrl;
-              logger.info(`\n🔍 Master image generated, extracting visual details for consistency...`);
+              logger.info(
+                `\n🔍 Master image generated, extracting visual details for consistency...`,
+              );
 
               extractedVisualDetails = await this.extractVisualDetailsFromImage(
                 masterImageUrl,
-                (req.meta || context).buildingDNA || {}
+                (req.meta || context).buildingDNA || {},
               );
 
               if (extractedVisualDetails && !extractedVisualDetails.fallback) {
-                logger.success(` Visual details extracted successfully - will be used for ALL remaining views`);
+                logger.success(
+                  ` Visual details extracted successfully - will be used for ALL remaining views`,
+                );
               } else {
-                logger.info(`⚠️  Visual extraction failed or fallback - using Building DNA only`);
+                logger.info(
+                  `⚠️  Visual extraction failed or fallback - using Building DNA only`,
+                );
               }
             }
 
             // Determine actual model used
-            const modelUsed = this.isTechnicalView(req.viewType) ? 'dalle3' : 'midjourney';
+            const modelUsed = this.isTechnicalView(req.viewType)
+              ? "dalle3"
+              : "midjourney";
 
             results.push({
               success: true,
               viewType: req.viewType,
-              images: images.map(img => img.url),
+              images: images.map((img) => img.url),
               revisedPrompt: images[0]?.revised_prompt,
-              source: modelUsed,  // Correctly set based on actual model used
+              source: modelUsed, // Correctly set based on actual model used
               promptKit,
               attempts: retries + 1,
               isMaster: isMaster || false,
-              usedExtractedDetails: !isMaster && extractedVisualDetails && !extractedVisualDetails.fallback
+              usedExtractedDetails:
+                !isMaster &&
+                extractedVisualDetails &&
+                !extractedVisualDetails.fallback,
             });
 
-            const modelName = modelUsed === 'dalle3' ? 'DALL-E 3' : 'Midjourney';
-            logger.info(`   ✅ ${req.viewType} generated with ${modelName}${retries > 0 ? ` (attempt ${retries + 1})` : ''}`);
-
+            const modelName =
+              modelUsed === "dalle3" ? "DALL-E 3" : "Midjourney";
+            logger.info(
+              `   ✅ ${req.viewType} generated with ${modelName}${retries > 0 ? ` (attempt ${retries + 1})` : ""}`,
+            );
           } catch (midjourneyGenError) {
             lastError = midjourneyGenError;
             retries++;
 
-            logger.error(`   ❌ Midjourney attempt ${retries} failed:`, midjourneyGenError.message);
+            logger.error(
+              `   ❌ Midjourney attempt ${retries} failed:`,
+              midjourneyGenError.message,
+            );
 
             if (retries < maxRetries) {
               const waitTime = retries * 3000; // Exponential backoff: 3s, 6s, 9s
               logger.info(`   ⏳ Waiting ${waitTime / 1000}s before retry...`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
+              await new Promise((resolve) => setTimeout(resolve, waitTime));
             } else {
               // All retries exhausted - use placeholder
-              logger.error(`   ❌ All ${maxRetries} attempts failed for ${req.viewType}`);
-              logger.warn(`   ⚠️  Using placeholder image (Midjourney ONLY policy - no fallback)`);
+              logger.error(
+                `   ❌ All ${maxRetries} attempts failed for ${req.viewType}`,
+              );
+              logger.warn(
+                `   ⚠️  Using placeholder image (Midjourney ONLY policy - no fallback)`,
+              );
 
               results.push({
                 success: false,
                 viewType: req.viewType,
                 error: `Midjourney failed after ${maxRetries} attempts: ${lastError.message}`,
-                images: [this.openaiImage.getFallbackImage(req.viewType, promptKit.size).url],
-                source: 'placeholder',
+                images: [
+                  this.openaiImage.getFallbackImage(
+                    req.viewType,
+                    promptKit.size,
+                  ).url,
+                ],
+                source: "placeholder",
                 promptKit,
-                attempts: maxRetries
+                attempts: maxRetries,
               });
             }
           }
@@ -935,7 +1235,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         // Add delay between requests to respect rate limits (except after last request)
         if (i < viewRequests.length - 1) {
           logger.info(`   ⏳ Waiting 2s before next image...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       }
 
@@ -943,8 +1243,8 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       let togetherAICount = 0;
       let placeholderCount = 0;
 
-      results.forEach(r => {
-        if (r.source === 'placeholder') {
+      results.forEach((r) => {
+        if (r.source === "placeholder") {
           placeholderCount++;
         } else if (r.images && r.images.length > 0) {
           togetherAICount++;
@@ -952,21 +1252,33 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       });
 
       const successCount = togetherAICount;
-      const usedExtractedDetails = results.filter(r => r.usedExtractedDetails).length;
-      const hasMaster = results.some(r => r.isMaster);
+      const usedExtractedDetails = results.filter(
+        (r) => r.usedExtractedDetails,
+      ).length;
+      const hasMaster = results.some((r) => r.isMaster);
 
       logger.info(`\n✅ ============================================`);
-      logger.success(` Completed ${results.length} image generations (TOGETHER AI EXCLUSIVE)`);
-      logger.info(`   🎨 Together AI (FLUX.1): ${togetherAICount}/${results.length}`);
+      logger.success(
+        ` Completed ${results.length} image generations (TOGETHER AI EXCLUSIVE)`,
+      );
+      logger.info(
+        `   🎨 Together AI (FLUX.1): ${togetherAICount}/${results.length}`,
+      );
       logger.info(`   ❌ Placeholder: ${placeholderCount}/${results.length}`);
-      logger.info(`   🎯 Master Image: ${hasMaster ? 'Generated successfully' : 'Not found'}`);
-      logger.info(`   🔗 Used Extracted Details: ${usedExtractedDetails}/${results.length - 1} views`);
-      logger.info(`   🎨 Consistency Level: ${extractedVisualDetails && !extractedVisualDetails.fallback ? 'PERFECT (GPT-4o coordinated)' : successCount === results.length ? 'HIGH (DNA-based)' : 'MEDIUM'}`);
+      logger.info(
+        `   🎯 Master Image: ${hasMaster ? "Generated successfully" : "Not found"}`,
+      );
+      logger.info(
+        `   🔗 Used Extracted Details: ${usedExtractedDetails}/${results.length - 1} views`,
+      );
+      logger.info(
+        `   🎨 Consistency Level: ${extractedVisualDetails && !extractedVisualDetails.fallback ? "PERFECT (GPT-4o coordinated)" : successCount === results.length ? "HIGH (DNA-based)" : "MEDIUM"}`,
+      );
       logger.success(` ============================================`);
 
       return results;
     } catch (error) {
-      logger.error('❌ Consistent image generation error:', error);
+      logger.error("❌ Consistent image generation error:", error);
       throw error;
     }
   }
@@ -978,20 +1290,26 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateCompleteDesign(projectContext) {
     try {
-      logger.info('Starting complete AI design workflow...');
-      
+      logger.info("Starting complete AI design workflow...");
+
       // Step 1: Generate design reasoning
       const reasoning = await this.generateDesignReasoning(projectContext);
-      
+
       // Step 2: Generate architectural visualizations
-      const visualizations = await this.generateVisualizations(projectContext, reasoning);
-      
+      const visualizations = await this.generateVisualizations(
+        projectContext,
+        reasoning,
+      );
+
       // Step 3: Generate design alternatives
-      const alternatives = await this.generateDesignAlternatives(projectContext, reasoning);
-      
+      const alternatives = await this.generateDesignAlternatives(
+        projectContext,
+        reasoning,
+      );
+
       // Step 4: Analyze feasibility
       const feasibility = await this.analyzeFeasibility(projectContext);
-      
+
       return {
         success: true,
         reasoning,
@@ -1000,15 +1318,14 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         feasibility,
         projectContext,
         timestamp: new Date().toISOString(),
-        workflow: 'complete'
+        workflow: "complete",
       };
-
     } catch (error) {
-      logger.error('Complete design workflow error:', error);
+      logger.error("Complete design workflow error:", error);
       return {
         success: false,
         error: error.message,
-        fallback: this.getFallbackDesign(projectContext)
+        fallback: this.getFallbackDesign(projectContext),
       };
     }
   }
@@ -1018,7 +1335,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateDesignReasoning(projectContext) {
     try {
-      logger.info(`Generating design reasoning... (Using ${USE_TOGETHER ? 'Together AI' : 'OpenAI'})`);
+      logger.info(
+        `Generating design reasoning... (Using ${USE_TOGETHER ? "Together AI" : "OpenAI"})`,
+      );
 
       let reasoning;
       if (USE_TOGETHER) {
@@ -1026,45 +1345,67 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         reasoning = await togetherAIService.generateReasoning({
           projectContext: projectContext,
           portfolioAnalysis: projectContext.portfolioAnalysis,
-          locationData: projectContext.locationContext || projectContext.location,
-          buildingProgram: projectContext.buildingProgram || projectContext.buildingType
+          locationData:
+            projectContext.locationContext || projectContext.location,
+          buildingProgram:
+            projectContext.buildingProgram || projectContext.buildingType,
         });
 
         // Normalize Together AI response to match OpenAI format (ensure strings)
         reasoning = {
-          designPhilosophy: String(reasoning.designPhilosophy || 'Modern contextual design'),
-          spatialOrganization: String(reasoning.spatialOrganization || 'Optimized flow'),
-          materialRecommendations: String(reasoning.materials || reasoning.materialRecommendations || 'Sustainable materials'),
-          environmentalConsiderations: String(reasoning.environmentalConsiderations || 'Climate-responsive design'),
-          technicalSolutions: String(reasoning.technicalSolutions || 'Efficient systems'),
-          codeCompliance: String(reasoning.codeCompliance || 'Meets local regulations'),
-          costStrategies: String(reasoning.costStrategies || 'Value engineering'),
-          futureProofing: String(reasoning.futureProofing || 'Adaptable design'),
-          source: 'together'
+          designPhilosophy: String(
+            reasoning.designPhilosophy || "Modern contextual design",
+          ),
+          spatialOrganization: String(
+            reasoning.spatialOrganization || "Optimized flow",
+          ),
+          materialRecommendations: String(
+            reasoning.materials ||
+              reasoning.materialRecommendations ||
+              "Sustainable materials",
+          ),
+          environmentalConsiderations: String(
+            reasoning.environmentalConsiderations ||
+              "Climate-responsive design",
+          ),
+          technicalSolutions: String(
+            reasoning.technicalSolutions || "Efficient systems",
+          ),
+          codeCompliance: String(
+            reasoning.codeCompliance || "Meets local regulations",
+          ),
+          costStrategies: String(
+            reasoning.costStrategies || "Value engineering",
+          ),
+          futureProofing: String(
+            reasoning.futureProofing || "Adaptable design",
+          ),
+          source: "together",
         };
       } else {
         reasoning = await this.ai.generateDesignReasoning(projectContext);
-        reasoning.source = 'openai';
+        reasoning.source = "openai";
       }
 
       return {
         ...reasoning,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      logger.error('Design reasoning error:', error);
+      logger.error("Design reasoning error:", error);
       return {
-        designPhilosophy: 'Contextual and sustainable design approach',
-        spatialOrganization: 'Functional and flexible spatial arrangement',
-        materialRecommendations: 'Locally sourced, sustainable materials',
-        environmentalConsiderations: 'Passive design and renewable energy integration',
-        technicalSolutions: 'Efficient structural and MEP systems',
-        codeCompliance: 'Full compliance with local regulations',
-        costStrategies: 'Value engineering and lifecycle cost optimization',
-        futureProofing: 'Adaptable design for future needs',
-        source: 'fallback',
+        designPhilosophy: "Contextual and sustainable design approach",
+        spatialOrganization: "Functional and flexible spatial arrangement",
+        materialRecommendations: "Locally sourced, sustainable materials",
+        environmentalConsiderations:
+          "Passive design and renewable energy integration",
+        technicalSolutions: "Efficient structural and MEP systems",
+        codeCompliance: "Full compliance with local regulations",
+        costStrategies: "Value engineering and lifecycle cost optimization",
+        futureProofing: "Adaptable design for future needs",
+        source: "fallback",
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -1074,20 +1415,27 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateVisualizations(projectContext, reasoning) {
     try {
-      logger.info(`Generating architectural visualizations... (Using ${USE_TOGETHER ? 'Together AI FLUX.1' : 'Replicate'})`);
+      logger.info(
+        `Generating architectural visualizations... (Using ${USE_TOGETHER ? "Together AI FLUX.1" : "Replicate"})`,
+      );
 
       if (USE_TOGETHER) {
         // Use Together AI FLUX.1 DNA-enhanced generation for all 13 views
-        logger.info('🧬 Generating complete architectural package with DNA consistency...');
+        logger.info(
+          "🧬 Generating complete architectural package with DNA consistency...",
+        );
 
-        const packageResult = await togetherAIService.generateConsistentArchitecturalPackage({
-          projectContext: {
-            ...projectContext,
-            seed: Math.floor(Math.random() * 1000000)
-          }
-        });
+        const packageResult =
+          await togetherAIService.generateConsistentArchitecturalPackage({
+            projectContext: {
+              ...projectContext,
+              seed: Math.floor(Math.random() * 1000000),
+            },
+          });
 
-        logger.success(` Generated ${packageResult.totalViews} views with ${packageResult.consistency} consistency`);
+        logger.success(
+          ` Generated ${packageResult.totalViews} views with ${packageResult.consistency} consistency`,
+        );
 
         // Map the 13 views to the expected format
         return {
@@ -1107,52 +1455,51 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
             exterior_side: packageResult.exterior_side_3d?.url,
             interior: packageResult.interior_3d?.url,
             axonometric: packageResult.axonometric_3d?.url,
-            perspective: packageResult.perspective_3d?.url
+            perspective: packageResult.perspective_3d?.url,
           },
           styleVariations: [],
           reasoningBased: [],
-          source: 'together-flux-dna',
+          source: "together-flux-dna",
           seed: packageResult.seed,
           masterDNA: packageResult.masterDNA,
           consistency: packageResult.consistency,
           uniqueImages: packageResult.uniqueImages,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
       } else {
         // Original Replicate implementation
         const views = await this.replicate.generateMultipleViews(
           projectContext,
-          ['exterior_front', 'exterior_side', 'interior']
+          ["exterior_front", "exterior_side", "interior"],
         );
 
         const styleVariations = await this.replicate.generateStyleVariations(
           projectContext,
-          ['modern', 'sustainable', 'contemporary']
+          ["modern", "sustainable", "contemporary"],
         );
 
         const reasoningBased = await this.replicate.generateFromReasoning(
           reasoning,
-          projectContext
+          projectContext,
         );
 
         return {
           views,
           styleVariations,
           reasoningBased,
-          source: 'replicate',
-          timestamp: new Date().toISOString()
+          source: "replicate",
+          timestamp: new Date().toISOString(),
         };
       }
-
     } catch (error) {
-      logger.error('Visualization generation error:', error);
+      logger.error("Visualization generation error:", error);
       return {
         views: this.getFallbackViews(),
         styleVariations: this.getFallbackStyleVariations(),
         reasoningBased: this.getFallbackReasoningBased(),
-        source: 'fallback',
+        source: "fallback",
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -1162,50 +1509,58 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateDesignAlternatives(projectContext, reasoning) {
     try {
-      logger.info('Generating design alternatives...');
-      
-      const approaches = ['sustainable', 'cost_effective', 'innovative', 'traditional'];
+      logger.info("Generating design alternatives...");
+
+      const approaches = [
+        "sustainable",
+        "cost_effective",
+        "innovative",
+        "traditional",
+      ];
       const alternatives = {};
 
       for (const approach of approaches) {
         try {
           const alternativeReasoning = await this.ai.generateDesignAlternatives(
-            projectContext, 
-            approach
+            projectContext,
+            approach,
           );
-          
-          const alternativeVisualization = await this.replicate.generateArchitecturalImage({
-            ...this.buildAlternativeParams(projectContext, approach),
-            prompt: this.buildAlternativePrompt(alternativeReasoning, approach)
-          });
+
+          const alternativeVisualization =
+            await this.replicate.generateArchitecturalImage({
+              ...this.buildAlternativeParams(projectContext, approach),
+              prompt: this.buildAlternativePrompt(
+                alternativeReasoning,
+                approach,
+              ),
+            });
 
           alternatives[approach] = {
             reasoning: alternativeReasoning,
             visualization: alternativeVisualization,
-            approach
+            approach,
           };
         } catch (error) {
           logger.error(`Error generating ${approach} alternative:`, error);
           alternatives[approach] = {
             error: error.message,
-            approach
+            approach,
           };
         }
       }
 
       return {
         alternatives,
-        source: 'ai_integration',
-        timestamp: new Date().toISOString()
+        source: "ai_integration",
+        timestamp: new Date().toISOString(),
       };
-
     } catch (error) {
-      logger.error('Design alternatives error:', error);
+      logger.error("Design alternatives error:", error);
       return {
         alternatives: this.getFallbackAlternatives(),
-        source: 'fallback',
+        source: "fallback",
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -1215,17 +1570,17 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async analyzeFeasibility(projectContext) {
     try {
-      logger.info('Analyzing project feasibility...');
+      logger.info("Analyzing project feasibility...");
       return await this.ai.analyzeFeasibility(projectContext);
     } catch (error) {
-      logger.error('Feasibility analysis error:', error);
+      logger.error("Feasibility analysis error:", error);
       return {
-        feasibility: 'Medium',
-        constraints: ['Detailed analysis unavailable'],
-        recommendations: ['Manual feasibility review recommended'],
-        source: 'fallback',
+        feasibility: "Medium",
+        constraints: ["Detailed analysis unavailable"],
+        recommendations: ["Manual feasibility review recommended"],
+        source: "fallback",
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -1235,43 +1590,47 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   buildAlternativeParams(projectContext, approach) {
     const baseParams = {
-      buildingType: projectContext.buildingProgram || 'building',
-      location: projectContext.location?.address || 'urban setting',
+      buildingType: projectContext.buildingProgram || "building",
+      location: projectContext.location?.address || "urban setting",
       width: 1024,
-      height: 768
+      height: 768,
     };
 
     switch (approach) {
-      case 'sustainable':
+      case "sustainable":
         return {
           ...baseParams,
-          architecturalStyle: 'sustainable',
-          materials: 'recycled and renewable materials',
-          prompt: 'Sustainable architectural design, green building, eco-friendly materials, energy efficient, LEED certified, environmental consciousness'
+          architecturalStyle: "sustainable",
+          materials: "recycled and renewable materials",
+          prompt:
+            "Sustainable architectural design, green building, eco-friendly materials, energy efficient, LEED certified, environmental consciousness",
         };
 
-      case 'cost_effective':
+      case "cost_effective":
         return {
           ...baseParams,
-          architecturalStyle: 'cost-effective',
-          materials: 'standard construction materials',
-          prompt: 'Cost-effective architectural design, value engineering, budget-conscious, efficient construction, practical solutions'
+          architecturalStyle: "cost-effective",
+          materials: "standard construction materials",
+          prompt:
+            "Cost-effective architectural design, value engineering, budget-conscious, efficient construction, practical solutions",
         };
 
-      case 'innovative':
+      case "innovative":
         return {
           ...baseParams,
-          architecturalStyle: 'futuristic',
-          materials: 'advanced materials and technology',
-          prompt: 'Innovative architectural design, cutting-edge technology, smart building, futuristic, advanced materials, digital integration'
+          architecturalStyle: "futuristic",
+          materials: "advanced materials and technology",
+          prompt:
+            "Innovative architectural design, cutting-edge technology, smart building, futuristic, advanced materials, digital integration",
         };
 
-      case 'traditional':
+      case "traditional":
         return {
           ...baseParams,
-          architecturalStyle: 'traditional',
-          materials: 'traditional local materials',
-          prompt: 'Traditional architectural design, cultural context, local materials, heritage-inspired, timeless design'
+          architecturalStyle: "traditional",
+          materials: "traditional local materials",
+          prompt:
+            "Traditional architectural design, cultural context, local materials, heritage-inspired, timeless design",
         };
 
       default:
@@ -1283,9 +1642,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    * Build prompt for alternative approaches
    */
   buildAlternativePrompt(reasoning, approach) {
-    const philosophy = reasoning.designPhilosophy || `${approach} design approach`;
+    const philosophy =
+      reasoning.designPhilosophy || `${approach} design approach`;
     const materials = this.extractMaterialsFromReasoning(reasoning);
-    
+
     return `Professional architectural visualization, ${approach} design approach: "${philosophy}", using ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed`;
   }
 
@@ -1294,13 +1654,17 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   extractMaterialsFromReasoning(reasoning) {
     // Ensure materialText is a string
-    const materialText = String(reasoning.materialRecommendations || reasoning.materials || '');
-    const materials = ['glass', 'steel', 'concrete', 'wood', 'stone', 'brick'];
-    const foundMaterials = materials.filter(material =>
-      materialText.toLowerCase().includes(material)
+    const materialText = String(
+      reasoning.materialRecommendations || reasoning.materials || "",
+    );
+    const materials = ["glass", "steel", "concrete", "wood", "stone", "brick"];
+    const foundMaterials = materials.filter((material) =>
+      materialText.toLowerCase().includes(material),
     );
 
-    return foundMaterials.length > 0 ? foundMaterials.join(' and ') : 'glass and steel';
+    return foundMaterials.length > 0
+      ? foundMaterials.join(" and ")
+      : "glass and steel";
   }
 
   /**
@@ -1309,25 +1673,26 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
   getFallbackDesign(projectContext) {
     return {
       reasoning: {
-        designPhilosophy: 'Contextual and sustainable design approach',
-        spatialOrganization: 'Functional and flexible spatial arrangement',
-        materialRecommendations: 'Locally sourced, sustainable materials',
-        environmentalConsiderations: 'Passive design and renewable energy integration',
-        technicalSolutions: 'Efficient structural and MEP systems',
-        codeCompliance: 'Full compliance with local regulations',
-        costStrategies: 'Value engineering and lifecycle cost optimization',
-        futureProofing: 'Adaptable design for future needs',
-        isFallback: true
+        designPhilosophy: "Contextual and sustainable design approach",
+        spatialOrganization: "Functional and flexible spatial arrangement",
+        materialRecommendations: "Locally sourced, sustainable materials",
+        environmentalConsiderations:
+          "Passive design and renewable energy integration",
+        technicalSolutions: "Efficient structural and MEP systems",
+        codeCompliance: "Full compliance with local regulations",
+        costStrategies: "Value engineering and lifecycle cost optimization",
+        futureProofing: "Adaptable design for future needs",
+        isFallback: true,
       },
       visualizations: this.getFallbackViews(),
       alternatives: this.getFallbackAlternatives(),
       feasibility: {
-        feasibility: 'Medium',
-        constraints: ['AI services unavailable'],
-        recommendations: ['Manual design review recommended']
+        feasibility: "Medium",
+        constraints: ["AI services unavailable"],
+        recommendations: ["Manual design review recommended"],
       },
       isFallback: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -1339,18 +1704,24 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       exterior: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder']
+        images: [
+          "https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Exterior+View+Placeholder",
+        ],
       },
       interior: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder']
+        images: [
+          "https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Interior+View+Placeholder",
+        ],
       },
       site_plan: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder']
-      }
+        images: [
+          "https://via.placeholder.com/1024x1024/9013FE/FFFFFF?text=Site+Plan+Placeholder",
+        ],
+      },
     };
   }
 
@@ -1362,18 +1733,24 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       modern: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Modern+Style+Placeholder']
+        images: [
+          "https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Modern+Style+Placeholder",
+        ],
       },
       sustainable: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
+        images: [
+          "https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder",
+        ],
       },
       contemporary: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Contemporary+Style+Placeholder']
-      }
+        images: [
+          "https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Contemporary+Style+Placeholder",
+        ],
+      },
     };
   }
 
@@ -1384,7 +1761,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
     return {
       success: false,
       isFallback: true,
-      images: ['https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=AI+Reasoning+Based+Placeholder']
+      images: [
+        "https://via.placeholder.com/1024x768/F5A623/FFFFFF?text=AI+Reasoning+Based+Placeholder",
+      ],
     };
   }
 
@@ -1394,25 +1773,37 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
   getFallbackAlternatives() {
     return {
       sustainable: {
-        reasoning: { designPhilosophy: 'Sustainable design approach', isFallback: true },
+        reasoning: {
+          designPhilosophy: "Sustainable design approach",
+          isFallback: true,
+        },
         visualization: { success: false, isFallback: true },
-        approach: 'sustainable'
+        approach: "sustainable",
       },
       cost_effective: {
-        reasoning: { designPhilosophy: 'Cost-effective design approach', isFallback: true },
+        reasoning: {
+          designPhilosophy: "Cost-effective design approach",
+          isFallback: true,
+        },
         visualization: { success: false, isFallback: true },
-        approach: 'cost_effective'
+        approach: "cost_effective",
       },
       innovative: {
-        reasoning: { designPhilosophy: 'Innovative design approach', isFallback: true },
+        reasoning: {
+          designPhilosophy: "Innovative design approach",
+          isFallback: true,
+        },
         visualization: { success: false, isFallback: true },
-        approach: 'innovative'
+        approach: "innovative",
       },
       traditional: {
-        reasoning: { designPhilosophy: 'Traditional design approach', isFallback: true },
+        reasoning: {
+          designPhilosophy: "Traditional design approach",
+          isFallback: true,
+        },
         visualization: { success: false, isFallback: true },
-        approach: 'traditional'
-      }
+        approach: "traditional",
+      },
     };
   }
 
@@ -1425,24 +1816,28 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         success: false,
         isFallback: true,
         floorPlan: {
-          images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder'],
-          message: 'Using placeholder floor plan - API unavailable'
+          images: [
+            "https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=2D+Floor+Plan+Placeholder",
+          ],
+          message: "Using placeholder floor plan - API unavailable",
         },
-        type: '2d_floor_plan'
+        type: "2d_floor_plan",
       },
       preview3D: {
         success: false,
         isFallback: true,
         preview3D: {
-          images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder'],
-          message: 'Using placeholder 3D preview - API unavailable'
+          images: [
+            "https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder",
+          ],
+          message: "Using placeholder 3D preview - API unavailable",
         },
-        type: '3d_preview'
+        type: "3d_preview",
       },
       styleDetection: null,
       reasoning: this.getFallbackReasoning(projectContext),
       isFallback: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -1452,18 +1847,18 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
   getFallbackStyleOptimized(projectContext) {
     return {
       styleDetection: {
-        primaryStyle: { style: 'Contemporary', confidence: 'Medium' },
-        designElements: { materials: 'Glass, steel, concrete' },
-        isFallback: true
+        primaryStyle: { style: "Contemporary", confidence: "Medium" },
+        designElements: { materials: "Glass, steel, concrete" },
+        isFallback: true,
       },
       compatibilityAnalysis: {
-        compatibilityScore: '7/10',
-        isFallback: true
+        compatibilityScore: "7/10",
+        isFallback: true,
       },
       reasoning: this.getFallbackReasoning(projectContext),
       visualizations: this.getFallbackVisualizations(),
       isFallback: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -1472,16 +1867,17 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   getFallbackReasoning(projectContext) {
     return {
-      designPhilosophy: 'Contextual and sustainable design approach',
-      spatialOrganization: 'Functional and flexible spatial arrangement',
-      materialRecommendations: 'Locally sourced, sustainable materials',
-      environmentalConsiderations: 'Passive design and renewable energy integration',
-      technicalSolutions: 'Efficient structural and MEP systems',
-      codeCompliance: 'Full compliance with local regulations',
-      costStrategies: 'Value engineering and lifecycle cost optimization',
-      futureProofing: 'Adaptable design for future needs',
+      designPhilosophy: "Contextual and sustainable design approach",
+      spatialOrganization: "Functional and flexible spatial arrangement",
+      materialRecommendations: "Locally sourced, sustainable materials",
+      environmentalConsiderations:
+        "Passive design and renewable energy integration",
+      technicalSolutions: "Efficient structural and MEP systems",
+      codeCompliance: "Full compliance with local regulations",
+      costStrategies: "Value engineering and lifecycle cost optimization",
+      futureProofing: "Adaptable design for future needs",
       isFallback: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -1493,32 +1889,42 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       floorPlan: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder']
+        images: [
+          "https://via.placeholder.com/1024x1024/2C3E50/FFFFFF?text=Floor+Plan+Placeholder",
+        ],
       },
       preview3D: {
         success: false,
         isFallback: true,
-        images: ['https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder']
+        images: [
+          "https://via.placeholder.com/1024x768/3498DB/FFFFFF?text=3D+Preview+Placeholder",
+        ],
       },
       styleVariations: {
         contemporary: {
           success: false,
           isFallback: true,
-          images: ['https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Contemporary+Style+Placeholder']
+          images: [
+            "https://via.placeholder.com/1024x768/4A90E2/FFFFFF?text=Contemporary+Style+Placeholder",
+          ],
         },
         sustainable: {
           success: false,
           isFallback: true,
-          images: ['https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder']
+          images: [
+            "https://via.placeholder.com/1024x768/7ED321/FFFFFF?text=Sustainable+Style+Placeholder",
+          ],
         },
         innovative: {
           success: false,
           isFallback: true,
-          images: ['https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Innovative+Style+Placeholder']
-        }
+          images: [
+            "https://via.placeholder.com/1024x768/9013FE/FFFFFF?text=Innovative+Style+Placeholder",
+          ],
+        },
       },
       isFallback: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
   }
 
@@ -1527,54 +1933,76 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateFloorPlanAnd3DPreview(projectContext, portfolioImages = []) {
     try {
-      logger.info('Starting comprehensive architectural generation...');
+      logger.info("Starting comprehensive architectural generation...");
 
       // STEP 1: Use projectSeed from context (generated once in frontend)
-      const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+      const projectSeed =
+        projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       const enhancedContext = { ...projectContext, seed: projectSeed };
 
-      logger.info(`🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`);
+      logger.info(
+        `🎲 Using unified project seed: ${projectSeed} for ALL outputs (2D plans, elevations, sections, 3D views)`,
+      );
 
       // Step 1: Detect architectural style from portfolio if provided
       let styleDetection = null;
       if (portfolioImages && portfolioImages.length > 0) {
-        styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
-          portfolioImages,
-          projectContext.location
-        );
+        styleDetection =
+          await this.portfolioStyleDetection.detectArchitecturalStyle(
+            portfolioImages,
+            projectContext.location,
+          );
       }
 
       // Step 2: Generate multi-level floor plans (ground, upper if needed, roof)
-      logger.info('🏗️ Generating multi-level floor plans...');
-      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
+      logger.info("🏗️ Generating multi-level floor plans...");
+      const floorPlans =
+        await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
       // STEP 2: Capture ground floor plan image URL for use as ControlNet control
       let floorPlanControlImage = null;
-      if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
+      if (
+        floorPlans?.floorPlans?.ground?.images &&
+        floorPlans.floorPlans.ground.images.length > 0
+      ) {
         floorPlanControlImage = floorPlans.floorPlans.ground.images[0];
-        logger.info('🎯 Captured ground floor plan for ControlNet:', floorPlanControlImage?.substring(0, 50) + '...');
+        logger.info(
+          "🎯 Captured ground floor plan for ControlNet:",
+          floorPlanControlImage?.substring(0, 50) + "...",
+        );
       }
 
       // Step 3: Generate elevations and sections as independent 2D technical drawings
-      logger.info('🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
-      const technicalDrawings = await this.replicate.generateElevationsAndSections(
-        enhancedContext,
-        true, // Generate all drawings (4 elevations + 2 sections)
-        null // No ControlNet - elevations/sections must be independent 2D orthographic projections
+      logger.info(
+        "🏗️ Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...",
       );
+      const technicalDrawings =
+        await this.replicate.generateElevationsAndSections(
+          enhancedContext,
+          true, // Generate all drawings (4 elevations + 2 sections)
+          null, // No ControlNet - elevations/sections must be independent 2D orthographic projections
+        );
 
       // Step 4: Generate 3D views (2 exterior + 1 interior + axonometric + perspective) - WITHOUT ControlNet for better photorealistic results
-      logger.info('🏗️ Generating 3D photorealistic views: exterior_front, exterior_side, interior, axonometric, perspective (no ControlNet for perspective freedom)');
+      logger.info(
+        "🏗️ Generating 3D photorealistic views: exterior_front, exterior_side, interior, axonometric, perspective (no ControlNet for perspective freedom)",
+      );
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
-        ['exterior_front', 'exterior_side', 'interior', 'axonometric', 'perspective'],
-        null // Removed ControlNet - 3D views need photorealistic perspective freedom, not constrained by 2D floor plan
+        [
+          "exterior_front",
+          "exterior_side",
+          "interior",
+          "axonometric",
+          "perspective",
+        ],
+        null, // Removed ControlNet - 3D views need photorealistic perspective freedom, not constrained by 2D floor plan
       );
 
       // Step 5: Generate design reasoning with style context
       const reasoning = await this.generateDesignReasoningWithStyle(
         projectContext,
-        styleDetection
+        styleDetection,
       );
 
       return {
@@ -1587,15 +2015,14 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         projectContext: enhancedContext,
         projectSeed,
         timestamp: new Date().toISOString(),
-        workflow: 'comprehensive_architectural_generation'
+        workflow: "comprehensive_architectural_generation",
       };
-
     } catch (error) {
-      logger.error('Floor plan and 3D preview generation error:', error);
+      logger.error("Floor plan and 3D preview generation error:", error);
       return {
         success: false,
         error: error.message,
-        fallback: this.getFallbackFloorPlanAnd3D(projectContext)
+        fallback: this.getFallbackFloorPlanAnd3D(projectContext),
       };
     }
   }
@@ -1608,144 +2035,202 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    * @param {Number} materialWeight - Material blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
    * @param {Number} characteristicWeight - Characteristic blend weight (0-1): 0=all local, 1=all portfolio, 0.5=balanced
    */
-  async generateIntegratedDesign(projectContext, portfolioImages = [], materialWeight = 0.5, characteristicWeight = 0.5) {
+  async generateIntegratedDesign(
+    projectContext,
+    portfolioImages = [],
+    materialWeight = 0.5,
+    characteristicWeight = 0.5,
+  ) {
     try {
-      logger.info('🎯 Starting integrated design generation workflow...');
-      logger.info('⚖️  Material weight:', materialWeight, `(${Math.round((1-materialWeight)*100)}% local / ${Math.round(materialWeight*100)}% portfolio)`);
-      logger.info('⚖️  Characteristic weight:', characteristicWeight, `(${Math.round((1-characteristicWeight)*100)}% local / ${Math.round(characteristicWeight*100)}% portfolio)`);
+      logger.info("🎯 Starting integrated design generation workflow...");
+      logger.info(
+        "⚖️  Material weight:",
+        materialWeight,
+        `(${Math.round((1 - materialWeight) * 100)}% local / ${Math.round(materialWeight * 100)}% portfolio)`,
+      );
+      logger.info(
+        "⚖️  Characteristic weight:",
+        characteristicWeight,
+        `(${Math.round((1 - characteristicWeight) * 100)}% local / ${Math.round(characteristicWeight * 100)}% portfolio)`,
+      );
 
       // STEP 3.1: Location analysis
-      logger.info('📍 Step 1: Analyzing location and architectural context...');
+      logger.info("📍 Step 1: Analyzing location and architectural context...");
       const locationAnalysis = locationIntelligence.recommendArchitecturalStyle(
         projectContext.location,
-        projectContext.climateData || { type: 'temperate' }
+        projectContext.climateData || { type: "temperate" },
       );
 
       // Store location analysis in projectContext
       const enhancedContext = {
         ...projectContext,
-        locationAnalysis: locationAnalysis
+        locationAnalysis: locationAnalysis,
       };
 
-      logger.info('✅ Location analysis complete:', {
+      logger.info("✅ Location analysis complete:", {
         primary: locationAnalysis.primary,
         materials: locationAnalysis.materials?.slice(0, 3),
-        climateAdaptations: locationAnalysis.climateAdaptations?.features?.slice(0, 3)
+        climateAdaptations:
+          locationAnalysis.climateAdaptations?.features?.slice(0, 3),
       });
 
       // STEP 3.2: Optional portfolio style detection
       let portfolioStyle = null;
       if (portfolioImages && portfolioImages.length > 0) {
-        logger.info('🎨 Step 2: Detecting portfolio style from', portfolioImages.length, 'images...');
-        portfolioStyle = await this.portfolioStyleDetection.detectArchitecturalStyle(
-          portfolioImages,
-          projectContext.location
+        logger.info(
+          "🎨 Step 2: Detecting portfolio style from",
+          portfolioImages.length,
+          "images...",
         );
+        portfolioStyle =
+          await this.portfolioStyleDetection.detectArchitecturalStyle(
+            portfolioImages,
+            projectContext.location,
+          );
         enhancedContext.portfolioStyle = portfolioStyle;
-        logger.info('✅ Portfolio style detected:', portfolioStyle?.primaryStyle?.style);
+        logger.info(
+          "✅ Portfolio style detected:",
+          portfolioStyle?.primaryStyle?.style,
+        );
       } else {
-        logger.info('⏭️  Step 2: Skipping portfolio analysis (no images provided)');
+        logger.info(
+          "⏭️  Step 2: Skipping portfolio analysis (no images provided)",
+        );
       }
 
       // STEP 4: Blended style creation with granular weighted merging
-      logger.info('🎨 Step 3: Creating blended style with separate material and characteristic weights');
-      const blendedStyle = this.createBlendedStylePrompt(enhancedContext, locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
+      logger.info(
+        "🎨 Step 3: Creating blended style with separate material and characteristic weights",
+      );
+      const blendedStyle = this.createBlendedStylePrompt(
+        enhancedContext,
+        locationAnalysis,
+        portfolioStyle,
+        materialWeight,
+        characteristicWeight,
+      );
       enhancedContext.blendedStyle = blendedStyle;
       enhancedContext.blendedPrompt = blendedStyle.description; // Keep backward compatibility
 
       // STEP 4: Apply blended style to architectural context
       enhancedContext.architecturalStyle = blendedStyle.styleName;
-      enhancedContext.materials = blendedStyle.materials.slice(0, 3).join(', ') || projectContext.materials;
+      enhancedContext.materials =
+        blendedStyle.materials.slice(0, 3).join(", ") ||
+        projectContext.materials;
 
-      logger.info('✅ Blended style created:', blendedStyle.styleName);
+      logger.info("✅ Blended style created:", blendedStyle.styleName);
 
       // STEP 3.4: Use unified seed from projectContext
-      const projectSeed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+      const projectSeed =
+        projectContext.projectSeed || Math.floor(Math.random() * 1000000);
       enhancedContext.seed = projectSeed;
-      logger.info('🎲 Using unified seed:', projectSeed);
+      logger.info("🎲 Using unified seed:", projectSeed);
 
       // CRITICAL: Create Building DNA for perfect 2D/3D consistency
-      logger.info('🧬 Creating building DNA master specification for consistency...');
+      logger.info(
+        "🧬 Creating building DNA master specification for consistency...",
+      );
       const buildingDNA = this.createBuildingDNA(enhancedContext, blendedStyle);
       enhancedContext.masterDesignSpec = buildingDNA;
       enhancedContext.reasoningParams = buildingDNA; // Backward compatibility
-      logger.info('✅ Building DNA created:', {
+      logger.info("✅ Building DNA created:", {
         materials: buildingDNA.materials,
         roofType: buildingDNA.roof?.type,
         windowPattern: buildingDNA.windows?.pattern,
-        floors: buildingDNA.dimensions?.floors
+        floors: buildingDNA.dimensions?.floors,
       });
 
       // STEP 3.5: Generate multi-level floor plans with unified seed and blended prompt
-      logger.info('🏗️ Step 4: Generating multi-level floor plans with blended style...');
-      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
+      logger.info(
+        "🏗️ Step 4: Generating multi-level floor plans with blended style...",
+      );
+      const floorPlans =
+        await this.replicate.generateMultiLevelFloorPlans(enhancedContext);
 
       // Capture ground floor plan image for ControlNet
       // eslint-disable-next-line no-unused-vars
       let floorPlanImage = null;
-      if (floorPlans?.floorPlans?.ground?.images && floorPlans.floorPlans.ground.images.length > 0) {
+      if (
+        floorPlans?.floorPlans?.ground?.images &&
+        floorPlans.floorPlans.ground.images.length > 0
+      ) {
         floorPlanImage = floorPlans.floorPlans.ground.images[0];
-        logger.success(' Ground floor plan generated, captured for ControlNet control');
+        logger.success(
+          " Ground floor plan generated, captured for ControlNet control",
+        );
       }
 
       // STEP 3.6: Generate elevations and sections as independent 2D technical drawings
-      logger.info('🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...');
-      const technicalDrawings = await this.replicate.generateElevationsAndSections(
-        enhancedContext,
-        true, // generateAllDrawings - generate all 4 elevations + 2 sections
-        null // No ControlNet - elevations/sections must be independent 2D orthographic projections
+      logger.info(
+        "🏗️ Step 5: Generating all elevations (N,S,E,W) and sections (longitudinal, cross) as pure 2D technical drawings...",
       );
-      logger.success(' All technical drawings generated as independent 2D orthographic projections');
+      const technicalDrawings =
+        await this.replicate.generateElevationsAndSections(
+          enhancedContext,
+          true, // generateAllDrawings - generate all 4 elevations + 2 sections
+          null, // No ControlNet - elevations/sections must be independent 2D orthographic projections
+        );
+      logger.success(
+        " All technical drawings generated as independent 2D orthographic projections",
+      );
 
       // STEP 3.6.5: Annotate elevations and sections with dimensions
-      logger.info('📐 Annotating technical drawings with dimensions...');
+      logger.info("📐 Annotating technical drawings with dimensions...");
       try {
         const td = technicalDrawings?.technicalDrawings;
         if (td) {
           // Annotate elevations
-          ['north', 'south', 'east', 'west'].forEach(dir => {
+          ["north", "south", "east", "west"].forEach((dir) => {
             const key = `elevation_${dir}`;
             if (td[key]?.images && td[key].images.length > 0) {
               const baseImage = td[key].images[0];
-              const annotatedSvg = this.dimensioning.annotateElevation(baseImage, {
-                direction: dir,
-                height: enhancedContext.buildingHeight || '12m',
-                width: enhancedContext.buildingWidth || '20m'
-              });
+              const annotatedSvg = this.dimensioning.annotateElevation(
+                baseImage,
+                {
+                  direction: dir,
+                  height: enhancedContext.buildingHeight || "12m",
+                  width: enhancedContext.buildingWidth || "20m",
+                },
+              );
               td[key].annotated = annotatedSvg;
               logger.success(` Annotated ${dir} elevation`);
             }
           });
 
           // Annotate sections
-          ['longitudinal', 'cross'].forEach(type => {
+          ["longitudinal", "cross"].forEach((type) => {
             const key = `section_${type}`;
             if (td[key]?.images && td[key].images.length > 0) {
               const baseImage = td[key].images[0];
-              const annotatedSvg = this.dimensioning.annotateSection(baseImage, {
-                type: type,
-                floors: enhancedContext.floors || 1
-              });
+              const annotatedSvg = this.dimensioning.annotateSection(
+                baseImage,
+                {
+                  type: type,
+                  floors: enhancedContext.floors || 1,
+                },
+              );
               td[key].annotated = annotatedSvg;
               logger.success(` Annotated ${type} section`);
             }
           });
         }
-        logger.success(' Technical drawing annotation complete');
+        logger.success(" Technical drawing annotation complete");
       } catch (annoError) {
-        logger.error('⚠️ Elevation annotation failed:', annoError.message);
+        logger.error("⚠️ Elevation annotation failed:", annoError.message);
         // Continue without annotations - originals are still available
       }
 
       // STEP 3.7: Generate multiple 3D views (exterior, interior, perspective) + BIM-derived axonometric
-      logger.info('🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective)...');
+      logger.info(
+        "🏗️ Step 6: Generating 3D photorealistic views (exterior front, side, interior, perspective)...",
+      );
       // Generate photorealistic views WITHOUT axonometric (will use BIM-derived version)
       const views = await this.replicate.generateMultipleViews(
         enhancedContext,
-        ['exterior_front', 'exterior_side', 'interior', 'perspective'],
-        null // No ControlNet for photorealistic freedom
+        ["exterior_front", "exterior_side", "interior", "perspective"],
+        null, // No ControlNet for photorealistic freedom
       );
-      logger.success(' Photorealistic 3D views generated');
+      logger.success(" Photorealistic 3D views generated");
 
       // STEP 3: Combine all results in single object
       const combinedResults = {
@@ -1757,23 +2242,29 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           technicalDrawingsSuccess: technicalDrawings?.success !== false,
           viewsSuccess: Object.keys(views || {}).length > 0,
           floorPlanCount: floorPlans?.floorCount || 1,
-          viewCount: Object.keys(views || {}).length
-        }
+          viewCount: Object.keys(views || {}).length,
+        },
       };
 
-      logger.info('✅ Combined results:', {
-        floorPlans: combinedResults.metadata.floorPlansSuccess ? 'Success' : 'Failed',
-        technicalDrawings: combinedResults.metadata.technicalDrawingsSuccess ? 'Success' : 'Failed',
-        views: combinedResults.metadata.viewsSuccess ? 'Success' : 'Failed',
+      logger.info("✅ Combined results:", {
+        floorPlans: combinedResults.metadata.floorPlansSuccess
+          ? "Success"
+          : "Failed",
+        technicalDrawings: combinedResults.metadata.technicalDrawingsSuccess
+          ? "Success"
+          : "Failed",
+        views: combinedResults.metadata.viewsSuccess ? "Success" : "Failed",
         floorPlanCount: combinedResults.metadata.floorPlanCount,
-        viewCount: combinedResults.metadata.viewCount
+        viewCount: combinedResults.metadata.viewCount,
       });
 
       // STEP 3.8: Generate parametric BIM model based on blended style
-      logger.info('🏗️ Step 7: Generating parametric BIM model from blended style specifications...');
+      logger.info(
+        "🏗️ Step 7: Generating parametric BIM model from blended style specifications...",
+      );
       let bimModel = null;
       let bimAxonometric = null;
-      let axonometricSource = 'none';
+      let axonometricSource = "none";
 
       try {
         bimModel = await this.bim.generateParametricModel({
@@ -1782,59 +2273,78 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           materials: blendedStyle.materials,
           characteristics: blendedStyle.characteristics,
           floorPlan: floorPlans,
-          elevations: technicalDrawings
+          elevations: technicalDrawings,
         });
-        logger.info('✅ BIM model generated successfully with', bimModel?.components?.length || 0, 'components');
+        logger.info(
+          "✅ BIM model generated successfully with",
+          bimModel?.components?.length || 0,
+          "components",
+        );
 
         // STEP 3.9: Derive geometrically accurate axonometric view from BIM
-        logger.info('🏗️ Deriving axonometric view from BIM model...');
+        logger.info("🏗️ Deriving axonometric view from BIM model...");
         try {
           bimAxonometric = this.bim.deriveAxonometric(bimModel, {
             angle: 30,
             scale: 1.0,
             showGrid: true,
-            showDimensions: true
+            showDimensions: true,
           });
-          axonometricSource = 'bim';
-          logger.success(' Axonometric view derived from BIM (geometrically consistent)');
+          axonometricSource = "bim";
+          logger.success(
+            " Axonometric view derived from BIM (geometrically consistent)",
+          );
         } catch (axonometricError) {
-          logger.error('⚠️ BIM axonometric derivation failed:', axonometricError.message);
-          logger.info('↩️  Falling back to Replicate for axonometric view...');
+          logger.error(
+            "⚠️ BIM axonometric derivation failed:",
+            axonometricError.message,
+          );
+          logger.info("↩️  Falling back to Replicate for axonometric view...");
           // Fallback: Generate axonometric using Replicate if BIM fails
           try {
-            const fallbackAxonometric = await this.replicate.generateMultipleViews(
-              enhancedContext,
-              ['axonometric'],
-              null
-            );
+            const fallbackAxonometric =
+              await this.replicate.generateMultipleViews(
+                enhancedContext,
+                ["axonometric"],
+                null,
+              );
             if (fallbackAxonometric?.axonometric?.images?.[0]) {
               bimAxonometric = fallbackAxonometric.axonometric.images[0];
-              axonometricSource = 'replicate_fallback';
-              logger.success(' Axonometric generated from Replicate fallback');
+              axonometricSource = "replicate_fallback";
+              logger.success(" Axonometric generated from Replicate fallback");
             }
           } catch (fallbackError) {
-            logger.error('⚠️ Replicate axonometric fallback also failed:', fallbackError.message);
-            axonometricSource = 'failed';
+            logger.error(
+              "⚠️ Replicate axonometric fallback also failed:",
+              fallbackError.message,
+            );
+            axonometricSource = "failed";
           }
         }
       } catch (bimError) {
-        logger.error('⚠️ BIM generation failed:', bimError.message);
-        logger.info('↩️  Falling back to Replicate for axonometric view...');
+        logger.error("⚠️ BIM generation failed:", bimError.message);
+        logger.info("↩️  Falling back to Replicate for axonometric view...");
         // Fallback: Generate axonometric using Replicate if entire BIM generation fails
         try {
-          const fallbackAxonometric = await this.replicate.generateMultipleViews(
-            enhancedContext,
-            ['axonometric'],
-            null
-          );
+          const fallbackAxonometric =
+            await this.replicate.generateMultipleViews(
+              enhancedContext,
+              ["axonometric"],
+              null,
+            );
           if (fallbackAxonometric?.axonometric?.images?.[0]) {
             bimAxonometric = fallbackAxonometric.axonometric.images[0];
-            axonometricSource = 'replicate_fallback';
-            logger.success(' Axonometric generated from Replicate fallback (BIM unavailable)');
+            axonometricSource = "replicate_fallback";
+            logger.success(
+              " Axonometric generated from Replicate fallback (BIM unavailable)",
+            );
           }
         } catch (fallbackError) {
-          logger.error('⚠️ All axonometric generation methods failed:', fallbackError.message);
-          axonometricSource = 'failed';
+          logger.error(
+            "⚠️ All axonometric generation methods failed:",
+            fallbackError.message,
+          );
+          axonometricSource = "failed";
         }
       }
 
@@ -1857,7 +2367,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         visualizations: {
           views, // Photorealistic 3D views
           axonometric: bimAxonometric, // BIM-derived geometrically accurate axonometric or Replicate fallback
-          axonometricSource // NEW: Track source ('bim', 'replicate_fallback', 'failed', 'none')
+          axonometricSource, // NEW: Track source ('bim', 'replicate_fallback', 'failed', 'none')
         },
         bimModel, // NEW: Include parametric BIM model in results
         bimAxonometric, // NEW: Geometrically consistent axonometric from BIM or fallback
@@ -1865,15 +2375,14 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),
-        workflow: 'integrated_design_generation'
+        workflow: "integrated_design_generation",
       };
-
     } catch (error) {
-      logger.error('❌ Integrated design generation error:', error);
+      logger.error("❌ Integrated design generation error:", error);
       return {
         success: false,
         error: error.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -1887,7 +2396,12 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    * @param {Number} characteristicWeight - Characteristic blend weight (0 = all local, 1 = all portfolio, 0.5 = balanced)
    * @returns {Object} Blended style with merged characteristics
    */
-  blendStyles(localStyle, portfolioStyle, materialWeight = 0.5, characteristicWeight = 0.5) {
+  blendStyles(
+    localStyle,
+    portfolioStyle,
+    materialWeight = 0.5,
+    characteristicWeight = 0.5,
+  ) {
     // Validate weights are between 0 and 1
     const matWeight = Math.max(0, Math.min(1, materialWeight));
     const charWeight = Math.max(0, Math.min(1, characteristicWeight));
@@ -1895,15 +2409,19 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
     const localCharWeight = 1 - charWeight;
 
     logger.info(`🎨 Blending styles with:`);
-    logger.info(`   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`);
-    logger.info(`   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`);
+    logger.info(
+      `   Materials: ${Math.round(localMatWeight * 100)}% local / ${Math.round(matWeight * 100)}% portfolio`,
+    );
+    logger.info(
+      `   Characteristics: ${Math.round(localCharWeight * 100)}% local / ${Math.round(charWeight * 100)}% portfolio`,
+    );
 
     // Extract local style descriptors
     const localDescriptors = {
-      primary: localStyle?.primary || 'contemporary',
+      primary: localStyle?.primary || "contemporary",
       materials: localStyle?.materials || [],
       characteristics: localStyle?.characteristics || [],
-      climateAdaptations: localStyle?.climateAdaptations?.features || []
+      climateAdaptations: localStyle?.climateAdaptations?.features || [],
     };
 
     // Extract portfolio style descriptors
@@ -1911,7 +2429,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       primary: portfolioStyle?.primaryStyle?.style || null,
       materials: portfolioStyle?.materials || [],
       characteristics: portfolioStyle?.designElements || [],
-      features: portfolioStyle?.keyFeatures || []
+      features: portfolioStyle?.keyFeatures || [],
     };
 
     // If no portfolio style, return local style
@@ -1925,24 +2443,30 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
           local: 1.0,
           portfolio: 0.0,
           materials: { local: 1.0, portfolio: 0.0 },
-          characteristics: { local: 1.0, portfolio: 0.0 }
+          characteristics: { local: 1.0, portfolio: 0.0 },
         },
-        description: `${localDescriptors.primary} style adapted for local context`
+        description: `${localDescriptors.primary} style adapted for local context`,
       };
     }
 
     // Blend materials (weighted selection based on materialWeight)
-    const materialCount = Math.max(3, Math.round(5 * (localMatWeight + matWeight)));
+    const materialCount = Math.max(
+      3,
+      Math.round(5 * (localMatWeight + matWeight)),
+    );
     const localMaterialCount = Math.round(materialCount * localMatWeight);
     const portfolioMaterialCount = materialCount - localMaterialCount;
 
     const blendedMaterials = [
       ...localDescriptors.materials.slice(0, localMaterialCount),
-      ...portfolioDescriptors.materials.slice(0, portfolioMaterialCount)
+      ...portfolioDescriptors.materials.slice(0, portfolioMaterialCount),
     ];
 
     // Blend characteristics (weighted selection based on characteristicWeight)
-    const charCount = Math.max(3, Math.round(6 * (localCharWeight + charWeight)));
+    const charCount = Math.max(
+      3,
+      Math.round(6 * (localCharWeight + charWeight)),
+    );
     const localCharCount = Math.round(charCount * localCharWeight);
     const portfolioCharCount = charCount - localCharCount;
 
@@ -1952,8 +2476,11 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         ? portfolioDescriptors.characteristics.slice(0, portfolioCharCount)
         : []),
       ...(portfolioDescriptors.features.slice
-        ? portfolioDescriptors.features.slice(0, Math.max(0, portfolioCharCount - 1))
-        : [])
+        ? portfolioDescriptors.features.slice(
+            0,
+            Math.max(0, portfolioCharCount - 1),
+          )
+        : []),
     ];
 
     // Calculate overall blend weight (average of material and characteristic weights)
@@ -1979,7 +2506,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       blendedMaterials,
       blendedCharacteristics,
       overallWeight,
-      { material: matWeight, characteristic: charWeight }
+      { material: matWeight, characteristic: charWeight },
     );
 
     return {
@@ -1991,11 +2518,11 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         local: 1 - overallWeight,
         portfolio: overallWeight,
         materials: { local: localMatWeight, portfolio: matWeight },
-        characteristics: { local: localCharWeight, portfolio: charWeight }
+        characteristics: { local: localCharWeight, portfolio: charWeight },
       },
       localStyle: localDescriptors.primary,
       portfolioStyle: portfolioDescriptors.primary,
-      description
+      description,
     };
   }
 
@@ -2003,9 +2530,18 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    * STEP 4: Create detailed blended style description for prompts
    * Enhanced to reflect granular material and characteristic weights
    */
-  createBlendedDescription(localDesc, portfolioDesc, materials, characteristics, weight, weights) {
-    const materialList = materials.slice(0, 3).join(', ') || 'contemporary materials';
-    const charList = characteristics.slice(0, 4).join(', ') || 'modern features';
+  createBlendedDescription(
+    localDesc,
+    portfolioDesc,
+    materials,
+    characteristics,
+    weight,
+    weights,
+  ) {
+    const materialList =
+      materials.slice(0, 3).join(", ") || "contemporary materials";
+    const charList =
+      characteristics.slice(0, 4).join(", ") || "modern features";
 
     // Create nuanced description based on material and characteristic weights
     const matWeightPct = Math.round((weights?.material || 0.5) * 100);
@@ -2013,16 +2549,36 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
 
     if (weight < 0.3) {
       // Local dominant
-      const materialNote = matWeightPct < 30 ? 'local' : matWeightPct > 70 ? 'contemporary' : 'mixed';
-      const charNote = charWeightPct < 30 ? 'traditional' : charWeightPct > 70 ? 'modern' : 'hybrid';
+      const materialNote =
+        matWeightPct < 30
+          ? "local"
+          : matWeightPct > 70
+            ? "contemporary"
+            : "mixed";
+      const charNote =
+        charWeightPct < 30
+          ? "traditional"
+          : charWeightPct > 70
+            ? "modern"
+            : "hybrid";
       return `${localDesc.primary} architectural style with subtle ${portfolioDesc.primary} influences, featuring ${materialNote} materials (${materialList}), incorporating ${charNote} characteristics (${charList}), while maintaining strong local architectural context`;
     } else if (weight < 0.7) {
       // Balanced
-      return `Balanced fusion of ${portfolioDesc.primary} and ${localDesc.primary} styles, utilizing ${materialList} (${100-matWeightPct}% local/${matWeightPct}% portfolio materials), characterized by ${charList} (${100-charWeightPct}% local/${charWeightPct}% portfolio spatial features), creating a contemporary hybrid design that respects both traditions`;
+      return `Balanced fusion of ${portfolioDesc.primary} and ${localDesc.primary} styles, utilizing ${materialList} (${100 - matWeightPct}% local/${matWeightPct}% portfolio materials), characterized by ${charList} (${100 - charWeightPct}% local/${charWeightPct}% portfolio spatial features), creating a contemporary hybrid design that respects both traditions`;
     } else {
       // Portfolio dominant
-      const materialNote = matWeightPct > 70 ? 'signature' : matWeightPct < 30 ? 'locally-sourced' : 'blended';
-      const charNote = charWeightPct > 70 ? 'distinctive' : charWeightPct < 30 ? 'contextual' : 'integrated';
+      const materialNote =
+        matWeightPct > 70
+          ? "signature"
+          : matWeightPct < 30
+            ? "locally-sourced"
+            : "blended";
+      const charNote =
+        charWeightPct > 70
+          ? "distinctive"
+          : charWeightPct < 30
+            ? "contextual"
+            : "integrated";
       return `${portfolioDesc.primary} architectural approach adapted for local context, expressed through ${materialNote} materials (${materialList}), featuring ${charNote} spatial characteristics (${charList}), thoughtfully respecting regional architectural traditions`;
     }
   }
@@ -2031,17 +2587,28 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    * STEP 4: Create blended style prompt for generation
    * Uses blendStyles function with granular weighted merging
    */
-  createBlendedStylePrompt(projectContext, locationAnalysis, portfolioStyle, materialWeight = 0.5, characteristicWeight = 0.5) {
+  createBlendedStylePrompt(
+    projectContext,
+    locationAnalysis,
+    portfolioStyle,
+    materialWeight = 0.5,
+    characteristicWeight = 0.5,
+  ) {
     // STEP 4: Use sophisticated style blending with separate weights
-    const blendedStyle = this.blendStyles(locationAnalysis, portfolioStyle, materialWeight, characteristicWeight);
+    const blendedStyle = this.blendStyles(
+      locationAnalysis,
+      portfolioStyle,
+      materialWeight,
+      characteristicWeight,
+    );
 
-    logger.info('🎨 Blended style created:', {
+    logger.info("🎨 Blended style created:", {
       name: blendedStyle.styleName,
       overallRatio: `${Math.round(blendedStyle.blendRatio.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.portfolio * 100)}% portfolio`,
       materialRatio: `${Math.round(blendedStyle.blendRatio.materials.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.materials.portfolio * 100)}% portfolio`,
       characteristicRatio: `${Math.round(blendedStyle.blendRatio.characteristics.local * 100)}% local / ${Math.round(blendedStyle.blendRatio.characteristics.portfolio * 100)}% portfolio`,
-      materials: blendedStyle.materials.slice(0, 3).join(', '),
-      characteristics: blendedStyle.characteristics.slice(0, 3).join(', ')
+      materials: blendedStyle.materials.slice(0, 3).join(", "),
+      characteristics: blendedStyle.characteristics.slice(0, 3).join(", "),
     });
 
     // Return comprehensive blended style object
@@ -2054,11 +2621,11 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   createBuildingDNA(projectContext, blendedStyle) {
     const area = projectContext.floorArea || projectContext.area || 200;
-    const buildingType = projectContext.buildingProgram || 'house';
+    const buildingType = projectContext.buildingProgram || "house";
 
     // Calculate floors
     let floors = 1;
-    if (buildingType.includes('cottage') || buildingType.includes('bungalow')) {
+    if (buildingType.includes("cottage") || buildingType.includes("bungalow")) {
       floors = 1;
     } else if (area < 150) {
       floors = 1;
@@ -2071,24 +2638,40 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
     }
 
     // Determine roof type from style
-    let roofType = 'flat roof';
-    const styleName = (blendedStyle.styleName || '').toLowerCase();
-    if (styleName.includes('traditional') || styleName.includes('colonial') || styleName.includes('victorian')) {
-      roofType = 'gable roof';
-    } else if (styleName.includes('mediterranean') || styleName.includes('tuscan')) {
-      roofType = 'hip roof';
-    } else if (styleName.includes('modern') || styleName.includes('contemporary')) {
-      roofType = 'flat roof';
+    let roofType = "flat roof";
+    const styleName = (blendedStyle.styleName || "").toLowerCase();
+    if (
+      styleName.includes("traditional") ||
+      styleName.includes("colonial") ||
+      styleName.includes("victorian")
+    ) {
+      roofType = "gable roof";
+    } else if (
+      styleName.includes("mediterranean") ||
+      styleName.includes("tuscan")
+    ) {
+      roofType = "hip roof";
+    } else if (
+      styleName.includes("modern") ||
+      styleName.includes("contemporary")
+    ) {
+      roofType = "flat roof";
     }
 
     // Determine window pattern from style
-    let windowPattern = 'ribbon windows';
-    if (styleName.includes('traditional') || styleName.includes('colonial')) {
-      windowPattern = 'punched windows';
-    } else if (styleName.includes('modern') || styleName.includes('contemporary')) {
-      windowPattern = 'ribbon windows';
-    } else if (styleName.includes('glass') || blendedStyle.materials.some(m => m.toLowerCase().includes('glass'))) {
-      windowPattern = 'curtain wall glazing';
+    let windowPattern = "ribbon windows";
+    if (styleName.includes("traditional") || styleName.includes("colonial")) {
+      windowPattern = "punched windows";
+    } else if (
+      styleName.includes("modern") ||
+      styleName.includes("contemporary")
+    ) {
+      windowPattern = "ribbon windows";
+    } else if (
+      styleName.includes("glass") ||
+      blendedStyle.materials.some((m) => m.toLowerCase().includes("glass"))
+    ) {
+      windowPattern = "curtain wall glazing";
     }
 
     // Calculate dimensions based on area and floors
@@ -2104,32 +2687,32 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         height: `${(floors * floorHeight).toFixed(1)}m`,
         floors: floors,
         floorHeight: `${floorHeight}m`,
-        totalArea: `${area}m²`
+        totalArea: `${area}m²`,
       },
       entrance: {
-        facade: projectContext.entranceDirection || 'N',
-        position: 'center',
-        width: '2.4m'
+        facade: projectContext.entranceDirection || "N",
+        position: "center",
+        width: "2.4m",
       },
-      materials: blendedStyle.materials.slice(0, 3).join(', '),
+      materials: blendedStyle.materials.slice(0, 3).join(", "),
       roof: {
         type: roofType,
-        material: blendedStyle.materials[0] || 'concrete'
+        material: blendedStyle.materials[0] || "concrete",
       },
       windows: {
         pattern: windowPattern,
-        frameColor: 'aluminum'
+        frameColor: "aluminum",
       },
       structure: {
-        system: floors > 3 ? 'concrete frame' : 'load-bearing walls',
-        gridSpacing: '6.0m'
+        system: floors > 3 ? "concrete frame" : "load-bearing walls",
+        gridSpacing: "6.0m",
       },
       colors: {
-        facade: 'neutral tones',
-        roof: 'dark gray',
-        trim: 'white'
+        facade: "neutral tones",
+        roof: "dark gray",
+        trim: "white",
       },
-      style: blendedStyle.styleName
+      style: blendedStyle.styleName,
     };
   }
 
@@ -2141,14 +2724,14 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
       // Enhance project context with style detection
       const enhancedContext = {
         ...projectContext,
-        detectedStyle: styleDetection?.primaryStyle?.style || 'contemporary',
+        detectedStyle: styleDetection?.primaryStyle?.style || "contemporary",
         styleCharacteristics: styleDetection?.designElements || {},
-        styleRecommendations: styleDetection?.recommendations || {}
+        styleRecommendations: styleDetection?.recommendations || {},
       };
 
       return await this.ai.generateDesignReasoning(enhancedContext);
     } catch (error) {
-      logger.error('Style-enhanced reasoning error:', error);
+      logger.error("Style-enhanced reasoning error:", error);
       return this.getFallbackReasoning(projectContext);
     }
   }
@@ -2158,34 +2741,39 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateStyleOptimizedDesign(projectContext, portfolioImages) {
     try {
-      logger.info('Starting style-optimized design generation...');
-      
+      logger.info("Starting style-optimized design generation...");
+
       // Step 1: Analyze portfolio for style detection
-      const styleDetection = await this.portfolioStyleDetection.detectArchitecturalStyle(
-        portfolioImages, 
-        projectContext.location
-      );
+      const styleDetection =
+        await this.portfolioStyleDetection.detectArchitecturalStyle(
+          portfolioImages,
+          projectContext.location,
+        );
 
       // Step 2: Analyze style-location compatibility
-      const compatibilityAnalysis = await this.portfolioStyleDetection.analyzeLocationStyleCompatibility(
-        styleDetection,
-        projectContext.location
-      );
+      const compatibilityAnalysis =
+        await this.portfolioStyleDetection.analyzeLocationStyleCompatibility(
+          styleDetection,
+          projectContext.location,
+        );
 
       // Step 3: Generate enhanced project context with style information
       const enhancedContext = this.buildEnhancedProjectContext(
-        projectContext, 
-        styleDetection, 
-        compatibilityAnalysis
+        projectContext,
+        styleDetection,
+        compatibilityAnalysis,
       );
 
       // Step 4: Generate design reasoning with style optimization
-      const reasoning = await this.generateDesignReasoningWithStyle(enhancedContext, styleDetection);
-      
+      const reasoning = await this.generateDesignReasoningWithStyle(
+        enhancedContext,
+        styleDetection,
+      );
+
       // Step 5: Generate visualizations optimized for detected style
       const visualizations = await this.generateStyleOptimizedVisualizations(
-        enhancedContext, 
-        styleDetection
+        enhancedContext,
+        styleDetection,
       );
 
       return {
@@ -2196,15 +2784,14 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         visualizations,
         enhancedContext,
         timestamp: new Date().toISOString(),
-        workflow: 'style_optimized'
+        workflow: "style_optimized",
       };
-
     } catch (error) {
-      logger.error('Style-optimized design error:', error);
+      logger.error("Style-optimized design error:", error);
       return {
         success: false,
         error: error.message,
-        fallback: this.getFallbackStyleOptimized(projectContext)
+        fallback: this.getFallbackStyleOptimized(projectContext),
       };
     }
   }
@@ -2212,16 +2799,21 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
   /**
    * Build enhanced project context with style information
    */
-  buildEnhancedProjectContext(projectContext, styleDetection, compatibilityAnalysis) {
+  buildEnhancedProjectContext(
+    projectContext,
+    styleDetection,
+    compatibilityAnalysis,
+  ) {
     return {
       ...projectContext,
-      architecturalStyle: styleDetection?.primaryStyle?.style || 'contemporary',
+      architecturalStyle: styleDetection?.primaryStyle?.style || "contemporary",
       styleCharacteristics: styleDetection?.designElements || {},
       styleRecommendations: styleDetection?.recommendations || {},
-      compatibilityScore: compatibilityAnalysis?.compatibilityScore || '7/10',
-      recommendedAdaptations: compatibilityAnalysis?.recommendedAdaptations || [],
+      compatibilityScore: compatibilityAnalysis?.compatibilityScore || "7/10",
+      recommendedAdaptations:
+        compatibilityAnalysis?.recommendedAdaptations || [],
       materials: this.extractMaterialsFromStyle(styleDetection),
-      designApproach: this.buildDesignApproachFromStyle(styleDetection)
+      designApproach: this.buildDesignApproachFromStyle(styleDetection),
     };
   }
 
@@ -2230,21 +2822,22 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   extractMaterialsFromStyle(styleDetection) {
     if (!styleDetection?.designElements?.materials) {
-      return 'glass and steel';
+      return "glass and steel";
     }
-    
+
     const materials = styleDetection.designElements.materials;
-    const materialList = materials.split(',').map(m => m.trim());
-    return materialList.slice(0, 3).join(' and '); // Take first 3 materials
+    const materialList = materials.split(",").map((m) => m.trim());
+    return materialList.slice(0, 3).join(" and "); // Take first 3 materials
   }
 
   /**
    * Build design approach from style detection
    */
   buildDesignApproachFromStyle(styleDetection) {
-    const style = styleDetection?.primaryStyle?.style || 'contemporary';
-    const characteristics = styleDetection?.designElements?.spatialOrganization || '';
-    
+    const style = styleDetection?.primaryStyle?.style || "contemporary";
+    const characteristics =
+      styleDetection?.designElements?.spatialOrganization || "";
+
     return `${style} design approach with ${characteristics}`;
   }
 
@@ -2253,34 +2846,39 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async generateStyleOptimizedVisualizations(enhancedContext, styleDetection) {
     try {
-      const style = styleDetection?.primaryStyle?.style || 'contemporary';
+      const style = styleDetection?.primaryStyle?.style || "contemporary";
       const materials = this.extractMaterialsFromStyle(styleDetection);
 
       const styledContext = {
         ...enhancedContext,
         architecturalStyle: style,
-        materials
+        materials,
       };
 
       // Generate multi-level floor plans with style optimization
-      logger.info('🏗️ Generating style-optimized multi-level floor plans...');
-      const floorPlans = await this.replicate.generateMultiLevelFloorPlans(styledContext);
+      logger.info("🏗️ Generating style-optimized multi-level floor plans...");
+      const floorPlans =
+        await this.replicate.generateMultiLevelFloorPlans(styledContext);
 
       // Generate elevations and sections with style optimization
-      logger.info('🏗️ Generating style-optimized elevations and sections...');
-      const technicalDrawings = await this.replicate.generateElevationsAndSections(styledContext);
+      logger.info("🏗️ Generating style-optimized elevations and sections...");
+      const technicalDrawings =
+        await this.replicate.generateElevationsAndSections(styledContext);
 
       // Generate 3D views (2 exterior + 1 interior) with style optimization
-      logger.info('🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior');
-      const views = await this.replicate.generateMultipleViews(
-        styledContext,
-        ['exterior_front', 'exterior_side', 'interior']
+      logger.info(
+        "🏗️ Generating style-optimized 3D views: exterior_front, exterior_side, interior",
       );
+      const views = await this.replicate.generateMultipleViews(styledContext, [
+        "exterior_front",
+        "exterior_side",
+        "interior",
+      ]);
 
       // Generate additional style variations
       const styleVariations = await this.replicate.generateStyleVariations(
         styledContext,
-        [style, 'sustainable', 'innovative']
+        [style, "sustainable", "innovative"],
       );
 
       return {
@@ -2288,12 +2886,11 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         technicalDrawings,
         views, // Changed from preview3D to views
         styleVariations,
-        source: 'style_optimized',
-        timestamp: new Date().toISOString()
+        source: "style_optimized",
+        timestamp: new Date().toISOString(),
       };
-
     } catch (error) {
-      logger.error('Style-optimized visualization error:', error);
+      logger.error("Style-optimized visualization error:", error);
       return this.getFallbackVisualizations();
     }
   }
@@ -2303,7 +2900,9 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   async quickDesign(projectContext) {
     try {
-      logger.info(`Starting quick design generation... (Using ${USE_TOGETHER ? 'Together AI' : 'OpenAI/Replicate'})`);
+      logger.info(
+        `Starting quick design generation... (Using ${USE_TOGETHER ? "Together AI" : "OpenAI/Replicate"})`,
+      );
 
       // Generate basic reasoning (now uses Together AI when flag is set)
       const reasoning = await this.generateDesignReasoning(projectContext);
@@ -2314,25 +2913,25 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         // Use Together AI FLUX.1 for image generation
         const seed = Math.floor(Math.random() * 1000000);
         visualization = await togetherAIService.generateImage({
-          viewType: 'exterior',
+          viewType: "exterior",
           prompt: this.buildQuickPrompt(reasoning, projectContext),
           seed: seed,
           width: 1792,
-          height: 1024
+          height: 1024,
         });
 
         // Ensure we have a URL
         if (!visualization?.url) {
           visualization = {
-            url: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTc5MiIgaGVpZ2h0PSIxMDI0IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxNzkyIiBoZWlnaHQ9IjEwMjQiIGZpbGw9IiMyQzNFNTAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjQ4IiBmaWxsPSIjRkZGRkZGIj5FeHRlcmlvciBWaWV3PC90ZXh0Pjwvc3ZnPg==',
-            model: 'flux-fallback'
+            url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTc5MiIgaGVpZ2h0PSIxMDI0IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxNzkyIiBoZWlnaHQ9IjEwMjQiIGZpbGw9IiMyQzNFNTAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjQ4IiBmaWxsPSIjRkZGRkZGIj5FeHRlcmlvciBWaWV3PC90ZXh0Pjwvc3ZnPg==",
+            model: "flux-fallback",
           };
         }
       } else {
         // Original Replicate implementation
         visualization = await this.replicate.generateArchitecturalImage({
-          ...this.buildViewParameters(projectContext, 'exterior'),
-          prompt: this.buildQuickPrompt(reasoning, projectContext)
+          ...this.buildViewParameters(projectContext, "exterior"),
+          prompt: this.buildQuickPrompt(reasoning, projectContext),
         });
       }
 
@@ -2342,16 +2941,15 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         visualization,
         projectContext,
         timestamp: new Date().toISOString(),
-        workflow: 'quick',
-        source: USE_TOGETHER ? 'together-ai' : 'openai-replicate'
+        workflow: "quick",
+        source: USE_TOGETHER ? "together-ai" : "openai-replicate",
       };
-
     } catch (error) {
-      logger.error('Quick design error:', error);
+      logger.error("Quick design error:", error);
       return {
         success: false,
         error: error.message,
-        fallback: this.getFallbackDesign(projectContext)
+        fallback: this.getFallbackDesign(projectContext),
       };
     }
   }
@@ -2361,13 +2959,13 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    */
   buildViewParameters(projectContext, viewType) {
     return {
-      buildingType: projectContext.buildingProgram || 'commercial building',
-      architecturalStyle: projectContext.architecturalStyle || 'contemporary',
-      location: projectContext.location?.address || 'urban setting',
-      materials: projectContext.materials || 'glass and steel',
+      buildingType: projectContext.buildingProgram || "commercial building",
+      architecturalStyle: projectContext.architecturalStyle || "contemporary",
+      location: projectContext.location?.address || "urban setting",
+      materials: projectContext.materials || "glass and steel",
       viewType,
       width: 1024,
-      height: 768
+      height: 768,
     };
   }
 
@@ -2375,10 +2973,10 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
    * Build quick prompt for MVP
    */
   buildQuickPrompt(reasoning, projectContext) {
-    const philosophy = reasoning.designPhilosophy || 'contemporary design';
+    const philosophy = reasoning.designPhilosophy || "contemporary design";
     const materials = this.extractMaterialsFromReasoning(reasoning);
-    
-    return `Professional architectural visualization, ${philosophy}, ${projectContext.buildingProgram || 'building'} with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed`;
+
+    return `Professional architectural visualization, ${philosophy}, ${projectContext.buildingProgram || "building"} with ${materials}, photorealistic rendering, professional architectural photography, high quality, detailed`;
   }
 }
 

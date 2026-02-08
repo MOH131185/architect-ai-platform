@@ -57,7 +57,7 @@ class TogetherAIReasoningService {
 
     // Use Qwen 2.5 72B Instruct Turbo - Excellent reasoning, widely available
     // Good balance of performance and availability across Together AI tiers
-    this.defaultModel = "Qwen/Qwen2.5-72B-Instruct-Turbo";
+    this.defaultModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
   }
 
   /**

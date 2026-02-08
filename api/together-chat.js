@@ -71,7 +71,7 @@ export default async function handler(req, res) {
     }
 
     // Deterministic defaults for DNA generation and reasoning
-    const effectiveModel = model || "Qwen/Qwen2.5-72B-Instruct-Turbo";
+    const effectiveModel = model || "meta-llama/Llama-3.3-70B-Instruct-Turbo";
     const effectiveTemperature = deterministicMode
       ? 0.1 // Low temperature for deterministic reasoning
       : temperature !== undefined

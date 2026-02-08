@@ -1,16 +1,16 @@
 /**
  * Together AI Client (REFACTORED)
- * 
+ *
  * Pure, deterministic client for Together.ai API.
  * Separated reasoning (Qwen) and image generation (FLUX.1-dev).
  * No browser dependencies, no storage access, no React awareness.
- * 
+ *
  * All context passed via parameters from environmentAdapter.
  * Uses A1_ARCH_FINAL preset for optimized parameters.
  */
 
-import logger from '../utils/logger.js';
-import { getA1Preset, getModifyStrength } from '../config/fluxPresets.js';
+import logger from "../utils/logger.js";
+import { getA1Preset, getModifyStrength } from "../config/fluxPresets.js";
 
 /**
  * Rate limiter for Together.ai API
@@ -22,7 +22,7 @@ class RateLimiter {
     this.queue = [];
     this.processing = false;
   }
-  
+
   /**
    * Schedule a request with rate limiting
    * @param {string} type - Request type (for logging)
@@ -32,15 +32,19 @@ class RateLimiter {
   async schedule(type, fn) {
     const now = Date.now();
     const timeSinceLastRequest = now - this.lastRequestTime;
-    
+
     if (timeSinceLastRequest < this.minInterval) {
       const waitTime = this.minInterval - timeSinceLastRequest;
-      logger.debug(`Rate limiting: waiting ${waitTime}ms before ${type}`, null, '⏱️');
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      logger.debug(
+        `Rate limiting: waiting ${waitTime}ms before ${type}`,
+        null,
+        "⏱️",
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
     }
-    
+
     this.lastRequestTime = Date.now();
-    
+
     try {
       const result = await fn();
       return result;
@@ -49,12 +53,16 @@ class RateLimiter {
       if (error.status === 429) {
         const retryAfter = error.retryAfter || 15;
         this.minInterval = Math.max(this.minInterval, retryAfter * 1000);
-        logger.warn(`Rate limit hit, increasing interval to ${this.minInterval}ms`, null, '⏱️');
+        logger.warn(
+          `Rate limit hit, increasing interval to ${this.minInterval}ms`,
+          null,
+          "⏱️",
+        );
       }
       throw error;
     }
   }
-  
+
   /**
    * Set minimum interval
    * @param {number} interval - Interval in milliseconds
@@ -73,10 +81,10 @@ const rateLimiter = new RateLimiter(6000);
 class TogetherAIClient {
   constructor(env) {
     this.env = env;
-    this.baseUrl = env?.api?.urls?.togetherImage || '/api/together/image';
-    this.chatUrl = env?.api?.urls?.togetherChat || '/api/together/chat';
+    this.baseUrl = env?.api?.urls?.togetherImage || "/api/together/image";
+    this.chatUrl = env?.api?.urls?.togetherChat || "/api/together/chat";
   }
-  
+
   /**
    * Generate reasoning with Qwen
    * @param {Object} params - Parameters
@@ -90,59 +98,64 @@ class TogetherAIClient {
     const {
       temperature = 0.1, // Low temperature for deterministic reasoning
       maxTokens = 2000,
-      topP = 0.9
+      topP = 0.9,
     } = options;
-    
+
     const traceId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const startTime = Date.now();
-    
-    logger.info('Generating reasoning with Qwen', { temperature, maxTokens, traceId }, '🧠');
-    
+
+    logger.info(
+      "Generating reasoning with Qwen",
+      { temperature, maxTokens, traceId },
+      "🧠",
+    );
+
     try {
       const response = await fetch(this.chatUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
           messages: [
             {
-              role: 'system',
-              content: 'You are an expert architect specializing in consistent architectural design. Provide EXACT specifications with dimensions, materials, and hex colors.'
+              role: "system",
+              content:
+                "You are an expert architect specializing in consistent architectural design. Provide EXACT specifications with dimensions, materials, and hex colors.",
             },
             {
-              role: 'user',
-              content: prompt
-            }
+              role: "user",
+              content: prompt,
+            },
           ],
           temperature,
           max_tokens: maxTokens,
-          top_p: topP
-        })
+          top_p: topP,
+        }),
       });
-      
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || `HTTP ${response.status}`);
       }
-      
+
       const data = await response.json();
       const latencyMs = Date.now() - startTime;
-      
-      logger.success('Reasoning generated', { latencyMs, traceId }, '✅');
-      
+
+      logger.success("Reasoning generated", { latencyMs, traceId }, "✅");
+
       return {
         content: data.choices[0].message.content,
-        model: 'Qwen/Qwen2.5-72B-Instruct-Turbo',
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         usage: data.usage || {},
         latencyMs,
-        traceId
+        traceId,
       };
     } catch (error) {
-      logger.error('Reasoning generation failed', error);
+      logger.error("Reasoning generation failed", error);
       throw error;
     }
   }
-  
+
   /**
    * Generate image with FLUX
    * @param {Object} params - Image request parameters
@@ -164,22 +177,27 @@ class TogetherAIClient {
     const {
       prompt,
       seed,
-      sheetType = 'ARCH',
+      sheetType = "ARCH",
       sheetConfig = {},
-      model = 'black-forest-labs/FLUX.1-dev',
+      model = "black-forest-labs/FLUX.1-dev",
     } = params;
 
     const width = params.width ?? 1792;
     const height = params.height ?? 1269;
-    const steps = params.steps ?? params.numInferenceSteps ?? params.num_inference_steps ?? 48;
+    const steps =
+      params.steps ??
+      params.numInferenceSteps ??
+      params.num_inference_steps ??
+      48;
     const guidanceScale = params.guidanceScale ?? params.guidance_scale ?? 7.8;
-    const negativePrompt = params.negativePrompt ?? params.negative_prompt ?? '';
+    const negativePrompt =
+      params.negativePrompt ?? params.negative_prompt ?? "";
     const initImage = params.initImage ?? params.init_image ?? null;
     const imageStrength =
       params.imageStrength ?? params.image_strength ?? params.strength ?? null;
     const traceId = `trace_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const startTime = Date.now();
-    
+
     // Snap dimensions to multiples of 16 (Together.ai requirement)
     const clamp = (v) => Math.min(Math.max(Math.floor(v), 64), 1792);
     let validatedWidth = clamp(width);
@@ -187,21 +205,29 @@ class TogetherAIClient {
     // Round down to nearest multiple of 16
     validatedWidth -= validatedWidth % 16;
     validatedHeight -= validatedHeight % 16;
-    
+
     if (validatedWidth !== width || validatedHeight !== height) {
-      logger.warn(`Dimensions adjusted from ${width}×${height} to ${validatedWidth}×${validatedHeight} (multiples of 16)`, null, '📐');
+      logger.warn(
+        `Dimensions adjusted from ${width}×${height} to ${validatedWidth}×${validatedHeight} (multiples of 16)`,
+        null,
+        "📐",
+      );
     }
-    
-    logger.info('Generating image with FLUX', {
-      model,
-      dimensions: `${validatedWidth}×${validatedHeight}`,
-      seed,
-      traceId,
-      hasInitImage: !!initImage
-    }, '🎨');
-    
+
+    logger.info(
+      "Generating image with FLUX",
+      {
+        model,
+        dimensions: `${validatedWidth}×${validatedHeight}`,
+        seed,
+        traceId,
+        hasInitImage: !!initImage,
+      },
+      "🎨",
+    );
+
     // Schedule through rate limiter
-    const result = await rateLimiter.schedule('flux-image', async () => {
+    const result = await rateLimiter.schedule("flux-image", async () => {
       const payload = {
         model,
         prompt,
@@ -210,36 +236,39 @@ class TogetherAIClient {
         height: validatedHeight,
         seed,
         num_inference_steps: steps,
-        guidanceScale
+        guidanceScale,
       };
-      
+
       // Add img2img parameters if provided
       if (initImage) {
         payload.initImage = initImage;
         payload.imageStrength = imageStrength || 0.18;
       }
-      
+
       const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      
+
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
         const err = new Error(error.error || `HTTP ${response.status}`);
         err.status = response.status;
-        err.retryAfter = parseInt(response.headers.get('retry-after') || '0', 10);
+        err.retryAfter = parseInt(
+          response.headers.get("retry-after") || "0",
+          10,
+        );
         throw err;
       }
-      
+
       return response.json();
     });
-    
+
     const latencyMs = Date.now() - startTime;
-    
-    logger.success('Image generated', { latencyMs, traceId }, '✅');
-    
+
+    logger.success("Image generated", { latencyMs, traceId }, "✅");
+
     return {
       imageUrls: [result.url],
       seedUsed: seed,
@@ -254,11 +283,11 @@ class TogetherAIClient {
         steps,
         guidanceScale,
         hasInitImage: !!initImage,
-        imageStrength: initImage ? (imageStrength || 0.18) : null
-      }
+        imageStrength: initImage ? imageStrength || 0.18 : null,
+      },
     };
   }
-  
+
   /**
    * Generate A1 sheet image (convenience method)
    * Uses A1_ARCH_FINAL preset
@@ -266,18 +295,18 @@ class TogetherAIClient {
    * @returns {Promise<Object>} Generation result
    */
   async generateA1SheetImage(params) {
-    const preset = getA1Preset('generate');
-    
+    const preset = getA1Preset("generate");
+
     return this.generateImage({
       ...params,
       model: params.model || preset.model,
       width: params.width || preset.width,
       height: params.height || preset.height,
       steps: params.steps || preset.steps,
-      guidanceScale: params.guidanceScale || preset.cfg
+      guidanceScale: params.guidanceScale || preset.cfg,
     });
   }
-  
+
   /**
    * Generate modify image (with strict defaults)
    * Uses A1_ARCH_FINAL preset for modify mode
@@ -287,20 +316,25 @@ class TogetherAIClient {
    */
   async generateModifyImage(params) {
     if (!params.initImage) {
-      throw new Error('initImage required for modify mode');
+      throw new Error("initImage required for modify mode");
     }
-    
-    const preset = getA1Preset('modify');
-    const modificationType = params.modificationType || 'moderate';
-    const strength = params.imageStrength || getModifyStrength(modificationType);
-    
-    logger.info('Modify mode parameters', {
-      modificationType,
-      strength,
-      steps: preset.steps,
-      cfg: preset.cfg
-    }, '🔧');
-    
+
+    const preset = getA1Preset("modify");
+    const modificationType = params.modificationType || "moderate";
+    const strength =
+      params.imageStrength || getModifyStrength(modificationType);
+
+    logger.info(
+      "Modify mode parameters",
+      {
+        modificationType,
+        strength,
+        steps: preset.steps,
+        cfg: preset.cfg,
+      },
+      "🔧",
+    );
+
     return this.generateImage({
       ...params,
       model: params.model || preset.model,
@@ -308,7 +342,7 @@ class TogetherAIClient {
       height: params.height || preset.height,
       steps: params.steps || preset.steps,
       guidanceScale: params.guidanceScale || preset.cfg,
-      imageStrength: strength
+      imageStrength: strength,
     });
   }
 }
@@ -325,8 +359,7 @@ export function createTogetherAIClient(env) {
 // Export for backward compatibility
 const togetherAIClientExports = {
   createTogetherAIClient,
-  RateLimiter
+  RateLimiter,
 };
 
 export default togetherAIClientExports;
-
