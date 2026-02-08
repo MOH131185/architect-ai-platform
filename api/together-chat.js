@@ -131,29 +131,14 @@ export default async function handler(req, res) {
     const latencyMs = Date.now() - startTime;
     console.log(`✅ [Together AI] Chat completion successful (${latencyMs}ms)`);
 
-    // Normalize response structure
-    const normalizedResponse = {
-      content: data.choices?.[0]?.message?.content || "",
-      model: effectiveModel,
-      usage: data.usage || {},
-      latencyMs,
-      traceId,
-      deterministicMode,
-      settings: {
-        temperature: effectiveTemperature,
-        topP: effectiveTopP,
-        maxTokens: effectiveMaxTokens,
-      },
-      // Include raw data for backward compatibility
-      raw: data,
-    };
-
     // Set CORS headers for browser requests
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    res.status(200).json(normalizedResponse);
+    // Return raw Together AI response - matches dev proxy (server.js) format
+    // All client code expects response.choices[0].message.content
+    res.status(200).json(data);
   } catch (error) {
     console.error("Together AI chat proxy error:", error);
     res.status(500).json({
