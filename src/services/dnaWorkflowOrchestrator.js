@@ -70,9 +70,12 @@ import {
   storeFingerprint,
   getFingerprint,
   getFingerprintPromptConstraint,
+  getVerbatimPromptLock,
   getHeroControlForPanel,
   HERO_REFERENCE_PANELS,
+  HERO_CONTROL_STRENGTH,
 } from "./design/designFingerprintService.js";
+import { buildPanelPrompt } from "./a1/panelPromptBuilders.js";
 import {
   runPreCompositionGate,
   getStrictFallbackParams,
@@ -1196,19 +1199,21 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             );
           }
 
-          // NEW: Determine style reference for elevations/sections (from hero_3d)
+          // NEW: Determine style reference for panels that should match hero_3d
           // IP-Adapter ensures material consistency: brick colors, window frames, roof tiles
-          const isElevationOrSection =
-            job.type.startsWith("elevation_") ||
+          // Uses HERO_REFERENCE_PANELS to include elevations, sections, axonometric, and interior_3d
+          const shouldUseHeroStyleRef =
+            HERO_REFERENCE_PANELS.includes(job.type) ||
             job.type.startsWith("section_");
           const effectiveStyleReference =
-            isElevationOrSection && heroStyleReferenceUrl
+            shouldUseHeroStyleRef && heroStyleReferenceUrl
               ? heroStyleReferenceUrl
               : null;
 
           if (effectiveStyleReference) {
+            const panelStrength = HERO_CONTROL_STRENGTH[job.type] || 0.6;
             logger.info(
-              `   🎨 Style reference will be applied via IP-Adapter (weight: 0.65)`,
+              `   🎨 [STYLE LOCK] Using hero_3d as style reference for ${job.type} (strength: ${panelStrength})`,
             );
           }
 
@@ -1309,6 +1314,49 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             logger.info(
               `      URL: ${heroStyleReferenceUrl.substring(0, 60)}...`,
             );
+
+            // PROMPT REBUILD: Now that we have the design fingerprint, rebuild
+            // all remaining panel prompts with the fingerprint constraint injected.
+            // The generation loop is sequential so jobs[i+1..n] haven't been sent yet.
+            if (designFingerprint) {
+              const fingerprintConstraint =
+                getVerbatimPromptLock(designFingerprint);
+              let rebuiltCount = 0;
+
+              for (let j = i + 1; j < panelJobs.length; j++) {
+                const futureJob = panelJobs[j];
+                // Skip panels that don't have a prompt builder (e.g., data panels)
+                try {
+                  const rebuilt = buildPanelPrompt(futureJob.type, {
+                    masterDNA,
+                    locationData,
+                    projectContext,
+                    consistencyLock: futureJob.meta?.consistencyLock || null,
+                    geometryHint: futureJob.meta?.geometryHint || null,
+                    designFingerprint,
+                    fingerprintConstraint,
+                  });
+
+                  if (rebuilt && rebuilt.prompt) {
+                    futureJob.prompt = rebuilt.prompt;
+                    futureJob.negativePrompt =
+                      rebuilt.negativePrompt || futureJob.negativePrompt;
+                    rebuiltCount++;
+                  }
+                } catch (rebuildErr) {
+                  // Non-fatal: keep original prompt if rebuild fails
+                  logger.debug(
+                    `   ℹ️ Could not rebuild prompt for ${futureJob.type}: ${rebuildErr.message}`,
+                  );
+                }
+              }
+
+              if (rebuiltCount > 0) {
+                logger.success(
+                  `   🔒 Rebuilt ${rebuiltCount} panel prompts with fingerprint constraint`,
+                );
+              }
+            }
           }
 
           // NEW: Capture floor_plan_ground URL for interior_3d window alignment

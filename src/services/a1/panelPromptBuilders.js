@@ -396,6 +396,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 /**
  * Build elevation prompt (reusable for all 4 orientations)
  * ENHANCED: Strong fingerprint constraint to match hero_3d facade
+ * ENHANCED: Per-facade details (window counts, entrance, materials with hex colors)
  */
 export function buildElevationPrompt(orientation) {
   return ({
@@ -421,19 +422,69 @@ export function buildElevationPrompt(orientation) {
       ? `FOLLOW PROVIDED GEOMETRY: match the ${geometryHint.type} silhouette exactly (roofline, massing, openings).`
       : "Maintain strict orthographic alignment to plans and roofline.";
 
+    // Extract per-facade details from DNA
+    const facades =
+      masterDNA?.viewSpecificFeatures ||
+      masterDNA?._structured?.geometry?.facades ||
+      {};
+    const facadeData = facades[orientation] || {};
+
+    // Build facade-specific details
+    let facadeDetails = "";
+    const windowCount = facadeData.windows || facadeData.windowCount || "";
+    const hasEntrance =
+      facadeData.mainEntrance ||
+      (Array.isArray(facadeData.features) &&
+        facadeData.features.includes("entrance"));
+    const patioDoors = facadeData.patioDoors || "";
+    const balcony =
+      Array.isArray(facadeData.features) &&
+      facadeData.features.includes("balcony");
+
+    if (windowCount) {
+      facadeDetails += `\n- ${dirUpper} facade windows: ${windowCount} windows`;
+    }
+    if (hasEntrance) {
+      const entranceDesc =
+        typeof facadeData.mainEntrance === "string"
+          ? facadeData.mainEntrance
+          : "main entrance";
+      facadeDetails += `\n- MAIN ENTRANCE on this facade: ${entranceDesc}`;
+    }
+    if (patioDoors) {
+      facadeDetails += `\n- Patio doors: ${patioDoors}`;
+    }
+    if (balcony) {
+      facadeDetails += `\n- Balcony on this facade`;
+    }
+
+    // Build materials string with hex colors for precision
+    const rawMats = masterDNA?.materials || [];
+    const materialsWithHex = (Array.isArray(rawMats) ? rawMats : [])
+      .slice(0, 4)
+      .map((m) => {
+        if (typeof m === "string") return m;
+        const name = m.name || m.type || "material";
+        return m.hexColor ? `${name} (${m.hexColor})` : name;
+      });
+    const materialStr =
+      materialsWithHex.length > 0
+        ? materialsWithHex.join(", ")
+        : materials.join(", ");
+
     const prompt = `${dirUpper} elevation - flat orthographic facade view
 Style: ${style}
 Height: ${dims.height}m (${dims.floors} floors)
-Materials: ${materials.join(", ")}
+Materials: ${materialStr}
 Roof type: ${roofType} (MUST match hero 3D render exactly)
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT - MATCH HERO 3D EXACTLY:\n${fingerprintConstraint}\n` : ""}
 CRITICAL CONSISTENCY RULES:
 - This elevation MUST show THE SAME building as the hero 3D render
 - Roof profile: ${roofType} - EXACT SAME shape as hero
-- Materials: ${materials[0] || "primary"} - EXACT SAME colors as hero
-- Window count and positions: MUST match hero facade visible from this orientation
+- Materials: ${materialsWithHex[0] || materials[0] || "primary"} - EXACT SAME colors as hero
 - Building height and proportions: MUST match hero
+${facadeDetails || `- Window count and positions: MUST match hero facade visible from this orientation`}
 
 REQUIREMENTS:
 - FLAT ORTHOGRAPHIC VIEW (NO perspective, NO angled view)
@@ -446,7 +497,7 @@ REQUIREMENTS:
 - Roof form and details (MUST match hero 3D roof exactly)
 - Clean technical drawing with proper line weights
 - ${geomConstraint}
-- ${dirUpper === "NORTH" ? "Main entrance if north-facing" : ""}
+- ${hasEntrance ? `Main entrance on this (${orientation}) facade` : dirUpper === "NORTH" ? "Main entrance if north-facing" : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 

@@ -309,7 +309,8 @@ export async function generateArchitecturalImage(params) {
       const hasGeometryControl = geometryRender && geometryRender.url;
 
       // Check if style reference is present (hero image for material consistency)
-      const hasStyleReference = styleReferenceUrl && isElevationOrSection;
+      // Widened: accept style reference for any panel type the orchestrator sends
+      const hasStyleReference = !!styleReferenceUrl;
 
       // FLUX.1-schnell: Faster (4 steps), better at following simple 2D instructions, less prone to 3D interpretation
       // FLUX.1-dev: Higher quality (40 steps), better for photorealistic 3D views
@@ -400,12 +401,11 @@ export async function generateArchitecturalImage(params) {
           }
         }
 
-        // Style reference for elevations/sections – transfer material appearance
-        // from hero_3d (brick, windows, roof). Applied EVEN when geometry control
-        // is present: geometry controls layout, style ref controls appearance.
-        const isElevationOrSection =
-          viewType.startsWith("elevation_") || viewType.startsWith("section_");
-        if (styleReferenceUrl && isElevationOrSection) {
+        // Style reference – transfer material appearance from hero_3d (brick,
+        // windows, roof). Applied EVEN when geometry control is present:
+        // geometry controls layout, style ref controls appearance.
+        // Widened from elevation-only to all panel types that receive a style ref.
+        if (styleReferenceUrl) {
           if (!initImageApplied) {
             // No geometry control – use styleRef as sole init_image
             requestPayload.initImage = styleReferenceUrl;
