@@ -25,9 +25,11 @@ const EXTERIOR_GROUP = [
 
 const DEFAULT_THRESHOLDS = {
   // Very lenient thresholds to avoid false blocks from different viewpoints.
-  // We only fail when images are *extremely* dissimilar.
-  maxPHashDistance: 34, // out of 64 (higher = more different)
-  minCombinedSimilarity: 0.25, // 0..1 (higher = more similar)
+  // AI-generated panels use fundamentally different renderings per view
+  // (photorealistic hero vs technical axonometric vs interior perspective),
+  // so thresholds must accommodate large visual differences.
+  maxPHashDistance: 48, // out of 64 (higher = more different)
+  minCombinedSimilarity: 0.1, // 0..1 (higher = more similar)
   resize: 256,
   pixelmatchThreshold: 0.12,
 };
