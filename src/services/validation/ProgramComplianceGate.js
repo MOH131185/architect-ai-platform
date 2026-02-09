@@ -358,6 +358,75 @@ function normaliseDNARoomLevel(room) {
 }
 
 /**
+ * CHECKPOINT 2b: Post-Render adjacency validation
+ *
+ * Validates that rooms which must be adjacent (per the programLock's
+ * adjacencyRequirements) actually share a wall in the built geometry.
+ * Can only be checked after geometry is built (POST-RENDER).
+ *
+ * @param {Object} buildingModel - BuildingModel instance with getAdjacencyReport()
+ * @param {Object} programLock - ProgramSpacesLock with adjacencyRequirements
+ * @param {Object} [options]
+ * @param {boolean} [options.strict=true] - Throw on required violations
+ * @returns {{ valid: boolean, violations: string[], warnings: string[] }}
+ * @throws {ProgramComplianceError} in strict mode when required adjacency is violated
+ */
+export function validateAdjacency(buildingModel, programLock, options = {}) {
+  const { strict = true } = options;
+  const violations = [];
+  const warnings = [];
+
+  const requirements = programLock?.adjacencyRequirements || [];
+  if (requirements.length === 0)
+    return { valid: true, violations: [], warnings: [] };
+
+  if (
+    !buildingModel ||
+    typeof buildingModel.getAdjacencyReport !== "function"
+  ) {
+    return {
+      valid: true,
+      violations: [],
+      warnings: ["BuildingModel does not support adjacency report"],
+    };
+  }
+
+  const report = buildingModel.getAdjacencyReport();
+
+  for (const req of requirements) {
+    const pair = report.pairs.find(
+      (p) =>
+        (p.roomA.includes(req.spaceA) && p.roomB.includes(req.spaceB)) ||
+        (p.roomA.includes(req.spaceB) && p.roomB.includes(req.spaceA)),
+    );
+
+    if (!pair) continue; // rooms not both present (caught by other checks)
+
+    if (!pair.adjacent) {
+      if (req.priority === "required") {
+        violations.push(
+          `Required adjacency: "${req.spaceA}" and "${req.spaceB}" are not adjacent`,
+        );
+      } else {
+        warnings.push(
+          `Preferred adjacency: "${req.spaceA}" and "${req.spaceB}" are not adjacent`,
+        );
+      }
+    }
+  }
+
+  const valid = violations.length === 0;
+  if (!valid && strict) {
+    throw new ProgramComplianceError(
+      `Adjacency violations: ${violations.join("; ")}`,
+      violations,
+      "post-render-adjacency",
+    );
+  }
+  return { valid, violations, warnings };
+}
+
+/**
  * Finalize gate result. Throws in strict mode if violations found.
  */
 function finish(violations, report, strict) {
@@ -381,5 +450,6 @@ export default {
   validateProgramLock,
   validatePanelsAgainstProgram,
   validateBeforeCompose,
+  validateAdjacency,
   ProgramComplianceError,
 };

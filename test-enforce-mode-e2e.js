@@ -52,6 +52,12 @@ import {
   ComposeGateError,
 } from "./src/services/validation/ComposeGate.js";
 import { computeCDSHashSync } from "./src/services/validation/cdsHash.js";
+import { createBuildingModel } from "./src/geometry/BuildingModel.js";
+import { buildProgramLock } from "./src/services/validation/programLockSchema.js";
+import {
+  validateAdjacency,
+  ProgramComplianceError,
+} from "./src/services/validation/ProgramComplianceGate.js";
 
 let passed = 0;
 let failed = 0;
@@ -638,6 +644,302 @@ console.log("\n--- Steps 11-12: Integration coherence ---");
     pack3.geometryHash !== geoHash,
     "Integration: modified CDS produces different geometry hash",
     `original=${geoHash}, modified=${pack3.geometryHash}`,
+  );
+}
+
+// ─── 13. Room reading from .spaces (CDS format) ─────────────────────────────
+console.log(
+  "\n--- Step 13: BuildingModel reads rooms from levels[].spaces ---",
+);
+{
+  // CDS uses program.levels[].spaces — BuildingModel must find them
+  const spaceCDS = {
+    program: {
+      levelCount: 1,
+      levels: [
+        {
+          index: 0,
+          name: "Ground Floor",
+          spaces: [
+            {
+              id: "living",
+              name: "Living Room",
+              targetAreaM2: 25,
+              lockedLevel: 0,
+              count: 1,
+            },
+            {
+              id: "kitchen",
+              name: "Kitchen",
+              targetAreaM2: 15,
+              lockedLevel: 0,
+              count: 1,
+            },
+            {
+              id: "hall",
+              name: "Hallway",
+              targetAreaM2: 8,
+              lockedLevel: 0,
+              count: 1,
+            },
+          ],
+        },
+      ],
+    },
+    style: { architecture: "contemporary", materials: ["brick"] },
+    geometry_rules: { grid: "1m", max_span: "6m", roof_type: "gable" },
+    site: { area_m2: 200, orientation: 0 },
+    dimensions: { length: 12, width: 8, height: 3.2, floorCount: 1 },
+    massing: { widthM: 12, depthM: 8 },
+    levelCount: 1,
+  };
+  const model = createBuildingModel(spaceCDS);
+  const floorRooms = model.floors[0]?.rooms || [];
+  assert(
+    floorRooms.length >= 3,
+    "BuildingModel finds rooms from levels[].spaces",
+    `found ${floorRooms.length} rooms`,
+  );
+
+  // Verify room names are carried through
+  const roomNames = floorRooms.map((r) => r.name);
+  assert(
+    roomNames.some((n) => n && n.includes("Living")),
+    "Room names preserved (Living Room found in model)",
+  );
+}
+
+// ─── 14. Adjacency report ────────────────────────────────────────────────────
+console.log("\n--- Step 14: Adjacency report ---");
+{
+  // Use a CDS with program.levels[].spaces so rooms are found
+  const adjCDS = {
+    program: {
+      levelCount: 1,
+      levels: [
+        {
+          index: 0,
+          name: "Ground Floor",
+          spaces: [
+            {
+              id: "living",
+              name: "Living Room",
+              targetAreaM2: 25,
+              lockedLevel: 0,
+              count: 1,
+            },
+            {
+              id: "kitchen",
+              name: "Kitchen",
+              targetAreaM2: 15,
+              lockedLevel: 0,
+              count: 1,
+            },
+            {
+              id: "dining",
+              name: "Dining",
+              targetAreaM2: 12,
+              lockedLevel: 0,
+              count: 1,
+            },
+          ],
+        },
+      ],
+    },
+    style: { architecture: "contemporary", materials: ["brick"] },
+    geometry_rules: { grid: "1m", max_span: "6m", roof_type: "gable" },
+    site: { area_m2: 200, orientation: 0 },
+    dimensions: { length: 12, width: 8, height: 3.2, floorCount: 1 },
+    massing: { widthM: 12, depthM: 8 },
+    levelCount: 1,
+  };
+  const model = createBuildingModel(adjCDS);
+  const report = model.getAdjacencyReport();
+  assert(
+    report && Array.isArray(report.pairs),
+    "getAdjacencyReport returns { pairs: [...] }",
+  );
+  assert(
+    report.pairs.length > 0,
+    "Adjacency report has room pairs",
+    `${report.pairs.length} pairs`,
+  );
+
+  // Each pair should have required fields
+  const firstPair = report.pairs[0];
+  assert(
+    firstPair.roomA &&
+      firstPair.roomB &&
+      typeof firstPair.adjacent === "boolean" &&
+      typeof firstPair.score === "number",
+    "Adjacency pair has roomA, roomB, adjacent, score fields",
+  );
+}
+
+// ─── 15. Adjacency gate validation ──────────────────────────────────────────
+console.log("\n--- Step 15: Adjacency gate (validateAdjacency) ---");
+{
+  // Build a program lock with adjacency requirements
+  const spaces = [
+    { name: "Living Room", area: 25, floor: 0 },
+    { name: "Kitchen", area: 15, floor: 0 },
+    { name: "Dining", area: 12, floor: 0 },
+    { name: "Entry", area: 6, floor: 0 },
+  ];
+  const lock = buildProgramLock(spaces);
+  assert(
+    Array.isArray(lock.adjacencyRequirements) &&
+      lock.adjacencyRequirements.length > 0,
+    "buildProgramLock includes adjacencyRequirements",
+    `${lock.adjacencyRequirements.length} requirements`,
+  );
+
+  // Check that required and preferred are both present
+  const hasRequired = lock.adjacencyRequirements.some(
+    (r) => r.priority === "required",
+  );
+  const hasPreferred = lock.adjacencyRequirements.some(
+    (r) => r.priority === "preferred",
+  );
+  assert(hasRequired, "adjacencyRequirements includes 'required' entries");
+  assert(hasPreferred, "adjacencyRequirements includes 'preferred' entries");
+
+  // Mock a buildingModel with non-adjacent rooms for required pair
+  const mockModelNotAdjacent = {
+    getAdjacencyReport: () => ({
+      pairs: [
+        {
+          roomA: "Kitchen",
+          roomB: "Dining",
+          floor: 0,
+          adjacent: false,
+          score: 10,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Entry",
+          floor: 0,
+          adjacent: true,
+          score: 10,
+        },
+      ],
+    }),
+  };
+
+  // Required non-adjacent should throw in strict mode
+  let adjThrew = false;
+  try {
+    validateAdjacency(mockModelNotAdjacent, lock, { strict: true });
+  } catch (e) {
+    adjThrew = e instanceof ProgramComplianceError;
+  }
+  assert(
+    adjThrew,
+    "validateAdjacency throws for non-adjacent required pair (Kitchen-Dining)",
+  );
+
+  // Non-strict should return violations without throwing
+  const adjResult = validateAdjacency(mockModelNotAdjacent, lock, {
+    strict: false,
+  });
+  assert(
+    adjResult.violations.length > 0,
+    "validateAdjacency reports violations in non-strict mode",
+    adjResult.violations[0],
+  );
+
+  // Mock model with all adjacent — should pass
+  const mockModelAllAdjacent = {
+    getAdjacencyReport: () => ({
+      pairs: [
+        {
+          roomA: "Kitchen",
+          roomB: "Dining",
+          floor: 0,
+          adjacent: true,
+          score: 10,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Kitchen",
+          floor: 0,
+          adjacent: true,
+          score: 8,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Entry",
+          floor: 0,
+          adjacent: true,
+          score: 10,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Dining",
+          floor: 0,
+          adjacent: true,
+          score: 8,
+        },
+        {
+          roomA: "Entry",
+          roomB: "Kitchen",
+          floor: 0,
+          adjacent: false,
+          score: 0,
+        },
+      ],
+    }),
+  };
+  const passResult = validateAdjacency(mockModelAllAdjacent, lock, {
+    strict: true,
+  });
+  assert(
+    passResult.valid,
+    "validateAdjacency passes when all required pairs are adjacent",
+  );
+
+  // Preferred non-adjacent should warn but not fail
+  const mockModelPreferredFail = {
+    getAdjacencyReport: () => ({
+      pairs: [
+        {
+          roomA: "Kitchen",
+          roomB: "Dining",
+          floor: 0,
+          adjacent: true,
+          score: 10,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Kitchen",
+          floor: 0,
+          adjacent: false,
+          score: 8,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Entry",
+          floor: 0,
+          adjacent: true,
+          score: 10,
+        },
+        {
+          roomA: "Living Room",
+          roomB: "Dining",
+          floor: 0,
+          adjacent: true,
+          score: 8,
+        },
+      ],
+    }),
+  };
+  const warnResult = validateAdjacency(mockModelPreferredFail, lock, {
+    strict: true,
+  });
+  assert(
+    warnResult.valid && warnResult.warnings.length > 0,
+    "validateAdjacency warns (not throws) for non-adjacent preferred pair",
+    warnResult.warnings[0] || "no warnings",
   );
 }
 

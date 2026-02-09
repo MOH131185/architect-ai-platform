@@ -31,8 +31,55 @@ import { computeCDSHashSync } from "./cdsHash.js";
  * @property {number} levelCount
  * @property {LockedSpace[]} spaces
  * @property {{ forbidUnexpectedLevels: boolean, maxProgramViolations: number, areaTolerance: number }} invariants
+ * @property {Array<{spaceA: string, spaceB: string, priority: 'required'|'preferred'}>} [adjacencyRequirements]
  * @property {string} hash
  */
+
+/** Default residential adjacency requirements (mirrors BuildingModel.ADJACENCY_RULES) */
+const DEFAULT_ADJACENCY = {
+  Entry: {
+    "Living Room": "required",
+    Hall: "required",
+    Circulation: "preferred",
+  },
+  "Living Room": {
+    Kitchen: "preferred",
+    Dining: "preferred",
+    Entry: "required",
+  },
+  Kitchen: {
+    Dining: "required",
+    "Living Room": "preferred",
+    Utility: "preferred",
+  },
+  Dining: { Kitchen: "required", "Living Room": "preferred" },
+  "Master Bedroom": { "En-Suite": "required", "Walk-in Wardrobe": "preferred" },
+  Bedroom: { Bathroom: "preferred" },
+};
+
+/**
+ * Build adjacency requirements based on the spaces in the program.
+ * Only includes requirements where both spaces are present.
+ *
+ * @param {Array} spaces - Array of { name, ... } space objects
+ * @returns {Array<{spaceA: string, spaceB: string, priority: 'required'|'preferred'}>}
+ */
+function buildAdjacencyRequirements(spaces) {
+  const requirements = [];
+  const spaceNames = spaces.map((s) => s.name);
+  for (const [roomA, neighbors] of Object.entries(DEFAULT_ADJACENCY)) {
+    if (!spaceNames.some((n) => n.toLowerCase().includes(roomA.toLowerCase())))
+      continue;
+    for (const [roomB, priority] of Object.entries(neighbors)) {
+      if (
+        !spaceNames.some((n) => n.toLowerCase().includes(roomB.toLowerCase()))
+      )
+        continue;
+      requirements.push({ spaceA: roomA, spaceB: roomB, priority });
+    }
+  }
+  return requirements;
+}
 
 /**
  * Normalise a floor/level descriptor to a 0-based index.
@@ -130,10 +177,13 @@ export function buildProgramLock(programSpaces, options = {}) {
 
   const areaTolerance = options.areaTolerance ?? 0.03; // Default 3%
 
+  const adjacencyRequirements = buildAdjacencyRequirements(spaces);
+
   const lock = {
     version: "1.0.0",
     levelCount,
     spaces,
+    adjacencyRequirements,
     invariants: {
       forbidUnexpectedLevels: true,
       maxProgramViolations: 0,
@@ -264,8 +314,11 @@ export class ProgramLockError extends Error {
   }
 }
 
+export { buildAdjacencyRequirements };
+
 export default {
   buildProgramLock,
+  buildAdjacencyRequirements,
   getSpacesForLevel,
   getSpaceInstanceIds,
   getRoomListForLevel,
