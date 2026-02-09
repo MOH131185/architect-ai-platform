@@ -6,6 +6,8 @@
  */
 
 export const PIPELINE_MODE = {
+  // Only MULTI_PANEL is currently implemented; others are retained for
+  // backwards-compatible normalisation and explicit error reporting.
   SINGLE_SHOT: "single_shot",
   MULTI_PANEL: "multi_panel",
   GEOMETRY_FIRST: "geometry_first",

@@ -1291,13 +1291,101 @@ async function TC_STAMP_011() {
 }
 
 // ===================================================================
+// TC-LEGACY-012: No hardcoded legacy workflow labels in service results
+// ===================================================================
+async function TC_LEGACY_012() {
+  console.log(
+    "\n📋 TC-LEGACY-012: No hardcoded legacy workflow labels in service results",
+  );
+  console.log(
+    "   Criteria: Source files contain zero legacy workflow strings outside tests/docs",
+  );
+
+  const fs = await import("fs");
+  const path = await import("path");
+  const url = await import("url");
+  const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+
+  // Legacy workflow strings that must NOT appear in source files
+  const legacyLabels = [
+    "dna-enhanced-together-ai",
+    "modify-deterministic",
+    "hybrid-a1-grid-v1",
+  ];
+
+  const srcDir = path.join(__dirname, "src");
+  const apiDir = path.join(__dirname, "api");
+
+  function scanDir(dir, ext) {
+    const results = [];
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return results;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory() && entry.name !== "node_modules") {
+        results.push(...scanDir(full, ext));
+      } else if (entry.isFile() && ext.some((e) => entry.name.endsWith(e))) {
+        results.push(full);
+      }
+    }
+    return results;
+  }
+
+  const sourceFiles = [
+    ...scanDir(srcDir, [".js", ".jsx", ".ts", ".tsx"]),
+    ...scanDir(apiDir, [".js"]),
+  ];
+
+  for (const label of legacyLabels) {
+    let found = false;
+    let foundFile = "";
+    for (const file of sourceFiles) {
+      const content = fs.readFileSync(file, "utf-8");
+      if (content.includes(label)) {
+        found = true;
+        foundFile = path.relative(__dirname, file);
+        break;
+      }
+    }
+    assert(
+      !found,
+      `Legacy label "${label}" absent from source (${found ? `FOUND in ${foundFile}` : "clean"})`,
+    );
+  }
+
+  // Verify normalizeSheetMetadata now defaults to PIPELINE_MODE.MULTI_PANEL
+  const { normalizeSheetMetadata } = await import("./src/types/schemas.js");
+  const normalized = normalizeSheetMetadata({ format: "A1" });
+  assert(
+    normalized.workflow === PIPELINE_MODE.MULTI_PANEL,
+    `normalizeSheetMetadata defaults workflow to "${normalized.workflow}" (expected "${PIPELINE_MODE.MULTI_PANEL}")`,
+  );
+
+  // Verify template generator uses new layout ID
+  const { generateA1Template } =
+    await import("./src/services/a1TemplateGenerator.js");
+  const template = generateA1Template({
+    resolution: "working",
+    format: "json",
+  });
+  assert(
+    !template.layout.id.includes("hybrid"),
+    `A1 template ID does not contain "hybrid" (got "${template.layout.id}")`,
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005..011 | TC-ENV-006                        ║");
+  console.log("║  TC-PIPE-005..012 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -1321,6 +1409,7 @@ async function main() {
   await TC_LABEL_009();
   await TC_ENV_010();
   await TC_STAMP_011();
+  await TC_LEGACY_012();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);

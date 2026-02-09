@@ -432,7 +432,7 @@ export function normalizeSheetMetadata(metadata) {
     width: metadata.width || 1792,
     height: metadata.height || 1269,
     a1LayoutKey: metadata.a1LayoutKey || "uk-riba-standard",
-    workflow: metadata.workflow || undefined,
+    workflow: metadata.workflow || PIPELINE_MODE.MULTI_PANEL,
   };
 }
 

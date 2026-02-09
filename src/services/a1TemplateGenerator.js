@@ -132,7 +132,7 @@ export function generateA1Template(options = {}) {
   const panels = createLayoutPanels(grid);
 
   const layout = {
-    id: "hybrid-a1-grid-v1",
+    id: "multi-panel-a1-grid-v1",
     orientation,
     resolution,
     sheet: {

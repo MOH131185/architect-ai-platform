@@ -13,6 +13,7 @@ import { enforce2DFloorPlan } from "../utils/floorPlan2DEnforcement.js";
 import togetherAIService from "./togetherAIService.js";
 import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
 import logger from "../utils/logger.js";
+import { PIPELINE_MODE } from "../config/pipelineMode.js";
 
 // Together AI is now the DEFAULT for all reasoning (except location/weather)
 const USE_TOGETHER = true; // Always use Together AI for reasoning
@@ -1318,7 +1319,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         feasibility,
         projectContext,
         timestamp: new Date().toISOString(),
-        workflow: "complete",
+        workflow: PIPELINE_MODE.MULTI_PANEL,
       };
     } catch (error) {
       logger.error("Complete design workflow error:", error);
@@ -2015,7 +2016,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         projectContext: enhancedContext,
         projectSeed,
         timestamp: new Date().toISOString(),
-        workflow: "comprehensive_architectural_generation",
+        workflow: PIPELINE_MODE.MULTI_PANEL,
       };
     } catch (error) {
       logger.error("Floor plan and 3D preview generation error:", error);
@@ -2375,7 +2376,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         projectSeed,
         enhancedContext,
         timestamp: new Date().toISOString(),
-        workflow: "integrated_design_generation",
+        workflow: PIPELINE_MODE.MULTI_PANEL,
       };
     } catch (error) {
       logger.error("❌ Integrated design generation error:", error);
@@ -2784,7 +2785,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         visualizations,
         enhancedContext,
         timestamp: new Date().toISOString(),
-        workflow: "style_optimized",
+        workflow: PIPELINE_MODE.MULTI_PANEL,
       };
     } catch (error) {
       logger.error("Style-optimized design error:", error);
@@ -2941,7 +2942,7 @@ Be EXTREMELY specific with colors, materials, and patterns. These details will b
         visualization,
         projectContext,
         timestamp: new Date().toISOString(),
-        workflow: "quick",
+        workflow: PIPELINE_MODE.MULTI_PANEL,
         source: USE_TOGETHER ? "together-ai" : "openai-replicate",
       };
     } catch (error) {

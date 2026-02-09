@@ -56,11 +56,11 @@ export const FEATURE_FLAGS = {
    * - Composites panels into professional A1 presentation board
    * - Better control over each view's quality and consistency
    * - Allows panel-specific prompts and validation
-   * - Generation time: ~2-3 minutes (vs ~60 seconds for single-shot)
+   * - Generation time: ~2-3 minutes (14 panels × 6s + composition)
    * - Maintains strict DNA consistency with deterministic seed derivation
    *
    * When disabled (default):
-   * - Uses single-shot A1 generation (faster but less control)
+   * - Uses multi-panel A1 generation (default pipeline)
    * - May produce wireframe or incomplete layouts
    *
    * @type {boolean}
@@ -81,7 +81,7 @@ export const FEATURE_FLAGS = {
    * - API cost: ~$0.17-$0.24 per sheet
    *
    * When disabled:
-   * - Uses existing single-shot A1 generation
+   * - Uses standard multi-panel A1 generation
    *
    * @type {boolean}
    * @default true (Enable for dev testing)
