@@ -2,13 +2,15 @@
  * Canonical Design State Service
  *
  * Checks if the design state is ready for panel generation.
- * This is a stub implementation for testing purposes.
+ * Now delegates to the real CDS module for validation.
  */
+
+import { verifyCDSSync } from "../validation/CanonicalDesignState.js";
 
 /**
  * Check if the design state is ready for panel generation
  * @param {Object} designState - The current design state
- * @returns {{ ready: boolean, missing: string[] }} - Readiness status
+ * @returns {{ ready: boolean, missing: string[] }}
  */
 export function isReadyForPanelGeneration(designState) {
   const missing = [];
@@ -19,6 +21,26 @@ export function isReadyForPanelGeneration(designState) {
 
   if (!designState.masterDNA) {
     missing.push("masterDNA");
+  }
+
+  // P0: Check for CDS when required
+  if (designState.canonicalDesignState) {
+    if (!verifyCDSSync(designState.canonicalDesignState)) {
+      missing.push("canonicalDesignState.hash (integrity check failed)");
+    }
+  }
+
+  // P0: Check for ProgramLock when present
+  if (designState.programLock) {
+    if (
+      !designState.programLock.spaces ||
+      designState.programLock.spaces.length === 0
+    ) {
+      missing.push("programLock.spaces");
+    }
+    if (!designState.programLock.hash) {
+      missing.push("programLock.hash");
+    }
   }
 
   return {

@@ -561,8 +561,25 @@ export class ProceduralGeometryService {
     // Filter rooms for this floor
     let floorRooms = programSpaces.filter((r) => r.floor === floorIndex);
 
-    // If no rooms assigned to this floor, distribute evenly
+    // If no rooms assigned to this floor:
+    // - With programLock (strict): refuse heuristic redistribution
+    // - Without lock: distribute evenly (legacy behavior)
     if (floorRooms.length === 0) {
+      const hasProgramLock = programSpaces.some(
+        (s) => s.hard === true || s.lockedLevel !== undefined,
+      );
+      if (hasProgramLock) {
+        // P0: Do not invent rooms for levels not in the lock
+        logger.info(
+          `[ProceduralGeometry] No rooms assigned to floor ${floorIndex} by programLock — skipping layout`,
+        );
+        return {
+          rooms: [],
+          circulation: null,
+          stairCore: null,
+          wetStack: null,
+        };
+      }
       const roomsPerFloor = Math.ceil(programSpaces.length / floorCount);
       const startIdx = floorIndex * roomsPerFloor;
       floorRooms = programSpaces.slice(startIdx, startIdx + roomsPerFloor);

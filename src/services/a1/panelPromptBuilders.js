@@ -12,6 +12,7 @@
 
 import logger from "../../utils/logger.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { getRoomListForLevel } from "../validation/programLockSchema.js";
 
 // CAD-standard lineweight specification for technical drawings
 const LINEWEIGHT_SPEC = `
@@ -340,14 +341,24 @@ export function buildGroundFloorPrompt({
   locationData,
   projectContext,
   consistencyLock,
+  programLock,
 }) {
   const dims = normalizeDimensions(masterDNA);
-  const projectType = projectContext?.buildingProgram || "residential";
-  const programSpaces = projectContext?.programSpaces || [];
-  const roomList =
-    programSpaces.length > 0
-      ? programSpaces.map((p) => p.name || p.type).join(", ")
-      : "lobby, living, kitchen, services";
+
+  // P0: Use programLock for exact room list when available
+  let roomList;
+  if (programLock) {
+    roomList = getRoomListForLevel(programLock, 0);
+    if (!roomList) {
+      roomList = "lobby, living, kitchen, services";
+    }
+  } else {
+    const programSpaces = projectContext?.programSpaces || [];
+    roomList =
+      programSpaces.length > 0
+        ? programSpaces.map((p) => p.name || p.type).join(", ")
+        : "lobby, living, kitchen, services";
+  }
 
   // Inject fingerprint constraint for cross-panel consistency
   const fingerprintConstraint = injectFingerprintConstraint({
@@ -392,10 +403,21 @@ export function buildFirstFloorPrompt({
   locationData,
   projectContext,
   consistencyLock,
+  programLock,
 }) {
   const dims = normalizeDimensions(masterDNA);
-  const projectType = projectContext?.buildingProgram || "residential";
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+
+  // P0: Use programLock for exact room list when available
+  let firstFloorProgram;
+  if (programLock) {
+    const roomList = getRoomListForLevel(programLock, 1);
+    firstFloorProgram =
+      roomList || "Upper floor spaces (bedrooms, private rooms)";
+  } else {
+    firstFloorProgram =
+      "Upper floor spaces (bedrooms, private rooms, or upper program)";
+  }
 
   // Inject fingerprint constraint for cross-panel consistency
   const fingerprintConstraint = injectFingerprintConstraint({
@@ -408,7 +430,7 @@ export function buildFirstFloorPrompt({
 First floor plan (Level 1) - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
-Program: Upper floor spaces (bedrooms, private rooms, or upper program)
+Program: ${firstFloorProgram}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
@@ -438,9 +460,19 @@ export function buildSecondFloorPrompt({
   locationData,
   projectContext,
   consistencyLock,
+  programLock,
 }) {
   const dims = normalizeDimensions(masterDNA);
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+
+  // P0: Use programLock for exact room list when available
+  let secondFloorProgram;
+  if (programLock) {
+    const roomList = getRoomListForLevel(programLock, 2);
+    secondFloorProgram = roomList || "Top floor spaces or roof plan";
+  } else {
+    secondFloorProgram = "Top floor spaces or roof plan";
+  }
 
   // Inject fingerprint constraint for cross-panel consistency
   const fingerprintConstraint = injectFingerprintConstraint({
@@ -453,7 +485,7 @@ export function buildSecondFloorPrompt({
 Second floor plan (Level 2) - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
-Program: Top floor spaces or roof plan
+Program: ${secondFloorProgram}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (building identity):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:

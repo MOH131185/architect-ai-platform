@@ -18,23 +18,23 @@
  * @module enhancedTechnicalDrawingAdapter
  */
 
-import { isFeatureEnabled } from '../../config/featureFlags.js';
-import logger from '../core/logger.js';
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import logger from "../core/logger.js";
 import {
   generateFromDNA as generateElevationFromDNA,
   MATERIAL_PATTERNS,
-} from '../svg/ArchitecturalElevationGenerator.js';
+} from "../svg/ArchitecturalElevationGenerator.js";
 import ArchitecturalFloorPlanGenerator, {
   FURNITURE_SYMBOLS,
   WALL_PATTERNS,
-} from '../svg/ArchitecturalFloorPlanGenerator.js';
+} from "../svg/ArchitecturalFloorPlanGenerator.js";
 
 // Elevation and Section generators export functions directly (not classes)
 
 import {
   generateFromDNA as generateSectionFromDNA,
   HATCH_PATTERNS,
-} from '../svg/ArchitecturalSectionGenerator.js';
+} from "../svg/ArchitecturalSectionGenerator.js";
 
 /**
  * Convert SVG string to data URL format
@@ -49,7 +49,7 @@ function svgToDataUrl(svg) {
     const encoded = btoa(unescape(encodeURIComponent(svg)));
     return `data:image/svg+xml;base64,${encoded}`;
   } catch (error) {
-    logger.error('[EnhancedAdapter] Failed to encode SVG to data URL:', error);
+    logger.error("[EnhancedAdapter] Failed to encode SVG to data URL:", error);
     return null;
   }
 }
@@ -71,7 +71,7 @@ function wrapSVGResult(svg, metadata = {}) {
     svg,
     metadata: {
       ...metadata,
-      generator: 'enhanced',
+      generator: "enhanced",
       timestamp: Date.now(),
     },
   };
@@ -100,17 +100,19 @@ class GeometryAdapter {
     if (this.populatedGeometry?.floors?.length > 0) {
       const totalRooms = this.populatedGeometry.floors.reduce(
         (sum, f) => sum + (f.rooms?.length || 0),
-        0
+        0,
       );
       const totalWalls = this.populatedGeometry.floors.reduce(
         (sum, f) => sum + (f.walls?.length || 0),
-        0
+        0,
       );
       logger.info(
-        `[GeometryAdapter] Using populatedGeometry: ${this.populatedGeometry.floors.length} floors, ${totalRooms} rooms, ${totalWalls} walls`
+        `[GeometryAdapter] Using populatedGeometry: ${this.populatedGeometry.floors.length} floors, ${totalRooms} rooms, ${totalWalls} walls`,
       );
     } else {
-      logger.warn('[GeometryAdapter] No populatedGeometry found, falling back to DNA rooms');
+      logger.warn(
+        "[GeometryAdapter] No populatedGeometry found, falling back to DNA rooms",
+      );
     }
   }
 
@@ -119,30 +121,38 @@ class GeometryAdapter {
    * The geometry data may be in different locations depending on how it was passed
    */
   extractPopulatedGeometry(masterDNA) {
-    if (!masterDNA) {return null;}
+    if (!masterDNA) {
+      return null;
+    }
 
     // Priority 1: Direct populatedGeometry property
     if (masterDNA.populatedGeometry?.floors?.length > 0) {
-      logger.debug('[GeometryAdapter] Found populatedGeometry directly on masterDNA');
+      logger.debug(
+        "[GeometryAdapter] Found populatedGeometry directly on masterDNA",
+      );
       return masterDNA.populatedGeometry;
     }
 
     // Priority 2: geometryDNA (populatedGeometry is spread into this by orchestrator)
     // geometryDNA.floors would have the room polygons and wall coordinates
     if (masterDNA.geometryDNA?.floors?.length > 0) {
-      logger.debug('[GeometryAdapter] Found floors in geometryDNA, using as populatedGeometry');
+      logger.debug(
+        "[GeometryAdapter] Found floors in geometryDNA, using as populatedGeometry",
+      );
       return masterDNA.geometryDNA;
     }
 
     // Priority 3: geometry property (legacy/alternate location)
     if (masterDNA.geometry?.floors?.length > 0) {
-      logger.debug('[GeometryAdapter] Found floors in geometry, using as populatedGeometry');
+      logger.debug(
+        "[GeometryAdapter] Found floors in geometry, using as populatedGeometry",
+      );
       return masterDNA.geometry;
     }
 
     // Priority 4: Check for floors at top level (some pipelines put it there)
     if (masterDNA.floors?.length > 0) {
-      logger.debug('[GeometryAdapter] Found floors at top level of masterDNA');
+      logger.debug("[GeometryAdapter] Found floors at top level of masterDNA");
       return { floors: masterDNA.floors };
     }
 
@@ -167,7 +177,11 @@ class GeometryAdapter {
       const maxFloor = rooms.reduce((max, room) => {
         const roomFloor =
           room.floor ??
-          (room.level === 'ground' ? 0 : room.level === 'first' ? 1 : (room.level ?? 0));
+          (room.level === "ground"
+            ? 0
+            : room.level === "first"
+              ? 1
+              : (room.level ?? 0));
         return Math.max(max, roomFloor);
       }, 0);
       floors = maxFloor + 1; // Convert 0-indexed to count
@@ -184,7 +198,7 @@ class GeometryAdapter {
       const typicalFloorHeight = 2.7;
       floors = Math.max(1, Math.round(totalHeight / typicalFloorHeight));
       logger.warn(
-        `[GeometryAdapter] No explicit floor count found, derived ${floors} floors from height ${totalHeight}m`
+        `[GeometryAdapter] No explicit floor count found, derived ${floors} floors from height ${totalHeight}m`,
       );
     }
 
@@ -214,8 +228,12 @@ class GeometryAdapter {
           // Extract dimensions from boundingBox or polygon
           let width, length, x, y;
           if (room.boundingBox) {
-            width = room.boundingBox.width || room.boundingBox.maxX - room.boundingBox.minX;
-            length = room.boundingBox.height || room.boundingBox.maxY - room.boundingBox.minY;
+            width =
+              room.boundingBox.width ||
+              room.boundingBox.maxX - room.boundingBox.minX;
+            length =
+              room.boundingBox.height ||
+              room.boundingBox.maxY - room.boundingBox.minY;
             x = room.boundingBox.minX ?? 0;
             y = room.boundingBox.minY ?? 0;
           } else if (room.polygon?.length >= 3) {
@@ -250,7 +268,7 @@ class GeometryAdapter {
         });
       });
       logger.debug(
-        `[GeometryAdapter] Extracted rooms from populatedGeometry: ${JSON.stringify(Object.keys(floorMap).map((k) => `floor ${k}: ${floorMap[k].length} rooms`))}`
+        `[GeometryAdapter] Extracted rooms from populatedGeometry: ${JSON.stringify(Object.keys(floorMap).map((k) => `floor ${k}: ${floorMap[k].length} rooms`))}`,
       );
       return floorMap;
     }
@@ -259,14 +277,14 @@ class GeometryAdapter {
     const rooms = this.dna?.rooms || this.dna?.program?.rooms || [];
 
     rooms.forEach((room, index) => {
-      const floor = room.floor || (room.level === 'ground' ? 0 : 1);
+      const floor = room.floor || (room.level === "ground" ? 0 : 1);
       if (!floorMap[floor]) {
         floorMap[floor] = [];
       }
 
       // Parse dimensions string like "5.5m × 4.0m" or use numeric values
       let width, length;
-      if (typeof room.dimensions === 'string') {
+      if (typeof room.dimensions === "string") {
         const match = room.dimensions.match(/([\d.]+)m?\s*[×x]\s*([\d.]+)m?/i);
         if (match) {
           width = parseFloat(match[1]);
@@ -319,7 +337,7 @@ class GeometryAdapter {
         start: wall.start,
         end: wall.end,
         thickness: wall.thickness || 0.3,
-        type: wall.type || 'exterior',
+        type: wall.type || "exterior",
         isLoadBearing: wall.isLoadBearing,
         adjacentRooms: wall.adjacentRooms,
         openings: wall.openings || [],
@@ -327,8 +345,13 @@ class GeometryAdapter {
     });
 
     if (Object.keys(wallMap).length > 0) {
-      const totalWalls = Object.values(wallMap).reduce((sum, walls) => sum + walls.length, 0);
-      logger.debug(`[GeometryAdapter] Extracted ${totalWalls} walls from populatedGeometry`);
+      const totalWalls = Object.values(wallMap).reduce(
+        (sum, walls) => sum + walls.length,
+        0,
+      );
+      logger.debug(
+        `[GeometryAdapter] Extracted ${totalWalls} walls from populatedGeometry`,
+      );
     }
 
     return wallMap;
@@ -336,79 +359,79 @@ class GeometryAdapter {
 
   normalizeRoomType(name) {
     // Map room names to furniture symbol keys
-    const nameNorm = (name || '').toLowerCase();
-    if (nameNorm.includes('living') || nameNorm.includes('lounge')) {
-      return 'Living Room';
+    const nameNorm = (name || "").toLowerCase();
+    if (nameNorm.includes("living") || nameNorm.includes("lounge")) {
+      return "Living Room";
     }
-    if (nameNorm.includes('kitchen') && nameNorm.includes('din')) {
-      return 'Kitchen/Diner';
+    if (nameNorm.includes("kitchen") && nameNorm.includes("din")) {
+      return "Kitchen/Diner";
     }
-    if (nameNorm.includes('kitchen')) {
-      return 'Kitchen';
+    if (nameNorm.includes("kitchen")) {
+      return "Kitchen";
     }
-    if (nameNorm.includes('master') || nameNorm.includes('main bedroom')) {
-      return 'Master Bedroom';
+    if (nameNorm.includes("master") || nameNorm.includes("main bedroom")) {
+      return "Master Bedroom";
     }
-    if (nameNorm.includes('bedroom 2') || nameNorm.includes('bed 2')) {
-      return 'Bedroom 2';
+    if (nameNorm.includes("bedroom 2") || nameNorm.includes("bed 2")) {
+      return "Bedroom 2";
     }
-    if (nameNorm.includes('bedroom 3') || nameNorm.includes('bed 3')) {
-      return 'Bedroom 3';
+    if (nameNorm.includes("bedroom 3") || nameNorm.includes("bed 3")) {
+      return "Bedroom 3";
     }
-    if (nameNorm.includes('bedroom')) {
-      return 'Bedroom';
+    if (nameNorm.includes("bedroom")) {
+      return "Bedroom";
     }
-    if (nameNorm.includes('family bath')) {
-      return 'Family Bathroom';
+    if (nameNorm.includes("family bath")) {
+      return "Family Bathroom";
     }
-    if (nameNorm.includes('en-suite') || nameNorm.includes('ensuite')) {
-      return 'En-Suite';
+    if (nameNorm.includes("en-suite") || nameNorm.includes("ensuite")) {
+      return "En-Suite";
     }
-    if (nameNorm.includes('bath')) {
-      return 'Bathroom';
+    if (nameNorm.includes("bath")) {
+      return "Bathroom";
     }
-    if (nameNorm.includes('wc') || nameNorm.includes('toilet')) {
-      return 'WC';
+    if (nameNorm.includes("wc") || nameNorm.includes("toilet")) {
+      return "WC";
     }
-    if (nameNorm.includes('cloakroom')) {
-      return 'Cloakroom';
+    if (nameNorm.includes("cloakroom")) {
+      return "Cloakroom";
     }
-    if (nameNorm.includes('dining')) {
-      return 'Dining Room';
+    if (nameNorm.includes("dining")) {
+      return "Dining Room";
     }
-    if (nameNorm.includes('utility')) {
-      return 'Utility Room';
+    if (nameNorm.includes("utility")) {
+      return "Utility Room";
     }
-    if (nameNorm.includes('study') || nameNorm.includes('office')) {
-      return 'Study';
+    if (nameNorm.includes("study") || nameNorm.includes("office")) {
+      return "Study";
     }
-    if (nameNorm.includes('hall')) {
-      return 'Hallway';
+    if (nameNorm.includes("hall")) {
+      return "Hallway";
     }
-    if (nameNorm.includes('landing')) {
-      return 'Landing';
+    if (nameNorm.includes("landing")) {
+      return "Landing";
     }
-    if (nameNorm.includes('garage')) {
-      return 'Garage';
+    if (nameNorm.includes("garage")) {
+      return "Garage";
     }
     return name; // Return as-is if no match
   }
 
   estimateWindows(roomName, area) {
-    const name = (roomName || '').toLowerCase();
-    if (name.includes('living') || name.includes('lounge')) {
+    const name = (roomName || "").toLowerCase();
+    if (name.includes("living") || name.includes("lounge")) {
       return 2;
     }
-    if (name.includes('kitchen')) {
+    if (name.includes("kitchen")) {
       return 1;
     }
-    if (name.includes('bedroom')) {
+    if (name.includes("bedroom")) {
       return 1;
     }
-    if (name.includes('bath') || name.includes('wc')) {
+    if (name.includes("bath") || name.includes("wc")) {
       return 1;
     }
-    if (name.includes('hall') || name.includes('landing')) {
+    if (name.includes("hall") || name.includes("landing")) {
       return 0;
     }
     return area > 15 ? 2 : 1;
@@ -417,25 +440,29 @@ class GeometryAdapter {
   extractMaterials() {
     const materials = this.dna?.materials || this.dna?.style?.materials || [];
     const result = {
-      exterior: '#D4C4B0',
-      roof: '#5C4033',
-      windows: '#87CEEB',
-      doors: '#8B4513',
-      floor: '#DEB887',
+      exterior: "#D4C4B0",
+      roof: "#5C4033",
+      windows: "#87CEEB",
+      doors: "#8B4513",
+      floor: "#DEB887",
     };
 
     materials.forEach((m) => {
-      const app = (m.application || '').toLowerCase();
-      if (app.includes('exterior') || app.includes('wall') || app.includes('facade')) {
+      const app = (m.application || "").toLowerCase();
+      if (
+        app.includes("exterior") ||
+        app.includes("wall") ||
+        app.includes("facade")
+      ) {
         result.exterior = m.hexColor || result.exterior;
       }
-      if (app.includes('roof')) {
+      if (app.includes("roof")) {
         result.roof = m.hexColor || result.roof;
       }
-      if (app.includes('window')) {
+      if (app.includes("window")) {
         result.windows = m.hexColor || result.windows;
       }
-      if (app.includes('door')) {
+      if (app.includes("door")) {
         result.doors = m.hexColor || result.doors;
       }
     });
@@ -447,14 +474,14 @@ class GeometryAdapter {
     const viewFeatures = this.dna?.viewSpecificFeatures || {};
     const openings = [];
 
-    ['north', 'south', 'east', 'west'].forEach((orientation) => {
+    ["north", "south", "east", "west"].forEach((orientation) => {
       const features = viewFeatures[orientation] || {};
       const windows = features.windows || features.windowCount || 2;
       const doors = features.doors || (features.mainEntrance ? 1 : 0);
 
       for (let i = 0; i < windows; i++) {
         openings.push({
-          type: 'window',
+          type: "window",
           facade: orientation,
           floor: Math.floor(i / 2),
           width: 1.2,
@@ -465,7 +492,7 @@ class GeometryAdapter {
 
       if (doors) {
         openings.push({
-          type: 'door',
+          type: "door",
           facade: orientation,
           floor: 0,
           width: 1.0,
@@ -501,11 +528,13 @@ class GeometryAdapter {
     // Check if rooms already have polygon data (from populatedGeometry)
     // If yes, use them directly without auto-layout to preserve exact geometry
     const hasPolygons = rooms.some((r) => r.polygon?.length >= 3);
-    const layoutRooms = hasPolygons ? rooms : this.autoLayoutRooms(rooms, floor);
+    const layoutRooms = hasPolygons
+      ? rooms
+      : this.autoLayoutRooms(rooms, floor);
 
     if (hasPolygons) {
       logger.debug(
-        `[GeometryAdapter] Floor ${floor}: Using ${rooms.length} rooms with polygon data, ${walls.length} walls, ${openings.length} openings`
+        `[GeometryAdapter] Floor ${floor}: Using ${rooms.length} rooms with polygon data, ${walls.length} walls, ${openings.length} openings`,
       );
     }
 
@@ -528,7 +557,9 @@ class GeometryAdapter {
       return [];
     }
 
-    const floorData = this.populatedGeometry.floors.find((f) => (f.level ?? 0) === floor);
+    const floorData = this.populatedGeometry.floors.find(
+      (f) => (f.level ?? 0) === floor,
+    );
     if (!floorData) {
       return [];
     }
@@ -550,29 +581,86 @@ class GeometryAdapter {
   }
 
   generateDefaultFloorPlan(floor) {
-    const buildingType = this.dna?.buildingType || this.dna?.program?.buildingType || 'Residential';
+    // P0: In strict mode, do NOT generate default/fallback floor plans
+    // They create ambiguous content that contradicts the programLock
+    if (
+      isFeatureEnabled("strictNoFallback") &&
+      !isFeatureEnabled("allowTechnicalFallback")
+    ) {
+      logger.warn(
+        `[EnhancedAdapter] generateDefaultFloorPlan(${floor}) blocked by strictNoFallback — no fallback allowed`,
+      );
+      return null;
+    }
+
+    const buildingType =
+      this.dna?.buildingType ||
+      this.dna?.program?.buildingType ||
+      "Residential";
 
     // Default rooms based on building type
     const defaultRooms =
       floor === 0
         ? [
-            { name: 'Living Room', type: 'Living Room', width: 5.5, length: 4.0, windows: 2 },
-            { name: 'Kitchen/Diner', type: 'Kitchen/Diner', width: 4.5, length: 3.5, windows: 1 },
-            { name: 'Hallway', type: 'Hallway', width: 3.0, length: 2.0, windows: 0 },
-            { name: 'WC', type: 'WC', width: 1.5, length: 1.8, windows: 1 },
+            {
+              name: "Living Room",
+              type: "Living Room",
+              width: 5.5,
+              length: 4.0,
+              windows: 2,
+            },
+            {
+              name: "Kitchen/Diner",
+              type: "Kitchen/Diner",
+              width: 4.5,
+              length: 3.5,
+              windows: 1,
+            },
+            {
+              name: "Hallway",
+              type: "Hallway",
+              width: 3.0,
+              length: 2.0,
+              windows: 0,
+            },
+            { name: "WC", type: "WC", width: 1.5, length: 1.8, windows: 1 },
           ]
         : [
-            { name: 'Master Bedroom', type: 'Master Bedroom', width: 4.5, length: 3.5, windows: 1 },
-            { name: 'Bedroom 2', type: 'Bedroom 2', width: 3.5, length: 3.0, windows: 1 },
-            { name: 'Bedroom 3', type: 'Bedroom 3', width: 3.0, length: 2.8, windows: 1 },
             {
-              name: 'Family Bathroom',
-              type: 'Family Bathroom',
+              name: "Master Bedroom",
+              type: "Master Bedroom",
+              width: 4.5,
+              length: 3.5,
+              windows: 1,
+            },
+            {
+              name: "Bedroom 2",
+              type: "Bedroom 2",
+              width: 3.5,
+              length: 3.0,
+              windows: 1,
+            },
+            {
+              name: "Bedroom 3",
+              type: "Bedroom 3",
+              width: 3.0,
+              length: 2.8,
+              windows: 1,
+            },
+            {
+              name: "Family Bathroom",
+              type: "Family Bathroom",
               width: 2.5,
               length: 2.0,
               windows: 1,
             },
-            { name: 'Landing', type: 'Landing', width: 2.0, length: 2.0, windows: 0 },
+            {
+              name: "Landing",
+              type: "Landing",
+              width: 2.0,
+              length: 2.0,
+              windows: 0,
+            },
           ];
 
     return {
@@ -627,13 +715,13 @@ class GeometryAdapter {
   /**
    * Get elevation data for a specific orientation
    */
-  getElevationData(orientation = 'south') {
+  getElevationData(orientation = "south") {
     const viewFeatures = this.dna?.viewSpecificFeatures?.[orientation] || {};
 
     return {
       orientation,
       width:
-        orientation === 'north' || orientation === 'south'
+        orientation === "north" || orientation === "south"
           ? this.dimensions.width
           : this.dimensions.depth,
       height: this.dimensions.height,
@@ -641,7 +729,7 @@ class GeometryAdapter {
       floorHeights: this.dimensions.floorHeights,
       materials: this.materials,
       openings: this.openings.filter((o) => o.facade === orientation),
-      roofType: this.dna?.style?.roofType || this.dna?.roofType || 'gable',
+      roofType: this.dna?.style?.roofType || this.dna?.roofType || "gable",
       roofPitch: this.dna?.style?.roofPitch || 35,
       features: viewFeatures,
     };
@@ -650,8 +738,9 @@ class GeometryAdapter {
   /**
    * Get section data for a specific cut type
    */
-  getSectionData(sectionType = 'longitudinal') {
-    const isLongitudinal = sectionType === 'longitudinal' || sectionType === 'long';
+  getSectionData(sectionType = "longitudinal") {
+    const isLongitudinal =
+      sectionType === "longitudinal" || sectionType === "long";
 
     return {
       type: sectionType,
@@ -661,10 +750,12 @@ class GeometryAdapter {
       floorHeights: this.dimensions.floorHeights,
       wallThickness: this.dimensions.wallThickness,
       materials: this.materials,
-      roofType: this.dna?.style?.roofType || 'gable',
+      roofType: this.dna?.style?.roofType || "gable",
       roofPitch: this.dna?.style?.roofPitch || 35,
-      foundationType: this.dna?.structure?.foundationType || 'strip',
-      rooms: isLongitudinal ? this.getSectionRooms('vertical') : this.getSectionRooms('horizontal'),
+      foundationType: this.dna?.structure?.foundationType || "strip",
+      rooms: isLongitudinal
+        ? this.getSectionRooms("vertical")
+        : this.getSectionRooms("horizontal"),
     };
   }
 
@@ -692,22 +783,28 @@ class GeometryAdapter {
  * @param {Object} projectContext - Additional context
  * @returns {string} SVG string
  */
-export function generateEnhancedFloorPlanSVG(masterDNA, floor = 'ground', projectContext = {}) {
+export function generateEnhancedFloorPlanSVG(
+  masterDNA,
+  floor = "ground",
+  projectContext = {},
+) {
   try {
     // Check feature flag
-    if (!isFeatureEnabled('enhancedSVGGenerators')) {
-      logger.debug('[EnhancedAdapter] Feature flag disabled, falling back to basic generator');
+    if (!isFeatureEnabled("enhancedSVGGenerators")) {
+      logger.debug(
+        "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",
+      );
       return null; // Signal to use fallback
     }
 
     // Convert floor string to number
     const floorIndex =
-      typeof floor === 'string'
-        ? floor === 'ground'
+      typeof floor === "string"
+        ? floor === "ground"
           ? 0
-          : floor === 'first'
+          : floor === "first"
             ? 1
-            : parseInt(floor.replace(/\D/g, '')) || 0
+            : parseInt(floor.replace(/\D/g, "")) || 0
         : floor;
 
     // Create geometry adapter from DNA
@@ -727,13 +824,15 @@ export function generateEnhancedFloorPlanSVG(masterDNA, floor = 'ground', projec
     // Generate the SVG
     const svg = generator.generate(geometry, floorIndex);
 
-    logger.info(`[EnhancedAdapter] Generated enhanced floor plan for floor ${floorIndex}`);
+    logger.info(
+      `[EnhancedAdapter] Generated enhanced floor plan for floor ${floorIndex}`,
+    );
 
     // CRITICAL FIX: Wrap SVG in expected format { dataUrl, svg, metadata }
     // CleanPanelOrchestrator checks for result?.dataUrl - plain strings fail this check
-    return wrapSVGResult(svg, { type: 'floor_plan', floor: floorIndex });
+    return wrapSVGResult(svg, { type: "floor_plan", floor: floorIndex });
   } catch (error) {
-    logger.error('[EnhancedAdapter] Floor plan generation failed:', error);
+    logger.error("[EnhancedAdapter] Floor plan generation failed:", error);
     return null; // Signal to use fallback
   }
 }
@@ -756,12 +855,14 @@ export function generateEnhancedFloorPlanSVG(masterDNA, floor = 'ground', projec
  */
 export function generateEnhancedElevationSVG(
   masterDNA,
-  orientation = 'south',
-  projectContext = {}
+  orientation = "south",
+  projectContext = {},
 ) {
   try {
-    if (!isFeatureEnabled('enhancedSVGGenerators')) {
-      logger.debug('[EnhancedAdapter] Feature flag disabled, falling back to basic generator');
+    if (!isFeatureEnabled("enhancedSVGGenerators")) {
+      logger.debug(
+        "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",
+      );
       return null;
     }
 
@@ -775,13 +876,13 @@ export function generateEnhancedElevationSVG(
     });
 
     logger.info(
-      `[EnhancedAdapter] Generated enhanced ${orientation} elevation with material patterns`
+      `[EnhancedAdapter] Generated enhanced ${orientation} elevation with material patterns`,
     );
 
     // CRITICAL FIX: Wrap SVG in expected format { dataUrl, svg, metadata }
-    return wrapSVGResult(svg, { type: 'elevation', orientation });
+    return wrapSVGResult(svg, { type: "elevation", orientation });
   } catch (error) {
-    logger.error('[EnhancedAdapter] Elevation generation failed:', error);
+    logger.error("[EnhancedAdapter] Elevation generation failed:", error);
     return null;
   }
 }
@@ -806,13 +907,15 @@ export function generateEnhancedElevationSVG(
  */
 export function generateEnhancedSectionSVG(
   masterDNA,
-  sectionType = 'longitudinal',
+  sectionType = "longitudinal",
   projectContext = {},
-  cutPosition = 0.5
+  cutPosition = 0.5,
 ) {
   try {
-    if (!isFeatureEnabled('enhancedSVGGenerators')) {
-      logger.debug('[EnhancedAdapter] Feature flag disabled, falling back to basic generator');
+    if (!isFeatureEnabled("enhancedSVGGenerators")) {
+      logger.debug(
+        "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",
+      );
       return null;
     }
 
@@ -827,13 +930,13 @@ export function generateEnhancedSectionSVG(
     });
 
     logger.info(
-      `[EnhancedAdapter] Generated enhanced ${sectionType} section with structural details`
+      `[EnhancedAdapter] Generated enhanced ${sectionType} section with structural details`,
     );
 
     // CRITICAL FIX: Wrap SVG in expected format { dataUrl, svg, metadata }
-    return wrapSVGResult(svg, { type: 'section', sectionType });
+    return wrapSVGResult(svg, { type: "section", sectionType });
   } catch (error) {
-    logger.error('[EnhancedAdapter] Section generation failed:', error);
+    logger.error("[EnhancedAdapter] Section generation failed:", error);
     return null;
   }
 }
@@ -847,15 +950,25 @@ export function generateEnhancedSectionSVG(
  * @param {Object} options - Generation options
  * @returns {Object} Object containing all SVG strings
  */
-export async function generateAllEnhancedDrawings(masterDNA, projectContext = {}, options = {}) {
+export async function generateAllEnhancedDrawings(
+  masterDNA,
+  projectContext = {},
+  options = {},
+) {
   const results = {
     floorPlans: {},
     elevations: {},
     sections: {},
     metadata: {
-      generator: 'enhanced',
+      generator: "enhanced",
       timestamp: new Date().toISOString(),
-      features: ['furniture', 'dimensions', 'doorSwings', 'materials', 'structure'],
+      features: [
+        "furniture",
+        "dimensions",
+        "doorSwings",
+        "materials",
+        "structure",
+      ],
     },
   };
 
@@ -863,25 +976,29 @@ export async function generateAllEnhancedDrawings(masterDNA, projectContext = {}
 
   // Generate floor plans
   for (let floor = 0; floor < floors; floor++) {
-    const floorName = floor === 0 ? 'ground' : `floor_${floor}`;
-    results.floorPlans[floorName] = generateEnhancedFloorPlanSVG(masterDNA, floor, projectContext);
+    const floorName = floor === 0 ? "ground" : `floor_${floor}`;
+    results.floorPlans[floorName] = generateEnhancedFloorPlanSVG(
+      masterDNA,
+      floor,
+      projectContext,
+    );
   }
 
   // Generate elevations
-  ['north', 'south', 'east', 'west'].forEach((orientation) => {
+  ["north", "south", "east", "west"].forEach((orientation) => {
     results.elevations[orientation] = generateEnhancedElevationSVG(
       masterDNA,
       orientation,
-      projectContext
+      projectContext,
     );
   });
 
   // Generate sections
-  ['longitudinal', 'transverse'].forEach((sectionType) => {
+  ["longitudinal", "transverse"].forEach((sectionType) => {
     results.sections[sectionType] = generateEnhancedSectionSVG(
       masterDNA,
       sectionType,
-      projectContext
+      projectContext,
     );
   });
 
@@ -893,18 +1010,18 @@ export async function generateAllEnhancedDrawings(masterDNA, projectContext = {}
  */
 export function canGenerateEnhanced(panelType) {
   const enhancedPanels = [
-    'floor_plan_ground',
-    'floor_plan_first',
-    'floor_plan_second',
-    'floor_plan',
-    'elevation_north',
-    'elevation_south',
-    'elevation_east',
-    'elevation_west',
-    'section_AA',
-    'section_BB',
-    'section_longitudinal',
-    'section_transverse',
+    "floor_plan_ground",
+    "floor_plan_first",
+    "floor_plan_second",
+    "floor_plan",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "section_longitudinal",
+    "section_transverse",
   ];
 
   return enhancedPanels.includes(panelType);
@@ -914,30 +1031,34 @@ export function canGenerateEnhanced(panelType) {
  * Generate technical panel based on type
  * Unified entry point for enhanced generation
  */
-export function generateEnhancedPanel(panelType, masterDNA, projectContext = {}) {
+export function generateEnhancedPanel(
+  panelType,
+  masterDNA,
+  projectContext = {},
+) {
   if (!canGenerateEnhanced(panelType)) {
     return null;
   }
 
   // Floor plans
-  if (panelType.startsWith('floor_plan')) {
+  if (panelType.startsWith("floor_plan")) {
     const floorMatch = panelType.match(/floor_plan_(\w+)/);
-    const floor = floorMatch ? floorMatch[1] : 'ground';
+    const floor = floorMatch ? floorMatch[1] : "ground";
     return generateEnhancedFloorPlanSVG(masterDNA, floor, projectContext);
   }
 
   // Elevations
-  if (panelType.startsWith('elevation_')) {
-    const orientation = panelType.replace('elevation_', '');
+  if (panelType.startsWith("elevation_")) {
+    const orientation = panelType.replace("elevation_", "");
     return generateEnhancedElevationSVG(masterDNA, orientation, projectContext);
   }
 
   // Sections
-  if (panelType.startsWith('section_')) {
+  if (panelType.startsWith("section_")) {
     const sectionType =
-      panelType.includes('AA') || panelType.includes('longitudinal')
-        ? 'longitudinal'
-        : 'transverse';
+      panelType.includes("AA") || panelType.includes("longitudinal")
+        ? "longitudinal"
+        : "transverse";
     return generateEnhancedSectionSVG(masterDNA, sectionType, projectContext);
   }
 
@@ -945,7 +1066,12 @@ export function generateEnhancedPanel(panelType, masterDNA, projectContext = {})
 }
 
 // Export the GeometryAdapter and constants for testing and direct use
-export { GeometryAdapter, FURNITURE_SYMBOLS, MATERIAL_PATTERNS, HATCH_PATTERNS };
+export {
+  GeometryAdapter,
+  FURNITURE_SYMBOLS,
+  MATERIAL_PATTERNS,
+  HATCH_PATTERNS,
+};
 
 export default {
   generateEnhancedFloorPlanSVG,

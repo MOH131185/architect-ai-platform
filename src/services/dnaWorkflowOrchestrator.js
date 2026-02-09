@@ -81,6 +81,28 @@ import {
   getStrictFallbackParams,
   FINGERPRINT_THRESHOLDS,
 } from "./validation/FingerprintValidationGate.js";
+// P0 Gates: ProgramLock, CDS, ProgramComplianceGate, DriftGate
+import {
+  buildProgramLock,
+  ProgramLockError,
+} from "./validation/programLockSchema.js";
+import { buildCDSSync, CDSError } from "./validation/CanonicalDesignState.js";
+import {
+  validateProgramLock,
+  validatePanelsAgainstProgram,
+  validateBeforeCompose,
+  ProgramComplianceError,
+} from "./validation/ProgramComplianceGate.js";
+import { validatePreComposeDrift, DriftError } from "./validation/DriftGate.js";
+import {
+  GenerationPreflight,
+  PreflightError,
+} from "./validation/GenerationPreflight.js";
+import {
+  saveRunSnapshot,
+  buildPanelManifest,
+  computeRunMetrics,
+} from "./validation/runInstrumentation.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
 const DEFAULT_API_BASE_URL = runtimeEnv.isBrowser
@@ -936,6 +958,106 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
 
       reportProgress("dna", "Design DNA validated", 25);
 
+      // ================================================================
+      // P0 GATE: Build ProgramLock + CDS + Post-DNA compliance check
+      // ================================================================
+      let programLock = null;
+      let canonicalDesignState = null;
+
+      if (isFeatureEnabled("programComplianceGate")) {
+        logger.info("🔒 Building ProgramSpacesLock from user input...");
+        try {
+          const rawSpaces = projectContext?.programSpaces || [];
+          if (rawSpaces.length > 0) {
+            programLock = buildProgramLock(rawSpaces, {
+              floors:
+                masterDNA?.dimensions?.floors ||
+                masterDNA?.dimensions?.floorCount ||
+                1,
+            });
+            logger.success(
+              `✅ ProgramLock built: ${programLock.spaces.length} spaces across ${programLock.levelCount} level(s) [hash=${programLock.hash?.substring(0, 8)}...]`,
+            );
+          } else {
+            logger.warn("⚠️ No programSpaces provided — ProgramLock skipped");
+          }
+        } catch (lockErr) {
+          if (lockErr instanceof ProgramLockError) {
+            throw lockErr; // Fail-fast
+          }
+          logger.warn("⚠️ ProgramLock build failed:", lockErr.message);
+        }
+      }
+
+      if (isFeatureEnabled("cdsRequired") && programLock) {
+        logger.info("📐 Building Canonical Design State (CDS)...");
+        try {
+          const designId =
+            masterDNA?.designFingerprint ||
+            masterDNA?.projectID ||
+            `design_${Date.now()}`;
+          canonicalDesignState = buildCDSSync({
+            designId,
+            seed: baseSeed || Date.now(),
+            masterDNA,
+            programLock,
+            locationData,
+          });
+          logger.success(
+            `✅ CDS built [hash=${canonicalDesignState.hash?.substring(0, 8)}...]`,
+          );
+        } catch (cdsErr) {
+          if (cdsErr instanceof CDSError) {
+            throw cdsErr;
+          }
+          logger.warn("⚠️ CDS build failed:", cdsErr.message);
+        }
+      }
+
+      // Post-DNA Program Compliance Gate (CHECKPOINT 1)
+      if (programLock && isFeatureEnabled("programComplianceGate")) {
+        logger.info("🚦 Running Post-DNA ProgramComplianceGate...");
+        try {
+          const postDnaResult = validateProgramLock(masterDNA, programLock, {
+            strict: true,
+          });
+          logger.success("✅ Post-DNA ProgramComplianceGate passed");
+        } catch (gateErr) {
+          if (gateErr instanceof ProgramComplianceError) {
+            logger.error(`❌ ProgramComplianceGate FAILED: ${gateErr.message}`);
+            throw new Error(
+              `Program compliance check failed: ${gateErr.violations.join("; ")}`,
+            );
+          }
+          throw gateErr;
+        }
+      }
+
+      // Preflight validation (with CDS)
+      if (isFeatureEnabled("strictPreflightGate")) {
+        logger.info("🚦 Running GenerationPreflight...");
+        try {
+          GenerationPreflight.validate(
+            masterDNA,
+            programLock || projectContext?.programSpaces,
+            {
+              cds: canonicalDesignState,
+              seed: baseSeed,
+              strict: true,
+            },
+          );
+          logger.success("✅ GenerationPreflight passed");
+        } catch (preflightErr) {
+          if (preflightErr instanceof PreflightError) {
+            logger.error(`❌ Preflight FAILED: ${preflightErr.message}`);
+            throw new Error(
+              `Generation preflight failed: ${preflightErr.errors.join("; ")}`,
+            );
+          }
+          throw preflightErr;
+        }
+      }
+
       // STEP 2.5: Geometry reasoning + baseline (feature-flagged)
       let geometryRenders = null;
       let geometryRenderMap = null;
@@ -1140,7 +1262,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         locationData: locationData,
         geometryRenders: geometryRenderMap,
         geometryDNA,
-        geometryMasks, // NEW: Procedural geometry masks for floor plan consistency
+        geometryMasks,
+        programLock, // P0: Hard program constraint
+        canonicalDesignState, // P0: CDS for traceability
       });
 
       const floorCount =
@@ -1410,6 +1534,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                     designFingerprint,
                     fingerprintConstraint,
                     hasStyleReference: !!heroStyleReferenceUrl,
+                    programLock, // P0: Level-based program constraint
                   });
 
                   if (rebuilt && rebuilt.prompt) {
@@ -1808,6 +1933,60 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // ================================================================
+      // P0 GATE: Pre-Compose validation (ProgramCompliance + Drift)
+      // ================================================================
+      if (programLock && isFeatureEnabled("programComplianceGate")) {
+        logger.info("🚦 Running Pre-Compose ProgramComplianceGate...");
+        try {
+          validateBeforeCompose(
+            generatedPanels,
+            programLock,
+            canonicalDesignState,
+            { strict: true },
+          );
+          logger.success("✅ Pre-Compose ProgramComplianceGate passed");
+        } catch (gateErr) {
+          if (gateErr instanceof ProgramComplianceError) {
+            logger.error(`❌ Pre-Compose gate FAILED: ${gateErr.message}`);
+            return {
+              success: false,
+              error: `Program compliance check failed before composition: ${gateErr.violations.join("; ")}`,
+              violations: gateErr.violations,
+            };
+          }
+          throw gateErr;
+        }
+      }
+
+      if (canonicalDesignState && isFeatureEnabled("driftGate")) {
+        logger.info("🚦 Running Pre-Compose DriftGate...");
+        try {
+          const driftResult = validatePreComposeDrift(
+            generatedPanels.map((p) => ({
+              panelType: p.type,
+              seed: p.seed,
+              cdsHash: canonicalDesignState.hash,
+            })),
+            canonicalDesignState,
+            { strict: true },
+          );
+          logger.success(
+            `✅ Pre-Compose DriftGate passed (driftScore=${driftResult.driftScore.toFixed(3)})`,
+          );
+        } catch (driftErr) {
+          if (driftErr instanceof DriftError) {
+            logger.error(`❌ DriftGate FAILED: ${driftErr.message}`);
+            return {
+              success: false,
+              error: `Drift detection failed before composition: ${driftErr.driftReport?.violations?.join("; ") || driftErr.message}`,
+              driftReport: driftErr.driftReport,
+            };
+          }
+          throw driftErr;
+        }
+      }
+
       // STEP 8: Compose sheet via /api/a1/compose
       logger.info("🖼️  STEP 8: Composing A1 sheet...");
       reportProgress("finalizing", "Composing A1 sheet...", 90);
@@ -2001,6 +2180,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         },
         basePrompt: "",
         consistencyLocks: [],
+        // P0: Gate artifacts for audit and modify-drift detection
+        programLock: programLock || null,
+        canonicalDesignState: canonicalDesignState || null,
       };
 
       await baselineStore.saveBaselineArtifacts({
@@ -2010,6 +2192,30 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       });
 
       logger.success("✅ Baseline artifacts saved");
+
+      // P0: Save instrumentation snapshot for audit
+      try {
+        const panelManifest = buildPanelManifest(
+          generatedPanels,
+          canonicalDesignState,
+        );
+        const metrics = computeRunMetrics({
+          programLock,
+          gateProgram: null, // Already checked above
+          gateDrift: null, // Already checked above
+          panels: generatedPanels,
+          cds: canonicalDesignState,
+        });
+        saveRunSnapshot(designId, {
+          cds: canonicalDesignState,
+          programLock,
+          panelManifest,
+          metrics,
+        });
+        logger.info(`📊 Run instrumentation saved for ${designId}`);
+      } catch (instrErr) {
+        logger.warn("⚠️ Run instrumentation failed:", instrErr.message);
+      }
 
       // STEP 10: Save to design history
       logger.info("📝 STEP 10: Saving to design history...");

@@ -23,7 +23,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default true
    */
-  a1Only: false,
+  a1Only: true,
 
   /**
    * Geometry-First Pipeline (OPTIONAL)
@@ -315,9 +315,9 @@ export const FEATURE_FLAGS = {
    */
   // geometryVolumeFirst: false // ❌ REMOVED - Duplicate of line 46
 
-  // =========================================================================  
+  // =========================================================================
   // DESIGN FINGERPRINT SYSTEM - Cross-Panel Consistency Enforcement
-  // =========================================================================  
+  // =========================================================================
 
   /**
    * Extract Design Fingerprint from hero_3d
@@ -422,9 +422,99 @@ export const FEATURE_FLAGS = {
     elevation_west: 0.6,
   },
 
-  // =========================================================================  
+  // =========================================================================
+  // STRICT MODE FLAGS (Pipeline Hard Gates)
+  // =========================================================================
+
+  /**
+   * Strict No-Fallback Mode
+   *
+   * When enabled:
+   * - Floor plans, elevations, and sections MUST have geometry mask / init_image
+   * - No text-to-image-only generation for technical panels
+   * - Pipeline fails if control image is missing
+   *
+   * @type {boolean}
+   * @default true
+   */
+  strictNoFallback: true,
+
+  /**
+   * Require Complete Geometry DNA
+   *
+   * When enabled:
+   * - Blocks generation if geometry DNA is incomplete
+   * - Enforces that all spatial data is resolved before rendering
+   *
+   * @type {boolean}
+   * @default false
+   */
+  requireCompleteGeometryDNA: false,
+
+  /**
+   * Enhanced SVG Generators
+   *
+   * When enabled:
+   * - Uses improved SVG generation for floor plans, elevations, sections
+   * - Produces higher fidelity technical drawings
+   *
+   * @type {boolean}
+   * @default true
+   */
+  enhancedSVGGenerators: true,
+
+  /**
+   * Program Compliance Gate (Hard)
+   *
+   * When enabled:
+   * - ProgramSpacesLock is built from user input and enforced at 3 checkpoints
+   * - Post-DNA, post-render, pre-compose validation
+   * - Any violation blocks the pipeline
+   *
+   * @type {boolean}
+   * @default true
+   */
+  programComplianceGate: true,
+
+  /**
+   * Drift Gate (Hard)
+   *
+   * When enabled:
+   * - Pre-compose drift detection compares panels to CDS baseline
+   * - Modify drift detection ensures volumetric stability across iterations
+   *
+   * @type {boolean}
+   * @default true
+   */
+  driftGate: true,
+
+  /**
+   * CDS Required
+   *
+   * When enabled:
+   * - Canonical Design State must be built before panel generation
+   * - All panels carry CDS hash for traceability
+   *
+   * @type {boolean}
+   * @default true
+   */
+  cdsRequired: true,
+
+  /**
+   * Allow Technical Fallback
+   *
+   * When disabled (default):
+   * - No fallback to default/placeholder floor plans in strict mode
+   * - Pipeline fails instead of generating ambiguous content
+   *
+   * @type {boolean}
+   * @default false
+   */
+  allowTechnicalFallback: false,
+
+  // =========================================================================
   // QA / REVIEW SYSTEMS (Opt-in)
-  // =========================================================================  
+  // =========================================================================
 
   /**
    * QA Gates (Automated)
@@ -532,7 +622,7 @@ export function resetFeatureFlags() {
     }
   }
 
-  FEATURE_FLAGS.a1Only = false;
+  FEATURE_FLAGS.a1Only = true;
   FEATURE_FLAGS.geometryFirst = false;
   FEATURE_FLAGS.hybridA1Mode = true;
   FEATURE_FLAGS.multiPanelA1 = true;
@@ -567,6 +657,14 @@ export function resetFeatureFlags() {
     elevation_east: 0.6,
     elevation_west: 0.6,
   };
+  // Strict mode defaults
+  FEATURE_FLAGS.strictNoFallback = true;
+  FEATURE_FLAGS.requireCompleteGeometryDNA = false;
+  FEATURE_FLAGS.enhancedSVGGenerators = true;
+  FEATURE_FLAGS.programComplianceGate = true;
+  FEATURE_FLAGS.driftGate = true;
+  FEATURE_FLAGS.cdsRequired = true;
+  FEATURE_FLAGS.allowTechnicalFallback = false;
   // QA / Review systems defaults
   FEATURE_FLAGS.qaGates = false;
   FEATURE_FLAGS.opusSheetCritic = false;
@@ -601,8 +699,6 @@ export function loadFeatureFlagsFromStorage() {
 
 // Auto-load on module import
 if (HAS_SESSION_STORAGE) loadFeatureFlagsFromStorage();
-FEATURE_FLAGS.multiPanelA1 = true;
-FEATURE_FLAGS.a1Only = false;
 
 /**
  * Development helper: Log current feature flag status

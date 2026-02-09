@@ -1277,6 +1277,8 @@ export async function planA1Panels({
   canonicalDesignState = null, // Complete CDS with geometryModel, facadeModel, canonicalRenders
   // NEW: Procedural geometry masks for floor plan consistency
   geometryMasks = null, // SVG masks from ProceduralGeometryService
+  // P0: Hard program constraint and CDS
+  programLock = null,
 }) {
   // =========================================================================
   // STRICT PREFLIGHT GATE: Block generation if DNA/geometry is invalid
@@ -1538,9 +1540,10 @@ export async function planA1Panels({
         projectContext: { buildingProgram: buildingType, programSpaces },
         consistencyLock: styleLock, // Pass style lock for consistency
         geometryHint,
-        fglOpenings, // NEW: FGL opening enumeration for elevation prompts
-        fglRoofProfile, // NEW: FGL roof profile for elevation prompts
-        outputMode: promptOutputMode, // NEW: Pass output mode for presentation vs technical style
+        fglOpenings,
+        fglRoofProfile,
+        outputMode: promptOutputMode,
+        programLock, // P0: Level-based program constraint
       });
       jobPrompt = specialized.prompt;
       jobNegativePrompt = specialized.negativePrompt;

@@ -594,31 +594,104 @@ CRITICAL CONSISTENCY RULES:
 }
 
 /**
- * Compute a perceptual hash from an image URL
- * This is a simplified implementation - production would use actual pHash algorithm
+ * Compute a perceptual hash from an image URL.
+ *
+ * REAL IMAGE COMPARISON: When running in a browser with Canvas API,
+ * fetches the actual image, downsamples to 8x8 grayscale, and computes
+ * a mean-threshold hash. Falls back to string-based hash when image
+ * loading is unavailable.
  *
  * @param {string} imageUrl - Image URL or data URL
  * @returns {Promise<string>} 64-character hex string representing pHash
  */
 async function computePHashFromUrl(imageUrl) {
   try {
-    // For data URLs, extract meaningful data for hashing
+    // Try real image-based pHash first (browser with Canvas API)
+    if (typeof document !== "undefined" && typeof Image !== "undefined") {
+      const realHash = await computeRealPHash(imageUrl);
+      if (realHash) return realHash;
+    }
+
+    // Fallback: For data URLs, use base64 content for better accuracy than URL alone
     if (imageUrl.startsWith("data:")) {
       const base64Data = imageUrl.split(",")[1] || "";
-      // Use first 1000 chars of base64 for consistent hash
-      const hashInput = base64Data.substring(0, 1000);
+      // Use substantial portion of base64 for representative hash
+      const hashInput = base64Data.substring(0, 4000);
       return generatePHashFromString(hashInput);
     }
 
-    // For regular URLs, use URL alone as hash input (DETERMINISTIC)
-    // In production, this would fetch the image and compute actual pHash
-    // Removed Date.now() to ensure same URL always produces same hash
+    // Fallback: URL-based hash (deterministic but not pixel-aware)
     const hashInput = imageUrl + "_phash_url";
     return generatePHashFromString(hashInput);
   } catch (error) {
     logger.warn(`pHash computation failed: ${error.message}`);
-    return "0".repeat(64); // Return zero hash on error
+    return "0".repeat(64);
   }
+}
+
+/**
+ * Compute real perceptual hash from actual image pixels.
+ * Loads image, downsamples to 8x8, converts to grayscale,
+ * computes mean-threshold binary hash.
+ *
+ * @param {string} imageUrl
+ * @returns {Promise<string|null>} 64-char hex string or null on failure
+ */
+async function computeRealPHash(imageUrl) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const timeout = setTimeout(() => resolve(null), 5000);
+
+      img.onload = () => {
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = 8;
+          canvas.height = 8;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, 8, 8);
+          const data = ctx.getImageData(0, 0, 8, 8).data;
+
+          // Convert to grayscale luminance values
+          const gray = [];
+          for (let i = 0; i < 64; i++) {
+            const idx = i * 4;
+            gray.push(
+              0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2],
+            );
+          }
+
+          // Mean threshold
+          const mean = gray.reduce((a, b) => a + b, 0) / 64;
+          const bits = gray.map((v) => (v >= mean ? 1 : 0));
+
+          // Convert to hex string (64 bits = 16 hex chars, pad to 64 for compat)
+          let hexStr = "";
+          for (let i = 0; i < 64; i += 4) {
+            const nibble =
+              (bits[i] << 3) |
+              (bits[i + 1] << 2) |
+              (bits[i + 2] << 1) |
+              bits[i + 3];
+            hexStr += nibble.toString(16);
+          }
+          // Pad to 64 chars for backward compatibility
+          resolve(hexStr.padEnd(64, "0"));
+        } catch {
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        clearTimeout(timeout);
+        resolve(null);
+      };
+      img.src = imageUrl;
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 /**
