@@ -542,6 +542,7 @@ export const useGeneration = () => {
     projectDetails,
     programSpaces,
     locationData,
+    portfolioFiles,
     sitePolygon,
     siteMetrics,
     materialWeight,

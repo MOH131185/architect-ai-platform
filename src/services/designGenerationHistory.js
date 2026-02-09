@@ -12,6 +12,14 @@ import runtimeEnv from "../utils/runtimeEnv.js";
 import logger from "../utils/logger.js";
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 
+/**
+ * Result type discriminators for modification results.
+ */
+export const RESULT_TYPE = {
+  A1_SHEET: "a1-sheet",
+  INDIVIDUAL_VIEW: "individual-view",
+};
+
 class DesignGenerationHistory {
   constructor() {
     this.history = [];
@@ -194,9 +202,9 @@ class DesignGenerationHistory {
 
     // Update current state
     if (result.success) {
-      if (result.type === "a1-sheet") {
+      if (result.type === RESULT_TYPE.A1_SHEET) {
         session.currentState.a1Sheet = result.data;
-      } else if (result.type === "individual-view") {
+      } else if (result.type === RESULT_TYPE.INDIVIDUAL_VIEW) {
         const category = this.categorizeView(result.viewType);
         if (category) {
           session.currentState.individualViews[category.category][

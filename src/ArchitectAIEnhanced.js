@@ -2487,6 +2487,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     setGenerationStartTime(Date.now());
     setElapsedTime(0);
     setIsLoading(true);
+    window.retryCount = 0; // Reset retry counter for each new generation attempt
     updateProgress("Initialization", 0, "Starting AI generation...");
 
     try {

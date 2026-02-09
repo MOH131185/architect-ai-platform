@@ -5,6 +5,7 @@
  * TC-PROG-002: Two-level program with locked spaces
  * TC-DRIFT-003: 3 modify iterations without volumetric drift
  * TC-ROUTE-013: UnsupportedPipelineModeError handled + dead code cleanup
+ * TC-SAFETY-014: Recursion guard, retry reset, flag completeness, result types
  *
  * Run: node test-p0-gates.js
  */
@@ -1529,13 +1530,136 @@ async function TC_ROUTE_013() {
 }
 
 // ===================================================================
+// TC-SAFETY-014: Recursion guard, retry reset, flag completeness, result types
+// ===================================================================
+async function TC_SAFETY_014() {
+  console.log(
+    "\n📋 TC-SAFETY-014: Recursion guard, retry reset, flag completeness, result types",
+  );
+  console.log(
+    "   Criteria: No infinite loops, complete reset, typed result discriminators",
+  );
+
+  const fs = await import("fs");
+  const path = await import("path");
+  const url = await import("url");
+  const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+
+  // 1. modifyA1SheetHybrid empty-panels fallback disables hybridA1Mode before calling modifyA1Sheet
+  const modSrc = fs.readFileSync(
+    path.join(__dirname, "src", "services", "aiModificationService.js"),
+    "utf8",
+  );
+  // Find the zero-panels fallback block and verify it sets hybridA1Mode to false
+  const zeroPanelBlock = modSrc.match(
+    /panelsToRegenerate\.length === 0[\s\S]*?setFeatureFlag\("hybridA1Mode",\s*false\)/,
+  );
+  assert(
+    zeroPanelBlock,
+    "modifyA1SheetHybrid disables hybridA1Mode in zero-panels fallback (no infinite recursion)",
+  );
+
+  // 2. generateDesigns resets window.retryCount at start
+  const uiSrc = fs.readFileSync(
+    path.join(__dirname, "src", "ArchitectAIEnhanced.js"),
+    "utf8",
+  );
+  assert(
+    uiSrc.includes("window.retryCount = 0"),
+    "generateDesigns resets window.retryCount at start of each attempt",
+  );
+
+  // 3. resetFeatureFlags covers all declared flags
+  const { resetFeatureFlags, getAllFeatureFlags } =
+    await import("./src/config/featureFlags.js");
+  const beforeReset = { ...getAllFeatureFlags() };
+  // Intentionally modify a few flags
+  const { setFeatureFlag } = await import("./src/config/featureFlags.js");
+  setFeatureFlag("enableAutoRetry", false);
+  setFeatureFlag("maxValidationPasses", 99);
+  setFeatureFlag("outputMode", "technical");
+  // Reset and check
+  resetFeatureFlags();
+  const afterReset = getAllFeatureFlags();
+  assert(
+    afterReset.enableAutoRetry === true,
+    "resetFeatureFlags restores enableAutoRetry to true (was manually set to false)",
+  );
+  assert(
+    afterReset.maxValidationPasses === 3,
+    "resetFeatureFlags restores maxValidationPasses to 3 (was set to 99)",
+  );
+  assert(
+    afterReset.outputMode === "presentation",
+    'resetFeatureFlags restores outputMode to "presentation" (was set to "technical")',
+  );
+
+  // 4. Undeclared feature flags now exist
+  const flags = getAllFeatureFlags();
+  assert(
+    "contractGateMaxRetries" in flags,
+    "contractGateMaxRetries is declared in FEATURE_FLAGS",
+  );
+  assert(
+    "maxControlImageRetries" in flags,
+    "maxControlImageRetries is declared in FEATURE_FLAGS",
+  );
+
+  // 5. RESULT_TYPE constants exported from designGenerationHistory
+  const { RESULT_TYPE } =
+    await import("./src/services/designGenerationHistory.js");
+  assert(
+    RESULT_TYPE.A1_SHEET === "a1-sheet",
+    'RESULT_TYPE.A1_SHEET = "a1-sheet"',
+  );
+  assert(
+    RESULT_TYPE.INDIVIDUAL_VIEW === "individual-view",
+    'RESULT_TYPE.INDIVIDUAL_VIEW = "individual-view"',
+  );
+
+  // 6. designGenerationHistory uses RESULT_TYPE constants (not hardcoded strings)
+  const histSrc = fs.readFileSync(
+    path.join(__dirname, "src", "services", "designGenerationHistory.js"),
+    "utf8",
+  );
+  assert(
+    histSrc.includes("RESULT_TYPE.A1_SHEET"),
+    "designGenerationHistory uses RESULT_TYPE.A1_SHEET",
+  );
+  assert(
+    histSrc.includes("RESULT_TYPE.INDIVIDUAL_VIEW"),
+    "designGenerationHistory uses RESULT_TYPE.INDIVIDUAL_VIEW",
+  );
+
+  // 7. aiModificationService uses RESULT_TYPE constant
+  assert(
+    modSrc.includes("RESULT_TYPE.INDIVIDUAL_VIEW"),
+    "aiModificationService uses RESULT_TYPE.INDIVIDUAL_VIEW",
+  );
+
+  // 8. useGeneration.js includes portfolioFiles in dependency array
+  const genHookSrc = fs.readFileSync(
+    path.join(__dirname, "src", "hooks", "useGeneration.js"),
+    "utf8",
+  );
+  // Check the useCallback deps contain portfolioFiles
+  const depsBlock = genHookSrc.match(
+    /\}, \[[\s\S]*?portfolioFiles[\s\S]*?\]\);/,
+  );
+  assert(
+    depsBlock,
+    "useGeneration.js includes portfolioFiles in useCallback dependency array",
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005..013 | TC-ENV-006                        ║");
+  console.log("║  TC-PIPE-005..014 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -1561,6 +1685,7 @@ async function main() {
   await TC_STAMP_011();
   await TC_LEGACY_012();
   await TC_ROUTE_013();
+  await TC_SAFETY_014();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);

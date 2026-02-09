@@ -597,6 +597,21 @@ export const FEATURE_FLAGS = {
   /** Save control pack to debug */
   saveControlPackToDebug: false,
 
+  /** @type {number} Max retries for contract gate validation */
+  contractGateMaxRetries: 2,
+
+  /** @type {Object|null} Control image strength bands per panel type */
+  controlStrengthBands: null,
+
+  /** @type {Object|null} Control image strength multipliers per panel type */
+  controlStrengthMultipliers: null,
+
+  /** @type {number} Max retries for control image generation */
+  maxControlImageRetries: 2,
+
+  /** @type {Array|null} Priority order for control image sources */
+  controlImageSourcePriority: null,
+
   // =========================================================================
   // NON-HOT-PATH FLAGS (optional services, export gates)
   // =========================================================================
@@ -791,6 +806,53 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.qaGates = false;
   FEATURE_FLAGS.opusSheetCritic = false;
   FEATURE_FLAGS.opusPanelValidator = false;
+  // Hot-path panel generation defaults
+  FEATURE_FLAGS.strictControlImageMode = false;
+  FEATURE_FLAGS.useCanonicalBaseline = false;
+  FEATURE_FLAGS.outputMode = "presentation";
+  FEATURE_FLAGS.strictPanelValidation = false;
+  FEATURE_FLAGS.strictPanelFailFast = false;
+  FEATURE_FLAGS.strictPanelAutoRepair = false;
+  FEATURE_FLAGS.enableAutoRetry = true;
+  FEATURE_FLAGS.autoRetryFailedPanels = true;
+  FEATURE_FLAGS.forceBaselineControl = false;
+  FEATURE_FLAGS.strictDeterministic2D = false;
+  FEATURE_FLAGS.panelQualityValidation = false;
+  FEATURE_FLAGS.controlFidelityGate = false;
+  FEATURE_FLAGS.contractGateFailFast = false;
+  FEATURE_FLAGS.canonicalControlPack = false;
+  FEATURE_FLAGS.requireCanonicalPack = false;
+  FEATURE_FLAGS.strictCanonicalControlMode = false;
+  FEATURE_FLAGS.strictCanonicalGeometryPack = false;
+  FEATURE_FLAGS.maxValidationPasses = 3;
+  FEATURE_FLAGS.saveControlPackToDebug = false;
+  FEATURE_FLAGS.contractGateMaxRetries = 2;
+  FEATURE_FLAGS.controlStrengthBands = null;
+  FEATURE_FLAGS.controlStrengthMultipliers = null;
+  FEATURE_FLAGS.maxControlImageRetries = 2;
+  FEATURE_FLAGS.controlImageSourcePriority = null;
+  // Optional services / export gates
+  FEATURE_FLAGS.a1ProgrammaticComposer = false;
+  FEATURE_FLAGS.aiStylization = false;
+  FEATURE_FLAGS.openaiStyler = false;
+  FEATURE_FLAGS.vectorPanelGeneration = false;
+  FEATURE_FLAGS.conditionedImagePipeline = false;
+  FEATURE_FLAGS.facadeGenerationLayer = false;
+  FEATURE_FLAGS.blockExportOnConsistencyFailure = false;
+  FEATURE_FLAGS.crossViewConsistencyGate = false;
+  FEATURE_FLAGS.semanticVisionValidation = false;
+  FEATURE_FLAGS.edgeBasedConsistencyGate = false;
+  FEATURE_FLAGS.enforce3DCanonicalControl = false;
+  // Experimental modes
+  FEATURE_FLAGS.useVercelAIGateway = false;
+  FEATURE_FLAGS.geometryControlled3D = false;
+  FEATURE_FLAGS.meshy3DMode = false;
+  FEATURE_FLAGS.enableControlImageDebugReport = false;
+  FEATURE_FLAGS.useOpenAIDNA = false;
+  FEATURE_FLAGS.hybrid3DPipeline = false;
+  FEATURE_FLAGS.dualTrackTechnicalDrawings = false;
+  FEATURE_FLAGS.useClaudeReasoning = false;
+  FEATURE_FLAGS.geometryDNAv2 = false;
 
   logger.info(
     "Feature flags reset to defaults (ModelRouter enabled, fingerprint system enabled, two-pass DNA enabled)",

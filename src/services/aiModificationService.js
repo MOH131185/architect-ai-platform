@@ -13,7 +13,9 @@
  * CACHING: Prompt and SSIM result caching for performance (Opus 4.1 compliant)
  */
 
-import designGenerationHistory from "./designGenerationHistory.js";
+import designGenerationHistory, {
+  RESULT_TYPE,
+} from "./designGenerationHistory.js";
 import { MODIFY_WORKFLOW } from "./workflowRouter.js";
 import secureApiClient from "./secureApiClient.js";
 import dnaPromptGenerator from "./dnaPromptGenerator.js";
@@ -300,7 +302,7 @@ class AIModificationService {
         modification.id,
         {
           success: true,
-          type: "individual-view",
+          type: RESULT_TYPE.INDIVIDUAL_VIEW,
           viewType: viewType,
           data: {
             url: result.url,
@@ -1776,7 +1778,16 @@ inconsistent style, mixed art styles, cartoon, sketch`;
       logger.warn(
         "No panels identified for modification, falling back to full sheet modify",
       );
-      return this.modifyA1Sheet({ ...params, targetPanels: null }); // Fallback to One-Shot
+      // Temporarily disable hybridA1Mode to prevent infinite recursion
+      // (modifyA1Sheet checks this flag and re-enters modifyA1SheetHybrid)
+      const { setFeatureFlag } = await import("../config/featureFlags.js");
+      const prevHybrid = isFeatureEnabled("hybridA1Mode");
+      setFeatureFlag("hybridA1Mode", false);
+      try {
+        return await this.modifyA1Sheet({ ...params, targetPanels: null });
+      } finally {
+        setFeatureFlag("hybridA1Mode", prevHybrid);
+      }
     }
 
     try {
