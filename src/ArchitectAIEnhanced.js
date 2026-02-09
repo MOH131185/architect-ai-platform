@@ -60,6 +60,7 @@ import {
   resolveWorkflowByMode,
   executeWorkflow,
   isA1Workflow,
+  UnsupportedPipelineModeError,
 } from "./services/workflowRouter.js";
 import A1SheetViewer from "./components/A1SheetViewer.jsx";
 import ModifyDesignDrawer from "./components/ModifyDesignDrawer.js";
@@ -2938,6 +2939,15 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
       // Reset generation state on error
       setIsGenerationComplete(false);
       setGenerationStartTime(null);
+
+      // Unsupported pipeline mode — fail fast, do not retry
+      if (error instanceof UnsupportedPipelineModeError) {
+        setIsLoading(false);
+        setToastMessage(
+          `Configuration error: ${error.message}. Set PIPELINE_MODE to "multi_panel".`,
+        );
+        return;
+      }
 
       // Implement retry logic
       if (!window.retryCount) window.retryCount = 0;

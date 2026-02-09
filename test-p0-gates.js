@@ -4,6 +4,7 @@
  * TC-PROG-001: Single-level program (100% ground floor)
  * TC-PROG-002: Two-level program with locked spaces
  * TC-DRIFT-003: 3 modify iterations without volumetric drift
+ * TC-ROUTE-013: UnsupportedPipelineModeError handled + dead code cleanup
  *
  * Run: node test-p0-gates.js
  */
@@ -1379,13 +1380,84 @@ async function TC_LEGACY_012() {
 }
 
 // ===================================================================
+// TC-ROUTE-013: UnsupportedPipelineModeError handled in UI + dead code removal
+// ===================================================================
+async function TC_ROUTE_013() {
+  console.log(
+    "\n📋 TC-ROUTE-013: UnsupportedPipelineModeError handled + dead code cleanup",
+  );
+  console.log(
+    "   Criteria: UI imports error class, panelGen has no dead isOption2Mode branch for technical, featureFlags JSDoc correct",
+  );
+
+  const fs = await import("fs");
+  const path = await import("path");
+  const url = await import("url");
+  const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+
+  // 1. ArchitectAIEnhanced.js imports UnsupportedPipelineModeError
+  const uiSrc = fs.readFileSync(
+    path.join(__dirname, "src", "ArchitectAIEnhanced.js"),
+    "utf8",
+  );
+  assert(
+    uiSrc.includes("UnsupportedPipelineModeError"),
+    "ArchitectAIEnhanced.js imports UnsupportedPipelineModeError",
+  );
+
+  // 2. UI catch block handles UnsupportedPipelineModeError specifically
+  assert(
+    uiSrc.includes("instanceof UnsupportedPipelineModeError"),
+    "UI catch block checks instanceof UnsupportedPipelineModeError",
+  );
+
+  // 3. panelGenerationService.js technical panel branch has no dead isOption2Mode → overwrite
+  const panelSrc = fs.readFileSync(
+    path.join(
+      __dirname,
+      "src",
+      "services",
+      "design",
+      "panelGenerationService.js",
+    ),
+    "utf8",
+  );
+  // The old dead-code pattern was: isOption2Mode(...)..."blender"..."flux" followed by intendedGenerator = "svg"
+  const deadCodePattern =
+    /isOption2Mode.*\n.*"blender"[\s\S]*?intendedGenerator\s*=\s*"svg"/;
+  assert(
+    !deadCodePattern.test(panelSrc),
+    "panelGenerationService.js has no dead isOption2Mode branch for technical panels",
+  );
+
+  // 4. featureFlags.js hybridA1Mode @default matches actual value (true)
+  const flagSrc = fs.readFileSync(
+    path.join(__dirname, "src", "config", "featureFlags.js"),
+    "utf8",
+  );
+  // Extract the hybridA1Mode line to get actual value
+  const hybridLine = flagSrc.match(/hybridA1Mode:\s*(true|false)/);
+  assert(hybridLine, "featureFlags.js has hybridA1Mode property");
+  const actualDefault = hybridLine[1]; // "true" or "false"
+  // Find the JSDoc block immediately above by searching for Hybrid A1 Sheet Mode
+  const hybridJSDoc = flagSrc.match(
+    /Hybrid A1 Sheet Mode[\s\S]*?@default\s+(true|false)/,
+  );
+  assert(hybridJSDoc, "hybridA1Mode has @default in JSDoc");
+  assert(
+    hybridJSDoc[1] === actualDefault,
+    `hybridA1Mode @default (${hybridJSDoc[1]}) matches actual value (${actualDefault})`,
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005..012 | TC-ENV-006                        ║");
+  console.log("║  TC-PIPE-005..013 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -1410,6 +1482,7 @@ async function main() {
   await TC_ENV_010();
   await TC_STAMP_011();
   await TC_LEGACY_012();
+  await TC_ROUTE_013();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);

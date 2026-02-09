@@ -64,7 +64,7 @@ export const FEATURE_FLAGS = {
    * - May produce wireframe or incomplete layouts
    *
    * @type {boolean}
-   * @default false (Enable via setFeatureFlag('hybridA1Mode', true))
+   * @default true
    */
   hybridA1Mode: true,
 

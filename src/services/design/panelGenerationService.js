@@ -2181,10 +2181,7 @@ export async function generateA1PanelsSequential(
     if (isDataPanel(job.type, outputModeForGuard)) {
       intendedGenerator = "svg"; // Data panels use deterministic SVG
     } else if (PIPELINE_TECHNICAL_PANELS.includes(job.type)) {
-      intendedGenerator = isOption2Mode(getCurrentPipelineMode())
-        ? "blender"
-        : "flux";
-      // In current implementation, technical panels use SVG which is OK
+      // Technical panels always use deterministic SVG in multi_panel mode
       intendedGenerator = "svg";
     } else if (PIPELINE_3D_PANELS.includes(job.type)) {
       intendedGenerator = isOption2Mode(getCurrentPipelineMode())
