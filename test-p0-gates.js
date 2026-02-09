@@ -683,10 +683,29 @@ function TC_DRIFT_004() {
   });
 
   // Panels WITH full provenance - should pass
+  // geometryHash must match computeCDSHashSync(cds.geometry) for DriftGate
+  const geoHash = cds.geometry
+    ? computeCDSHashSync(cds.geometry)
+    : computeCDSHashSync({ envelope: "drift-test" });
   const goodPanels = [
-    { panelType: "hero_3d", seed: 77, cdsHash: cds.hash },
-    { panelType: "floor_plan_ground", seed: 214, cdsHash: cds.hash },
-    { panelType: "elevation_north", seed: 351, cdsHash: cds.hash },
+    {
+      panelType: "hero_3d",
+      seed: 77,
+      cdsHash: cds.hash,
+      geometryHash: geoHash,
+    },
+    {
+      panelType: "floor_plan_ground",
+      seed: 214,
+      cdsHash: cds.hash,
+      geometryHash: geoHash,
+    },
+    {
+      panelType: "elevation_north",
+      seed: 351,
+      cdsHash: cds.hash,
+      geometryHash: geoHash,
+    },
   ];
 
   const goodResult = validatePreComposeDrift(goodPanels, cds, {
