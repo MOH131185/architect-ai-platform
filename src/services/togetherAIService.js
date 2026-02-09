@@ -486,14 +486,17 @@ export async function generateArchitecturalImage(params) {
           );
         }
 
-        // Use environment-aware URL (dev: /api/together/image, prod: /api/together-image)
-        const isDev =
-          typeof window !== "undefined" &&
+        // Use absolute URL in non-browser runtimes (QA harness / Node.js),
+        // because fetch("/api/...") is invalid outside a browser origin.
+        const hasWindow = typeof window !== "undefined";
+        const isLocalBrowser =
+          hasWindow &&
           (window.location.hostname === "localhost" ||
             window.location.hostname === "127.0.0.1");
-        const imageEndpoint = isDev
-          ? `${API_BASE_URL}/api/together/image`
-          : "/api/together-image";
+        const imageEndpoint =
+          !hasWindow || isLocalBrowser
+            ? `${API_BASE_URL}/api/together/image`
+            : "/api/together-image";
 
         const response = await fetch(imageEndpoint, {
           method: "POST",

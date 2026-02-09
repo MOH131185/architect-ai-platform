@@ -24,10 +24,6 @@ import {
   validatePanelSet,
 } from "../../config/panelRegistry.js";
 import {
-  TECHNICAL_PANELS as PIPELINE_TECHNICAL_PANELS,
-  STYLED_3D_PANELS as PIPELINE_3D_PANELS,
-} from "../../config/pipelineMode.js";
-import {
   isReadyForPanelGeneration,
   hasCanonicalRenders,
   computeDesignFingerprint,
@@ -1285,8 +1281,8 @@ export async function planA1Panels({
   if (strictPreflightEnabled) {
     logger.info("[PanelGeneration] Running preflight validation gate...");
 
-    // Build program schedule from available sources
-    const programSchedule = {
+    // Build program schedule from available sources (prefer ProgramLock when present)
+    const programSchedule = programLock || {
       buildingType: buildingType || masterDNA?.buildingType,
       floors:
         masterDNA?.dimensions?.floors ||
@@ -1303,10 +1299,16 @@ export async function planA1Panels({
     };
 
     try {
+      const numericSeed = Number(baseSeed);
       // This will throw PreflightError if validation fails
       const preflightResult = generationPreflight.validate(
         masterDNA,
         programSchedule,
+        {
+          cds: canonicalDesignState || null,
+          seed: Number.isFinite(numericSeed) ? numericSeed : undefined,
+          strict: true,
+        },
       );
 
       if (!preflightResult.valid) {
@@ -2083,6 +2085,8 @@ export async function generateA1PanelsSequential(
       },
     );
     controlPackGenerated = true;
+    canonicalGeometryHash =
+      getGeometryPack(designFingerprint)?.geometryHash || null;
   } else if (
     useControlPack &&
     designFingerprint &&
@@ -2100,6 +2104,23 @@ export async function generateA1PanelsSequential(
   // When requireCanonicalPack is enabled, BLOCK generation without canonical pack
   // =========================================================================
   if (isCanonicalPackGateEnabled() && designFingerprint) {
+    const getSuggestedAction = (gateError) => {
+      const missing = gateError?.details?.missing || [];
+      if (Array.isArray(missing) && missing.length > 0) {
+        return `Rebuild canonical pack to include missing panels: ${missing.join(", ")}`;
+      }
+      if (gateError?.code === "MISSING_PACK") {
+        return "Generate canonical geometry pack from the active CDS before rendering panels.";
+      }
+      if (gateError?.code === "INVALID_PACK") {
+        return "Rebuild canonical pack and verify status=COMPLETE with geometryHash present.";
+      }
+      if (gateError?.code === "HASH_MISMATCH") {
+        return "Regenerate canonical pack from the current CDS and retry panel generation.";
+      }
+      return "Regenerate all panels from a fresh canonical geometry pack in the same run.";
+    };
+
     logger.info(
       "🚧 [CanonicalPackGate] Validating canonical pack before generation...",
       {
@@ -2108,32 +2129,50 @@ export async function generateA1PanelsSequential(
     );
 
     try {
-      // This will throw CanonicalPackGateError if validation fails
-      const gateResult = await validateCanonicalPackGate(designFingerprint, {
-        throwOnFailure: true,
-        strictMode: false, // Use minimum required panels
-      });
+      const canonicalPackForGate = getGeometryPack(designFingerprint);
+      const gateCDS =
+        firstJob?.meta?.canonicalDesignState ||
+        options?.canonicalDesignState ||
+        null;
+      const gateProgramLock =
+        firstJob?.meta?.programLock || options?.programLock || null;
+
+      // This throws CanonicalPackGateError in strict mode when validation fails.
+      const gateResult = validateCanonicalPackGate(
+        canonicalPackForGate,
+        gateCDS,
+        gateProgramLock,
+        {
+          strict: true,
+        },
+      );
+
+      if (!canonicalGeometryHash) {
+        canonicalGeometryHash = canonicalPackForGate?.geometryHash || null;
+      }
 
       logger.info("🚧 [CanonicalPackGate] ✅ Validation passed", {
         designFingerprint,
-        panelCount: gateResult.panelCount,
+        panelCount: canonicalPackForGate?.panelCount,
+        missing: gateResult?.missing?.length || 0,
       });
     } catch (gateError) {
       if (gateError instanceof CanonicalPackGateError) {
+        const suggestedAction = getSuggestedAction(gateError);
         logger.error(
           "🚧 [CanonicalPackGate] ❌ BLOCKED - Canonical pack validation failed",
           {
             designFingerprint,
             code: gateError.code,
             message: gateError.message,
-            suggestedAction: gateError.getSuggestedAction(),
+            suggestedAction,
           },
         );
 
         // Re-throw with clear message for UI
         throw new Error(
           `[CanonicalPackGate] ${gateError.message}\n\n` +
-            `Suggested action: ${gateError.getSuggestedAction()}\n\n` +
+            `Suggested action: ${suggestedAction}\n\n` +
             `Error code: ${gateError.code}`,
         );
       }
@@ -2179,23 +2218,31 @@ export async function generateA1PanelsSequential(
     // DELIVERABLE C: HARD GUARDS - PanelValidationGate
     // Determine intended generator and validate BEFORE generation
     // =========================================================================
-    let intendedGenerator = "flux"; // Default to legacy flux
-
     // Determine generator based on panel type and output mode
     const outputModeForGuard = getOutputMode();
-    if (isDataPanel(job.type, outputModeForGuard)) {
-      intendedGenerator = "svg"; // Data panels use deterministic SVG
-    } else if (PIPELINE_TECHNICAL_PANELS.includes(job.type)) {
-      // Technical panels always use deterministic SVG in multi_panel mode
-      intendedGenerator = "svg";
-    } else if (PIPELINE_3D_PANELS.includes(job.type)) {
-      // 3D panels use FLUX in multi_panel mode (only supported mode)
-      intendedGenerator = "flux";
-    }
+    const intendedGenerator = isDataPanel(job.type, outputModeForGuard)
+      ? "svg"
+      : "flux";
+
+    const canonicalPackForPanel = designFingerprint
+      ? getGeometryPack(designFingerprint)
+      : null;
+    const canonicalInitImage = canonicalPackForPanel
+      ? getGeometryControlForPanel(canonicalPackForPanel, job.type)
+      : null;
+    const generatorParamsForGuard = {
+      generator: intendedGenerator,
+      init_image:
+        job.meta?.controlImage ||
+        job.meta?.fglControlImage?.dataUrl ||
+        job._canonicalControl?.dataUrl ||
+        canonicalInitImage ||
+        null,
+    };
 
     // Validate the intended generator (throws in strict mode if wrong)
     try {
-      assertValidGenerator(job.type, intendedGenerator);
+      assertValidGenerator(job.type, generatorParamsForGuard);
     } catch (validationError) {
       if (
         validationError instanceof GeneratorMismatchError ||

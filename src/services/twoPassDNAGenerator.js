@@ -62,6 +62,170 @@ class TwoPassDNAGenerator {
     return sanitized;
   }
 
+  normaliseProgramFloor(rawFloor) {
+    if (typeof rawFloor === "number" && Number.isFinite(rawFloor)) {
+      if (rawFloor <= -1) return "basement";
+      if (rawFloor === 0) return "ground";
+      if (rawFloor === 1) return "first";
+      if (rawFloor === 2) return "second";
+      if (rawFloor === 3) return "third";
+      return `${rawFloor}th`;
+    }
+
+    const normalized = String(rawFloor || "")
+      .trim()
+      .toLowerCase();
+
+    if (!normalized) return "ground";
+    if (normalized === "g" || normalized.startsWith("ground")) return "ground";
+    if (
+      normalized === "b" ||
+      normalized.includes("basement") ||
+      normalized.includes("lower")
+    )
+      return "basement";
+    if (
+      normalized === "1" ||
+      normalized === "1st" ||
+      normalized.startsWith("first")
+    )
+      return "first";
+    if (
+      normalized === "2" ||
+      normalized === "2nd" ||
+      normalized.startsWith("second")
+    )
+      return "second";
+    if (
+      normalized === "3" ||
+      normalized === "3rd" ||
+      normalized.startsWith("third")
+    )
+      return "third";
+
+    return normalized;
+  }
+
+  floorToIndex(floorName) {
+    const normalized = this.normaliseProgramFloor(floorName);
+    if (normalized === "basement") return -1;
+    if (normalized === "ground") return 0;
+    if (normalized === "first") return 1;
+    if (normalized === "second") return 2;
+    if (normalized === "third") return 3;
+    const parsed = parseInt(normalized, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  normalizeAreaM2(value, fallback = 20) {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  expandLockedProgramRooms(programSpaces = []) {
+    if (!Array.isArray(programSpaces) || programSpaces.length === 0) {
+      return [];
+    }
+
+    const expanded = [];
+
+    for (const raw of programSpaces) {
+      const baseName =
+        String(raw?.name || raw?.type || "Room").trim() || "Room";
+      const parsedCount = parseInt(raw?.count, 10);
+      const count =
+        Number.isFinite(parsedCount) && parsedCount > 0 ? parsedCount : 1;
+      const area_m2 = this.normalizeAreaM2(
+        raw?.area ?? raw?.area_m2 ?? raw?.targetAreaM2,
+        20,
+      );
+      const floor = this.normaliseProgramFloor(
+        raw?.floor ?? raw?.level ?? raw?.lockedLevel ?? raw?.levelName,
+      );
+      const orientation = String(
+        raw?.preferredOrientation || raw?.orientation || "any",
+      );
+      const hasNumericSuffix = /\d+$/.test(baseName);
+
+      for (let i = 0; i < count; i++) {
+        const name =
+          count > 1 && !hasNumericSuffix ? `${baseName} ${i + 1}` : baseName;
+        expanded.push({ name, area_m2, floor, orientation });
+      }
+    }
+
+    return expanded;
+  }
+
+  buildProgramScheduleText(programRooms = []) {
+    if (!Array.isArray(programRooms) || programRooms.length === 0) {
+      return "- No explicit room schedule was provided";
+    }
+
+    return programRooms
+      .map(
+        (room, idx) =>
+          `${idx + 1}. ${room.name} | ${room.area_m2}m² | floor=${room.floor} | orientation=${room.orientation || "any"}`,
+      )
+      .join("\n");
+  }
+
+  enforceProgramScheduleLock(dna, requestPayload, projectContext) {
+    if (!dna || typeof dna !== "object") return dna;
+
+    const requestedRooms = Array.isArray(requestPayload?.program?.rooms)
+      ? requestPayload.program.rooms
+      : this.expandLockedProgramRooms(projectContext?.programSpaces || []);
+
+    if (requestedRooms.length === 0) {
+      return dna;
+    }
+
+    if (!dna.program || typeof dna.program !== "object") {
+      dna.program = {};
+    }
+
+    // Hard lock: program rooms are sourced from user input and cannot drift.
+    dna.program.rooms = requestedRooms.map((room) => ({
+      name: String(room.name || "Room"),
+      area_m2: this.normalizeAreaM2(room.area_m2 ?? room.area, 20),
+      floor: this.normaliseProgramFloor(room.floor),
+      orientation: String(room.orientation || "any"),
+    }));
+
+    const requestedFloorCount = parseInt(
+      requestPayload?.program?.floors ??
+        projectContext?.floorCount ??
+        projectContext?.floors ??
+        projectContext?.programSpaces?._calculatedFloorCount,
+      10,
+    );
+
+    if (Number.isFinite(requestedFloorCount) && requestedFloorCount > 0) {
+      dna.program.floors = requestedFloorCount;
+    } else {
+      const maxLevel = Math.max(
+        0,
+        ...dna.program.rooms.map((room) => this.floorToIndex(room.floor)),
+      );
+      dna.program.floors = maxLevel + 1;
+    }
+
+    logger.info(
+      `   Program schedule lock enforced: ${dna.program.rooms.length} rooms across ${dna.program.floors} floor(s)`,
+    );
+
+    try {
+      return normalizeRawDNA(dna);
+    } catch (error) {
+      logger.warn(
+        "Program schedule lock re-normalization failed; using locked DNA without refreshed hashes",
+        error?.message || error,
+      );
+      return dna;
+    }
+  }
+
   /**
    * Generate Master Design DNA using two-pass approach
    * Pass A: Author - generate structured JSON
@@ -218,6 +382,13 @@ class TwoPassDNAGenerator {
    * Uses Qwen2.5-72B to create initial DNA
    */
   async passA_generateStructuredDNA(requestPayload, projectContext) {
+    const lockedProgramRooms = Array.isArray(requestPayload?.program?.rooms)
+      ? requestPayload.program.rooms
+      : [];
+    const hasLockedProgram = lockedProgramRooms.length > 0;
+    const lockedProgramSchedule =
+      this.buildProgramScheduleText(lockedProgramRooms);
+
     const prompt = `You are an expert architect. Generate a complete Master Design DNA in STRICT JSON format.
 
 OUTPUT REQUIREMENTS:
@@ -267,14 +438,21 @@ PROJECT REQUIREMENTS:
 - Climate: ${requestPayload.site.climate_zone}
 - Location: ${projectContext.location?.address || "Not specified"}
 
+MANDATORY PROGRAM SCHEDULE (LOCKED - DO NOT ALTER):
+${lockedProgramSchedule}
+
 CRITICAL RULES:
 1. ALL rooms must fit within the total area (${projectContext.area}m²)
-2. Room areas must be realistic (bedrooms 12-20m², living 20-30m², kitchen 12-18m²)
+2. ${hasLockedProgram ? "program.rooms must include ALL and ONLY the locked schedule entries above" : "Room areas must be realistic (bedrooms 12-20m², living 20-30m², kitchen 12-18m²)"}
 3. Include circulation space (~15% of total area)
 4. Respect site constraints (building must fit within ${requestPayload.site.area_m2}m² with setbacks)
 5. Use materials appropriate for ${requestPayload.site.climate_zone} climate
 6. The building MUST have EXACTLY ${requestPayload.program.floors} floor(s) - set "floors": ${requestPayload.program.floors} in the program section
 7. ${requestPayload.program.floors === 1 ? "This is a SINGLE STOREY building. ALL rooms MUST be on the ground floor. Do NOT add an upper floor." : `Distribute rooms across ${requestPayload.program.floors} floors.`}
+8. ${hasLockedProgram ? "Do NOT rename any room from the locked schedule" : "Use clear and architecturally standard room names"}
+9. ${hasLockedProgram ? "Do NOT change area_m2 values from the locked schedule" : "Ensure area_m2 values are realistic and internally consistent"}
+10. ${hasLockedProgram ? "Do NOT change room floor assignments from the locked schedule" : "Assign rooms to sensible floors for the selected building type"}
+11. ${hasLockedProgram ? `program.rooms length MUST be exactly ${lockedProgramRooms.length}` : "Ensure program.rooms is non-empty and coherent"}
 
 Generate the DNA now (JSON only):`;
 
@@ -323,10 +501,22 @@ Generate the DNA now (JSON only):`;
    * Uses Qwen2.5-72B to review and fix DNA
    */
   async passB_validateAndRepair(rawDNA, requestPayload, projectContext) {
+    const lockedProgramRooms = Array.isArray(requestPayload?.program?.rooms)
+      ? requestPayload.program.rooms
+      : [];
+    const hasLockedProgram = lockedProgramRooms.length > 0;
+    const lockedProgramSchedule =
+      this.buildProgramScheduleText(lockedProgramRooms);
+
     // First, normalize the raw DNA
     let dna;
     try {
       dna = normalizeRawDNA(rawDNA);
+      dna = this.enforceProgramScheduleLock(
+        dna,
+        requestPayload,
+        projectContext,
+      );
       logger.info("   DNA normalized");
     } catch (error) {
       logger.error("❌ DNA normalization failed:", error.message);
@@ -357,12 +547,16 @@ ${validation.errors.length > 0 ? `Errors: ${validation.errors.join("; ")}` : ""}
 ORIGINAL DNA:
 ${JSON.stringify(dna, null, 2)}
 
+LOCKED PROGRAM SCHEDULE (DO NOT ALTER):
+${lockedProgramSchedule}
+
 REQUIREMENTS:
 1. Fix all validation issues
 2. Ensure all four top-level keys exist: site, program, style, geometry_rules
 3. Ensure all required fields are present and correctly typed
 4. Keep the building realistic and consistent
-5. Return ONLY valid JSON (no markdown, no explanations)
+5. ${hasLockedProgram ? "Preserve ALL locked program rooms exactly: same names, same area_m2, same floor assignments, no additions/removals" : "Preserve coherent program room schedule"}
+6. Return ONLY valid JSON (no markdown, no explanations)
 
 Generate the corrected DNA now (JSON only):`;
 
@@ -388,7 +582,11 @@ Generate the corrected DNA now (JSON only):`;
       }
 
       const repairedDNA = JSON.parse(jsonStr);
-      const normalizedRepaired = normalizeRawDNA(repairedDNA);
+      const normalizedRepaired = this.enforceProgramScheduleLock(
+        normalizeRawDNA(repairedDNA),
+        requestPayload,
+        projectContext,
+      );
 
       // Validate again
       const revalidation = validateDNASchema(normalizedRepaired);
@@ -420,7 +618,11 @@ Generate the corrected DNA now (JSON only):`;
       portfolioSummary: projectContext.blendedStyle,
     };
 
-    const repairedDNA = repairDNA(dna, context);
+    const repairedDNA = this.enforceProgramScheduleLock(
+      repairDNA(dna, context),
+      requestPayload,
+      projectContext,
+    );
 
     // Final validation
     const finalValidation = validateDNASchema(repairedDNA);

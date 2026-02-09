@@ -44,7 +44,7 @@ import { derivePanelSeedsFromDNA } from "./seedDerivation.js";
 import baselineArtifactStore from "./baselineArtifactStore.js";
 // compositeA1Sheet and architecturalSheetService are not needed here;
 // they are imported directly by aiModificationService.js.
-import { isFeatureEnabled } from "../config/featureFlags.js";
+import { getFeatureValue, isFeatureEnabled } from "../config/featureFlags.js";
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
   validateAndCorrectFootprint,
@@ -945,8 +945,15 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         logger.info("🔒 Building ProgramSpacesLock from user input...");
         try {
           const rawSpaces = projectContext?.programSpaces || [];
+          const configuredAreaTolerance = Number(
+            getFeatureValue("areaTolerance"),
+          );
           if (rawSpaces.length > 0) {
             programLock = buildProgramLock(rawSpaces, {
+              areaTolerance:
+                configuredAreaTolerance > 0
+                  ? configuredAreaTolerance
+                  : undefined,
               floors:
                 masterDNA?.dimensions?.floors ||
                 masterDNA?.dimensions?.floorCount ||
@@ -1762,14 +1769,50 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         logger.info(
           "🚦 Running Post-Render ProgramComplianceGate (CHECKPOINT 2)...",
         );
+        let adjacencyModel = null;
         try {
+          const adjacencyRequirements = Array.isArray(
+            programLock?.adjacencyRequirements,
+          )
+            ? programLock.adjacencyRequirements
+            : [];
+
+          if (adjacencyRequirements.length > 0) {
+            const modelSource = canonicalDesignState || masterDNA;
+            if (!modelSource) {
+              throw new ProgramComplianceError(
+                "Adjacency validation requires a geometry source (CDS or DNA), but none was available",
+                ["Adjacency requirements exist but geometry source is missing"],
+                "post-render-adjacency",
+              );
+            }
+
+            try {
+              const { createBuildingModel } =
+                await import("../geometry/BuildingModel.js");
+              adjacencyModel = createBuildingModel(modelSource);
+            } catch (adjacencyModelErr) {
+              throw new ProgramComplianceError(
+                `Failed to build BuildingModel for adjacency validation: ${adjacencyModelErr.message}`,
+                [
+                  "Adjacency requirements cannot be validated because BuildingModel generation failed",
+                ],
+                "post-render-adjacency",
+              );
+            }
+          }
+
           const postRenderResult = validatePanelsAgainstProgram(
             generatedPanels.map((p) => ({
               panelType: p.type,
               type: p.type,
             })),
             programLock,
-            { strict: true },
+            {
+              strict: true,
+              buildingModel: adjacencyModel,
+              requireAdjacencyModel: adjacencyRequirements.length > 0,
+            },
           );
           gateProgramReport = postRenderResult.report;
           logger.success("✅ Post-Render ProgramComplianceGate passed");
@@ -1783,6 +1826,10 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             };
           }
           throw gateErr;
+        } finally {
+          if (adjacencyModel && typeof adjacencyModel.dispose === "function") {
+            adjacencyModel.dispose();
+          }
         }
       }
 

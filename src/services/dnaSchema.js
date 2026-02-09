@@ -72,6 +72,49 @@ export function buildDNARequestPayload(
     return normalized;
   };
 
+  const parsePositiveNumber = (value, fallback = 0) => {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  };
+
+  const expandProgramRooms = (spaces = []) => {
+    const rooms = [];
+
+    for (const raw of spaces) {
+      const baseName =
+        String(raw?.name || raw?.type || "Room").trim() || "Room";
+      const parsedCount = parseInt(raw?.count, 10);
+      const count =
+        Number.isFinite(parsedCount) && parsedCount > 0 ? parsedCount : 1;
+      const area = parsePositiveNumber(
+        raw?.area ?? raw?.area_m2 ?? raw?.targetAreaM2,
+        20,
+      );
+      const floor = normalizeRoomFloor(raw);
+      const orientation = String(
+        raw?.preferredOrientation || raw?.orientation || "any",
+      );
+      const hasNumericSuffix = /\d+$/.test(baseName);
+
+      for (let i = 0; i < count; i++) {
+        const name =
+          count > 1 && !hasNumericSuffix ? `${baseName} ${i + 1}` : baseName;
+        rooms.push({
+          name,
+          area_m2: area,
+          floor,
+          orientation,
+        });
+      }
+    }
+
+    return rooms;
+  };
+
+  const expandedProgramRooms = expandProgramRooms(
+    programSpec?.programSpaces || [],
+  );
+
   const payload = {
     site: {
       polygon: siteMetrics?.sitePolygon || [],
@@ -83,12 +126,7 @@ export function buildDNARequestPayload(
     },
     program: {
       floors: programSpec?.floors || 2,
-      rooms: (programSpec?.programSpaces || []).map((room) => ({
-        name: room.name || "Room",
-        area_m2: room.area || 20,
-        floor: normalizeRoomFloor(room),
-        orientation: room.preferredOrientation || "any",
-      })),
+      rooms: expandedProgramRooms,
     },
     style: {
       architecture:
