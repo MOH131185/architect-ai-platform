@@ -42,10 +42,8 @@ import {
 } from "./panelGenerationService.js";
 import { derivePanelSeedsFromDNA } from "./seedDerivation.js";
 import baselineArtifactStore from "./baselineArtifactStore.js";
-// DEPRECATED: compositeA1Sheet and architecturalSheetService are only used by
-// the dead runHybridA1Workflow path. Imports removed in Phase 4 cleanup.
-// import { compositeA1Sheet } from "./a1/A1SheetGenerator.js";
-// import architecturalSheetService from "./architecturalSheetService.js";
+// compositeA1Sheet and architecturalSheetService are not needed here;
+// they are imported directly by aiModificationService.js.
 import { isFeatureEnabled } from "../config/featureFlags.js";
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
