@@ -21,6 +21,8 @@ import { computeCDSHashSync } from "./cdsHash.js";
  * @property {number} count         - How many instances on that level
  * @property {number} targetAreaM2  - Target area in m²
  * @property {boolean} hard         - Always true (immutable)
+ * @property {string[]} [instanceIds] - DNA v2 room instance IDs for this space
+ * @property {string} [spaceHash]   - Deterministic hash of space identity
  */
 
 /**
@@ -28,7 +30,7 @@ import { computeCDSHashSync } from "./cdsHash.js";
  * @property {string} version
  * @property {number} levelCount
  * @property {LockedSpace[]} spaces
- * @property {{ forbidUnexpectedLevels: boolean, maxProgramViolations: number }} invariants
+ * @property {{ forbidUnexpectedLevels: boolean, maxProgramViolations: number, areaTolerance: number }} invariants
  * @property {string} hash
  */
 
@@ -92,6 +94,22 @@ export function buildProgramLock(programSpaces, options = {}) {
     seen.set(baseId, suffix + 1);
     const spaceId = suffix === 0 ? baseId : `${baseId}_${suffix}`;
 
+    // Collect instance IDs from DNA v2 rooms if available
+    const instanceIds = [];
+    if (Array.isArray(raw.instanceIds)) {
+      instanceIds.push(...raw.instanceIds);
+    } else if (raw.instanceId) {
+      instanceIds.push(raw.instanceId);
+    }
+
+    // Compute per-space hash for integrity tracking
+    const spaceHash = computeCDSHashSync({
+      spaceId,
+      name,
+      lockedLevel: level,
+      targetAreaM2: area,
+    });
+
     spaces.push({
       spaceId,
       name,
@@ -99,6 +117,8 @@ export function buildProgramLock(programSpaces, options = {}) {
       count,
       targetAreaM2: area,
       hard: true,
+      instanceIds,
+      spaceHash,
     });
   }
 
@@ -108,6 +128,8 @@ export function buildProgramLock(programSpaces, options = {}) {
     ? Math.max(options.floors, maxLevel + 1)
     : maxLevel + 1;
 
+  const areaTolerance = options.areaTolerance ?? 0.03; // Default 3%
+
   const lock = {
     version: "1.0.0",
     levelCount,
@@ -115,6 +137,7 @@ export function buildProgramLock(programSpaces, options = {}) {
     invariants: {
       forbidUnexpectedLevels: true,
       maxProgramViolations: 0,
+      areaTolerance,
     },
   };
 
@@ -157,6 +180,20 @@ export function getLevels(lock) {
   if (!lock || !lock.spaces) return [0];
   const levels = [...new Set(lock.spaces.map((s) => s.lockedLevel))];
   return levels.sort((a, b) => a - b);
+}
+
+/**
+ * Get instance IDs for all spaces on a given level.
+ *
+ * @param {ProgramSpacesLock} lock
+ * @param {number} levelIndex - 0-based
+ * @returns {string[]} All instance IDs for spaces on that level
+ */
+export function getSpaceInstanceIds(lock, levelIndex) {
+  if (!lock || !lock.spaces) return [];
+  return lock.spaces
+    .filter((s) => s.lockedLevel === levelIndex)
+    .flatMap((s) => s.instanceIds || []);
 }
 
 /**
@@ -230,6 +267,7 @@ export class ProgramLockError extends Error {
 export default {
   buildProgramLock,
   getSpacesForLevel,
+  getSpaceInstanceIds,
   getRoomListForLevel,
   getLevels,
   validatePanelPlanAgainstLock,

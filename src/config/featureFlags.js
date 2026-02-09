@@ -579,11 +579,52 @@ export const FEATURE_FLAGS = {
   /** Fail-fast behavior in contract gate validation */
   contractGateFailFast: false,
 
-  /** Use canonical control pack */
-  canonicalControlPack: false,
+  /** Use canonical control pack (shadow mode: build pack but don't require it) */
+  canonicalControlPack: true,
 
-  /** Require canonical pack presence */
+  /** Require canonical pack presence (enforce mode: block generation without pack) */
   requireCanonicalPack: false,
+
+  /**
+   * Geometry Authority Mandatory
+   *
+   * When enabled (enforce mode):
+   * - Canonical geometry pack is the mandatory authority for all panels
+   * - All panels receive canonical SVG as init_image
+   * - Composition requires identical geometry hash across all panels
+   * - No panel may generate without geometry control
+   *
+   * When disabled (shadow mode, default):
+   * - Canonical pack is built and used when available
+   * - Pipeline falls back to hero-first flow if pack unavailable
+   *
+   * @type {boolean}
+   * @default false
+   */
+  geometryAuthorityMandatory: false,
+
+  /**
+   * DNA Schema Version
+   *
+   * Controls which DNA normalization schema is used:
+   * - 2: DNA v2 with room instance IDs, per-room hashes, dnaHash (default)
+   * - 1: Legacy DNA v1 (no instance IDs or hashes)
+   *
+   * @type {number}
+   * @default 2
+   */
+  dnaSchemaVersion: 2,
+
+  /**
+   * Area Tolerance for Program Compliance
+   *
+   * Maximum allowed deviation between DNA room area and locked space area.
+   * 0.03 = 3% tolerance (default).
+   *
+   * @type {number}
+   * @default 0.03
+   */
+  areaTolerance: 0.03,
 
   /** Strict canonical control mode enforcement */
   strictCanonicalControlMode: false,
@@ -820,8 +861,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.panelQualityValidation = false;
   FEATURE_FLAGS.controlFidelityGate = false;
   FEATURE_FLAGS.contractGateFailFast = false;
-  FEATURE_FLAGS.canonicalControlPack = false;
+  FEATURE_FLAGS.canonicalControlPack = true;
   FEATURE_FLAGS.requireCanonicalPack = false;
+  FEATURE_FLAGS.geometryAuthorityMandatory = false;
+  FEATURE_FLAGS.dnaSchemaVersion = 2;
+  FEATURE_FLAGS.areaTolerance = 0.03;
   FEATURE_FLAGS.strictCanonicalControlMode = false;
   FEATURE_FLAGS.strictCanonicalGeometryPack = false;
   FEATURE_FLAGS.maxValidationPasses = 3;
@@ -903,15 +947,42 @@ function loadP0EnvOverrides() {
       flag: "strictGeometryMaskGate",
       parse: (v) => v === "true",
     },
+    ARCHIAI_GEOMETRY_AUTHORITY_MODE: {
+      flag: null, // compound: sets multiple flags
+      parse: (v) => v, // raw string
+      apply: (v) => {
+        if (v === "enforce") {
+          FEATURE_FLAGS.geometryAuthorityMandatory = true;
+          FEATURE_FLAGS.canonicalControlPack = true;
+          FEATURE_FLAGS.requireCanonicalPack = true;
+        } else if (v === "shadow") {
+          FEATURE_FLAGS.geometryAuthorityMandatory = false;
+          FEATURE_FLAGS.canonicalControlPack = true;
+          FEATURE_FLAGS.requireCanonicalPack = false;
+        }
+      },
+    },
+    ARCHIAI_DNA_SCHEMA_VERSION: {
+      flag: "dnaSchemaVersion",
+      parse: (v) => parseInt(v, 10) || 2,
+    },
   };
 
   // Also support REACT_APP_ prefix for CRA browser builds
   const applied = [];
-  for (const [envKey, { flag, parse }] of Object.entries(envMap)) {
+  for (const [envKey, entry] of Object.entries(envMap)) {
     const raw = env[envKey] ?? env[`REACT_APP_${envKey}`];
     if (raw !== undefined && raw !== "") {
-      FEATURE_FLAGS[flag] = parse(raw);
-      applied.push(`${flag}=${FEATURE_FLAGS[flag]} (from ${envKey})`);
+      if (entry.apply) {
+        // Compound env var that sets multiple flags
+        entry.apply(raw);
+        applied.push(`${envKey}=${raw} (compound)`);
+      } else if (entry.flag) {
+        FEATURE_FLAGS[entry.flag] = entry.parse(raw);
+        applied.push(
+          `${entry.flag}=${FEATURE_FLAGS[entry.flag]} (from ${envKey})`,
+        );
+      }
     }
   }
 

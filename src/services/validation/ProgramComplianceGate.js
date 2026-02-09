@@ -76,14 +76,20 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
   const dnaRooms = masterDNA.rooms || masterDNA.program?.rooms || [];
   const allowedLevels = getLevels(programLock);
   const perSpaceReport = [];
+  const areaTolerance = programLock.invariants?.areaTolerance ?? 0.03;
 
   for (const lockedSpace of programLock.spaces) {
     const spaceName = lockedSpace.name.toLowerCase();
     const expectedLevel = lockedSpace.lockedLevel;
     const expectedCount = lockedSpace.count || 1;
 
-    // Find matching rooms by name
+    // Find matching rooms: prefer instance ID match, fall back to name match
     const matchingRooms = dnaRooms.filter((r) => {
+      // Instance ID match (exact, from DNA v2)
+      if (r.instanceId && lockedSpace.instanceIds?.length > 0) {
+        if (lockedSpace.instanceIds.includes(r.instanceId)) return true;
+      }
+      // Case-insensitive name match (fallback)
       const roomName = (r.name || "").toLowerCase();
       return roomName.includes(spaceName) || spaceName.includes(roomName);
     });
@@ -135,6 +141,46 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
         foundLevels: [expectedLevel],
         match: true,
       });
+    }
+
+    // Area tolerance validation (strict mode only)
+    if (strict && lockedSpace.targetAreaM2 > 0) {
+      for (const room of roomsOnCorrectLevel) {
+        const roomArea = parseFloat(room.area_m2 || room.area) || 0;
+        if (roomArea > 0) {
+          const deviation =
+            Math.abs(roomArea - lockedSpace.targetAreaM2) /
+            lockedSpace.targetAreaM2;
+          if (deviation > areaTolerance) {
+            violations.push(
+              `Area tolerance exceeded for "${lockedSpace.name}": DNA area ${roomArea}m² vs locked ${lockedSpace.targetAreaM2}m² ` +
+                `(${(deviation * 100).toFixed(1)}% deviation, tolerance ${(areaTolerance * 100).toFixed(0)}%)`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // 2b. Instance count enforcement per level (strict mode)
+  if (strict) {
+    for (const level of allowedLevels) {
+      const expectedOnLevel = programLock.spaces
+        .filter((s) => s.lockedLevel === level)
+        .reduce((sum, s) => sum + (s.count || 1), 0);
+      const dnaOnLevel = dnaRooms.filter((r) => {
+        return normaliseDNARoomLevel(r) === level;
+      }).length;
+      if (dnaOnLevel < expectedOnLevel) {
+        violations.push(
+          `Level ${level}: expected ${expectedOnLevel} rooms from lock, found ${dnaOnLevel} in DNA (missing ${expectedOnLevel - dnaOnLevel})`,
+        );
+      }
+      if (dnaOnLevel > expectedOnLevel) {
+        violations.push(
+          `Level ${level}: expected ${expectedOnLevel} rooms from lock, found ${dnaOnLevel} in DNA (${dnaOnLevel - expectedOnLevel} extra)`,
+        );
+      }
     }
   }
 

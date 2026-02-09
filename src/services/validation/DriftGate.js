@@ -122,12 +122,27 @@ export function validatePreComposeDrift(panels, cds, options = {}) {
       }
     }
 
-    // Check geometry hash reference
+    // Check geometry hash reference (canonical pack authority)
     if (panel.geometryHash && cds.geometry) {
       totalChecks++;
       const expectedGeoHash = computeCDSHashSync(cds.geometry);
       if (panel.geometryHash !== expectedGeoHash) {
         violations.push(`Panel ${panelType} geometry hash drift detected`);
+        driftSignals++;
+      }
+    }
+
+    // Check geometry hash consistency across panels
+    // All panels MUST reference the same canonical geometry hash
+    if (panel.meta?.geometryHash) {
+      totalChecks++;
+      // Compare against first panel's geometry hash as reference
+      const refGeoHash = (panels || [])[0]?.meta?.geometryHash;
+      if (refGeoHash && panel.meta.geometryHash !== refGeoHash) {
+        violations.push(
+          `Panel ${panelType} geometry hash (${panel.meta.geometryHash.substring(0, 8)}...) ` +
+            `differs from reference panel (${refGeoHash.substring(0, 8)}...) — canonical geometry mismatch`,
+        );
         driftSignals++;
       }
     }

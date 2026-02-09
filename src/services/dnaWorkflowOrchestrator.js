@@ -103,6 +103,16 @@ import {
   buildPanelManifest,
   computeRunMetrics,
 } from "./validation/runInstrumentation.js";
+// Canonical Geometry Pack - geometry-first authority
+import {
+  buildCanonicalPack,
+  getInitImageParams as getCanonicalInitImageParams,
+  hasCanonicalPack,
+} from "./canonical/CanonicalGeometryPackService.js";
+import {
+  isCanonicalPackGateEnabled,
+  validateBeforeGeneration as validateCanonicalPackGate,
+} from "./canonical/CanonicalPackGate.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
 const DEFAULT_API_BASE_URL = runtimeEnv.isBrowser
@@ -1025,6 +1035,45 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // STEP 2.7: Build Canonical Geometry Pack (MANDATORY when flag enabled)
+      // This step uses BuildingModel + Projections2D to produce SVG projections
+      // for every panel type. When requireCanonicalPack is enabled, the gate
+      // blocks generation if the pack is incomplete.
+      let canonicalPack = null;
+      if (isFeatureEnabled("canonicalControlPack") && canonicalDesignState) {
+        logger.info(
+          "📐 STEP 2.7: Building Canonical Geometry Pack from CDS...",
+        );
+        reportProgress("dna", "Building geometry authority pack...", 30);
+        try {
+          canonicalPack = buildCanonicalPack(canonicalDesignState);
+          logger.success(
+            `✅ Canonical Pack built: ${canonicalPack.panelCount} panels, ` +
+              `geometryHash=${canonicalPack.geometryHash?.substring(0, 8)}...`,
+          );
+          if (isCanonicalPackGateEnabled()) {
+            validateCanonicalPackGate(
+              canonicalPack,
+              canonicalDesignState,
+              programLock,
+              { strict: true },
+            );
+            logger.success("✅ CanonicalPackGate passed");
+          }
+        } catch (packErr) {
+          if (isFeatureEnabled("requireCanonicalPack")) {
+            logger.error(`❌ Canonical Pack build failed: ${packErr.message}`);
+            throw new Error(
+              `Canonical geometry pack failed: ${packErr.message}`,
+            );
+          }
+          logger.warn(
+            `⚠️ Canonical Pack build failed (non-blocking): ${packErr.message}`,
+          );
+          canonicalPack = null;
+        }
+      }
+
       // STEP 2.5: Geometry reasoning + baseline (feature-flagged)
       let geometryRenders = null;
       let geometryRenderMap = null;
@@ -1321,9 +1370,35 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           let geometryRender = null;
           let effectiveGeometryStrength = job.meta?.geometryStrength || 0.6;
 
+          // PRIORITY 0: Canonical Geometry Pack (highest priority — geometry authority)
+          // When canonical pack is available, it supersedes procedural masks and
+          // geometry volume renders for all panel types.
+          if (canonicalPack && hasCanonicalPack(canonicalPack)) {
+            const canonicalParams = getCanonicalInitImageParams(
+              canonicalPack,
+              job.type,
+            );
+            if (canonicalParams) {
+              geometryRender = {
+                url: canonicalParams.init_image,
+                type: "canonical_geometry",
+                model: "buildingmodel_projections2d",
+              };
+              effectiveGeometryStrength = canonicalParams.strength;
+              logger.info(
+                `   📐 [Canonical] Using canonical geometry pack for ${job.type} (strength: ${effectiveGeometryStrength})`,
+              );
+            }
+          }
+
           // PRIORITY 1: Use job.meta.controlImage from geometry masks (highest priority for floor plans)
           // This comes from ProceduralGeometryService via panelGenerationService
-          if (job.meta?.controlImage && job.meta?.useGeometryMask) {
+          // Only used when canonical pack doesn't provide a control for this panel
+          if (
+            !geometryRender &&
+            job.meta?.controlImage &&
+            job.meta?.useGeometryMask
+          ) {
             geometryRender = {
               url: job.meta.controlImage,
               type: "geometry_mask",
@@ -1335,7 +1410,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             );
           }
           // PRIORITY 2: Use geometryRenderMap for elevations and 3D views
-          else if (geometryRenderMap && job.type.includes("elevation")) {
+          else if (
+            !geometryRender &&
+            geometryRenderMap &&
+            job.type.includes("elevation")
+          ) {
             const direction = job.type.includes("north")
               ? "north"
               : job.type.includes("south")
@@ -1344,9 +1423,14 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                   ? "east"
                   : "west";
             geometryRender = geometryRenderMap[`orthographic_${direction}`];
-          } else if (geometryRenderMap && job.type === "hero_3d") {
+          } else if (
+            !geometryRender &&
+            geometryRenderMap &&
+            job.type === "hero_3d"
+          ) {
             geometryRender = geometryRenderMap.perspective_hero;
           } else if (
+            !geometryRender &&
             geometryRenderMap &&
             (job.type === "axonometric" || job.type === "axonometric_3d")
           ) {
@@ -1425,6 +1509,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             meta: {
               ...job.meta,
               hadGeometryControl: !!geometryRender,
+              hadCanonicalControl:
+                geometryRender?.type === "canonical_geometry",
+              geometryHash: canonicalPack?.geometryHash || null,
               model: result.model || "flux",
             },
           };
@@ -1557,21 +1644,24 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           );
 
           // HERO-FIRST FAIL-FAST: If hero_3d fails, abort entire generation
-          // hero_3d is the style anchor - without it, elevations/sections cannot have consistent materials
+          // hero_3d provides the STYLE reference (not geometry authority — that's the canonical pack)
           if (job.type === "hero_3d") {
             logger.error(
               "❌ [HERO-FIRST FAIL-FAST] hero_3d generation failed - aborting workflow",
             );
             logger.error(
-              "   hero_3d is required as style anchor for elevation/section material consistency",
+              "   hero_3d is required as style reference for elevation/section material consistency",
             );
             return {
               success: false,
-              error: `Hero generation failed: ${error.message}. hero_3d is required as the style anchor for all subsequent panels.`,
+              error: `Hero generation failed: ${error.message}. hero_3d is required as the style reference for all subsequent panels.`,
               failedPanel: "hero_3d",
               generatedPanels: [],
               message:
-                "Cannot proceed without hero_3d - it provides the style reference for elevations and sections.",
+                "Cannot proceed without hero_3d - it provides the style reference for elevations and sections. " +
+                (canonicalPack
+                  ? "Geometry authority is provided by the canonical pack."
+                  : ""),
             };
           }
 
@@ -2028,9 +2118,48 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // COMPOSE GATE: Block composition if required technical panels are missing
+      if (canonicalPack && isFeatureEnabled("requireCanonicalPack")) {
+        const requiredTechnical = [
+          "floor_plan_ground",
+          "elevation_north",
+          "elevation_south",
+          "section_a_a",
+        ];
+        const generatedTypes = new Set(generatedPanels.map((p) => p.type));
+        const missingRequired = requiredTechnical.filter(
+          (t) => !generatedTypes.has(t),
+        );
+        if (missingRequired.length > 0) {
+          logger.error(
+            `❌ ComposeGate: Missing required technical panels: ${missingRequired.join(", ")}`,
+          );
+          throw new Error(
+            `Composition blocked: missing required panels: ${missingRequired.join(", ")}`,
+          );
+        }
+        // Geometry hash consistency: all panels must reference identical geometry hash
+        const panelGeoHashes = generatedPanels
+          .map((p) => p.meta?.geometryHash)
+          .filter(Boolean);
+        const uniqueGeoHashes = [...new Set(panelGeoHashes)];
+        if (uniqueGeoHashes.length > 1) {
+          logger.error(
+            `❌ ComposeGate: Geometry hash inconsistency: ${uniqueGeoHashes.map((h) => h.substring(0, 8)).join(" vs ")}`,
+          );
+          throw new Error(
+            "Composition blocked: panels reference different geometry hashes",
+          );
+        }
+      }
+
       const composePayload = {
         designId,
         designFingerprint: panelFingerprint,
+        // Metadata hashes for title block rendering
+        dnaHash: masterDNA?.dnaHash || computeCDSHashSync(masterDNA || {}),
+        geometryHash: canonicalPack?.geometryHash || null,
+        programHash: programLock?.hash || null,
         panels: generatedPanels.map((p) => {
           const meta = { ...(p.meta || {}) };
           // Strip large prompt strings – compose endpoint doesn't need them
