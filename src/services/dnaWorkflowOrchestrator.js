@@ -1847,6 +1847,12 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         designFingerprint: panelFingerprint,
         panels: generatedPanels.map((p) => {
           const meta = { ...(p.meta || {}) };
+          // Strip large prompt strings – compose endpoint doesn't need them
+          delete meta.prompt;
+          delete meta.basePrompt;
+          delete meta.consistencyLock;
+          delete meta.geometryHint;
+          delete meta.designFingerprint; // Already sent as top-level field
           if (p.type?.includes("floor_plan") && !meta.roomCount) {
             const floorIndex =
               p.type === "floor_plan_ground"
@@ -1870,16 +1876,42 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }),
         siteOverlay,
         layoutConfig: "uk-riba-standard",
-        // Pass DNA data for SVG rendering of data panels (schedules, materials, climate)
-        masterDNA,
-        projectContext,
-        locationData,
+        // TRIMMED: Only fields the compose endpoint actually uses for SVG data panels
+        masterDNA: {
+          rooms: masterDNA?.rooms || masterDNA?.program?.rooms || [],
+          materials: masterDNA?.materials || [],
+          dimensions: masterDNA?.dimensions || {},
+          architecturalStyle: masterDNA?.architecturalStyle,
+          roof: masterDNA?.roof,
+        },
+        projectContext: {
+          programSpaces: projectContext?.programSpaces || [],
+          buildingProgram: projectContext?.buildingProgram,
+        },
+        locationData: {
+          climate: locationData?.climate,
+          sunPath: locationData?.sunPath,
+          address: locationData?.address,
+        },
       };
 
       const composeBody = JSON.stringify(composePayload);
-      logger.info(
-        `📦 Compose payload size: ${(composeBody.length / 1_000_000).toFixed(2)}MB`,
-      );
+      const bodyMB = composeBody.length / 1_000_000;
+      logger.info(`📦 Compose payload size: ${bodyMB.toFixed(2)}MB`);
+      if (bodyMB > 4.0) {
+        logger.warn(
+          `⚠️ Compose payload approaching Vercel limit (4.5MB). Breakdown:`,
+        );
+        logger.warn(
+          `   panels: ${(JSON.stringify(composePayload.panels).length / 1000).toFixed(1)}KB`,
+        );
+        logger.warn(
+          `   masterDNA: ${(JSON.stringify(composePayload.masterDNA).length / 1000).toFixed(1)}KB`,
+        );
+        logger.warn(
+          `   siteOverlay: ${(JSON.stringify(composePayload.siteOverlay || null).length / 1000).toFixed(1)}KB`,
+        );
+      }
 
       const composeResponse = await fetchImpl(
         `${API_BASE_URL}/api/a1/compose`,
