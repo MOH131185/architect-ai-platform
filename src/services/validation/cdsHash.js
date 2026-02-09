@@ -28,10 +28,11 @@ export async function computeCDSHash(obj) {
 
 /**
  * Synchronous hash for contexts where async is impractical.
- * Uses DJB2 variant - NOT cryptographic, but deterministic and fast.
+ * Uses FNV-1a variant - NOT cryptographic, but deterministic and fast.
+ * Prefer computeCDSHash() (async, SHA-256) when SubtleCrypto is available.
  *
  * @param {Object} obj - Object to hash
- * @returns {string} hex-encoded hash
+ * @returns {string} 16-char hex-encoded hash (weaker than SHA-256)
  */
 export function computeCDSHashSync(obj) {
   const canonical = canonicalStringify(obj);
@@ -39,7 +40,15 @@ export function computeCDSHashSync(obj) {
 }
 
 /**
- * Canonical JSON stringify with sorted keys and `hash` key excluded.
+ * Keys excluded from canonical hashing.
+ * - `hash`: self-referential
+ * - `designId`: may contain Date.now() fallback, volatile
+ * - `timestamp`: inherently non-deterministic
+ */
+const EXCLUDED_KEYS = new Set(["hash", "designId", "timestamp"]);
+
+/**
+ * Canonical JSON stringify with sorted keys and volatile keys excluded.
  * Produces identical output for semantically identical objects.
  *
  * @param {Object} obj
@@ -47,14 +56,14 @@ export function computeCDSHashSync(obj) {
  */
 export function canonicalStringify(obj) {
   return JSON.stringify(obj, (key, value) => {
-    if (key === "hash") return undefined; // Exclude hash field
+    if (EXCLUDED_KEYS.has(key)) return undefined;
     if (value && typeof value === "object" && !Array.isArray(value)) {
       // Sort object keys
       const sorted = {};
       Object.keys(value)
         .sort()
         .forEach((k) => {
-          if (k !== "hash") sorted[k] = value[k];
+          if (!EXCLUDED_KEYS.has(k)) sorted[k] = value[k];
         });
       return sorted;
     }

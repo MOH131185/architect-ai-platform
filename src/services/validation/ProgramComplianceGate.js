@@ -72,21 +72,69 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
     );
   }
 
-  // 2. Check that locked spaces are present in DNA rooms
+  // 2. Per-space level + count validation
   const dnaRooms = masterDNA.rooms || masterDNA.program?.rooms || [];
   const allowedLevels = getLevels(programLock);
+  const perSpaceReport = [];
 
   for (const lockedSpace of programLock.spaces) {
+    const spaceName = lockedSpace.name.toLowerCase();
+    const expectedLevel = lockedSpace.lockedLevel;
+    const expectedCount = lockedSpace.count || 1;
+
+    // Find matching rooms by name
     const matchingRooms = dnaRooms.filter((r) => {
       const roomName = (r.name || "").toLowerCase();
-      const spaceName = lockedSpace.name.toLowerCase();
       return roomName.includes(spaceName) || spaceName.includes(roomName);
     });
 
+    // Check: space must exist in DNA
     if (matchingRooms.length === 0) {
       violations.push(
-        `Locked space "${lockedSpace.name}" (level ${lockedSpace.lockedLevel}) not found in DNA rooms`,
+        `Locked space "${lockedSpace.name}" (level ${expectedLevel}) not found in DNA rooms`,
       );
+      perSpaceReport.push({
+        space: lockedSpace.name,
+        expectedLevel,
+        expectedCount,
+        foundCount: 0,
+        foundLevels: [],
+        match: false,
+      });
+      continue;
+    }
+
+    // Check: matching rooms must be on the correct level
+    const roomsOnCorrectLevel = matchingRooms.filter((r) => {
+      const roomLevel = normaliseDNARoomLevel(r);
+      return roomLevel === expectedLevel;
+    });
+
+    if (roomsOnCorrectLevel.length < expectedCount) {
+      const foundLevels = matchingRooms
+        .map((r) => normaliseDNARoomLevel(r))
+        .filter((l) => l !== null);
+      violations.push(
+        `Locked space "${lockedSpace.name}": expected ${expectedCount} on level ${expectedLevel}, ` +
+          `found ${roomsOnCorrectLevel.length} (rooms found on levels: ${foundLevels.length > 0 ? foundLevels.join(",") : "none"})`,
+      );
+      perSpaceReport.push({
+        space: lockedSpace.name,
+        expectedLevel,
+        expectedCount,
+        foundCount: roomsOnCorrectLevel.length,
+        foundLevels,
+        match: false,
+      });
+    } else {
+      perSpaceReport.push({
+        space: lockedSpace.name,
+        expectedLevel,
+        expectedCount,
+        foundCount: roomsOnCorrectLevel.length,
+        foundLevels: [expectedLevel],
+        match: true,
+      });
     }
   }
 
@@ -94,7 +142,12 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
   if (programLock.invariants?.forbidUnexpectedLevels) {
     for (const room of dnaRooms) {
       const roomLevel = normaliseDNARoomLevel(room);
-      if (roomLevel !== null && !allowedLevels.includes(roomLevel)) {
+      // In strict mode, rooms with no level metadata are violations
+      if (roomLevel === null) {
+        violations.push(
+          `DNA room "${room.name}" has no level metadata (floor/level field missing)`,
+        );
+      } else if (!allowedLevels.includes(roomLevel)) {
         violations.push(
           `DNA room "${room.name}" is on level ${roomLevel} which is not in the program lock (allowed: ${allowedLevels.join(",")})`,
         );
@@ -106,6 +159,7 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
   report.lockLevelCount = programLock.levelCount;
   report.dnaRoomCount = dnaRooms.length;
   report.lockedSpaceCount = programLock.spaces.length;
+  report.perSpaceReport = perSpaceReport;
 
   return finish(violations, report, strict);
 }

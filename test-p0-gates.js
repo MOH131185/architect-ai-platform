@@ -39,7 +39,9 @@ let buildProgramLock,
 let buildCDSSync, verifyCDSSync;
 let computeCDSHashSync;
 let validateProgramLock, validatePanelsAgainstProgram, validateBeforeCompose;
-let validateModifyDrift;
+let validateModifyDrift, validatePreComposeDrift;
+let setFeatureFlag, FEATURE_FLAGS;
+let getCurrentPipelineMode, PIPELINE_MODE;
 
 let passed = 0;
 let failed = 0;
@@ -80,6 +82,15 @@ async function loadModules() {
 
   const dg = await import("./src/services/validation/DriftGate.js");
   validateModifyDrift = dg.validateModifyDrift;
+  validatePreComposeDrift = dg.validatePreComposeDrift;
+
+  const ff = await import("./src/config/featureFlags.js");
+  setFeatureFlag = ff.setFeatureFlag;
+  FEATURE_FLAGS = ff.FEATURE_FLAGS;
+
+  const pm = await import("./src/config/pipelineMode.js");
+  getCurrentPipelineMode = pm.getCurrentPipelineMode;
+  PIPELINE_MODE = pm.PIPELINE_MODE;
 }
 
 // ===================================================================
@@ -480,12 +491,391 @@ function TC_DRIFT_003() {
 }
 
 // ===================================================================
+// TC-PROG-003: Locked room on wrong level
+// ===================================================================
+function TC_PROG_003() {
+  console.log("\n📋 TC-PROG-003: Locked room on wrong level");
+  console.log(
+    "   Criteria: Per-space validation catches rooms on incorrect levels",
+  );
+
+  const programSpaces = [
+    { name: "Living Room", area: 25, floor: "ground" },
+    { name: "Kitchen", area: 15, floor: "ground" },
+    { name: "Master Bedroom", area: 20, floor: "first" },
+    { name: "Bathroom", area: 8, floor: "first" },
+  ];
+
+  const lock = buildProgramLock(programSpaces, { floors: 2 });
+  assert(lock.levelCount === 2, "ProgramLock levelCount = 2");
+
+  // DNA with Master Bedroom on wrong level (ground instead of first)
+  const wrongLevelDNA = {
+    dimensions: { length: 12, width: 8, height: 6.4, floors: 2, floorCount: 2 },
+    materials: [{ name: "Brick", hexColor: "#B8604E" }],
+    rooms: [
+      { name: "Living Room", floor: "ground" },
+      { name: "Kitchen", floor: "ground" },
+      { name: "Master Bedroom", floor: "ground" }, // WRONG - should be "first"
+      { name: "Bathroom", floor: "first" },
+    ],
+  };
+
+  const result = validateProgramLock(wrongLevelDNA, lock, { strict: false });
+  assert(
+    result.valid === false,
+    "Validation FAILS when Master Bedroom is on wrong level",
+  );
+  assert(
+    result.violations.some((v) => v.includes("Master Bedroom")),
+    "Violation message references Master Bedroom",
+  );
+  assert(
+    result.violations.some((v) => v.includes("level")),
+    "Violation message references level mismatch",
+  );
+
+  // Verify per-space report is present
+  assert(
+    result.report.perSpaceReport && result.report.perSpaceReport.length > 0,
+    "Per-space report is populated",
+  );
+
+  const bedroomReport = result.report.perSpaceReport.find(
+    (r) => r.space === "Master Bedroom",
+  );
+  assert(
+    bedroomReport && bedroomReport.match === false,
+    "Per-space report shows Master Bedroom mismatch",
+  );
+
+  // Correct DNA should pass
+  const correctDNA = {
+    ...wrongLevelDNA,
+    rooms: [
+      { name: "Living Room", floor: "ground" },
+      { name: "Kitchen", floor: "ground" },
+      { name: "Master Bedroom", floor: "first" },
+      { name: "Bathroom", floor: "first" },
+    ],
+  };
+  const correctResult = validateProgramLock(correctDNA, lock, {
+    strict: false,
+  });
+  assert(correctResult.valid === true, "Correct level assignment passes");
+}
+
+// ===================================================================
+// TC-PROG-004: Locked room count mismatch
+// ===================================================================
+function TC_PROG_004() {
+  console.log("\n📋 TC-PROG-004: Locked room count mismatch");
+  console.log("   Criteria: Validates room count matches expected count");
+
+  // Program with 2 bedrooms on first floor
+  const programSpaces = [
+    { name: "Living Room", area: 25, floor: "ground" },
+    { name: "Bedroom", area: 16, floor: "first", count: 2 },
+    { name: "Bathroom", area: 8, floor: "first" },
+  ];
+
+  const lock = buildProgramLock(programSpaces, { floors: 2 });
+
+  // DNA with only 1 bedroom (should need 2)
+  const tooFewDNA = {
+    dimensions: { length: 12, width: 8, height: 6.4, floors: 2, floorCount: 2 },
+    materials: [{ name: "Brick", hexColor: "#B8604E" }],
+    rooms: [
+      { name: "Living Room", floor: "ground" },
+      { name: "Bedroom", floor: "first" }, // Only 1, need 2
+      { name: "Bathroom", floor: "first" },
+    ],
+  };
+
+  const result = validateProgramLock(tooFewDNA, lock, { strict: false });
+  assert(
+    result.valid === false,
+    "Validation FAILS when bedroom count is short",
+  );
+  assert(
+    result.violations.some((v) => v.includes("Bedroom")),
+    "Violation references Bedroom",
+  );
+
+  // DNA with 2 bedrooms should pass
+  const enoughDNA = {
+    ...tooFewDNA,
+    rooms: [
+      { name: "Living Room", floor: "ground" },
+      { name: "Bedroom 1", floor: "first" },
+      { name: "Bedroom 2", floor: "first" },
+      { name: "Bathroom", floor: "first" },
+    ],
+  };
+
+  const goodResult = validateProgramLock(enoughDNA, lock, { strict: false });
+  assert(
+    goodResult.valid === true,
+    "Validation passes with 2 bedrooms on correct level",
+  );
+
+  // DNA with rooms missing level metadata
+  const noLevelDNA = {
+    dimensions: { length: 12, width: 8, height: 6.4, floors: 2, floorCount: 2 },
+    materials: [{ name: "Brick", hexColor: "#B8604E" }],
+    rooms: [
+      { name: "Living Room" }, // no floor field
+      { name: "Bedroom 1" },
+      { name: "Bedroom 2" },
+      { name: "Bathroom" },
+    ],
+  };
+  const noLevelResult = validateProgramLock(noLevelDNA, lock, {
+    strict: false,
+  });
+  assert(
+    noLevelResult.valid === false,
+    "Validation FAILS when rooms have no level metadata",
+  );
+  assert(
+    noLevelResult.violations.some((v) => v.includes("no level metadata")),
+    "Violation mentions missing level metadata",
+  );
+}
+
+// ===================================================================
+// TC-DRIFT-004: Missing provenance in pre-compose drift
+// ===================================================================
+function TC_DRIFT_004() {
+  console.log("\n📋 TC-DRIFT-004: Missing provenance in pre-compose drift");
+  console.log("   Criteria: Strict mode catches panels without cdsHash/seed");
+
+  const programSpaces = [
+    { name: "Living Room", area: 25, floor: "ground" },
+    { name: "Kitchen", area: 15, floor: "ground" },
+  ];
+  const lock = buildProgramLock(programSpaces, { floors: 1 });
+  const masterDNA = {
+    dimensions: { length: 12, width: 8, height: 3.2, floors: 1, floorCount: 1 },
+    materials: [{ name: "Brick", hexColor: "#B8604E" }],
+    rooms: [
+      { name: "Living Room", floor: "ground" },
+      { name: "Kitchen", floor: "ground" },
+    ],
+  };
+
+  const cds = buildCDSSync({
+    designId: "drift-prov-test",
+    seed: 77,
+    masterDNA,
+    programLock: lock,
+  });
+
+  // Panels WITH full provenance - should pass
+  const goodPanels = [
+    { panelType: "hero_3d", seed: 77, cdsHash: cds.hash },
+    { panelType: "floor_plan_ground", seed: 214, cdsHash: cds.hash },
+    { panelType: "elevation_north", seed: 351, cdsHash: cds.hash },
+  ];
+
+  const goodResult = validatePreComposeDrift(goodPanels, cds, {
+    strict: false,
+  });
+  assert(
+    goodResult.valid === true,
+    "Panels with full provenance pass drift gate",
+  );
+  assert(
+    goodResult.driftScore <= 0.1,
+    `Drift score ${goodResult.driftScore.toFixed(3)} <= 0.10`,
+  );
+
+  // Panels MISSING cdsHash and seed - should fail in strict mode
+  const badPanels = [
+    { panelType: "hero_3d" }, // no seed, no cdsHash
+    { panelType: "floor_plan_ground", seed: 214 }, // no cdsHash
+    { panelType: "elevation_north", cdsHash: cds.hash }, // no seed
+  ];
+
+  const badResult = validatePreComposeDrift(badPanels, cds, {
+    strict: false,
+    requireProvenance: true,
+  });
+  assert(
+    badResult.valid === false,
+    "Panels missing provenance FAIL drift gate",
+  );
+  assert(
+    badResult.violations.some((v) => v.includes("missing provenance")),
+    "Violations reference missing provenance",
+  );
+
+  // Count violations - all 3 panels should have provenance issues
+  const provViolations = badResult.violations.filter((v) =>
+    v.includes("missing provenance"),
+  );
+  assert(
+    provViolations.length === 3,
+    `3 provenance violations (got ${provViolations.length})`,
+  );
+
+  // Panel with wrong cdsHash should flag drift
+  const driftPanels = [
+    { panelType: "hero_3d", seed: 77, cdsHash: "wrong_hash_abcdef" },
+    { panelType: "floor_plan_ground", seed: 214, cdsHash: cds.hash },
+  ];
+
+  const driftResult = validatePreComposeDrift(driftPanels, cds, {
+    strict: false,
+  });
+  assert(
+    driftResult.violations.some((v) => v.includes("CDS hash")),
+    "Violation detects CDS hash mismatch on panel",
+  );
+
+  // Panel with empty promptHash should be flagged
+  const emptyPromptPanels = [
+    { panelType: "hero_3d", seed: 77, cdsHash: cds.hash, promptHash: "" },
+  ];
+  const emptyPromptResult = validatePreComposeDrift(emptyPromptPanels, cds, {
+    strict: false,
+  });
+  assert(
+    emptyPromptResult.violations.some((v) => v.includes("empty promptHash")),
+    "Empty promptHash is flagged",
+  );
+}
+
+// ===================================================================
+// TC-PIPE-005: Pipeline mode switch
+// ===================================================================
+function TC_PIPE_005() {
+  console.log("\n📋 TC-PIPE-005: Pipeline mode switch");
+  console.log("   Criteria: getCurrentPipelineMode() returns correct modes");
+
+  // Default should be MULTI_PANEL
+  const defaultMode = getCurrentPipelineMode();
+  assert(
+    defaultMode === PIPELINE_MODE.MULTI_PANEL,
+    `Default mode is multi_panel (got "${defaultMode}")`,
+  );
+
+  // All mode constants should be defined
+  assert(
+    PIPELINE_MODE.SINGLE_SHOT === "single_shot",
+    "SINGLE_SHOT = 'single_shot'",
+  );
+  assert(
+    PIPELINE_MODE.MULTI_PANEL === "multi_panel",
+    "MULTI_PANEL = 'multi_panel'",
+  );
+  assert(
+    PIPELINE_MODE.GEOMETRY_FIRST === "geometry_first",
+    "GEOMETRY_FIRST = 'geometry_first'",
+  );
+  assert(
+    PIPELINE_MODE.HYBRID_OPENAI === "hybrid_openai",
+    "HYBRID_OPENAI = 'hybrid_openai'",
+  );
+
+  // Set env to single_shot and verify
+  const origEnv = process.env.PIPELINE_MODE;
+  process.env.PIPELINE_MODE = "single_shot";
+  const singleMode = getCurrentPipelineMode();
+  assert(
+    singleMode === PIPELINE_MODE.SINGLE_SHOT,
+    `Env override to single_shot works (got "${singleMode}")`,
+  );
+
+  // Set env to geometry_first
+  process.env.PIPELINE_MODE = "geometry_first";
+  const geoMode = getCurrentPipelineMode();
+  assert(
+    geoMode === PIPELINE_MODE.GEOMETRY_FIRST,
+    `Env override to geometry_first works (got "${geoMode}")`,
+  );
+
+  // Restore
+  if (origEnv !== undefined) {
+    process.env.PIPELINE_MODE = origEnv;
+  } else {
+    delete process.env.PIPELINE_MODE;
+  }
+}
+
+// ===================================================================
+// TC-ENV-006: Environment variable overrides for feature flags
+// ===================================================================
+function TC_ENV_006() {
+  console.log("\n📋 TC-ENV-006: Env var overrides for feature flags");
+  console.log("   Criteria: setFeatureFlag and ARCHIAI_* env overrides work");
+
+  // 1. setFeatureFlag should work
+  const originalCds = FEATURE_FLAGS.cdsRequired;
+  setFeatureFlag("cdsRequired", false);
+  assert(
+    FEATURE_FLAGS.cdsRequired === false,
+    "setFeatureFlag can disable cdsRequired",
+  );
+  setFeatureFlag("cdsRequired", true);
+  assert(
+    FEATURE_FLAGS.cdsRequired === true,
+    "setFeatureFlag can re-enable cdsRequired",
+  );
+  // Restore original
+  setFeatureFlag("cdsRequired", originalCds);
+
+  // 2. P0 gate flags all exist
+  assert(
+    "programComplianceGate" in FEATURE_FLAGS,
+    "programComplianceGate flag exists",
+  );
+  assert("driftGate" in FEATURE_FLAGS, "driftGate flag exists");
+  assert("cdsRequired" in FEATURE_FLAGS, "cdsRequired flag exists");
+  assert(
+    "allowTechnicalFallback" in FEATURE_FLAGS,
+    "allowTechnicalFallback flag exists",
+  );
+  assert(
+    "strictGeometryMaskGate" in FEATURE_FLAGS,
+    "strictGeometryMaskGate flag exists",
+  );
+
+  // 3. Hot-path flags all declared (no unknown warnings)
+  const hotPathFlags = [
+    "strictControlImageMode",
+    "useCanonicalBaseline",
+    "enableAutoRetry",
+    "autoRetryFailedPanels",
+    "strictPanelValidation",
+    "strictPanelFailFast",
+    "canonicalControlPack",
+    "requireCanonicalPack",
+  ];
+  for (const flag of hotPathFlags) {
+    assert(flag in FEATURE_FLAGS, `Hot-path flag "${flag}" is declared`);
+  }
+
+  // 4. enableAutoRetry and autoRetryFailedPanels default to true
+  // (save current, test default, restore)
+  const origAutoRetry = FEATURE_FLAGS.enableAutoRetry;
+  const origAutoRetryPanels = FEATURE_FLAGS.autoRetryFailedPanels;
+  // They should be true by default (from FEATURE_FLAGS init)
+  assert(origAutoRetry === true, "enableAutoRetry defaults to true");
+  assert(
+    origAutoRetryPanels === true,
+    "autoRetryFailedPanels defaults to true",
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
-  console.log("║  TC-PROG-001 | TC-PROG-002 | TC-DRIFT-003            ║");
+  console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
+  console.log("║  TC-PIPE-005 | TC-ENV-006                             ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -499,6 +889,11 @@ async function main() {
   TC_PROG_001();
   TC_PROG_002();
   TC_DRIFT_003();
+  TC_PROG_003();
+  TC_PROG_004();
+  TC_DRIFT_004();
+  TC_PIPE_005();
+  TC_ENV_006();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);

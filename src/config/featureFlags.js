@@ -513,6 +513,125 @@ export const FEATURE_FLAGS = {
   allowTechnicalFallback: false,
 
   // =========================================================================
+  // GENERATION HOT-PATH FLAGS (used by panelGenerationService / orchestrator)
+  // =========================================================================
+
+  /** Strict control image mode - enforce control images for all panels */
+  strictControlImageMode: false,
+
+  /** Use canonical baseline comparison during generation */
+  useCanonicalBaseline: false,
+
+  /** Enable geometry-controlled 3D generation */
+  geometryControlled3D: false,
+
+  /** Use Meshy.ai for 3D model generation */
+  meshy3DMode: false,
+
+  /** Generate debug reports for control image processing */
+  enableControlImageDebugReport: false,
+
+  /** Use OpenAI as primary DNA generator */
+  useOpenAIDNA: false,
+
+  /** Enable hybrid 3D pipeline */
+  hybrid3DPipeline: false,
+
+  /** Enable dual-track technical drawing generation */
+  dualTrackTechnicalDrawings: false,
+
+  /** Route reasoning through Claude */
+  useClaudeReasoning: false,
+
+  /** Enable v2 geometry DNA generation */
+  geometryDNAv2: false,
+
+  /** Enforce strict panel validation */
+  strictPanelValidation: false,
+
+  /** Fail fast on first invalid panel */
+  strictPanelFailFast: false,
+
+  /** Auto-repair invalid panels */
+  strictPanelAutoRepair: false,
+
+  /** Enable automatic retry logic */
+  enableAutoRetry: true,
+
+  /** Force use of baseline control images */
+  forceBaselineControl: false,
+
+  /** Enforce deterministic 2D generation */
+  strictDeterministic2D: false,
+
+  /** Validate panel quality before composition */
+  panelQualityValidation: false,
+
+  /** Auto-retry failed panel generation */
+  autoRetryFailedPanels: true,
+
+  /** Gate for control image fidelity */
+  controlFidelityGate: false,
+
+  /** Fail-fast behavior in contract gate validation */
+  contractGateFailFast: false,
+
+  /** Use canonical control pack */
+  canonicalControlPack: false,
+
+  /** Require canonical pack presence */
+  requireCanonicalPack: false,
+
+  /** Strict canonical control mode enforcement */
+  strictCanonicalControlMode: false,
+
+  /** Strict geometry pack requirements */
+  strictCanonicalGeometryPack: false,
+
+  /** Max validation passes (used with fallback to 3) */
+  maxValidationPasses: false,
+
+  /** Save control pack to debug */
+  saveControlPackToDebug: false,
+
+  // =========================================================================
+  // NON-HOT-PATH FLAGS (optional services, export gates)
+  // =========================================================================
+
+  /** A1 programmatic composer */
+  a1ProgrammaticComposer: false,
+
+  /** AI stylization rendering */
+  aiStylization: false,
+
+  /** OpenAI image styler */
+  openaiStyler: false,
+
+  /** Vector panel generation */
+  vectorPanelGeneration: false,
+
+  /** Conditioned image pipeline */
+  conditionedImagePipeline: false,
+
+  /** Facade generation layer */
+  facadeGenerationLayer: false,
+
+  /** Block export on consistency failure */
+  blockExportOnConsistencyFailure: false,
+
+  /** Cross-view consistency gate */
+  crossViewConsistencyGate: false,
+
+  /** Semantic vision validation */
+  semanticVisionValidation: false,
+
+  /** Edge-based consistency gate */
+  edgeBasedConsistencyGate: false,
+
+  /** Enforce 3D canonical control */
+  enforce3DCanonicalControl: false,
+
+  // =========================================================================
   // QA / REVIEW SYSTEMS (Opt-in)
   // =========================================================================
 
@@ -697,7 +816,47 @@ export function loadFeatureFlagsFromStorage() {
   }
 }
 
-// Auto-load on module import
+/**
+ * Load P0 gate flags from environment variables (ARCHIAI_*).
+ * Runs once at module init. Env vars override compile-time defaults.
+ */
+function loadP0EnvOverrides() {
+  const env = typeof process !== "undefined" && process.env ? process.env : {};
+
+  const envMap = {
+    ARCHIAI_CDS_REQUIRED: { flag: "cdsRequired", parse: (v) => v === "true" },
+    ARCHIAI_PROGRAM_GATE_MODE: {
+      flag: "programComplianceGate",
+      parse: (v) => v === "hard",
+    },
+    ARCHIAI_DRIFT_GATE_MODE: { flag: "driftGate", parse: (v) => v === "hard" },
+    ARCHIAI_ALLOW_TECHNICAL_FALLBACK: {
+      flag: "allowTechnicalFallback",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_REQUIRE_GEOMETRY_MASK: {
+      flag: "strictGeometryMaskGate",
+      parse: (v) => v === "true",
+    },
+  };
+
+  // Also support REACT_APP_ prefix for CRA browser builds
+  const applied = [];
+  for (const [envKey, { flag, parse }] of Object.entries(envMap)) {
+    const raw = env[envKey] ?? env[`REACT_APP_${envKey}`];
+    if (raw !== undefined && raw !== "") {
+      FEATURE_FLAGS[flag] = parse(raw);
+      applied.push(`${flag}=${FEATURE_FLAGS[flag]} (from ${envKey})`);
+    }
+  }
+
+  if (applied.length > 0) {
+    logger.info("P0 env overrides applied: " + applied.join(", "));
+  }
+}
+
+// Auto-load on module import: env first, then sessionStorage overrides
+loadP0EnvOverrides();
 if (HAS_SESSION_STORAGE) loadFeatureFlagsFromStorage();
 
 /**

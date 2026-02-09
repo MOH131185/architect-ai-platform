@@ -1694,6 +1694,38 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       const designId = `design_${Date.now()}`;
       const sheetId = `sheet_${Date.now()}`;
 
+      // ================================================================
+      // P0 GATE: Post-Render ProgramComplianceGate (CHECKPOINT 2)
+      // ================================================================
+      let gateProgramReport = null;
+      if (programLock && isFeatureEnabled("programComplianceGate")) {
+        logger.info(
+          "🚦 Running Post-Render ProgramComplianceGate (CHECKPOINT 2)...",
+        );
+        try {
+          const postRenderResult = validatePanelsAgainstProgram(
+            generatedPanels.map((p) => ({
+              panelType: p.type,
+              type: p.type,
+            })),
+            programLock,
+            { strict: true },
+          );
+          gateProgramReport = postRenderResult.report;
+          logger.success("✅ Post-Render ProgramComplianceGate passed");
+        } catch (gateErr) {
+          if (gateErr instanceof ProgramComplianceError) {
+            logger.error(`❌ Post-Render gate FAILED: ${gateErr.message}`);
+            return {
+              success: false,
+              error: `Post-render program compliance failed: ${gateErr.violations.join("; ")}`,
+              violations: gateErr.violations,
+            };
+          }
+          throw gateErr;
+        }
+      }
+
       // STEP 7: Detect drift with drift validator
       logger.info("🔍 STEP 7: Validating panel consistency...");
       reportProgress("finalizing", "Validating panel consistency...", 84);
@@ -1961,12 +1993,20 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
 
       if (canonicalDesignState && isFeatureEnabled("driftGate")) {
         logger.info("🚦 Running Pre-Compose DriftGate...");
+        // Stamp provenance on panels from pipeline-native sources
+        const geometryHash = canonicalDesignState.geometry
+          ? computeRunMetrics({ cds: canonicalDesignState }).cds_hash
+          : null;
         try {
           const driftResult = validatePreComposeDrift(
             generatedPanels.map((p) => ({
               panelType: p.type,
               seed: p.seed,
               cdsHash: canonicalDesignState.hash,
+              geometryHash: geometryHash,
+              promptHash: p.meta?.promptHash || null,
+              controlHash:
+                p.meta?.controlHash || p._controlSource?.imageHash || null,
             })),
             canonicalDesignState,
             { strict: true },
@@ -2201,8 +2241,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         );
         const metrics = computeRunMetrics({
           programLock,
-          gateProgram: null, // Already checked above
-          gateDrift: null, // Already checked above
+          gateProgram: gateProgramReport,
+          gateDrift: null,
           panels: generatedPanels,
           cds: canonicalDesignState,
         });
@@ -2210,6 +2250,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           cds: canonicalDesignState,
           programLock,
           panelManifest,
+          gateProgram: gateProgramReport,
           metrics,
         });
         logger.info(`📊 Run instrumentation saved for ${designId}`);

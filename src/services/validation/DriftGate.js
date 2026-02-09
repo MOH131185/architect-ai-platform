@@ -82,22 +82,35 @@ export function validatePreComposeDrift(panels, cds, options = {}) {
   let driftSignals = 0;
   let totalChecks = 0;
 
+  const { requireProvenance = false } = options;
+
   for (const panel of panels || []) {
     const panelType = panel.panelType || panel.type;
+
+    // Provenance completeness check (strict mode)
+    if (requireProvenance || strict) {
+      const missing = [];
+      if (panel.seed === undefined || panel.seed === null) missing.push("seed");
+      if (!panel.cdsHash) missing.push("cdsHash");
+      if (missing.length > 0) {
+        violations.push(
+          `Panel ${panelType} missing provenance: ${missing.join(", ")}`,
+        );
+        driftSignals++;
+        totalChecks++;
+      }
+    }
 
     // Check seed consistency
     if (panel.seed !== undefined && cds.seed !== undefined) {
       totalChecks++;
-      // Panel seed should be derivable from base seed
-      // baseSeed + panelIndex * 137 (mod 1000000)
-      // We can't verify exact index, but seed should be deterministic
       if (typeof panel.seed !== "number" || panel.seed < 0) {
         violations.push(`Panel ${panelType} has invalid seed: ${panel.seed}`);
         driftSignals++;
       }
     }
 
-    // Check CDS hash reference (if panel carries one)
+    // Check CDS hash reference
     if (panel.cdsHash && cds.hash) {
       totalChecks++;
       if (panel.cdsHash !== cds.hash) {
@@ -109,7 +122,7 @@ export function validatePreComposeDrift(panels, cds, options = {}) {
       }
     }
 
-    // Check geometry hash reference (if panel carries one)
+    // Check geometry hash reference
     if (panel.geometryHash && cds.geometry) {
       totalChecks++;
       const expectedGeoHash = computeCDSHashSync(cds.geometry);
@@ -117,6 +130,13 @@ export function validatePreComposeDrift(panels, cds, options = {}) {
         violations.push(`Panel ${panelType} geometry hash drift detected`);
         driftSignals++;
       }
+    }
+
+    // Check prompt hash (non-null when present)
+    if (panel.promptHash === "") {
+      totalChecks++;
+      violations.push(`Panel ${panelType} has empty promptHash`);
+      driftSignals++;
     }
   }
 
