@@ -1105,13 +1105,100 @@ function TC_ROUTE_008() {
 }
 
 // ===================================================================
+// TC-LABEL-009: Schema & history default workflow labels use constants
+// ===================================================================
+async function TC_LABEL_009() {
+  console.log(
+    "\n📋 TC-LABEL-009: Schema & history default labels use PIPELINE_MODE",
+  );
+  console.log(
+    "   Criteria: No hardcoded legacy labels in schema builders or history services",
+  );
+
+  // Import schema builders and history service
+  const schemas = await import("./src/types/schemas.js");
+  const dgh = await import("./src/services/designGenerationHistory.js");
+
+  // createSheetResult default workflow should be PIPELINE_MODE.MULTI_PANEL
+  const sheetResult = schemas.createSheetResult({});
+  assert(
+    sheetResult.workflow === PIPELINE_MODE.MULTI_PANEL,
+    `createSheetResult default workflow = "${sheetResult.workflow}" (expected "${PIPELINE_MODE.MULTI_PANEL}")`,
+  );
+
+  // createSheetResult preserves explicit workflow
+  const customSheet = schemas.createSheetResult({ workflow: "custom_test" });
+  assert(
+    customSheet.workflow === "custom_test",
+    "createSheetResult preserves explicit workflow",
+  );
+
+  // normalizeMultiPanelResult default workflow should be PIPELINE_MODE.MULTI_PANEL
+  const normalized = schemas.normalizeMultiPanelResult({ success: true });
+  assert(
+    normalized.metadata?.workflow === PIPELINE_MODE.MULTI_PANEL,
+    `normalizeMultiPanelResult default workflow = "${normalized.metadata?.workflow}" (expected "${PIPELINE_MODE.MULTI_PANEL}")`,
+  );
+
+  // normalizeMultiPanelResult passes through explicit workflow
+  const customNorm = schemas.normalizeMultiPanelResult({
+    success: true,
+    workflow: "explicit_mode",
+  });
+  assert(
+    customNorm.metadata?.workflow === "explicit_mode",
+    "normalizeMultiPanelResult passes through explicit workflow",
+  );
+
+  // createBaselineArtifactBundle default workflow
+  const baseline = schemas.createBaselineArtifactBundle({});
+  assert(
+    baseline.metadata?.workflow === PIPELINE_MODE.MULTI_PANEL,
+    `createBaselineArtifactBundle default workflow = "${baseline.metadata?.workflow}" (expected "${PIPELINE_MODE.MULTI_PANEL}")`,
+  );
+
+  // designGenerationHistory.startSession default workflow
+  const historyService = dgh.default;
+  const sessionId = historyService.startSession({ seed: 1 });
+  const session = historyService.getSession
+    ? historyService.getSession(sessionId)
+    : null;
+  if (session) {
+    assert(
+      session.original.workflow === PIPELINE_MODE.MULTI_PANEL,
+      `startSession default workflow = "${session.original.workflow}" (expected "${PIPELINE_MODE.MULTI_PANEL}")`,
+    );
+  } else {
+    // If getSession not available, verify by starting with explicit workflow
+    const sid2 = historyService.startSession({
+      seed: 2,
+      workflow: PIPELINE_MODE.MULTI_PANEL,
+    });
+    assert(
+      sid2,
+      "startSession accepts PIPELINE_MODE.MULTI_PANEL without error",
+    );
+  }
+
+  // No legacy labels in defaults — verify none of the old strings appear
+  assert(
+    sheetResult.workflow !== "a1-sheet-one-shot",
+    'createSheetResult does NOT default to "a1-sheet-one-shot"',
+  );
+  assert(
+    normalized.metadata?.workflow !== "multi-panel-a1",
+    'normalizeMultiPanelResult does NOT default to "multi-panel-a1"',
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005..008 | TC-ENV-006                        ║");
+  console.log("║  TC-PIPE-005..009 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -1132,6 +1219,7 @@ async function main() {
   TC_ENV_006();
   TC_GEO_007();
   TC_ROUTE_008();
+  await TC_LABEL_009();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);

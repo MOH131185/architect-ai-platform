@@ -47,6 +47,7 @@ import baselineArtifactStore from "./baselineArtifactStore.js";
 // import { compositeA1Sheet } from "./a1/A1SheetGenerator.js";
 // import architecturalSheetService from "./architecturalSheetService.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
+import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
   validateAndCorrectFootprint,
   polygonToLocalXY,
@@ -516,8 +517,8 @@ class DNAWorkflowOrchestrator {
     };
   }
 
-  // runA1SheetWorkflow() and runHybridA1Workflow() removed.
-  // All callers now route through workflowRouter.js → runMultiPanelA1Workflow().
+  // All A1 generation routed through workflowRouter.executeWorkflow().
+  // Only PIPELINE_MODE.MULTI_PANEL is supported; other modes throw UnsupportedPipelineModeError.
 
   async attachMassingPreview(
     masterDNA,
@@ -2175,7 +2176,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           height: compositionResult.metadata.height,
           a1LayoutKey: "uk-riba-standard",
           generatedAt: new Date().toISOString(),
-          workflow: geometryDNA ? "geometry-volume-first" : "multi-panel-a1",
+          workflow: PIPELINE_MODE.MULTI_PANEL,
           consistencyScore: consistencyReport.consistencyScore,
           panelCount: generatedPanels.length,
           panelValidations,
@@ -2279,7 +2280,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         },
         panelValidations,
         metadata: {
-          workflow: geometryDNA ? "geometry-volume-first" : "multi-panel-a1",
+          workflow: PIPELINE_MODE.MULTI_PANEL,
           panelCount: generatedPanels.length,
           consistencyScore: consistencyReport.consistencyScore,
           generatedAt: new Date().toISOString(),

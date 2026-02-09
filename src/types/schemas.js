@@ -1,15 +1,17 @@
 /**
  * Shared Type Schemas
- * 
+ *
  * Central type definitions for:
  * - DNA (Master Design DNA)
  * - SheetDescriptor (Sheet configuration)
  * - SheetResult (Generated sheet output)
  * - OverlayDescriptor (Overlay metadata)
  * - ModifyRequest (Modification request)
- * 
+ *
  * Used across orchestrator, prompt builder, AI calls, viewer, and export.
  */
+
+import { PIPELINE_MODE } from "../config/pipelineMode.js";
 
 /**
  * @typedef {Object} DNA
@@ -324,41 +326,44 @@
  * @returns {DNA} Normalized DNA
  */
 export function normalizeDNA(dna) {
-  if (!dna || typeof dna !== 'object') {
+  if (!dna || typeof dna !== "object") {
     return null;
   }
-  
+
   return {
     dimensions: dna.dimensions || {},
     materials: Array.isArray(dna.materials) ? dna.materials : [],
     rooms: Array.isArray(dna.rooms) ? dna.rooms : [],
     viewSpecificFeatures: dna.viewSpecificFeatures || {},
-    consistencyRules: Array.isArray(dna.consistencyRules) ? dna.consistencyRules : [],
-    architecturalStyle: dna.architecturalStyle || dna.architectural_style?.name || 'Contemporary',
+    consistencyRules: Array.isArray(dna.consistencyRules)
+      ? dna.consistencyRules
+      : [],
+    architecturalStyle:
+      dna.architecturalStyle || dna.architectural_style?.name || "Contemporary",
     geometry: dna.geometry || dna.geometryDNA || null,
-    projectType: dna.projectType || dna.buildingProgram || 'residential',
+    projectType: dna.projectType || dna.buildingProgram || "residential",
     buildingCategory: dna.buildingCategory || null,
     buildingSubType: dna.buildingSubType || null,
-    buildingNotes: dna.buildingNotes || '',
-    entranceDirection: dna.entranceDirection || 'N',
+    buildingNotes: dna.buildingNotes || "",
+    entranceDirection: dna.entranceDirection || "N",
     programSpaces: Array.isArray(dna.programSpaces) ? dna.programSpaces : [],
     environmental: dna.environmental || {
       uValues: {
         wall: 0.18,
         roof: 0.13,
         glazing: 1.4,
-        floor: 0.15
+        floor: 0.15,
       },
-      epcRating: 'B',
+      epcRating: "B",
       epcScore: 85,
-      ventilation: 'Natural cross-ventilation',
+      ventilation: "Natural cross-ventilation",
       sunOrientation: 180,
       airTightness: 5.0,
-      renewableEnergy: null
+      renewableEnergy: null,
     },
     boundaryValidation: dna.boundaryValidation || null,
     siteConstraints: dna.siteConstraints || null,
-    version: dna.version || '1.0'
+    version: dna.version || "1.0",
   };
 }
 
@@ -368,19 +373,22 @@ export function normalizeDNA(dna) {
  * @returns {SiteSnapshot} Normalized site snapshot
  */
 export function normalizeSiteSnapshot(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object') {
+  if (!snapshot || typeof snapshot !== "object") {
     return null;
   }
-  
+
   return {
-    address: snapshot.address || '',
+    address: snapshot.address || "",
     coordinates: snapshot.coordinates || snapshot.center || { lat: 0, lng: 0 },
-    sitePolygon: Array.isArray(snapshot.sitePolygon) ? snapshot.sitePolygon : 
-                 Array.isArray(snapshot.polygon) ? snapshot.polygon : [],
+    sitePolygon: Array.isArray(snapshot.sitePolygon)
+      ? snapshot.sitePolygon
+      : Array.isArray(snapshot.polygon)
+        ? snapshot.polygon
+        : [],
     climate: snapshot.climate || {},
     zoning: snapshot.zoning || {},
     dataUrl: snapshot.dataUrl || null,
-    metadata: snapshot.metadata || {}
+    metadata: snapshot.metadata || {},
   };
 }
 
@@ -390,36 +398,41 @@ export function normalizeSiteSnapshot(snapshot) {
  * @returns {SheetMetadata} Normalized metadata
  */
 export function normalizeSheetMetadata(metadata) {
-  if (!metadata || typeof metadata !== 'object') {
+  if (!metadata || typeof metadata !== "object") {
     return null;
   }
 
   const panelArray = Array.isArray(metadata.panels) ? metadata.panels : [];
   const panelMap =
     metadata.panelMap ||
-    (!Array.isArray(metadata.panels) && metadata.panels && typeof metadata.panels === 'object' ? metadata.panels : null);
-  
+    (!Array.isArray(metadata.panels) &&
+    metadata.panels &&
+    typeof metadata.panels === "object"
+      ? metadata.panels
+      : null);
+
   return {
-    format: metadata.format || 'A1',
-    orientation: metadata.orientation || 'landscape',
+    format: metadata.format || "A1",
+    orientation: metadata.orientation || "landscape",
     dimensions: metadata.dimensions || {},
     coordinates: metadata.coordinates || metadata.panelCoordinates || null,
     generatedAt: metadata.generatedAt || new Date().toISOString(),
-    dnaVersion: metadata.dnaVersion || '1.0',
+    dnaVersion: metadata.dnaVersion || "1.0",
     portfolioBlend: metadata.portfolioBlend || 70,
-    location: metadata.location || '',
-    style: metadata.style || 'Contemporary',
+    location: metadata.location || "",
+    style: metadata.style || "Contemporary",
     buildingCategory: metadata.buildingCategory || null,
     buildingSubType: metadata.buildingSubType || null,
-    entranceOrientation: metadata.entranceOrientation || 'N',
+    entranceOrientation: metadata.entranceOrientation || "N",
     hasSitePlan: metadata.hasSitePlan || false,
-    sitePlanPolicy: metadata.sitePlanPolicy || 'placeholder',
+    sitePlanPolicy: metadata.sitePlanPolicy || "placeholder",
     panels: panelArray,
     panelMap,
-    model: metadata.model || 'FLUX.1-dev',
+    model: metadata.model || "FLUX.1-dev",
     width: metadata.width || 1792,
     height: metadata.height || 1269,
-    a1LayoutKey: metadata.a1LayoutKey || 'uk-riba-standard'
+    a1LayoutKey: metadata.a1LayoutKey || "uk-riba-standard",
+    workflow: metadata.workflow || undefined,
   };
 }
 
@@ -430,16 +443,21 @@ export function normalizeSheetMetadata(metadata) {
  */
 export function createSheetDescriptor(params) {
   return {
-    sheetType: params.sheetType || 'ARCH',
+    sheetType: params.sheetType || "ARCH",
     sheetId: params.sheetId || `sheet_${Date.now()}`,
     sheetGroupId: params.sheetGroupId || null,
-    config: params.config || { size: 'A1', orientation: 'landscape', dpi: 300, format: 'PNG' },
+    config: params.config || {
+      size: "A1",
+      orientation: "landscape",
+      dpi: 300,
+      format: "PNG",
+    },
     dna: normalizeDNA(params.dna),
     siteSnapshot: normalizeSiteSnapshot(params.siteSnapshot),
     overlays: Array.isArray(params.overlays) ? params.overlays : [],
     layout: params.layout || null,
     seed: params.seed || Date.now(),
-    basePrompt: params.basePrompt || ''
+    basePrompt: params.basePrompt || "",
   };
 }
 
@@ -450,17 +468,18 @@ export function createSheetDescriptor(params) {
  */
 export function createSheetResult(params) {
   return {
-    url: params.url || params.composedSheetUrl || '',
-    composedSheetUrl: params.composedSheetUrl || params.url || '',
-    originalUrl: params.originalUrl || params.url || params.composedSheetUrl || '',
+    url: params.url || params.composedSheetUrl || "",
+    composedSheetUrl: params.composedSheetUrl || params.url || "",
+    originalUrl:
+      params.originalUrl || params.url || params.composedSheetUrl || "",
     seed: params.seed || 0,
-    prompt: params.prompt || '',
-    negativePrompt: params.negativePrompt || '',
+    prompt: params.prompt || "",
+    negativePrompt: params.negativePrompt || "",
     metadata: normalizeSheetMetadata(params.metadata),
     dna: normalizeDNA(params.dna),
     validation: params.validation || null,
     consistencyScore: params.consistencyScore || null,
-    workflow: params.workflow || 'a1-sheet-one-shot'
+    workflow: params.workflow || PIPELINE_MODE.MULTI_PANEL,
   };
 }
 
@@ -470,13 +489,21 @@ export function createSheetResult(params) {
  * @returns {Object|null} Normalized result
  */
 export function normalizeMultiPanelResult(raw) {
-  if (!raw || typeof raw !== 'object') {
+  if (!raw || typeof raw !== "object") {
     return null;
   }
 
-  const panelMap = raw.panelMap || raw.panels || raw.metadata?.panels || raw.a1Sheet?.panelMap || raw.a1Sheet?.panels || {};
-  const geometryDNA = raw.geometryDNA || raw.geometry || raw.a1Sheet?.geometryDNA || null;
-  const geometryRenders = raw.geometryRenders || raw.a1Sheet?.geometryRenders || null;
+  const panelMap =
+    raw.panelMap ||
+    raw.panels ||
+    raw.metadata?.panels ||
+    raw.a1Sheet?.panelMap ||
+    raw.a1Sheet?.panels ||
+    {};
+  const geometryDNA =
+    raw.geometryDNA || raw.geometry || raw.a1Sheet?.geometryDNA || null;
+  const geometryRenders =
+    raw.geometryRenders || raw.a1Sheet?.geometryRenders || null;
   const coordinates =
     raw.panelCoordinates ||
     raw.coordinates ||
@@ -496,10 +523,12 @@ export function normalizeMultiPanelResult(raw) {
 
   const normalizedMetadata = normalizeSheetMetadata({
     ...raw.metadata,
-    workflow: raw.metadata?.workflow || raw.workflow || 'multi-panel-a1',
-    panelCount: raw.metadata?.panelCount || (panelMap ? Object.keys(panelMap).length : 0),
+    workflow:
+      raw.metadata?.workflow || raw.workflow || PIPELINE_MODE.MULTI_PANEL,
+    panelCount:
+      raw.metadata?.panelCount || (panelMap ? Object.keys(panelMap).length : 0),
     panels: panelMap,
-    coordinates
+    coordinates,
   });
 
   const normalized = {
@@ -510,7 +539,7 @@ export function normalizeMultiPanelResult(raw) {
     masterDNA: raw.masterDNA || raw.dna,
     dna: raw.masterDNA || raw.dna,
     seed: raw.metadata?.baseSeed || raw.seed || raw.seeds?.base || Date.now(),
-    prompt: raw.prompt || raw.mainPrompt || 'Multi-panel A1 generation',
+    prompt: raw.prompt || raw.mainPrompt || "Multi-panel A1 generation",
     metadata: normalizedMetadata,
     panelCoordinates: coordinates,
     coordinates,
@@ -522,7 +551,7 @@ export function normalizeMultiPanelResult(raw) {
     projectContext: raw.projectContext,
     locationData: raw.locationData,
     geometryDNA,
-    geometryRenders
+    geometryRenders,
   };
 
   normalized.a1Sheet = {
@@ -534,7 +563,7 @@ export function normalizeMultiPanelResult(raw) {
     panelMap,
     coordinates,
     geometryDNA,
-    geometryRenders
+    geometryRenders,
   };
 
   return normalized;
@@ -548,16 +577,16 @@ export function normalizeMultiPanelResult(raw) {
 export function createOverlayDescriptor(params) {
   return {
     id: params.id || `overlay_${Date.now()}`,
-    type: params.type || 'annotation',
+    type: params.type || "annotation",
     dataUrl: params.dataUrl || null,
     position: {
       x: params.position?.x || 0,
       y: params.position?.y || 0,
       width: params.position?.width || 1,
-      height: params.position?.height || 1
+      height: params.position?.height || 1,
     },
     metadata: params.metadata || {},
-    zIndex: params.zIndex || 0
+    zIndex: params.zIndex || 0,
   };
 }
 
@@ -568,21 +597,21 @@ export function createOverlayDescriptor(params) {
  */
 export function createModifyRequest(params) {
   return {
-    designId: params.designId || '',
-    sheetId: params.sheetId || '',
-    versionId: params.versionId || 'base',
+    designId: params.designId || "",
+    sheetId: params.sheetId || "",
+    versionId: params.versionId || "base",
     quickToggles: {
       addSections: params.quickToggles?.addSections || false,
       add3DView: params.quickToggles?.add3DView || false,
       addInterior3D: params.quickToggles?.addInterior3D || false,
       addDetails: params.quickToggles?.addDetails || false,
       addFloorPlans: params.quickToggles?.addFloorPlans || false,
-      addSitePlan: params.quickToggles?.addSitePlan || false
+      addSitePlan: params.quickToggles?.addSitePlan || false,
     },
-    customPrompt: params.customPrompt || '',
+    customPrompt: params.customPrompt || "",
     targetPanels: Array.isArray(params.targetPanels) ? params.targetPanels : [],
     strictLock: params.strictLock !== false,
-    imageStrength: params.imageStrength || null
+    imageStrength: params.imageStrength || null,
   };
 }
 
@@ -592,45 +621,52 @@ export function createModifyRequest(params) {
  * @returns {BaselineArtifactBundle} Baseline artifact bundle
  */
 export function createBaselineArtifactBundle(params) {
-  const workflow = params.workflow || params.metadata?.workflow || 'a1-sheet-one-shot';
+  const workflow =
+    params.workflow || params.metadata?.workflow || PIPELINE_MODE.MULTI_PANEL;
   const panelCount = params.panels ? Object.keys(params.panels).length : 0;
-  
+
   return {
-    designId: params.designId || '',
-    sheetId: params.sheetId || '',
-    baselineImageUrl: params.baselineImageUrl || '',
+    designId: params.designId || "",
+    sheetId: params.sheetId || "",
+    baselineImageUrl: params.baselineImageUrl || "",
     siteSnapshotUrl: params.siteSnapshotUrl || null,
     baselineDNA: normalizeDNA(params.baselineDNA),
     baselineLayout: {
-      panelCoordinates: params.baselineLayout?.panelCoordinates || params.panelCoordinates || [],
-      layoutKey: params.baselineLayout?.layoutKey || params.a1LayoutKey || 'uk-riba-standard',
+      panelCoordinates:
+        params.baselineLayout?.panelCoordinates ||
+        params.panelCoordinates ||
+        [],
+      layoutKey:
+        params.baselineLayout?.layoutKey ||
+        params.a1LayoutKey ||
+        "uk-riba-standard",
       sheetWidth: params.baselineLayout?.sheetWidth || params.width || 1792,
-      sheetHeight: params.baselineLayout?.sheetHeight || params.height || 1269
+      sheetHeight: params.baselineLayout?.sheetHeight || params.height || 1269,
     },
     geometryBaseline: params.geometryBaseline || null,
     panels: params.panels || {},
     metadata: {
       seed: params.seed || 0,
-      model: params.model || 'FLUX.1-dev',
-      dnaHash: params.dnaHash || '',
-      layoutHash: params.layoutHash || '',
+      model: params.model || "FLUX.1-dev",
+      dnaHash: params.dnaHash || "",
+      layoutHash: params.layoutHash || "",
       width: params.width || 1792,
       height: params.height || 1269,
-      a1LayoutKey: params.a1LayoutKey || 'uk-riba-standard',
+      a1LayoutKey: params.a1LayoutKey || "uk-riba-standard",
       generatedAt: params.generatedAt || new Date().toISOString(),
       workflow: workflow,
       consistencyScore: params.consistencyScore || null,
       panelCount: panelCount,
-      geometryHash: params.geometryHash || '',
-      ...params.metadata
+      geometryHash: params.geometryHash || "",
+      ...params.metadata,
     },
     seeds: {
       base: params.seeds?.base || params.seed || 0,
-      derivationMethod: params.seeds?.derivationMethod || 'hash-derived',
-      panelSeeds: params.seeds?.panelSeeds || {}
+      derivationMethod: params.seeds?.derivationMethod || "hash-derived",
+      panelSeeds: params.seeds?.panelSeeds || {},
     },
-    basePrompt: params.basePrompt || '',
-    consistencyLocks: params.consistencyLocks || []
+    basePrompt: params.basePrompt || "",
+    consistencyLocks: params.consistencyLocks || [],
   };
 }
 
@@ -646,10 +682,10 @@ export function createWorkflowParams(params) {
     designSpec: params.designSpec || {},
     featureFlags: params.featureFlags || {},
     seed: params.seed || Date.now(),
-    sheetType: params.sheetType || 'ARCH',
+    sheetType: params.sheetType || "ARCH",
     overlays: Array.isArray(params.overlays) ? params.overlays : [],
-    mode: params.mode || 'generate',
-    hooks: params.hooks || {}
+    mode: params.mode || "generate",
+    hooks: params.hooks || {},
   };
 }
 
@@ -664,6 +700,5 @@ export default {
   createModifyRequest,
   createBaselineArtifactBundle,
   createWorkflowParams,
-  normalizeMultiPanelResult
+  normalizeMultiPanelResult,
 };
-
