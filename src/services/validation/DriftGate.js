@@ -12,6 +12,7 @@
  */
 
 import { verifyCDSHashSync, computeCDSHashSync } from "./cdsHash.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 
 /**
  * Custom error for drift violations.
@@ -134,17 +135,27 @@ export function validatePreComposeDrift(panels, cds, options = {}) {
 
     // Check geometry hash consistency across panels
     // All panels MUST reference the same canonical geometry hash
-    if (panel.meta?.geometryHash) {
+    const panelGeoHash = panel.geometryHash || panel.meta?.geometryHash;
+    if (panelGeoHash) {
       totalChecks++;
       // Compare against first panel's geometry hash as reference
-      const refGeoHash = (panels || [])[0]?.meta?.geometryHash;
-      if (refGeoHash && panel.meta.geometryHash !== refGeoHash) {
+      const refGeoHash =
+        (panels || [])[0]?.geometryHash ||
+        (panels || [])[0]?.meta?.geometryHash;
+      if (refGeoHash && panelGeoHash !== refGeoHash) {
         violations.push(
-          `Panel ${panelType} geometry hash (${panel.meta.geometryHash.substring(0, 8)}...) ` +
+          `Panel ${panelType} geometry hash (${panelGeoHash.substring(0, 8)}...) ` +
             `differs from reference panel (${refGeoHash.substring(0, 8)}...) — canonical geometry mismatch`,
         );
         driftSignals++;
       }
+    } else if (isFeatureEnabled("geometryAuthorityMandatory")) {
+      // Fail-closed: geometry hash is REQUIRED when authority is mandatory
+      totalChecks++;
+      violations.push(
+        `Panel ${panelType} is missing geometryHash — geometry authority is mandatory`,
+      );
+      driftSignals++;
     }
 
     // Check prompt hash (non-null when present)

@@ -1,6 +1,19 @@
 /**
- * Canonical Pack Builder - Stub
+ * Canonical Pack Builder
+ *
+ * Delegates to CanonicalGeometryPackService — the single source of truth
+ * for canonical geometry pack construction. This module re-exports the
+ * real implementation to preserve backward-compatible import paths.
+ *
+ * NO STUB BEHAVIOR: Every function calls the real implementation.
  */
+
+import {
+  buildCanonicalPack as _buildCanonicalPack,
+  hasCanonicalPack as _hasCanonicalPack,
+  getCanonicalPack as _getCanonicalPack,
+  getControlForPanel as _getCanonicalRender,
+} from "./CanonicalGeometryPackService.js";
 
 export const PACK_STATUS = {
   EMPTY: "EMPTY",
@@ -9,25 +22,26 @@ export const PACK_STATUS = {
 };
 
 export function buildCanonicalPack(data) {
-  return { status: PACK_STATUS.EMPTY };
+  return _buildCanonicalPack(data);
 }
 
 export function hasCanonicalPack(data) {
-  return false;
+  return _hasCanonicalPack(data);
 }
 
 export function getCanonicalPack(data) {
-  return null;
+  return _getCanonicalPack(data);
 }
 
 export function getCanonicalRender(pack, view) {
-  return null;
+  return _getCanonicalRender(pack, view);
 }
 
-export default {
+const CanonicalPackBuilderExports = {
   PACK_STATUS,
   buildCanonicalPack,
   hasCanonicalPack,
   getCanonicalPack,
   getCanonicalRender,
 };
+export default CanonicalPackBuilderExports;

@@ -14,6 +14,7 @@ import {
   normalizeRawDNA,
   validateDNASchema,
   convertToLegacyDNA,
+  freezeDNA,
 } from "./dnaSchema.js";
 import { repairDNA } from "./dnaRepair.js";
 import geometryVolumeReasoning from "./geometryVolumeReasoning.js";
@@ -167,6 +168,10 @@ class TwoPassDNAGenerator {
     } else {
       logger.debug("⏭️  PASS C: Skipped (geometryVolumeFirst flag disabled)");
     }
+
+    // Freeze DNA — it is now the immutable authority for all downstream gates
+    freezeDNA(validatedDNA);
+    logger.info("   DNA frozen (immutable authority)");
 
     // Convert to legacy format for compatibility
     const legacyDNA = convertToLegacyDNA(validatedDNA);

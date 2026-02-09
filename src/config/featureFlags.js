@@ -579,29 +579,29 @@ export const FEATURE_FLAGS = {
   /** Fail-fast behavior in contract gate validation */
   contractGateFailFast: false,
 
-  /** Use canonical control pack (shadow mode: build pack but don't require it) */
+  /** Use canonical control pack (enforce mode: build pack for every generation) */
   canonicalControlPack: true,
 
   /** Require canonical pack presence (enforce mode: block generation without pack) */
-  requireCanonicalPack: false,
+  requireCanonicalPack: true,
 
   /**
    * Geometry Authority Mandatory
    *
-   * When enabled (enforce mode):
+   * When enabled (enforce mode, DEFAULT):
    * - Canonical geometry pack is the mandatory authority for all panels
    * - All panels receive canonical SVG as init_image
    * - Composition requires identical geometry hash across all panels
    * - No panel may generate without geometry control
    *
-   * When disabled (shadow mode, default):
+   * When disabled (shadow mode):
    * - Canonical pack is built and used when available
    * - Pipeline falls back to hero-first flow if pack unavailable
    *
    * @type {boolean}
-   * @default false
+   * @default true
    */
-  geometryAuthorityMandatory: false,
+  geometryAuthorityMandatory: true,
 
   /**
    * DNA Schema Version
@@ -862,8 +862,8 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.controlFidelityGate = false;
   FEATURE_FLAGS.contractGateFailFast = false;
   FEATURE_FLAGS.canonicalControlPack = true;
-  FEATURE_FLAGS.requireCanonicalPack = false;
-  FEATURE_FLAGS.geometryAuthorityMandatory = false;
+  FEATURE_FLAGS.requireCanonicalPack = true;
+  FEATURE_FLAGS.geometryAuthorityMandatory = true;
   FEATURE_FLAGS.dnaSchemaVersion = 2;
   FEATURE_FLAGS.areaTolerance = 0.03;
   FEATURE_FLAGS.strictCanonicalControlMode = false;
@@ -951,14 +951,16 @@ function loadP0EnvOverrides() {
       flag: null, // compound: sets multiple flags
       parse: (v) => v, // raw string
       apply: (v) => {
-        if (v === "enforce") {
-          FEATURE_FLAGS.geometryAuthorityMandatory = true;
-          FEATURE_FLAGS.canonicalControlPack = true;
-          FEATURE_FLAGS.requireCanonicalPack = true;
-        } else if (v === "shadow") {
+        if (v === "shadow") {
+          // Shadow mode: build pack but don't require it (opt-in only)
           FEATURE_FLAGS.geometryAuthorityMandatory = false;
           FEATURE_FLAGS.canonicalControlPack = true;
           FEATURE_FLAGS.requireCanonicalPack = false;
+        } else {
+          // Default and "enforce": geometry authority is mandatory
+          FEATURE_FLAGS.geometryAuthorityMandatory = true;
+          FEATURE_FLAGS.canonicalControlPack = true;
+          FEATURE_FLAGS.requireCanonicalPack = true;
         }
       },
     },

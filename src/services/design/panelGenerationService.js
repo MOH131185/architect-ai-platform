@@ -53,7 +53,6 @@ import {
   hasCanonicalPack as hasGeometryPack,
   getControlForPanel as getGeometryControlForPanel,
   getInitImageParams as getGeometryInitImageParams,
-  validateBeforeGeneration as validateGeometryPackBeforeGeneration,
   CanonicalPackError,
   ERROR_CODES as GEOMETRY_PACK_ERROR_CODES,
   CANONICAL_PANEL_TYPES as GEOMETRY_PANEL_TYPES,
@@ -1949,6 +1948,7 @@ export async function generateA1PanelsSequential(
     firstJob?.designFingerprint || firstJob?.meta?.designFingerprint;
   const useControlPack = isFeatureEnabled("canonicalControlPack");
   let controlPackGenerated = false;
+  let canonicalGeometryHash = null; // Set when canonical pack builds successfully
 
   // =========================================================================
   // CANONICAL GEOMETRY PACK: Build MANDATORY pack before ANY AI generation
@@ -2019,6 +2019,7 @@ export async function generateA1PanelsSequential(
       );
 
       controlPackGenerated = true;
+      canonicalGeometryHash = geometryPack.geometryHash || null;
 
       // Save pack to debug folder if debug mode enabled
       if (options.debugDir || isFeatureEnabled("saveControlPackToDebug")) {
@@ -2142,6 +2143,13 @@ export async function generateA1PanelsSequential(
     logger.warn(
       "🚧 [CanonicalPackGate] No designFingerprint - cannot validate canonical pack",
     );
+  }
+
+  // Thread canonical geometry hash into every job so panelResult picks it up
+  if (canonicalGeometryHash) {
+    for (const job of jobs) {
+      job._canonicalGeometryHash = canonicalGeometryHash;
+    }
   }
 
   for (let i = 0; i < jobs.length; i++) {
@@ -3707,6 +3715,15 @@ export async function generateA1PanelsSequential(
         negativePrompt: job.negativePrompt,
         dnaSnapshot: job.dnaSnapshot || null,
         meta: job.meta,
+        // Geometry authority: thread canonical geometry hash into every panel
+        geometryHash:
+          job._canonicalGeometryHash ||
+          job.meta?.canonicalDesignState?.geometryHash ||
+          null,
+        cdsHash:
+          job.meta?.cdsFingerprint ||
+          job.meta?.canonicalDesignState?.hash ||
+          null,
       };
 
       // NEW (Phase D): Quality Validation and Auto-Retry
@@ -3875,6 +3892,11 @@ export async function generateA1PanelsSequential(
           null,
         canonicalRenderServiceRunId: job._canonicalControl?.runId || null,
       };
+
+      // Thread geometry hash into meta for DriftGate cross-panel validation
+      if (panelResult.geometryHash && panelResult.meta) {
+        panelResult.meta.geometryHash = panelResult.geometryHash;
+      }
 
       results.push(panelResult);
 

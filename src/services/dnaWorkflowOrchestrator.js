@@ -1506,6 +1506,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             width: result.metadata?.width || job.width,
             height: result.metadata?.height || job.height,
             dnaSnapshot: job.dnaSnapshot,
+            // Top-level geometry authority fields
+            geometryHash: canonicalPack?.geometryHash || null,
+            cdsHash: canonicalDesignState?.hash || null,
             meta: {
               ...job.meta,
               hadGeometryControl: !!geometryRender,
@@ -2118,39 +2121,29 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
-      // COMPOSE GATE: Block composition if required technical panels are missing
-      if (canonicalPack && isFeatureEnabled("requireCanonicalPack")) {
-        const requiredTechnical = [
-          "floor_plan_ground",
-          "elevation_north",
-          "elevation_south",
-          "section_a_a",
-        ];
-        const generatedTypes = new Set(generatedPanels.map((p) => p.type));
-        const missingRequired = requiredTechnical.filter(
-          (t) => !generatedTypes.has(t),
+      // COMPOSE GATE: Formal pre-compose validation (fail-closed)
+      {
+        const { validateBeforeCompose } =
+          await import("./validation/ComposeGate.js");
+        const composeGateResult = validateBeforeCompose(
+          generatedPanels,
+          canonicalDesignState,
+          programLock,
+          canonicalPack,
+          { strict: isFeatureEnabled("requireCanonicalPack") },
         );
-        if (missingRequired.length > 0) {
+        if (!composeGateResult.valid) {
           logger.error(
-            `❌ ComposeGate: Missing required technical panels: ${missingRequired.join(", ")}`,
+            `❌ ComposeGate: ${composeGateResult.errors.length} error(s)`,
           );
+          for (const err of composeGateResult.errors) {
+            logger.error(`   ${err}`);
+          }
           throw new Error(
-            `Composition blocked: missing required panels: ${missingRequired.join(", ")}`,
+            `Composition blocked: ${composeGateResult.errors[0]}`,
           );
         }
-        // Geometry hash consistency: all panels must reference identical geometry hash
-        const panelGeoHashes = generatedPanels
-          .map((p) => p.meta?.geometryHash)
-          .filter(Boolean);
-        const uniqueGeoHashes = [...new Set(panelGeoHashes)];
-        if (uniqueGeoHashes.length > 1) {
-          logger.error(
-            `❌ ComposeGate: Geometry hash inconsistency: ${uniqueGeoHashes.map((h) => h.substring(0, 8)).join(" vs ")}`,
-          );
-          throw new Error(
-            "Composition blocked: panels reference different geometry hashes",
-          );
-        }
+        logger.info("✅ ComposeGate passed");
       }
 
       const composePayload = {
