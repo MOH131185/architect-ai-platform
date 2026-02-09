@@ -42,7 +42,7 @@ let validateProgramLock, validatePanelsAgainstProgram, validateBeforeCompose;
 let validateModifyDrift, validatePreComposeDrift;
 let setFeatureFlag, FEATURE_FLAGS;
 let getCurrentPipelineMode, PIPELINE_MODE;
-let resolveWorkflowByMode, UnsupportedPipelineModeError;
+let resolveWorkflowByMode, UnsupportedPipelineModeError, isA1Workflow;
 
 let passed = 0;
 let failed = 0;
@@ -96,6 +96,7 @@ async function loadModules() {
   const wr = await import("./src/services/workflowRouter.js");
   resolveWorkflowByMode = wr.resolveWorkflowByMode;
   UnsupportedPipelineModeError = wr.UnsupportedPipelineModeError;
+  isA1Workflow = wr.isA1Workflow;
 }
 
 // ===================================================================
@@ -1056,6 +1057,34 @@ function TC_ROUTE_008() {
   if (origMode !== undefined) {
     process.env.PIPELINE_MODE = origMode;
   }
+
+  // isA1Workflow helper
+  assert(
+    isA1Workflow("multi_panel") === true,
+    "isA1Workflow('multi_panel') = true",
+  );
+  assert(
+    isA1Workflow("single_shot") === true,
+    "isA1Workflow('single_shot') = true",
+  );
+  assert(
+    isA1Workflow("multi-panel-a1") === true,
+    "isA1Workflow('multi-panel-a1') = true (legacy)",
+  );
+  assert(
+    isA1Workflow("a1-sheet-one-shot") === true,
+    "isA1Workflow('a1-sheet-one-shot') = true (legacy)",
+  );
+  assert(
+    isA1Workflow("a1-sheet") === true,
+    "isA1Workflow('a1-sheet') = true (legacy)",
+  );
+  assert(
+    isA1Workflow("geometry_first") === false,
+    "isA1Workflow('geometry_first') = false",
+  );
+  assert(isA1Workflow(undefined) === false, "isA1Workflow(undefined) = false");
+  assert(isA1Workflow("") === false, "isA1Workflow('') = false");
 }
 
 // ===================================================================

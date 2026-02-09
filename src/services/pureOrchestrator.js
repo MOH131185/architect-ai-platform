@@ -34,12 +34,13 @@ import logger from "../utils/logger.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
 import {
   resolveWorkflowByMode,
+  executeWorkflow,
   UnsupportedPipelineModeError,
 } from "./workflowRouter.js";
 
 /**
  * Run A1 sheet workflow (pure orchestrator)
- * Routes via getCurrentPipelineMode(); defaults to multi-panel.
+ * Routes via resolveWorkflowByMode(); fails on unsupported modes.
  * @param {WorkflowParams} params - Workflow parameters
  * @returns {Promise<SheetResult>} Sheet result
  */
@@ -47,14 +48,13 @@ export async function runA1SheetWorkflow(params) {
   const { mode } = resolveWorkflowByMode();
   logger.info(`[pureOrchestrator] pipeline mode: ${mode}`);
 
-  const rawMultiPanelResult =
-    await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
-      locationData: params.siteSnapshot,
-      projectContext: params.designSpec,
-      portfolioFiles: params.designSpec?.portfolioBlend?.portfolioFiles || [],
-      siteSnapshot: params.siteSnapshot,
-      baseSeed: params.seed || Date.now(),
-    });
+  const rawMultiPanelResult = await executeWorkflow(dnaWorkflowOrchestrator, {
+    locationData: params.siteSnapshot,
+    projectContext: params.designSpec,
+    portfolioFiles: params.designSpec?.portfolioBlend?.portfolioFiles || [],
+    siteSnapshot: params.siteSnapshot,
+    baseSeed: params.seed || Date.now(),
+  });
 
   const multiPanelResult = normalizeMultiPanelResult(rawMultiPanelResult);
 

@@ -59,6 +59,7 @@ import dnaWorkflowOrchestrator from "./services/dnaWorkflowOrchestrator.js";
 import {
   resolveWorkflowByMode,
   executeWorkflow,
+  isA1Workflow,
 } from "./services/workflowRouter.js";
 import A1SheetViewer from "./components/A1SheetViewer.jsx";
 import ModifyDesignDrawer from "./components/ModifyDesignDrawer.js";
@@ -2491,6 +2492,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     try {
       // Generate unified project seed ONCE for entire project
       const projectSeed = Math.floor(Math.random() * 1000000);
+      const resolvedMode = selectOptimalWorkflow();
       updateProgress("Setup", 1, "Initializing design parameters...");
 
       // 🔧 START NEW GENERATION SESSION FOR MODIFICATION TRACKING
@@ -2500,7 +2502,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         locationData,
         portfolioAnalysis: null, // Will be updated after portfolio processing
         seed: projectSeed,
-        workflow: "multi-panel-a1",
+        workflow: resolvedMode,
       });
       // setCurrentSessionId(sessionId); // Legacy - session ID managed by history service
       console.log("📝 Started generation session:", sessionId);
@@ -2649,9 +2651,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         }
       }
 
-      // Select and validate workflow via centralized router
-      updateProgress("Workflow", 4, "Selecting optimal generation workflow...");
-      const resolvedMode = selectOptimalWorkflow();
+      // resolvedMode already resolved at top of try block
+      updateProgress("Workflow", 4, `Using ${resolvedMode} pipeline...`);
 
       let aiResult;
 
@@ -6523,8 +6524,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                 {/* Multi-Level Floor Plans (hidden if unified sheet or A1 sheet) */}
                 {!generatedDesigns?.isUnified &&
-                  generatedDesigns?.workflow !== "a1-sheet-one-shot" &&
-                  generatedDesigns?.workflow !== "multi-panel-a1" && (
+                  !isA1Workflow(generatedDesigns?.workflow) && (
                     <div className="liquid-glass-card border border-white/20 rounded-xl p-6 backdrop-blur-xl">
                       <h3 className="font-semibold text-white mb-4 flex items-center justify-between">
                         <span className="flex items-center">
@@ -6769,8 +6769,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                 {/* 3D Views: 2 Exterior + 1 Interior (hidden if unified sheet or A1 sheet) */}
                 {!generatedDesigns?.isUnified &&
-                  generatedDesigns?.workflow !== "a1-sheet-one-shot" &&
-                  generatedDesigns?.workflow !== "multi-panel-a1" && (
+                  !isA1Workflow(generatedDesigns?.workflow) && (
                     <div className="liquid-glass-card border border-white/20 rounded-xl p-6 backdrop-blur-xl">
                       {/* STEP 5: Consistency Indicator */}
                       <div className="mb-4 p-3 liquid-glass border border-green-400/50 rounded-lg flex items-start bg-green-500/10">
@@ -7044,8 +7043,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                 {/* Elevations and Sections - Hidden when unified sheet or A1 sheet exists */}
                 {!generatedDesigns?.isUnified &&
-                  generatedDesigns?.workflow !== "a1-sheet-one-shot" &&
-                  generatedDesigns?.workflow !== "multi-panel-a1" &&
+                  !isA1Workflow(generatedDesigns?.workflow) &&
                   generatedDesigns?.technicalDrawings &&
                   (Object.keys(
                     generatedDesigns.technicalDrawings.elevations || {},

@@ -516,41 +516,8 @@ class DNAWorkflowOrchestrator {
     };
   }
 
-  /**
-   * @deprecated Phase 4 – Dead path. UI calls runMultiPanelA1Workflow() exclusively.
-   * Retained for backwards-compatibility but logs a deprecation warning.
-   * Will be removed in a future release.
-   *
-   * @param {Object} ctx - Generation context
-   * @returns {Promise<Object>} Delegates to runMultiPanelA1Workflow
-   */
-  async runA1SheetWorkflow(ctx) {
-    logger.warn(
-      "⚠️  [DEPRECATED] runA1SheetWorkflow() is a dead path. " +
-        "Redirecting to runMultiPanelA1Workflow(). " +
-        "Remove this method in the next major release.",
-    );
-    return this.runMultiPanelA1Workflow(ctx);
-    // Original one-shot/hybrid body removed – see git history for reference.
-  }
-
-  /**
-   * @deprecated Phase 4 – Dead path. Only called from the also-dead runA1SheetWorkflow().
-   * UI calls runMultiPanelA1Workflow() exclusively. Retained for reference.
-   * Will be removed in a future release.
-   *
-   * @param {Object} ctx - Workflow context
-   * @returns {Promise<Object>} Delegates to runMultiPanelA1Workflow
-   */
-  async runHybridA1Workflow(ctx) {
-    logger.warn(
-      "⚠️  [DEPRECATED] runHybridA1Workflow() is a dead path. " +
-        "Redirecting to runMultiPanelA1Workflow(). " +
-        "Remove this method in the next major release.",
-    );
-    return this.runMultiPanelA1Workflow(ctx);
-    // Dead code removed - see git history for original hybrid A1 workflow body.
-  }
+  // runA1SheetWorkflow() and runHybridA1Workflow() removed.
+  // All callers now route through workflowRouter.js → runMultiPanelA1Workflow().
 
   async attachMassingPreview(
     masterDNA,

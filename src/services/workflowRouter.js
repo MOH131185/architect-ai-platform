@@ -81,8 +81,29 @@ export async function executeWorkflow(
   return orchestrator.runMultiPanelA1Workflow(params, options);
 }
 
+/**
+ * Check whether a workflow label represents an A1-pipeline workflow.
+ * Accepts both the current pipeline-mode constants (e.g. "multi_panel")
+ * and the legacy label "multi-panel-a1" / "a1-sheet-one-shot".
+ *
+ * @param {string|undefined} workflow
+ * @returns {boolean}
+ */
+export function isA1Workflow(workflow) {
+  if (!workflow) return false;
+  const A1_LABELS = new Set([
+    PIPELINE_MODE.MULTI_PANEL,
+    PIPELINE_MODE.SINGLE_SHOT,
+    "multi-panel-a1",
+    "a1-sheet-one-shot",
+    "a1-sheet",
+  ]);
+  return A1_LABELS.has(workflow);
+}
+
 export default {
   resolveWorkflowByMode,
   executeWorkflow,
+  isA1Workflow,
   UnsupportedPipelineModeError,
 };

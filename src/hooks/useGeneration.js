@@ -415,7 +415,7 @@ export const useGeneration = () => {
       const timeline = dimensions.floors > 3 ? "18-24 months" : "12-18 months";
 
       const designData = {
-        workflow: "multi-panel-a1",
+        workflow: resolvedMode,
         a1Sheet: aiResult.a1Sheet,
         masterDNA: aiResult.masterDNA,
         panels: aiResult.panelMap || aiResult.panels,
