@@ -636,23 +636,15 @@ function getCommitHashForStamp() {
  * @param {Object} [proof] - Proof signals from generation
  * @returns {string} Pipeline mode
  */
-function getPipelineModeForStamp(proof = null) {
+export function getPipelineModeForStamp(proof = null) {
   // If proof signals provided, use the resolved mode (truthful naming)
   if (proof?.resolvedMode) {
     return proof.resolvedMode;
   }
 
-  // Fallback to env var / defaults
-  if (process.env.PIPELINE_MODE) {
-    const mode = process.env.PIPELINE_MODE.toUpperCase();
-    // Normalize legacy aliases
-    if (mode === "OPTION2" || mode === "MESHY_DALLE3") {
-      return "HYBRID_OPENAI";
-    }
-    return mode;
-  }
-  // Default
-  return "HYBRID_OPENAI";
+  // Fallback to env var, defaulting to the only supported mode
+  const raw = (process.env.PIPELINE_MODE || "multi_panel").toLowerCase().trim();
+  return raw;
 }
 
 /**

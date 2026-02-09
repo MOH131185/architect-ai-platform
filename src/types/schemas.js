@@ -210,7 +210,7 @@ import { PIPELINE_MODE } from "../config/pipelineMode.js";
  * @property {DNA} dna - Master DNA
  * @property {Object} validation - Validation results
  * @property {number} consistencyScore - Consistency score
- * @property {string} workflow - Workflow type (a1-sheet-one-shot, hybrid-a1-sheet, etc.)
+ * @property {string} workflow - Workflow type (PIPELINE_MODE.MULTI_PANEL or legacy label)
  */
 
 /**
@@ -296,7 +296,7 @@ import { PIPELINE_MODE } from "../config/pipelineMode.js";
  * @property {number} metadata.height - Sheet height in pixels
  * @property {string} metadata.a1LayoutKey - A1 layout key
  * @property {string} metadata.generatedAt - Generation timestamp
- * @property {string} metadata.workflow - Workflow type (multi-panel-a1, etc.)
+ * @property {string} metadata.workflow - Workflow type (PIPELINE_MODE.MULTI_PANEL)
  * @property {number} metadata.consistencyScore - Consistency score
  * @property {number} metadata.panelCount - Number of panels
  * @property {Object} seeds - Seed mapping

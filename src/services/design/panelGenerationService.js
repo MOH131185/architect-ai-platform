@@ -2181,11 +2181,15 @@ export async function generateA1PanelsSequential(
     if (isDataPanel(job.type, outputModeForGuard)) {
       intendedGenerator = "svg"; // Data panels use deterministic SVG
     } else if (PIPELINE_TECHNICAL_PANELS.includes(job.type)) {
-      intendedGenerator = isOption2Mode() ? "blender" : "flux";
+      intendedGenerator = isOption2Mode(getCurrentPipelineMode())
+        ? "blender"
+        : "flux";
       // In current implementation, technical panels use SVG which is OK
       intendedGenerator = "svg";
     } else if (PIPELINE_3D_PANELS.includes(job.type)) {
-      intendedGenerator = isOption2Mode() ? "openai" : "flux";
+      intendedGenerator = isOption2Mode(getCurrentPipelineMode())
+        ? "openai"
+        : "flux";
     }
 
     // Validate the intended generator (throws in strict mode if wrong)

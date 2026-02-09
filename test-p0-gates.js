@@ -43,6 +43,7 @@ let validateModifyDrift, validatePreComposeDrift;
 let setFeatureFlag, FEATURE_FLAGS;
 let getCurrentPipelineMode, PIPELINE_MODE;
 let resolveWorkflowByMode, UnsupportedPipelineModeError, isA1Workflow;
+let isOption2Mode;
 
 let passed = 0;
 let failed = 0;
@@ -97,6 +98,8 @@ async function loadModules() {
   resolveWorkflowByMode = wr.resolveWorkflowByMode;
   UnsupportedPipelineModeError = wr.UnsupportedPipelineModeError;
   isA1Workflow = wr.isA1Workflow;
+
+  isOption2Mode = (await import("./src/config/pipelineMode.js")).isOption2Mode;
 }
 
 // ===================================================================
@@ -1236,13 +1239,65 @@ async function TC_ENV_010() {
 }
 
 // ===================================================================
+// TC-STAMP-011: Compose stamp and isOption2Mode routing correctness
+// ===================================================================
+async function TC_STAMP_011() {
+  console.log(
+    "\n📋 TC-STAMP-011: Compose stamp and isOption2Mode routing correctness",
+  );
+  console.log(
+    "   Criteria: No HYBRID_OPENAI default in compose stamp, isOption2Mode requires argument",
+  );
+
+  // 1. getPipelineModeForStamp no longer defaults to HYBRID_OPENAI
+  const { getPipelineModeForStamp } = await import("./api/a1/compose.js");
+  const defaultStamp = getPipelineModeForStamp(null);
+  assert(
+    defaultStamp !== "HYBRID_OPENAI",
+    `Compose stamp does NOT default to HYBRID_OPENAI (got "${defaultStamp}")`,
+  );
+  assert(
+    defaultStamp === "multi_panel",
+    `Compose stamp defaults to "multi_panel" (got "${defaultStamp}")`,
+  );
+
+  // 2. Stamp respects proof.resolvedMode when provided
+  const proofStamp = getPipelineModeForStamp({ resolvedMode: "custom_mode" });
+  assert(
+    proofStamp === "custom_mode",
+    `Compose stamp uses proof.resolvedMode when present (got "${proofStamp}")`,
+  );
+
+  // 3. isOption2Mode with explicit argument returns correct values
+  assert(
+    isOption2Mode(PIPELINE_MODE.GEOMETRY_FIRST) === true,
+    `isOption2Mode("${PIPELINE_MODE.GEOMETRY_FIRST}") = true`,
+  );
+  assert(
+    isOption2Mode(PIPELINE_MODE.MULTI_PANEL) === false,
+    `isOption2Mode("${PIPELINE_MODE.MULTI_PANEL}") = false`,
+  );
+  assert(
+    isOption2Mode(PIPELINE_MODE.HYBRID_OPENAI) === false,
+    `isOption2Mode("${PIPELINE_MODE.HYBRID_OPENAI}") = false`,
+  );
+
+  // 4. isOption2Mode with current mode (multi_panel) returns false
+  const currentMode = getCurrentPipelineMode();
+  assert(
+    isOption2Mode(currentMode) === false,
+    `isOption2Mode(getCurrentPipelineMode()) = false (mode="${currentMode}")`,
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005..010 | TC-ENV-006                        ║");
+  console.log("║  TC-PIPE-005..011 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -1265,6 +1320,7 @@ async function main() {
   TC_ROUTE_008();
   await TC_LABEL_009();
   await TC_ENV_010();
+  await TC_STAMP_011();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);
