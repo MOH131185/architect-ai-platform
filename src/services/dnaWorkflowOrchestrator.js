@@ -94,6 +94,7 @@ import {
   ProgramComplianceError,
 } from "./validation/ProgramComplianceGate.js";
 import { validatePreComposeDrift, DriftError } from "./validation/DriftGate.js";
+import { computeCDSHashSync } from "./validation/cdsHash.js";
 import {
   GenerationPreflight,
   PreflightError,
@@ -1995,7 +1996,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         logger.info("🚦 Running Pre-Compose DriftGate...");
         // Stamp provenance on panels from pipeline-native sources
         const geometryHash = canonicalDesignState.geometry
-          ? computeRunMetrics({ cds: canonicalDesignState }).cds_hash
+          ? computeCDSHashSync(canonicalDesignState.geometry)
           : null;
         try {
           const driftResult = validatePreComposeDrift(

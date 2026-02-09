@@ -56,6 +56,10 @@ import designHistoryService from "./services/designHistoryService.js";
 import PrecisionSiteDrawer from "./components/PrecisionSiteDrawer.jsx";
 // 🆕 A1 Sheet One-Shot Workflow
 import dnaWorkflowOrchestrator from "./services/dnaWorkflowOrchestrator.js";
+import {
+  resolveWorkflowByMode,
+  executeWorkflow,
+} from "./services/workflowRouter.js";
 import A1SheetViewer from "./components/A1SheetViewer.jsx";
 import ModifyDesignDrawer from "./components/ModifyDesignDrawer.js";
 import { computeSiteMetrics } from "./utils/geometry.js";
@@ -2341,11 +2345,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     }
   };
 
-  // Workflow Router - Selects optimal generation path based on available data
-  const selectOptimalWorkflow = (projectContext) => {
-    // A1-ONLY MODE: Always use A1 sheet workflow (13-view mode removed)
-    console.log("📐 Using A1 Sheet One-Shot workflow (A1-only mode enabled)");
-    return "a1-sheet";
+  // Workflow Router - Selects pipeline mode, fails explicitly on unsupported modes
+  const selectOptimalWorkflow = () => {
+    const { mode } = resolveWorkflowByMode();
+    console.log(`📐 Using ${mode} pipeline workflow`);
+    return mode;
   };
 
   // Progress update helper function
@@ -2645,25 +2649,19 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         }
       }
 
-      // Select optimal workflow based on available data
+      // Select and validate workflow via centralized router
       updateProgress("Workflow", 4, "Selecting optimal generation workflow...");
-      selectOptimalWorkflow(projectContext);
+      const resolvedMode = selectOptimalWorkflow();
 
       let aiResult;
 
-      // Execute the selected workflow
-      updateProgress("Generation", 5, "Generating architectural designs...");
-
-      // Use Multi-Panel workflow by default
-      console.log(
-        "🎨 Using MULTI-PANEL A1 workflow (14-panel generation with sharp composition)",
-      );
+      // Execute the resolved workflow
       updateProgress(
         "Generation",
         5,
-        "Generating 14 specialized architectural panels...",
+        `Generating architectural panels (${resolvedMode})...`,
       );
-      aiResult = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
+      aiResult = await executeWorkflow(dnaWorkflowOrchestrator, {
         projectContext,
         locationData,
         portfolioFiles: portfolioFiles || [],
@@ -2803,7 +2801,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       const designData = {
         designId, // 🆕 Include designId in designData
-        workflow: "multi-panel-a1",
+        workflow: resolvedMode,
         a1Sheet: aiResult.a1Sheet,
         masterDNA: aiResult.masterDNA,
         reasoning: aiResult.reasoning || {},

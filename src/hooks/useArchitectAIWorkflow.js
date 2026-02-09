@@ -1,23 +1,27 @@
 /**
  * useArchitectAIWorkflow Hook
- * 
+ *
  * React hook for orchestrating A1 sheet generation and modification workflows.
  * Delegates to pure services (pureOrchestrator, pureModificationService, exportService).
  * Manages loading states, errors, and results.
- * 
+ *
  * No direct service calls in components - all go through this hook.
  */
 
-import { useState, useCallback, useRef } from 'react';
-import { createEnvironmentAdapter } from '../services/environmentAdapter.js';
+import { useState, useCallback, useRef } from "react";
+import { createEnvironmentAdapter } from "../services/environmentAdapter.js";
 // runModifyWorkflow available from '../services/pureOrchestrator.js' if needed
-import { modifySheet } from '../services/pureModificationService.js';
-import exportService from '../services/exportService.js';
-import designHistoryRepository from '../services/designHistoryRepository.js';
-import dnaWorkflowOrchestrator from '../services/dnaWorkflowOrchestrator.js';
-import logger from '../utils/logger.js';
-import { normalizeMultiPanelResult } from '../types/schemas.js';
-import { isFeatureEnabled } from '../config/featureFlags.js';
+import { modifySheet } from "../services/pureModificationService.js";
+import exportService from "../services/exportService.js";
+import designHistoryRepository from "../services/designHistoryRepository.js";
+import dnaWorkflowOrchestrator from "../services/dnaWorkflowOrchestrator.js";
+import logger from "../utils/logger.js";
+import { normalizeMultiPanelResult } from "../types/schemas.js";
+import { isFeatureEnabled } from "../config/featureFlags.js";
+import {
+  resolveWorkflowByMode,
+  executeWorkflow,
+} from "../services/workflowRouter.js";
 
 /**
  * useArchitectAIWorkflow Hook
@@ -31,9 +35,9 @@ export function useArchitectAIWorkflow() {
   const [progress, setProgress] = useState({
     step: 0,
     total: 5,
-    message: '',
-    stage: 'analysis',
-    percentage: 0
+    message: "",
+    stage: "analysis",
+    percentage: 0,
   });
 
   const envRef = useRef(null);
@@ -44,14 +48,14 @@ export function useArchitectAIWorkflow() {
   }
 
   const defaultFeatureFlags = {
-    geometryVolumeFirst: isFeatureEnabled('geometryVolumeFirst')
+    geometryVolumeFirst: isFeatureEnabled("geometryVolumeFirst"),
   };
 
-  const STAGES = ['analysis', 'dna', 'layout', 'rendering', 'finalizing'];
+  const STAGES = ["analysis", "dna", "layout", "rendering", "finalizing"];
 
   const getStageForStep = (step) =>
     STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
-    'analysis';
+    "analysis";
 
   const getStepForStage = (stage) => {
     const index = STAGES.indexOf(stage);
@@ -72,30 +76,37 @@ export function useArchitectAIWorkflow() {
   const generateSheet = useCallback(async (params) => {
     setLoading(true);
     setError(null);
-    setProgress({ step: 0, total: 5, message: 'Starting generation...', stage: 'analysis', percentage: 0 });
+    setProgress({
+      step: 0,
+      total: 5,
+      message: "Starting generation...",
+      stage: "analysis",
+      percentage: 0,
+    });
 
     try {
-      // Use Multi-Panel A1 workflow by default
-      logger.info('Using Multi-Panel A1 workflow', null, '🎨');
+      // Resolve pipeline mode (fails explicitly on unsupported modes)
+      const { mode: resolvedMode } = resolveWorkflowByMode();
+      logger.info(`Using ${resolvedMode} pipeline workflow`, null, "🎨");
 
       const onProgress = (updateOrStep, legacyMessage) => {
         const total = 5;
 
-        if (updateOrStep && typeof updateOrStep === 'object') {
+        if (updateOrStep && typeof updateOrStep === "object") {
           const rawStage = updateOrStep.stage;
-          const stage = STAGES.includes(rawStage) ? rawStage : 'rendering';
+          const stage = STAGES.includes(rawStage) ? rawStage : "rendering";
           const rawPercent = updateOrStep.percentage ?? updateOrStep.percent;
           const percentage =
-            typeof rawPercent === 'number' && Number.isFinite(rawPercent)
+            typeof rawPercent === "number" && Number.isFinite(rawPercent)
               ? Math.max(0, Math.min(100, Math.round(rawPercent)))
               : Math.round((getStepForStage(stage) / total) * 100);
 
           setProgress({
             step: getStepForStage(stage),
             total,
-            message: updateOrStep.message || legacyMessage || '',
+            message: updateOrStep.message || legacyMessage || "",
             stage,
-            percentage
+            percentage,
           });
           return;
         }
@@ -103,38 +114,56 @@ export function useArchitectAIWorkflow() {
         const step = Number(updateOrStep || 0);
         const stage = getStageForStep(step);
         const percentage = Math.round((step / total) * 100);
-        setProgress({ step, total, message: legacyMessage || '', stage, percentage });
+        setProgress({
+          step,
+          total,
+          message: legacyMessage || "",
+          stage,
+          percentage,
+        });
       };
 
       const workflowLocationData =
-        params.designSpec?.location || params.locationData || params.siteSnapshot || null;
+        params.designSpec?.location ||
+        params.locationData ||
+        params.siteSnapshot ||
+        null;
 
-      const rawMultiPanelResult = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow(
+      const rawMultiPanelResult = await executeWorkflow(
+        dnaWorkflowOrchestrator,
         {
           locationData: workflowLocationData,
           projectContext: params.designSpec,
-          portfolioFiles: params.designSpec?.portfolioBlend?.portfolioFiles || [],
+          portfolioFiles:
+            params.designSpec?.portfolioBlend?.portfolioFiles || [],
           siteSnapshot: params.siteSnapshot,
-          baseSeed: params.seed || Date.now()
+          baseSeed: params.seed || Date.now(),
         },
-        { onProgress }
+        { onProgress },
       );
 
       const multiPanelResult = normalizeMultiPanelResult(rawMultiPanelResult);
 
       if (!multiPanelResult?.success || !multiPanelResult?.composedSheetUrl) {
-        throw new Error(multiPanelResult?.error || 'Multi-panel generation failed');
+        throw new Error(
+          multiPanelResult?.error || "Multi-panel generation failed",
+        );
       }
 
       const sheetResult = {
         ...multiPanelResult,
         url: multiPanelResult.composedSheetUrl,
         composedSheetUrl: multiPanelResult.composedSheetUrl,
-        panelCoordinates: multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
+        panelCoordinates:
+          multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
         metadata: {
           ...multiPanelResult.metadata,
-          panelCount: multiPanelResult.metadata?.panelCount || (multiPanelResult.panelMap ? Object.keys(multiPanelResult.panelMap).length : 0)
-        }
+          panelCount:
+            multiPanelResult.metadata?.panelCount ||
+            (multiPanelResult.panelMap
+              ? Object.keys(multiPanelResult.panelMap).length
+              : 0),
+        },
       };
 
       // Save to design history
@@ -142,7 +171,7 @@ export function useArchitectAIWorkflow() {
         dna: sheetResult.dna,
         basePrompt: sheetResult.prompt,
         seed: sheetResult.seed,
-        sheetType: params.sheetType || 'ARCH',
+        sheetType: params.sheetType || "ARCH",
         sheetMetadata: sheetResult.metadata,
         overlays: params.overlays || [],
         projectContext: params.designSpec,
@@ -159,23 +188,30 @@ export function useArchitectAIWorkflow() {
           metadata: sheetResult.metadata,
           panels: sheetResult.panelMap || sheetResult.panels,
           panelMap: sheetResult.panelMap || sheetResult.panels,
-          coordinates: sheetResult.panelCoordinates
-        }
+          coordinates: sheetResult.panelCoordinates,
+        },
       });
 
       sheetResult.designId = designId;
 
       setResult(sheetResult);
-      setProgress({ step: 5, total: 5, message: 'Complete!', stage: 'finalizing', percentage: 100 });
+      setProgress({
+        step: 5,
+        total: 5,
+        message: "Complete!",
+        stage: "finalizing",
+        percentage: 100,
+      });
 
-      logger.success('Sheet generation complete', { designId });
+      logger.success("Sheet generation complete", { designId });
 
       return sheetResult;
-
     } catch (err) {
       logger.error(`Sheet generation failed: ${err.message}`);
       if (err.stack) {
-        logger.error(`   Stack: ${err.stack.split('\n').slice(0, 3).join('\n')}`);
+        logger.error(
+          `   Stack: ${err.stack.split("\n").slice(0, 3).join("\n")}`,
+        );
       }
       setError(err.message);
       throw err;
@@ -195,15 +231,27 @@ export function useArchitectAIWorkflow() {
   const modifySheetWorkflow = useCallback(async (params) => {
     setLoading(true);
     setError(null);
-    setProgress({ step: 0, total: 6, message: 'Starting modification...', stage: 'analysis', percentage: 0 });
+    setProgress({
+      step: 0,
+      total: 6,
+      message: "Starting modification...",
+      stage: "analysis",
+      percentage: 0,
+    });
 
     try {
-      setProgress({ step: 1, total: 6, message: 'Loading baseline...', stage: 'analysis', percentage: 17 });
+      setProgress({
+        step: 1,
+        total: 6,
+        message: "Loading baseline...",
+        stage: "analysis",
+        percentage: 17,
+      });
 
       const modifyResult = await modifySheet({
         designRef: {
           id: params.designId,
-          sheetId: params.sheetId || 'default'
+          sheetId: params.sheetId || "default",
         },
         baseSheet: null, // Will be loaded from baseline
         dna: null, // Will be loaded from baseline
@@ -211,59 +259,103 @@ export function useArchitectAIWorkflow() {
         env: envRef.current,
         featureFlags: {
           ...defaultFeatureFlags,
-          ...(params.featureFlags || {})
+          ...(params.featureFlags || {}),
         },
-        seed: null // Will use baseline seed
+        seed: null, // Will use baseline seed
       });
 
       const normalizedModifyResult = {
         ...modifyResult,
         url: modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
-        composedSheetUrl: modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
-        geometryDNA: modifyResult.geometryDNA || modifyResult.sheet?.geometryDNA || result?.geometryDNA || null,
-        geometryRenders: modifyResult.geometryRenders || modifyResult.sheet?.geometryRenders || result?.geometryRenders || null,
+        composedSheetUrl:
+          modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
+        geometryDNA:
+          modifyResult.geometryDNA ||
+          modifyResult.sheet?.geometryDNA ||
+          result?.geometryDNA ||
+          null,
+        geometryRenders:
+          modifyResult.geometryRenders ||
+          modifyResult.sheet?.geometryRenders ||
+          result?.geometryRenders ||
+          null,
         a1Sheet: modifyResult.sheet
           ? {
-            ...modifyResult.sheet,
-            url: modifyResult.sheet.url,
-            composedSheetUrl: modifyResult.sheet.composedSheetUrl || modifyResult.sheet.url
-          }
-          : modifyResult.a1Sheet
+              ...modifyResult.sheet,
+              url: modifyResult.sheet.url,
+              composedSheetUrl:
+                modifyResult.sheet.composedSheetUrl || modifyResult.sheet.url,
+            }
+          : modifyResult.a1Sheet,
       };
 
       // Save version to design history
       await designHistoryRepository.updateDesignVersion(params.designId, {
-        resultUrl: normalizedModifyResult.sheet.url || normalizedModifyResult.sheet.composedSheetUrl,
-        composedSheetUrl: normalizedModifyResult.sheet.composedSheetUrl || normalizedModifyResult.sheet.url,
+        resultUrl:
+          normalizedModifyResult.sheet.url ||
+          normalizedModifyResult.sheet.composedSheetUrl,
+        composedSheetUrl:
+          normalizedModifyResult.sheet.composedSheetUrl ||
+          normalizedModifyResult.sheet.url,
         deltaPrompt: params.modifyRequest.customPrompt,
         quickToggles: params.modifyRequest.quickToggles,
         seed: normalizedModifyResult.sheet.seed,
         driftScore: normalizedModifyResult.driftScore,
         consistencyScore: 1 - normalizedModifyResult.driftScore,
-        panelMap: normalizedModifyResult.sheet.panelMap || normalizedModifyResult.sheet.panels || null,
-        panels: normalizedModifyResult.sheet.panelMap || normalizedModifyResult.sheet.panels || null,
-        panelCoordinates: normalizedModifyResult.sheet.panelCoordinates || normalizedModifyResult.sheet.coordinates || normalizedModifyResult.sheet.metadata?.coordinates || null,
-        geometryDNA: normalizedModifyResult.geometryDNA || normalizedModifyResult.sheet.geometryDNA || result?.geometryDNA || null,
-        geometryRenders: normalizedModifyResult.geometryRenders || normalizedModifyResult.sheet.geometryRenders || result?.geometryRenders || null,
+        panelMap:
+          normalizedModifyResult.sheet.panelMap ||
+          normalizedModifyResult.sheet.panels ||
+          null,
+        panels:
+          normalizedModifyResult.sheet.panelMap ||
+          normalizedModifyResult.sheet.panels ||
+          null,
+        panelCoordinates:
+          normalizedModifyResult.sheet.panelCoordinates ||
+          normalizedModifyResult.sheet.coordinates ||
+          normalizedModifyResult.sheet.metadata?.coordinates ||
+          null,
+        geometryDNA:
+          normalizedModifyResult.geometryDNA ||
+          normalizedModifyResult.sheet.geometryDNA ||
+          result?.geometryDNA ||
+          null,
+        geometryRenders:
+          normalizedModifyResult.geometryRenders ||
+          normalizedModifyResult.sheet.geometryRenders ||
+          result?.geometryRenders ||
+          null,
         metadata: {
           ...(normalizedModifyResult.versionMetadata || {}),
-          panelMap: normalizedModifyResult.sheet.panelMap || normalizedModifyResult.sheet.panels || null,
-          coordinates: normalizedModifyResult.sheet.panelCoordinates || normalizedModifyResult.sheet.coordinates || normalizedModifyResult.sheet.metadata?.coordinates || null
-        }
+          panelMap:
+            normalizedModifyResult.sheet.panelMap ||
+            normalizedModifyResult.sheet.panels ||
+            null,
+          coordinates:
+            normalizedModifyResult.sheet.panelCoordinates ||
+            normalizedModifyResult.sheet.coordinates ||
+            normalizedModifyResult.sheet.metadata?.coordinates ||
+            null,
+        },
       });
 
       setResult(normalizedModifyResult);
-      setProgress({ step: 6, total: 6, message: 'Complete!', stage: 'finalizing', percentage: 100 });
+      setProgress({
+        step: 6,
+        total: 6,
+        message: "Complete!",
+        stage: "finalizing",
+        percentage: 100,
+      });
 
-      logger.success('Sheet modification complete', {
+      logger.success("Sheet modification complete", {
         versionId: normalizedModifyResult.versionId,
-        driftScore: normalizedModifyResult.driftScore
+        driftScore: normalizedModifyResult.driftScore,
       });
 
       return normalizedModifyResult;
-
     } catch (err) {
-      logger.error('Sheet modification failed', err);
+      logger.error("Sheet modification failed", err);
       setError(err.message);
       throw err;
     } finally {
@@ -285,16 +377,15 @@ export function useArchitectAIWorkflow() {
     try {
       const exportResult = await exportService.exportSheet({
         sheet: params.sheet,
-        format: params.format || 'PNG',
-        env: envRef.current
+        format: params.format || "PNG",
+        env: envRef.current,
       });
 
-      logger.success('Sheet export complete', { format: params.format });
+      logger.success("Sheet export complete", { format: params.format });
 
       return exportResult;
-
     } catch (err) {
-      logger.error('Sheet export failed', err);
+      logger.error("Sheet export failed", err);
       setError(err.message);
       throw err;
     } finally {
@@ -317,7 +408,7 @@ export function useArchitectAIWorkflow() {
 
       return design;
     } catch (err) {
-      logger.error('Failed to load design', err);
+      logger.error("Failed to load design", err);
       setError(err.message);
       throw err;
     }
@@ -331,7 +422,7 @@ export function useArchitectAIWorkflow() {
     try {
       return await designHistoryRepository.listDesigns();
     } catch (err) {
-      logger.error('Failed to list designs', err);
+      logger.error("Failed to list designs", err);
       return [];
     }
   }, []);
@@ -350,7 +441,13 @@ export function useArchitectAIWorkflow() {
     setLoading(false);
     setError(null);
     setResult(null);
-    setProgress({ step: 0, total: 5, message: '', stage: 'analysis', percentage: 0 });
+    setProgress({
+      step: 0,
+      total: 5,
+      message: "",
+      stage: "analysis",
+      percentage: 0,
+    });
   }, []);
 
   return {
@@ -370,9 +467,8 @@ export function useArchitectAIWorkflow() {
     reset,
 
     // Environment
-    env: envRef.current
+    env: envRef.current,
   };
 }
 
 export default useArchitectAIWorkflow;
-

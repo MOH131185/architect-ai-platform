@@ -32,7 +32,10 @@ import {
 } from "../config/fluxPresets.js";
 import logger from "../utils/logger.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
-import { getCurrentPipelineMode } from "../config/pipelineMode.js";
+import {
+  resolveWorkflowByMode,
+  UnsupportedPipelineModeError,
+} from "./workflowRouter.js";
 
 /**
  * Run A1 sheet workflow (pure orchestrator)
@@ -41,7 +44,7 @@ import { getCurrentPipelineMode } from "../config/pipelineMode.js";
  * @returns {Promise<SheetResult>} Sheet result
  */
 export async function runA1SheetWorkflow(params) {
-  const mode = getCurrentPipelineMode();
+  const { mode } = resolveWorkflowByMode();
   logger.info(`[pureOrchestrator] pipeline mode: ${mode}`);
 
   const rawMultiPanelResult =

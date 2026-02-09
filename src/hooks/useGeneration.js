@@ -5,9 +5,10 @@ import designGenerationHistory from "../services/designGenerationHistory.js";
 import logger from "../utils/logger.js";
 import { normalizeMultiPanelResult } from "../types/schemas.js";
 import {
-  getCurrentPipelineMode,
-  PIPELINE_MODE,
-} from "../config/pipelineMode.js";
+  resolveWorkflowByMode,
+  executeWorkflow,
+  UnsupportedPipelineModeError,
+} from "../services/workflowRouter.js";
 
 /**
  * useGeneration - AI Generation Workflow Hook
@@ -339,10 +340,22 @@ export const useGeneration = () => {
       updateProgress("Analysis", 3, "Analyzing portfolio and location data...");
       const portfolioAnalysis = await analyzePortfolio();
 
-      // Select workflow based on pipeline mode
-      const pipelineMode = getCurrentPipelineMode();
-      updateProgress("Workflow", 4, `Using ${pipelineMode} pipeline...`);
-      logger.info(`Pipeline mode: ${pipelineMode}`, null, "🎯");
+      // Select workflow based on pipeline mode (fail-fast on unsupported)
+      let resolvedMode;
+      try {
+        const resolved = resolveWorkflowByMode();
+        resolvedMode = resolved.mode;
+      } catch (routeErr) {
+        if (routeErr instanceof UnsupportedPipelineModeError) {
+          logger.error(`Unsupported pipeline mode: ${routeErr.requestedMode}`);
+          showToast(`Unsupported pipeline mode: ${routeErr.requestedMode}`);
+          setIsLoading(false);
+          return;
+        }
+        throw routeErr;
+      }
+      updateProgress("Workflow", 4, `Using ${resolvedMode} pipeline...`);
+      logger.info(`Pipeline mode resolved: ${resolvedMode}`, null, "🎯");
 
       // Execute generation via resolved pipeline mode
       updateProgress("Generation", 5, "Generating architectural designs...");
@@ -350,33 +363,14 @@ export const useGeneration = () => {
       let aiResult;
       let rawResult;
 
-      if (pipelineMode === PIPELINE_MODE.SINGLE_SHOT) {
-        logger.info("Using SINGLE-SHOT A1 workflow", null, "🎯");
-        // Single-shot falls through to multi-panel (the orchestrator handles it)
-        rawResult = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
-          projectContext,
-          locationData,
-          portfolioFiles: portfolioFiles || [],
-          siteSnapshot: locationData?.siteSnapshot || null,
-          baseSeed: projectSeed,
-          portfolioAnalysis,
-        });
-      } else {
-        // MULTI_PANEL (default), HYBRID_OPENAI, and GEOMETRY_FIRST all use multi-panel
-        logger.info(
-          `Using MULTI-PANEL A1 workflow (${pipelineMode}, P0 gates)`,
-          null,
-          "🎯",
-        );
-        rawResult = await dnaWorkflowOrchestrator.runMultiPanelA1Workflow({
-          projectContext,
-          locationData,
-          portfolioFiles: portfolioFiles || [],
-          siteSnapshot: locationData?.siteSnapshot || null,
-          baseSeed: projectSeed,
-          portfolioAnalysis,
-        });
-      }
+      rawResult = await executeWorkflow(dnaWorkflowOrchestrator, {
+        projectContext,
+        locationData,
+        portfolioFiles: portfolioFiles || [],
+        siteSnapshot: locationData?.siteSnapshot || null,
+        baseSeed: projectSeed,
+        portfolioAnalysis,
+      });
 
       aiResult = normalizeMultiPanelResult(rawResult);
 

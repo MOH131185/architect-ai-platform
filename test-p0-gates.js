@@ -42,6 +42,7 @@ let validateProgramLock, validatePanelsAgainstProgram, validateBeforeCompose;
 let validateModifyDrift, validatePreComposeDrift;
 let setFeatureFlag, FEATURE_FLAGS;
 let getCurrentPipelineMode, PIPELINE_MODE;
+let resolveWorkflowByMode, UnsupportedPipelineModeError;
 
 let passed = 0;
 let failed = 0;
@@ -91,6 +92,10 @@ async function loadModules() {
   const pm = await import("./src/config/pipelineMode.js");
   getCurrentPipelineMode = pm.getCurrentPipelineMode;
   PIPELINE_MODE = pm.PIPELINE_MODE;
+
+  const wr = await import("./src/services/workflowRouter.js");
+  resolveWorkflowByMode = wr.resolveWorkflowByMode;
+  UnsupportedPipelineModeError = wr.UnsupportedPipelineModeError;
 }
 
 // ===================================================================
@@ -869,13 +874,198 @@ function TC_ENV_006() {
 }
 
 // ===================================================================
+// TC-GEO-007: Geometry hash provenance matches computeCDSHashSync
+// ===================================================================
+function TC_GEO_007() {
+  console.log("\n📋 TC-GEO-007: Geometry hash provenance correctness");
+  console.log(
+    "   Criteria: Stamped geometryHash matches computeCDSHashSync(cds.geometry)",
+  );
+
+  const programSpaces = [
+    { name: "Living Room", area: 25, floor: "ground" },
+    { name: "Kitchen", area: 15, floor: "ground" },
+  ];
+  const lock = buildProgramLock(programSpaces, { floors: 1 });
+  const masterDNA = {
+    dimensions: { length: 12, width: 8, height: 3.2, floors: 1, floorCount: 1 },
+    materials: [{ name: "Brick", hexColor: "#B8604E" }],
+    rooms: [
+      { name: "Living Room", floor: "ground" },
+      { name: "Kitchen", floor: "ground" },
+    ],
+  };
+
+  const cds = buildCDSSync({
+    designId: "geo-hash-test",
+    seed: 99,
+    masterDNA,
+    programLock: lock,
+  });
+
+  // The geometry hash the orchestrator should stamp
+  const expectedGeoHash = cds.geometry
+    ? computeCDSHashSync(cds.geometry)
+    : null;
+
+  assert(expectedGeoHash !== null, "CDS has geometry → hash is non-null");
+  assert(
+    expectedGeoHash.length === 16,
+    `Geometry hash is 16 hex chars (got ${expectedGeoHash.length})`,
+  );
+
+  // Simulate panel stamped with correct geometry hash
+  const goodPanel = {
+    panelType: "hero_3d",
+    seed: 99,
+    cdsHash: cds.hash,
+    geometryHash: expectedGeoHash,
+  };
+
+  // This panel should NOT trigger geometry drift
+  const noDriftResult = validatePreComposeDrift([goodPanel], cds, {
+    strict: false,
+  });
+  assert(
+    noDriftResult.valid === true,
+    "Panel with correct geometryHash passes drift gate",
+  );
+
+  // Panel stamped with WRONG geometry hash should trigger drift
+  const badPanel = {
+    panelType: "hero_3d",
+    seed: 99,
+    cdsHash: cds.hash,
+    geometryHash: "0000000000000000",
+  };
+
+  const driftResult = validatePreComposeDrift([badPanel], cds, {
+    strict: false,
+  });
+  assert(
+    driftResult.violations.some((v) => v.includes("geometry hash drift")),
+    "Panel with wrong geometryHash triggers drift violation",
+  );
+
+  // Two CDS objects with same geometry produce same geometry hash
+  const cds2 = buildCDSSync({
+    designId: "geo-hash-test-2", // different designId
+    seed: 99,
+    masterDNA,
+    programLock: lock,
+  });
+
+  const geoHash2 = computeCDSHashSync(cds2.geometry);
+  assert(
+    geoHash2 === expectedGeoHash,
+    "Same geometry → same geometry hash (deterministic)",
+  );
+
+  // Different geometry → different hash
+  const differentDNA = {
+    ...masterDNA,
+    dimensions: { ...masterDNA.dimensions, length: 20 },
+  };
+  const cds3 = buildCDSSync({
+    designId: "geo-hash-test-3",
+    seed: 99,
+    masterDNA: differentDNA,
+    programLock: lock,
+  });
+  const geoHash3 = computeCDSHashSync(cds3.geometry);
+  assert(
+    geoHash3 !== expectedGeoHash,
+    "Different geometry → different geometry hash",
+  );
+}
+
+// ===================================================================
+// TC-ROUTE-008: Workflow router rejects unsupported modes
+// ===================================================================
+function TC_ROUTE_008() {
+  console.log("\n📋 TC-ROUTE-008: Workflow router mode validation");
+  console.log("   Criteria: Supported modes resolve, unsupported modes throw");
+
+  // Supported: multi_panel (default)
+  const origMode = process.env.PIPELINE_MODE;
+  delete process.env.PIPELINE_MODE;
+  delete process.env.REACT_APP_PIPELINE_MODE;
+
+  const defaultResult = resolveWorkflowByMode();
+  assert(
+    defaultResult.mode === "multi_panel",
+    `Default resolves to multi_panel (got "${defaultResult.mode}")`,
+  );
+  assert(
+    defaultResult.workflowKey === "multi_panel_a1",
+    `Workflow key is multi_panel_a1`,
+  );
+
+  // Supported: single_shot (via override param)
+  const singleResult = resolveWorkflowByMode("single_shot");
+  assert(
+    singleResult.mode === "single_shot",
+    `single_shot resolves (got "${singleResult.mode}")`,
+  );
+
+  // Unsupported: geometry_first → explicit error
+  let geoError = null;
+  try {
+    resolveWorkflowByMode("geometry_first");
+  } catch (e) {
+    geoError = e;
+  }
+  assert(
+    geoError instanceof UnsupportedPipelineModeError,
+    "geometry_first throws UnsupportedPipelineModeError",
+  );
+  assert(
+    geoError && geoError.requestedMode === "geometry_first",
+    "Error carries requestedMode = geometry_first",
+  );
+
+  // Unsupported: hybrid_openai → explicit error
+  let hybridError = null;
+  try {
+    resolveWorkflowByMode("hybrid_openai");
+  } catch (e) {
+    hybridError = e;
+  }
+  assert(
+    hybridError instanceof UnsupportedPipelineModeError,
+    "hybrid_openai throws UnsupportedPipelineModeError",
+  );
+
+  // Unsupported: completely bogus mode → explicit error
+  let bogusError = null;
+  try {
+    resolveWorkflowByMode("bogus_mode_xyz");
+  } catch (e) {
+    bogusError = e;
+  }
+  assert(
+    bogusError instanceof UnsupportedPipelineModeError,
+    "Bogus mode throws UnsupportedPipelineModeError",
+  );
+  assert(
+    bogusError && bogusError.message.includes("bogus_mode_xyz"),
+    "Error message includes the bogus mode name",
+  );
+
+  // Restore
+  if (origMode !== undefined) {
+    process.env.PIPELINE_MODE = origMode;
+  }
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005 | TC-ENV-006                             ║");
+  console.log("║  TC-PIPE-005..008 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -894,6 +1084,8 @@ async function main() {
   TC_DRIFT_004();
   TC_PIPE_005();
   TC_ENV_006();
+  TC_GEO_007();
+  TC_ROUTE_008();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);
