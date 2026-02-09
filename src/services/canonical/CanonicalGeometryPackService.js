@@ -38,6 +38,96 @@ export const ERROR_CODES = {
 };
 
 // ---------------------------------------------------------------------------
+// In-memory pack cache (keyed by design fingerprint/design id)
+// ---------------------------------------------------------------------------
+
+const canonicalPackStore = new Map();
+
+function normalizeLookupKey(value) {
+  if (typeof value !== "string") return null;
+  const key = value.trim();
+  return key.length > 0 ? key : null;
+}
+
+function getLookupKeys(value) {
+  const key = normalizeLookupKey(value);
+  if (!key) return [];
+  const lower = key.toLowerCase();
+  return lower === key ? [key] : [key, lower];
+}
+
+function cachePack(pack, ...keys) {
+  if (!pack) return;
+  const candidates = [];
+  for (const key of keys) {
+    candidates.push(...getLookupKeys(key));
+  }
+  for (const key of candidates) {
+    canonicalPackStore.set(key, pack);
+  }
+}
+
+function normalizeBuildOptions(options = {}, legacyOptions = undefined) {
+  const legacy =
+    legacyOptions && typeof legacyOptions === "object" ? legacyOptions : {};
+
+  // Backward compatibility:
+  // buildCanonicalPack(cds, "designFingerprint", legacyThirdArgIgnored)
+  if (typeof options === "string") {
+    return { ...legacy, designFingerprint: options };
+  }
+  if (!options || typeof options !== "object") {
+    return { ...legacy };
+  }
+  return { ...legacy, ...options };
+}
+
+// ---------------------------------------------------------------------------
+// Panel type normalization (resolves section naming drift)
+// ---------------------------------------------------------------------------
+
+const PANEL_TYPE_ALIASES = {
+  section_a_a: "section_AA",
+  section_aa: "section_AA",
+  section_a: "section_AA",
+  section_b_b: "section_BB",
+  section_bb: "section_BB",
+  section_b: "section_BB",
+};
+
+function normalizePanelType(panelType) {
+  if (!panelType) return panelType;
+  return PANEL_TYPE_ALIASES[panelType] || panelType;
+}
+
+function getPanelLookupCandidates(panelType) {
+  const normalized = normalizePanelType(panelType);
+  if (normalized === "section_AA") {
+    return ["section_AA", "section_a_a", "section_aa"];
+  }
+  if (normalized === "section_BB") {
+    return ["section_BB", "section_b_b", "section_bb"];
+  }
+  return [normalized];
+}
+
+export function clearCanonicalPackCache(key) {
+  if (!key) {
+    canonicalPackStore.clear();
+    return;
+  }
+  for (const lookupKey of getLookupKeys(key)) {
+    canonicalPackStore.delete(lookupKey);
+  }
+}
+
+export function registerCanonicalPack(pack, key) {
+  if (!pack) return null;
+  cachePack(pack, key, pack.designFingerprint, pack.designId);
+  return pack;
+}
+
+// ---------------------------------------------------------------------------
 // Panel types that receive canonical geometry control
 // ---------------------------------------------------------------------------
 
@@ -50,8 +140,8 @@ export const CANONICAL_PANEL_TYPES = [
   "elevation_south",
   "elevation_east",
   "elevation_west",
-  "section_a_a",
-  "section_b_b",
+  "section_AA",
+  "section_BB",
   "hero_3d",
   "interior_3d",
   "axonometric",
@@ -70,8 +160,8 @@ const STRENGTH_POLICY = {
   elevation_south: 0.35,
   elevation_east: 0.35,
   elevation_west: 0.35,
-  section_a_a: 0.15,
-  section_b_b: 0.15,
+  section_AA: 0.15,
+  section_BB: 0.15,
   hero_3d: 0.65,
   interior_3d: 0.6,
   axonometric: 0.7,
@@ -114,7 +204,11 @@ function svgToDataUrl(svgString) {
  * @param {number} [options.height] - SVG height (default 600)
  * @returns {Object} Frozen canonical pack
  */
-export function buildCanonicalPack(cds, options = {}) {
+export function buildCanonicalPack(
+  cds,
+  options = {},
+  legacyOptions = undefined,
+) {
   if (!cds) {
     throw new CanonicalPackError(
       "CDS is required to build canonical pack",
@@ -122,7 +216,15 @@ export function buildCanonicalPack(cds, options = {}) {
     );
   }
 
-  const { scale = 50, width = 800, height = 600 } = options;
+  const normalizedOptions = normalizeBuildOptions(options, legacyOptions);
+  const { scale = 50, width = 800, height = 600 } = normalizedOptions;
+  const designFingerprint =
+    normalizeLookupKey(normalizedOptions.designFingerprint) ||
+    normalizeLookupKey(cds.designFingerprint) ||
+    normalizeLookupKey(cds.designId) ||
+    normalizeLookupKey(cds.meta?.designFingerprint) ||
+    null;
+
   const svgOptions = {
     scale,
     width,
@@ -206,8 +308,8 @@ export function buildCanonicalPack(cds, options = {}) {
 
   // --- Sections ---
   const SECTION_MAP = {
-    longitudinal: "section_a_a",
-    transverse: "section_b_b",
+    longitudinal: "section_AA",
+    transverse: "section_BB",
   };
   for (const [sectionType, panelType] of Object.entries(SECTION_MAP)) {
     try {
@@ -257,6 +359,8 @@ export function buildCanonicalPack(cds, options = {}) {
     panels,
     geometryHash,
     cdsHash,
+    designFingerprint,
+    designId: normalizeLookupKey(cds.designId) || null,
     status: Object.keys(panels).length > 0 ? "COMPLETE" : "EMPTY",
     panelCount: Object.keys(panels).length,
     createdAt: new Date().toISOString(),
@@ -268,6 +372,14 @@ export function buildCanonicalPack(cds, options = {}) {
   for (const p of Object.values(pack.panels)) {
     Object.freeze(p);
   }
+
+  cachePack(
+    pack,
+    designFingerprint,
+    cds.designId,
+    cds.designFingerprint,
+    normalizedOptions.designFingerprint,
+  );
 
   return pack;
 }
@@ -284,8 +396,13 @@ export function buildCanonicalPack(cds, options = {}) {
  * @returns {string|null} data URL or null if not available
  */
 export function getControlForPanel(pack, panelType) {
-  if (!pack?.panels?.[panelType]) return null;
-  return pack.panels[panelType].dataUrl || null;
+  if (!pack?.panels) return null;
+  const candidates = getPanelLookupCandidates(panelType);
+  for (const candidate of candidates) {
+    const control = pack.panels[candidate]?.dataUrl;
+    if (control) return control;
+  }
+  return null;
 }
 
 /**
@@ -296,9 +413,10 @@ export function getControlForPanel(pack, panelType) {
  * @returns {{ init_image: string, strength: number }|null}
  */
 export function getInitImageParams(pack, panelType) {
-  const dataUrl = getControlForPanel(pack, panelType);
+  const normalizedType = normalizePanelType(panelType);
+  const dataUrl = getControlForPanel(pack, normalizedType);
   if (!dataUrl) return null;
-  const strength = STRENGTH_POLICY[panelType] ?? 0.5;
+  const strength = STRENGTH_POLICY[normalizedType] ?? 0.5;
   return { init_image: dataUrl, strength };
 }
 
@@ -310,6 +428,9 @@ export function getInitImageParams(pack, panelType) {
  */
 export function hasCanonicalPack(data) {
   if (!data) return false;
+  if (typeof data === "string") {
+    return !!getCanonicalPack(data);
+  }
   // Direct pack object
   if (data.status === "COMPLETE" && data.geometryHash && data.panels)
     return true;
@@ -326,8 +447,27 @@ export function hasCanonicalPack(data) {
  */
 export function getCanonicalPack(data) {
   if (!data) return null;
+  if (typeof data === "string") {
+    for (const key of getLookupKeys(data)) {
+      const cachedPack = canonicalPackStore.get(key);
+      if (cachedPack) return cachedPack;
+    }
+    return null;
+  }
   if (data.status === "COMPLETE" && data.geometryHash) return data;
   if (data.canonicalPack?.status === "COMPLETE") return data.canonicalPack;
+  if (data.designFingerprint) {
+    for (const key of getLookupKeys(data.designFingerprint)) {
+      const cachedPack = canonicalPackStore.get(key);
+      if (cachedPack) return cachedPack;
+    }
+  }
+  if (data.designId) {
+    for (const key of getLookupKeys(data.designId)) {
+      const cachedPack = canonicalPackStore.get(key);
+      if (cachedPack) return cachedPack;
+    }
+  }
   return null;
 }
 
@@ -359,10 +499,10 @@ export function validateControlPack(pack) {
     "floor_plan_ground",
     "elevation_north",
     "elevation_south",
-    "section_a_a",
+    "section_AA",
   ];
   for (const pt of required) {
-    if (!pack.panels?.[pt]?.dataUrl) {
+    if (!getControlForPanel(pack, pt)) {
       missing.push(pt);
     }
   }
@@ -388,5 +528,7 @@ const CanonicalGeometryPackServiceExports = {
   getControlForPanel,
   getInitImageParams,
   validateControlPack,
+  registerCanonicalPack,
+  clearCanonicalPackCache,
 };
 export default CanonicalGeometryPackServiceExports;

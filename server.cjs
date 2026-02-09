@@ -2125,6 +2125,47 @@ async function buildClimateCardBufferCJS(sharpLib, width, height, locationData) 
   }).toBuffer();
 }
 
+function normalizeHashValue(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function readRequestHashes(body = {}) {
+  const metadata = body?.metadata || body?.meta || {};
+  return {
+    dnaHash: normalizeHashValue(
+      body?.dnaHash || body?.dna_hash || metadata.dnaHash || metadata.dna_hash,
+    ),
+    geometryHash: normalizeHashValue(
+      body?.geometryHash ||
+        body?.geometry_hash ||
+        metadata.geometryHash ||
+        metadata.geometry_hash,
+    ),
+    programHash: normalizeHashValue(
+      body?.programHash ||
+        body?.program_hash ||
+        metadata.programHash ||
+        metadata.program_hash,
+    ),
+  };
+}
+
+function collectPanelGeometryHashes(panels = []) {
+  const hashes = [];
+  for (const panel of panels) {
+    const panelHash = normalizeHashValue(
+      panel?.geometryHash ||
+        panel?.geometry_hash ||
+        panel?.meta?.geometryHash ||
+        panel?.meta?.geometry_hash,
+    );
+    if (panelHash) hashes.push(panelHash);
+  }
+  return [...new Set(hashes)];
+}
+
 app.post('/api/a1/compose', async (req, res) => {
   try {
     const {
@@ -2136,6 +2177,7 @@ app.post('/api/a1/compose', async (req, res) => {
       projectContext = null,
       locationData = null,
     } = req.body;
+    const requestedHashes = readRequestHashes(req.body);
     let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
 
     if (!panels || panels.length === 0) {
@@ -2197,6 +2239,70 @@ app.post('/api/a1/compose', async (req, res) => {
 
     // skipMissingPanelCheck: Allow composition with placeholders for missing panels (smoke tests, dev)
     const skipMissingPanelCheck = req.body.skipMissingPanelCheck === true || req.body.skipValidation === true;
+    const skipValidation = skipMissingPanelCheck || req.body.skipValidation === true;
+    const requireHashMetadata = req.body.requireHashMetadata !== false && !skipValidation;
+    const panelGeometryHashes = collectPanelGeometryHashes(panels);
+
+    if (requireHashMetadata) {
+      const missingHashFields = Object.entries(requestedHashes)
+        .filter(([, value]) => !value)
+        .map(([key]) => key);
+
+      if (missingHashFields.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'MISSING_HASH_METADATA',
+          message: `Cannot compose A1 sheet - missing required hash metadata: ${missingHashFields.join(', ')}`,
+          details: {
+            required: ['dnaHash', 'geometryHash', 'programHash'],
+            received: requestedHashes,
+          },
+        });
+      }
+    }
+
+    if (!skipValidation) {
+      if (panelGeometryHashes.length > 1) {
+        return res.status(400).json({
+          success: false,
+          error: 'PANEL_GEOMETRY_HASH_MISMATCH',
+          message:
+            'Cannot compose A1 sheet - panels contain multiple geometry hashes.',
+          details: {
+            panelGeometryHashes,
+            recommendation:
+              'Regenerate all panels from a single canonical geometry pack.',
+          },
+        });
+      }
+
+      if (requestedHashes.geometryHash) {
+        if (panelGeometryHashes.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'MISSING_PANEL_GEOMETRY_HASH',
+            message:
+              'Cannot compose A1 sheet - requested geometryHash was provided but panels do not contain geometryHash metadata.',
+            details: {
+              expectedGeometryHash: requestedHashes.geometryHash,
+            },
+          });
+        }
+
+        if (panelGeometryHashes[0] !== requestedHashes.geometryHash) {
+          return res.status(400).json({
+            success: false,
+            error: 'GEOMETRY_HASH_MISMATCH',
+            message:
+              'Cannot compose A1 sheet - panel geometry hash does not match requested geometryHash.',
+            details: {
+              expectedGeometryHash: requestedHashes.geometryHash,
+              panelGeometryHash: panelGeometryHashes[0],
+            },
+          });
+        }
+      }
+    }
 
     if (registry && !skipMissingPanelCheck) {
       const requiredPanels = typeof registry.getAIGeneratedPanels === 'function'
@@ -2393,6 +2499,21 @@ app.post('/api/a1/compose', async (req, res) => {
         estimatedDataUrlBytes,
         sheetUrlBytes,
         outputFile,
+        dnaHash: requestedHashes.dnaHash || null,
+        geometryHash: requestedHashes.geometryHash || panelGeometryHashes[0] || null,
+        programHash: requestedHashes.programHash || null,
+        dna_hash: requestedHashes.dnaHash || null,
+        geometry_hash:
+          requestedHashes.geometryHash || panelGeometryHashes[0] || null,
+        program_hash: requestedHashes.programHash || null,
+        hashValidation: {
+          required: requireHashMetadata,
+          panelGeometryHashCount: panelGeometryHashes.length,
+          panelGeometryHash: panelGeometryHashes[0] || null,
+          matchedRequestedGeometryHash: requestedHashes.geometryHash
+            ? panelGeometryHashes[0] === requestedHashes.geometryHash
+            : null,
+        },
       },
     });
   } catch (error) {

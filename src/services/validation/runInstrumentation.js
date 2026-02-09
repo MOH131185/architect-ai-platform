@@ -93,10 +93,11 @@ export function saveRunSnapshot(designId, artifacts) {
  * @param {Object} cds - Canonical Design State
  * @returns {Object} manifest
  */
-export function buildPanelManifest(panels, cds) {
+export function buildPanelManifest(panels, cds, programLock) {
   return {
     timestamp: new Date().toISOString(),
     cdsHash: cds?.hash || null,
+    programLockHash: programLock?.hash || null,
     panelCount: panels?.length || 0,
     panels: (panels || []).map((p) => ({
       panelType: p.type || p.panelType,
@@ -107,6 +108,9 @@ export function buildPanelManifest(panels, cds) {
       designFingerprint: p.meta?.designFingerprint || null,
       hasSVG: !!p.svgPanel,
       hasInitImage: !!p.meta?.hasInitImage,
+      cdsHash: p.cdsHash || p.meta?.cdsHash || null,
+      programLockHash: p.programLockHash || p.meta?.programLockHash || null,
+      geometryHash: p.geometryHash || p.meta?.geometryHash || null,
     })),
   };
 }

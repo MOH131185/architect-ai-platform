@@ -626,6 +626,50 @@ export const FEATURE_FLAGS = {
    */
   areaTolerance: 0.03,
 
+  /**
+   * Program Lock Required
+   *
+   * When enabled, every generation run MUST build a ProgramSpacesLock
+   * from user input before panel generation. Fail-closed if missing.
+   *
+   * @type {boolean}
+   * @default true
+   */
+  programLockRequired: true,
+
+  /**
+   * Max Program Violations (0 = strict)
+   *
+   * Maximum number of program compliance violations tolerated before
+   * blocking the pipeline. 0 means zero tolerance.
+   *
+   * @type {number}
+   * @default 0
+   */
+  maxProgramViolations: 0,
+
+  /**
+   * Max Level Mismatch (0 = strict)
+   *
+   * Maximum number of level mismatches tolerated (e.g. first-floor rooms
+   * appearing on ground floor) before blocking. 0 means zero tolerance.
+   *
+   * @type {number}
+   * @default 0
+   */
+  maxLevelMismatch: 0,
+
+  /**
+   * Drift Threshold (0.00 - 1.00)
+   *
+   * Maximum drift score before the DriftGate blocks a panel or modify run.
+   * Lower = stricter. 0.10 = 10% drift tolerance.
+   *
+   * @type {number}
+   * @default 0.10
+   */
+  driftThreshold: 0.1,
+
   /** Strict canonical control mode enforcement */
   strictCanonicalControlMode: false,
 
@@ -967,6 +1011,25 @@ function loadP0EnvOverrides() {
     ARCHIAI_DNA_SCHEMA_VERSION: {
       flag: "dnaSchemaVersion",
       parse: (v) => parseInt(v, 10) || 2,
+    },
+    ARCHIAI_PROGRAM_LOCK_REQUIRED: {
+      flag: "programLockRequired",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_MAX_PROGRAM_VIOLATIONS: {
+      flag: "maxProgramViolations",
+      parse: (v) => parseInt(v, 10) || 0,
+    },
+    ARCHIAI_MAX_LEVEL_MISMATCH: {
+      flag: "maxLevelMismatch",
+      parse: (v) => parseInt(v, 10) || 0,
+    },
+    ARCHIAI_DRIFT_THRESHOLD: {
+      flag: "driftThreshold",
+      parse: (v) => {
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.1;
+      },
     },
   };
 

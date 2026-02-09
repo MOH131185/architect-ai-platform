@@ -14,6 +14,7 @@ import {
   validatePanelPlanAgainstLock,
 } from "./programLockSchema.js";
 import { verifyCDSHashSync } from "./cdsHash.js";
+import { FEATURE_FLAGS } from "../../config/featureFlags.js";
 
 /**
  * Custom error thrown when ProgramComplianceGate fails.
@@ -217,9 +218,13 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
  * - No floor_plan panels for levels that don't exist in the lock
  * - 1-level programs don't have upper floor plans
  * - Section panels don't depict more levels than allowed
+ * - Required room adjacencies are satisfied (when BuildingModel is provided)
  *
  * @param {Array} panels - Generated panel results [{ panelType, ... }]
  * @param {Object} programLock
+ * @param {Object} [options]
+ * @param {Object} [options.buildingModel] - BuildingModel for adjacency checks
+ * @param {boolean} [options.requireAdjacencyModel=false] - Fail if adjacencies exist but model is unavailable
  * @returns {{ valid: boolean, violations: string[], report: Object }}
  */
 export function validatePanelsAgainstProgram(
@@ -227,7 +232,11 @@ export function validatePanelsAgainstProgram(
   programLock,
   options = {},
 ) {
-  const { strict = true } = options;
+  const {
+    strict = true,
+    buildingModel = null,
+    requireAdjacencyModel = false,
+  } = options;
   const violations = [];
   const report = {
     checkpoint: "post-render",
@@ -264,6 +273,39 @@ export function validatePanelsAgainstProgram(
   if (floorPlanPanels.length < expectedLevels.length) {
     // Not a hard violation but a warning
     report.warning = `Only ${floorPlanPanels.length} floor plan panels for ${expectedLevels.length} levels`;
+  }
+
+  // Enforce program adjacency constraints when available.
+  const adjacencyRequirements = programLock?.adjacencyRequirements || [];
+  if (adjacencyRequirements.length > 0) {
+    report.adjacencyRequirements = adjacencyRequirements.length;
+
+    if (!buildingModel) {
+      const message =
+        "Adjacency requirements exist but no BuildingModel was provided for validation";
+      report.adjacency = {
+        valid: false,
+        violations: [message],
+        warnings: [],
+      };
+
+      if (requireAdjacencyModel) {
+        violations.push(message);
+      } else {
+        report.warning = report.warning
+          ? `${report.warning}; ${message}`
+          : message;
+      }
+    } else {
+      const adjacencyResult = validateAdjacency(buildingModel, programLock, {
+        strict: false,
+      });
+      report.adjacency = adjacencyResult;
+      violations.push(...(adjacencyResult.violations || []));
+      if (adjacencyResult.warnings?.length > 0) {
+        report.adjacencyWarnings = adjacencyResult.warnings;
+      }
+    }
   }
 
   report.floorPlanPanelCount = floorPlanPanels.length;
@@ -427,16 +469,21 @@ export function validateAdjacency(buildingModel, programLock, options = {}) {
 }
 
 /**
- * Finalize gate result. Throws in strict mode if violations found.
+ * Finalize gate result. Throws in strict mode if violations exceed tolerance.
+ *
+ * Reads FEATURE_FLAGS.maxProgramViolations (default 0 = zero tolerance).
+ * When tolerance > 0, that many violations are allowed before blocking.
  */
 function finish(violations, report, strict) {
-  const valid = violations.length === 0;
+  const maxAllowed = Number(FEATURE_FLAGS.maxProgramViolations) || 0;
+  const valid = violations.length <= maxAllowed;
   report.violations = violations;
   report.valid = valid;
+  report.maxProgramViolations = maxAllowed;
 
   if (!valid && strict) {
     throw new ProgramComplianceError(
-      `ProgramComplianceGate FAILED at ${report.checkpoint}: ${violations.length} violation(s)\n` +
+      `ProgramComplianceGate FAILED at ${report.checkpoint}: ${violations.length} violation(s) (max allowed: ${maxAllowed})\n` +
         violations.map((v, i) => `  ${i + 1}. ${v}`).join("\n"),
       violations,
       report.checkpoint,
@@ -446,10 +493,12 @@ function finish(violations, report, strict) {
   return { valid, violations, report };
 }
 
-export default {
+const ProgramComplianceGateExports = {
   validateProgramLock,
   validatePanelsAgainstProgram,
   validateBeforeCompose,
   validateAdjacency,
   ProgramComplianceError,
 };
+
+export default ProgramComplianceGateExports;

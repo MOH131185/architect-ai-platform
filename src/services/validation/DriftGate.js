@@ -12,7 +12,7 @@
  */
 
 import { verifyCDSHashSync, computeCDSHashSync } from "./cdsHash.js";
-import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { isFeatureEnabled, FEATURE_FLAGS } from "../../config/featureFlags.js";
 
 /**
  * Custom error for drift violations.
@@ -26,11 +26,30 @@ export class DriftError extends Error {
 }
 
 /**
+ * Resolve the drift threshold from the featureFlags driftThreshold setting,
+ * falling back to the compile-time constant.
+ */
+function resolveDriftThreshold() {
+  try {
+    const flagVal = FEATURE_FLAGS.driftThreshold;
+    if (typeof flagVal === "number" && Number.isFinite(flagVal)) {
+      return flagVal;
+    }
+  } catch {
+    // Non-fatal
+  }
+  return 0.1;
+}
+
+/**
  * Default thresholds.
  */
 export const DRIFT_THRESHOLDS = {
   // Maximum allowable drift score (0 = identical, 1 = completely different)
-  MAX_DRIFT_SCORE: 0.1,
+  // NOTE: resolveDriftThreshold() reads ARCHIAI_DRIFT_THRESHOLD at call time.
+  get MAX_DRIFT_SCORE() {
+    return resolveDriftThreshold();
+  },
 
   // Geometry hash must be identical across modify iterations
   GEOMETRY_HASH_MUST_MATCH: true,

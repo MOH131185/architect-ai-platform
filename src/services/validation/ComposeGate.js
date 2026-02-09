@@ -6,7 +6,7 @@
  * Validates:
  *  1. All panels carry an identical geometry hash
  *  2. All required technical panels are present (floor_plan_ground, elevation_north,
- *     elevation_south, section_a_a at minimum)
+ *     elevation_south, section_AA at minimum)
  *  3. Program compliance (checkpoint 3 — pre-compose)
  *  4. Geometry hash matches CDS source of truth
  *  5. dna_hash, geometry_hash, program_hash are available for A1 metadata
@@ -42,8 +42,16 @@ const REQUIRED_TECHNICAL_PANELS = [
   "floor_plan_ground",
   "elevation_north",
   "elevation_south",
-  "section_a_a",
+  "section_AA",
 ];
+
+function normalizeComposePanelType(panelType) {
+  if (!panelType) return panelType;
+  const lower = String(panelType).toLowerCase();
+  if (lower === "section_a_a" || lower === "section_aa") return "section_AA";
+  if (lower === "section_b_b" || lower === "section_bb") return "section_BB";
+  return panelType;
+}
 
 // ---------------------------------------------------------------------------
 // Main gate
@@ -75,7 +83,9 @@ export function validateBeforeCompose(
 
   // ----- 1. Required technical panels present -----
   const presentTypes = new Set(
-    (panels || []).map((p) => p.type || p.panelType),
+    (panels || [])
+      .map((p) => p.type || p.panelType)
+      .map((type) => normalizeComposePanelType(type)),
   );
   const missingPanels = REQUIRED_TECHNICAL_PANELS.filter(
     (t) => !presentTypes.has(t),

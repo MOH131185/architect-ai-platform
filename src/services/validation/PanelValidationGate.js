@@ -38,9 +38,27 @@ const TECHNICAL_PANELS = new Set([
   "elevation_south",
   "elevation_east",
   "elevation_west",
-  "section_a_a",
-  "section_b_b",
+  "section_AA",
+  "section_BB",
 ]);
+
+function normalizeTechnicalPanelType(panelType) {
+  if (!panelType) return panelType;
+  const lower = String(panelType).toLowerCase();
+  if (lower === "section_a_a" || lower === "section_aa") return "section_AA";
+  if (lower === "section_b_b" || lower === "section_bb") return "section_BB";
+  return panelType;
+}
+
+function normalizeGeneratorParams(generatorParams = {}) {
+  if (typeof generatorParams === "string") {
+    return { generator: generatorParams };
+  }
+  if (!generatorParams || typeof generatorParams !== "object") {
+    return {};
+  }
+  return generatorParams;
+}
 
 // ---------------------------------------------------------------------------
 // Gate functions
@@ -63,12 +81,22 @@ export function assertValidGenerator(panelType, generatorParams = {}) {
     return true;
   }
 
-  if (TECHNICAL_PANELS.has(panelType)) {
-    if (!generatorParams.init_image) {
+  const params = normalizeGeneratorParams(generatorParams);
+  const normalizedPanelType = normalizeTechnicalPanelType(panelType);
+  if (TECHNICAL_PANELS.has(normalizedPanelType)) {
+    const generatorName = String(
+      params.generator || params.generatorType || params.engine || "",
+    ).toLowerCase();
+    const isDeterministicSvg =
+      generatorName === "svg" ||
+      params.svgPanel === true ||
+      params.source === "cds_canonical";
+
+    if (!isDeterministicSvg && !params.init_image) {
       throw new GeneratorMismatchError(
-        `Technical panel "${panelType}" requires init_image from canonical geometry pack, ` +
+        `Technical panel "${normalizedPanelType}" requires init_image from canonical geometry pack, ` +
           `but none was provided. Enable canonicalControlPack or disable requireCanonicalPack.`,
-        panelType,
+        normalizedPanelType,
         { hasInitImage: false },
       );
     }

@@ -568,7 +568,7 @@ function pathToFileURL(filePath) {
  */
 async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
   // Dynamically import the orchestrator
-  const orchestratorPath = path.join(PROJECT_ROOT, 'src', 'services', 'design', 'dnaWorkflowOrchestrator.js');
+  const orchestratorPath = path.join(PROJECT_ROOT, 'src', 'services', 'dnaWorkflowOrchestrator.js');
   const orchestratorUrl = pathToFileURL(orchestratorPath);
 
   // Check if we can import ES modules
@@ -584,19 +584,39 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
 
   // Build project context
   const baseSeed = runIndex * 1000 + buildingType.length * 137;
+  const isSingleStorey = buildingType === 'bungalow';
+  const floors = isSingleStorey ? 1 : 2;
+  const floorArea = 150 + (runIndex % 100); // 150-250 m²
+  const sitePolygon = [
+    { lat: 51.5074, lng: -0.1278 },
+    { lat: 51.5074, lng: -0.1272 },
+    { lat: 51.5070, lng: -0.1272 },
+    { lat: 51.5070, lng: -0.1278 },
+  ];
   const projectContext = {
     buildingType,
     buildingProgram: buildingType,
-    floorArea: 150 + (runIndex % 100),  // 150-250 m²
-    floors: buildingType === 'bungalow' ? 1 : 2,
-    floorCount: buildingType === 'bungalow' ? 1 : 2,
+    area: floorArea,
+    floorArea,
+    floors,
+    floorCount: floors,
     designId: `qa_run_${runIndex}_${Date.now()}`,
     programSpaces: getDefaultProgramSpaces(buildingType),
+    siteMetrics: {
+      areaM2: Math.max(360, Math.round(floorArea * 1.8)),
+      orientationDeg: 180,
+      sitePolygon,
+    },
   };
 
   const locationData = {
     address: '123 Test Street, London, UK',
     coordinates: { lat: 51.5074, lng: -0.1278 },
+    sitePolygon,
+    siteAnalysis: {
+      areaM2: Math.max(360, Math.round(floorArea * 1.8)),
+      orientationDeg: 180,
+    },
     climate: { type: 'temperate' },
     zoning: { type: 'residential' },
     recommendedStyle: 'contemporary',
@@ -606,19 +626,41 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
     console.log(`    Building context: ${buildingType}, ${projectContext.floorArea}m², ${projectContext.floors} floors`);
   }
 
-  // Run the actual workflow
-  const result = await orchestrator.runA1SheetWorkflow({
-    projectContext,
-    locationData,
-    portfolioAnalysis: null,
-    portfolioBlendPercent: 70,
-    seed: baseSeed,
-    onProgress: (progress) => {
-      if (verbose) {
-        console.log(`    [${progress.stage}] ${progress.message} (${progress.percent}%)`);
-      }
-    },
-  });
+  const progressHandler = (progress) => {
+    if (verbose) {
+      console.log(`    [${progress.stage}] ${progress.message} (${progress.percent}%)`);
+    }
+  };
+
+  // Run the active workflow API (runMultiPanelA1Workflow is current primary path)
+  let result;
+  if (typeof orchestrator.runA1SheetWorkflow === 'function') {
+    result = await orchestrator.runA1SheetWorkflow({
+      projectContext,
+      locationData,
+      portfolioAnalysis: null,
+      portfolioBlendPercent: 70,
+      seed: baseSeed,
+      onProgress: progressHandler,
+    });
+  } else if (typeof orchestrator.runMultiPanelA1Workflow === 'function') {
+    result = await orchestrator.runMultiPanelA1Workflow(
+      {
+        projectContext,
+        locationData,
+        portfolioFiles: [],
+        siteSnapshot: null,
+        baseSeed,
+      },
+      {
+        onProgress: progressHandler,
+      },
+    );
+  } else {
+    throw new Error(
+      'No supported workflow method found (expected runA1SheetWorkflow or runMultiPanelA1Workflow)',
+    );
+  }
 
   if (!result.success) {
     throw new Error(result.error || 'Generation failed');
@@ -626,7 +668,19 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
 
   // Extract panels from result
   const panels = [];
-  const panelMetadata = result.a1Sheet?.metadata?.panels || [];
+  const panelMetadata = Array.isArray(result.a1Sheet?.metadata?.panels)
+    ? result.a1Sheet.metadata.panels
+    : Array.isArray(result.panels)
+      ? result.panels.map((panel) => ({
+          type: panel.type || panel.panelType,
+          imageUrl: panel.imageUrl || panel.url,
+          url: panel.imageUrl || panel.url,
+          seed: panel.seed,
+          prompt: panel.prompt,
+        }))
+      : [];
+  const a1SheetUrl =
+    result.a1Sheet?.url || result.composedSheetUrl || result.sheetUrl || null;
 
   // Save DEBUG_REPORT.json
   const debugReport = {
@@ -675,10 +729,10 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
 
   // Also save the A1 composed sheet
   let a1Buffer = null;
-  if (result.a1Sheet?.url) {
+  if (a1SheetUrl) {
     try {
-      a1Buffer = await downloadImage(result.a1Sheet.url);
-      debugReport.a1SheetUrl = result.a1Sheet.url;
+      a1Buffer = await downloadImage(a1SheetUrl);
+      debugReport.a1SheetUrl = a1SheetUrl;
     } catch (downloadError) {
       console.warn(`    Failed to download A1 sheet: ${downloadError.message}`);
     }
@@ -695,30 +749,77 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
  * Get default program spaces for a building type
  */
 function getDefaultProgramSpaces(buildingType) {
-  const base = [
-    { name: 'Living Room', area: 25, level: 'Ground' },
-    { name: 'Kitchen', area: 16, level: 'Ground' },
-    { name: 'Dining', area: 14, level: 'Ground' },
-    { name: 'Hallway', area: 10, level: 'Ground' },
-    { name: 'WC', area: 4, level: 'Ground' },
-  ];
-
+  // Keep program constraints aligned to the current two-pass DNA output profile:
+  // compact core set with stable naming and floor distribution.
   if (buildingType === 'bungalow') {
     return [
-      ...base,
-      { name: 'Master Bedroom', area: 18, level: 'Ground' },
-      { name: 'Bedroom 2', area: 14, level: 'Ground' },
-      { name: 'Bathroom', area: 8, level: 'Ground' },
+      {
+        name: 'Living Room',
+        area: 25,
+        area_m2: 25,
+        level: 'Ground',
+        preferredOrientation: 'south',
+      },
+      {
+        name: 'Kitchen',
+        area: 15,
+        area_m2: 15,
+        level: 'Ground',
+        preferredOrientation: 'east',
+      },
+      {
+        name: 'Bedroom 1',
+        area: 14,
+        area_m2: 14,
+        level: 'Ground',
+        preferredOrientation: 'south',
+      },
+      {
+        name: 'Bathroom',
+        area: 8,
+        area_m2: 8,
+        level: 'Ground',
+        preferredOrientation: 'any',
+      },
     ];
   }
 
   return [
-    ...base,
-    { name: 'Master Bedroom', area: 18, level: 'First' },
-    { name: 'Bedroom 2', area: 14, level: 'First' },
-    { name: 'Bedroom 3', area: 12, level: 'First' },
-    { name: 'Bathroom', area: 8, level: 'First' },
-    { name: 'Landing', area: 8, level: 'First' },
+    {
+      name: 'Living Room',
+      area: 25,
+      area_m2: 25,
+      level: 'Ground',
+      preferredOrientation: 'south',
+    },
+    {
+      name: 'Kitchen',
+      area: 15,
+      area_m2: 15,
+      level: 'Ground',
+      preferredOrientation: 'east',
+    },
+    {
+      name: 'Bedroom 1',
+      area: 15,
+      area_m2: 15,
+      level: 'First',
+      preferredOrientation: 'south',
+    },
+    {
+      name: 'Bedroom 2',
+      area: 15,
+      area_m2: 15,
+      level: 'First',
+      preferredOrientation: 'south',
+    },
+    {
+      name: 'Bathroom',
+      area: 8,
+      area_m2: 8,
+      level: 'First',
+      preferredOrientation: 'any',
+    },
   ];
 }
 

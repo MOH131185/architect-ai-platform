@@ -401,8 +401,21 @@ export class ProceduralGeometryService {
       }
     }
 
-    // If no rooms found, generate default program based on building type
+    // If no rooms found:
+    // - With programLock / strict mode: refuse default program generation
+    // - Without: generate default program (legacy behavior)
     if (rooms.length === 0) {
+      const hasProgramLock = !!(
+        masterDNA.programLock ||
+        masterDNA._programLock ||
+        masterDNA.programSpacesLock
+      );
+      if (hasProgramLock) {
+        logger.warn(
+          "[ProceduralGeometry] No rooms extracted from DNA, but programLock is present — refusing to generate default program",
+        );
+        return [];
+      }
       const buildingType =
         masterDNA.buildingType || masterDNA.type || "residential";
       const floorCount = masterDNA.dimensions?.floors || 2;

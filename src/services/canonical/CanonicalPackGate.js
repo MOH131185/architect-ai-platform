@@ -8,6 +8,7 @@
 
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import { getControlForPanel } from "./CanonicalGeometryPackService.js";
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -106,11 +107,11 @@ export function validateBeforeGeneration(pack, cds, programLock, options = {}) {
     requiredPanels.push(FLOOR_TYPES[i]);
   }
 
-  // Always require at least north + south elevations and section_a_a
-  requiredPanels.push("elevation_north", "elevation_south", "section_a_a");
+  // Always require at least north + south elevations and section_AA
+  requiredPanels.push("elevation_north", "elevation_south", "section_AA");
 
   for (const pt of requiredPanels) {
-    if (!pack.panels?.[pt]?.dataUrl) {
+    if (!getControlForPanel(pack, pt)) {
       missing.push(pt);
     }
   }

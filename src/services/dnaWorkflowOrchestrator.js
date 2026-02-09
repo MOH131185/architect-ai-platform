@@ -2374,6 +2374,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         const panelManifest = buildPanelManifest(
           generatedPanels,
           canonicalDesignState,
+          programLock,
         );
         const metrics = computeRunMetrics({
           programLock,

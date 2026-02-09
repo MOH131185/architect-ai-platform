@@ -886,6 +886,34 @@ function TC_ENV_006() {
     assert(flag in FEATURE_FLAGS, `Hot-path flag "${flag}" is declared`);
   }
 
+  // 3b. New P0 threshold/limit flags from env mapping
+  assert(
+    "programLockRequired" in FEATURE_FLAGS,
+    "programLockRequired flag exists",
+  );
+  assert(
+    FEATURE_FLAGS.programLockRequired === true,
+    "programLockRequired defaults to true",
+  );
+  assert(
+    "maxProgramViolations" in FEATURE_FLAGS,
+    "maxProgramViolations flag exists",
+  );
+  assert(
+    FEATURE_FLAGS.maxProgramViolations === 0,
+    "maxProgramViolations defaults to 0 (strict)",
+  );
+  assert("maxLevelMismatch" in FEATURE_FLAGS, "maxLevelMismatch flag exists");
+  assert(
+    FEATURE_FLAGS.maxLevelMismatch === 0,
+    "maxLevelMismatch defaults to 0 (strict)",
+  );
+  assert("driftThreshold" in FEATURE_FLAGS, "driftThreshold flag exists");
+  assert(
+    FEATURE_FLAGS.driftThreshold === 0.1,
+    `driftThreshold defaults to 0.10 (got ${FEATURE_FLAGS.driftThreshold})`,
+  );
+
   // 4. enableAutoRetry and autoRetryFailedPanels default to true
   // (save current, test default, restore)
   const origAutoRetry = FEATURE_FLAGS.enableAutoRetry;

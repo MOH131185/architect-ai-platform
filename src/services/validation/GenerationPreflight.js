@@ -121,6 +121,17 @@ export class GenerationPreflight {
       );
     }
 
+    // 9. ProgramLock validation (when required)
+    if (isFeatureEnabled("programLockRequired")) {
+      const lock = programSchedule;
+      if (!lock || !lock.spaces || !lock.hash) {
+        errors.push(
+          "ProgramSpacesLock is required but missing or incomplete " +
+            "(ARCHIAI_PROGRAM_LOCK_REQUIRED=true)",
+        );
+      }
+    }
+
     return result(errors, warnings, strict);
   }
 

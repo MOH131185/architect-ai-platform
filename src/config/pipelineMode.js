@@ -76,4 +76,29 @@ export function logPipelineConfig() {
   return mode;
 }
 
+// ---------------------------------------------------------------------------
+// Startup logging — runs once on module import
+// ---------------------------------------------------------------------------
+(() => {
+  try {
+    const effective = getCurrentPipelineMode();
+    const src =
+      (typeof process !== "undefined" &&
+        process.env?.REACT_APP_PIPELINE_MODE) ||
+      (typeof process !== "undefined" && process.env?.PIPELINE_MODE) ||
+      "(default)";
+    console.log(
+      `[PipelineMode] Effective PIPELINE_MODE=${effective} (source: ${src})`,
+    );
+    if (effective !== PIPELINE_MODE.MULTI_PANEL) {
+      console.warn(
+        `[PipelineMode] WARNING: Only "${PIPELINE_MODE.MULTI_PANEL}" is implemented. ` +
+          `Current mode "${effective}" will throw UnsupportedPipelineModeError at runtime.`,
+      );
+    }
+  } catch {
+    // Non-fatal: don't break module import
+  }
+})();
+
 export default PIPELINE_MODE;
