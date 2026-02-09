@@ -87,12 +87,15 @@ function injectFingerprintConstraint(context) {
  */
 function normalizeDimensions(masterDNA = {}) {
   const dims = masterDNA.dimensions || {};
+  const floors =
+    dims.floors || dims.floorCount || dims.floor_count || dims.numLevels || 1;
+  const floorHeight = 3.2;
   return {
-    length: dims.length || 30,
-    width: dims.width || 20,
-    height: dims.height || 10,
-    floors: dims.floors || dims.floorCount || 2,
-    floorHeights: dims.floorHeights || [3.0, 3.0],
+    length: dims.length || dims.length_m || 15,
+    width: dims.width || dims.width_m || 10,
+    height: dims.height || dims.height_m || floors * floorHeight,
+    floors,
+    floorHeights: dims.floorHeights || Array(floors).fill(floorHeight),
   };
 }
 
@@ -115,6 +118,66 @@ function normalizeMaterials(masterDNA = {}) {
 }
 
 /**
+ * Build a concise BUILDING IDENTITY block for prompt injection.
+ * Placed at the TOP of every panel prompt so FLUX sees it first.
+ * @private
+ */
+function buildBuildingIdentityBlock(masterDNA = {}, projectContext = {}) {
+  const dims = normalizeDimensions(masterDNA);
+  const materials = normalizeMaterials(masterDNA);
+  const roofType =
+    masterDNA?.roof?.type ||
+    masterDNA?._structured?.geometry_rules?.roof_type ||
+    "gable";
+  const style = masterDNA?.architecturalStyle || "Contemporary";
+  const buildingType = projectContext?.buildingProgram || "residential house";
+
+  const storeyDesc =
+    dims.floors === 1
+      ? "SINGLE STOREY (ground floor only). NO upper floor. NO second level."
+      : `${dims.floors}-STOREY building.`;
+
+  return `=== BUILDING IDENTITY (MANDATORY - DO NOT DEVIATE) ===
+Building: ${style} detached ${buildingType}
+Floors: EXACTLY ${dims.floors} — ${storeyDesc}
+Dimensions: ${dims.length}m long × ${dims.width}m wide × ${dims.height}m tall
+Roof: ${roofType}
+Primary material: ${materials[0] || "as specified"}
+THIS IS ONE SINGLE DETACHED BUILDING. NOT terraced, NOT semi-detached, NOT townhouses.
+=== END BUILDING IDENTITY ===`;
+}
+
+/**
+ * Build negative prompt additions for floor count enforcement.
+ * @private
+ */
+function buildFloorCountNegatives(floors) {
+  const negatives = [
+    "multiple buildings",
+    "row houses",
+    "terraced houses",
+    "townhouses",
+    "semi-detached",
+    "housing estate",
+    "apartment block",
+  ];
+  if (floors === 1) {
+    negatives.push(
+      "two storey",
+      "two story",
+      "second floor",
+      "upper floor",
+      "first floor windows above ground",
+      "multi-level",
+      "two-storey",
+      "2-storey",
+      "2 storey",
+    );
+  }
+  return negatives.join(", ");
+}
+
+/**
  * Build site diagram prompt
  */
 export function buildSiteDiagramPrompt({
@@ -127,8 +190,11 @@ export function buildSiteDiagramPrompt({
   const style = masterDNA?.architecturalStyle || "Contemporary";
   const footprint = `${dims.length}m × ${dims.width}m`;
   const address = locationData?.address || "Site location";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `Site plan diagram - overhead orthographic view
+  const prompt = `${identity}
+
+Site plan diagram - overhead orthographic view
 Location: ${address}
 Building footprint: ${footprint}
 Style: ${style}
@@ -149,8 +215,7 @@ STYLE: ${DRAWING_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt:
-      "3d, perspective, photorealistic, noisy background, cluttered annotations, angled view",
+    negativePrompt: `3d, perspective, photorealistic, noisy background, cluttered annotations, angled view, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -177,19 +242,27 @@ export function buildHero3DPrompt({
   const geomConstraint = geometryHint?.type
     ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
     : "Keep massing consistent with plans and elevations.";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+
+  const storeyDesc =
+    dims.floors === 1
+      ? "SINGLE STOREY ground-level volume (NO upper floor)"
+      : `compact ${dims.floors}-storey volume`;
 
   // Hero establishes the design - include strong design specification
-  const prompt = `Hero exterior 3D perspective view - MASTER REFERENCE for all other panels
+  const prompt = `${identity}
+
+Hero exterior 3D perspective view - MASTER REFERENCE for all other panels
 Building: ${style} ${projectType}
-Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floors
+Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
 Materials: ${materials.join(", ")}
 Roof: ${roofType} roof
 
 DESIGN SPECIFICATION (All subsequent panels MUST match this):
-- Building massing: compact ${dims.floors}-storey volume
+- Building massing: ${storeyDesc}
 - Roof type: ${roofType} (EXACT roof shape will be used for all views)
 - Facade materials: ${materials[0] || "primary material"} as dominant
-- Window pattern: regular fenestration matching ${dims.floors} floors
+- Window pattern: regular fenestration matching ${dims.floors} floor(s)
 
 REQUIREMENTS:
 - Photorealistic architectural rendering
@@ -208,8 +281,7 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt:
-      "cartoon, sketch, overexposed, low detail, multiple buildings, people, cars, wireframe, different building styles, inconsistent design",
+    negativePrompt: `cartoon, sketch, overexposed, low detail, multiple buildings, people, cars, wireframe, different building styles, inconsistent design, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -223,6 +295,7 @@ export function buildInterior3DPrompt({
   projectContext,
   consistencyLock,
 }) {
+  const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
   const style = masterDNA?.architecturalStyle || "Contemporary";
   const projectType = projectContext?.buildingProgram || "residential";
@@ -230,8 +303,11 @@ export function buildInterior3DPrompt({
     masterDNA,
     projectContext,
   });
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `Interior 3D perspective view - main lobby/living space
+  const prompt = `${identity}
+
+Interior 3D perspective view - main lobby/living space
 Building: ${style} ${projectType}
 Materials: ${materials.join(", ")}
 
@@ -252,8 +328,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt,
-    negativePrompt:
-      "cartoon, sketch, fisheye, low detail, people, cluttered, messy, dark, different building, inconsistent materials",
+    negativePrompt: `cartoon, sketch, fisheye, low detail, people, cluttered, messy, dark, different building, inconsistent materials, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -279,8 +354,11 @@ export function buildGroundFloorPrompt({
     masterDNA,
     projectContext,
   });
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `Ground floor plan - true orthographic overhead
+  const prompt = `${identity}
+
+Ground floor plan - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
 Program: ${roomList}
@@ -295,15 +373,14 @@ REQUIREMENTS:
 - Dimension lines for key measurements
 - North arrow
 - Main entrance clearly marked
-- Staircase if multi-storey
+${dims.floors > 1 ? "- Staircase shown (multi-storey building)" : "- NO staircase (single storey building)"}
 - Align with elevations (window/door positions match)
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt:
-      "perspective, 3d, isometric, angled, blurry, messy lines, low contrast, watermark, sketch",
+    negativePrompt: `perspective, 3d, isometric, angled, blurry, messy lines, low contrast, watermark, sketch, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -318,6 +395,7 @@ export function buildFirstFloorPrompt({
 }) {
   const dims = normalizeDimensions(masterDNA);
   const projectType = projectContext?.buildingProgram || "residential";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
   // Inject fingerprint constraint for cross-panel consistency
   const fingerprintConstraint = injectFingerprintConstraint({
@@ -325,7 +403,9 @@ export function buildFirstFloorPrompt({
     projectContext,
   });
 
-  const prompt = `First floor plan (Level 1) - true orthographic overhead
+  const prompt = `${identity}
+
+First floor plan (Level 1) - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
 Program: Upper floor spaces (bedrooms, private rooms, or upper program)
@@ -346,8 +426,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt:
-      "perspective, 3d, isometric, angled, blurry, messy lines, low contrast, watermark",
+    negativePrompt: `perspective, 3d, isometric, angled, blurry, messy lines, low contrast, watermark, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -361,6 +440,7 @@ export function buildSecondFloorPrompt({
   consistencyLock,
 }) {
   const dims = normalizeDimensions(masterDNA);
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
   // Inject fingerprint constraint for cross-panel consistency
   const fingerprintConstraint = injectFingerprintConstraint({
@@ -368,7 +448,9 @@ export function buildSecondFloorPrompt({
     projectContext,
   });
 
-  const prompt = `Second floor plan (Level 2) - true orthographic overhead
+  const prompt = `${identity}
+
+Second floor plan (Level 2) - true orthographic overhead
 Scale: 1:100 @ A1
 Footprint: ${dims.length}m × ${dims.width}m
 Program: Top floor spaces or roof plan
@@ -388,8 +470,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt:
-      "perspective, 3d, isometric, angled, blurry, messy lines, low contrast",
+    negativePrompt: `perspective, 3d, isometric, angled, blurry, messy lines, low contrast, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -422,6 +503,7 @@ export function buildElevationPrompt(orientation) {
     const geomConstraint = geometryHint?.type
       ? `FOLLOW PROVIDED GEOMETRY: match the ${geometryHint.type} silhouette exactly (roofline, massing, openings).`
       : "Maintain strict orthographic alignment to plans and roofline.";
+    const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
     // Extract per-facade details from DNA
     const facades =
@@ -473,9 +555,11 @@ export function buildElevationPrompt(orientation) {
         ? materialsWithHex.join(", ")
         : materials.join(", ");
 
-    const prompt = `${dirUpper} elevation - flat orthographic facade view
+    const prompt = `${identity}
+
+${dirUpper} elevation - flat orthographic facade view
 Style: ${style}
-Height: ${dims.height}m (${dims.floors} floors)
+Height: ${dims.height}m (${dims.floors} floor(s))
 Materials: ${materialStr}
 Roof type: ${roofType} (MUST match hero 3D render exactly)
 
@@ -512,8 +596,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
     return {
       prompt: `${prompt}\nSTYLE: ${styleSuffix}`,
-      negativePrompt:
-        "perspective, angled view, fisheye, 3d, low quality, sketchy, blurry, different roof type, different building, inconsistent design, flat roof when gable specified, gable roof when flat specified",
+      negativePrompt: `perspective, angled view, fisheye, 3d, low quality, sketchy, blurry, different roof type, different building, inconsistent design, flat roof when gable specified, gable roof when flat specified, ${buildFloorCountNegatives(dims.floors)}`,
     };
   };
 }
@@ -540,9 +623,12 @@ export function buildSectionAAPrompt({
     masterDNA,
     projectContext,
   });
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `Section A-A (longitudinal) - orthographic building section
-Total height: ${dims.height}m
+  const prompt = `${identity}
+
+Section A-A (longitudinal) - orthographic building section
+Total height: ${dims.height}m (${dims.floors} floor(s))
 Floor heights: ${floorHeights}
 Materials: ${materials.join(", ")}
 Roof type: ${roofType}
@@ -564,8 +650,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt:
-      "photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building",
+    negativePrompt: `photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -588,10 +673,13 @@ export function buildSectionBBPrompt({
     masterDNA,
     projectContext,
   });
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `Section B-B (transverse/cross section) - orthographic building section
+  const prompt = `${identity}
+
+Section B-B (transverse/cross section) - orthographic building section
 Width: ${dims.width}m
-Total height: ${dims.height}m
+Total height: ${dims.height}m (${dims.floors} floor(s))
 Materials: ${materials.join(", ")}
 Roof type: ${roofType}
 
@@ -613,8 +701,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt:
-      "photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building",
+    negativePrompt: `photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -629,7 +716,7 @@ export function buildMaterialPalettePrompt({
 }) {
   const materials = normalizeMaterials(masterDNA);
 
-  const prompt = `Material palette board - architectural materials presentation
+  const prompt = `Material palette board - architectural materials presentation for a ${projectContext?.buildingProgram || "residential"} project
 Materials: ${materials.join(", ")}
 
 REQUIREMENTS:
@@ -725,10 +812,13 @@ export function buildAxonometricPrompt({
   const geomConstraint = geometryHint?.type
     ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
     : "Keep massing consistent with plans and elevations.";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `Axonometric 3D projection view - architectural isometric
+  const prompt = `${identity}
+
+Axonometric 3D projection view - architectural isometric
 Building: ${style} ${projectType}
-Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floors
+Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
 Materials: ${materials.join(", ")}
 Roof type: ${roofType}
 
@@ -756,8 +846,7 @@ STYLE: ${hasStyleReference ? RENDER_STYLE_SUFFIX : DRAWING_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt:
-      "perspective view, vanishing points, photorealistic, context, landscape, people, cars, sketchy, different building, different roof, inconsistent design",
+    negativePrompt: `perspective view, vanishing points, photorealistic, context, landscape, people, cars, sketchy, different building, different roof, inconsistent design, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -773,6 +862,7 @@ export function buildSchedulesNotesPrompt({
   const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
   const projectType = projectContext?.buildingProgram || "residential";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
   const programSpaces = projectContext?.programSpaces || [];
   const rooms = masterDNA?.rooms || programSpaces;
 
@@ -788,9 +878,11 @@ export function buildSchedulesNotesPrompt({
           .join("\n")
       : "1. Living Room: 35m²\n2. Kitchen: 20m²\n3. Bedroom 1: 18m²\n4. Bathroom: 8m²";
 
-  const prompt = `Schedules and notes panel - CRISP BLACK TEXT ON WHITE BACKGROUND
+  const prompt = `${identity}
+
+Schedules and notes panel - CRISP BLACK TEXT ON WHITE BACKGROUND
 Project type: ${projectType}
-Building: ${dims.length}m × ${dims.width}m × ${dims.height}m
+Building: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
 
 ROOM SCHEDULE:
 ${roomSchedule}

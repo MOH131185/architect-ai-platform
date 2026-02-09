@@ -80,8 +80,9 @@ class TwoPassDNAGenerator {
     const programSpec = {
       floors:
         projectContext.floorCount ||
+        projectContext.floors ||
         projectContext.programSpaces?._calculatedFloorCount ||
-        2,
+        1,
       programSpaces: projectContext.programSpaces || [],
       area: projectContext.area || 150,
     };
@@ -256,7 +257,7 @@ OUTPUT REQUIREMENTS:
 PROJECT REQUIREMENTS:
 - Building Type: ${projectContext.buildingProgram || "residential"}
 - Total Area: ${projectContext.area || 150}m²
-- Floors: ${requestPayload.program.floors}
+- Floors: EXACTLY ${requestPayload.program.floors} (this is MANDATORY - do NOT change)
 - Site Area: ${requestPayload.site.area_m2}m²
 - Climate: ${requestPayload.site.climate_zone}
 - Location: ${projectContext.location?.address || "Not specified"}
@@ -267,7 +268,8 @@ CRITICAL RULES:
 3. Include circulation space (~15% of total area)
 4. Respect site constraints (building must fit within ${requestPayload.site.area_m2}m² with setbacks)
 5. Use materials appropriate for ${requestPayload.site.climate_zone} climate
-6. Ensure ${requestPayload.program.floors} floors can accommodate all program spaces
+6. The building MUST have EXACTLY ${requestPayload.program.floors} floor(s) - set "floors": ${requestPayload.program.floors} in the program section
+7. ${requestPayload.program.floors === 1 ? "This is a SINGLE STOREY building. ALL rooms MUST be on the ground floor. Do NOT add an upper floor." : `Distribute rooms across ${requestPayload.program.floors} floors.`}
 
 Generate the DNA now (JSON only):`;
 
@@ -407,7 +409,7 @@ Generate the corrected DNA now (JSON only):`;
     const context = {
       locationData: projectContext.location || projectContext.locationData,
       projectSpec: {
-        floors: projectContext.floorCount || 2,
+        floors: projectContext.floorCount || projectContext.floors || 1,
         programSpaces: projectContext.programSpaces || [],
       },
       portfolioSummary: projectContext.blendedStyle,

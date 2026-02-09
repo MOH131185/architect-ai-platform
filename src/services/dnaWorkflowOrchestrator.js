@@ -896,6 +896,44 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       }
 
       logger.success("✅ DNA validated");
+
+      // POST-DNA FLOOR COUNT ENFORCEMENT:
+      // Ensure masterDNA.dimensions.floors matches user's requested floor count.
+      // DNA generators sometimes hallucinate extra floors.
+      const userRequestedFloors =
+        projectContext?.floorCount ||
+        projectContext?.floors ||
+        projectContext?.programSpaces?._calculatedFloorCount ||
+        null;
+
+      if (userRequestedFloors) {
+        const dnaFloors =
+          masterDNA?.dimensions?.floors ||
+          masterDNA?.dimensions?.floorCount ||
+          masterDNA?.dimensions?.floor_count;
+
+        if (dnaFloors && dnaFloors !== userRequestedFloors) {
+          logger.warn(
+            `⚠️ [FLOOR COUNT FIX] DNA has ${dnaFloors} floors but user requested ${userRequestedFloors}. Force-correcting.`,
+          );
+          masterDNA.dimensions.floors = userRequestedFloors;
+          masterDNA.dimensions.floorCount = userRequestedFloors;
+          masterDNA.dimensions.floor_count = userRequestedFloors;
+          // Recalculate height if needed
+          const floorHeight = 3.2;
+          const expectedHeight = userRequestedFloors * floorHeight;
+          if (
+            masterDNA.dimensions.height &&
+            masterDNA.dimensions.height > expectedHeight + floorHeight
+          ) {
+            masterDNA.dimensions.height = expectedHeight;
+            logger.warn(
+              `   Height adjusted to ${expectedHeight}m for ${userRequestedFloors} floor(s)`,
+            );
+          }
+        }
+      }
+
       reportProgress("dna", "Design DNA validated", 25);
 
       // STEP 2.5: Geometry reasoning + baseline (feature-flagged)
@@ -1106,7 +1144,10 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       });
 
       const floorCount =
-        masterDNA?.dimensions?.floors || masterDNA?.dimensions?.floorCount || 2;
+        masterDNA?.dimensions?.floors ||
+        masterDNA?.dimensions?.floorCount ||
+        masterDNA?.dimensions?.floor_count ||
+        1;
       const expectedPanels = floorCount === 1 ? 14 : floorCount === 2 ? 15 : 16;
       logger.success(
         `✅ Planned ${panelJobs.length} panel generation jobs (expected ${expectedPanels} for ${floorCount}-floor building)`,

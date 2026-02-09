@@ -989,11 +989,14 @@ function buildStyleLock(masterDNA) {
 
 function normalizeDimensions(masterDNA = {}) {
   const dims = masterDNA.dimensions || {};
+  const floors =
+    dims.floors || dims.floorCount || dims.floor_count || dims.numLevels || 1;
+  const floorHeight = 3.2;
   return {
-    length: dims.length || 30,
-    width: dims.width || 20,
-    height: dims.height || 10,
-    floors: dims.floors || dims.floorCount || 2,
+    length: dims.length || dims.length_m || 15,
+    width: dims.width || dims.width_m || 10,
+    height: dims.height || dims.height_m || floors * floorHeight,
+    floors,
   };
 }
 
@@ -1588,12 +1591,17 @@ export async function planA1Panels({
         ", single detached building structure, centered composition, continuous facade";
     }
 
+    // Floor count enforcement in positive prompt
+    const { floors: panelFloors } = normalizeDimensions(masterDNA);
+    if (panelFloors === 1) {
+      jobPrompt +=
+        ", SINGLE STOREY building, ground floor only, NO upper floor, NO second level";
+    }
+
     // Add specific constraints for elevations and sections to prevent splitting
     if (panelType.includes("elevation") || panelType.includes("section")) {
       jobPrompt +=
         ", one unified mass, no separate buildings, no row houses, no detached elements";
-      // NOTE: No weighted syntax - FLUX ignores negative prompts entirely.
-      // The positive constraints above are more effective for FLUX.
       jobNegativePrompt +=
         ", multiple buildings, row of houses, attached units, split mass, townhouses";
     }
@@ -1602,11 +1610,17 @@ export async function planA1Panels({
     if (panelType.includes("floor_plan")) {
       jobPrompt +=
         ", single contiguous floor plan, connected rooms, one building footprint, clear wall thickness";
-      // NOTE: No weighted syntax - FLUX ignores negative prompts entirely.
-      // The positive constraints above are more effective for FLUX.
       jobNegativePrompt +=
         ", disconnected rooms, multiple buildings, isometric view, perspective, separated spaces";
     }
+
+    // Floor count negative prompts
+    if (panelFloors === 1) {
+      jobNegativePrompt +=
+        ", two storey, two story, second floor, upper floor, multi-level, 2-storey, first floor windows above ground";
+    }
+    jobNegativePrompt +=
+      ", multiple buildings, row houses, terraced houses, townhouses, semi-detached, housing estate";
 
     // NEW: Select FGL control image for elevation panels
     let fglControlImage = null;
