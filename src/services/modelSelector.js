@@ -42,7 +42,7 @@ class ModelSelector {
           reliability: 0.98,
         },
         fallback: {
-          model: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
           provider: "together",
           params: {
             temperature: 0.3,
@@ -305,7 +305,7 @@ class ModelSelector {
           reliability: 0.96,
         },
         fallback: {
-          model: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
           provider: "together",
           params: {
             temperature: 0.3,
@@ -352,7 +352,7 @@ class ModelSelector {
       // Architectural Reasoning (narrative)
       ARCHITECTURAL_REASONING: {
         primary: {
-          model: "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
           provider: "together",
           params: {
             temperature: 0.7,
@@ -394,7 +394,7 @@ class ModelSelector {
           input: 0.00035, // per 1K tokens
           output: 0.0014, // per 1K tokens
         },
-        "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo": {
+        "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
           input: 0.0035,
           output: 0.0035,
         },
@@ -883,7 +883,7 @@ class ModelSelector {
       "black-forest-labs/FLUX.1-schnell": true,
       "black-forest-labs/FLUX.1-dev": true,
       "black-forest-labs/FLUX.1-kontext-max": true,
-      "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo": true,
+      "meta-llama/Llama-3.3-70B-Instruct-Turbo": true,
       "gpt-4": true,
       "gpt-4o": true,
     };
@@ -897,7 +897,7 @@ class ModelSelector {
   getAlternatives(model) {
     const alternatives = {
       "black-forest-labs/FLUX.1-kontext-max": ["black-forest-labs/FLUX.1-dev"],
-      "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo": [
+      "meta-llama/Llama-3.3-70B-Instruct-Turbo": [
         "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       ],
       "gpt-4o": ["gpt-4", "meta-llama/Llama-3.3-70B-Instruct-Turbo"],
