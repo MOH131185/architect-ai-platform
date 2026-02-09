@@ -1786,6 +1786,21 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         generatedPanels[0]?.meta?.designFingerprint ||
         designId;
 
+      // Build site overlay – drop base64 data URLs that exceed 2MB to
+      // stay within Vercel's 4.5MB body limit.  The compose endpoint
+      // can still render the site panel without the overlay image.
+      let siteOverlay = null;
+      if (siteSnapshot?.dataUrl) {
+        const dataUrlBytes = siteSnapshot.dataUrl.length;
+        if (dataUrlBytes < 2_000_000) {
+          siteOverlay = { imageUrl: siteSnapshot.dataUrl };
+        } else {
+          logger.warn(
+            `⚠️ Site snapshot too large (${(dataUrlBytes / 1_000_000).toFixed(1)}MB) – omitting from compose payload`,
+          );
+        }
+      }
+
       const composePayload = {
         designId,
         designFingerprint: panelFingerprint,
@@ -1812,9 +1827,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             meta,
           };
         }),
-        siteOverlay: siteSnapshot?.dataUrl
-          ? { imageUrl: siteSnapshot.dataUrl }
-          : null,
+        siteOverlay,
         layoutConfig: "uk-riba-standard",
         // Pass DNA data for SVG rendering of data panels (schedules, materials, climate)
         masterDNA,
@@ -1822,12 +1835,17 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         locationData,
       };
 
+      const composeBody = JSON.stringify(composePayload);
+      logger.info(
+        `📦 Compose payload size: ${(composeBody.length / 1_000_000).toFixed(2)}MB`,
+      );
+
       const composeResponse = await fetchImpl(
         `${API_BASE_URL}/api/a1/compose`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(composePayload),
+          body: composeBody,
         },
       );
 

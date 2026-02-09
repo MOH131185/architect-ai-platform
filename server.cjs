@@ -176,10 +176,12 @@ app.use((req, res, next) => {
 // Apply general rate limiting to all routes
 app.use(generalLimiter);
 
-// Body size limits - Security hardening (prevent DOS attacks)
+// Body size limits - the A1 compose endpoint sends base64 site snapshots +
+// masterDNA + projectContext + locationData which can exceed 10mb.
+// Rate limiter above already protects against DOS.
 app.use(
   express.json({
-    limit: '10mb', // Reduced from 50mb - sufficient for JSON data
+    limit: '50mb',
   })
 );
 app.use(
@@ -1962,6 +1964,167 @@ async function getPanelRegistry() {
  * POST /api/a1/compose
  * Compose individual panels into a complete A1 sheet
  */
+
+// ---------------------------------------------------------------------------
+// SVG builders for deterministic data panels (schedules, materials, climate)
+// ---------------------------------------------------------------------------
+const DATA_PANEL_TYPES = ['schedules_notes', 'material_palette', 'climate_card'];
+
+async function buildSchedulesBufferCJS(sharpLib, width, height, masterDNA, projectContext) {
+  const esc = (v) =>
+    String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  const rooms = masterDNA?.rooms || masterDNA?.program?.rooms || projectContext?.programSpaces || [];
+  const materials = masterDNA?.materials || [];
+  const leftMargin = 12;
+  const colArea = Math.round(width * 0.55);
+  const colFloor = Math.round(width * 0.8);
+  const rowHeight = 18;
+  const headerY = 40;
+
+  let roomRows = '';
+  const displayRooms = (Array.isArray(rooms) ? rooms : []).slice(0, 12);
+  displayRooms.forEach((room, idx) => {
+    const y = headerY + 20 + idx * rowHeight;
+    const name = typeof room === 'string' ? room : (room.name || room.type || `Room ${idx + 1}`);
+    const area = room.dimensions || room.area || '';
+    const floor = room.floor != null ? (room.floor === 0 ? 'GF' : `L${room.floor}`) : '';
+    roomRows += `
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}.</text>
+      <text x="${leftMargin + 20}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(name)}</text>
+      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(String(area))}</text>
+      <text x="${colFloor}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(floor)}</text>`;
+  });
+
+  const roomsEndY = headerY + 20 + displayRooms.length * rowHeight + 10;
+  let matRows = '';
+  const displayMats = (Array.isArray(materials) ? materials : []).slice(0, 6);
+  displayMats.forEach((mat, idx) => {
+    const y = roomsEndY + 36 + idx * rowHeight;
+    const name = typeof mat === 'string' ? mat : (mat.name || mat.type || `Material ${idx + 1}`);
+    const application = mat.application || '';
+    matRows += `
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}. ${esc(name)}</text>
+      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(application)}</text>`;
+  });
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="4" ry="4" />
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">ROOM SCHEDULE</text>
+      <text x="${leftMargin}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">NO.</text>
+      <text x="${leftMargin + 20}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">ROOM</text>
+      <text x="${colArea}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">AREA</text>
+      <text x="${colFloor}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">FLOOR</text>
+      <line x1="8" y1="${headerY + 4}" x2="${width - 8}" y2="${headerY + 4}" stroke="#e2e8f0" stroke-width="1" />
+      ${roomRows}
+      <line x1="8" y1="${roomsEndY}" x2="${width - 8}" y2="${roomsEndY}" stroke="#e2e8f0" stroke-width="1" />
+      <rect x="8" y="${roomsEndY + 4}" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="${roomsEndY + 20}" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIALS SCHEDULE</text>
+      ${matRows}
+    </svg>`;
+
+  return sharpLib(Buffer.from(svg)).png().resize(width, height, {
+    fit: 'contain', background: { r: 255, g: 255, b: 255 },
+  }).toBuffer();
+}
+
+async function buildMaterialPaletteBufferCJS(sharpLib, width, height, masterDNA) {
+  const esc = (v) =>
+    String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  const materials = masterDNA?.materials || [];
+  const displayMats = (Array.isArray(materials) ? materials : []).slice(0, 8);
+  const cols = 2;
+  const margin = 12;
+  const headerH = 36;
+  const swatchW = Math.floor((width - margin * 3) / cols);
+  const swatchH = 40;
+  const gap = 8;
+
+  let swatches = '';
+  displayMats.forEach((mat, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const x = margin + col * (swatchW + margin);
+    const y = headerH + 12 + row * (swatchH + gap + 20);
+    const name = typeof mat === 'string' ? mat : (mat.name || mat.type || `Material ${idx + 1}`);
+    const hexColor = mat.hexColor || '#cccccc';
+    const application = mat.application || '';
+    swatches += `
+      <rect x="${x}" y="${y}" width="${swatchW}" height="${swatchH}" fill="${esc(hexColor)}" stroke="#e2e8f0" stroke-width="1" rx="3" />
+      <text x="${x}" y="${y + swatchH + 12}" font-family="Arial, sans-serif" font-size="9" font-weight="600" fill="#1f2937">${esc(name)}</text>
+      <text x="${x}" y="${y + swatchH + 24}" font-family="Arial, sans-serif" font-size="8" fill="#64748b">${esc(hexColor)} — ${esc(application)}</text>`;
+  });
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="4" ry="4" />
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
+      ${swatches}
+    </svg>`;
+
+  return sharpLib(Buffer.from(svg)).png().resize(width, height, {
+    fit: 'contain', background: { r: 255, g: 255, b: 255 },
+  }).toBuffer();
+}
+
+async function buildClimateCardBufferCJS(sharpLib, width, height, locationData) {
+  const esc = (v) =>
+    String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  const climate = locationData?.climate || {};
+  const sunPath = locationData?.sunPath || {};
+  const address = locationData?.address || 'Location TBD';
+  const climateType = climate.type || climate.zone || 'Temperate';
+  const seasonal = climate.seasonal || {};
+  const orientation = sunPath.optimalOrientation || 'South-facing';
+
+  const leftMargin = 12;
+  const lineH = 20;
+  let y = 46;
+
+  const rows = [
+    { label: 'LOCATION', value: address },
+    { label: 'CLIMATE TYPE', value: climateType },
+    { label: 'OPTIMAL ORIENTATION', value: orientation },
+  ];
+  if (seasonal.summer) {
+    rows.push({ label: 'SUMMER', value: typeof seasonal.summer === 'string' ? seasonal.summer : `${seasonal.summer.tempHigh || seasonal.summer.avgTemp || '—'}°C` });
+  }
+  if (seasonal.winter) {
+    rows.push({ label: 'WINTER', value: typeof seasonal.winter === 'string' ? seasonal.winter : `${seasonal.winter.tempLow || seasonal.winter.avgTemp || '—'}°C` });
+  }
+  if (sunPath.summer) rows.push({ label: 'SUMMER SUN PATH', value: sunPath.summer });
+  if (sunPath.winter) rows.push({ label: 'WINTER SUN PATH', value: sunPath.winter });
+
+  let dataRows = '';
+  rows.forEach((row) => {
+    dataRows += `
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">${esc(row.label)}</text>
+      <text x="${leftMargin}" y="${y + 13}" font-family="Arial, sans-serif" font-size="10" fill="#1f2937">${esc(String(row.value).substring(0, 60))}</text>
+      <line x1="8" y1="${y + 18}" x2="${width - 8}" y2="${y + 18}" stroke="#f1f5f9" stroke-width="1" />`;
+    y += lineH + 16;
+  });
+
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="#cbd5e1" stroke-width="2" rx="4" ry="4" />
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &amp; ENVIRONMENT</text>
+      ${dataRows}
+    </svg>`;
+
+  return sharpLib(Buffer.from(svg)).png().resize(width, height, {
+    fit: 'contain', background: { r: 255, g: 255, b: 255 },
+  }).toBuffer();
+}
+
 app.post('/api/a1/compose', async (req, res) => {
   try {
     const {
@@ -1969,6 +2132,9 @@ app.post('/api/a1/compose', async (req, res) => {
       siteOverlay = null,
       layoutConfig = 'board-v2',
       resolution = 'final',
+      masterDNA = null,
+      projectContext = null,
+      locationData = null,
     } = req.body;
     let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
 
@@ -2100,6 +2266,33 @@ app.post('/api/a1/compose', async (req, res) => {
         }
 
         const imageUrl = panel.imageUrl || panel.url;
+
+        // Handle data panels with SVG rendering (no FLUX image)
+        if (DATA_PANEL_TYPES.includes(panel.type) && !imageUrl) {
+          const x = Math.round(panelLayout.x * width);
+          const y = Math.round(panelLayout.y * height);
+          const panelWidth = Math.round(panelLayout.width * width);
+          const panelHeight = Math.round(panelLayout.height * height);
+          let svgBuffer = null;
+          try {
+            if (panel.type === 'schedules_notes') {
+              svgBuffer = await buildSchedulesBufferCJS(sharp, panelWidth, panelHeight, masterDNA, projectContext);
+            } else if (panel.type === 'material_palette') {
+              svgBuffer = await buildMaterialPaletteBufferCJS(sharp, panelWidth, panelHeight, masterDNA);
+            } else if (panel.type === 'climate_card') {
+              svgBuffer = await buildClimateCardBufferCJS(sharp, panelWidth, panelHeight, locationData);
+            }
+            if (svgBuffer) {
+              composites.push({ input: svgBuffer, left: x, top: y });
+              coordinates[panel.type] = { x, y, width: panelWidth, height: panelHeight };
+              console.log(`   📊 [SVG] Rendered ${panel.type} as deterministic SVG (${panelWidth}x${panelHeight})`);
+            }
+          } catch (svgErr) {
+            console.warn(`   ⚠️ [SVG] Failed to render ${panel.type}:`, svgErr.message);
+          }
+          return;
+        }
+
         if (!imageUrl) { return; }
 
         // Fetch image
