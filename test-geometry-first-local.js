@@ -520,7 +520,12 @@ try {
   }
 
   // Check documentation
-  const readmePath = path.join(__dirname, "GEOMETRY_FIRST_README.md");
+  const readmePath = path.join(
+    __dirname,
+    "docs",
+    "archive",
+    "GEOMETRY_FIRST_README.md",
+  );
   if (fs.existsSync(readmePath)) {
     success("GEOMETRY_FIRST_README.md exists");
     testsPassed++;
