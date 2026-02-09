@@ -1423,7 +1423,14 @@ export default async function handler(req, res) {
         .filter((type) => type !== "title_block")
         .filter((type) => {
           const panel = panelMap.get(type);
-          const hasContent = !!(panel?.buffer || panel?.imageUrl);
+          // svgPanel panels (material_palette, climate_card, schedules_notes)
+          // are rendered server-side as SVG later in the pipeline — they don't
+          // carry buffer/imageUrl but are still valid content.
+          const hasContent = !!(
+            panel?.buffer ||
+            panel?.imageUrl ||
+            panel?.svgPanel
+          );
           return !hasContent;
         });
 

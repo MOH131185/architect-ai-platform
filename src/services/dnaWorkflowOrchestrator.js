@@ -1872,6 +1872,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             imageUrl: p.imageUrl,
             label: p.type.toUpperCase().replace(/_/g, " "),
             meta,
+            ...(p.svgPanel ? { svgPanel: true } : {}),
           };
         }),
         siteOverlay,
