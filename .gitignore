@@ -36,6 +36,9 @@ yarn-error.log*
 # Design history (project-specific data)
 design_history/
 
+# E2E test output artifacts (generated images, JSON)
+e2e_results/
+
 # Python build artifacts (for FastAPI backend scaffolding)
 api/__pycache__/
 *.pyc
