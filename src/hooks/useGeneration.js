@@ -272,13 +272,28 @@ export const useGeneration = () => {
       const projectSeed = Math.floor(Math.random() * 1000000);
       updateProgress("Setup", 1, "Initializing design parameters...");
 
+      // Resolve pipeline mode early so session label is authoritative
+      let resolvedMode;
+      try {
+        const resolved = resolveWorkflowByMode();
+        resolvedMode = resolved.mode;
+      } catch (routeErr) {
+        if (routeErr instanceof UnsupportedPipelineModeError) {
+          logger.error(`Unsupported pipeline mode: ${routeErr.requestedMode}`);
+          showToast(`Unsupported pipeline mode: ${routeErr.requestedMode}`);
+          setIsLoading(false);
+          return;
+        }
+        throw routeErr;
+      }
+
       // Start generation session for modification tracking
       const sessionId = designGenerationHistory.startSession({
         projectDetails,
         locationData,
         portfolioAnalysis: null, // Will be updated after portfolio processing
         seed: projectSeed,
-        workflow: "a1-sheet-one-shot",
+        workflow: resolvedMode,
       });
 
       logger.info("Started generation session", { sessionId }, "📝");
@@ -340,20 +355,7 @@ export const useGeneration = () => {
       updateProgress("Analysis", 3, "Analyzing portfolio and location data...");
       const portfolioAnalysis = await analyzePortfolio();
 
-      // Select workflow based on pipeline mode (fail-fast on unsupported)
-      let resolvedMode;
-      try {
-        const resolved = resolveWorkflowByMode();
-        resolvedMode = resolved.mode;
-      } catch (routeErr) {
-        if (routeErr instanceof UnsupportedPipelineModeError) {
-          logger.error(`Unsupported pipeline mode: ${routeErr.requestedMode}`);
-          showToast(`Unsupported pipeline mode: ${routeErr.requestedMode}`);
-          setIsLoading(false);
-          return;
-        }
-        throw routeErr;
-      }
+      // resolvedMode already resolved above (before startSession)
       updateProgress("Workflow", 4, `Using ${resolvedMode} pipeline...`);
       logger.info(`Pipeline mode resolved: ${resolvedMode}`, null, "🎯");
 

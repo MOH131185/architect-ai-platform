@@ -17,7 +17,7 @@ export class UnsupportedPipelineModeError extends Error {
   constructor(mode) {
     super(
       `Unsupported pipeline mode "${mode}". ` +
-        `Supported modes: ${Object.values(PIPELINE_MODE).join(", ")}`,
+        `Supported: ${[...IMPLEMENTED_MODES].join(", ")}`,
     );
     this.name = "UnsupportedPipelineModeError";
     this.requestedMode = mode;
@@ -27,15 +27,12 @@ export class UnsupportedPipelineModeError extends Error {
 /**
  * Supported modes and their workflow keys.
  *
- * multi_panel   → runs runMultiPanelA1Workflow (default)
- * single_shot   → runs runMultiPanelA1Workflow (same orchestrator, A1-only)
- * geometry_first → NOT YET IMPLEMENTED → explicit error
- * hybrid_openai  → NOT YET IMPLEMENTED → explicit error
+ * multi_panel    → runs runMultiPanelA1Workflow (default and only supported mode)
+ * single_shot    → NOT IMPLEMENTED → explicit error (no dedicated single-shot path)
+ * geometry_first → NOT IMPLEMENTED → explicit error
+ * hybrid_openai  → NOT IMPLEMENTED → explicit error
  */
-const IMPLEMENTED_MODES = new Set([
-  PIPELINE_MODE.MULTI_PANEL,
-  PIPELINE_MODE.SINGLE_SHOT,
-]);
+const IMPLEMENTED_MODES = new Set([PIPELINE_MODE.MULTI_PANEL]);
 
 /**
  * Resolve the current pipeline mode and return the workflow key.
@@ -51,8 +48,6 @@ export function resolveWorkflowByMode(overrideMode) {
     throw new UnsupportedPipelineModeError(mode);
   }
 
-  // Both single_shot and multi_panel use the same orchestrator today.
-  // When single_shot gets a dedicated implementation, this will branch.
   return {
     mode,
     workflowKey: "multi_panel_a1",
@@ -93,7 +88,7 @@ export function isA1Workflow(workflow) {
   if (!workflow) return false;
   const A1_LABELS = new Set([
     PIPELINE_MODE.MULTI_PANEL,
-    PIPELINE_MODE.SINGLE_SHOT,
+    // Legacy labels retained for backwards-compatible UI checks
     "multi-panel-a1",
     "a1-sheet-one-shot",
     "a1-sheet",

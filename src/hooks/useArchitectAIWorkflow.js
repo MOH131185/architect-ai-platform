@@ -154,10 +154,12 @@ export function useArchitectAIWorkflow() {
         ...multiPanelResult,
         url: multiPanelResult.composedSheetUrl,
         composedSheetUrl: multiPanelResult.composedSheetUrl,
+        workflow: resolvedMode,
         panelCoordinates:
           multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
         metadata: {
           ...multiPanelResult.metadata,
+          workflow: resolvedMode,
           panelCount:
             multiPanelResult.metadata?.panelCount ||
             (multiPanelResult.panelMap

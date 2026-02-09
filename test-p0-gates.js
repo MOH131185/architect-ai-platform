@@ -1002,11 +1002,20 @@ function TC_ROUTE_008() {
     `Workflow key is multi_panel_a1`,
   );
 
-  // Supported: single_shot (via override param)
-  const singleResult = resolveWorkflowByMode("single_shot");
+  // Unsupported: single_shot → explicit error (no dedicated implementation)
+  let singleError = null;
+  try {
+    resolveWorkflowByMode("single_shot");
+  } catch (e) {
+    singleError = e;
+  }
   assert(
-    singleResult.mode === "single_shot",
-    `single_shot resolves (got "${singleResult.mode}")`,
+    singleError instanceof UnsupportedPipelineModeError,
+    "single_shot throws UnsupportedPipelineModeError",
+  );
+  assert(
+    singleError && singleError.requestedMode === "single_shot",
+    "Error carries requestedMode = single_shot",
   );
 
   // Unsupported: geometry_first → explicit error
@@ -1064,8 +1073,8 @@ function TC_ROUTE_008() {
     "isA1Workflow('multi_panel') = true",
   );
   assert(
-    isA1Workflow("single_shot") === true,
-    "isA1Workflow('single_shot') = true",
+    isA1Workflow("single_shot") === false,
+    "isA1Workflow('single_shot') = false (no longer A1)",
   );
   assert(
     isA1Workflow("multi-panel-a1") === true,
@@ -1085,6 +1094,14 @@ function TC_ROUTE_008() {
   );
   assert(isA1Workflow(undefined) === false, "isA1Workflow(undefined) = false");
   assert(isA1Workflow("") === false, "isA1Workflow('') = false");
+
+  // Workflow label consistency: resolveWorkflowByMode returns a mode
+  // that isA1Workflow recognises
+  const resolvedDefault = resolveWorkflowByMode();
+  assert(
+    isA1Workflow(resolvedDefault.mode) === true,
+    `resolveWorkflowByMode().mode ("${resolvedDefault.mode}") is recognised by isA1Workflow`,
+  );
 }
 
 // ===================================================================
