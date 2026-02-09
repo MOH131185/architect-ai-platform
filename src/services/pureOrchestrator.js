@@ -36,6 +36,7 @@ import {
   resolveWorkflowByMode,
   executeWorkflow,
   UnsupportedPipelineModeError,
+  MODIFY_WORKFLOW,
 } from "./workflowRouter.js";
 
 /**
@@ -427,7 +428,7 @@ export async function runModifyWorkflow(params) {
       geometryRenders: geometryRenders || null,
       validation: { isValid: true, score: 0.98 },
       consistencyScore: 1 - driftAnalysis.driftScore,
-      workflow: "multi_panel-modify",
+      workflow: MODIFY_WORKFLOW,
     });
 
     logger.success("Modify workflow complete", {

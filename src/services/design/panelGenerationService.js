@@ -24,9 +24,6 @@ import {
   validatePanelSet,
 } from "../../config/panelRegistry.js";
 import {
-  getCurrentPipelineMode,
-  isOption2Mode,
-  logPipelineConfig,
   TECHNICAL_PANELS as PIPELINE_TECHNICAL_PANELS,
   STYLED_3D_PANELS as PIPELINE_3D_PANELS,
 } from "../../config/pipelineMode.js";
@@ -2184,9 +2181,8 @@ export async function generateA1PanelsSequential(
       // Technical panels always use deterministic SVG in multi_panel mode
       intendedGenerator = "svg";
     } else if (PIPELINE_3D_PANELS.includes(job.type)) {
-      intendedGenerator = isOption2Mode(getCurrentPipelineMode())
-        ? "openai"
-        : "flux";
+      // 3D panels use FLUX in multi_panel mode (only supported mode)
+      intendedGenerator = "flux";
     }
 
     // Validate the intended generator (throws in strict mode if wrong)

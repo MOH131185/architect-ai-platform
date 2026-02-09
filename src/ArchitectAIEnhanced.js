@@ -46,8 +46,7 @@ import {
 import "./styles/premium.css";
 import { locationIntelligence } from "./services/locationIntelligence.js";
 import siteAnalysisService from "./services/siteAnalysisService.js";
-// eslint-disable-next-line no-unused-vars
-import enhancedAIIntegrationService from "./services/enhancedAIIntegrationService.js";
+// enhancedAIIntegrationService removed — dead code (legacy DALL-E workflow)
 import bimService from "./services/bimService.js";
 import { convertPdfFileToImageFile } from "./utils/pdfToImages.js";
 // 🆕 Design History Service for consistent 2D→3D generation

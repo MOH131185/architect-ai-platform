@@ -14,6 +14,7 @@
  */
 
 import designGenerationHistory from "./designGenerationHistory.js";
+import { MODIFY_WORKFLOW } from "./workflowRouter.js";
 import secureApiClient from "./secureApiClient.js";
 import dnaPromptGenerator from "./dnaPromptGenerator.js";
 import {
@@ -1902,7 +1903,7 @@ inconsistent style, mixed art styles, cartoon, sketch`;
         seed: baseSeed,
         deltaPrompt,
         consistencyScore: zoneValidation?.overallScore || 1.0,
-        workflow: "multi_panel-modify",
+        workflow: MODIFY_WORKFLOW,
         modifiedPanels: panelsToRegenerate,
       });
 
@@ -1916,7 +1917,7 @@ inconsistent style, mixed art styles, cartoon, sketch`;
         panelMap: updatedPanelMap,
         metadata: {
           ...compositedSheet.metadata,
-          workflow: "multi_panel-modify",
+          workflow: MODIFY_WORKFLOW,
           panelsRegenerated: panelsToRegenerate.length,
           panelsUnchanged: unchangedPanels.length,
         },

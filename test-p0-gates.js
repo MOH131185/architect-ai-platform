@@ -1312,6 +1312,7 @@ async function TC_LEGACY_012() {
     "dna-enhanced-together-ai",
     "modify-deterministic",
     "hybrid-a1-grid-v1",
+    "enhanced_dalle3_intelligent",
   ];
 
   const srcDir = path.join(__dirname, "src");
@@ -1447,6 +1448,83 @@ async function TC_ROUTE_013() {
   assert(
     hybridJSDoc[1] === actualDefault,
     `hybridA1Mode @default (${hybridJSDoc[1]}) matches actual value (${actualDefault})`,
+  );
+
+  // 5. MODIFY_WORKFLOW constant exported from workflowRouter.js
+  const { MODIFY_WORKFLOW } = await import("./src/services/workflowRouter.js");
+  assert(
+    MODIFY_WORKFLOW === `${PIPELINE_MODE.MULTI_PANEL}-modify`,
+    `MODIFY_WORKFLOW = "${MODIFY_WORKFLOW}" (expected "${PIPELINE_MODE.MULTI_PANEL}-modify")`,
+  );
+
+  // 6. isA1Workflow recognises MODIFY_WORKFLOW
+  assert(
+    isA1Workflow(MODIFY_WORKFLOW),
+    `isA1Workflow("${MODIFY_WORKFLOW}") = true`,
+  );
+
+  // 7. No hardcoded "multi_panel-modify" strings remain in service source
+  const modifyFiles = [
+    path.join(__dirname, "src", "services", "pureModificationService.js"),
+    path.join(__dirname, "src", "services", "pureOrchestrator.js"),
+    path.join(__dirname, "src", "services", "aiModificationService.js"),
+  ];
+  for (const file of modifyFiles) {
+    const src = fs.readFileSync(file, "utf8");
+    assert(
+      !src.includes('"multi_panel-modify"'),
+      `${path.basename(file)} uses MODIFY_WORKFLOW constant (no hardcoded string)`,
+    );
+  }
+
+  // 8. useArchitectAIWorkflow.js handles UnsupportedPipelineModeError
+  const hookSrc = fs.readFileSync(
+    path.join(__dirname, "src", "hooks", "useArchitectAIWorkflow.js"),
+    "utf8",
+  );
+  assert(
+    hookSrc.includes("UnsupportedPipelineModeError"),
+    "useArchitectAIWorkflow.js imports UnsupportedPipelineModeError",
+  );
+  assert(
+    hookSrc.includes("instanceof UnsupportedPipelineModeError"),
+    "useArchitectAIWorkflow.js catches UnsupportedPipelineModeError",
+  );
+
+  // 9. appConfig.js: Together.ai required, OpenAI reasoning optional
+  const appCfgSrc = fs.readFileSync(
+    path.join(__dirname, "src", "config", "appConfig.js"),
+    "utf8",
+  );
+  // Together.ai service config should have required: true
+  const togetherBlock = appCfgSrc.match(
+    /\[ServiceName\.TOGETHER_AI\]:\s*\{[\s\S]*?required:\s*(true|false)/,
+  );
+  assert(
+    togetherBlock && togetherBlock[1] === "true",
+    "appConfig: TOGETHER_AI required = true",
+  );
+  // OpenAI reasoning service config should have required: false
+  const openaiBlock = appCfgSrc.match(
+    /\[ServiceName\.OPENAI_REASONING\]:\s*\{[\s\S]*?required:\s*(true|false)/,
+  );
+  assert(
+    openaiBlock && openaiBlock[1] === "false",
+    "appConfig: OPENAI_REASONING required = false",
+  );
+
+  // 10. featureFlags.js declares outputMode with correct default
+  assert(
+    flagSrc.includes('outputMode: "presentation"'),
+    'featureFlags.js declares outputMode = "presentation"',
+  );
+
+  // 11. featureFlags.js maxValidationPasses is numeric (not boolean)
+  const maxPassLine = flagSrc.match(/maxValidationPasses:\s*(\S+)/);
+  assert(maxPassLine, "featureFlags.js has maxValidationPasses");
+  assert(
+    maxPassLine[1] !== "false" && maxPassLine[1] !== "true",
+    `maxValidationPasses is numeric (${maxPassLine[1]}), not boolean`,
   );
 }
 

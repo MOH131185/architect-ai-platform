@@ -14,6 +14,7 @@
  */
 
 import { createModifyRequest } from "../types/schemas.js";
+import { MODIFY_WORKFLOW } from "./workflowRouter.js";
 import { buildCompactModifyPrompt } from "./a1/A1PromptService.js";
 import { createTogetherAIClient } from "./togetherAIClient.js";
 import {
@@ -500,7 +501,7 @@ export async function modifySheet({
         dna: baseline.baselineDNA,
         geometryDNA: geometryDNA || null,
         geometryRenders: geometryRenders || null,
-        workflow: "multi_panel-modify",
+        workflow: MODIFY_WORKFLOW,
       },
       geometryDNA: geometryDNA || null,
       geometryRenders: geometryRenders || null,

@@ -145,7 +145,7 @@ export const FEATURE_FLAGS = {
   a1Orientation: "landscape",
   /**
    * Overlay captured site snapshot onto A1 sheet image
-   * Default disabled to rely on AI-generated site panel only
+   * Default enabled to composite site snapshot onto generated A1 sheet
    */
   overlaySiteSnapshotOnA1: true,
 
@@ -549,6 +549,9 @@ export const FEATURE_FLAGS = {
   /** Enforce strict panel validation */
   strictPanelValidation: false,
 
+  /** @type {'presentation'|'technical'} Panel output mode */
+  outputMode: "presentation",
+
   /** Fail fast on first invalid panel */
   strictPanelFailFast: false,
 
@@ -588,8 +591,8 @@ export const FEATURE_FLAGS = {
   /** Strict geometry pack requirements */
   strictCanonicalGeometryPack: false,
 
-  /** Max validation passes (used with fallback to 3) */
-  maxValidationPasses: false,
+  /** @type {number} Max validation passes before stopping */
+  maxValidationPasses: 3,
 
   /** Save control pack to debug */
   saveControlPackToDebug: false,

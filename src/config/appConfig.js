@@ -1,4 +1,4 @@
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
 /**
  * Application Configuration
@@ -16,25 +16,25 @@ import logger from '../utils/logger.js';
  * Environment type
  * @type {'development' | 'production' | 'test'}
  */
-const ENV = process.env.NODE_ENV || 'development';
+const ENV = process.env.NODE_ENV || "development";
 
 /**
  * Whether running in development mode
  * @type {boolean}
  */
-export const IS_DEV = ENV === 'development';
+export const IS_DEV = ENV === "development";
 
 /**
  * Whether running in production mode
  * @type {boolean}
  */
-export const IS_PROD = ENV === 'production';
+export const IS_PROD = ENV === "production";
 
 /**
  * Whether running in test mode
  * @type {boolean}
  */
-export const IS_TEST = ENV === 'test';
+export const IS_TEST = ENV === "test";
 
 /* ============================================================================
  * API KEYS (Server-side and Client-side)
@@ -44,14 +44,14 @@ export const IS_TEST = ENV === 'test';
  * Service name enum for type safety
  */
 export const ServiceName = {
-  GOOGLE_MAPS: 'google-maps',
-  OPENWEATHER: 'openweather',
-  OPENAI_REASONING: 'openai-reasoning',
-  OPENAI_IMAGES: 'openai-images',
-  OPENAI_LEGACY: 'openai-legacy',
-  REPLICATE: 'replicate',
-  TOGETHER_AI: 'together-ai',
-  MIDJOURNEY: 'midjourney'
+  GOOGLE_MAPS: "google-maps",
+  OPENWEATHER: "openweather",
+  OPENAI_REASONING: "openai-reasoning",
+  OPENAI_IMAGES: "openai-images",
+  OPENAI_LEGACY: "openai-legacy",
+  REPLICATE: "replicate",
+  TOGETHER_AI: "together-ai",
+  MIDJOURNEY: "midjourney",
 };
 
 /**
@@ -61,61 +61,66 @@ export const ServiceName = {
 const API_KEY_CONFIG = {
   // Client-side keys (bundled into browser)
   [ServiceName.GOOGLE_MAPS]: {
-    envVars: ['REACT_APP_GOOGLE_MAPS_API_KEY'],
+    envVars: ["REACT_APP_GOOGLE_MAPS_API_KEY"],
     required: true,
     clientSide: true,
-    description: 'Google Maps API for geocoding and 3D maps'
+    description: "Google Maps API for geocoding and 3D maps",
   },
   [ServiceName.OPENWEATHER]: {
-    envVars: ['REACT_APP_OPENWEATHER_API_KEY'],
+    envVars: ["REACT_APP_OPENWEATHER_API_KEY"],
     required: true,
     clientSide: true,
-    description: 'OpenWeather API for climate data'
+    description: "OpenWeather API for climate data",
   },
 
   // Server-side keys (never exposed to browser)
   [ServiceName.OPENAI_REASONING]: {
     envVars: IS_PROD
-      ? ['OPENAI_API_KEY', 'OPENAI_REASONING_API_KEY', 'REACT_APP_OPENAI_API_KEY']
-      : ['OPENAI_REASONING_API_KEY', 'REACT_APP_OPENAI_API_KEY'],
-    required: true,
+      ? [
+          "OPENAI_API_KEY",
+          "OPENAI_REASONING_API_KEY",
+          "REACT_APP_OPENAI_API_KEY",
+        ]
+      : ["OPENAI_REASONING_API_KEY", "REACT_APP_OPENAI_API_KEY"],
+    required: false, // Optional fallback — Together.ai Qwen is primary
     clientSide: false,
-    description: 'OpenAI API for GPT-4 design reasoning'
+    description: "OpenAI API for GPT-4 design reasoning (optional fallback)",
   },
   [ServiceName.OPENAI_IMAGES]: {
     envVars: IS_PROD
-      ? ['OPENAI_API_KEY', 'OPENAI_IMAGES_API_KEY']
-      : ['OPENAI_IMAGES_API_KEY', 'REACT_APP_OPENAI_API_KEY'],
+      ? ["OPENAI_API_KEY", "OPENAI_IMAGES_API_KEY"]
+      : ["OPENAI_IMAGES_API_KEY", "REACT_APP_OPENAI_API_KEY"],
     required: false, // Optional since Together AI can be used
     clientSide: false,
-    description: 'OpenAI API for DALL·E 3 image generation'
+    description: "OpenAI API for DALL·E 3 image generation",
   },
   [ServiceName.OPENAI_LEGACY]: {
-    envVars: ['REACT_APP_OPENAI_API_KEY'],
+    envVars: ["REACT_APP_OPENAI_API_KEY"],
     required: false, // Legacy fallback
     clientSide: true,
-    description: 'Legacy OpenAI API key (deprecated)'
+    description: "Legacy OpenAI API key (deprecated)",
   },
   [ServiceName.REPLICATE]: {
     envVars: IS_PROD
-      ? ['REPLICATE_API_TOKEN', 'REACT_APP_REPLICATE_API_KEY']
-      : ['REACT_APP_REPLICATE_API_KEY'],
+      ? ["REPLICATE_API_TOKEN", "REACT_APP_REPLICATE_API_KEY"]
+      : ["REACT_APP_REPLICATE_API_KEY"],
     required: false, // Fallback image generation
     clientSide: false,
-    description: 'Replicate API for SDXL image generation'
+    description: "Replicate API for SDXL image generation",
   },
   [ServiceName.TOGETHER_AI]: {
-    envVars: ['TOGETHER_API_KEY'],
-    required: false, // Optional alternative to OpenAI/Replicate
+    envVars: ["TOGETHER_API_KEY"],
+    required: true, // PRIMARY — all image generation and reasoning
     clientSide: false,
-    description: 'Together AI for FLUX.1 and Llama 70B'
+    description:
+      "Together AI for FLUX.1 image generation and Qwen reasoning (primary)",
   },
   [ServiceName.MIDJOURNEY]: {
-    envVars: ['MIDJOURNEY_API_KEY'],
+    envVars: ["MIDJOURNEY_API_KEY"],
     required: false, // Optional
     clientSide: false,
-    description: 'Midjourney API via Maginary.ai'
-  }
+    description: "Midjourney API via Maginary.ai",
+  },
 };
 
 /**
@@ -123,10 +128,10 @@ const API_KEY_CONFIG = {
  */
 const FEATURE_FLAG_CONFIG = {
   USE_TOGETHER: {
-    envVar: 'REACT_APP_USE_TOGETHER',
+    envVar: "REACT_APP_USE_TOGETHER",
     defaultValue: false,
-    description: 'Use Together AI instead of OpenAI/Replicate'
-  }
+    description: "Use Together AI instead of OpenAI/Replicate",
+  },
 };
 
 /**
@@ -183,13 +188,13 @@ function loadApiKeys() {
     if (apiKey) {
       keys[serviceName] = apiKey;
     } else if (config.required) {
-      const envVarList = config.envVars.join(' or ');
+      const envVarList = config.envVars.join(" or ");
       validationErrors.push(
-        `Missing required API key for ${serviceName}: Set ${envVarList} environment variable (${config.description})`
+        `Missing required API key for ${serviceName}: Set ${envVarList} environment variable (${config.description})`,
       );
     } else {
       validationWarnings.push(
-        `Optional API key for ${serviceName} not set: ${config.envVars[0]} (${config.description})`
+        `Optional API key for ${serviceName} not set: ${config.envVars[0]} (${config.description})`,
       );
     }
   }
@@ -208,13 +213,13 @@ function loadFeatureFlags() {
   for (const [flagName, config] of Object.entries(FEATURE_FLAG_CONFIG)) {
     const envValue = process.env[config.envVar];
 
-    if (envValue === undefined || envValue === null || envValue.trim() === '') {
+    if (envValue === undefined || envValue === null || envValue.trim() === "") {
       flags[flagName] = config.defaultValue;
     } else {
       // Parse boolean from string ('true', 'false', '1', '0', 'yes', 'no')
       const normalized = envValue.toLowerCase().trim();
       flags[flagName] =
-        normalized === 'true' || normalized === '1' || normalized === 'yes';
+        normalized === "true" || normalized === "1" || normalized === "yes";
     }
   }
 
@@ -242,28 +247,30 @@ function initializeConfig() {
 
   // Log warnings
   if (validationWarnings.length > 0 && IS_DEV) {
-    console.warn('⚠️  Configuration Warnings:');
+    console.warn("⚠️  Configuration Warnings:");
     validationWarnings.forEach((warning) => console.warn(`  - ${warning}`));
   }
 
   // Throw on errors (in production and development)
   if (validationErrors.length > 0) {
-    logger.error('❌ Configuration Errors:');
+    logger.error("❌ Configuration Errors:");
     validationErrors.forEach((error) => logger.error(`  - ${error}`));
 
     if (IS_PROD || IS_DEV) {
       throw new Error(
-        `Configuration validation failed with ${validationErrors.length} error(s). See console for details.`
+        `Configuration validation failed with ${validationErrors.length} error(s). See console for details.`,
       );
     }
   }
 
   // Log successful initialization in dev mode
   if (IS_DEV) {
-    logger.info('✅ Application configuration initialized successfully');
+    logger.info("✅ Application configuration initialized successfully");
     logger.info(`   Environment: ${ENV}`);
     logger.info(`   API Keys loaded: ${Object.keys(apiKeysCache).length}`);
-    logger.info(`   Feature Flags: ${JSON.stringify(featureFlagsCache, null, 2)}`);
+    logger.info(
+      `   Feature Flags: ${JSON.stringify(featureFlagsCache, null, 2)}`,
+    );
   }
 }
 
@@ -292,9 +299,9 @@ export function getApiKey(serviceName, options = {}) {
 
   if (!apiKey && required) {
     const config = API_KEY_CONFIG[serviceName];
-    const envVarList = config ? config.envVars.join(' or ') : 'unknown';
+    const envVarList = config ? config.envVars.join(" or ") : "unknown";
     throw new Error(
-      `API key for ${serviceName} is required but not configured. Set ${envVarList} environment variable.`
+      `API key for ${serviceName} is required but not configured. Set ${envVarList} environment variable.`,
     );
   }
 
@@ -395,23 +402,23 @@ export function getValidationWarnings() {
  * @returns {string} Base URL for API calls
  */
 export function getApiBaseUrl(service) {
-  const DEV_PROXY_BASE = 'http://localhost:3001/api';
-  const PROD_SERVERLESS_BASE = '/api';
+  const DEV_PROXY_BASE = "http://localhost:3001/api";
+  const PROD_SERVERLESS_BASE = "/api";
 
   const baseUrl = IS_PROD ? PROD_SERVERLESS_BASE : DEV_PROXY_BASE;
 
   switch (service) {
-    case 'openai':
+    case "openai":
       return `${baseUrl}/openai`;
-    case 'openai-images':
+    case "openai-images":
       return `${baseUrl}/openai/images`;
-    case 'replicate':
+    case "replicate":
       return `${baseUrl}/replicate`;
-    case 'together-ai':
+    case "together-ai":
       return `${baseUrl}/together`;
-    case 'midjourney':
+    case "midjourney":
       return `${baseUrl}/maginary`;
-    case 'enhanced-image':
+    case "enhanced-image":
       return `${baseUrl}/enhanced-image`;
     default:
       throw new Error(`Unknown service: ${service}`);
@@ -427,7 +434,7 @@ export function getApiBaseUrl(service) {
  */
 export function getApiUrl(service, endpoint) {
   const baseUrl = getApiBaseUrl(service);
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   return `${baseUrl}${cleanEndpoint}`;
 }
 
@@ -460,7 +467,7 @@ const appConfig = {
 
   // API URLs
   getApiBaseUrl,
-  getApiUrl
+  getApiUrl,
 };
 
 export default appConfig;

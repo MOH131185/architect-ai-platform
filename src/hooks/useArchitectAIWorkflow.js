@@ -21,6 +21,7 @@ import { isFeatureEnabled } from "../config/featureFlags.js";
 import {
   resolveWorkflowByMode,
   executeWorkflow,
+  UnsupportedPipelineModeError,
 } from "../services/workflowRouter.js";
 
 /**
@@ -209,6 +210,13 @@ export function useArchitectAIWorkflow() {
 
       return sheetResult;
     } catch (err) {
+      // Unsupported pipeline mode — fail fast, do not retry
+      if (err instanceof UnsupportedPipelineModeError) {
+        const msg = `Configuration error: ${err.message}. Set PIPELINE_MODE to "multi_panel".`;
+        logger.error(msg);
+        setError(msg);
+        return null;
+      }
       logger.error(`Sheet generation failed: ${err.message}`);
       if (err.stack) {
         logger.error(

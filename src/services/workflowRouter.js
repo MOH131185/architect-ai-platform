@@ -88,6 +88,7 @@ export function isA1Workflow(workflow) {
   if (!workflow) return false;
   const A1_LABELS = new Set([
     PIPELINE_MODE.MULTI_PANEL,
+    MODIFY_WORKFLOW,
     // Legacy labels retained for backwards-compatible UI checks
     "multi-panel-a1",
     "a1-sheet-one-shot",
@@ -96,9 +97,16 @@ export function isA1Workflow(workflow) {
   return A1_LABELS.has(workflow);
 }
 
+/**
+ * Canonical workflow label for modification operations.
+ * Derived from the primary mode to avoid hardcoded strings.
+ */
+export const MODIFY_WORKFLOW = `${PIPELINE_MODE.MULTI_PANEL}-modify`;
+
 export default {
   resolveWorkflowByMode,
   executeWorkflow,
   isA1Workflow,
   UnsupportedPipelineModeError,
+  MODIFY_WORKFLOW,
 };
