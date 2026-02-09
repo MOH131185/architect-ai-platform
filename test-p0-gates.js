@@ -1192,13 +1192,57 @@ async function TC_LABEL_009() {
 }
 
 // ===================================================================
+// TC-ENV-010: .env.example default PIPELINE_MODE is supported
+// ===================================================================
+async function TC_ENV_010() {
+  console.log(
+    "\n📋 TC-ENV-010: .env.example default PIPELINE_MODE is supported",
+  );
+  console.log(
+    "   Criteria: Fresh env from .env.example will not trigger UnsupportedPipelineModeError",
+  );
+
+  const fs = await import("fs");
+  const path = await import("path");
+  const url = await import("url");
+  const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
+  const envExamplePath = path.join(__dirname, ".env.example");
+
+  assert(fs.existsSync(envExamplePath), ".env.example file exists");
+
+  const content = fs.readFileSync(envExamplePath, "utf-8");
+
+  // Parse the uncommented PIPELINE_MODE assignment
+  const match = content.match(/^PIPELINE_MODE=(\S+)/m);
+  assert(match !== null, "PIPELINE_MODE is set in .env.example");
+
+  const envMode = match ? match[1] : null;
+  assert(
+    envMode === PIPELINE_MODE.MULTI_PANEL,
+    `.env.example PIPELINE_MODE = "${envMode}" (expected "${PIPELINE_MODE.MULTI_PANEL}")`,
+  );
+
+  // Verify it would resolve without error
+  let resolveError = null;
+  try {
+    resolveWorkflowByMode(envMode);
+  } catch (e) {
+    resolveError = e;
+  }
+  assert(
+    resolveError === null,
+    `.env.example PIPELINE_MODE="${envMode}" resolves without error`,
+  );
+}
+
+// ===================================================================
 // Main
 // ===================================================================
 async function main() {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║  P0 Gates - Definition of Done Tests                  ║");
   console.log("║  TC-PROG-001..004 | TC-DRIFT-003..004                 ║");
-  console.log("║  TC-PIPE-005..009 | TC-ENV-006                        ║");
+  console.log("║  TC-PIPE-005..010 | TC-ENV-006                        ║");
   console.log("╚════════════════════════════════════════════════════════╝");
 
   try {
@@ -1220,6 +1264,7 @@ async function main() {
   TC_GEO_007();
   TC_ROUTE_008();
   await TC_LABEL_009();
+  await TC_ENV_010();
 
   console.log("\n══════════════════════════════════════════════════════════");
   console.log(`  Results: ${passed}/${total} passed, ${failed} failed`);
