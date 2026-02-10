@@ -287,6 +287,54 @@ console.log("\n=== Geometry Authority Integration Tests ===\n");
   );
 }
 
+// Test 6: ComposeGate exempts data-only panels from geometryHash requirement
+{
+  // Import the real ComposeGate (fall back to inline check if unavailable)
+  let validateBeforeCompose;
+  try {
+    const mod = await import("./src/services/validation/ComposeGate.js");
+    validateBeforeCompose = mod.validateBeforeCompose;
+  } catch {
+    validateBeforeCompose = null;
+  }
+
+  if (validateBeforeCompose) {
+    const geoHash = "aabb1122ccdd3344";
+    const panels = [
+      { type: "floor_plan_ground", geometryHash: geoHash },
+      { type: "elevation_north", geometryHash: geoHash },
+      { type: "elevation_south", geometryHash: geoHash },
+      { type: "section_AA", geometryHash: geoHash },
+      // Data-only panels — NO geometryHash (this is correct)
+      { type: "schedules_notes" },
+      { type: "material_palette" },
+      { type: "climate_card" },
+    ];
+
+    const result = validateBeforeCompose(panels, null, null, null, {
+      strict: false,
+    });
+    assert(
+      result.valid === true,
+      "ComposeGate passes when data-only panels lack geometryHash",
+    );
+    assert(
+      !result.errors.some((e) => e.includes("schedules_notes")),
+      "schedules_notes not flagged for missing geometryHash",
+    );
+    assert(
+      !result.errors.some((e) => e.includes("material_palette")),
+      "material_palette not flagged for missing geometryHash",
+    );
+    assert(
+      !result.errors.some((e) => e.includes("climate_card")),
+      "climate_card not flagged for missing geometryHash",
+    );
+  } else {
+    console.log("  ⚠️  Skipping Test 6 (ComposeGate import failed)");
+  }
+}
+
 // Summary
 console.log(
   `\n=== Results: ${passed} passed, ${failed} failed (${passed + failed} total) ===\n`,

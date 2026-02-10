@@ -45,6 +45,16 @@ const REQUIRED_TECHNICAL_PANELS = [
   "section_AA",
 ];
 
+// Data-only panels (SVG text/tables, colour swatches, infographics).
+// These are NOT derived from 3D geometry and should be exempt from
+// the geometryHash requirement.
+const DATA_ONLY_PANELS = new Set([
+  "schedules_notes",
+  "material_palette",
+  "climate_card",
+  "title_block",
+]);
+
 function normalizeComposePanelType(panelType) {
   if (!panelType) return panelType;
   const lower = String(panelType).toLowerCase();
@@ -96,11 +106,15 @@ export function validateBeforeCompose(
     );
   }
 
-  // ----- 2. All panels carry geometry hash -----
+  // ----- 2. All geometry-derived panels carry geometry hash -----
+  // Data-only panels (schedules, palettes, climate cards) are exempt —
+  // they are SVG text/tables with no 3D geometry dependency.
   if (enforceGeometry) {
-    const panelsWithoutHash = (panels || []).filter(
-      (p) => !p.geometryHash && !p.meta?.geometryHash,
-    );
+    const panelsWithoutHash = (panels || []).filter((p) => {
+      const pType = p.type || p.panelType || "";
+      if (DATA_ONLY_PANELS.has(pType)) return false; // exempt
+      return !p.geometryHash && !p.meta?.geometryHash;
+    });
     if (panelsWithoutHash.length > 0) {
       const names = panelsWithoutHash.map((p) => p.type || p.panelType);
       errors.push(
