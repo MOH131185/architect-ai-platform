@@ -879,7 +879,9 @@ export class BuildingModel {
    */
   _areRoomsAdjacent(a, b) {
     if (!a.polygon || !b.polygon) return false;
-    const tolerance = 1; // 1mm
+    // Tolerance must exceed internal wall gap (100mm) so rooms sharing
+    // a partition wall are correctly detected as adjacent.
+    const tolerance = WALL_THICKNESS.INTERNAL + 50; // 150mm
     const aBBox = this._getBBox(a.polygon);
     const bBBox = this._getBBox(b.polygon);
     // Overlapping range on one axis, touching on the other
@@ -1102,6 +1104,9 @@ export class BuildingModel {
       return this._buildRoomsFallback(roomsData, floorIndex);
     }
 
+    // Post-layout: repair any required adjacencies that the strip packing broke
+    this._repairRequiredAdjacencies(rooms);
+
     return rooms;
   }
 
@@ -1136,6 +1141,9 @@ export class BuildingModel {
       }
       return (b?.targetAreaM2 || 20) - (a?.targetAreaM2 || 20);
     });
+
+    // Group required-adjacent pairs so they're packed consecutively
+    this._groupRequiredAdjacencyPairs(sortedRooms);
 
     for (const roomData of sortedRooms) {
       const areaM2 = roomData.targetAreaM2 || 20;
@@ -1245,6 +1253,115 @@ export class BuildingModel {
   }
 
   /**
+   * Reorder rooms in-place so that required-adjacent pairs are consecutive
+   * in the packing order. This ensures strip packing places them side-by-side.
+   * @private
+   */
+  _groupRequiredAdjacencyPairs(rooms) {
+    const pairs = [
+      ["Kitchen", "Dining"],
+      ["Master Bedroom", "En-Suite"],
+    ];
+
+    for (const [nameA, nameB] of pairs) {
+      const idxA = rooms.findIndex((r) => r.name?.includes(nameA));
+      const idxB = rooms.findIndex((r) => r.name?.includes(nameB));
+      if (idxA < 0 || idxB < 0) continue;
+      // Already consecutive
+      if (Math.abs(idxA - idxB) === 1) continue;
+
+      // Remove B and re-insert immediately after A
+      const [roomB] = rooms.splice(idxB, 1);
+      const newIdxA = rooms.findIndex((r) => r.name?.includes(nameA));
+      rooms.splice(newIdxA + 1, 0, roomB);
+    }
+  }
+
+  /**
+   * Post-layout repair: if a required-adjacent pair still isn't adjacent
+   * (e.g., they wrapped to different strips), reposition the second room
+   * next to the first.
+   * @private
+   */
+  _repairRequiredAdjacencies(rooms) {
+    const pairs = [
+      ["Kitchen", "Dining"],
+      ["Master Bedroom", "En-Suite"],
+    ];
+
+    for (const [nameA, nameB] of pairs) {
+      const roomA = rooms.find((r) => r.name?.includes(nameA));
+      const roomB = rooms.find((r) => r.name?.includes(nameB));
+      if (!roomA || !roomB) continue;
+      if (this._areRoomsAdjacent(roomA, roomB)) continue;
+
+      logger.warn(
+        `[BuildingModel] Repairing adjacency: moving ${roomB.name} next to ${roomA.name}`,
+      );
+
+      const wallGap = WALL_THICKNESS.INTERNAL;
+      const bWidth = roomB.boundingBox.maxX - roomB.boundingBox.minX;
+      const bDepth = roomB.boundingBox.maxY - roomB.boundingBox.minY;
+
+      // Candidate positions: right of A, below A, left of A, above A
+      const candidates = [
+        { x: roomA.boundingBox.maxX + wallGap, y: roomA.boundingBox.minY },
+        { x: roomA.boundingBox.minX, y: roomA.boundingBox.maxY + wallGap },
+        {
+          x: roomA.boundingBox.minX - bWidth - wallGap,
+          y: roomA.boundingBox.minY,
+        },
+        {
+          x: roomA.boundingBox.minX,
+          y: roomA.boundingBox.minY - bDepth - wallGap,
+        },
+      ];
+
+      for (const pos of candidates) {
+        const newBBox = {
+          minX: pos.x,
+          maxX: pos.x + bWidth,
+          minY: pos.y,
+          maxY: pos.y + bDepth,
+        };
+
+        // Check for overlaps with other rooms
+        const overlaps = rooms.some(
+          (r) =>
+            r !== roomA &&
+            r !== roomB &&
+            this._boxesOverlap(r.boundingBox, newBBox),
+        );
+
+        if (!overlaps) {
+          roomB.boundingBox = newBBox;
+          roomB.polygon = [
+            { x: pos.x, y: pos.y },
+            { x: pos.x + bWidth, y: pos.y },
+            { x: pos.x + bWidth, y: pos.y + bDepth },
+            { x: pos.x, y: pos.y + bDepth },
+          ];
+          roomB.center = {
+            x: pos.x + bWidth / 2,
+            y: pos.y + bDepth / 2,
+          };
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if two axis-aligned bounding boxes overlap.
+   * @private
+   */
+  _boxesOverlap(a, b) {
+    return (
+      a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY
+    );
+  }
+
+  /**
    * Get aspect ratio for room program type
    * @private
    */
@@ -1313,6 +1430,9 @@ export class BuildingModel {
         }
         return (b?.targetAreaM2 || 20) - (a?.targetAreaM2 || 20);
       });
+
+      // Group required-adjacent pairs so they're packed consecutively
+      this._groupRequiredAdjacencyPairs(sortedRooms);
 
       for (const roomData of sortedRooms) {
         const targetAreaM2 = roomData.targetAreaM2 || 20;
@@ -1413,6 +1533,9 @@ export class BuildingModel {
         requested: roomsData.length,
       });
     }
+
+    // Post-layout: repair any required adjacencies that strip packing broke
+    this._repairRequiredAdjacencies(packed.rooms);
 
     return packed.rooms;
   }
