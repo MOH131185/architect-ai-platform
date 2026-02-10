@@ -998,6 +998,54 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // Pre-gate repair: pin DNA room areas to user-locked values.
+      // LLMs frequently hallucinate or swap room areas (e.g. Bathroom 6→4m²,
+      // En-suite 4→6m²). Overwriting with the locked values ensures the gate
+      // passes and downstream prompts carry the correct dimensions.
+      if (programLock && masterDNA) {
+        const dnaRooms = masterDNA.rooms || masterDNA.program?.rooms || [];
+        if (dnaRooms.length > 0 && programLock.spaces?.length > 0) {
+          let repaired = 0;
+          for (const lockedSpace of programLock.spaces) {
+            if (!lockedSpace.targetAreaM2 || lockedSpace.targetAreaM2 <= 0)
+              continue;
+            const spaceName = lockedSpace.name.toLowerCase();
+            const match = dnaRooms.find((r) => {
+              const rn = (r.name || "").toLowerCase();
+              return rn.includes(spaceName) || spaceName.includes(rn);
+            });
+            if (!match) continue;
+            const currentArea = parseFloat(match.area_m2 || match.area) || 0;
+            if (
+              currentArea > 0 &&
+              Math.abs(currentArea - lockedSpace.targetAreaM2) /
+                lockedSpace.targetAreaM2 >
+                0.03
+            ) {
+              logger.warn(
+                `🔧 DNA area repair: "${lockedSpace.name}" ${currentArea}m² → ${lockedSpace.targetAreaM2}m²`,
+              );
+              if (match.area_m2 !== undefined) {
+                match.area_m2 = lockedSpace.targetAreaM2;
+              }
+              if (match.area !== undefined) {
+                match.area = lockedSpace.targetAreaM2;
+              }
+              // If neither field existed, set area_m2 as canonical
+              if (match.area_m2 === undefined && match.area === undefined) {
+                match.area_m2 = lockedSpace.targetAreaM2;
+              }
+              repaired++;
+            }
+          }
+          if (repaired > 0) {
+            logger.info(
+              `🔧 DNA area repair complete: ${repaired} room(s) corrected`,
+            );
+          }
+        }
+      }
+
       // Post-DNA Program Compliance Gate (CHECKPOINT 1)
       if (programLock && isFeatureEnabled("programComplianceGate")) {
         logger.info("🚦 Running Post-DNA ProgramComplianceGate...");
