@@ -30,6 +30,17 @@ const MM_PER_M = 1000;
 /** Default SVG scale (pixels per meter) */
 const DEFAULT_SCALE = 50;
 
+/** Escape XML special characters for safe SVG text content */
+function escXml(str) {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 // =============================================================================
 // FLOOR PLAN PROJECTION
 // =============================================================================
@@ -80,14 +91,14 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
 
   // SVG Styles
-  svg += `<style>${generateSVGStyles(style)}</style>`;
+  svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
 
   // Defs for patterns
   svg += generateHatchPattern("wall-hatch", style, 45, 3);
   svg += generateHatchPattern("slab-hatch", style, 45, 6);
 
   // Title
-  svg += `<text class="title" x="${finalWidth / 2}" y="30">${floor.name}</text>`;
+  svg += `<text class="title" x="${finalWidth / 2}" y="30">${escXml(floor.name)}</text>`;
 
   // Transform group for building coordinates (Y-flip for architectural convention)
   svg += `<g id="plan-content" transform="translate(${offsetX}, ${offsetY}) scale(1, -1)">`;
@@ -127,7 +138,7 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
       const cx = offsetX + room.center.x * pxPerMM;
       const cy = offsetY - room.center.y * pxPerMM; // Flip Y
 
-      svg += `<text class="room-label" x="${cx}" y="${cy - 6}">${room.name}</text>`;
+      svg += `<text class="room-label" x="${cx}" y="${cy - 6}">${escXml(room.name)}</text>`;
       svg += `<text class="area-label" x="${cx}" y="${cy + 10}">${Math.round(room.areaM2)} m\u00B2</text>`;
 
       // Room width x depth dimensions
@@ -507,7 +518,7 @@ export function projectElevation(model, orientation = "S", options = {}) {
   const offsetX = finalWidth / 2;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
-  svg += `<style>${generateSVGStyles(style)}</style>`;
+  svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
 
   // Sky background
   svg += `<rect class="sky" x="0" y="0" width="${finalWidth}" height="${groundY}"/>`;
@@ -526,7 +537,7 @@ export function projectElevation(model, orientation = "S", options = {}) {
 
   // Title
   const orientationNames = { N: "North", S: "South", E: "East", W: "West" };
-  svg += `<text class="title" x="${finalWidth / 2}" y="30">${orientationNames[orientation]} Elevation</text>`;
+  svg += `<text class="title" x="${finalWidth / 2}" y="30">${escXml(orientationNames[orientation])} Elevation</text>`;
 
   // Building wall — with material fill from DNA style
   const wallLeft = offsetX - (elevationWidthMM / 2) * pxPerMM;
@@ -904,7 +915,7 @@ export function projectSection(
   const offsetX = finalWidth / 2;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
-  svg += `<style>${generateSVGStyles(style)}</style>`;
+  svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
   svg += generateHatchPattern("wall-hatch", style, 45, 3);
   svg += generateHatchPattern("slab-hatch", style, 45, 6);
 
@@ -915,7 +926,7 @@ export function projectSection(
   // Title
   const sectionLabel =
     sectionType === "longitudinal" ? "Section A-A" : "Section B-B";
-  svg += `<text class="title" x="${finalWidth / 2}" y="30">${sectionLabel}</text>`;
+  svg += `<text class="title" x="${finalWidth / 2}" y="30">${escXml(sectionLabel)}</text>`;
 
   const buildingLeft = offsetX - (sectionWidthMM / 2) * pxPerMM;
   const buildingRight = offsetX + (sectionWidthMM / 2) * pxPerMM;
@@ -1084,7 +1095,7 @@ function drawSectionFloor(
           : offsetX + room.center.y * pxPerMM;
         const roomY = floorY - (floor.floorHeight * pxPerMM) / 2;
 
-        svg += `<text class="room-label" x="${roomX}" y="${roomY}">${room.name}</text>`;
+        svg += `<text class="room-label" x="${roomX}" y="${roomY}">${escXml(room.name)}</text>`;
       }
     }
   }
@@ -1364,13 +1375,13 @@ function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
     svg += `<line x1="${x1 - tickSize}" y1="${y1}" x2="${x1 + tickSize}" y2="${y1}"/>`;
     svg += `<line x1="${x1 - tickSize}" y1="${y2}" x2="${x1 + tickSize}" y2="${y2}"/>`;
     const midY = (y1 + y2) / 2;
-    svg += `<text class="dimension-text" x="${x1 + 15}" y="${midY}" transform="rotate(-90, ${x1 + 15}, ${midY})">${text}</text>`;
+    svg += `<text class="dimension-text" x="${x1 + 15}" y="${midY}" transform="rotate(-90, ${x1 + 15}, ${midY})">${escXml(text)}</text>`;
   } else {
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
     svg += `<line x1="${x1}" y1="${y1 - tickSize}" x2="${x1}" y2="${y1 + tickSize}"/>`;
     svg += `<line x1="${x2}" y1="${y1 - tickSize}" x2="${x2}" y2="${y1 + tickSize}"/>`;
     const midX = (x1 + x2) / 2;
-    svg += `<text class="dimension-text" x="${midX}" y="${y1 - 8}">${text}</text>`;
+    svg += `<text class="dimension-text" x="${midX}" y="${y1 - 8}">${escXml(text)}</text>`;
   }
 
   svg += "</g>";
@@ -1392,7 +1403,7 @@ function drawLevelMarker(x, y, text, id = "", isDashed = false) {
   svg += `<line class="${isDashed ? "level-marker-dashed" : "level-marker"}" x1="${x - triangleSize}" y1="${y}" x2="${x - triangleSize - lineLength}" y2="${y}"/>`;
 
   // Text
-  svg += `<text class="level-text" x="${x - triangleSize - lineLength - textOffset}" y="${y + 4}" text-anchor="end">${text}</text>`;
+  svg += `<text class="level-text" x="${x - triangleSize - lineLength - textOffset}" y="${y + 4}" text-anchor="end">${escXml(text)}</text>`;
 
   svg += "</g>";
   return svg;
@@ -1542,8 +1553,8 @@ function drawTitleBlock(svgWidth, svgHeight, title, drawingNumber, scaleValue) {
   let svg = `<g id="title-block">`;
   svg += `<rect x="${x}" y="${y}" width="${blockW}" height="${blockH}" fill="#ffffff" stroke="#333" stroke-width="1"/>`;
   svg += `<line x1="${x}" y1="${y + 20}" x2="${x + blockW}" y2="${y + 20}" stroke="#333" stroke-width="0.5"/>`;
-  svg += `<text x="${x + 5}" y="${y + 14}" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#333">${title}</text>`;
-  svg += `<text x="${x + 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666">Dwg: ${drawingNumber}</text>`;
+  svg += `<text x="${x + 5}" y="${y + 14}" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#333">${escXml(title)}</text>`;
+  svg += `<text x="${x + 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666">Dwg: ${escXml(drawingNumber)}</text>`;
   svg += `<text x="${x + blockW - 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666" text-anchor="end">Scale 1:${Math.round((1000 / scaleValue) * 10) / 10}</text>`;
   svg += `</g>`;
   return svg;
@@ -1614,7 +1625,7 @@ function createEmptySVG(width, height, message) {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">
       <rect width="${width}" height="${height}" fill="#f0f0f0"/>
-      <text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-family="Arial" font-size="14" fill="#999">${message}</text>
+      <text x="${width / 2}" y="${height / 2}" text-anchor="middle" font-family="Arial" font-size="14" fill="#999">${escXml(message)}</text>
     </svg>
   `;
 }

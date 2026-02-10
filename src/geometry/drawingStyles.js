@@ -372,7 +372,7 @@ export function generateSVGStyles(style) {
       stroke-width: ${lw.roof};
     }
 
-    /* --- Slabs & Foundation --- */
+    /* --- Slabs and Foundation --- */
     .slab-cut {
       fill: ${c.slabFill};
       stroke: ${c.stroke};
