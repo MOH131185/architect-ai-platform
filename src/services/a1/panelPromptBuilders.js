@@ -29,6 +29,7 @@ MANDATORY TEXT SIZES:
 - All text BLACK, Arial/Helvetica font`;
 
 const DRAWING_STYLE_SUFFIX = `pure white background, clean black lines with clear lineweight hierarchy, no shadows, no title block, no text outside the drawing.
+Drawing must fill 85-95% of the canvas with minimal outer margins; no tiny drawing centered in large white space.
 ${LINEWEIGHT_SPEC}`;
 const RENDER_STYLE_SUFFIX =
   "same materials and colors as other views, soft neutral sky, no watermark, no text";

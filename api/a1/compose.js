@@ -926,6 +926,19 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Logging request details
+    console.log(`[A1 Compose] Request for designId: ${req.body.designId}`);
+    console.log(
+      `[A1 Compose] Panels: ${req.body.panels?.length || 0}, SiteOverlay: ${req.body.siteOverlay ? "Yes" : "No"}`,
+    );
+    if (req.body.masterDNA) {
+      console.log(
+        `[A1 Compose] MasterDNA: Rooms=${req.body.masterDNA.rooms?.length || 0}, Materials=${req.body.masterDNA.materials?.length || 0}`,
+      );
+    } else {
+      console.warn("[A1 Compose] ⚠️ MasterDNA missing from payload");
+    }
+
     // Runtime proof (Node vs Edge/other)
     logRuntimeOnce();
 
@@ -1081,9 +1094,11 @@ export default async function handler(req, res) {
 
     if (registry && !skipMissingPanelCheck) {
       const requiredPanels =
-        typeof registry.getAIGeneratedPanels === "function"
-          ? registry.getAIGeneratedPanels(floorCount)
-          : registry.getRequiredPanels(floorCount);
+        typeof registry.getRequiredPanels === "function"
+          ? registry.getRequiredPanels(floorCount)
+          : typeof registry.getAIGeneratedPanels === "function"
+            ? registry.getAIGeneratedPanels(floorCount)
+            : [];
       const providedTypes = new Set(panels.map((p) => p.type));
       const missingPanels = requiredPanels.filter(
         (type) => !providedTypes.has(type),
@@ -1623,41 +1638,47 @@ export default async function handler(req, res) {
       // These panels contain text-heavy data (room schedules, material swatches, climate info)
       // that FLUX renders as semi-legible gibberish. SVG gives crisp, perfectly readable output.
       const svgHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
-      if (type === "schedules_notes" && (!panel?.imageUrl || panel?.svgPanel)) {
-        const schedulesBuffer = await buildSchedulesBuffer(
-          sharp,
-          slotRect.width,
-          svgHeight,
-          masterDNA,
-          projectContext,
-          constants,
-        );
-        composites.push({
-          input: schedulesBuffer,
-          left: slotRect.x,
-          top: slotRect.y,
-        });
-        continue;
-      }
       if (
-        type === "material_palette" &&
-        (!panel?.imageUrl || panel?.svgPanel)
+        type === "schedules_notes" ||
+        type === "material_palette" ||
+        type === "climate_card"
       ) {
-        const materialBuffer = await buildMaterialPaletteBuffer(
-          sharp,
-          slotRect.width,
-          svgHeight,
-          masterDNA,
-          constants,
-        );
-        composites.push({
-          input: materialBuffer,
-          left: slotRect.x,
-          top: slotRect.y,
-        });
-        continue;
-      }
-      if (type === "climate_card" && (!panel?.imageUrl || panel?.svgPanel)) {
+        if (panel?.imageUrl && !panel?.svgPanel) {
+          console.warn(
+            `[A1 Compose] Ignoring raster ${type} panel and rendering deterministic SVG instead`,
+          );
+        }
+        if (type === "schedules_notes") {
+          const schedulesBuffer = await buildSchedulesBuffer(
+            sharp,
+            slotRect.width,
+            svgHeight,
+            masterDNA,
+            projectContext,
+            constants,
+          );
+          composites.push({
+            input: schedulesBuffer,
+            left: slotRect.x,
+            top: slotRect.y,
+          });
+          continue;
+        }
+        if (type === "material_palette") {
+          const materialBuffer = await buildMaterialPaletteBuffer(
+            sharp,
+            slotRect.width,
+            svgHeight,
+            masterDNA,
+            constants,
+          );
+          composites.push({
+            input: materialBuffer,
+            left: slotRect.x,
+            top: slotRect.y,
+          });
+          continue;
+        }
         const climateBuffer = await buildClimateCardBuffer(
           sharp,
           slotRect.width,
@@ -3233,7 +3254,7 @@ async function buildSchedulesBuffer(
     masterDNA?.program?.rooms ||
     projectContext?.programSpaces ||
     [];
-  const materials = masterDNA?.materials || [];
+  const materials = normalizeMaterialsForCompose(masterDNA);
   const leftMargin = 12;
   const colArea = Math.round(width * 0.55);
   const colFloor = Math.round(width * 0.8);
@@ -3291,14 +3312,20 @@ async function buildSchedulesBuffer(
       <text x="${colFloor}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">FLOOR</text>
       <line x1="8" y1="${headerY + 4}" x2="${width - 8}" y2="${headerY + 4}" stroke="#e2e8f0" stroke-width="1" />
 
-      ${roomRows}
+      ${
+        roomRows ||
+        `<text x="${width / 2}" y="${headerY + 20}" font-family="Arial, sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">No room data available</text>`
+      }
 
       <!-- Materials Schedule Header -->
       <line x1="8" y1="${roomsEndY}" x2="${width - 8}" y2="${roomsEndY}" stroke="#e2e8f0" stroke-width="1" />
       <rect x="8" y="${roomsEndY + 4}" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
       <text x="${width / 2}" y="${roomsEndY + 20}" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIALS SCHEDULE</text>
 
-      ${matRows}
+      ${
+        matRows ||
+        `<text x="${width / 2}" y="${roomsEndY + 40}" font-family="Arial, sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">No material data available</text>`
+      }
     </svg>
   `;
 
@@ -3309,6 +3336,43 @@ async function buildSchedulesBuffer(
       background: { r: 255, g: 255, b: 255 },
     })
     .toBuffer();
+}
+
+/**
+ * Normalize materials from DNA into a consistent array.
+ * Handles: array at .materials, .style.materials, ._structured.style.materials,
+ * and object-shaped materials ({exterior: {...}, roof: {...}}).
+ */
+function normalizeMaterialsForCompose(dna) {
+  if (!dna) return [];
+  const candidates = [
+    dna.materials,
+    dna.style?.materials,
+    dna._structured?.style?.materials,
+  ];
+  for (const mats of candidates) {
+    if (Array.isArray(mats) && mats.length > 0) {
+      return mats.map((m) => ({
+        name: typeof m === "string" ? m : m.name || m.type || "material",
+        hexColor: m.hexColor || m.color_hex || "#808080",
+        application: m.application || m.use || "",
+      }));
+    }
+  }
+  if (
+    dna.materials &&
+    typeof dna.materials === "object" &&
+    !Array.isArray(dna.materials)
+  ) {
+    return Object.entries(dna.materials)
+      .filter(([, v]) => v && typeof v === "object")
+      .map(([key, v]) => ({
+        name: v.name || v.material || key,
+        hexColor: v.hexColor || v.color_hex || "#808080",
+        application: v.application || key,
+      }));
+  }
+  return [];
 }
 
 /**
@@ -3331,8 +3395,9 @@ async function buildMaterialPaletteBuffer(
       .replace(/\"/g, "&quot;")
       .replace(/'/g, "&#39;");
 
-  const materials = masterDNA?.materials || [];
-  const displayMats = (Array.isArray(materials) ? materials : []).slice(0, 8);
+  // Defensive normalization: LLMs put materials in various locations and shapes
+  const materials = normalizeMaterialsForCompose(masterDNA);
+  const displayMats = materials.slice(0, 8);
 
   // Grid layout: 2 columns
   const cols = 2;
@@ -3370,7 +3435,10 @@ async function buildMaterialPaletteBuffer(
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
       <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
 
-      ${swatches}
+      ${
+        swatches ||
+        `<text x="${width / 2}" y="${height / 2}" font-family="Arial, sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">No material palette data available</text>`
+      }
     </svg>
   `;
 
@@ -3463,7 +3531,10 @@ async function buildClimateCardBuffer(
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
       <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &amp; ENVIRONMENT</text>
 
-      ${dataRows}
+      ${
+        dataRows ||
+        `<text x="${width / 2}" y="${height / 2}" font-family="Arial, sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">No climate data available</text>`
+      }
     </svg>
   `;
 

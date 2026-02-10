@@ -6,6 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const cors = require('cors');
 const express = require('express');
@@ -13,7 +14,6 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const geometryJobManager = require('./server/geometry/renderJobManager.cjs');
 const genarchJobManager = require('./server/genarch/genarchJobManager.cjs');
-const { buildComposeSheetUrl } = require('./server/utils/a1ComposePayload.cjs');
 const { resolveAiApiLimiterMax, resolveImageGenerationLimiterMax } = require('./server/utils/rateLimitConfig.cjs');
 const { genarchAuth, geometryAuth } = require('./server/middleware/apiKeyAuth.cjs');
 const { mountImageProxy } = require('./server/utils/imageProxy.cjs');
@@ -2166,362 +2166,38 @@ function collectPanelGeometryHashes(panels = []) {
   return [...new Set(hashes)];
 }
 
+let a1ComposeHandlerPromise = null;
+async function getA1ComposeHandler() {
+  if (!a1ComposeHandlerPromise) {
+    const composeModuleUrl = pathToFileURL(
+      path.resolve(__dirname, 'api/a1/compose.js')
+    ).href;
+    a1ComposeHandlerPromise = import(composeModuleUrl)
+      .then((mod) => {
+        if (typeof mod.default !== 'function') {
+          throw new Error('api/a1/compose.js does not export a default handler');
+        }
+        return mod.default;
+      })
+      .catch((err) => {
+        // Allow retry on subsequent requests if initial load fails.
+        a1ComposeHandlerPromise = null;
+        throw err;
+      });
+  }
+  return a1ComposeHandlerPromise;
+}
+
 app.post('/api/a1/compose', async (req, res) => {
   try {
-    const {
-      designId,
-      siteOverlay = null,
-      layoutConfig = 'board-v2',
-      resolution = 'final',
-      masterDNA = null,
-      projectContext = null,
-      locationData = null,
-    } = req.body;
-    const requestedHashes = readRequestHashes(req.body);
-    let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
-
-    if (!panels || panels.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'NO_PANELS',
-        message: 'No panels provided for composition',
-        details: { designId: designId || null },
-      });
-    }
-
-    console.log(`[A1 Compose] Composing ${panels.length} panels for design ${designId}...`);
-
-    logA1ComposeRuntimeOnce();
-
-    const registry = await getPanelRegistry();
-    const unknownPanelTypes = [];
-
-    // Normalize panel keys using built-in normalizer (fallback to registry)
-    panels = panels
-      .map((panel) => {
-        // Try built-in normalizer first
-        let canonical = normalizeKeyToCanonical(panel.type);
-
-        // Fallback to registry if available
-        if (!canonical && registry) {
-          canonical = registry.normalizeToCanonical(panel.type);
-        }
-
-        if (!canonical) {
-          unknownPanelTypes.push(panel.type);
-          return null;
-        }
-
-        return { ...panel, type: canonical, originalType: panel.type };
-      })
-      .filter(Boolean);
-
-    if (unknownPanelTypes.length > 0) {
-      console.warn(`[A1 Compose] Ignoring unknown panel types: ${unknownPanelTypes.join(', ')}`);
-    }
-
-    if (!panels || panels.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'NO_PANELS',
-        message: 'No valid panels provided after normalization',
-        details: { designId: designId || null, unknownPanelTypes },
-      });
-    }
-
-    const explicitFloorCount = Number(req.body.floorCount);
-    const derivedFloorCount =
-      panels.filter((p) => String(p.type || '').startsWith('floor_plan_')).length || 2;
-    const floorCount =
-      Number.isFinite(explicitFloorCount) && explicitFloorCount > 0
-        ? explicitFloorCount
-        : derivedFloorCount;
-
-    // skipMissingPanelCheck: Allow composition with placeholders for missing panels (smoke tests, dev)
-    const skipMissingPanelCheck = req.body.skipMissingPanelCheck === true || req.body.skipValidation === true;
-    const skipValidation = skipMissingPanelCheck || req.body.skipValidation === true;
-    const requireHashMetadata = req.body.requireHashMetadata !== false && !skipValidation;
-    const panelGeometryHashes = collectPanelGeometryHashes(panels);
-
-    if (requireHashMetadata) {
-      const missingHashFields = Object.entries(requestedHashes)
-        .filter(([, value]) => !value)
-        .map(([key]) => key);
-
-      if (missingHashFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'MISSING_HASH_METADATA',
-          message: `Cannot compose A1 sheet - missing required hash metadata: ${missingHashFields.join(', ')}`,
-          details: {
-            required: ['dnaHash', 'geometryHash', 'programHash'],
-            received: requestedHashes,
-          },
-        });
-      }
-    }
-
-    if (!skipValidation) {
-      if (panelGeometryHashes.length > 1) {
-        return res.status(400).json({
-          success: false,
-          error: 'PANEL_GEOMETRY_HASH_MISMATCH',
-          message:
-            'Cannot compose A1 sheet - panels contain multiple geometry hashes.',
-          details: {
-            panelGeometryHashes,
-            recommendation:
-              'Regenerate all panels from a single canonical geometry pack.',
-          },
-        });
-      }
-
-      if (requestedHashes.geometryHash) {
-        if (panelGeometryHashes.length === 0) {
-          return res.status(400).json({
-            success: false,
-            error: 'MISSING_PANEL_GEOMETRY_HASH',
-            message:
-              'Cannot compose A1 sheet - requested geometryHash was provided but panels do not contain geometryHash metadata.',
-            details: {
-              expectedGeometryHash: requestedHashes.geometryHash,
-            },
-          });
-        }
-
-        if (panelGeometryHashes[0] !== requestedHashes.geometryHash) {
-          return res.status(400).json({
-            success: false,
-            error: 'GEOMETRY_HASH_MISMATCH',
-            message:
-              'Cannot compose A1 sheet - panel geometry hash does not match requested geometryHash.',
-            details: {
-              expectedGeometryHash: requestedHashes.geometryHash,
-              panelGeometryHash: panelGeometryHashes[0],
-            },
-          });
-        }
-      }
-    }
-
-    if (registry && !skipMissingPanelCheck) {
-      const requiredPanels = typeof registry.getAIGeneratedPanels === 'function'
-        ? registry.getAIGeneratedPanels(floorCount)
-        : registry.getRequiredPanels(floorCount);
-      const providedTypes = new Set(panels.map((p) => p.type));
-      const missingPanels = requiredPanels.filter((type) => !providedTypes.has(type));
-
-      if (missingPanels.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'MISSING_REQUIRED_PANELS',
-          message: `Cannot compose A1 sheet - missing: ${missingPanels.join(', ')}`,
-          details: { missingPanels, unknownPanelTypes },
-        });
-      }
-    } else if (skipMissingPanelCheck) {
-      console.log(`[A1 Compose] skipMissingPanelCheck=true - allowing composition with placeholders`);
-    }
-
-    // Try to load sharp
-    let sharp;
-    try {
-      sharp = require('sharp');
-    } catch (e) {
-      console.warn('âš ï¸ Sharp not available for server-side composition');
-      // Fallback to returning the first image (legacy behavior) or error
-      return res.status(503).json({
-        success: false,
-        error: 'SHARP_UNAVAILABLE',
-        message: 'Server-side composition unavailable (sharp not installed)',
-        details: { fallback: true },
-      });
-    }
-
-    // Prevent caching of compose results (panels vary per request)
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-
-    // 1. Create blank canvas
-    const resolutionKey = String(resolution || 'final').toLowerCase();
-    const { width, height } = A1_RESOLUTIONS[resolutionKey] || A1_RESOLUTIONS.final;
-
-    const background = sharp({
-      create: {
-        width,
-        height,
-        channels: 3,
-        background: { r: 255, g: 255, b: 255 },
-      },
-    }).png();
-
-    // 2. Fetch and prepare all panel images
-    const composites = [];
-    const coordinates = {};
-    const layout = PANEL_LAYOUT_V2; // Use V2 layout with canonical keys
-
-    console.log('   â¬‡ï¸  Fetching panel images...');
-
-    const processPanelPromises = panels.map(async (panel) => {
-      try {
-        const panelLayout = layout[panel.type];
-        if (!panelLayout) {
-          console.warn(`   âš ï¸  Unknown panel type: ${panel.type}`);
-          return;
-        }
-
-        const imageUrl = panel.imageUrl || panel.url;
-
-        // Handle data panels with SVG rendering (no FLUX image)
-        if (DATA_PANEL_TYPES.includes(panel.type) && !imageUrl) {
-          const x = Math.round(panelLayout.x * width);
-          const y = Math.round(panelLayout.y * height);
-          const panelWidth = Math.round(panelLayout.width * width);
-          const panelHeight = Math.round(panelLayout.height * height);
-          let svgBuffer = null;
-          try {
-            if (panel.type === 'schedules_notes') {
-              svgBuffer = await buildSchedulesBufferCJS(sharp, panelWidth, panelHeight, masterDNA, projectContext);
-            } else if (panel.type === 'material_palette') {
-              svgBuffer = await buildMaterialPaletteBufferCJS(sharp, panelWidth, panelHeight, masterDNA);
-            } else if (panel.type === 'climate_card') {
-              svgBuffer = await buildClimateCardBufferCJS(sharp, panelWidth, panelHeight, locationData);
-            }
-            if (svgBuffer) {
-              composites.push({ input: svgBuffer, left: x, top: y });
-              coordinates[panel.type] = { x, y, width: panelWidth, height: panelHeight };
-              console.log(`   📊 [SVG] Rendered ${panel.type} as deterministic SVG (${panelWidth}x${panelHeight})`);
-            }
-          } catch (svgErr) {
-            console.warn(`   ⚠️ [SVG] Failed to render ${panel.type}:`, svgErr.message);
-          }
-          return;
-        }
-
-        if (!imageUrl) { return; }
-
-        // Fetch image
-        let buffer;
-        if (imageUrl.startsWith('data:')) {
-          // Handle data URL
-          const base64Data = imageUrl.split(';base64,').pop();
-          buffer = Buffer.from(base64Data, 'base64');
-        } else {
-          // Handle remote URL
-          const response = await fetch(imageUrl);
-          if (!response.ok) { throw new Error(`Failed to fetch ${imageUrl}`); }
-          const arrayBuffer = await response.arrayBuffer();
-          buffer = Buffer.from(arrayBuffer);
-        }
-
-        // Auto-crop white borders before fitting to panel
-        let processedBuffer = buffer;
-        try {
-          processedBuffer = await autoCropWhiteBorders(buffer, sharp);
-        } catch (cropErr) {
-          // Use original buffer on crop failure
-          processedBuffer = buffer;
-        }
-
-        // Calculate dimensions
-        const x = Math.round(panelLayout.x * width);
-        const y = Math.round(panelLayout.y * height);
-        const panelWidth = Math.round(panelLayout.width * width);
-        const panelHeight = Math.round(panelLayout.height * height);
-
-        // Resize image (contain mode with solid white background)
-        const resizedBuffer = await sharp(processedBuffer)
-          .resize(panelWidth, panelHeight, {
-            fit: 'contain',
-            position: 'center',
-            background: { r: 255, g: 255, b: 255, alpha: 1 },
-          })
-          .png()
-          .toBuffer();
-
-        composites.push({
-          input: resizedBuffer,
-          left: x,
-          top: y,
-        });
-
-        coordinates[panel.type] = { x, y, width: panelWidth, height: panelHeight };
-      } catch (err) {
-        console.error(`   âŒ Failed to process panel ${panel.type}:`, err.message);
-      }
-    });
-
-    await Promise.all(processPanelPromises);
-
-    // 3. Composite final sheet
-    console.log(`   ðŸŽ¨ Compositing ${composites.length} panels...`);
-
-    const composedBuffer = await background.composite(composites).png().toBuffer();
-
-    // 4. Return as data URL only when safe; otherwise write to disk and return a URL.
-    const composedUrl = buildComposeSheetUrl({
-      pngBuffer: composedBuffer,
-      maxDataUrlBytes: A1_COMPOSE_MAX_DATAURL_BYTES,
-      outputDir: A1_COMPOSE_OUTPUT_DIR,
-      publicUrlBase: '/api/a1/compose-output',
-      designId,
-    });
-
-    if (!composedUrl.sheetUrl) {
-      return res.status(500).json({
-        success: false,
-        error: 'COMPOSITION_FAILED',
-        message: composedUrl.message || 'A1 composition failed',
-        details: composedUrl,
-      });
-    }
-
-    const { sheetUrl, transport, outputFile, estimatedDataUrlBytes, sheetUrlBytes } = composedUrl;
-
-    console.log(`âœ… [A1 Compose] Composition complete: ${width}x${height}px`);
-
-    return res.status(200).json({
-      success: true,
-      sheetUrl, // REQUIRED
-      composedSheetUrl: sheetUrl, // compat alias
-      url: sheetUrl, // compat alias
-      coordinates,
-      metadata: {
-        width,
-        height,
-        resolution: resolutionKey,
-        panelCount: panels.length,
-        layoutKey: layoutConfig,
-        format: 'png',
-        transport,
-        pngBytes: composedBuffer.length,
-        estimatedDataUrlBytes,
-        sheetUrlBytes,
-        outputFile,
-        dnaHash: requestedHashes.dnaHash || null,
-        geometryHash: requestedHashes.geometryHash || panelGeometryHashes[0] || null,
-        programHash: requestedHashes.programHash || null,
-        dna_hash: requestedHashes.dnaHash || null,
-        geometry_hash:
-          requestedHashes.geometryHash || panelGeometryHashes[0] || null,
-        program_hash: requestedHashes.programHash || null,
-        hashValidation: {
-          required: requireHashMetadata,
-          panelGeometryHashCount: panelGeometryHashes.length,
-          panelGeometryHash: panelGeometryHashes[0] || null,
-          matchedRequestedGeometryHash: requestedHashes.geometryHash
-            ? panelGeometryHashes[0] === requestedHashes.geometryHash
-            : null,
-        },
-      },
-    });
+    const handler = await getA1ComposeHandler();
+    return handler(req, res);
   } catch (error) {
-    console.error('âŒ [A1 Compose] Error:', error);
+    console.error('âŒ [A1 Compose] Delegation error:', error);
     return res.status(500).json({
       success: false,
       error: 'COMPOSITION_FAILED',
-      message: error.message || 'A1 composition failed',
+      message: error.message || 'A1 composition handler failed',
       details: process.env.NODE_ENV === 'development' ? { stack: error.stack } : undefined,
     });
   }
