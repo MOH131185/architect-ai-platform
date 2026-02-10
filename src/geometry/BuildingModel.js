@@ -1378,8 +1378,8 @@ export class BuildingModel {
       wc: 2.0,
       utility: 1.5,
       entrance: 1.0,
-      hallway: 3.0,
-      corridor: 4.0,
+      hallway: 2.0,
+      corridor: 2.5,
       landing: 1.2,
       study: 1.2,
       office: 1.3,
@@ -1465,6 +1465,14 @@ export class BuildingModel {
         roomWidth = Math.min(roomWidth, availableWidth);
         roomDepth = Math.min(roomDepth, availableDepth);
 
+        // If room won't fit beside current strip items, try flipping dimensions
+        if (
+          currentX + roomWidth > width / 2 - margin &&
+          roomDepth <= availableWidth
+        ) {
+          [roomWidth, roomDepth] = [roomDepth, roomWidth];
+        }
+
         // Wrap to next strip if needed
         if (currentX + roomWidth > width / 2 - margin) {
           currentX = -width / 2 + margin;
@@ -1472,9 +1480,25 @@ export class BuildingModel {
           currentStripHeight = 0;
         }
 
-        // If we still overflow vertically, fail this packing attempt (caller can retry with smaller scale)
+        // If we overflow vertically, squish the room to fit remaining depth
         if (currentY + roomDepth > depth / 2 - margin) {
-          return { rooms: packedRooms, complete: false };
+          const maxAvailDepth = depth / 2 - margin - currentY;
+          if (maxAvailDepth >= 1200) {
+            // Squish room to fit remaining depth (minimum 1.2m)
+            roomDepth = maxAvailDepth;
+            roomWidth = Math.min(areaMM2 / roomDepth, availableWidth);
+          } else {
+            // Try wrapping to next strip
+            currentX = -width / 2 + margin;
+            currentY += currentStripHeight + wallGap;
+            currentStripHeight = 0;
+            const remaining = depth / 2 - margin - currentY;
+            if (remaining < 1200) {
+              return { rooms: packedRooms, complete: false };
+            }
+            roomDepth = Math.min(roomDepth, remaining);
+            roomWidth = Math.min(areaMM2 / roomDepth, availableWidth);
+          }
         }
 
         const polygon = [
@@ -1520,8 +1544,8 @@ export class BuildingModel {
     // Retry with progressively smaller packing scale if needed
     let packed = packOnce(areaScale);
     let attempts = 0;
-    while (!packed.complete && attempts < 4) {
-      areaScale *= 0.95;
+    while (!packed.complete && attempts < 8) {
+      areaScale *= 0.9;
       packed = packOnce(areaScale);
       attempts++;
     }

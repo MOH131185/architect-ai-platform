@@ -189,6 +189,9 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
     svg += "</g>";
   }
 
+  // Section cut lines (A-A, B-B)
+  svg += drawSectionCutLines(dims, offsetX, offsetY, scale);
+
   // North arrow
   svg += drawNorthArrow(finalWidth - 50, 60);
 
@@ -230,13 +233,16 @@ function drawExternalWalls(model, floor, pxPerMM, showHatch) {
   const footprint = model.envelope.footprint;
   const wallThickness = CONVENTIONS.wallThickness.external * pxPerMM;
 
-  // Draw outer wall line (cut - heavy)
-  const outerPath = polygonToPath(footprint, pxPerMM);
-  svg += `<path class="wall-external-cut" d="${outerPath}" fill-rule="evenodd"/>`;
-
-  // Draw inner wall line (create inset polygon)
+  // Draw wall thickness as a ring (outer - inner) so interior stays white
   const inset = CONVENTIONS.wallThickness.external;
   const innerFootprint = insetPolygon(footprint, inset);
+
+  // Compound path: outer polygon CW + inner polygon CCW = ring fill (wall zone only)
+  const outerPath = polygonToPath(footprint, pxPerMM);
+  const innerReversed = polygonToPath([...innerFootprint].reverse(), pxPerMM);
+  svg += `<path class="wall-external-cut" d="${outerPath} ${innerReversed}" fill-rule="evenodd"/>`;
+
+  // Inner wall line (stroke only)
   const innerPath = polygonToPath(innerFootprint, pxPerMM);
   svg += `<path fill="none" stroke="${getStylePreset("technical").colors.stroke}" stroke-width="0.8" d="${innerPath}"/>`;
 
@@ -489,6 +495,52 @@ function drawPlanDimensions(model, dims, offsetX, offsetY, scale) {
   return svg;
 }
 
+/**
+ * Draw section cutting plane lines (A-A longitudinal, B-B transverse)
+ * Standard UK convention: dash-dot-dash line with circled section markers
+ */
+function drawSectionCutLines(dims, offsetX, offsetY, scale) {
+  let svg = '<g id="section-cut-lines">';
+  const extendPx = 30;
+  const halfW = (dims.width * scale) / 2;
+  const halfD = (dims.depth * scale) / 2;
+  const markerR = 9;
+  const dashPattern = "12 3 3 3";
+
+  // Section A-A: horizontal line through center (longitudinal section)
+  const aaY = offsetY;
+  const aaX1 = offsetX - halfW - extendPx;
+  const aaX2 = offsetX + halfW + extendPx;
+  svg += `<line x1="${aaX1}" y1="${aaY}" x2="${aaX2}" y2="${aaY}" stroke="#555" stroke-width="0.8" stroke-dasharray="${dashPattern}"/>`;
+  // Left marker
+  svg += `<circle cx="${aaX1 - markerR - 2}" cy="${aaY}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<text x="${aaX1 - markerR - 2}" y="${aaY + 3.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">A</text>`;
+  // Right marker
+  svg += `<circle cx="${aaX2 + markerR + 2}" cy="${aaY}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<text x="${aaX2 + markerR + 2}" y="${aaY + 3.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">A</text>`;
+  // Direction arrows (pointing down — looking direction)
+  svg += `<polygon fill="#333" points="${aaX1 - markerR - 2},${aaY + markerR + 4} ${aaX1 - markerR - 6},${aaY + markerR + 1} ${aaX1 - markerR + 2},${aaY + markerR + 1}"/>`;
+  svg += `<polygon fill="#333" points="${aaX2 + markerR + 2},${aaY + markerR + 4} ${aaX2 + markerR - 2},${aaY + markerR + 1} ${aaX2 + markerR + 6},${aaY + markerR + 1}"/>`;
+
+  // Section B-B: vertical line through center (transverse section)
+  const bbX = offsetX;
+  const bbY1 = offsetY - halfD - extendPx;
+  const bbY2 = offsetY + halfD + extendPx;
+  svg += `<line x1="${bbX}" y1="${bbY1}" x2="${bbX}" y2="${bbY2}" stroke="#555" stroke-width="0.8" stroke-dasharray="${dashPattern}"/>`;
+  // Top marker
+  svg += `<circle cx="${bbX}" cy="${bbY1 - markerR - 2}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<text x="${bbX}" y="${bbY1 - markerR + 1.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">B</text>`;
+  // Bottom marker
+  svg += `<circle cx="${bbX}" cy="${bbY2 + markerR + 2}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<text x="${bbX}" y="${bbY2 + markerR + 5.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">B</text>`;
+  // Direction arrows (pointing left — looking direction)
+  svg += `<polygon fill="#333" points="${bbX - markerR - 4},${bbY1 - markerR - 2} ${bbX - markerR - 1},${bbY1 - markerR - 6} ${bbX - markerR - 1},${bbY1 - markerR + 2}"/>`;
+  svg += `<polygon fill="#333" points="${bbX - markerR - 4},${bbY2 + markerR + 2} ${bbX - markerR - 1},${bbY2 + markerR - 2} ${bbX - markerR - 1},${bbY2 + markerR + 6}"/>`;
+
+  svg += "</g>";
+  return svg;
+}
+
 // =============================================================================
 // ELEVATION PROJECTION
 // =============================================================================
@@ -592,6 +644,11 @@ export function projectElevation(model, orientation = "S", options = {}) {
   svg += `<line stroke="#555" stroke-width="2.5" x1="${wallLeft}" y1="${groundY}" x2="${wallRight}" y2="${groundY}"/>`;
   svg += `<line stroke="rgba(0,0,0,0.08)" stroke-width="6" x1="${wallLeft + 3}" y1="${groundY + 3}" x2="${wallRight + 3}" y2="${groundY + 3}"/>`;
 
+  // DPC (damp-proof course) line at 150mm above ground
+  const dpcY = groundY - 150 * pxPerMM;
+  svg += `<line stroke="#666" stroke-width="0.8" stroke-dasharray="6 3" x1="${wallLeft}" y1="${dpcY}" x2="${wallRight}" y2="${dpcY}"/>`;
+  svg += `<text x="${wallLeft - 5}" y="${dpcY + 3}" text-anchor="end" font-family="Arial" font-size="7" fill="#888">DPC</text>`;
+
   // Roof
   if (showRoof) {
     svg += drawElevationRoof(model, orientation, offsetX, groundY, pxPerMM);
@@ -673,19 +730,43 @@ function drawElevationRoof(model, orientation, offsetX, groundY, pxPerMM) {
     return "";
   }
 
+  const eavesOverhang = model.roof?.overhangs?.eaves || 300; // mm
+  let svg = "";
+
+  // Extend first and last profile points by eaves overhang
+  const extendedProfile = roofProfile.map((pt, i) => {
+    if (i === 0) return { x: pt.x - eavesOverhang, z: pt.z };
+    if (i === roofProfile.length - 1)
+      return { x: pt.x + eavesOverhang, z: pt.z };
+    return pt;
+  });
+
   let roofPath = "M ";
-  for (let i = 0; i < roofProfile.length; i++) {
-    const pt = roofProfile[i];
+  for (let i = 0; i < extendedProfile.length; i++) {
+    const pt = extendedProfile[i];
     const x = offsetX + pt.x * pxPerMM;
     const y = groundY - pt.z * pxPerMM;
     roofPath += `${x} ${y}`;
-    if (i < roofProfile.length - 1) {
-      roofPath += " L ";
-    }
+    if (i < extendedProfile.length - 1) roofPath += " L ";
   }
   roofPath += " Z";
 
-  return `<path class="roof" d="${roofPath}"/>`;
+  svg += `<path class="roof" d="${roofPath}"/>`;
+
+  // Fascia board at eaves (thin strip at wall-top height under overhang)
+  const wallTopZ = model.envelope.height;
+  const eaveY = groundY - wallTopZ * pxPerMM;
+  const leftEaveX = offsetX + extendedProfile[0].x * pxPerMM;
+  const rightEaveX =
+    offsetX + extendedProfile[extendedProfile.length - 1].x * pxPerMM;
+  const fasciaDepthPx = 150 * pxPerMM; // 150mm fascia board
+
+  svg += `<rect fill="#8B7D6B" stroke="#555" stroke-width="0.8" x="${leftEaveX}" y="${eaveY}" width="${rightEaveX - leftEaveX}" height="${fasciaDepthPx}"/>`;
+
+  // Soffit line (underside of overhang)
+  svg += `<line stroke="#666" stroke-width="0.5" x1="${leftEaveX}" y1="${eaveY + fasciaDepthPx}" x2="${rightEaveX}" y2="${eaveY + fasciaDepthPx}"/>`;
+
+  return svg;
 }
 
 /**
@@ -806,9 +887,17 @@ function drawElevationWindow(cx, bottomY, width, height) {
 
   let svg = `<rect class="window" x="${x}" y="${y}" width="${width}" height="${height}"/>`;
 
-  // Glazing bars (cross pattern)
-  svg += `<line class="window-glazing-bar" x1="${cx}" y1="${y}" x2="${cx}" y2="${y + height}"/>`;
-  svg += `<line class="window-glazing-bar" x1="${x}" y1="${y + hh}" x2="${x + width}" y2="${y + hh}"/>`;
+  // Glazing bars — multi-pane grid proportional to window width
+  const paneCountH = Math.max(2, Math.round(width / 30));
+  for (let p = 1; p < paneCountH; p++) {
+    const barX = x + (p / paneCountH) * width;
+    svg += `<line class="window-glazing-bar" x1="${barX}" y1="${y}" x2="${barX}" y2="${y + height}"/>`;
+  }
+  const paneCountV = Math.max(2, Math.round(height / 30));
+  for (let p = 1; p < paneCountV; p++) {
+    const barY = y + (p / paneCountV) * height;
+    svg += `<line class="window-glazing-bar" x1="${x}" y1="${barY}" x2="${x + width}" y2="${barY}"/>`;
+  }
 
   // Window sill
   svg += `<line stroke="#333" stroke-width="2" x1="${x - 5}" y1="${bottomY}" x2="${x + width + 5}" y2="${bottomY}"/>`;
@@ -1021,6 +1110,23 @@ export function projectSection(
       true,
       "section-dim-total-height",
     );
+
+    // Floor-to-floor chain dimensions (closer to building)
+    for (const floor of model.floors) {
+      const floorBaseY = groundY - floor.zBase * pxPerMM;
+      const floorTopY = groundY - floor.zTop * pxPerMM;
+      const floorHeightM = (floor.floorHeight / MM_PER_M).toFixed(2);
+      svg += drawDimension(
+        buildingRight + 30,
+        floorBaseY,
+        buildingRight + 30,
+        floorTopY,
+        `${floorHeightM} m`,
+        true,
+        `section-dim-floor-${floor.index}`,
+      );
+    }
+
     svg += "</g>";
   }
 
@@ -1349,12 +1455,32 @@ function getBoundsHeight(polygon) {
  * Draw wall hatch pattern (poché)
  */
 function drawWallHatch(outerPolygon, innerPolygon, pxPerMM) {
-  // For simplicity, draw diagonal lines in the wall thickness zone
-  // This is a basic implementation - could be enhanced with proper clipping
+  // Draw diagonal hatch lines ONLY in the wall thickness zone (between outer and inner polygon)
+  // Uses SVG clipPath with evenodd fill-rule to clip to wall zone only
 
-  let svg = '<g class="wall-poche">';
+  const clipId = `wall-clip-${Math.random().toString(36).slice(2, 8)}`;
 
-  // Get bounding box
+  // Build clip path: outer polygon CCW + inner polygon CW = wall zone only (evenodd)
+  const outerPath =
+    outerPolygon
+      .map(
+        (p, i) =>
+          `${i === 0 ? "M" : "L"} ${(p.x * pxPerMM).toFixed(2)},${(p.y * pxPerMM).toFixed(2)}`,
+      )
+      .join(" ") + " Z";
+  const innerPath =
+    [...innerPolygon]
+      .reverse()
+      .map(
+        (p, i) =>
+          `${i === 0 ? "M" : "L"} ${(p.x * pxPerMM).toFixed(2)},${(p.y * pxPerMM).toFixed(2)}`,
+      )
+      .join(" ") + " Z";
+
+  let svg = `<defs><clipPath id="${clipId}"><path d="${outerPath} ${innerPath}" fill-rule="evenodd"/></clipPath></defs>`;
+  svg += `<g class="wall-poche" clip-path="url(#${clipId})">`;
+
+  // Bounding box for hatch lines
   const minX = Math.min(...outerPolygon.map((p) => p.x));
   const maxX = Math.max(...outerPolygon.map((p) => p.x));
   const minY = Math.min(...outerPolygon.map((p) => p.y));
@@ -1362,7 +1488,6 @@ function drawWallHatch(outerPolygon, innerPolygon, pxPerMM) {
 
   const spacing = (3 / pxPerMM) * MM_PER_M; // 3mm spacing at scale
 
-  // Draw diagonal lines
   for (let x = minX; x < maxX; x += spacing) {
     svg += `<line class="hatch" x1="${x * pxPerMM}" y1="${minY * pxPerMM}" x2="${(x + spacing * 2) * pxPerMM}" y2="${maxY * pxPerMM}"/>`;
   }
@@ -1388,19 +1513,31 @@ function generateHatchPattern(id, style, angle, spacing) {
  * Draw dimension line with text
  */
 function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
-  const tickSize = SYMBOL_SIZES.dimension.tickLength;
+  const arrowLen = 6;
+  const arrowHalf = 3;
+  const arrowFill = "#444";
   let svg = `<g class="dimension" ${id ? `id="${id}"` : ""}>`;
 
   if (vertical) {
+    // Extension lines
+    svg += `<line stroke="#999" stroke-width="0.3" x1="${x1 - 12}" y1="${y1}" x2="${x1 - 2}" y2="${y1}"/>`;
+    svg += `<line stroke="#999" stroke-width="0.3" x1="${x1 - 12}" y1="${y2}" x2="${x1 - 2}" y2="${y2}"/>`;
+    // Dimension line
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
-    svg += `<line x1="${x1 - tickSize}" y1="${y1}" x2="${x1 + tickSize}" y2="${y1}"/>`;
-    svg += `<line x1="${x1 - tickSize}" y1="${y2}" x2="${x1 + tickSize}" y2="${y2}"/>`;
+    // Arrowheads (pointing up and down)
+    svg += `<polygon fill="${arrowFill}" points="${x1},${y1} ${x1 - arrowHalf},${y1 + arrowLen} ${x1 + arrowHalf},${y1 + arrowLen}"/>`;
+    svg += `<polygon fill="${arrowFill}" points="${x1},${y2} ${x1 - arrowHalf},${y2 - arrowLen} ${x1 + arrowHalf},${y2 - arrowLen}"/>`;
     const midY = (y1 + y2) / 2;
     svg += `<text class="dimension-text" x="${x1 + 15}" y="${midY}" transform="rotate(-90, ${x1 + 15}, ${midY})">${escXml(text)}</text>`;
   } else {
+    // Extension lines
+    svg += `<line stroke="#999" stroke-width="0.3" x1="${x1}" y1="${y1 + 12}" x2="${x1}" y2="${y1 + 2}"/>`;
+    svg += `<line stroke="#999" stroke-width="0.3" x1="${x2}" y1="${y1 + 12}" x2="${x2}" y2="${y1 + 2}"/>`;
+    // Dimension line
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
-    svg += `<line x1="${x1}" y1="${y1 - tickSize}" x2="${x1}" y2="${y1 + tickSize}"/>`;
-    svg += `<line x1="${x2}" y1="${y1 - tickSize}" x2="${x2}" y2="${y1 + tickSize}"/>`;
+    // Arrowheads (pointing left and right)
+    svg += `<polygon fill="${arrowFill}" points="${x1},${y1} ${x1 + arrowLen},${y1 - arrowHalf} ${x1 + arrowLen},${y1 + arrowHalf}"/>`;
+    svg += `<polygon fill="${arrowFill}" points="${x2},${y1} ${x2 - arrowLen},${y1 - arrowHalf} ${x2 - arrowLen},${y1 + arrowHalf}"/>`;
     const midX = (x1 + x2) / 2;
     svg += `<text class="dimension-text" x="${midX}" y="${y1 - 8}">${escXml(text)}</text>`;
   }
