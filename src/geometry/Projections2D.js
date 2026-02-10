@@ -166,12 +166,15 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
       const cx = offsetX + room.center.x * pxPerMM;
       const cy = offsetY - room.center.y * pxPerMM;
       // Calculate room pixel dimensions for scaling furniture
-      const roomWPx =
-        (room.width || room.widthMM || getBoundsWidth(room.polygon || [])) *
-        pxPerMM;
-      const roomHPx =
-        (room.depth || room.depthMM || getBoundsHeight(room.polygon || [])) *
-        pxPerMM;
+      // Prefer polygon bounds (always in mm); room.width/depth are in meters
+      const roomWidthMM = room.polygon
+        ? getBoundsWidth(room.polygon)
+        : room.widthMM || (room.width || 0) * MM_PER_M;
+      const roomDepthMM = room.polygon
+        ? getBoundsHeight(room.polygon)
+        : room.depthMM || (room.depth || 0) * MM_PER_M;
+      const roomWPx = roomWidthMM * pxPerMM;
+      const roomHPx = roomDepthMM * pxPerMM;
       if (roomWPx > 20 && roomHPx > 20) {
         svg += drawFurnitureSymbol(room.name, cx, cy, roomWPx, roomHPx);
       }
@@ -305,7 +308,25 @@ function drawPlanOpenings(floor, pxPerMM, style) {
     const wallDx = wall.end.x - wall.start.x;
     const wallDy = wall.end.y - wall.start.y;
     const wallLen = Math.sqrt(wallDx * wallDx + wallDy * wallDy);
-    const ratio = opening.position / wallLen;
+
+    // Handle both position formats:
+    // - object format: { x: normalized 0-1, z: normalized 0-1 } (external walls)
+    // - number format: distance in mm along wall (internal doors)
+    let ratio;
+    if (
+      typeof opening.position === "object" &&
+      opening.position?.x !== undefined
+    ) {
+      ratio = opening.position.x;
+    } else if (typeof opening.positionMM === "number") {
+      ratio = opening.positionMM / wallLen;
+    } else if (typeof opening.position === "number") {
+      ratio =
+        opening.position > 1 ? opening.position / wallLen : opening.position;
+    } else {
+      ratio = 0.5;
+    }
+    ratio = Math.max(0.05, Math.min(0.95, ratio));
 
     const cx = (wall.start.x + wallDx * ratio) * pxPerMM;
     const cy = (wall.start.y + wallDy * ratio) * pxPerMM;
@@ -1477,6 +1498,34 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const third = sw / 3;
     svg += `<line stroke="#bbb" stroke-width="0.3" x1="${cx - sw / 2 + third}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third}" y2="${cy + sh / 2}"/>`;
     svg += `<line stroke="#bbb" stroke-width="0.3" x1="${cx - sw / 2 + third * 2}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third * 2}" y2="${cy + sh / 2}"/>`;
+  } else if (type.includes("kitchen") && type.includes("dining")) {
+    // Combined kitchen-dining: worktop in upper portion, dining table in lower
+    const kw = Math.min(widthPx * 0.6, 70);
+    const kh = Math.min(heightPx * 0.12, 14);
+    const ky = cy - heightPx * 0.35;
+    // Kitchen worktop
+    svg += `<rect fill="#f5f5f5" stroke="#999" stroke-width="0.6" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
+    // Sink
+    svg += `<circle fill="#e0e8f0" stroke="#999" stroke-width="0.4" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
+    // Cooker (4 circles)
+    const cr = kh * 0.2;
+    const cookX = cx + kw * 0.2;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    // Dining table below
+    const tw = Math.min(widthPx * 0.3, 40);
+    const th = Math.min(heightPx * 0.2, 25);
+    const dy = cy + heightPx * 0.1;
+    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - tw / 2}" y="${dy}" width="${tw}" height="${th}" rx="1"/>`;
+    // 4 chairs
+    const chW = tw * 0.2;
+    const chH = th * 0.25;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chW / 2}" y="${dy - chH - 2}" width="${chW}" height="${chH}"/>`;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chW / 2}" y="${dy + th + 2}" width="${chW}" height="${chH}"/>`;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - tw / 2 - chH - 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx + tw / 2 + 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
   } else if (type.includes("kitchen")) {
     // Worktop line with sink circle and cooker (4 circles)
     const kw = Math.min(widthPx * 0.6, 70);

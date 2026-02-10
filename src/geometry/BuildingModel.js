@@ -1406,7 +1406,7 @@ export class BuildingModel {
       (sum, room) => sum + (room.targetAreaM2 || 20),
       0,
     );
-    const PACKING_EFFICIENCY = 0.85;
+    const PACKING_EFFICIENCY = 1.0;
 
     let areaScale =
       requestedAreaM2 > 0
@@ -1521,7 +1521,7 @@ export class BuildingModel {
     let packed = packOnce(areaScale);
     let attempts = 0;
     while (!packed.complete && attempts < 4) {
-      areaScale *= 0.85;
+      areaScale *= 0.95;
       packed = packOnce(areaScale);
       attempts++;
     }
@@ -1700,18 +1700,41 @@ export class BuildingModel {
         r.name?.toLowerCase().includes("circulation"),
     );
 
-    // Add windows to external walls
+    // Add windows to external walls (facade-specific sizing for passive solar design)
     for (const wall of walls) {
       if (wall.type !== "external") {
         continue;
       }
 
-      // Window spacing (one window per 2.5m of wall)
-      const windowSpacing = 2500;
-      const windowCount = Math.floor(wall.length / windowSpacing);
+      // Facade-specific window policy (UK climate-responsive defaults)
+      let windowSpacing, windowWidth, windowHeight, sillHeight;
+      if (wall.facade === "S") {
+        windowSpacing = 2000; // More windows for solar gain
+        windowWidth = 1400;
+        windowHeight = 1600;
+        sillHeight = 800;
+      } else if (wall.facade === "N") {
+        windowSpacing = 3500; // Fewer windows to reduce heat loss
+        windowWidth = 1000;
+        windowHeight = 1200;
+        sillHeight = 1000;
+      } else if (wall.facade === "E") {
+        windowSpacing = 2500; // Standard — morning sun
+        windowWidth = 1200;
+        windowHeight = 1400;
+        sillHeight = 900;
+      } else {
+        // West — slightly fewer to limit afternoon overheating
+        windowSpacing = 3000;
+        windowWidth = 1100;
+        windowHeight = 1300;
+        sillHeight = 900;
+      }
+
+      const windowCount = Math.max(1, Math.floor(wall.length / windowSpacing));
 
       for (let w = 0; w < windowCount; w++) {
-        const positionMM = (w + 0.5) * windowSpacing;
+        const positionMM = (w + 0.5) * (wall.length / windowCount);
         // Normalize position to 0-1 range for rendering
         const normalizedX = positionMM / wall.length;
 
@@ -1721,14 +1744,16 @@ export class BuildingModel {
           type: "window",
           position: {
             x: normalizedX,
-            z: (900 + 700) / (this.envelope.floorHeights[floorIndex] || 2800), // sillHeight + half window height
+            z:
+              (sillHeight + windowHeight / 2) /
+              (this.envelope.floorHeights[floorIndex] || 2800),
           },
           positionMM, // Keep raw position for other uses
-          width: 1200,
-          height: 1400,
-          widthMM: 1200, // Explicit MM property for renderer
-          heightMM: 1400, // Explicit MM property for renderer
-          sillHeight: 900,
+          width: windowWidth,
+          height: windowHeight,
+          widthMM: windowWidth,
+          heightMM: windowHeight,
+          sillHeight,
           facade: wall.facade,
         });
       }
@@ -1762,6 +1787,33 @@ export class BuildingModel {
           facade: entranceFacade,
           isEntrance: true,
         });
+      }
+
+      // Add patio/sliding door on south facade (if entrance is not south)
+      if (entranceFacade !== "S") {
+        const southWall = walls.find(
+          (w) => w.facade === "S" && w.type === "external",
+        );
+        if (southWall && southWall.length >= 3000) {
+          const patioPosMM = southWall.length * 0.35;
+          openings.push({
+            id: `opening_${floorIndex}_${openingId++}`,
+            wallId: southWall.id,
+            type: "door",
+            position: {
+              x: patioPosMM / southWall.length,
+              z: 1050 / (this.envelope.floorHeights[floorIndex] || 2800),
+            },
+            positionMM: patioPosMM,
+            width: 1800,
+            height: 2100,
+            widthMM: 1800,
+            heightMM: 2100,
+            sillHeight: 0,
+            facade: "S",
+            isPatio: true,
+          });
+        }
       }
     }
 
