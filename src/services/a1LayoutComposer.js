@@ -24,6 +24,11 @@ import {
   validatePanelLayout,
   getPanelFitMode,
 } from "./a1/a1LayoutConstants.js";
+import {
+  renderSchedulesSVG,
+  renderMaterialPaletteSVG,
+  renderClimateCardSVG,
+} from "./dataPanelRenderer.js";
 
 // Re-export for backward compatibility
 export {
@@ -110,18 +115,26 @@ export async function composeA1Sheet({
     const mode = getPanelFitMode(type);
 
     // DATA PANELS: Render deterministic SVG for text-heavy data panels
+    // Uses dataPanelRenderer.js for improved SVG templates with proper
+    // Unicode encoding, font fallbacks, and richer data display.
     const svgPanelHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
     if (
       type === "schedules_notes" &&
       ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
     ) {
-      const schedulesBuffer = await buildSchedulesBuffer(
-        sharp,
+      const svgStr = renderSchedulesSVG(
         slotRect.width,
         svgPanelHeight,
         masterDNA,
         projectContext,
       );
+      const schedulesBuffer = await sharp(Buffer.from(svgStr))
+        .png()
+        .resize(slotRect.width, svgPanelHeight, {
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255 },
+        })
+        .toBuffer();
       composites.push({
         input: schedulesBuffer,
         left: slotRect.x,
@@ -133,12 +146,18 @@ export async function composeA1Sheet({
       type === "material_palette" &&
       ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
     ) {
-      const materialBuffer = await buildMaterialPaletteBuffer(
-        sharp,
+      const svgStr = renderMaterialPaletteSVG(
         slotRect.width,
         svgPanelHeight,
         masterDNA,
       );
+      const materialBuffer = await sharp(Buffer.from(svgStr))
+        .png()
+        .resize(slotRect.width, svgPanelHeight, {
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255 },
+        })
+        .toBuffer();
       composites.push({
         input: materialBuffer,
         left: slotRect.x,
@@ -150,12 +169,19 @@ export async function composeA1Sheet({
       type === "climate_card" &&
       ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
     ) {
-      const climateBuffer = await buildClimateCardBuffer(
-        sharp,
+      const svgStr = renderClimateCardSVG(
         slotRect.width,
         svgPanelHeight,
         locationData,
+        masterDNA,
       );
+      const climateBuffer = await sharp(Buffer.from(svgStr))
+        .png()
+        .resize(slotRect.width, svgPanelHeight, {
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255 },
+        })
+        .toBuffer();
       composites.push({
         input: climateBuffer,
         left: slotRect.x,

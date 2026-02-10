@@ -152,6 +152,8 @@ export const CANONICAL_PANEL_TYPES = [
 // ---------------------------------------------------------------------------
 
 const STRENGTH_POLICY = {
+  // TIER 1: Deterministic SVG (these values are only used as fallback
+  // when threeTierPanelConsistency is disabled and panels go to FLUX)
   floor_plan_ground: 0.15,
   floor_plan_first: 0.15,
   floor_plan_level2: 0.15,
@@ -162,9 +164,12 @@ const STRENGTH_POLICY = {
   elevation_west: 0.35,
   section_AA: 0.15,
   section_BB: 0.15,
-  hero_3d: 0.65,
+  // TIER 2: Geometry-locked FLUX (high strength → FLUX adds materials/lighting
+  // but CANNOT change building shape). Together.ai inverts: imageStrength = 1.0 - strength
+  hero_3d: 0.8, // FLUX gets 20% creative freedom (was 35% at 0.65)
+  axonometric: 0.85, // FLUX gets 15% creative freedom (was 30% at 0.70)
+  // TIER 3: Style-guided FLUX (moderate control — creative freedom for interiors)
   interior_3d: 0.6,
-  axonometric: 0.7,
 };
 
 // ---------------------------------------------------------------------------
@@ -199,9 +204,9 @@ function svgToDataUrl(svgString) {
  *
  * @param {Object} cds - CanonicalDesignState object (from types/ or validation/ builder)
  * @param {Object} [options]
- * @param {number} [options.scale] - SVG scale (default 50 px/m)
- * @param {number} [options.width] - SVG width (default 800)
- * @param {number} [options.height] - SVG height (default 600)
+ * @param {number} [options.scale] - SVG scale (default 80 px/m)
+ * @param {number} [options.width] - SVG width (default 1200)
+ * @param {number} [options.height] - SVG height (default 900)
  * @returns {Object} Frozen canonical pack
  */
 export function buildCanonicalPack(
@@ -217,7 +222,7 @@ export function buildCanonicalPack(
   }
 
   const normalizedOptions = normalizeBuildOptions(options, legacyOptions);
-  const { scale = 50, width = 800, height = 600 } = normalizedOptions;
+  const { scale = 80, width = 1200, height = 900 } = normalizedOptions;
   const designFingerprint =
     normalizeLookupKey(normalizedOptions.designFingerprint) ||
     normalizeLookupKey(cds.designFingerprint) ||

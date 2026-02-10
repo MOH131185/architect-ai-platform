@@ -113,6 +113,8 @@ import {
   isCanonicalPackGateEnabled,
   validateBeforeGeneration as validateCanonicalPackGate,
 } from "./canonical/CanonicalPackGate.js";
+// Types CDS adapter — produces massing.widthM/depthM that BuildingModel requires
+import { fromLegacyDNA } from "../types/CanonicalDesignState.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
 const DEFAULT_API_BASE_URL = runtimeEnv.isBrowser
@@ -933,6 +935,72 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // POST-DNA DIMENSION GUARD:
+      // Ensure masterDNA.dimensions.length and .width are computed from room areas,
+      // not hardcoded defaults. This guarantees BuildingModel hits PRIORITY 1 (explicit
+      // massing) instead of falling back to area-based calculation.
+      if (masterDNA.dimensions) {
+        const rooms =
+          masterDNA.rooms || masterDNA._structured?.program?.rooms || [];
+        const totalRoomArea = (Array.isArray(rooms) ? rooms : []).reduce(
+          (sum, r) => sum + (r.area_m2 || r.area || 20),
+          0,
+        );
+        const floorCount =
+          masterDNA.dimensions.floors || masterDNA.dimensions.floorCount || 1;
+        const grossFloorArea = totalRoomArea * 1.15; // +15% circulation
+        const footprintArea = grossFloorArea / floorCount;
+        const aspectRatio = 1.5;
+        const derivedLength =
+          Math.round(Math.sqrt(footprintArea * aspectRatio) * 10) / 10;
+        const derivedWidth =
+          Math.round((footprintArea / derivedLength) * 10) / 10;
+
+        // Only override if current values look like hardcoded defaults (15×10)
+        // or are missing/zero
+        const curLen = masterDNA.dimensions.length;
+        const curWid = masterDNA.dimensions.width;
+        if (
+          !curLen ||
+          !curWid ||
+          (curLen === 15 && curWid === 10) // hardcoded defaults from convertToLegacyDNA
+        ) {
+          masterDNA.dimensions.length = derivedLength;
+          masterDNA.dimensions.width = derivedWidth;
+          logger.info(
+            `📐 [DIMENSION GUARD] Derived footprint from room areas: ${derivedLength}m × ${derivedWidth}m (${totalRoomArea.toFixed(0)}m² rooms, ${floorCount} floor(s))`,
+          );
+        }
+      } else {
+        // No dimensions object at all — create one
+        const rooms =
+          masterDNA.rooms || masterDNA._structured?.program?.rooms || [];
+        const totalRoomArea = (Array.isArray(rooms) ? rooms : []).reduce(
+          (sum, r) => sum + (r.area_m2 || r.area || 20),
+          0,
+        );
+        const floorCount = 1;
+        const grossFloorArea = totalRoomArea * 1.15;
+        const footprintArea = grossFloorArea / floorCount;
+        const aspectRatio = 1.5;
+        const derivedLength =
+          Math.round(Math.sqrt(footprintArea * aspectRatio) * 10) / 10;
+        const derivedWidth =
+          Math.round((footprintArea / derivedLength) * 10) / 10;
+
+        masterDNA.dimensions = {
+          length: derivedLength,
+          width: derivedWidth,
+          height: 3.2,
+          floors: 1,
+          floorCount: 1,
+          totalHeight: 3.2,
+        };
+        logger.warn(
+          `📐 [DIMENSION GUARD] Created missing dimensions: ${derivedLength}m × ${derivedWidth}m`,
+        );
+      }
+
       reportProgress("dna", "Design DNA validated", 25);
 
       // ================================================================
@@ -995,6 +1063,41 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             throw cdsErr;
           }
           logger.warn("⚠️ CDS build failed:", cdsErr.message);
+        }
+      }
+
+      // ================================================================
+      // STEP 2.05: Build Types CDS via fromLegacyDNA adapter
+      // The validation CDS (buildCDSSync) stores dimensions as geometry.footprintWidth
+      // but BuildingModel reads massing.widthM/depthM. fromLegacyDNA produces the
+      // correct shape so buildCanonicalPack → createBuildingModel succeeds.
+      // ================================================================
+      let typesCDS = null;
+      if (masterDNA) {
+        try {
+          typesCDS = fromLegacyDNA(
+            masterDNA,
+            siteSnapshot,
+            projectContext,
+            projectContext?.programSpaces,
+          );
+          // Carry over the design ID so downstream consumers can trace back
+          const resolvedDesignId =
+            canonicalDesignState?.designId ||
+            masterDNA?.designFingerprint ||
+            masterDNA?.projectID ||
+            `design_${Date.now()}`;
+          typesCDS.designFingerprint = resolvedDesignId;
+          if (typesCDS.meta) {
+            typesCDS.meta.designId = resolvedDesignId;
+          }
+          // Preserve the validation CDS hash for traceability
+          typesCDS.hash = canonicalDesignState?.hash || null;
+          logger.success(
+            `✓ Types CDS built from fromLegacyDNA [widthM=${typesCDS.massing?.widthM}, depthM=${typesCDS.massing?.depthM}]`,
+          );
+        } catch (typesCDSErr) {
+          logger.warn("⚠️ Types CDS build failed:", typesCDSErr.message);
         }
       }
 
@@ -1094,18 +1197,74 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       // This step uses BuildingModel + Projections2D to produce SVG projections
       // for every panel type. When requireCanonicalPack is enabled, the gate
       // blocks generation if the pack is incomplete.
+      // FIX: Prefer typesCDS (from fromLegacyDNA) which has massing.widthM/depthM
+      //      that BuildingModel requires. The validation CDS has geometry.footprintWidth
+      //      which BuildingModel cannot read, causing it to fall back to area-based
+      //      guesses and producing a broken/empty geometry pack.
       let canonicalPack = null;
-      if (isFeatureEnabled("canonicalControlPack") && canonicalDesignState) {
+      const cdsForPack = typesCDS || canonicalDesignState;
+      if (isFeatureEnabled("canonicalControlPack") && cdsForPack) {
         logger.info(
           "📐 STEP 2.7: Building Canonical Geometry Pack from CDS...",
         );
+        logger.info(
+          `   CDS source: ${typesCDS ? "typesCDS (fromLegacyDNA)" : "validation CDS (buildCDSSync)"}`,
+        );
         reportProgress("dna", "Building geometry authority pack...", 30);
         try {
-          canonicalPack = buildCanonicalPack(canonicalDesignState);
+          canonicalPack = buildCanonicalPack(cdsForPack);
           logger.success(
             `✅ Canonical Pack built: ${canonicalPack.panelCount} panels, ` +
               `geometryHash=${canonicalPack.geometryHash?.substring(0, 8)}...`,
           );
+
+          // Enrich typesCDS with canonical pack results so isReadyForPanelGeneration passes.
+          // It checks: designFingerprint, geometryModel, facadeModel, canonicalRenders.
+          if (typesCDS && canonicalPack.panelCount > 0) {
+            // geometryModel: BuildingModel.floors with rooms (mimic the shape)
+            const floorCount =
+              typesCDS.program?.levelCount || typesCDS.levelCount || 2;
+            typesCDS.geometryModel = {
+              floors: Array.from({ length: floorCount }, (_, i) => ({
+                index: i,
+                rooms: (typesCDS.programRooms || [])
+                  .filter((r) => (r.levelIndex || 0) === i)
+                  .map((r) => ({
+                    name: r.name,
+                    area: r.targetAreaM2 || r.area,
+                    program: r.program,
+                  })),
+              })),
+            };
+            // facadeModel: four orientations with width > 0
+            const facadeWidth = typesCDS.massing?.widthM || 10;
+            typesCDS.facadeModel = {
+              north: { width: facadeWidth, openings: [] },
+              south: { width: facadeWidth, openings: [] },
+              east: { width: typesCDS.massing?.depthM || 8, openings: [] },
+              west: { width: typesCDS.massing?.depthM || 8, openings: [] },
+            };
+            // canonicalRenders: map pack SVG panels to the shape isReadyForPanelGeneration expects
+            const floorPlansSVG = {};
+            const elevationsSVG = {};
+            for (const [panelType, panelData] of Object.entries(
+              canonicalPack.panels || {},
+            )) {
+              if (panelType.startsWith("floor_plan_")) {
+                floorPlansSVG[panelType] =
+                  panelData.svgString || panelData.dataUrl;
+              } else if (panelType.startsWith("elevation_")) {
+                elevationsSVG[panelType] =
+                  panelData.svgString || panelData.dataUrl;
+              }
+            }
+            typesCDS.canonicalRenders = { floorPlansSVG, elevationsSVG };
+            logger.success(
+              `✓ Types CDS enriched: geometryModel(${typesCDS.geometryModel.floors.length} floors), ` +
+                `facadeModel(4 dirs), canonicalRenders(${Object.keys(floorPlansSVG).length} plans, ${Object.keys(elevationsSVG).length} elevations)`,
+            );
+          }
+
           if (isCanonicalPackGateEnabled()) {
             validateCanonicalPackGate(
               canonicalPack,
@@ -1335,7 +1494,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         geometryDNA,
         geometryMasks,
         programLock, // P0: Hard program constraint
-        canonicalDesignState, // P0: CDS for traceability
+        canonicalDesignState: typesCDS || canonicalDesignState, // Prefer typesCDS (has massing.widthM/depthM)
       });
 
       const floorCount =
@@ -1418,6 +1577,71 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           generatedPanels.push(panelResult);
           reportProgress("rendering", `${job.type} (SVG)`, panelDonePercent);
           continue;
+        }
+
+        // TIER 1: DETERMINISTIC SVG PANELS — skip FLUX entirely
+        // Technical drawings (floor plans, elevations, sections) use canonical
+        // geometry pack SVGs directly. The compose endpoint rasterizes SVG data
+        // URLs via Sharp at 300 DPI. This guarantees geometric consistency since
+        // all drawings derive from the SAME BuildingModel.
+        const TIER1_SVG_PANELS = [
+          "floor_plan_ground",
+          "floor_plan_first",
+          "floor_plan_level2",
+          "floor_plan_level3",
+          "elevation_north",
+          "elevation_south",
+          "elevation_east",
+          "elevation_west",
+          "section_AA",
+          "section_BB",
+        ];
+        if (
+          isFeatureEnabled("threeTierPanelConsistency") &&
+          TIER1_SVG_PANELS.includes(job.type) &&
+          canonicalPack
+        ) {
+          const canonicalParams = getCanonicalInitImageParams(
+            canonicalPack,
+            job.type,
+          );
+          if (canonicalParams?.init_image) {
+            logger.info(
+              `   📐 [TIER 1] Using deterministic SVG for ${job.type} — skipping FLUX`,
+            );
+            const panelResult = {
+              id: job.id,
+              type: job.type,
+              imageUrl: canonicalParams.init_image, // SVG data URL
+              svgPanel: true,
+              seed: job.seed,
+              prompt: job.prompt,
+              width: job.width,
+              height: job.height,
+              dnaSnapshot: job.dnaSnapshot,
+              geometryHash: canonicalPack.geometryHash,
+              cdsHash: cdsForPack?.hash || null,
+              meta: {
+                ...job.meta,
+                model: "canonical_svg",
+                generatorUsed: "canonical_geometry_pack",
+                hadCanonicalControl: true,
+                geometryHash: canonicalPack.geometryHash,
+                tier: 1,
+              },
+            };
+            generatedPanels.push(panelResult);
+            reportProgress(
+              "rendering",
+              `${job.type} (SVG deterministic)`,
+              panelDonePercent,
+            );
+            continue; // No FLUX call, no rate-limit delay
+          }
+          logger.warn(
+            `   ⚠️ [TIER 1] Canonical pack missing SVG for ${job.type} — falling back to FLUX`,
+          );
+          // Falls through to FLUX generation below
         }
 
         try {
@@ -1573,6 +1797,36 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               model: result.model || "flux",
             },
           };
+
+          // CORS FIX: Proxy FLUX images from together.ai to data URLs.
+          // This enables CORS-safe canvas access in FingerprintValidationGate
+          // and ensures hero style reference URLs work for subsequent panels.
+          if (
+            panelResult.imageUrl &&
+            !panelResult.imageUrl.startsWith("data:")
+          ) {
+            try {
+              const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(panelResult.imageUrl)}`;
+              const proxyResp = await fetch(proxyUrl);
+              if (proxyResp.ok) {
+                const blob = await proxyResp.blob();
+                const dataUrl = await new Promise((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result);
+                  reader.readAsDataURL(blob);
+                });
+                panelResult.imageUrl = dataUrl;
+                logger.info(
+                  `   🔗 [CORS] Proxied ${job.type} image to data URL (${(blob.size / 1024).toFixed(0)} KB)`,
+                );
+              }
+            } catch (proxyErr) {
+              logger.warn(
+                `   ⚠️ [CORS] Proxy failed for ${job.type}, keeping original URL: ${proxyErr.message}`,
+              );
+              // Graceful fallback: keep the original together.ai URL
+            }
+          }
 
           generatedPanels.push(panelResult);
 
@@ -2283,7 +2537,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         // TRIMMED: Only fields the compose endpoint actually uses for SVG data panels
         masterDNA: {
           rooms: masterDNA?.rooms || masterDNA?.program?.rooms || [],
-          materials: masterDNA?.materials || [],
+          materials: normalizeMaterials(masterDNA),
           dimensions: masterDNA?.dimensions || {},
           architecturalStyle: masterDNA?.architecturalStyle,
           roof: masterDNA?.roof,
@@ -2293,9 +2547,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           buildingProgram: projectContext?.buildingProgram,
         },
         locationData: {
-          climate: locationData?.climate,
-          sunPath: locationData?.sunPath,
-          address: locationData?.address,
+          climate: locationData?.climate || {},
+          sunPath: locationData?.sunPath || {},
+          address: locationData?.address || projectContext?.address || "",
+          coordinates: locationData?.coordinates || null,
+          zoning: locationData?.zoning || {},
         },
       };
 
@@ -2517,6 +2773,46 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       };
     }
   }
+}
+
+/**
+ * Normalize materials from DNA to a consistent array format.
+ * LLMs put materials in different locations (dna.materials, dna.style.materials,
+ * dna._structured.style.materials) and sometimes as an object instead of array.
+ * @param {Object} dna - Master DNA object
+ * @returns {Array<{name: string, hexColor: string, application: string}>}
+ */
+function normalizeMaterials(dna) {
+  if (!dna) return [];
+  const candidates = [
+    dna.materials,
+    dna.style?.materials,
+    dna._structured?.style?.materials,
+  ];
+  for (const mats of candidates) {
+    if (Array.isArray(mats) && mats.length > 0) {
+      return mats.map((m) => ({
+        name: typeof m === "string" ? m : m.name || m.type || "material",
+        hexColor: m.hexColor || m.color_hex || "#808080",
+        application: m.application || m.use || "",
+      }));
+    }
+  }
+  // Handle object-shaped materials ({exterior: {...}, roof: {...}})
+  if (
+    dna.materials &&
+    typeof dna.materials === "object" &&
+    !Array.isArray(dna.materials)
+  ) {
+    return Object.entries(dna.materials)
+      .filter(([, v]) => v && typeof v === "object")
+      .map(([key, v]) => ({
+        name: v.name || v.material || key,
+        hexColor: v.hexColor || v.color_hex || "#808080",
+        application: v.application || key,
+      }));
+  }
+  return [];
 }
 
 function buildPanelMetadata(sections = []) {

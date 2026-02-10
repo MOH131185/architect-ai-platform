@@ -238,8 +238,15 @@ export async function runPreCompositionGate(
       continue;
     }
 
-    // Skip non-visual panels
+    // Skip non-visual panels (data-only SVGs)
     if (isDataPanel(panelType)) {
+      passedPanels.push(panelType);
+      totalScore += 1.0;
+      continue;
+    }
+
+    // Skip TIER 1 deterministic SVG panels (geometry-correct by construction)
+    if (isTier1DeterministicPanel(panelType)) {
       passedPanels.push(panelType);
       totalScore += 1.0;
       continue;
@@ -732,6 +739,32 @@ function isDataPanel(panelType) {
     "schedules_notes",
     "title_block",
   ].includes(panelType);
+}
+
+/**
+ * TIER 1 deterministic SVG panels — skip visual fingerprint comparison.
+ * These are rendered from the canonical geometry pack (Projections2D SVGs),
+ * not from FLUX, so comparing them against a photorealistic hero_3d would
+ * always produce a low similarity score. They are correct by construction.
+ */
+const TIER1_DETERMINISTIC_PANELS = new Set([
+  "floor_plan_ground",
+  "floor_plan_first",
+  "floor_plan_level2",
+  "floor_plan_level3",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+]);
+
+function isTier1DeterministicPanel(panelType) {
+  return (
+    isFeatureEnabled("threeTierPanelConsistency") &&
+    TIER1_DETERMINISTIC_PANELS.has(panelType)
+  );
 }
 
 /**

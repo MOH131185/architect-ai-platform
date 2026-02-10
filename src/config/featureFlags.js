@@ -604,6 +604,22 @@ export const FEATURE_FLAGS = {
   geometryAuthorityMandatory: true,
 
   /**
+   * Three-Tier Panel Consistency
+   *
+   * When enabled:
+   * - TIER 1 (floor plans, elevations, sections): Deterministic SVG from canonical pack — NO FLUX
+   * - TIER 2 (hero_3d, axonometric): FLUX with 0.80-0.85 geometry lock
+   * - TIER 3 (interior_3d, site_diagram): FLUX with DNA style constraints
+   *
+   * When disabled:
+   * - All panels sent to FLUX as init_image (original behavior)
+   *
+   * @type {boolean}
+   * @default true
+   */
+  threeTierPanelConsistency: true,
+
+  /**
    * DNA Schema Version
    *
    * Controls which DNA normalization schema is used:

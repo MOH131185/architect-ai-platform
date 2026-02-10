@@ -434,15 +434,30 @@ export function validateDNASchema(dna) {
  * For backwards compatibility with existing code
  */
 export function convertToLegacyDNA(structuredDNA) {
+  // Compute building footprint dimensions from room areas and floor count
+  const floorCount = structuredDNA.program.floors || 1;
+  const totalRoomArea = (structuredDNA.program.rooms || []).reduce(
+    (sum, r) => sum + (r.area_m2 || 20),
+    0,
+  );
+  // Add ~15% circulation factor to get gross floor area
+  const grossFloorArea = totalRoomArea * 1.15;
+  const footprintArea = grossFloorArea / floorCount;
+  // Use 1.5:1 aspect ratio (facade width : depth) for typical buildings
+  const aspectRatio = 1.5;
+  const computedLength =
+    Math.round(Math.sqrt(footprintArea * aspectRatio) * 10) / 10;
+  const computedWidth = Math.round((footprintArea / computedLength) * 10) / 10;
+
   const legacy = {
-    // Dimensions from program
+    // Dimensions computed from program room areas
     dimensions: {
-      length: 15, // Default, should be computed from rooms
-      width: 10,
-      height: structuredDNA.program.floors * 3.2,
-      floors: structuredDNA.program.floors,
-      totalHeight: structuredDNA.program.floors * 3.2,
-      floorCount: structuredDNA.program.floors,
+      length: computedLength,
+      width: computedWidth,
+      height: floorCount * 3.2,
+      floors: floorCount,
+      totalHeight: floorCount * 3.2,
+      floorCount: floorCount,
     },
 
     // Materials from style

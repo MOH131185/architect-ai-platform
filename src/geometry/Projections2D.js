@@ -11,9 +11,14 @@
  * @module geometry/Projections2D
  */
 
-import logger from '../services/core/logger.js';
+import logger from "../services/core/logger.js";
 
-import { getStylePreset, generateSVGStyles, SYMBOL_SIZES, CONVENTIONS } from './drawingStyles.js';
+import {
+  getStylePreset,
+  generateSVGStyles,
+  SYMBOL_SIZES,
+  CONVENTIONS,
+} from "./drawingStyles.js";
 
 // =============================================================================
 // CONSTANTS
@@ -42,17 +47,17 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
     scale = DEFAULT_SCALE,
     showDimensions = true,
     showRoomLabels = true,
-    showFurniture = false,
+    showFurniture = true,
     showWallHatch = true,
     width: svgWidth = 800,
     height: svgHeight = 600,
-    theme = 'technical',
+    theme = "technical",
   } = options;
 
   const floor = model.getFloor(floorIndex);
   if (!floor) {
     logger.warn(`[Projections2D] Floor ${floorIndex} not found`);
-    return createEmptySVG(svgWidth, svgHeight, 'Floor not found');
+    return createEmptySVG(svgWidth, svgHeight, "Floor not found");
   }
 
   const style = getStylePreset(theme);
@@ -78,8 +83,8 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   svg += `<style>${generateSVGStyles(style)}</style>`;
 
   // Defs for patterns
-  svg += generateHatchPattern('wall-hatch', style, 45, 3);
-  svg += generateHatchPattern('slab-hatch', style, 45, 6);
+  svg += generateHatchPattern("wall-hatch", style, 45, 3);
+  svg += generateHatchPattern("slab-hatch", style, 45, 6);
 
   // Title
   svg += `<text class="title" x="${finalWidth / 2}" y="30">${floor.name}</text>`;
@@ -91,12 +96,12 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   for (const room of floor.rooms) {
     const isCirculation =
       room.isCirculation ||
-      room.name?.toLowerCase().includes('hall') ||
-      room.name?.toLowerCase().includes('landing') ||
-      room.name?.toLowerCase().includes('stair');
+      room.name?.toLowerCase().includes("hall") ||
+      room.name?.toLowerCase().includes("landing") ||
+      room.name?.toLowerCase().includes("stair");
 
     const path = polygonToPath(room.polygon, pxPerMM);
-    svg += `<path class="${isCirculation ? 'circulation-fill' : 'room-fill'}" d="${path}"/>`;
+    svg += `<path class="${isCirculation ? "circulation-fill" : "room-fill"}" d="${path}"/>`;
   }
 
   // Draw external walls (cut - heavy weight with poché)
@@ -113,7 +118,7 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
     svg += drawPlanStairs(model, floor, pxPerMM, style);
   }
 
-  svg += '</g>'; // End transform group
+  svg += "</g>"; // End transform group
 
   // Room labels (drawn right-side up, outside transform)
   if (showRoomLabels) {
@@ -124,15 +129,50 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
 
       svg += `<text class="room-label" x="${cx}" y="${cy - 6}">${room.name}</text>`;
       svg += `<text class="area-label" x="${cx}" y="${cy + 10}">${Math.round(room.areaM2)} m\u00B2</text>`;
+
+      // Room width x depth dimensions
+      const rw =
+        room.width ||
+        room.widthMM ||
+        (room.polygon ? getBoundsWidth(room.polygon) : 0);
+      const rd =
+        room.depth ||
+        room.depthMM ||
+        (room.polygon ? getBoundsHeight(room.polygon) : 0);
+      if (rw > 0 && rd > 0) {
+        const rwM = rw > 100 ? (rw / MM_PER_M).toFixed(1) : rw.toFixed(1); // Handle mm vs m
+        const rdM = rd > 100 ? (rd / MM_PER_M).toFixed(1) : rd.toFixed(1);
+        svg += `<text class="area-label" x="${cx}" y="${cy + 22}" font-size="7" fill="#94a3b8">${rwM}m \u00D7 ${rdM}m</text>`;
+      }
     }
-    svg += '</g>';
+    svg += "</g>";
+  }
+
+  // Furniture symbols (detailed architectural plan convention)
+  if (showFurniture) {
+    svg += '<g id="furniture">';
+    for (const room of floor.rooms) {
+      const cx = offsetX + room.center.x * pxPerMM;
+      const cy = offsetY - room.center.y * pxPerMM;
+      // Calculate room pixel dimensions for scaling furniture
+      const roomWPx =
+        (room.width || room.widthMM || getBoundsWidth(room.polygon || [])) *
+        pxPerMM;
+      const roomHPx =
+        (room.depth || room.depthMM || getBoundsHeight(room.polygon || [])) *
+        pxPerMM;
+      if (roomWPx > 20 && roomHPx > 20) {
+        svg += drawFurnitureSymbol(room.name, cx, cy, roomWPx, roomHPx);
+      }
+    }
+    svg += "</g>";
   }
 
   // Dimensions
   if (showDimensions) {
     svg += '<g id="dimensions">';
     svg += drawPlanDimensions(model, dims, offsetX, offsetY, scale);
-    svg += '</g>';
+    svg += "</g>";
   }
 
   // North arrow
@@ -141,7 +181,22 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   // Scale bar
   svg += drawScaleBar(finalWidth - 150, finalHeight - 40, scale);
 
-  svg += '</svg>';
+  // Title block
+  const floorLabel =
+    floorIndex === 0
+      ? "Ground Floor Plan"
+      : floorIndex === 1
+        ? "First Floor Plan"
+        : `Level ${floorIndex} Plan`;
+  const dwgNum =
+    floorIndex === 0
+      ? "A-100"
+      : floorIndex === 1
+        ? "A-101"
+        : `A-10${floorIndex}`;
+  svg += drawTitleBlock(finalWidth, finalHeight, floorLabel, dwgNum, scale);
+
+  svg += "</svg>";
 
   logger.info(`[Projections2D] Floor plan generated`, {
     floor: floor.name,
@@ -169,14 +224,14 @@ function drawExternalWalls(model, floor, pxPerMM, showHatch) {
   const inset = CONVENTIONS.wallThickness.external;
   const innerFootprint = insetPolygon(footprint, inset);
   const innerPath = polygonToPath(innerFootprint, pxPerMM);
-  svg += `<path fill="none" stroke="${getStylePreset('technical').colors.stroke}" stroke-width="0.8" d="${innerPath}"/>`;
+  svg += `<path fill="none" stroke="${getStylePreset("technical").colors.stroke}" stroke-width="0.8" d="${innerPath}"/>`;
 
   // Add wall hatching (poché) if enabled
   if (showHatch) {
     svg += drawWallHatch(footprint, innerFootprint, pxPerMM);
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -186,11 +241,11 @@ function drawExternalWalls(model, floor, pxPerMM, showHatch) {
 function drawInternalWalls(floor, pxPerMM) {
   let svg = '<g id="internal-walls">';
 
-  const internalWalls = floor.walls.filter((w) => w.type === 'internal');
+  const internalWalls = floor.walls.filter((w) => w.type === "internal");
 
-  logger.debug('[Projections2D] Drawing internal walls', {
+  logger.debug("[Projections2D] Drawing internal walls", {
     count: internalWalls.length,
-    walls: internalWalls.map((w) => w.connectsRooms || 'unknown'),
+    walls: internalWalls.map((w) => w.connectsRooms || "unknown"),
   });
 
   for (const wall of internalWalls) {
@@ -200,7 +255,8 @@ function drawInternalWalls(floor, pxPerMM) {
     const y2 = wall.end.y * pxPerMM;
 
     // Draw wall with proper thickness representation
-    const thickness = (wall.thickness || CONVENTIONS.wallThickness.internal) * pxPerMM;
+    const thickness =
+      (wall.thickness || CONVENTIONS.wallThickness.internal) * pxPerMM;
 
     // Calculate perpendicular offset for wall thickness
     const dx = x2 - x1;
@@ -218,7 +274,7 @@ function drawInternalWalls(floor, pxPerMM) {
     svg += `<path class="wall-internal-fill" d="M ${x1 + nx} ${y1 + ny} L ${x2 + nx} ${y2 + ny} L ${x2 - nx} ${y2 - ny} L ${x1 - nx} ${y1 - ny} Z"/>`;
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -247,10 +303,16 @@ function drawPlanOpenings(floor, pxPerMM, style) {
     // Wall angle
     const wallAngle = (Math.atan2(wallDy, wallDx) * 180) / Math.PI;
 
-    if (opening.type === 'window') {
+    if (opening.type === "window") {
       // Draw window symbol (parallel lines with glazing bars)
-      svg += drawWindowSymbol(cx, cy, openingWidthPx, wallAngle, wall.type === 'external');
-    } else if (opening.type === 'door') {
+      svg += drawWindowSymbol(
+        cx,
+        cy,
+        openingWidthPx,
+        wallAngle,
+        wall.type === "external",
+      );
+    } else if (opening.type === "door") {
       // Draw door symbol (opening arc + door leaf)
       svg += drawDoorSymbol(
         cx,
@@ -258,12 +320,12 @@ function drawPlanOpenings(floor, pxPerMM, style) {
         openingWidthPx,
         wallAngle,
         opening.isEntrance,
-        wall.type === 'external'
+        wall.type === "external",
       );
     }
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -291,7 +353,7 @@ function drawWindowSymbol(cx, cy, widthPx, angleDeg, isExternal) {
     svg += `<line class="window-glazing-bar" x1="0" y1="${-frameWidth}" x2="0" y2="${frameWidth}"/>`;
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -320,7 +382,7 @@ function drawDoorSymbol(cx, cy, widthPx, angleDeg, isEntrance, isExternal) {
   // Door swing arc (quarter circle)
   svg += `<path class="door-swing" d="M ${-hw} 0 A ${swingRadius} ${swingRadius} 0 0 1 ${-hw + swingRadius} ${swingRadius}"/>`;
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -329,7 +391,7 @@ function drawDoorSymbol(cx, cy, widthPx, angleDeg, isEntrance, isExternal) {
  */
 function drawPlanStairs(model, floor, pxPerMM, style) {
   if (!model.stairs || model.stairs.length === 0) {
-    return '';
+    return "";
   }
 
   let svg = '<g id="stairs">';
@@ -358,7 +420,7 @@ function drawPlanStairs(model, floor, pxPerMM, style) {
   // UP text
   svg += `<text transform="scale(1,-1)" x="${stairX}" y="${-stairY}" text-anchor="middle" font-family="Arial" font-size="8" fill="#333">UP</text>`;
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -366,7 +428,7 @@ function drawPlanStairs(model, floor, pxPerMM, style) {
  * Draw plan dimensions
  */
 function drawPlanDimensions(model, dims, offsetX, offsetY, scale) {
-  let svg = '';
+  let svg = "";
 
   // Overall width dimension (bottom)
   const dimY = offsetY + (dims.depth * scale) / 2 + 40;
@@ -377,7 +439,7 @@ function drawPlanDimensions(model, dims, offsetX, offsetY, scale) {
     dimY,
     `${dims.width.toFixed(2)} m`,
     false,
-    'plan-dim-width'
+    "plan-dim-width",
   );
 
   // Overall depth dimension (left side)
@@ -389,7 +451,7 @@ function drawPlanDimensions(model, dims, offsetX, offsetY, scale) {
     offsetY + (dims.depth * scale) / 2,
     `${dims.depth.toFixed(2)} m`,
     true,
-    'plan-dim-depth'
+    "plan-dim-depth",
   );
 
   return svg;
@@ -407,7 +469,7 @@ function drawPlanDimensions(model, dims, offsetX, offsetY, scale) {
  * @param {Object} options - Rendering options
  * @returns {string} SVG string
  */
-export function projectElevation(model, orientation = 'S', options = {}) {
+export function projectElevation(model, orientation = "S", options = {}) {
   const {
     scale = DEFAULT_SCALE,
     showDimensions = true,
@@ -416,7 +478,7 @@ export function projectElevation(model, orientation = 'S', options = {}) {
     showLevelMarkers = true,
     width: svgWidth = 800,
     height: svgHeight = 500,
-    theme = 'technical',
+    theme = "technical",
   } = options;
 
   const style = getStylePreset(theme);
@@ -424,7 +486,7 @@ export function projectElevation(model, orientation = 'S', options = {}) {
   const pxPerMM = scale / MM_PER_M;
 
   // Determine elevation width based on orientation
-  const isNS = orientation === 'N' || orientation === 'S';
+  const isNS = orientation === "N" || orientation === "S";
   const elevationWidth = isNS ? dims.width : dims.depth;
   const elevationWidthMM = elevationWidth * MM_PER_M;
 
@@ -435,7 +497,10 @@ export function projectElevation(model, orientation = 'S', options = {}) {
   const contentHeight = dims.ridgeHeight * scale;
 
   const finalWidth = Math.max(svgWidth, contentWidth + 2 * marginPx);
-  const finalHeight = Math.max(svgHeight, contentHeight + groundPx + 2 * marginPx);
+  const finalHeight = Math.max(
+    svgHeight,
+    contentHeight + groundPx + 2 * marginPx,
+  );
 
   // Ground level Y position in SVG
   const groundY = finalHeight - marginPx - groundPx;
@@ -447,22 +512,53 @@ export function projectElevation(model, orientation = 'S', options = {}) {
   // Sky background
   svg += `<rect class="sky" x="0" y="0" width="${finalWidth}" height="${groundY}"/>`;
 
-  // Ground
+  // Ground with grass indication
   if (showGround) {
-    svg += `<rect class="ground" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + marginPx}"/>`;
-    svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}"/>`;
+    // Grass-green fill below ground line
+    svg += `<rect fill="#d4e8c2" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + marginPx}"/>`;
+    // Subtle grass hatching
+    for (let gx = 0; gx < finalWidth; gx += 12) {
+      const h = 3 + Math.random() * 4;
+      svg += `<line stroke="#a8c890" stroke-width="0.5" x1="${gx}" y1="${groundY}" x2="${gx + 2}" y2="${groundY - h}"/>`;
+    }
+    svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}" stroke="#333" stroke-width="1.5"/>`;
   }
 
   // Title
-  const orientationNames = { N: 'North', S: 'South', E: 'East', W: 'West' };
+  const orientationNames = { N: "North", S: "South", E: "East", W: "West" };
   svg += `<text class="title" x="${finalWidth / 2}" y="30">${orientationNames[orientation]} Elevation</text>`;
 
-  // Building wall
+  // Building wall — with material fill from DNA style
   const wallLeft = offsetX - (elevationWidthMM / 2) * pxPerMM;
   const wallRight = offsetX + (elevationWidthMM / 2) * pxPerMM;
   const wallTop = groundY - model.envelope.height * pxPerMM;
 
-  svg += `<rect class="wall-external-cut" x="${wallLeft}" y="${wallTop}" width="${elevationWidthMM * pxPerMM}" height="${model.envelope.height * pxPerMM}"/>`;
+  // Material fill: use first exterior material from style
+  const exteriorMat =
+    (model.style?.materials || []).find(
+      (m) =>
+        m &&
+        typeof m === "object" &&
+        ((m.application || "").toLowerCase().includes("wall") ||
+          (m.application || "").toLowerCase().includes("exterior") ||
+          (m.application || "").toLowerCase().includes("facade")),
+    ) || (model.style?.materials || [])[0];
+
+  const matName =
+    typeof exteriorMat === "string" ? exteriorMat : exteriorMat?.name || "";
+  const matHex = exteriorMat?.hexColor || null;
+  const matFill = getMaterialFill(matName, matHex);
+
+  if (matFill.defs) {
+    svg += `<defs>${matFill.defs}</defs>`;
+  }
+
+  // Wall rectangle with material fill
+  svg += `<rect fill="${matFill.fill}" stroke="#333" stroke-width="1.5" x="${wallLeft}" y="${wallTop}" width="${elevationWidthMM * pxPerMM}" height="${model.envelope.height * pxPerMM}"/>`;
+
+  // Foundation shadow/depth line at base
+  svg += `<line stroke="#555" stroke-width="2.5" x1="${wallLeft}" y1="${groundY}" x2="${wallRight}" y2="${groundY}"/>`;
+  svg += `<line stroke="rgba(0,0,0,0.08)" stroke-width="6" x1="${wallLeft + 3}" y1="${groundY + 3}" x2="${wallRight + 3}" y2="${groundY + 3}"/>`;
 
   // Roof
   if (showRoof) {
@@ -470,13 +566,20 @@ export function projectElevation(model, orientation = 'S', options = {}) {
   }
 
   // Openings
-  svg += drawElevationOpenings(model, orientation, offsetX, groundY, pxPerMM, isNS);
+  svg += drawElevationOpenings(
+    model,
+    orientation,
+    offsetX,
+    groundY,
+    pxPerMM,
+    isNS,
+  );
 
   // Level markers
   if (showLevelMarkers) {
     svg += '<g id="level-markers">';
     svg += drawLevelMarkers(model, wallLeft, wallRight, groundY, pxPerMM);
-    svg += '</g>';
+    svg += "</g>";
   }
 
   // Dimensions
@@ -491,7 +594,7 @@ export function projectElevation(model, orientation = 'S', options = {}) {
       wallTop,
       `${(model.envelope.height / MM_PER_M).toFixed(2)} m`,
       true,
-      'elev-dim-height'
+      "elev-dim-height",
     );
 
     // Width
@@ -502,13 +605,23 @@ export function projectElevation(model, orientation = 'S', options = {}) {
       groundY + 30,
       `${elevationWidth.toFixed(2)} m`,
       false,
-      'elev-dim-width'
+      "elev-dim-width",
     );
 
-    svg += '</g>';
+    svg += "</g>";
   }
 
-  svg += '</svg>';
+  // Title block
+  const elevDwgNum = { N: "A-200", S: "A-201", E: "A-202", W: "A-203" };
+  svg += drawTitleBlock(
+    finalWidth,
+    finalHeight,
+    `${orientationNames[orientation]} Elevation`,
+    elevDwgNum[orientation] || "A-200",
+    scale,
+  );
+
+  svg += "</svg>";
 
   logger.info(`[Projections2D] Elevation generated`, {
     orientation,
@@ -525,20 +638,20 @@ export function projectElevation(model, orientation = 'S', options = {}) {
 function drawElevationRoof(model, orientation, offsetX, groundY, pxPerMM) {
   const roofProfile = model.getRoofProfile(orientation);
   if (!roofProfile || roofProfile.length === 0) {
-    return '';
+    return "";
   }
 
-  let roofPath = 'M ';
+  let roofPath = "M ";
   for (let i = 0; i < roofProfile.length; i++) {
     const pt = roofProfile[i];
     const x = offsetX + pt.x * pxPerMM;
     const y = groundY - pt.z * pxPerMM;
     roofPath += `${x} ${y}`;
     if (i < roofProfile.length - 1) {
-      roofPath += ' L ';
+      roofPath += " L ";
     }
   }
-  roofPath += ' Z';
+  roofPath += " Z";
 
   return `<path class="roof" d="${roofPath}"/>`;
 }
@@ -547,7 +660,14 @@ function drawElevationRoof(model, orientation, offsetX, groundY, pxPerMM) {
  * Draw elevation openings
  * TASK 2: Fixed position handling - supports both object {x, z} and number formats
  */
-function drawElevationOpenings(model, orientation, offsetX, groundY, pxPerMM, isNS) {
+function drawElevationOpenings(
+  model,
+  orientation,
+  offsetX,
+  groundY,
+  pxPerMM,
+  isNS,
+) {
   let svg = '<g id="elevation-openings">';
 
   const facadeOpenings = model.getOpeningsForFacade(orientation);
@@ -565,7 +685,9 @@ function drawElevationOpenings(model, orientation, offsetX, groundY, pxPerMM, is
     let targetWall = wall;
     if (!targetWall && floor) {
       // Fallback: find any external wall on this facade
-      targetWall = floor.walls.find((w) => w.facade === orientation && w.type === 'external');
+      targetWall = floor.walls.find(
+        (w) => w.facade === orientation && w.type === "external",
+      );
     }
 
     // Calculate position along the facade
@@ -581,15 +703,19 @@ function drawElevationOpenings(model, orientation, offsetX, groundY, pxPerMM, is
       // - number format: distance in mm along wall
       // - positionMM: raw position in mm
       let ratio;
-      if (typeof opening.position === 'object' && opening.position?.x !== undefined) {
+      if (
+        typeof opening.position === "object" &&
+        opening.position?.x !== undefined
+      ) {
         // Object format with normalized x (0-1)
         ratio = opening.position.x;
-      } else if (typeof opening.positionMM === 'number') {
+      } else if (typeof opening.positionMM === "number") {
         // Raw position in mm
         ratio = opening.positionMM / wallLen;
-      } else if (typeof opening.position === 'number') {
+      } else if (typeof opening.position === "number") {
         // Direct position (could be mm or normalized)
-        ratio = opening.position > 1 ? opening.position / wallLen : opening.position;
+        ratio =
+          opening.position > 1 ? opening.position / wallLen : opening.position;
       } else {
         // Default to center
         ratio = 0.5;
@@ -616,23 +742,24 @@ function drawElevationOpenings(model, orientation, offsetX, groundY, pxPerMM, is
     const openingHeightPx = openingHeight * pxPerMM;
 
     const sillHeight = opening.sillHeight || 0;
-    const baseY = groundY - (opening.zBase || 0) * pxPerMM - sillHeight * pxPerMM;
+    const baseY =
+      groundY - (opening.zBase || 0) * pxPerMM - sillHeight * pxPerMM;
 
-    if (opening.type === 'window') {
+    if (opening.type === "window") {
       svg += drawElevationWindow(cx, baseY, openingWidthPx, openingHeightPx);
-    } else if (opening.type === 'door') {
+    } else if (opening.type === "door") {
       const doorY = groundY - opening.zBase * pxPerMM;
       svg += drawElevationDoor(
         cx,
         doorY,
         openingWidthPx,
         opening.height * pxPerMM,
-        opening.isEntrance
+        opening.isEntrance,
       );
     }
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -653,6 +780,10 @@ function drawElevationWindow(cx, bottomY, width, height) {
 
   // Window sill
   svg += `<line stroke="#333" stroke-width="2" x1="${x - 5}" y1="${bottomY}" x2="${x + width + 5}" y2="${bottomY}"/>`;
+
+  // Lintel (head detail above window)
+  svg += `<line stroke="#555" stroke-width="1.5" x1="${x - 3}" y1="${y}" x2="${x + width + 3}" y2="${y}"/>`;
+  svg += `<line stroke="#888" stroke-width="0.5" x1="${x - 3}" y1="${y - 3}" x2="${x + width + 3}" y2="${y - 3}"/>`;
 
   return svg;
 }
@@ -682,17 +813,22 @@ function drawElevationDoor(cx, bottomY, width, height, isEntrance) {
  * Draw level markers on elevation
  */
 function drawLevelMarkers(model, wallLeft, wallRight, groundY, pxPerMM) {
-  let svg = '';
+  let svg = "";
   const markerX = wallLeft - 50;
 
   // Ground level marker
-  svg += drawLevelMarker(markerX, groundY, '\u00B10.00', 'ground-level');
+  svg += drawLevelMarker(markerX, groundY, "\u00B10.00", "ground-level");
 
   // Floor level markers
   for (const floor of model.floors) {
     const y = groundY - floor.zTop * pxPerMM;
     const heightM = (floor.zTop / MM_PER_M).toFixed(2);
-    svg += drawLevelMarker(markerX, y, `+${heightM}`, `floor-${floor.index}-level`);
+    svg += drawLevelMarker(
+      markerX,
+      y,
+      `+${heightM}`,
+      `floor-${floor.index}-level`,
+    );
 
     // Dashed line across elevation
     svg += `<line class="level-marker-dashed" x1="${wallLeft}" y1="${y}" x2="${wallRight}" y2="${y}"/>`;
@@ -702,7 +838,13 @@ function drawLevelMarkers(model, wallLeft, wallRight, groundY, pxPerMM) {
   if (model.roof) {
     const ridgeY = groundY - model.roof.ridgeHeight * pxPerMM;
     const ridgeHeightM = (model.roof.ridgeHeight / MM_PER_M).toFixed(2);
-    svg += drawLevelMarker(markerX, ridgeY, `+${ridgeHeightM}`, 'ridge-level', true);
+    svg += drawLevelMarker(
+      markerX,
+      ridgeY,
+      `+${ridgeHeightM}`,
+      "ridge-level",
+      true,
+    );
   }
 
   return svg;
@@ -720,7 +862,11 @@ function drawLevelMarkers(model, wallLeft, wallRight, groundY, pxPerMM) {
  * @param {Object} options - Rendering options
  * @returns {string} SVG string
  */
-export function projectSection(model, sectionType = 'longitudinal', options = {}) {
+export function projectSection(
+  model,
+  sectionType = "longitudinal",
+  options = {},
+) {
   const {
     scale = DEFAULT_SCALE,
     showDimensions = true,
@@ -729,7 +875,7 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
     showLevelMarkers = true,
     width: svgWidth = 800,
     height: svgHeight = 500,
-    theme = 'technical',
+    theme = "technical",
   } = options;
 
   const style = getStylePreset(theme);
@@ -737,7 +883,7 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
   const pxPerMM = scale / MM_PER_M;
 
   // Section direction
-  const isLongitudinal = sectionType === 'longitudinal';
+  const isLongitudinal = sectionType === "longitudinal";
   const sectionWidth = isLongitudinal ? dims.width : dims.depth;
   const sectionWidthMM = sectionWidth * MM_PER_M;
 
@@ -749,22 +895,26 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
   const contentHeight = dims.ridgeHeight * scale;
 
   const finalWidth = Math.max(svgWidth, contentWidth + 2 * marginPx);
-  const finalHeight = Math.max(svgHeight, contentHeight + groundPx + foundationPx + 2 * marginPx);
+  const finalHeight = Math.max(
+    svgHeight,
+    contentHeight + groundPx + foundationPx + 2 * marginPx,
+  );
 
   const groundY = finalHeight - marginPx - groundPx - foundationPx;
   const offsetX = finalWidth / 2;
 
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
   svg += `<style>${generateSVGStyles(style)}</style>`;
-  svg += generateHatchPattern('wall-hatch', style, 45, 3);
-  svg += generateHatchPattern('slab-hatch', style, 45, 6);
+  svg += generateHatchPattern("wall-hatch", style, 45, 3);
+  svg += generateHatchPattern("slab-hatch", style, 45, 6);
 
   // Ground line and fill
   svg += `<rect class="ground" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + foundationPx + marginPx}"/>`;
   svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}"/>`;
 
   // Title
-  const sectionLabel = sectionType === 'longitudinal' ? 'Section A-A' : 'Section B-B';
+  const sectionLabel =
+    sectionType === "longitudinal" ? "Section A-A" : "Section B-B";
   svg += `<text class="title" x="${finalWidth / 2}" y="30">${sectionLabel}</text>`;
 
   const buildingLeft = offsetX - (sectionWidthMM / 2) * pxPerMM;
@@ -778,7 +928,7 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
       groundY,
       sectionWidthMM,
       pxPerMM,
-      style
+      style,
     );
   }
 
@@ -795,10 +945,10 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
       pxPerMM,
       isLongitudinal,
       showRoomLabels,
-      offsetX
+      offsetX,
     );
   }
-  svg += '</g>';
+  svg += "</g>";
 
   // Cut walls (at section line) with poché
   svg += drawSectionCutWalls(
@@ -807,7 +957,7 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
     groundY,
     model.envelope.height,
     pxPerMM,
-    style
+    style,
   );
 
   // Stairs
@@ -819,7 +969,7 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
   if (showLevelMarkers) {
     svg += '<g id="section-level-markers">';
     svg += drawSectionLevelMarkers(model, buildingLeft, groundY, pxPerMM);
-    svg += '</g>';
+    svg += "</g>";
   }
 
   // Roof
@@ -837,12 +987,16 @@ export function projectSection(model, sectionType = 'longitudinal', options = {}
       topOfBuilding,
       `${(model.roof.ridgeHeight / MM_PER_M).toFixed(2)} m`,
       true,
-      'section-dim-total-height'
+      "section-dim-total-height",
     );
-    svg += '</g>';
+    svg += "</g>";
   }
 
-  svg += '</svg>';
+  // Title block
+  const secDwg = sectionType === "longitudinal" ? "A-300" : "A-301";
+  svg += drawTitleBlock(finalWidth, finalHeight, sectionLabel, secDwg, scale);
+
+  svg += "</svg>";
 
   logger.info(`[Projections2D] Section generated`, {
     type: sectionType,
@@ -863,7 +1017,7 @@ function drawSectionFoundation(
   groundY,
   sectionWidthMM,
   pxPerMM,
-  style
+  style,
 ) {
   const foundationDepth = CONVENTIONS.foundationDepth * pxPerMM;
   const foundationH = foundationDepth;
@@ -877,7 +1031,7 @@ function drawSectionFoundation(
     svg += `<line class="hatch" x1="${buildingLeft + i}" y1="${groundY}" x2="${buildingLeft + i + 12}" y2="${groundY + foundationH}"/>`;
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -894,9 +1048,9 @@ function drawSectionFloor(
   pxPerMM,
   isLongitudinal,
   showRoomLabels,
-  offsetX
+  offsetX,
 ) {
-  let svg = '';
+  let svg = "";
 
   const floorY = groundY - floor.zBase * pxPerMM;
   const floorTop = groundY - floor.zTop * pxPerMM;
@@ -921,7 +1075,7 @@ function drawSectionFloor(
       const halfRoomSize =
         Math.min(
           room.boundingBox.maxX - room.boundingBox.minX,
-          room.boundingBox.maxY - room.boundingBox.minY
+          room.boundingBox.maxY - room.boundingBox.minY,
         ) / 2;
 
       if (Math.abs(cutPos) < halfRoomSize * 2) {
@@ -941,7 +1095,14 @@ function drawSectionFloor(
 /**
  * Draw section cut walls with poché hatching
  */
-function drawSectionCutWalls(buildingLeft, buildingRight, groundY, buildingHeight, pxPerMM, style) {
+function drawSectionCutWalls(
+  buildingLeft,
+  buildingRight,
+  groundY,
+  buildingHeight,
+  pxPerMM,
+  style,
+) {
   let svg = '<g id="cut-walls">';
 
   const wallThicknessPx = CONVENTIONS.wallThickness.external * pxPerMM;
@@ -962,7 +1123,7 @@ function drawSectionCutWalls(buildingLeft, buildingRight, groundY, buildingHeigh
     svg += `<line class="hatch" x1="${buildingRight}" y1="${groundY - i}" x2="${buildingRight + wallThicknessPx}" y2="${groundY - i - 6}"/>`;
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -977,7 +1138,9 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
   const stairLengthPx = (stair.length || 3000) * pxPerMM;
 
   const stairX = stair.position
-    ? offsetX + (isLongitudinal ? stair.position.x : stair.position.y) * pxPerMM - stairWidthPx / 2
+    ? offsetX +
+      (isLongitudinal ? stair.position.x : stair.position.y) * pxPerMM -
+      stairWidthPx / 2
     : offsetX - stairWidthPx / 2;
 
   // Draw stair treads connecting floors
@@ -1014,7 +1177,7 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
   const stairLabelY = groundY - (model.floors[0].floorHeight * pxPerMM) / 2;
   svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -1022,14 +1185,19 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
  * Draw section level markers
  */
 function drawSectionLevelMarkers(model, buildingLeft, groundY, pxPerMM) {
-  let svg = '';
+  let svg = "";
   const markerX = buildingLeft - 80;
 
   // Vertical datum line
   svg += `<line stroke="#333" stroke-width="1" x1="${markerX}" y1="${groundY + 20}" x2="${markerX}" y2="${groundY - model.envelope.height * pxPerMM - 50}"/>`;
 
   // Ground level marker
-  svg += drawLevelMarker(markerX, groundY, '\u00B10.00', 'section-ground-level');
+  svg += drawLevelMarker(
+    markerX,
+    groundY,
+    "\u00B10.00",
+    "section-ground-level",
+  );
 
   // Floor level markers
   for (let i = 0; i < model.floors.length; i++) {
@@ -1038,14 +1206,25 @@ function drawSectionLevelMarkers(model, buildingLeft, groundY, pxPerMM) {
     // Floor top level
     const topY = groundY - floor.zTop * pxPerMM;
     const topHeightM = (floor.zTop / MM_PER_M).toFixed(2);
-    svg += drawLevelMarker(markerX, topY, `+${topHeightM}`, `section-floor-${i}-level`);
+    svg += drawLevelMarker(
+      markerX,
+      topY,
+      `+${topHeightM}`,
+      `section-floor-${i}-level`,
+    );
   }
 
   // Ridge height marker
   if (model.roof) {
     const ridgeY = groundY - model.roof.ridgeHeight * pxPerMM;
     const ridgeHeightM = (model.roof.ridgeHeight / MM_PER_M).toFixed(2);
-    svg += drawLevelMarker(markerX, ridgeY, `+${ridgeHeightM}`, 'section-ridge-level', true);
+    svg += drawLevelMarker(
+      markerX,
+      ridgeY,
+      `+${ridgeHeightM}`,
+      "section-ridge-level",
+      true,
+    );
   }
 
   return svg;
@@ -1055,22 +1234,22 @@ function drawSectionLevelMarkers(model, buildingLeft, groundY, pxPerMM) {
  * Draw section roof
  */
 function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
-  const roofProfile = model.getRoofProfile(isLongitudinal ? 'N' : 'E');
+  const roofProfile = model.getRoofProfile(isLongitudinal ? "N" : "E");
   if (!roofProfile || roofProfile.length === 0) {
-    return '';
+    return "";
   }
 
-  let roofPath = 'M ';
+  let roofPath = "M ";
   for (let i = 0; i < roofProfile.length; i++) {
     const pt = roofProfile[i];
     const x = offsetX + pt.x * pxPerMM;
     const y = groundY - pt.z * pxPerMM;
     roofPath += `${x} ${y}`;
     if (i < roofProfile.length - 1) {
-      roofPath += ' L ';
+      roofPath += " L ";
     }
   }
-  roofPath += ' Z';
+  roofPath += " Z";
 
   return `<path class="roof" d="${roofPath}"/>`;
 }
@@ -1084,10 +1263,12 @@ function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
  */
 function polygonToPath(polygon, pxPerMM) {
   if (!polygon || polygon.length === 0) {
-    return '';
+    return "";
   }
-  const points = polygon.map((p) => `${(p.x * pxPerMM).toFixed(2)},${(p.y * pxPerMM).toFixed(2)}`);
-  return `M ${points.join(' L ')} Z`;
+  const points = polygon.map(
+    (p) => `${(p.x * pxPerMM).toFixed(2)},${(p.y * pxPerMM).toFixed(2)}`,
+  );
+  return `M ${points.join(" L ")} Z`;
 }
 
 /**
@@ -1115,6 +1296,24 @@ function insetPolygon(polygon, insetMM) {
 }
 
 /**
+ * Get the width of a polygon's bounding box (X extent)
+ */
+function getBoundsWidth(polygon) {
+  if (!polygon || polygon.length < 2) return 0;
+  const xs = polygon.map((p) => p.x);
+  return Math.max(...xs) - Math.min(...xs);
+}
+
+/**
+ * Get the height of a polygon's bounding box (Y extent)
+ */
+function getBoundsHeight(polygon) {
+  if (!polygon || polygon.length < 2) return 0;
+  const ys = polygon.map((p) => p.y);
+  return Math.max(...ys) - Math.min(...ys);
+}
+
+/**
  * Draw wall hatch pattern (poché)
  */
 function drawWallHatch(outerPolygon, innerPolygon, pxPerMM) {
@@ -1136,7 +1335,7 @@ function drawWallHatch(outerPolygon, innerPolygon, pxPerMM) {
     svg += `<line class="hatch" x1="${x * pxPerMM}" y1="${minY * pxPerMM}" x2="${(x + spacing * 2) * pxPerMM}" y2="${maxY * pxPerMM}"/>`;
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -1156,9 +1355,9 @@ function generateHatchPattern(id, style, angle, spacing) {
 /**
  * Draw dimension line with text
  */
-function drawDimension(x1, y1, x2, y2, text, vertical = false, id = '') {
+function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
   const tickSize = SYMBOL_SIZES.dimension.tickLength;
-  let svg = `<g class="dimension" ${id ? `id="${id}"` : ''}>`;
+  let svg = `<g class="dimension" ${id ? `id="${id}"` : ""}>`;
 
   if (vertical) {
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
@@ -1174,28 +1373,28 @@ function drawDimension(x1, y1, x2, y2, text, vertical = false, id = '') {
     svg += `<text class="dimension-text" x="${midX}" y="${y1 - 8}">${text}</text>`;
   }
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
 /**
  * Draw level marker with triangle and text
  */
-function drawLevelMarker(x, y, text, id = '', isDashed = false) {
+function drawLevelMarker(x, y, text, id = "", isDashed = false) {
   const { triangleSize, lineLength, textOffset } = SYMBOL_SIZES.levelMarker;
 
-  let svg = `<g ${id ? `id="${id}"` : ''}>`;
+  let svg = `<g ${id ? `id="${id}"` : ""}>`;
 
   // Triangle marker
   svg += `<polygon fill="#333" points="${x},${y} ${x - triangleSize},${y + triangleSize / 2} ${x - triangleSize},${y - triangleSize / 2}"/>`;
 
   // Horizontal line
-  svg += `<line class="${isDashed ? 'level-marker-dashed' : 'level-marker'}" x1="${x - triangleSize}" y1="${y}" x2="${x - triangleSize - lineLength}" y2="${y}"/>`;
+  svg += `<line class="${isDashed ? "level-marker-dashed" : "level-marker"}" x1="${x - triangleSize}" y1="${y}" x2="${x - triangleSize - lineLength}" y2="${y}"/>`;
 
   // Text
   svg += `<text class="level-text" x="${x - triangleSize - lineLength - textOffset}" y="${y + 4}" text-anchor="end">${text}</text>`;
 
-  svg += '</g>';
+  svg += "</g>";
   return svg;
 }
 
@@ -1231,6 +1430,183 @@ function drawScaleBar(x, y, scale) {
   `;
 }
 
+// =============================================================================
+// FURNITURE SYMBOLS (Detailed architectural plan convention)
+// =============================================================================
+
+/**
+ * Draw furniture symbols for a room based on its type.
+ * Uses full architectural drawing conventions.
+ */
+function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
+  const type = (roomType || "").toLowerCase();
+  let svg = "";
+
+  if (type.includes("bed") || type.includes("master")) {
+    // Bed with pillow indication
+    const bw = Math.min(widthPx * 0.5, 60);
+    const bh = Math.min(heightPx * 0.6, 80);
+    const pillowH = bh * 0.15;
+    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - bw / 2}" y="${cy - bh / 2}" width="${bw}" height="${bh}" rx="2"/>`;
+    // Pillow at head
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.4" x="${cx - bw / 2 + 4}" y="${cy - bh / 2 + 3}" width="${bw - 8}" height="${pillowH}" rx="2"/>`;
+  } else if (
+    type.includes("living") ||
+    type.includes("lounge") ||
+    type.includes("sitting")
+  ) {
+    // Sofa L-shape with cushion lines
+    const sw = Math.min(widthPx * 0.45, 55);
+    const sh = Math.min(heightPx * 0.3, 30);
+    // Seat
+    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh}" rx="2"/>`;
+    // Back
+    svg += `<rect fill="#f0f0f0" stroke="#999" stroke-width="0.4" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh * 0.3}" rx="1"/>`;
+    // Cushion divider lines
+    const third = sw / 3;
+    svg += `<line stroke="#bbb" stroke-width="0.3" x1="${cx - sw / 2 + third}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third}" y2="${cy + sh / 2}"/>`;
+    svg += `<line stroke="#bbb" stroke-width="0.3" x1="${cx - sw / 2 + third * 2}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third * 2}" y2="${cy + sh / 2}"/>`;
+  } else if (type.includes("kitchen")) {
+    // Worktop line with sink circle and cooker (4 circles)
+    const kw = Math.min(widthPx * 0.6, 70);
+    const kh = Math.min(heightPx * 0.15, 16);
+    const ky = cy - heightPx * 0.25;
+    // Worktop
+    svg += `<rect fill="#f5f5f5" stroke="#999" stroke-width="0.6" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
+    // Sink (circle cutout)
+    svg += `<circle fill="#e0e8f0" stroke="#999" stroke-width="0.4" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
+    // Cooker (4 circles)
+    const cr = kh * 0.2;
+    const cookX = cx + kw * 0.2;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    // Fridge rectangle
+    const fw = kh * 0.8;
+    svg += `<rect fill="none" stroke="#999" stroke-width="0.4" x="${cx + kw / 2 - fw - 2}" y="${ky}" width="${fw}" height="${kh}" rx="1"/>`;
+  } else if (
+    type.includes("bath") ||
+    type.includes("shower") ||
+    type.includes("wc") ||
+    type.includes("en-suite") ||
+    type.includes("ensuite")
+  ) {
+    // Bath rectangle with taps, WC with cistern + bowl arc, basin circle
+    const scale = Math.min(widthPx, heightPx) / 120;
+    const bathW = 25 * scale;
+    const bathH = 55 * scale;
+    // Bath
+    svg += `<rect fill="#e8f0f8" stroke="#999" stroke-width="0.5" x="${cx - widthPx * 0.25}" y="${cy - bathH / 2}" width="${bathW}" height="${bathH}" rx="3"/>`;
+    // Taps
+    svg += `<circle fill="#999" cx="${cx - widthPx * 0.25 + bathW / 2}" cy="${cy - bathH / 2 + 4 * scale}" r="${2 * scale}"/>`;
+    // WC: cistern rectangle + bowl arc
+    const wcX = cx + widthPx * 0.1;
+    const wcW = 14 * scale;
+    const wcH = 10 * scale;
+    svg += `<rect fill="#f0f0f0" stroke="#999" stroke-width="0.4" x="${wcX - wcW / 2}" y="${cy - wcH}" width="${wcW}" height="${wcH}" rx="1"/>`;
+    svg += `<ellipse fill="#f0f0f0" stroke="#999" stroke-width="0.4" cx="${wcX}" cy="${cy + wcH * 0.3}" rx="${wcW * 0.45}" ry="${wcH * 0.7}"/>`;
+    // Basin circle
+    svg += `<circle fill="#e8f0f8" stroke="#999" stroke-width="0.4" cx="${cx + widthPx * 0.25}" cy="${cy - heightPx * 0.15}" r="${6 * scale}"/>`;
+  } else if (type.includes("dining")) {
+    // Table rectangle with chair rectangles around it
+    const tw = Math.min(widthPx * 0.35, 45);
+    const th = Math.min(heightPx * 0.25, 30);
+    const chairW = tw * 0.2;
+    const chairH = th * 0.25;
+    // Table
+    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - tw / 2}" y="${cy - th / 2}" width="${tw}" height="${th}" rx="1"/>`;
+    // Chairs (4, one on each side)
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chairW / 2}" y="${cy - th / 2 - chairH - 2}" width="${chairW}" height="${chairH}"/>`;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chairW / 2}" y="${cy + th / 2 + 2}" width="${chairW}" height="${chairH}"/>`;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - tw / 2 - chairH - 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
+    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx + tw / 2 + 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
+  }
+
+  return svg;
+}
+
+// =============================================================================
+// TITLE BLOCK
+// =============================================================================
+
+/**
+ * Draw a compact title block at the bottom-right of a drawing.
+ */
+function drawTitleBlock(svgWidth, svgHeight, title, drawingNumber, scaleValue) {
+  const blockW = 180;
+  const blockH = 40;
+  const x = svgWidth - blockW - 10;
+  const y = svgHeight - blockH - 10;
+
+  let svg = `<g id="title-block">`;
+  svg += `<rect x="${x}" y="${y}" width="${blockW}" height="${blockH}" fill="#ffffff" stroke="#333" stroke-width="1"/>`;
+  svg += `<line x1="${x}" y1="${y + 20}" x2="${x + blockW}" y2="${y + 20}" stroke="#333" stroke-width="0.5"/>`;
+  svg += `<text x="${x + 5}" y="${y + 14}" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#333">${title}</text>`;
+  svg += `<text x="${x + 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666">Dwg: ${drawingNumber}</text>`;
+  svg += `<text x="${x + blockW - 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666" text-anchor="end">Scale 1:${Math.round((1000 / scaleValue) * 10) / 10}</text>`;
+  svg += `</g>`;
+  return svg;
+}
+
+// =============================================================================
+// MATERIAL PATTERN HELPERS
+// =============================================================================
+
+/**
+ * Get a material fill pattern definition and URL reference for elevations.
+ * Returns SVG <defs> content and the fill attribute value.
+ */
+function getMaterialFill(materialName, hexColor) {
+  const name = (materialName || "").toLowerCase();
+
+  if (name.includes("brick")) {
+    // Horizontal coursing lines over brick color
+    return {
+      defs: `<pattern id="mat-brick" patternUnits="userSpaceOnUse" width="20" height="8">
+        <rect width="20" height="8" fill="${hexColor || "#B8604E"}"/>
+        <line x1="0" y1="4" x2="20" y2="4" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>
+        <line x1="10" y1="0" x2="10" y2="4" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>
+        <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>
+      </pattern>`,
+      fill: "url(#mat-brick)",
+    };
+  }
+  if (
+    name.includes("timber") ||
+    name.includes("clad") ||
+    name.includes("wood")
+  ) {
+    // Vertical line pattern over timber color
+    return {
+      defs: `<pattern id="mat-timber" patternUnits="userSpaceOnUse" width="6" height="10">
+        <rect width="6" height="10" fill="${hexColor || "#A0785A"}"/>
+        <line x1="3" y1="0" x2="3" y2="10" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      </pattern>`,
+      fill: "url(#mat-timber)",
+    };
+  }
+  if (
+    name.includes("zinc") ||
+    name.includes("metal") ||
+    name.includes("steel")
+  ) {
+    // Standing seam pattern
+    return {
+      defs: `<pattern id="mat-metal" patternUnits="userSpaceOnUse" width="16" height="10">
+        <rect width="16" height="10" fill="${hexColor || "#6B7280"}"/>
+        <line x1="8" y1="0" x2="8" y2="10" stroke="rgba(255,255,255,0.15)" stroke-width="0.8"/>
+      </pattern>`,
+      fill: "url(#mat-metal)",
+    };
+  }
+  // Default: solid fill with material color (render/stucco/plaster/stone)
+  return {
+    defs: "",
+    fill: hexColor || "#E5E7EB",
+  };
+}
+
 /**
  * Create empty SVG with error message
  */
@@ -1258,17 +1634,17 @@ export function projectAllFloorPlans(model, options = {}) {
     let key;
     let legacyKey;
     if (i === 0) {
-      key = 'floor_plan_ground';
-      legacyKey = 'ground_floor';
+      key = "floor_plan_ground";
+      legacyKey = "ground_floor";
     } else if (i === 1) {
-      key = 'floor_plan_first';
-      legacyKey = 'first_floor';
+      key = "floor_plan_first";
+      legacyKey = "first_floor";
     } else if (i === 2) {
-      key = 'floor_plan_level2';
-      legacyKey = 'second_floor';
+      key = "floor_plan_level2";
+      legacyKey = "second_floor";
     } else if (i === 3) {
-      key = 'floor_plan_level3';
-      legacyKey = 'third_floor';
+      key = "floor_plan_level3";
+      legacyKey = "third_floor";
     } else {
       key = `floor_plan_level${i}`;
       legacyKey = `floor_${i}`;
@@ -1292,10 +1668,10 @@ export function projectAllFloorPlans(model, options = {}) {
  */
 export function projectAllElevations(model, options = {}) {
   return {
-    north: projectElevation(model, 'N', options),
-    south: projectElevation(model, 'S', options),
-    east: projectElevation(model, 'E', options),
-    west: projectElevation(model, 'W', options),
+    north: projectElevation(model, "N", options),
+    south: projectElevation(model, "S", options),
+    east: projectElevation(model, "E", options),
+    west: projectElevation(model, "W", options),
   };
 }
 
@@ -1304,8 +1680,8 @@ export function projectAllElevations(model, options = {}) {
  */
 export function projectAllSections(model, options = {}) {
   return {
-    section_a_a: projectSection(model, 'longitudinal', options),
-    section_b_b: projectSection(model, 'transverse', options),
+    section_a_a: projectSection(model, "longitudinal", options),
+    section_b_b: projectSection(model, "transverse", options),
   };
 }
 
