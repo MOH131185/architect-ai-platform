@@ -599,11 +599,11 @@ export function projectElevation(model, orientation = "S", options = {}) {
   // Ground with grass indication
   if (showGround) {
     // Grass-green fill below ground line
-    svg += `<rect fill="#d4e8c2" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + marginPx}"/>`;
+    svg += `<rect fill="${style.colors.groundFill}" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + marginPx}"/>`;
     // Subtle grass hatching
     for (let gx = 0; gx < finalWidth; gx += 12) {
       const h = 3 + Math.random() * 4;
-      svg += `<line stroke="#a8c890" stroke-width="0.5" x1="${gx}" y1="${groundY}" x2="${gx + 2}" y2="${groundY - h}"/>`;
+      svg += `<line stroke="#8BAA84" stroke-width="0.5" x1="${gx}" y1="${groundY}" x2="${gx + 2}" y2="${groundY - h}"/>`;
     }
     svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}" stroke="#333" stroke-width="1.5"/>`;
   }
@@ -906,6 +906,10 @@ function drawElevationWindow(cx, bottomY, width, height) {
   svg += `<line stroke="#555" stroke-width="1.5" x1="${x - 3}" y1="${y}" x2="${x + width + 3}" y2="${y}"/>`;
   svg += `<line stroke="#888" stroke-width="0.5" x1="${x - 3}" y1="${y - 3}" x2="${x + width + 3}" y2="${y - 3}"/>`;
 
+  // Reveal shadow (depth indication)
+  svg += `<line stroke="rgba(0,0,0,0.2)" stroke-width="1.5" x1="${x + 2}" y1="${y + height}" x2="${x + width + 2}" y2="${y + height}"/>`;
+  svg += `<line stroke="rgba(0,0,0,0.15)" stroke-width="1" x1="${x + width}" y1="${y + 2}" x2="${x + width}" y2="${y + height + 2}"/>`;
+
   return svg;
 }
 
@@ -921,11 +925,11 @@ function drawElevationDoor(cx, bottomY, width, height, isEntrance) {
   // Door handle (small circle)
   const handleX = x + width * 0.85;
   const handleY = y + height * 0.55;
-  svg += `<circle cx="${handleX}" cy="${handleY}" r="4" fill="#5D3A1A"/>`;
+  svg += `<circle cx="${handleX}" cy="${handleY}" r="4" fill="#C0A060" stroke="#333" stroke-width="0.5"/>`;
 
   // Door panel detail
-  svg += `<rect fill="none" stroke="#5D3A1A" stroke-width="1" x="${x + width * 0.1}" y="${y + height * 0.1}" width="${width * 0.3}" height="${height * 0.35}"/>`;
-  svg += `<rect fill="none" stroke="#5D3A1A" stroke-width="1" x="${x + width * 0.1}" y="${y + height * 0.55}" width="${width * 0.3}" height="${height * 0.35}"/>`;
+  svg += `<rect fill="none" stroke="#4A2F1A" stroke-width="0.8" x="${x + width * 0.1}" y="${y + height * 0.1}" width="${width * 0.3}" height="${height * 0.35}"/>`;
+  svg += `<rect fill="none" stroke="#4A2F1A" stroke-width="0.8" x="${x + width * 0.1}" y="${y + height * 0.55}" width="${width * 0.3}" height="${height * 0.35}"/>`;
 
   return svg;
 }
@@ -1616,9 +1620,9 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const bw = Math.min(widthPx * 0.5, 60);
     const bh = Math.min(heightPx * 0.6, 80);
     const pillowH = bh * 0.15;
-    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - bw / 2}" y="${cy - bh / 2}" width="${bw}" height="${bh}" rx="2"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - bw / 2}" y="${cy - bh / 2}" width="${bw}" height="${bh}" rx="2"/>`;
     // Pillow at head
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.4" x="${cx - bw / 2 + 4}" y="${cy - bh / 2 + 3}" width="${bw - 8}" height="${pillowH}" rx="2"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.5" x="${cx - bw / 2 + 4}" y="${cy - bh / 2 + 3}" width="${bw - 8}" height="${pillowH}" rx="2"/>`;
   } else if (
     type.includes("living") ||
     type.includes("lounge") ||
@@ -1628,60 +1632,60 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const sw = Math.min(widthPx * 0.45, 55);
     const sh = Math.min(heightPx * 0.3, 30);
     // Seat
-    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh}" rx="2"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh}" rx="2"/>`;
     // Back
-    svg += `<rect fill="#f0f0f0" stroke="#999" stroke-width="0.4" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh * 0.3}" rx="1"/>`;
+    svg += `<rect fill="#e8e8e8" stroke="#777" stroke-width="0.5" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh * 0.3}" rx="1"/>`;
     // Cushion divider lines
     const third = sw / 3;
-    svg += `<line stroke="#bbb" stroke-width="0.3" x1="${cx - sw / 2 + third}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third}" y2="${cy + sh / 2}"/>`;
-    svg += `<line stroke="#bbb" stroke-width="0.3" x1="${cx - sw / 2 + third * 2}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third * 2}" y2="${cy + sh / 2}"/>`;
+    svg += `<line stroke="#aaa" stroke-width="0.4" x1="${cx - sw / 2 + third}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third}" y2="${cy + sh / 2}"/>`;
+    svg += `<line stroke="#aaa" stroke-width="0.4" x1="${cx - sw / 2 + third * 2}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third * 2}" y2="${cy + sh / 2}"/>`;
   } else if (type.includes("kitchen") && type.includes("dining")) {
     // Combined kitchen-dining: worktop in upper portion, dining table in lower
     const kw = Math.min(widthPx * 0.6, 70);
     const kh = Math.min(heightPx * 0.12, 14);
     const ky = cy - heightPx * 0.35;
     // Kitchen worktop
-    svg += `<rect fill="#f5f5f5" stroke="#999" stroke-width="0.6" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
+    svg += `<rect fill="#efefef" stroke="#777" stroke-width="0.7" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
     // Sink
-    svg += `<circle fill="#e0e8f0" stroke="#999" stroke-width="0.4" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
+    svg += `<circle fill="#e0e8f0" stroke="#777" stroke-width="0.5" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
     // Cooker (4 circles)
     const cr = kh * 0.2;
     const cookX = cx + kw * 0.2;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
     // Dining table below
     const tw = Math.min(widthPx * 0.3, 40);
     const th = Math.min(heightPx * 0.2, 25);
     const dy = cy + heightPx * 0.1;
-    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - tw / 2}" y="${dy}" width="${tw}" height="${th}" rx="1"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - tw / 2}" y="${dy}" width="${tw}" height="${th}" rx="1"/>`;
     // 4 chairs
     const chW = tw * 0.2;
     const chH = th * 0.25;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chW / 2}" y="${dy - chH - 2}" width="${chW}" height="${chH}"/>`;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chW / 2}" y="${dy + th + 2}" width="${chW}" height="${chH}"/>`;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - tw / 2 - chH - 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx + tw / 2 + 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chW / 2}" y="${dy - chH - 2}" width="${chW}" height="${chH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chW / 2}" y="${dy + th + 2}" width="${chW}" height="${chH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - tw / 2 - chH - 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx + tw / 2 + 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
   } else if (type.includes("kitchen")) {
     // Worktop line with sink circle and cooker (4 circles)
     const kw = Math.min(widthPx * 0.6, 70);
     const kh = Math.min(heightPx * 0.15, 16);
     const ky = cy - heightPx * 0.25;
     // Worktop
-    svg += `<rect fill="#f5f5f5" stroke="#999" stroke-width="0.6" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
+    svg += `<rect fill="#efefef" stroke="#777" stroke-width="0.7" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
     // Sink (circle cutout)
-    svg += `<circle fill="#e0e8f0" stroke="#999" stroke-width="0.4" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
+    svg += `<circle fill="#e0e8f0" stroke="#777" stroke-width="0.5" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
     // Cooker (4 circles)
     const cr = kh * 0.2;
     const cookX = cx + kw * 0.2;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#999" stroke-width="0.3" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
     // Fridge rectangle
     const fw = kh * 0.8;
-    svg += `<rect fill="none" stroke="#999" stroke-width="0.4" x="${cx + kw / 2 - fw - 2}" y="${ky}" width="${fw}" height="${kh}" rx="1"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="0.5" x="${cx + kw / 2 - fw - 2}" y="${ky}" width="${fw}" height="${kh}" rx="1"/>`;
   } else if (
     type.includes("bath") ||
     type.includes("shower") ||
@@ -1694,17 +1698,17 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const bathW = 25 * scale;
     const bathH = 55 * scale;
     // Bath
-    svg += `<rect fill="#e8f0f8" stroke="#999" stroke-width="0.5" x="${cx - widthPx * 0.25}" y="${cy - bathH / 2}" width="${bathW}" height="${bathH}" rx="3"/>`;
+    svg += `<rect fill="#e8f0f8" stroke="#777" stroke-width="0.6" x="${cx - widthPx * 0.25}" y="${cy - bathH / 2}" width="${bathW}" height="${bathH}" rx="3"/>`;
     // Taps
-    svg += `<circle fill="#999" cx="${cx - widthPx * 0.25 + bathW / 2}" cy="${cy - bathH / 2 + 4 * scale}" r="${2 * scale}"/>`;
+    svg += `<circle fill="#777" cx="${cx - widthPx * 0.25 + bathW / 2}" cy="${cy - bathH / 2 + 4 * scale}" r="${2 * scale}"/>`;
     // WC: cistern rectangle + bowl arc
     const wcX = cx + widthPx * 0.1;
     const wcW = 14 * scale;
     const wcH = 10 * scale;
-    svg += `<rect fill="#f0f0f0" stroke="#999" stroke-width="0.4" x="${wcX - wcW / 2}" y="${cy - wcH}" width="${wcW}" height="${wcH}" rx="1"/>`;
-    svg += `<ellipse fill="#f0f0f0" stroke="#999" stroke-width="0.4" cx="${wcX}" cy="${cy + wcH * 0.3}" rx="${wcW * 0.45}" ry="${wcH * 0.7}"/>`;
+    svg += `<rect fill="#e8e8e8" stroke="#777" stroke-width="0.5" x="${wcX - wcW / 2}" y="${cy - wcH}" width="${wcW}" height="${wcH}" rx="1"/>`;
+    svg += `<ellipse fill="#e8e8e8" stroke="#777" stroke-width="0.5" cx="${wcX}" cy="${cy + wcH * 0.3}" rx="${wcW * 0.45}" ry="${wcH * 0.7}"/>`;
     // Basin circle
-    svg += `<circle fill="#e8f0f8" stroke="#999" stroke-width="0.4" cx="${cx + widthPx * 0.25}" cy="${cy - heightPx * 0.15}" r="${6 * scale}"/>`;
+    svg += `<circle fill="#e8f0f8" stroke="#777" stroke-width="0.5" cx="${cx + widthPx * 0.25}" cy="${cy - heightPx * 0.15}" r="${6 * scale}"/>`;
   } else if (type.includes("dining")) {
     // Table rectangle with chair rectangles around it
     const tw = Math.min(widthPx * 0.35, 45);
@@ -1712,12 +1716,12 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const chairW = tw * 0.2;
     const chairH = th * 0.25;
     // Table
-    svg += `<rect fill="none" stroke="#999" stroke-width="0.6" x="${cx - tw / 2}" y="${cy - th / 2}" width="${tw}" height="${th}" rx="1"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - tw / 2}" y="${cy - th / 2}" width="${tw}" height="${th}" rx="1"/>`;
     // Chairs (4, one on each side)
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chairW / 2}" y="${cy - th / 2 - chairH - 2}" width="${chairW}" height="${chairH}"/>`;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - chairW / 2}" y="${cy + th / 2 + 2}" width="${chairW}" height="${chairH}"/>`;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx - tw / 2 - chairH - 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
-    svg += `<rect fill="#eee" stroke="#999" stroke-width="0.3" x="${cx + tw / 2 + 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chairW / 2}" y="${cy - th / 2 - chairH - 2}" width="${chairW}" height="${chairH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chairW / 2}" y="${cy + th / 2 + 2}" width="${chairW}" height="${chairH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - tw / 2 - chairH - 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx + tw / 2 + 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
   }
 
   return svg;
@@ -1761,10 +1765,10 @@ function getMaterialFill(materialName, hexColor) {
     // Horizontal coursing lines over brick color
     return {
       defs: `<pattern id="mat-brick" patternUnits="userSpaceOnUse" width="20" height="8">
-        <rect width="20" height="8" fill="${hexColor || "#B8604E"}"/>
-        <line x1="0" y1="4" x2="20" y2="4" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>
-        <line x1="10" y1="0" x2="10" y2="4" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>
-        <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(0,0,0,0.1)" stroke-width="0.5"/>
+        <rect width="20" height="8" fill="${hexColor || "#C4956A"}"/>
+        <line x1="0" y1="4" x2="20" y2="4" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
+        <line x1="10" y1="0" x2="10" y2="4" stroke="rgba(0,0,0,0.18)" stroke-width="0.5"/>
+        <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(0,0,0,0.18)" stroke-width="0.5"/>
       </pattern>`,
       fill: "url(#mat-brick)",
     };
