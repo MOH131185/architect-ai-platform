@@ -541,8 +541,16 @@ function generateSchedulesSVG({
     .map((room, i) => {
       const y = startY + (i + 1) * rowHeight;
       const roomName = room.name || room.type || room.label || `Room ${i + 1}`;
-      const roomArea = room.area || room.sqm || 20;
-      const level = room.level || room.floor || "Ground";
+      const roomAreaRaw = room.area || room.sqm || room.area_m2 || 20;
+      const roomArea =
+        typeof roomAreaRaw === "number" ? roomAreaRaw.toFixed(1) : roomAreaRaw;
+      const floorVal = room.level || room.floor;
+      const level =
+        floorVal === 0 || floorVal === "ground"
+          ? "GF"
+          : floorVal === 1 || floorVal === "first"
+            ? "FF"
+            : floorVal || "Ground";
       return `
       <rect x="100" y="${y}" width="${tableWidth}" height="${rowHeight}" fill="${i % 2 === 0 ? "#f8f9fa" : "#ffffff"}" stroke="#dee2e6"/>
       <text x="120" y="${y + 30}" font-family="Arial, sans-serif" font-size="18" fill="#333">${roomName}</text>

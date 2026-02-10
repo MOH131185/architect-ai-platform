@@ -76,7 +76,7 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   const pxPerMM = scale / MM_PER_M;
 
   // Calculate view bounds
-  const marginPx = 80;
+  const marginPx = 40;
   const contentWidth = dims.width * scale;
   const contentHeight = dims.depth * scale;
 
@@ -575,7 +575,7 @@ export function projectElevation(model, orientation = "S", options = {}) {
   const elevationWidthMM = elevationWidth * MM_PER_M;
 
   // Calculate content size
-  const marginPx = 80;
+  const marginPx = 40;
   const groundPx = 40;
   const contentWidth = elevationWidth * scale;
   const contentHeight = dims.ridgeHeight * scale;
@@ -1013,7 +1013,7 @@ export function projectSection(
   const sectionWidthMM = sectionWidth * MM_PER_M;
 
   // Calculate content size
-  const marginPx = 100;
+  const marginPx = 50;
   const groundPx = 40;
   const foundationPx = showFoundation ? 50 : 0;
   const contentWidth = sectionWidth * scale;

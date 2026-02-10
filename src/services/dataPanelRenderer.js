@@ -110,7 +110,15 @@ export function renderSchedulesSVG(width, height, masterDNA, projectContext) {
     const areaStr =
       typeof area === "number" ? `${area.toFixed(1)} m\u00B2` : String(area);
     const floor =
-      room.floor != null ? (room.floor === 0 ? "GF" : `L${room.floor}`) : "";
+      room.floor != null
+        ? room.floor === 0 || room.floor === "ground"
+          ? "GF"
+          : room.floor === 1 || room.floor === "first"
+            ? "FF"
+            : room.floor === 2 || room.floor === "second"
+              ? "SF"
+              : `L${room.floor}`
+        : "";
     const finish = room.finish || room.flooring || "";
 
     svg += `<text x="${colNo}" y="${y}" font-family="${FONT}" font-size="9" fill="${TEXT_SECONDARY}">${idx + 1}.</text>`;

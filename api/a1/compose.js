@@ -3270,9 +3270,19 @@ async function buildSchedulesBuffer(
       typeof room === "string"
         ? room
         : room.name || room.type || `Room ${idx + 1}`;
-    const area = room.dimensions || room.area || "";
+    const areaRaw = room.dimensions || room.area || room.area_m2 || "";
+    const area =
+      typeof areaRaw === "number" ? `${areaRaw.toFixed(1)} m\u00B2` : areaRaw;
     const floor =
-      room.floor != null ? (room.floor === 0 ? "GF" : `L${room.floor}`) : "";
+      room.floor != null
+        ? room.floor === 0 || room.floor === "ground"
+          ? "GF"
+          : room.floor === 1 || room.floor === "first"
+            ? "FF"
+            : room.floor === 2 || room.floor === "second"
+              ? "SF"
+              : `L${room.floor}`
+        : "";
     roomRows += `
       <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}.</text>
       <text x="${leftMargin + 20}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(name)}</text>

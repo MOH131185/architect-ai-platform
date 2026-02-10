@@ -1574,7 +1574,14 @@ export class BuildingModel {
   _buildWalls(rooms, floorIndex) {
     const walls = [];
     let wallId = 0;
-    const tolerance = WALL_THICKNESS.INTERNAL * 3;
+    const { depth } = this.envelope;
+    // Dynamic tolerance: 40% of building depth (capped at 3m) catches
+    // cross-strip room adjacencies where gap > wallGap due to differing
+    // strip heights in the strip-packing layout.
+    const tolerance = Math.max(
+      WALL_THICKNESS.INTERNAL * 3, // minimum 300mm
+      Math.min(depth * 0.4, 3000), // 40% of depth, max 3m
+    );
 
     // External walls from footprint
     const footprint = this.envelope.footprint;
@@ -1614,18 +1621,19 @@ export class BuildingModel {
         const bb2 = room2.boundingBox;
 
         // Check for vertical adjacency (rooms share a vertical edge)
-        // Room1 right edge touches Room2 left edge
-        if (Math.abs(bb1.maxX - bb2.minX) < tolerance) {
+        // Room1 right edge near Room2 left edge
+        const gapR1R2 = bb2.minX - bb1.maxX;
+        if (gapR1R2 >= 0 && gapR1R2 < tolerance) {
           const y1 = Math.max(bb1.minY, bb2.minY);
           const y2 = Math.min(bb1.maxY, bb2.maxY);
           const overlap = y2 - y1;
 
           if (overlap > 100) {
-            // At least 100mm overlap
+            const wallX = (bb1.maxX + bb2.minX) / 2; // midpoint of gap
             walls.push({
               id: `wall_${floorIndex}_${wallId++}`,
-              start: { x: bb1.maxX, y: y1 },
-              end: { x: bb1.maxX, y: y2 },
+              start: { x: wallX, y: y1 },
+              end: { x: wallX, y: y2 },
               thickness: WALL_THICKNESS.INTERNAL,
               type: "internal",
               facade: null,
@@ -1635,17 +1643,19 @@ export class BuildingModel {
             wallPairs.add(pairKey);
           }
         }
-        // Room2 right edge touches Room1 left edge
-        else if (Math.abs(bb2.maxX - bb1.minX) < tolerance) {
+        // Room2 right edge near Room1 left edge
+        const gapR2R1 = bb1.minX - bb2.maxX;
+        if (!wallPairs.has(pairKey) && gapR2R1 >= 0 && gapR2R1 < tolerance) {
           const y1 = Math.max(bb1.minY, bb2.minY);
           const y2 = Math.min(bb1.maxY, bb2.maxY);
           const overlap = y2 - y1;
 
           if (overlap > 100) {
+            const wallX = (bb2.maxX + bb1.minX) / 2;
             walls.push({
               id: `wall_${floorIndex}_${wallId++}`,
-              start: { x: bb2.maxX, y: y1 },
-              end: { x: bb2.maxX, y: y2 },
+              start: { x: wallX, y: y1 },
+              end: { x: wallX, y: y2 },
               thickness: WALL_THICKNESS.INTERNAL,
               type: "internal",
               facade: null,
@@ -1657,17 +1667,19 @@ export class BuildingModel {
         }
 
         // Check for horizontal adjacency (rooms share a horizontal edge)
-        // Room1 top edge touches Room2 bottom edge
-        if (Math.abs(bb1.maxY - bb2.minY) < tolerance) {
+        // Room1 top edge near Room2 bottom edge
+        const gapT1B2 = bb2.minY - bb1.maxY;
+        if (!wallPairs.has(pairKey) && gapT1B2 >= 0 && gapT1B2 < tolerance) {
           const x1 = Math.max(bb1.minX, bb2.minX);
           const x2 = Math.min(bb1.maxX, bb2.maxX);
           const overlap = x2 - x1;
 
-          if (overlap > 100 && !wallPairs.has(pairKey)) {
+          if (overlap > 100) {
+            const wallY = (bb1.maxY + bb2.minY) / 2;
             walls.push({
               id: `wall_${floorIndex}_${wallId++}`,
-              start: { x: x1, y: bb1.maxY },
-              end: { x: x2, y: bb1.maxY },
+              start: { x: x1, y: wallY },
+              end: { x: x2, y: wallY },
               thickness: WALL_THICKNESS.INTERNAL,
               type: "internal",
               facade: null,
@@ -1677,17 +1689,19 @@ export class BuildingModel {
             wallPairs.add(pairKey);
           }
         }
-        // Room2 top edge touches Room1 bottom edge
-        else if (Math.abs(bb2.maxY - bb1.minY) < tolerance) {
+        // Room2 top edge near Room1 bottom edge
+        const gapT2B1 = bb1.minY - bb2.maxY;
+        if (!wallPairs.has(pairKey) && gapT2B1 >= 0 && gapT2B1 < tolerance) {
           const x1 = Math.max(bb1.minX, bb2.minX);
           const x2 = Math.min(bb1.maxX, bb2.maxX);
           const overlap = x2 - x1;
 
-          if (overlap > 100 && !wallPairs.has(pairKey)) {
+          if (overlap > 100) {
+            const wallY = (bb2.maxY + bb1.minY) / 2;
             walls.push({
               id: `wall_${floorIndex}_${wallId++}`,
-              start: { x: x1, y: bb2.maxY },
-              end: { x: x2, y: bb2.maxY },
+              start: { x: x1, y: wallY },
+              end: { x: x2, y: wallY },
               thickness: WALL_THICKNESS.INTERNAL,
               type: "internal",
               facade: null,
@@ -1724,6 +1738,24 @@ export class BuildingModel {
         r.name?.toLowerCase().includes("circulation"),
     );
 
+    // Room-type scale factors for window sizing (e.g. bathrooms get smaller windows)
+    const WINDOW_ROOM_SCALE = {
+      living: 1.2,
+      lounge: 1.2,
+      kitchen: 1.1,
+      dining: 1.1,
+      bedroom: 1.0,
+      master_bedroom: 1.1,
+      bathroom: 0.6,
+      ensuite: 0.5,
+      wc: 0.4,
+      utility: 0.5,
+      hallway: 0.7,
+      landing: 0.7,
+      study: 1.0,
+      office: 1.0,
+    };
+
     // Add windows to external walls (facade-specific sizing for passive solar design)
     for (const wall of walls) {
       if (wall.type !== "external") {
@@ -1731,27 +1763,27 @@ export class BuildingModel {
       }
 
       // Facade-specific window policy (UK climate-responsive defaults)
-      let windowSpacing, windowWidth, windowHeight, sillHeight;
+      let windowSpacing, baseWindowWidth, baseWindowHeight, sillHeight;
       if (wall.facade === "S") {
         windowSpacing = 2000; // More windows for solar gain
-        windowWidth = 1400;
-        windowHeight = 1600;
+        baseWindowWidth = 1400;
+        baseWindowHeight = 1600;
         sillHeight = 800;
       } else if (wall.facade === "N") {
         windowSpacing = 3500; // Fewer windows to reduce heat loss
-        windowWidth = 1000;
-        windowHeight = 1200;
+        baseWindowWidth = 1000;
+        baseWindowHeight = 1200;
         sillHeight = 1000;
       } else if (wall.facade === "E") {
         windowSpacing = 2500; // Standard — morning sun
-        windowWidth = 1200;
-        windowHeight = 1400;
+        baseWindowWidth = 1200;
+        baseWindowHeight = 1400;
         sillHeight = 900;
       } else {
         // West — slightly fewer to limit afternoon overheating
         windowSpacing = 3000;
-        windowWidth = 1100;
-        windowHeight = 1300;
+        baseWindowWidth = 1100;
+        baseWindowHeight = 1300;
         sillHeight = 900;
       }
 
@@ -1761,6 +1793,27 @@ export class BuildingModel {
         const positionMM = (w + 0.5) * (wall.length / windowCount);
         // Normalize position to 0-1 range for rendering
         const normalizedX = positionMM / wall.length;
+
+        // Find which room is behind this window position
+        const t = positionMM / wall.length;
+        const wxMM = wall.start.x + t * (wall.end.x - wall.start.x);
+        const wyMM = wall.start.y + t * (wall.end.y - wall.start.y);
+        const behindRoom = rooms.find((r) => {
+          const bb = r.boundingBox;
+          const pad = 500; // 500mm inward search
+          return (
+            wxMM >= bb.minX - pad &&
+            wxMM <= bb.maxX + pad &&
+            wyMM >= bb.minY - pad &&
+            wyMM <= bb.maxY + pad
+          );
+        });
+        const roomScale = behindRoom
+          ? WINDOW_ROOM_SCALE[behindRoom.program] || 1.0
+          : 1.0;
+
+        const windowWidth = Math.round(baseWindowWidth * roomScale);
+        const windowHeight = Math.round(baseWindowHeight * roomScale);
 
         openings.push({
           id: `opening_${floorIndex}_${openingId++}`,
