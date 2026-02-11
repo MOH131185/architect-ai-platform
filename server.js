@@ -102,6 +102,7 @@ app.use(
           "'self'",
           "https://api.together.xyz",
           "https://api.openai.com",
+          "https://api.anthropic.com",
         ],
         fontSrc: ["'self'", "data:", "https:"],
       },
@@ -333,6 +334,43 @@ app.post("/api/together/chat", aiApiLimiter, async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error("Together AI chat error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Anthropic Claude API proxy endpoint (for AI floor plan layout engine)
+app.post("/api/anthropic/messages", aiApiLimiter, async (req, res) => {
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!anthropicApiKey) {
+    console.error("❌ Anthropic API key not configured");
+    return res.status(500).json({ error: "Anthropic API key not configured" });
+  }
+
+  try {
+    console.log("🧠 [Anthropic] Processing messages request...");
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicApiKey,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("❌ Anthropic API error:", data);
+      return res.status(response.status).json(data);
+    }
+
+    console.log("✅ Anthropic messages request successful");
+    res.json(data);
+  } catch (error) {
+    console.error("Anthropic proxy error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -924,12 +962,10 @@ app.post("/api/a1/compose", async (req, res) => {
       sharp = require("sharp");
     } catch (e) {
       console.warn("⚠️ Sharp not available for server-side composition");
-      return res
-        .status(503)
-        .json({
-          error: "Server-side composition unavailable (sharp not installed)",
-          fallback: true,
-        });
+      return res.status(503).json({
+        error: "Server-side composition unavailable (sharp not installed)",
+        fallback: true,
+      });
     }
 
     // 1. Resolve layout via shared compose core (single source of truth)

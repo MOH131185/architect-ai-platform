@@ -1003,6 +1003,38 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         );
       }
 
+      // ─── FLOOR COUNT CONSTRAINT ──────────────────────────────────
+      // Build a floorCountConstraint object on projectContext so downstream
+      // prompt builders can inject explicit floor count / roof type negatives.
+      {
+        const enforcedFloors =
+          masterDNA?.dimensions?.floors ||
+          masterDNA?.dimensions?.floorCount ||
+          1;
+        const floorCountTextMap = {
+          1: "single-storey bungalow",
+          2: "two-storey house",
+          3: "three-storey building",
+          4: "four-storey building",
+        };
+        const floorCountNegMap = {
+          1: "two storey, two story, second floor, upper floor, multi-level, 2-storey, 3-storey",
+          2: "single storey, bungalow, three storey, 3 floors, 1-storey",
+          3: "single storey, bungalow, two storey, 2-storey, four storey",
+        };
+        projectContext.floorCountConstraint = {
+          count: enforcedFloors,
+          text:
+            floorCountTextMap[enforcedFloors] ||
+            `${enforcedFloors}-storey building`,
+          negativePrompt: floorCountNegMap[enforcedFloors] || "",
+          height: masterDNA?.dimensions?.height || enforcedFloors * 3.2,
+        };
+        logger.info(
+          `🏗️ [FLOOR CONSTRAINT] ${projectContext.floorCountConstraint.text} (${enforcedFloors} floor(s), ${projectContext.floorCountConstraint.height}m)`,
+        );
+      }
+
       reportProgress("dna", "Design DNA validated", 25);
 
       // ================================================================
@@ -1564,6 +1596,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         geometryMasks,
         programLock, // P0: Hard program constraint
         canonicalDesignState: typesCDS || canonicalDesignState, // Prefer typesCDS (has massing.widthM/depthM)
+        projectContext, // Thread floorCountConstraint to prompt builders
       });
 
       const floorCount =

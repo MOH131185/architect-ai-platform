@@ -180,6 +180,27 @@ function buildFloorCountNegatives(floors) {
 }
 
 /**
+ * Build negative prompt additions for roof type enforcement.
+ * If DNA says "flat roof", negative prompt includes "gable roof, hip roof, pitched roof" etc.
+ * @private
+ */
+function buildRoofTypeNegatives(roofType) {
+  const allRoofTypes = [
+    "flat roof",
+    "gable roof",
+    "hip roof",
+    "mansard roof",
+    "pitched roof",
+    "butterfly roof",
+    "gambrel roof",
+  ];
+  const normalised = (roofType || "").toLowerCase();
+  return allRoofTypes
+    .filter((r) => !normalised || !r.includes(normalised))
+    .join(", ");
+}
+
+/**
  * Build site diagram prompt
  */
 export function buildSiteDiagramPrompt({
@@ -277,13 +298,16 @@ REQUIREMENTS:
 - Professional architecture magazine quality
 - Coherent massing matching floor plans
 - ${geomConstraint}
+- FLOOR COUNT: EXACTLY ${dims.floors} floor(s). ${dims.floors === 1 ? "LOW ground-hugging SINGLE STOREY structure. Wall height ~3.2m before roof starts. NO upper windows." : `Show clearly ${dims.floors} rows of windows. Total height ${dims.height}m.`}
+- ROOF: ${roofType} roof ONLY. ${roofType === "flat" ? "Horizontal roofline, NO pitch, NO gable ends." : roofType === "gable" ? "Triangular gable ends clearly visible. NOT flat, NOT hip." : roofType === "hip" ? "Hipped roof, slopes on all sides. NOT flat, NOT gable." : `${roofType} profile clearly visible.`}
+- PROPORTIONS: Building is ${dims.length}m long × ${dims.width}m wide × ${dims.height}m to roof ridge.
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `cartoon, sketch, overexposed, low detail, multiple buildings, people, cars, wireframe, different building styles, inconsistent design, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `cartoon, sketch, overexposed, low detail, multiple buildings, people, cars, wireframe, different building styles, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -616,6 +640,9 @@ REQUIREMENTS:
 - Clean technical drawing with proper line weights
 - ${geomConstraint}
 - ${hasEntrance ? `Main entrance on this (${orientation}) facade` : dirUpper === "NORTH" ? "Main entrance if north-facing" : ""}
+- FLOOR COUNT: EXACTLY ${dims.floors} visible floor level(s). ${dims.floors === 1 ? "Single row of windows only. NO upper floor windows." : `${dims.floors} rows of windows clearly visible.`}
+- BUILDING HEIGHT: Total ${dims.height}m from grade to roof ridge.
+- ROOF PROFILE: ${roofType} roof. ${roofType === "flat" ? "Horizontal parapet line. NO pitched roof." : roofType === "gable" ? "Triangular gable profile visible." : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
@@ -629,7 +656,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
     return {
       prompt: `${prompt}\nSTYLE: ${styleSuffix}`,
-      negativePrompt: `perspective, angled view, fisheye, 3d, low quality, sketchy, blurry, different roof type, different building, inconsistent design, flat roof when gable specified, gable roof when flat specified, ${buildFloorCountNegatives(dims.floors)}`,
+      negativePrompt: `perspective, angled view, fisheye, 3d, low quality, sketchy, blurry, different roof type, different building, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
     };
   };
 }
@@ -873,13 +900,15 @@ REQUIREMENTS:
 - Clean technical drawing style
 - No context/background (isolated building)
 - ${geomConstraint}
+- FLOOR COUNT: EXACTLY ${dims.floors} floor(s) visible from above. ${dims.floors === 1 ? "SINGLE STOREY — low horizontal massing, NO upper floor." : ""}
+- ROOF: ${roofType} roof. ${roofType === "flat" ? "Flat horizontal top." : roofType === "gable" ? "Gable ridge line visible." : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${hasStyleReference ? RENDER_STYLE_SUFFIX : DRAWING_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `perspective view, vanishing points, photorealistic, context, landscape, people, cars, sketchy, different building, different roof, inconsistent design, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `perspective view, vanishing points, photorealistic, context, landscape, people, cars, sketchy, different building, different roof, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 

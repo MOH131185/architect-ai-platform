@@ -1279,6 +1279,8 @@ export async function planA1Panels({
   geometryMasks = null, // SVG masks from ProceduralGeometryService
   // P0: Hard program constraint and CDS
   programLock = null,
+  // Thread from orchestrator — carries floorCountConstraint etc.
+  projectContext = null,
 }) {
   // =========================================================================
   // STRICT PREFLIGHT GATE: Block generation if DNA/geometry is invalid
@@ -1543,7 +1545,11 @@ export async function planA1Panels({
       const specialized = buildSpecializedPanelPrompt(panelType, {
         masterDNA,
         locationData: locationData || { climate },
-        projectContext: { buildingProgram: buildingType, programSpaces },
+        projectContext: {
+          ...projectContext,
+          buildingProgram: buildingType,
+          programSpaces,
+        },
         consistencyLock: styleLock, // Pass style lock for consistency
         geometryHint,
         fglOpenings,

@@ -263,10 +263,20 @@ function drawInternalWalls(floor, pxPerMM) {
 
   const internalWalls = floor.walls.filter((w) => w.type === "internal");
 
-  logger.debug("[Projections2D] Drawing internal walls", {
-    count: internalWalls.length,
-    walls: internalWalls.map((w) => w.connectsRooms || "unknown"),
-  });
+  if (internalWalls.length === 0) {
+    logger.warn(
+      "[Projections2D] WARNING: No internal walls found — all rooms will appear open-plan",
+      {
+        totalWalls: floor.walls.length,
+        wallTypes: floor.walls.map((w) => w.type),
+      },
+    );
+  } else {
+    logger.debug("[Projections2D] Drawing internal walls", {
+      count: internalWalls.length,
+      walls: internalWalls.map((w) => w.connectsRooms || "unknown"),
+    });
+  }
 
   for (const wall of internalWalls) {
     const x1 = wall.start.x * pxPerMM;
@@ -606,6 +616,15 @@ export function projectElevation(model, orientation = "S", options = {}) {
       svg += `<line stroke="#8BAA84" stroke-width="0.5" x1="${gx}" y1="${groundY}" x2="${gx + 2}" y2="${groundY - h}"/>`;
     }
     svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}" stroke="#333" stroke-width="1.5"/>`;
+
+    // Low shrub landscaping at building base
+    const shrubLeft = marginPx + 10;
+    const shrubRight = finalWidth - marginPx - 10;
+    const shrubStep = 35;
+    for (let sx = shrubLeft; sx < shrubRight; sx += shrubStep) {
+      const sr = 5 + ((sx * 7) % 4); // deterministic pseudo-random size
+      svg += `<ellipse cx="${sx}" cy="${groundY - sr * 0.35}" rx="${sr}" ry="${sr * 0.55}" fill="#7BA07B" fill-opacity="0.45" stroke="#5A8A5A" stroke-width="0.4"/>`;
+    }
   }
 
   // Title
@@ -1173,6 +1192,12 @@ function drawSectionFoundation(
     svg += `<line class="hatch" x1="${buildingLeft + i}" y1="${groundY}" x2="${buildingLeft + i + 12}" y2="${groundY + foundationH}"/>`;
   }
 
+  // Foundation depth label
+  const fdMetres = (CONVENTIONS.foundationDepth / 1000).toFixed(2);
+  const fdLabelX = (buildingLeft + buildingRight) / 2;
+  const fdLabelY = groundY + foundationH - 4;
+  svg += `<text font-family="Arial, sans-serif" font-size="7" fill="#666" text-anchor="middle" x="${fdLabelX}" y="${fdLabelY}">${fdMetres}m foundation</text>`;
+
   svg += "</g>";
   return svg;
 }
@@ -1230,6 +1255,13 @@ function drawSectionFloor(
       }
     }
   }
+
+  // Floor-to-ceiling clear height label (right side of section)
+  const clearHeightMM = floor.floorHeight - (floor.slab?.thickness || 200);
+  const clearHeightM = (clearHeightMM / 1000).toFixed(2);
+  const heightLabelX = buildingRight + 8;
+  const heightLabelY = floorY - (floor.floorHeight * pxPerMM) / 2;
+  svg += `<text font-family="Arial, sans-serif" font-size="7" fill="#888" text-anchor="start" x="${heightLabelX}" y="${heightLabelY}">${clearHeightM}m clr</text>`;
 
   return svg;
 }
@@ -1393,7 +1425,29 @@ function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
   }
   roofPath += " Z";
 
-  return `<path class="roof" d="${roofPath}"/>`;
+  let svg = `<path class="roof" d="${roofPath}"/>`;
+
+  // Insulation zigzag indication inside roof zone
+  // Draw a zigzag line just below the roof path to indicate insulation
+  const topFloor = model.floors[model.floors.length - 1];
+  if (topFloor) {
+    const ceilingY = groundY - topFloor.zTop * pxPerMM;
+    const roofLeft = offsetX + roofProfile[0].x * pxPerMM;
+    const roofRight = offsetX + roofProfile[roofProfile.length - 1].x * pxPerMM;
+    const zigzagStep = 6;
+    const zigzagH = 5;
+
+    svg += '<g id="insulation-zone" opacity="0.6">';
+    for (let ix = roofLeft; ix < roofRight - zigzagStep; ix += zigzagStep) {
+      const isUp = Math.round((ix - roofLeft) / zigzagStep) % 2 === 0;
+      const y1 = ceilingY - (isUp ? 0 : zigzagH);
+      const y2 = ceilingY - (isUp ? zigzagH : 0);
+      svg += `<line stroke="#C080D0" stroke-width="0.8" x1="${ix}" y1="${y1}" x2="${ix + zigzagStep}" y2="${y2}"/>`;
+    }
+    svg += "</g>";
+  }
+
+  return svg;
 }
 
 // =============================================================================
@@ -1762,13 +1816,15 @@ function getMaterialFill(materialName, hexColor) {
   const name = (materialName || "").toLowerCase();
 
   if (name.includes("brick")) {
-    // Horizontal coursing lines over brick color
+    // Brick coursing with stretcher bond pattern — more visible mortar lines
     return {
       defs: `<pattern id="mat-brick" patternUnits="userSpaceOnUse" width="20" height="8">
         <rect width="20" height="8" fill="${hexColor || "#C4956A"}"/>
-        <line x1="0" y1="4" x2="20" y2="4" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
-        <line x1="10" y1="0" x2="10" y2="4" stroke="rgba(0,0,0,0.18)" stroke-width="0.5"/>
-        <line x1="0" y1="0" x2="0" y2="4" stroke="rgba(0,0,0,0.18)" stroke-width="0.5"/>
+        <line x1="0" y1="4" x2="20" y2="4" stroke="rgba(0,0,0,0.35)" stroke-width="0.8"/>
+        <line x1="0" y1="8" x2="20" y2="8" stroke="rgba(0,0,0,0.35)" stroke-width="0.8"/>
+        <line x1="10" y1="0" x2="10" y2="4" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
+        <line x1="0" y1="4" x2="0" y2="8" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
+        <line x1="20" y1="4" x2="20" y2="8" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
       </pattern>`,
       fill: "url(#mat-brick)",
     };
@@ -1801,7 +1857,21 @@ function getMaterialFill(materialName, hexColor) {
       fill: "url(#mat-metal)",
     };
   }
-  // Default: solid fill with material color (render/stucco/plaster/stone)
+  if (name.includes("stone") || name.includes("ashlar")) {
+    // Coursed stone pattern — irregular horizontal courses with vertical joints
+    return {
+      defs: `<pattern id="mat-stone" patternUnits="userSpaceOnUse" width="25" height="15">
+        <rect width="25" height="15" fill="${hexColor || "#D0C8B8"}"/>
+        <line x1="0" y1="8" x2="25" y2="8" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>
+        <line x1="0" y1="15" x2="25" y2="15" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>
+        <line x1="12" y1="0" x2="12" y2="8" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+        <line x1="6" y1="8" x2="6" y2="15" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+        <line x1="19" y1="8" x2="19" y2="15" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+      </pattern>`,
+      fill: "url(#mat-stone)",
+    };
+  }
+  // Default: solid fill with material color (render/stucco/plaster)
   return {
     defs: "",
     fill: hexColor || "#E5E7EB",
