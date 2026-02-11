@@ -439,7 +439,7 @@ Respond with ONLY the JSON object, no other text.`,
           },
         ],
         {
-          model: "gpt-4o",
+          model: "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
           temperature: 0.1,
           max_tokens: 2000,
         },
