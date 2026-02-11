@@ -387,7 +387,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default true
    */
-  strictFingerprintGate: true,
+  strictFingerprintGate: false,
 
   /**
    * Minimum match score for fingerprint validation (0-1)
@@ -912,7 +912,7 @@ export function resetFeatureFlags() {
   // Design Fingerprint System defaults
   FEATURE_FLAGS.extractDesignFingerprint = true;
   FEATURE_FLAGS.useHeroAsControl = true;
-  FEATURE_FLAGS.strictFingerprintGate = true;
+  FEATURE_FLAGS.strictFingerprintGate = false; // CORS blocks cross-origin image loading for comparison
   FEATURE_FLAGS.fingerprintMatchThreshold = 0.85;
   FEATURE_FLAGS.maxFingerprintRetries = 2;
   FEATURE_FLAGS.heroControlStrength = {
