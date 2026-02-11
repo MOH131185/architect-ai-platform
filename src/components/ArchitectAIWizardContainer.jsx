@@ -963,9 +963,11 @@ const ArchitectAIWizardContainer = () => {
       setProgramSpaces(spaces);
 
       logger.success("Program spaces generated", { count: spaces.length });
+      return spaces; // Return for callers that need immediate access
     } catch (err) {
       logger.error("Space generation failed", err);
       setProgramSpaces([]);
+      return [];
     } finally {
       setIsGeneratingSpaces(false);
     }
@@ -1144,6 +1146,34 @@ const ArchitectAIWizardContainer = () => {
     setIsGenerationTimerRunning(true);
 
     try {
+      // Auto-generate program spaces if user skipped "Generate Program" button.
+      // The ProgramComplianceGate requires programSpaces to build ProgramLock + CDS.
+      // React setState is async so we capture the returned array for immediate use.
+      let effectiveProgramSpaces = programSpaces;
+      if (
+        programSpaces.length === 0 &&
+        projectDetails.category &&
+        projectDetails.area
+      ) {
+        logger.info(
+          "Auto-generating program spaces before generation...",
+          null,
+          "📋",
+        );
+        try {
+          const generated = await handleGenerateSpaces();
+          if (generated && generated.length > 0) {
+            effectiveProgramSpaces = generated;
+            logger.success(`Auto-generated ${generated.length} program spaces`);
+          }
+        } catch (spaceErr) {
+          logger.warn(
+            "Auto-generation of program spaces failed, continuing",
+            spaceErr,
+          );
+        }
+      }
+
       logger.info("Starting generation workflow", null, "🚀");
 
       let capturedSnapshot = null;
@@ -1199,7 +1229,7 @@ const ArchitectAIWizardContainer = () => {
         floors: projectDetails.floorCount || 2, // Alias for services expecting `floors`
         entranceOrientation: projectDetails.entranceDirection,
         entranceDirection: projectDetails.entranceDirection, // Maintain backward compatibility
-        programSpaces,
+        programSpaces: effectiveProgramSpaces,
         programGeneratorMeta: {
           autoDetected: projectDetails.entranceAutoDetected,
           confidence: projectDetails.entranceConfidence,
@@ -1271,6 +1301,7 @@ const ArchitectAIWizardContainer = () => {
     materialWeight,
     characteristicWeight,
     generateSheet,
+    handleGenerateSpaces,
   ]);
 
   /**
