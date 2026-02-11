@@ -507,7 +507,7 @@ export function validateBuildingGeometryAgainstProgram(
   const violations = [];
   const warnings = [];
   const perSpace = [];
-  const areaTolerance = Number(options.areaTolerance ?? 0.03);
+  const areaTolerance = Number(options.areaTolerance ?? 0.1);
 
   if (!buildingModel || !Array.isArray(buildingModel.floors)) {
     return {

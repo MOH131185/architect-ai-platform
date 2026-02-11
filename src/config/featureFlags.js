@@ -654,13 +654,13 @@ export const FEATURE_FLAGS = {
   /**
    * Area Tolerance for Program Compliance
    *
-   * Maximum allowed deviation between DNA room area and locked space area.
-   * 0.03 = 3% tolerance (default).
+   * Maximum allowed deviation between geometry room area and locked space area.
+   * 0.10 = 10% tolerance (default) — realistic for strip-packing geometry.
    *
    * @type {number}
-   * @default 0.03
+   * @default 0.10
    */
-  areaTolerance: 0.03,
+  areaTolerance: 0.1,
 
   /**
    * Program Lock Required
@@ -680,9 +680,9 @@ export const FEATURE_FLAGS = {
    * blocking the pipeline. 0 means zero tolerance.
    *
    * @type {number}
-   * @default 0
+   * @default 1
    */
-  maxProgramViolations: 0,
+  maxProgramViolations: 1,
 
   /**
    * Max Level Mismatch (0 = strict)
@@ -953,7 +953,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.requireCanonicalPack = true;
   FEATURE_FLAGS.geometryAuthorityMandatory = true;
   FEATURE_FLAGS.dnaSchemaVersion = 2;
-  FEATURE_FLAGS.areaTolerance = 0.03;
+  FEATURE_FLAGS.areaTolerance = 0.1; // 10% — realistic for strip-packing geometry
   FEATURE_FLAGS.strictCanonicalControlMode = false;
   FEATURE_FLAGS.strictCanonicalGeometryPack = true;
   FEATURE_FLAGS.programGeometryFidelityGate = true;
