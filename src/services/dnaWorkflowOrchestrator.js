@@ -1135,6 +1135,52 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // ─── STEP 2.06: Early envelope fit check ─────────────────────
+      // Run BEFORE AI layout so that downstream steps (AI layout, BuildingModel)
+      // use correctly-sized dimensions. GenerationPreflight.validate() auto-corrects
+      // masterDNA.dimensions in-place when the program exceeds the envelope.
+      // We then sync those corrected dimensions to typesCDS.massing.
+      if (masterDNA && (programLock || projectContext?.programSpaces)) {
+        try {
+          const earlyPreflight = GenerationPreflight.validate(
+            masterDNA,
+            programLock || projectContext?.programSpaces,
+            { cds: canonicalDesignState, seed: baseSeed, strict: false },
+          );
+          if (earlyPreflight.warnings?.length > 0) {
+            for (const w of earlyPreflight.warnings) {
+              logger.warn(`⚠️ [Envelope fit] ${w}`);
+            }
+          }
+          // Sync corrected DNA dimensions → typesCDS.massing
+          if (typesCDS?.massing && masterDNA?.dimensions) {
+            const dims = masterDNA.dimensions;
+            const dnaLen = Number(dims.length) || Number(dims.length_m) || 0;
+            const dnaWid = Number(dims.width) || Number(dims.width_m) || 0;
+            const dnaDep = Number(dims.depth) || Number(dims.depth_m) || 0;
+            const newW = dnaLen || dnaWid || 0;
+            const newD = dnaDep || (dnaWid && dnaLen ? dnaWid : 0) || 0;
+            if (
+              newW > 0 &&
+              newD > 0 &&
+              (newW !== typesCDS.massing.widthM ||
+                newD !== typesCDS.massing.depthM)
+            ) {
+              logger.info(
+                `🔧 Syncing envelope-corrected dimensions to typesCDS: ` +
+                  `${typesCDS.massing.widthM}×${typesCDS.massing.depthM} → ${newW}×${newD}`,
+              );
+              typesCDS.massing.widthM = newW;
+              typesCDS.massing.depthM = newD;
+            }
+          }
+        } catch (earlyErr) {
+          logger.warn(
+            `⚠️ Early envelope fit check failed: ${earlyErr.message}`,
+          );
+        }
+      }
+
       // ─── STEP 2.5: AI Floor Plan Layout Engine ─────────────────────
       // Generate intelligent room coordinates using Qwen2.5-72B.
       // Coordinates are injected into typesCDS.programRooms so that
