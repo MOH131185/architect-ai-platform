@@ -1973,7 +1973,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             !panelResult.imageUrl.startsWith("data:")
           ) {
             try {
-              const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(panelResult.imageUrl)}`;
+              const isDev =
+                window.location.hostname === "localhost" ||
+                window.location.hostname === "127.0.0.1";
+              const proxyBase = isDev ? "/api/proxy/image" : "/api/proxy-image";
+              const proxyUrl = `${proxyBase}?url=${encodeURIComponent(panelResult.imageUrl)}`;
               const proxyResp = await fetch(proxyUrl);
               if (proxyResp.ok) {
                 const blob = await proxyResp.blob();
