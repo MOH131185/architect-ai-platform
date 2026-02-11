@@ -165,13 +165,13 @@ function validateProgramFitToEnvelope(masterDNA, programLock) {
   const warnings = [];
 
   const dims = masterDNA?.dimensions || {};
-  const length =
+  let length =
     Number(dims.length) ||
     Number(dims.length_m) ||
     Number(dims.depth) ||
     Number(dims.depth_m) ||
     0;
-  const width =
+  let width =
     Number(dims.width) ||
     Number(dims.width_m) ||
     Number(dims.breadth) ||
@@ -185,7 +185,6 @@ function validateProgramFitToEnvelope(masterDNA, programLock) {
     return { errors, warnings };
   }
 
-  const footprintM2 = length * width;
   const requestedUsableRatio = Number(
     process.env.ARCHIAI_PROGRAM_USABLE_RATIO ||
       process.env.REACT_APP_ARCHIAI_PROGRAM_USABLE_RATIO ||
@@ -194,7 +193,6 @@ function validateProgramFitToEnvelope(masterDNA, programLock) {
   const usableRatio = Number.isFinite(requestedUsableRatio)
     ? Math.max(0.55, Math.min(0.9, requestedUsableRatio))
     : 0.78;
-  const usablePerLevelM2 = footprintM2 * usableRatio;
 
   const requiredByLevel = new Map();
   for (const space of programLock?.spaces || []) {
@@ -204,26 +202,84 @@ function validateProgramFitToEnvelope(masterDNA, programLock) {
   }
 
   let totalRequired = 0;
-  for (const [level, required] of requiredByLevel.entries()) {
+  for (const [, required] of requiredByLevel.entries()) {
     totalRequired += required;
-    const fillRatio = usablePerLevelM2 > 0 ? required / usablePerLevelM2 : 0;
-    if (required > usablePerLevelM2 * 1.02) {
-      errors.push(
-        `Program for level ${level} is infeasible: required ${required.toFixed(1)}m² exceeds usable envelope ${usablePerLevelM2.toFixed(1)}m² (length ${length}m × width ${width}m, usable ratio ${(usableRatio * 100).toFixed(0)}%)`,
+  }
+
+  const levelCount = Math.max(1, Number(programLock?.levelCount) || 1);
+
+  // Auto-correct: if program exceeds envelope, scale DNA dimensions up to fit.
+  // This prevents hard failures when the AI generates dimensions too small for
+  // the user-specified program.  We scale uniformly (preserving aspect ratio)
+  // so the building proportions stay reasonable.
+  const maxLevelRequired = Math.max(0, ...requiredByLevel.values());
+  const currentUsablePerLevel = length * width * usableRatio;
+  const currentTotalUsable = currentUsablePerLevel * levelCount;
+  const needsLevelFix = maxLevelRequired > currentUsablePerLevel * 1.02;
+  const needsTotalFix = totalRequired > currentTotalUsable * 1.02;
+
+  if (needsLevelFix || needsTotalFix) {
+    // Determine the scale factor needed (use the larger of the two gaps)
+    const levelScale = needsLevelFix
+      ? Math.sqrt(maxLevelRequired / (currentUsablePerLevel * 0.95))
+      : 1;
+    const totalScale = needsTotalFix
+      ? Math.sqrt(totalRequired / (currentTotalUsable * 0.95))
+      : 1;
+    const scale = Math.max(levelScale, totalScale);
+
+    // Cap at 1.5× to avoid absurd expansions — beyond that, the user's
+    // program genuinely doesn't fit a reasonable envelope.
+    if (scale <= 1.5) {
+      const newLength = Math.round(length * scale * 10) / 10;
+      const newWidth = Math.round(width * scale * 10) / 10;
+
+      warnings.push(
+        `Auto-corrected DNA dimensions from ${length}m×${width}m to ${newLength}m×${newWidth}m ` +
+          `(×${scale.toFixed(2)}) to fit program (${totalRequired.toFixed(0)}m² required)`,
       );
-    } else if (fillRatio > 0.9) {
+
+      // Apply correction to masterDNA in-place so downstream uses the
+      // corrected envelope.
+      const dimKey = dims.length
+        ? "length"
+        : dims.length_m
+          ? "length_m"
+          : dims.depth
+            ? "depth"
+            : "depth_m";
+      const widKey = dims.width
+        ? "width"
+        : dims.width_m
+          ? "width_m"
+          : dims.breadth
+            ? "breadth"
+            : "breadth_m";
+      dims[dimKey] = newLength;
+      dims[widKey] = newWidth;
+
+      length = newLength;
+      width = newWidth;
+    } else {
+      errors.push(
+        `Program requires ${scale.toFixed(2)}× envelope expansion (max 1.5×). ` +
+          `Total required ${totalRequired.toFixed(1)}m² far exceeds capacity ` +
+          `${currentTotalUsable.toFixed(1)}m² (${length}m × ${width}m × ${levelCount} levels, ` +
+          `${(usableRatio * 100).toFixed(0)}% usable). Reduce program area or increase floor count.`,
+      );
+      return { errors, warnings };
+    }
+  }
+
+  // Re-check after potential auto-correction — report density warnings
+  const usablePerLevelM2 = length * width * usableRatio;
+  for (const [level, required] of requiredByLevel.entries()) {
+    const fillRatio = usablePerLevelM2 > 0 ? required / usablePerLevelM2 : 0;
+    if (fillRatio > 0.9) {
       warnings.push(
         `Program on level ${level} is highly dense (${(fillRatio * 100).toFixed(1)}% of usable footprint) and may degrade room quality`,
       );
     }
-  }
-
-  const levelCount = Math.max(1, Number(programLock?.levelCount) || 1);
-  const totalUsable = usablePerLevelM2 * levelCount;
-  if (totalRequired > totalUsable * 1.02) {
-    errors.push(
-      `Program total area ${totalRequired.toFixed(1)}m² exceeds estimated usable building capacity ${totalUsable.toFixed(1)}m²`,
-    );
   }
 
   return { errors, warnings };

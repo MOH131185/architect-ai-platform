@@ -10,7 +10,7 @@ describe("GenerationPreflight envelope fit checks", () => {
     };
   }
 
-  test("returns error when level program area is infeasible for envelope", () => {
+  test("auto-corrects DNA dimensions when program slightly exceeds envelope", () => {
     const dna = createMasterDNA();
     const lock = buildProgramLock(
       [{ name: "Living Room", area: 120, floor: "ground", count: 1 }],
@@ -22,9 +22,29 @@ describe("GenerationPreflight envelope fit checks", () => {
       cds: { hash: "cds-test" },
     });
 
+    // Should auto-correct (scale ~1.27 is under 1.5× cap)
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(result.warnings.join(" ")).toMatch(/Auto-corrected DNA dimensions/i);
+    // DNA dimensions should have been expanded in-place
+    expect(dna.dimensions.length).toBeGreaterThan(10);
+    expect(dna.dimensions.width).toBeGreaterThan(10);
+  });
+
+  test("returns error when program far exceeds envelope (>1.5× expansion needed)", () => {
+    const dna = createMasterDNA();
+    const lock = buildProgramLock(
+      [{ name: "Hall", area: 300, floor: "ground", count: 1 }],
+      { floors: 1 },
+    );
+
+    const result = GenerationPreflight.validate(dna, lock, {
+      strict: false,
+      cds: { hash: "cds-test" },
+    });
+
     expect(result.valid).toBe(false);
-    expect(result.errors.join(" ")).toMatch(/infeasible/i);
-    expect(result.errors.join(" ")).toMatch(/exceeds usable envelope/i);
+    expect(result.errors.join(" ")).toMatch(/envelope expansion/i);
   });
 
   test("returns warning for highly dense but feasible level allocation", () => {
