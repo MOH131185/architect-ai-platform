@@ -1168,15 +1168,75 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             },
           });
 
-          // Inject AI coordinates into programRooms
+          // Inject AI coordinates into programRooms using fuzzy matching
+          // to handle name differences between AI output and programSpaces
+          // (e.g. "Hall" vs "Hallway", "WC" vs "Toilet")
+          const ROOM_ALIASES = {
+            wc: ["toilet", "cloakroom", "powder room", "lavatory"],
+            toilet: ["wc", "cloakroom", "powder room"],
+            "living room": ["lounge", "living", "sitting room", "reception"],
+            lounge: ["living room", "living", "sitting room"],
+            kitchen: ["kitchen-dining", "kitchen/dining"],
+            "kitchen-dining": ["kitchen", "dining kitchen"],
+            "dining room": ["dining", "dining area"],
+            hallway: ["hall", "entrance hall", "entrance", "corridor"],
+            hall: ["hallway", "entrance hall", "entrance"],
+            landing: ["upper hall", "first floor landing", "upper landing"],
+            "master bedroom": [
+              "bedroom 1",
+              "main bedroom",
+              "principal bedroom",
+            ],
+            "bedroom 1": ["master bedroom", "main bedroom"],
+            "en-suite": ["ensuite", "en suite", "ensuite bathroom"],
+            ensuite: ["en-suite", "en suite"],
+            utility: ["utility room", "laundry", "boot room"],
+            "utility room": ["utility", "laundry"],
+            study: ["home office", "office"],
+            "home office": ["study", "office"],
+            bathroom: ["family bathroom", "main bathroom"],
+            "family bathroom": ["bathroom", "main bathroom"],
+          };
+
+          function fuzzyMatchRoom(spaces, aiRoom, levelIndex) {
+            const aiName = (aiRoom.name || "").toLowerCase().trim();
+            // 1) Exact case-insensitive + level
+            let match = spaces.find(
+              (s) =>
+                (s.name || "").toLowerCase().trim() === aiName &&
+                (s.levelIndex || 0) === levelIndex,
+            );
+            if (match) return match;
+
+            // 2) Alias lookup
+            const aliases = ROOM_ALIASES[aiName] || [];
+            match = spaces.find((s) => {
+              const sn = (s.name || "").toLowerCase().trim();
+              return aliases.includes(sn) && (s.levelIndex || 0) === levelIndex;
+            });
+            if (match) return match;
+
+            // 3) Partial substring match
+            match = spaces.find((s) => {
+              const sn = (s.name || "").toLowerCase().trim();
+              return (
+                (sn.includes(aiName) || aiName.includes(sn)) &&
+                sn.length > 0 &&
+                aiName.length > 0 &&
+                (s.levelIndex || 0) === levelIndex
+              );
+            });
+            return match || null;
+          }
+
           let injected = 0;
+          const alreadyMatched = new Set();
           for (const level of aiLayout.levels || []) {
             for (const room of level.rooms || []) {
-              const match = typesCDS.programRooms.find(
-                (r) =>
-                  r.name?.toLowerCase() === room.name?.toLowerCase() &&
-                  (r.levelIndex || 0) === level.index,
+              const unmatched = typesCDS.programRooms.filter(
+                (r) => !alreadyMatched.has(r),
               );
+              const match = fuzzyMatchRoom(unmatched, room, level.index);
               if (match) {
                 match.x = room.x;
                 match.y = room.y;
@@ -1184,7 +1244,12 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                 match.depth = room.depth;
                 match.hasExternalWall = room.hasExternalWall;
                 match.adjacentTo = room.adjacentTo;
+                alreadyMatched.add(match);
                 injected++;
+              } else {
+                logger.warn(
+                  `⚠️ AI layout room "${room.name}" (level ${level.index}) not matched to any programRoom`,
+                );
               }
             }
           }

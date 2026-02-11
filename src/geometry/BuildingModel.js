@@ -938,25 +938,25 @@ export class BuildingModel {
     const availableDepth = depth - 2 * margin;
     const wallGap = WALL_THICKNESS.INTERNAL;
 
-    // ─── AI Layout Path ───────────────────────────────────────────────
-    // If all rooms have pre-computed x/y/width/depth (from AI layout engine),
-    // convert from meters (interior-SW origin) to mm (center origin) and skip strip-packing.
-    const hasAILayout =
-      roomsData.length > 0 &&
-      roomsData.every(
-        (r) =>
-          typeof r.x === "number" &&
-          typeof r.y === "number" &&
-          typeof r.width === "number" &&
-          typeof r.depth === "number",
-      );
+    // ─── AI Layout Path (Hybrid) ────────────────────────────────────
+    // Partition rooms into those WITH AI coordinates and those WITHOUT.
+    // Use AI layout for matched rooms; strip-pack only the remainder.
+    // This prevents a single unmatched room from discarding the entire AI layout.
+    const hasCoords = (r) =>
+      typeof r.x === "number" &&
+      typeof r.y === "number" &&
+      typeof r.width === "number" &&
+      typeof r.depth === "number";
 
-    if (hasAILayout) {
+    const aiRooms = roomsData.filter(hasCoords);
+    const nonAiRooms = roomsData.filter((r) => !hasCoords(r));
+
+    if (aiRooms.length > 0) {
       logger.info(
-        `[BuildingModel] Using AI-generated layout for floor ${floorIndex} (${roomsData.length} rooms)`,
+        `[BuildingModel] Using AI-generated layout for floor ${floorIndex} (${aiRooms.length}/${roomsData.length} rooms with AI coords${nonAiRooms.length > 0 ? `, ${nonAiRooms.length} will be strip-packed` : ""})`,
       );
 
-      return roomsData.map((roomData, index) => {
+      const rooms = aiRooms.map((roomData, index) => {
         // Convert from meters (origin = interior SW corner) to mm (origin = center)
         // Interior SW in center-coords = (-width/2 + margin, -depth/2 + margin)
         const xMM = roomData.x * MM_PER_M - width / 2 + margin;
@@ -1006,6 +1006,33 @@ export class BuildingModel {
           levelIndex: floorIndex,
         };
       });
+
+      // Strip-pack any remaining rooms without AI coordinates into gaps
+      if (nonAiRooms.length > 0) {
+        logger.warn(
+          `[BuildingModel] Strip-packing ${nonAiRooms.length} unmatched rooms: ${nonAiRooms.map((r) => r.name).join(", ")}`,
+        );
+        const fallbackRooms = this._buildRoomsFallback(nonAiRooms, floorIndex);
+        // Only add fallback rooms that don't overlap with AI-placed rooms
+        for (const fbRoom of fallbackRooms) {
+          const overlaps = rooms.some(
+            (r) =>
+              r.boundingBox.minX < fbRoom.boundingBox.maxX &&
+              r.boundingBox.maxX > fbRoom.boundingBox.minX &&
+              r.boundingBox.minY < fbRoom.boundingBox.maxY &&
+              r.boundingBox.maxY > fbRoom.boundingBox.minY,
+          );
+          if (!overlaps) {
+            rooms.push(fbRoom);
+          } else {
+            logger.warn(
+              `[BuildingModel] Skipped overlapping fallback room "${fbRoom.name}"`,
+            );
+          }
+        }
+      }
+
+      return rooms;
     }
     // ─── End AI Layout Path ───────────────────────────────────────────
 

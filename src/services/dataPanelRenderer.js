@@ -32,7 +32,7 @@ const TEXT_PRIMARY = "#0f172a";
 const TEXT_SECONDARY = "#1f2937";
 const TEXT_MUTED = "#64748b";
 const DIVIDER_COLOR = "#e2e8f0";
-const FONT = "Arial, Helvetica, sans-serif";
+const FONT = "EmbeddedSans, Arial, Helvetica, sans-serif";
 
 function svgHeader(width, height) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">`;

@@ -37,6 +37,11 @@ import {
   getPanelFitMode as composeCoreGetPanelFitMode,
 } from "../../src/services/a1/composeCore.js";
 
+import {
+  embedFontInSVG,
+  ensureFontsLoaded,
+} from "../../src/utils/svgFontEmbedder.js";
+
 // QA System imports (lazy-loaded for Vercel compatibility)
 let OpusSheetCritic = null;
 let QAGates = null;
@@ -826,8 +831,8 @@ function generateBuildStampSvg({
   // Truncate model name for display
   const displayModel = truncateModelName(openaiModel, 18);
 
-  // Professional font stack (system-safe, no web fonts)
-  const fontStack = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const fontStack =
+    "'EmbeddedSans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <!-- Build Stamp Background -->
@@ -896,7 +901,8 @@ function generateBoardSpecStampSvg({
   layoutTemplateUsed,
   boardSpecVersion,
 }) {
-  const fontStack = "'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const fontStack =
+    "'EmbeddedSans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
   const text = `${layoutTemplateUsed || "unknown"} | spec ${boardSpecVersion || "unknown"}`;
   const x = 10;
   const y = Math.max(12, height - 10);
@@ -926,6 +932,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Pre-load embedded font for SVG rendering (non-blocking, cached after first call)
+    ensureFontsLoaded().catch(() => {});
+
     // Logging request details
     console.log(`[A1 Compose] Request for designId: ${req.body.designId}`);
     console.log(
@@ -2758,6 +2767,22 @@ async function placePanelImage({
     headerSample.includes("<svg") ||
     (headerSample.includes("<?xml") && headerSample.includes("svg"));
   const svgDensity = qa?.useHighRes ? 300 : 144;
+
+  // Embed web font into SVG so Sharp/librsvg can render text correctly
+  if (isSvgInput) {
+    try {
+      const svgStr = imageBuffer.toString("utf8");
+      const fontedSvg = await embedFontInSVG(svgStr);
+      imageBuffer = Buffer.from(fontedSvg, "utf8");
+    } catch (fontErr) {
+      // Non-fatal: proceed with original SVG
+      console.warn(
+        `[A1 Compose] Font embedding failed for ${panelType}:`,
+        fontErr.message,
+      );
+    }
+  }
+
   const sharpForInput = (buf) =>
     isSvgInput
       ? sharp(buf, { density: svgDensity })
@@ -3118,7 +3143,8 @@ async function buildPlaceholder(sharp, width, height, type, constants) {
         text-anchor="middle" fill="#b91c1c">${(type || "").toUpperCase()}</text>
     </svg>
   `;
-  return sharp(Buffer.from(svg))
+  const fontedSvg = await embedFontInSVG(svg);
+  return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -3218,7 +3244,8 @@ async function buildTitleBlockBuffer(
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const fontedSvg = await embedFontInSVG(svg);
+  return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -3339,7 +3366,8 @@ async function buildSchedulesBuffer(
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const fontedSvg = await embedFontInSVG(svg);
+  return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -3452,7 +3480,8 @@ async function buildMaterialPaletteBuffer(
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const fontedSvg = await embedFontInSVG(svg);
+  return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -3548,7 +3577,8 @@ async function buildClimateCardBuffer(
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const fontedSvg = await embedFontInSVG(svg);
+  return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",

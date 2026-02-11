@@ -267,21 +267,21 @@ export function generateSVGStyles(style) {
   return `
     /* --- Text --- */
     .title {
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
       font-size: 16px;
       font-weight: bold;
       fill: ${c.text};
       text-anchor: middle;
     }
     .room-label {
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
       font-size: 10px;
       font-weight: bold;
       fill: ${c.text};
       text-anchor: middle;
     }
     .area-label {
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
       font-size: 9px;
       fill: ${c.dimension};
       text-anchor: middle;
@@ -400,7 +400,7 @@ export function generateSVGStyles(style) {
       stroke-width: ${lw.dimension};
     }
     .dimension-text {
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
       font-size: 10px;
       fill: ${c.dimension};
       text-anchor: middle;
@@ -417,7 +417,7 @@ export function generateSVGStyles(style) {
       stroke-dasharray: 6 3;
     }
     .level-text {
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
       font-size: 9px;
       fill: ${c.text};
     }

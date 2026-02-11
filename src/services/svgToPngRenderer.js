@@ -13,6 +13,8 @@
  * @module services/svgToPngRenderer
  */
 
+import { embedFontInSVG } from "../utils/svgFontEmbedder.js";
+
 /**
  * Render an SVG string to a PNG data URL via Canvas.
  *
@@ -36,6 +38,9 @@ export async function svgToPng(svgString, options = {}) {
     throw new Error("svgToPng: svgString is required");
   }
 
+  // Embed web font so text renders correctly in sandboxed Image context
+  const fontedSvg = await embedFontInSVG(svgString);
+
   return new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas");
     canvas.width = width * scale;
@@ -50,7 +55,7 @@ export async function svgToPng(svgString, options = {}) {
     ctx.scale(scale, scale);
 
     const img = new Image();
-    const blob = new Blob([svgString], {
+    const blob = new Blob([fontedSvg], {
       type: "image/svg+xml;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
