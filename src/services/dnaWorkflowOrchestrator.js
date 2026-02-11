@@ -2300,7 +2300,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           isFeatureEnabled("geometryAuthorityMandatory");
         try {
           if (adjacencyRequirements.length > 0 || requireGeometryModel) {
-            const modelSource = canonicalDesignState || masterDNA;
+            // FIX: Prefer typesCDS (from fromLegacyDNA) which has massing.widthM/depthM
+            //      with envelope-corrected dimensions from Step 2.06.
+            //      The validation CDS (buildCDSSync) lacks massing/dna fields,
+            //      causing BuildingModel to fall back to inaccurate area-based guesses.
+            const modelSource = typesCDS || canonicalDesignState || masterDNA;
             if (!modelSource) {
               throw new ProgramComplianceError(
                 "Post-render validation requires a geometry source (CDS or DNA), but none was available",
@@ -2616,7 +2620,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           : [];
         try {
           if (adjacencyRequirements.length > 0 || requireGeometryModel) {
-            const modelSource = canonicalDesignState || masterDNA;
+            // FIX: Prefer typesCDS which has envelope-corrected massing dimensions
+            const modelSource = typesCDS || canonicalDesignState || masterDNA;
             const { createBuildingModel } =
               await import("../geometry/BuildingModel.js");
             preComposeModel = createBuildingModel(modelSource);
