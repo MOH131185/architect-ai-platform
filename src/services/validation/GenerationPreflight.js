@@ -212,19 +212,27 @@ function validateProgramFitToEnvelope(masterDNA, programLock) {
   // This prevents hard failures when the AI generates dimensions too small for
   // the user-specified program.  We scale uniformly (preserving aspect ratio)
   // so the building proportions stay reasonable.
+  //
+  // NOTE: BuildingModel applies its own internal overhead (~19%) on top of the
+  // usableRatio — external wall thickness (300mm each side), internal zone gaps,
+  // and strip-packing efficiency losses.  The target fill factor (0.75) accounts
+  // for this geometry overhead so that final room areas match programLock targets.
   const maxLevelRequired = Math.max(0, ...requiredByLevel.values());
   const currentUsablePerLevel = length * width * usableRatio;
   const currentTotalUsable = currentUsablePerLevel * levelCount;
+  const geometryTargetFill = 0.75; // accounts for BuildingModel wall/zone/packing overhead
   const needsLevelFix = maxLevelRequired > currentUsablePerLevel * 1.02;
   const needsTotalFix = totalRequired > currentTotalUsable * 1.02;
 
   if (needsLevelFix || needsTotalFix) {
     // Determine the scale factor needed (use the larger of the two gaps)
     const levelScale = needsLevelFix
-      ? Math.sqrt(maxLevelRequired / (currentUsablePerLevel * 0.95))
+      ? Math.sqrt(
+          maxLevelRequired / (currentUsablePerLevel * geometryTargetFill),
+        )
       : 1;
     const totalScale = needsTotalFix
-      ? Math.sqrt(totalRequired / (currentTotalUsable * 0.95))
+      ? Math.sqrt(totalRequired / (currentTotalUsable * geometryTargetFill))
       : 1;
     const scale = Math.max(levelScale, totalScale);
 
