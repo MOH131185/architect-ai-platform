@@ -674,22 +674,15 @@ app.post('/api/together/chat', aiApiLimiter, async (req, res) => {
   try {
     console.log('ðŸ§  [Together AI] Processing chat completion request...');
 
-    // Filter out parameters not supported by Together.ai
-    const { response_format, ...supportedParams } = req.body;
-
-    // Together.ai doesn't support response_format parameter
-    // JSON output must be requested via system prompt instead
-    if (response_format) {
-      console.log('âš ï¸  response_format parameter removed (not supported by Together.ai)');
-    }
-
+    // Together.ai supports response_format: { type: 'json_object' }
+    // for structured JSON output — pass it through
     const response = await fetch('https://api.together.xyz/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${togetherApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(supportedParams),
+      body: JSON.stringify(req.body),
     });
 
     const data = await response.json();

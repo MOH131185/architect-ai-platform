@@ -1,13 +1,15 @@
 /**
  * AI Floor Plan Layout Engine
  *
- * Uses Together.ai Qwen3-235B (primary) with Qwen2.5-72B fallback to generate
+ * Uses Together.ai Llama-3.3-70B (primary) with Qwen2.5-7B fallback to generate
  * intelligent room coordinates considering adjacency, circulation, daylight,
  * and UK building regs.
  *
  * Uses response_format: { type: 'json_object' } for reliable JSON output.
  * Previous approach (Claude tool_choice) failed because the proxy didn't
- * pass tool_choice correctly; Llama-3.3 fallback couldn't produce valid JSON.
+ * pass tool_choice correctly; earlier Llama attempt without json_object mode
+ * also failed. The combination of explicit JSON schema in system prompt +
+ * response_format: json_object forces reliable structured output.
  *
  * Replaces the zone-based strip-packing algorithm in BuildingModel._buildRooms()
  * with architecturally-aware placements.
@@ -18,11 +20,12 @@ import { validateAILayout } from "./aiLayoutValidator.js";
 import logger from "../utils/logger.js";
 
 // ─── Model Configuration ────────────────────────────────────────────
-// Qwen3-235B is the primary model — excellent at structured JSON output
-// Qwen2.5-72B as fallback — proven reliable for DNA generation
+// Use serverless-available models on Together.ai
+// Llama-3.3-70B with response_format: json_object for reliable JSON
+// Qwen2.5-7B-Instruct as lightweight fallback (serverless)
 const LAYOUT_MODELS = [
-  "Qwen/Qwen3-235B-A22B",
-  "Qwen/Qwen2.5-72B-Instruct-Turbo",
+  "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  "Qwen/Qwen2.5-7B-Instruct-Turbo",
 ];
 
 // ─── System Prompt ──────────────────────────────────────────────────
