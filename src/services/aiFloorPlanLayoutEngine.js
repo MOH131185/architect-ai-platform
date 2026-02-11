@@ -1,8 +1,8 @@
 /**
  * AI Floor Plan Layout Engine
  *
- * Uses Qwen2.5-72B to generate intelligent room coordinates
- * considering adjacency, circulation, daylight, and UK building regs.
+ * Uses LLM (Qwen3 / Llama 3.3 fallback) to generate intelligent room
+ * coordinates considering adjacency, circulation, daylight, and UK building regs.
  *
  * Replaces the zone-based strip-packing algorithm in BuildingModel._buildRooms()
  * with architecturally-aware placements.
@@ -11,6 +11,13 @@
 import togetherAIReasoningService from "./togetherAIReasoningService.js";
 import { validateAILayout } from "./aiLayoutValidator.js";
 import logger from "../utils/logger.js";
+
+// Model fallback chain — try each in order until one succeeds
+const LAYOUT_MODELS = [
+  "Qwen/Qwen3-235B-A22B",
+  "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  "mistralai/Mixtral-8x22B-Instruct-v0.1",
+];
 
 const LAYOUT_SYSTEM_PROMPT = `You are a UK residential architect specialising in spatial planning.
 Given a building program (rooms with target areas) and an envelope, produce a JSON floor plan layout.
@@ -175,19 +182,36 @@ export async function generateFloorPlanLayout(params) {
     styleContext,
   );
 
-  // Call Qwen2.5-72B via the reasoning service
-  const response = await togetherAIReasoningService.chatCompletion(
-    [
-      { role: "system", content: LAYOUT_SYSTEM_PROMPT },
-      { role: "user", content: userPrompt },
-    ],
-    {
-      model: "Qwen/Qwen2.5-72B-Instruct-Turbo",
-      temperature: 0.3,
-      max_tokens: 4000,
-      response_format: { type: "json_object" },
-    },
-  );
+  // Try each model in the fallback chain until one succeeds
+  let response = null;
+  let usedModel = null;
+
+  for (const model of LAYOUT_MODELS) {
+    try {
+      logger.info(`🧠 AI Layout: trying model ${model}...`);
+      response = await togetherAIReasoningService.chatCompletion(
+        [
+          { role: "system", content: LAYOUT_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        {
+          model,
+          temperature: 0.3,
+          max_tokens: 4000,
+        },
+      );
+      usedModel = model;
+      break; // Success — stop trying
+    } catch (modelErr) {
+      logger.warn(`⚠️ AI Layout: model ${model} failed: ${modelErr.message}`);
+      if (model === LAYOUT_MODELS[LAYOUT_MODELS.length - 1]) {
+        throw modelErr; // Last model — propagate error
+      }
+      // Continue to next model
+    }
+  }
+
+  logger.info(`✅ AI Layout: response from ${usedModel}`);
 
   // Extract content from response
   const content =
@@ -231,6 +255,7 @@ export async function generateFloorPlanLayout(params) {
   }
 
   logger.success("✅ AI layout generated successfully", {
+    model: usedModel,
     levels: layout.levels?.length,
     totalRooms: layout.levels?.reduce(
       (sum, l) => sum + (l.rooms?.length || 0),
