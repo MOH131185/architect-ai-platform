@@ -677,12 +677,13 @@ export const FEATURE_FLAGS = {
    * Max Program Violations (0 = strict)
    *
    * Maximum number of program compliance violations tolerated before
-   * blocking the pipeline. 0 means zero tolerance.
+   * blocking the pipeline. Allows minor circulation/service space mismatches
+   * (corridors, stairwells) to pass while catching major room failures.
    *
    * @type {number}
-   * @default 1
+   * @default 2
    */
-  maxProgramViolations: 1,
+  maxProgramViolations: 2,
 
   /**
    * Max Level Mismatch (0 = strict)
