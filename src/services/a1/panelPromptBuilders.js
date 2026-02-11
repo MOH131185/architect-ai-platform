@@ -139,14 +139,51 @@ function buildBuildingIdentityBlock(masterDNA = {}, projectContext = {}) {
       ? "SINGLE STOREY (ground floor only). NO upper floor. NO second level."
       : `${dims.floors}-STOREY building.`;
 
+  // Building type specific descriptors to help FLUX understand the form
+  const typeDesc = buildBuildingTypeDescriptor(buildingType, dims);
+
   return `=== BUILDING IDENTITY (MANDATORY - DO NOT DEVIATE) ===
+SHOW EXACTLY ONE (1) SINGLE FREESTANDING DETACHED ${buildingType.toUpperCase()}.
 Building: ${style} detached ${buildingType}
 Floors: EXACTLY ${dims.floors} — ${storeyDesc}
 Dimensions: ${dims.length}m long × ${dims.width}m wide × ${dims.height}m tall
 Roof: ${roofType}
 Primary material: ${materials[0] || "as specified"}
-THIS IS ONE SINGLE DETACHED BUILDING. NOT terraced, NOT semi-detached, NOT townhouses.
+${typeDesc}
+CRITICAL: This is ONE SINGLE FREESTANDING BUILDING standing ALONE with open space on ALL four sides.
+It is NOT attached to any other building. NOT a row of houses. NOT terraced. NOT semi-detached.
+NOT multiple buildings. NOT a housing estate. JUST ONE BUILDING.
 === END BUILDING IDENTITY ===`;
+}
+
+/**
+ * Build building-type-specific descriptors to help FLUX understand the form.
+ * @private
+ */
+function buildBuildingTypeDescriptor(buildingType, dims) {
+  const type = (buildingType || "").toLowerCase();
+
+  if (
+    type.includes("detached") ||
+    type.includes("house") ||
+    type.includes("residential")
+  ) {
+    return `FORM: A single detached family house with front door, garden, driveway. ${dims.floors === 1 ? "Low-profile bungalow form." : "Compact domestic proportions."} Residential scale — NOT commercial, NOT institutional.`;
+  }
+  if (
+    type.includes("clinic") ||
+    type.includes("medical") ||
+    type.includes("health")
+  ) {
+    return `FORM: A medical clinic building with prominent entrance canopy, accessible ramp, large reception windows. Clinical/healthcare architectural language. NOT a house.`;
+  }
+  if (type.includes("school") || type.includes("education")) {
+    return `FORM: An educational building with multiple classrooms visible, large windows for daylight, covered entrance area. Institutional scale. NOT a house.`;
+  }
+  if (type.includes("office") || type.includes("commercial")) {
+    return `FORM: A commercial office building with glazed curtain wall facade, modern entrance lobby. Professional/corporate architectural language. NOT a house.`;
+  }
+  return `FORM: A freestanding ${buildingType} building with clear main entrance. ${dims.floors}-storey scale.`;
 }
 
 /**
@@ -307,7 +344,7 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `cartoon, sketch, overexposed, low detail, multiple buildings, people, cars, wireframe, different building styles, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, multiple buildings, row of houses, terraced houses, townhouses, housing estate, housing development, street of houses, neighborhood, multiple roofs, semi-detached, duplex, apartment block, people, cars, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 

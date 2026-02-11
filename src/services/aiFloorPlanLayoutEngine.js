@@ -1,11 +1,13 @@
 /**
  * AI Floor Plan Layout Engine
  *
- * Uses Claude Sonnet (primary) with Together.ai fallback to generate intelligent
- * room coordinates considering adjacency, circulation, daylight, and UK building regs.
+ * Uses Together.ai Qwen3-235B (primary) with Qwen2.5-72B fallback to generate
+ * intelligent room coordinates considering adjacency, circulation, daylight,
+ * and UK building regs.
  *
- * Claude uses tool_choice for guaranteed JSON schema compliance.
- * Together.ai models (Llama-3.3, Mixtral) serve as fallback chain.
+ * Uses response_format: { type: 'json_object' } for reliable JSON output.
+ * Previous approach (Claude tool_choice) failed because the proxy didn't
+ * pass tool_choice correctly; Llama-3.3 fallback couldn't produce valid JSON.
  *
  * Replaces the zone-based strip-packing algorithm in BuildingModel._buildRooms()
  * with architecturally-aware placements.
@@ -14,115 +16,16 @@
 import togetherAIReasoningService from "./togetherAIReasoningService.js";
 import { validateAILayout } from "./aiLayoutValidator.js";
 import logger from "../utils/logger.js";
-import runtimeEnv from "../utils/runtimeEnv.js";
 
-// ─── API Configuration ───────────────────────────────────────────────
-const ANTHROPIC_API_URL = runtimeEnv.isBrowser
-  ? "/api/anthropic-messages"
-  : "http://localhost:3001/api/anthropic/messages";
-
-// Together.ai fallback chain — try each in order if Claude fails
-const TOGETHER_FALLBACK_MODELS = [
-  "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-  "mistralai/Mixtral-8x22B-Instruct-v0.1",
+// ─── Model Configuration ────────────────────────────────────────────
+// Qwen3-235B is the primary model — excellent at structured JSON output
+// Qwen2.5-72B as fallback — proven reliable for DNA generation
+const LAYOUT_MODELS = [
+  "Qwen/Qwen3-235B-A22B",
+  "Qwen/Qwen2.5-72B-Instruct-Turbo",
 ];
 
-// ─── Claude Tool Schema ──────────────────────────────────────────────
-// Guarantees structured JSON output via forced tool_choice
-const LAYOUT_TOOL = {
-  name: "submit_floor_plan_layout",
-  description:
-    "Submit a validated floor plan layout with precise room coordinates for a UK residential building",
-  input_schema: {
-    type: "object",
-    properties: {
-      levels: {
-        type: "array",
-        description: "Array of building levels, each with positioned rooms",
-        items: {
-          type: "object",
-          properties: {
-            index: {
-              type: "integer",
-              description: "Floor index (0 = ground)",
-            },
-            name: {
-              type: "string",
-              description: "Level name (e.g. Ground Floor, First Floor)",
-            },
-            rooms: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: {
-                    type: "string",
-                    description: "Room name (e.g. Living Room, Kitchen)",
-                  },
-                  program: {
-                    type: "string",
-                    description:
-                      "Room program type (e.g. living, kitchen, bedroom, hallway)",
-                  },
-                  zoneType: {
-                    type: "string",
-                    enum: ["living", "sleeping", "service", "circulation"],
-                    description: "Functional zone classification",
-                  },
-                  x: {
-                    type: "number",
-                    description:
-                      "X position in metres from interior SW corner (East)",
-                  },
-                  y: {
-                    type: "number",
-                    description:
-                      "Y position in metres from interior SW corner (North)",
-                  },
-                  width: {
-                    type: "number",
-                    description: "Room width in metres (E-W dimension)",
-                  },
-                  depth: {
-                    type: "number",
-                    description: "Room depth in metres (N-S dimension)",
-                  },
-                  hasExternalWall: {
-                    type: "boolean",
-                    description: "Whether the room touches an external wall",
-                  },
-                  adjacentTo: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "Names of rooms this room is adjacent to",
-                  },
-                },
-                required: ["name", "program", "x", "y", "width", "depth"],
-              },
-            },
-          },
-          required: ["index", "name", "rooms"],
-        },
-      },
-      staircase: {
-        type: "object",
-        description:
-          "Staircase position (same on every floor for multi-storey)",
-        properties: {
-          x: { type: "number" },
-          y: { type: "number" },
-          width: { type: "number" },
-          depth: { type: "number" },
-        },
-      },
-      designRationale: {
-        type: "string",
-        description: "Brief explanation of layout decisions",
-      },
-    },
-    required: ["levels"],
-  },
-};
+// ─── System Prompt ──────────────────────────────────────────────────
 
 const LAYOUT_SYSTEM_PROMPT = `You are a UK residential architect specialising in spatial planning.
 Given a building program (rooms with target areas) and an envelope, produce a floor plan layout.
@@ -142,7 +45,42 @@ ARCHITECTURAL RULES:
 5. STAIRCASE: Place staircase in same X,Y position on every floor, adjacent to hallway/landing
 6. MINIMUM DIMENSIONS: No room narrower than 1.5m (except WC which can be 0.9m wide)
 7. ROOM PROPORTIONS: Aspect ratio between 1:1 and 1:2.5 for livable rooms
-8. ZONE TYPES: Classify each room as "living", "sleeping", "service", or "circulation"`;
+8. ZONE TYPES: Classify each room as "living", "sleeping", "service", or "circulation"
+
+CRITICAL OUTPUT FORMAT:
+You MUST respond with ONLY a valid JSON object. No prose, no explanation, no markdown.
+The JSON must match this exact schema:
+{
+  "levels": [
+    {
+      "index": 0,
+      "name": "Ground Floor",
+      "rooms": [
+        {
+          "name": "Living Room",
+          "program": "living",
+          "zoneType": "living",
+          "x": 0.0,
+          "y": 4.0,
+          "width": 5.5,
+          "depth": 4.0,
+          "hasExternalWall": true,
+          "adjacentTo": ["Hallway", "Kitchen"]
+        }
+      ]
+    }
+  ],
+  "staircase": { "x": 4.0, "y": 0.0, "width": 1.0, "depth": 2.5 },
+  "designRationale": "Brief explanation of layout decisions"
+}
+
+RULES FOR VALUES:
+- x and y are the SW corner of each room in metres
+- width is the E-W dimension, depth is the N-S dimension
+- Every room from the program MUST appear in the output
+- Room areas (width × depth) should closely match target areas
+- No two rooms may overlap (check x,y,width,depth for collisions)
+- Include hallway/landing on every floor as circulation spine`;
 
 /**
  * Build a user prompt for the AI layout engine
@@ -199,21 +137,34 @@ CONSTRAINTS:
 - ${levelCount > 1 ? "Staircase must be in the same position on every floor" : "No staircase needed (single storey)"}
 - Entrance must face ${entranceSide} side
 
-Return the layout with precise room coordinates.`;
+Respond with ONLY the JSON layout object. No other text.`;
 
   return prompt;
 }
 
 /**
- * Parse AI response and extract layout JSON (for Together.ai text responses)
+ * Strip Qwen3 thinking tags from response content.
+ * Qwen3 models wrap internal reasoning in <think>...</think> blocks.
+ */
+function stripThinkingTags(text) {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+}
+
+/**
+ * Parse AI response and extract layout JSON.
+ * Handles: direct JSON, markdown code blocks, JSON embedded in text,
+ * and Qwen3 thinking tags.
  */
 function parseLayoutResponse(responseText) {
-  // Try direct parse first
+  // Strip thinking tags first
+  const cleaned = stripThinkingTags(responseText);
+
+  // Try direct parse
   try {
-    return JSON.parse(responseText);
+    return JSON.parse(cleaned);
   } catch {
     // Try to extract JSON from markdown code blocks
-    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       try {
         return JSON.parse(jsonMatch[1].trim());
@@ -223,11 +174,11 @@ function parseLayoutResponse(responseText) {
     }
 
     // Try to find JSON object in response
-    const braceMatch = responseText.match(/\{[\s\S]*\}/);
+    const braceMatch = cleaned.match(/\{[\s\S]*\}/);
     if (braceMatch) {
-      // Clean trailing commas
-      const cleaned = braceMatch[0].replace(/,(\s*[}\]])/g, "$1");
-      return JSON.parse(cleaned);
+      // Clean trailing commas before closing braces/brackets
+      const sanitized = braceMatch[0].replace(/,(\s*[}\]])/g, "$1");
+      return JSON.parse(sanitized);
     }
 
     throw new Error("Could not parse AI layout response as JSON");
@@ -235,55 +186,17 @@ function parseLayoutResponse(responseText) {
 }
 
 /**
- * Call Claude Sonnet with tool_choice for guaranteed structured JSON layout
- */
-async function callClaudeForLayout(userPrompt) {
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      temperature: 0.3,
-      system: LAYOUT_SYSTEM_PROMPT,
-      tools: [LAYOUT_TOOL],
-      tool_choice: { type: "tool", name: "submit_floor_plan_layout" },
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    const errMsg =
-      errData?.error?.message || errData?.error || `HTTP ${response.status}`;
-    throw new Error(`Claude API error: ${errMsg}`);
-  }
-
-  const data = await response.json();
-
-  // Extract tool_use block — guaranteed by tool_choice
-  const toolBlock = data.content?.find((b) => b.type === "tool_use");
-  if (!toolBlock || !toolBlock.input) {
-    throw new Error(
-      "Claude did not return tool_use block — unexpected response format",
-    );
-  }
-
-  // toolBlock.input is already a parsed object matching LAYOUT_TOOL schema
-  return toolBlock.input;
-}
-
-/**
- * Fall back to Together.ai model chain for layout generation
+ * Call Together.ai for layout generation using the model chain.
+ * Uses response_format: { type: 'json_object' } for reliable output.
  */
 async function callTogetherForLayout(userPrompt) {
-  let response = null;
-  let usedModel = null;
+  let lastError = null;
 
-  for (const model of TOGETHER_FALLBACK_MODELS) {
+  for (const model of LAYOUT_MODELS) {
     try {
-      logger.info(`🧠 AI Layout fallback: trying ${model}...`);
-      response = await togetherAIReasoningService.chatCompletion(
+      logger.info(`🧠 AI Layout: trying ${model}...`);
+
+      const response = await togetherAIReasoningService.chatCompletion(
         [
           { role: "system", content: LAYOUT_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
@@ -292,34 +205,46 @@ async function callTogetherForLayout(userPrompt) {
           model,
           temperature: 0.3,
           max_tokens: 4000,
+          response_format: { type: "json_object" },
         },
       );
-      usedModel = model;
-      break;
-    } catch (modelErr) {
-      logger.warn(
-        `⚠️ AI Layout fallback: ${model} failed: ${modelErr.message}`,
-      );
-      if (
-        model === TOGETHER_FALLBACK_MODELS[TOGETHER_FALLBACK_MODELS.length - 1]
-      ) {
-        throw modelErr;
+
+      // Extract content from response
+      const content =
+        response?.choices?.[0]?.message?.content ||
+        response?.content ||
+        response?.text ||
+        (typeof response === "string" ? response : null);
+
+      if (!content) {
+        throw new Error(`${model} returned empty response`);
       }
+
+      const layout = parseLayoutResponse(content);
+
+      // Basic structural validation
+      if (!layout.levels || !Array.isArray(layout.levels)) {
+        throw new Error(`${model} response missing levels array`);
+      }
+
+      logger.info(`✅ AI Layout: response from ${model}`, {
+        levels: layout.levels.length,
+        rooms: layout.levels.reduce(
+          (sum, l) => sum + (l.rooms?.length || 0),
+          0,
+        ),
+      });
+
+      return { layout, model };
+    } catch (err) {
+      logger.warn(`⚠️ AI Layout: ${model} failed: ${err.message}`);
+      lastError = err;
     }
   }
 
-  // Extract content from response
-  const content =
-    response?.choices?.[0]?.message?.content ||
-    response?.content ||
-    response?.text ||
-    (typeof response === "string" ? response : null);
-
-  if (!content) {
-    throw new Error("Together.ai layout engine returned empty response");
-  }
-
-  return { layout: parseLayoutResponse(content), model: usedModel };
+  throw new Error(
+    `All AI layout models failed. Last error: ${lastError?.message}`,
+  );
 }
 
 /**
@@ -352,32 +277,8 @@ export async function generateFloorPlanLayout(params) {
     styleContext,
   );
 
-  // Try Claude Sonnet first (guaranteed JSON via tool_choice)
-  let layout = null;
-  let usedModel = null;
-
-  try {
-    logger.info("🧠 AI Layout: trying Claude Sonnet (tool_choice)...");
-    layout = await callClaudeForLayout(userPrompt);
-    usedModel = "claude-sonnet-4";
-    logger.info("✅ AI Layout: response from Claude Sonnet");
-  } catch (claudeErr) {
-    logger.warn(
-      `⚠️ Claude layout failed: ${claudeErr.message} — falling back to Together.ai`,
-    );
-
-    // Fall back to Together.ai model chain
-    try {
-      const result = await callTogetherForLayout(userPrompt);
-      layout = result.layout;
-      usedModel = result.model;
-      logger.info(`✅ AI Layout: response from Together.ai ${usedModel}`);
-    } catch (togetherErr) {
-      throw new Error(
-        `All AI layout models failed. Claude: ${claudeErr.message}. Together: ${togetherErr.message}`,
-      );
-    }
-  }
+  // Call Together.ai model chain (Qwen3 primary, Qwen2.5 fallback)
+  const { layout, model: usedModel } = await callTogetherForLayout(userPrompt);
 
   // Validate the layout
   const interiorWidth = (buildingEnvelope.widthM || 10) - 0.6;
