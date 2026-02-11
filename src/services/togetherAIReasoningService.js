@@ -17,9 +17,11 @@ const TOGETHER_API_URL =
     : "http://localhost:3001/api/together/chat"; // Local proxy server
 
 const LOCAL_PROXY_BASE =
-  process.env.REACT_APP_API_PROXY_URL || "http://localhost:3001";
+  process.env.REACT_APP_API_PROXY_URL ||
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
 const OPENAI_PROXY_BASE =
-  process.env.REACT_APP_API_PROXY_URL || "http://localhost:3001";
+  process.env.REACT_APP_API_PROXY_URL ||
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
 
 function buildChatEndpoints() {
   return Array.from(
@@ -521,7 +523,15 @@ Format as structured analysis with specific recommendations.
         return result;
       } catch (error) {
         lastError = error;
-        if (error.fallback && index < endpoints.length - 1) {
+        // Treat network errors (Failed to fetch / connection refused) as
+        // fallbackable so we try the next endpoint (e.g. relative URL in prod)
+        const isNetworkError =
+          error instanceof TypeError ||
+          /fetch|network|ECONNREFUSED/i.test(error.message);
+        if (
+          (error.fallback || isNetworkError) &&
+          index < endpoints.length - 1
+        ) {
           logger.warn(
             `⚠️ [Together AI] Chat endpoint failed (${endpoint}): ${error.message}. Trying next fallback...`,
           );
