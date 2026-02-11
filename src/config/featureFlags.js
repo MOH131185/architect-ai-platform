@@ -49,6 +49,23 @@ export const FEATURE_FLAGS = {
   geometryVolumeFirst: false,
 
   /**
+   * AI Floor Plan Layout Engine (EXPERIMENTAL)
+   *
+   * When enabled:
+   * - After DNA generation, calls Qwen2.5-72B to generate room coordinates
+   * - AI considers adjacency, circulation, daylight, UK building regs
+   * - Coordinates injected into programRooms before BuildingModel
+   * - BuildingModel detects pre-computed layout and skips strip-packing
+   *
+   * When disabled:
+   * - Uses zone-based strip-packing algorithm in BuildingModel
+   *
+   * @type {boolean}
+   * @default true
+   */
+  aiFloorPlanLayout: true,
+
+  /**
    * Hybrid A1 Sheet Mode (EXPERIMENTAL)
    *
    * When enabled:
@@ -881,6 +898,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.saveGeometryMaskDebug = false;
   FEATURE_FLAGS.strictCanonicalDesignState = false;
   FEATURE_FLAGS.geometryVolumeFirst = false;
+  FEATURE_FLAGS.aiFloorPlanLayout = true;
   // Design Fingerprint System defaults
   FEATURE_FLAGS.extractDesignFingerprint = true;
   FEATURE_FLAGS.useHeroAsControl = true;

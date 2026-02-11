@@ -115,6 +115,8 @@ import {
 } from "./canonical/CanonicalPackGate.js";
 // Types CDS adapter — produces massing.widthM/depthM that BuildingModel requires
 import { fromLegacyDNA } from "../types/CanonicalDesignState.js";
+// AI Floor Plan Layout Engine — generates room coordinates via Qwen2.5-72B
+import { generateFloorPlanLayout } from "./aiFloorPlanLayoutEngine.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
 const DEFAULT_API_BASE_URL = runtimeEnv.isBrowser
@@ -1100,6 +1102,73 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           logger.warn("⚠️ Types CDS build failed:", typesCDSErr.message);
         }
       }
+
+      // ─── STEP 2.5: AI Floor Plan Layout Engine ─────────────────────
+      // Generate intelligent room coordinates using Qwen2.5-72B.
+      // Coordinates are injected into typesCDS.programRooms so that
+      // BuildingModel._buildRooms() detects them and skips strip-packing.
+      if (
+        isFeatureEnabled("aiFloorPlanLayout") &&
+        typesCDS?.programRooms?.length > 0
+      ) {
+        logger.info("🧠 STEP 2.5: Generating AI-powered floor plan layout...");
+        reportProgress(
+          "dna",
+          "Generating intelligent floor plan layout...",
+          22,
+        );
+        try {
+          const aiLayout = await generateFloorPlanLayout({
+            programSpaces: typesCDS.programRooms,
+            buildingEnvelope: {
+              widthM: typesCDS.massing?.widthM || 10,
+              depthM: typesCDS.massing?.depthM || 8,
+              levelCount: typesCDS.levelCount || 2,
+            },
+            siteContext: {
+              entranceSide: typesCDS.site?.entranceSide || "S",
+              orientation: typesCDS.site?.orientationDeg || 0,
+              latitude: projectContext?.latitude || 52,
+            },
+            styleContext: {
+              vernacular: masterDNA?.style || "contemporary",
+              roofType: typesCDS.massing?.roofType || "gable",
+            },
+          });
+
+          // Inject AI coordinates into programRooms
+          let injected = 0;
+          for (const level of aiLayout.levels || []) {
+            for (const room of level.rooms || []) {
+              const match = typesCDS.programRooms.find(
+                (r) =>
+                  r.name?.toLowerCase() === room.name?.toLowerCase() &&
+                  (r.levelIndex || 0) === level.index,
+              );
+              if (match) {
+                match.x = room.x;
+                match.y = room.y;
+                match.width = room.width;
+                match.depth = room.depth;
+                match.hasExternalWall = room.hasExternalWall;
+                match.adjacentTo = room.adjacentTo;
+                injected++;
+              }
+            }
+          }
+
+          logger.success(
+            `✅ AI layout applied to program spaces (${injected}/${typesCDS.programRooms.length} rooms)`,
+          );
+        } catch (aiLayoutErr) {
+          logger.warn(
+            "⚠️ AI layout failed, falling back to strip-packing:",
+            aiLayoutErr.message,
+          );
+          // No-op: programRooms without x/y/width/depth → strip-packing fallback
+        }
+      }
+      // ─── End STEP 2.5 ──────────────────────────────────────────────
 
       // Pre-gate repair: pin DNA room areas to user-locked values.
       // LLMs frequently hallucinate or swap room areas (e.g. Bathroom 6→4m²,

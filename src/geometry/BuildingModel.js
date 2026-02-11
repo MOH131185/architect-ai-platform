@@ -938,6 +938,77 @@ export class BuildingModel {
     const availableDepth = depth - 2 * margin;
     const wallGap = WALL_THICKNESS.INTERNAL;
 
+    // ─── AI Layout Path ───────────────────────────────────────────────
+    // If all rooms have pre-computed x/y/width/depth (from AI layout engine),
+    // convert from meters (interior-SW origin) to mm (center origin) and skip strip-packing.
+    const hasAILayout =
+      roomsData.length > 0 &&
+      roomsData.every(
+        (r) =>
+          typeof r.x === "number" &&
+          typeof r.y === "number" &&
+          typeof r.width === "number" &&
+          typeof r.depth === "number",
+      );
+
+    if (hasAILayout) {
+      logger.info(
+        `[BuildingModel] Using AI-generated layout for floor ${floorIndex} (${roomsData.length} rooms)`,
+      );
+
+      return roomsData.map((roomData, index) => {
+        // Convert from meters (origin = interior SW corner) to mm (origin = center)
+        // Interior SW in center-coords = (-width/2 + margin, -depth/2 + margin)
+        const xMM = roomData.x * MM_PER_M - width / 2 + margin;
+        const yMM = roomData.y * MM_PER_M - depth / 2 + margin;
+        const roomWidthMM = roomData.width * MM_PER_M;
+        const roomDepthMM = roomData.depth * MM_PER_M;
+
+        // Build polygon [SW, SE, NE, NW] — same format as strip-packing output
+        const polygon = [
+          { x: xMM, y: yMM },
+          { x: xMM + roomWidthMM, y: yMM },
+          { x: xMM + roomWidthMM, y: yMM + roomDepthMM },
+          { x: xMM, y: yMM + roomDepthMM },
+        ];
+
+        const center = {
+          x: xMM + roomWidthMM / 2,
+          y: yMM + roomDepthMM / 2,
+        };
+
+        const areaM2 = roomData.width * roomData.depth;
+        const program =
+          roomData.program?.toLowerCase?.().replace(/[\s-]+/g, "_") ||
+          "generic";
+
+        return {
+          id: roomData.id || `room_${floorIndex}_${index}`,
+          name: roomData.name || `Room ${index + 1}`,
+          program,
+          roomType: program,
+          zoneType: roomData.zoneType || "public",
+          polygon,
+          area: roomWidthMM * roomDepthMM, // mm²
+          areaM2,
+          width: roomWidthMM,
+          depth: roomDepthMM,
+          targetAreaM2: roomData.targetAreaM2 || areaM2,
+          center,
+          boundingBox: {
+            minX: xMM,
+            minY: yMM,
+            maxX: xMM + roomWidthMM,
+            maxY: yMM + roomDepthMM,
+          },
+          hasExternalWall: roomData.hasExternalWall ?? true,
+          adjacentTo: roomData.adjacentTo || [],
+          levelIndex: floorIndex,
+        };
+      });
+    }
+    // ─── End AI Layout Path ───────────────────────────────────────────
+
     // Helper function to determine zone type from room data using ZONE_TYPE_MAP
     const getZoneTypeFromRoom = (room) => {
       // Priority: explicit zoneType > ZONE_TYPE_MAP lookup by program > by name > 'public' fallback
@@ -1738,82 +1809,99 @@ export class BuildingModel {
         r.name?.toLowerCase().includes("circulation"),
     );
 
-    // Room-type scale factors for window sizing (e.g. bathrooms get smaller windows)
-    const WINDOW_ROOM_SCALE = {
-      living: 1.2,
-      lounge: 1.2,
-      kitchen: 1.1,
-      dining: 1.1,
-      bedroom: 1.0,
-      master_bedroom: 1.1,
-      bathroom: 0.6,
-      ensuite: 0.5,
-      wc: 0.4,
-      utility: 0.5,
-      hallway: 0.7,
-      landing: 0.7,
-      study: 1.0,
-      office: 1.0,
+    // Absolute window sizes per room program (mm) — realistic UK residential
+    const WINDOW_SIZES = {
+      living: { width: 1800, height: 1500, sillHeight: 800 },
+      lounge: { width: 1800, height: 1500, sillHeight: 800 },
+      kitchen: { width: 1400, height: 1200, sillHeight: 900 },
+      dining: { width: 1600, height: 1400, sillHeight: 800 },
+      bedroom: { width: 1200, height: 1400, sillHeight: 900 },
+      master_bedroom: { width: 1400, height: 1400, sillHeight: 900 },
+      bathroom: { width: 600, height: 800, sillHeight: 1200 },
+      ensuite: { width: 600, height: 800, sillHeight: 1200 },
+      wc: { width: 400, height: 600, sillHeight: 1400 },
+      utility: { width: 800, height: 1000, sillHeight: 1000 },
+      hallway: null, // No window for circulation
+      landing: { width: 800, height: 1200, sillHeight: 1000 },
+      study: { width: 1200, height: 1400, sillHeight: 900 },
+      office: { width: 1200, height: 1400, sillHeight: 900 },
+      garage: { width: 800, height: 600, sillHeight: 1400 },
     };
+    const DEFAULT_WINDOW = { width: 1200, height: 1400, sillHeight: 900 };
 
-    // Add windows to external walls (facade-specific sizing for passive solar design)
+    // Add windows to external walls — one window per room touching each wall
     for (const wall of walls) {
       if (wall.type !== "external") {
         continue;
       }
 
-      // Facade-specific window policy (UK climate-responsive defaults)
-      let windowSpacing, baseWindowWidth, baseWindowHeight, sillHeight;
-      if (wall.facade === "S") {
-        windowSpacing = 2000; // More windows for solar gain
-        baseWindowWidth = 1400;
-        baseWindowHeight = 1600;
-        sillHeight = 800;
-      } else if (wall.facade === "N") {
-        windowSpacing = 3500; // Fewer windows to reduce heat loss
-        baseWindowWidth = 1000;
-        baseWindowHeight = 1200;
-        sillHeight = 1000;
-      } else if (wall.facade === "E") {
-        windowSpacing = 2500; // Standard — morning sun
-        baseWindowWidth = 1200;
-        baseWindowHeight = 1400;
-        sillHeight = 900;
-      } else {
-        // West — slightly fewer to limit afternoon overheating
-        windowSpacing = 3000;
-        baseWindowWidth = 1100;
-        baseWindowHeight = 1300;
-        sillHeight = 900;
+      // Wall direction vector
+      const dx = wall.end.x - wall.start.x;
+      const dy = wall.end.y - wall.start.y;
+      const wallLen = wall.length;
+      // Wall-perpendicular inward unit vector (points into building)
+      const perpX = -dy / wallLen;
+      const perpY = dx / wallLen;
+
+      // Find rooms whose bounding box touches this wall
+      const roomsOnWall = [];
+      for (const room of rooms) {
+        const bb = room.boundingBox;
+        const pad = 400; // 400mm tolerance for wall thickness
+        // Project room center onto wall to check proximity
+        const rcx = (bb.minX + bb.maxX) / 2;
+        const rcy = (bb.minY + bb.maxY) / 2;
+        // Perpendicular distance from room center to wall line
+        const dot = (rcx - wall.start.x) * perpX + (rcy - wall.start.y) * perpY;
+        if (
+          dot < -pad ||
+          dot > (bb.maxX - bb.minX + bb.maxY - bb.minY) / 2 + pad
+        ) {
+          continue; // Room is too far from this wall
+        }
+        // Project room center along wall to get position parameter t
+        const tCenter =
+          ((rcx - wall.start.x) * dx + (rcy - wall.start.y) * dy) /
+          (wallLen * wallLen);
+        if (tCenter < -0.05 || tCenter > 1.05) {
+          continue; // Room doesn't overlap this wall segment
+        }
+        // Check if room's bounding box actually touches the wall line
+        const wallMinX = Math.min(wall.start.x, wall.end.x) - pad;
+        const wallMaxX = Math.max(wall.start.x, wall.end.x) + pad;
+        const wallMinY = Math.min(wall.start.y, wall.end.y) - pad;
+        const wallMaxY = Math.max(wall.start.y, wall.end.y) + pad;
+        const overlapsX = bb.maxX >= wallMinX && bb.minX <= wallMaxX;
+        const overlapsY = bb.maxY >= wallMinY && bb.minY <= wallMaxY;
+        if (overlapsX && overlapsY) {
+          roomsOnWall.push({
+            room,
+            tCenter: Math.max(0.1, Math.min(0.9, tCenter)),
+          });
+        }
       }
 
-      const windowCount = Math.max(1, Math.floor(wall.length / windowSpacing));
+      // Sort by position along wall
+      roomsOnWall.sort((a, b) => a.tCenter - b.tCenter);
 
-      for (let w = 0; w < windowCount; w++) {
-        const positionMM = (w + 0.5) * (wall.length / windowCount);
-        // Normalize position to 0-1 range for rendering
-        const normalizedX = positionMM / wall.length;
+      // Place one window per qualifying room
+      for (const { room, tCenter } of roomsOnWall) {
+        const spec = WINDOW_SIZES[room.program];
+        if (spec === null) continue; // Skip rooms with no window (hallway)
+        if (spec === undefined && room.program === "circulation") continue;
+        const {
+          width: winW,
+          height: winH,
+          sillHeight,
+        } = spec || DEFAULT_WINDOW;
 
-        // Find which room is behind this window position
-        const t = positionMM / wall.length;
-        const wxMM = wall.start.x + t * (wall.end.x - wall.start.x);
-        const wyMM = wall.start.y + t * (wall.end.y - wall.start.y);
-        const behindRoom = rooms.find((r) => {
-          const bb = r.boundingBox;
-          const pad = 500; // 500mm inward search
-          return (
-            wxMM >= bb.minX - pad &&
-            wxMM <= bb.maxX + pad &&
-            wyMM >= bb.minY - pad &&
-            wyMM <= bb.maxY + pad
-          );
-        });
-        const roomScale = behindRoom
-          ? WINDOW_ROOM_SCALE[behindRoom.program] || 1.0
-          : 1.0;
+        // Ensure window fits on wall (min 200mm from edge)
+        const minT = (winW / 2 + 200) / wallLen;
+        const maxT = 1 - minT;
+        const clampedT = Math.max(minT, Math.min(maxT, tCenter));
 
-        const windowWidth = Math.round(baseWindowWidth * roomScale);
-        const windowHeight = Math.round(baseWindowHeight * roomScale);
+        const positionMM = clampedT * wallLen;
+        const normalizedX = clampedT;
 
         openings.push({
           id: `opening_${floorIndex}_${openingId++}`,
@@ -1822,14 +1910,39 @@ export class BuildingModel {
           position: {
             x: normalizedX,
             z:
-              (sillHeight + windowHeight / 2) /
+              (sillHeight + winH / 2) /
               (this.envelope.floorHeights[floorIndex] || 2800),
           },
-          positionMM, // Keep raw position for other uses
-          width: windowWidth,
-          height: windowHeight,
-          widthMM: windowWidth,
-          heightMM: windowHeight,
+          positionMM,
+          width: winW,
+          height: winH,
+          widthMM: winW,
+          heightMM: winH,
+          sillHeight,
+          facade: wall.facade,
+          roomProgram: room.program,
+        });
+      }
+
+      // Fallback: if no rooms found on wall, place one default window
+      if (roomsOnWall.length === 0 && wallLen >= 1500) {
+        const { width: winW, height: winH, sillHeight } = DEFAULT_WINDOW;
+        const positionMM = wallLen / 2;
+        openings.push({
+          id: `opening_${floorIndex}_${openingId++}`,
+          wallId: wall.id,
+          type: "window",
+          position: {
+            x: 0.5,
+            z:
+              (sillHeight + winH / 2) /
+              (this.envelope.floorHeights[floorIndex] || 2800),
+          },
+          positionMM,
+          width: winW,
+          height: winH,
+          widthMM: winW,
+          heightMM: winH,
           sillHeight,
           facade: wall.facade,
         });

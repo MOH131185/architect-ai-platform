@@ -62,6 +62,7 @@ import {
   UnsupportedPipelineModeError,
 } from "./services/workflowRouter.js";
 import A1SheetViewer from "./components/A1SheetViewer.jsx";
+import { PANEL_LABELS } from "./services/a1/a1LayoutConstants.js";
 import ModifyDesignDrawer from "./components/ModifyDesignDrawer.js";
 import { computeSiteMetrics } from "./utils/geometry.js";
 import { exportToSVG } from "./utils/svgExporter.js";
@@ -6053,6 +6054,83 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   )}
 
                   <A1SheetViewer sheetData={generatedDesigns.a1Sheet} />
+
+                  {/* Individual Panel Gallery */}
+                  {generatedDesigns.a1Sheet?.panels &&
+                    Object.keys(generatedDesigns.a1Sheet.panels).length > 0 && (
+                      <div className="mt-8">
+                        <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
+                          <Image className="w-5 h-5 mr-2 text-blue-300" />
+                          Individual Panels (
+                          {
+                            Object.keys(generatedDesigns.a1Sheet.panels).filter(
+                              (key) => {
+                                const panel =
+                                  generatedDesigns.a1Sheet.panels[key];
+                                return (
+                                  panel?.url ||
+                                  (typeof panel === "string" && panel)
+                                );
+                              },
+                            ).length
+                          }
+                          )
+                          <span className="ml-2 text-sm font-normal text-white/60">
+                            Click to zoom &amp; download
+                          </span>
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {Object.entries(generatedDesigns.a1Sheet.panels)
+                            .filter(([, panel]) => {
+                              const url =
+                                panel?.url ||
+                                (typeof panel === "string" ? panel : null);
+                              return !!url;
+                            })
+                            .map(([panelType, panel]) => {
+                              const url =
+                                panel?.url ||
+                                (typeof panel === "string" ? panel : "");
+                              const label =
+                                PANEL_LABELS[panelType] ||
+                                panelType.replace(/_/g, " ").toUpperCase();
+                              return (
+                                <div
+                                  key={panelType}
+                                  className="group relative bg-navy-800/50 border border-white/10 rounded-xl overflow-hidden cursor-pointer hover:border-blue-400/50 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-200"
+                                  onClick={() => openImageModal(url, label)}
+                                >
+                                  <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden">
+                                    <img
+                                      src={url}
+                                      alt={label}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      loading="lazy"
+                                      onError={(e) => {
+                                        e.target.style.display = "none";
+                                        e.target.parentElement.innerHTML =
+                                          '<div class="text-white/40 text-xs text-center p-4">Failed to load</div>';
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="p-2 flex items-center justify-between">
+                                    <span className="text-xs font-medium text-white/80 truncate">
+                                      {label}
+                                    </span>
+                                    <ZoomIn className="w-3.5 h-3.5 text-white/40 group-hover:text-blue-300 transition-colors flex-shrink-0 ml-1" />
+                                  </div>
+                                  {/* Hover overlay */}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-10">
+                                    <span className="text-white text-xs font-medium px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full">
+                                      Click to zoom
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -7805,6 +7883,39 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                 aria-label="Reset zoom"
               >
                 <Maximize2 className="w-5 h-5 text-white" />
+              </button>
+
+              <div className="w-px h-6 bg-white/30 mx-1" />
+
+              <button
+                onClick={async () => {
+                  if (!image || isUnifiedSVG) return;
+                  try {
+                    const response = await fetch(image, {
+                      mode: "cors",
+                      cache: "no-cache",
+                    });
+                    if (!response.ok) throw new Error("fetch failed");
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    const safeName = (title || "panel")
+                      .replace(/[^a-zA-Z0-9_-]/g, "_")
+                      .toLowerCase();
+                    link.download = `${safeName}.png`;
+                    link.href = url;
+                    link.click();
+                    window.URL.revokeObjectURL(url);
+                  } catch {
+                    // Fallback: open in new tab for manual save
+                    window.open(image, "_blank");
+                  }
+                }}
+                className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                aria-label="Download image"
+                title="Download image"
+              >
+                <Download className="w-5 h-5 text-white" />
               </button>
             </div>
 

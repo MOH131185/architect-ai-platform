@@ -326,6 +326,25 @@ function escapeXml(text) {
 }
 
 /**
+ * Sanitize Unicode characters for safe SVG/Sharp rasterization.
+ * Converts common Unicode literals to XML numeric character references
+ * that librsvg can render reliably even without full font support.
+ */
+function sanitizeSvgText(text) {
+  if (!text) return "";
+  return escapeXml(text)
+    .replace(/\u00B2/g, "&#178;") // ² superscript 2
+    .replace(/\u00B0/g, "&#176;") // ° degree
+    .replace(/\u00B1/g, "&#177;") // ± plus-minus
+    .replace(/\u00D7/g, "&#215;") // × multiplication
+    .replace(/\u2014/g, "&#8212;") // — em-dash
+    .replace(/\u2018/g, "&#8216;") // ' left single quote
+    .replace(/\u2019/g, "&#8217;") // ' right single quote
+    .replace(/\u201C/g, "&#8220;") // " left double quote
+    .replace(/\u201D/g, "&#8221;"); // " right double quote
+}
+
+/**
  * Generate SVG with panel borders and labels
  */
 function generateOverlaySvg(coordinates, width, height) {
@@ -333,7 +352,9 @@ function generateOverlaySvg(coordinates, width, height) {
   let labels = "";
 
   for (const [id, coord] of Object.entries(coordinates)) {
-    const labelText = escapeXml(PANEL_LABELS[id] || (id || "").toUpperCase());
+    const labelText = sanitizeSvgText(
+      PANEL_LABELS[id] || (id || "").toUpperCase(),
+    );
     const labelY = coord.y + coord.height - Math.round(LABEL_HEIGHT / 2) + 4;
     const labelTop = coord.y + coord.height - LABEL_HEIGHT;
 
@@ -347,7 +368,7 @@ function generateOverlaySvg(coordinates, width, height) {
       dominant-baseline="middle" text-anchor="middle">${labelText}</text>`;
   }
 
-  return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     ${frames}
     ${labels}
   </svg>`;
@@ -457,7 +478,7 @@ async function fetchPanelBuffer(sharp, imageUrl) {
  */
 async function buildPlaceholder(sharp, width, height, type) {
   const text = "PANEL MISSING – REGENERATE";
-  const svg = `
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#f5f5f5" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
       <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="Arial, sans-serif" font-weight="700"
@@ -489,14 +510,14 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlock = {}) {
     date = new Date().toISOString().split("T")[0],
   } = titleBlock || {};
 
-  const svg = `
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
-      <text x="16" y="36" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#0f172a">${escapeXml(projectName)}</text>
-      <text x="16" y="66" font-family="Arial, sans-serif" font-size="16" font-weight="600" fill="#1f2937">${escapeXml(buildingTypeLabel)}</text>
-      <text x="16" y="96" font-family="Arial, sans-serif" font-size="14" fill="#374151">${escapeXml(locationDesc)}</text>
-      <text x="16" y="126" font-family="Arial, sans-serif" font-size="14" fill="#374151">${escapeXml(scale)}</text>
-      <text x="16" y="${height - 16}" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">Date: ${escapeXml(date)}</text>
+      <text x="16" y="36" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#0f172a">${sanitizeSvgText(projectName)}</text>
+      <text x="16" y="66" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600" fill="#1f2937">${sanitizeSvgText(buildingTypeLabel)}</text>
+      <text x="16" y="96" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#374151">${sanitizeSvgText(locationDesc)}</text>
+      <text x="16" y="126" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#374151">${sanitizeSvgText(scale)}</text>
+      <text x="16" y="${height - 16}" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#6b7280">Date: ${sanitizeSvgText(date)}</text>
     </svg>
   `;
 
@@ -565,11 +586,11 @@ async function buildSchedulesBuffer(
       <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(application)}</text>`;
   });
 
-  const svg = `
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">ROOM SCHEDULE</text>
+      <text x="${width / 2}" y="24" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">ROOM SCHEDULE</text>
       <text x="${leftMargin}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">NO.</text>
       <text x="${leftMargin + 20}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">ROOM</text>
       <text x="${colArea}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">AREA</text>
@@ -626,11 +647,11 @@ async function buildMaterialPaletteBuffer(sharp, width, height, masterDNA) {
       <text x="${x}" y="${y + swatchH + 24}" font-family="Arial, sans-serif" font-size="8" fill="#64748b">${escapeXml(hexColor)} — ${escapeXml(application)}</text>`;
   });
 
-  const svg = `
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
+      <text x="${width / 2}" y="24" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
       ${swatches}
     </svg>
   `;
@@ -699,11 +720,11 @@ async function buildClimateCardBuffer(sharp, width, height, locationData) {
     y += lineH + 16;
   });
 
-  const svg = `
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &amp; ENVIRONMENT</text>
+      <text x="${width / 2}" y="24" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &#38; ENVIRONMENT</text>
       ${dataRows}
     </svg>
   `;

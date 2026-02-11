@@ -88,7 +88,7 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   const offsetX = finalWidth / 2;
   const offsetY = finalHeight / 2;
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
 
   // SVG Styles
   svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
@@ -590,7 +590,7 @@ export function projectElevation(model, orientation = "S", options = {}) {
   const groundY = finalHeight - marginPx - groundPx;
   const offsetX = finalWidth / 2;
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
   svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
 
   // Sky background
@@ -1028,7 +1028,7 @@ export function projectSection(
   const groundY = finalHeight - marginPx - groundPx - foundationPx;
   const offsetX = finalWidth / 2;
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
   svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
   svg += generateHatchPattern("wall-hatch", style, 45, 3);
   svg += generateHatchPattern("slab-hatch", style, 45, 6);
