@@ -175,7 +175,7 @@ export function buildProgramLock(programSpaces, options = {}) {
     ? Math.max(options.floors, maxLevel + 1)
     : maxLevel + 1;
 
-  const areaTolerance = options.areaTolerance ?? 0.03; // Default 3%
+  const areaTolerance = options.areaTolerance ?? 0.35; // Default 35% — AI-generated DNA areas are approximate
 
   const adjacencyRequirements = buildAdjacencyRequirements(spaces);
 

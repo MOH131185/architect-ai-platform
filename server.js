@@ -339,7 +339,8 @@ app.post("/api/together/chat", aiApiLimiter, async (req, res) => {
 });
 
 // Anthropic Claude API proxy endpoint (for AI floor plan layout engine)
-app.post("/api/anthropic/messages", aiApiLimiter, async (req, res) => {
+// Handles both /api/anthropic/messages and /api/anthropic-messages (Vercel path)
+async function handleAnthropicMessages(req, res) {
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!anthropicApiKey) {
@@ -348,7 +349,13 @@ app.post("/api/anthropic/messages", aiApiLimiter, async (req, res) => {
   }
 
   try {
-    console.log("🧠 [Anthropic] Processing messages request...");
+    const model = req.body?.model || "unknown";
+    const hasTools =
+      Array.isArray(req.body?.tools) && req.body.tools.length > 0;
+    const toolChoice = req.body?.tool_choice;
+    console.log(
+      `🧠 [Anthropic] Processing ${model} request (tools: ${hasTools}, tool_choice: ${JSON.stringify(toolChoice)})...`,
+    );
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -367,13 +374,19 @@ app.post("/api/anthropic/messages", aiApiLimiter, async (req, res) => {
       return res.status(response.status).json(data);
     }
 
-    console.log("✅ Anthropic messages request successful");
+    // Log response content types for debugging
+    const contentTypes = (data.content || []).map((b) => b.type);
+    console.log(
+      `✅ Anthropic response: ${data.usage?.output_tokens || "?"} tokens, content types: [${contentTypes.join(", ")}]`,
+    );
     res.json(data);
   } catch (error) {
     console.error("Anthropic proxy error:", error);
     res.status(500).json({ error: error.message });
   }
-});
+}
+app.post("/api/anthropic/messages", aiApiLimiter, handleAnthropicMessages);
+app.post("/api/anthropic-messages", aiApiLimiter, handleAnthropicMessages);
 
 // Together AI image generation endpoint (FLUX.1)
 app.post("/api/together/image", imageGenerationLimiter, async (req, res) => {

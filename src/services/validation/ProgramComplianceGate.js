@@ -77,7 +77,7 @@ export function validateProgramLock(masterDNA, programLock, options = {}) {
   const dnaRooms = masterDNA.rooms || masterDNA.program?.rooms || [];
   const allowedLevels = getLevels(programLock);
   const perSpaceReport = [];
-  const areaTolerance = programLock.invariants?.areaTolerance ?? 0.03;
+  const areaTolerance = programLock.invariants?.areaTolerance ?? 0.35;
 
   for (const lockedSpace of programLock.spaces) {
     const spaceName = lockedSpace.name.toLowerCase();

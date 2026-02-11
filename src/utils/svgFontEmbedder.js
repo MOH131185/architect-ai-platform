@@ -10,12 +10,12 @@
  * @module utils/svgFontEmbedder
  */
 
-// Google Fonts CDN URL for Inter Regular (Latin subset, woff2)
+// Google Fonts CDN URL for Inter (Latin subset, woff2, variable font v20)
 const INTER_REGULAR_URL =
-  "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hjQ.woff2";
-// Inter Bold (Latin subset, woff2)
+  "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
+// Inter Bold — same variable font file covers all weights in v20
 const INTER_BOLD_URL =
-  "https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYAZ9hjQ.woff2";
+  "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
 
 let cachedRegular = null;
 let cachedBold = null;
