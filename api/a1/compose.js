@@ -1403,6 +1403,17 @@ export default async function handler(req, res) {
             panelMap[panel.type] = {
               url: panel.imageUrl,
               buffer: panel.buffer,
+              geometryHash:
+                panel.geometryHash ||
+                panel.geometry_hash ||
+                panel.meta?.geometryHash ||
+                panel.meta?.geometry_hash ||
+                null,
+              cdsHash:
+                panel.cdsHash ||
+                panel.meta?.cdsHash ||
+                panel.meta?.cds_hash ||
+                null,
             };
           }
         }

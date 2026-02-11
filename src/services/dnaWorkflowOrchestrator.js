@@ -2239,19 +2239,24 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           "🚦 Running Post-Render ProgramComplianceGate (CHECKPOINT 2)...",
         );
         let adjacencyModel = null;
+        const adjacencyRequirements = Array.isArray(
+          programLock?.adjacencyRequirements,
+        )
+          ? programLock.adjacencyRequirements
+          : [];
+        const requireGeometryModel =
+          getFeatureValue("programGeometryFidelityGate") !== false ||
+          isFeatureEnabled("strictCanonicalGeometryPack") ||
+          isFeatureEnabled("geometryAuthorityMandatory");
         try {
-          const adjacencyRequirements = Array.isArray(
-            programLock?.adjacencyRequirements,
-          )
-            ? programLock.adjacencyRequirements
-            : [];
-
-          if (adjacencyRequirements.length > 0) {
+          if (adjacencyRequirements.length > 0 || requireGeometryModel) {
             const modelSource = canonicalDesignState || masterDNA;
             if (!modelSource) {
               throw new ProgramComplianceError(
-                "Adjacency validation requires a geometry source (CDS or DNA), but none was available",
-                ["Adjacency requirements exist but geometry source is missing"],
+                "Post-render validation requires a geometry source (CDS or DNA), but none was available",
+                [
+                  "Program geometry validation requires BuildingModel, but geometry source is missing",
+                ],
                 "post-render-adjacency",
               );
             }
@@ -2262,9 +2267,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               adjacencyModel = createBuildingModel(modelSource);
             } catch (adjacencyModelErr) {
               throw new ProgramComplianceError(
-                `Failed to build BuildingModel for adjacency validation: ${adjacencyModelErr.message}`,
+                `Failed to build BuildingModel for post-render validation: ${adjacencyModelErr.message}`,
                 [
-                  "Adjacency requirements cannot be validated because BuildingModel generation failed",
+                  "Program geometry checks cannot run because BuildingModel generation failed",
                 ],
                 "post-render-adjacency",
               );
@@ -2281,6 +2286,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               strict: true,
               buildingModel: adjacencyModel,
               requireAdjacencyModel: adjacencyRequirements.length > 0,
+              requireGeometryModel,
+              enforceRoomAreaFromGeometry:
+                getFeatureValue("programGeometryFidelityGate") !== false,
             },
           );
           gateProgramReport = postRenderResult.report;
@@ -2546,12 +2554,34 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       // ================================================================
       if (programLock && isFeatureEnabled("programComplianceGate")) {
         logger.info("🚦 Running Pre-Compose ProgramComplianceGate...");
+        let preComposeModel = null;
+        const requireGeometryModel =
+          getFeatureValue("programGeometryFidelityGate") !== false ||
+          isFeatureEnabled("strictCanonicalGeometryPack") ||
+          isFeatureEnabled("geometryAuthorityMandatory");
+        const adjacencyRequirements = Array.isArray(
+          programLock?.adjacencyRequirements,
+        )
+          ? programLock.adjacencyRequirements
+          : [];
         try {
+          if (adjacencyRequirements.length > 0 || requireGeometryModel) {
+            const modelSource = canonicalDesignState || masterDNA;
+            const { createBuildingModel } =
+              await import("../geometry/BuildingModel.js");
+            preComposeModel = createBuildingModel(modelSource);
+          }
+
           validateBeforeCompose(
             generatedPanels,
             programLock,
             canonicalDesignState,
-            { strict: true },
+            {
+              strict: true,
+              buildingModel: preComposeModel,
+              requireAdjacencyModel: adjacencyRequirements.length > 0,
+              requireGeometryModel,
+            },
           );
           logger.success("✅ Pre-Compose ProgramComplianceGate passed");
         } catch (gateErr) {
@@ -2564,6 +2594,13 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             };
           }
           throw gateErr;
+        } finally {
+          if (
+            preComposeModel &&
+            typeof preComposeModel.dispose === "function"
+          ) {
+            preComposeModel.dispose();
+          }
         }
       }
 

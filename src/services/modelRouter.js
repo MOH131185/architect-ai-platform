@@ -1,96 +1,158 @@
 /**
  * Model Router Service
- * 
+ *
  * Central routing service for all LLM and image generation calls.
  * Automatically selects optimal models based on:
  * - Task type (DNA generation, reasoning, image generation, etc.)
  * - Available API keys (GPT-5, Claude, Together, etc.)
  * - Cost/latency/quality constraints
  * - Feature flags and user preferences
- * 
+ *
  * Built on top of modelSelector.js with environment-driven selection.
  */
 
-import modelSelector from './modelSelector.js';
-import { safeParseJsonFromLLM } from '../utils/parseJsonFromLLM.js';
-import runtimeEnv from '../utils/runtimeEnv.js';
-import logger from '../utils/logger.js';
+import modelSelector from "./modelSelector.js";
+import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
+import runtimeEnv from "../utils/runtimeEnv.js";
+import logger from "../utils/logger.js";
 
-const API_BASE_URL = process.env.REACT_APP_API_PROXY_URL || 'http://localhost:3001';
+const API_BASE_URL =
+  process.env.REACT_APP_API_PROXY_URL || "http://localhost:3001";
 
 // Environment detection for endpoint selection
-const isDev = typeof window !== 'undefined' &&
-  (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1');
+const isDev =
+  typeof window !== "undefined" &&
+  (window.location?.hostname === "localhost" ||
+    window.location?.hostname === "127.0.0.1");
 
 // Endpoint paths (dev: /api/together/*, prod: /api/together-*)
 const ENDPOINTS = {
-  togetherChat: isDev ? '/api/together/chat' : '/api/together-chat',
-  togetherImage: isDev ? '/api/together/image' : '/api/together-image',
-  openaiChat: '/api/openai/chat'
+  togetherChat: isDev ? "/api/together/chat" : "/api/together-chat",
+  togetherImage: isDev ? "/api/together/image" : "/api/together-image",
+  openaiChat: "/api/openai/chat",
 };
 
-const DEFAULT_EMERGENCY_ENV_KEY = 'OPENAI_MODEL_REASONING';
+const DEFAULT_EMERGENCY_ENV_KEY = "OPENAI_MODEL_REASONING";
+
+const TASK_ALIASES = {
+  PROGRAM_SYNTHESIS: "DNA_GENERATION",
+  PROGRAM_COMPLIANCE: "ARCHITECTURAL_REASONING",
+  GEOMETRY_LAYOUT: "ARCHITECTURAL_REASONING",
+  VISION_QA: "MATERIAL_DETECTION",
+  A1_COMPOSE: "ARCHITECTURAL_REASONING",
+  DRAWING_2D_CRITIC: "ARCHITECTURAL_REASONING",
+  IMAGE_RENDER: "A1_SHEET_GENERATION",
+};
 
 const TASK_ENVIRONMENT_KEYS = {
   DNA_GENERATION: {
-    primary: 'AI_MODEL_DNA',
-    fallback: 'AI_FALLBACK_DNA',
-    emergency: DEFAULT_EMERGENCY_ENV_KEY
+    primary: "AI_MODEL_DNA",
+    fallback: "AI_FALLBACK_DNA",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
   },
   ARCHITECTURAL_REASONING: {
-    primary: 'AI_MODEL_REASONING',
-    fallback: 'AI_FALLBACK_REASONING',
-    emergency: DEFAULT_EMERGENCY_ENV_KEY
+    primary: "AI_MODEL_REASONING",
+    fallback: "AI_FALLBACK_REASONING",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
   },
   SITE_ANALYSIS: {
-    primary: 'AI_MODEL_SITE',
-    fallback: 'AI_FALLBACK_SITE'
+    primary: "AI_MODEL_SITE",
+    fallback: "AI_FALLBACK_SITE",
   },
   CLIMATE_LOGIC: {
-    primary: 'AI_MODEL_CLIMATE'
+    primary: "AI_MODEL_CLIMATE",
   },
   BLENDED_STYLE_GENERATION: {
-    primary: 'AI_MODEL_STYLE'
+    primary: "AI_MODEL_STYLE",
   },
   PORTFOLIO_ANALYSIS: {
-    primary: 'AI_MODEL_PORTFOLIO',
-    fallback: 'AI_FALLBACK_PORTFOLIO',
-    emergency: 'OPENAI_MODEL_PORTFOLIO'
+    primary: "AI_MODEL_PORTFOLIO",
+    fallback: "AI_FALLBACK_PORTFOLIO",
+    emergency: "OPENAI_MODEL_PORTFOLIO",
   },
   A1_SHEET_GENERATION: {
-    primary: 'AI_MODEL_IMAGE',
-    fallback: 'AI_FALLBACK_IMAGE'
+    primary: "AI_MODEL_IMAGE",
+    fallback: "AI_FALLBACK_IMAGE",
   },
   TECHNICAL_2D: {
-    primary: 'AI_MODEL_TECHNICAL',
-    fallback: 'AI_FALLBACK_TECHNICAL'
+    primary: "AI_MODEL_TECHNICAL",
+    fallback: "AI_FALLBACK_TECHNICAL",
   },
   PHOTOREALISTIC_3D: {
-    primary: 'AI_MODEL_3D',
-    fallback: 'AI_FALLBACK_3D'
+    primary: "AI_MODEL_3D",
+    fallback: "AI_FALLBACK_3D",
   },
   MODIFICATION_REASONING: {
-    primary: 'AI_MODEL_MODIFY',
-    fallback: 'AI_FALLBACK_MODIFY',
-    emergency: DEFAULT_EMERGENCY_ENV_KEY
+    primary: "AI_MODEL_MODIFY",
+    fallback: "AI_FALLBACK_MODIFY",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
   },
   MODIFICATION_IMAGE: {
-    primary: 'AI_MODEL_MODIFY_IMAGE',
-    fallback: 'AI_FALLBACK_MODIFY_IMAGE'
+    primary: "AI_MODEL_MODIFY_IMAGE",
+    fallback: "AI_FALLBACK_MODIFY_IMAGE",
   },
   MATERIAL_DETECTION: {
-    primary: 'AI_MODEL_MATERIAL',
-    fallback: 'AI_FALLBACK_MATERIAL',
-    emergency: DEFAULT_EMERGENCY_ENV_KEY
-  }
+    primary: "AI_MODEL_MATERIAL",
+    fallback: "AI_FALLBACK_MATERIAL",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  PROGRAM_SYNTHESIS: {
+    primary: "AI_MODEL_PROGRAM_SYNTHESIS",
+    fallback: "AI_FALLBACK_PROGRAM_SYNTHESIS",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  PROGRAM_COMPLIANCE: {
+    primary: "AI_MODEL_PROGRAM_COMPLIANCE",
+    fallback: "AI_FALLBACK_PROGRAM_COMPLIANCE",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  GEOMETRY_LAYOUT: {
+    primary: "AI_MODEL_GEOMETRY_LAYOUT",
+    fallback: "AI_FALLBACK_GEOMETRY_LAYOUT",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  VISION_QA: {
+    primary: "AI_MODEL_VISION_QA",
+    fallback: "AI_FALLBACK_VISION_QA",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  A1_COMPOSE: {
+    primary: "AI_MODEL_A1_COMPOSE",
+    fallback: "AI_FALLBACK_A1_COMPOSE",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  DRAWING_2D_CRITIC: {
+    primary: "AI_MODEL_2D_CRITIC",
+    fallback: "AI_FALLBACK_2D_CRITIC",
+    emergency: DEFAULT_EMERGENCY_ENV_KEY,
+  },
+  IMAGE_RENDER: {
+    primary: "AI_MODEL_IMAGE_RENDER",
+    fallback: "AI_FALLBACK_IMAGE_RENDER",
+  },
 };
 
 function readEnvVar(key) {
   if (!key) return null;
-  if (typeof process === 'undefined' || typeof process.env === 'undefined') {
+  if (typeof process === "undefined" || typeof process.env === "undefined") {
     return null;
   }
   return process.env[key] || null;
+}
+
+function inferProviderFromModel(model, fallbackProvider = "together") {
+  if (!model || typeof model !== "string") return fallbackProvider;
+  const lowered = model.toLowerCase();
+  if (
+    lowered.startsWith("gpt-") ||
+    lowered.startsWith("o1") ||
+    lowered.startsWith("o3") ||
+    lowered.startsWith("o4")
+  ) {
+    return "openai";
+  }
+  if (lowered.includes("claude")) return "claude";
+  return fallbackProvider;
 }
 
 /**
@@ -103,9 +165,9 @@ function getAvailableProviders() {
 
   const available = {
     together: true, // Always available (primary provider)
-    openai: false,  // Will be detected via proxy
-    claude: false,  // Future support
-    gpt5: false     // Future support
+    openai: false, // Will be detected via proxy
+    claude: false, // Future support
+    gpt5: false, // Future support
   };
 
   // Check sessionStorage for cached availability
@@ -115,11 +177,12 @@ function getAvailableProviders() {
       return available;
     }
 
-    const cached = session.getItem('modelRouter_availability');
+    const cached = session.getItem("modelRouter_availability");
     if (cached) {
       const parsed = JSON.parse(cached);
       const age = Date.now() - (parsed.timestamp || 0);
-      if (age < 5 * 60 * 1000) { // 5 minute cache
+      if (age < 5 * 60 * 1000) {
+        // 5 minute cache
         return parsed.providers;
       }
     }
@@ -140,10 +203,13 @@ function cacheAvailability(providers) {
       return;
     }
 
-    session.setItem('modelRouter_availability', JSON.stringify({
-      providers,
-      timestamp: Date.now()
-    }));
+    session.setItem(
+      "modelRouter_availability",
+      JSON.stringify({
+        providers,
+        timestamp: Date.now(),
+      }),
+    );
   } catch (e) {
     // Ignore storage errors
   }
@@ -157,19 +223,19 @@ async function detectProviderAvailability() {
     together: false,
     openai: false,
     claude: false,
-    gpt5: false
+    gpt5: false,
   };
 
   // Check Together.ai
   try {
     const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherChat}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: 'Qwen/Qwen2.5-7B-Instruct-Turbo', // Lightweight model
-        messages: [{ role: 'user', content: 'test' }],
-        max_tokens: 1
-      })
+        model: "Qwen/Qwen2.5-7B-Instruct-Turbo", // Lightweight model
+        messages: [{ role: "user", content: "test" }],
+        max_tokens: 1,
+      }),
     });
     available.together = response.status !== 401 && response.status !== 403;
   } catch (e) {
@@ -180,13 +246,13 @@ async function detectProviderAvailability() {
   // Check OpenAI
   try {
     const response = await fetch(`${API_BASE_URL}/api/openai/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: 'test' }],
-        max_tokens: 1
-      })
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "test" }],
+        max_tokens: 1,
+      }),
     });
     available.openai = response.status !== 401 && response.status !== 403;
   } catch (e) {
@@ -203,12 +269,12 @@ class ModelRouter {
     this.availableProviders = getAvailableProviders();
     this.performanceCache = new Map(); // Track model performance
 
-    logger.info('🧭 ModelRouter initialized');
+    logger.info("🧭 ModelRouter initialized");
 
     // Async detection in background
-    detectProviderAvailability().then(providers => {
+    detectProviderAvailability().then((providers) => {
       this.availableProviders = providers;
-      logger.info('🧭 Provider availability detected:', providers);
+      logger.info("🧭 Provider availability detected:", providers);
     });
   }
 
@@ -217,62 +283,155 @@ class ModelRouter {
    * Used by tests, diagnostics, and admin tooling.
    */
   getModelConfig(taskType) {
-    const normalizedTask = this.normalizeTaskType(taskType);
-    const matrixEntry = this.selector.modelMatrix?.[normalizedTask];
+    const { requestedTask, resolvedTask } = this.resolveTaskType(taskType);
+    const matrixEntry = this.selector.modelMatrix?.[resolvedTask];
 
     if (!matrixEntry) {
       throw new Error(`Unknown task type: ${taskType}`);
     }
 
-    const overrides = this.getEnvironmentOverrides(normalizedTask);
+    const overrides = this.getEnvironmentOverrides(requestedTask);
+    const envKeys =
+      TASK_ENVIRONMENT_KEYS[requestedTask] ||
+      TASK_ENVIRONMENT_KEYS[resolvedTask] ||
+      {};
+    if (
+      this.isStrictEnvRoutingEnabled() &&
+      envKeys.primary &&
+      !readEnvVar(envKeys.primary)
+    ) {
+      throw new Error(
+        `Strict model routing enabled, but ${envKeys.primary} is not set for task ${requestedTask}`,
+      );
+    }
+
+    const primaryModel =
+      overrides.primary || matrixEntry.primary?.model || null;
 
     const config = {
-      taskType: normalizedTask,
-      primary: overrides.primary || matrixEntry.primary?.model || null,
+      taskType: requestedTask,
+      resolvedTaskType: resolvedTask,
+      primary: primaryModel,
       fallback: overrides.fallback || matrixEntry.fallback?.model || null,
       emergency: overrides.emergency || matrixEntry.emergency?.model || null,
-      provider: matrixEntry.primary?.provider || 'together',
+      provider: inferProviderFromModel(
+        primaryModel,
+        matrixEntry.primary?.provider || "together",
+      ),
       params: { ...(matrixEntry.primary?.params || {}) },
       metadata: {
         costPerCall: matrixEntry.primary?.costPerCall ?? null,
         avgLatency: matrixEntry.primary?.avgLatency ?? null,
-        reliability: matrixEntry.primary?.reliability ?? null
-      }
+        reliability: matrixEntry.primary?.reliability ?? null,
+        overrideKeys: envKeys,
+      },
     };
 
     if (!config.primary) {
-      throw new Error(`No primary model configured for ${normalizedTask}`);
+      throw new Error(`No primary model configured for ${requestedTask}`);
     }
 
     return config;
   }
 
   getEnvironmentOverrides(taskType) {
-    const envKeys = TASK_ENVIRONMENT_KEYS[taskType] || {};
+    const normalizedTask = this.normalizeTaskType(taskType);
+    const resolvedTask = TASK_ALIASES[normalizedTask] || normalizedTask;
+    const envKeys =
+      TASK_ENVIRONMENT_KEYS[normalizedTask] ||
+      TASK_ENVIRONMENT_KEYS[resolvedTask] ||
+      {};
 
     const overrides = {
       primary: readEnvVar(envKeys.primary),
       fallback: readEnvVar(envKeys.fallback),
-      emergency: readEnvVar(envKeys.emergency)
+      emergency: readEnvVar(envKeys.emergency),
     };
 
-    if (!overrides.emergency && envKeys.emergency !== DEFAULT_EMERGENCY_ENV_KEY) {
+    if (
+      !overrides.emergency &&
+      envKeys.emergency !== DEFAULT_EMERGENCY_ENV_KEY
+    ) {
       overrides.emergency = readEnvVar(DEFAULT_EMERGENCY_ENV_KEY);
     }
 
     return overrides;
   }
 
+  resolveTaskType(taskType) {
+    const requestedTask = this.normalizeTaskType(taskType);
+    return {
+      requestedTask,
+      resolvedTask: TASK_ALIASES[requestedTask] || requestedTask,
+    };
+  }
+
   normalizeTaskType(taskType) {
-    if (!taskType || typeof taskType !== 'string') {
-      throw new Error('Task type is required');
+    if (!taskType || typeof taskType !== "string") {
+      throw new Error("Task type is required");
     }
     return taskType.toUpperCase();
   }
 
+  isStrictEnvRoutingEnabled() {
+    return (
+      readEnvVar("ARCHIAI_STRICT_MODEL_ROUTING") === "true" ||
+      readEnvVar("REACT_APP_ARCHIAI_STRICT_MODEL_ROUTING") === "true"
+    );
+  }
+
+  buildTaskCandidates(taskType, context = {}) {
+    const { requestedTask, resolvedTask } = this.resolveTaskType(taskType);
+    const matrixEntry = this.selector.modelMatrix?.[resolvedTask];
+    if (!matrixEntry || !matrixEntry.primary) {
+      throw new Error(`Unknown task type: ${requestedTask}`);
+    }
+
+    const dynamicPrimary = this.selector.selectModel(resolvedTask, {
+      ...context,
+      availableProviders: this.availableProviders,
+    });
+    const overrides = this.getEnvironmentOverrides(requestedTask);
+    const envKeys =
+      TASK_ENVIRONMENT_KEYS[requestedTask] ||
+      TASK_ENVIRONMENT_KEYS[resolvedTask] ||
+      {};
+    if (
+      this.isStrictEnvRoutingEnabled() &&
+      envKeys.primary &&
+      !readEnvVar(envKeys.primary)
+    ) {
+      throw new Error(
+        `Strict model routing enabled, but ${envKeys.primary} is not set for task ${requestedTask}`,
+      );
+    }
+
+    const applyOverride = (baseConfig, overrideModel) => {
+      if (!baseConfig && !overrideModel) return null;
+      const fallbackBase = baseConfig || dynamicPrimary || matrixEntry.primary;
+      return {
+        ...fallbackBase,
+        model: overrideModel || fallbackBase.model,
+        provider: inferProviderFromModel(
+          overrideModel || fallbackBase.model,
+          fallbackBase.provider || "together",
+        ),
+        params: { ...(fallbackBase.params || {}) },
+      };
+    };
+
+    return {
+      requestedTask,
+      resolvedTask,
+      primary: applyOverride(dynamicPrimary, overrides.primary),
+      fallback: applyOverride(matrixEntry.fallback, overrides.fallback),
+      emergency: applyOverride(matrixEntry.emergency, overrides.emergency),
+    };
+  }
+
   /**
    * Call LLM for text/reasoning tasks
-   * 
+   *
    * @param {string} taskType - Task type (DNA_GENERATION, SITE_ANALYSIS, etc.)
    * @param {Object} params - Call parameters
    * @param {string} params.systemPrompt - System message
@@ -290,48 +449,68 @@ class ModelRouter {
       schema = null,
       temperature,
       maxTokens,
-      context = {}
+      context = {},
     } = params;
 
     const startTime = Date.now();
 
     try {
-      // Select optimal model
-      const modelConfig = this.selector.selectModel(taskType, {
-        ...context,
-        availableProviders: this.availableProviders
-      });
+      const taskCandidates = this.buildTaskCandidates(taskType, context);
+      const selectionTier = context.useEmergency
+        ? "emergency"
+        : context.useFallback
+          ? "fallback"
+          : "primary";
+      const modelConfig =
+        taskCandidates[selectionTier] || taskCandidates.primary;
+      if (!modelConfig?.model) {
+        throw new Error(
+          `No ${selectionTier} model available for ${taskCandidates.requestedTask}`,
+        );
+      }
 
-      logger.info(`🧭 [ModelRouter] Task: ${taskType}`);
+      logger.info(`🧭 [ModelRouter] Task: ${taskCandidates.requestedTask}`);
+      logger.info(`   Resolved Task: ${taskCandidates.resolvedTask}`);
+      logger.info(`   Tier: ${selectionTier}`);
       logger.info(`   Model: ${modelConfig.model} (${modelConfig.provider})`);
-      logger.info(`   Reasoning: ${modelConfig.reasoning}`);
+      logger.info(
+        `   Reasoning: ${modelConfig.reasoning || "env/matrix-selected"}`,
+      );
 
       // Build messages
       const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
       ];
 
       // Merge parameters
       const callParams = {
         ...modelConfig.params,
         ...(temperature !== undefined && { temperature }),
-        ...(maxTokens !== undefined && { max_tokens: maxTokens })
+        ...(maxTokens !== undefined && { max_tokens: maxTokens }),
       };
 
       // Add schema if provided
       if (schema && callParams.response_format) {
-        callParams.response_format = { type: 'json_object' };
+        callParams.response_format = { type: "json_object" };
       }
 
       let result;
       let actualModel = modelConfig.model;
 
       // Route to appropriate provider
-      if (modelConfig.provider === 'together') {
-        result = await this.callTogetherChat(modelConfig.model, messages, callParams);
-      } else if (modelConfig.provider === 'openai') {
-        result = await this.callOpenAIChat(modelConfig.model, messages, callParams);
+      if (modelConfig.provider === "together") {
+        result = await this.callTogetherChat(
+          modelConfig.model,
+          messages,
+          callParams,
+        );
+      } else if (modelConfig.provider === "openai") {
+        result = await this.callOpenAIChat(
+          modelConfig.model,
+          messages,
+          callParams,
+        );
       } else {
         throw new Error(`Unsupported provider: ${modelConfig.provider}`);
       }
@@ -339,18 +518,21 @@ class ModelRouter {
       const latency = Date.now() - startTime;
 
       // Parse response
-      const content = result.choices?.[0]?.message?.content || result.content || '';
+      const content =
+        result.choices?.[0]?.message?.content || result.content || "";
       let parsed = content;
 
       // Try JSON parsing if schema was requested
-      if (schema || callParams.response_format?.type === 'json_object') {
+      if (schema || callParams.response_format?.type === "json_object") {
         parsed = safeParseJsonFromLLM(content, {});
       }
 
       // Track performance
-      this.trackPerformance(taskType, actualModel, latency);
+      this.trackPerformance(taskCandidates.requestedTask, actualModel, latency);
 
-      logger.success(` [ModelRouter] ${taskType} completed in ${latency}ms`);
+      logger.success(
+        ` [ModelRouter] ${taskCandidates.requestedTask} completed in ${latency}ms`,
+      );
 
       return {
         success: true,
@@ -359,28 +541,73 @@ class ModelRouter {
         metadata: {
           model: actualModel,
           provider: modelConfig.provider,
-          taskType,
+          taskType: taskCandidates.requestedTask,
+          resolvedTaskType: taskCandidates.resolvedTask,
+          selectionTier,
           latencyMs: latency,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
-
     } catch (error) {
       const latency = Date.now() - startTime;
-      logger.error(`❌ [ModelRouter] ${taskType} failed after ${latency}ms:`, error.message);
+      logger.error(
+        `❌ [ModelRouter] ${taskType} failed after ${latency}ms:`,
+        error.message,
+      );
 
-      // Try fallback if available
-      const modelConfig = this.selector.selectModel(taskType, context);
-      if (modelConfig.fallback && context.fallbackEnabled !== false) {
+      let taskCandidates = null;
+      try {
+        taskCandidates = this.buildTaskCandidates(taskType, context);
+      } catch {
+        taskCandidates = null;
+      }
+
+      if (
+        !context.useFallback &&
+        context.fallbackEnabled !== false &&
+        taskCandidates?.fallback
+      ) {
         logger.info(`🔄 [ModelRouter] Attempting fallback model...`);
 
         try {
           return await this.callLLM(taskType, {
             ...params,
-            context: { ...context, useFallback: true, fallbackEnabled: false }
+            context: {
+              ...context,
+              useFallback: true,
+              fallbackEnabled: false,
+              emergencyEnabled: context.emergencyEnabled !== false,
+            },
           });
         } catch (fallbackError) {
-          logger.error(`❌ [ModelRouter] Fallback also failed:`, fallbackError.message);
+          logger.error(
+            `❌ [ModelRouter] Fallback also failed:`,
+            fallbackError.message,
+          );
+        }
+      }
+
+      if (
+        !context.useEmergency &&
+        context.emergencyEnabled !== false &&
+        taskCandidates?.emergency
+      ) {
+        logger.info(`🚨 [ModelRouter] Attempting emergency model...`);
+        try {
+          return await this.callLLM(taskType, {
+            ...params,
+            context: {
+              ...context,
+              useEmergency: true,
+              emergencyEnabled: false,
+              fallbackEnabled: false,
+            },
+          });
+        } catch (emergencyError) {
+          logger.error(
+            `❌ [ModelRouter] Emergency model also failed:`,
+            emergencyError.message,
+          );
         }
       }
 
@@ -390,15 +617,15 @@ class ModelRouter {
         metadata: {
           taskType,
           latencyMs: latency,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
     }
   }
 
   /**
    * Call image generation models
-   * 
+   *
    * @param {string} taskType - Task type (A1_SHEET_GENERATION, TECHNICAL_2D, PHOTOREALISTIC_3D)
    * @param {Object} params - Generation parameters
    * @param {string} params.prompt - Main prompt
@@ -418,22 +645,39 @@ class ModelRouter {
       width,
       height,
       steps,
-      context = {}
+      context = {},
     } = params;
 
     const startTime = Date.now();
 
     try {
-      // Select optimal model
-      const modelConfig = this.selector.selectModel(taskType, {
+      const taskCandidates = this.buildTaskCandidates(taskType, {
         ...context,
         availableProviders: this.availableProviders,
-        originalSeed: seed
+        originalSeed: seed,
       });
+      const selectionTier = context.useEmergency
+        ? "emergency"
+        : context.useFallback
+          ? "fallback"
+          : "primary";
+      const modelConfig =
+        taskCandidates[selectionTier] || taskCandidates.primary;
+      if (!modelConfig?.model) {
+        throw new Error(
+          `No ${selectionTier} image model available for ${taskCandidates.requestedTask}`,
+        );
+      }
 
-      logger.info(`🧭 [ModelRouter] Image Task: ${taskType}`);
+      logger.info(
+        `🧭 [ModelRouter] Image Task: ${taskCandidates.requestedTask}`,
+      );
+      logger.info(`   Resolved Task: ${taskCandidates.resolvedTask}`);
+      logger.info(`   Tier: ${selectionTier}`);
       logger.info(`   Model: ${modelConfig.model}`);
-      logger.info(`   Resolution: ${width || modelConfig.params.width}×${height || modelConfig.params.height}`);
+      logger.info(
+        `   Resolution: ${width || modelConfig.params.width}×${height || modelConfig.params.height}`,
+      );
 
       // Merge parameters
       const callParams = {
@@ -444,7 +688,7 @@ class ModelRouter {
         height: height || modelConfig.params.height,
         seed: seed || modelConfig.params.seed,
         num_inference_steps: steps || modelConfig.params.num_inference_steps,
-        guidance_scale: modelConfig.params.guidance_scale
+        guidance_scale: modelConfig.params.guidance_scale,
       };
 
       // Add scheduler if specified
@@ -452,15 +696,26 @@ class ModelRouter {
         callParams.scheduler = modelConfig.params.scheduler;
       }
 
-      // Call Together image API (currently only provider for images)
-      const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherImage}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(callParams)
-      });
+      if (modelConfig.provider !== "together") {
+        throw new Error(
+          `Unsupported image provider for ${taskCandidates.requestedTask}: ${modelConfig.provider}. Configure a Together image model for this task.`,
+        );
+      }
+
+      // Call Together image API
+      const response = await fetch(
+        `${API_BASE_URL}${ENDPOINTS.togetherImage}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(callParams),
+        },
+      );
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(error.error || `HTTP ${response.status}`);
       }
 
@@ -468,7 +723,11 @@ class ModelRouter {
       const latency = Date.now() - startTime;
 
       // Track performance
-      this.trackPerformance(taskType, modelConfig.model, latency);
+      this.trackPerformance(
+        taskCandidates.requestedTask,
+        modelConfig.model,
+        latency,
+      );
 
       logger.success(` [ModelRouter] Image generated in ${latency}ms`);
 
@@ -478,32 +737,77 @@ class ModelRouter {
         metadata: {
           model: modelConfig.model,
           provider: modelConfig.provider,
-          taskType,
+          taskType: taskCandidates.requestedTask,
+          resolvedTaskType: taskCandidates.resolvedTask,
+          selectionTier,
           width: callParams.width,
           height: callParams.height,
           seed: callParams.seed,
           steps: callParams.num_inference_steps,
           latencyMs: latency,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
-
     } catch (error) {
       const latency = Date.now() - startTime;
-      logger.error(`❌ [ModelRouter] Image generation failed after ${latency}ms:`, error.message);
+      logger.error(
+        `❌ [ModelRouter] Image generation failed after ${latency}ms:`,
+        error.message,
+      );
 
-      // Try fallback model
-      const modelConfig = this.selector.selectModel(taskType, context);
-      if (modelConfig.fallback && context.fallbackEnabled !== false) {
+      let taskCandidates = null;
+      try {
+        taskCandidates = this.buildTaskCandidates(taskType, context);
+      } catch {
+        taskCandidates = null;
+      }
+
+      if (
+        !context.useFallback &&
+        context.fallbackEnabled !== false &&
+        taskCandidates?.fallback
+      ) {
         logger.info(`🔄 [ModelRouter] Attempting fallback image model...`);
 
         try {
           return await this.callImage(taskType, {
             ...params,
-            context: { ...context, useFallback: true, fallbackEnabled: false }
+            context: {
+              ...context,
+              useFallback: true,
+              fallbackEnabled: false,
+              emergencyEnabled: context.emergencyEnabled !== false,
+            },
           });
         } catch (fallbackError) {
-          logger.error(`❌ [ModelRouter] Fallback also failed:`, fallbackError.message);
+          logger.error(
+            `❌ [ModelRouter] Fallback also failed:`,
+            fallbackError.message,
+          );
+        }
+      }
+
+      if (
+        !context.useEmergency &&
+        context.emergencyEnabled !== false &&
+        taskCandidates?.emergency
+      ) {
+        logger.info(`🚨 [ModelRouter] Attempting emergency image model...`);
+        try {
+          return await this.callImage(taskType, {
+            ...params,
+            context: {
+              ...context,
+              useEmergency: true,
+              emergencyEnabled: false,
+              fallbackEnabled: false,
+            },
+          });
+        } catch (emergencyError) {
+          logger.error(
+            `❌ [ModelRouter] Emergency image model also failed:`,
+            emergencyError.message,
+          );
         }
       }
 
@@ -513,8 +817,8 @@ class ModelRouter {
         metadata: {
           taskType,
           latencyMs: latency,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
     }
   }
@@ -524,17 +828,19 @@ class ModelRouter {
    */
   async callTogetherChat(model, messages, params) {
     const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherChat}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
         messages,
-        ...params
-      })
+        ...params,
+      }),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
       throw new Error(error.error || `HTTP ${response.status}`);
     }
 
@@ -546,17 +852,19 @@ class ModelRouter {
    */
   async callOpenAIChat(model, messages, params) {
     const response = await fetch(`${API_BASE_URL}${ENDPOINTS.openaiChat}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
         messages,
-        ...params
-      })
+        ...params,
+      }),
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const error = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
       throw new Error(error.error || `HTTP ${response.status}`);
     }
 
@@ -568,7 +876,11 @@ class ModelRouter {
    */
   trackPerformance(taskType, model, latencyMs) {
     const key = `${taskType}:${model}`;
-    const existing = this.performanceCache.get(key) || { count: 0, totalLatency: 0, failures: 0 };
+    const existing = this.performanceCache.get(key) || {
+      count: 0,
+      totalLatency: 0,
+      failures: 0,
+    };
 
     existing.count++;
     existing.totalLatency += latencyMs;
@@ -579,8 +891,9 @@ class ModelRouter {
 
     // Limit cache size
     if (this.performanceCache.size > 100) {
-      const oldest = Array.from(this.performanceCache.entries())
-        .sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
+      const oldest = Array.from(this.performanceCache.entries()).sort(
+        (a, b) => a[1].lastUsed - b[1].lastUsed,
+      )[0];
       this.performanceCache.delete(oldest[0]);
     }
   }
@@ -588,7 +901,7 @@ class ModelRouter {
   /**
    * Get rate limiting config for current provider
    */
-  getRateLimiting(provider = 'together') {
+  getRateLimiting(provider = "together") {
     return this.selector.getRateLimiting(provider);
   }
 
@@ -608,7 +921,7 @@ class ModelRouter {
       stats[key] = {
         avgLatency: Math.round(value.avgLatency),
         callCount: value.count,
-        failureRate: value.failures / value.count
+        failureRate: value.failures / value.count,
       };
     });
     return stats;
@@ -626,15 +939,29 @@ const modelRouter = new ModelRouter();
  * Generate Design DNA using optimal model
  */
 export async function generateDNA(params) {
-  const { projectBrief, locationProfile, blendedStyle, siteMetrics, programSpaces, context } = params;
+  const {
+    projectBrief,
+    locationProfile,
+    blendedStyle,
+    siteMetrics,
+    programSpaces,
+    context,
+  } = params;
 
-  return await modelRouter.callLLM('DNA_GENERATION', {
-    systemPrompt: 'You are an expert architect creating detailed Design DNA for architectural projects. Always return valid JSON with exact specifications.',
-    userPrompt: buildDNAPrompt({ projectBrief, locationProfile, blendedStyle, siteMetrics, programSpaces }),
+  return await modelRouter.callLLM("DNA_GENERATION", {
+    systemPrompt:
+      "You are an expert architect creating detailed Design DNA for architectural projects. Always return valid JSON with exact specifications.",
+    userPrompt: buildDNAPrompt({
+      projectBrief,
+      locationProfile,
+      blendedStyle,
+      siteMetrics,
+      programSpaces,
+    }),
     schema: true,
     temperature: 0.2,
     maxTokens: 4000,
-    context: context || {}
+    context: context || {},
   });
 }
 
@@ -644,13 +971,14 @@ export async function generateDNA(params) {
 export async function generateReasoning(params) {
   const { projectContext, context } = params;
 
-  return await modelRouter.callLLM('ARCHITECTURAL_REASONING', {
-    systemPrompt: 'You are an expert architect providing design reasoning and recommendations. Return structured JSON.',
+  return await modelRouter.callLLM("ARCHITECTURAL_REASONING", {
+    systemPrompt:
+      "You are an expert architect providing design reasoning and recommendations. Return structured JSON.",
     userPrompt: buildReasoningPrompt(projectContext),
     schema: true,
     temperature: 0.7,
     maxTokens: 2000,
-    context: context || {}
+    context: context || {},
   });
 }
 
@@ -660,13 +988,13 @@ export async function generateReasoning(params) {
 export async function generateA1SheetImage(params) {
   const { prompt, negativePrompt, seed, width, height, context } = params;
 
-  return await modelRouter.callImage('A1_SHEET_GENERATION', {
+  return await modelRouter.callImage("A1_SHEET_GENERATION", {
     prompt,
     negativePrompt,
     seed,
     width: width || 1792,
     height: height || 1269,
-    context: context || {}
+    context: context || {},
   });
 }
 
@@ -676,13 +1004,13 @@ export async function generateA1SheetImage(params) {
 export async function generate2DTechnical(params) {
   const { prompt, negativePrompt, seed, context } = params;
 
-  return await modelRouter.callImage('TECHNICAL_2D', {
+  return await modelRouter.callImage("TECHNICAL_2D", {
     prompt,
     negativePrompt,
     seed,
     width: 1024,
     height: 1024,
-    context: context || {}
+    context: context || {},
   });
 }
 
@@ -692,24 +1020,30 @@ export async function generate2DTechnical(params) {
 export async function generate3DView(params) {
   const { prompt, negativePrompt, seed, context } = params;
 
-  return await modelRouter.callImage('PHOTOREALISTIC_3D', {
+  return await modelRouter.callImage("PHOTOREALISTIC_3D", {
     prompt,
     negativePrompt,
     seed,
     width: 1536,
     height: 1024,
-    context: context || {}
+    context: context || {},
   });
 }
 
 // Helper: Build DNA prompt (simplified - full version in promptLibrary)
-function buildDNAPrompt({ projectBrief, locationProfile, blendedStyle, siteMetrics, programSpaces }) {
+function buildDNAPrompt({
+  projectBrief,
+  locationProfile,
+  blendedStyle,
+  siteMetrics,
+  programSpaces,
+}) {
   return `Generate Master Design DNA for:
-Project: ${projectBrief || 'Architectural project'}
-Location: ${locationProfile?.address || 'Not specified'}
-Style: ${blendedStyle?.styleName || 'Contemporary'}
-Site: ${siteMetrics?.areaM2 || 'TBD'}m²
-Program: ${programSpaces?.map(s => `${s.name}: ${s.area}m²`).join(', ') || 'TBD'}
+Project: ${projectBrief || "Architectural project"}
+Location: ${locationProfile?.address || "Not specified"}
+Style: ${blendedStyle?.styleName || "Contemporary"}
+Site: ${siteMetrics?.areaM2 || "TBD"}m²
+Program: ${programSpaces?.map((s) => `${s.name}: ${s.area}m²`).join(", ") || "TBD"}
 
 Return detailed JSON with dimensions, materials, rooms, elevations, and consistency rules.`;
 }
@@ -724,4 +1058,3 @@ Return JSON with designPhilosophy, spatialOrganization, materialRecommendations,
 
 export default modelRouter;
 export { modelRouter };
-

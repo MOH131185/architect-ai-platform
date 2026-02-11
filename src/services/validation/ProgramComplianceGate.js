@@ -236,6 +236,11 @@ export function validatePanelsAgainstProgram(
     strict = true,
     buildingModel = null,
     requireAdjacencyModel = false,
+    requireGeometryModel = FEATURE_FLAGS.geometryAuthorityMandatory === true ||
+      FEATURE_FLAGS.strictCanonicalGeometryPack === true ||
+      FEATURE_FLAGS.programGeometryFidelityGate === true,
+    enforceRoomAreaFromGeometry = FEATURE_FLAGS.programGeometryFidelityGate !==
+      false,
   } = options;
   const violations = [];
   const report = {
@@ -308,6 +313,42 @@ export function validatePanelsAgainstProgram(
     }
   }
 
+  // Enforce geometric program fidelity (areas + counts from built room geometry).
+  if (enforceRoomAreaFromGeometry) {
+    if (!buildingModel) {
+      const message =
+        "Geometry fidelity check enabled but no BuildingModel was provided";
+      report.geometryValidation = {
+        valid: false,
+        violations: [message],
+        warnings: [],
+      };
+      if (requireGeometryModel) {
+        violations.push(message);
+      } else {
+        report.warning = report.warning
+          ? `${report.warning}; ${message}`
+          : message;
+      }
+    } else {
+      const geometryResult = validateBuildingGeometryAgainstProgram(
+        buildingModel,
+        programLock,
+        {
+          areaTolerance:
+            programLock?.invariants?.areaTolerance ??
+            FEATURE_FLAGS.areaTolerance ??
+            0.03,
+        },
+      );
+      report.geometryValidation = geometryResult;
+      violations.push(...(geometryResult.violations || []));
+      if (geometryResult.warnings?.length > 0) {
+        report.geometryWarnings = geometryResult.warnings;
+      }
+    }
+  }
+
   report.floorPlanPanelCount = floorPlanPanels.length;
   report.expectedLevels = expectedLevels;
 
@@ -328,7 +369,12 @@ export function validatePanelsAgainstProgram(
  * @returns {{ valid: boolean, violations: string[], report: Object }}
  */
 export function validateBeforeCompose(panels, programLock, cds, options = {}) {
-  const { strict = true } = options;
+  const {
+    strict = true,
+    buildingModel = null,
+    requireAdjacencyModel = false,
+    requireGeometryModel = FEATURE_FLAGS.programGeometryFidelityGate !== false,
+  } = options;
   const violations = [];
   const report = {
     checkpoint: "pre-compose",
@@ -358,6 +404,11 @@ export function validateBeforeCompose(panels, programLock, cds, options = {}) {
   // 2. Re-run panel compliance
   const panelResult = validatePanelsAgainstProgram(panels, programLock, {
     strict: false,
+    buildingModel,
+    requireAdjacencyModel,
+    requireGeometryModel,
+    enforceRoomAreaFromGeometry:
+      FEATURE_FLAGS.programGeometryFidelityGate !== false,
   });
   violations.push(...panelResult.violations);
   report.panelReport = panelResult.report;
@@ -397,6 +448,169 @@ function normaliseDNARoomLevel(room) {
   if (s === "3" || s === "3rd" || s === "third") return 3;
   const num = parseInt(s, 10);
   return isNaN(num) ? null : num;
+}
+
+function normaliseModelRoomLevel(floor, fallbackIndex) {
+  const raw =
+    floor?.index ?? floor?.level ?? floor?.levelIndex ?? floor?.floor ?? null;
+  if (raw === null || raw === undefined) return fallbackIndex ?? 0;
+  if (typeof raw === "number") return raw;
+  return normaliseDNARoomLevel({ level: raw }) ?? fallbackIndex ?? 0;
+}
+
+function toAreaM2(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // Heuristic: values > 10,000 are almost certainly mm², convert to m².
+  if (n > 10000) return n / 1_000_000;
+  return n;
+}
+
+function normaliseName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase();
+}
+
+function roomNameMatchesLock(roomName, lockName) {
+  const a = normaliseName(roomName);
+  const b = normaliseName(lockName);
+  if (!a || !b) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+function selectBestAreaMatches(rooms, targetArea, count) {
+  if (!Array.isArray(rooms) || rooms.length === 0) return [];
+  const desired = Math.max(1, Number(count) || 1);
+  return [...rooms]
+    .sort((a, b) => {
+      const da = Math.abs((a.areaM2 || 0) - targetArea);
+      const db = Math.abs((b.areaM2 || 0) - targetArea);
+      return da - db;
+    })
+    .slice(0, desired);
+}
+
+/**
+ * Validate that built geometry rooms respect program lock areas and counts.
+ *
+ * @param {Object} buildingModel
+ * @param {Object} programLock
+ * @param {Object} [options]
+ * @returns {{ valid: boolean, violations: string[], warnings: string[], perSpace: Array }}
+ */
+export function validateBuildingGeometryAgainstProgram(
+  buildingModel,
+  programLock,
+  options = {},
+) {
+  const violations = [];
+  const warnings = [];
+  const perSpace = [];
+  const areaTolerance = Number(options.areaTolerance ?? 0.03);
+
+  if (!buildingModel || !Array.isArray(buildingModel.floors)) {
+    return {
+      valid: false,
+      violations: ["BuildingModel is missing floors for geometry validation"],
+      warnings,
+      perSpace,
+      areaTolerance,
+    };
+  }
+
+  const modelRooms = [];
+  buildingModel.floors.forEach((floor, idx) => {
+    const level = normaliseModelRoomLevel(floor, idx);
+    const rooms = Array.isArray(floor?.rooms) ? floor.rooms : [];
+    rooms.forEach((room) => {
+      const areaM2 = toAreaM2(room?.areaM2 || room?.area);
+      modelRooms.push({
+        level,
+        name: room?.name || room?.id || "Room",
+        areaM2,
+        targetAreaM2: toAreaM2(room?.targetAreaM2),
+      });
+    });
+  });
+
+  if (modelRooms.length === 0) {
+    return {
+      valid: false,
+      violations: ["BuildingModel has no rooms for geometry validation"],
+      warnings,
+      perSpace,
+      areaTolerance,
+    };
+  }
+
+  for (const lockedSpace of programLock?.spaces || []) {
+    const expectedLevel = lockedSpace.lockedLevel;
+    const expectedCount = Math.max(1, Number(lockedSpace.count) || 1);
+    const targetArea = Number(lockedSpace.targetAreaM2) || 0;
+
+    const matchingRooms = modelRooms.filter(
+      (room) =>
+        room.level === expectedLevel &&
+        roomNameMatchesLock(room.name, lockedSpace.name),
+    );
+
+    if (matchingRooms.length < expectedCount) {
+      violations.push(
+        `Geometry rooms for "${lockedSpace.name}" on level ${expectedLevel}: expected ${expectedCount}, found ${matchingRooms.length}`,
+      );
+      perSpace.push({
+        space: lockedSpace.name,
+        level: expectedLevel,
+        expectedCount,
+        foundCount: matchingRooms.length,
+        targetAreaM2: targetArea,
+        match: false,
+      });
+      continue;
+    }
+
+    const selectedRooms = selectBestAreaMatches(
+      matchingRooms,
+      targetArea,
+      expectedCount,
+    );
+    const deviations = selectedRooms.map((room) => {
+      if (!targetArea || !room.areaM2) return 0;
+      return Math.abs(room.areaM2 - targetArea) / targetArea;
+    });
+
+    const areaViolations = [];
+    deviations.forEach((deviation, idx) => {
+      if (targetArea > 0 && deviation > areaTolerance) {
+        const room = selectedRooms[idx];
+        areaViolations.push(
+          `${room.name}: ${room.areaM2.toFixed(2)}m² vs target ${targetArea.toFixed(2)}m² (${(deviation * 100).toFixed(1)}% deviation)`,
+        );
+      }
+    });
+
+    if (areaViolations.length > 0) {
+      violations.push(
+        `Geometry area tolerance exceeded for "${lockedSpace.name}" on level ${expectedLevel}: ${areaViolations.join("; ")}`,
+      );
+    }
+
+    perSpace.push({
+      space: lockedSpace.name,
+      level: expectedLevel,
+      expectedCount,
+      foundCount: matchingRooms.length,
+      targetAreaM2: targetArea,
+      actualAreasM2: selectedRooms.map((r) => r.areaM2),
+      deviations,
+      maxDeviation: deviations.length > 0 ? Math.max(...deviations) : 0,
+      match: areaViolations.length === 0,
+    });
+  }
+
+  const valid = violations.length === 0;
+  return { valid, violations, warnings, perSpace, areaTolerance };
 }
 
 /**

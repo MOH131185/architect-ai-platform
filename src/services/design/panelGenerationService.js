@@ -3854,6 +3854,15 @@ export async function generateA1PanelsSequential(
               );
             }
           }
+
+          const blockOnQualityFailure =
+            getFeatureValue("panelQualityBlockOnFailure") === true ||
+            getFeatureValue("strictPanelFailFast") === true;
+          if (blockOnQualityFailure && !panelResult.validation?.passed) {
+            throw new Error(
+              `[QUALITY GATE] ${job.type} failed validation after retry (score ${(panelResult.validation.score * 100).toFixed(1)}%): ${panelResult.validation.issues.join(", ")}`,
+            );
+          }
         } else {
           logger.info(
             `   ✓ Quality check passed (score: ${(validationResult.score * 100).toFixed(1)}%)`,

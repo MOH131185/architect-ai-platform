@@ -148,6 +148,9 @@ export class BuildingModel {
     // 5. Compute facade summary (for consistency validation)
     this.facadeSummary = this._computeFacadeSummary();
 
+    // 5b. Program area audit (target vs built), used by compliance gates.
+    this.programAreaAudit = this._computeProgramAreaAudit();
+
     // 6. Store style reference
     this.style = {
       vernacular: state.style?.vernacularStyle || "contemporary",
@@ -159,6 +162,7 @@ export class BuildingModel {
       floors: this.floors.length,
       totalRooms: this.floors.reduce((sum, f) => sum + f.rooms.length, 0),
       facadeSummary: this.facadeSummary,
+      areaAuditViolations: this.programAreaAudit?.violations?.length || 0,
     });
   }
 
@@ -2387,6 +2391,75 @@ export class BuildingModel {
     return summary;
   }
 
+  /**
+   * Compute per-room and per-floor area drift against target program areas.
+   * Uses room.targetAreaM2 when present.
+   * @private
+   */
+  _computeProgramAreaAudit() {
+    const perRoom = [];
+    const perFloor = [];
+    let totalTarget = 0;
+    let totalActual = 0;
+
+    this.floors.forEach((floor) => {
+      const floorRooms = floor.rooms || [];
+      let floorTarget = 0;
+      let floorActual = 0;
+
+      floorRooms.forEach((room) => {
+        const target = Number(room.targetAreaM2) || 0;
+        const actual = Number(room.areaM2) || toAreaM2FromMM2(room.area) || 0;
+        const deviation = target > 0 ? Math.abs(actual - target) / target : 0;
+
+        floorTarget += target;
+        floorActual += actual;
+        totalTarget += target;
+        totalActual += actual;
+
+        perRoom.push({
+          level: floor.index,
+          room: room.name || room.id || "Room",
+          targetAreaM2: target,
+          actualAreaM2: actual,
+          deviation,
+        });
+      });
+
+      perFloor.push({
+        level: floor.index,
+        targetAreaM2: floorTarget,
+        actualAreaM2: floorActual,
+        deviation:
+          floorTarget > 0
+            ? Math.abs(floorActual - floorTarget) / floorTarget
+            : 0,
+      });
+    });
+
+    const violations = perRoom.filter(
+      (r) => r.targetAreaM2 > 0 && r.deviation > 0.1,
+    );
+    const warnings = perRoom.filter(
+      (r) => r.targetAreaM2 > 0 && r.deviation > 0.05 && r.deviation <= 0.1,
+    );
+
+    return {
+      perRoom,
+      perFloor,
+      totals: {
+        targetAreaM2: totalTarget,
+        actualAreaM2: totalActual,
+        deviation:
+          totalTarget > 0
+            ? Math.abs(totalActual - totalTarget) / totalTarget
+            : 0,
+      },
+      violations,
+      warnings,
+    };
+  }
+
   // ===========================================================================
   // QUERY METHODS (used by projections)
   // ===========================================================================
@@ -2458,6 +2531,22 @@ export class BuildingModel {
       height: this.envelope.height / MM_PER_M,
       ridgeHeight: this.roof.ridgeHeight / MM_PER_M,
     };
+  }
+
+  /**
+   * Program area audit report for gates and diagnostics.
+   * @returns {Object}
+   */
+  getProgramAreaAudit() {
+    return (
+      this.programAreaAudit || {
+        perRoom: [],
+        perFloor: [],
+        totals: { targetAreaM2: 0, actualAreaM2: 0, deviation: 0 },
+        violations: [],
+        warnings: [],
+      }
+    );
   }
 
   /**
@@ -2569,6 +2658,12 @@ export class BuildingModel {
  */
 export function createBuildingModel(canonicalState) {
   return new BuildingModel(canonicalState);
+}
+
+function toAreaM2FromMM2(rawArea) {
+  const n = Number(rawArea);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n > 10000 ? n / (MM_PER_M * MM_PER_M) : n;
 }
 
 export default BuildingModel;

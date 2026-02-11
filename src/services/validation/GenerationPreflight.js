@@ -99,6 +99,13 @@ export class GenerationPreflight {
               `does not match DNA floor count (${floors})`,
           );
         }
+
+        const fitCheck = validateProgramFitToEnvelope(
+          masterDNA,
+          programSchedule,
+        );
+        errors.push(...fitCheck.errors);
+        warnings.push(...fitCheck.warnings);
       }
     }
 
@@ -151,6 +158,75 @@ function result(errors, warnings, strict) {
     );
   }
   return { valid, errors, warnings };
+}
+
+function validateProgramFitToEnvelope(masterDNA, programLock) {
+  const errors = [];
+  const warnings = [];
+
+  const dims = masterDNA?.dimensions || {};
+  const length =
+    Number(dims.length) ||
+    Number(dims.length_m) ||
+    Number(dims.depth) ||
+    Number(dims.depth_m) ||
+    0;
+  const width =
+    Number(dims.width) ||
+    Number(dims.width_m) ||
+    Number(dims.breadth) ||
+    Number(dims.breadth_m) ||
+    0;
+
+  if (length <= 0 || width <= 0) {
+    warnings.push(
+      "Cannot evaluate program fit to envelope (missing DNA length/width dimensions)",
+    );
+    return { errors, warnings };
+  }
+
+  const footprintM2 = length * width;
+  const requestedUsableRatio = Number(
+    process.env.ARCHIAI_PROGRAM_USABLE_RATIO ||
+      process.env.REACT_APP_ARCHIAI_PROGRAM_USABLE_RATIO ||
+      0.78,
+  );
+  const usableRatio = Number.isFinite(requestedUsableRatio)
+    ? Math.max(0.55, Math.min(0.9, requestedUsableRatio))
+    : 0.78;
+  const usablePerLevelM2 = footprintM2 * usableRatio;
+
+  const requiredByLevel = new Map();
+  for (const space of programLock?.spaces || []) {
+    const level = Number(space.lockedLevel) || 0;
+    const area = (Number(space.targetAreaM2) || 0) * (Number(space.count) || 1);
+    requiredByLevel.set(level, (requiredByLevel.get(level) || 0) + area);
+  }
+
+  let totalRequired = 0;
+  for (const [level, required] of requiredByLevel.entries()) {
+    totalRequired += required;
+    const fillRatio = usablePerLevelM2 > 0 ? required / usablePerLevelM2 : 0;
+    if (required > usablePerLevelM2 * 1.02) {
+      errors.push(
+        `Program for level ${level} is infeasible: required ${required.toFixed(1)}m² exceeds usable envelope ${usablePerLevelM2.toFixed(1)}m² (length ${length}m × width ${width}m, usable ratio ${(usableRatio * 100).toFixed(0)}%)`,
+      );
+    } else if (fillRatio > 0.9) {
+      warnings.push(
+        `Program on level ${level} is highly dense (${(fillRatio * 100).toFixed(1)}% of usable footprint) and may degrade room quality`,
+      );
+    }
+  }
+
+  const levelCount = Math.max(1, Number(programLock?.levelCount) || 1);
+  const totalUsable = usablePerLevelM2 * levelCount;
+  if (totalRequired > totalUsable * 1.02) {
+    errors.push(
+      `Program total area ${totalRequired.toFixed(1)}m² exceeds estimated usable building capacity ${totalUsable.toFixed(1)}m²`,
+    );
+  }
+
+  return { errors, warnings };
 }
 
 // Backwards-compatible singleton export

@@ -24,12 +24,9 @@ const EXTERIOR_GROUP = [
 ];
 
 const DEFAULT_THRESHOLDS = {
-  // Very lenient thresholds to avoid false blocks from different viewpoints.
-  // AI-generated panels use fundamentally different renderings per view
-  // (photorealistic hero vs technical axonometric vs interior perspective),
-  // so thresholds must accommodate large visual differences.
-  maxPHashDistance: 48, // out of 64 (higher = more different)
-  minCombinedSimilarity: 0.1, // 0..1 (higher = more similar)
+  // Balanced thresholds for real cross-view consistency.
+  maxPHashDistance: 38, // out of 64 (lower = stricter)
+  minCombinedSimilarity: 0.18, // 0..1 (higher = stricter)
   resize: 256,
   pixelmatchThreshold: 0.12,
 };
@@ -158,6 +155,32 @@ export async function validateAllPanels(panelMap, options = {}) {
   const sharp = await getSharp();
   const thresholds = { ...DEFAULT_THRESHOLDS, ...(options.thresholds || {}) };
   const baseUrl = options.baseUrl || resolveBaseUrl();
+
+  const geometryHashes = [
+    ...new Set(
+      Object.values(panelMap)
+        .map((entry) => entry?.geometryHash || null)
+        .filter(Boolean),
+    ),
+  ];
+  if (geometryHashes.length > 1) {
+    return {
+      pass: false,
+      overallScore: 0,
+      failedPanels: [
+        {
+          panelType: "all",
+          score: 0,
+          reasons: [
+            `Geometry hash mismatch across panels (${geometryHashes.length} unique hashes)`,
+          ],
+        },
+      ],
+      comparisons: [],
+      thresholds,
+      geometryHashes,
+    };
+  }
 
   const heroEntry = panelMap.hero_3d || null;
   if (!heroEntry?.buffer && !heroEntry?.url) {

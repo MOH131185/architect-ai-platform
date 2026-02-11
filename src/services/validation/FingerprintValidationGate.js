@@ -245,10 +245,15 @@ export async function runPreCompositionGate(
       continue;
     }
 
-    // Skip TIER 1 deterministic SVG panels (geometry-correct by construction)
+    // TIER 1 deterministic SVG panels: validate semantic consistency metadata.
     if (isTier1DeterministicPanel(panelType)) {
-      passedPanels.push(panelType);
-      totalScore += 1.0;
+      const validation = validateTier1DeterministicPanel(panel, options);
+      if (validation.passed) {
+        passedPanels.push(panelType);
+      } else {
+        failedPanels.push(validation);
+      }
+      totalScore += validation.matchScore;
       continue;
     }
 
@@ -765,6 +770,51 @@ function isTier1DeterministicPanel(panelType) {
     isFeatureEnabled("threeTierPanelConsistency") &&
     TIER1_DETERMINISTIC_PANELS.has(panelType)
   );
+}
+
+function validateTier1DeterministicPanel(panel, options = {}) {
+  const panelType = panel?.panelType || panel?.type || "unknown";
+  const issues = [];
+  const imageUrl = panel?.imageUrl || panel?.url || "";
+  const geometryHash = panel?.geometryHash || panel?.meta?.geometryHash || null;
+  const cdsHash = panel?.cdsHash || panel?.meta?.cdsHash || null;
+  const controlSource =
+    panel?.controlImageInfo?.controlSource ||
+    panel?._controlSource?.type ||
+    panel?.meta?.controlSource ||
+    null;
+
+  if (!imageUrl) {
+    issues.push("Missing rendered output URL");
+  }
+  if (!geometryHash) {
+    issues.push("Missing geometryHash on deterministic panel");
+  }
+  if (!cdsHash && options?.requireCdsHash !== false) {
+    issues.push("Missing cdsHash on deterministic panel");
+  }
+  if (
+    options?.requireDeterministicControl !== false &&
+    !controlSource &&
+    panelType !== "site_diagram"
+  ) {
+    issues.push("Missing deterministic control source metadata");
+  }
+
+  const passed = issues.length === 0;
+  return {
+    panelType,
+    passed,
+    matchScore: passed ? 1.0 : 0.2,
+    metrics: {
+      hasImage: !!imageUrl,
+      hasGeometryHash: !!geometryHash,
+      hasCdsHash: !!cdsHash,
+      controlSource: controlSource || "none",
+    },
+    issues,
+    recommendation: passed ? "accept" : "block",
+  };
 }
 
 /**

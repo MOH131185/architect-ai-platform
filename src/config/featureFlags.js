@@ -534,7 +534,7 @@ export const FEATURE_FLAGS = {
   // =========================================================================
 
   /** Strict control image mode - enforce control images for all panels */
-  strictControlImageMode: false,
+  strictControlImageMode: true,
 
   /** Use canonical baseline comparison during generation */
   useCanonicalBaseline: false,
@@ -585,13 +585,16 @@ export const FEATURE_FLAGS = {
   strictDeterministic2D: false,
 
   /** Validate panel quality before composition */
-  panelQualityValidation: false,
+  panelQualityValidation: true,
+
+  /** Block pipeline when panel quality validation still fails after retry */
+  panelQualityBlockOnFailure: true,
 
   /** Auto-retry failed panel generation */
   autoRetryFailedPanels: true,
 
   /** Gate for control image fidelity */
-  controlFidelityGate: false,
+  controlFidelityGate: true,
 
   /** Fail-fast behavior in contract gate validation */
   contractGateFailFast: false,
@@ -707,7 +710,13 @@ export const FEATURE_FLAGS = {
   strictCanonicalControlMode: false,
 
   /** Strict geometry pack requirements */
-  strictCanonicalGeometryPack: false,
+  strictCanonicalGeometryPack: true,
+
+  /** Enforce room area/count fidelity against built geometry */
+  programGeometryFidelityGate: true,
+
+  /** Require env-defined primary model keys for routed tasks */
+  strictEnvModelRouting: false,
 
   /** @type {number} Max validation passes before stopping */
   maxValidationPasses: 3,
@@ -926,7 +935,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.opusSheetCritic = false;
   FEATURE_FLAGS.opusPanelValidator = false;
   // Hot-path panel generation defaults
-  FEATURE_FLAGS.strictControlImageMode = false;
+  FEATURE_FLAGS.strictControlImageMode = true;
   FEATURE_FLAGS.useCanonicalBaseline = false;
   FEATURE_FLAGS.outputMode = "presentation";
   FEATURE_FLAGS.strictPanelValidation = false;
@@ -936,8 +945,9 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.autoRetryFailedPanels = true;
   FEATURE_FLAGS.forceBaselineControl = false;
   FEATURE_FLAGS.strictDeterministic2D = false;
-  FEATURE_FLAGS.panelQualityValidation = false;
-  FEATURE_FLAGS.controlFidelityGate = false;
+  FEATURE_FLAGS.panelQualityValidation = true;
+  FEATURE_FLAGS.panelQualityBlockOnFailure = true;
+  FEATURE_FLAGS.controlFidelityGate = true;
   FEATURE_FLAGS.contractGateFailFast = false;
   FEATURE_FLAGS.canonicalControlPack = true;
   FEATURE_FLAGS.requireCanonicalPack = true;
@@ -945,7 +955,9 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.dnaSchemaVersion = 2;
   FEATURE_FLAGS.areaTolerance = 0.03;
   FEATURE_FLAGS.strictCanonicalControlMode = false;
-  FEATURE_FLAGS.strictCanonicalGeometryPack = false;
+  FEATURE_FLAGS.strictCanonicalGeometryPack = true;
+  FEATURE_FLAGS.programGeometryFidelityGate = true;
+  FEATURE_FLAGS.strictEnvModelRouting = false;
   FEATURE_FLAGS.maxValidationPasses = 3;
   FEATURE_FLAGS.saveControlPackToDebug = false;
   FEATURE_FLAGS.contractGateMaxRetries = 2;
@@ -1064,6 +1076,14 @@ function loadP0EnvOverrides() {
         const n = parseFloat(v);
         return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.1;
       },
+    },
+    ARCHIAI_PROGRAM_GEOMETRY_FIDELITY: {
+      flag: "programGeometryFidelityGate",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_STRICT_MODEL_ROUTING: {
+      flag: "strictEnvModelRouting",
+      parse: (v) => v === "true",
     },
   };
 

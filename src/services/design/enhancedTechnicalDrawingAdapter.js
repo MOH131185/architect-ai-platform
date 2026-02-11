@@ -528,9 +528,32 @@ class GeometryAdapter {
     // Check if rooms already have polygon data (from populatedGeometry)
     // If yes, use them directly without auto-layout to preserve exact geometry
     const hasPolygons = rooms.some((r) => r.polygon?.length >= 3);
+    const hasExplicitRoomLayout = rooms.every(
+      (r) =>
+        Number.isFinite(Number(r.x)) &&
+        Number.isFinite(Number(r.y)) &&
+        Number.isFinite(Number(r.width)) &&
+        Number.isFinite(Number(r.length)),
+    );
+
+    const strictGeometryFidelity =
+      isFeatureEnabled("strictGeometryMaskGate") ||
+      isFeatureEnabled("strictCanonicalGeometryPack") ||
+      isFeatureEnabled("programGeometryFidelityGate");
+
+    // In strict mode, do not invent room layouts when authoritative geometry is missing.
+    if (strictGeometryFidelity && !hasPolygons && !hasExplicitRoomLayout) {
+      logger.warn(
+        `[GeometryAdapter] Floor ${floor}: missing polygon/explicit room layout in strict geometry mode`,
+      );
+      return null;
+    }
+
     const layoutRooms = hasPolygons
       ? rooms
-      : this.autoLayoutRooms(rooms, floor);
+      : hasExplicitRoomLayout
+        ? rooms
+        : this.autoLayoutRooms(rooms, floor);
 
     if (hasPolygons) {
       logger.debug(
