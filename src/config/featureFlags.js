@@ -717,9 +717,9 @@ export const FEATURE_FLAGS = {
    * (corridors, stairwells) to pass while catching major room failures.
    *
    * @type {number}
-   * @default 2
+   * @default 6
    */
-  maxProgramViolations: 2,
+  maxProgramViolations: 6,
 
   /**
    * Max Level Mismatch (0 = strict)

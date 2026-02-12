@@ -36,7 +36,7 @@ const REGISTRY = {
         id: "qwen3-235b-fewshot",
         type: "llm",
         provider: "together",
-        togetherModel: "Qwen/Qwen3-235B-A22B",
+        togetherModel: "Qwen/Qwen3-235B-A22B-fp8",
         supportsJsonMode: false,
         stripThinkingTags: true,
         temperature: 0.3,
@@ -69,7 +69,7 @@ const REGISTRY = {
         id: "qwen3-235b-rag",
         type: "llm-rag",
         provider: "together",
-        togetherModel: "Qwen/Qwen3-235B-A22B",
+        togetherModel: "Qwen/Qwen3-235B-A22B-fp8",
         vectorDB: null, // Set when PINECONE_INDEX configured
         supportsJsonMode: false,
         stripThinkingTags: true,
