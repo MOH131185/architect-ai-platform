@@ -309,8 +309,20 @@ export function buildHero3DPrompt({
       ? "SINGLE STOREY ground-level volume (NO upper floor)"
       : `compact ${dims.floors}-storey volume`;
 
+  // FLUX weights early tokens most — prepend hard building-type enforcement
+  const floorText =
+    dims.floors === 1
+      ? "single-storey bungalow, ONE floor only"
+      : dims.floors === 2
+        ? "two-storey house"
+        : `${dims.floors}-storey building`;
+  const buildingTypePrefix =
+    `ONE standalone ${floorText} DETACHED house, ` +
+    `isolated building with garden and open space on ALL sides, ` +
+    `photographed from front-left corner, `;
+
   // Hero establishes the design - include strong design specification
-  const prompt = `${identity}
+  const prompt = `${buildingTypePrefix}${identity}
 
 Hero exterior 3D perspective view - MASTER REFERENCE for all other panels
 Building: ${style} ${projectType}
@@ -344,7 +356,7 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, multiple buildings, row of houses, terraced houses, townhouses, housing estate, housing development, street of houses, neighborhood, multiple roofs, semi-detached, duplex, apartment block, people, cars, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, housing estate, street of houses, neighborhood, multiple roofs, duplex, apartment block, flats, apartments, townhouses, housing development, cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, people, cars, ${dims.floors === 1 ? "two storey, second floor, upper floor, balcony, " : ""}${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 

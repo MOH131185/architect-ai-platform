@@ -75,14 +75,14 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   const dims = model.getDimensionsMeters();
   const pxPerMM = scale / MM_PER_M;
 
-  // Calculate view bounds
-  const marginPx = 40;
+  // Calculate view bounds — tight-frame to building content so the plan
+  // fills its panel rather than appearing microscopic inside a large canvas.
+  const annotationPad = 100; // room for dim lines, section-cut markers, labels
   const contentWidth = dims.width * scale;
   const contentHeight = dims.depth * scale;
 
-  // Adjust SVG size if needed
-  const finalWidth = Math.max(svgWidth, contentWidth + 2 * marginPx);
-  const finalHeight = Math.max(svgHeight, contentHeight + 2 * marginPx);
+  const finalWidth = contentWidth + 2 * annotationPad;
+  const finalHeight = contentHeight + 2 * annotationPad;
 
   // Center offset
   const offsetX = finalWidth / 2;
@@ -584,20 +584,17 @@ export function projectElevation(model, orientation = "S", options = {}) {
   const elevationWidth = isNS ? dims.width : dims.depth;
   const elevationWidthMM = elevationWidth * MM_PER_M;
 
-  // Calculate content size
-  const marginPx = 40;
+  // Calculate content size — tight-frame to building so elevation fills its panel
+  const annotationPad = 80;
   const groundPx = 40;
   const contentWidth = elevationWidth * scale;
   const contentHeight = dims.ridgeHeight * scale;
 
-  const finalWidth = Math.max(svgWidth, contentWidth + 2 * marginPx);
-  const finalHeight = Math.max(
-    svgHeight,
-    contentHeight + groundPx + 2 * marginPx,
-  );
+  const finalWidth = contentWidth + 2 * annotationPad;
+  const finalHeight = contentHeight + groundPx + 2 * annotationPad;
 
   // Ground level Y position in SVG
-  const groundY = finalHeight - marginPx - groundPx;
+  const groundY = finalHeight - annotationPad - groundPx;
   const offsetX = finalWidth / 2;
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
@@ -609,7 +606,7 @@ export function projectElevation(model, orientation = "S", options = {}) {
   // Ground with grass indication
   if (showGround) {
     // Grass-green fill below ground line
-    svg += `<rect fill="${style.colors.groundFill}" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + marginPx}"/>`;
+    svg += `<rect fill="${style.colors.groundFill}" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + annotationPad}"/>`;
     // Subtle grass hatching
     for (let gx = 0; gx < finalWidth; gx += 12) {
       const h = 3 + Math.random() * 4;
@@ -618,8 +615,8 @@ export function projectElevation(model, orientation = "S", options = {}) {
     svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}" stroke="#333" stroke-width="1.5"/>`;
 
     // Low shrub landscaping at building base
-    const shrubLeft = marginPx + 10;
-    const shrubRight = finalWidth - marginPx - 10;
+    const shrubLeft = annotationPad + 10;
+    const shrubRight = finalWidth - annotationPad - 10;
     const shrubStep = 35;
     for (let sx = shrubLeft; sx < shrubRight; sx += shrubStep) {
       const sr = 5 + ((sx * 7) % 4); // deterministic pseudo-random size
@@ -1031,20 +1028,18 @@ export function projectSection(
   const sectionWidth = isLongitudinal ? dims.width : dims.depth;
   const sectionWidthMM = sectionWidth * MM_PER_M;
 
-  // Calculate content size
-  const marginPx = 50;
+  // Calculate content size — tight-frame to building so section fills its panel
+  const annotationPad = 90;
   const groundPx = 40;
   const foundationPx = showFoundation ? 50 : 0;
   const contentWidth = sectionWidth * scale;
   const contentHeight = dims.ridgeHeight * scale;
 
-  const finalWidth = Math.max(svgWidth, contentWidth + 2 * marginPx);
-  const finalHeight = Math.max(
-    svgHeight,
-    contentHeight + groundPx + foundationPx + 2 * marginPx,
-  );
+  const finalWidth = contentWidth + 2 * annotationPad;
+  const finalHeight =
+    contentHeight + groundPx + foundationPx + 2 * annotationPad;
 
-  const groundY = finalHeight - marginPx - groundPx - foundationPx;
+  const groundY = finalHeight - annotationPad - groundPx - foundationPx;
   const offsetX = finalWidth / 2;
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
@@ -1053,7 +1048,7 @@ export function projectSection(
   svg += generateHatchPattern("slab-hatch", style, 45, 6);
 
   // Ground line and fill
-  svg += `<rect class="ground" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + foundationPx + marginPx}"/>`;
+  svg += `<rect class="ground" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + foundationPx + annotationPad}"/>`;
   svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}"/>`;
 
   // Title
