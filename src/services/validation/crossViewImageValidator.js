@@ -74,7 +74,7 @@ async function fetchBuffer(url) {
 }
 
 async function getSharp() {
-  const mod = await import("sharp");
+  const mod = await import(/* webpackIgnore: true */ "sharp");
   return mod.default || mod;
 }
 

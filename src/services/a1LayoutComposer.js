@@ -77,7 +77,7 @@ export async function composeA1Sheet({
   // Use dynamic import for sharp (server-side only)
   let sharp;
   try {
-    sharp = (await import("sharp")).default;
+    sharp = (await import(/* webpackIgnore: true */ "sharp")).default;
   } catch (e) {
     throw new Error(
       "sharp module not available - server-side composition requires sharp",
@@ -403,7 +403,7 @@ function generateOverlaySvg(coordinates, width, height) {
 export async function upscaleToA1(buffer, options = {}) {
   let sharp;
   try {
-    sharp = (await import("sharp")).default;
+    sharp = (await import(/* webpackIgnore: true */ "sharp")).default;
   } catch (e) {
     throw new Error("sharp module not available");
   }

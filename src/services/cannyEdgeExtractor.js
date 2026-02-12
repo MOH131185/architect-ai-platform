@@ -96,7 +96,8 @@ export async function extractCannyEdges(svgString, options = {}) {
  */
 async function renderWithSharp(svg, width, height) {
   try {
-    const sharp = (await import("sharp")).default;
+    // Use webpackIgnore comment to prevent webpack from bundling sharp (Node-only)
+    const sharp = (await import(/* webpackIgnore: true */ "sharp")).default;
     const buffer = await sharp(Buffer.from(svg))
       .resize(width, height, {
         fit: "contain",

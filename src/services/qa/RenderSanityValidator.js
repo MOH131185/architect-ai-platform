@@ -11,7 +11,14 @@
  * @module services/qa/RenderSanityValidator
  */
 
-import sharp from "sharp";
+// Lazy-loaded to avoid webpack bundling Node-only sharp in the browser
+let _sharp = null;
+async function getSharp() {
+  if (!_sharp) {
+    _sharp = (await import(/* webpackIgnore: true */ "sharp")).default;
+  }
+  return _sharp;
+}
 
 // ============================================================================
 // THRESHOLD CONSTANTS
@@ -125,6 +132,7 @@ export const SANITY_CHECK_PANEL_TYPES = [
  */
 export async function computeSanityMetrics(imageBuffer) {
   // Resize to analysis size and get raw pixel data
+  const sharp = await getSharp();
   const { data, info } = await sharp(imageBuffer)
     .resize(ANALYSIS_SIZE, ANALYSIS_SIZE, { fit: "fill" })
     .ensureAlpha()
@@ -298,7 +306,8 @@ export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
         origW = opts.originalWidth;
         origH = opts.originalHeight;
       } else {
-        const originalMeta = await sharp(imageBuffer).metadata();
+        const sharpInst = await getSharp();
+        const originalMeta = await sharpInst(imageBuffer).metadata();
         origW = originalMeta.width || 1;
         origH = originalMeta.height || 1;
       }

@@ -13,7 +13,7 @@
  * @module services/rendering/SVGRasterizer
  */
 
-import logger from '../core/logger.js';
+import logger from "../core/logger.js";
 
 // =============================================================================
 // DETERMINISTIC PANEL SIZES
@@ -104,7 +104,9 @@ export function calculateSVGBounds(svgString) {
     const h = parseFloat(match[4]) || 0;
 
     // Skip full-size background rects
-    if (match[0].includes('100%')) {continue;}
+    if (match[0].includes("100%")) {
+      continue;
+    }
 
     bounds.minX = Math.min(bounds.minX, x);
     bounds.minY = Math.min(bounds.minY, y);
@@ -122,7 +124,9 @@ export function calculateSVGBounds(svgString) {
     const y = parseFloat(match[4]) || 0;
 
     // Skip full-size background rects
-    if (match[0].includes('100%')) {continue;}
+    if (match[0].includes("100%")) {
+      continue;
+    }
 
     bounds.minX = Math.min(bounds.minX, x);
     bounds.minY = Math.min(bounds.minY, y);
@@ -131,7 +135,8 @@ export function calculateSVGBounds(svgString) {
   }
 
   // Parse line elements
-  const lineRegex = /<line[^>]*x1="([^"]*)"[^>]*y1="([^"]*)"[^>]*x2="([^"]*)"[^>]*y2="([^"]*)"/gi;
+  const lineRegex =
+    /<line[^>]*x1="([^"]*)"[^>]*y1="([^"]*)"[^>]*x2="([^"]*)"[^>]*y2="([^"]*)"/gi;
   while ((match = lineRegex.exec(svgString)) !== null) {
     const x1 = parseFloat(match[1]) || 0;
     const y1 = parseFloat(match[2]) || 0;
@@ -181,7 +186,9 @@ export function calculateSVGBounds(svgString) {
     // Try to extract from existing viewBox
     const viewBoxMatch = svgString.match(/viewBox="([^"]*)"/i);
     if (viewBoxMatch) {
-      const [vbMinX, vbMinY, vbWidth, vbHeight] = viewBoxMatch[1].split(/\s+/).map(Number);
+      const [vbMinX, vbMinY, vbWidth, vbHeight] = viewBoxMatch[1]
+        .split(/\s+/)
+        .map(Number);
       bounds.minX = vbMinX;
       bounds.minY = vbMinY;
       bounds.maxX = vbMinX + vbWidth;
@@ -211,12 +218,24 @@ export function calculateSVGBounds(svgString) {
 export function getPaddingForPanelType(panelType) {
   const type = panelType.toLowerCase();
 
-  if (type.includes('floor_plan')) {return PADDING_MARGINS.floor_plan;}
-  if (type.includes('elevation')) {return PADDING_MARGINS.elevation;}
-  if (type.includes('section')) {return PADDING_MARGINS.section;}
-  if (type.includes('exterior_3d')) {return PADDING_MARGINS.exterior_3d;}
-  if (type.includes('interior_3d')) {return PADDING_MARGINS.interior_3d;}
-  if (type.includes('axonometric')) {return PADDING_MARGINS.axonometric;}
+  if (type.includes("floor_plan")) {
+    return PADDING_MARGINS.floor_plan;
+  }
+  if (type.includes("elevation")) {
+    return PADDING_MARGINS.elevation;
+  }
+  if (type.includes("section")) {
+    return PADDING_MARGINS.section;
+  }
+  if (type.includes("exterior_3d")) {
+    return PADDING_MARGINS.exterior_3d;
+  }
+  if (type.includes("interior_3d")) {
+    return PADDING_MARGINS.interior_3d;
+  }
+  if (type.includes("axonometric")) {
+    return PADDING_MARGINS.axonometric;
+  }
 
   return PADDING_MARGINS.default;
 }
@@ -228,7 +247,7 @@ export function getPaddingForPanelType(panelType) {
  * @returns {Object} { width, height }
  */
 export function getOutputSizeForPanelType(panelType) {
-  const normalized = panelType.toLowerCase().replace(/\s+/g, '_');
+  const normalized = panelType.toLowerCase().replace(/\s+/g, "_");
 
   // Exact match first
   if (PANEL_OUTPUT_SIZES[normalized]) {
@@ -236,12 +255,24 @@ export function getOutputSizeForPanelType(panelType) {
   }
 
   // Category match
-  if (normalized.includes('floor_plan')) {return PANEL_OUTPUT_SIZES.floor_plan;}
-  if (normalized.includes('elevation')) {return PANEL_OUTPUT_SIZES.elevation;}
-  if (normalized.includes('section')) {return PANEL_OUTPUT_SIZES.section;}
-  if (normalized.includes('exterior_3d')) {return PANEL_OUTPUT_SIZES.exterior_3d;}
-  if (normalized.includes('interior_3d')) {return PANEL_OUTPUT_SIZES.interior_3d;}
-  if (normalized.includes('axonometric')) {return PANEL_OUTPUT_SIZES.axonometric;}
+  if (normalized.includes("floor_plan")) {
+    return PANEL_OUTPUT_SIZES.floor_plan;
+  }
+  if (normalized.includes("elevation")) {
+    return PANEL_OUTPUT_SIZES.elevation;
+  }
+  if (normalized.includes("section")) {
+    return PANEL_OUTPUT_SIZES.section;
+  }
+  if (normalized.includes("exterior_3d")) {
+    return PANEL_OUTPUT_SIZES.exterior_3d;
+  }
+  if (normalized.includes("interior_3d")) {
+    return PANEL_OUTPUT_SIZES.interior_3d;
+  }
+  if (normalized.includes("axonometric")) {
+    return PANEL_OUTPUT_SIZES.axonometric;
+  }
 
   return PANEL_OUTPUT_SIZES.default;
 }
@@ -260,7 +291,11 @@ export function getOutputSizeForPanelType(panelType) {
  * @returns {string} Normalized SVG string with correct viewBox
  */
 export function normalizeSVGViewBox(svgString, panelType, options = {}) {
-  const { forceSquare = false, maintainAspectRatio = true, addPadding = true } = options;
+  const {
+    forceSquare = false,
+    maintainAspectRatio = true,
+    addPadding = true,
+  } = options;
 
   // Calculate actual content bounds
   const bounds = calculateSVGBounds(svgString);
@@ -333,16 +368,28 @@ export function normalizeSVGViewBox(svgString, panelType, options = {}) {
   let normalizedSVG = svgString;
 
   // Replace existing viewBox
-  if (svgString.includes('viewBox=')) {
-    normalizedSVG = svgString.replace(/viewBox="[^"]*"/i, `viewBox="${newViewBox}"`);
+  if (svgString.includes("viewBox=")) {
+    normalizedSVG = svgString.replace(
+      /viewBox="[^"]*"/i,
+      `viewBox="${newViewBox}"`,
+    );
   } else {
     // Add viewBox if missing
-    normalizedSVG = svgString.replace(/<svg([^>]*)>/i, `<svg$1 viewBox="${newViewBox}">`);
+    normalizedSVG = svgString.replace(
+      /<svg([^>]*)>/i,
+      `<svg$1 viewBox="${newViewBox}">`,
+    );
   }
 
   // Update width/height attributes to match output size
-  normalizedSVG = normalizedSVG.replace(/width="[^"]*"/i, `width="${outputSize.width}"`);
-  normalizedSVG = normalizedSVG.replace(/height="[^"]*"/i, `height="${outputSize.height}"`);
+  normalizedSVG = normalizedSVG.replace(
+    /width="[^"]*"/i,
+    `width="${outputSize.width}"`,
+  );
+  normalizedSVG = normalizedSVG.replace(
+    /height="[^"]*"/i,
+    `height="${outputSize.height}"`,
+  );
 
   logger.debug(`[SVGRasterizer] Normalized viewBox for ${panelType}:`, {
     originalBounds: bounds,
@@ -367,8 +414,8 @@ export function validateSVGForRasterization(svgString, panelType) {
   const warnings = [];
 
   // Check for viewBox
-  if (!svgString.includes('viewBox')) {
-    issues.push('Missing viewBox attribute');
+  if (!svgString.includes("viewBox")) {
+    issues.push("Missing viewBox attribute");
   }
 
   // Calculate bounds
@@ -377,12 +424,12 @@ export function validateSVGForRasterization(svgString, panelType) {
   // Check for collapsed dimensions
   if (bounds.width < MIN_CONTENT_DIMENSIONS.width) {
     issues.push(
-      `Content width too small: ${bounds.width}px (min: ${MIN_CONTENT_DIMENSIONS.width}px)`
+      `Content width too small: ${bounds.width}px (min: ${MIN_CONTENT_DIMENSIONS.width}px)`,
     );
   }
   if (bounds.height < MIN_CONTENT_DIMENSIONS.height) {
     issues.push(
-      `Content height too small: ${bounds.height}px (min: ${MIN_CONTENT_DIMENSIONS.height}px)`
+      `Content height too small: ${bounds.height}px (min: ${MIN_CONTENT_DIMENSIONS.height}px)`,
     );
   }
 
@@ -392,13 +439,20 @@ export function validateSVGForRasterization(svgString, panelType) {
   const actualAspect = bounds.width / bounds.height;
 
   // Elevations should be wider than tall (aspect > 1)
-  if (panelType.includes('elevation') && actualAspect < 0.5) {
-    warnings.push(`Elevation aspect ratio suspicious: ${actualAspect.toFixed(2)} (expected >0.5)`);
+  if (panelType.includes("elevation") && actualAspect < 0.5) {
+    warnings.push(
+      `Elevation aspect ratio suspicious: ${actualAspect.toFixed(2)} (expected >0.5)`,
+    );
   }
 
   // Floor plans should be roughly square-ish
-  if (panelType.includes('floor_plan') && (actualAspect < 0.3 || actualAspect > 3)) {
-    warnings.push(`Floor plan aspect ratio extreme: ${actualAspect.toFixed(2)}`);
+  if (
+    panelType.includes("floor_plan") &&
+    (actualAspect < 0.3 || actualAspect > 3)
+  ) {
+    warnings.push(
+      `Floor plan aspect ratio extreme: ${actualAspect.toFixed(2)}`,
+    );
   }
 
   return {
@@ -432,31 +486,39 @@ export async function rasterizeSVGToPNG(svgInput, panelType, options = {}) {
   } = options;
 
   // Convert buffer to string if needed
-  let svgString = typeof svgInput === 'string' ? svgInput : svgInput.toString('utf-8');
+  let svgString =
+    typeof svgInput === "string" ? svgInput : svgInput.toString("utf-8");
 
   // Validate SVG
   if (validate) {
     const validation = validateSVGForRasterization(svgString, panelType);
     if (!validation.valid) {
-      logger.warn(`[SVGRasterizer] SVG validation issues for ${panelType}:`, validation.issues);
+      logger.warn(
+        `[SVGRasterizer] SVG validation issues for ${panelType}:`,
+        validation.issues,
+      );
       // FIX: Throw error on validation failure to prevent thin/collapsed SVGs
       if (throwOnValidationFailure) {
         throw new Error(
-          `SVG validation failed for ${panelType}: ${validation.issues.join(', ')}. ` +
+          `SVG validation failed for ${panelType}: ${validation.issues.join(", ")}. ` +
             `Bounds: ${JSON.stringify(validation.bounds)}. ` +
-            `This prevents thin/collapsed elevations from passing through the pipeline.`
+            `This prevents thin/collapsed elevations from passing through the pipeline.`,
         );
       }
     }
     if (validation.warnings.length > 0) {
-      logger.warn(`[SVGRasterizer] SVG warnings for ${panelType}:`, validation.warnings);
+      logger.warn(
+        `[SVGRasterizer] SVG warnings for ${panelType}:`,
+        validation.warnings,
+      );
     }
   }
 
   // Normalize viewBox to match content
   if (normalize) {
     svgString = normalizeSVGViewBox(svgString, panelType, {
-      forceSquare: panelType.includes('3d') || panelType.includes('axonometric'),
+      forceSquare:
+        panelType.includes("3d") || panelType.includes("axonometric"),
       maintainAspectRatio: true,
       addPadding: true,
     });
@@ -467,13 +529,13 @@ export async function rasterizeSVGToPNG(svgInput, panelType, options = {}) {
 
   try {
     // Dynamic import for Sharp (Node.js only)
-    const { default: sharp } = await import('sharp');
+    const { default: sharp } = await import(/* webpackIgnore: true */ "sharp");
 
-    const svgBuffer = Buffer.from(svgString, 'utf-8');
+    const svgBuffer = Buffer.from(svgString, "utf-8");
 
     const pngBuffer = await sharp(svgBuffer)
       .resize(outputSize.width, outputSize.height, {
-        fit: 'contain',
+        fit: "contain",
         background,
         withoutEnlargement: false, // Allow upscaling if content is small
       })
@@ -481,12 +543,15 @@ export async function rasterizeSVGToPNG(svgInput, panelType, options = {}) {
       .toBuffer();
 
     logger.info(
-      `[SVGRasterizer] Rasterized ${panelType} to ${outputSize.width}x${outputSize.height} PNG`
+      `[SVGRasterizer] Rasterized ${panelType} to ${outputSize.width}x${outputSize.height} PNG`,
     );
 
     return pngBuffer;
   } catch (error) {
-    logger.error(`[SVGRasterizer] Rasterization failed for ${panelType}:`, error.message);
+    logger.error(
+      `[SVGRasterizer] Rasterization failed for ${panelType}:`,
+      error.message,
+    );
     throw error;
   }
 }
@@ -501,7 +566,7 @@ export async function rasterizeSVGToPNG(svgInput, panelType, options = {}) {
  */
 export async function rasterizeSVGToDataURL(svgInput, panelType, options = {}) {
   const pngBuffer = await rasterizeSVGToPNG(svgInput, panelType, options);
-  return `data:image/png;base64,${pngBuffer.toString('base64')}`;
+  return `data:image/png;base64,${pngBuffer.toString("base64")}`;
 }
 
 // =============================================================================
