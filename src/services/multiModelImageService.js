@@ -16,6 +16,9 @@ import {
   PANEL_REGISTRY,
   normalizeToCanonical,
 } from "../config/panelRegistry.js";
+import { getActiveModel, isModelReady } from "./modelRegistry.js";
+import { extractCannyEdges } from "./cannyEdgeExtractor.js";
+import { isFeatureEnabled } from "../config/featureFlags.js";
 import logger from "../utils/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -109,7 +112,50 @@ class MultiModelImageService {
     logger.info(`🎯 [ROUTING] ${viewType} → category=${category}`);
 
     // ------------------------------------------------------------------
-    // Try FLUX first (primary for all categories)
+    // Try ControlNet first (when enabled and geometry SVG available)
+    // ------------------------------------------------------------------
+    if (
+      isFeatureEnabled("controlNetRendering") &&
+      isModelReady("render", "controlnet-canny") &&
+      geometryRender?.svg
+    ) {
+      const renderModel = getActiveModel("render");
+      if (renderModel?.id === "controlnet-canny") {
+        try {
+          logger.info(
+            `🎯 [CONTROLNET] Attempting ControlNet Canny for ${viewType}...`,
+          );
+          const controlnetResult = await this.generateWithControlNet({
+            svgSource: geometryRender.svg,
+            prompt,
+            negativePrompt,
+            seed,
+            width,
+            height,
+            controlnetStrength: renderModel.controlnetStrength || 0.75,
+            viewType,
+          });
+
+          logger.success(`✅ ControlNet generation successful for ${viewType}`);
+          return {
+            ...controlnetResult,
+            model: "controlnet",
+            generatorUsed: "controlnet-canny",
+            hadFallback: false,
+            category,
+          };
+        } catch (controlnetError) {
+          logger.warn(
+            `⚠️ ControlNet failed for ${viewType}: ${controlnetError.message}`,
+          );
+          logger.info(`   Falling back to FLUX...`);
+          // Fall through to FLUX
+        }
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Try FLUX (primary for all categories)
     // ------------------------------------------------------------------
     try {
       logger.info(`🎨 Attempting FLUX generation for ${viewType}...`);
@@ -210,6 +256,82 @@ class MultiModelImageService {
         );
       }
     }
+  }
+
+  /**
+   * Generate image via ControlNet Canny conditioning.
+   * Converts canonical SVG geometry to Canny edges, then calls Replicate.
+   *
+   * @param {Object} params
+   * @param {string} params.svgSource - Canonical SVG from geometry pack
+   * @param {string} params.prompt - Text prompt
+   * @param {string} params.negativePrompt - Negative prompt
+   * @param {number} params.seed - Generation seed
+   * @param {number} params.width - Output width
+   * @param {number} params.height - Output height
+   * @param {number} params.controlnetStrength - 0-1, default 0.75
+   * @param {string} params.viewType - Panel type for logging
+   * @returns {Promise<Object>} Generation result
+   */
+  async generateWithControlNet(params) {
+    const {
+      svgSource,
+      prompt,
+      negativePrompt,
+      seed,
+      width,
+      height,
+      controlnetStrength = 0.75,
+      viewType,
+    } = params;
+
+    if (!svgSource) {
+      throw new Error("ControlNet requires SVG source from canonical pack");
+    }
+
+    // Extract Canny edges from canonical SVG
+    const cannyImage = await extractCannyEdges(svgSource, { width, height });
+
+    const API_BASE_URL =
+      process.env.REACT_APP_API_PROXY_URL || "http://localhost:3001";
+
+    const isDev =
+      typeof window !== "undefined" &&
+      (window.location?.hostname === "localhost" ||
+        window.location?.hostname === "127.0.0.1");
+
+    const endpoint = isDev
+      ? `${API_BASE_URL}/api/controlnet/render`
+      : "/api/controlnet-render";
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cannyImage,
+        prompt,
+        negative_prompt: negativePrompt,
+        controlnet_strength: controlnetStrength,
+        seed,
+        width,
+        height,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `ControlNet render failed: ${response.status} - ${errorText}`,
+      );
+    }
+
+    const data = await response.json();
+    return {
+      url: data.url,
+      seed,
+      viewType,
+      metadata: data.metadata,
+    };
   }
 
   /**

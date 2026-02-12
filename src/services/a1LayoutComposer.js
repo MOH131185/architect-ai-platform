@@ -29,6 +29,21 @@ import {
   renderMaterialPaletteSVG,
   renderClimateCardSVG,
 } from "./dataPanelRenderer.js";
+import { embedFontInSVG } from "../utils/svgFontEmbedder.js";
+
+/**
+ * Embed fonts in SVG string before passing to sharp for rasterization.
+ * Ensures text renders correctly on Vercel/librsvg where system fonts
+ * may not be available.
+ */
+async function embedFontsForSharp(svgString) {
+  try {
+    return await embedFontInSVG(svgString);
+  } catch {
+    // Graceful degradation — return original SVG
+    return svgString;
+  }
+}
 
 // Re-export for backward compatibility
 export {
@@ -122,11 +137,13 @@ export async function composeA1Sheet({
       type === "schedules_notes" &&
       ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
     ) {
-      const svgStr = renderSchedulesSVG(
-        slotRect.width,
-        svgPanelHeight,
-        masterDNA,
-        projectContext,
+      const svgStr = await embedFontsForSharp(
+        renderSchedulesSVG(
+          slotRect.width,
+          svgPanelHeight,
+          masterDNA,
+          projectContext,
+        ),
       );
       const schedulesBuffer = await sharp(Buffer.from(svgStr))
         .png()
@@ -146,10 +163,8 @@ export async function composeA1Sheet({
       type === "material_palette" &&
       ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
     ) {
-      const svgStr = renderMaterialPaletteSVG(
-        slotRect.width,
-        svgPanelHeight,
-        masterDNA,
+      const svgStr = await embedFontsForSharp(
+        renderMaterialPaletteSVG(slotRect.width, svgPanelHeight, masterDNA),
       );
       const materialBuffer = await sharp(Buffer.from(svgStr))
         .png()
@@ -169,11 +184,13 @@ export async function composeA1Sheet({
       type === "climate_card" &&
       ((!panel?.buffer && !panel?.imageUrl) || panel?.svgPanel)
     ) {
-      const svgStr = renderClimateCardSVG(
-        slotRect.width,
-        svgPanelHeight,
-        locationData,
-        masterDNA,
+      const svgStr = await embedFontsForSharp(
+        renderClimateCardSVG(
+          slotRect.width,
+          svgPanelHeight,
+          locationData,
+          masterDNA,
+        ),
       );
       const climateBuffer = await sharp(Buffer.from(svgStr))
         .png()
@@ -280,8 +297,10 @@ export async function composeA1Sheet({
     }
   }
 
-  // Draw panel frames and labels
-  const overlaySvg = generateOverlaySvg(coordinates, width, height);
+  // Draw panel frames and labels (with embedded fonts for Vercel/librsvg)
+  const overlaySvg = await embedFontsForSharp(
+    generateOverlaySvg(coordinates, width, height),
+  );
   composites.push({
     input: Buffer.from(overlaySvg),
     left: 0,
@@ -488,7 +507,8 @@ async function buildPlaceholder(sharp, width, height, type) {
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const embeddedSvg = await embedFontsForSharp(svg);
+  return sharp(Buffer.from(embeddedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -521,7 +541,8 @@ async function buildTitleBlockBuffer(sharp, width, height, titleBlock = {}) {
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const embeddedSvg = await embedFontsForSharp(svg);
+  return sharp(Buffer.from(embeddedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -604,7 +625,8 @@ async function buildSchedulesBuffer(
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const embeddedSvg = await embedFontsForSharp(svg);
+  return sharp(Buffer.from(embeddedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -656,7 +678,8 @@ async function buildMaterialPaletteBuffer(sharp, width, height, masterDNA) {
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const embeddedSvg = await embedFontsForSharp(svg);
+  return sharp(Buffer.from(embeddedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -729,7 +752,8 @@ async function buildClimateCardBuffer(sharp, width, height, locationData) {
     </svg>
   `;
 
-  return sharp(Buffer.from(svg))
+  const embeddedSvg = await embedFontsForSharp(svg);
+  return sharp(Buffer.from(embeddedSvg))
     .png()
     .resize(width, height, {
       fit: "contain",

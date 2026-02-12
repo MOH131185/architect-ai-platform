@@ -1,15 +1,12 @@
 /**
  * AI Floor Plan Layout Engine
  *
- * Uses Together.ai Llama-3.3-70B (primary) with Qwen2.5-7B fallback to generate
- * intelligent room coordinates considering adjacency, circulation, daylight,
- * and UK building regs.
+ * Uses Model Registry to select layout model (default: Qwen3-235B-A22B).
+ * Fallback chain: Qwen3-235B → Llama-3.3-70B → Qwen2.5-7B.
  *
- * Uses response_format: { type: 'json_object' } for reliable JSON output.
- * Previous approach (Claude tool_choice) failed because the proxy didn't
- * pass tool_choice correctly; earlier Llama attempt without json_object mode
- * also failed. The combination of explicit JSON schema in system prompt +
- * response_format: json_object forces reliable structured output.
+ * Models that support response_format: json_object use it for reliable output.
+ * Models that don't (e.g., Qwen3) rely on stripThinkingTags + parseLayoutResponse()
+ * for robust JSON extraction from <think> tag-wrapped output.
  *
  * Replaces the zone-based strip-packing algorithm in BuildingModel._buildRooms()
  * with architecturally-aware placements.
@@ -17,16 +14,46 @@
 
 import togetherAIReasoningService from "./togetherAIReasoningService.js";
 import { validateAILayout } from "./aiLayoutValidator.js";
+import { getFallbackChain, getModelConfig } from "./modelRegistry.js";
+import { isFeatureEnabled } from "../config/featureFlags.js";
 import logger from "../utils/logger.js";
 
 // ─── Model Configuration ────────────────────────────────────────────
-// Use serverless-available models on Together.ai
-// Llama-3.3-70B with response_format: json_object for reliable JSON
-// Qwen2.5-7B-Instruct as lightweight fallback (serverless)
-const LAYOUT_MODELS = [
+// Legacy hardcoded models (used when modelRegistry flag is disabled)
+const LEGACY_LAYOUT_MODELS = [
   "meta-llama/Llama-3.3-70B-Instruct-Turbo",
   "Qwen/Qwen2.5-7B-Instruct-Turbo",
 ];
+
+/**
+ * Get layout models from registry (with legacy fallback).
+ * Returns array of { togetherModel, supportsJsonMode, temperature, maxTokens }
+ */
+function getLayoutModelChain() {
+  if (!isFeatureEnabled("modelRegistry")) {
+    return LEGACY_LAYOUT_MODELS.map((model) => ({
+      togetherModel: model,
+      supportsJsonMode: true,
+      temperature: 0.3,
+      maxTokens: 4000,
+    }));
+  }
+
+  const chain = getFallbackChain("layout");
+  return chain
+    .map((id) => {
+      const config = getModelConfig("layout", id);
+      if (!config?.togetherModel) return null;
+      return {
+        togetherModel: config.togetherModel,
+        supportsJsonMode: config.supportsJsonMode !== false,
+        stripThinkingTags: config.stripThinkingTags || false,
+        temperature: config.temperature || 0.3,
+        maxTokens: config.maxTokens || 4000,
+      };
+    })
+    .filter(Boolean);
+}
 
 // ─── System Prompt ──────────────────────────────────────────────────
 
@@ -194,22 +221,31 @@ function parseLayoutResponse(responseText) {
  */
 async function callTogetherForLayout(userPrompt) {
   let lastError = null;
+  const modelChain = getLayoutModelChain();
 
-  for (const model of LAYOUT_MODELS) {
+  for (const modelConfig of modelChain) {
+    const model = modelConfig.togetherModel;
     try {
       logger.info(`🧠 AI Layout: trying ${model}...`);
+
+      const callOptions = {
+        model,
+        temperature: modelConfig.temperature,
+        max_tokens: modelConfig.maxTokens,
+      };
+
+      // Only use response_format: json_object for models that support it
+      // Qwen3-235B uses <think> tags instead — parseLayoutResponse() handles this
+      if (modelConfig.supportsJsonMode) {
+        callOptions.response_format = { type: "json_object" };
+      }
 
       const response = await togetherAIReasoningService.chatCompletion(
         [
           { role: "system", content: LAYOUT_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
-        {
-          model,
-          temperature: 0.3,
-          max_tokens: 4000,
-          response_format: { type: "json_object" },
-        },
+        callOptions,
       );
 
       // Extract content from response
@@ -280,7 +316,7 @@ export async function generateFloorPlanLayout(params) {
     styleContext,
   );
 
-  // Call Together.ai model chain (Qwen3 primary, Qwen2.5 fallback)
+  // Call Together.ai model chain via registry (Qwen3 primary, Llama fallback)
   const { layout, model: usedModel } = await callTogetherForLayout(userPrompt);
 
   // Validate the layout

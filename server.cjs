@@ -894,6 +894,89 @@ async function handleAnthropicMessages(req, res) {
 app.post('/api/anthropic/messages', aiApiLimiter, handleAnthropicMessages);
 app.post('/api/anthropic-messages', aiApiLimiter, handleAnthropicMessages);
 
+// ControlNet Canny rendering endpoint (Replicate)
+app.post('/api/controlnet/render', imageGenerationLimiter, async (req, res) => {
+  const replicateKey = process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY;
+  if (!replicateKey) {
+    return res.status(500).json({ error: 'REPLICATE_API_TOKEN not configured' });
+  }
+
+  try {
+    const {
+      cannyImage,
+      prompt,
+      negative_prompt = '',
+      controlnet_strength = 0.75,
+      seed,
+      width = 1024,
+      height = 1024,
+    } = req.body;
+
+    if (!cannyImage || !prompt) {
+      return res.status(400).json({ error: 'cannyImage and prompt are required' });
+    }
+
+    console.log(`[ControlNet] Generating render (${width}x${height}, strength: ${controlnet_strength})`);
+
+    const createResponse = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${replicateKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version: 'aff48af9c68d162388d230a2ab003f68d2638d88307bdaf1c2f1ac95079c9613',
+        input: {
+          image: cannyImage,
+          prompt,
+          negative_prompt,
+          num_inference_steps: 30,
+          guidance_scale: 7.5,
+          seed: seed || Math.floor(Math.random() * 1000000),
+          controlnet_conditioning_scale: controlnet_strength,
+          image_resolution: Math.max(width, height),
+        },
+      }),
+    });
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(`Replicate create failed: ${createResponse.status} - ${errorText}`);
+    }
+
+    const prediction = await createResponse.json();
+    console.log(`[ControlNet] Prediction created: ${prediction.id}`);
+
+    // Poll for completion (max 2 minutes)
+    let result = prediction;
+    for (let i = 0; i < 60; i++) {
+      if (result.status === 'succeeded') {
+        const outputUrl = Array.isArray(result.output)
+          ? result.output[result.output.length - 1]
+          : result.output;
+        return res.json({
+          url: outputUrl,
+          seed,
+          metadata: { model: 'controlnet-canny', provider: 'replicate', prediction_id: result.id },
+        });
+      }
+      if (result.status === 'failed' || result.status === 'canceled') {
+        throw new Error(`ControlNet ${result.status}: ${result.error || 'unknown'}`);
+      }
+      await new Promise(r => setTimeout(r, 2000));
+      const statusResp = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+        headers: { 'Authorization': `Token ${replicateKey}` },
+      });
+      result = await statusResp.json();
+    }
+
+    throw new Error('ControlNet generation timed out');
+  } catch (error) {
+    console.error('[ControlNet] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // OpenAI image stylization endpoint (A1 3D panels, control-image edits)
 app.post('/api/openai-image-stylize', imageGenerationLimiter, async (req, res) => {
   try {

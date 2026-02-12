@@ -191,6 +191,42 @@ export const FEATURE_FLAGS = {
   useModelRouter: true,
 
   /**
+   * Model Registry (Pluggable AI Architecture)
+   *
+   * When enabled:
+   * - Uses centralized category-based model registry for model selection
+   * - Categories: layout, render, style, dna, geometry
+   * - Supports hot-swapping models via env vars (AI_MODEL_LAYOUT, AI_MODEL_RENDER, etc.)
+   * - Services import getActiveModel() instead of hardcoding model strings
+   * - Future models (LoRA, GNN, Blender) register here and auto-activate
+   *
+   * When disabled:
+   * - Uses hardcoded model strings in each service file (legacy behavior)
+   *
+   * @type {boolean}
+   * @default true
+   */
+  modelRegistry: true,
+
+  /**
+   * ControlNet Rendering (Geometry-Locked)
+   *
+   * When enabled:
+   * - Uses ControlNet Canny conditioning for panel rendering via Replicate
+   * - Converts canonical SVG geometry to Canny edge images (white-on-black)
+   * - Calls /api/controlnet-render for ControlNet-conditioned generation
+   * - Requires REPLICATE_API_TOKEN environment variable
+   * - Falls back to FLUX if ControlNet fails
+   *
+   * When disabled (default):
+   * - Uses FLUX init_image pipeline (existing behavior)
+   *
+   * @type {boolean}
+   * @default false
+   */
+  controlNetRendering: false,
+
+  /**
    * Use Vercel AI Gateway for AI calls
    *
    * When enabled:
@@ -900,6 +936,8 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.compositeSiteSnapshotOnModify = false;
   FEATURE_FLAGS.useFluxKontextForA1 = false;
   FEATURE_FLAGS.useModelRouter = true;
+  FEATURE_FLAGS.modelRegistry = true;
+  FEATURE_FLAGS.controlNetRendering = false;
   FEATURE_FLAGS.showConsistencyWarnings = true;
   FEATURE_FLAGS.showGeometryDebugViewer = false;
   FEATURE_FLAGS.twoPassDNA = true;
@@ -1084,6 +1122,10 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_STRICT_MODEL_ROUTING: {
       flag: "strictEnvModelRouting",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CONTROLNET_RENDERING: {
+      flag: "controlNetRendering",
       parse: (v) => v === "true",
     },
   };
