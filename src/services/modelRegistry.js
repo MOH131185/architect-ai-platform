@@ -36,12 +36,13 @@ const REGISTRY = {
         id: "qwen3-235b-fewshot",
         type: "llm",
         provider: "together",
-        togetherModel: "Qwen/Qwen3-235B-A22B",
+        togetherModel: "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
         supportsJsonMode: false,
         stripThinkingTags: true,
         temperature: 0.3,
         maxTokens: 4000,
-        description: "Few-shot LLM layout with Qwen3 (no training needed)",
+        description:
+          "Few-shot LLM layout with Qwen3 (serverless throughput variant)",
       },
       "llama-3.3-70b": {
         id: "llama-3.3-70b",
@@ -69,7 +70,7 @@ const REGISTRY = {
         id: "qwen3-235b-rag",
         type: "llm-rag",
         provider: "together",
-        togetherModel: "Qwen/Qwen3-235B-A22B",
+        togetherModel: "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
         vectorDB: null, // Set when PINECONE_INDEX configured
         supportsJsonMode: false,
         stripThinkingTags: true,
@@ -86,7 +87,7 @@ const REGISTRY = {
         description: "Graph2Plan GNN (activate when GNN server deployed)",
       },
     },
-    fallbackChain: ["qwen3-235b-fewshot", "llama-3.3-70b", "qwen-2.5-7b"],
+    fallbackChain: ["llama-3.3-70b", "qwen3-235b-fewshot", "qwen-2.5-7b"],
     envOverrideKey: "AI_MODEL_LAYOUT",
   },
 
@@ -242,7 +243,7 @@ const REGISTRY = {
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
 const CATEGORY_DEFAULTS = {
-  layout: "qwen3-235b-fewshot",
+  layout: "llama-3.3-70b",
   render: "flux-1-dev",
   style: "prompt-only",
   dna: "qwen-2.5-72b",
@@ -255,6 +256,7 @@ const CATEGORY_DEFAULTS = {
 const MODEL_ID_ALIASES = {
   // Layout aliases
   "Qwen/Qwen3-235B-A22B": "qwen3-235b-fewshot",
+  "Qwen/Qwen3-235B-A22B-Instruct-2507-tput": "qwen3-235b-fewshot",
   "meta-llama/Llama-3.3-70B-Instruct-Turbo": "llama-3.3-70b",
   "Qwen/Qwen2.5-7B-Instruct-Turbo": "qwen-2.5-7b",
   "qwen3-235b": "qwen3-235b-fewshot",

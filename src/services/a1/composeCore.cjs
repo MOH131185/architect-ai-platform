@@ -147,6 +147,14 @@ function resolveLayout(opts) {
   if (floorCount < 2) delete base.floor_plan_first;
   if (floorCount < 3) delete base.floor_plan_level2;
 
+  // Expand remaining floor plan(s) to fill the row
+  if (floorCount === 1 && base.floor_plan_ground) {
+    base.floor_plan_ground = { x: 0.015, y: 0.295, width: 0.97, height: 0.225 };
+  } else if (floorCount === 2 && base.floor_plan_ground && base.floor_plan_first) {
+    base.floor_plan_ground = { x: 0.015, y: 0.295, width: 0.475, height: 0.225 };
+    base.floor_plan_first  = { x: 0.50,  y: 0.295, width: 0.485, height: 0.225 };
+  }
+
   return {
     layout: base,
     width:  highRes ? A1_WIDTH  : WORKING_WIDTH,

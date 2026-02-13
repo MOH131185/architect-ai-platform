@@ -1,8 +1,8 @@
 /**
  * AI Floor Plan Layout Engine
  *
- * Uses Model Registry to select layout model (default: Qwen3-235B-A22B).
- * Fallback chain: Qwen3-235B → Llama-3.3-70B → Qwen2.5-7B.
+ * Uses Model Registry to select layout model (default: Llama-3.3-70B-Instruct-Turbo).
+ * Fallback chain: Llama-3.3-70B → Qwen3-235B → Qwen2.5-7B.
  *
  * Models that support response_format: json_object use it for reliable output.
  * Models that don't (e.g., Qwen3) rely on stripThinkingTags + parseLayoutResponse()
