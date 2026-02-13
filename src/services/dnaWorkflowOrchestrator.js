@@ -1659,14 +1659,19 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       reportProgress("layout", "Deriving panel seeds...", 32);
       // HERO-FIRST ENFORCEMENT: hero_3d MUST be first for style anchor
       // Elevations and sections use hero_3d as style reference via init_image
+      const dnaFloors =
+        masterDNA?.dimensions?.floors ||
+        masterDNA?.dimensions?.floorCount ||
+        masterDNA?.program?.floors ||
+        1;
       const defaultSequence = [
         "hero_3d",
         "interior_3d",
         "axonometric",
         "site_diagram",
         "floor_plan_ground",
-        "floor_plan_first",
-        "floor_plan_level2",
+        ...(dnaFloors > 1 ? ["floor_plan_first"] : []),
+        ...(dnaFloors > 2 ? ["floor_plan_level2"] : []),
         "elevation_north",
         "elevation_south",
         "elevation_east",
@@ -1729,6 +1734,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         masterDNA?.dimensions?.floors ||
         masterDNA?.dimensions?.floorCount ||
         masterDNA?.dimensions?.floor_count ||
+        masterDNA?.program?.floors ||
         1;
       const expectedPanels = floorCount === 1 ? 14 : floorCount === 2 ? 15 : 16;
       logger.success(
@@ -2772,6 +2778,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       const composePayload = {
         designId,
         designFingerprint: panelFingerprint,
+        floorCount,
         // Metadata hashes for title block rendering
         dnaHash: masterDNA?.dnaHash || computeCDSHashSync(masterDNA || {}),
         geometryHash: canonicalPack?.geometryHash || null,

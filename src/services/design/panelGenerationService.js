@@ -990,7 +990,12 @@ function buildStyleLock(masterDNA) {
 function normalizeDimensions(masterDNA = {}) {
   const dims = masterDNA.dimensions || {};
   const floors =
-    dims.floors || dims.floorCount || dims.floor_count || dims.numLevels || 1;
+    dims.floors ||
+    dims.floorCount ||
+    dims.floor_count ||
+    dims.numLevels ||
+    masterDNA.program?.floors ||
+    1;
   const floorHeight = 3.2;
   return {
     length: dims.length || dims.length_m || 15,

@@ -344,7 +344,7 @@ export function normalizeLayoutTemplate(raw) {
 export function resolveLayout(opts = {}) {
   const raw = opts.layoutTemplate || opts.layoutConfig || "board-v2";
   const layoutTemplate = normalizeLayoutTemplate(raw);
-  const floorCount = Number.isFinite(opts.floorCount) ? opts.floorCount : 2;
+  const floorCount = Number.isFinite(opts.floorCount) ? opts.floorCount : 1;
   const highRes = opts.highRes === true;
 
   const base =
