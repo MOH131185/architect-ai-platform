@@ -317,8 +317,8 @@ export function buildHero3DPrompt({
         ? "two-storey house"
         : `${dims.floors}-storey building`;
   const buildingTypePrefix =
-    `ONE standalone ${floorText} DETACHED house, ` +
-    `isolated building with garden and open space on ALL sides, ` +
+    `a single detached ${floorText}, ` +
+    `one freestanding building with garden on all sides, ` +
     `photographed from front-left corner, `;
 
   // Hero establishes the design - include strong design specification

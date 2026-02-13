@@ -1594,7 +1594,7 @@ export async function planA1Panels({
       const styleBoost =
         `ARCHITECTURAL STYLE DIRECTION: ${styleProfile.dominantStyle}. ` +
         `Style characteristics: ${styleProfile.styleTokens}. `;
-      jobPrompt = styleBoost + jobPrompt;
+      jobPrompt = jobPrompt + " " + styleBoost;
 
       // Add preferred materials from style profile
       if (
