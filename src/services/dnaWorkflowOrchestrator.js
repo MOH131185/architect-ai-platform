@@ -3158,6 +3158,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         geometryScene,
         consistencyReport,
         baselineBundle,
+        canonicalDesignState: canonicalDesignState || null,
         seeds: {
           base: effectiveBaseSeed,
           panelSeeds,

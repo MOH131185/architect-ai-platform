@@ -2645,6 +2645,91 @@ export class BuildingModel {
       designId: this.designId,
     });
   }
+
+  /**
+   * Convert BuildingModel to vectorPlan format compatible with dxfWriter.js
+   * Coordinates are in meters (DXF units).
+   * @returns {Object} vectorPlan with .floors[] containing .layers and .bounds
+   */
+  toVectorPlan() {
+    const vectorFloors = [];
+
+    for (let fi = 0; fi < this.floors.length; fi++) {
+      const floor = this.floors[fi];
+      const elevation = (floor.slab?.z || 0) / MM_PER_M;
+      const walls = [];
+      const doors = [];
+      const windows = [];
+      const labels = [];
+      const dimensions = [];
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      // Walls → LINE entities
+      for (const wall of floor.walls) {
+        const x1 = wall.start.x / MM_PER_M;
+        const y1 = wall.start.y / MM_PER_M;
+        const x2 = wall.end.x / MM_PER_M;
+        const y2 = wall.end.y / MM_PER_M;
+        walls.push({ x1, y1, x2, y2 });
+        minX = Math.min(minX, x1, x2);
+        minY = Math.min(minY, y1, y2);
+        maxX = Math.max(maxX, x1, x2);
+        maxY = Math.max(maxY, y1, y2);
+      }
+
+      // Openings → doors (ARC) and windows (LINE)
+      for (const opening of floor.openings) {
+        const cx = (opening.position?.x ?? opening.center?.x ?? 0) / MM_PER_M;
+        const cy = (opening.position?.y ?? opening.center?.y ?? 0) / MM_PER_M;
+        const w = (opening.width || 900) / MM_PER_M;
+
+        if (opening.type === "door") {
+          doors.push({ x: cx, y: cy, width: w });
+        } else {
+          windows.push({ x: cx, y: cy, width: w });
+        }
+      }
+
+      // Room labels → TEXT entities
+      for (const room of floor.rooms) {
+        const cx = (room.center?.x ?? 0) / MM_PER_M;
+        const cy = (room.center?.y ?? 0) / MM_PER_M;
+        const areaStr = room.areaM2
+          ? `${room.name} (${room.areaM2.toFixed(1)}m²)`
+          : room.name;
+        labels.push({ x: cx, y: cy, text: areaStr });
+      }
+
+      // Overall dimensions
+      if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+        // Width dimension
+        dimensions.push({
+          x1: minX, y1: minY - 1, x2: maxX, y2: minY - 1,
+          label: `${(maxX - minX).toFixed(2)}m`,
+        });
+        // Depth dimension
+        dimensions.push({
+          x1: maxX + 1, y1: minY, x2: maxX + 1, y2: maxY,
+          label: `${(maxY - minY).toFixed(2)}m`,
+        });
+      }
+
+      vectorFloors.push({
+        name: fi === 0 ? "Ground Floor" : `Floor ${fi}`,
+        elevation,
+        bounds: {
+          minX: Number.isFinite(minX) ? minX : 0,
+          minY: Number.isFinite(minY) ? minY : 0,
+          maxX: Number.isFinite(maxX) ? maxX : 10,
+          maxY: Number.isFinite(maxY) ? maxY : 10,
+        },
+        layers: { walls, doors, windows, labels, dimensions },
+      });
+    }
+
+    return { floors: vectorFloors };
+  }
 }
 
 // =============================================================================
