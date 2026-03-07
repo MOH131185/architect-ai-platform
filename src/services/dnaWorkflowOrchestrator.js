@@ -799,6 +799,33 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
     try {
       reportProgress("analysis", "Starting multi-panel generation...", 2);
 
+      // Convert first portfolio image to data URL for style reference
+      let portfolioStyleDataUrl = null;
+      if (portfolioFiles && portfolioFiles.length > 0) {
+        try {
+          const firstFile = portfolioFiles[0]?.file || portfolioFiles[0];
+          if (firstFile instanceof Blob) {
+            const buffer = await firstFile.arrayBuffer();
+            const base64 = btoa(
+              new Uint8Array(buffer).reduce(
+                (data, byte) => data + String.fromCharCode(byte),
+                "",
+              ),
+            );
+            const mime = firstFile.type || "image/jpeg";
+            portfolioStyleDataUrl = `data:${mime};base64,${base64}`;
+            logger.info(
+              `🎨 Portfolio style image prepared (${Math.round(base64.length / 1024)}KB)`,
+            );
+          }
+        } catch (portfolioErr) {
+          logger.warn(
+            "Could not convert portfolio image for style reference:",
+            portfolioErr.message,
+          );
+        }
+      }
+
       let masterDNA;
 
       if (preSelectedDNA) {
@@ -1954,7 +1981,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           // PRIORITY 0: Canonical Geometry Pack (highest priority — geometry authority)
           // When canonical pack is available, it supersedes procedural masks and
           // geometry volume renders for all panel types.
-          if (canonicalPack && hasCanonicalPack(canonicalPack)) {
+          // EXCEPTION: hero_3d with portfolio style — skip geometry to let portfolio
+          // style reference be used as init_image for color/material transfer.
+          const skipGeometryForPortfolioStyle =
+            job.type === "hero_3d" && !!portfolioStyleDataUrl;
+          if (canonicalPack && hasCanonicalPack(canonicalPack) && !skipGeometryForPortfolioStyle) {
             const canonicalParams = getCanonicalInitImageParams(
               canonicalPack,
               job.type,
@@ -2037,10 +2068,18 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           const shouldUseHeroStyleRef =
             HERO_REFERENCE_PANELS.includes(job.type) ||
             job.type.startsWith("section_");
-          const effectiveStyleReference =
-            shouldUseHeroStyleRef && heroStyleReferenceUrl
-              ? heroStyleReferenceUrl
-              : null;
+
+          // For hero_3d: use portfolio image as style reference (picks up color palette + materials)
+          // For other panels: use hero_3d output as style reference (locks material consistency)
+          let effectiveStyleReference = null;
+          if (job.type === "hero_3d" && portfolioStyleDataUrl) {
+            effectiveStyleReference = portfolioStyleDataUrl;
+            logger.info(
+              "   🎨 [PORTFOLIO STYLE] Using portfolio image as style reference for hero_3d",
+            );
+          } else if (shouldUseHeroStyleRef && heroStyleReferenceUrl) {
+            effectiveStyleReference = heroStyleReferenceUrl;
+          }
 
           if (effectiveStyleReference) {
             const panelStrength = HERO_CONTROL_STRENGTH[job.type] || 0.6;
@@ -2077,7 +2116,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             styleReferenceUrl: effectiveStyleReference,
             // NEW: Per-panel strength from HERO_CONTROL_STRENGTH (axonometric: 0.7, elevations: 0.6, sections: 0.5)
             styleReferenceStrength: effectiveStyleReference
-              ? HERO_CONTROL_STRENGTH[job.type] || 0.6
+              ? (job.type === "hero_3d" && portfolioStyleDataUrl
+                  ? 0.25  // Portfolio style: 75% creative freedom for photorealism
+                  : HERO_CONTROL_STRENGTH[job.type] || 0.6)
               : null,
             // NEW: Floor plan mask for interior_3d window alignment
             floorPlanMaskUrl: effectiveFloorPlanMask,
