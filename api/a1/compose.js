@@ -647,9 +647,43 @@ function generateOverlaySvg(coordinates, width, height, constants) {
     }
   }
 
+  // North arrows on floor plan panels
+  let northArrows = "";
+  for (const [id, coord] of Object.entries(coordinates)) {
+    if (id.startsWith("floor_plan_")) {
+      const arrowX = coord.x + coord.width - 28;
+      const arrowY = coord.y + 12;
+      const arrowSize = 22;
+      // Simple north arrow: filled triangle pointing up with "N" label
+      northArrows += `<g transform="translate(${arrowX},${arrowY})">
+        <circle cx="${arrowSize / 2}" cy="${arrowSize / 2}" r="${arrowSize / 2 + 4}" fill="white" fill-opacity="0.85" stroke="#475569" stroke-width="0.5"/>
+        <polygon points="${arrowSize / 2},2 ${arrowSize - 4},${arrowSize - 4} ${arrowSize / 2},${arrowSize - 8} 4,${arrowSize - 4}" fill="#1e293b" stroke="#475569" stroke-width="0.5"/>
+        <text x="${arrowSize / 2}" y="${arrowSize + 8}" font-family="${CAPTION_FONT_FAMILY}" font-size="8" font-weight="700" fill="#1e293b" text-anchor="middle">N</text>
+      </g>`;
+    }
+  }
+
+  // Scale bars on elevation and section panels
+  let scaleBars = "";
+  for (const [id, coord] of Object.entries(coordinates)) {
+    if (id.startsWith("elevation_") || id.startsWith("section_")) {
+      const barX = coord.x + 8;
+      const barY = coord.y + coord.height - LABEL_HEIGHT - 14;
+      const barWidth = Math.min(60, coord.width * 0.15);
+      scaleBars += `<g>
+        <line x1="${barX}" y1="${barY}" x2="${barX + barWidth}" y2="${barY}" stroke="#475569" stroke-width="1"/>
+        <line x1="${barX}" y1="${barY - 3}" x2="${barX}" y2="${barY + 3}" stroke="#475569" stroke-width="1"/>
+        <line x1="${barX + barWidth}" y1="${barY - 3}" x2="${barX + barWidth}" y2="${barY + 3}" stroke="#475569" stroke-width="1"/>
+        <text x="${barX + barWidth / 2}" y="${barY - 5}" font-family="${CAPTION_FONT_FAMILY}" font-size="7" fill="#64748b" text-anchor="middle">5m</text>
+      </g>`;
+    }
+  }
+
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     ${frames}
     ${labels}
+    ${northArrows}
+    ${scaleBars}
   </svg>`;
 }
 
