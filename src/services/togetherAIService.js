@@ -680,7 +680,57 @@ export async function generateArchitecturalImage(params) {
     }
   }
 
-  // All retries failed
+  // FLUX.1-dev completely down — try FLUX.1-schnell as last resort
+  // schnell uses fewer steps (4) but is a different endpoint that may still be online
+  if (lastError?.status === 500 || lastError?.status === 503) {
+    logger.warn(
+      `[FLUX.1] FLUX.1-dev appears DOWN — trying FLUX.1-schnell fallback for ${viewType}`,
+    );
+    try {
+      const schnellResult = await imageRequestQueue.schedule(async () => {
+        const schnellPayload = {
+          model: "black-forest-labs/FLUX.1-schnell",
+          prompt: enhancedPrompt,
+          width,
+          height,
+          seed: effectiveSeed,
+          num_inference_steps: 4,
+          n: 1,
+        };
+        const hasWindow = typeof window !== "undefined";
+        const isLocalBrowser =
+          hasWindow &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1");
+        const imageEndpoint =
+          !hasWindow || isLocalBrowser
+            ? `${API_BASE_URL}/api/together/image`
+            : "/api/together-image";
+        const response = await fetch(imageEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(schnellPayload),
+        });
+        const { body: data } = await normalizeResponse(response);
+        return { data };
+      });
+      logger.success(
+        `✅ [FLUX.1-schnell] ${viewType} generated via schnell fallback (dev was down)`,
+      );
+      return {
+        url: schnellResult.data.url,
+        model: "flux-1-schnell",
+        viewType,
+        seed: effectiveSeed,
+      };
+    } catch (schnellError) {
+      logger.error(
+        `[FLUX.1] schnell fallback also failed for ${viewType}: ${schnellError.message}`,
+      );
+    }
+  }
+
+  // All retries and fallbacks failed
   logger.error(
     `[FLUX.1] FAILED: All ${maxRetries} attempts failed for ${viewType}`,
   );
