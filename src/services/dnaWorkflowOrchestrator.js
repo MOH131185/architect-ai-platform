@@ -1964,10 +1964,16 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           // PRIORITY 1: Use job.meta.controlImage from geometry masks (highest priority for floor plans)
           // This comes from ProceduralGeometryService via panelGenerationService
           // Only used when canonical pack doesn't provide a control for this panel
+          // SKIP for 3D photorealistic panels — Together.ai FLUX returns 500 with SVG init_images
+          const SKIP_PROCEDURAL_FOR_3D = new Set([
+            "hero_3d", "exterior_front_3d", "interior_3d",
+            "axonometric", "axonometric_3d", "site_diagram", "site_plan",
+          ]);
           if (
             !geometryRender &&
             job.meta?.controlImage &&
-            job.meta?.useGeometryMask
+            job.meta?.useGeometryMask &&
+            !SKIP_PROCEDURAL_FOR_3D.has(job.type)
           ) {
             geometryRender = {
               url: job.meta.controlImage,

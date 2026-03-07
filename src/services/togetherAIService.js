@@ -93,9 +93,10 @@ async function normalizeResponse(response) {
   }
 
   if (!response.ok) {
-    const error = new Error(
-      body?.error || body?.message || `HTTP ${response.status}`,
-    );
+    const errMsg = typeof body?.error === 'object'
+      ? (body.error.message || JSON.stringify(body.error))
+      : (body?.error || body?.message || `HTTP ${response.status}`);
+    const error = new Error(errMsg);
     error.status = response.status;
     error.retryAfter = retryAfter;
     error.body = body;
