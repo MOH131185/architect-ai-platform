@@ -378,10 +378,127 @@ class TwoPassDNAGenerator {
   }
 
   /**
+   * Generate 3 DNA variants for design exploration.
+   *
+   * Returns an array of { label, description, masterDNA, structuredDNA } objects.
+   * The variants differ in creativity/temperature so funders can pick a preferred direction.
+   *
+   * @param {Object} projectContext
+   * @param {Object} [portfolioAnalysis]
+   * @param {Object} [locationData]
+   * @returns {Promise<Array<{ label: string, description: string, masterDNA: Object, structuredDNA: Object }>>}
+   */
+  async generateDNAVariants(
+    projectContext,
+    portfolioAnalysis = null,
+    locationData = null,
+  ) {
+    logger.info("🧬 Generating 3 DNA variants (Conservative / Moderate / Bold)...");
+
+    const VARIANTS = [
+      {
+        label: "Conservative",
+        description: "Traditional layout with conventional materials and proven proportions",
+        temperature: 0.10,
+        styleHint: "traditional, well-proportioned, conventional materials, proven layout",
+      },
+      {
+        label: "Moderate",
+        description: "Balanced design blending modern comfort with classic form",
+        temperature: 0.30,
+        styleHint: "", // default — no extra hint
+      },
+      {
+        label: "Bold",
+        description: "Distinctive design with creative materials and expressive form",
+        temperature: 0.60,
+        styleHint: "distinctive, expressive form, mixed materials, contemporary flair",
+      },
+    ];
+
+    // Generate all 3 in parallel for speed
+    const results = await Promise.allSettled(
+      VARIANTS.map(async (variant) => {
+        try {
+          const effectiveLocation =
+            locationData || projectContext.location || projectContext.locationData;
+          const siteMetrics =
+            projectContext.siteMetrics || projectContext.siteAnalysis;
+          const programSpec = {
+            floors:
+              projectContext.floorCount ||
+              projectContext.floors ||
+              projectContext.programSpaces?._calculatedFloorCount ||
+              1,
+            programSpaces: projectContext.programSpaces || [],
+            area: projectContext.area || 150,
+          };
+          const portfolioSummary = portfolioAnalysis || projectContext.blendedStyle;
+
+          const requestPayload = buildDNARequestPayload(
+            effectiveLocation,
+            siteMetrics,
+            programSpec,
+            portfolioSummary,
+          );
+
+          // Pass A with variant temperature and style hint
+          const rawDNA = await this.passA_generateStructuredDNA(
+            requestPayload,
+            projectContext,
+            { temperature: variant.temperature, styleHint: variant.styleHint },
+          );
+
+          if (!rawDNA) {
+            throw new Error(`Pass A failed for ${variant.label} variant`);
+          }
+
+          // Pass B (always deterministic temp 0.1)
+          const validatedDNA = await this.passB_validateAndRepair(
+            rawDNA,
+            requestPayload,
+            projectContext,
+          );
+
+          if (!validatedDNA) {
+            throw new Error(`Pass B failed for ${variant.label} variant`);
+          }
+
+          freezeDNA(validatedDNA);
+          const legacyDNA = convertToLegacyDNA(validatedDNA);
+
+          return {
+            label: variant.label,
+            description: variant.description,
+            masterDNA: legacyDNA,
+            structuredDNA: validatedDNA,
+          };
+        } catch (err) {
+          logger.warn(`⚠️ ${variant.label} variant failed: ${err.message}`);
+          return null;
+        }
+      }),
+    );
+
+    const variants = results
+      .filter((r) => r.status === "fulfilled" && r.value)
+      .map((r) => r.value);
+
+    logger.success(`✅ Generated ${variants.length}/3 DNA variants`);
+    return variants;
+  }
+
+  /**
    * Pass A: Generate structured DNA JSON
    * Uses Qwen2.5-72B to create initial DNA
+   *
+   * @param {Object} requestPayload
+   * @param {Object} projectContext
+   * @param {Object} [options]
+   * @param {number} [options.temperature=0.3]
+   * @param {string} [options.styleHint='']
    */
-  async passA_generateStructuredDNA(requestPayload, projectContext) {
+  async passA_generateStructuredDNA(requestPayload, projectContext, options = {}) {
     const lockedProgramRooms = Array.isArray(requestPayload?.program?.rooms)
       ? requestPayload.program.rooms
       : [];
@@ -453,15 +570,17 @@ CRITICAL RULES:
 9. ${hasLockedProgram ? "Do NOT change area_m2 values from the locked schedule" : "Ensure area_m2 values are realistic and internally consistent"}
 10. ${hasLockedProgram ? "Do NOT change room floor assignments from the locked schedule" : "Assign rooms to sensible floors for the selected building type"}
 11. ${hasLockedProgram ? `program.rooms length MUST be exactly ${lockedProgramRooms.length}` : "Ensure program.rooms is non-empty and coherent"}
-
+${options.styleHint ? `\nDESIGN DIRECTION: Aim for a ${options.styleHint} approach.` : ""}
 Generate the DNA now (JSON only):`;
+
+    const effectiveTemperature = options.temperature ?? 0.3;
 
     try {
       const response = await togetherAIReasoningService.chatCompletion(
         [{ role: "user", content: prompt }],
         {
           model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-          temperature: 0.3,
+          temperature: effectiveTemperature,
           max_tokens: 4000,
         },
       );

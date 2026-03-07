@@ -164,12 +164,16 @@ const STRENGTH_POLICY = {
   elevation_west: 0.35,
   section_AA: 0.15,
   section_BB: 0.15,
-  // TIER 2: Geometry-locked FLUX (high strength → FLUX adds materials/lighting
-  // but CANNOT change building shape). Together.ai inverts: imageStrength = 1.0 - strength
-  hero_3d: 0.8, // FLUX gets 20% creative freedom (was 35% at 0.65)
-  axonometric: 0.85, // FLUX gets 15% creative freedom (was 30% at 0.70)
+  // TIER 2: Geometry-conditioned FLUX for 3D panels
+  // Together.ai inverts: imageStrength = 1.0 - strength
+  // Lower strength = more creative freedom for photorealistic output.
+  // SVG geometry guides building MASSING (shape/proportions) while
+  // FLUX adds materials, lighting, landscaping, and photorealism.
+  // Server-side SVG→PNG rasterization in api/together-image.js handles conversion.
+  hero_3d: 0.30, // imageStrength=0.70 → 70% creative freedom for photorealism
+  axonometric: 0.25, // imageStrength=0.75 → 75% creative freedom
   // TIER 3: Style-guided FLUX (moderate control — creative freedom for interiors)
-  interior_3d: 0.6,
+  interior_3d: 0.35, // imageStrength=0.65 → 65% creative freedom
 };
 
 // ---------------------------------------------------------------------------
@@ -421,19 +425,16 @@ export function getControlForPanel(pack, panelType) {
 export function getInitImageParams(pack, panelType) {
   const normalizedType = normalizePanelType(panelType);
 
-  // Skip geometry init_image for 3D photorealistic panels.
-  // Together.ai FLUX returns 500 when sent SVG init_images for these panel types.
-  // 3D panels should generate from prompt only (with optional hero style reference).
-  const SKIP_GEOMETRY_FOR_3D = new Set([
-    "hero_3d",
-    "exterior_front_3d",
-    "interior_3d",
-    "axonometric",
-    "axonometric_3d",
-    "site_diagram",
-    "site_plan",
+  // Skip geometry init_image for panels that have no meaningful geometry conditioning.
+  // NOTE: hero_3d, axonometric, interior_3d are NOW enabled — server-side
+  // SVG→PNG rasterization in api/together-image.js handles the conversion
+  // that was previously causing Together.ai 500 errors on raw SVG data URLs.
+  const SKIP_GEOMETRY = new Set([
+    "exterior_front_3d", // No canonical projection available
+    "site_diagram",      // Site context, not building geometry
+    "site_plan",         // Site context, not building geometry
   ]);
-  if (SKIP_GEOMETRY_FOR_3D.has(normalizedType)) {
+  if (SKIP_GEOMETRY.has(normalizedType)) {
     return null;
   }
 
