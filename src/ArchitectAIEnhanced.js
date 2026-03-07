@@ -3006,6 +3006,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         validation: aiResult.validation,
         templateValidation: aiResult.templateValidation, // 🆕 Include template validation
         dnaConsistencyReport: aiResult.dnaConsistencyReport, // 🆕 Include DNA consistency
+        canonicalDesignState: aiResult.canonicalDesignState || null, // For DXF export
         timestamp: new Date().toISOString(),
         cost: {
           construction: `£${constructionCost.toLocaleString()}`,
@@ -7895,30 +7896,59 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   <button
-                    onClick={() => {
-                      const downloadDetails = {
-                        ...projectDetails,
-                        styleChoice,
-                        address: locationData?.address,
-                      };
-                      const content = generateDWGContent(
-                        downloadDetails,
-                        generatedDesigns?.bimModel,
-                      );
-                      downloadFile(
-                        "ArchitectAI_Design.dwg",
-                        content,
-                        "application/acad",
-                      );
-                      setDownloadCount((prev) => prev + 1);
-                      showToast("✓ DWG file downloaded successfully!");
+                    onClick={async () => {
+                      try {
+                        const cds = generatedDesigns?.canonicalDesignState;
+                        if (cds) {
+                          // Real DXF from BuildingModel geometry
+                          const { createBuildingModel } = await import(
+                            "./geometry/BuildingModel.js"
+                          );
+                          const model = createBuildingModel(cds);
+                          const vectorPlan = model.toVectorPlan();
+                          const dxfContent = exportToDXF(vectorPlan, {
+                            project: projectDetails?.program,
+                            address: locationData?.address,
+                          });
+                          model.dispose();
+                          downloadFile(
+                            "ArchitectAI_FloorPlan.dxf",
+                            dxfContent,
+                            "application/dxf",
+                          );
+                          showToast(
+                            "DXF exported from BuildingModel geometry",
+                          );
+                        } else {
+                          // Fallback: placeholder DWG
+                          const downloadDetails = {
+                            ...projectDetails,
+                            styleChoice,
+                            address: locationData?.address,
+                          };
+                          const content = generateDWGContent(
+                            downloadDetails,
+                            generatedDesigns?.bimModel,
+                          );
+                          downloadFile(
+                            "ArchitectAI_Design.dwg",
+                            content,
+                            "application/acad",
+                          );
+                          showToast("DWG file downloaded (placeholder)");
+                        }
+                        setDownloadCount((prev) => prev + 1);
+                      } catch (err) {
+                        console.error("DXF export failed:", err);
+                        showToast("DXF export failed: " + err.message);
+                      }
                     }}
                     className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-blue-400/50 transition-all group cursor-pointer backdrop-blur-xl"
                   >
                     <FileCode className="w-8 h-8 text-white/80 mb-2 group-hover:text-blue-300 transition-colors" />
-                    <span className="font-semibold text-white">DWG</span>
+                    <span className="font-semibold text-white">DXF</span>
                     <span className="text-xs text-white/70 mt-1">
-                      AutoCAD 2D Drawings
+                      AutoCAD Floor Plans
                     </span>
                   </button>
 
