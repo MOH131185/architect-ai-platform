@@ -231,11 +231,12 @@ export function buildCanonicalPack(
     null;
 
   const svgOptions = {
-    scale,
-    width,
-    height,
+    scale: Math.max(scale, 100),
+    width: Math.max(width, 1400),
+    height: Math.max(height, 1000),
     showDimensions: true,
     showRoomLabels: true,
+    theme: "artistic",
   };
 
   let model;

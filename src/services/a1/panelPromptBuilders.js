@@ -309,25 +309,43 @@ export function buildHero3DPrompt({
       ? "SINGLE STOREY ground-level volume (NO upper floor)"
       : `compact ${dims.floors}-storey volume`;
 
-  // FLUX weights early tokens most — prepend hard building-type enforcement
+  // FLUX weights early tokens most — front-load materials with hex colors for style anchoring
   const floorText =
     dims.floors === 1
       ? "single-storey bungalow, ONE floor only"
       : dims.floors === 2
         ? "two-storey house"
         : `${dims.floors}-storey building`;
+
+  // Build material description with hex colors for FLUX color anchoring
+  const materialDescParts = [];
+  const rawMats = masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
+  if (Array.isArray(rawMats)) {
+    for (const mat of rawMats) {
+      if (mat.name && mat.hexColor) {
+        materialDescParts.push(`${mat.name} (${mat.hexColor}) on ${mat.application || "surfaces"}`);
+      } else if (typeof mat === "string") {
+        materialDescParts.push(mat);
+      }
+    }
+  }
+  const materialDesc = materialDescParts.length > 0 ? materialDescParts.join(", ") : materials.join(", ");
+
   const buildingTypePrefix =
-    `a single detached ${floorText}, ` +
+    `${materialDesc}, a single detached ${floorText}, ` +
+    `${style} architecture, ${roofType} roof, ` +
     `one freestanding building with garden on all sides, ` +
     `photographed from front-left corner, `;
 
   // Hero establishes the design - include strong design specification
   const prompt = `${buildingTypePrefix}${identity}
 
-Hero exterior 3D perspective view - MASTER REFERENCE for all other panels
+Hero exterior 3D perspective view - STYLE ANCHOR for the entire A1 sheet.
+This EXACT building with these EXACT materials appears in ALL other views.
+
 Building: ${style} ${projectType}
 Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
-Materials: ${materials.join(", ")}
+Materials: ${materialDesc}
 Roof: ${roofType} roof
 
 DESIGN SPECIFICATION (All subsequent panels MUST match this):
@@ -341,7 +359,7 @@ REQUIREMENTS:
 - Southwest viewing angle (45° from corner)
 - Natural daylight with volumetric shadows
 - ${style} architectural style clearly expressed
-- Material textures visible and accurate
+- Material textures visible and accurate with correct colors
 - Contextual environment (sky, ground plane, light landscaping)
 - Single building only (no variations or alternatives)
 - Professional architecture magazine quality
@@ -380,11 +398,23 @@ export function buildInterior3DPrompt({
   });
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
-  const prompt = `${identity}
+  // Build material description with hex colors for interior consistency
+  const rawMats = masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
+  const matDescParts = [];
+  if (Array.isArray(rawMats)) {
+    for (const mat of rawMats) {
+      if (mat.name && mat.hexColor) {
+        matDescParts.push(`${mat.name} (${mat.hexColor})`);
+      }
+    }
+  }
+  const matDesc = matDescParts.length > 0 ? matDescParts.join(", ") : materials.join(", ");
 
-Interior 3D perspective view - main lobby/living space
+  const prompt = `${matDesc}, ${style} interior, ${identity}
+
+Interior 3D perspective view - main lobby/living space of the SAME building shown in hero exterior.
 Building: ${style} ${projectType}
-Materials: ${materials.join(", ")}
+Materials: ${matDesc}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (match exterior exactly):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
@@ -393,7 +423,7 @@ REQUIREMENTS:
 - Natural lighting from windows (MUST match window positions from hero exterior)
 - ${style} interior design language
 - Furniture layout matching program
-- Material finishes visible (floors, walls, ceiling) - SAME materials as exterior
+- Material finishes visible (floors, walls, ceiling) - SAME materials and colors as exterior
 - Spatial depth showing multiple rooms/areas
 - No people, clean professional presentation
 - Openings align with floor plans AND exterior views

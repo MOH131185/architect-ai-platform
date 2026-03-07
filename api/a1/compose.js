@@ -1534,13 +1534,13 @@ export default async function handler(req, res) {
       );
     }
 
-    // Create white background
+    // Create warm architectural paper background (#FAF9F6)
     const background = sharp({
       create: {
         width,
         height,
         channels: 3,
-        background: { r: 255, g: 255, b: 255 },
+        background: { r: 250, g: 249, b: 246 },
       },
     }).png();
 

@@ -319,19 +319,15 @@ export async function generateArchitecturalImage(params) {
       // ⚠️ CRITICAL: FLUX.1-schnell IGNORES init_image! Force FLUX.1-dev when:
       //   - geometry control is present (existing behavior)
       //   - style reference is present for elevations/sections (NEW: ensures hero style transfer works)
-      const model =
-        hasGeometryControl || hasStyleReference
-          ? "black-forest-labs/FLUX.1-dev" // Always dev for init_image conditioning (schnell ignores it)
-          : is2DTechnical
-            ? "black-forest-labs/FLUX.1-schnell"
-            : "black-forest-labs/FLUX.1-dev";
+      // Always use FLUX.1-dev for all panels — schnell (4 steps) produces garbage
+      // for architectural views and ignores init_image conditioning entirely
+      const model = "black-forest-labs/FLUX.1-dev";
 
-      // Adjust steps based on actual model (dev needs more steps even for 2D when geometry control is active)
-      const useDevModel = model.includes("dev");
-      const steps = useDevModel ? 40 : 4; // dev: 40 steps, schnell: 4 steps
+      const useDevModel = true;
+      const steps = 40;
       const guidanceScale = is2DTechnical ? 7.5 : 3.5; // High CFG for 2D to enforce flat view
 
-      const modelName = useDevModel ? "FLUX.1-dev" : "FLUX.1-schnell";
+      const modelName = "FLUX.1-dev";
 
       // Log when init_image conditioning forces model upgrade
       if (hasGeometryControl && is2DTechnical) {
@@ -385,7 +381,7 @@ export async function generateArchitecturalImage(params) {
           if (!isPlaceholder) {
             // Use camelCase for server (server converts to snake_case for Together.ai)
             requestPayload.initImage = geometryRender.url;
-            requestPayload.imageStrength = 1.0 - (geometryStrength || 0.5); // Inverted for Together.ai
+            requestPayload.imageStrength = Math.round((1.0 - (geometryStrength || 0.5)) * 100) / 100; // Inverted for Together.ai, rounded to avoid FP artifacts
             initImageApplied = true;
 
             // Add metadata for debugging (not sent to API, used for logging)
@@ -582,11 +578,19 @@ export async function generateArchitecturalImage(params) {
 
       // Smarter error logging: reduce spam for transient errors
       if (error.status === 500 || error.status === 503) {
-        // Server errors - only log on first attempt and last attempt
+        // Server errors - log on first and last attempt, include error body for diagnosis
         if (attempt === 1) {
           logger.warn(
             `[FLUX.1] Together AI server error for ${viewType} (will retry ${maxRetries - 1} more times)`,
           );
+          // Log error details on first failure to help diagnose init_image issues
+          const errBody = error.body || error.details || error.message;
+          if (errBody) {
+            logger.warn(`  Error details: ${typeof errBody === 'object' ? JSON.stringify(errBody) : errBody}`);
+          }
+          if (geometryRender?.url || styleReferenceUrl) {
+            logger.warn(`  init_image was active — may be causing the 500`);
+          }
         } else if (attempt === maxRetries) {
           logger.error(
             `[FLUX.1] Server error persists after ${maxRetries} attempts for ${viewType}`,
@@ -620,6 +624,58 @@ export async function generateArchitecturalImage(params) {
         );
         await new Promise((resolve) => setTimeout(resolve, waitTime));
       }
+    }
+  }
+
+  // All retries failed — if init_image was present, try one last time WITHOUT it
+  // Together.ai sometimes returns 500 on init_image payloads (large SVGs, encoding issues)
+  const hadInitImage = !!(geometryRender?.url || styleReferenceUrl);
+  if (hadInitImage && (lastError?.status === 500 || lastError?.status === 503)) {
+    logger.warn(
+      `[FLUX.1] All ${maxRetries} attempts with init_image failed for ${viewType} — retrying WITHOUT init_image`,
+    );
+    try {
+      const fallbackResult = await imageRequestQueue.schedule(async () => {
+        const fallbackPayload = {
+          model: "black-forest-labs/FLUX.1-dev",
+          prompt: enhancedPrompt,
+          width,
+          height,
+          seed: effectiveSeed,
+          num_inference_steps: 40,
+          guidanceScale: 3.5,
+        };
+        const hasWindow = typeof window !== "undefined";
+        const isLocalBrowser =
+          hasWindow &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1");
+        const imageEndpoint =
+          !hasWindow || isLocalBrowser
+            ? `${API_BASE_URL}/api/together/image`
+            : "/api/together-image";
+        const response = await fetch(imageEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(fallbackPayload),
+        });
+        const { body: data } = await normalizeResponse(response);
+        return { data };
+      });
+      logger.success(
+        `✅ [FLUX.1-dev] ${viewType} generated WITHOUT init_image (fallback)`,
+      );
+      return {
+        url: fallbackResult.data.url,
+        model: "flux-1-dev",
+        viewType,
+        seed: effectiveSeed,
+      };
+    } catch (fallbackError) {
+      logger.error(
+        `[FLUX.1] Fallback without init_image also failed for ${viewType}: ${fallbackError.message}`,
+      );
+      // Fall through to original error
     }
   }
 

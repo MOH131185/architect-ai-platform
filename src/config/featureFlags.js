@@ -467,12 +467,12 @@ export const FEATURE_FLAGS = {
    * @type {Object}
    */
   heroControlStrength: {
-    interior_3d: 0.55,
-    axonometric: 0.7,
-    elevation_north: 0.6,
-    elevation_south: 0.6,
-    elevation_east: 0.6,
-    elevation_west: 0.6,
+    interior_3d: 0.65,
+    axonometric: 0.8,
+    elevation_north: 0.65,
+    elevation_south: 0.65,
+    elevation_east: 0.65,
+    elevation_west: 0.65,
   },
 
   // =========================================================================
@@ -563,7 +563,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default false
    */
-  allowTechnicalFallback: false,
+  allowTechnicalFallback: true,
 
   // =========================================================================
   // GENERATION HOT-PATH FLAGS (used by panelGenerationService / orchestrator)
@@ -572,8 +572,8 @@ export const FEATURE_FLAGS = {
   /** Strict control image mode - enforce control images for all panels */
   strictControlImageMode: true,
 
-  /** Use canonical baseline comparison during generation */
-  useCanonicalBaseline: false,
+  /** Use canonical baseline comparison during generation — routes 2D panels to deterministic SVG */
+  useCanonicalBaseline: true,
 
   /** Enable geometry-controlled 3D generation */
   geometryControlled3D: false,
@@ -617,8 +617,8 @@ export const FEATURE_FLAGS = {
   /** Force use of baseline control images */
   forceBaselineControl: false,
 
-  /** Enforce deterministic 2D generation */
-  strictDeterministic2D: false,
+  /** Enforce deterministic 2D generation — belt-and-suspenders with useCanonicalBaseline */
+  strictDeterministic2D: true,
 
   /** Validate panel quality before composition */
   panelQualityValidation: true,
@@ -954,12 +954,12 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.fingerprintMatchThreshold = 0.85;
   FEATURE_FLAGS.maxFingerprintRetries = 2;
   FEATURE_FLAGS.heroControlStrength = {
-    interior_3d: 0.55,
-    axonometric: 0.7,
-    elevation_north: 0.6,
-    elevation_south: 0.6,
-    elevation_east: 0.6,
-    elevation_west: 0.6,
+    interior_3d: 0.65,
+    axonometric: 0.8,
+    elevation_north: 0.65,
+    elevation_south: 0.65,
+    elevation_east: 0.65,
+    elevation_west: 0.65,
   };
   // Strict mode defaults
   FEATURE_FLAGS.strictNoFallback = true;
@@ -968,14 +968,14 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.programComplianceGate = true;
   FEATURE_FLAGS.driftGate = true;
   FEATURE_FLAGS.cdsRequired = true;
-  FEATURE_FLAGS.allowTechnicalFallback = false;
+  FEATURE_FLAGS.allowTechnicalFallback = true;
   // QA / Review systems defaults
   FEATURE_FLAGS.qaGates = false;
   FEATURE_FLAGS.opusSheetCritic = false;
   FEATURE_FLAGS.opusPanelValidator = false;
   // Hot-path panel generation defaults
   FEATURE_FLAGS.strictControlImageMode = true;
-  FEATURE_FLAGS.useCanonicalBaseline = false;
+  FEATURE_FLAGS.useCanonicalBaseline = true;
   FEATURE_FLAGS.outputMode = "presentation";
   FEATURE_FLAGS.strictPanelValidation = false;
   FEATURE_FLAGS.strictPanelFailFast = false;
@@ -983,7 +983,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.enableAutoRetry = true;
   FEATURE_FLAGS.autoRetryFailedPanels = true;
   FEATURE_FLAGS.forceBaselineControl = false;
-  FEATURE_FLAGS.strictDeterministic2D = false;
+  FEATURE_FLAGS.strictDeterministic2D = true;
   FEATURE_FLAGS.panelQualityValidation = true;
   FEATURE_FLAGS.panelQualityBlockOnFailure = true;
   FEATURE_FLAGS.controlFidelityGate = true;

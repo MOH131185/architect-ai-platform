@@ -42,6 +42,7 @@ import {
   Map,
   Lock,
   Unlock,
+  RefreshCw,
 } from "lucide-react";
 import "./styles/premium.css";
 import { locationIntelligence } from "./services/locationIntelligence.js";
@@ -1371,6 +1372,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     message: "",
     percentage: 0,
   });
+  const [regeneratingPanel, setRegeneratingPanel] = useState(null);
   const [showModification, setShowModification] = useState(false);
   const [showModifyDrawer, setShowModifyDrawer] = useState(false);
   const [currentDesignId, setCurrentDesignId] = useState(() => {
@@ -1673,6 +1675,131 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     };
     checkDesignHistory();
   }, []);
+
+  // Panel types that use FLUX and can be regenerated (not deterministic SVG)
+  const FLUX_PANEL_TYPES = new Set([
+    'hero_3d', 'exterior_front_3d', 'interior_3d', 'axonometric_3d', 'site_plan',
+  ]);
+
+  // Regenerate a single FLUX panel with a new random seed
+  const regenerateSinglePanel = useCallback(async (panelType) => {
+    if (regeneratingPanel) return; // Prevent concurrent regeneration
+    const panels = generatedDesigns?.a1Sheet?.panels;
+    const panelData = panels?.[panelType];
+    if (!panelData) return;
+
+    const prompt = panelData.prompt || panelData.meta?.prompt || '';
+    if (!prompt) {
+      console.warn(`No prompt found for panel ${panelType}, cannot regenerate`);
+      return;
+    }
+
+    setRegeneratingPanel(panelType);
+    try {
+      const { generateArchitecturalImage } = await import('./services/togetherAIService.js');
+      const newSeed = Math.floor(Math.random() * 1e6);
+      const width = panelData.width || panelData.meta?.width || 1500;
+      const height = panelData.height || panelData.meta?.height || 1500;
+
+      console.log(`🔄 Regenerating ${panelType} with new seed ${newSeed}`);
+      const result = await generateArchitecturalImage({
+        viewType: panelType,
+        designDNA: generatedDesigns?.masterDNA || generatedDesigns?.a1Sheet?.baselineBundle?.baselineDNA || {},
+        prompt,
+        seed: newSeed,
+        width,
+        height,
+      });
+
+      if (result?.url) {
+        // Update the panel in state with new image
+        setGeneratedDesigns((prev) => {
+          const updatedPanels = { ...prev.a1Sheet.panels };
+          updatedPanels[panelType] = {
+            ...updatedPanels[panelType],
+            url: result.url,
+            imageUrl: result.url,
+            seed: newSeed,
+            meta: { ...(updatedPanels[panelType]?.meta || {}), regenerated: true, newSeed },
+          };
+          return {
+            ...prev,
+            a1Sheet: { ...prev.a1Sheet, panels: updatedPanels, _panelsDirty: true },
+          };
+        });
+        console.log(`✅ ${panelType} regenerated successfully`);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to regenerate ${panelType}:`, error);
+      setToastMessage(`Failed to regenerate panel: ${error.message}`);
+      setTimeout(() => setToastMessage(''), 4000);
+    } finally {
+      setRegeneratingPanel(null);
+    }
+  }, [regeneratingPanel, generatedDesigns]);
+
+  // Recompose A1 sheet from current panel set (after cherry-picking)
+  const recomposeSheet = useCallback(async () => {
+    const panels = generatedDesigns?.a1Sheet?.panels;
+    if (!panels || !generatedDesigns?.a1Sheet?._panelsDirty) return;
+
+    setRegeneratingPanel('__recomposing__');
+    try {
+      // Build panels array from current panel map
+      const panelArray = Object.entries(panels).map(([type, panel]) => ({
+        type,
+        imageUrl: panel.url || panel.imageUrl || (typeof panel === 'string' ? panel : ''),
+        label: type.toUpperCase().replace(/_/g, ' '),
+        meta: panel.meta || {},
+        ...(panel.svgPanel ? { svgPanel: true } : {}),
+      })).filter(p => p.imageUrl);
+
+      const masterDNA = generatedDesigns.masterDNA || generatedDesigns.a1Sheet?.baselineBundle?.baselineDNA || {};
+      const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+
+      console.log(`🔄 Recomposing A1 sheet with ${panelArray.length} panels...`);
+      const response = await fetch(`${API_BASE_URL}/api/a1/compose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          designId: generatedDesigns.designId || `recompose_${Date.now()}`,
+          panels: panelArray,
+          layoutConfig: 'uk-riba-standard',
+          masterDNA: {
+            rooms: masterDNA.rooms || masterDNA.program?.rooms || [],
+            materials: masterDNA.materials || [],
+            dimensions: masterDNA.dimensions || {},
+            architecturalStyle: masterDNA.architecturalStyle,
+            roof: masterDNA.roof,
+          },
+          projectContext: { programSpaces: [], buildingProgram: masterDNA.buildingType },
+          locationData: { climate: {}, sunPath: {}, address: '', coordinates: null, zoning: {} },
+        }),
+      });
+
+      if (!response.ok) throw new Error(`Compose failed: ${response.status}`);
+      const result = await response.json();
+
+      if (result.composedSheetUrl) {
+        setGeneratedDesigns((prev) => ({
+          ...prev,
+          a1Sheet: {
+            ...prev.a1Sheet,
+            url: result.composedSheetUrl,
+            composedSheetUrl: result.composedSheetUrl,
+            _panelsDirty: false,
+          },
+        }));
+        console.log('✅ A1 sheet recomposed successfully');
+      }
+    } catch (error) {
+      console.error('❌ Recompose failed:', error);
+      setToastMessage(`Recompose failed: ${error.message}`);
+      setTimeout(() => setToastMessage(''), 4000);
+    } finally {
+      setRegeneratingPanel(null);
+    }
+  }, [generatedDesigns]);
 
   // Image Modal Handlers
   const openImageModal = useCallback((imageUrl, title = "Image") => {
@@ -6055,7 +6182,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                   <A1SheetViewer sheetData={generatedDesigns.a1Sheet} />
 
-                  {/* Individual Panel Gallery */}
+                  {/* Individual Panel Gallery with Regenerate Controls */}
                   {generatedDesigns.a1Sheet?.panels &&
                     Object.keys(generatedDesigns.a1Sheet.panels).length > 0 && (
                       <div className="mt-8">
@@ -6076,9 +6203,25 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                           }
                           )
                           <span className="ml-2 text-sm font-normal text-white/60">
-                            Click to zoom &amp; download
+                            Click to zoom | FLUX panels can be regenerated
                           </span>
                         </h4>
+
+                        {/* Recompose Sheet button - visible when panels have been regenerated */}
+                        {generatedDesigns.a1Sheet?._panelsDirty && (
+                          <button
+                            onClick={recomposeSheet}
+                            disabled={regeneratingPanel === '__recomposing__'}
+                            className="mb-4 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+                          >
+                            {regeneratingPanel === '__recomposing__' ? (
+                              <><Loader2 className="w-4 h-4 animate-spin" /> Recomposing Sheet...</>
+                            ) : (
+                              <><RefreshCw className="w-4 h-4" /> Recompose A1 Sheet with Updated Panels</>
+                            )}
+                          </button>
+                        )}
+
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                           {Object.entries(generatedDesigns.a1Sheet.panels)
                             .filter(([, panel]) => {
@@ -6094,17 +6237,47 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               const label =
                                 PANEL_LABELS[panelType] ||
                                 panelType.replace(/_/g, " ").toUpperCase();
+                              const isFluxPanel = FLUX_PANEL_TYPES.has(panelType);
+                              const isRegenerating = regeneratingPanel === panelType;
                               return (
                                 <div
                                   key={panelType}
-                                  className="group relative bg-navy-800/50 border border-white/10 rounded-xl overflow-hidden cursor-pointer hover:border-blue-400/50 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-200"
-                                  onClick={() => openImageModal(url, label)}
+                                  className={`group relative bg-navy-800/50 border rounded-xl overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 ${
+                                    isRegenerating
+                                      ? 'border-yellow-400/50 shadow-yellow-500/10'
+                                      : panel?.meta?.regenerated
+                                        ? 'border-emerald-400/50 hover:border-emerald-400/80 shadow-emerald-500/10'
+                                        : 'border-white/10 hover:border-blue-400/50 hover:shadow-blue-500/10'
+                                  }`}
+                                  onClick={() => !isRegenerating && openImageModal(url, label)}
                                 >
-                                  <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden">
+                                  {/* Tier badge */}
+                                  <div className="absolute top-2 left-2 z-10">
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                      isFluxPanel
+                                        ? 'bg-purple-500/80 text-white'
+                                        : 'bg-emerald-500/80 text-white'
+                                    }`}>
+                                      {isFluxPanel ? 'FLUX' : 'SVG'}
+                                    </span>
+                                    {panel?.meta?.regenerated && (
+                                      <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-500/80 text-white">
+                                        NEW
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="aspect-square bg-white/5 flex items-center justify-center overflow-hidden relative">
+                                    {isRegenerating && (
+                                      <div className="absolute inset-0 bg-black/60 z-10 flex flex-col items-center justify-center">
+                                        <Loader2 className="w-8 h-8 text-yellow-400 animate-spin mb-2" />
+                                        <span className="text-yellow-300 text-xs font-medium">Regenerating...</span>
+                                      </div>
+                                    )}
                                     <img
                                       src={url}
                                       alt={label}
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      className={`w-full h-full object-cover transition-transform duration-300 ${isRegenerating ? 'opacity-40' : 'group-hover:scale-105'}`}
                                       loading="lazy"
                                       onError={(e) => {
                                         e.target.style.display = "none";
@@ -6117,13 +6290,22 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                                     <span className="text-xs font-medium text-white/80 truncate">
                                       {label}
                                     </span>
-                                    <ZoomIn className="w-3.5 h-3.5 text-white/40 group-hover:text-blue-300 transition-colors flex-shrink-0 ml-1" />
-                                  </div>
-                                  {/* Hover overlay */}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-10">
-                                    <span className="text-white text-xs font-medium px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full">
-                                      Click to zoom
-                                    </span>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                                      {isFluxPanel && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            regenerateSinglePanel(panelType);
+                                          }}
+                                          disabled={!!regeneratingPanel}
+                                          className="p-1 rounded hover:bg-white/10 transition-colors disabled:opacity-30"
+                                          title="Regenerate this panel with a new seed"
+                                        >
+                                          <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'text-yellow-400 animate-spin' : 'text-white/40 hover:text-orange-300'}`} />
+                                        </button>
+                                      )}
+                                      <ZoomIn className="w-3.5 h-3.5 text-white/40 group-hover:text-blue-300 transition-colors" />
+                                    </div>
                                   </div>
                                 </div>
                               );
