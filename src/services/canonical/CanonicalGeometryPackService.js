@@ -420,6 +420,23 @@ export function getControlForPanel(pack, panelType) {
  */
 export function getInitImageParams(pack, panelType) {
   const normalizedType = normalizePanelType(panelType);
+
+  // Skip geometry init_image for 3D photorealistic panels.
+  // Together.ai FLUX returns 500 when sent SVG init_images for these panel types.
+  // 3D panels should generate from prompt only (with optional hero style reference).
+  const SKIP_GEOMETRY_FOR_3D = new Set([
+    "hero_3d",
+    "exterior_front_3d",
+    "interior_3d",
+    "axonometric",
+    "axonometric_3d",
+    "site_diagram",
+    "site_plan",
+  ]);
+  if (SKIP_GEOMETRY_FOR_3D.has(normalizedType)) {
+    return null;
+  }
+
   const dataUrl = getControlForPanel(pack, normalizedType);
   if (!dataUrl) return null;
   const strength = STRENGTH_POLICY[normalizedType] ?? 0.5;
