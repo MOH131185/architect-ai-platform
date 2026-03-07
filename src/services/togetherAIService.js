@@ -319,19 +319,15 @@ export async function generateArchitecturalImage(params) {
       // ⚠️ CRITICAL: FLUX.1-schnell IGNORES init_image! Force FLUX.1-dev when:
       //   - geometry control is present (existing behavior)
       //   - style reference is present for elevations/sections (NEW: ensures hero style transfer works)
-      const model =
-        hasGeometryControl || hasStyleReference
-          ? "black-forest-labs/FLUX.1-dev" // Always dev for init_image conditioning (schnell ignores it)
-          : is2DTechnical
-            ? "black-forest-labs/FLUX.1-schnell"
-            : "black-forest-labs/FLUX.1-dev";
+      // Always use FLUX.1-dev for all panels — schnell (4 steps) produces garbage
+      // for architectural views and ignores init_image conditioning entirely
+      const model = "black-forest-labs/FLUX.1-dev";
 
-      // Adjust steps based on actual model (dev needs more steps even for 2D when geometry control is active)
-      const useDevModel = model.includes("dev");
-      const steps = useDevModel ? 40 : 4; // dev: 40 steps, schnell: 4 steps
+      const useDevModel = true;
+      const steps = 40;
       const guidanceScale = is2DTechnical ? 7.5 : 3.5; // High CFG for 2D to enforce flat view
 
-      const modelName = useDevModel ? "FLUX.1-dev" : "FLUX.1-schnell";
+      const modelName = "FLUX.1-dev";
 
       // Log when init_image conditioning forces model upgrade
       if (hasGeometryControl && is2DTechnical) {

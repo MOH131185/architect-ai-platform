@@ -83,7 +83,7 @@ export const GRAPHICS_STANDARDS = {
     grid: 0.1, // Background grid (if used)
   },
   colors: {
-    background: "#FFFFFF",
+    background: "#FAF9F6",
     outline: "#1a1a1a",
     grid: "#e5e5e5",
     dimension: "#666666",

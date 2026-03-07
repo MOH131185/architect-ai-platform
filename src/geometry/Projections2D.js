@@ -93,6 +93,9 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   // SVG Styles
   svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
 
+  // Background fill (prevents transparent SVG appearing as white void in composition)
+  svg += `<rect x="0" y="0" width="${finalWidth}" height="${finalHeight}" fill="${style.colors.background}"/>`;
+
   // Defs for patterns
   svg += generateHatchPattern("wall-hatch", style, 45, 3);
   svg += generateHatchPattern("slab-hatch", style, 45, 6);
@@ -799,11 +802,55 @@ function drawElevationOpenings(
 ) {
   let svg = '<g id="elevation-openings">';
 
-  const facadeOpenings = model.getOpeningsForFacade(orientation);
+  let facadeOpenings = model.getOpeningsForFacade(orientation);
 
-  // DEBUG: Log facade openings count
+  // Fallback: generate default windows when model has no openings for this facade
+  // This prevents empty/blank elevations which look broken in the A1 sheet
   if (facadeOpenings.length === 0) {
-    logger.debug(`[Projections2D] No openings found for facade ${orientation}`);
+    logger.debug(
+      `[Projections2D] No openings for ${orientation} — generating default windows`,
+    );
+    const facadeWidthMM = isNS
+      ? model.envelope.width
+      : model.envelope.depth;
+    const floorCount = model.floors?.length || 1;
+    const windowsPerFloor = Math.max(2, Math.round(facadeWidthMM / 3000));
+    const windowWidth = 1200;
+    const windowHeight = 1400;
+    const doorWidth = 1000;
+    const doorHeight = 2100;
+    const spacing = facadeWidthMM / (windowsPerFloor + 1);
+
+    facadeOpenings = [];
+    for (let fi = 0; fi < floorCount; fi++) {
+      const floorBaseZ = fi * (model.envelope.floorToFloor || 3000);
+      for (let wi = 0; wi < windowsPerFloor; wi++) {
+        const posX = -facadeWidthMM / 2 + spacing * (wi + 1);
+        // Ground floor first opening on main facade is a door
+        if (fi === 0 && wi === 0 && (orientation === "S" || orientation === "N")) {
+          facadeOpenings.push({
+            type: "door",
+            floorIndex: fi,
+            position: { x: posX / facadeWidthMM + 0.5 },
+            widthMM: doorWidth,
+            heightMM: doorHeight,
+            height: doorHeight,
+            zBase: floorBaseZ,
+            isEntrance: true,
+          });
+        } else {
+          facadeOpenings.push({
+            type: "window",
+            floorIndex: fi,
+            position: { x: posX / facadeWidthMM + 0.5 },
+            widthMM: windowWidth,
+            heightMM: windowHeight,
+            zBase: floorBaseZ,
+            sillHeight: 900,
+          });
+        }
+      }
+    }
   }
 
   for (const opening of facadeOpenings) {
@@ -1044,6 +1091,10 @@ export function projectSection(
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${finalWidth} ${finalHeight}" width="${finalWidth}" height="${finalHeight}">`;
   svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
+
+  // Background fill
+  svg += `<rect x="0" y="0" width="${finalWidth}" height="${finalHeight}" fill="${style.colors.background}"/>`;
+
   svg += generateHatchPattern("wall-hatch", style, 45, 3);
   svg += generateHatchPattern("slab-hatch", style, 45, 6);
 

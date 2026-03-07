@@ -83,7 +83,7 @@ export const PANEL_DEFINITIONS = {
     height: 1500,
     zone: 'plansColumn',
     priority: 5,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
   plan_upper: {
     key: 'plan_upper',
@@ -92,7 +92,7 @@ export const PANEL_DEFINITIONS = {
     height: 1500,
     zone: 'plansColumn',
     priority: 6,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
 
   // Elevations (PRIORITY 7-10 - After floor plans)
@@ -103,7 +103,7 @@ export const PANEL_DEFINITIONS = {
     height: 1500,
     zone: 'elevationsColumn',
     priority: 7,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
   elev_south: {
     key: 'elev_south',
@@ -112,7 +112,7 @@ export const PANEL_DEFINITIONS = {
     height: 1500,
     zone: 'elevationsColumn',
     priority: 8,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
   elev_east: {
     key: 'elev_east',
@@ -121,7 +121,7 @@ export const PANEL_DEFINITIONS = {
     height: 1500,
     zone: 'elevationsColumn',
     priority: 9,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
   elev_west: {
     key: 'elev_west',
@@ -130,7 +130,7 @@ export const PANEL_DEFINITIONS = {
     height: 1500,
     zone: 'elevationsColumn',
     priority: 10,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
 
   // Sections (PRIORITY 11-12 - After elevations)
@@ -141,7 +141,7 @@ export const PANEL_DEFINITIONS = {
     height: 1000,
     zone: 'sectionBand',
     priority: 11,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   },
   sect_trans: {
     key: 'sect_trans',
@@ -150,7 +150,7 @@ export const PANEL_DEFINITIONS = {
     height: 1000,
     zone: 'sectionBand',
     priority: 12,
-    model: 'flux-1-schnell' // Fast 2D generation
+    model: 'flux-1-dev' // Quality generation (schnell too low quality for architecture)
   }
 };
 

@@ -1133,6 +1133,26 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         } catch (typesCDSErr) {
           logger.warn("⚠️ Types CDS build failed:", typesCDSErr.message);
         }
+
+        // ── Defensive fallback: ensure typesCDS.massing has widthM/depthM ──
+        // Without these, BuildingModel falls back to inaccurate area-based guesses
+        // and the canonical geometry pack may be empty or broken.
+        if (typesCDS && (!typesCDS.massing?.widthM || !typesCDS.massing?.depthM)) {
+          typesCDS.massing = typesCDS.massing || {};
+          typesCDS.massing.widthM =
+            typesCDS.massing.widthM ||
+            masterDNA.dimensions?.length ||
+            masterDNA.dimensions?.width ||
+            12;
+          typesCDS.massing.depthM =
+            typesCDS.massing.depthM ||
+            masterDNA.dimensions?.width ||
+            masterDNA.dimensions?.depth ||
+            8;
+          logger.warn(
+            `⚠️ Patched typesCDS massing: widthM=${typesCDS.massing.widthM}, depthM=${typesCDS.massing.depthM}`,
+          );
+        }
       }
 
       // ─── STEP 2.06: Early envelope fit check ─────────────────────
@@ -1429,7 +1449,44 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       //      which BuildingModel cannot read, causing it to fall back to area-based
       //      guesses and producing a broken/empty geometry pack.
       let canonicalPack = null;
-      const cdsForPack = typesCDS || canonicalDesignState;
+      let cdsForPack = typesCDS || canonicalDesignState;
+
+      // ── Fallback: construct minimal CDS from masterDNA if both adapters failed ──
+      // This ensures the canonical geometry pack ALWAYS builds, preventing silent
+      // degradation to FLUX-only generation (which produces inconsistent panels).
+      if (!cdsForPack && masterDNA?.dimensions) {
+        logger.warn(
+          "⚠️ No CDS available — constructing minimal CDS from masterDNA.dimensions",
+        );
+        cdsForPack = {
+          massing: {
+            widthM:
+              masterDNA.dimensions.length ||
+              masterDNA.dimensions.width ||
+              12,
+            depthM:
+              masterDNA.dimensions.width ||
+              masterDNA.dimensions.depth ||
+              8,
+            levelCount:
+              masterDNA.dimensions.floorCount ||
+              masterDNA.dimensions.floors ||
+              2,
+            floorToFloorM: masterDNA.dimensions.groundFloorHeight || 3.0,
+            roofType: masterDNA.roofType || masterDNA.style?.roofType || "gable",
+          },
+          program: {
+            levelCount:
+              masterDNA.dimensions.floorCount ||
+              masterDNA.dimensions.floors ||
+              2,
+          },
+          programRooms: masterDNA.rooms || [],
+          style: masterDNA.style || {},
+          meta: { source: "minimal-fallback" },
+        };
+      }
+
       if (isFeatureEnabled("canonicalControlPack") && cdsForPack) {
         logger.info(
           "📐 STEP 2.7: Building Canonical Geometry Pack from CDS...",
@@ -2219,12 +2276,28 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         }
       }
 
+      // ── Tier Summary: show exactly how each panel was generated ──
+      const tier1Panels = generatedPanels.filter((p) => p.meta?.tier === 1);
+      const tier2Panels = generatedPanels.filter(
+        (p) => p.meta?.hadCanonicalControl && p.meta?.tier !== 1,
+      );
+      const tier3Panels = generatedPanels.filter(
+        (p) => !p.meta?.hadCanonicalControl && p.meta?.tier !== 1 && !p.svgPanel,
+      );
+      const dataPanels = generatedPanels.filter(
+        (p) => p.meta?.generatorUsed === "data_panel_svg" || p.meta?.isDataPanel,
+      );
+
       logger.success(
-        `✅ Generated ${generatedPanels.length}/${panelJobs.length} panels`,
+        `✅ Generated ${generatedPanels.length}/${panelJobs.length} panels\n` +
+          `   📐 TIER 1 (deterministic SVG): ${tier1Panels.length} panels [${tier1Panels.map((p) => p.type).join(", ")}]\n` +
+          `   🎨 TIER 2 (FLUX + geometry):   ${tier2Panels.length} panels [${tier2Panels.map((p) => p.type).join(", ")}]\n` +
+          `   🖼️ TIER 3 (FLUX only):         ${tier3Panels.length} panels [${tier3Panels.map((p) => p.type).join(", ")}]\n` +
+          `   📊 DATA (SVG tables):           ${dataPanels.length} panels`,
       );
       reportProgress(
         "rendering",
-        `Generated ${generatedPanels.length}/${panelJobs.length} panels`,
+        `Generated ${generatedPanels.length}/${panelJobs.length} panels (${tier1Panels.length} SVG, ${tier2Panels.length + tier3Panels.length} FLUX)`,
         80,
       );
 
