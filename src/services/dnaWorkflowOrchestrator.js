@@ -793,10 +793,20 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       portfolioFiles = [],
       siteSnapshot = null,
       baseSeed = null,
+      preSelectedDNA = null,
     } = params;
 
     try {
       reportProgress("analysis", "Starting multi-panel generation...", 2);
+
+      let masterDNA;
+
+      if (preSelectedDNA) {
+        // STEP 1 (SKIP): Use pre-selected DNA from variant selection
+        logger.info("🧬 STEP 1: Using pre-selected DNA variant (skipping generation)");
+        reportProgress("dna", "Using selected design variant...", 20);
+        masterDNA = preSelectedDNA;
+      } else {
       // STEP 1: Generate Master DNA via Qwen
       logger.info("🧬 STEP 1: Generating Master DNA...");
       reportProgress("dna", "Generating master design DNA...", 10);
@@ -856,7 +866,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       }
 
       // Extract masterDNA from response (handles both direct DNA and wrapped response)
-      const masterDNA = dnaResponse.masterDNA || dnaResponse;
+      masterDNA = dnaResponse.masterDNA || dnaResponse;
+      } // end of else (no preSelectedDNA)
 
       // Log DNA quality
       if (masterDNA.isFallback) {

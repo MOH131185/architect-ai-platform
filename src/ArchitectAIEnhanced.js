@@ -1432,6 +1432,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   const [siteMetrics, setSiteMetrics] = useState(null);
   const vectorPlan = null;
 
+  // 🆕 Multi-variant DNA selection
+  const [dnaVariants, setDnaVariants] = useState(null);
+  const [selectedVariantIndex, setSelectedVariantIndex] = useState(null);
+  const [isGeneratingVariants, setIsGeneratingVariants] = useState(false);
+
   // 🆕 Ref to track if geometry views have been integrated (prevent duplicate integration)
   const geometryViewsIntegratedRef = useRef(false);
 
@@ -2609,6 +2614,60 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
   };
 
   // STEP 5: Generate AI designs with integrated workflow
+  // 🆕 Generate 3 DNA variants for user selection (Conservative / Moderate / Bold)
+  const generateDNAVariantsForSelection = async () => {
+    setIsGeneratingVariants(true);
+    setDnaVariants(null);
+    setSelectedVariantIndex(null);
+
+    try {
+      const { default: twoPassDNAGenerator } = await import(
+        "./services/twoPassDNAGenerator"
+      );
+
+      const projectContext = {
+        buildingProgram: projectDetails?.program || "mixed-use building",
+        programSpaces: programSpaces || [],
+        location: locationData || { address: "Unknown location" },
+        locationData: locationData,
+        climate: locationData?.climate,
+        zoning: locationData?.zoning,
+        recommendedStyle: locationData?.recommendedStyle,
+        sitePolygon: sitePolygon,
+        siteMetrics: siteMetrics,
+        area: projectDetails?.area || "200",
+        floorCount:
+          projectDetails?.floorCount || calculatedFloors.optimalFloors || 2,
+        houseType: projectDetails?.program,
+        floorCountLocked: floorCountLocked,
+      };
+
+      const variants =
+        await twoPassDNAGenerator.generateDNAVariants(
+          projectContext,
+          null,
+          locationData,
+        );
+
+      if (variants && variants.length > 0) {
+        setDnaVariants(variants);
+        // Auto-select moderate (index 1) if available
+        setSelectedVariantIndex(variants.length > 1 ? 1 : 0);
+      } else {
+        setToastMessage(
+          "Could not generate design variants. Using standard generation.",
+        );
+        setTimeout(() => setToastMessage(""), 3000);
+      }
+    } catch (err) {
+      console.error("❌ Variant generation failed:", err);
+      setToastMessage("Variant generation failed. Using standard generation.");
+      setTimeout(() => setToastMessage(""), 3000);
+    } finally {
+      setIsGeneratingVariants(false);
+    }
+  };
+
   const generateDesigns = async () => {
     // Reset generation state and start timer
     setIsGenerationComplete(false);
@@ -2791,12 +2850,19 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         5,
         `Generating architectural panels (${resolvedMode})...`,
       );
+      // If a variant was pre-selected, pass its DNA to skip DNA generation
+      const selectedDNA =
+        dnaVariants && selectedVariantIndex != null
+          ? dnaVariants[selectedVariantIndex]?.masterDNA
+          : null;
+
       aiResult = await executeWorkflow(dnaWorkflowOrchestrator, {
         projectContext,
         locationData,
         portfolioFiles: portfolioFiles || [],
         siteSnapshot: locationData?.siteSnapshot || null,
         baseSeed: projectSeed,
+        preSelectedDNA: selectedDNA || null,
       });
 
       console.log("✅ AI design generation complete:", aiResult);
@@ -3059,6 +3125,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
       setIsLoading(false);
       updateProgress("", 0, "");
+      // Clear variant selection after successful generation
+      setDnaVariants(null);
+      setSelectedVariantIndex(null);
       setCurrentStep(5);
     } catch (error) {
       console.error("❌ AI generation error:", error);
@@ -5983,9 +6052,113 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                 </div>
               </div>
 
+              {/* Design Variant Selection */}
+              {!isLoading && (
+                <div className="mt-6 mb-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <button
+                      onClick={generateDNAVariantsForSelection}
+                      className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all text-sm font-medium disabled:opacity-50"
+                      disabled={
+                        !projectDetails.area ||
+                        !projectDetails.program ||
+                        isGeneratingVariants
+                      }
+                    >
+                      {isGeneratingVariants ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating 3 design options...
+                        </>
+                      ) : (
+                        <>
+                          <Layers className="w-4 h-4" />
+                          Explore Design Variants
+                        </>
+                      )}
+                    </button>
+                    <span className="text-white/50 text-xs">
+                      Optional: Compare 3 design approaches before generating
+                    </span>
+                  </div>
+
+                  {/* Variant Cards */}
+                  {dnaVariants && dnaVariants.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      {dnaVariants.map((variant, idx) => {
+                        const isSelected = selectedVariantIndex === idx;
+                        const dna = variant.masterDNA || {};
+                        const dims = dna.dimensions || {};
+                        const materials = dna.materials || [];
+                        const roofType = dna.roof?.type || "pitched";
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedVariantIndex(idx)}
+                            className={`text-left p-4 rounded-xl border-2 transition-all duration-200 ${
+                              isSelected
+                                ? "border-blue-400 bg-blue-500/20 shadow-lg shadow-blue-500/20"
+                                : "border-white/20 bg-white/5 hover:border-white/40 hover:bg-white/10"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h5
+                                className={`font-bold text-sm ${isSelected ? "text-blue-300" : "text-white"}`}
+                              >
+                                {variant.label}
+                              </h5>
+                              {isSelected && (
+                                <Check className="w-4 h-4 text-blue-400" />
+                              )}
+                            </div>
+                            <p className="text-white/60 text-xs mb-3">
+                              {variant.description}
+                            </p>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex justify-between text-white/70">
+                                <span>Footprint</span>
+                                <span className="text-white/90 font-medium">
+                                  {dims.length || "?"}m x {dims.width || "?"}m
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-white/70">
+                                <span>Roof</span>
+                                <span className="text-white/90 font-medium capitalize">
+                                  {roofType}
+                                </span>
+                              </div>
+                              {materials.length > 0 && (
+                                <div className="flex items-center gap-1 mt-2">
+                                  {materials.slice(0, 4).map((mat, mi) => (
+                                    <div
+                                      key={mi}
+                                      className="w-5 h-5 rounded-full border border-white/30"
+                                      style={{
+                                        backgroundColor:
+                                          mat.hexColor || mat.color || "#888",
+                                      }}
+                                      title={mat.name || mat.material}
+                                    />
+                                  ))}
+                                  {materials.length > 4 && (
+                                    <span className="text-white/50 text-[10px] ml-1">
+                                      +{materials.length - 4}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button
                 onClick={generateDesigns}
-                className="mt-6 w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-medium flex items-center justify-center disabled:opacity-50 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-4 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 font-medium flex items-center justify-center disabled:opacity-50 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
                 disabled={
                   !projectDetails.area || !projectDetails.program || isLoading
                 }
@@ -5998,7 +6171,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                 ) : (
                   <>
                     <Sparkles className="mr-2" />
-                    Generate AI Designs
+                    {dnaVariants && selectedVariantIndex != null
+                      ? `Generate with ${dnaVariants[selectedVariantIndex]?.label || "Selected"} Variant`
+                      : "Generate AI Designs"}
                   </>
                 )}
               </button>
