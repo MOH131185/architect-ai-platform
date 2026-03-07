@@ -826,7 +826,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default false
    */
-  qaGates: false,
+  qaGates: true,
 
   /**
    * Opus Sheet Critic (AI-Powered)
@@ -838,7 +838,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default false
    */
-  opusSheetCritic: false,
+  opusSheetCritic: true,
 
   /**
    * Opus Panel Validator (AI-Powered)
@@ -970,8 +970,8 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.cdsRequired = true;
   FEATURE_FLAGS.allowTechnicalFallback = true;
   // QA / Review systems defaults
-  FEATURE_FLAGS.qaGates = false;
-  FEATURE_FLAGS.opusSheetCritic = false;
+  FEATURE_FLAGS.qaGates = true;
+  FEATURE_FLAGS.opusSheetCritic = true;
   FEATURE_FLAGS.opusPanelValidator = false;
   // Hot-path panel generation defaults
   FEATURE_FLAGS.strictControlImageMode = true;

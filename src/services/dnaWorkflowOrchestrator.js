@@ -3011,6 +3011,29 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
 
       const compositionResult = await composeResponse.json();
       logger.success("✅ A1 sheet composed successfully");
+
+      // Log QA results from compose endpoint
+      if (compositionResult.qa) {
+        const qa = compositionResult.qa;
+        if (qa.allPassed) {
+          logger.success(`✅ QA gates: ${qa.summary?.passed}/${qa.summary?.total} passed`);
+        } else if (qa.error) {
+          logger.warn(`⚠️  QA gates skipped: ${qa.error}`);
+        } else {
+          logger.warn(`⚠️  QA gates: ${qa.summary?.passed}/${qa.summary?.total} passed, ${qa.failures?.length || 0} failures`);
+        }
+      }
+      if (compositionResult.critique) {
+        const crit = compositionResult.critique;
+        if (crit.overallPass) {
+          logger.success(`✅ Vision QA (Opus Critic): PASSED — visual score: ${crit.visualScore?.overall_presentation || "N/A"}/10`);
+        } else if (crit.error) {
+          logger.warn(`⚠️  Vision QA skipped: ${crit.error}`);
+        } else {
+          logger.warn(`⚠️  Vision QA: ISSUES FOUND — ${crit.layoutIssues?.length || 0} layout, ${crit.regeneratePanels?.length || 0} regen needed`);
+        }
+      }
+
       reportProgress("finalizing", "A1 sheet composed", 92);
 
       // STEP 9: Save to baseline artifact store
@@ -3164,6 +3187,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           panelSeeds,
         },
         panelValidations,
+        // QA results from compose endpoint
+        qa: compositionResult.qa || null,
+        critique: compositionResult.critique || null,
         metadata: {
           workflow: PIPELINE_MODE.MULTI_PANEL,
           panelCount: generatedPanels.length,
@@ -3171,6 +3197,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           generatedAt: new Date().toISOString(),
           baseSeed: effectiveBaseSeed,
           panelSeeds,
+          qaAllPassed: compositionResult.qa?.allPassed ?? null,
+          critiqueOverallPass: compositionResult.critique?.overallPass ?? null,
         },
       };
     } catch (error) {
