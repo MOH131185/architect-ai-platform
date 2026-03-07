@@ -2887,6 +2887,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
           coordinates,
           consistencyReport: aiResult.consistencyReport,
           baselineBundle: aiResult.baselineBundle,
+          qa: aiResult.qa || null,
+          critique: aiResult.critique || null,
         };
         console.log("✅ Multi-panel result normalized to A1 sheet format");
       }
@@ -6286,7 +6288,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
                   {/* 🆕 Validation Badges */}
                   {(generatedDesigns.templateValidation ||
-                    generatedDesigns.dnaConsistencyReport) && (
+                    generatedDesigns.dnaConsistencyReport ||
+                    generatedDesigns.a1Sheet?.qa ||
+                    generatedDesigns.a1Sheet?.critique) && (
                     <div className="mb-4 flex flex-wrap gap-3">
                       {generatedDesigns.templateValidation && (
                         <div
@@ -6351,6 +6355,47 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                           <span className="font-bold">
                             Quality: {generatedDesigns.a1Sheet.qualityScore}%
                           </span>
+                        </div>
+                      )}
+                      {generatedDesigns.a1Sheet?.qa && !generatedDesigns.a1Sheet.qa.skipped && (
+                        <div
+                          className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                            generatedDesigns.a1Sheet.qa.allPassed
+                              ? "border-green-400/50 bg-green-500/20 text-green-200"
+                              : "border-yellow-400/50 bg-yellow-500/20 text-yellow-200"
+                          }`}
+                        >
+                          <span className="font-bold">
+                            QA Gates: {generatedDesigns.a1Sheet.qa.summary?.passed}/{generatedDesigns.a1Sheet.qa.summary?.total}
+                          </span>
+                          {generatedDesigns.a1Sheet.qa.failures?.length > 0 && (
+                            <span className="ml-2 text-xs opacity-90">
+                              ({generatedDesigns.a1Sheet.qa.failures.length} issues)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {generatedDesigns.a1Sheet?.critique && !generatedDesigns.a1Sheet.critique.skipped && (
+                        <div
+                          className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                            generatedDesigns.a1Sheet.critique.overallPass
+                              ? "border-green-400/50 bg-green-500/20 text-green-200"
+                              : "border-yellow-400/50 bg-yellow-500/20 text-yellow-200"
+                          }`}
+                        >
+                          <span className="font-bold">
+                            Vision QA: {generatedDesigns.a1Sheet.critique.overallPass ? "PASS" : "ISSUES"}
+                          </span>
+                          {generatedDesigns.a1Sheet.critique.visualScore?.overall_presentation && (
+                            <span className="ml-2 text-xs opacity-90">
+                              ({generatedDesigns.a1Sheet.critique.visualScore.overall_presentation}/10)
+                            </span>
+                          )}
+                          {generatedDesigns.a1Sheet.critique.regeneratePanels?.length > 0 && (
+                            <span className="ml-1 text-xs opacity-90">
+                              — {generatedDesigns.a1Sheet.critique.regeneratePanels.length} panel(s) flagged
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -7978,23 +8023,61 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                   </button>
 
                   <button
-                    onClick={() => {
-                      const downloadDetails = {
-                        ...projectDetails,
-                        styleChoice,
-                        address: locationData?.address,
-                      };
-                      const content = generateIFCContent(
-                        downloadDetails,
-                        generatedDesigns?.bimModel,
-                      );
-                      downloadFile(
-                        "ArchitectAI_BIM.ifc",
-                        content,
-                        "application/x-step",
-                      );
-                      setDownloadCount((prev) => prev + 1);
-                      showToast("✓ IFC file downloaded successfully!");
+                    onClick={async () => {
+                      try {
+                        const cds = generatedDesigns?.canonicalDesignState;
+                        if (cds) {
+                          const { createBuildingModel } = await import(
+                            "./geometry/BuildingModel.js"
+                          );
+                          const { exportToIFC } = await import(
+                            "./utils/ifcWriter.js"
+                          );
+                          const model = createBuildingModel(cds);
+                          const ifcContent = exportToIFC(model, {
+                            projectName: projectDetails?.program
+                              ? projectDetails.program.charAt(0).toUpperCase() +
+                                projectDetails.program.slice(1)
+                              : "Architectural Design",
+                            address: locationData?.address,
+                          });
+                          model.dispose();
+                          downloadFile(
+                            "ArchitectAI_BIM.ifc",
+                            ifcContent,
+                            "application/x-step",
+                          );
+                        } else {
+                          const downloadDetails = {
+                            ...projectDetails,
+                            styleChoice,
+                            address: locationData?.address,
+                          };
+                          const content = generateIFCContent(
+                            downloadDetails,
+                            generatedDesigns?.bimModel,
+                          );
+                          downloadFile(
+                            "ArchitectAI_BIM.ifc",
+                            content,
+                            "application/x-step",
+                          );
+                        }
+                        setDownloadCount((prev) => prev + 1);
+                        showToast("✓ IFC file downloaded successfully!");
+                      } catch (err) {
+                        console.error("IFC export error:", err);
+                        showToast("IFC export failed — using placeholder");
+                        const content = generateIFCContent(
+                          { ...projectDetails, styleChoice },
+                          null,
+                        );
+                        downloadFile(
+                          "ArchitectAI_BIM.ifc",
+                          content,
+                          "application/x-step",
+                        );
+                      }
                     }}
                     className="flex flex-col items-center p-4 liquid-glass border border-white/20 rounded-xl hover:border-green-400/50 transition-all group cursor-pointer backdrop-blur-xl"
                   >
