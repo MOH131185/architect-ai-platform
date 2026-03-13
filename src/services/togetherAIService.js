@@ -319,7 +319,15 @@ export async function generateArchitecturalImage(params) {
       // FLUX model selection:
       // Default: FLUX.1-schnell (serverless, free). FLUX.1-dev requires dedicated endpoint.
       // ⚠️ FLUX.1-schnell IGNORES init_image — geometry/style conditioning won't apply with schnell.
-      const model = flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+      let model = flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+      // DEFENSIVE: FLUX.1-dev is no longer serverless — auto-fallback to schnell
+      // This catches stale sessionStorage values or old feature flag defaults
+      if (model.includes("FLUX.1-dev")) {
+        logger.warn(
+          `⚠️ FLUX.1-dev is no longer serverless — auto-switching to FLUX.1-schnell for ${viewType}`,
+        );
+        model = "black-forest-labs/FLUX.1-schnell";
+      }
       const isSchnell = model.includes("schnell");
 
       const steps = isSchnell ? 12 : 40;
@@ -636,7 +644,9 @@ export async function generateArchitecturalImage(params) {
     );
     try {
       const fallbackResult = await imageRequestQueue.schedule(async () => {
-        const fallbackModel = flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+        let fallbackModel = flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+        // DEFENSIVE: FLUX.1-dev no longer serverless
+        if (fallbackModel.includes("FLUX.1-dev")) fallbackModel = "black-forest-labs/FLUX.1-schnell";
         const fallbackSteps = fallbackModel.includes("schnell") ? 12 : 40;
         const fallbackPayload = {
           model: fallbackModel,
@@ -665,11 +675,11 @@ export async function generateArchitecturalImage(params) {
         return { data };
       });
       logger.success(
-        `✅ [FLUX.1-dev] ${viewType} generated WITHOUT init_image (fallback)`,
+        `✅ [FLUX] ${viewType} generated WITHOUT init_image (fallback)`,
       );
       return {
         url: fallbackResult.data.url,
-        model: "flux-1-dev",
+        model: "flux-schnell",
         viewType,
         seed: effectiveSeed,
       };
@@ -1166,8 +1176,13 @@ export async function generateA1SheetImage({
 
   // Model selection: default to schnell (serverless). FLUX.1-dev requires dedicated endpoint.
   // ⚠️ FLUX.1-schnell IGNORES init_image — img2img won't work with schnell
-  const requestedModel =
+  let requestedModel =
     model || flags.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+  // DEFENSIVE: FLUX.1-dev no longer serverless
+  if (requestedModel.includes("FLUX.1-dev")) {
+    logger.warn("⚠️ FLUX.1-dev is no longer serverless — auto-switching to FLUX.1-schnell");
+    requestedModel = "black-forest-labs/FLUX.1-schnell";
+  }
   const modelToUse = requestedModel;
 
   if (initImage && requestedModel.includes("schnell")) {
@@ -1514,7 +1529,10 @@ export async function generateUnifiedArchitecturalSheet(params) {
       },
       body: JSON.stringify({
         prompt: sheetPrompt,
-        model: getFeatureFlags()?.fluxImageModel || "black-forest-labs/FLUX.1-schnell",
+        model: (() => {
+          const m = getFeatureFlags()?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+          return m.includes("FLUX.1-dev") ? "black-forest-labs/FLUX.1-schnell" : m;
+        })(),
         width: 1024, // Will represent A1 aspect ratio
         height: 768,
         num_inference_steps: 12,
@@ -1569,7 +1587,10 @@ export async function generateUnifiedArchitecturalSheet(params) {
       generationMetadata: {
         type: "unified_sheet",
         seed: consistentSeed,
-        model: (getFeatureFlags()?.fluxImageModel || "FLUX.1-schnell").split("/").pop(),
+        model: (() => {
+          const m = getFeatureFlags()?.fluxImageModel || "FLUX.1-schnell";
+          return (m.includes("FLUX.1-dev") ? "FLUX.1-schnell" : m).split("/").pop();
+        })(),
         timestamp: new Date().toISOString(),
         totalGenerationTime: Date.now() - Date.now(),
       },

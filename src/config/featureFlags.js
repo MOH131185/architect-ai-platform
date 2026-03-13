@@ -1048,6 +1048,13 @@ export function loadFeatureFlagsFromStorage() {
           FEATURE_FLAGS[key] = flags[key];
         }
       });
+      // DEFENSIVE: Clear stale FLUX.1-dev from sessionStorage — it's no longer serverless
+      if (FEATURE_FLAGS.fluxImageModel && FEATURE_FLAGS.fluxImageModel.includes("FLUX.1-dev")) {
+        logger.warn("⚠️ Clearing stale FLUX.1-dev from sessionStorage — model is no longer serverless");
+        FEATURE_FLAGS.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
+        flags.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
+        sessionStorage.setItem("featureFlags", JSON.stringify(flags));
+      }
       logger.debug("Feature flags loaded from storage", flags);
     }
   } catch (error) {

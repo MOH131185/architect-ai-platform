@@ -896,7 +896,7 @@ class ModelSelector {
 
   getAlternatives(model) {
     const alternatives = {
-      "black-forest-labs/FLUX.1-kontext-max": ["black-forest-labs/FLUX.1-dev"],
+      "black-forest-labs/FLUX.1-kontext-max": ["black-forest-labs/FLUX.1-schnell"],
       "meta-llama/Llama-3.3-70B-Instruct-Turbo": [
         "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       ],

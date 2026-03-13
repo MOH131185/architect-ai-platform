@@ -188,7 +188,7 @@ class MultiModelImageService {
       return {
         ...result,
         model: "flux",
-        generatorUsed: "flux-1-dev",
+        generatorUsed: "flux-1-schnell",
         hadFallback: false,
         category,
       };
