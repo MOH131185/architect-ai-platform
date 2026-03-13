@@ -1,13 +1,21 @@
 /**
  * FLUX Model Presets for A1 Architectural Sheets
  * 
- * Optimized parameters for Together.ai FLUX.1-dev
- * Locked configuration for production use
+ * Optimized parameters for Together.ai FLUX serverless models.
+ * Default: FLUX.1-schnell (serverless). Override via TOGETHER_FLUX_MODEL env var.
+ * Locked configuration for production use.
  */
 
 /**
+ * Default FLUX model for image generation.
+ * FLUX.1-dev moved to dedicated-only endpoints (June 2025).
+ * Serverless options: FLUX.1-schnell (free), FLUX.1.1-pro ($0.04/MP), FLUX.2-dev.
+ */
+export const DEFAULT_FLUX_MODEL = 'black-forest-labs/FLUX.1-schnell';
+
+/**
  * A1_ARCH_FINAL Preset
- * 
+ *
  * Production-grade preset for architectural A1 sheet generation
  * Optimized for consistency, quality, and deterministic output
  */
@@ -17,10 +25,10 @@ export const A1_ARCH_FINAL = {
    * Used for initial A1 sheet generation from DNA + prompt
    */
   generate: {
-    model: 'black-forest-labs/FLUX.1-dev',
+    model: DEFAULT_FLUX_MODEL,
     width: 1792,
     height: 1269,
-    steps: 48,
+    steps: 12, // schnell supports up to 12; override for pro/dev models
     cfg: 7.8,
     scheduler: 'dpmpp_2m_sde_karras',
     denoise: 1.0,
@@ -59,10 +67,10 @@ export const A1_ARCH_FINAL = {
    * Used for modifying existing A1 sheets with consistency lock
    */
   modify: {
-    model: 'black-forest-labs/FLUX.1-dev',
+    model: DEFAULT_FLUX_MODEL,
     width: 1792,
     height: 1269,
-    steps: 32, // Reduced for img2img
+    steps: 12, // schnell supports up to 12; override for pro/dev models
     cfg: 6.5,  // Lower to respect init image more
     scheduler: 'dpmpp_2m_sde_karras',
     seedPolicy: 'reuseDesignSeed', // Always reuse baseline seed

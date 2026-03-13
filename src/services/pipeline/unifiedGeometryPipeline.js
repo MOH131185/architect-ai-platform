@@ -55,7 +55,7 @@ const PIPELINE_CONFIG = {
   // FLUX stylization settings per view type
   flux: {
     elevation: {
-      model: 'black-forest-labs/FLUX.1-dev',
+      model: 'black-forest-labs/FLUX.1-schnell',
       steps: 35,
       guidance: 7.5,
       strength: 0.7, // Keep 70% of Meshy geometry, 30% stylization
@@ -76,7 +76,7 @@ const PIPELINE_CONFIG = {
       style: 'photorealistic_interior',
     },
     axonometric: {
-      model: 'black-forest-labs/FLUX.1-dev',
+      model: 'black-forest-labs/FLUX.1-schnell',
       steps: 40,
       guidance: 7.5,
       strength: 0.6, // Balance geometry and style

@@ -529,7 +529,7 @@ class DebugRunRecorder {
       },
 
       generation: {
-        model: data.model || "black-forest-labs/FLUX.1-dev",
+        model: data.model || "black-forest-labs/FLUX.1-schnell",
         provider: data.provider || "together.ai",
         width: data.width ?? null,
         height: data.height ?? null,

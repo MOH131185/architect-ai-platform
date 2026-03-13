@@ -494,7 +494,7 @@ export const useGeneration = () => {
           styleBlendPercent: 70,
           width: 1792,
           height: 1269,
-          model: "black-forest-labs/FLUX.1-dev",
+          model: "black-forest-labs/FLUX.1-schnell",
           a1LayoutKey: "uk-riba-standard",
           siteSnapshot: aiResult.sitePlanAttachment || null,
           panelMap: aiResult.panelMap || aiResult.panels,

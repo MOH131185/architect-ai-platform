@@ -198,7 +198,7 @@ export default async function handler(req, res) {
             width: Math.min(width, 1792),
             height: Math.min(height, 1792),
             steps: 30,
-            model: 'black-forest-labs/FLUX.1-dev',
+            model: 'black-forest-labs/FLUX.1-schnell',
             // Note: FLUX doesn't support img2img directly here
           }),
         }
