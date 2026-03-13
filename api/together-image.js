@@ -82,7 +82,9 @@ export default async function handler(req, res) {
     // Validate and cap parameters for FLUX.1
     const validatedWidth = Math.min(Math.max(width, 64), 1792);
     const validatedHeight = Math.min(Math.max(height, 64), 1792);
-    const maxSteps = model.includes('schnell') ? 12 : 50;
+    const isSchnell = model.includes('schnell');
+    const isPro = model.includes('pro');
+    const maxSteps = isSchnell ? 12 : isPro ? 50 : 50;
     const validatedSteps = Math.min(Math.max(numInferenceSteps, 1), maxSteps);
 
     const generationMode = initImage ? 'image-to-image' : 'text-to-image';

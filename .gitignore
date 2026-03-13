@@ -38,6 +38,10 @@ design_history/
 
 # E2E test output artifacts (generated images, JSON)
 e2e_results/
+e2e_output/
+e2e_portfolio_output/
+quality_test_output/
+portfolio_images/
 
 # Python build artifacts (for FastAPI backend scaffolding)
 api/__pycache__/
