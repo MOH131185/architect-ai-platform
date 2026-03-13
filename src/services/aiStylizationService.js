@@ -272,7 +272,7 @@ export async function stylizeWithBasicImg2Img(imageUrl, design, masterDNA, viewT
   const prompt = buildStylizationPrompt(design, masterDNA, viewType);
 
   const requestBody = {
-    model: 'black-forest-labs/FLUX.1-dev',
+    model: 'black-forest-labs/FLUX.1-schnell',
     prompt: prompt,
     image: imageUrl,
     prompt_strength: 0.75, // How much to preserve original

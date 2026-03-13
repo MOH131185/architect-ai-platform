@@ -179,7 +179,7 @@ class TogetherAIClient {
       seed,
       sheetType = "ARCH",
       sheetConfig = {},
-      model = "black-forest-labs/FLUX.1-dev",
+      model = "black-forest-labs/FLUX.1-schnell",
     } = params;
 
     const width = params.width ?? 1792;

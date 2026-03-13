@@ -255,7 +255,7 @@ export function getOptimalQualitySettings(baseSettings = {}, purpose = 'initial'
     // Initial A1 sheet generation - maximum quality
     return {
       ...settings,
-      model: 'black-forest-labs/FLUX.1-dev', // Best architectural model
+      model: 'black-forest-labs/FLUX.1-schnell', // Best architectural model
       steps: 50, // Increased from 48 for better quality
       guidanceScale: 8.2, // Increased from 7.8 for stronger adherence
       width: 1792, // Maximum API width
@@ -267,7 +267,7 @@ export function getOptimalQualitySettings(baseSettings = {}, purpose = 'initial'
     // Modification - preserve consistency
     return {
       ...settings,
-      model: 'black-forest-labs/FLUX.1-dev', // Same model for consistency
+      model: 'black-forest-labs/FLUX.1-schnell', // Same model for consistency
       steps: 50, // Keep same quality as initial
       guidanceScale: 9.0, // Stronger guidance for modifications (increased from 8.5)
       imageStrength: 0.18, // Low strength to preserve original

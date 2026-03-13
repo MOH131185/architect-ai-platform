@@ -141,14 +141,15 @@ export const FEATURE_FLAGS = {
    * FLUX model to use for A1 sheet generation
    *
    * Options:
-   * - 'black-forest-labs/FLUX.1-dev' - High-quality model with img2img support (default)
-   * - 'black-forest-labs/FLUX.1-kontext-max' - Best for comprehensive architectural sheets (opt-in)
-   * - 'black-forest-labs/FLUX.1-schnell' - Faster generation (lower quality)
+   * - 'black-forest-labs/FLUX.1-schnell' - Serverless, fast, free (default)
+   * - 'black-forest-labs/FLUX.1.1-pro' - Higher quality serverless ($0.04/MP)
+   * - 'black-forest-labs/FLUX.1-kontext-max' - Best for comprehensive architectural sheets
+   * - 'black-forest-labs/FLUX.1-dev' - Requires dedicated endpoint (no longer serverless)
    *
    * @type {string}
-   * @default 'black-forest-labs/FLUX.1-dev'
+   * @default 'black-forest-labs/FLUX.1-schnell'
    */
-  fluxImageModel: "black-forest-labs/FLUX.1-dev",
+  fluxImageModel: "black-forest-labs/FLUX.1-schnell",
 
   /**
    * A1 sheet orientation
@@ -930,7 +931,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.togetherImageMinIntervalMs = 9000;
   FEATURE_FLAGS.togetherBatchCooldownMs = 30000;
   FEATURE_FLAGS.respectRetryAfter = true;
-  FEATURE_FLAGS.fluxImageModel = "black-forest-labs/FLUX.1-dev";
+  FEATURE_FLAGS.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
   FEATURE_FLAGS.a1Orientation = "landscape";
   FEATURE_FLAGS.overlaySiteSnapshotOnA1 = true;
   FEATURE_FLAGS.compositeSiteSnapshotOnModify = false;
@@ -1047,6 +1048,13 @@ export function loadFeatureFlagsFromStorage() {
           FEATURE_FLAGS[key] = flags[key];
         }
       });
+      // DEFENSIVE: Clear stale FLUX.1-dev from sessionStorage — it's no longer serverless
+      if (FEATURE_FLAGS.fluxImageModel && FEATURE_FLAGS.fluxImageModel.includes("FLUX.1-dev")) {
+        logger.warn("⚠️ Clearing stale FLUX.1-dev from sessionStorage — model is no longer serverless");
+        FEATURE_FLAGS.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
+        flags.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
+        sessionStorage.setItem("featureFlags", JSON.stringify(flags));
+      }
       logger.debug("Feature flags loaded from storage", flags);
     }
   } catch (error) {
@@ -1182,7 +1190,7 @@ if (process.env.NODE_ENV === "development") {
   logger.debug(
     "   fluxImageModel: " +
       FEATURE_FLAGS.fluxImageModel +
-      " ← FLUX.1-dev for A1 sheets (img2img compatible)",
+      " ← FLUX model for A1 sheets (override via TOGETHER_FLUX_MODEL env var)",
   );
   logger.debug(
     "   a1Orientation: " +

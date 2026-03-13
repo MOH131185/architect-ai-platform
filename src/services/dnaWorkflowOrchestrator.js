@@ -3075,7 +3075,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         panels: panelsMap,
         metadata: {
           seed: effectiveBaseSeed,
-          model: "black-forest-labs/FLUX.1-dev",
+          model: "black-forest-labs/FLUX.1-schnell",
           dnaHash: "",
           layoutHash: "",
           width: compositionResult.metadata.width,
@@ -3152,7 +3152,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         styleBlendPercent: 70,
         width: compositionResult.metadata.width,
         height: compositionResult.metadata.height,
-        model: "black-forest-labs/FLUX.1-dev",
+        model: "black-forest-labs/FLUX.1-schnell",
         a1LayoutKey: "uk-riba-standard",
         siteSnapshot,
         a1SheetMetadata: compositionResult.metadata,

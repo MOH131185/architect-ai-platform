@@ -70,8 +70,12 @@ const A1_WIDTH_PX = 1792;
 const A1_HEIGHT_PX = 1269;
 const A1_ASPECT_RATIO = A1_WIDTH_PX / A1_HEIGHT_PX;
 const ASPECT_TOLERANCE = 0.04;
-const DEFAULT_IMG2IMG_MODEL = "black-forest-labs/FLUX.1-dev";
-const SUPPORTED_IMG2IMG_MODELS = new Set([DEFAULT_IMG2IMG_MODEL]);
+const DEFAULT_IMG2IMG_MODEL = "black-forest-labs/FLUX.1-schnell";
+const SUPPORTED_IMG2IMG_MODELS = new Set([
+  DEFAULT_IMG2IMG_MODEL,
+  "black-forest-labs/FLUX.1-dev",
+  "black-forest-labs/FLUX.1.1-pro",
+]);
 
 function alignToMultipleOf16(value) {
   if (!Number.isFinite(value)) {
@@ -282,10 +286,10 @@ class AIModificationService {
         negative_prompt: prompt.negativePrompt,
         width: dimensions.width,
         height: dimensions.height,
-        steps: 48,
+        steps: 12,
         guidance_scale: 7.5,
         seed: originalSeed,
-        model: "black-forest-labs/FLUX.1-dev",
+        model: DEFAULT_IMG2IMG_MODEL,
       });
 
       if (!result || !result.success) {
@@ -593,13 +597,12 @@ class AIModificationService {
       baselineMetadata.a1LayoutKey || "uk-riba-standard";
 
     // 🔧 IMG2IMG COMPATIBILITY: Force compatible model if kontext detected
-    // kontext models don't support img2img, so we use FLUX.1-dev instead
     if (baselineModel && /kontext/i.test(baselineModel)) {
       logger.info(
-        "Baseline model uses kontext - switching to FLUX.1-dev for img2img compatibility",
+        "Baseline model uses kontext - switching to default for img2img compatibility",
         {
           originalModel: baselineModel,
-          newModel: "black-forest-labs/FLUX.1-dev",
+          newModel: DEFAULT_IMG2IMG_MODEL,
         },
         "🔧",
       );
@@ -608,7 +611,7 @@ class AIModificationService {
 
     if (!SUPPORTED_IMG2IMG_MODELS.has(baselineModel)) {
       logger.warn(
-        "Baseline model not supported for img2img - defaulting to FLUX.1-dev",
+        "Baseline model not supported for img2img - defaulting to " + DEFAULT_IMG2IMG_MODEL,
         {
           baselineModel,
         },

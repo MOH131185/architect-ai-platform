@@ -1357,21 +1357,24 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
   const stairWidthPx = (stair.width || 1000) * pxPerMM;
   const stairLengthPx = (stair.length || 3000) * pxPerMM;
 
-  const stairX = stair.position
-    ? offsetX +
-      (isLongitudinal ? stair.position.x : stair.position.y) * pxPerMM -
-      stairWidthPx / 2
-    : offsetX - stairWidthPx / 2;
+  const posX = stair.position?.x ?? 0;
+  const posY = stair.position?.y ?? 0;
+  const stairX = offsetX +
+    (isLongitudinal ? posX : posY) * pxPerMM -
+    stairWidthPx / 2;
 
   // Draw stair treads connecting floors
   for (let floorIdx = 0; floorIdx < model.floors.length - 1; floorIdx++) {
     const lowerFloor = model.floors[floorIdx];
     const upperFloor = model.floors[floorIdx + 1];
 
-    const stairBottomY = groundY - lowerFloor.zTop * pxPerMM;
-    const stairTopY = groundY - upperFloor.zBase * pxPerMM;
+    // Use zBase (standing level) for bottom, upperFloor.zBase (arrival level) for top
+    // lowerFloor.zTop === upperFloor.zBase, so using both zBase values gives the full rise
+    const stairBottomY = groundY - (lowerFloor.zBase || 0) * pxPerMM;
+    const stairTopY = groundY - (upperFloor.zBase || 0) * pxPerMM;
     const stairRisePx = stairBottomY - stairTopY;
-    const numTreads = Math.round(stairRisePx / (200 * pxPerMM));
+    if (stairRisePx <= 0) continue; // No rise, skip this flight
+    const numTreads = Math.max(1, Math.round(stairRisePx / (200 * pxPerMM)));
 
     // Draw individual treads
     for (let t = 0; t <= numTreads; t++) {
@@ -1454,7 +1457,28 @@ function drawSectionLevelMarkers(model, buildingLeft, groundY, pxPerMM) {
  * Draw section roof
  */
 function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
-  const roofProfile = model.getRoofProfile(isLongitudinal ? "N" : "E");
+  // Select the profile matching this section's direction
+  let roofProfile = model.getRoofProfile(isLongitudinal ? "N" : "E");
+
+  // If the selected profile is flat (2 points at same Z), synthesise a peaked
+  // cross-section using the ridge height from the other facade's profile.
+  // Sections should always show the roof pitch, not just the eave line.
+  if (roofProfile && roofProfile.length === 2 &&
+      Math.abs(roofProfile[0].z - roofProfile[1].z) < 1) {
+    const otherProfile = model.getRoofProfile(isLongitudinal ? "E" : "N");
+    if (otherProfile && otherProfile.length > 2) {
+      const peakZ = Math.max(...otherProfile.map(p => p.z));
+      const eaveZ = roofProfile[0].z;
+      if (peakZ > eaveZ) {
+        roofProfile = [
+          { x: roofProfile[0].x, z: eaveZ },
+          { x: (roofProfile[0].x + roofProfile[1].x) / 2, z: peakZ },
+          { x: roofProfile[1].x, z: eaveZ },
+        ];
+      }
+    }
+  }
+
   if (!roofProfile || roofProfile.length === 0) {
     return "";
   }

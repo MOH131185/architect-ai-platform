@@ -510,7 +510,7 @@ CONSISTENCY REQUIREMENTS:
         styleBlendPercent = 70,
         width = 1792,
         height = 1269,
-        model = 'black-forest-labs/FLUX.1-dev',
+        model = 'black-forest-labs/FLUX.1-schnell',
         a1LayoutKey = 'uk-riba-standard',
         siteSnapshot = null, // 🆕 Site map snapshot for pixel-exact parity
         locationData = {},
@@ -756,7 +756,7 @@ CONSISTENCY REQUIREMENTS:
           styleBlendPercent: baseData.styleBlendPercent || 70,
           width: baseData.width || 1792,
           height: baseData.height || 1269,
-          model: baseData.model || 'black-forest-labs/FLUX.1-dev',
+          model: baseData.model || 'black-forest-labs/FLUX.1-schnell',
           a1LayoutKey: baseData.a1LayoutKey || 'uk-riba-standard',
           siteSnapshot: baseData.siteSnapshot || null // 🆕 Site snapshot
         });

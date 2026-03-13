@@ -65,7 +65,7 @@ const MODEL_CONFIGS = {
   // Together.ai fallback (no edit support)
   'flux.1-dev': {
     provider: 'together',
-    apiModelId: 'black-forest-labs/FLUX.1-dev',
+    apiModelId: 'black-forest-labs/FLUX.1-schnell',
     endpoint: '/api/together-image',
     supportsEdit: false, // No geometry preservation
     maxWidth: 1792,

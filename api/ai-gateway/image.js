@@ -85,7 +85,7 @@ export default async function handler(req, res) {
     }
 
     // Map model to AI Gateway equivalent
-    const requestedModel = model || "black-forest-labs/FLUX.1-dev";
+    const requestedModel = model || "black-forest-labs/FLUX.1-schnell";
     const gatewayModel =
       MODEL_MAPPING[requestedModel] || MODEL_MAPPING["default"];
 

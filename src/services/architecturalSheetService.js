@@ -152,7 +152,7 @@ OUTPUT: Single A1 sheet (594×841mm) at 300DPI with all views arranged as shown 
       // Single API call for complete sheet
       const response = await apiService.generateImage({
         prompt: sheetPrompt,
-        model: 'black-forest-labs/FLUX.1-dev',
+        model: 'black-forest-labs/FLUX.1-schnell',
         width: 1024,  // Will be upscaled
         height: 768,   // Maintains A1 aspect ratio
         steps: 28,     // Higher quality for comprehensive sheet

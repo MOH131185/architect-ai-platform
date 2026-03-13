@@ -97,6 +97,15 @@ const REGISTRY = {
   render: {
     active: null,
     models: {
+      "flux-1-schnell": {
+        id: "flux-1-schnell",
+        type: "flux",
+        provider: "together",
+        togetherModel: "black-forest-labs/FLUX.1-schnell",
+        steps: 12,
+        guidanceScale: 3.5,
+        description: "FLUX.1-schnell serverless renderer (default, free)",
+      },
       "flux-1-dev": {
         id: "flux-1-dev",
         type: "flux",
@@ -104,7 +113,7 @@ const REGISTRY = {
         togetherModel: "black-forest-labs/FLUX.1-dev",
         steps: 40,
         guidanceScale: 3.5,
-        description: "FLUX.1-dev primary renderer (img2img capable)",
+        description: "FLUX.1-dev (requires dedicated endpoint, no longer serverless)",
       },
       "flux-kontext-max": {
         id: "flux-kontext-max",
@@ -139,7 +148,7 @@ const REGISTRY = {
           "ControlNet Depth for Blender Z-pass (activate when Blender ready)",
       },
     },
-    fallbackChain: ["flux-1-dev", "flux-kontext-max"],
+    fallbackChain: ["flux-1-schnell", "flux-kontext-max", "flux-1-dev"],
     envOverrideKey: "AI_MODEL_RENDER",
   },
 
@@ -244,7 +253,7 @@ const REGISTRY = {
 
 const CATEGORY_DEFAULTS = {
   layout: "llama-3.3-70b",
-  render: "flux-1-dev",
+  render: "flux-1-schnell",
   style: "prompt-only",
   dna: "qwen-2.5-72b",
   geometry: "svg-projections",
@@ -262,9 +271,10 @@ const MODEL_ID_ALIASES = {
   "qwen3-235b": "qwen3-235b-fewshot",
   llama3: "llama-3.3-70b",
   // Render aliases
+  "black-forest-labs/FLUX.1-schnell": "flux-1-schnell",
   "black-forest-labs/FLUX.1-dev": "flux-1-dev",
   "black-forest-labs/FLUX.1-kontext-max": "flux-kontext-max",
-  flux: "flux-1-dev",
+  flux: "flux-1-schnell",
   controlnet: "controlnet-canny",
   // DNA aliases
   "Qwen/Qwen2.5-72B-Instruct-Turbo": "qwen-2.5-72b",

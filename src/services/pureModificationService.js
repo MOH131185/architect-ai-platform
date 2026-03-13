@@ -192,7 +192,7 @@ export async function modifySheet({
         baselineLayout: design.a1Sheet?.metadata?.layout || {},
         metadata: {
           seed: design.seed,
-          model: design.a1Sheet?.metadata?.model || "FLUX.1-dev",
+          model: design.a1Sheet?.metadata?.model || "FLUX.1-schnell",
           width: design.a1Sheet?.metadata?.width || 1792,
           height: design.a1Sheet?.metadata?.height || 1264,
           a1LayoutKey:

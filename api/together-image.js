@@ -2,7 +2,8 @@
  * Vercel Serverless Function for Together AI Image Generation (REFACTORED)
  * 
  * REFACTORED: Enforces deterministic seed handling, rate limiting, and normalized responses.
- * Uses FLUX.1-dev for A1 sheet generation with explicit seed propagation.
+ * Uses FLUX.1-schnell (serverless) for A1 sheet generation with explicit seed propagation.
+ * Override via TOGETHER_FLUX_MODEL env var (e.g. 'black-forest-labs/FLUX.1.1-pro').
  */
 
 // Simple in-memory rate limiter for serverless
@@ -50,7 +51,7 @@ export default async function handler(req, res) {
 
     const body = req.body || {};
 
-    const model = body.model || 'black-forest-labs/FLUX.1-dev';
+    const model = body.model || process.env.TOGETHER_FLUX_MODEL || 'black-forest-labs/FLUX.1-schnell';
     const prompt = body.prompt;
     const negativePrompt = body.negativePrompt ?? body.negative_prompt ?? '';
     const width = body.width ?? 1792;
@@ -81,7 +82,9 @@ export default async function handler(req, res) {
     // Validate and cap parameters for FLUX.1
     const validatedWidth = Math.min(Math.max(width, 64), 1792);
     const validatedHeight = Math.min(Math.max(height, 64), 1792);
-    const maxSteps = model.includes('schnell') ? 12 : 50;
+    const isSchnell = model.includes('schnell');
+    const isPro = model.includes('pro');
+    const maxSteps = isSchnell ? 12 : isPro ? 50 : 50;
     const validatedSteps = Math.min(Math.max(numInferenceSteps, 1), maxSteps);
 
     const generationMode = initImage ? 'image-to-image' : 'text-to-image';

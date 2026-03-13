@@ -428,7 +428,7 @@ export function normalizeSheetMetadata(metadata) {
     sitePlanPolicy: metadata.sitePlanPolicy || "placeholder",
     panels: panelArray,
     panelMap,
-    model: metadata.model || "FLUX.1-dev",
+    model: metadata.model || "FLUX.1-schnell",
     width: metadata.width || 1792,
     height: metadata.height || 1269,
     a1LayoutKey: metadata.a1LayoutKey || "uk-riba-standard",
@@ -647,7 +647,7 @@ export function createBaselineArtifactBundle(params) {
     panels: params.panels || {},
     metadata: {
       seed: params.seed || 0,
-      model: params.model || "FLUX.1-dev",
+      model: params.model || "FLUX.1-schnell",
       dnaHash: params.dnaHash || "",
       layoutHash: params.layoutHash || "",
       width: params.width || 1792,

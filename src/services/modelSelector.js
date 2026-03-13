@@ -93,7 +93,7 @@ class ModelSelector {
           reliability: 0.96,
         },
         fallback: {
-          model: "black-forest-labs/FLUX.1-dev",
+          model: "black-forest-labs/FLUX.1-schnell",
           provider: "together",
           params: {
             num_inference_steps: 40,
@@ -132,7 +132,7 @@ class ModelSelector {
           reliability: 0.97,
         },
         fallback: {
-          model: "black-forest-labs/FLUX.1-dev",
+          model: "black-forest-labs/FLUX.1-schnell",
           provider: "together",
           params: {
             num_inference_steps: 20,
@@ -149,7 +149,7 @@ class ModelSelector {
       // 3D Photorealistic Views
       PHOTOREALISTIC_3D: {
         primary: {
-          model: "black-forest-labs/FLUX.1-dev",
+          model: "black-forest-labs/FLUX.1-schnell",
           provider: "together",
           params: {
             num_inference_steps: 40,
@@ -170,7 +170,7 @@ class ModelSelector {
           reliability: 0.95,
         },
         quality_mode: {
-          model: "black-forest-labs/FLUX.1-dev",
+          model: "black-forest-labs/FLUX.1-schnell",
           provider: "together",
           params: {
             num_inference_steps: 50, // Maximum quality
@@ -896,7 +896,7 @@ class ModelSelector {
 
   getAlternatives(model) {
     const alternatives = {
-      "black-forest-labs/FLUX.1-kontext-max": ["black-forest-labs/FLUX.1-dev"],
+      "black-forest-labs/FLUX.1-kontext-max": ["black-forest-labs/FLUX.1-schnell"],
       "meta-llama/Llama-3.3-70B-Instruct-Turbo": [
         "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       ],
