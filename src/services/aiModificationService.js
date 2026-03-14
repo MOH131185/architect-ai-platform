@@ -73,7 +73,7 @@ const ASPECT_TOLERANCE = 0.04;
 const DEFAULT_IMG2IMG_MODEL = "black-forest-labs/FLUX.1-schnell";
 const SUPPORTED_IMG2IMG_MODELS = new Set([
   DEFAULT_IMG2IMG_MODEL,
-  "black-forest-labs/FLUX.1-dev",
+  "black-forest-labs/FLUX.1.1-pro",
   "black-forest-labs/FLUX.1.1-pro",
 ]);
 
@@ -611,7 +611,8 @@ class AIModificationService {
 
     if (!SUPPORTED_IMG2IMG_MODELS.has(baselineModel)) {
       logger.warn(
-        "Baseline model not supported for img2img - defaulting to " + DEFAULT_IMG2IMG_MODEL,
+        "Baseline model not supported for img2img - defaulting to " +
+          DEFAULT_IMG2IMG_MODEL,
         {
           baselineModel,
         },

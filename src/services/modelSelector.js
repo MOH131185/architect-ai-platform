@@ -402,7 +402,7 @@ class ModelSelector {
           perImage: 0.003,
           perStep: 0.00075, // Approximate
         },
-        "black-forest-labs/FLUX.1-dev": {
+        "black-forest-labs/FLUX.1.1-pro": {
           perImage: 0.01,
           perStep: 0.00025,
         },
@@ -881,7 +881,7 @@ class ModelSelector {
     const available = {
       "meta-llama/Llama-3.3-70B-Instruct-Turbo": true,
       "black-forest-labs/FLUX.1-schnell": true,
-      "black-forest-labs/FLUX.1-dev": true,
+      "black-forest-labs/FLUX.1.1-pro": true,
       "black-forest-labs/FLUX.1-kontext-max": true,
       "meta-llama/Llama-3.3-70B-Instruct-Turbo": true,
       "gpt-4": true,
@@ -896,7 +896,9 @@ class ModelSelector {
 
   getAlternatives(model) {
     const alternatives = {
-      "black-forest-labs/FLUX.1-kontext-max": ["black-forest-labs/FLUX.1-schnell"],
+      "black-forest-labs/FLUX.1-kontext-max": [
+        "black-forest-labs/FLUX.1-schnell",
+      ],
       "meta-llama/Llama-3.3-70B-Instruct-Turbo": [
         "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       ],

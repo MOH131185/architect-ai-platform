@@ -110,10 +110,11 @@ const REGISTRY = {
         id: "flux-1-dev",
         type: "flux",
         provider: "together",
-        togetherModel: "black-forest-labs/FLUX.1-dev",
+        togetherModel: "black-forest-labs/FLUX.1.1-pro",
         steps: 40,
         guidanceScale: 3.5,
-        description: "FLUX.1-dev (requires dedicated endpoint, no longer serverless)",
+        description:
+          "FLUX.1-dev (requires dedicated endpoint, no longer serverless)",
       },
       "flux-kontext-max": {
         id: "flux-kontext-max",
@@ -272,7 +273,7 @@ const MODEL_ID_ALIASES = {
   llama3: "llama-3.3-70b",
   // Render aliases
   "black-forest-labs/FLUX.1-schnell": "flux-1-schnell",
-  "black-forest-labs/FLUX.1-dev": "flux-1-dev",
+  "black-forest-labs/FLUX.1.1-pro": "flux-1-dev",
   "black-forest-labs/FLUX.1-kontext-max": "flux-kontext-max",
   flux: "flux-1-schnell",
   controlnet: "controlnet-canny",

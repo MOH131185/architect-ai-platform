@@ -93,9 +93,10 @@ async function normalizeResponse(response) {
   }
 
   if (!response.ok) {
-    const errMsg = typeof body?.error === 'object'
-      ? (body.error.message || JSON.stringify(body.error))
-      : (body?.error || body?.message || `HTTP ${response.status}`);
+    const errMsg =
+      typeof body?.error === "object"
+        ? body.error.message || JSON.stringify(body.error)
+        : body?.error || body?.message || `HTTP ${response.status}`;
     const error = new Error(errMsg);
     error.status = response.status;
     error.retryAfter = retryAfter;
@@ -317,16 +318,25 @@ export async function generateArchitecturalImage(params) {
       const hasStyleReference = !!styleReferenceUrl;
 
       // FLUX model selection:
-      // Default: FLUX.1-schnell (serverless, free). FLUX.1-dev requires dedicated endpoint.
-      // ⚠️ FLUX.1-schnell IGNORES init_image — geometry/style conditioning won't apply with schnell.
-      let model = flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
-      // DEFENSIVE: FLUX.1-dev is no longer serverless — auto-fallback to schnell
-      // This catches stale sessionStorage values or old feature flag defaults
-      if (model.includes("FLUX.1-dev")) {
+      // FLUX.1-schnell: Fast (4-12 steps), serverless, but IGNORES init_image
+      // FLUX.1.1-pro: High quality (40 steps), serverless, supports init_image
+      // FLUX.1-dev: NO LONGER SERVERLESS — do not use
+      // Use FLUX.1.1-pro for: 3D panels, any panel needing init_image (geometry/style conditioning)
+      // Use FLUX.1-schnell for: 2D technical panels without init_image (faster + cheaper)
+      const needsInitImage = hasGeometryControl || hasStyleReference;
+      const useProModel = !is2DTechnical || needsInitImage;
+      let model = useProModel
+        ? "black-forest-labs/FLUX.1.1-pro"
+        : "black-forest-labs/FLUX.1-schnell";
+      // DEFENSIVE: FLUX.1-dev is no longer serverless — auto-fallback
+      const flagModel = flags?.fluxImageModel;
+      if (flagModel && flagModel.includes("FLUX.1-dev")) {
         logger.warn(
-          `⚠️ FLUX.1-dev is no longer serverless — auto-switching to FLUX.1-schnell for ${viewType}`,
+          `⚠️ FLUX.1-dev is no longer serverless — using FLUX.1.1-pro for ${viewType}`,
         );
-        model = "black-forest-labs/FLUX.1-schnell";
+        model = "black-forest-labs/FLUX.1.1-pro";
+      } else if (flagModel && !flagModel.includes("FLUX.1-dev")) {
+        model = flagModel; // Honor explicit flag if not dev
       }
       const isSchnell = model.includes("schnell");
 
@@ -382,7 +392,8 @@ export async function generateArchitecturalImage(params) {
           if (!isPlaceholder) {
             // Use camelCase for server (server converts to snake_case for Together.ai)
             requestPayload.initImage = geometryRender.url;
-            requestPayload.imageStrength = Math.round((1.0 - (geometryStrength || 0.5)) * 100) / 100; // Inverted for Together.ai, rounded to avoid FP artifacts
+            requestPayload.imageStrength =
+              Math.round((1.0 - (geometryStrength || 0.5)) * 100) / 100; // Inverted for Together.ai, rounded to avoid FP artifacts
             initImageApplied = true;
 
             // Add metadata for debugging (not sent to API, used for logging)
@@ -587,7 +598,9 @@ export async function generateArchitecturalImage(params) {
           // Log error details on first failure to help diagnose init_image issues
           const errBody = error.body || error.details || error.message;
           if (errBody) {
-            logger.warn(`  Error details: ${typeof errBody === 'object' ? JSON.stringify(errBody) : errBody}`);
+            logger.warn(
+              `  Error details: ${typeof errBody === "object" ? JSON.stringify(errBody) : errBody}`,
+            );
           }
           if (geometryRender?.url || styleReferenceUrl) {
             logger.warn(`  init_image was active — may be causing the 500`);
@@ -604,7 +617,10 @@ export async function generateArchitecturalImage(params) {
             `[FLUX.1] Rate limit persists after ${maxRetries} attempts for ${viewType}`,
           );
         }
-      } else if (error.status === 400 && (error.message || '').includes('non-serverless')) {
+      } else if (
+        error.status === 400 &&
+        (error.message || "").includes("non-serverless")
+      ) {
         // Model moved to dedicated-only — retrying won't help, fall through to schnell fallback
         logger.error(
           `[FLUX.1] Model requires dedicated endpoint (non-serverless) for ${viewType} — skipping retries`,
@@ -637,16 +653,23 @@ export async function generateArchitecturalImage(params) {
   // All retries failed — if init_image was present, try one last time WITHOUT it
   // Together.ai sometimes returns 500 on init_image payloads (large SVGs, encoding issues)
   const hadInitImage = !!(geometryRender?.url || styleReferenceUrl);
-  const isNonServerlessError = lastError?.status === 400 && (lastError?.message || '').includes('non-serverless');
-  if (hadInitImage && (lastError?.status === 500 || lastError?.status === 503)) {
+  const isNonServerlessError =
+    lastError?.status === 400 &&
+    (lastError?.message || "").includes("non-serverless");
+  if (
+    hadInitImage &&
+    (lastError?.status === 500 || lastError?.status === 503)
+  ) {
     logger.warn(
       `[FLUX.1] All ${maxRetries} attempts with init_image failed for ${viewType} — retrying WITHOUT init_image`,
     );
     try {
       const fallbackResult = await imageRequestQueue.schedule(async () => {
-        let fallbackModel = flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+        let fallbackModel =
+          flags?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
         // DEFENSIVE: FLUX.1-dev no longer serverless
-        if (fallbackModel.includes("FLUX.1-dev")) fallbackModel = "black-forest-labs/FLUX.1-schnell";
+        if (fallbackModel.includes("FLUX.1-dev"))
+          fallbackModel = "black-forest-labs/FLUX.1-schnell";
         const fallbackSteps = fallbackModel.includes("schnell") ? 12 : 40;
         const fallbackPayload = {
           model: fallbackModel,
@@ -693,7 +716,11 @@ export async function generateArchitecturalImage(params) {
 
   // Model unavailable — try FLUX.1-schnell as last resort
   // Triggers on: server down (500/503) OR model moved to dedicated-only (400 non-serverless)
-  if (lastError?.status === 500 || lastError?.status === 503 || isNonServerlessError) {
+  if (
+    lastError?.status === 500 ||
+    lastError?.status === 503 ||
+    isNonServerlessError
+  ) {
     logger.warn(
       `[FLUX.1] Primary model unavailable (${lastError?.status}) — trying FLUX.1-schnell fallback for ${viewType}`,
     );
@@ -1180,7 +1207,9 @@ export async function generateA1SheetImage({
     model || flags.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
   // DEFENSIVE: FLUX.1-dev no longer serverless
   if (requestedModel.includes("FLUX.1-dev")) {
-    logger.warn("⚠️ FLUX.1-dev is no longer serverless — auto-switching to FLUX.1-schnell");
+    logger.warn(
+      "⚠️ FLUX.1-dev is no longer serverless — auto-switching to FLUX.1-schnell",
+    );
     requestedModel = "black-forest-labs/FLUX.1-schnell";
   }
   const modelToUse = requestedModel;
@@ -1530,8 +1559,12 @@ export async function generateUnifiedArchitecturalSheet(params) {
       body: JSON.stringify({
         prompt: sheetPrompt,
         model: (() => {
-          const m = getFeatureFlags()?.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
-          return m.includes("FLUX.1-dev") ? "black-forest-labs/FLUX.1-schnell" : m;
+          const m =
+            getFeatureFlags()?.fluxImageModel ||
+            "black-forest-labs/FLUX.1-schnell";
+          return m.includes("FLUX.1-dev")
+            ? "black-forest-labs/FLUX.1-schnell"
+            : m;
         })(),
         width: 1024, // Will represent A1 aspect ratio
         height: 768,
@@ -1589,7 +1622,9 @@ export async function generateUnifiedArchitecturalSheet(params) {
         seed: consistentSeed,
         model: (() => {
           const m = getFeatureFlags()?.fluxImageModel || "FLUX.1-schnell";
-          return (m.includes("FLUX.1-dev") ? "FLUX.1-schnell" : m).split("/").pop();
+          return (m.includes("FLUX.1-dev") ? "FLUX.1-schnell" : m)
+            .split("/")
+            .pop();
         })(),
         timestamp: new Date().toISOString(),
         totalGenerationTime: Date.now() - Date.now(),
