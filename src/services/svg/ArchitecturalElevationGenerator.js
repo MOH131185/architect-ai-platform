@@ -16,17 +16,18 @@
 const MATERIAL_PATTERNS = {
   brick: {
     id: 'brick-pattern',
-    width: 20,
-    height: 8,
+    width: 11,
+    height: 3.5,
+    // Real brick: 215×65mm → at scale 50: 10.75×3.25px (stretcher bond)
     create: (color = '#B8604E') => `
-      <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="20" height="8">
-        <rect width="20" height="8" fill="${color}"/>
-        <line x1="0" y1="4" x2="20" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="10" y1="0" x2="10" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="0" y1="0" x2="0" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="20" y1="0" x2="20" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="5" y1="4" x2="5" y2="8" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="15" y1="4" x2="15" y2="8" stroke="#8B4513" stroke-width="0.5"/>
+      <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="11" height="7">
+        <rect width="11" height="7" fill="${color}"/>
+        <!-- Course lines (horizontal mortar joints) -->
+        <line x1="0" y1="3.5" x2="11" y2="3.5" stroke="#8B4513" stroke-width="0.4" opacity="0.7"/>
+        <!-- Vertical joints — stretcher bond (half-brick offset) -->
+        <line x1="5.5" y1="0" x2="5.5" y2="3.5" stroke="#8B4513" stroke-width="0.3" opacity="0.6"/>
+        <line x1="0" y1="3.5" x2="0" y2="7" stroke="#8B4513" stroke-width="0.3" opacity="0.6"/>
+        <line x1="11" y1="3.5" x2="11" y2="7" stroke="#8B4513" stroke-width="0.3" opacity="0.6"/>
       </pattern>
     `,
   },
@@ -980,45 +981,72 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
 
   // Get view-specific features
   const viewFeatures = dna?.viewSpecificFeatures?.[orientation.toLowerCase()] || {};
-
-  // Build window array from view features
-  const windows = [];
-  const windowCount = viewFeatures.windows || 4;
   const hasEntrance = viewFeatures.mainEntrance || viewFeatures.entrance;
 
-  // Distribute windows across the facade
-  const windowSpacing = building.width / (windowCount + 1);
-  for (let i = 0; i < windowCount; i++) {
-    // Skip window position if door is there
-    const windowX = windowSpacing * (i + 1) - 0.6; // Center window
-    if (hasEntrance && Math.abs(windowX - building.width / 2) < 1) {
-      continue;
+  // PHASE 3A: Use real window positions from populatedGeometry when available
+  const realOpenings = options.realOpenings || [];
+  const realWindows = realOpenings.filter((o) => o.type === 'window');
+  const realDoors = realOpenings.filter((o) => o.type === 'door');
+
+  let windows = [];
+  if (realWindows.length > 0) {
+    // Use actual window positions from BuildingModel
+    windows = realWindows.map((win) => ({
+      x: win.x || 0,
+      floor: win.floor || 0,
+      width: win.width || 1.2,
+      height: win.height || 1.4,
+      style: dna?.style?.windowStyle || (win.floor === 0 ? 'casement' : 'sash'),
+    }));
+  } else {
+    // Fallback: synthesize windows from DNA viewSpecificFeatures
+    const windowCount = viewFeatures.windows || 4;
+
+    // Distribute windows across the facade
+    const windowSpacing = building.width / (windowCount + 1);
+    for (let i = 0; i < windowCount; i++) {
+      // Skip window position if door is there
+      const windowX = windowSpacing * (i + 1) - 0.6; // Center window
+      if (hasEntrance && Math.abs(windowX - building.width / 2) < 1) {
+        continue;
+      }
+
+      windows.push({
+        x: windowX,
+        floor: 0,
+        width: 1.2,
+        height: 1.5,
+        style: dna?.style?.windowStyle || 'casement',
+      });
     }
 
-    windows.push({
-      x: windowX,
-      floor: i % 2, // Alternate between floors
-      width: 1.2,
-      height: 1.5,
-      style: dna?.style?.windowStyle || 'casement',
-    });
-  }
-
-  // Add upper floor windows
-  for (let i = 0; i < windowCount; i++) {
-    const windowX = windowSpacing * (i + 1) - 0.6;
-    windows.push({
-      x: windowX,
-      floor: 1,
-      width: 1.0,
-      height: 1.2,
-      style: dna?.style?.windowStyle || 'sash',
-    });
+    // Add upper floor windows
+    if (floors > 1) {
+      for (let i = 0; i < windowCount; i++) {
+        const windowX = windowSpacing * (i + 1) - 0.6;
+        windows.push({
+          x: windowX,
+          floor: 1,
+          width: 1.0,
+          height: 1.2,
+          style: dna?.style?.windowStyle || 'sash',
+        });
+      }
+    }
   }
 
   // Build door array
   const doors = [];
-  if (hasEntrance) {
+  if (realDoors.length > 0) {
+    realDoors.forEach((door) => {
+      doors.push({
+        x: door.x || building.width / 2 - 0.45,
+        width: door.width || 0.9,
+        height: door.height || 2.1,
+        style: viewFeatures.doorStyle || 'panelled',
+      });
+    });
+  } else if (hasEntrance) {
     doors.push({
       x: building.width / 2 - 0.45, // Center door
       width: 0.9,

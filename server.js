@@ -473,32 +473,48 @@ app.post("/api/together/image", imageGenerationLimiter, async (req, res) => {
 
     // Add image-to-image parameters if initImage provided
     if (initImage) {
-      // 🔧 NORMALIZE INIT_IMAGE: Strip data URL prefix if present (Together.ai may prefer raw base64)
-      let normalizedInitImage = initImage;
-      if (typeof initImage === "string" && initImage.startsWith("data:")) {
-        try {
-          // Extract base64 data after comma (e.g., "data:image/jpeg;base64,<data>")
-          const base64Data = initImage.split(",")[1];
-          if (base64Data) {
-            normalizedInitImage = base64Data;
-            console.log(
-              `   🔧 Normalized init_image: stripped data URL prefix (${(initImage.length / 1024).toFixed(1)}KB → ${(normalizedInitImage.length / 1024).toFixed(1)}KB)`,
+      // 🚫 REJECT SVG init_image: Together AI FLUX only accepts JPEG/PNG.
+      // SVG data URLs (data:image/svg+xml;...) cause 400 Bad Request.
+      const isSvg =
+        typeof initImage === "string" &&
+        (initImage.startsWith("data:image/svg") ||
+          initImage.trimStart().startsWith("<svg") ||
+          initImage.trimStart().startsWith("<?xml"));
+
+      if (isSvg) {
+        console.warn(
+          `   ⚠️  Skipping SVG init_image for Together AI FLUX (SVG not supported — use JPEG/PNG). ` +
+          `Falling back to text-to-image mode. Size: ${(initImage.length / 1024).toFixed(1)}KB`,
+        );
+        // Do NOT attach init_image — proceed as text-to-image
+      } else {
+        // 🔧 NORMALIZE INIT_IMAGE: Strip data URL prefix if present (Together.ai prefers raw base64)
+        let normalizedInitImage = initImage;
+        if (typeof initImage === "string" && initImage.startsWith("data:")) {
+          try {
+            // Extract base64 data after comma (e.g., "data:image/jpeg;base64,<data>")
+            const base64Data = initImage.split(",")[1];
+            if (base64Data) {
+              normalizedInitImage = base64Data;
+              console.log(
+                `   🔧 Normalized init_image: stripped data URL prefix (${(initImage.length / 1024).toFixed(1)}KB → ${(normalizedInitImage.length / 1024).toFixed(1)}KB)`,
+              );
+            }
+          } catch (e) {
+            // If parsing fails, use original
+            console.warn(
+              `   ⚠️  Failed to normalize init_image, using as-is:`,
+              e.message,
             );
           }
-        } catch (e) {
-          // If parsing fails, use original
-          console.warn(
-            `   ⚠️  Failed to normalize init_image, using as-is:`,
-            e.message,
-          );
         }
-      }
 
-      requestBody.init_image = normalizedInitImage; // Together.ai uses init_image field
-      requestBody.image_strength = imageStrength; // Controls how much to preserve from init image
-      console.log(
-        `   🔄 Image-to-image mode: strength ${imageStrength} (preserves init image while synthesizing)`,
-      );
+        requestBody.init_image = normalizedInitImage; // Together.ai uses init_image field
+        requestBody.image_strength = imageStrength; // Controls how much to preserve from init image
+        console.log(
+          `   🔄 Image-to-image mode: strength ${imageStrength} (preserves init image while synthesizing)`,
+        );
+      }
     }
 
     // Create AbortController for 3-minute timeout (FLUX.1-kontext-max can take 60-120s)

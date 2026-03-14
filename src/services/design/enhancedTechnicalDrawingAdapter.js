@@ -222,47 +222,153 @@ class GeometryAdapter {
 
     // PRIORITY 1: Use populatedGeometry floors (has polygon data, wall coordinates, openings)
     if (this.populatedGeometry?.floors?.length > 0) {
+      // PHASE 1A: First pass — compute global min X/Y per floor for origin normalization
+      // BuildingModel uses MM with center-origin (e.g., x: -6000, y: -4500)
+      // Generators expect meters with top-left origin (e.g., x: 0.3, y: 0.3)
+      const floorBounds = {};
       this.populatedGeometry.floors.forEach((floor) => {
         const level = floor.level ?? 0;
+        let globalMinX = Infinity, globalMinY = Infinity;
+        let globalMaxX = -Infinity, globalMaxY = -Infinity;
+
+        (floor.rooms || []).forEach((room) => {
+          if (room.boundingBox) {
+            const minX = room.boundingBox.minX ?? 0;
+            const minY = room.boundingBox.minY ?? 0;
+            const maxX = room.boundingBox.maxX ?? (minX + (room.boundingBox.width || 0));
+            const maxY = room.boundingBox.maxY ?? (minY + (room.boundingBox.height || 0));
+            globalMinX = Math.min(globalMinX, minX);
+            globalMinY = Math.min(globalMinY, minY);
+            globalMaxX = Math.max(globalMaxX, maxX);
+            globalMaxY = Math.max(globalMaxY, maxY);
+          } else if (room.polygon?.length >= 3) {
+            room.polygon.forEach((p) => {
+              globalMinX = Math.min(globalMinX, p.x);
+              globalMinY = Math.min(globalMinY, p.y);
+              globalMaxX = Math.max(globalMaxX, p.x);
+              globalMaxY = Math.max(globalMaxY, p.y);
+            });
+          }
+        });
+
+        // Detect if coordinates are in MM (typical BuildingModel values are > 500)
+        const isMM = Math.abs(globalMinX) > 500 || Math.abs(globalMinY) > 500 ||
+                     Math.abs(globalMaxX) > 500 || Math.abs(globalMaxY) > 500;
+
+        floorBounds[level] = { globalMinX, globalMinY, globalMaxX, globalMaxY, isMM };
+      });
+
+      // Store floor bounds for use by extractWalls() and getFloorOpenings()
+      this._floorBounds = floorBounds;
+
+      this.populatedGeometry.floors.forEach((floor) => {
+        const level = floor.level ?? 0;
+        const bounds = floorBounds[level] || { globalMinX: 0, globalMinY: 0, isMM: false };
+        const { globalMinX, globalMinY, isMM } = bounds;
+        // Offset for wall thickness so rooms don't start at edge
+        const wallOffset = this.dimensions?.wallThickness || 0.3;
+
         floorMap[level] = (floor.rooms || []).map((room, index) => {
           // Extract dimensions from boundingBox or polygon
           let width, length, x, y;
           if (room.boundingBox) {
-            width =
-              room.boundingBox.width ||
-              room.boundingBox.maxX - room.boundingBox.minX;
-            length =
-              room.boundingBox.height ||
-              room.boundingBox.maxY - room.boundingBox.minY;
-            x = room.boundingBox.minX ?? 0;
-            y = room.boundingBox.minY ?? 0;
+            const rawMinX = room.boundingBox.minX ?? 0;
+            const rawMinY = room.boundingBox.minY ?? 0;
+            const rawWidth = room.boundingBox.width || (room.boundingBox.maxX - rawMinX) || 0;
+            const rawLength = room.boundingBox.height || (room.boundingBox.maxY - rawMinY) || 0;
+
+            if (isMM) {
+              // Convert MM center-origin → meters top-left origin
+              x = ((rawMinX - globalMinX) / 1000) + wallOffset;
+              y = ((rawMinY - globalMinY) / 1000) + wallOffset;
+              width = rawWidth / 1000;
+              length = rawLength / 1000;
+            } else {
+              // Already in meters, just normalize origin
+              x = (rawMinX - globalMinX) + wallOffset;
+              y = (rawMinY - globalMinY) + wallOffset;
+              width = rawWidth;
+              length = rawLength;
+            }
           } else if (room.polygon?.length >= 3) {
             // Calculate bounds from polygon
             const xs = room.polygon.map((p) => p.x);
             const ys = room.polygon.map((p) => p.y);
-            x = Math.min(...xs);
-            y = Math.min(...ys);
-            width = Math.max(...xs) - x;
-            length = Math.max(...ys) - y;
+            const pMinX = Math.min(...xs);
+            const pMinY = Math.min(...ys);
+
+            if (isMM) {
+              x = ((pMinX - globalMinX) / 1000) + wallOffset;
+              y = ((pMinY - globalMinY) / 1000) + wallOffset;
+              width = (Math.max(...xs) - pMinX) / 1000;
+              length = (Math.max(...ys) - pMinY) / 1000;
+            } else {
+              x = (pMinX - globalMinX) + wallOffset;
+              y = (pMinY - globalMinY) + wallOffset;
+              width = Math.max(...xs) - pMinX;
+              length = Math.max(...ys) - pMinY;
+            }
           } else {
             width = 4;
             length = 3;
-            x = 0;
-            y = 0;
+            x = wallOffset;
+            y = wallOffset;
+          }
+
+          // Convert polygon points to meters with top-left origin
+          let normalizedPolygon = room.polygon;
+          if (room.polygon?.length >= 3 && isMM) {
+            normalizedPolygon = room.polygon.map((p) => ({
+              x: ((p.x - globalMinX) / 1000) + wallOffset,
+              y: ((p.y - globalMinY) / 1000) + wallOffset,
+            }));
+          } else if (room.polygon?.length >= 3) {
+            normalizedPolygon = room.polygon.map((p) => ({
+              x: (p.x - globalMinX) + wallOffset,
+              y: (p.y - globalMinY) + wallOffset,
+            }));
+          }
+
+          // Convert area from mm² to m² if needed
+          let area = room.area || room.targetArea || width * length;
+          if (isMM && area > 100000) {
+            area = area / 1000000; // mm² → m²
+          }
+
+          // Determine which wall has a door based on touchesFacades
+          const touchesFacades = room.touchesFacades || [];
+          const hasDoor = true; // All rooms get doors
+          let doorWall = 'west'; // default
+          if (touchesFacades.includes('south')) {
+            doorWall = 'south';
+          } else if (touchesFacades.includes('north')) {
+            doorWall = 'north';
+          } else if (touchesFacades.includes('east')) {
+            doorWall = 'east';
+          } else if (touchesFacades.includes('west')) {
+            doorWall = 'west';
+          }
+          // Hallways get doors on the long axis
+          const roomName = (room.name || room.id || '').toLowerCase();
+          if (roomName.includes('hall') || roomName.includes('landing')) {
+            doorWall = width > length ? 'south' : 'east';
           }
 
           return {
             name: room.name || room.id || `Room ${index + 1}`,
             type: this.normalizeRoomType(room.name || room.id),
-            polygon: room.polygon, // CRITICAL: Keep polygon data!
+            polygon: normalizedPolygon, // Normalized polygon in meters
             boundingBox: room.boundingBox,
             width: width,
             length: length,
-            area: room.area || room.targetArea || width * length,
+            area: area,
             x: x,
             y: y,
-            windows: room.windows || this.estimateWindows(room.name, room.area),
+            windows: room.windows || this.estimateWindows(room.name, area),
             doors: room.doors || 1,
+            hasDoor: hasDoor,
+            doorWall: doorWall,
+            touchesFacades: touchesFacades,
             features: room.features || [],
           };
         });
@@ -270,6 +376,17 @@ class GeometryAdapter {
       logger.debug(
         `[GeometryAdapter] Extracted rooms from populatedGeometry: ${JSON.stringify(Object.keys(floorMap).map((k) => `floor ${k}: ${floorMap[k].length} rooms`))}`,
       );
+
+      // Log coordinate conversion details
+      Object.keys(floorBounds).forEach((level) => {
+        const b = floorBounds[level];
+        if (b.isMM) {
+          logger.info(
+            `[GeometryAdapter] Floor ${level}: MM→meters conversion applied. Raw bounds: (${b.globalMinX}, ${b.globalMinY}) → (${b.globalMaxX}, ${b.globalMaxY}) mm`,
+          );
+        }
+      });
+
       return floorMap;
     }
 
@@ -332,16 +449,60 @@ class GeometryAdapter {
     const wallMap = {};
     this.populatedGeometry.floors.forEach((floor) => {
       const level = floor.level ?? 0;
-      wallMap[level] = (floor.walls || []).map((wall) => ({
-        id: wall.id,
-        start: wall.start,
-        end: wall.end,
-        thickness: wall.thickness || 0.3,
-        type: wall.type || "exterior",
-        isLoadBearing: wall.isLoadBearing,
-        adjacentRooms: wall.adjacentRooms,
-        openings: wall.openings || [],
-      }));
+      const bounds = this._floorBounds?.[level] || { globalMinX: 0, globalMinY: 0, isMM: false };
+      const { globalMinX, globalMinY, isMM } = bounds;
+      const wallOffset = this.dimensions?.wallThickness || 0.3;
+
+      wallMap[level] = (floor.walls || []).map((wall) => {
+        // Convert wall coordinates from MM center-origin to meters top-left origin
+        let start = wall.start;
+        let end = wall.end;
+        let thickness = wall.thickness || 300; // default 300mm
+
+        if (isMM && start && end) {
+          start = {
+            x: ((start.x - globalMinX) / 1000) + wallOffset,
+            y: ((start.y - globalMinY) / 1000) + wallOffset,
+          };
+          end = {
+            x: ((end.x - globalMinX) / 1000) + wallOffset,
+            y: ((end.y - globalMinY) / 1000) + wallOffset,
+          };
+          thickness = thickness > 1 ? thickness / 1000 : thickness; // mm → meters
+        } else if (start && end) {
+          start = {
+            x: (start.x - globalMinX) + wallOffset,
+            y: (start.y - globalMinY) + wallOffset,
+          };
+          end = {
+            x: (end.x - globalMinX) + wallOffset,
+            y: (end.y - globalMinY) + wallOffset,
+          };
+          thickness = thickness > 1 ? thickness / 1000 : thickness;
+        }
+
+        return {
+          id: wall.id,
+          start: start,
+          end: end,
+          thickness: thickness,
+          type: wall.type || "exterior",
+          isLoadBearing: wall.isLoadBearing,
+          adjacentRooms: wall.adjacentRooms,
+          openings: (wall.openings || []).map((opening) => {
+            // Convert opening positions too
+            if (isMM && opening.position !== undefined) {
+              return {
+                ...opening,
+                position: opening.position / 1000,
+                width: (opening.width || 1200) / 1000,
+                height: (opening.height || 1400) / 1000,
+              };
+            }
+            return opening;
+          }),
+        };
+      });
     });
 
     if (Object.keys(wallMap).length > 0) {
@@ -350,7 +511,7 @@ class GeometryAdapter {
         0,
       );
       logger.debug(
-        `[GeometryAdapter] Extracted ${totalWalls} walls from populatedGeometry`,
+        `[GeometryAdapter] Extracted ${totalWalls} walls from populatedGeometry (coordinates normalized to meters)`,
       );
     }
 
@@ -471,6 +632,93 @@ class GeometryAdapter {
   }
 
   extractOpenings() {
+    // PRIORITY 1: Extract real openings from populatedGeometry (BuildingModel data)
+    if (this.populatedGeometry?.floors?.length > 0) {
+      const openings = [];
+      const directionalOpenings = { north: [], south: [], east: [], west: [] };
+
+      this.populatedGeometry.floors.forEach((floor) => {
+        const level = floor.level ?? 0;
+        const bounds = this._floorBounds?.[level] || { globalMinX: 0, globalMinY: 0, isMM: false };
+        const { globalMinX, globalMinY, isMM } = bounds;
+        const wallOffset = this.dimensions?.wallThickness || 0.3;
+
+        // Collect openings from floor-level array
+        (floor.openings || []).forEach((opening) => {
+          const facade = opening.facade || opening.wall || 'south';
+          const rawWidth = opening.width || 1200;
+          const rawHeight = opening.height || 1400;
+          const rawX = opening.x ?? opening.position ?? 0;
+
+          const width = isMM && rawWidth > 10 ? rawWidth / 1000 : rawWidth;
+          const height = isMM && rawHeight > 10 ? rawHeight / 1000 : rawHeight;
+          const x = isMM && Math.abs(rawX) > 10 ? ((rawX - globalMinX) / 1000) + wallOffset : rawX;
+
+          const normalizedOpening = {
+            type: opening.type || 'window',
+            facade: facade,
+            floor: level,
+            width: width,
+            height: height,
+            sillHeight: opening.sillHeight ? (isMM ? opening.sillHeight / 1000 : opening.sillHeight) : 0.9,
+            x: x,
+          };
+
+          openings.push(normalizedOpening);
+          if (directionalOpenings[facade]) {
+            directionalOpenings[facade].push(normalizedOpening);
+          }
+        });
+
+        // Also collect from wall-embedded openings
+        (floor.walls || []).forEach((wall) => {
+          (wall.openings || []).forEach((opening) => {
+            const facade = wall.facade || this._inferFacadeFromWall(wall) || 'south';
+            const rawWidth = opening.width || 1200;
+            const rawHeight = opening.height || 1400;
+
+            const width = isMM && rawWidth > 10 ? rawWidth / 1000 : rawWidth;
+            const height = isMM && rawHeight > 10 ? rawHeight / 1000 : rawHeight;
+
+            // Compute x position along the wall
+            let x = 0;
+            if (opening.position !== undefined) {
+              x = isMM ? ((opening.position - globalMinX) / 1000) + wallOffset : opening.position;
+            } else if (wall.start) {
+              // Mid-point of wall
+              const midX = (wall.start.x + wall.end.x) / 2;
+              x = isMM ? ((midX - globalMinX) / 1000) + wallOffset : midX;
+            }
+
+            const normalizedOpening = {
+              type: opening.type || 'window',
+              facade: facade,
+              floor: level,
+              width: width,
+              height: height,
+              sillHeight: 0.9,
+              x: x,
+            };
+
+            openings.push(normalizedOpening);
+            if (directionalOpenings[facade]) {
+              directionalOpenings[facade].push(normalizedOpening);
+            }
+          });
+        });
+      });
+
+      if (openings.length > 0) {
+        logger.info(
+          `[GeometryAdapter] Extracted ${openings.length} real openings from populatedGeometry: N=${directionalOpenings.north.length} S=${directionalOpenings.south.length} E=${directionalOpenings.east.length} W=${directionalOpenings.west.length}`,
+        );
+        // Store directional map for floor plan window rendering
+        this._directionalOpenings = directionalOpenings;
+        return openings;
+      }
+    }
+
+    // FALLBACK: Synthesize openings from DNA viewSpecificFeatures
     const viewFeatures = this.dna?.viewSpecificFeatures || {};
     const openings = [];
 
@@ -502,6 +750,24 @@ class GeometryAdapter {
     });
 
     return openings;
+  }
+
+  /**
+   * Infer facade direction from wall start/end coordinates
+   * Horizontal walls (same Y) are north/south; vertical walls (same X) are east/west
+   */
+  _inferFacadeFromWall(wall) {
+    if (!wall.start || !wall.end) return null;
+    const dx = Math.abs(wall.end.x - wall.start.x);
+    const dy = Math.abs(wall.end.y - wall.start.y);
+
+    if (dx > dy) {
+      // Horizontal wall — check if it's at min Y (north) or max Y (south)
+      return wall.start.y < 0 ? 'north' : 'south';
+    } else {
+      // Vertical wall — check if it's at min X (west) or max X (east)
+      return wall.start.x < 0 ? 'west' : 'east';
+    }
   }
 
   /**
@@ -561,12 +827,22 @@ class GeometryAdapter {
       );
     }
 
+    // Build directional openings map for floor plan window rendering
+    const directionalOpenings = this._directionalOpenings || { north: [], south: [], east: [], west: [] };
+    // Filter openings for this specific floor
+    const floorDirectionalOpenings = {};
+    ['north', 'south', 'east', 'west'].forEach((dir) => {
+      floorDirectionalOpenings[dir] = (directionalOpenings[dir] || []).filter(
+        (o) => o.floor === floor || o.floor === undefined,
+      );
+    });
+
     return {
       width: this.dimensions.width,
       length: this.dimensions.depth,
       rooms: layoutRooms,
-      walls: walls, // NEW: Wall geometry from populatedGeometry
-      openings: openings, // NEW: Door/window openings from populatedGeometry
+      walls: walls, // Wall geometry from populatedGeometry (normalized to meters)
+      openings: floorDirectionalOpenings, // Directional openings map for floor plan windows
       wallThickness: this.dimensions.wallThickness,
       internalWallThickness: this.dimensions.internalWallThickness,
     };
@@ -889,14 +1165,29 @@ export function generateEnhancedElevationSVG(
       return null;
     }
 
-    // Use the generateFromDNA function directly (elevation generator is function-based)
-    const svg = generateElevationFromDNA(masterDNA, orientation, {
+    // Create geometry adapter to extract real opening positions
+    const geometry = new GeometryAdapter(masterDNA);
+
+    // Build elevation options with real openings if available
+    const elevationOptions = {
       scale: projectContext.scale || 50,
       showDimensions: true,
       showMaterialPatterns: true,
       showGroundContext: true,
       showLevelMarkers: true,
-    });
+    };
+
+    // Pass real openings from populatedGeometry to elevation generator
+    const facadeOpenings = geometry.openings.filter((o) => o.facade === orientation);
+    if (facadeOpenings.length > 0) {
+      elevationOptions.realOpenings = facadeOpenings;
+      logger.debug(
+        `[EnhancedAdapter] Passing ${facadeOpenings.length} real openings to ${orientation} elevation`,
+      );
+    }
+
+    // Use the generateFromDNA function directly (elevation generator is function-based)
+    const svg = generateElevationFromDNA(masterDNA, orientation, elevationOptions);
 
     logger.info(
       `[EnhancedAdapter] Generated enhanced ${orientation} elevation with material patterns`,

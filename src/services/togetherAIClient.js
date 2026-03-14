@@ -240,9 +240,18 @@ class TogetherAIClient {
       };
 
       // Add img2img parameters if provided
-      if (initImage) {
+      // GUARD: Together AI FLUX only accepts JPEG/PNG. SVG data URLs cause 400 Bad Request.
+      const isSvgInitImage =
+        typeof initImage === "string" &&
+        (initImage.startsWith("data:image/svg") ||
+          initImage.trimStart().startsWith("<svg"));
+      if (initImage && !isSvgInitImage) {
         payload.initImage = initImage;
         payload.imageStrength = imageStrength || 0.18;
+      } else if (initImage && isSvgInitImage) {
+        logger.warn(
+          `[TogetherAIClient] Skipping SVG init_image for ${params.sheetType || "panel"} — Together AI FLUX requires JPEG/PNG`,
+        );
       }
 
       const response = await fetch(this.baseUrl, {

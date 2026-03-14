@@ -181,8 +181,12 @@ const FURNITURE_SYMBOLS = {
       offset: { x: 0.2, y: 0.1 },
     },
   ],
-  Hallway: [],
-  Landing: [],
+  Hallway: [
+    { type: 'staircase', width: 1.0, depth: 3.0, position: 'center', offset: { x: 0, y: 0 } },
+  ],
+  Landing: [
+    { type: 'staircase', width: 1.0, depth: 3.0, position: 'center', offset: { x: 0, y: 0 } },
+  ],
 };
 
 /**
@@ -191,12 +195,12 @@ const FURNITURE_SYMBOLS = {
 const WALL_PATTERNS = {
   exterior: `
     <pattern id="exterior-wall-hatch" patternUnits="userSpaceOnUse" width="8" height="8">
-      <rect width="8" height="8" fill="#333"/>
+      <rect width="8" height="8" fill="#1a1a1a"/>
     </pattern>
   `,
   interior: `
     <pattern id="interior-wall-hatch" patternUnits="userSpaceOnUse" width="6" height="6">
-      <rect width="6" height="6" fill="#666"/>
+      <rect width="6" height="6" fill="#555"/>
     </pattern>
   `,
   diagonal: `
@@ -353,8 +357,8 @@ class ArchitecturalFloorPlanGenerator {
       parts.push(this.drawDoors(rooms, width, length));
     }
 
-    // Draw windows
-    parts.push(this.drawWindows(geometry, floor));
+    // Draw windows — pass floorData which has directional openings map
+    parts.push(this.drawWindows(floorData, floor, width, length));
 
     // Draw furniture
     if (this.showFurniture) {
@@ -434,15 +438,15 @@ class ArchitecturalFloorPlanGenerator {
         <rect x="0" y="0" width="${w}" height="${l}"
               fill="none" stroke="${this.colors.wall}" stroke-width="${t}"/>
 
-        <!-- Wall hatching (poche) -->
+        <!-- Wall poche (solid black for professional UK planning drawings) -->
         <!-- Top wall -->
-        <rect x="0" y="0" width="${w}" height="${t}" fill="url(#exterior-wall-hatch)"/>
+        <rect x="0" y="0" width="${w}" height="${t}" fill="#1a1a1a"/>
         <!-- Bottom wall -->
-        <rect x="0" y="${l - t}" width="${w}" height="${t}" fill="url(#exterior-wall-hatch)"/>
+        <rect x="0" y="${l - t}" width="${w}" height="${t}" fill="#1a1a1a"/>
         <!-- Left wall -->
-        <rect x="0" y="0" width="${t}" height="${l}" fill="url(#exterior-wall-hatch)"/>
+        <rect x="0" y="0" width="${t}" height="${l}" fill="#1a1a1a"/>
         <!-- Right wall -->
-        <rect x="${w - t}" y="0" width="${t}" height="${l}" fill="url(#exterior-wall-hatch)"/>
+        <rect x="${w - t}" y="0" width="${t}" height="${l}" fill="#1a1a1a"/>
       </g>
     `;
   }
@@ -540,11 +544,11 @@ class ArchitecturalFloorPlanGenerator {
       }
 
       // Convert polygon points to SVG coordinates
+      // Coordinates are now always in meters (normalized by GeometryAdapter)
       const points = room.polygon
         .map((p) => {
-          // Handle both mm (>100) and meter (<100) units
-          const x = p.x > 100 ? (p.x / 1000) * this.scale : p.x * this.scale;
-          const y = p.y > 100 ? (p.y / 1000) * this.scale : p.y * this.scale;
+          const x = p.x * this.scale;
+          const y = p.y * this.scale;
           return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(' ');
@@ -594,19 +598,14 @@ class ArchitecturalFloorPlanGenerator {
         return;
       }
 
-      // Handle both mm and meter units
-      const startX =
-        wall.start.x > 100 ? (wall.start.x / 1000) * this.scale : wall.start.x * this.scale;
-      const startY =
-        wall.start.y > 100 ? (wall.start.y / 1000) * this.scale : wall.start.y * this.scale;
-      const endX = wall.end.x > 100 ? (wall.end.x / 1000) * this.scale : wall.end.x * this.scale;
-      const endY = wall.end.y > 100 ? (wall.end.y / 1000) * this.scale : wall.end.y * this.scale;
+      // Coordinates are now always in meters (normalized by GeometryAdapter)
+      const startX = wall.start.x * this.scale;
+      const startY = wall.start.y * this.scale;
+      const endX = wall.end.x * this.scale;
+      const endY = wall.end.y * this.scale;
 
-      // Calculate wall thickness in pixels
-      const thickness =
-        wall.thickness > 1
-          ? (wall.thickness / 1000) * this.scale // mm to pixels
-          : wall.thickness * this.scale; // meters to pixels
+      // Wall thickness in meters → pixels
+      const thickness = wall.thickness * this.scale;
 
       // Calculate wall angle and perpendicular offset
       const dx = endX - startX;
@@ -633,12 +632,13 @@ class ArchitecturalFloorPlanGenerator {
       const points = `${x1.toFixed(1)},${y1.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)} ${x3.toFixed(1)},${y3.toFixed(1)} ${x4.toFixed(1)},${y4.toFixed(1)}`;
 
       const isExterior = wallType.includes('exterior') || wallType.includes('external');
-      const fillPattern = isExterior ? 'url(#exterior-wall-hatch)' : 'url(#interior-wall-hatch)';
+      // Solid black poche for exterior walls (professional UK planning convention)
+      const fillColor = isExterior ? '#1a1a1a' : '#555';
       const strokeColor = isExterior ? this.colors.wall : this.colors.internalWall;
 
       parts.push(`
         <polygon points="${points}"
-                 fill="${fillPattern}" stroke="${strokeColor}" stroke-width="0.5"
+                 fill="${fillColor}" stroke="${strokeColor}" stroke-width="0.5"
                  data-wall-id="${wall.id || ''}" data-wall-type="${wallType}"/>
       `);
 
@@ -721,8 +721,13 @@ class ArchitecturalFloorPlanGenerator {
     const doorThickness = 0.05 * this.scale;
 
     rooms.forEach((room, index) => {
+      // All rooms get doors now (hasDoor is set by GeometryAdapter)
       if (!room.hasDoor && room.name !== 'Entrance Hall' && room.name !== 'Hallway') {
-        return;
+        // Still draw doors for rooms without explicit hasDoor if they're standard rooms
+        const roomName = (room.name || '').toLowerCase();
+        if (!roomName.includes('hall') && !roomName.includes('landing') && !room.hasDoor) {
+          // Skip only if explicitly no door
+        }
       }
 
       const x = (room.x || 0) * this.scale;
@@ -730,10 +735,10 @@ class ArchitecturalFloorPlanGenerator {
       const w = (room.width || 4) * this.scale;
       const h = (room.length || 4) * this.scale;
 
-      // Determine door position based on room type
+      // Determine door position based on doorWall property (from GeometryAdapter) or room type
       let doorX, doorY, rotation, swingDirection;
-
       const roomName = (room.name || '').toLowerCase();
+      const doorWall = room.doorWall || 'west';
 
       if (roomName.includes('entrance')) {
         // Main entrance on south wall (bottom)
@@ -744,22 +749,58 @@ class ArchitecturalFloorPlanGenerator {
       } else if (
         roomName.includes('bathroom') ||
         roomName.includes('wc') ||
-        roomName.includes('en-suite')
+        roomName.includes('en-suite') ||
+        roomName.includes('cloakroom')
       ) {
-        // Bathroom doors open outward
-        doorX = x;
-        doorY = y + h / 3;
-        rotation = 90;
-        swingDirection = 'outward';
+        // Bathroom doors open outward — position based on doorWall
+        if (doorWall === 'north') {
+          doorX = x + w / 3;
+          doorY = y;
+          rotation = 0;
+          swingDirection = 'outward';
+        } else if (doorWall === 'south') {
+          doorX = x + w / 3;
+          doorY = y + h - doorThickness;
+          rotation = 0;
+          swingDirection = 'outward';
+        } else if (doorWall === 'east') {
+          doorX = x + w - doorThickness;
+          doorY = y + h / 3;
+          rotation = 90;
+          swingDirection = 'outward';
+        } else {
+          doorX = x;
+          doorY = y + h / 3;
+          rotation = 90;
+          swingDirection = 'outward';
+        }
       } else {
-        // Interior doors - position on left wall
-        doorX = x - doorThickness;
-        doorY = y + h / 3;
-        rotation = 90;
-        swingDirection = 'inward';
+        // Interior doors — use doorWall from GeometryAdapter
+        if (doorWall === 'north') {
+          doorX = x + w / 3;
+          doorY = y;
+          rotation = 0;
+          swingDirection = 'inward';
+        } else if (doorWall === 'south') {
+          doorX = x + w / 3;
+          doorY = y + h - doorThickness;
+          rotation = 0;
+          swingDirection = 'inward';
+        } else if (doorWall === 'east') {
+          doorX = x + w - doorThickness;
+          doorY = y + h / 3;
+          rotation = 90;
+          swingDirection = 'inward';
+        } else {
+          // west (default) — door on left wall
+          doorX = x;
+          doorY = y + h / 3;
+          rotation = 90;
+          swingDirection = 'inward';
+        }
       }
 
-      // Draw door leaf
+      // Draw door leaf (thin rectangle)
       parts.push(`
         <rect x="${doorX}" y="${doorY}" width="${doorWidth}" height="${doorThickness}"
               fill="${this.colors.door}" stroke="${this.colors.wall}" stroke-width="0.5"
@@ -798,62 +839,67 @@ class ArchitecturalFloorPlanGenerator {
     const largeArc = Math.abs(sweepAngle) > Math.PI ? 1 : 0;
     const sweep = sweepAngle > 0 ? 1 : 0;
 
+    // Solid thin line for door swing arc (UK architectural convention)
     return `
       <path d="M ${x} ${y} L ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${endX} ${endY} Z"
-            fill="none" stroke="${this.colors.dimension}" stroke-width="0.5" stroke-dasharray="3,2"/>
+            fill="none" stroke="${this.colors.dimension}" stroke-width="0.5"/>
     `;
   }
 
   /**
    * Draw windows on exterior walls
+   * @param {Object} floorData - Floor data with directional openings map
+   * @param {number} floor - Floor level
+   * @param {number} buildingWidth - Building width in meters
+   * @param {number} buildingLength - Building length in meters
    */
-  drawWindows(geometry, floor) {
+  drawWindows(floorData, floor, buildingWidth, buildingLength) {
     const parts = ['<g class="windows">'];
-    const openings = geometry.openings || {};
-    const windowWidth = 1.2 * this.scale;
+    const openings = floorData.openings || {};
     const windowDepth = 0.15 * this.scale;
 
     // Draw windows for each direction
     ['north', 'south', 'east', 'west'].forEach((direction) => {
-      const directionOpenings = openings[direction] || [];
+      const directionOpenings = Array.isArray(openings[direction]) ? openings[direction] : [];
+      // Filter windows for this floor (if floor is tagged)
       const windowsOnFloor = directionOpenings.filter(
-        (o) => o.floor === floor && o.type === 'window'
+        (o) => (o.type === 'window' || !o.type) && (o.floor === floor || o.floor === undefined)
       );
 
       windowsOnFloor.forEach((win) => {
-        const x = win.x * this.scale;
-        const y = win.y * this.scale || 0;
+        const winWidth = (win.width || 1.2) * this.scale;
+        const x = (win.x || 0) * this.scale;
 
         let wx, wy, ww, wh;
 
         switch (direction) {
           case 'north':
-            wx = x - windowWidth / 2;
+            wx = x - winWidth / 2;
             wy = 0;
-            ww = windowWidth;
+            ww = winWidth;
             wh = windowDepth;
             break;
           case 'south':
-            wx = x - windowWidth / 2;
-            wy = geometry.dimensions.length * this.scale - windowDepth;
-            ww = windowWidth;
+            wx = x - winWidth / 2;
+            wy = buildingLength * this.scale - windowDepth;
+            ww = winWidth;
             wh = windowDepth;
             break;
           case 'east':
-            wx = geometry.dimensions.width * this.scale - windowDepth;
-            wy = x - windowWidth / 2;
+            wx = buildingWidth * this.scale - windowDepth;
+            wy = x - winWidth / 2;
             ww = windowDepth;
-            wh = windowWidth;
+            wh = winWidth;
             break;
           case 'west':
             wx = 0;
-            wy = x - windowWidth / 2;
+            wy = x - winWidth / 2;
             ww = windowDepth;
-            wh = windowWidth;
+            wh = winWidth;
             break;
         }
 
-        // Window opening (break in wall)
+        // Window opening (break in wall — white fill to cut through poche)
         parts.push(`
           <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}"
                 fill="${this.colors.background}" stroke="none"/>
@@ -862,19 +908,27 @@ class ArchitecturalFloorPlanGenerator {
         // Window frame
         parts.push(`
           <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}"
-                fill="none" stroke="${this.colors.wall}" stroke-width="2"/>
+                fill="none" stroke="${this.colors.wall}" stroke-width="1.5"/>
         `);
 
-        // Window glass indication (parallel lines)
+        // Window glass indication — double parallel lines (UK convention)
         if (direction === 'north' || direction === 'south') {
+          const lineY1 = wy + wh * 0.35;
+          const lineY2 = wy + wh * 0.65;
           parts.push(`
-            <line x1="${wx + 2}" y1="${wy + wh / 2}" x2="${wx + ww - 2}" y2="${wy + wh / 2}"
-                  stroke="${this.colors.window}" stroke-width="2"/>
+            <line x1="${wx + 2}" y1="${lineY1}" x2="${wx + ww - 2}" y2="${lineY1}"
+                  stroke="${this.colors.window}" stroke-width="1.5"/>
+            <line x1="${wx + 2}" y1="${lineY2}" x2="${wx + ww - 2}" y2="${lineY2}"
+                  stroke="${this.colors.window}" stroke-width="1.5"/>
           `);
         } else {
+          const lineX1 = wx + ww * 0.35;
+          const lineX2 = wx + ww * 0.65;
           parts.push(`
-            <line x1="${wx + ww / 2}" y1="${wy + 2}" x2="${wx + ww / 2}" y2="${wy + wh - 2}"
-                  stroke="${this.colors.window}" stroke-width="2"/>
+            <line x1="${lineX1}" y1="${wy + 2}" x2="${lineX1}" y2="${wy + wh - 2}"
+                  stroke="${this.colors.window}" stroke-width="1.5"/>
+            <line x1="${lineX2}" y1="${wy + 2}" x2="${lineX2}" y2="${wy + wh - 2}"
+                  stroke="${this.colors.window}" stroke-width="1.5"/>
           `);
         }
       });
@@ -1112,6 +1166,78 @@ class ArchitecturalFloorPlanGenerator {
             <circle cx="${x + w / 2}" cy="${y + h / 2}" r="${Math.min(w, h) * 0.3}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>
           </g>
         `;
+
+      case 'staircase': {
+        // Staircase symbol: parallel treads with direction arrow
+        const parts = [`<g class="staircase">`];
+        const treadCount = Math.max(8, Math.floor(h / (4))); // ~4px per tread
+        const treadHeight = h / treadCount;
+
+        // Outer rectangle
+        parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`);
+
+        // Treads (horizontal lines)
+        for (let i = 1; i < treadCount; i++) {
+          const ty = y + i * treadHeight;
+          parts.push(`<line x1="${x}" y1="${ty}" x2="${x + w}" y2="${ty}" stroke="${stroke}" stroke-width="0.5"/>`);
+        }
+
+        // Direction arrow (pointing up)
+        const arrowX = x + w / 2;
+        const arrowY1 = y + h * 0.7;
+        const arrowY2 = y + h * 0.15;
+        parts.push(`<line x1="${arrowX}" y1="${arrowY1}" x2="${arrowX}" y2="${arrowY2}" stroke="${stroke}" stroke-width="1.5"/>`);
+        parts.push(`<polygon points="${arrowX - 4},${arrowY2 + 6} ${arrowX},${arrowY2} ${arrowX + 4},${arrowY2 + 6}" fill="${stroke}"/>`);
+
+        // "UP" text
+        parts.push(`<text x="${arrowX}" y="${y + h * 0.85}" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" fill="${stroke}">UP</text>`);
+
+        parts.push('</g>');
+        return parts.join('\n');
+      }
+
+      case 'counter-L': {
+        // L-shaped kitchen counter along two walls
+        const counterDepth = Math.min(0.6 * this.scale, h * 0.25);
+        const parts = [`<g class="counter-L">`];
+
+        // Bottom counter (along south wall of room)
+        parts.push(`<rect x="${x}" y="${y + h - counterDepth}" width="${w}" height="${counterDepth}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`);
+        // Right counter (along east wall of room)
+        parts.push(`<rect x="${x + w - counterDepth}" y="${y}" width="${counterDepth}" height="${h - counterDepth}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`);
+
+        // Countertop edge lines (double line convention)
+        parts.push(`<line x1="${x}" y1="${y + h - counterDepth + 2}" x2="${x + w - counterDepth}" y2="${y + h - counterDepth + 2}" stroke="${stroke}" stroke-width="0.5"/>`);
+        parts.push(`<line x1="${x + w - counterDepth - 2}" y1="${y}" x2="${x + w - counterDepth - 2}" y2="${y + h - counterDepth}" stroke="${stroke}" stroke-width="0.5"/>`);
+
+        // Sink circle on bottom counter
+        const sinkX = x + w * 0.4;
+        const sinkY = y + h - counterDepth / 2;
+        parts.push(`<ellipse cx="${sinkX}" cy="${sinkY}" rx="${counterDepth * 0.3}" ry="${counterDepth * 0.25}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
+        parts.push(`<circle cx="${sinkX}" cy="${sinkY}" r="${counterDepth * 0.06}" fill="${stroke}"/>`);
+
+        parts.push('</g>');
+        return parts.join('\n');
+      }
+
+      case 'tv-unit':
+        return `
+          <g class="tv-unit">
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x + w * 0.1}" y="${y + 1}" width="${w * 0.8}" height="${h * 0.6}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>
+          </g>
+        `;
+
+      case 'bedside-table':
+        return `
+          <g class="bedside-table">
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>
+          </g>
+        `;
+
+      case 'chairs':
+        // Draw chairs around a table (simplified — small rectangles)
+        return '';
 
       default:
         return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`;

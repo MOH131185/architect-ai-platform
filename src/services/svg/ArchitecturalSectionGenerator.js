@@ -516,23 +516,91 @@ function generateInternalElements(
   buildingHeight,
   pixelsPerMeter,
 ) {
-  // Internal walls would be shown in profile (beyond section plane)
-  // For now, show a simplified internal partition
+  const parts = ['<g class="internal-elements">'];
   const cuttingW = cuttingLength * pixelsPerMeter;
-  const buildingH = buildingHeight * pixelsPerMeter;
-  const floorHeight =
-    (dna?.geometry_rules?.floor_height || 3.0) * pixelsPerMeter;
+  const floorHeightM = dna?.geometry_rules?.floor_height || dna?.dimensions?.floorHeights?.[0] || 2.7;
+  const floorHeightPx = floorHeightM * pixelsPerMeter;
+  const wallThickPx = 0.1 * pixelsPerMeter; // 100mm internal walls
+  const numFloors = dna?.dimensions?.floors || Math.max(1, Math.round(buildingHeight / floorHeightM));
 
-  const partitionX = cuttingW * 0.4;
-  const partitionW = 0.15 * pixelsPerMeter;
+  // Get rooms from DNA to draw per-room partitions
+  const rooms = dna?.rooms || dna?.program?.rooms || [];
 
-  return `
-  <g class="internal-elements">
-    <!-- Internal partition (profile) -->
-    <rect x="${partitionX}" y="${-floorHeight + 20}" width="${partitionW}" height="${floorHeight - 40}"
-          fill="none" stroke="${COLORS.profile}" stroke-width="${LINE_WEIGHTS.PROFILE}"
-          stroke-dasharray="10,5"/>
-  </g>`;
+  // Group rooms by floor
+  const roomsByFloor = {};
+  rooms.forEach((room) => {
+    const floor = room.floor ?? (room.level === 'ground' ? 0 : room.level === 'first' ? 1 : 0);
+    if (!roomsByFloor[floor]) roomsByFloor[floor] = [];
+    roomsByFloor[floor].push(room);
+  });
+
+  // For each floor, draw partition walls at room boundaries
+  for (let floorIdx = 0; floorIdx < numFloors; floorIdx++) {
+    const floorRooms = roomsByFloor[floorIdx] || [];
+    const floorY = -((floorIdx + 1) * floorHeightPx); // Y position (SVG inverted)
+
+    if (floorRooms.length > 1) {
+      // Calculate room widths proportionally along the section cut
+      const totalArea = floorRooms.reduce((sum, r) => {
+        const area = r.area || (parseFloat((r.dimensions || '4x3').split(/[×x]/)[0]) * parseFloat((r.dimensions || '4x3').split(/[×x]/)[1] || 3));
+        return sum + area;
+      }, 0);
+
+      let currentX = 0.3 * pixelsPerMeter; // Start after exterior wall
+      const usableWidth = cuttingW - 0.6 * pixelsPerMeter; // Minus both exterior walls
+
+      floorRooms.forEach((room, idx) => {
+        const area = room.area || 15;
+        const proportion = area / totalArea;
+        const roomWidth = usableWidth * proportion;
+
+        // Draw room label
+        const labelX = currentX + roomWidth / 2;
+        const labelY = floorY + floorHeightPx * 0.5;
+        const roomName = room.name || `Room ${idx + 1}`;
+
+        parts.push(`
+          <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
+                font-family="Arial, sans-serif" font-size="9" fill="${COLORS.dimension}"
+                text-anchor="middle">${roomName}</text>
+        `);
+
+        // Draw partition wall after each room (except the last)
+        if (idx < floorRooms.length - 1) {
+          currentX += roomWidth;
+          parts.push(`
+            <rect x="${currentX.toFixed(1)}" y="${(floorY + 10).toFixed(1)}"
+                  width="${wallThickPx.toFixed(1)}" height="${(floorHeightPx - 20).toFixed(1)}"
+                  fill="${COLORS.profile}" stroke="${COLORS.cut}" stroke-width="${LINE_WEIGHTS.PROFILE}"/>
+          `);
+          currentX += wallThickPx;
+        } else {
+          currentX += roomWidth;
+        }
+      });
+    } else if (floorRooms.length === 1) {
+      // Single room on this floor — just label it
+      const labelX = cuttingW / 2;
+      const labelY = floorY + floorHeightPx * 0.5;
+      parts.push(`
+        <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
+              font-family="Arial, sans-serif" font-size="9" fill="${COLORS.dimension}"
+              text-anchor="middle">${floorRooms[0].name || 'Room'}</text>
+      `);
+    } else {
+      // No room data — draw a simple dashed partition at 40%
+      const partitionX = cuttingW * 0.4;
+      parts.push(`
+        <rect x="${partitionX.toFixed(1)}" y="${(floorY + 10).toFixed(1)}"
+              width="${wallThickPx.toFixed(1)}" height="${(floorHeightPx - 20).toFixed(1)}"
+              fill="none" stroke="${COLORS.profile}" stroke-width="${LINE_WEIGHTS.PROFILE}"
+              stroke-dasharray="10,5"/>
+      `);
+    }
+  }
+
+  parts.push('</g>');
+  return parts.join('\n');
 }
 
 /**

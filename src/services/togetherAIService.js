@@ -635,10 +635,9 @@ export async function generateArchitecturalImage(params) {
   }
 
   // All retries failed — if init_image was present, try one last time WITHOUT it
-  // Together.ai sometimes returns 500 on init_image payloads (large SVGs, encoding issues)
+  // Together.ai returns 400 for unsupported init_image formats (SVG) and 500/503 for server issues
   const hadInitImage = !!(geometryRender?.url || styleReferenceUrl);
-  const isNonServerlessError = lastError?.status === 400 && (lastError?.message || '').includes('non-serverless');
-  if (hadInitImage && (lastError?.status === 500 || lastError?.status === 503)) {
+  if (hadInitImage && (lastError?.status === 400 || lastError?.status === 500 || lastError?.status === 503)) {
     logger.warn(
       `[FLUX.1] All ${maxRetries} attempts with init_image failed for ${viewType} — retrying WITHOUT init_image`,
     );
@@ -692,7 +691,8 @@ export async function generateArchitecturalImage(params) {
   }
 
   // Model unavailable — try FLUX.1-schnell as last resort
-  // Triggers on: server down (500/503) OR model moved to dedicated-only (400 non-serverless)
+  // Triggers on: server down (500/503) OR model moved to dedicated-only (400)
+  const isNonServerlessError = lastError?.status === 400 && (lastError?.message || '').includes('non-serverless');
   if (lastError?.status === 500 || lastError?.status === 503 || isNonServerlessError) {
     logger.warn(
       `[FLUX.1] Primary model unavailable (${lastError?.status}) — trying FLUX.1-schnell fallback for ${viewType}`,
