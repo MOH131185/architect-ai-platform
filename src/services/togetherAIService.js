@@ -389,7 +389,18 @@ export async function generateArchitecturalImage(params) {
             geometryRender.url.includes("AAAAB") ||
             geometryRender.url.length < 200;
 
-          if (!isPlaceholder) {
+          // Together.ai FLUX only accepts JPEG/PNG for init_image — SVG causes 400
+          const isSvgRender =
+            typeof geometryRender.url === "string" &&
+            (geometryRender.url.startsWith("data:image/svg") ||
+              geometryRender.url.trimStart().startsWith("<svg") ||
+              geometryRender.url.trimStart().startsWith("<?xml"));
+
+          if (isSvgRender) {
+            logger.warn(
+              "  Geometry render is SVG format — skipping init_image (Together AI FLUX requires JPEG/PNG)",
+            );
+          } else if (!isPlaceholder) {
             // Use camelCase for server (server converts to snake_case for Together.ai)
             requestPayload.initImage = geometryRender.url;
             requestPayload.imageStrength =
@@ -1201,22 +1212,24 @@ export async function generateA1SheetImage({
   // Get model and orientation from feature flags if not provided
   const flags = getFeatureFlags();
 
-  // Model selection: default to schnell (serverless). FLUX.1-dev requires dedicated endpoint.
-  // ⚠️ FLUX.1-schnell IGNORES init_image — img2img won't work with schnell
+  // Model selection: FLUX.1.1-pro for img2img, schnell for text-to-image
+  // FLUX.1-dev is NO LONGER SERVERLESS — always use FLUX.1.1-pro instead
   let requestedModel =
-    model || flags.fluxImageModel || "black-forest-labs/FLUX.1-schnell";
+    model || flags.fluxImageModel || "black-forest-labs/FLUX.1.1-pro";
   // DEFENSIVE: FLUX.1-dev no longer serverless
   if (requestedModel.includes("FLUX.1-dev")) {
-    logger.warn(
-      "⚠️ FLUX.1-dev is no longer serverless — auto-switching to FLUX.1-schnell",
-    );
-    requestedModel = "black-forest-labs/FLUX.1-schnell";
+    logger.warn("⚠️ FLUX.1-dev is no longer serverless — using FLUX.1.1-pro");
+    requestedModel = "black-forest-labs/FLUX.1.1-pro";
   }
-  const modelToUse = requestedModel;
+  // Force FLUX.1.1-pro when init_image is present (schnell ignores it)
+  const modelToUse =
+    initImage && requestedModel.includes("schnell")
+      ? "black-forest-labs/FLUX.1.1-pro"
+      : requestedModel;
 
-  if (initImage && requestedModel.includes("schnell")) {
-    logger.warn(
-      `⚠️ [A1 Sheet] FLUX.1-schnell ignores init_image — img2img conditioning will not apply. Set TOGETHER_FLUX_MODEL env var to FLUX.1.1-pro for img2img support.`,
+  if (initImage && modelToUse !== requestedModel) {
+    logger.info(
+      `🔒 [A1 Sheet] Forcing FLUX.1.1-pro for image-to-image mode (schnell ignores init_image)`,
     );
   }
   // 🔒 LANDSCAPE ENFORCEMENT: A1 sheets are ALWAYS landscape (width > height)
