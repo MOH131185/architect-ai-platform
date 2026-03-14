@@ -1866,10 +1866,20 @@ export default async function handler(req, res) {
       }
     }
 
+    // Helper: embed fonts in overlay SVGs so text renders on Vercel (librsvg has no system fonts)
+    async function embedOverlayFont(svgStr, label) {
+      try {
+        return await embedFontInSVG(svgStr);
+      } catch (err) {
+        console.warn(`[A1 Compose] Font embedding failed for ${label}:`, err.message);
+        return svgStr;
+      }
+    }
+
     // Draw panel borders and labels
     const borderSvg = generateOverlaySvg(coordinates, width, height, constants);
     composites.push({
-      input: Buffer.from(borderSvg),
+      input: Buffer.from(await embedOverlayFont(borderSvg, "border overlay")),
       left: 0,
       top: 0,
     });
@@ -1882,7 +1892,7 @@ export default async function handler(req, res) {
       boardSpecVersion,
     });
     composites.push({
-      input: Buffer.from(specStampSvg),
+      input: Buffer.from(await embedOverlayFont(specStampSvg, "spec stamp")),
       left: 0,
       top: 0,
     });
@@ -1923,7 +1933,7 @@ export default async function handler(req, res) {
         `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || "gpt-image-1"}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`,
       );
       composites.push({
-        input: Buffer.from(buildStampSvg),
+        input: Buffer.from(await embedOverlayFont(buildStampSvg, "build stamp")),
         left: 0,
         top: 0,
       });
