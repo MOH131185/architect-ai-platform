@@ -379,7 +379,18 @@ export async function generateArchitecturalImage(params) {
             geometryRender.url.includes("AAAAB") ||
             geometryRender.url.length < 200;
 
-          if (!isPlaceholder) {
+          // Together.ai FLUX only accepts JPEG/PNG for init_image — SVG causes 400
+          const isSvgRender =
+            typeof geometryRender.url === "string" &&
+            (geometryRender.url.startsWith("data:image/svg") ||
+              geometryRender.url.trimStart().startsWith("<svg") ||
+              geometryRender.url.trimStart().startsWith("<?xml"));
+
+          if (isSvgRender) {
+            logger.warn(
+              "  Geometry render is SVG format — skipping init_image (Together AI FLUX requires JPEG/PNG)",
+            );
+          } else if (!isPlaceholder) {
             // Use camelCase for server (server converts to snake_case for Together.ai)
             requestPayload.initImage = geometryRender.url;
             requestPayload.imageStrength = Math.round((1.0 - (geometryStrength || 0.5)) * 100) / 100; // Inverted for Together.ai, rounded to avoid FP artifacts
