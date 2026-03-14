@@ -575,6 +575,11 @@ async function fetchImageBuffer(url) {
     throw new Error("Image URL is required");
   }
 
+  // Handle raw SVG markup (sent as string to avoid base64 overhead in request body)
+  if (url.startsWith("<svg") || url.startsWith("<?xml")) {
+    return Buffer.from(url, "utf8");
+  }
+
   // Handle data URLs
   if (url.startsWith("data:")) {
     const base64Data = url.split(",")[1];
