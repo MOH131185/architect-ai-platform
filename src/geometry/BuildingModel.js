@@ -51,12 +51,17 @@ const STAIR_CORE = {
 
 /** Room adjacency rules - higher score = should be closer */
 const ADJACENCY_RULES = {
-  Entry: { "Living Room": 10, Hall: 10, Circulation: 8 },
-  "Living Room": { Kitchen: 8, Dining: 8, Entry: 10 },
-  Kitchen: { Dining: 10, "Living Room": 8, Utility: 6 },
+  Entry: { "Living Room": 10, Hall: 10, Circulation: 8, WC: 6, Cloakroom: 6 },
+  "Living Room": { Kitchen: 8, Dining: 8, Entry: 10, Hall: 6 },
+  Kitchen: { Dining: 10, "Living Room": 8, Utility: 8 },
   Dining: { Kitchen: 10, "Living Room": 8 },
-  "Master Bedroom": { "En-Suite": 10, "Walk-in Wardrobe": 8 },
-  Bedroom: { Bathroom: 4 },
+  "Master Bedroom": { "En-Suite": 10, "Walk-in Wardrobe": 8, Dressing: 8 },
+  Bedroom: { Bathroom: 6, Landing: 4 },
+  Utility: { Kitchen: 8, Garage: 4 },
+  WC: { Entry: 6, Hall: 6 },
+  Cloakroom: { Entry: 6, Hall: 6 },
+  Bathroom: { Bedroom: 6, Landing: 4 },
+  Landing: { Bedroom: 4, Bathroom: 4, Study: 4 },
   Circulation: { Entry: 8 },
 };
 
@@ -1040,6 +1045,18 @@ export class BuildingModel {
     }
     // ─── End AI Layout Path ───────────────────────────────────────────
 
+    // ─── Spine-and-Wings Layout (preferred for residential) ──────────
+    // Try spine layout first — produces architecturally logical plans.
+    // Returns null if building is too narrow or no circulation room found.
+    const spineResult = this._layoutSpineAndWings(roomsData, floorIndex);
+    if (spineResult) {
+      return spineResult;
+    }
+    logger.info(
+      `[BuildingModel] Spine layout not applicable for floor ${floorIndex}, using zone-based layout`,
+    );
+    // ─── End Spine-and-Wings ─────────────────────────────────────────
+
     // Helper function to determine zone type from room data using ZONE_TYPE_MAP
     const getZoneTypeFromRoom = (room) => {
       // Priority: explicit zoneType > ZONE_TYPE_MAP lookup by program > by name > 'public' fallback
@@ -1350,6 +1367,283 @@ export class BuildingModel {
       currentStripHeight = Math.max(currentStripHeight, roomDepth);
       roomIndex++;
     }
+
+    return rooms;
+  }
+
+  /**
+   * Spine-and-Wings layout: Place rooms along a central hallway spine.
+   * Produces architecturally logical plans where every room touches
+   * either the circulation spine (for doors) or an external wall (for windows).
+   *
+   * Ground floor: Hall spine from entrance → back, rooms on left/right wings.
+   * Upper floor: Landing spine from stair → back, bedrooms on wings.
+   *
+   * @private
+   * @param {Array} roomsData - Rooms to place on this floor
+   * @param {number} floorIndex - 0 = ground, 1+ = upper
+   * @returns {Array} Placed room objects with polygons
+   */
+  _layoutSpineAndWings(roomsData, floorIndex) {
+    const { width, depth } = this.envelope;
+    const margin = WALL_THICKNESS.EXTERNAL;
+    const wallGap = WALL_THICKNESS.INTERNAL;
+    const availableWidth = width - 2 * margin;
+    const availableDepth = depth - 2 * margin;
+
+    // Identify the circulation room (hall/landing/corridor)
+    const circIdx = roomsData.findIndex(
+      (r) =>
+        r.isCirculation ||
+        r.program === "circulation" ||
+        r.program === "hallway" ||
+        r.program === "corridor" ||
+        r.program === "landing" ||
+        r.name?.toLowerCase().includes("hall") ||
+        r.name?.toLowerCase().includes("landing") ||
+        r.name?.toLowerCase().includes("corridor"),
+    );
+
+    // If no circulation room or fewer than 3 rooms, spine layout doesn't make sense
+    if (circIdx < 0 || roomsData.length < 3) {
+      logger.info(
+        `[BuildingModel] Spine layout: no circulation room or <3 rooms, falling back to zone layout`,
+      );
+      return null; // Signal to caller to use fallback
+    }
+
+    const circRoom = roomsData[circIdx];
+    const otherRooms = roomsData.filter((_, i) => i !== circIdx);
+
+    // Spine runs along Y-axis (entrance to back of building)
+    // Width: derive from target area ÷ available depth, clamp to 1200-2000mm
+    const circAreaMM2 = (circRoom.targetAreaM2 || 8) * MM_PER_M * MM_PER_M;
+    let spineWidth = Math.round(circAreaMM2 / availableDepth);
+    spineWidth = Math.max(1200, Math.min(2000, spineWidth));
+
+    // Center the spine; compute wing widths
+    const spineLeft = -spineWidth / 2;
+    const spineRight = spineWidth / 2;
+    const leftWingWidth = availableWidth / 2 - spineWidth / 2;
+    const rightWingWidth = availableWidth / 2 - spineWidth / 2;
+
+    // If wings are too narrow (<2000mm), spine layout won't work
+    if (leftWingWidth < 2000 || rightWingWidth < 2000) {
+      logger.info(
+        `[BuildingModel] Spine layout: wings too narrow (${Math.round(leftWingWidth)}mm), falling back`,
+      );
+      return null;
+    }
+
+    const rooms = [];
+    let roomIndex = 0;
+    const buildingMinY = -depth / 2 + margin;
+    const buildingMaxY = depth / 2 - margin;
+    const buildingMinX = -width / 2 + margin;
+
+    // Place the spine (hallway/landing) as a full-depth central strip
+    const spinePolygon = [
+      { x: spineLeft, y: buildingMinY },
+      { x: spineRight, y: buildingMinY },
+      { x: spineRight, y: buildingMaxY },
+      { x: spineLeft, y: buildingMaxY },
+    ];
+
+    rooms.push({
+      id: circRoom.id || `room_${floorIndex}_${roomIndex}`,
+      name: circRoom.name || (floorIndex === 0 ? "Hall" : "Landing"),
+      program: circRoom.program || "circulation",
+      roomType: circRoom.program || "circulation",
+      spaceType: "service",
+      zoneType: "service",
+      isCirculation: true,
+      polygon: spinePolygon,
+      area: spineWidth * availableDepth,
+      areaM2: (spineWidth * availableDepth) / (MM_PER_M * MM_PER_M),
+      width: spineWidth / MM_PER_M,
+      depth: availableDepth / MM_PER_M,
+      targetAreaM2: circRoom.targetAreaM2 || 8,
+      center: { x: (spineLeft + spineRight) / 2, y: 0 },
+      boundingBox: {
+        minX: spineLeft,
+        maxX: spineRight,
+        minY: buildingMinY,
+        maxY: buildingMaxY,
+      },
+      touchesFacades: ["S", "N"], // Spine runs full depth
+    });
+    roomIndex++;
+
+    // Classify rooms into front-of-house vs back-of-house for Y positioning
+    const frontRoomNames = [
+      "entry",
+      "wc",
+      "cloakroom",
+      "reception",
+      "lobby",
+    ];
+    const backRoomNames = ["utility", "garage", "storage"];
+    // Pairs that must stay together
+    const pairedRooms = [
+      ["Kitchen", "Dining"],
+      ["Master Bedroom", "En-Suite"],
+    ];
+
+    // Assign rooms to left or right wing, keeping pairs together
+    const leftWing = [];
+    const rightWing = [];
+
+    // First, group paired rooms
+    const assigned = new Set();
+    for (const [nameA, nameB] of pairedRooms) {
+      const rA = otherRooms.find((r) => r.name?.includes(nameA));
+      const rB = otherRooms.find((r) => r.name?.includes(nameB));
+      if (rA && rB) {
+        // Put pair on the wing with more space available
+        const targetWing = leftWing.length <= rightWing.length ? leftWing : rightWing;
+        targetWing.push(rA, rB);
+        assigned.add(rA);
+        assigned.add(rB);
+      }
+    }
+
+    // Assign remaining rooms, alternating wings to balance area
+    const remaining = otherRooms.filter((r) => !assigned.has(r));
+    // Sort by area descending for better packing
+    remaining.sort((a, b) => (b.targetAreaM2 || 20) - (a.targetAreaM2 || 20));
+
+    for (const room of remaining) {
+      const leftArea = leftWing.reduce(
+        (s, r) => s + (r.targetAreaM2 || 20),
+        0,
+      );
+      const rightArea = rightWing.reduce(
+        (s, r) => s + (r.targetAreaM2 || 20),
+        0,
+      );
+      if (leftArea <= rightArea) {
+        leftWing.push(room);
+      } else {
+        rightWing.push(room);
+      }
+    }
+
+    // Sort each wing: front rooms first, then by adjacency, then back rooms last
+    const sortWing = (wing) => {
+      wing.sort((a, b) => {
+        const aName = (a.name || "").toLowerCase();
+        const bName = (b.name || "").toLowerCase();
+        const aFront = frontRoomNames.some((n) => aName.includes(n));
+        const bFront = frontRoomNames.some((n) => bName.includes(n));
+        const aBack = backRoomNames.some((n) => aName.includes(n));
+        const bBack = backRoomNames.some((n) => bName.includes(n));
+        if (aFront !== bFront) return aFront ? -1 : 1;
+        if (aBack !== bBack) return aBack ? 1 : -1;
+        return 0; // Keep paired rooms in insertion order
+      });
+    };
+    sortWing(leftWing);
+    sortWing(rightWing);
+
+    // Stack rooms in each wing along Y-axis (front to back)
+    const placeWing = (wingRooms, wingMinX, wingWidth, wingLabel) => {
+      let cursorY = buildingMinY;
+
+      for (const roomData of wingRooms) {
+        const areaM2 = roomData.targetAreaM2 || 20;
+        const areaMM2 = areaM2 * MM_PER_M * MM_PER_M;
+
+        // Room spans full wing width; depth = area / width
+        let roomWidth = wingWidth;
+        let roomDepth = areaMM2 / roomWidth;
+
+        // Clamp room depth to reasonable range
+        roomDepth = Math.max(1500, Math.min(roomDepth, availableDepth * 0.6));
+        // Recalculate width if depth was clamped and area is important
+        if (roomDepth * roomWidth < areaMM2 * 0.7) {
+          roomWidth = Math.min(wingWidth, areaMM2 / roomDepth);
+        }
+
+        // Check if room fits vertically
+        if (cursorY + roomDepth > buildingMaxY) {
+          const remaining = buildingMaxY - cursorY;
+          if (remaining >= 1500) {
+            roomDepth = remaining;
+          } else {
+            logger.warn(
+              `[BuildingModel] Spine layout: ${roomData.name} doesn't fit in ${wingLabel} wing`,
+            );
+            continue;
+          }
+        }
+
+        // Determine which facades this room touches
+        const touchesFacades = [];
+        if (wingLabel === "left") touchesFacades.push("W");
+        if (wingLabel === "right") touchesFacades.push("E");
+        if (Math.abs(cursorY - buildingMinY) < wallGap + 1) touchesFacades.push("S");
+        if (cursorY + roomDepth >= buildingMaxY - wallGap - 1) touchesFacades.push("N");
+
+        const polygon = [
+          { x: wingMinX, y: cursorY },
+          { x: wingMinX + roomWidth, y: cursorY },
+          { x: wingMinX + roomWidth, y: cursorY + roomDepth },
+          { x: wingMinX, y: cursorY + roomDepth },
+        ];
+
+        rooms.push({
+          id: roomData.id || `room_${floorIndex}_${roomIndex}`,
+          name: roomData.name || `Room ${roomIndex + 1}`,
+          program: roomData.program || "generic",
+          roomType: roomData.roomType || roomData.program || "generic",
+          spaceType: roomData.spaceType || "public",
+          zoneType: roomData.zoneType || "public",
+          polygon,
+          area: roomWidth * roomDepth,
+          areaM2: (roomWidth * roomDepth) / (MM_PER_M * MM_PER_M),
+          width: roomWidth / MM_PER_M,
+          depth: roomDepth / MM_PER_M,
+          targetAreaM2: areaM2,
+          center: {
+            x: wingMinX + roomWidth / 2,
+            y: cursorY + roomDepth / 2,
+          },
+          boundingBox: {
+            minX: wingMinX,
+            maxX: wingMinX + roomWidth,
+            minY: cursorY,
+            maxY: cursorY + roomDepth,
+          },
+          touchesFacades,
+        });
+
+        cursorY += roomDepth + wallGap;
+        roomIndex++;
+      }
+    };
+
+    // Left wing: from west external wall to spine
+    const leftMinX = buildingMinX;
+    placeWing(leftWing, leftMinX, leftWingWidth, "left");
+
+    // Right wing: from spine to east external wall
+    const rightMinX = spineRight;
+    placeWing(rightWing, rightMinX, rightWingWidth, "right");
+
+    // Validate: did we place enough rooms?
+    if (rooms.length < roomsData.length * 0.6) {
+      logger.warn(
+        `[BuildingModel] Spine layout placed only ${rooms.length}/${roomsData.length} rooms, falling back`,
+      );
+      return null;
+    }
+
+    logger.info(
+      `[BuildingModel] Spine-and-wings layout: ${rooms.length} rooms placed (spine: ${Math.round(spineWidth)}mm, wings: ${Math.round(leftWingWidth)}mm L / ${Math.round(rightWingWidth)}mm R)`,
+    );
+
+    // Post-layout: repair any required adjacencies
+    this._repairRequiredAdjacencies(rooms);
 
     return rooms;
   }
@@ -1875,47 +2169,63 @@ export class BuildingModel {
       const perpY = dx / wallLen;
 
       // Find rooms whose bounding box touches this wall
+      // Strategy: use touchesFacades tag (from spine layout) first,
+      // then fall back to bounding-box edge proximity check.
       const roomsOnWall = [];
+      const pad = WALL_THICKNESS.EXTERNAL + 100; // tolerance for edge proximity
+
       for (const room of rooms) {
         const bb = room.boundingBox;
-        const pad = 400; // 400mm tolerance for wall thickness
-        // Project room center onto wall to check proximity
+        let touchesThisWall = false;
+
+        // Fast path: spine layout tagged rooms with touchesFacades
+        if (room.touchesFacades && room.touchesFacades.includes(wall.facade)) {
+          touchesThisWall = true;
+        } else {
+          // Bounding-box edge proximity — does the room's edge align with the wall?
+          const envMinX = -this.envelope.width / 2;
+          const envMaxX = this.envelope.width / 2;
+          const envMinY = -this.envelope.depth / 2;
+          const envMaxY = this.envelope.depth / 2;
+
+          switch (wall.facade) {
+            case "S":
+              touchesThisWall = bb.minY - envMinY < pad;
+              break;
+            case "N":
+              touchesThisWall = envMaxY - bb.maxY < pad;
+              break;
+            case "W":
+              touchesThisWall = bb.minX - envMinX < pad;
+              break;
+            case "E":
+              touchesThisWall = envMaxX - bb.maxX < pad;
+              break;
+          }
+        }
+
+        if (!touchesThisWall) continue;
+
+        // Project room center along wall to get position parameter t
         const rcx = (bb.minX + bb.maxX) / 2;
         const rcy = (bb.minY + bb.maxY) / 2;
-        // Perpendicular distance from room center to wall line
-        const dot = (rcx - wall.start.x) * perpX + (rcy - wall.start.y) * perpY;
-        if (
-          dot < -pad ||
-          dot > (bb.maxX - bb.minX + bb.maxY - bb.minY) / 2 + pad
-        ) {
-          continue; // Room is too far from this wall
-        }
-        // Project room center along wall to get position parameter t
         const tCenter =
           ((rcx - wall.start.x) * dx + (rcy - wall.start.y) * dy) /
           (wallLen * wallLen);
         if (tCenter < -0.05 || tCenter > 1.05) {
           continue; // Room doesn't overlap this wall segment
         }
-        // Check if room's bounding box actually touches the wall line
-        const wallMinX = Math.min(wall.start.x, wall.end.x) - pad;
-        const wallMaxX = Math.max(wall.start.x, wall.end.x) + pad;
-        const wallMinY = Math.min(wall.start.y, wall.end.y) - pad;
-        const wallMaxY = Math.max(wall.start.y, wall.end.y) + pad;
-        const overlapsX = bb.maxX >= wallMinX && bb.minX <= wallMaxX;
-        const overlapsY = bb.maxY >= wallMinY && bb.minY <= wallMaxY;
-        if (overlapsX && overlapsY) {
-          roomsOnWall.push({
-            room,
-            tCenter: Math.max(0.1, Math.min(0.9, tCenter)),
-          });
-        }
+
+        roomsOnWall.push({
+          room,
+          tCenter: Math.max(0.1, Math.min(0.9, tCenter)),
+        });
       }
 
       // Sort by position along wall
       roomsOnWall.sort((a, b) => a.tCenter - b.tCenter);
 
-      // Place one window per qualifying room
+      // Place windows per qualifying room (multi-window for large rooms)
       for (const { room, tCenter } of roomsOnWall) {
         const spec = WINDOW_SIZES[room.program];
         if (spec === null) continue; // Skip rooms with no window (hallway)
@@ -1926,34 +2236,62 @@ export class BuildingModel {
           sillHeight,
         } = spec || DEFAULT_WINDOW;
 
-        // Ensure window fits on wall (min 200mm from edge)
-        const minT = (winW / 2 + 200) / wallLen;
-        const maxT = 1 - minT;
-        const clampedT = Math.max(minT, Math.min(maxT, tCenter));
+        // Calculate room's span along this wall to decide multi-window
+        const bb = room.boundingBox;
+        const isHorizontalWall = wall.facade === "S" || wall.facade === "N";
+        const roomSpanMM = isHorizontalWall
+          ? bb.maxX - bb.minX
+          : bb.maxY - bb.minY;
 
-        const positionMM = clampedT * wallLen;
-        const normalizedX = clampedT;
+        // Multi-window: large rooms (>3000mm span) get 2-3 windows
+        const numWindows = roomSpanMM > 5000 ? 3 : roomSpanMM > 3000 ? 2 : 1;
 
-        openings.push({
-          id: `opening_${floorIndex}_${openingId++}`,
-          wallId: wall.id,
-          type: "window",
-          position: {
-            x: normalizedX,
-            z:
-              (sillHeight + winH / 2) /
-              (this.envelope.floorHeights[floorIndex] || 2800),
-          },
-          positionMM,
-          width: winW,
-          height: winH,
-          widthMM: winW,
-          heightMM: winH,
-          sillHeight,
-          facade: wall.facade,
-          roomProgram: room.program,
-        });
-      }
+        for (let wi = 0; wi < numWindows; wi++) {
+          // Distribute windows evenly across the room's span on this wall
+          let t;
+          if (numWindows === 1) {
+            t = tCenter;
+          } else {
+            // Spread windows across room's span
+            const roomStartT = isHorizontalWall
+              ? (bb.minX - wall.start.x) / (wall.end.x - wall.start.x || 1)
+              : (bb.minY - wall.start.y) / (wall.end.y - wall.start.y || 1);
+            const roomEndT = isHorizontalWall
+              ? (bb.maxX - wall.start.x) / (wall.end.x - wall.start.x || 1)
+              : (bb.maxY - wall.start.y) / (wall.end.y - wall.start.y || 1);
+            const span = roomEndT - roomStartT;
+            t = roomStartT + span * ((wi + 1) / (numWindows + 1));
+          }
+
+          // Ensure window fits on wall (min 200mm from edge)
+          const minT = (winW / 2 + 200) / wallLen;
+          const maxT = 1 - minT;
+          const clampedT = Math.max(minT, Math.min(maxT, t));
+
+          const positionMM = clampedT * wallLen;
+          const normalizedX = clampedT;
+
+          openings.push({
+            id: `opening_${floorIndex}_${openingId++}`,
+            wallId: wall.id,
+            type: "window",
+            position: {
+              x: normalizedX,
+              z:
+                (sillHeight + winH / 2) /
+                (this.envelope.floorHeights[floorIndex] || 2800),
+            },
+            positionMM,
+            width: winW,
+            height: winH,
+            widthMM: winW,
+            heightMM: winH,
+            sillHeight,
+            facade: wall.facade,
+            roomProgram: room.program,
+          });
+        } // end multi-window loop
+      } // end roomsOnWall loop
 
       // Fallback: if no rooms found on wall, place one default window
       if (roomsOnWall.length === 0 && wallLen >= 1500) {

@@ -804,51 +804,49 @@ function drawElevationOpenings(
 
   let facadeOpenings = model.getOpeningsForFacade(orientation);
 
-  // Fallback: generate default windows when model has no openings for this facade
-  // This prevents empty/blank elevations which look broken in the A1 sheet
+  // Fallback: generate conservative default windows when model has no openings
+  // With spine layout rooms touch walls, so this should rarely trigger.
+  // When it does, use minimal windows (1 centered per floor) to avoid generic look.
   if (facadeOpenings.length === 0) {
     logger.debug(
-      `[Projections2D] No openings for ${orientation} — generating default windows`,
+      `[Projections2D] No openings for ${orientation} — generating conservative fallback`,
     );
     const facadeWidthMM = isNS
       ? model.envelope.width
       : model.envelope.depth;
     const floorCount = model.floors?.length || 1;
-    const windowsPerFloor = Math.max(2, Math.round(facadeWidthMM / 3000));
+    // Conservative: 1 centered window per floor (not max(2, width/3000))
     const windowWidth = 1200;
     const windowHeight = 1400;
     const doorWidth = 1000;
     const doorHeight = 2100;
-    const spacing = facadeWidthMM / (windowsPerFloor + 1);
 
     facadeOpenings = [];
     for (let fi = 0; fi < floorCount; fi++) {
       const floorBaseZ = fi * (model.envelope.floorToFloor || 3000);
-      for (let wi = 0; wi < windowsPerFloor; wi++) {
-        const posX = -facadeWidthMM / 2 + spacing * (wi + 1);
-        // Ground floor first opening on main facade is a door
-        if (fi === 0 && wi === 0 && (orientation === "S" || orientation === "N")) {
-          facadeOpenings.push({
-            type: "door",
-            floorIndex: fi,
-            position: { x: posX / facadeWidthMM + 0.5 },
-            widthMM: doorWidth,
-            heightMM: doorHeight,
-            height: doorHeight,
-            zBase: floorBaseZ,
-            isEntrance: true,
-          });
-        } else {
-          facadeOpenings.push({
-            type: "window",
-            floorIndex: fi,
-            position: { x: posX / facadeWidthMM + 0.5 },
-            widthMM: windowWidth,
-            heightMM: windowHeight,
-            zBase: floorBaseZ,
-            sillHeight: 900,
-          });
-        }
+      // Ground floor main facades get a door
+      if (fi === 0 && (orientation === "S" || orientation === "N")) {
+        facadeOpenings.push({
+          type: "door",
+          floorIndex: fi,
+          position: { x: 0.5 },
+          widthMM: doorWidth,
+          heightMM: doorHeight,
+          height: doorHeight,
+          zBase: floorBaseZ,
+          isEntrance: true,
+        });
+      } else {
+        // Single centered window per floor
+        facadeOpenings.push({
+          type: "window",
+          floorIndex: fi,
+          position: { x: 0.5 },
+          widthMM: windowWidth,
+          heightMM: windowHeight,
+          zBase: floorBaseZ,
+          sillHeight: 900,
+        });
       }
     }
   }
@@ -1249,7 +1247,9 @@ function drawSectionFoundation(
 }
 
 /**
- * Draw section floor with slab
+ * Draw section floor with per-room spaces, internal partition walls, and slab.
+ * Instead of one big rectangle per floor, each room that intersects the
+ * section cut plane is drawn as a distinct space with partition walls between.
  */
 function drawSectionFloor(
   model,
@@ -1268,9 +1268,86 @@ function drawSectionFloor(
   const floorY = groundY - floor.zBase * pxPerMM;
   const floorTop = groundY - floor.zTop * pxPerMM;
   const slabThickness = floor.slab.thickness * pxPerMM;
+  const roomHeight = floor.floorHeight * pxPerMM - slabThickness;
+  const halfWidth = model.envelope.width / 2;
+  const halfDepth = model.envelope.depth / 2;
+  const wallThickPx = CONVENTIONS.wallThickness.internal * pxPerMM;
 
-  // Room space (light fill)
-  svg += `<rect class="room-fill" x="${buildingLeft}" y="${floorTop}" width="${sectionWidthMM * pxPerMM}" height="${floor.floorHeight * pxPerMM - slabThickness}"/>`;
+  // Section cut plane: longitudinal cuts at Y=0, transverse cuts at X=0
+  // Rooms are visible if the cut plane passes through them
+  const cutAxis = isLongitudinal ? "y" : "x"; // axis perpendicular to view
+  const viewAxis = isLongitudinal ? "x" : "y"; // axis along the view
+
+  // Collect rooms that the section plane intersects
+  const visibleRooms = [];
+  for (const room of floor.rooms) {
+    const bb = room.boundingBox;
+    const cutMin = cutAxis === "y" ? bb.minY : bb.minX;
+    const cutMax = cutAxis === "y" ? bb.maxY : bb.maxX;
+    // Section plane at 0 — room is visible if it straddles the cut
+    if (cutMin <= 0 && cutMax >= 0) {
+      // Project room onto the view axis
+      const viewMin = viewAxis === "x" ? bb.minX : bb.minY;
+      const viewMax = viewAxis === "x" ? bb.maxX : bb.maxY;
+      visibleRooms.push({
+        room,
+        viewMin,
+        viewMax,
+        viewCenter: (viewMin + viewMax) / 2,
+      });
+    }
+  }
+
+  // Sort rooms by position along view axis
+  visibleRooms.sort((a, b) => a.viewMin - b.viewMin);
+
+  if (visibleRooms.length > 0) {
+    // Draw per-room spaces
+    for (let i = 0; i < visibleRooms.length; i++) {
+      const { room, viewMin, viewMax } = visibleRooms[i];
+      const roomLeftPx = offsetX + viewMin * pxPerMM;
+      const roomRightPx = offsetX + viewMax * pxPerMM;
+      const roomWidthPx = roomRightPx - roomLeftPx;
+
+      // Room fill — individual space
+      svg += `<rect class="room-fill" x="${roomLeftPx}" y="${floorTop}" width="${roomWidthPx}" height="${roomHeight}"/>`;
+
+      // Room outline (light)
+      svg += `<rect x="${roomLeftPx}" y="${floorTop}" width="${roomWidthPx}" height="${roomHeight}" fill="none" stroke="#bbb" stroke-width="0.3"/>`;
+
+      // Draw internal partition wall between this room and the next
+      if (i < visibleRooms.length - 1) {
+        const nextViewMin = visibleRooms[i + 1].viewMin;
+        const gapCenter = (viewMax + nextViewMin) / 2;
+        const wallCenterPx = offsetX + gapCenter * pxPerMM;
+        const wallLeft = wallCenterPx - wallThickPx / 2;
+
+        // Partition wall with poché fill
+        svg += `<rect x="${wallLeft}" y="${floorTop}" width="${wallThickPx}" height="${roomHeight}" fill="url(#wall-hatch)" stroke="#444" stroke-width="0.5"/>`;
+      }
+
+      // Room label
+      if (showRoomLabels) {
+        const labelX = roomLeftPx + roomWidthPx / 2;
+        const labelY = floorTop + roomHeight / 2;
+        svg += `<text class="room-label" x="${labelX}" y="${labelY}">${escXml(room.name)}</text>`;
+      }
+    }
+  } else {
+    // Fallback: no rooms intersect cut — draw single rectangle
+    svg += `<rect class="room-fill" x="${buildingLeft}" y="${floorTop}" width="${sectionWidthMM * pxPerMM}" height="${roomHeight}"/>`;
+
+    // Show all room labels anyway (old behavior for backward compat)
+    if (showRoomLabels) {
+      for (const room of floor.rooms) {
+        const roomX = isLongitudinal
+          ? offsetX + room.center.x * pxPerMM
+          : offsetX + room.center.y * pxPerMM;
+        const roomY = floorY - (floor.floorHeight * pxPerMM) / 2;
+        svg += `<text class="room-label" x="${roomX}" y="${roomY}">${escXml(room.name)}</text>`;
+      }
+    }
+  }
 
   // Floor slab
   svg += `<rect class="slab-cut" x="${buildingLeft}" y="${floorY - slabThickness}" width="${sectionWidthMM * pxPerMM}" height="${slabThickness}"/>`;
@@ -1279,27 +1356,6 @@ function drawSectionFloor(
   const hatchSpacing = 6;
   for (let i = 0; i < sectionWidthMM * pxPerMM; i += hatchSpacing) {
     svg += `<line class="hatch-slab" x1="${buildingLeft + i}" y1="${floorY - slabThickness}" x2="${buildingLeft + i + 8}" y2="${floorY}"/>`;
-  }
-
-  // Room labels
-  if (showRoomLabels) {
-    for (const room of floor.rooms) {
-      const cutPos = isLongitudinal ? room.center.y : room.center.x;
-      const halfRoomSize =
-        Math.min(
-          room.boundingBox.maxX - room.boundingBox.minX,
-          room.boundingBox.maxY - room.boundingBox.minY,
-        ) / 2;
-
-      if (Math.abs(cutPos) < halfRoomSize * 2) {
-        const roomX = isLongitudinal
-          ? offsetX + room.center.x * pxPerMM
-          : offsetX + room.center.y * pxPerMM;
-        const roomY = floorY - (floor.floorHeight * pxPerMM) / 2;
-
-        svg += `<text class="room-label" x="${roomX}" y="${roomY}">${escXml(room.name)}</text>`;
-      }
-    }
   }
 
   // Floor-to-ceiling clear height label (right side of section)
