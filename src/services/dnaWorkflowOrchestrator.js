@@ -2915,13 +2915,18 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         geometryHash: canonicalPack?.geometryHash || null,
         programHash: programLock?.hash || null,
         panels: generatedPanels.map((p) => {
-          const meta = { ...(p.meta || {}) };
-          // Strip large prompt strings – compose endpoint doesn't need them
-          delete meta.prompt;
-          delete meta.basePrompt;
-          delete meta.consistencyLock;
-          delete meta.geometryHint;
-          delete meta.designFingerprint; // Already sent as top-level field
+          // Compose API only needs: geometryHash, roomCount, wallCount, runId, cdsHash
+          // Build a minimal meta to keep payload well under Vercel's 4.5MB body limit
+          const rawMeta = p.meta || {};
+          const meta = {
+            ...(rawMeta.geometryHash   ? { geometryHash:   rawMeta.geometryHash }   : {}),
+            ...(rawMeta.geometry_hash  ? { geometry_hash:  rawMeta.geometry_hash }  : {}),
+            ...(rawMeta.cdsHash        ? { cdsHash:        rawMeta.cdsHash }        : {}),
+            ...(rawMeta.cds_hash       ? { cds_hash:       rawMeta.cds_hash }       : {}),
+            ...(rawMeta.runId          ? { runId:          rawMeta.runId }          : {}),
+            ...(rawMeta.roomCount      ? { roomCount:      rawMeta.roomCount }      : {}),
+            ...(rawMeta.wallCount      ? { wallCount:      rawMeta.wallCount }      : {}),
+          };
           if (p.type?.includes("floor_plan") && !meta.roomCount) {
             const floorIndex =
               p.type === "floor_plan_ground"
@@ -2936,9 +2941,26 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             meta.roomCount = floorRooms.length || dnaRooms.length || 1;
             meta.wallCount = meta.roomCount * 4; // approximate
           }
+          // For SVG panels: prefer raw SVG string over base64 data URL — saves ~33%
+          // For FLUX panels: imageUrl is a CDN URL (tiny), keep as-is
+          let imageUrl = p.imageUrl;
+          const isSvgDataUrl =
+            typeof imageUrl === "string" && imageUrl.startsWith("data:image/svg");
+          if (isSvgDataUrl && p.svg) {
+            // Use raw SVG markup — much smaller than base64 encoding
+            imageUrl = p.svg;
+          } else if (isSvgDataUrl) {
+            // Decode base64 SVG back to raw markup to save bandwidth
+            try {
+              const b64 = imageUrl.replace(/^data:image\/svg\+xml;base64,/, "");
+              imageUrl = decodeURIComponent(escape(atob(b64)));
+            } catch (_) {
+              // Keep original data URL if decode fails
+            }
+          }
           return {
             type: p.type,
-            imageUrl: p.imageUrl,
+            imageUrl,
             label: p.type.toUpperCase().replace(/_/g, " "),
             meta,
             ...(p.svgPanel ? { svgPanel: true } : {}),
@@ -2970,19 +2992,25 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       const composeBody = JSON.stringify(composePayload);
       const bodyMB = composeBody.length / 1_000_000;
       logger.info(`📦 Compose payload size: ${bodyMB.toFixed(2)}MB`);
-      if (bodyMB > 4.0) {
+      if (bodyMB > 3.5) {
         logger.warn(
-          `⚠️ Compose payload approaching Vercel limit (4.5MB). Breakdown:`,
+          `⚠️ Compose payload large (${bodyMB.toFixed(2)}MB). Breakdown:`,
         );
-        logger.warn(
-          `   panels: ${(JSON.stringify(composePayload.panels).length / 1000).toFixed(1)}KB`,
-        );
+        for (const p of composePayload.panels) {
+          const imageKB = ((p.imageUrl || "").length / 1000).toFixed(1);
+          const metaKB = (JSON.stringify(p.meta || {}).length / 1000).toFixed(1);
+          logger.warn(`   ${p.type}: imageUrl=${imageKB}KB meta=${metaKB}KB`);
+        }
         logger.warn(
           `   masterDNA: ${(JSON.stringify(composePayload.masterDNA).length / 1000).toFixed(1)}KB`,
         );
         logger.warn(
           `   siteOverlay: ${(JSON.stringify(composePayload.siteOverlay || null).length / 1000).toFixed(1)}KB`,
         );
+        if (bodyMB >= 4.4) {
+          logger.error(`❌ Compose payload too large (${bodyMB.toFixed(2)}MB) – Vercel will reject it`);
+          throw new Error(`Compose payload too large: ${bodyMB.toFixed(2)}MB exceeds 4.4MB safety limit`);
+        }
       }
 
       const composeResponse = await fetchImpl(
