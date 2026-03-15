@@ -693,7 +693,7 @@ class ArchitecturalFloorPlanGenerator {
       ) {
         parts.push(`
           <rect x="${x + w}" y="${y}" width="${t}" height="${h}"
-                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="0.5"/>
+                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="1.0"/>
         `);
       }
 
@@ -704,7 +704,7 @@ class ArchitecturalFloorPlanGenerator {
       ) {
         parts.push(`
           <rect x="${x}" y="${y + h}" width="${w}" height="${t}"
-                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="0.5"/>
+                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="1.0"/>
         `);
       }
     });
@@ -742,9 +742,9 @@ class ArchitecturalFloorPlanGenerator {
       // Convert polygon points to SVG coordinates
       const points = room.polygon
         .map((p) => {
-          // Handle both mm (>100) and meter (<100) units
-          const x = p.x > 100 ? (p.x / 1000) * this.scale : p.x * this.scale;
-          const y = p.y > 100 ? (p.y / 1000) * this.scale : p.y * this.scale;
+          // GeometryAdapter already normalizes to meters
+          const x = p.x * this.scale;
+          const y = p.y * this.scale;
           return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(" ");
@@ -880,20 +880,13 @@ class ArchitecturalFloorPlanGenerator {
     wallLength,
     wallThickness,
   ) {
-    // Position is distance from wall start to opening center
-    const position =
-      opening.position > 100
-        ? (opening.position / 1000) * this.scale
-        : opening.position * this.scale;
+    // GeometryAdapter already normalizes to meters
+    const position = opening.position * this.scale;
 
-    const openingWidth =
-      opening.width > 100
-        ? (opening.width / 1000) * this.scale
-        : (opening.width || 0.9) * this.scale;
+    const openingWidth = (opening.width || 0.9) * this.scale;
 
     // Calculate opening position along wall
-    const t =
-      position / ((wallLength / this.scale) * (wall.start.x > 100 ? 1000 : 1));
+    const t = position / wallLength;
     const centerX = startX + (endX - startX) * Math.min(1, Math.max(0, t));
     const centerY = startY + (endY - startY) * Math.min(1, Math.max(0, t));
 
