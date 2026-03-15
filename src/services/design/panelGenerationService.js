@@ -2499,6 +2499,8 @@ export async function generateA1PanelsSequential(
               locationData: job.meta?.locationData,
               sitePolygon: job.meta?.sitePolygon,
               scale: 50,
+              targetWidth: job.width,
+              targetHeight: job.height,
             },
           );
 
@@ -2617,6 +2619,8 @@ export async function generateA1PanelsSequential(
               buildingType: job.meta?.buildingType || "residential",
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
+              targetWidth: job.width,
+              targetHeight: job.height,
             },
           );
 
@@ -2739,6 +2743,8 @@ export async function generateA1PanelsSequential(
               buildingType: job.meta?.buildingType || "residential",
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
+              targetWidth: job.width,
+              targetHeight: job.height,
             },
             cutPosition,
           );

@@ -844,8 +844,11 @@ export function generateEnhancedFloorPlanSVG(
       internalWallThickness: geometry.dimensions.internalWallThickness,
     });
 
-    // Generate the SVG
-    const svg = generator.generate(geometry, floorIndex);
+    // Generate the SVG (pass target slot dimensions for aspect ratio matching)
+    const svg = generator.generate(geometry, floorIndex, {
+      targetWidth: projectContext.targetWidth,
+      targetHeight: projectContext.targetHeight,
+    });
 
     logger.info(
       `[EnhancedAdapter] Generated enhanced floor plan for floor ${floorIndex}`,
@@ -896,6 +899,8 @@ export function generateEnhancedElevationSVG(
       showMaterialPatterns: true,
       showGroundContext: true,
       showLevelMarkers: true,
+      targetWidth: projectContext.targetWidth,
+      targetHeight: projectContext.targetHeight,
     });
 
     logger.info(
@@ -969,6 +974,8 @@ export function generateEnhancedSectionSVG(
       showLevels: true,
       showRoomLabels: true,
       showFoundation: true,
+      targetWidth: projectContext.targetWidth,
+      targetHeight: projectContext.targetHeight,
     });
 
     logger.info(

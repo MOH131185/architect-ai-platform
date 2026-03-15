@@ -266,19 +266,37 @@ function generate(elevationData, dna, options = {}) {
 
   // Calculate SVG dimensions to fit the building with proper margins
   // Ensure minimum size and proper aspect ratio
-  const svgWidth = Math.max(600, marginLeft + buildingWidth + marginRight);
-  const svgHeight = Math.max(
+  let svgWidth = Math.max(600, marginLeft + buildingWidth + marginRight);
+  let svgHeight = Math.max(
     400,
     marginTop + buildingHeight + roofHeightAddition + marginBottom,
   );
+
+  // Pad viewBox to match target slot aspect ratio (avoids letterboxing in A1 sheet)
+  const { targetWidth, targetHeight } = options;
+  let viewBoxX = 0;
+  let viewBoxY = 0;
+  if (targetWidth && targetHeight && targetWidth > 0 && targetHeight > 0) {
+    const targetAspect = targetWidth / targetHeight;
+    const currentAspect = svgWidth / svgHeight;
+    if (currentAspect < targetAspect) {
+      const newWidth = svgHeight * targetAspect;
+      viewBoxX = -(newWidth - svgWidth) / 2;
+      svgWidth = newWidth;
+    } else if (currentAspect > targetAspect) {
+      const newHeight = svgWidth / targetAspect;
+      viewBoxY = -(newHeight - svgHeight) / 2;
+      svgHeight = newHeight;
+    }
+  }
 
   const groundLevel = marginTop + buildingHeight + roofHeightAddition;
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 ${svgWidth} ${svgHeight}"
+     viewBox="${viewBoxX} ${viewBoxY} ${svgWidth} ${svgHeight}"
      width="${svgWidth}" height="${svgHeight}"
-     shape-rendering="crispEdges">
+     shape-rendering="geometricPrecision">
 
   <!-- Definitions -->
   <defs>
