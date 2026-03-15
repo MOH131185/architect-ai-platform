@@ -3076,9 +3076,12 @@ async function placePanelImage({
   const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy)
     ? qa.minSlotOccupancy
     : 0.4; // Lowered from 0.55 – AI-generated panels rarely match slot aspect exactly
+  // Skip occupancy check for SVG inputs — they are deterministic and correct by construction.
+  // The check is designed to catch blank/tiny AI-generated images, not vector drawings.
   const shouldEnforceOccupancy =
     qa?.enabled &&
     mode !== "cover" &&
+    !isSvgInput &&
     (panelType.startsWith("floor_plan_") ||
       panelType.startsWith("elevation_") ||
       panelType.startsWith("section_"));
