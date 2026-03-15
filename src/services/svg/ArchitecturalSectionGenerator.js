@@ -507,7 +507,7 @@ function generateRoof(
 }
 
 /**
- * Generate internal elements (simplified)
+ * Generate internal elements with per-room partitions and labels
  */
 function generateInternalElements(
   dna,
@@ -516,23 +516,109 @@ function generateInternalElements(
   buildingHeight,
   pixelsPerMeter,
 ) {
-  // Internal walls would be shown in profile (beyond section plane)
-  // For now, show a simplified internal partition
   const cuttingW = cuttingLength * pixelsPerMeter;
-  const buildingH = buildingHeight * pixelsPerMeter;
   const floorHeight =
     (dna?.geometry_rules?.floor_height || 3.0) * pixelsPerMeter;
+  const partitionW = 0.12 * pixelsPerMeter;
+  const parts = ['<g class="internal-elements">'];
 
-  const partitionX = cuttingW * 0.4;
-  const partitionW = 0.15 * pixelsPerMeter;
+  // Extract rooms per floor from populatedGeometry (authoritative) or DNA fallback
+  let roomsByFloor = {};
+  if (dna?.populatedGeometry?.floors?.length > 0) {
+    dna.populatedGeometry.floors.forEach((floor) => {
+      const level = floor.level ?? 0;
+      roomsByFloor[level] = (floor.rooms || []).map((r) => ({
+        name: r.name || r.type || "Room",
+        area: r.area || 15,
+        floor: level,
+      }));
+    });
+  } else {
+    const rooms = dna?.rooms || dna?.program?.rooms || [];
+    rooms.forEach((room) => {
+      const fl =
+        room.floor ??
+        (room.level === "ground" ? 0 : room.level === "first" ? 1 : 0);
+      if (!roomsByFloor[fl]) roomsByFloor[fl] = [];
+      roomsByFloor[fl].push({
+        name: room.name || room.type || "Room",
+        area: room.area || 15,
+        floor: fl,
+      });
+    });
+  }
 
-  return `
-  <g class="internal-elements">
-    <!-- Internal partition (profile) -->
-    <rect x="${partitionX}" y="${-floorHeight + 20}" width="${partitionW}" height="${floorHeight - 40}"
-          fill="none" stroke="${COLORS.profile}" stroke-width="${LINE_WEIGHTS.PROFILE}"
-          stroke-dasharray="10,5"/>
-  </g>`;
+  // Determine number of floors
+  const floorCount = Math.max(
+    1,
+    dna?.dimensions?.floors || Object.keys(roomsByFloor).length || 1,
+  );
+
+  // Draw per-room partitions for each floor
+  for (let floorIdx = 0; floorIdx < floorCount; floorIdx++) {
+    const floorRooms = roomsByFloor[floorIdx] || [];
+    const floorY = -(floorIdx + 1) * floorHeight;
+
+    if (floorRooms.length > 1) {
+      // Calculate proportional room widths from areas
+      const totalArea = floorRooms.reduce((sum, r) => sum + (r.area || 15), 0);
+      let currentX = 0;
+
+      floorRooms.forEach((room, i) => {
+        const roomWidth = (room.area / totalArea) * cuttingW;
+
+        // Draw partition wall between rooms (skip first room's left edge)
+        if (i > 0) {
+          parts.push(`
+            <rect x="${currentX.toFixed(1)}" y="${(floorY + 10).toFixed(1)}"
+                  width="${partitionW.toFixed(1)}" height="${(floorHeight - 20).toFixed(1)}"
+                  fill="${COLORS.profile}" stroke="${COLORS.cut}" stroke-width="${LINE_WEIGHTS.CUT}"/>
+          `);
+        }
+
+        // Draw room name label
+        const labelX = currentX + roomWidth / 2;
+        const labelY = floorY + floorHeight * 0.55;
+        parts.push(`
+          <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
+                font-family="Arial, sans-serif" font-size="11" font-weight="500"
+                fill="${COLORS.dimension}" text-anchor="middle">${room.name}</text>
+        `);
+
+        // Draw room area below name
+        if (room.area) {
+          parts.push(`
+            <text x="${labelX.toFixed(1)}" y="${(labelY + 14).toFixed(1)}"
+                  font-family="Arial, sans-serif" font-size="8"
+                  fill="${COLORS.dimension}" text-anchor="middle">${room.area.toFixed(1)}m²</text>
+          `);
+        }
+
+        currentX += roomWidth;
+      });
+    } else if (floorRooms.length === 1) {
+      // Single room: just label
+      const labelX = cuttingW / 2;
+      const labelY = floorY + floorHeight * 0.55;
+      parts.push(`
+        <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
+              font-family="Arial, sans-serif" font-size="11" font-weight="500"
+              fill="${COLORS.dimension}" text-anchor="middle">${floorRooms[0].name}</text>
+      `);
+    } else {
+      // No room data: draw a single dashed partition as fallback
+      const partitionX = cuttingW * 0.4;
+      parts.push(`
+        <rect x="${partitionX.toFixed(1)}" y="${(floorY + 20).toFixed(1)}"
+              width="${partitionW.toFixed(1)}" height="${(floorHeight - 40).toFixed(1)}"
+              fill="none" stroke="${COLORS.profile}" stroke-width="${LINE_WEIGHTS.PROFILE}"
+              stroke-dasharray="10,5"/>
+      `);
+    }
+  }
+
+  parts.push("</g>");
+  return parts.join("\n");
 }
 
 /**

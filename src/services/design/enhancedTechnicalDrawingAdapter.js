@@ -942,8 +942,27 @@ export function generateEnhancedSectionSVG(
       return null;
     }
 
+    // Ensure populatedGeometry is accessible for room data extraction
+    let dnaForSection = masterDNA;
+    if (!masterDNA.populatedGeometry) {
+      try {
+        const adapter = new GeometryAdapter(masterDNA);
+        if (adapter.populatedGeometry?.floors?.length > 0) {
+          dnaForSection = {
+            ...masterDNA,
+            populatedGeometry: adapter.populatedGeometry,
+          };
+          logger.info(
+            "[EnhancedAdapter] Enriched section DNA with populatedGeometry from GeometryAdapter",
+          );
+        }
+      } catch (_) {
+        // GeometryAdapter may fail if no geometry data — proceed with original DNA
+      }
+    }
+
     // Use the generateFromDNA function directly (section generator is function-based)
-    const svg = generateSectionFromDNA(masterDNA, sectionType, {
+    const svg = generateSectionFromDNA(dnaForSection, sectionType, {
       scale: projectContext.scale || 50,
       showStructure: true,
       showDimensions: true,

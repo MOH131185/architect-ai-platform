@@ -15,27 +15,27 @@
 // Material Pattern Definitions
 const MATERIAL_PATTERNS = {
   brick: {
-    id: 'brick-pattern',
-    width: 20,
-    height: 8,
-    create: (color = '#B8604E') => `
-      <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="20" height="8">
-        <rect width="20" height="8" fill="${color}"/>
-        <line x1="0" y1="4" x2="20" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="10" y1="0" x2="10" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="0" y1="0" x2="0" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="20" y1="0" x2="20" y2="4" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="5" y1="4" x2="5" y2="8" stroke="#8B4513" stroke-width="0.5"/>
-        <line x1="15" y1="4" x2="15" y2="8" stroke="#8B4513" stroke-width="0.5"/>
+    id: "brick-pattern",
+    width: 11,
+    height: 7,
+    create: (color = "#B8604E") => `
+      <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="11" height="7">
+        <rect width="11" height="7" fill="${color}"/>
+        <line x1="0" y1="3.5" x2="11" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
+        <line x1="5.5" y1="0" x2="5.5" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
+        <line x1="0" y1="0" x2="0" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
+        <line x1="11" y1="0" x2="11" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
+        <line x1="2.75" y1="3.5" x2="2.75" y2="7" stroke="#8B4513" stroke-width="0.4"/>
+        <line x1="8.25" y1="3.5" x2="8.25" y2="7" stroke="#8B4513" stroke-width="0.4"/>
       </pattern>
     `,
   },
 
   timber: {
-    id: 'timber-pattern',
+    id: "timber-pattern",
     width: 30,
     height: 200,
-    create: (color = '#DEB887') => `
+    create: (color = "#DEB887") => `
       <pattern id="timber-pattern" patternUnits="userSpaceOnUse" width="30" height="200">
         <rect width="30" height="200" fill="${color}"/>
         <line x1="0" y1="0" x2="0" y2="200" stroke="#A0522D" stroke-width="0.5"/>
@@ -48,10 +48,10 @@ const MATERIAL_PATTERNS = {
   },
 
   render: {
-    id: 'render-pattern',
+    id: "render-pattern",
     width: 4,
     height: 4,
-    create: (color = '#F5F5DC') => `
+    create: (color = "#F5F5DC") => `
       <pattern id="render-pattern" patternUnits="userSpaceOnUse" width="4" height="4">
         <rect width="4" height="4" fill="${color}"/>
         <circle cx="1" cy="1" r="0.3" fill="#E8E8D0"/>
@@ -61,10 +61,10 @@ const MATERIAL_PATTERNS = {
   },
 
   stone: {
-    id: 'stone-pattern',
+    id: "stone-pattern",
     width: 40,
     height: 25,
-    create: (color = '#D3D3D3') => `
+    create: (color = "#D3D3D3") => `
       <pattern id="stone-pattern" patternUnits="userSpaceOnUse" width="40" height="25">
         <rect width="40" height="25" fill="${color}"/>
         <path d="M0,12.5 L40,12.5" stroke="#A9A9A9" stroke-width="0.5"/>
@@ -78,10 +78,10 @@ const MATERIAL_PATTERNS = {
   },
 
   slate: {
-    id: 'slate-pattern',
+    id: "slate-pattern",
     width: 15,
     height: 10,
-    create: (color = '#708090') => `
+    create: (color = "#708090") => `
       <pattern id="slate-pattern" patternUnits="userSpaceOnUse" width="15" height="10">
         <rect width="15" height="10" fill="${color}"/>
         <line x1="0" y1="10" x2="15" y2="10" stroke="#4A5568" stroke-width="0.5"/>
@@ -91,10 +91,10 @@ const MATERIAL_PATTERNS = {
   },
 
   tiles: {
-    id: 'tiles-pattern',
+    id: "tiles-pattern",
     width: 12,
     height: 15,
-    create: (color = '#8B4513') => `
+    create: (color = "#8B4513") => `
       <pattern id="tiles-pattern" patternUnits="userSpaceOnUse" width="12" height="15">
         <rect width="12" height="15" fill="${color}"/>
         <path d="M0,15 Q6,12 12,15" stroke="#6B3000" stroke-width="0.5" fill="none"/>
@@ -104,10 +104,10 @@ const MATERIAL_PATTERNS = {
   },
 
   glass: {
-    id: 'glass-pattern',
+    id: "glass-pattern",
     width: 10,
     height: 10,
-    create: (color = '#87CEEB') => `
+    create: (color = "#87CEEB") => `
       <pattern id="glass-pattern" patternUnits="userSpaceOnUse" width="10" height="10">
         <rect width="10" height="10" fill="${color}" fill-opacity="0.3"/>
         <line x1="0" y1="0" x2="10" y2="10" stroke="#ADD8E6" stroke-width="0.2"/>
@@ -153,27 +153,27 @@ const DOOR_STYLES = {
   panelled: {
     panels: 6,
     hasGlazing: false,
-    handleSide: 'right',
+    handleSide: "right",
     frameWidth: 5,
   },
   glazed: {
     panels: 2,
     hasGlazing: true,
     glazingRatio: 0.6,
-    handleSide: 'right',
+    handleSide: "right",
     frameWidth: 5,
   },
   solid: {
     panels: 0,
     hasGlazing: false,
-    handleSide: 'right',
+    handleSide: "right",
     frameWidth: 4,
   },
   french: {
     panels: 0,
     hasGlazing: true,
     glazingRatio: 0.8,
-    handleSide: 'center',
+    handleSide: "center",
     frameWidth: 4,
     doubleDoor: true,
   },
@@ -214,7 +214,7 @@ const ROOF_TYPES = {
 function generate(elevationData, dna, options = {}) {
   const {
     scale = 50, // pixels per meter (reduced from 100 for better fit)
-    orientation = 'north',
+    orientation = "north",
     showDimensions = true,
     showLevelMarkers = true,
     showGroundContext = true,
@@ -223,13 +223,14 @@ function generate(elevationData, dna, options = {}) {
 
   const building = elevationData.building || {};
   const materials = dna?.materials || [];
-  const roofType = dna?.geometry_rules?.roof_type || 'gable';
+  const roofType = dna?.geometry_rules?.roof_type || "gable";
 
   // Extract dimensions - prioritize DNA dimensions for consistency
   const buildingWidthMeters =
     building.width || dna?.dimensions?.width || dna?.dimensions?.length || 10;
   const buildingHeightMeters = building.height || dna?.dimensions?.height || 7;
-  const floorHeightMeters = building.floorHeight || dna?.dimensions?.floorHeights?.[0] || 2.7;
+  const floorHeightMeters =
+    building.floorHeight || dna?.dimensions?.floorHeights?.[0] || 2.7;
 
   const buildingWidth = buildingWidthMeters * scale;
   const buildingHeight = buildingHeightMeters * scale;
@@ -259,12 +260,17 @@ function generate(elevationData, dna, options = {}) {
   // Estimate roof height addition (for gable roof with typical pitch)
   const roofPitch = dna?.geometry_rules?.roof_pitch || 35;
   const roofHeightAddition =
-    roofType === 'flat' ? 0 : (buildingWidth / 2) * Math.tan((roofPitch * Math.PI) / 180) * 0.4;
+    roofType === "flat"
+      ? 0
+      : (buildingWidth / 2) * Math.tan((roofPitch * Math.PI) / 180) * 0.4;
 
   // Calculate SVG dimensions to fit the building with proper margins
   // Ensure minimum size and proper aspect ratio
   const svgWidth = Math.max(600, marginLeft + buildingWidth + marginRight);
-  const svgHeight = Math.max(400, marginTop + buildingHeight + roofHeightAddition + marginBottom);
+  const svgHeight = Math.max(
+    400,
+    marginTop + buildingHeight + roofHeightAddition + marginBottom,
+  );
 
   const groundLevel = marginTop + buildingHeight + roofHeightAddition;
 
@@ -294,7 +300,13 @@ function generate(elevationData, dna, options = {}) {
 
   // Draw ground context if enabled
   if (showGroundContext) {
-    svg += drawGroundContext(marginLeft, groundLevel, buildingWidth, svgWidth, svgHeight);
+    svg += drawGroundContext(
+      marginLeft,
+      groundLevel,
+      buildingWidth,
+      svgWidth,
+      svgHeight,
+    );
   }
 
   // Draw main building wall
@@ -305,16 +317,31 @@ function generate(elevationData, dna, options = {}) {
     buildingHeight,
     materials,
     roofType,
-    scale
+    scale,
+    orientation,
   );
 
   // Draw roof
-  svg += drawRoof(marginLeft, marginTop, buildingWidth, roofType, materials, scale);
+  svg += drawRoof(
+    marginLeft,
+    marginTop,
+    buildingWidth,
+    roofType,
+    materials,
+    scale,
+  );
 
   // Draw windows
   const windows = elevationData.windows || [];
   windows.forEach((win) => {
-    svg += drawWindow(win, marginLeft, marginTop, scale, floorHeight, groundLevel);
+    svg += drawWindow(
+      win,
+      marginLeft,
+      marginTop,
+      scale,
+      floorHeight,
+      groundLevel,
+    );
   });
 
   // Draw doors
@@ -332,13 +359,20 @@ function generate(elevationData, dna, options = {}) {
       buildingHeight,
       floors,
       floorHeight,
-      scale
+      scale,
     );
   }
 
   // Draw dimensions if enabled
   if (showDimensions) {
-    svg += drawDimensions(marginLeft, marginTop, buildingWidth, buildingHeight, scale, building);
+    svg += drawDimensions(
+      marginLeft,
+      marginTop,
+      buildingWidth,
+      buildingHeight,
+      scale,
+      building,
+    );
   }
 
   // Draw orientation indicator
@@ -355,15 +389,17 @@ function generate(elevationData, dna, options = {}) {
  */
 function generatePatternDefs(materials, showPatterns) {
   if (!showPatterns) {
-    return '';
+    return "";
   }
 
-  let defs = '';
+  let defs = "";
 
   // Add all material patterns
   Object.entries(MATERIAL_PATTERNS).forEach(([name, pattern]) => {
     const material = materials.find(
-      (m) => m.name?.toLowerCase().includes(name) || m.application?.toLowerCase().includes(name)
+      (m) =>
+        m.name?.toLowerCase().includes(name) ||
+        m.application?.toLowerCase().includes(name),
     );
     const color = material?.hexColor || undefined;
     defs += pattern.create(color);
@@ -438,25 +474,44 @@ function drawGroundContext(x, groundY, buildingWidth, svgWidth, svgHeight) {
 /**
  * Draw main building wall with material
  */
-function drawBuildingWall(x, y, width, height, materials, roofType, scale) {
-  // Determine wall material
-  const wallMaterial = materials.find(
+function drawBuildingWall(
+  x,
+  y,
+  width,
+  height,
+  materials,
+  roofType,
+  scale,
+  orientation = "south",
+) {
+  // Select per-facade material: primary for front/rear, secondary for sides
+  const wallMaterials = materials.filter(
     (m) =>
-      m.application?.toLowerCase().includes('wall') ||
-      m.application?.toLowerCase().includes('facade')
+      m.application?.toLowerCase().includes("wall") ||
+      m.application?.toLowerCase().includes("facade") ||
+      m.application?.toLowerCase().includes("exterior"),
   );
 
-  let patternId = 'render-pattern'; // Default
+  const isSideFacade = orientation === "east" || orientation === "west";
+  let wallMaterial;
+  if (wallMaterials.length > 1 && isSideFacade) {
+    // Side facades use secondary material for visual differentiation
+    wallMaterial = wallMaterials[1];
+  } else {
+    wallMaterial = wallMaterials[0];
+  }
+
+  let patternId = "render-pattern"; // Default
   if (wallMaterial) {
-    const name = wallMaterial.name?.toLowerCase() || '';
-    if (name.includes('brick')) {
-      patternId = 'brick-pattern';
-    } else if (name.includes('timber') || name.includes('wood')) {
-      patternId = 'timber-pattern';
-    } else if (name.includes('stone')) {
-      patternId = 'stone-pattern';
-    } else if (name.includes('render') || name.includes('stucco')) {
-      patternId = 'render-pattern';
+    const name = wallMaterial.name?.toLowerCase() || "";
+    if (name.includes("brick")) {
+      patternId = "brick-pattern";
+    } else if (name.includes("timber") || name.includes("wood")) {
+      patternId = "timber-pattern";
+    } else if (name.includes("stone")) {
+      patternId = "stone-pattern";
+    } else if (name.includes("render") || name.includes("stucco")) {
+      patternId = "render-pattern";
     }
   }
 
@@ -473,7 +528,7 @@ function drawBuildingWall(x, y, width, height, materials, roofType, scale) {
 
     <!-- Corner quoins (if stone or brick) -->
     ${
-      patternId === 'stone-pattern' || patternId === 'brick-pattern'
+      patternId === "stone-pattern" || patternId === "brick-pattern"
         ? `
     <g id="quoins" fill="#A9A9A9" stroke="#666" stroke-width="0.5">
       <!-- Left quoins -->
@@ -491,7 +546,7 @@ function drawBuildingWall(x, y, width, height, materials, roofType, scale) {
       <rect x="${x + width - 15}" y="${y + height - 25}" width="15" height="25"/>
     </g>
     `
-        : ''
+        : ""
     }
   </g>
 `;
@@ -505,15 +560,17 @@ function drawRoof(x, y, width, roofType, materials, scale) {
   const overhang = config.overhang;
 
   // Determine roof material
-  const roofMaterial = materials.find((m) => m.application?.toLowerCase().includes('roof'));
+  const roofMaterial = materials.find((m) =>
+    m.application?.toLowerCase().includes("roof"),
+  );
 
-  let patternId = 'tiles-pattern'; // Default
+  let patternId = "tiles-pattern"; // Default
   if (roofMaterial) {
-    const name = roofMaterial.name?.toLowerCase() || '';
-    if (name.includes('slate')) {
-      patternId = 'slate-pattern';
-    } else if (name.includes('tile')) {
-      patternId = 'tiles-pattern';
+    const name = roofMaterial.name?.toLowerCase() || "";
+    if (name.includes("slate")) {
+      patternId = "slate-pattern";
+    } else if (name.includes("tile")) {
+      patternId = "tiles-pattern";
     }
   }
 
@@ -522,7 +579,7 @@ function drawRoof(x, y, width, roofType, materials, scale) {
   <g id="roof">
 `;
 
-  if (roofType === 'gable') {
+  if (roofType === "gable") {
     const roofPeakY = y - 80;
     const roofPeakX = x + width / 2;
 
@@ -545,7 +602,7 @@ function drawRoof(x, y, width, roofType, materials, scale) {
     <line x1="${x - overhang}" y1="${y}" x2="${x + width + overhang}" y2="${y}"
           stroke="#8B4513" stroke-width="4"/>
 `;
-  } else if (roofType === 'hip') {
+  } else if (roofType === "hip") {
     const roofPeakY = y - 60;
 
     svg += `
@@ -561,7 +618,7 @@ function drawRoof(x, y, width, roofType, materials, scale) {
     <line x1="${x - overhang}" y1="${y}" x2="${x + width + overhang}" y2="${y}"
           stroke="#8B4513" stroke-width="4"/>
 `;
-  } else if (roofType === 'flat') {
+  } else if (roofType === "flat") {
     svg += `
     <!-- Flat roof with parapet -->
     <rect x="${x - 5}" y="${y - config.parapetHeight}" width="${width + 10}" height="${config.parapetHeight}"
@@ -575,7 +632,7 @@ function drawRoof(x, y, width, roofType, materials, scale) {
     <line x1="${x}" y1="${y - 2}" x2="${x + width}" y2="${y - 2}"
           stroke="#666" stroke-width="1" stroke-dasharray="5,3"/>
 `;
-  } else if (roofType === 'mansard') {
+  } else if (roofType === "mansard") {
     const lowerHeight = 50;
     const upperHeight = 30;
 
@@ -612,14 +669,14 @@ function drawWindow(win, baseX, baseY, scale, floorHeight, groundLevel) {
   const height = (win.height || 1.5) * scale;
 
   // Normalize style name and provide fallback to casement
-  const styleName = (win.style || 'casement').toLowerCase();
-  const matchedStyle = styleName.includes('sash')
-    ? 'sash'
-    : styleName.includes('fixed')
-      ? 'fixed'
-      : styleName.includes('picture')
-        ? 'picture'
-        : 'casement';
+  const styleName = (win.style || "casement").toLowerCase();
+  const matchedStyle = styleName.includes("sash")
+    ? "sash"
+    : styleName.includes("fixed")
+      ? "fixed"
+      : styleName.includes("picture")
+        ? "picture"
+        : "casement";
   const style = WINDOW_STYLES[matchedStyle] || WINDOW_STYLES.casement;
 
   const frameWidth = style.frameWidth || 3;
@@ -664,7 +721,7 @@ function drawWindow(win, baseX, baseY, scale, floorHeight, groundLevel) {
     }
 
     // Center meeting rail for sash windows
-    if (win.style === 'sash') {
+    if (win.style === "sash") {
       svg += `
     <line x1="${frameWidth - 2}" y1="${height / 2}" x2="${width - frameWidth + 2}" y2="${height / 2}"
           stroke="#444" stroke-width="4"/>`;
@@ -707,14 +764,14 @@ function drawDoor(door, baseX, groundLevel, scale) {
   const y = groundLevel - height;
 
   // Normalize style name and provide fallback to panelled
-  const styleName = (door.style || 'panelled').toLowerCase();
-  const matchedStyle = styleName.includes('glazed')
-    ? 'glazed'
-    : styleName.includes('solid')
-      ? 'solid'
-      : styleName.includes('french')
-        ? 'french'
-        : 'panelled';
+  const styleName = (door.style || "panelled").toLowerCase();
+  const matchedStyle = styleName.includes("glazed")
+    ? "glazed"
+    : styleName.includes("solid")
+      ? "solid"
+      : styleName.includes("french")
+        ? "french"
+        : "panelled";
   const style = DOOR_STYLES[matchedStyle] || DOOR_STYLES.panelled;
 
   const frameWidth = style.frameWidth || 5;
@@ -772,7 +829,8 @@ function drawDoor(door, baseX, groundLevel, scale) {
   }
 
   // Add door hardware
-  const handleX = style.handleSide === 'right' ? width - frameWidth - 15 : frameWidth + 5;
+  const handleX =
+    style.handleSide === "right" ? width - frameWidth - 15 : frameWidth + 5;
   const handleY = height / 2;
 
   svg += `
@@ -835,7 +893,7 @@ function drawLevelMarkers(x, y, width, height, floors, floorHeight, scale) {
   // Floor levels
   for (let i = 1; i <= floors; i++) {
     const levelY = y + height - i * floorHeight;
-    const levelLabel = i === 1 ? 'FFL' : `L${i}`;
+    const levelLabel = i === 1 ? "FFL" : `L${i}`;
     const levelHeight = (i * (floorHeight / scale)).toFixed(3);
 
     svg += `
@@ -943,7 +1001,7 @@ function drawOrientationIndicator(x, y, orientation) {
  * @param {Object} options - Generation options
  * @returns {string} SVG string
  */
-function generateFromDNA(dna, orientation = 'north', options = {}) {
+function generateFromDNA(dna, orientation = "north", options = {}) {
   // CRITICAL: Get floor count from canonical geometry (same source as sections)
   // Priority: 1) geometry.floors.length 2) dimensions.floors 3) rooms 4) derive from height
   let floors = dna?.geometry?.floors?.length;
@@ -958,7 +1016,11 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
     const maxFloor = rooms.reduce((max, room) => {
       const roomFloor =
         room.floor ??
-        (room.level === 'ground' ? 0 : room.level === 'first' ? 1 : (room.level ?? 0));
+        (room.level === "ground"
+          ? 0
+          : room.level === "first"
+            ? 1
+            : (room.level ?? 0));
       return Math.max(max, roomFloor);
     }, 0);
     floors = maxFloor + 1;
@@ -979,11 +1041,15 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
   };
 
   // Get view-specific features
-  const viewFeatures = dna?.viewSpecificFeatures?.[orientation.toLowerCase()] || {};
+  const viewFeatures =
+    dna?.viewSpecificFeatures?.[orientation.toLowerCase()] || {};
 
   // Build window array from view features
+  // Per-orientation defaults: front/rear have more windows than sides
+  const defaultWindowCounts = { south: 4, north: 3, east: 2, west: 2 };
   const windows = [];
-  const windowCount = viewFeatures.windows || 4;
+  const windowCount =
+    viewFeatures.windows || defaultWindowCounts[orientation.toLowerCase()] || 3;
   const hasEntrance = viewFeatures.mainEntrance || viewFeatures.entrance;
 
   // Distribute windows across the facade
@@ -1000,7 +1066,7 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
       floor: i % 2, // Alternate between floors
       width: 1.2,
       height: 1.5,
-      style: dna?.style?.windowStyle || 'casement',
+      style: dna?.style?.windowStyle || "casement",
     });
   }
 
@@ -1012,7 +1078,7 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
       floor: 1,
       width: 1.0,
       height: 1.2,
-      style: dna?.style?.windowStyle || 'sash',
+      style: dna?.style?.windowStyle || "sash",
     });
   }
 
@@ -1023,7 +1089,7 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
       x: building.width / 2 - 0.45, // Center door
       width: 0.9,
       height: 2.1,
-      style: viewFeatures.doorStyle || 'panelled',
+      style: viewFeatures.doorStyle || "panelled",
     });
   }
 
@@ -1033,7 +1099,7 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
       x: building.width * 0.7,
       width: 1.8,
       height: 2.1,
-      style: 'french',
+      style: "french",
     });
   }
 
@@ -1047,7 +1113,14 @@ function generateFromDNA(dna, orientation = 'north', options = {}) {
 }
 
 // Export functions
-export { generate, generateFromDNA, MATERIAL_PATTERNS, WINDOW_STYLES, DOOR_STYLES, ROOF_TYPES };
+export {
+  generate,
+  generateFromDNA,
+  MATERIAL_PATTERNS,
+  WINDOW_STYLES,
+  DOOR_STYLES,
+  ROOF_TYPES,
+};
 
 export default {
   generate,
