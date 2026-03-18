@@ -2816,7 +2816,29 @@ async function placePanelImage({
   const isSvgInput =
     headerSample.includes("<svg") ||
     (headerSample.includes("<?xml") && headerSample.includes("svg"));
-  const svgDensity = qa?.useHighRes ? 300 : 144;
+  // Determine if this is a technical drawing (for density & trim decisions)
+  const isTechnicalDrawing = [
+    "floor_plan_ground",
+    "floor_plan_first",
+    "floor_plan_level2",
+    "floor_plan_upper",
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+    "section_AA",
+    "section_BB",
+    "axonometric",
+    "site_plan",
+    "site_diagram",
+  ].includes(panelType);
+
+  // SVG rasterization density: 200 DPI for technical drawings, 144 default, 300 high-res
+  let svgDensity = qa?.useHighRes
+    ? 300
+    : isSvgInput && isTechnicalDrawing
+      ? 200
+      : 144;
 
   // Embed web font into SVG so Sharp/librsvg can render text correctly
   if (isSvgInput) {
@@ -2876,23 +2898,6 @@ async function placePanelImage({
   // MANDATORY CORRECTION B: Use lineArt:true for technical drawings, toBuffer({resolveWithObject:true})
   // This removes excessive whitespace from panels, producing cleaner compositions
   let processedBuffer = imageBuffer;
-
-  // Determine if this is a technical drawing (uses lineArt mode for better edge detection)
-  const isTechnicalDrawing = [
-    "floor_plan_ground",
-    "floor_plan_first",
-    "floor_plan_level2",
-    "floor_plan_upper",
-    "elevation_north",
-    "elevation_south",
-    "elevation_east",
-    "elevation_west",
-    "section_AA",
-    "section_BB",
-    "axonometric",
-    "site_plan",
-    "site_diagram",
-  ].includes(panelType);
 
   // Panel-specific padding after trim
   const TRIM_PADDING = {
@@ -3037,7 +3042,13 @@ async function placePanelImage({
     panelType.startsWith("floor_plan_") ||
     panelType.startsWith("elevation_") ||
     panelType.startsWith("section_");
-  if (qa?.enabled && qa?.rotateToFit && mode !== "cover" && canAutoRotate) {
+  if (
+    qa?.enabled &&
+    qa?.rotateToFit &&
+    mode !== "cover" &&
+    canAutoRotate &&
+    !isSvgInput
+  ) {
     const occ0 = computeContainOccupancy(inputWidth, inputHeight);
     const occ90 = computeContainOccupancy(inputHeight, inputWidth);
     if (occ90 > occ0 + 0.08) {
@@ -3065,9 +3076,12 @@ async function placePanelImage({
   const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy)
     ? qa.minSlotOccupancy
     : 0.4; // Lowered from 0.55 – AI-generated panels rarely match slot aspect exactly
+  // Skip occupancy check for SVG inputs — they are deterministic and correct by construction.
+  // The check is designed to catch blank/tiny AI-generated images, not vector drawings.
   const shouldEnforceOccupancy =
     qa?.enabled &&
     mode !== "cover" &&
+    !isSvgInput &&
     (panelType.startsWith("floor_plan_") ||
       panelType.startsWith("elevation_") ||
       panelType.startsWith("section_"));
