@@ -439,7 +439,7 @@ Respond with ONLY the JSON object, no other text.`,
           },
         ],
         {
-          model: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+          model: "moonshotai/Kimi-K2.5",
           temperature: 0.1,
           max_tokens: 2000,
         },
