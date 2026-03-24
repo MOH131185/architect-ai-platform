@@ -1,4 +1,10 @@
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
+import {
+  FLOOR_PLAN_NEGATIVE,
+  ELEVATION_NEGATIVE,
+  SECTION_NEGATIVE,
+  SITE_PLAN_NEGATIVE,
+} from "./a1/panelPromptBuilders.js";
 
 /**
  * DNA-Driven Prompt Generator
@@ -8,7 +14,7 @@ import logger from '../utils/logger.js';
 
 class DNAPromptGenerator {
   constructor() {
-    logger.info('📝 DNA Prompt Generator initialized');
+    logger.info("📝 DNA Prompt Generator initialized");
   }
 
   /**
@@ -16,49 +22,96 @@ class DNAPromptGenerator {
    * Used for selective regeneration in modify workflow
    */
   generatePromptsForViews(masterDNA, viewIds, projectContext = null) {
-    logger.info(`📝 Generating prompts for ${viewIds.length} specific views...`);
+    logger.info(
+      `📝 Generating prompts for ${viewIds.length} specific views...`,
+    );
 
     const prompts = {};
-    const locationContext = masterDNA.locationContext || '';
+    const locationContext = masterDNA.locationContext || "";
     const climateDesign = masterDNA.climateDesign || {};
 
-    viewIds.forEach(viewId => {
+    viewIds.forEach((viewId) => {
       switch (viewId) {
-        case 'plan_ground':
-          prompts.floor_plan_ground = this.generateFloorPlanPrompt(masterDNA, 'ground', projectContext);
+        case "plan_ground":
+          prompts.floor_plan_ground = this.generateFloorPlanPrompt(
+            masterDNA,
+            "ground",
+            projectContext,
+          );
           break;
-        case 'plan_upper':
-          prompts.floor_plan_upper = this.generateFloorPlanPrompt(masterDNA, 'upper', projectContext);
+        case "plan_upper":
+          prompts.floor_plan_upper = this.generateFloorPlanPrompt(
+            masterDNA,
+            "upper",
+            projectContext,
+          );
           break;
-        case 'elev_n':
-          prompts.elevation_north = this.generateElevationPrompt(masterDNA, 'north', projectContext);
+        case "elev_n":
+          prompts.elevation_north = this.generateElevationPrompt(
+            masterDNA,
+            "north",
+            projectContext,
+          );
           break;
-        case 'elev_s':
-          prompts.elevation_south = this.generateElevationPrompt(masterDNA, 'south', projectContext);
+        case "elev_s":
+          prompts.elevation_south = this.generateElevationPrompt(
+            masterDNA,
+            "south",
+            projectContext,
+          );
           break;
-        case 'elev_e':
-          prompts.elevation_east = this.generateElevationPrompt(masterDNA, 'east', projectContext);
+        case "elev_e":
+          prompts.elevation_east = this.generateElevationPrompt(
+            masterDNA,
+            "east",
+            projectContext,
+          );
           break;
-        case 'elev_w':
-          prompts.elevation_west = this.generateElevationPrompt(masterDNA, 'west', projectContext);
+        case "elev_w":
+          prompts.elevation_west = this.generateElevationPrompt(
+            masterDNA,
+            "west",
+            projectContext,
+          );
           break;
-        case 'sect_long':
-          prompts.section_longitudinal = this.generateSectionPrompt(masterDNA, 'longitudinal', projectContext);
+        case "sect_long":
+          prompts.section_longitudinal = this.generateSectionPrompt(
+            masterDNA,
+            "longitudinal",
+            projectContext,
+          );
           break;
-        case 'sect_trans':
-          prompts.section_cross = this.generateSectionPrompt(masterDNA, 'cross', projectContext);
+        case "sect_trans":
+          prompts.section_cross = this.generateSectionPrompt(
+            masterDNA,
+            "cross",
+            projectContext,
+          );
           break;
-        case 'v_exterior':
-          prompts.exterior_front_3d = this.generate3DExteriorPrompt(masterDNA, 'front', projectContext);
+        case "v_exterior":
+          prompts.exterior_front_3d = this.generate3DExteriorPrompt(
+            masterDNA,
+            "front",
+            projectContext,
+          );
           break;
-        case 'v_axon':
-          prompts.axonometric_3d = this.generate3DAxonometricPrompt(masterDNA, projectContext);
+        case "v_axon":
+          prompts.axonometric_3d = this.generate3DAxonometricPrompt(
+            masterDNA,
+            projectContext,
+          );
           break;
-        case 'v_site':
-          prompts.site_3d = this.generate3DSitePrompt(masterDNA, projectContext);
+        case "v_site":
+          prompts.site_3d = this.generate3DSitePrompt(
+            masterDNA,
+            projectContext,
+          );
           break;
-        case 'v_interior':
-          prompts.interior_3d = this.generate3DInteriorPrompt(masterDNA, projectContext);
+        case "v_interior":
+          prompts.interior_3d = this.generate3DInteriorPrompt(
+            masterDNA,
+            projectContext,
+          );
           break;
         default:
           logger.warn(`⚠️ Unknown view ID: ${viewId}`);
@@ -75,47 +128,84 @@ class DNAPromptGenerator {
    * NOW ENHANCED with location, climate, and site context
    */
   generateAllPrompts(masterDNA, projectContext) {
-    logger.info('📝 Generating 13 unique site-aware prompts from Master DNA...');
+    logger.info(
+      "📝 Generating 13 unique site-aware prompts from Master DNA...",
+    );
 
     // 🌍 Extract location context for all prompts
-    const locationContext = masterDNA.locationContext || '';
+    const locationContext = masterDNA.locationContext || "";
     const climateDesign = masterDNA.climateDesign || {};
-    
+
     // 🆕 Extract site polygon context
     const siteMetrics = projectContext?.siteMetrics || null;
-    const siteContext = (siteMetrics && siteMetrics.areaM2) ? `
+    const siteContext =
+      siteMetrics && siteMetrics.areaM2
+        ? `
 Site Area: ${siteMetrics.areaM2.toFixed(0)}m²
 Site Orientation: ${(siteMetrics.orientationDeg || 0).toFixed(0)}° from North
-Building must fit within site boundaries with 3m setbacks` : '';
+Building must fit within site boundaries with 3m setbacks`
+        : "";
 
     // 🆕 Extract levels and recommended elevations from DNA
     const levels = masterDNA.levels || [];
-    const numLevels = masterDNA.dimensions?.numLevels || masterDNA.dimensions?.floorCount || 2;
+    const numLevels =
+      masterDNA.dimensions?.numLevels || masterDNA.dimensions?.floorCount || 2;
     const hasBasement = masterDNA.dimensions?.hasBasement || false;
-    const recommendedElevations = masterDNA.recommendedElevations || ['north', 'south'];
-    
+    const recommendedElevations = masterDNA.recommendedElevations || [
+      "north",
+      "south",
+    ];
+
     // Build floor plan prompts dynamically based on levels
     const floorPlanPrompts = {};
-    levels.forEach(level => {
-      const levelName = level.level || '';
-      if (levelName === 'basement' && hasBasement) {
-        floorPlanPrompts.floor_plan_basement = this.generateFloorPlanPrompt(masterDNA, 'basement', projectContext);
-      } else if (levelName === 'ground') {
-        floorPlanPrompts.floor_plan_ground = this.generateFloorPlanPrompt(masterDNA, 'ground', projectContext);
-      } else if (levelName === 'first') {
-        floorPlanPrompts.floor_plan_first = this.generateFloorPlanPrompt(masterDNA, 'first', projectContext);
-      } else if (levelName === 'second') {
-        floorPlanPrompts.floor_plan_second = this.generateFloorPlanPrompt(masterDNA, 'second', projectContext);
-      } else if (levelName === 'third') {
-        floorPlanPrompts.floor_plan_third = this.generateFloorPlanPrompt(masterDNA, 'third', projectContext);
+    levels.forEach((level) => {
+      const levelName = level.level || "";
+      if (levelName === "basement" && hasBasement) {
+        floorPlanPrompts.floor_plan_basement = this.generateFloorPlanPrompt(
+          masterDNA,
+          "basement",
+          projectContext,
+        );
+      } else if (levelName === "ground") {
+        floorPlanPrompts.floor_plan_ground = this.generateFloorPlanPrompt(
+          masterDNA,
+          "ground",
+          projectContext,
+        );
+      } else if (levelName === "first") {
+        floorPlanPrompts.floor_plan_first = this.generateFloorPlanPrompt(
+          masterDNA,
+          "first",
+          projectContext,
+        );
+      } else if (levelName === "second") {
+        floorPlanPrompts.floor_plan_second = this.generateFloorPlanPrompt(
+          masterDNA,
+          "second",
+          projectContext,
+        );
+      } else if (levelName === "third") {
+        floorPlanPrompts.floor_plan_third = this.generateFloorPlanPrompt(
+          masterDNA,
+          "third",
+          projectContext,
+        );
       }
     });
-    
+
     // Fallback to legacy format if levels array is empty
     if (Object.keys(floorPlanPrompts).length === 0) {
-      floorPlanPrompts.floor_plan_ground = this.generateFloorPlanPrompt(masterDNA, 'ground', projectContext);
+      floorPlanPrompts.floor_plan_ground = this.generateFloorPlanPrompt(
+        masterDNA,
+        "ground",
+        projectContext,
+      );
       if (numLevels > 1) {
-        floorPlanPrompts.floor_plan_upper = this.generateFloorPlanPrompt(masterDNA, 'upper', projectContext);
+        floorPlanPrompts.floor_plan_upper = this.generateFloorPlanPrompt(
+          masterDNA,
+          "upper",
+          projectContext,
+        );
       }
     }
 
@@ -123,14 +213,40 @@ Building must fit within site boundaries with 3m setbacks` : '';
     const elevationPrompts = {};
     if (recommendedElevations.length >= 2) {
       // Use AI-recommended elevations
-      elevationPrompts[`elevation_${recommendedElevations[0]}`] = this.generateElevationPrompt(masterDNA, recommendedElevations[0], projectContext);
-      elevationPrompts[`elevation_${recommendedElevations[1]}`] = this.generateElevationPrompt(masterDNA, recommendedElevations[1], projectContext);
+      elevationPrompts[`elevation_${recommendedElevations[0]}`] =
+        this.generateElevationPrompt(
+          masterDNA,
+          recommendedElevations[0],
+          projectContext,
+        );
+      elevationPrompts[`elevation_${recommendedElevations[1]}`] =
+        this.generateElevationPrompt(
+          masterDNA,
+          recommendedElevations[1],
+          projectContext,
+        );
     } else {
       // Fallback to all 4 elevations
-      elevationPrompts.elevation_north = this.generateElevationPrompt(masterDNA, 'north', projectContext);
-      elevationPrompts.elevation_south = this.generateElevationPrompt(masterDNA, 'south', projectContext);
-      elevationPrompts.elevation_east = this.generateElevationPrompt(masterDNA, 'east', projectContext);
-      elevationPrompts.elevation_west = this.generateElevationPrompt(masterDNA, 'west', projectContext);
+      elevationPrompts.elevation_north = this.generateElevationPrompt(
+        masterDNA,
+        "north",
+        projectContext,
+      );
+      elevationPrompts.elevation_south = this.generateElevationPrompt(
+        masterDNA,
+        "south",
+        projectContext,
+      );
+      elevationPrompts.elevation_east = this.generateElevationPrompt(
+        masterDNA,
+        "east",
+        projectContext,
+      );
+      elevationPrompts.elevation_west = this.generateElevationPrompt(
+        masterDNA,
+        "west",
+        projectContext,
+      );
     }
 
     const prompts = {
@@ -147,14 +263,30 @@ Building must fit within site boundaries with 3m setbacks` : '';
       // ========================================
       // SECTIONS (2 unique)
       // ========================================
-      section_longitudinal: this.generateSectionPrompt(masterDNA, 'longitudinal', projectContext),
-      section_cross: this.generateSectionPrompt(masterDNA, 'cross', projectContext),
+      section_longitudinal: this.generateSectionPrompt(
+        masterDNA,
+        "longitudinal",
+        projectContext,
+      ),
+      section_cross: this.generateSectionPrompt(
+        masterDNA,
+        "cross",
+        projectContext,
+      ),
 
       // ========================================
       // 3D EXTERIOR VIEWS (2 unique)
       // ========================================
-      exterior_front_3d: this.generate3DExteriorPrompt(masterDNA, 'front', projectContext),
-      exterior_side_3d: this.generate3DExteriorPrompt(masterDNA, 'side', projectContext),
+      exterior_front_3d: this.generate3DExteriorPrompt(
+        masterDNA,
+        "front",
+        projectContext,
+      ),
+      exterior_side_3d: this.generate3DExteriorPrompt(
+        masterDNA,
+        "side",
+        projectContext,
+      ),
 
       // ========================================
       // 3D SPECIAL VIEWS (2 unique)
@@ -170,10 +302,12 @@ Building must fit within site boundaries with 3m setbacks` : '';
       // ========================================
       // SITE PLAN VIEW (1 unique)
       // ========================================
-      site_plan: this.generateSitePlanPrompt(masterDNA, projectContext)
+      site_plan: this.generateSitePlanPrompt(masterDNA, projectContext),
     };
 
-    logger.success(` Generated ${Object.keys(prompts).length} unique prompts (${Object.keys(floorPlanPrompts).length} floor plans, ${Object.keys(elevationPrompts).length} elevations, 2 sections, 5 3D views, 1 site plan)`);
+    logger.success(
+      ` Generated ${Object.keys(prompts).length} unique prompts (${Object.keys(floorPlanPrompts).length} floor plans, ${Object.keys(elevationPrompts).length} elevations, 2 sections, 5 3D views, 1 site plan)`,
+    );
     return prompts;
   }
 
@@ -185,65 +319,73 @@ Building must fit within site boundaries with 3m setbacks` : '';
     logger.info(`📝 Generating prompt for specific view: ${viewType}`);
 
     // Map view types to generation methods
-    if (viewType.includes('floor-plan') || viewType.includes('floor_plan')) {
-      const floor = viewType.includes('ground') ? 'ground' : 'upper';
+    if (viewType.includes("floor-plan") || viewType.includes("floor_plan")) {
+      const floor = viewType.includes("ground") ? "ground" : "upper";
       return {
         prompt: this.generateFloorPlanPrompt(dna, floor, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), (perspective:1.5), (3D:1.5), (isometric:1.5), watermark, signature'
+        negativePrompt: FLOOR_PLAN_NEGATIVE,
       };
     }
 
-    if (viewType.includes('elevation')) {
-      const direction = viewType.includes('north') ? 'north' :
-                       viewType.includes('south') ? 'south' :
-                       viewType.includes('east') ? 'east' : 'west';
+    if (viewType.includes("elevation")) {
+      const direction = viewType.includes("north")
+        ? "north"
+        : viewType.includes("south")
+          ? "south"
+          : viewType.includes("east")
+            ? "east"
+            : "west";
       return {
         prompt: this.generateElevationPrompt(dna, direction, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), (perspective:1.3), watermark, signature'
+        negativePrompt: ELEVATION_NEGATIVE,
       };
     }
 
-    if (viewType.includes('section')) {
-      const type = viewType.includes('longitudinal') ? 'longitudinal' : 'cross';
+    if (viewType.includes("section")) {
+      const type = viewType.includes("longitudinal") ? "longitudinal" : "cross";
       return {
         prompt: this.generateSectionPrompt(dna, type, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), photorealistic, watermark, signature'
+        negativePrompt: SECTION_NEGATIVE,
       };
     }
 
-    if (viewType.includes('exterior')) {
-      const direction = viewType.includes('front') ? 'front' : 'side';
+    if (viewType.includes("exterior")) {
+      const direction = viewType.includes("front") ? "front" : "side";
       return {
         prompt: this.generate3DExteriorPrompt(dna, direction, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), cartoon, sketch, watermark, signature'
+        negativePrompt:
+          "(low quality:1.4), (worst quality:1.4), (blurry:1.3), cartoon, sketch, watermark, signature",
       };
     }
 
-    if (viewType.includes('axonometric')) {
+    if (viewType.includes("axonometric")) {
       return {
         prompt: this.generateAxonometricPrompt(dna, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), perspective, watermark, signature'
+        negativePrompt:
+          "(low quality:1.4), (worst quality:1.4), (blurry:1.3), perspective, watermark, signature",
       };
     }
 
-    if (viewType.includes('perspective')) {
+    if (viewType.includes("perspective")) {
       return {
         prompt: this.generatePerspectivePrompt(dna, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), cartoon, watermark, signature'
+        negativePrompt:
+          "(low quality:1.4), (worst quality:1.4), (blurry:1.3), cartoon, watermark, signature",
       };
     }
 
-    if (viewType.includes('interior')) {
+    if (viewType.includes("interior")) {
       return {
         prompt: this.generateInteriorPrompt(dna, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), exterior view, watermark, signature'
+        negativePrompt:
+          "(low quality:1.4), (worst quality:1.4), (blurry:1.3), exterior view, watermark, signature",
       };
     }
 
-    if (viewType.includes('site')) {
+    if (viewType.includes("site")) {
       return {
         prompt: this.generateSitePlanPrompt(dna, projectContext),
-        negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), 3D, perspective, watermark, signature'
+        negativePrompt: SITE_PLAN_NEGATIVE,
       };
     }
 
@@ -251,7 +393,8 @@ Building must fit within site boundaries with 3m setbacks` : '';
     logger.warn(`⚠️ Unknown view type: ${viewType}, using generic prompt`);
     return {
       prompt: `Architectural view: ${viewType}`,
-      negativePrompt: '(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature'
+      negativePrompt:
+        "(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature",
     };
   }
 
@@ -260,77 +403,122 @@ Building must fit within site boundaries with 3m setbacks` : '';
    */
   generateFloorPlanPrompt(dna, floor, projectContext = null) {
     const floorData = dna.floorPlans?.[floor];
-    
+
     // 🆕 Extract project type and program spaces
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
-    const programSpaces = projectContext?.programSpaces || dna.programSpaces || [];
-    
+    const projectType =
+      projectContext?.projectType ||
+      dna.projectType ||
+      dna.buildingProgram ||
+      "mixed-use";
+    const programSpaces =
+      projectContext?.programSpaces || dna.programSpaces || [];
+
     // 🆕 Build negative prompts based on project type
     const negativePrompts = [];
-    if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO single-family house features', 'NO residential house layout', 'NO pitched roof unless specified');
+    if (
+      projectType &&
+      ![
+        "residential-house",
+        "detached-house",
+        "semi-detached-house",
+        "terraced-house",
+        "villa",
+        "cottage",
+        "apartment",
+        "apartment-building",
+      ].includes(projectType.toLowerCase())
+    ) {
+      negativePrompts.push(
+        "NO single-family house features",
+        "NO residential house layout",
+        "NO pitched roof unless specified",
+      );
     }
-    if (projectType && ['office', 'retail', 'school', 'hospital'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO residential features', 'NO bedrooms unless specified', 'NO kitchen unless specified');
+    if (
+      projectType &&
+      ["office", "retail", "school", "hospital"].includes(
+        projectType.toLowerCase(),
+      )
+    ) {
+      negativePrompts.push(
+        "NO residential features",
+        "NO bedrooms unless specified",
+        "NO kitchen unless specified",
+      );
     }
-    
+
     // Map floor names to display names
     const floorNameMap = {
-      'basement': 'BASEMENT',
-      'ground': 'GROUND FLOOR',
-      'first': 'FIRST FLOOR',
-      'second': 'SECOND FLOOR',
-      'third': 'THIRD FLOOR',
-      'upper': 'UPPER FLOOR'
+      basement: "BASEMENT",
+      ground: "GROUND FLOOR",
+      first: "FIRST FLOOR",
+      second: "SECOND FLOOR",
+      third: "THIRD FLOOR",
+      upper: "UPPER FLOOR",
     };
-    
-    const floorName = floorNameMap[floor] || floor.toUpperCase() + ' FLOOR';
-    
+
+    const floorName = floorNameMap[floor] || floor.toUpperCase() + " FLOOR";
+
     if (!floorData) {
       return this.getFallbackFloorPlanPrompt(floor);
     }
 
     const rooms = floorData.rooms || [];
-    const roomList = rooms.map(r => `${r.name} (${r.dimensions}, ${r.area})`).join(', ');
+    const roomList = rooms
+      .map((r) => `${r.name} (${r.dimensions}, ${r.area})`)
+      .join(", ");
 
-    return `FLAT 2D OVERHEAD ARCHITECTURAL FLOOR PLAN - NO 3D, NO PERSPECTIVE, NO AXONOMETRIC, NO ISOMETRIC
-${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
-${programSpaces.length > 0 ? `PROGRAM SPACES REQUIRED: ${programSpaces.map(s => `${s.name}: ${s.area}m² × ${s.count}`).join(', ')}` : ''}
+    return `Crisp black vector linework on pure white paper, strict CAD drafting standard, professional architectural blueprint.
+FLAT 2D OVERHEAD ARCHITECTURAL FLOOR PLAN - NO 3D, NO PERSPECTIVE, NO AXONOMETRIC, NO ISOMETRIC
+${projectType !== "residential-house" && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(", ")}` : ""}
+${programSpaces.length > 0 ? `PROGRAM SPACES REQUIRED: ${programSpaces.map((s) => `${s.name}: ${s.area}m² × ${s.count}`).join(", ")}` : ""}
 
 Pure orthographic top-down view, black lines on white background, CAD technical drawing style.
-Absolutely flat like looking straight down from above. Zero depth. Zero shadows. Zero 3D effects.
+Absolutely flat like looking straight down from above. Zero depth. Zero shadows. Zero 3D effects. Zero shading. Zero gradients. Zero color fills. Pure monochrome linework only.
 This must look like AutoCAD or Revit output - completely flat 2D technical drawing.
 
 DO NOT create: 3D view, perspective view, isometric view, axonometric view, rendered view, shadowed view.
 ONLY create: Flat 2D plan view from directly above.
 
-${floor === 'ground' ? `🚨🚨🚨 CRITICAL REQUIREMENT - MAIN ENTRANCE DOOR 🚨🚨🚨
+${
+  floor === "ground"
+    ? `🚨🚨🚨 CRITICAL REQUIREMENT - MAIN ENTRANCE DOOR 🚨🚨🚨
 THIS IS THE GROUND FLOOR - IT MUST HAVE A MAIN ENTRANCE DOOR FROM OUTSIDE!
 The main entrance door MUST be clearly visible as a door opening in the exterior wall.
 Show the door with swing arc (90° quarter circle showing door opening direction).
 This is how people enter the building from the street/outside.
 WITHOUT AN ENTRANCE DOOR, THE BUILDING IS INACCESSIBLE!
-🚨🚨🚨 FAILURE TO SHOW ENTRANCE DOOR = UNUSABLE FLOOR PLAN 🚨🚨🚨` : ''}
-${floor === 'basement' ? `🚨 BASEMENT FLOOR REQUIREMENTS 🚨
+🚨🚨🚨 FAILURE TO SHOW ENTRANCE DOOR = UNUSABLE FLOOR PLAN 🚨🚨🚨`
+    : ""
+}
+${
+  floor === "basement"
+    ? `🚨 BASEMENT FLOOR REQUIREMENTS 🚨
 THIS IS THE BASEMENT - NO EXTERNAL ENTRANCE DOOR FROM OUTSIDE!
 Access is via internal staircase from ground floor only.
 Typically contains: Utility rooms, storage, mechanical spaces, or parking.
 NO windows to exterior (below ground level).
-Show internal staircase opening connecting to ground floor above.` : ''}
-${floor !== 'ground' && floor !== 'basement' ? `🚨 UPPER FLOOR REQUIREMENTS 🚨
+Show internal staircase opening connecting to ground floor above.`
+    : ""
+}
+${
+  floor !== "ground" && floor !== "basement"
+    ? `🚨 UPPER FLOOR REQUIREMENTS 🚨
 THIS IS AN UPPER FLOOR (${floorName}) - NO EXTERNAL ENTRANCE DOOR FROM OUTSIDE!
 Access is via internal staircase from floor below.
-${floor === 'first' ? 'Typically contains: Bedrooms, bathrooms, private spaces.' : 'May contain: Additional bedrooms, offices, or other spaces.'}
+${floor === "first" ? "Typically contains: Bedrooms, bathrooms, private spaces." : "May contain: Additional bedrooms, offices, or other spaces."}
 Show staircase opening connecting to floor below.
-Show windows to exterior (matching positions from floor plans below).` : ''}
+Show windows to exterior (matching positions from floor plans below).`
+    : ""
+}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${floorName} PLAN - ${floor === 'ground' ? 'GROUND FLOOR (MUST HAVE ENTRANCE DOOR + LIVING SPACES)' : floor === 'basement' ? 'BASEMENT (UTILITY/STORAGE, NO EXTERNAL ENTRANCE)' : `${floorName} (NO EXTERNAL ENTRANCE, ACCESS VIA STAIRS)`}
+${floorName} PLAN - ${floor === "ground" ? "GROUND FLOOR (MUST HAVE ENTRANCE DOOR + LIVING SPACES)" : floor === "basement" ? "BASEMENT (UTILITY/STORAGE, NO EXTERNAL ENTRANCE)" : `${floorName} (NO EXTERNAL ENTRANCE, ACCESS VIA STAIRS)`}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🎯 VIEW TYPE: 100% FLAT 2D orthographic projection (looking straight down)
 🎯 STYLE: Black linework on pure white background (CAD/technical drawing)
-🎯 FLOOR: ${floorName} ONLY - ${floor === 'ground' ? 'showing MAIN ENTRANCE DOOR, LIVING SPACES' : floor === 'basement' ? 'showing UTILITY/STORAGE, NO EXTERNAL DOOR' : 'showing PRIVATE SPACES, NO EXTERNAL DOOR'}
+🎯 FLOOR: ${floorName} ONLY - ${floor === "ground" ? "showing MAIN ENTRANCE DOOR, LIVING SPACES" : floor === "basement" ? "showing UTILITY/STORAGE, NO EXTERNAL DOOR" : "showing PRIVATE SPACES, NO EXTERNAL DOOR"}
 
 ━━━ 2D REQUIREMENTS (CRITICAL) ━━━
 ✓ TRUE orthographic top view (90° overhead, bird's eye)
@@ -341,26 +529,32 @@ ${floorName} PLAN - ${floor === 'ground' ? 'GROUND FLOOR (MUST HAVE ENTRANCE DOO
 ✓ Zero isometric/axonometric angles (must be straight overhead)
 
 ━━━ FLOOR SPECIFICATION ━━━
-Floor Level: ${floorName} (${floor === 'ground' ? 'First level' : 'Second level'})
+Floor Level: ${floorName} (${floor === "ground" ? "First level" : "Second level"})
 Building Footprint: ${dna.dimensions?.length}m (length) × ${dna.dimensions?.width}m (width)
-Wall Thickness: Exterior ${typeof dna.dimensions?.wallThickness === 'string' ? dna.dimensions.wallThickness.split(',')[0].trim() : '0.3m'}, Interior 0.15m
-Floor Height: ${floor === 'ground' ? dna.dimensions?.groundFloorHeight : dna.dimensions?.upperFloorHeight}
-${dna.siteContext || ''}
+Wall Thickness: Exterior ${typeof dna.dimensions?.wallThickness === "string" ? dna.dimensions.wallThickness.split(",")[0].trim() : "0.3m"}, Interior 0.15m
+Floor Height: ${floor === "ground" ? dna.dimensions?.groundFloorHeight : dna.dimensions?.upperFloorHeight}
+${dna.siteContext || ""}
 
 ━━━ ROOMS LAYOUT (${floorName} ONLY) ━━━
-${floor === 'ground' ? '🚪 GROUND FLOOR ROOMS (Living Spaces + Entrance):' : '🛏️ UPPER FLOOR ROOMS (Bedrooms + Bathroom ONLY):'}
+${floor === "ground" ? "🚪 GROUND FLOOR ROOMS (Living Spaces + Entrance):" : "🛏️ UPPER FLOOR ROOMS (Bedrooms + Bathroom ONLY):"}
 ${roomList}
-${floor === 'ground' ? `
+${
+  floor === "ground"
+    ? `
 🚪 MAIN ENTRANCE: ${floorData.entrance?.location} (${floorData.entrance?.type})
    ⚠️  This entrance MUST be visible as it connects to the street
-   ⚠️  This is the PRIMARY access point to the building` : `
-🪜 STAIRCASE LANDING: ${floorData.circulation || '2.0m × 1.5m'}
+   ⚠️  This is the PRIMARY access point to the building`
+    : `
+🪜 STAIRCASE LANDING: ${floorData.circulation || "2.0m × 1.5m"}
    ⚠️  This is the ONLY access to this floor (no external entrance)
    ⚠️  Stairs come UP from ground floor below
-   ⚠️  NO main entrance door on this floor`}
+   ⚠️  NO main entrance door on this floor`
+}
 
 ━━━ MANDATORY ELEMENTS ━━━
-${floor === 'ground' ? `
+${
+  floor === "ground"
+    ? `
 🚨 ABSOLUTE PRIORITY #1 - MAIN ENTRANCE DOOR:
 ✓ MAIN ENTRANCE DOOR FROM OUTSIDE - THIS IS CRITICAL!
 ✓ Position: In exterior wall (typically north/front facade)
@@ -370,7 +564,9 @@ ${floor === 'ground' ? `
 ✓ MUST connect to exterior/street (NOT to another room)
 ✓ This is how people enter from outside - WITHOUT IT THE BUILDING IS UNUSABLE!
 
-Then show these required annotations:` : 'Required Annotations:'}
+Then show these required annotations:`
+    : "Required Annotations:"
+}
 
 MANDATORY TEXT SIZES (for A1 print legibility):
 ✓ Room names: 16pt BOLD UPPERCASE with area (e.g., "LIVING ROOM 24m²")
@@ -392,9 +588,11 @@ Other Required Elements:
 ✓ Window positions shown as breaks in walls with sill lines
 ✓ North arrow pointing upward (or specified direction) - REQUIRED
 ✓ Scale indicator: 1:100 - REQUIRED
-✓ Floor level identifier: ${floor === 'ground' ? 'GF (Ground Floor)' : 'UF (Upper Floor) or 1F (First Floor)'}
+✓ Floor level identifier: ${floor === "ground" ? "GF (Ground Floor)" : "UF (Upper Floor) or 1F (First Floor)"}
 
-${floor === 'ground' ? `
+${
+  floor === "ground"
+    ? `
 🚪 GROUND FLOOR SPECIFIC ELEMENTS (ALL REQUIRED):
 ✓ MAIN ENTRANCE DOOR (CRITICAL - see priority #1 above)
 ✓ Entrance hallway/foyer immediately inside main door
@@ -403,7 +601,8 @@ ${floor === 'ground' ? `
 ✓ Staircase with "UP" arrow showing stairs going to upper floor
 ✓ Ground floor toilet/powder room (optional but common)
 ✓ NO bedrooms on ground floor (bedrooms only on upper floor)
-✓ NO "landing" on ground floor (landing is upper floor feature)` : `
+✓ NO "landing" on ground floor (landing is upper floor feature)`
+    : `
 🪜 UPPER FLOOR SPECIFIC ELEMENTS:
 ✓ Staircase opening with "UP" arrow from ground floor (showing stairs coming up)
 ✓ Landing at top of stairs (where you arrive from ground floor)
@@ -412,7 +611,8 @@ ${floor === 'ground' ? `
 ✓ NO main entrance from outside (only access is via internal stairs)
 ✓ NO kitchen (kitchen is on ground floor only)
 ✓ NO living room (living room is on ground floor only)
-✓ NO door to street/outside (this floor is internal only)`}
+✓ NO door to street/outside (this floor is internal only)`
+}
 
 ━━━ EXPLICIT PROHIBITIONS ━━━
 ✗ NO 3D effects whatsoever (no depth, no shadows, no gradients)
@@ -424,14 +624,17 @@ ${floor === 'ground' ? `
 ✗ NO rendering effects (no ambient occlusion, no lighting)
 ✗ NO text shadows or decorative fonts
 
-${floor === 'ground' ? `
+${
+  floor === "ground"
+    ? `
 ━━━ GROUND FLOOR PROHIBITIONS ━━━
 🚫 ABSOLUTELY FORBIDDEN ON GROUND FLOOR:
 ✗ NO "Bedroom" labels (bedrooms only on upper floor)
 ✗ NO "Master Bedroom" (upper floor only)
 ✗ NO "Landing" area (landing is at top of stairs on upper floor)
 ✗ NO bathroom labeled as "Master Bath" (upper floor only)
-✗ The layout MUST show living/social spaces, NOT sleeping spaces` : `
+✗ The layout MUST show living/social spaces, NOT sleeping spaces`
+    : `
 ━━━ UPPER FLOOR PROHIBITIONS ━━━
 🚫 ABSOLUTELY FORBIDDEN ON UPPER FLOOR:
 ✗ NO main entrance door from outside
@@ -440,7 +643,8 @@ ${floor === 'ground' ? `
 ✗ NO "Living Room" (ground floor only)
 ✗ NO "Kitchen" or "Dining Room" (ground floor only)
 ✗ NO "Reception" or "Hallway to entrance" (ground floor only)
-✗ The layout MUST show sleeping/private spaces, NOT living/social spaces`}
+✗ The layout MUST show sleeping/private spaces, NOT living/social spaces`
+}
 
 ━━━ CONSISTENCY MARKERS ━━━
 Building Materials: ${dna.materials?.exterior?.primary}
@@ -449,16 +653,18 @@ Project DNA Seed: ${dna.seed}
 Floor Count: ${dna.dimensions?.floorCount} total floors
 
 ━━━ LOCATION CONTEXT ━━━
-${dna.locationContext || 'Generic urban location'}
-${dna.climateDesign?.thermal?.strategy ? `Climate Strategy: ${dna.climateDesign.thermal.strategy}` : ''}
-${dna.climateDesign?.ventilation?.type ? `Ventilation: ${dna.climateDesign.ventilation.type}` : ''}
+${dna.locationContext || "Generic urban location"}
+${dna.climateDesign?.thermal?.strategy ? `Climate Strategy: ${dna.climateDesign.thermal.strategy}` : ""}
+${dna.climateDesign?.ventilation?.type ? `Ventilation: ${dna.climateDesign.ventilation.type}` : ""}
 
 ━━━ FINAL VALIDATION CHECK ━━━
 🚨🚨🚨 CRITICAL FLOOR DIFFERENTIATION 🚨🚨🚨
 
-THIS IS THE ${floorName.toUpperCase()} - NOT THE ${floor === 'ground' ? 'UPPER' : 'GROUND'} FLOOR!
+THIS IS THE ${floorName.toUpperCase()} - NOT THE ${floor === "ground" ? "UPPER" : "GROUND"} FLOOR!
 
-${floor === 'ground' ? `
+${
+  floor === "ground"
+    ? `
 ✅ GROUND FLOOR CHECKLIST (ALL must be present):
    1. ✓ MAIN ENTRANCE DOOR from street/outside
    2. ✓ Living room OR Reception area
@@ -473,7 +679,8 @@ ${floor === 'ground' ? `
    ✗ Master bathroom
    ✗ Landing area
    ✗ Layout showing sleeping quarters instead of living spaces
-` : `
+`
+    : `
 ✅ UPPER FLOOR CHECKLIST (ALL must be present):
    1. ✓ BEDROOMS (2-3 labeled as Bedroom 1, 2, Master Bedroom)
    2. ✓ BATHROOM(S) with bath/shower
@@ -491,11 +698,14 @@ ${floor === 'ground' ? `
    ✗ Reception area
    ✗ "Main Entrance" label
    ✗ Layout showing living/social spaces instead of sleeping quarters
-`}
+`
+}
 
-🔍 BEFORE FINALIZING: Verify this is truly the ${floorName} layout, not a duplicate of the ${floor === 'ground' ? 'upper' : 'ground'} floor!
+🔍 BEFORE FINALIZING: Verify this is truly the ${floorName} layout, not a duplicate of the ${floor === "ground" ? "upper" : "ground"} floor!
 
-${floor === 'ground' ? `
+${
+  floor === "ground"
+    ? `
 🚨 FINAL ENTRANCE DOOR CHECK 🚨
 STOP! Before outputting this floor plan, verify:
 1. Is there a MAIN ENTRANCE DOOR visible in an exterior wall? ✓
@@ -506,9 +716,11 @@ STOP! Before outputting this floor plan, verify:
 
 IF ANY OF THESE ARE MISSING - REDRAW THE PLAN WITH AN ENTRANCE DOOR!
 A building without an entrance door is architecturally impossible!
-` : ''}
+`
+    : ""
+}
 
-Output: Professional architectural floor plan with ${floor === 'ground' ? 'MAIN ENTRANCE DOOR clearly visible' : 'bedrooms and NO external entrance'}, black linework on white background, true 2D orthographic overhead projection.`;
+Output: Professional architectural floor plan with ${floor === "ground" ? "MAIN ENTRANCE DOOR clearly visible" : "bedrooms and NO external entrance"}, black linework on white background, true 2D orthographic overhead projection.`;
   }
 
   /**
@@ -521,19 +733,44 @@ Output: Professional architectural floor plan with ${floor === 'ground' ? 'MAIN 
     }
 
     // 🆕 Extract project type
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
+    const projectType =
+      projectContext?.projectType ||
+      dna.projectType ||
+      dna.buildingProgram ||
+      "mixed-use";
     const negativePrompts = [];
-    if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO single-family house', 'NO residential house facade', 'NO pitched roof unless specified');
+    if (
+      projectType &&
+      ![
+        "residential-house",
+        "detached-house",
+        "semi-detached-house",
+        "terraced-house",
+        "villa",
+        "cottage",
+        "apartment",
+        "apartment-building",
+      ].includes(projectType.toLowerCase())
+    ) {
+      negativePrompts.push(
+        "NO single-family house",
+        "NO residential house facade",
+        "NO pitched roof unless specified",
+      );
     }
-    
-    const directionName = direction.toUpperCase();
-    const features = elevData.features?.join(', ') || 'Standard facade features';
-    const isMainFacade = direction === 'north';
-    const facadeWidth = (direction === 'north' || direction === 'south') ? dna.dimensions?.length : dna.dimensions?.width;
 
-    return `ARCHITECTURAL 2D TECHNICAL ELEVATION DRAWING - ${directionName} FACADE
-${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
+    const directionName = direction.toUpperCase();
+    const features =
+      elevData.features?.join(", ") || "Standard facade features";
+    const isMainFacade = direction === "north";
+    const facadeWidth =
+      direction === "north" || direction === "south"
+        ? dna.dimensions?.length
+        : dna.dimensions?.width;
+
+    return `Crisp black vector linework on pure white paper, strict CAD drafting standard, professional architectural blueprint.
+ARCHITECTURAL 2D TECHNICAL ELEVATION DRAWING - ${directionName} FACADE
+${projectType !== "residential-house" && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(", ")}` : ""}
 BLACK AND WHITE BLUEPRINT STYLE - NO PHOTOREALISM, NO 3D EFFECTS, NO COLORS
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -560,7 +797,7 @@ This MUST be a pure 2D technical architectural drawing, NOT a photograph or rend
 📐 BUILDING SPECIFICATIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Building: ${dna.dimensions?.floorCount}-story ${dna.building_program || 'residential building'}
+Building: ${dna.dimensions?.floorCount}-story ${dna.building_program || "residential building"}
 Facade Width: ${facadeWidth}m
 Total Height: ${dna.dimensions?.totalHeight}m
 Ground Floor Height: ${dna.dimensions?.groundFloorHeight}
@@ -570,7 +807,7 @@ Materials (shown via hatching):
 - Exterior Walls: ${dna.materials?.exterior?.primary} (use ${dna.materials?.exterior?.primary} hatching pattern)
 - Roof: ${dna.materials?.roof?.type} (show roof pitch and eaves)
 - Windows: ${dna.materials?.windows?.type} (show window frames as thin rectangles)
-${isMainFacade ? `- Main Entrance: ${dna.materials?.doors?.main?.type} door (show with clear door symbol)` : ''}
+${isMainFacade ? `- Main Entrance: ${dna.materials?.doors?.main?.type} door (show with clear door symbol)` : ""}
 
 Facade Features: ${features}
 
@@ -592,7 +829,7 @@ Annotations required:
 - Scale indicator (e.g., "SCALE 1:100")
 - North arrow (if applicable)
 - Material notes with leader lines
-- Floor level markers (FFL 0.00m / FFL ${dna.dimensions?.groundFloorHeight || '3.10'}m / FFL ${dna.dimensions?.totalHeight || '6.20'}m)
+- Floor level markers (FFL 0.00m / FFL ${dna.dimensions?.groundFloorHeight || "3.10"}m / FFL ${dna.dimensions?.totalHeight || "6.20"}m)
 - Material transitions clearly annotated (e.g., "Brick to Timber Cladding")
 - Roof slope angle marked (e.g., "35° pitch")
 - Glazing area percentage marked (e.g., "28% facade area")
@@ -634,20 +871,44 @@ SEED: ${dna.seed}`;
     }
 
     // Extract project type for negative prompts
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
+    const projectType =
+      projectContext?.projectType ||
+      dna.projectType ||
+      dna.buildingProgram ||
+      "mixed-use";
     const negativePrompts = [];
-    if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO single-family house', 'NO residential house section');
+    if (
+      projectType &&
+      ![
+        "residential-house",
+        "detached-house",
+        "semi-detached-house",
+        "terraced-house",
+        "villa",
+        "cottage",
+        "apartment",
+        "apartment-building",
+      ].includes(projectType.toLowerCase())
+    ) {
+      negativePrompts.push(
+        "NO single-family house",
+        "NO residential house section",
+      );
     }
 
-    const isLongitudinal = type === 'longitudinal';
-    const cutDirection = isLongitudinal ? 'length-wise (front to back)' : 'width-wise (side to side)';
-    const sectionLabel = isLongitudinal ? 'A-A' : 'B-B';
+    const isLongitudinal = type === "longitudinal";
+    const cutDirection = isLongitudinal
+      ? "length-wise (front to back)"
+      : "width-wise (side to side)";
+    const sectionLabel = isLongitudinal ? "A-A" : "B-B";
 
-    const visibleElements = sectionData.visible?.join('\n✓ ') || 'Interior structure, floor levels, roof';
+    const visibleElements =
+      sectionData.visible?.join("\n✓ ") ||
+      "Interior structure, floor levels, roof";
 
-    return `Architectural SECTION ${sectionLabel} - 2D Technical Section Drawing [SEED: ${dna.seed}]
-${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
+    return `Crisp black vector linework on pure white paper, strict CAD drafting standard, professional architectural blueprint.
+Architectural SECTION ${sectionLabel} - 2D Technical Section Drawing [SEED: ${dna.seed}]
+${projectType !== "residential-house" && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(", ")}` : ""}
 
 🎯 PRIMARY OBJECTIVE: Create a precise 2D SECTION DRAWING showing interior structure cut ${cutDirection}
 
@@ -656,37 +917,37 @@ Drawing Type: ARCHITECTURAL SECTION (2D orthographic cut-through view)
 Style: Technical line drawing, CAD/blueprint style
 Format: Black lines on white background
 View: TRUE ORTHOGRAPHIC (NO perspective, NO 3D effects)
-Section Cut: ${isLongitudinal ? 'LONGITUDINAL (Section A-A) - cut through building length' : 'CROSS SECTION (Section B-B) - cut through building width'}
+Section Cut: ${isLongitudinal ? "LONGITUDINAL (Section A-A) - cut through building length" : "CROSS SECTION (Section B-B) - cut through building width"}
 
 ━━━ SECTION CONFIGURATION ━━━
 ${sectionData.description || `${type} section through building showing internal structure`}
-Cut Line: ${sectionData.cutLine || (isLongitudinal ? 'Through center of building, front to back' : 'Through center of building, side to side')}
-Looking Direction: ${sectionData.lookingDirection || (isLongitudinal ? 'Looking east' : 'Looking north')}
+Cut Line: ${sectionData.cutLine || (isLongitudinal ? "Through center of building, front to back" : "Through center of building, side to side")}
+Looking Direction: ${sectionData.lookingDirection || (isLongitudinal ? "Looking east" : "Looking north")}
 
 Visible Elements:
 ✓ ${visibleElements}
 
 ━━━ BUILDING DIMENSIONS (MUST MATCH) ━━━
 Floor Count: EXACTLY ${dna.dimensions?.floorCount} floors visible in section
-Ground Floor Height: ${dna.dimensions?.groundFloorHeight || '2.7m'} floor-to-floor
-Upper Floor Height: ${dna.dimensions?.upperFloorHeight || '2.7m'} floor-to-floor
+Ground Floor Height: ${dna.dimensions?.groundFloorHeight || "2.7m"} floor-to-floor
+Upper Floor Height: ${dna.dimensions?.upperFloorHeight || "2.7m"} floor-to-floor
 Total Height: ${dna.dimensions?.totalHeight}m from foundation to ridge
 ${isLongitudinal ? `Building Length: ${dna.dimensions?.length}m` : `Building Width: ${dna.dimensions?.width}m`}
 
 ━━━ STRUCTURAL ELEMENTS TO SHOW ━━━
 Foundation:
-  └─ Foundation depth: ${sectionData.foundation?.depth || '1.0m'} below grade
-  └─ Foundation type: ${sectionData.foundation?.type || 'Strip foundation'}
+  └─ Foundation depth: ${sectionData.foundation?.depth || "1.0m"} below grade
+  └─ Foundation type: ${sectionData.foundation?.type || "Strip foundation"}
   └─ Show ground level line clearly
 
 Floor Structure:
-  └─ Ground floor slab: ${sectionData.floorSlab || '150mm concrete'}
-  └─ Upper floor construction: ${sectionData.upperFloor || '200mm timber joists'}
+  └─ Ground floor slab: ${sectionData.floorSlab || "150mm concrete"}
+  └─ Upper floor construction: ${sectionData.upperFloor || "200mm timber joists"}
   └─ Floor finish levels marked
 
 Wall Construction:
-  └─ External walls: ${dna.materials?.exterior?.primary} (${sectionData.wallThickness || '300mm'} thick)
-  └─ Internal walls: ${sectionData.internalWalls || '100mm partitions'}
+  └─ External walls: ${dna.materials?.exterior?.primary} (${sectionData.wallThickness || "300mm"} thick)
+  └─ Internal walls: ${sectionData.internalWalls || "100mm partitions"}
   └─ Show wall build-up hatching
 
 Roof Structure:
@@ -701,13 +962,13 @@ Dimension Lines:
   └─ Floor-to-floor heights
   └─ Room heights (floor to ceiling)
   └─ Foundation depth
-  └─ ${isLongitudinal ? 'Overall building length' : 'Overall building width'}
+  └─ ${isLongitudinal ? "Overall building length" : "Overall building width"}
 
 Level Markers:
   └─ Ground Level: ±0.00
-  └─ First Floor Level: +${dna.dimensions?.groundFloorHeight || '2.7'}
+  └─ First Floor Level: +${dna.dimensions?.groundFloorHeight || "2.7"}
   └─ Roof Level: +${dna.dimensions?.totalHeight}
-  └─ Foundation: -${sectionData.foundation?.depth || '1.0'}
+  └─ Foundation: -${sectionData.foundation?.depth || "1.0"}
 
 Material Hatching:
   └─ Concrete: Stipple pattern
@@ -735,7 +996,7 @@ Material Hatching:
 
 ━━━ DIFFERENTIATION FROM OTHER SECTIONS ━━━
 This is Section ${sectionLabel} (${type}):
-${isLongitudinal ? '- Cut LENGTHWISE through building (front to back)\n- Shows stair arrangement along building length\n- Reveals front-to-back spatial sequence\n- DIFFERENT from Section B-B (cross section)' : '- Cut WIDTHWISE through building (side to side)\n- Shows structural bays across width\n- Reveals side-to-side room arrangement\n- DIFFERENT from Section A-A (longitudinal)'}
+${isLongitudinal ? "- Cut LENGTHWISE through building (front to back)\n- Shows stair arrangement along building length\n- Reveals front-to-back spatial sequence\n- DIFFERENT from Section B-B (cross section)" : "- Cut WIDTHWISE through building (side to side)\n- Shows structural bays across width\n- Reveals side-to-side room arrangement\n- DIFFERENT from Section A-A (longitudinal)"}
 
 Output: Professional architectural section drawing, technical CAD style, 2D orthographic, black lines on white, Section ${sectionLabel} (${type}) showing EXACTLY ${dna.dimensions?.floorCount} floors.`;
   }
@@ -744,17 +1005,37 @@ Output: Professional architectural section drawing, technical CAD style, 2D orth
    * AXONOMETRIC PROMPT - 45° isometric technical view
    */
   generateAxonometricPrompt(dna, projectContext = null) {
-    const viewData = dna['3dViews']?.axonometric;
-    
+    const viewData = dna["3dViews"]?.axonometric;
+
     // 🆕 Extract project type
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
+    const projectType =
+      projectContext?.projectType ||
+      dna.projectType ||
+      dna.buildingProgram ||
+      "mixed-use";
     const negativePrompts = [];
-    if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO single-family house', 'NO residential house', 'NO pitched roof unless specified');
+    if (
+      projectType &&
+      ![
+        "residential-house",
+        "detached-house",
+        "semi-detached-house",
+        "terraced-house",
+        "villa",
+        "cottage",
+        "apartment",
+        "apartment-building",
+      ].includes(projectType.toLowerCase())
+    ) {
+      negativePrompts.push(
+        "NO single-family house",
+        "NO residential house",
+        "NO pitched roof unless specified",
+      );
     }
 
     return `Architectural AXONOMETRIC projection - 45° isometric technical drawing.
-${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
+${projectType !== "residential-house" && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(", ")}` : ""}
 
 CRITICAL REQUIREMENTS:
 - 45-DEGREE AXONOMETRIC PROJECTION (NOT perspective)
@@ -763,7 +1044,7 @@ CRITICAL REQUIREMENTS:
 - Technical architectural illustration style
 - View from NORTHEAST corner looking down at 30°
 
-VIEW: ${viewData?.description || '45° axonometric from northeast'}
+VIEW: ${viewData?.description || "45° axonometric from northeast"}
 Projection: TRUE AXONOMETRIC (no perspective convergence)
 Angle: 45° plan rotation, 30° vertical angle
 
@@ -812,17 +1093,37 @@ This is an AXONOMETRIC view - technical isometric showing all faces and roof fro
    * PERSPECTIVE PROMPT - Realistic eye-level perspective view
    */
   generatePerspectivePrompt(dna, projectContext = null) {
-    const viewData = dna['3dViews']?.perspective;
-    
+    const viewData = dna["3dViews"]?.perspective;
+
     // 🆕 Extract project type
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
+    const projectType =
+      projectContext?.projectType ||
+      dna.projectType ||
+      dna.buildingProgram ||
+      "mixed-use";
     const negativePrompts = [];
-    if (projectType && !['residential-house', 'detached-house', 'semi-detached-house', 'terraced-house', 'villa', 'cottage', 'apartment', 'apartment-building'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO single-family house', 'NO residential house', 'NO pitched roof unless specified');
+    if (
+      projectType &&
+      ![
+        "residential-house",
+        "detached-house",
+        "semi-detached-house",
+        "terraced-house",
+        "villa",
+        "cottage",
+        "apartment",
+        "apartment-building",
+      ].includes(projectType.toLowerCase())
+    ) {
+      negativePrompts.push(
+        "NO single-family house",
+        "NO residential house",
+        "NO pitched roof unless specified",
+      );
     }
 
     return `Photorealistic 2-POINT PERSPECTIVE architectural visualization - CORNER VIEW.
-${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
+${projectType !== "residential-house" && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(", ")}` : ""}
 
 CRITICAL REQUIREMENTS:
 - 2-POINT PERSPECTIVE (two vanishing points)
@@ -831,7 +1132,7 @@ CRITICAL REQUIREMENTS:
 - Photorealistic render quality
 - View from NORTHWEST corner
 
-VIEW: ${viewData?.description || 'Eye level perspective from northwest'}
+VIEW: ${viewData?.description || "Eye level perspective from northwest"}
 Camera: Standing at northwest corner, looking southeast
 Perspective: TWO-POINT perspective with realistic convergence
 Eye height: 1.6m (human standing view)
@@ -890,18 +1191,33 @@ This is a PERSPECTIVE view - realistic human eye level from corner showing depth
    * INTERIOR PROMPT - Living room interior
    */
   generateInteriorPrompt(dna, projectContext = null) {
-    const viewData = dna['3dViews']?.interior;
-    const livingRoom = dna.floorPlans?.ground?.rooms?.find(r => r.name?.toLowerCase().includes('living'));
-    
+    const viewData = dna["3dViews"]?.interior;
+    const livingRoom = dna.floorPlans?.ground?.rooms?.find((r) =>
+      r.name?.toLowerCase().includes("living"),
+    );
+
     // 🆕 Extract project type
-    const projectType = projectContext?.projectType || dna.projectType || dna.buildingProgram || 'mixed-use';
+    const projectType =
+      projectContext?.projectType ||
+      dna.projectType ||
+      dna.buildingProgram ||
+      "mixed-use";
     const negativePrompts = [];
-    if (projectType && ['office', 'retail', 'school', 'hospital'].includes(projectType.toLowerCase())) {
-      negativePrompts.push('NO residential features', 'NO bedrooms unless specified', 'NO kitchen unless specified');
+    if (
+      projectType &&
+      ["office", "retail", "school", "hospital"].includes(
+        projectType.toLowerCase(),
+      )
+    ) {
+      negativePrompts.push(
+        "NO residential features",
+        "NO bedrooms unless specified",
+        "NO kitchen unless specified",
+      );
     }
 
-    return `Photorealistic INTERIOR architectural visualization - ${projectType === 'office' ? 'OFFICE SPACE' : projectType === 'retail' ? 'RETAIL SPACE' : 'LIVING ROOM'}.
-${projectType !== 'residential-house' && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(', ')}` : ''}
+    return `Photorealistic INTERIOR architectural visualization - ${projectType === "office" ? "OFFICE SPACE" : projectType === "retail" ? "RETAIL SPACE" : "LIVING ROOM"}.
+${projectType !== "residential-house" && negativePrompts.length > 0 ? `PROJECT TYPE: ${projectType.toUpperCase()} - ${negativePrompts.join(", ")}` : ""}
 
 CRITICAL REQUIREMENTS:
 - Interior view INSIDE the building
@@ -910,16 +1226,16 @@ CRITICAL REQUIREMENTS:
 - Standing inside living room, looking toward windows
 - Natural daylight flooding in
 
-VIEW: ${viewData?.description || 'Interior of living room'}
+VIEW: ${viewData?.description || "Interior of living room"}
 Camera: Standing in living room, looking at south-facing windows
 Room: Ground floor living room
-Dimensions: ${livingRoom?.dimensions || '5.5m × 4.0m'}
+Dimensions: ${livingRoom?.dimensions || "5.5m × 4.0m"}
 
 ROOM SPECIFICATIONS:
 - Ceiling height: ${dna.dimensions?.groundFloorHeight}
-- Floor area: ${livingRoom?.area || '22m²'}
-- Windows: ${livingRoom?.windows?.[0] || '2 large windows with natural light'}
-- Doors: ${livingRoom?.doors?.[0] || '1 door visible'}
+- Floor area: ${livingRoom?.area || "22m²"}
+- Windows: ${livingRoom?.windows?.[0] || "2 large windows with natural light"}
+- Doors: ${livingRoom?.doors?.[0] || "1 door visible"}
 
 INTERIOR MATERIALS:
 - Walls: Painted drywall in warm neutral color (off-white, light grey)
@@ -982,7 +1298,8 @@ This is the INTERIOR view of the living room - completely different from all ext
     const siteOrientation = projectContext?.siteMetrics?.orientationDeg || 0;
     const sitePolygon = projectContext?.sitePolygon || null;
 
-    return `ARCHITECTURAL SITE PLAN - 1:500 SCALE
+    return `Crisp black vector linework on pure white paper, strict CAD drafting standard.
+ARCHITECTURAL SITE PLAN - 1:500 SCALE
 TOP-DOWN ORTHOGRAPHIC VIEW showing building on site with context
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1058,7 +1375,7 @@ SEED: ${dna.seed}`;
    * FALLBACK PROMPTS - If DNA data is incomplete
    */
   getFallbackFloorPlanPrompt(floor) {
-    if (floor === 'ground') {
+    if (floor === "ground") {
       return `GROUND FLOOR PLAN WITH MAIN ENTRANCE DOOR - 2D CAD technical drawing
 
 🚨 CRITICAL: MUST SHOW MAIN ENTRANCE DOOR FROM OUTSIDE!
@@ -1101,7 +1418,7 @@ Architectural upper floor plan showing:
   }
 
   getFallback3DExteriorPrompt(direction) {
-    return `Photorealistic 3D exterior view from ${direction}, high-quality architectural render, natural materials, golden hour lighting, ${direction === 'front' ? 'main entrance visible' : 'side facade showing building depth'}, professional photography style, realistic landscaping, sky background. This is the ${direction} view - different angle from other 3D views.`;
+    return `Photorealistic 3D exterior view from ${direction}, high-quality architectural render, natural materials, golden hour lighting, ${direction === "front" ? "main entrance visible" : "side facade showing building depth"}, professional photography style, realistic landscaping, sky background. This is the ${direction} view - different angle from other 3D views.`;
   }
 }
 

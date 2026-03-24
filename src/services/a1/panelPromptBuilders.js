@@ -28,11 +28,24 @@ MANDATORY TEXT SIZES:
 - Annotations: 10pt regular
 - All text BLACK, Arial/Helvetica font`;
 
-const DRAWING_STYLE_SUFFIX = `pure white background, clean black lines with clear lineweight hierarchy, no shadows, no title block, no text outside the drawing.
+const DRAWING_STYLE_SUFFIX = `crisp black vector linework on pure white paper, strict CAD drafting standard, professional architectural blueprint. No shadows, no shading, no gradients, no color fills, no ambient occlusion.
 Drawing must fill 85-95% of the canvas with minimal outer margins; no tiny drawing centered in large white space.
 ${LINEWEIGHT_SPEC}`;
 const RENDER_STYLE_SUFFIX =
   "same materials and colors as other views, soft neutral sky, no watermark, no text";
+
+// Shared anti-3D negative prompt fragments for 2D technical views
+const ANTI_3D_CORE =
+  "(shadows:1.5), (shading:1.5), (ambient occlusion:1.5), (depth:1.5), (volume:1.5), (gradient:1.4), (lighting effects:1.3), (glossy:1.3), (reflection:1.3)";
+const ANTI_PHOTOREALISM =
+  "(photorealistic:1.5), (photograph:1.4), (render:1.3)";
+const BASE_QUALITY_NEGATIVE =
+  "(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature";
+
+export const FLOOR_PLAN_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), (isometric:1.5), (axonometric:1.5), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const ELEVATION_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), (angled view:1.4), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const SECTION_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (perspective:1.5), (3D:1.5), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
+export const SITE_PLAN_NEGATIVE = `${BASE_QUALITY_NEGATIVE}, (3D:1.5), (perspective:1.5), ${ANTI_3D_CORE}, ${ANTI_PHOTOREALISM}`;
 
 /**
  * Build fingerprint constraint clause for prompt injection
@@ -275,7 +288,7 @@ STYLE: ${DRAWING_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `3d, perspective, photorealistic, noisy background, cluttered annotations, angled view, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${SITE_PLAN_NEGATIVE}, noisy background, cluttered annotations, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -319,17 +332,23 @@ export function buildHero3DPrompt({
 
   // Build material description with hex colors for FLUX color anchoring
   const materialDescParts = [];
-  const rawMats = masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
+  const rawMats =
+    masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
   if (Array.isArray(rawMats)) {
     for (const mat of rawMats) {
       if (mat.name && mat.hexColor) {
-        materialDescParts.push(`${mat.name} (${mat.hexColor}) on ${mat.application || "surfaces"}`);
+        materialDescParts.push(
+          `${mat.name} (${mat.hexColor}) on ${mat.application || "surfaces"}`,
+        );
       } else if (typeof mat === "string") {
         materialDescParts.push(mat);
       }
     }
   }
-  const materialDesc = materialDescParts.length > 0 ? materialDescParts.join(", ") : materials.join(", ");
+  const materialDesc =
+    materialDescParts.length > 0
+      ? materialDescParts.join(", ")
+      : materials.join(", ");
 
   const buildingTypePrefix =
     `${materialDesc}, a single detached ${floorText}, ` +
@@ -399,7 +418,8 @@ export function buildInterior3DPrompt({
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
 
   // Build material description with hex colors for interior consistency
-  const rawMats = masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
+  const rawMats =
+    masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
   const matDescParts = [];
   if (Array.isArray(rawMats)) {
     for (const mat of rawMats) {
@@ -408,7 +428,8 @@ export function buildInterior3DPrompt({
       }
     }
   }
-  const matDesc = matDescParts.length > 0 ? matDescParts.join(", ") : materials.join(", ");
+  const matDesc =
+    matDescParts.length > 0 ? matDescParts.join(", ") : materials.join(", ");
 
   const prompt = `${matDesc}, ${style} interior, ${identity}
 
@@ -495,7 +516,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt: `perspective, 3d, isometric, angled, blurry, messy lines, low contrast, watermark, sketch, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${FLOOR_PLAN_NEGATIVE}, messy lines, low contrast, sketch, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -552,7 +573,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt: `perspective, 3d, isometric, angled, blurry, messy lines, low contrast, watermark, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${FLOOR_PLAN_NEGATIVE}, messy lines, low contrast, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -606,7 +627,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt: `perspective, 3d, isometric, angled, blurry, messy lines, low contrast, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${FLOOR_PLAN_NEGATIVE}, messy lines, low contrast, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -735,7 +756,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
     return {
       prompt: `${prompt}\nSTYLE: ${styleSuffix}`,
-      negativePrompt: `perspective, angled view, fisheye, 3d, low quality, sketchy, blurry, different roof type, different building, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+      negativePrompt: `${ELEVATION_NEGATIVE}, fisheye, sketchy, different roof type, different building, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
     };
   };
 }
@@ -789,7 +810,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt: `photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${SECTION_NEGATIVE}, low contrast, messy lines, different roof type, different building, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -840,7 +861,7 @@ ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt: `${prompt}\nSTYLE: ${DRAWING_STYLE_SUFFIX}`,
-    negativePrompt: `photorealistic, perspective, 3d, low contrast, messy lines, blurry, different roof type, different building, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `${SECTION_NEGATIVE}, low contrast, messy lines, different roof type, different building, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 

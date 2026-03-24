@@ -41,6 +41,11 @@ import {
   getLayoutIdForPanel,
   PANEL_KEY_TO_LAYOUT_ID,
 } from "./panelOrchestrator.js";
+import {
+  FLOOR_PLAN_NEGATIVE,
+  ELEVATION_NEGATIVE,
+  SECTION_NEGATIVE,
+} from "./a1/panelPromptBuilders.js";
 import { derivePanelSeed } from "./seedDerivation.js";
 import { compositeA1Sheet } from "./a1/A1SheetGenerator.js";
 import { detectA1Drift, DRIFT_THRESHOLD } from "./a1/A1ValidationService.js";
@@ -1614,24 +1619,17 @@ DO NOT: Create a single view, replace the sheet, change the project type from ${
     const isSection = viewType.includes("section");
     const is3D = viewType.includes("3d");
 
-    let negativePrompt =
-      "(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature, text, logo";
-
     if (isFloorPlan) {
-      negativePrompt +=
-        ", (perspective:1.5), (3D:1.5), (isometric:1.5), diagonal walls, tilted view, photorealistic furniture";
+      return `${FLOOR_PLAN_NEGATIVE}, diagonal walls, tilted view, photorealistic furniture`;
     } else if (isElevation) {
-      negativePrompt +=
-        ", (perspective:1.3), (3D depth:1.3), (angled view:1.4), windows from inside, interior visible";
+      return `${ELEVATION_NEGATIVE}, windows from inside, interior visible`;
     } else if (isSection) {
-      negativePrompt +=
-        ", (perspective:1.3), exterior view, complete building, façade";
+      return `${SECTION_NEGATIVE}, exterior view, complete building, façade`;
     } else if (is3D) {
-      negativePrompt +=
-        ", flat view, 2D drawing, orthographic, technical drawing, blueprint";
+      return "(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature, flat view, 2D drawing, orthographic, technical drawing, blueprint";
     }
 
-    return negativePrompt;
+    return "(low quality:1.4), (worst quality:1.4), (blurry:1.3), watermark, signature, text, logo";
   }
 
   /**
