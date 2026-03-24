@@ -410,6 +410,10 @@ class ArchitecturalFloorPlanGenerator {
    * @param {boolean} options.showFurniture - Show furniture symbols (default: true)
    * @param {boolean} options.showDimensions - Show dimension lines (default: true)
    * @param {boolean} options.showDoorSwings - Show door swing arcs (default: true)
+   * @param {boolean} options.showNorthArrow - Show north arrow (default: true)
+   * @param {boolean} options.showScaleBar - Show scale bar (default: true)
+   * @param {boolean} options.showTitle - Show internal title (default: true)
+   * @param {boolean} options.sheetMode - Board composition mode: strip internal chrome (titles, north arrow, scale bar), tighten margins, boost contrast (default: false)
    */
   constructor(options = {}) {
     this.scale = options.scale || 50; // pixels per meter
@@ -418,22 +422,45 @@ class ArchitecturalFloorPlanGenerator {
     this.showFurniture = options.showFurniture !== false;
     this.showDimensions = options.showDimensions !== false;
     this.showDoorSwings = options.showDoorSwings !== false;
-    this.margin = options.margin || 80; // margin for dimensions
-    this.strokeWidth = options.strokeWidth || 1;
+    this.showNorthArrow = options.showNorthArrow !== false;
+    this.showScaleBar = options.showScaleBar !== false;
+    this.showTitle = options.showTitle !== false;
+    this.sheetMode = options.sheetMode || false;
+    this.margin = this.sheetMode ? 20 : options.margin || 80;
+    this.strokeWidth = this.sheetMode
+      ? Math.max(options.strokeWidth || 1, 1.5)
+      : options.strokeWidth || 1;
 
-    // Colors
+    // Colors - boost contrast in sheetMode for stronger linework on the board
     this.colors = {
       wall: "#000000",
       wallFill: "#000000",
       internalWall: "#222222",
       window: "#87CEEB",
       door: "#333333",
-      furniture: "#555555",
-      dimension: "#444444",
+      furniture: this.sheetMode ? "#333333" : "#555555",
+      dimension: this.sheetMode ? "#1a1a1a" : "#444444",
       text: "#333333",
       roomFill: "#FFFFFF",
       background: "#FFFFFF",
     };
+  }
+
+  /**
+   * Scale detail-line weights for stronger board presentation in sheetMode.
+   * Geometric wall thicknesses remain model-driven; this only affects strokes.
+   */
+  scaleLineWeight(baseWeight) {
+    return Number((baseWeight * this.strokeWidth).toFixed(2));
+  }
+
+  /**
+   * Opening knockouts must stay slightly wider than the wall geometry stroke.
+   */
+  getKnockoutStroke(wallThickness, clearanceBase = 2) {
+    return Number(
+      (wallThickness + this.scaleLineWeight(clearanceBase)).toFixed(2),
+    );
   }
 
   /**
@@ -564,16 +591,22 @@ class ArchitecturalFloorPlanGenerator {
       parts.push(this.drawDimensions(width, length, rooms));
     }
 
-    // Draw north arrow
-    parts.push(this.drawNorthArrow(svgWidth - 60, 60));
+    // Draw north arrow (suppressed in sheetMode - board composer owns this)
+    if (!this.sheetMode && this.showNorthArrow) {
+      parts.push(this.drawNorthArrow(svgWidth - 60, 60));
+    }
 
-    // Draw scale bar
-    parts.push(this.drawScaleBar(this.margin, svgHeight - 30));
+    // Draw scale bar (suppressed in sheetMode - board composer owns this)
+    if (!this.sheetMode && this.showScaleBar) {
+      parts.push(this.drawScaleBar(this.margin, svgHeight - 30));
+    }
 
-    // Draw title
-    parts.push(
-      this.drawTitle(svgWidth / 2, 30, floorData.name || `Floor ${floor}`),
-    );
+    // Draw title (suppressed in sheetMode - board composer owns this)
+    if (!this.sheetMode && this.showTitle) {
+      parts.push(
+        this.drawTitle(svgWidth / 2, 30, floorData.name || `Floor ${floor}`),
+      );
+    }
 
     // Close SVG
     parts.push("</svg>");
@@ -600,10 +633,10 @@ class ArchitecturalFloorPlanGenerator {
 
         <!-- Dimension arrow markers -->
         <marker id="dim-arrow-start" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto">
-          <path d="M10,0 L0,3 L10,6" fill="none" stroke="${this.colors.dimension}" stroke-width="1"/>
+          <path d="M10,0 L0,3 L10,6" fill="none" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
         </marker>
         <marker id="dim-arrow-end" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
-          <path d="M0,0 L10,3 L0,6" fill="none" stroke="${this.colors.dimension}" stroke-width="1"/>
+          <path d="M0,0 L10,3 L0,6" fill="none" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
         </marker>
 
         <!-- Door swing arc clip -->
@@ -693,7 +726,7 @@ class ArchitecturalFloorPlanGenerator {
       ) {
         parts.push(`
           <rect x="${x + w}" y="${y}" width="${t}" height="${h}"
-                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="1.0"/>
+                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="${this.scaleLineWeight(1)}"/>
         `);
       }
 
@@ -704,7 +737,7 @@ class ArchitecturalFloorPlanGenerator {
       ) {
         parts.push(`
           <rect x="${x}" y="${y + h}" width="${w}" height="${t}"
-                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="1.0"/>
+                fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="${this.scaleLineWeight(1)}"/>
         `);
       }
     });
@@ -840,7 +873,7 @@ class ArchitecturalFloorPlanGenerator {
 
       parts.push(`
         <polygon points="${points}"
-                 fill="${fillPattern}" stroke="${strokeColor}" stroke-width="${isExterior ? 1.5 : 1.0}"
+                 fill="${fillPattern}" stroke="${strokeColor}" stroke-width="${this.scaleLineWeight(isExterior ? 1.5 : 1)}"
                  data-wall-id="${wall.id || ""}" data-wall-type="${wallType}"/>
       `);
 
@@ -905,23 +938,23 @@ class ArchitecturalFloorPlanGenerator {
       return `
         <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
               x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-              stroke="${this.colors.background}" stroke-width="${wallThickness + 2}"/>
+              stroke="${this.colors.background}" stroke-width="${this.getKnockoutStroke(wallThickness)}"/>
         <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
               x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-              stroke="${this.colors.door}" stroke-width="2"/>
+              stroke="${this.colors.door}" stroke-width="${this.scaleLineWeight(2)}"/>
       `;
     } else {
       // Window: parallel lines indicating glazing
       return `
         <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
               x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-              stroke="${this.colors.background}" stroke-width="${wallThickness + 2}"/>
+              stroke="${this.colors.background}" stroke-width="${this.getKnockoutStroke(wallThickness)}"/>
         <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
               x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-              stroke="${this.colors.window}" stroke-width="3"/>
+              stroke="${this.colors.window}" stroke-width="${this.scaleLineWeight(3)}"/>
         <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}"
               x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-              stroke="${this.colors.wall}" stroke-width="1"/>
+              stroke="${this.colors.wall}" stroke-width="${this.scaleLineWeight(1)}"/>
       `;
     }
   }
@@ -980,7 +1013,7 @@ class ArchitecturalFloorPlanGenerator {
       // Draw door leaf
       parts.push(`
         <rect x="${doorX}" y="${doorY}" width="${doorWidth}" height="${doorThickness}"
-              fill="${this.colors.door}" stroke="${this.colors.wall}" stroke-width="1.5"
+              fill="${this.colors.door}" stroke="${this.colors.wall}" stroke-width="${this.scaleLineWeight(1.5)}"
               transform="rotate(${rotation}, ${doorX}, ${doorY})"/>
       `);
 
@@ -1034,7 +1067,7 @@ class ArchitecturalFloorPlanGenerator {
 
     return `
       <path d="M ${x} ${y} L ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${endX} ${endY} Z"
-            fill="none" stroke="${this.colors.wall}" stroke-width="1.0"/>
+            fill="none" stroke="${this.colors.wall}" stroke-width="${this.scaleLineWeight(1)}"/>
     `;
   }
 
@@ -1096,19 +1129,19 @@ class ArchitecturalFloorPlanGenerator {
         // Window frame
         parts.push(`
           <rect x="${wx}" y="${wy}" width="${ww}" height="${wh}"
-                fill="none" stroke="${this.colors.wall}" stroke-width="2"/>
+                fill="none" stroke="${this.colors.wall}" stroke-width="${this.scaleLineWeight(2)}"/>
         `);
 
         // Window glass indication (parallel lines)
         if (direction === "north" || direction === "south") {
           parts.push(`
             <line x1="${wx + 2}" y1="${wy + wh / 2}" x2="${wx + ww - 2}" y2="${wy + wh / 2}"
-                  stroke="${this.colors.window}" stroke-width="2"/>
+                  stroke="${this.colors.window}" stroke-width="${this.scaleLineWeight(2)}"/>
           `);
         } else {
           parts.push(`
             <line x1="${wx + ww / 2}" y1="${wy + 2}" x2="${wx + ww / 2}" y2="${wy + wh - 2}"
-                  stroke="${this.colors.window}" stroke-width="2"/>
+                  stroke="${this.colors.window}" stroke-width="${this.scaleLineWeight(2)}"/>
           `);
         }
       });
@@ -1224,13 +1257,14 @@ class ArchitecturalFloorPlanGenerator {
   getFurnitureShape(type, x, y, w, h) {
     const stroke = this.colors.furniture;
     const fill = "none";
+    const sw = this.scaleLineWeight(1);
 
     switch (type) {
       case "sofa":
         return `
           <g class="sofa">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h * 0.3}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h * 0.3}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
@@ -1238,16 +1272,16 @@ class ArchitecturalFloorPlanGenerator {
       case "single-bed":
         return `
           <g class="bed">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <rect x="${x + w * 0.1}" y="${y + 2}" width="${w * 0.8}" height="${h * 0.2}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <line x1="${x}" y1="${y + h * 0.3}" x2="${x + w}" y2="${y + h * 0.3}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <rect x="${x + w * 0.1}" y="${y + 2}" width="${w * 0.8}" height="${h * 0.2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <line x1="${x}" y1="${y + h * 0.3}" x2="${x + w}" y2="${y + h * 0.3}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "bath":
         return `
           <g class="bath">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
             <ellipse cx="${x + w * 0.7}" cy="${y + h * 0.3}" rx="${w * 0.08}" ry="${h * 0.1}" fill="${stroke}"/>
           </g>
         `;
@@ -1255,9 +1289,9 @@ class ArchitecturalFloorPlanGenerator {
       case "shower":
         return `
           <g class="shower">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" stroke="${stroke}" stroke-width="1" stroke-dasharray="4,2"/>
-            <line x1="${x + w}" y1="${y}" x2="${x}" y2="${y + h}" stroke="${stroke}" stroke-width="1" stroke-dasharray="4,2"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <line x1="${x}" y1="${y}" x2="${x + w}" y2="${y + h}" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4,2"/>
+            <line x1="${x + w}" y1="${y}" x2="${x}" y2="${y + h}" stroke="${stroke}" stroke-width="${sw}" stroke-dasharray="4,2"/>
             <circle cx="${x + w * 0.5}" cy="${y + h * 0.3}" r="${Math.min(w, h) * 0.1}" fill="${stroke}"/>
           </g>
         `;
@@ -1265,15 +1299,15 @@ class ArchitecturalFloorPlanGenerator {
       case "toilet":
         return `
           <g class="toilet">
-            <ellipse cx="${x + w / 2}" cy="${y + h * 0.6}" rx="${w * 0.45}" ry="${h * 0.35}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <rect x="${x + w * 0.2}" y="${y}" width="${w * 0.6}" height="${h * 0.3}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <ellipse cx="${x + w / 2}" cy="${y + h * 0.6}" rx="${w * 0.45}" ry="${h * 0.35}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <rect x="${x + w * 0.2}" y="${y}" width="${w * 0.6}" height="${h * 0.3}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "basin":
         return `
           <g class="basin">
-            <ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w * 0.45}" ry="${h * 0.4}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <ellipse cx="${x + w / 2}" cy="${y + h / 2}" rx="${w * 0.45}" ry="${h * 0.4}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
             <circle cx="${x + w / 2}" cy="${y + h * 0.4}" r="${Math.min(w, h) * 0.08}" fill="${stroke}"/>
           </g>
         `;
@@ -1281,7 +1315,7 @@ class ArchitecturalFloorPlanGenerator {
       case "sink":
         return `
           <g class="sink">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
             <circle cx="${x + w / 2}" cy="${y + h / 2}" r="${Math.min(w, h) * 0.15}" fill="${stroke}"/>
           </g>
         `;
@@ -1289,56 +1323,56 @@ class ArchitecturalFloorPlanGenerator {
       case "cooktop":
         return `
           <g class="cooktop">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <circle cx="${x + w * 0.3}" cy="${y + h * 0.35}" r="${Math.min(w, h) * 0.15}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <circle cx="${x + w * 0.7}" cy="${y + h * 0.35}" r="${Math.min(w, h) * 0.15}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <circle cx="${x + w * 0.3}" cy="${y + h * 0.65}" r="${Math.min(w, h) * 0.12}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <circle cx="${x + w * 0.7}" cy="${y + h * 0.65}" r="${Math.min(w, h) * 0.12}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <circle cx="${x + w * 0.3}" cy="${y + h * 0.35}" r="${Math.min(w, h) * 0.15}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <circle cx="${x + w * 0.7}" cy="${y + h * 0.35}" r="${Math.min(w, h) * 0.15}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <circle cx="${x + w * 0.3}" cy="${y + h * 0.65}" r="${Math.min(w, h) * 0.12}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <circle cx="${x + w * 0.7}" cy="${y + h * 0.65}" r="${Math.min(w, h) * 0.12}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "fridge":
         return `
           <g class="fridge">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <line x1="${x}" y1="${y + h * 0.4}" x2="${x + w}" y2="${y + h * 0.4}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <line x1="${x}" y1="${y + h * 0.4}" x2="${x + w}" y2="${y + h * 0.4}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "dining-table":
         return `
           <g class="dining-table">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "desk":
         return `
           <g class="desk">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "wardrobe":
         return `
           <g class="wardrobe">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <line x1="${x + w / 2}" y1="${y}" x2="${x + w / 2}" y2="${y + h}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <line x1="${x + w / 2}" y1="${y}" x2="${x + w / 2}" y2="${y + h}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "coffee-table":
         return `
           <g class="coffee-table">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       case "armchair":
         return `
           <g class="armchair">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h * 0.25}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h * 0.25}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
@@ -1346,13 +1380,13 @@ class ArchitecturalFloorPlanGenerator {
       case "dryer":
         return `
           <g class="${type}">
-            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
-            <circle cx="${x + w / 2}" cy="${y + h / 2}" r="${Math.min(w, h) * 0.3}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>
+            <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+            <circle cx="${x + w / 2}" cy="${y + h / 2}" r="${Math.min(w, h) * 0.3}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
           </g>
         `;
 
       default:
-        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
     }
   }
 
@@ -1470,10 +1504,10 @@ class ArchitecturalFloorPlanGenerator {
     return `
       <g class="dimension-line">
         <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-              stroke="${this.colors.dimension}" stroke-width="0.5"
+              stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"
               marker-start="url(#dim-arrow-start)" marker-end="url(#dim-arrow-end)"/>
-        <path d="${tick1}" stroke="${this.colors.dimension}" stroke-width="0.5"/>
-        <path d="${tick2}" stroke="${this.colors.dimension}" stroke-width="0.5"/>
+        <path d="${tick1}" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"/>
+        <path d="${tick2}" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"/>
         <text x="${orientation === "horizontal" ? midX : midX + 15}" y="${textY}"
               text-anchor="middle" font-family="Arial, sans-serif" font-size="10"
               fill="${this.colors.dimension}" ${textRotate}>${text}</text>
@@ -1490,7 +1524,7 @@ class ArchitecturalFloorPlanGenerator {
     return `
       <g class="north-arrow" transform="translate(${x}, ${y})">
         <polygon points="0,-${size / 2} ${size / 4},${size / 2} 0,${size / 4} -${size / 4},${size / 2}"
-                 fill="#333" stroke="#333" stroke-width="1"/>
+                 fill="#333" stroke="#333" stroke-width="${this.scaleLineWeight(1)}"/>
         <text x="0" y="-${size / 2 + 5}" text-anchor="middle"
               font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">N</text>
       </g>
@@ -1507,7 +1541,7 @@ class ArchitecturalFloorPlanGenerator {
     return `
       <g class="scale-bar" transform="translate(${x}, ${y})">
         <rect x="0" y="0" width="${barLength / 2}" height="${barHeight}" fill="#333"/>
-        <rect x="${barLength / 2}" y="0" width="${barLength / 2}" height="${barHeight}" fill="#fff" stroke="#333" stroke-width="0.5"/>
+        <rect x="${barLength / 2}" y="0" width="${barLength / 2}" height="${barHeight}" fill="#fff" stroke="#333" stroke-width="${this.scaleLineWeight(0.5)}"/>
         <text x="0" y="${barHeight + 12}" font-family="Arial, sans-serif" font-size="8" fill="#333">0</text>
         <text x="${barLength / 2}" y="${barHeight + 12}" font-family="Arial, sans-serif" font-size="8" fill="#333" text-anchor="middle">1m</text>
         <text x="${barLength}" y="${barHeight + 12}" font-family="Arial, sans-serif" font-size="8" fill="#333" text-anchor="end">2m</text>
@@ -1729,6 +1763,8 @@ function buildGeometryFromDNA(dna, targetFloor = 0) {
  * @param {boolean} options.showFurniture - Include furniture symbols (default: true)
  * @param {boolean} options.showDimensions - Show dimension lines (default: true)
  * @param {boolean} options.showNorthArrow - Show north arrow (default: true)
+ * @param {boolean} options.showScaleBar - Show scale bar (default: true)
+ * @param {boolean} options.showTitle - Show internal title (default: true)
  * @param {number} options.scale - Pixels per meter (default: 50)
  * @param {number} options.northRotation - North arrow rotation in degrees (default: 0)
  * @returns {string} SVG string
@@ -1738,6 +1774,8 @@ export function generateFloorPlanSVG(floorData, options = {}) {
     showFurniture = true,
     showDimensions = true,
     showNorthArrow = true,
+    showScaleBar = true,
+    showTitle = true,
     scale = 50,
     northRotation = 0,
   } = options;
@@ -1764,6 +1802,8 @@ export function generateFloorPlanSVG(floorData, options = {}) {
     showFurniture,
     showDimensions,
     showNorthArrow,
+    showScaleBar,
+    showTitle,
     northRotation,
   });
 

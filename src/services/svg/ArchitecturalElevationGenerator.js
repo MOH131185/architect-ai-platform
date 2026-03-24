@@ -219,6 +219,7 @@ function generate(elevationData, dna, options = {}) {
     showLevelMarkers = true,
     showGroundContext = true,
     showMaterialPatterns = true,
+    sheetMode = false, // Board composition mode: strip internal chrome, tighten margins, boost contrast
   } = options;
 
   const building = elevationData.building || {};
@@ -252,10 +253,11 @@ function generate(elevationData, dna, options = {}) {
 
   // CRITICAL FIX: Calculate SVG dimensions based on building size + margins
   // This ensures elevations are LANDSCAPE (wider than tall) for typical buildings
-  const marginLeft = 120; // Left margin for dimension labels
-  const marginRight = 80; // Right margin
-  const marginTop = 100; // Top margin for title and roof
-  const marginBottom = 80; // Bottom margin for ground context
+  // sheetMode: tighten margins since board composer owns chrome/annotations
+  const marginLeft = sheetMode ? 30 : 120;
+  const marginRight = sheetMode ? 20 : 80;
+  const marginTop = sheetMode ? 20 : 100;
+  const marginBottom = sheetMode ? 20 : 80;
 
   // Estimate roof height addition (for gable roof with typical pitch)
   const roofPitch = dna?.geometry_rules?.roof_pitch || 35;
@@ -289,17 +291,21 @@ function generate(elevationData, dna, options = {}) {
   <!-- Background -->
   <rect width="${svgWidth}" height="${svgHeight}" fill="#FFFFFF"/>
 
-  <!-- Title -->
+  ${
+    sheetMode
+      ? "<!-- Title/scale suppressed in sheetMode -->"
+      : `<!-- Title -->
   <text x="${svgWidth / 2}" y="30" font-family="Arial, sans-serif" font-size="16" font-weight="bold"
         text-anchor="middle" fill="#1a1a1a">${orientation.toUpperCase()} ELEVATION</text>
 
   <!-- Scale indicator -->
   <text x="${svgWidth / 2}" y="50" font-family="Arial, sans-serif" font-size="10"
-        text-anchor="middle" fill="#666">Scale 1:${Math.round(1000 / scale)}</text>
+        text-anchor="middle" fill="#666">Scale 1:${Math.round(1000 / scale)}</text>`
+  }
 `;
 
-  // Draw ground context if enabled
-  if (showGroundContext) {
+  // Draw ground context if enabled (suppressed in sheetMode - pastel context washes out on board)
+  if (showGroundContext && !sheetMode) {
     svg += drawGroundContext(
       marginLeft,
       groundLevel,
@@ -375,8 +381,10 @@ function generate(elevationData, dna, options = {}) {
     );
   }
 
-  // Draw orientation indicator
-  svg += drawOrientationIndicator(svgWidth - 60, svgHeight - 60, orientation);
+  // Draw orientation indicator (suppressed in sheetMode - board composer owns annotations)
+  if (!sheetMode) {
+    svg += drawOrientationIndicator(svgWidth - 60, svgHeight - 60, orientation);
+  }
 
   svg += `
 </svg>`;

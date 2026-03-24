@@ -2499,6 +2499,7 @@ export async function generateA1PanelsSequential(
               locationData: job.meta?.locationData,
               sitePolygon: job.meta?.sitePolygon,
               scale: 50,
+              sheetMode: true, // Board composition: strip internal chrome
             },
           );
 
@@ -2617,6 +2618,7 @@ export async function generateA1PanelsSequential(
               buildingType: job.meta?.buildingType || "residential",
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
+              sheetMode: true, // Board composition: strip internal chrome
             },
           );
 
@@ -2739,6 +2741,7 @@ export async function generateA1PanelsSequential(
               buildingType: job.meta?.buildingType || "residential",
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
+              sheetMode: true, // Board composition: strip internal chrome
             },
             cutPosition,
           );

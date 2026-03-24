@@ -842,6 +842,7 @@ export function generateEnhancedFloorPlanSVG(
       showRoomLabels: true,
       wallThickness: geometry.dimensions.wallThickness,
       internalWallThickness: geometry.dimensions.internalWallThickness,
+      sheetMode: projectContext.sheetMode || false,
     });
 
     // Generate the SVG
@@ -896,6 +897,7 @@ export function generateEnhancedElevationSVG(
       showMaterialPatterns: true,
       showGroundContext: true,
       showLevelMarkers: true,
+      sheetMode: projectContext.sheetMode || false,
     });
 
     logger.info(
@@ -962,13 +964,16 @@ export function generateEnhancedSectionSVG(
     }
 
     // Use the generateFromDNA function directly (section generator is function-based)
-    const svg = generateSectionFromDNA(dnaForSection, sectionType, {
+    // NOTE: generateFromDNA(dna, options) takes sectionType inside options, not as separate arg
+    const svg = generateSectionFromDNA(dnaForSection, {
+      sectionType,
       scale: projectContext.scale || 50,
       showStructure: true,
       showDimensions: true,
       showLevels: true,
       showRoomLabels: true,
       showFoundation: true,
+      sheetMode: projectContext.sheetMode || false,
     });
 
     logger.info(

@@ -4,6 +4,12 @@
  * Handles image generation with FLUX primary and style-conditioned SDXL fallback.
  * Supports geometry-conditioned generation (img2img/controlnet).
  *
+ * STYLE GATE:
+ * Elevations, sections, axonometrics, and interior views must not fall back to
+ * an unstyled generator path. Style coherence is enforced by applying the hero
+ * reference whenever available and by failing fast if FLUX cannot complete,
+ * rather than silently degrading to an unstyled SDXL output.
+ *
  * Phase 2 changes:
  *  - Generator routing by panelRegistry category (3d/site → flux-1-dev, technical/data → flux-1-schnell)
  *  - Style-conditioned SDXL fallback for elevation/section panels (passes hero styleReferenceUrl)
@@ -197,70 +203,17 @@ class MultiModelImageService {
         `⚠️  FLUX generation failed for ${viewType}: ${fluxError.message}`,
       );
 
-      // ----------------------------------------------------------------
-      // Style coherence gate: Block SDXL fallback for elevations/sections
-      // when no styleReferenceUrl is available. An unstyled SDXL render
-      // produces a different visual language than the FLUX hero, causing
-      // mixed-style collage artifacts on the final A1 sheet.
-      //
-      // Note: needsStyleLock already implies !!styleReferenceUrl, so we
-      // check isElevationOrSection directly to catch the case where the
-      // hero hasn't generated yet (styleReferenceUrl is null/undefined).
-      // ----------------------------------------------------------------
-      if (isElevationOrSection(viewType) && !styleReferenceUrl) {
-        logger.error(
-          `❌ [STYLE GATE] Blocking SDXL fallback for ${viewType} – ` +
-            `no styleReferenceUrl available; unstyled fallback would break ` +
-            `style coherence with FLUX hero.`,
-        );
-        throw new Error(
-          `FLUX generation failed for ${viewType} and style-safe SDXL fallback ` +
-            `is unavailable (no hero style reference): ${fluxError.message}`,
-        );
-      }
-
-      logger.info(
-        `   Attempting style-conditioned SDXL fallback for ${viewType}...`,
+      // SDXL/Replicate fallback removed — Together.ai FLUX is the only image provider.
+      // If FLUX fails, surface the error directly so it can be retried.
+      throw new Error(
+        `FLUX generation failed for ${viewType}: ${fluxError.message}`,
       );
-
-      try {
-        const sdxlResult = await this.generateWithSDXL({
-          viewType,
-          prompt,
-          negativePrompt,
-          seed,
-          width,
-          height,
-          geometryRender,
-          geometryStrength,
-          styleReferenceUrl: needsStyleLock ? styleReferenceUrl : null,
-        });
-
-        logger.success(
-          `✅ SDXL fallback successful for ${viewType} (style-conditioned: ${needsStyleLock})`,
-        );
-
-        return {
-          ...sdxlResult,
-          model: "sdxl",
-          generatorUsed: "sdxl-replicate",
-          hadFallback: true,
-          fallbackReason: fluxError.message,
-          styleConditioned: needsStyleLock,
-          category,
-        };
-      } catch (sdxlError) {
-        logger.error(`❌ Both FLUX and SDXL failed for ${viewType}`);
-        throw new Error(
-          `Image generation failed: FLUX (${fluxError.message}), SDXL (${sdxlError.message})`,
-        );
-      }
     }
   }
 
   /**
+   * @deprecated ControlNet via Replicate removed. Not called in multi_panel workflow.
    * Generate image via ControlNet Canny conditioning.
-   * Converts canonical SVG geometry to Canny edges, then calls Replicate.
    *
    * @param {Object} params
    * @param {string} params.svgSource - Canonical SVG from geometry pack
@@ -335,10 +288,8 @@ class MultiModelImageService {
   }
 
   /**
-   * Generate with SDXL via Replicate.
-   *
-   * Phase 2: accepts styleReferenceUrl for img2img style conditioning on
-   * elevation/section panels, preventing unstyled SDXL fallback.
+   * @deprecated Replicate/SDXL removed. Together.ai FLUX is the only image provider.
+   * Kept for reference only — not called in the multi_panel workflow.
    */
   async generateWithSDXL(params) {
     const {

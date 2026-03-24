@@ -79,6 +79,7 @@ export function generateFromDNA(dna, options = {}) {
     showGroundLine = true,
     width: outputWidth = 1500,
     height: outputHeight = 1000,
+    sheetMode = false, // Board composition mode: strip internal chrome, tighten margins, boost contrast
   } = options;
 
   // Extract dimensions from DNA
@@ -94,8 +95,8 @@ export function generateFromDNA(dna, options = {}) {
   });
 
   // Calculate drawing dimensions
-  const pixelsPerMeter = outputWidth / (dims.length + 6); // 6m margins
-  const margin = 80; // SVG margin in pixels
+  const pixelsPerMeter = outputWidth / (dims.length + (sheetMode ? 2 : 6)); // tighter margins in sheetMode
+  const margin = sheetMode ? 20 : 80; // SVG margin in pixels
 
   // The cutting dimension depends on section type
   const cuttingLength =
@@ -134,7 +135,12 @@ export function generateFromDNA(dna, options = {}) {
   // Ground line
   if (showGroundLine) {
     parts.push(
-      generateGroundLine(cuttingLength, pixelsPerMeter, dims.totalHeight),
+      generateGroundLine(
+        cuttingLength,
+        pixelsPerMeter,
+        dims.totalHeight,
+        sheetMode,
+      ),
     );
   }
 
@@ -204,14 +210,14 @@ export function generateFromDNA(dna, options = {}) {
 
   parts.push("</g>"); // Close drawing area
 
-  // Title and labels
-  parts.push(generateTitle(sectionType, svgWidth, svgHeight, margin));
-
-  // Section markers (A-A or B-B)
-  parts.push(generateSectionMarkers(sectionType, svgWidth, svgHeight, margin));
-
-  // Scale bar
-  parts.push(generateScaleBar(scale, margin, svgHeight));
+  // Title, section markers, and scale bar (suppressed in sheetMode - board composer owns these)
+  if (!sheetMode) {
+    parts.push(generateTitle(sectionType, svgWidth, svgHeight, margin));
+    parts.push(
+      generateSectionMarkers(sectionType, svgWidth, svgHeight, margin),
+    );
+    parts.push(generateScaleBar(scale, margin, svgHeight));
+  }
 
   parts.push("</svg>");
 
@@ -338,20 +344,32 @@ function generateDefs(materials) {
 
 /**
  * Generate ground line with earth indication
+ * @param {boolean} sheetMode - When true, clamp to building width and suppress earth hatching
  */
-function generateGroundLine(cuttingLength, pixelsPerMeter, buildingHeight) {
+function generateGroundLine(
+  cuttingLength,
+  pixelsPerMeter,
+  buildingHeight,
+  sheetMode = false,
+) {
   const groundY = buildingHeight * pixelsPerMeter + 20; // 20px below building
-  const lineWidth = (cuttingLength + 4) * pixelsPerMeter;
-  const startX = -2 * pixelsPerMeter;
+  // sheetMode: clamp ground line to building width (no wide bleed)
+  const overshoot = sheetMode ? 0.5 : 2;
+  const lineWidth = (cuttingLength + overshoot * 2) * pixelsPerMeter;
+  const startX = -overshoot * pixelsPerMeter;
 
   return `
   <g class="ground-line">
     <!-- Main ground line -->
     <line x1="${startX}" y1="${groundY}" x2="${startX + lineWidth}" y2="${groundY}"
           stroke="${COLORS.cut}" stroke-width="${LINE_WEIGHTS.CUT}"/>
-    <!-- Ground hatching -->
+    ${
+      sheetMode
+        ? "<!-- Earth hatching suppressed in sheetMode -->"
+        : `<!-- Ground hatching -->
     <rect x="${startX}" y="${groundY}" width="${lineWidth}" height="15"
-          fill="url(#hatch-earth)"/>
+          fill="url(#hatch-earth)"/>`
+    }
   </g>`;
 }
 

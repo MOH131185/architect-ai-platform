@@ -2312,6 +2312,20 @@ function computeSvgGeometryBounds(svgText) {
     return null;
   }
 
+  // Pre-filter: strip content that inflates bounds but isn't structural geometry
+  // 1. Remove <defs>...</defs> blocks (pattern definitions contain geometry)
+  let cleanedSvg = svgText.replace(/<defs[\s>][\s\S]*?<\/defs>/gi, "");
+  // 2. Remove known decorative groups by class (titles, scale bars, north arrows, etc.)
+  cleanedSvg = cleanedSvg.replace(
+    /<g[^>]*\bclass="(title|scale-bar|north-arrow|section-markers|ground-line|ground-context)"[^>]*>[\s\S]*?<\/g>/gi,
+    "",
+  );
+  // 3. Remove known decorative groups by id
+  cleanedSvg = cleanedSvg.replace(
+    /<g[^>]*\bid="(ground-context|landscape)"[^>]*>[\s\S]*?<\/g>/gi,
+    "",
+  );
+
   const bounds = {
     minX: Infinity,
     minY: Infinity,
@@ -2329,7 +2343,7 @@ function computeSvgGeometryBounds(svgText) {
   };
 
   // Parse <rect> elements (skip background rects)
-  const rectMatches = svgText.matchAll(/<rect[^>]*>/gi);
+  const rectMatches = cleanedSvg.matchAll(/<rect[^>]*>/gi);
   for (const match of rectMatches) {
     const fullMatch = match[0];
     // Skip background rects (100% or very large)
@@ -2360,7 +2374,7 @@ function computeSvgGeometryBounds(svgText) {
   }
 
   // Parse <line> elements
-  const lineMatches = svgText.matchAll(
+  const lineMatches = cleanedSvg.matchAll(
     /<line[^>]*?\bx1="([^"]*)"[^>]*?\by1="([^"]*)"[^>]*?\bx2="([^"]*)"[^>]*?\by2="([^"]*)"/gi,
   );
   for (const match of lineMatches) {
@@ -2369,7 +2383,7 @@ function computeSvgGeometryBounds(svgText) {
   }
 
   // Parse <polygon> and <polyline> elements
-  const polyMatches = svgText.matchAll(
+  const polyMatches = cleanedSvg.matchAll(
     /<poly(?:gon|line)[^>]*?\bpoints="([^"]*)"/gi,
   );
   for (const match of polyMatches) {
@@ -2380,7 +2394,7 @@ function computeSvgGeometryBounds(svgText) {
   }
 
   // Parse <path> elements - extract M, L, H, V coordinates
-  const pathMatches = svgText.matchAll(/<path[^>]*?\bd="([^"]*)"/gi);
+  const pathMatches = cleanedSvg.matchAll(/<path[^>]*?\bd="([^"]*)"/gi);
   for (const match of pathMatches) {
     const pathData = match[1];
     let currentX = 0;
@@ -2435,7 +2449,7 @@ function computeSvgGeometryBounds(svgText) {
   }
 
   // Parse <circle> elements
-  const circleMatches = svgText.matchAll(
+  const circleMatches = cleanedSvg.matchAll(
     /<circle[^>]*?\bcx="([^"]*)"[^>]*?\bcy="([^"]*)"[^>]*?\br="([^"]*)"/gi,
   );
   for (const match of circleMatches) {
@@ -2446,20 +2460,15 @@ function computeSvgGeometryBounds(svgText) {
     expandBounds(cx + r, cy + r);
   }
 
-  // Parse <text> elements (approximate bounds)
-  const textMatches = svgText.matchAll(
-    /<text[^>]*?\bx="([^"]*)"[^>]*?\by="([^"]*)"/gi,
-  );
-  for (const match of textMatches) {
-    expandBounds(parseFloat(match[1]) || 0, parseFloat(match[2]) || 0);
-  }
+  // Skip <text> elements - text is annotation/chrome, not structural geometry.
+  // Board composer adds its own labels; including text inflates bounds with titles.
 
   // Validate bounds
   if (!isFinite(bounds.minX) || !isFinite(bounds.maxX)) {
     return null;
   }
 
-  return {
+  const result = {
     minX: bounds.minX,
     minY: bounds.minY,
     maxX: bounds.maxX,
@@ -2467,6 +2476,104 @@ function computeSvgGeometryBounds(svgText) {
     width: bounds.maxX - bounds.minX,
     height: bounds.maxY - bounds.minY,
   };
+
+  // ViewBox sanity check: reject geometry bounds that wildly exceed the declared viewBox
+  const viewBox = parseSvgViewBox(svgText);
+  if (viewBox) {
+    const vbWidth = viewBox.width;
+    const vbHeight = viewBox.height;
+    if (vbWidth > 0 && vbHeight > 0) {
+      if (result.width > vbWidth * 1.1 || result.height > vbHeight * 1.1) {
+        // Geometry bounds exceed viewBox by >10% - likely includes decorative bleed
+        // Fall back to viewBox dimensions
+        return {
+          minX: viewBox.minX || 0,
+          minY: viewBox.minY || 0,
+          maxX: (viewBox.minX || 0) + vbWidth,
+          maxY: (viewBox.minY || 0) + vbHeight,
+          width: vbWidth,
+          height: vbHeight,
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * QA validation: detect internal chrome that should have been stripped by sheetMode.
+ * Logs warnings but does not block composition (defensive, not gatekeeping).
+ *
+ * @param {string} panelType - Panel type identifier (e.g. "floor_plan_ground")
+ * @param {string} svgText - SVG content to validate
+ * @returns {{ clean: boolean, issues: string[] }}
+ */
+function validateSheetModeStripped(panelType, svgText) {
+  if (!svgText) return { clean: true, issues: [] };
+
+  const issues = [];
+
+  // Check for internal chrome groups that sheetMode should have removed
+  const chromeClasses = [
+    "title",
+    "scale-bar",
+    "north-arrow",
+    "section-markers",
+  ];
+  for (const cls of chromeClasses) {
+    if (svgText.includes(`class="${cls}"`)) {
+      issues.push(`Panel ${panelType} still contains class="${cls}" group`);
+    }
+  }
+
+  // Check for title-like text elements (font-size >= 14)
+  const titleTextPattern =
+    /<text[^>]*font-size="(\d+)"[^>]*>[^<]*(ELEVATION|SECTION|Scale 1:)[^<]*<\/text>/gi;
+  let match;
+  while ((match = titleTextPattern.exec(svgText)) !== null) {
+    const fontSize = parseInt(match[1], 10);
+    if (fontSize >= 14) {
+      issues.push(
+        `Panel ${panelType} contains title text: "${match[2]}" at font-size ${fontSize}`,
+      );
+    }
+  }
+
+  // Check for ground context groups
+  if (
+    svgText.includes('id="ground-context"') ||
+    svgText.includes('id="landscape"')
+  ) {
+    issues.push(
+      `Panel ${panelType} still contains ground context/landscape group`,
+    );
+  }
+
+  // Check content-to-viewBox ratio (dead space detection)
+  const viewBox = parseSvgViewBox(svgText);
+  const geoBounds = computeSvgGeometryBounds(svgText);
+  if (viewBox && geoBounds) {
+    const vbArea = (viewBox.width || 0) * (viewBox.height || 0);
+    const contentArea = geoBounds.width * geoBounds.height;
+    if (vbArea > 0 && contentArea > 0) {
+      const ratio = contentArea / vbArea;
+      if (ratio < 0.5) {
+        issues.push(
+          `Panel ${panelType} has ${Math.round(ratio * 100)}% content fill (>50% dead space)`,
+        );
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    console.warn(
+      `[QA:sheetMode] ${issues.length} issue(s) in ${panelType}:`,
+      issues,
+    );
+  }
+
+  return { clean: issues.length === 0, issues };
 }
 
 function parseSvgViewBox(svgText) {
@@ -2923,6 +3030,14 @@ async function placePanelImage({
   if (shouldTrimToContent) {
     try {
       let bufferForTrim = imageBuffer;
+
+      // QA: validate sheetMode chrome was stripped from SVG technical panels
+      if (isSvgInput && isTechnicalDrawing) {
+        const svgForQA = Buffer.isBuffer(imageBuffer)
+          ? imageBuffer.toString("utf8")
+          : String(imageBuffer || "");
+        validateSheetModeStripped(panelType, svgForQA);
+      }
 
       // SVG viewBox rewrite (best-effort): preserves crispness by re-rasterizing
       // the *cropped* viewBox at print density instead of scaling up a tiny trim.
