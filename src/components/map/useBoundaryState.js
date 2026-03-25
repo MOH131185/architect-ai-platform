@@ -35,7 +35,6 @@ import {
   fromCSV,
   wouldCauseSelfIntersection,
   roundCoord,
-  COORDINATE_PRECISION,
 } from "./boundaryGeometry.js";
 
 // Maximum history entries
@@ -51,7 +50,7 @@ export function useBoundaryState(initialPolygon = []) {
   const initialRing = useMemo(() => {
     if (!initialPolygon || initialPolygon.length === 0) return [];
     return latLngArrayToRing(initialPolygon);
-  }, []);
+  }, [initialPolygon]);
 
   // Core state: GeoJSON ring [lng, lat] format (closed)
   const [ring, setRingInternal] = useState(initialRing);

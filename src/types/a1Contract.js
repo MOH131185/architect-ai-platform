@@ -81,112 +81,112 @@
  * Required A1 sheet slots
  */
 export const REQUIRED_SLOTS = {
-  'site-map': {
-    label: 'Site Map',
-    description: 'Site context with boundary, north arrow, scale',
-    scale: '1:500',
+  "site-map": {
+    label: "Site Map",
+    description: "Site context with boundary, north arrow, scale",
+    scale: "1:500",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'floor-plan-ground': {
-    label: 'Ground Floor Plan',
-    description: 'Complete ground floor layout with dimensions',
-    scale: '1:100',
+  "floor-plan-ground": {
+    label: "Ground Floor Plan",
+    description: "Complete ground floor layout with dimensions",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'floor-plan-upper': {
-    label: 'Upper Floor Plan',
-    description: 'Upper floor layout (if multi-story)',
-    scale: '1:100',
+  "floor-plan-upper": {
+    label: "Upper Floor Plan",
+    description: "Upper floor layout (if multi-story)",
+    scale: "1:100",
     minCount: 0, // Optional for single-story
     maxCount: 1,
-    conditional: (contract) => contract.buildingFootprint.floorCount > 1
+    conditional: (contract) => contract.buildingFootprint.floorCount > 1,
   },
-  'roof-plan': {
-    label: 'Roof Plan',
-    description: 'Roof layout with drainage and materials',
-    scale: '1:200',
+  "roof-plan": {
+    label: "Roof Plan",
+    description: "Roof layout with drainage and materials",
+    scale: "1:200",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'elevation-north': {
-    label: 'North Elevation',
-    description: 'North facade with materials and dimensions',
-    scale: '1:100',
+  "elevation-north": {
+    label: "North Elevation",
+    description: "North facade with materials and dimensions",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'elevation-south': {
-    label: 'South Elevation',
-    description: 'South facade',
-    scale: '1:100',
+  "elevation-south": {
+    label: "South Elevation",
+    description: "South facade",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'elevation-east': {
-    label: 'East Elevation',
-    description: 'East facade',
-    scale: '1:100',
+  "elevation-east": {
+    label: "East Elevation",
+    description: "East facade",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'elevation-west': {
-    label: 'West Elevation',
-    description: 'West facade',
-    scale: '1:100',
+  "elevation-west": {
+    label: "West Elevation",
+    description: "West facade",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'section-longitudinal': {
-    label: 'Longitudinal Section',
-    description: 'Section through length of building',
-    scale: '1:100',
+  "section-longitudinal": {
+    label: "Longitudinal Section",
+    description: "Section through length of building",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'section-transverse': {
-    label: 'Transverse Section',
-    description: 'Section through width of building',
-    scale: '1:100',
+  "section-transverse": {
+    label: "Transverse Section",
+    description: "Section through width of building",
+    scale: "1:100",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  '3d-exterior': {
-    label: '3D Exterior View',
-    description: 'Photorealistic exterior perspective',
-    scale: 'not to scale',
+  "3d-exterior": {
+    label: "3D Exterior View",
+    description: "Photorealistic exterior perspective",
+    scale: "not to scale",
     minCount: 1,
-    maxCount: 2
+    maxCount: 2,
   },
-  '3d-axonometric': {
-    label: '3D Axonometric View',
-    description: 'Axonometric or isometric projection',
-    scale: 'not to scale',
+  "3d-axonometric": {
+    label: "3D Axonometric View",
+    description: "Axonometric or isometric projection",
+    scale: "not to scale",
     minCount: 0, // Optional
-    maxCount: 1
+    maxCount: 1,
   },
-  'interior-view': {
-    label: 'Interior View',
-    description: 'Interior perspective of main space',
-    scale: 'not to scale',
+  "interior-view": {
+    label: "Interior View",
+    description: "Interior perspective of main space",
+    scale: "not to scale",
     minCount: 1,
-    maxCount: 2
+    maxCount: 2,
   },
-  'title-block': {
-    label: 'Title Block',
-    description: 'Project metadata and drawing register',
-    scale: 'not to scale',
+  "title-block": {
+    label: "Title Block",
+    description: "Project metadata and drawing register",
+    scale: "not to scale",
     minCount: 1,
-    maxCount: 1
+    maxCount: 1,
   },
-  'legend': {
-    label: 'Legend & Symbols',
-    description: 'Drawing conventions and material legend',
-    scale: 'not to scale',
+  legend: {
+    label: "Legend & Symbols",
+    description: "Drawing conventions and material legend",
+    scale: "not to scale",
     minCount: 1,
-    maxCount: 1
-  }
+    maxCount: 1,
+  },
 };
 
 /**
@@ -224,15 +224,15 @@ export const A1_DIMENSIONS = {
     heightMM: 594,
     aspectRatio: 1.416,
     widthPX_300DPI: 9933,
-    heightPX_300DPI: 7016
+    heightPX_300DPI: 7016,
   },
   portrait: {
     widthMM: 594,
     heightMM: 841,
     aspectRatio: 0.706,
     widthPX_300DPI: 7016,
-    heightPX_300DPI: 9933
-  }
+    heightPX_300DPI: 9933,
+  },
 };
 
 /**
@@ -246,7 +246,7 @@ export function createA1Contract(params) {
     siteBoundary,
     buildingFootprint,
     styleTaxonomy,
-    orientation = 'landscape'
+    orientation = "landscape",
   } = params;
 
   const dimensions = A1_DIMENSIONS[orientation];
@@ -260,9 +260,9 @@ export function createA1Contract(params) {
     styleTaxonomy,
     assets: {},
     metadata: {
-      format: 'A1',
+      format: "A1",
       orientation,
-      dimensions
+      dimensions,
     },
     validation: {
       boundaryCompliance: false,
@@ -270,14 +270,16 @@ export function createA1Contract(params) {
       completeness: false,
       qualityScore: 0,
       warnings: [],
-      errors: []
+      errors: [],
     },
-    revisionHistory: [{
-      revisionId,
-      timestamp: new Date().toISOString(),
-      action: 'created',
-      description: 'Initial contract created'
-    }]
+    revisionHistory: [
+      {
+        revisionId,
+        timestamp: new Date().toISOString(),
+        action: "created",
+        description: "Initial contract created",
+      },
+    ],
   };
 }
 
@@ -292,16 +294,18 @@ export function validateA1Completeness(contract) {
     missingRequired: [],
     missingOptional: [],
     errors: [],
-    warnings: []
+    warnings: [],
   };
 
   // Check each required slot
   for (const [slotType, slotDef] of Object.entries(REQUIRED_SLOTS)) {
-    const assetsOfType = Object.values(contract.assets).filter(a => a.slotType === slotType);
+    const assetsOfType = Object.values(contract.assets).filter(
+      (a) => a.slotType === slotType,
+    );
     const actualCount = assetsOfType.length;
 
     // Evaluate conditional requirements
-    if (typeof slotDef.conditional === 'function') {
+    if (typeof slotDef.conditional === "function") {
       if (!slotDef.conditional(contract)) {
         continue; // Skip conditional slots that don't apply
       }
@@ -314,7 +318,7 @@ export function validateA1Completeness(contract) {
         slotType,
         label: slotDef.label,
         needed: deficit,
-        description: slotDef.description
+        description: slotDef.description,
       });
       result.valid = false;
       result.errors.push(`Missing ${deficit} required ${slotDef.label}(s)`);
@@ -322,8 +326,9 @@ export function validateA1Completeness(contract) {
 
     // Check maximum count
     if (actualCount > slotDef.maxCount) {
-      const excess = actualCount - slotDef.maxCount;
-      result.warnings.push(`Too many ${slotDef.label}(s): ${actualCount} (max ${slotDef.maxCount})`);
+      result.warnings.push(
+        `Too many ${slotDef.label}(s): ${actualCount} (max ${slotDef.maxCount})`,
+      );
     }
   }
 
@@ -337,7 +342,9 @@ export function validateA1Completeness(contract) {
  * @returns {A1Contract} Updated contract
  */
 export function addAssetToContract(contract, asset) {
-  const assetId = asset.assetId || `asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const assetId =
+    asset.assetId ||
+    `asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   return {
     ...contract,
@@ -346,9 +353,9 @@ export function addAssetToContract(contract, asset) {
       [assetId]: {
         ...asset,
         assetId,
-        isPresent: true
-      }
-    }
+        isPresent: true,
+      },
+    },
   };
 }
 
@@ -369,11 +376,11 @@ export function createRevision(baseContract, description) {
       {
         revisionId: newRevisionId,
         timestamp: new Date().toISOString(),
-        action: 'revised',
+        action: "revised",
         description,
-        parentRevision: baseContract.revisionId
-      }
-    ]
+        parentRevision: baseContract.revisionId,
+      },
+    ],
   };
 }
 
@@ -383,5 +390,5 @@ export default {
   createA1Contract,
   validateA1Completeness,
   addAssetToContract,
-  createRevision
+  createRevision,
 };

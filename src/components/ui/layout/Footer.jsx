@@ -1,7 +1,7 @@
-import React from 'react';
-import { clsx } from 'clsx';
-import CompanyLogo from '../CompanyLogo.jsx';
-import { twMerge } from 'tailwind-merge';
+import React from "react";
+import { clsx } from "clsx";
+import CompanyLogo from "../CompanyLogo.jsx";
+import { twMerge } from "tailwind-merge";
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -16,10 +16,7 @@ const Footer = ({ className, ...props }) => {
 
   return (
     <footer
-      className={cn(
-        'w-full border-t border-gray-200 bg-white',
-        className
-      )}
+      className={cn("w-full border-t border-gray-200 bg-white", className)}
       {...props}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
@@ -27,10 +24,7 @@ const Footer = ({ className, ...props }) => {
           {/* Logo & Copyright */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <CompanyLogo
-                size={40}
-                className="mr-2"
-              />
+              <CompanyLogo size={40} className="mr-2" />
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-gray-900">
                   ArchiAI Solution Ltd.
@@ -47,24 +41,9 @@ const Footer = ({ className, ...props }) => {
 
           {/* Links */}
           <div className="flex items-center gap-6">
-            <a
-              href="#"
-              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              Privacy
-            </a>
-            <a
-              href="#"
-              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              Terms
-            </a>
-            <a
-              href="#"
-              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
-              Contact
-            </a>
+            <span className="text-sm text-gray-500">Privacy</span>
+            <span className="text-sm text-gray-500">Terms</span>
+            <span className="text-sm text-gray-500">Contact</span>
           </div>
         </div>
       </div>

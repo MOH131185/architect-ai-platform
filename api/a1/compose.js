@@ -25,7 +25,6 @@ import fs from "fs";
 import path from "path";
 
 import fetch from "node-fetch";
-import { PDFDocument } from "pdf-lib";
 
 import a1ComposePayload from "../../server/utils/a1ComposePayload.cjs";
 
@@ -41,34 +40,43 @@ import {
   embedFontInSVG,
   ensureFontsLoaded,
 } from "../../src/utils/svgFontEmbedder.js";
-
-// QA System imports (lazy-loaded for Vercel compatibility)
-let OpusSheetCritic = null;
-let QAGates = null;
-
-async function getOpusSheetCritic() {
-  if (OpusSheetCritic) return OpusSheetCritic;
-  try {
-    const module = await import("../../src/services/qa/OpusSheetCritic.js");
-    OpusSheetCritic = module.default || module.OpusSheetCritic;
-    return OpusSheetCritic;
-  } catch (e) {
-    console.warn("[A1 Compose] OpusSheetCritic not available:", e.message);
-    return null;
-  }
-}
-
-async function getQAGates() {
-  if (QAGates) return QAGates;
-  try {
-    const module = await import("../../src/services/qa/QAGates.js");
-    QAGates = module;
-    return QAGates;
-  } catch (e) {
-    console.warn("[A1 Compose] QAGates not available:", e.message);
-    return null;
-  }
-}
+import {
+  buildClimateCardBuffer,
+  buildMaterialPaletteBuffer,
+  buildSchedulesBuffer,
+  escapeXml,
+} from "../../src/services/a1/composeDataPanels.js";
+import {
+  buildPrintReadyPdfFromPng,
+  collectPanelGeometryHashes,
+  getCrossViewImageValidator,
+  getLayoutConstants,
+  getOpusSheetCritic,
+  getPanelRegistry,
+  getQAGates,
+  getRenderSanityValidator,
+  logRuntimeOnce,
+  readRequestHashes,
+  resolveComposeOutputDir,
+} from "../../src/services/a1/composeRuntime.js";
+import {
+  applyComposeCors,
+  applyComposeNoStoreHeaders,
+  enforceComposePostMethod,
+  handleComposePreflight,
+  sendComposeUnhandledError,
+} from "../../src/services/a1/composeTransport.js";
+import {
+  buildComposeSuccessPayload,
+  buildPanelsByKey,
+} from "../../src/services/a1/composeResponse.js";
+import {
+  buildComposeArtifactManifest,
+  buildPublicArtifactUrl,
+  createComposeTrace,
+  logComposeEvent,
+  writeComposeArtifactManifest,
+} from "../../src/services/a1/composeTrace.js";
 
 // A1GridSpec12Column lazy-load removed – GRID_12COL is imported from
 // composeCore.js (the SSOT) and A1GridSpec12Column re-exports it.
@@ -90,482 +98,6 @@ export const config = {
 const { buildComposeSheetUrl } = a1ComposePayload;
 const DEFAULT_MAX_DATAURL_BYTES = 4.5 * 1024 * 1024;
 const DEFAULT_PUBLIC_URL_BASE = "/api/a1/compose-output";
-
-function normalizeHashValue(value) {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function readRequestHashes(body = {}) {
-  const metadata = body?.metadata || body?.meta || {};
-  return {
-    dnaHash: normalizeHashValue(
-      body?.dnaHash || body?.dna_hash || metadata.dnaHash || metadata.dna_hash,
-    ),
-    geometryHash: normalizeHashValue(
-      body?.geometryHash ||
-        body?.geometry_hash ||
-        metadata.geometryHash ||
-        metadata.geometry_hash,
-    ),
-    programHash: normalizeHashValue(
-      body?.programHash ||
-        body?.program_hash ||
-        metadata.programHash ||
-        metadata.program_hash,
-    ),
-  };
-}
-
-function collectPanelGeometryHashes(panels = []) {
-  const hashes = [];
-  for (const panel of panels) {
-    const panelHash = normalizeHashValue(
-      panel?.geometryHash ||
-        panel?.geometry_hash ||
-        panel?.meta?.geometryHash ||
-        panel?.meta?.geometry_hash,
-    );
-    if (panelHash) hashes.push(panelHash);
-  }
-  return [...new Set(hashes)];
-}
-
-async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
-  if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
-    throw new Error("pngBuffer is required to build PDF");
-  }
-
-  const widthPx = Number(options.widthPx);
-  const heightPx = Number(options.heightPx);
-  const dpi = Number(options.dpi) || 300;
-  if (
-    !Number.isFinite(widthPx) ||
-    !Number.isFinite(heightPx) ||
-    widthPx <= 0 ||
-    heightPx <= 0
-  ) {
-    throw new Error("Invalid width/height for PDF");
-  }
-
-  const widthPt = (widthPx / dpi) * 72;
-  const heightPt = (heightPx / dpi) * 72;
-
-  const pdf = await PDFDocument.create();
-  const page = pdf.addPage([widthPt, heightPt]);
-  const image = await pdf.embedPng(pngBuffer);
-  page.drawImage(image, { x: 0, y: 0, width: widthPt, height: heightPt });
-  return Buffer.from(await pdf.save({ useObjectStreams: false }));
-}
-
-function resolveComposeOutputDir() {
-  if (process.env.A1_COMPOSE_OUTPUT_DIR) {
-    return process.env.A1_COMPOSE_OUTPUT_DIR;
-  }
-
-  if (process.env.VERCEL || process.env.AWS_REGION) {
-    const baseDir = process.platform === "win32" ? process.cwd() : "/tmp";
-    return path.join(baseDir, "a1_compose_outputs");
-  }
-
-  return path.join(process.cwd(), "qa_results", "a1_compose_outputs");
-}
-
-// PANEL_REGISTRY: Single Source of Truth for all panel types
-// This import provides canonical panel types and validation
-let panelRegistry = null;
-
-// Import shared constants from service layer
-// Note: In Vercel, we need to use dynamic import for ES modules from src/
-let layoutConstants = null;
-let crossViewImageValidator = null;
-// A1BoardSpec removed – file never existed; fit/QA policy sourced from composeCore.
-let renderSanityValidator = null;
-
-let didLogRuntime = false;
-function logRuntimeOnce() {
-  if (didLogRuntime) {
-    return;
-  }
-  didLogRuntime = true;
-
-  const info = {
-    node: process.version,
-    platform: process.platform,
-    arch: process.arch,
-    pid: process.pid,
-    env: {
-      NODE_ENV: process.env.NODE_ENV || null,
-      NEXT_RUNTIME: process.env.NEXT_RUNTIME || null,
-      VERCEL: process.env.VERCEL || null,
-      VERCEL_ENV: process.env.VERCEL_ENV || null,
-      VERCEL_REGION: process.env.VERCEL_REGION || null,
-      AWS_REGION: process.env.AWS_REGION || null,
-    },
-  };
-
-  console.log(`[A1 Compose][Runtime] ${JSON.stringify(info)}`);
-}
-
-/**
- * Get PANEL_REGISTRY (lazy-loaded for Vercel compatibility)
- */
-async function getPanelRegistry() {
-  if (panelRegistry) {
-    return panelRegistry;
-  }
-
-  try {
-    panelRegistry = await import("../../src/config/panelRegistry.js");
-    return panelRegistry;
-  } catch (e) {
-    console.warn("[A1 Compose] Could not import panelRegistry:", e.message);
-    return null;
-  }
-}
-
-/**
- * Get cross-view image validator (real image comparison module)
- * Uses SSIM, pHash, pixelmatch for actual pixel-level comparison
- */
-async function getCrossViewImageValidator() {
-  if (crossViewImageValidator) {
-    return crossViewImageValidator;
-  }
-
-  try {
-    // NEW: Use real image comparison module instead of heuristic validator
-    crossViewImageValidator =
-      await import("../../src/services/validation/crossViewImageValidator.js");
-    return crossViewImageValidator;
-  } catch (e) {
-    console.warn(
-      "[A1 Compose] Could not import crossViewImageValidator:",
-      e.message,
-    );
-    return null;
-  }
-}
-
-async function getRenderSanityValidator() {
-  if (renderSanityValidator) {
-    return renderSanityValidator;
-  }
-
-  try {
-    renderSanityValidator =
-      await import("../../src/services/qa/RenderSanityValidator.js");
-    return renderSanityValidator;
-  } catch (e) {
-    console.warn(
-      "[A1 Compose] Could not import RenderSanityValidator:",
-      e.message,
-    );
-    return null;
-  }
-}
-
-async function getLayoutConstants() {
-  if (layoutConstants) {
-    return layoutConstants;
-  }
-
-  // Try dynamic import of shared constants
-  try {
-    layoutConstants =
-      await import("../../src/services/a1/a1LayoutConstants.js");
-    return layoutConstants;
-  } catch (e) {
-    console.warn(
-      "[A1 Compose] Could not import shared constants, using fallback:",
-      e.message,
-    );
-    // Fallback inline constants (should match a1LayoutConstants.js)
-    return getFallbackConstants();
-  }
-}
-
-function getFallbackConstants() {
-  // A1 sheet dimensions at 300 DPI (landscape orientation) - PRINT MASTER
-  const A1_WIDTH = 9933;
-  const A1_HEIGHT = 7016;
-  // Working resolution (for faster composition, upscale on export)
-  const WORKING_WIDTH = 1792;
-  const WORKING_HEIGHT = 1269;
-  // Caption/label dimensions (enhanced for better legibility)
-  const LABEL_HEIGHT = 32; // Increased from 26px for better visibility
-  const LABEL_PADDING = 6;
-  const CAPTION_FONT_SIZE = 12; // Font size for panel captions
-  const CAPTION_FONT_FAMILY = "Arial, Helvetica, sans-serif";
-  // Frame styling (2px stroke, 4px radius per plan spec)
-  const FRAME_STROKE_WIDTH = 2;
-  const FRAME_STROKE_COLOR = "#d1d5db";
-  const FRAME_RADIUS = 4;
-
-  const GRID_SPEC = {
-    // Row 1 (y: 0.02 to 0.24)
-    site_diagram: { x: 0.02, y: 0.02, width: 0.22, height: 0.22 },
-    hero_3d: { x: 0.26, y: 0.02, width: 0.34, height: 0.22 },
-    interior_3d: { x: 0.62, y: 0.02, width: 0.22, height: 0.22 },
-    // Data panels (enlarged for legibility - ~2.2% sheet area each)
-    material_palette: { x: 0.86, y: 0.02, width: 0.12, height: 0.18 },
-    climate_card: { x: 0.86, y: 0.21, width: 0.12, height: 0.18 },
-    // Row 2 (y: 0.26 to 0.48)
-    floor_plan_ground: { x: 0.02, y: 0.26, width: 0.32, height: 0.22 },
-    floor_plan_first: { x: 0.36, y: 0.26, width: 0.32, height: 0.22 },
-    floor_plan_level2: { x: 0.7, y: 0.26, width: 0.28, height: 0.22 },
-    // Row 3 (y: 0.50 to 0.68)
-    elevation_north: { x: 0.02, y: 0.5, width: 0.23, height: 0.18 },
-    elevation_south: { x: 0.27, y: 0.5, width: 0.23, height: 0.18 },
-    elevation_east: { x: 0.52, y: 0.5, width: 0.23, height: 0.18 },
-    elevation_west: { x: 0.77, y: 0.5, width: 0.21, height: 0.18 },
-    // Row 4 (y: 0.70 to 0.96)
-    section_AA: { x: 0.02, y: 0.7, width: 0.32, height: 0.26 },
-    section_BB: { x: 0.36, y: 0.7, width: 0.32, height: 0.26 },
-    schedules_notes: { x: 0.7, y: 0.7, width: 0.14, height: 0.26 },
-    title_block: { x: 0.85, y: 0.7, width: 0.13, height: 0.26 },
-  };
-
-  // TARGET BOARD LAYOUT - Phase 2: Professional presentation board style
-  // Features: Large hero, centered floor plans, compact elevation grid
-  const TARGET_BOARD_GRID_SPEC = {
-    // Row 1: Hero + Interior + Right Sidebar (y: 0.02 to 0.28)
-    hero_3d: { x: 0.02, y: 0.02, width: 0.36, height: 0.26 },
-    interior_3d: { x: 0.4, y: 0.02, width: 0.28, height: 0.26 },
-    axonometric: { x: 0.7, y: 0.02, width: 0.14, height: 0.12 },
-    site_diagram: { x: 0.7, y: 0.15, width: 0.14, height: 0.13 },
-    // Data panels (enlarged for legibility - ~2.2% sheet area each)
-    material_palette: { x: 0.86, y: 0.02, width: 0.12, height: 0.18 },
-    climate_card: { x: 0.86, y: 0.21, width: 0.12, height: 0.18 },
-    // Row 2: Floor Plans - Larger (y: 0.30 to 0.55)
-    floor_plan_ground: { x: 0.02, y: 0.3, width: 0.34, height: 0.25 },
-    floor_plan_first: { x: 0.38, y: 0.3, width: 0.34, height: 0.25 },
-    floor_plan_level2: { x: 0.74, y: 0.3, width: 0.24, height: 0.25 },
-    // Row 3: Elevations - Compact 4-grid (y: 0.57 to 0.72)
-    elevation_north: { x: 0.02, y: 0.57, width: 0.235, height: 0.15 },
-    elevation_south: { x: 0.265, y: 0.57, width: 0.235, height: 0.15 },
-    elevation_east: { x: 0.51, y: 0.57, width: 0.235, height: 0.15 },
-    elevation_west: { x: 0.755, y: 0.57, width: 0.235, height: 0.15 },
-    // Row 4: Sections + Title Block (y: 0.74 to 0.98)
-    section_AA: { x: 0.02, y: 0.74, width: 0.38, height: 0.24 },
-    section_BB: { x: 0.42, y: 0.74, width: 0.38, height: 0.24 },
-    title_block: { x: 0.82, y: 0.74, width: 0.16, height: 0.24 },
-  };
-
-  const PANEL_LABELS = {
-    hero_3d: "HERO 3D VIEW",
-    interior_3d: "INTERIOR 3D VIEW",
-    site_diagram: "SITE DIAGRAM",
-    floor_plan_ground: "GROUND FLOOR PLAN",
-    floor_plan_first: "FIRST FLOOR PLAN",
-    floor_plan_level2: "SECOND FLOOR PLAN",
-    elevation_north: "NORTH ELEVATION",
-    elevation_south: "SOUTH ELEVATION",
-    elevation_east: "EAST ELEVATION",
-    elevation_west: "WEST ELEVATION",
-    section_AA: "SECTION A-A",
-    section_BB: "SECTION B-B",
-    schedules_notes: "SCHEDULES & NOTES",
-    title_block: "PROJECT INFO",
-    material_palette: "MATERIAL PALETTE",
-    climate_card: "CLIMATE ANALYSIS",
-    materials: "MATERIALS",
-  };
-
-  // Professional drawing numbers (RIBA standard format)
-  const DRAWING_NUMBERS = {
-    hero_3d: "3D-01",
-    interior_3d: "3D-02",
-    site_diagram: "SP-01",
-    floor_plan_ground: "GA-00-01",
-    floor_plan_first: "GA-01-01",
-    floor_plan_level2: "GA-02-01",
-    elevation_north: "EL-N-01",
-    elevation_south: "EL-S-01",
-    elevation_east: "EL-E-01",
-    elevation_west: "EL-W-01",
-    section_AA: "SC-AA-01",
-    section_BB: "SC-BB-01",
-    schedules_notes: "SC-01",
-    material_palette: "MP-01",
-    climate_card: "AN-01",
-  };
-
-  // Professional scales per view type
-  const PANEL_SCALES = {
-    hero_3d: "NTS",
-    interior_3d: "NTS",
-    site_diagram: "1:500",
-    floor_plan_ground: "1:100",
-    floor_plan_first: "1:100",
-    floor_plan_level2: "1:100",
-    elevation_north: "1:100",
-    elevation_south: "1:100",
-    elevation_east: "1:100",
-    elevation_west: "1:100",
-    section_AA: "1:50",
-    section_BB: "1:50",
-    schedules_notes: "N/A",
-    material_palette: "N/A",
-    climate_card: "N/A",
-  };
-
-  const REQUIRED_PANELS = [
-    "hero_3d",
-    "interior_3d",
-    "site_diagram",
-    "floor_plan_ground",
-    "floor_plan_first",
-    "floor_plan_level2",
-    "elevation_north",
-    "elevation_south",
-    "elevation_east",
-    "elevation_west",
-    "section_AA",
-    "section_BB",
-    "material_palette",
-    "climate_card",
-  ];
-
-  const COVER_FIT_PANELS = ["hero_3d", "interior_3d", "site_diagram"];
-
-  // RIBA-compliant title block template
-  const TITLE_BLOCK_TEMPLATE = {
-    projectName: "",
-    projectNumber: "",
-    clientName: "",
-    siteAddress: "",
-    drawingTitle: "A1 DESIGN SHEET",
-    sheetNumber: "A1-001",
-    revision: "P01",
-    status: "PRELIMINARY",
-    scale: "AS NOTED",
-    date: "",
-    drawnBy: "AI ARCHITECT",
-    checkedBy: "",
-    practiceName: "ArchiAI Solutions",
-    practiceAddress: "",
-    arbNumber: "",
-    ribaStage: "STAGE 2",
-    standardsRef: "BS EN ISO 7200",
-    copyrightNote: "© 2024 ArchiAI Solutions",
-    designId: "",
-    seedValue: "",
-    consistencyScore: 0,
-    generationTimestamp: "",
-  };
-
-  // Helper functions
-  const getPanelAnnotation = (panelType) => {
-    const label = PANEL_LABELS[panelType] || panelType.toUpperCase();
-    const drawingNumber = DRAWING_NUMBERS[panelType] || "";
-    const scale = PANEL_SCALES[panelType] || "NTS";
-    return {
-      label,
-      drawingNumber,
-      scale,
-      fullAnnotation: `${drawingNumber}  ${label}  SCALE: ${scale}`,
-    };
-  };
-
-  const buildTitleBlockData = (context = {}) => {
-    const now = new Date();
-    return {
-      ...TITLE_BLOCK_TEMPLATE,
-      projectName: context.projectName || "Untitled Project",
-      projectNumber:
-        context.projectNumber ||
-        `P${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-      clientName: context.clientName || "",
-      siteAddress: context.address || context.siteAddress || "",
-      drawingTitle: context.buildingType
-        ? `${context.buildingType.toUpperCase()} - A1 DESIGN SHEET`
-        : "A1 DESIGN SHEET",
-      date: now
-        .toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
-        .toUpperCase(),
-      ribaStage: context.ribaStage || "STAGE 2",
-      designId: context.designId || "",
-      seedValue: context.seed ? String(context.seed) : "",
-      consistencyScore: context.consistencyScore || 0,
-      generationTimestamp: now.toISOString(),
-    };
-  };
-
-  return {
-    // Print master resolution (300 DPI)
-    A1_WIDTH,
-    A1_HEIGHT,
-    // Working resolution (preview)
-    WORKING_WIDTH,
-    WORKING_HEIGHT,
-    // Caption/label styling
-    LABEL_HEIGHT,
-    LABEL_PADDING,
-    CAPTION_FONT_SIZE,
-    CAPTION_FONT_FAMILY,
-    // Frame styling
-    FRAME_STROKE_WIDTH,
-    FRAME_STROKE_COLOR,
-    FRAME_RADIUS,
-    GRID_SPEC,
-    TARGET_BOARD_GRID_SPEC, // Phase 2: Professional presentation layout
-    PANEL_LABELS,
-    DRAWING_NUMBERS,
-    PANEL_SCALES,
-    REQUIRED_PANELS,
-    COVER_FIT_PANELS,
-    TITLE_BLOCK_TEMPLATE,
-    toPixelRect: (layoutEntry, width, height) => ({
-      x: Math.round(layoutEntry.x * width),
-      y: Math.round(layoutEntry.y * height),
-      width: Math.round(layoutEntry.width * width),
-      height: Math.round(layoutEntry.height * height),
-    }),
-    getPanelFitMode: (panelType) =>
-      COVER_FIT_PANELS.includes(panelType) ? "cover" : "contain",
-    getPanelAnnotation,
-    buildTitleBlockData,
-    // Phase 2: Resilient validation - allow missing panels with placeholder
-    validatePanelLayout: (panels, options = {}) => {
-      const providedTypes = new Set(panels.map((p) => p.type));
-      const floorCount = options.floorCount || 2;
-
-      // Adjust required panels based on floor count
-      const adjustedRequired = REQUIRED_PANELS.filter((type) => {
-        if (type === "floor_plan_level2" && floorCount < 3) {
-          return false;
-        }
-        return true;
-      });
-
-      const missingPanels = adjustedRequired.filter(
-        (type) => !providedTypes.has(type),
-      );
-
-      // CORRECTION E: Be resilient to missing panels - warn but don't block
-      // Missing panels will be shown as placeholders
-      return {
-        valid: true, // Always valid - missing panels get placeholders
-        errors: [],
-        warnings:
-          missingPanels.length > 0
-            ? [
-                `Missing panels (will use placeholders): ${missingPanels.join(", ")}`,
-              ]
-            : [],
-        panelCount: panels.length,
-        missingPanels,
-        hasPlaceholders: missingPanels.length > 0,
-      };
-    },
-  };
-}
 
 /**
  * Fetch image from URL and return buffer
@@ -925,15 +457,6 @@ function generateBuildStampSvg({
   </svg>`;
 }
 
-function escapeXml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function generateBoardSpecStampSvg({
   width,
   height,
@@ -953,806 +476,691 @@ function generateBoardSpecStampSvg({
 }
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  applyComposeCors(res);
+  const trace = createComposeTrace(req?.body);
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+  if (handleComposePreflight(req, res)) {
+    return;
   }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      success: false,
-      error: "METHOD_NOT_ALLOWED",
-      message: "Method not allowed",
-    });
+  if (enforceComposePostMethod(req, res)) {
+    return;
   }
 
   try {
-    // Pre-load embedded font for SVG rendering (non-blocking, cached after first call)
-    ensureFontsLoaded().catch(() => {});
+    return await handleComposeRequest(req, res, trace);
+  } catch (error) {
+    return sendComposeUnhandledError(res, error, trace);
+  }
+}
 
-    // Logging request details
-    console.log(`[A1 Compose] Request for designId: ${req.body.designId}`);
-    console.log(
-      `[A1 Compose] Panels: ${req.body.panels?.length || 0}, SiteOverlay: ${req.body.siteOverlay ? "Yes" : "No"}`,
+async function handleComposeRequest(req, res, trace) {
+  const requestStartedMs = Date.now();
+  const requestBody = req.body || {};
+
+  // Pre-load embedded font for SVG rendering (non-blocking, cached after first call)
+  ensureFontsLoaded().catch(() => {});
+
+  // Logging request details
+  logComposeEvent(
+    trace,
+    "info",
+    `Request for designId: ${requestBody.designId}`,
+  );
+  logComposeEvent(
+    trace,
+    "info",
+    `Panels: ${requestBody.panels?.length || 0}, SiteOverlay: ${requestBody.siteOverlay ? "Yes" : "No"}`,
+  );
+  if (requestBody.masterDNA) {
+    logComposeEvent(
+      trace,
+      "info",
+      `MasterDNA: Rooms=${requestBody.masterDNA.rooms?.length || 0}, Materials=${requestBody.masterDNA.materials?.length || 0}`,
     );
-    if (req.body.masterDNA) {
-      console.log(
-        `[A1 Compose] MasterDNA: Rooms=${req.body.masterDNA.rooms?.length || 0}, Materials=${req.body.masterDNA.materials?.length || 0}`,
-      );
-    } else {
-      console.warn("[A1 Compose] ⚠️ MasterDNA missing from payload");
-    }
+  } else {
+    logComposeEvent(trace, "warn", "MasterDNA missing from payload");
+  }
 
-    // Runtime proof (Node vs Edge/other)
-    logRuntimeOnce();
+  // Runtime proof (Node vs Edge/other)
+  logRuntimeOnce();
 
-    // Get shared constants (with fallback)
-    const constants = await getLayoutConstants();
-    const {
-      // Print master resolution (300 DPI)
-      A1_WIDTH,
-      A1_HEIGHT,
-      // Working resolution (preview)
-      WORKING_WIDTH,
-      WORKING_HEIGHT,
-      LABEL_HEIGHT,
-      LABEL_PADDING,
-      FRAME_STROKE_COLOR,
-      FRAME_RADIUS,
-      GRID_SPEC,
-      REQUIRED_PANELS,
-      toPixelRect,
-      getPanelFitMode: _legacyFitMode, // shadowed by composeCore SSOT below
-      getGridSpec,
-      validatePanelLayout,
-    } = constants;
+  // Get shared constants (with fallback)
+  const constants = await getLayoutConstants();
+  const {
+    // Print master resolution (300 DPI)
+    A1_WIDTH,
+    A1_HEIGHT,
+    // Working resolution (preview)
+    WORKING_WIDTH,
+    WORKING_HEIGHT,
+    LABEL_HEIGHT,
+    LABEL_PADDING,
+    FRAME_STROKE_COLOR,
+    FRAME_RADIUS,
+    GRID_SPEC,
+    REQUIRED_PANELS,
+    toPixelRect,
+    getPanelFitMode: _legacyFitMode, // shadowed by composeCore SSOT below
+    getGridSpec,
+    validatePanelLayout,
+  } = constants;
 
-    // Use composeCore fit policy as SSOT (replaces legacy + boardSpec + SCALE_TO_FILL)
-    const getPanelFitMode = composeCoreGetPanelFitMode;
+  // Use composeCore fit policy as SSOT (replaces legacy + boardSpec + SCALE_TO_FILL)
+  const getPanelFitMode = composeCoreGetPanelFitMode;
 
-    const {
-      designId,
-      siteOverlay = null,
-      layoutConfig = "board-v2",
-      titleBlock = null,
-      masterDNA = null,
-      projectContext = null,
-      locationData = null,
-    } = req.body;
-    const requestedHashes = readRequestHashes(req.body);
-    let panels = Array.isArray(req.body?.panels) ? req.body.panels : [];
+  const {
+    designId,
+    siteOverlay = null,
+    layoutConfig = "board-v2",
+    titleBlock = null,
+    masterDNA = null,
+    projectContext = null,
+    locationData = null,
+  } = requestBody;
+  const requestedHashes = readRequestHashes(requestBody);
+  let panels = Array.isArray(requestBody?.panels) ? requestBody.panels : [];
 
-    if (!panels || panels.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "NO_PANELS",
-        message: "No panels provided",
+  if (!panels || panels.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: "NO_PANELS",
+      message: "No panels provided",
+    });
+  }
+
+  console.log(
+    `[A1 Compose] Composing ${panels.length} panels for design ${designId}`,
+  );
+
+  // ====================================================================
+  // CRITICAL: DESIGN FINGERPRINT VALIDATION
+  // ====================================================================
+  // Ensure all panels belong to the same design run.
+  // This prevents mixing panels from different concurrent generations.
+  const expectedFingerprint = requestBody.designFingerprint || designId;
+  const fingerprintMismatches = [];
+
+  for (const panel of panels) {
+    const panelFingerprint =
+      panel.designFingerprint || panel.meta?.designFingerprint;
+    if (panelFingerprint && panelFingerprint !== expectedFingerprint) {
+      fingerprintMismatches.push({
+        panelType: panel.type,
+        expectedFingerprint,
+        actualFingerprint: panelFingerprint,
       });
     }
+  }
 
-    console.log(
-      `[A1 Compose] Composing ${panels.length} panels for design ${designId}`,
-    );
+  if (fingerprintMismatches.length > 0) {
+    console.error(`[A1 Compose] ❌ DESIGN FINGERPRINT MISMATCH DETECTED!`);
+    console.error(`   Expected: ${expectedFingerprint}`);
+    console.error(`   Mismatches: ${JSON.stringify(fingerprintMismatches)}`);
 
-    // ====================================================================
-    // CRITICAL: DESIGN FINGERPRINT VALIDATION
-    // ====================================================================
-    // Ensure all panels belong to the same design run.
-    // This prevents mixing panels from different concurrent generations.
-    const expectedFingerprint = req.body.designFingerprint || designId;
-    const fingerprintMismatches = [];
+    return res.status(400).json({
+      success: false,
+      error: "FINGERPRINT_MISMATCH",
+      message: `Panels from different design runs cannot be composed together. Expected fingerprint: ${expectedFingerprint}`,
+      details: {
+        mismatches: fingerprintMismatches,
+        recommendation:
+          "This indicates a race condition in concurrent generation. Please regenerate all panels together.",
+      },
+    });
+  }
 
-    for (const panel of panels) {
-      const panelFingerprint =
-        panel.designFingerprint || panel.meta?.designFingerprint;
-      if (panelFingerprint && panelFingerprint !== expectedFingerprint) {
-        fingerprintMismatches.push({
-          panelType: panel.type,
-          expectedFingerprint,
-          actualFingerprint: panelFingerprint,
-        });
-      }
+  console.log(
+    `[A1 Compose] ✅ Fingerprint validation passed: ${expectedFingerprint}`,
+  );
+
+  // ====================================================================
+  // CRITICAL: PANEL_REGISTRY VALIDATION (Runtime Assertion)
+  // ====================================================================
+  // Uses SSOT from panelRegistry.js to normalize panel types and enforce required panels.
+  // Unknown panel types are ignored with warnings to avoid blocking composition on legacy extras.
+  const registry = await getPanelRegistry();
+  const unknownPanelTypes = [];
+
+  if (registry) {
+    const normalizedPanels = panels
+      .map((panel) => {
+        const canonical = registry.normalizeToCanonical(panel.type);
+        if (!canonical) {
+          unknownPanelTypes.push(panel.type);
+          return null;
+        }
+        return { ...panel, type: canonical };
+      })
+      .filter(Boolean);
+
+    if (unknownPanelTypes.length > 0) {
+      console.warn(
+        `[A1 Compose] Ignoring unknown panel types: ${unknownPanelTypes.join(", ")}`,
+      );
     }
 
-    if (fingerprintMismatches.length > 0) {
-      console.error(`[A1 Compose] ❌ DESIGN FINGERPRINT MISMATCH DETECTED!`);
-      console.error(`   Expected: ${expectedFingerprint}`);
-      console.error(`   Mismatches: ${JSON.stringify(fingerprintMismatches)}`);
+    panels = normalizedPanels;
+  } else {
+    // Fallback: use composeCore normalizeKey when panelRegistry is unavailable
+    console.warn(
+      "[A1 Compose] PANEL_REGISTRY not available, using composeCore normalizeKey fallback",
+    );
+    panels = panels.map((panel) => ({
+      ...panel,
+      type: composeCoreNormalizeKey(panel.type),
+    }));
+  }
 
+  if (!panels || panels.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: "NO_PANELS",
+      message: "No valid panels provided after normalization",
+      details: {
+        unknownPanelTypes,
+      },
+    });
+  }
+
+  const explicitFloorCount = Number(requestBody.floorCount);
+  const derivedFloorCount =
+    panels.filter((p) => String(p.type || "").startsWith("floor_plan_"))
+      .length || 2;
+  const floorCount =
+    Number.isFinite(explicitFloorCount) && explicitFloorCount > 0
+      ? explicitFloorCount
+      : derivedFloorCount;
+
+  // skipMissingPanelCheck: Allow composition with placeholders for missing panels (smoke tests, dev)
+  const skipMissingPanelCheck = requestBody.skipMissingPanelCheck === true;
+
+  if (registry && !skipMissingPanelCheck) {
+    const requiredPanels =
+      typeof registry.getRequiredPanels === "function"
+        ? registry.getRequiredPanels(floorCount)
+        : typeof registry.getAIGeneratedPanels === "function"
+          ? registry.getAIGeneratedPanels(floorCount)
+          : [];
+    const providedTypes = new Set(panels.map((p) => p.type));
+    const missingPanels = requiredPanels.filter(
+      (type) => !providedTypes.has(type),
+    );
+
+    if (missingPanels.length > 0) {
+      console.warn(
+        `[A1 Compose] Missing required panels: ${missingPanels.join(", ")}`,
+      );
       return res.status(400).json({
         success: false,
-        error: "FINGERPRINT_MISMATCH",
-        message: `Panels from different design runs cannot be composed together. Expected fingerprint: ${expectedFingerprint}`,
+        error: "MISSING_REQUIRED_PANELS",
+        message: `Cannot compose A1 sheet - missing: ${missingPanels.join(", ")}. Please regenerate missing panels first.`,
         details: {
-          mismatches: fingerprintMismatches,
-          recommendation:
-            "This indicates a race condition in concurrent generation. Please regenerate all panels together.",
+          missingPanels,
+          unknownPanelTypes,
         },
       });
     }
-
+  } else if (skipMissingPanelCheck) {
     console.log(
-      `[A1 Compose] ✅ Fingerprint validation passed: ${expectedFingerprint}`,
+      `[A1 Compose] skipMissingPanelCheck=true - allowing composition with placeholders`,
     );
+  }
 
-    // ====================================================================
-    // CRITICAL: PANEL_REGISTRY VALIDATION (Runtime Assertion)
-    // ====================================================================
-    // Uses SSOT from panelRegistry.js to normalize panel types and enforce required panels.
-    // Unknown panel types are ignored with warnings to avoid blocking composition on legacy extras.
-    const registry = await getPanelRegistry();
-    const unknownPanelTypes = [];
-
-    if (registry) {
-      const normalizedPanels = panels
-        .map((panel) => {
-          const canonical = registry.normalizeToCanonical(panel.type);
-          if (!canonical) {
-            unknownPanelTypes.push(panel.type);
-            return null;
-          }
-          return { ...panel, type: canonical };
-        })
-        .filter(Boolean);
-
-      if (unknownPanelTypes.length > 0) {
-        console.warn(
-          `[A1 Compose] Ignoring unknown panel types: ${unknownPanelTypes.join(", ")}`,
-        );
-      }
-
-      panels = normalizedPanels;
-    } else {
-      // Fallback: use composeCore normalizeKey when panelRegistry is unavailable
-      console.warn(
-        "[A1 Compose] PANEL_REGISTRY not available, using composeCore normalizeKey fallback",
-      );
-      panels = panels.map((panel) => ({
-        ...panel,
-        type: composeCoreNormalizeKey(panel.type),
-      }));
+  panels = panels.map((panel) => {
+    if (!panel) {
+      return panel;
     }
+    if (!panel.imageUrl && panel.url) {
+      return { ...panel, imageUrl: panel.url };
+    }
+    return panel;
+  });
 
-    if (!panels || panels.length === 0) {
+  // Validate panel layout BEFORE proceeding (legacy validation as backup)
+  const validation = validatePanelLayout(panels, { floorCount });
+
+  if (!validation.valid) {
+    const missingPanels = validation.missingPanels || [];
+    const nonMissingErrors = validation.errors.filter(
+      (err) => !err.startsWith("Missing panels:"),
+    );
+    const blockingMissing = registry
+      ? missingPanels.filter((type) => {
+          const entry = registry.getRegistryEntry
+            ? registry.getRegistryEntry(type)
+            : null;
+          return entry ? entry.generator !== "data" : true;
+        })
+      : missingPanels;
+
+    if (blockingMissing.length > 0 || nonMissingErrors.length > 0) {
+      console.warn(
+        `[A1 Compose] Layout validation failed: ${validation.errors.join("; ")}`,
+      );
       return res.status(400).json({
         success: false,
-        error: "NO_PANELS",
-        message: "No valid panels provided after normalization",
+        error: "PANEL_VALIDATION_FAILED",
+        message: validation.errors.join("; "),
         details: {
+          missingPanels: blockingMissing,
           unknownPanelTypes,
         },
       });
     }
 
-    const explicitFloorCount = Number(req.body.floorCount);
-    const derivedFloorCount =
-      panels.filter((p) => String(p.type || "").startsWith("floor_plan_"))
-        .length || 2;
-    const floorCount =
-      Number.isFinite(explicitFloorCount) && explicitFloorCount > 0
-        ? explicitFloorCount
-        : derivedFloorCount;
-
-    // skipMissingPanelCheck: Allow composition with placeholders for missing panels (smoke tests, dev)
-    const skipMissingPanelCheck = req.body.skipMissingPanelCheck === true;
-
-    if (registry && !skipMissingPanelCheck) {
-      const requiredPanels =
-        typeof registry.getRequiredPanels === "function"
-          ? registry.getRequiredPanels(floorCount)
-          : typeof registry.getAIGeneratedPanels === "function"
-            ? registry.getAIGeneratedPanels(floorCount)
-            : [];
-      const providedTypes = new Set(panels.map((p) => p.type));
-      const missingPanels = requiredPanels.filter(
-        (type) => !providedTypes.has(type),
+    if (missingPanels.length > 0) {
+      console.warn(
+        `[A1 Compose] Optional panels missing: ${missingPanels.join(", ")}`,
       );
+    }
+  }
 
-      if (missingPanels.length > 0) {
-        console.warn(
-          `[A1 Compose] Missing required panels: ${missingPanels.join(", ")}`,
-        );
+  // ====================================================================
+  // PRE-COMPOSE GATE: FLOOR PLAN ROOM COUNT VALIDATION (BLOCKING)
+  // ====================================================================
+  // Ensures no floor plan has 0 rooms (which would result in empty borders)
+  const DEBUG_RUNS = process.env.DEBUG_RUNS === "1";
+
+  // skipValidation: Skip ALL validation gates (for smoke tests, dev mode)
+  const skipValidation =
+    skipMissingPanelCheck || requestBody.skipValidation === true;
+  const requireHashMetadata =
+    requestBody.requireHashMetadata !== false && !skipValidation;
+  const panelGeometryHashes = collectPanelGeometryHashes(panels);
+
+  if (requireHashMetadata) {
+    const missingHashFields = Object.entries(requestedHashes)
+      .filter(([, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingHashFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "MISSING_HASH_METADATA",
+        message: `Cannot compose A1 sheet - missing required hash metadata: ${missingHashFields.join(", ")}`,
+        details: {
+          required: ["dnaHash", "geometryHash", "programHash"],
+          received: requestedHashes,
+        },
+      });
+    }
+  }
+
+  if (skipValidation) {
+    console.log(
+      `[A1 Compose] ⚠️ skipValidation=true - skipping floor plan, geometry, and cross-view validation`,
+    );
+  }
+
+  if (DEBUG_RUNS) {
+    console.log("[DEBUG_RUNS] [A1 Compose] Starting pre-compose validation...");
+  }
+
+  if (!skipValidation) {
+    if (panelGeometryHashes.length > 1) {
+      return res.status(400).json({
+        success: false,
+        error: "PANEL_GEOMETRY_HASH_MISMATCH",
+        message:
+          "Cannot compose A1 sheet - panels contain multiple geometry hashes.",
+        details: {
+          panelGeometryHashes,
+          recommendation:
+            "Regenerate all panels from a single canonical geometry pack.",
+        },
+      });
+    }
+
+    if (requestedHashes.geometryHash) {
+      if (panelGeometryHashes.length === 0) {
         return res.status(400).json({
           success: false,
-          error: "MISSING_REQUIRED_PANELS",
-          message: `Cannot compose A1 sheet - missing: ${missingPanels.join(", ")}. Please regenerate missing panels first.`,
+          error: "MISSING_PANEL_GEOMETRY_HASH",
+          message:
+            "Cannot compose A1 sheet - requested geometryHash was provided but panels do not contain geometryHash metadata.",
           details: {
-            missingPanels,
-            unknownPanelTypes,
+            expectedGeometryHash: requestedHashes.geometryHash,
           },
         });
       }
-    } else if (skipMissingPanelCheck) {
-      console.log(
-        `[A1 Compose] skipMissingPanelCheck=true - allowing composition with placeholders`,
-      );
+
+      if (panelGeometryHashes[0] !== requestedHashes.geometryHash) {
+        return res.status(400).json({
+          success: false,
+          error: "GEOMETRY_HASH_MISMATCH",
+          message:
+            "Cannot compose A1 sheet - panel geometry hash does not match requested geometryHash.",
+          details: {
+            expectedGeometryHash: requestedHashes.geometryHash,
+            panelGeometryHash: panelGeometryHashes[0],
+          },
+        });
+      }
+    }
+  }
+
+  const emptyFloorPlans = [];
+  const floorPlanPanels = panels.filter((p) => p.type?.includes("floor_plan"));
+
+  for (const panel of floorPlanPanels) {
+    const roomCount = panel.meta?.roomCount || panel.roomCount || 0;
+    const wallCount = panel.meta?.wallCount || panel.wallCount || 0;
+
+    if (DEBUG_RUNS) {
+      console.log(`[DEBUG_RUNS] [A1 Compose] Floor plan ${panel.type}:`, {
+        roomCount,
+        wallCount,
+        hasBuffer: !!panel.buffer,
+        hasImageUrl: !!panel.imageUrl,
+        runId: panel.meta?.runId || panel.runId,
+      });
     }
 
-    panels = panels.map((panel) => {
-      if (!panel) {
-        return panel;
-      }
-      if (!panel.imageUrl && panel.url) {
-        return { ...panel, imageUrl: panel.url };
-      }
-      return panel;
+    // Check for empty floor plan (0 rooms indicates geometry failure)
+    if (roomCount === 0) {
+      emptyFloorPlans.push({
+        panelType: panel.type,
+        roomCount,
+        wallCount,
+        runId: panel.meta?.runId || panel.runId,
+      });
+    }
+  }
+
+  if (emptyFloorPlans.length > 0 && !skipValidation) {
+    console.error(`[A1 Compose] ❌ EMPTY FLOOR PLANS DETECTED!`);
+    console.error(
+      `   Empty plans: ${emptyFloorPlans.map((p) => p.panelType).join(", ")}`,
+    );
+
+    return res.status(400).json({
+      success: false,
+      error: "EMPTY_FLOOR_PLANS",
+      message:
+        "Cannot compose A1 sheet - one or more floor plans have 0 rooms, which indicates a room assignment failure.",
+      details: {
+        emptyFloorPlans,
+        recommendation:
+          "This typically means rooms were not distributed to upper floors. Check the program configuration and ensure rooms are assigned to all requested floors.",
+      },
     });
+  } else if (emptyFloorPlans.length > 0) {
+    console.warn(
+      `[A1 Compose] ⚠️ Empty floor plans skipped (skipValidation=true): ${emptyFloorPlans.map((p) => p.panelType).join(", ")}`,
+    );
+  }
 
-    // Validate panel layout BEFORE proceeding (legacy validation as backup)
-    const validation = validatePanelLayout(panels, { floorCount });
+  console.log(
+    `[A1 Compose] ✅ Floor plan room validation passed (${floorPlanPanels.length} plans checked)`,
+  );
 
-    if (!validation.valid) {
-      const missingPanels = validation.missingPanels || [];
-      const nonMissingErrors = validation.errors.filter(
-        (err) => !err.startsWith("Missing panels:"),
-      );
-      const blockingMissing = registry
-        ? missingPanels.filter((type) => {
-            const entry = registry.getRegistryEntry
-              ? registry.getRegistryEntry(type)
-              : null;
-            return entry ? entry.generator !== "data" : true;
-          })
-        : missingPanels;
+  // ====================================================================
+  // PRE-COMPOSE GATE: GEOMETRY PACK CONSISTENCY (BLOCKING)
+  // ====================================================================
+  // Ensures hero_3d and elevations share the same geometry runId
+  const hero3dPanel = panels.find((p) => p.type === "hero_3d");
+  const elevationPanels = panels.filter((p) => p.type?.includes("elevation_"));
 
-      if (blockingMissing.length > 0 || nonMissingErrors.length > 0) {
-        console.warn(
-          `[A1 Compose] Layout validation failed: ${validation.errors.join("; ")}`,
-        );
-        return res.status(400).json({
-          success: false,
-          error: "PANEL_VALIDATION_FAILED",
-          message: validation.errors.join("; "),
-          details: {
-            missingPanels: blockingMissing,
-            unknownPanelTypes,
-          },
-        });
-      }
-
-      if (missingPanels.length > 0) {
-        console.warn(
-          `[A1 Compose] Optional panels missing: ${missingPanels.join(", ")}`,
-        );
-      }
-    }
-
-    // ====================================================================
-    // PRE-COMPOSE GATE: FLOOR PLAN ROOM COUNT VALIDATION (BLOCKING)
-    // ====================================================================
-    // Ensures no floor plan has 0 rooms (which would result in empty borders)
-    const DEBUG_RUNS = process.env.DEBUG_RUNS === "1";
-
-    // skipValidation: Skip ALL validation gates (for smoke tests, dev mode)
-    const skipValidation =
-      skipMissingPanelCheck || req.body.skipValidation === true;
-    const requireHashMetadata =
-      req.body.requireHashMetadata !== false && !skipValidation;
-    const panelGeometryHashes = collectPanelGeometryHashes(panels);
-
-    if (requireHashMetadata) {
-      const missingHashFields = Object.entries(requestedHashes)
-        .filter(([, value]) => !value)
-        .map(([key]) => key);
-
-      if (missingHashFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          error: "MISSING_HASH_METADATA",
-          message: `Cannot compose A1 sheet - missing required hash metadata: ${missingHashFields.join(", ")}`,
-          details: {
-            required: ["dnaHash", "geometryHash", "programHash"],
-            received: requestedHashes,
-          },
-        });
-      }
-    }
-
-    if (skipValidation) {
-      console.log(
-        `[A1 Compose] ⚠️ skipValidation=true - skipping floor plan, geometry, and cross-view validation`,
-      );
-    }
+  if (hero3dPanel && elevationPanels.length > 0) {
+    const hero3dRunId = hero3dPanel.meta?.runId || hero3dPanel.runId;
+    const elevationRunIds = elevationPanels
+      .map((p) => p.meta?.runId || p.runId)
+      .filter(Boolean);
 
     if (DEBUG_RUNS) {
       console.log(
-        "[DEBUG_RUNS] [A1 Compose] Starting pre-compose validation...",
+        `[DEBUG_RUNS] [A1 Compose] Geometry pack consistency check:`,
+        {
+          hero3dRunId,
+          elevationRunIds,
+        },
       );
     }
 
-    if (!skipValidation) {
-      if (panelGeometryHashes.length > 1) {
+    if (hero3dRunId && elevationRunIds.length > 0) {
+      const mismatches = elevationRunIds.filter((id) => id !== hero3dRunId);
+
+      if (mismatches.length > 0 && !skipValidation) {
+        console.error(`[A1 Compose] ❌ GEOMETRY PACK MISMATCH DETECTED!`);
+        console.error(`   hero_3d runId: ${hero3dRunId}`);
+        console.error(
+          `   Mismatched elevation runIds: ${[...new Set(mismatches)].join(", ")}`,
+        );
+
         return res.status(400).json({
           success: false,
-          error: "PANEL_GEOMETRY_HASH_MISMATCH",
+          error: "GEOMETRY_PACK_MISMATCH",
           message:
-            "Cannot compose A1 sheet - panels contain multiple geometry hashes.",
+            "Cannot compose A1 sheet - hero_3d and elevations were generated from different geometry packs.",
           details: {
-            panelGeometryHashes,
-            recommendation:
-              "Regenerate all panels from a single canonical geometry pack.",
-          },
-        });
-      }
-
-      if (requestedHashes.geometryHash) {
-        if (panelGeometryHashes.length === 0) {
-          return res.status(400).json({
-            success: false,
-            error: "MISSING_PANEL_GEOMETRY_HASH",
-            message:
-              "Cannot compose A1 sheet - requested geometryHash was provided but panels do not contain geometryHash metadata.",
-            details: {
-              expectedGeometryHash: requestedHashes.geometryHash,
-            },
-          });
-        }
-
-        if (panelGeometryHashes[0] !== requestedHashes.geometryHash) {
-          return res.status(400).json({
-            success: false,
-            error: "GEOMETRY_HASH_MISMATCH",
-            message:
-              "Cannot compose A1 sheet - panel geometry hash does not match requested geometryHash.",
-            details: {
-              expectedGeometryHash: requestedHashes.geometryHash,
-              panelGeometryHash: panelGeometryHashes[0],
-            },
-          });
-        }
-      }
-    }
-
-    const emptyFloorPlans = [];
-    const floorPlanPanels = panels.filter((p) =>
-      p.type?.includes("floor_plan"),
-    );
-
-    for (const panel of floorPlanPanels) {
-      const roomCount = panel.meta?.roomCount || panel.roomCount || 0;
-      const wallCount = panel.meta?.wallCount || panel.wallCount || 0;
-
-      if (DEBUG_RUNS) {
-        console.log(`[DEBUG_RUNS] [A1 Compose] Floor plan ${panel.type}:`, {
-          roomCount,
-          wallCount,
-          hasBuffer: !!panel.buffer,
-          hasImageUrl: !!panel.imageUrl,
-          runId: panel.meta?.runId || panel.runId,
-        });
-      }
-
-      // Check for empty floor plan (0 rooms indicates geometry failure)
-      if (roomCount === 0) {
-        emptyFloorPlans.push({
-          panelType: panel.type,
-          roomCount,
-          wallCount,
-          runId: panel.meta?.runId || panel.runId,
-        });
-      }
-    }
-
-    if (emptyFloorPlans.length > 0 && !skipValidation) {
-      console.error(`[A1 Compose] ❌ EMPTY FLOOR PLANS DETECTED!`);
-      console.error(
-        `   Empty plans: ${emptyFloorPlans.map((p) => p.panelType).join(", ")}`,
-      );
-
-      return res.status(400).json({
-        success: false,
-        error: "EMPTY_FLOOR_PLANS",
-        message:
-          "Cannot compose A1 sheet - one or more floor plans have 0 rooms, which indicates a room assignment failure.",
-        details: {
-          emptyFloorPlans,
-          recommendation:
-            "This typically means rooms were not distributed to upper floors. Check the program configuration and ensure rooms are assigned to all requested floors.",
-        },
-      });
-    } else if (emptyFloorPlans.length > 0) {
-      console.warn(
-        `[A1 Compose] ⚠️ Empty floor plans skipped (skipValidation=true): ${emptyFloorPlans.map((p) => p.panelType).join(", ")}`,
-      );
-    }
-
-    console.log(
-      `[A1 Compose] ✅ Floor plan room validation passed (${floorPlanPanels.length} plans checked)`,
-    );
-
-    // ====================================================================
-    // PRE-COMPOSE GATE: GEOMETRY PACK CONSISTENCY (BLOCKING)
-    // ====================================================================
-    // Ensures hero_3d and elevations share the same geometry runId
-    const hero3dPanel = panels.find((p) => p.type === "hero_3d");
-    const elevationPanels = panels.filter((p) =>
-      p.type?.includes("elevation_"),
-    );
-
-    if (hero3dPanel && elevationPanels.length > 0) {
-      const hero3dRunId = hero3dPanel.meta?.runId || hero3dPanel.runId;
-      const elevationRunIds = elevationPanels
-        .map((p) => p.meta?.runId || p.runId)
-        .filter(Boolean);
-
-      if (DEBUG_RUNS) {
-        console.log(
-          `[DEBUG_RUNS] [A1 Compose] Geometry pack consistency check:`,
-          {
             hero3dRunId,
-            elevationRunIds,
+            elevationRunIds: [...new Set(elevationRunIds)],
+            recommendation:
+              "Ensure all panels are generated from the same canonical geometry in a single run.",
           },
+        });
+      } else if (mismatches.length > 0) {
+        console.warn(
+          `[A1 Compose] ⚠️ Geometry pack mismatch skipped (skipValidation=true)`,
         );
       }
 
-      if (hero3dRunId && elevationRunIds.length > 0) {
-        const mismatches = elevationRunIds.filter((id) => id !== hero3dRunId);
-
-        if (mismatches.length > 0 && !skipValidation) {
-          console.error(`[A1 Compose] ❌ GEOMETRY PACK MISMATCH DETECTED!`);
-          console.error(`   hero_3d runId: ${hero3dRunId}`);
-          console.error(
-            `   Mismatched elevation runIds: ${[...new Set(mismatches)].join(", ")}`,
-          );
-
-          return res.status(400).json({
-            success: false,
-            error: "GEOMETRY_PACK_MISMATCH",
-            message:
-              "Cannot compose A1 sheet - hero_3d and elevations were generated from different geometry packs.",
-            details: {
-              hero3dRunId,
-              elevationRunIds: [...new Set(elevationRunIds)],
-              recommendation:
-                "Ensure all panels are generated from the same canonical geometry in a single run.",
-            },
-          });
-        } else if (mismatches.length > 0) {
-          console.warn(
-            `[A1 Compose] ⚠️ Geometry pack mismatch skipped (skipValidation=true)`,
-          );
-        }
-
-        console.log(
-          `[A1 Compose] ✅ Geometry pack consistency passed (runId: ${hero3dRunId})`,
-        );
-      }
+      console.log(
+        `[A1 Compose] ✅ Geometry pack consistency passed (runId: ${hero3dRunId})`,
+      );
     }
+  }
 
-    // ====================================================================
-    // CROSS-VIEW CONSISTENCY GATE (BLOCKING - unless skipValidation)
-    // ====================================================================
-    // Panels must show the SAME building - reject if cross-view fails
-    // Uses real image comparison: SSIM, pHash, pixelmatch
-    if (!skipValidation) {
-      const imageValidator = await getCrossViewImageValidator();
-      if (imageValidator) {
-        console.log(
-          "[A1 Compose] Running real image cross-view consistency validation (SSIM/pHash/pixelmatch)...",
-        );
+  // ====================================================================
+  // CROSS-VIEW CONSISTENCY GATE (BLOCKING - unless skipValidation)
+  // ====================================================================
+  // Panels must show the SAME building - reject if cross-view fails
+  // Uses real image comparison: SSIM, pHash, pixelmatch
+  if (!skipValidation) {
+    const imageValidator = await getCrossViewImageValidator();
+    if (imageValidator) {
+      console.log(
+        "[A1 Compose] Running real image cross-view consistency validation (SSIM/pHash/pixelmatch)...",
+      );
 
-        // Build panel map from request panels
-        const panelMap = {};
-        for (const panel of panels) {
-          if (panel.type && (panel.imageUrl || panel.buffer)) {
-            panelMap[panel.type] = {
-              url: panel.imageUrl,
-              buffer: panel.buffer,
-              geometryHash:
-                panel.geometryHash ||
-                panel.geometry_hash ||
-                panel.meta?.geometryHash ||
-                panel.meta?.geometry_hash ||
-                null,
-              cdsHash:
-                panel.cdsHash ||
-                panel.meta?.cdsHash ||
-                panel.meta?.cds_hash ||
-                null,
-            };
-          }
+      // Build panel map from request panels
+      const panelMap = {};
+      for (const panel of panels) {
+        if (panel.type && (panel.imageUrl || panel.buffer)) {
+          panelMap[panel.type] = {
+            url: panel.imageUrl,
+            buffer: panel.buffer,
+            geometryHash:
+              panel.geometryHash ||
+              panel.geometry_hash ||
+              panel.meta?.geometryHash ||
+              panel.meta?.geometry_hash ||
+              null,
+            cdsHash:
+              panel.cdsHash ||
+              panel.meta?.cdsHash ||
+              panel.meta?.cds_hash ||
+              null,
+          };
         }
+      }
 
-        try {
-          // NEW: Use real image comparison instead of heuristic validation
-          const crossViewResult =
-            await imageValidator.validateAllPanels(panelMap);
+      try {
+        // NEW: Use real image comparison instead of heuristic validation
+        const crossViewResult =
+          await imageValidator.validateAllPanels(panelMap);
 
-          if (!crossViewResult.pass) {
-            console.error(`[A1 Compose] Cross-view validation FAILED`);
-            console.error(
-              `   Overall Score: ${(crossViewResult.overallScore * 100).toFixed(1)}%`,
-            );
-            console.error(
-              `   Failed Panels: ${crossViewResult.failedPanels.map((fp) => fp.panelType).join(", ")}`,
-            );
-
-            // Generate structured error report
-            const errorReport =
-              imageValidator.generateErrorReport(crossViewResult);
-
-            return res.status(400).json(errorReport);
-          }
-
-          console.log(
-            `[A1 Compose] Cross-view validation PASSED (score: ${(crossViewResult.overallScore * 100).toFixed(1)}%)`,
-          );
-        } catch (crossViewError) {
+        if (!crossViewResult.pass) {
+          console.error(`[A1 Compose] Cross-view validation FAILED`);
           console.error(
-            "[A1 Compose] Cross-view validation error:",
-            crossViewError.message,
+            `   Overall Score: ${(crossViewResult.overallScore * 100).toFixed(1)}%`,
           );
-          // Fail closed on validation errors (conservative approach)
-          return res.status(500).json({
-            success: false,
-            error: "CROSS_VIEW_VALIDATION_ERROR",
-            message: crossViewError.message,
-            details: {
-              recommendation: "Validation system error. Please retry.",
-            },
-          });
+          console.error(
+            `   Failed Panels: ${crossViewResult.failedPanels.map((fp) => fp.panelType).join(", ")}`,
+          );
+
+          // Generate structured error report
+          const errorReport =
+            imageValidator.generateErrorReport(crossViewResult);
+
+          return res.status(400).json(errorReport);
         }
-      } else {
-        // FAIL-CLOSED: If validator module can't be loaded, reject the composition
-        // This prevents A1 sheets from being exported without cross-view verification
-        console.error(
-          "[A1 Compose] Cross-view image validator not available - BLOCKING",
+
+        console.log(
+          `[A1 Compose] Cross-view validation PASSED (score: ${(crossViewResult.overallScore * 100).toFixed(1)}%)`,
         );
+      } catch (crossViewError) {
+        console.error(
+          "[A1 Compose] Cross-view validation error:",
+          crossViewError.message,
+        );
+        // Fail closed on validation errors (conservative approach)
         return res.status(500).json({
           success: false,
-          error: "CROSS_VIEW_VALIDATOR_UNAVAILABLE",
-          message:
-            "Cannot compose A1 sheet without cross-view consistency validation. Validator module failed to load.",
+          error: "CROSS_VIEW_VALIDATION_ERROR",
+          message: crossViewError.message,
           details: {
-            recommendation:
-              "Check server deployment - ensure crossViewImageValidator.js is bundled correctly with sharp and pixelmatch.",
+            recommendation: "Validation system error. Please retry.",
           },
         });
       }
     } else {
-      console.log(
-        `[A1 Compose] ⚠️ Cross-view validation SKIPPED (skipValidation=true)`,
+      // FAIL-CLOSED: If validator module can't be loaded, reject the composition
+      // This prevents A1 sheets from being exported without cross-view verification
+      console.error(
+        "[A1 Compose] Cross-view image validator not available - BLOCKING",
       );
-    }
-
-    // Dynamic import of sharp (server-side only)
-    let sharp;
-    try {
-      sharp = (await import("sharp")).default;
-    } catch (e) {
-      console.error("[A1 Compose] sharp not available:", e.message);
       return res.status(500).json({
         success: false,
-        error: "SHARP_UNAVAILABLE",
+        error: "CROSS_VIEW_VALIDATOR_UNAVAILABLE",
         message:
-          "Server-side composition not available - sharp module not installed",
+          "Cannot compose A1 sheet without cross-view consistency validation. Validator module failed to load.",
         details: {
-          originalError: e.message,
           recommendation:
-            'Ensure api/a1/compose.js has runtime = "nodejs" and sharp is in dependencies.',
+            "Check server deployment - ensure crossViewImageValidator.js is bundled correctly with sharp and pixelmatch.",
         },
       });
     }
-
-    // LAYOUT TEMPLATE SELECTION – delegate to shared composeCore (SSOT)
-    const layoutTemplateRaw =
-      req.body.layoutTemplate || layoutConfig || "board-v2";
-    const useHighRes =
-      req.body.highRes === true || req.body.printMaster === true;
-
-    // Use composeCore for normalisation and grid resolution
-    const composeCoreResolved = composeCoreResolveLayout({
-      layoutTemplate: layoutTemplateRaw,
-      floorCount,
-      highRes: useHighRes,
-    });
-
-    let layoutTemplate = composeCoreResolved.layoutTemplate;
-    let layout = composeCoreResolved.layout;
-    const width = composeCoreResolved.width;
-    const height = composeCoreResolved.height;
-
-    // QA defaults (A1BoardSpec removed – composeCore is SSOT for fit/layout)
-    const boardSpecVersion = null;
-    const qaEnabled = !skipValidation;
-    const rotateToFit = qaEnabled;
-    const minSlotOccupancy = 0.4;
-
+  } else {
     console.log(
-      `[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount}, ${width}x${height}px)`,
+      `[A1 Compose] ⚠️ Cross-view validation SKIPPED (skipValidation=true)`,
     );
-    console.log(`[A1 Compose] Layout resolved via composeCore SSOT`);
+  }
 
-    if (useHighRes) {
-      console.log(
-        `[A1 Compose] HIGH-RES MODE: Using print master resolution ${A1_WIDTH}×${A1_HEIGHT}px (300 DPI)`,
-      );
-    }
-
-    // Create warm architectural paper background (#FAF9F6)
-    const background = sharp({
-      create: {
-        width,
-        height,
-        channels: 3,
-        background: { r: 250, g: 249, b: 246 },
+  // Dynamic import of sharp (server-side only)
+  let sharp;
+  try {
+    sharp = (await import("sharp")).default;
+  } catch (e) {
+    console.error("[A1 Compose] sharp not available:", e.message);
+    return res.status(500).json({
+      success: false,
+      error: "SHARP_UNAVAILABLE",
+      message:
+        "Server-side composition not available - sharp module not installed",
+      details: {
+        originalError: e.message,
+        recommendation:
+          'Ensure api/a1/compose.js has runtime = "nodejs" and sharp is in dependencies.',
       },
-    }).png();
+    });
+  }
 
-    // Prepare composite operations
-    const composites = [];
-    const coordinates = {};
+  // LAYOUT TEMPLATE SELECTION – delegate to shared composeCore (SSOT)
+  const layoutTemplateRaw =
+    requestBody.layoutTemplate || layoutConfig || "board-v2";
+  const useHighRes =
+    requestBody.highRes === true || requestBody.printMaster === true;
 
-    const panelMap = new Map(panels.map((p) => [p.type, p]));
+  // Use composeCore for normalisation and grid resolution
+  const composeCoreResolved = composeCoreResolveLayout({
+    layoutTemplate: layoutTemplateRaw,
+    floorCount,
+    highRes: useHighRes,
+  });
 
-    // HARD QA GATE: Completeness (fail closed)
-    if (qaEnabled) {
-      const missingSlotContent = Object.keys(layout)
-        .filter((type) => type !== "title_block")
-        .filter((type) => {
-          const panel = panelMap.get(type);
-          // svgPanel panels (material_palette, climate_card, schedules_notes)
-          // are rendered server-side as SVG later in the pipeline — they don't
-          // carry buffer/imageUrl but are still valid content.
-          const hasContent = !!(
-            panel?.buffer ||
-            panel?.imageUrl ||
-            panel?.svgPanel
-          );
-          return !hasContent;
-        });
+  let layoutTemplate = composeCoreResolved.layoutTemplate;
+  let layout = composeCoreResolved.layout;
+  const width = composeCoreResolved.width;
+  const height = composeCoreResolved.height;
 
-      if (missingSlotContent.length > 0) {
-        console.error(
-          `[A1 Compose] ❌ Missing slot content: ${missingSlotContent.join(", ")}`,
+  // QA defaults (A1BoardSpec removed – composeCore is SSOT for fit/layout)
+  const boardSpecVersion = null;
+  const qaEnabled = !skipValidation;
+  const rotateToFit = qaEnabled;
+  const minSlotOccupancy = 0.4;
+
+  console.log(
+    `[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount}, ${width}x${height}px)`,
+  );
+  console.log(`[A1 Compose] Layout resolved via composeCore SSOT`);
+
+  if (useHighRes) {
+    console.log(
+      `[A1 Compose] HIGH-RES MODE: Using print master resolution ${A1_WIDTH}×${A1_HEIGHT}px (300 DPI)`,
+    );
+  }
+
+  // Create warm architectural paper background (#FAF9F6)
+  const background = sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: 250, g: 249, b: 246 },
+    },
+  }).png();
+
+  // Prepare composite operations
+  const composites = [];
+  const coordinates = {};
+
+  const panelMap = new Map(panels.map((p) => [p.type, p]));
+
+  // HARD QA GATE: Completeness (fail closed)
+  if (qaEnabled) {
+    const missingSlotContent = Object.keys(layout)
+      .filter((type) => type !== "title_block")
+      .filter((type) => {
+        const panel = panelMap.get(type);
+        // svgPanel panels (material_palette, climate_card, schedules_notes)
+        // are rendered server-side as SVG later in the pipeline — they don't
+        // carry buffer/imageUrl but are still valid content.
+        const hasContent = !!(
+          panel?.buffer ||
+          panel?.imageUrl ||
+          panel?.svgPanel
         );
-        return res.status(400).json({
-          success: false,
-          error: "MISSING_SLOT_CONTENT",
-          message: `Cannot compose A1 sheet - missing panel content for: ${missingSlotContent.join(", ")}`,
-          details: {
-            missingPanels: missingSlotContent,
-            layoutTemplate,
-            floorCount,
-          },
-        });
-      }
+        return !hasContent;
+      });
+
+    if (missingSlotContent.length > 0) {
+      console.error(
+        `[A1 Compose] ❌ Missing slot content: ${missingSlotContent.join(", ")}`,
+      );
+      return res.status(400).json({
+        success: false,
+        error: "MISSING_SLOT_CONTENT",
+        message: `Cannot compose A1 sheet - missing panel content for: ${missingSlotContent.join(", ")}`,
+        details: {
+          missingPanels: missingSlotContent,
+          layoutTemplate,
+          floorCount,
+        },
+      });
     }
+  }
 
-    // Process each panel
-    for (const [type, slot] of Object.entries(layout)) {
-      const slotRect = toPixelRect(slot, width, height);
-      coordinates[type] = { ...slotRect, labelHeight: LABEL_HEIGHT };
+  // Process each panel
+  for (const [type, slot] of Object.entries(layout)) {
+    const slotRect = toPixelRect(slot, width, height);
+    coordinates[type] = { ...slotRect, labelHeight: LABEL_HEIGHT };
 
-      const mode = getPanelFitMode(type);
-      const panel = panelMap.get(type);
+    const mode = getPanelFitMode(type);
+    const panel = panelMap.get(type);
 
-      if (type === "title_block") {
-        if (panel?.imageUrl || panel?.buffer) {
-          try {
-            const buffer =
-              panel.buffer || (await fetchImageBuffer(panel.imageUrl));
-            const resized = await placePanelImage({
-              sharp,
-              imageBuffer: buffer,
-              slotRect,
-              mode,
-              constants,
-              panelType: type,
-              qa: {
-                enabled: qaEnabled,
-                rotateToFit,
-                minSlotOccupancy,
-                useHighRes,
-                layoutTemplate,
-              },
-            });
-            composites.push({
-              input: resized,
-              left: slotRect.x,
-              top: slotRect.y,
-            });
-            continue;
-          } catch (err) {
-            console.error(
-              `[A1 Compose] Failed to process panel ${type}:`,
-              err.message,
-            );
-            if (qaEnabled) {
-              return res.status(400).json({
-                success: false,
-                error: "PANEL_PROCESSING_FAILED",
-                message: `Panel ${type} failed QA/placement: ${err.message}`,
-                details: {
-                  panelType: type,
-                  layoutTemplate,
-                  floorCount,
-                  ...err.details,
-                },
-              });
-            }
-          }
-        }
-
-        const titleBuffer = await buildTitleBlockBuffer(
-          sharp,
-          slotRect.width,
-          slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
-          { ...(titleBlock || {}), designId: expectedFingerprint },
-          constants,
-        );
-        composites.push({
-          input: titleBuffer,
-          left: slotRect.x,
-          top: slotRect.y,
-        });
-        continue;
-      }
-
-      // DATA PANELS: Render deterministic SVG instead of using FLUX-generated images
-      // These panels contain text-heavy data (room schedules, material swatches, climate info)
-      // that FLUX renders as semi-legible gibberish. SVG gives crisp, perfectly readable output.
-      const svgHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
-      if (
-        type === "schedules_notes" ||
-        type === "material_palette" ||
-        type === "climate_card"
-      ) {
-        if (panel?.imageUrl && !panel?.svgPanel) {
-          console.warn(
-            `[A1 Compose] Ignoring raster ${type} panel and rendering deterministic SVG instead`,
-          );
-        }
-        if (type === "schedules_notes") {
-          const schedulesBuffer = await buildSchedulesBuffer(
-            sharp,
-            slotRect.width,
-            svgHeight,
-            masterDNA,
-            projectContext,
-            constants,
-          );
-          composites.push({
-            input: schedulesBuffer,
-            left: slotRect.x,
-            top: slotRect.y,
-          });
-          continue;
-        }
-        if (type === "material_palette") {
-          const materialBuffer = await buildMaterialPaletteBuffer(
-            sharp,
-            slotRect.width,
-            svgHeight,
-            masterDNA,
-            constants,
-          );
-          composites.push({
-            input: materialBuffer,
-            left: slotRect.x,
-            top: slotRect.y,
-          });
-          continue;
-        }
-        const climateBuffer = await buildClimateCardBuffer(
-          sharp,
-          slotRect.width,
-          svgHeight,
-          locationData,
-          constants,
-        );
-        composites.push({
-          input: climateBuffer,
-          left: slotRect.x,
-          top: slotRect.y,
-        });
-        continue;
-      }
-
+    if (type === "title_block") {
       if (panel?.imageUrl || panel?.buffer) {
         try {
           const buffer =
@@ -1763,7 +1171,7 @@ export default async function handler(req, res) {
             slotRect,
             mode,
             constants,
-            panelType: type, // Pass panel type for debug logging
+            panelType: type,
             qa: {
               enabled: qaEnabled,
               rotateToFit,
@@ -1799,450 +1207,555 @@ export default async function handler(req, res) {
         }
       }
 
-      // Build placeholder for missing panel
-      if (qaEnabled) {
-        return res.status(400).json({
-          success: false,
-          error: "MISSING_SLOT_CONTENT",
-          message: `Cannot compose A1 sheet - missing panel content for: ${type}`,
-          details: { panelType: type, layoutTemplate, floorCount },
-        });
-      }
-      const placeholder = await buildPlaceholder(
+      const titleBuffer = await buildTitleBlockBuffer(
         sharp,
         slotRect.width,
         slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
-        type,
+        { ...(titleBlock || {}), designId: expectedFingerprint },
         constants,
       );
       composites.push({
-        input: placeholder,
+        input: titleBuffer,
         left: slotRect.x,
         top: slotRect.y,
       });
+      continue;
     }
 
-    // Add site overlay if provided
-    if (siteOverlay?.imageUrl) {
-      const siteLayout = layout.site_diagram || GRID_SPEC.site_diagram;
-      const slotRect = toPixelRect(siteLayout, width, height);
-      const targetHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
-
-      try {
-        const overlayBuffer = await fetchImageBuffer(siteOverlay.imageUrl);
-
-        // Debug logging for site overlay
-        if (DEBUG_RUNS) {
-          const metadata = await sharp(overlayBuffer).metadata();
-          console.log(`[A1 Compose] Site overlay resize:`, {
-            input: { width: metadata.width, height: metadata.height },
-            output: { width: slotRect.width, height: targetHeight },
-            fit: "contain",
-          });
-        }
-
-        // CRITICAL: Use fit:'contain' to prevent cropping site overlays
-        const resizedOverlay = await sharp(overlayBuffer)
-          .resize(slotRect.width, targetHeight, {
-            fit: "contain", // ALWAYS contain - never crop
-            position: "centre", // Center within slot
-            background: { r: 255, g: 255, b: 255, alpha: 1 }, // White letterbox padding
-          })
-          .png()
-          .toBuffer();
-
+    // DATA PANELS: Render deterministic SVG instead of using FLUX-generated images
+    // These panels contain text-heavy data (room schedules, material swatches, climate info)
+    // that FLUX renders as semi-legible gibberish. SVG gives crisp, perfectly readable output.
+    const svgHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
+    if (
+      type === "schedules_notes" ||
+      type === "material_palette" ||
+      type === "climate_card"
+    ) {
+      if (panel?.imageUrl && !panel?.svgPanel) {
+        console.warn(
+          `[A1 Compose] Ignoring raster ${type} panel and rendering deterministic SVG instead`,
+        );
+      }
+      if (type === "schedules_notes") {
+        const schedulesBuffer = await buildSchedulesBuffer(
+          sharp,
+          slotRect.width,
+          svgHeight,
+          masterDNA,
+          projectContext,
+          constants,
+        );
         composites.push({
-          input: resizedOverlay,
+          input: schedulesBuffer,
           left: slotRect.x,
           top: slotRect.y,
         });
-
-        coordinates.site_overlay = { ...slotRect, labelHeight: LABEL_HEIGHT };
-        console.log(
-          `[A1 Compose] Added site overlay at (${slotRect.x}, ${slotRect.y})`,
-        );
-      } catch (err) {
-        console.error("[A1 Compose] Failed to add site overlay:", err.message);
+        continue;
       }
-    }
-
-    // Draw panel borders and labels
-    const borderSvg = generateOverlaySvg(coordinates, width, height, constants);
-    composites.push({
-      input: Buffer.from(borderSvg),
-      left: 0,
-      top: 0,
-    });
-
-    // Layout guarantee stamp (always-on): layoutTemplateUsed + boardSpecVersion
-    const specStampSvg = generateBoardSpecStampSvg({
-      width,
-      height,
-      layoutTemplateUsed: layoutTemplate,
-      boardSpecVersion,
-    });
-    composites.push({
-      input: Buffer.from(specStampSvg),
-      left: 0,
-      top: 0,
-    });
-
-    // BUILD STAMP: Optional stamp in bottom-right corner with build info
-    // DELIVERABLE A: Build Stamp (visual proof)
-    // Contains: RESOLVED PIPELINE_MODE (truthful), commit hash, runId, timestamp, OpenAI model, Meshy indicator
-    const includeBuildStamp =
-      req.body.includeBuildStamp === true ||
-      process.env.A1_COMPOSE_INCLUDE_BUILD_STAMP === "1";
-
-    if (includeBuildStamp) {
-      const buildTimestamp = new Date().toISOString();
-      const shortHash = designId ? designId.substring(0, 8) : "N/A";
-      const runIdFromRequest = req.body.runId || req.body.meta?.runId;
-
-      // Extract flags from request body (passed from orchestrator)
-      const flagsFromRequest = req.body.flags || req.body.meta?.flags || {};
-
-      // Extract proof signals from request body (passed from orchestrator)
-      // These contain truthful information about what generators were actually used
-      const proofFromRequest = req.body.proof || req.body.meta?.proof || {};
-
-      const buildStampSvg = generateBuildStampSvg({
-        width,
-        height,
-        designId: shortHash,
-        runId: runIdFromRequest,
-        timestamp: buildTimestamp,
-        layoutTemplate,
-        panelCount: panels.length,
-        flags: flagsFromRequest,
-        proof: proofFromRequest,
-      });
-
-      const resolvedMode = getPipelineModeForStamp(proofFromRequest);
-      console.log(
-        `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || "gpt-image-1"}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`,
+      if (type === "material_palette") {
+        const materialBuffer = await buildMaterialPaletteBuffer(
+          sharp,
+          slotRect.width,
+          svgHeight,
+          masterDNA,
+          constants,
+        );
+        composites.push({
+          input: materialBuffer,
+          left: slotRect.x,
+          top: slotRect.y,
+        });
+        continue;
+      }
+      const climateBuffer = await buildClimateCardBuffer(
+        sharp,
+        slotRect.width,
+        svgHeight,
+        locationData,
+        constants,
       );
       composites.push({
-        input: Buffer.from(buildStampSvg),
-        left: 0,
-        top: 0,
+        input: climateBuffer,
+        left: slotRect.x,
+        top: slotRect.y,
       });
+      continue;
     }
 
-    // Compose all panels onto background
-    const composedBuffer = await background
-      .composite(composites)
-      .png()
-      .toBuffer();
-
-    const maxDataUrlBytes =
-      parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || "", 10) ||
-      DEFAULT_MAX_DATAURL_BYTES;
-    const outputDir = resolveComposeOutputDir();
-    const publicUrlBase =
-      process.env.A1_COMPOSE_PUBLIC_URL_BASE || DEFAULT_PUBLIC_URL_BASE;
-
-    const composePayload = buildComposeSheetUrl({
-      pngBuffer: composedBuffer,
-      maxDataUrlBytes,
-      outputDir,
-      publicUrlBase,
-      designId,
-    });
-
-    if (!composePayload.sheetUrl) {
-      return res.status(413).json({
-        success: false,
-        error: composePayload.error || "PAYLOAD_TOO_LARGE",
-        message:
-          composePayload.message ||
-          "Composed sheet is too large to return as a base64 data URL. Configure external storage for composed PNGs.",
-        details: {
-          ...composePayload,
-          maxDataUrlBytes,
-        },
-      });
-    }
-
-    const {
-      sheetUrl,
-      transport,
-      pngBytes,
-      estimatedDataUrlBytes,
-      sheetUrlBytes,
-      outputFile,
-    } = composePayload;
-
-    // Print-ready PDF (A1 landscape) generated alongside high-res PNG exports
-    const includePdf = useHighRes && req.body.skipPdf !== true;
-    let pdfUrl = null;
-    let pdfBytes = 0;
-    let pdfOutputFile = null;
-
-    if (includePdf) {
+    if (panel?.imageUrl || panel?.buffer) {
       try {
-        const pdfBuffer = await buildPrintReadyPdfFromPng(composedBuffer, {
-          widthPx: width,
-          heightPx: height,
-          dpi: 300,
+        const buffer = panel.buffer || (await fetchImageBuffer(panel.imageUrl));
+        const resized = await placePanelImage({
+          sharp,
+          imageBuffer: buffer,
+          slotRect,
+          mode,
+          constants,
+          panelType: type, // Pass panel type for debug logging
+          qa: {
+            enabled: qaEnabled,
+            rotateToFit,
+            minSlotOccupancy,
+            useHighRes,
+            layoutTemplate,
+          },
         });
-
-        const safeDesignId =
-          String(designId || "unknown")
-            .replace(/[^a-z0-9_-]/gi, "")
-            .slice(0, 60) || "unknown";
-        const baseName = outputFile
-          ? outputFile.replace(/\.png$/i, "")
-          : `a1_${safeDesignId}_${Date.now()}`;
-
-        pdfOutputFile = `${baseName}.pdf`;
-        fs.mkdirSync(outputDir, { recursive: true });
-        fs.writeFileSync(path.join(outputDir, pdfOutputFile), pdfBuffer);
-
-        const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(
-          /\/$/,
-          "",
+        composites.push({
+          input: resized,
+          left: slotRect.x,
+          top: slotRect.y,
+        });
+        continue;
+      } catch (err) {
+        console.error(
+          `[A1 Compose] Failed to process panel ${type}:`,
+          err.message,
         );
-        pdfUrl = `${base}/${pdfOutputFile}`;
-        pdfBytes = pdfBuffer.length;
-      } catch (pdfError) {
-        console.error("[A1 Compose] PDF generation failed:", pdfError.message);
-        // Fail closed for print exports unless explicitly skipping validation
-        if (!skipValidation) {
-          return res.status(500).json({
+        if (qaEnabled) {
+          return res.status(400).json({
             success: false,
-            error: "PDF_GENERATION_FAILED",
-            message: pdfError.message,
+            error: "PANEL_PROCESSING_FAILED",
+            message: `Panel ${type} failed QA/placement: ${err.message}`,
+            details: {
+              panelType: type,
+              layoutTemplate,
+              floorCount,
+              ...err.details,
+            },
           });
         }
       }
     }
 
-    console.log(
-      `[A1 Compose] Sheet composed: ${composites.length} elements, ${width}x${height}px (${transport})`,
+    // Build placeholder for missing panel
+    if (qaEnabled) {
+      return res.status(400).json({
+        success: false,
+        error: "MISSING_SLOT_CONTENT",
+        message: `Cannot compose A1 sheet - missing panel content for: ${type}`,
+        details: { panelType: type, layoutTemplate, floorCount },
+      });
+    }
+    const placeholder = await buildPlaceholder(
+      sharp,
+      slotRect.width,
+      slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
+      type,
+      constants,
     );
+    composites.push({
+      input: placeholder,
+      left: slotRect.x,
+      top: slotRect.y,
+    });
+  }
 
-    // ====================================================================
-    // CACHE-BUSTING: Prevent browser/Vercel caching collisions
-    // ====================================================================
-    // These headers ensure:
-    // - Browser doesn't cache the response (no-store)
-    // - Vercel edge doesn't cache the response (CDN-Cache-Control)
-    // - Each request gets fresh composition (no stale panels)
-    res.setHeader(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate",
-    );
-    res.setHeader("CDN-Cache-Control", "no-store");
-    res.setHeader("Vercel-CDN-Cache-Control", "no-store");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
+  // Add site overlay if provided
+  if (siteOverlay?.imageUrl) {
+    const siteLayout = layout.site_diagram || GRID_SPEC.site_diagram;
+    const slotRect = toPixelRect(siteLayout, width, height);
+    const targetHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
 
-    // Add design fingerprint header for debugging
-    res.setHeader("X-Design-Fingerprint", expectedFingerprint || "unknown");
-    res.setHeader("X-Composition-Timestamp", new Date().toISOString());
+    try {
+      const overlayBuffer = await fetchImageBuffer(siteOverlay.imageUrl);
 
-    console.log(`[A1 Compose] Response headers set: Cache-Control: no-store`);
-
-    // TASK 4: Build panelsByKey map for print export persistence
-    // This ensures print export can access the exact panels used in composition
-    const panelsByKey = {};
-    for (const panel of panels) {
-      if (panel.type) {
-        panelsByKey[panel.type] = {
-          type: panel.type,
-          url: panel.imageUrl || null,
-          hasBuffer: !!panel.buffer,
-          coordinates: coordinates[panel.type] || null,
-        };
+      // Debug logging for site overlay
+      if (DEBUG_RUNS) {
+        const metadata = await sharp(overlayBuffer).metadata();
+        console.log(`[A1 Compose] Site overlay resize:`, {
+          input: { width: metadata.width, height: metadata.height },
+          output: { width: slotRect.width, height: targetHeight },
+          fit: "contain",
+        });
       }
+
+      // CRITICAL: Use fit:'contain' to prevent cropping site overlays
+      const resizedOverlay = await sharp(overlayBuffer)
+        .resize(slotRect.width, targetHeight, {
+          fit: "contain", // ALWAYS contain - never crop
+          position: "centre", // Center within slot
+          background: { r: 255, g: 255, b: 255, alpha: 1 }, // White letterbox padding
+        })
+        .png()
+        .toBuffer();
+
+      composites.push({
+        input: resizedOverlay,
+        left: slotRect.x,
+        top: slotRect.y,
+      });
+
+      coordinates.site_overlay = { ...slotRect, labelHeight: LABEL_HEIGHT };
+      console.log(
+        `[A1 Compose] Added site overlay at (${slotRect.x}, ${slotRect.y})`,
+      );
+    } catch (err) {
+      console.error("[A1 Compose] Failed to add site overlay:", err.message);
+    }
+  }
+
+  // Draw panel borders and labels
+  const borderSvg = generateOverlaySvg(coordinates, width, height, constants);
+  composites.push({
+    input: Buffer.from(borderSvg),
+    left: 0,
+    top: 0,
+  });
+
+  // Layout guarantee stamp (always-on): layoutTemplateUsed + boardSpecVersion
+  const specStampSvg = generateBoardSpecStampSvg({
+    width,
+    height,
+    layoutTemplateUsed: layoutTemplate,
+    boardSpecVersion,
+  });
+  composites.push({
+    input: Buffer.from(specStampSvg),
+    left: 0,
+    top: 0,
+  });
+
+  // BUILD STAMP: Optional stamp in bottom-right corner with build info
+  // DELIVERABLE A: Build Stamp (visual proof)
+  // Contains: RESOLVED PIPELINE_MODE (truthful), commit hash, runId, timestamp, OpenAI model, Meshy indicator
+  const includeBuildStamp =
+    requestBody.includeBuildStamp === true ||
+    process.env.A1_COMPOSE_INCLUDE_BUILD_STAMP === "1";
+
+  if (includeBuildStamp) {
+    const buildTimestamp = new Date().toISOString();
+    const shortHash = designId ? designId.substring(0, 8) : "N/A";
+    const runIdFromRequest = requestBody.runId || requestBody.meta?.runId;
+
+    // Extract flags from request body (passed from orchestrator)
+    const flagsFromRequest = requestBody.flags || requestBody.meta?.flags || {};
+
+    // Extract proof signals from request body (passed from orchestrator)
+    // These contain truthful information about what generators were actually used
+    const proofFromRequest = requestBody.proof || requestBody.meta?.proof || {};
+
+    const buildStampSvg = generateBuildStampSvg({
+      width,
+      height,
+      designId: shortHash,
+      runId: runIdFromRequest,
+      timestamp: buildTimestamp,
+      layoutTemplate,
+      panelCount: panels.length,
+      flags: flagsFromRequest,
+      proof: proofFromRequest,
+    });
+
+    const resolvedMode = getPipelineModeForStamp(proofFromRequest);
+    console.log(
+      `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || "gpt-image-1"}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`,
+    );
+    composites.push({
+      input: Buffer.from(buildStampSvg),
+      left: 0,
+      top: 0,
+    });
+  }
+
+  // Compose all panels onto background
+  const composedBuffer = await background
+    .composite(composites)
+    .png()
+    .toBuffer();
+
+  const maxDataUrlBytes =
+    parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || "", 10) ||
+    DEFAULT_MAX_DATAURL_BYTES;
+  const outputDir = resolveComposeOutputDir();
+  const publicUrlBase =
+    process.env.A1_COMPOSE_PUBLIC_URL_BASE || DEFAULT_PUBLIC_URL_BASE;
+
+  const composePayload = buildComposeSheetUrl({
+    pngBuffer: composedBuffer,
+    maxDataUrlBytes,
+    outputDir,
+    publicUrlBase,
+    designId,
+  });
+
+  if (!composePayload.sheetUrl) {
+    return res.status(413).json({
+      success: false,
+      error: composePayload.error || "PAYLOAD_TOO_LARGE",
+      message:
+        composePayload.message ||
+        "Composed sheet is too large to return as a base64 data URL. Configure external storage for composed PNGs.",
+      details: {
+        ...composePayload,
+        maxDataUrlBytes,
+      },
+    });
+  }
+
+  const {
+    sheetUrl,
+    transport,
+    pngBytes,
+    estimatedDataUrlBytes,
+    sheetUrlBytes,
+    outputFile,
+  } = composePayload;
+
+  // Print-ready PDF (A1 landscape) generated alongside high-res PNG exports
+  const includePdf = useHighRes && requestBody.skipPdf !== true;
+  let pdfUrl = null;
+  let pdfBytes = 0;
+  let pdfOutputFile = null;
+
+  if (includePdf) {
+    try {
+      const pdfBuffer = await buildPrintReadyPdfFromPng(composedBuffer, {
+        widthPx: width,
+        heightPx: height,
+        dpi: 300,
+      });
+
+      const safeDesignId =
+        String(designId || "unknown")
+          .replace(/[^a-z0-9_-]/gi, "")
+          .slice(0, 60) || "unknown";
+      const baseName = outputFile
+        ? path.basename(outputFile, path.extname(outputFile))
+        : `a1_${safeDesignId}_${Date.now()}`;
+
+      pdfOutputFile = `${baseName}.pdf`;
+      fs.mkdirSync(outputDir, { recursive: true });
+      fs.writeFileSync(path.join(outputDir, pdfOutputFile), pdfBuffer);
+
+      const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(
+        /\/$/,
+        "",
+      );
+      pdfUrl = `${base}/${pdfOutputFile}`;
+      pdfBytes = pdfBuffer.length;
+    } catch (pdfError) {
+      console.error("[A1 Compose] PDF generation failed:", pdfError.message);
+      // Fail closed for print exports unless explicitly skipping validation
+      if (!skipValidation) {
+        return res.status(500).json({
+          success: false,
+          error: "PDF_GENERATION_FAILED",
+          message: pdfError.message,
+        });
+      }
+    }
+  }
+
+  logComposeEvent(
+    trace,
+    "info",
+    `Sheet composed: ${composites.length} elements, ${width}x${height}px (${transport})`,
+  );
+
+  const composedAt = new Date().toISOString();
+  applyComposeNoStoreHeaders(res, {
+    designFingerprint: expectedFingerprint || "unknown",
+    composedAt,
+    traceId: trace.traceId,
+    runId: trace.runId,
+  });
+  logComposeEvent(
+    trace,
+    "info",
+    "Response headers set: Cache-Control: no-store",
+  );
+
+  const panelsByKey = buildPanelsByKey(panels, coordinates);
+
+  // ====================================================================
+  // QA GATES: Run automated quality assurance checks
+  // ====================================================================
+  let qaResults = null;
+  let critiqueResults = null;
+  const runQA = !skipValidation && requestBody.runQA !== false;
+
+  if (runQA) {
+    try {
+      const qaGatesModule = await getQAGates();
+      if (qaGatesModule && qaGatesModule.runAllQAGates) {
+        console.log("[A1 Compose] Running QA gates...");
+
+        // Build panel data for QA gates
+        const qaPanels = panels.map((p) => ({
+          type: p.type,
+          buffer: p.buffer || null,
+          pHash: p.pHash || null,
+          rect: coordinates[p.type]
+            ? {
+                width: Math.round(coordinates[p.type].width),
+                height: Math.round(coordinates[p.type].height),
+              }
+            : null,
+        }));
+
+        const sheetDimensions = { width, height };
+        qaResults = await qaGatesModule.runAllQAGates(
+          qaPanels,
+          sheetDimensions,
+          {
+            skipContrastCheck: requestBody.skipContrastCheck,
+          },
+        );
+
+        console.log(
+          `[A1 Compose] QA gates complete: ${qaResults.summary?.passed}/${qaResults.summary?.total} passed`,
+        );
+
+        if (qaResults.failures?.length > 0) {
+          console.warn(
+            `[A1 Compose] QA failures: ${qaResults.failures.map((f) => f.gate).join(", ")}`,
+          );
+        }
+      }
+    } catch (qaError) {
+      console.warn("[A1 Compose] QA gates failed:", qaError.message);
+      qaResults = { error: qaError.message, skipped: true };
     }
 
     // ====================================================================
-    // QA GATES: Run automated quality assurance checks
+    // OPUS SHEET CRITIC: AI-powered sheet validation
     // ====================================================================
-    let qaResults = null;
-    let critiqueResults = null;
-    const runQA = !skipValidation && req.body.runQA !== false;
-
-    if (runQA) {
+    const runCritique = requestBody.runCritique !== false;
+    if (runCritique && sheetUrl) {
       try {
-        const qaGatesModule = await getQAGates();
-        if (qaGatesModule && qaGatesModule.runAllQAGates) {
-          console.log("[A1 Compose] Running QA gates...");
+        const CriticClass = await getOpusSheetCritic();
+        if (CriticClass) {
+          console.log("[A1 Compose] Running Opus Sheet Critic...");
 
-          // Build panel data for QA gates
-          const qaPanels = panels.map((p) => ({
-            type: p.type,
-            buffer: p.buffer || null,
-            pHash: p.pHash || null,
-            rect: coordinates[p.type]
-              ? {
-                  width: Math.round(coordinates[p.type].width),
-                  height: Math.round(coordinates[p.type].height),
-                }
-              : null,
-          }));
+          const critic = new CriticClass();
+          const requiredPanels = Object.keys(panelsByKey);
 
-          const sheetDimensions = { width, height };
-          qaResults = await qaGatesModule.runAllQAGates(
-            qaPanels,
-            sheetDimensions,
+          // Pass design fingerprint if available
+          const designFingerprint = expectedFingerprint || null;
+
+          critiqueResults = await critic.critiqueSheet(
+            sheetUrl,
+            requiredPanels,
             {
-              skipContrastCheck: req.body.skipContrastCheck,
+              designFingerprint,
+              layoutTemplate,
+              strictMode: requestBody.strictCritique || false,
             },
           );
 
           console.log(
-            `[A1 Compose] QA gates complete: ${qaResults.summary?.passed}/${qaResults.summary?.total} passed`,
+            `[A1 Compose] Opus critique complete: overall_pass=${critiqueResults.overall_pass}`,
           );
 
-          if (qaResults.failures?.length > 0) {
+          if (!critiqueResults.overall_pass) {
             console.warn(
-              `[A1 Compose] QA failures: ${qaResults.failures.map((f) => f.gate).join(", ")}`,
+              `[A1 Compose] Critique issues: ${critiqueResults.layout_issues?.length || 0} layout, ${critiqueResults.regenerate_panels?.length || 0} regen`,
             );
           }
         }
-      } catch (qaError) {
-        console.warn("[A1 Compose] QA gates failed:", qaError.message);
-        qaResults = { error: qaError.message, skipped: true };
-      }
-
-      // ====================================================================
-      // OPUS SHEET CRITIC: AI-powered sheet validation
-      // ====================================================================
-      const runCritique = req.body.runCritique !== false;
-      if (runCritique && sheetUrl) {
-        try {
-          const CriticClass = await getOpusSheetCritic();
-          if (CriticClass) {
-            console.log("[A1 Compose] Running Opus Sheet Critic...");
-
-            const critic = new CriticClass();
-            const requiredPanels = Object.keys(panelsByKey);
-
-            // Pass design fingerprint if available
-            const designFingerprint = expectedFingerprint || null;
-
-            critiqueResults = await critic.critiqueSheet(
-              sheetUrl,
-              requiredPanels,
-              {
-                designFingerprint,
-                layoutTemplate,
-                strictMode: req.body.strictCritique || false,
-              },
-            );
-
-            console.log(
-              `[A1 Compose] Opus critique complete: overall_pass=${critiqueResults.overall_pass}`,
-            );
-
-            if (!critiqueResults.overall_pass) {
-              console.warn(
-                `[A1 Compose] Critique issues: ${critiqueResults.layout_issues?.length || 0} layout, ${critiqueResults.regenerate_panels?.length || 0} regen`,
-              );
-            }
-          }
-        } catch (critiqueError) {
-          console.warn(
-            "[A1 Compose] Opus Sheet Critic failed:",
-            critiqueError.message,
-          );
-          critiqueResults = { error: critiqueError.message, skipped: true };
-        }
+      } catch (critiqueError) {
+        console.warn(
+          "[A1 Compose] Opus Sheet Critic failed:",
+          critiqueError.message,
+        );
+        critiqueResults = { error: critiqueError.message, skipped: true };
       }
     }
+  }
 
-    // Return the composition result
-    // STANDARD CONTRACT: { success, sheetUrl, composedSheetUrl (alias), coordinates, metadata, panelsByKey, qa, critique }
-    return res.status(200).json({
-      success: true,
+  // Return the composition result
+  // STANDARD CONTRACT: { success, sheetUrl, composedSheetUrl (alias), coordinates, metadata, panelsByKey, qa, critique }
+  const durationMs = Date.now() - requestStartedMs;
+  const manifest = buildComposeArtifactManifest({
+    trace,
+    completedAt: composedAt,
+    durationMs,
+    layoutTemplate,
+    transport,
+    panelCount: panels.length,
+    panelKeys: Object.keys(panelsByKey),
+    designFingerprint: expectedFingerprint,
+    dnaHash: requestedHashes.dnaHash || null,
+    geometryHash:
+      requestedHashes.geometryHash || panelGeometryHashes[0] || null,
+    programHash: requestedHashes.programHash || null,
+    pngBytes,
+    pdfBytes,
+    outputFile,
+    pdfOutputFile,
+    qaResults,
+    critiqueResults,
+  });
+  const manifestFile = writeComposeArtifactManifest({
+    manifest,
+    outputFile,
+    outputDir,
+    pdfOutputFile,
+  });
+  const manifestUrl = buildPublicArtifactUrl(manifestFile, publicUrlBase);
+
+  if (manifestFile) {
+    logComposeEvent(trace, "info", `Compose manifest written: ${manifestFile}`);
+  }
+
+  const metadata = {
+    width,
+    height,
+    panelCount: panels.length,
+    composedAt,
+    durationMs,
+    layoutTemplate,
+    layoutTemplateUsed: layoutTemplate,
+    boardSpecVersion,
+    layoutConfig,
+    designId,
+    designFingerprint: expectedFingerprint,
+    transport,
+    pngBytes,
+    estimatedDataUrlBytes,
+    sheetUrlBytes,
+    outputFile,
+    pdfBytes,
+    pdfOutputFile,
+    traceId: trace.traceId,
+    runId: trace.runId,
+    manifestFile,
+    manifestUrl,
+    dnaHash: requestedHashes.dnaHash || null,
+    geometryHash:
+      requestedHashes.geometryHash || panelGeometryHashes[0] || null,
+    programHash: requestedHashes.programHash || null,
+    dna_hash: requestedHashes.dnaHash || null,
+    geometry_hash:
+      requestedHashes.geometryHash || panelGeometryHashes[0] || null,
+    program_hash: requestedHashes.programHash || null,
+    hashValidation: {
+      required: requireHashMetadata,
+      panelGeometryHashCount: panelGeometryHashes.length,
+      panelGeometryHash: panelGeometryHashes[0] || null,
+      matchedRequestedGeometryHash: requestedHashes.geometryHash
+        ? panelGeometryHashes[0] === requestedHashes.geometryHash
+        : null,
+    },
+    panelKeys: Object.keys(panelsByKey),
+    qaAllPassed: qaResults?.allPassed ?? null,
+    critiqueOverallPass: critiqueResults?.overall_pass ?? null,
+  };
+
+  return res.status(200).json(
+    buildComposeSuccessPayload({
       sheetUrl,
-      composedSheetUrl: sheetUrl, // backwards compat alias
-      url: sheetUrl, // additional alias for client normalizer
       pdfUrl,
       coordinates,
-      // TASK 4: Include panelsByKey for print export
       panelsByKey,
-      // QA Results (automated gates)
-      qa: qaResults
-        ? {
-            allPassed: qaResults.allPassed,
-            summary: qaResults.summary,
-            failures: qaResults.failures || [],
-            warnings: qaResults.warnings || [],
-            skipped: qaResults.skipped || false,
-            error: qaResults.error || null,
-          }
-        : null,
-      // Opus Sheet Critic results (AI-powered validation)
-      critique: critiqueResults
-        ? {
-            overallPass: critiqueResults.overall_pass,
-            layoutIssues: critiqueResults.layout_issues || [],
-            missingItems: critiqueResults.missing_items || [],
-            illegibleItems: critiqueResults.illegible_items || [],
-            regeneratePanels: critiqueResults.regenerate_panels || [],
-            ribaCompliance: critiqueResults.riba_compliance || null,
-            visualScore: critiqueResults.visual_score || null,
-            skipped: critiqueResults.skipped || false,
-            error: critiqueResults.error || null,
-          }
-        : null,
-      metadata: {
-        width,
-        height,
-        panelCount: panels.length,
-        composedAt: new Date().toISOString(),
-        layoutTemplate,
-        layoutTemplateUsed: layoutTemplate,
-        boardSpecVersion,
-        layoutConfig,
-        designId,
-        designFingerprint: expectedFingerprint,
-        transport,
-        pngBytes,
-        estimatedDataUrlBytes,
-        sheetUrlBytes,
-        outputFile,
-        pdfBytes,
-        pdfOutputFile,
-        dnaHash: requestedHashes.dnaHash || null,
-        geometryHash:
-          requestedHashes.geometryHash || panelGeometryHashes[0] || null,
-        programHash: requestedHashes.programHash || null,
-        dna_hash: requestedHashes.dnaHash || null,
-        geometry_hash:
-          requestedHashes.geometryHash || panelGeometryHashes[0] || null,
-        program_hash: requestedHashes.programHash || null,
-        hashValidation: {
-          required: requireHashMetadata,
-          panelGeometryHashCount: panelGeometryHashes.length,
-          panelGeometryHash: panelGeometryHashes[0] || null,
-          matchedRequestedGeometryHash: requestedHashes.geometryHash
-            ? panelGeometryHashes[0] === requestedHashes.geometryHash
-            : null,
-        },
-        // TASK 4: Add panel keys list for export verification
-        panelKeys: Object.keys(panelsByKey),
-        // QA summary flags for quick checks
-        qaAllPassed: qaResults?.allPassed ?? null,
-        critiqueOverallPass: critiqueResults?.overall_pass ?? null,
-      },
-    });
-  } catch (error) {
-    console.error("[A1 Compose] Error:", error);
-    return res.status(500).json({
-      success: false,
-      error: "COMPOSITION_FAILED",
-      message: error.message,
-      details:
-        process.env.NODE_ENV === "development"
-          ? { stack: error.stack }
-          : undefined,
-    });
-  }
+      qaResults,
+      critiqueResults,
+      metadata,
+      traceId: trace.traceId,
+      runId: trace.runId,
+      manifestUrl,
+    }),
+  );
 }
 
 function computeSafeCoverCropRect(
@@ -2443,6 +1956,8 @@ function computeSvgGeometryBounds(svgText) {
             currentY = nums[i + 3];
             expandBounds(currentX, currentY); // End point
           }
+          break;
+        default:
           break;
       }
     }
@@ -3334,7 +2849,7 @@ async function buildTitleBlockBuffer(
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
+      .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   const leftMargin = 12;
   const rightMargin = width - 12;
@@ -3406,339 +2921,6 @@ async function buildTitleBlockBuffer(
       <!-- Copyright -->
       <text x="${width / 2}" y="${height - 6}" font-family="Arial, sans-serif" font-size="6" fill="#94a3b8"
         text-anchor="middle">${esc(tb.copyrightNote)}</text>
-    </svg>
-  `;
-
-  const fontedSvg = await embedFontInSVG(svg);
-  return sharp(Buffer.from(fontedSvg))
-    .png()
-    .resize(width, height, {
-      fit: "contain",
-      background: { r: 255, g: 255, b: 255 },
-    })
-    .toBuffer();
-}
-
-/**
- * Build deterministic SVG for Schedules & Notes panel
- * Renders room schedule table + materials schedule from DNA data.
- * Follows the same pattern as buildTitleBlockBuffer.
- */
-async function buildSchedulesBuffer(
-  sharp,
-  width,
-  height,
-  masterDNA,
-  projectContext,
-  constants,
-) {
-  const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
-  const esc = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-  const rooms =
-    masterDNA?.rooms ||
-    masterDNA?.program?.rooms ||
-    projectContext?.programSpaces ||
-    [];
-  const materials = normalizeMaterialsForCompose(masterDNA);
-  const leftMargin = 12;
-  const colArea = Math.round(width * 0.55);
-  const colFloor = Math.round(width * 0.8);
-  const rowHeight = 18;
-  const headerY = 40;
-
-  // Room schedule rows
-  let roomRows = "";
-  const displayRooms = (Array.isArray(rooms) ? rooms : []).slice(0, 12);
-  displayRooms.forEach((room, idx) => {
-    const y = headerY + 20 + idx * rowHeight;
-    const name =
-      typeof room === "string"
-        ? room
-        : room.name || room.type || `Room ${idx + 1}`;
-    const areaRaw = room.dimensions || room.area || room.area_m2 || "";
-    const area =
-      typeof areaRaw === "number" ? `${areaRaw.toFixed(1)} m\u00B2` : areaRaw;
-    const floor =
-      room.floor != null
-        ? room.floor === 0 || room.floor === "ground"
-          ? "GF"
-          : room.floor === 1 || room.floor === "first"
-            ? "FF"
-            : room.floor === 2 || room.floor === "second"
-              ? "SF"
-              : `L${room.floor}`
-        : "";
-    roomRows += `
-      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}.</text>
-      <text x="${leftMargin + 20}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(name)}</text>
-      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(String(area))}</text>
-      <text x="${colFloor}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(floor)}</text>`;
-  });
-
-  const roomsEndY = headerY + 20 + displayRooms.length * rowHeight + 10;
-
-  // Materials schedule
-  let matRows = "";
-  const displayMats = (Array.isArray(materials) ? materials : []).slice(0, 6);
-  displayMats.forEach((mat, idx) => {
-    const y = roomsEndY + 36 + idx * rowHeight;
-    const name =
-      typeof mat === "string"
-        ? mat
-        : mat.name || mat.type || `Material ${idx + 1}`;
-    const application = mat.application || "";
-    matRows += `
-      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}. ${esc(name)}</text>
-      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(application)}</text>`;
-  });
-
-  const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
-
-      <!-- Room Schedule Header -->
-      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">ROOM SCHEDULE</text>
-
-      <!-- Column Headers -->
-      <text x="${leftMargin}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">NO.</text>
-      <text x="${leftMargin + 20}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">ROOM</text>
-      <text x="${colArea}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">AREA</text>
-      <text x="${colFloor}" y="${headerY}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">FLOOR</text>
-      <line x1="8" y1="${headerY + 4}" x2="${width - 8}" y2="${headerY + 4}" stroke="#e2e8f0" stroke-width="1" />
-
-      ${
-        roomRows ||
-        `<text x="${width / 2}" y="${headerY + 20}" font-family="Arial, sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">No room data available</text>`
-      }
-
-      <!-- Materials Schedule Header -->
-      <line x1="8" y1="${roomsEndY}" x2="${width - 8}" y2="${roomsEndY}" stroke="#e2e8f0" stroke-width="1" />
-      <rect x="8" y="${roomsEndY + 4}" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="${roomsEndY + 20}" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIALS SCHEDULE</text>
-
-      ${
-        matRows ||
-        `<text x="${width / 2}" y="${roomsEndY + 40}" font-family="Arial, sans-serif" font-size="9" fill="#9ca3af" text-anchor="middle">No material data available</text>`
-      }
-    </svg>
-  `;
-
-  const fontedSvg = await embedFontInSVG(svg);
-  return sharp(Buffer.from(fontedSvg))
-    .png()
-    .resize(width, height, {
-      fit: "contain",
-      background: { r: 255, g: 255, b: 255 },
-    })
-    .toBuffer();
-}
-
-/**
- * Normalize materials from DNA into a consistent array.
- * Handles: array at .materials, .style.materials, ._structured.style.materials,
- * and object-shaped materials ({exterior: {...}, roof: {...}}).
- */
-function normalizeMaterialsForCompose(dna) {
-  if (!dna) return [];
-  const candidates = [
-    dna.materials,
-    dna.style?.materials,
-    dna._structured?.style?.materials,
-  ];
-  for (const mats of candidates) {
-    if (Array.isArray(mats) && mats.length > 0) {
-      return mats.map((m) => ({
-        name: typeof m === "string" ? m : m.name || m.type || "material",
-        hexColor: m.hexColor || m.color_hex || "#808080",
-        application: m.application || m.use || "",
-      }));
-    }
-  }
-  if (
-    dna.materials &&
-    typeof dna.materials === "object" &&
-    !Array.isArray(dna.materials)
-  ) {
-    return Object.entries(dna.materials)
-      .filter(([, v]) => v && typeof v === "object")
-      .map(([key, v]) => ({
-        name: v.name || v.material || key,
-        hexColor: v.hexColor || v.color_hex || "#808080",
-        application: v.application || key,
-      }));
-  }
-  return [];
-}
-
-/**
- * Build deterministic SVG for Material Palette panel
- * Renders colored material swatches with hex codes and application labels.
- */
-async function buildMaterialPaletteBuffer(
-  sharp,
-  width,
-  height,
-  masterDNA,
-  constants,
-) {
-  const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
-  const esc = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-  // Defensive normalization: LLMs put materials in various locations and shapes
-  const materials = normalizeMaterialsForCompose(masterDNA);
-  const displayMats = materials.slice(0, 8);
-
-  // Grid layout: 2 columns
-  const cols = 2;
-  const margin = 12;
-  const headerH = 36;
-  const swatchW = Math.floor((width - margin * 3) / cols);
-  const swatchH = 40;
-  const gap = 8;
-
-  let swatches = "";
-  displayMats.forEach((mat, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const x = margin + col * (swatchW + margin);
-    const y = headerH + 12 + row * (swatchH + gap + 20);
-
-    const name =
-      typeof mat === "string"
-        ? mat
-        : mat.name || mat.type || `Material ${idx + 1}`;
-    const hexColor = mat.hexColor || "#cccccc";
-    const application = mat.application || "";
-
-    swatches += `
-      <rect x="${x}" y="${y}" width="${swatchW}" height="${swatchH}" fill="${esc(hexColor)}" stroke="#e2e8f0" stroke-width="1" rx="3" />
-      <text x="${x}" y="${y + swatchH + 12}" font-family="Arial, sans-serif" font-size="9" font-weight="600" fill="#1f2937">${esc(name)}</text>
-      <text x="${x}" y="${y + swatchH + 24}" font-family="Arial, sans-serif" font-size="8" fill="#64748b">${esc(hexColor)} — ${esc(application)}</text>`;
-  });
-
-  const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
-
-      <!-- Header -->
-      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
-
-      ${
-        swatches ||
-        `<text x="${width / 2}" y="${height / 2}" font-family="Arial, sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">No material palette data available</text>`
-      }
-    </svg>
-  `;
-
-  const fontedSvg = await embedFontInSVG(svg);
-  return sharp(Buffer.from(fontedSvg))
-    .png()
-    .resize(width, height, {
-      fit: "contain",
-      background: { r: 255, g: 255, b: 255 },
-    })
-    .toBuffer();
-}
-
-/**
- * Build deterministic SVG for Climate Card panel
- * Renders climate summary text: location, climate type, temperatures, orientation.
- */
-async function buildClimateCardBuffer(
-  sharp,
-  width,
-  height,
-  locationData,
-  constants,
-) {
-  const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
-  const esc = (value) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-
-  const climate = locationData?.climate || {};
-  const sunPath = locationData?.sunPath || {};
-  const address = locationData?.address || "Location TBD";
-  const climateType = climate.type || climate.zone || "Temperate";
-  const seasonal = climate.seasonal || {};
-  const orientation = sunPath.optimalOrientation || "South-facing";
-
-  const leftMargin = 12;
-  const lineH = 20;
-  let y = 46;
-
-  const rows = [
-    { label: "LOCATION", value: address },
-    { label: "CLIMATE TYPE", value: climateType },
-    { label: "OPTIMAL ORIENTATION", value: orientation },
-  ];
-
-  // Add seasonal data if available
-  if (seasonal.summer) {
-    rows.push({
-      label: "SUMMER",
-      value:
-        typeof seasonal.summer === "string"
-          ? seasonal.summer
-          : `${seasonal.summer.tempHigh || seasonal.summer.avgTemp || "—"}°C`,
-    });
-  }
-  if (seasonal.winter) {
-    rows.push({
-      label: "WINTER",
-      value:
-        typeof seasonal.winter === "string"
-          ? seasonal.winter
-          : `${seasonal.winter.tempLow || seasonal.winter.avgTemp || "—"}°C`,
-    });
-  }
-  if (sunPath.summer) {
-    rows.push({ label: "SUMMER SUN PATH", value: sunPath.summer });
-  }
-  if (sunPath.winter) {
-    rows.push({ label: "WINTER SUN PATH", value: sunPath.winter });
-  }
-
-  let dataRows = "";
-  rows.forEach((row) => {
-    dataRows += `
-      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">${esc(row.label)}</text>
-      <text x="${leftMargin}" y="${y + 13}" font-family="Arial, sans-serif" font-size="10" fill="#1f2937">${esc(String(row.value).substring(0, 60))}</text>
-      <line x1="8" y1="${y + 18}" x2="${width - 8}" y2="${y + 18}" stroke="#f1f5f9" stroke-width="1" />`;
-    y += lineH + 16;
-  });
-
-  const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
-
-      <!-- Header -->
-      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &amp; ENVIRONMENT</text>
-
-      ${
-        dataRows ||
-        `<text x="${width / 2}" y="${height / 2}" font-family="Arial, sans-serif" font-size="10" fill="#9ca3af" text-anchor="middle">No climate data available</text>`
-      }
     </svg>
   `;
 

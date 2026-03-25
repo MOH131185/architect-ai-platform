@@ -1,4 +1,4 @@
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
 /**
  * Dimensioning and Annotation Service
@@ -8,7 +8,7 @@ import logger from '../utils/logger.js';
 
 class DimensioningService {
   constructor() {
-    logger.info('Dimensioning Service initialized');
+    logger.info("Dimensioning Service initialized");
   }
 
   /**
@@ -18,19 +18,25 @@ class DimensioningService {
    * @param {string} floorLevel - Which floor level (ground, upper, roof)
    * @returns {Promise<Object>} Annotated image data with dimensions
    */
-  async annotateFloorPlan(imageUrl, bimModel, floorLevel = 'ground') {
+  async annotateFloorPlan(imageUrl, bimModel, floorLevel = "ground") {
     logger.info(`📐 Adding dimensions to ${floorLevel} floor plan...`);
 
     const { geometry, views } = bimModel;
-    const floorPlan = views.floorPlans[`floor_${floorLevel === 'ground' ? 0 : floorLevel === 'upper' ? 1 : 2}`];
+    const floorPlan =
+      views.floorPlans[
+        `floor_${floorLevel === "ground" ? 0 : floorLevel === "upper" ? 1 : 2}`
+      ];
 
     if (!floorPlan) {
       logger.warn(`Floor plan for ${floorLevel} not found in BIM model`);
-      return { success: false, error: 'Floor plan not found' };
+      return { success: false, error: "Floor plan not found" };
     }
 
     // Create SVG overlay with dimensions
-    const annotations = this.generateFloorPlanAnnotations(floorPlan, geometry.dimensions);
+    const annotations = this.generateFloorPlanAnnotations(
+      floorPlan,
+      geometry.dimensions,
+    );
 
     return {
       success: true,
@@ -38,7 +44,7 @@ class DimensioningService {
       annotations,
       dimensions: this.extractDimensions(floorPlan, geometry.dimensions),
       labels: this.generateSpaceLabels(floorPlan.spaces),
-      scaleBar: this.generateScaleBar(geometry.dimensions.length)
+      scaleBar: this.generateScaleBar(geometry.dimensions.length),
     };
   }
 
@@ -50,49 +56,49 @@ class DimensioningService {
 
     // Overall dimensions
     annotations.push({
-      type: 'dimension_horizontal',
+      type: "dimension_horizontal",
       start: { x: 0, y: -1 },
       end: { x: dimensions.length, y: -1 },
       value: `${dimensions.length.toFixed(2)}m`,
-      label: 'Length'
+      label: "Length",
     });
 
     annotations.push({
-      type: 'dimension_vertical',
+      type: "dimension_vertical",
       start: { x: -1, y: 0 },
       end: { x: -1, y: dimensions.width },
       value: `${dimensions.width.toFixed(2)}m`,
-      label: 'Width'
+      label: "Width",
     });
 
     // Space dimensions
-    floorPlan.spaces.forEach(space => {
+    floorPlan.spaces.forEach((space) => {
       // Estimate space dimensions (simplified - in real implementation would analyze geometry)
       const spaceWidth = Math.sqrt(space.area / 1.5);
       const spaceLength = space.area / spaceWidth;
 
       annotations.push({
-        type: 'dimension_horizontal',
+        type: "dimension_horizontal",
         start: { x: space.position.x, y: space.position.y - 0.3 },
         end: { x: space.position.x + spaceLength, y: space.position.y - 0.3 },
         value: `${spaceLength.toFixed(2)}m`,
-        style: 'interior'
+        style: "interior",
       });
 
       annotations.push({
-        type: 'dimension_vertical',
+        type: "dimension_vertical",
         start: { x: space.position.x - 0.3, y: space.position.y },
         end: { x: space.position.x - 0.3, y: space.position.y + spaceWidth },
         value: `${spaceWidth.toFixed(2)}m`,
-        style: 'interior'
+        style: "interior",
       });
     });
 
     // North arrow
     annotations.push({
-      type: 'north_arrow',
+      type: "north_arrow",
       position: { x: dimensions.length - 2, y: 1 },
-      size: 0.8
+      size: 0.8,
     });
 
     return annotations;
@@ -106,17 +112,17 @@ class DimensioningService {
       overall: {
         length: overallDimensions.length,
         width: overallDimensions.width,
-        area: overallDimensions.length * overallDimensions.width
+        area: overallDimensions.length * overallDimensions.width,
       },
-      spaces: {}
+      spaces: {},
     };
 
-    floorPlan.spaces.forEach(space => {
+    floorPlan.spaces.forEach((space) => {
       dims.spaces[space.name] = {
         area: space.area,
         // Estimate dimensions (in real implementation, derive from actual geometry)
         approximateWidth: Math.sqrt(space.area / 1.5),
-        approximateLength: space.area / Math.sqrt(space.area / 1.5)
+        approximateLength: space.area / Math.sqrt(space.area / 1.5),
       };
     });
 
@@ -127,15 +133,15 @@ class DimensioningService {
    * Generate space labels with areas
    */
   generateSpaceLabels(spaces) {
-    return spaces.map(space => ({
+    return spaces.map((space) => ({
       name: space.name,
       position: {
         x: space.position.x + 1, // Offset from corner
-        y: space.position.y + 1
+        y: space.position.y + 1,
       },
       text: `${space.name}\n${Math.round(space.area)}m²`,
-      fontSize: '12pt',
-      style: 'space_label'
+      fontSize: "12pt",
+      style: "space_label",
     }));
   }
 
@@ -151,32 +157,38 @@ class DimensioningService {
       position: { x: 1, y: -2 },
       totalLength: scaleLength,
       segments,
-      unit: 'm',
-      label: `Scale 1:${Math.round(buildingLength / 10 * 10)}`
+      unit: "m",
+      label: `Scale 1:${Math.round((buildingLength / 10) * 10)}`,
     };
   }
 
   /**
    * Add dimensions to elevation drawing
    */
-  async annotateElevation(imageUrl, bimModel, direction = 'north') {
+  async annotateElevation(imageUrl, bimModel, direction = "north") {
     logger.info(`📐 Adding dimensions to ${direction} elevation...`);
 
     const { geometry, views } = bimModel;
     const elevation = views.elevations[direction];
 
     if (!elevation) {
-      return { success: false, error: 'Elevation not found' };
+      return { success: false, error: "Elevation not found" };
     }
 
-    const annotations = this.generateElevationAnnotations(elevation, geometry.dimensions);
+    const annotations = this.generateElevationAnnotations(
+      elevation,
+      geometry.dimensions,
+    );
 
     return {
       success: true,
       originalImage: imageUrl,
       annotations,
-      dimensions: this.extractElevationDimensions(elevation, geometry.dimensions),
-      scaleBar: this.generateScaleBar(elevation.width)
+      dimensions: this.extractElevationDimensions(
+        elevation,
+        geometry.dimensions,
+      ),
+      scaleBar: this.generateScaleBar(elevation.width),
     };
   }
 
@@ -188,20 +200,20 @@ class DimensioningService {
 
     // Overall width
     annotations.push({
-      type: 'dimension_horizontal',
+      type: "dimension_horizontal",
       start: { x: 0, y: -0.5 },
       end: { x: elevation.width, y: -0.5 },
       value: `${elevation.width.toFixed(2)}m`,
-      label: 'Width'
+      label: "Width",
     });
 
     // Overall height
     annotations.push({
-      type: 'dimension_vertical',
+      type: "dimension_vertical",
       start: { x: -0.5, y: 0 },
       end: { x: -0.5, y: elevation.height },
       value: `${elevation.height.toFixed(2)}m`,
-      label: 'Height'
+      label: "Height",
     });
 
     // Floor heights
@@ -209,29 +221,29 @@ class DimensioningService {
     for (let i = 1; i <= floorCount; i++) {
       const floorElev = i * dimensions.floorHeight;
       annotations.push({
-        type: 'elevation_marker',
+        type: "elevation_marker",
         position: { x: -1, y: floorElev },
         value: `+${floorElev.toFixed(2)}m`,
-        label: `Level ${i}`
+        label: `Level ${i}`,
       });
     }
 
     // Window dimensions
     elevation.windows.slice(0, 3).forEach((window, idx) => {
       annotations.push({
-        type: 'dimension_window',
+        type: "dimension_window",
         position: window.position,
         width: window.width,
         height: window.height,
-        label: `W${idx + 1}: ${window.width}×${window.height}m`
+        label: `W${idx + 1}: ${window.width}×${window.height}m`,
       });
     });
 
     // Ground line label
     annotations.push({
-      type: 'ground_line',
+      type: "ground_line",
       position: { x: 0, y: 0 },
-      label: '±0.00m (Ground Level)'
+      label: "±0.00m (Ground Level)",
     });
 
     return annotations;
@@ -246,31 +258,34 @@ class DimensioningService {
       height: elevation.height,
       floorHeight: overallDimensions.floorHeight,
       windowCount: elevation.windows.length,
-      doorCount: elevation.doors.length
+      doorCount: elevation.doors.length,
     };
   }
 
   /**
    * Add dimensions to section drawing
    */
-  async annotateSection(imageUrl, bimModel, sectionType = 'longitudinal') {
+  async annotateSection(imageUrl, bimModel, sectionType = "longitudinal") {
     logger.info(`📐 Adding dimensions to ${sectionType} section...`);
 
     const { geometry, views } = bimModel;
     const section = views.sections[sectionType];
 
     if (!section) {
-      return { success: false, error: 'Section not found' };
+      return { success: false, error: "Section not found" };
     }
 
-    const annotations = this.generateSectionAnnotations(section, geometry.dimensions);
+    const annotations = this.generateSectionAnnotations(
+      section,
+      geometry.dimensions,
+    );
 
     return {
       success: true,
       originalImage: imageUrl,
       annotations,
       dimensions: this.extractSectionDimensions(section, geometry.dimensions),
-      scaleBar: this.generateScaleBar(section.width)
+      scaleBar: this.generateScaleBar(section.width),
     };
   }
 
@@ -282,48 +297,48 @@ class DimensioningService {
 
     // Overall width
     annotations.push({
-      type: 'dimension_horizontal',
+      type: "dimension_horizontal",
       start: { x: 0, y: -0.5 },
       end: { x: section.width, y: -0.5 },
       value: `${section.width.toFixed(2)}m`,
-      label: section.type === 'longitudinal' ? 'Length' : 'Width'
+      label: section.type === "longitudinal" ? "Length" : "Width",
     });
 
     // Overall height
     annotations.push({
-      type: 'dimension_vertical',
+      type: "dimension_vertical",
       start: { x: -0.5, y: -0.5 },
       end: { x: -0.5, y: section.height },
       value: `${(section.height + 0.5).toFixed(2)}m`,
-      label: 'Total Height (incl. foundation)'
+      label: "Total Height (incl. foundation)",
     });
 
     // Floor-to-floor heights
     const floorCount = Math.round(section.height / dimensions.floorHeight);
     for (let i = 1; i <= floorCount; i++) {
       annotations.push({
-        type: 'dimension_vertical',
+        type: "dimension_vertical",
         start: { x: section.width + 0.5, y: (i - 1) * dimensions.floorHeight },
         end: { x: section.width + 0.5, y: i * dimensions.floorHeight },
         value: `${dimensions.floorHeight.toFixed(2)}m`,
-        label: `Floor ${i} height`
+        label: `Floor ${i} height`,
       });
     }
 
     // Foundation depth label
     annotations.push({
-      type: 'label',
+      type: "label",
       position: { x: section.width / 2, y: -0.25 },
-      text: 'Foundation: 0.5m depth',
-      style: 'foundation_label'
+      text: "Foundation: 0.5m depth",
+      style: "foundation_label",
     });
 
     // Section cut line indicator
     annotations.push({
-      type: 'section_marker',
+      type: "section_marker",
       position: { x: section.width / 2, y: section.height + 1 },
       label: `Section ${section.type.toUpperCase()}`,
-      cutLine: true
+      cutLine: true,
     });
 
     return annotations;
@@ -338,7 +353,7 @@ class DimensioningService {
       height: section.height,
       floorHeight: overallDimensions.floorHeight,
       foundationDepth: 0.5,
-      floorCount: Math.round(section.height / overallDimensions.floorHeight)
+      floorCount: Math.round(section.height / overallDimensions.floorHeight),
     };
   }
 
@@ -355,28 +370,30 @@ class DimensioningService {
     svg += `    </marker>\n`;
     svg += `  </defs>\n`;
 
-    annotations.forEach(annotation => {
+    annotations.forEach((annotation) => {
       switch (annotation.type) {
-        case 'dimension_horizontal':
+        case "dimension_horizontal":
           svg += this.svgDimensionHorizontal(annotation, scale);
           break;
-        case 'dimension_vertical':
+        case "dimension_vertical":
           svg += this.svgDimensionVertical(annotation, scale);
           break;
-        case 'north_arrow':
+        case "north_arrow":
           svg += this.svgNorthArrow(annotation, scale);
           break;
-        case 'label':
+        case "label":
           svg += this.svgLabel(annotation, scale);
           break;
-        case 'elevation_marker':
+        case "elevation_marker":
           svg += this.svgElevationMarker(annotation, scale);
           break;
-        case 'ground_line':
+        case "ground_line":
           svg += this.svgGroundLine(annotation, scale);
           break;
-        case 'section_marker':
+        case "section_marker":
           svg += this.svgSectionMarker(annotation, scale);
+          break;
+        default:
           break;
       }
     });
@@ -496,7 +513,14 @@ class DimensioningService {
    * @param {Object} params.dimensions - Building dimensions (length, width, height)
    * @returns {string} SVG markup
    */
-  generateSVGOverlay({ width, height, area, program, rooms = [], dimensions = {} }) {
+  generateFloorPlanSVGOverlay({
+    width,
+    height,
+    area,
+    program,
+    rooms = [],
+    dimensions = {},
+  }) {
     const buildingLength = dimensions?.length || Math.sqrt(area * 1.5);
     const buildingWidth = dimensions?.width || area / buildingLength;
     const buildingHeight = dimensions?.height || 7;
@@ -558,7 +582,7 @@ class DimensioningService {
         svg += `
   <g transform="translate(${x}, ${y})">
     <text x="0" y="0" class="room-label">${room.name || `Room ${index + 1}`}</text>
-    <text x="0" y="20" class="area-text">${room.dimensions || room.area || 'N/A'}</text>
+    <text x="0" y="20" class="area-text">${room.dimensions || room.area || "N/A"}</text>
   </g>`;
       });
     }

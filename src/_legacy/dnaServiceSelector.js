@@ -3,9 +3,8 @@
  * Based on project requirements and complexity
  */
 
-import dnaCache from '../utils/dnaCache.js';
-import logger from '../utils/logger.js';
-
+import dnaCache from "../utils/dnaCache.js";
+import logger from "../utils/logger.js";
 
 class DNAServiceSelector {
   /**
@@ -13,19 +12,21 @@ class DNAServiceSelector {
    */
   selectService(requirements) {
     // Dynamic import will be handled in generateDNA
-    if (requirements.consistency === 'maximum') {
-      logger.info('📊 Selected: Enhanced Design DNA Service (Maximum Consistency)');
-      return 'enhancedDesignDNAService';
+    if (requirements.consistency === "maximum") {
+      logger.info(
+        "📊 Selected: Enhanced Design DNA Service (Maximum Consistency)",
+      );
+      return "enhancedDesignDNAService";
     }
     // Use enhancedDNAGenerator for detailed specifications
-    else if (requirements.detail === 'ultra') {
-      logger.info('🔬 Selected: Enhanced DNA Generator (Ultra Detail)');
-      return 'enhancedDNAGenerator';
+    else if (requirements.detail === "ultra") {
+      logger.info("🔬 Selected: Enhanced DNA Generator (Ultra Detail)");
+      return "enhancedDNAGenerator";
     }
     // Default to basic for speed
     else {
-      logger.info('⚡ Selected: Design DNA Generator (Fast Generation)');
-      return 'designDNAGenerator';
+      logger.info("⚡ Selected: Design DNA Generator (Fast Generation)");
+      return "designDNAGenerator";
     }
   }
 
@@ -36,7 +37,7 @@ class DNAServiceSelector {
     // Check cache first
     const cachedDNA = dnaCache.get(projectContext);
     if (cachedDNA) {
-      logger.info('🚀 Using cached DNA - skipping regeneration');
+      logger.info("🚀 Using cached DNA - skipping regeneration");
       return cachedDNA;
     }
 
@@ -46,15 +47,15 @@ class DNAServiceSelector {
     try {
       // Dynamic import based on selected service
       let service;
-      switch(serviceName) {
-        case 'enhancedDesignDNAService':
-          service = (await import('./enhancedDesignDNAService.js')).default;
+      switch (serviceName) {
+        case "enhancedDesignDNAService":
+          service = (await import("./enhancedDesignDNAService.js")).default;
           break;
-        case 'enhancedDNAGenerator':
-          service = (await import('./enhancedDNAGenerator.js')).default;
+        case "enhancedDNAGenerator":
+          service = (await import("./enhancedDNAGenerator.js")).default;
           break;
         default:
-          service = (await import('./designDNAGenerator.js')).default;
+          service = (await import("./designDNAGenerator.js")).default;
       }
 
       logger.info(`🧬 Using ${serviceName} for DNA generation`);
@@ -69,7 +70,9 @@ class DNAServiceSelector {
         generatedDNA = await service.generateDesignDNA(projectContext);
       } else {
         // Fallback to generic DNA structure
-        console.warn('⚠️ Service missing DNA generation method, using fallback');
+        console.warn(
+          "⚠️ Service missing DNA generation method, using fallback",
+        );
         generatedDNA = this.generateFallbackDNA(projectContext);
       }
 
@@ -80,8 +83,8 @@ class DNAServiceSelector {
 
       return generatedDNA;
     } catch (error) {
-      logger.error('❌ DNA generation failed:', error);
-      logger.info('🔄 Using fallback DNA generation');
+      logger.error("❌ DNA generation failed:", error);
+      logger.info("🔄 Using fallback DNA generation");
       return this.generateFallbackDNA(projectContext);
     }
   }
@@ -92,29 +95,36 @@ class DNAServiceSelector {
   analyzeRequirements(projectContext) {
     const requirements = {
       // Maximum consistency for multi-story buildings
-      consistency: projectContext.floors > 2 ? 'maximum' : 'standard',
+      consistency: projectContext.floors > 2 ? "maximum" : "standard",
 
       // Ultra detail for houses and complex programs
-      detail: projectContext.building_program === 'house' ||
-              projectContext.building_program === 'mixed-use' ? 'ultra' : 'standard',
+      detail:
+        projectContext.building_program === "house" ||
+        projectContext.building_program === "mixed-use"
+          ? "ultra"
+          : "standard",
 
       // Speed preference
-      speed: projectContext.quick || projectContext.fast ? 'fast' : 'normal',
+      speed: projectContext.quick || projectContext.fast ? "fast" : "normal",
 
       // Control image availability
-      hasControlImages: !!(projectContext.controlImage || projectContext.elevationImages),
+      hasControlImages: !!(
+        projectContext.controlImage || projectContext.elevationImages
+      ),
 
       // Portfolio availability
-      hasPortfolio: !!(projectContext.portfolio || projectContext.portfolioFiles)
+      hasPortfolio: !!(
+        projectContext.portfolio || projectContext.portfolioFiles
+      ),
     };
 
     // Override for ControlNet workflow - always use maximum consistency
     if (requirements.hasControlImages) {
-      requirements.consistency = 'maximum';
-      requirements.detail = 'ultra';
+      requirements.consistency = "maximum";
+      requirements.detail = "ultra";
     }
 
-    logger.info('📋 Project Requirements Analysis:', requirements);
+    logger.info("📋 Project Requirements Analysis:", requirements);
     return requirements;
   }
 
@@ -122,18 +132,19 @@ class DNAServiceSelector {
    * Generate fallback DNA when services fail
    */
   generateFallbackDNA(projectContext) {
-    const seed = projectContext.projectSeed || Math.floor(Math.random() * 1000000);
+    const seed =
+      projectContext.projectSeed || Math.floor(Math.random() * 1000000);
 
     return {
-      version: '1.0-fallback',
+      version: "1.0-fallback",
       timestamp: new Date().toISOString(),
       seed: seed,
 
       // Basic project info
       project: {
-        name: projectContext.project_name || 'Architectural Project',
-        type: projectContext.building_program || 'mixed-use',
-        location: projectContext.location?.address || 'Not specified'
+        name: projectContext.project_name || "Architectural Project",
+        type: projectContext.building_program || "mixed-use",
+        location: projectContext.location?.address || "Not specified",
       },
 
       // Dimensions
@@ -142,34 +153,34 @@ class DNAServiceSelector {
         total_area: projectContext.floor_area || 200,
         building_footprint: Math.sqrt(projectContext.floor_area || 200),
         ceiling_height: 3.0,
-        total_height: (projectContext.floors || 2) * 3.5
+        total_height: (projectContext.floors || 2) * 3.5,
       },
 
       // Basic style
       style_definition: {
-        name: projectContext.style || 'Contemporary',
-        characteristics: ['modern', 'functional', 'sustainable']
+        name: projectContext.style || "Contemporary",
+        characteristics: ["modern", "functional", "sustainable"],
       },
 
       // Basic materials
       materials: {
-        exterior: projectContext.materials?.exterior || 'brick',
-        roof: projectContext.materials?.roof || 'clay_tiles',
-        windows: projectContext.materials?.windows || 'double_glazed',
-        doors: projectContext.materials?.doors || 'timber'
+        exterior: projectContext.materials?.exterior || "brick",
+        roof: projectContext.materials?.roof || "clay_tiles",
+        windows: projectContext.materials?.windows || "double_glazed",
+        doors: projectContext.materials?.doors || "timber",
       },
 
       // Basic consistency rules
       consistency_rules: [
-        'All windows must be same style',
-        'Door placement on ground floor only',
-        'Materials consistent across all views',
-        'Roof line continuous'
+        "All windows must be same style",
+        "Door placement on ground floor only",
+        "Materials consistent across all views",
+        "Roof line continuous",
       ],
 
       // Fallback indicator
       isFallback: true,
-      fallbackReason: 'DNA service unavailable - using basic structure'
+      fallbackReason: "DNA service unavailable - using basic structure",
     };
   }
 

@@ -9,9 +9,9 @@
  * Variables referenced here would exist in the actual component.
  */
 
-import React, { useState, useEffect } from 'react';
-import designHistoryService from '../services/designHistoryService.js';
-import aiIntegrationService from '../services/aiIntegrationService.js';
+import React, { useState, useEffect } from "react";
+import designHistoryService from "../services/designHistoryService.js";
+import aiIntegrationService from "../services/aiIntegrationService.js";
 
 // ============================================================================
 // STEP 1: Add state variable to track current project
@@ -32,9 +32,9 @@ function ArchitectAIEnhanced() {
     const latestProject = designHistoryService.getLatestDesignContext();
 
     if (latestProject) {
-      console.log('🔄 Found previous project:', latestProject.projectId);
-      console.log('   Location:', latestProject.location?.address);
-      console.log('   Building:', latestProject.metadata?.buildingProgram);
+      console.log("🔄 Found previous project:", latestProject.projectId);
+      console.log("   Location:", latestProject.location?.address);
+      console.log("   Building:", latestProject.metadata?.buildingProgram);
 
       // Optionally prompt user: "Continue previous project?"
       // For now, just log it
@@ -48,7 +48,7 @@ function ArchitectAIEnhanced() {
   const handleGenerateFloorPlan = async () => {
     try {
       setIsGenerating(true);
-      setGenerationStatus('Generating ground floor plan...');
+      setGenerationStatus("Generating ground floor plan...");
 
       // Your existing floor plan generation code
       const floorPlanResult = await aiIntegrationService.generateFloorPlan({
@@ -63,7 +63,7 @@ function ArchitectAIEnhanced() {
       setFloorPlanImage(floorPlanResult.url);
 
       // 🆕 ADD THIS: Save design context for future consistency
-      console.log('💾 Saving design context for consistency...');
+      console.log("💾 Saving design context for consistency...");
 
       const projectId = designHistoryService.saveDesignContext({
         projectId: currentProjectId || undefined, // Use existing or generate new
@@ -72,25 +72,26 @@ function ArchitectAIEnhanced() {
         prompt: `${buildingProgram} in ${locationData.address}, ${architecturalStyle} style`,
         outputs: {
           groundFloorPlan: floorPlanResult.url,
-          seed: floorPlanResult.seed
+          seed: floorPlanResult.seed,
         },
         floorPlanUrl: floorPlanResult.url,
         seed: floorPlanResult.seed,
         buildingProgram: buildingProgram,
         floorArea: floorArea,
         floors: numberOfFloors,
-        style: architecturalStyle
+        style: architecturalStyle,
       });
 
       // Store project ID for future use
       setCurrentProjectId(projectId);
 
-      console.log('✅ Design context saved:', projectId);
-      setGenerationStatus('Ground floor complete! Context saved for consistency.');
-
+      console.log("✅ Design context saved:", projectId);
+      setGenerationStatus(
+        "Ground floor complete! Context saved for consistency.",
+      );
     } catch (error) {
-      console.error('Floor plan generation failed:', error);
-      setGenerationStatus('Generation failed. Please try again.');
+      console.error("Floor plan generation failed:", error);
+      setGenerationStatus("Generation failed. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -104,7 +105,7 @@ function ArchitectAIEnhanced() {
     try {
       // 🆕 ADD THIS: Check if we have ground floor context
       if (!currentProjectId) {
-        alert('⚠️  Please generate ground floor first for consistency.');
+        alert("⚠️  Please generate ground floor first for consistency.");
         return;
       }
 
@@ -112,22 +113,26 @@ function ArchitectAIEnhanced() {
       setGenerationStatus(`Generating floor ${floorNumber}...`);
 
       // 🆕 ADD THIS: Retrieve ground floor context
-      const previousContext = designHistoryService.getDesignContext(currentProjectId);
+      const previousContext =
+        designHistoryService.getDesignContext(currentProjectId);
 
       if (!previousContext) {
-        console.error('❌ No design history found for project:', currentProjectId);
-        alert('⚠️  Design history not found. Starting fresh...');
+        console.error(
+          "❌ No design history found for project:",
+          currentProjectId,
+        );
+        alert("⚠️  Design history not found. Starting fresh...");
       }
 
       // 🆕 ADD THIS: Generate continuation prompt
       const continuationPrompt = previousContext
         ? designHistoryService.generateContinuationPrompt(
             currentProjectId,
-            `Generate floor ${floorNumber} with bedrooms and bathrooms, maintaining same architectural style`
+            `Generate floor ${floorNumber} with bedrooms and bathrooms, maintaining same architectural style`,
           )
         : `Generate floor ${floorNumber} for ${buildingProgram}`;
 
-      console.log('📝 Using continuation prompt with historical context');
+      console.log("📝 Using continuation prompt with historical context");
 
       // Generate upper floor with same seed for consistency
       const upperFloorResult = await aiIntegrationService.generateFloorPlan({
@@ -139,10 +144,9 @@ function ArchitectAIEnhanced() {
       });
 
       setGenerationStatus(`Floor ${floorNumber} complete! Style maintained.`);
-
     } catch (error) {
-      console.error('Upper floor generation failed:', error);
-      setGenerationStatus('Generation failed. Please try again.');
+      console.error("Upper floor generation failed:", error);
+      setGenerationStatus("Generation failed. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -152,7 +156,7 @@ function ArchitectAIEnhanced() {
   // STEP 5: Retrieve context for 3D VISUALIZATION
   // ============================================================================
 
-  const handleGenerate3DView = async (viewType = 'exterior') => {
+  const handleGenerate3DView = async (viewType = "exterior") => {
     try {
       setIsGenerating(true);
       setGenerationStatus(`Generating 3D ${viewType} view...`);
@@ -163,7 +167,9 @@ function ArchitectAIEnhanced() {
         : null;
 
       if (!context) {
-        console.warn('⚠️  No design context found. Generating without history...');
+        console.warn(
+          "⚠️  No design context found. Generating without history...",
+        );
       }
 
       // Build enhanced prompt with context
@@ -198,11 +204,10 @@ Generate photorealistic ${viewType} view maintaining exact proportions and style
       });
 
       set3DImage(render3D.url);
-      setGenerationStatus('3D view complete! Style matches floor plan.');
-
+      setGenerationStatus("3D view complete! Style matches floor plan.");
     } catch (error) {
-      console.error('3D generation failed:', error);
-      setGenerationStatus('Generation failed. Please try again.');
+      console.error("3D generation failed:", error);
+      setGenerationStatus("Generation failed. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -214,12 +219,12 @@ Generate photorealistic ${viewType} view maintaining exact proportions and style
 
   const handleExportProject = () => {
     if (!currentProjectId) {
-      alert('No active project to export');
+      alert("No active project to export");
       return;
     }
 
     designHistoryService.exportHistory(currentProjectId);
-    console.log('📥 Project exported');
+    console.log("📥 Project exported");
   };
 
   const handleImportProject = async (event) => {
@@ -228,18 +233,17 @@ Generate photorealistic ${viewType} view maintaining exact proportions and style
 
     try {
       await designHistoryService.importHistory(file);
-      console.log('📤 Project imported');
+      console.log("📤 Project imported");
 
       // Reload project list or UI
       const latestProject = designHistoryService.getLatestDesignContext();
       if (latestProject) {
         setCurrentProjectId(latestProject.projectId);
-        console.log('🔄 Loaded imported project:', latestProject.projectId);
+        console.log("🔄 Loaded imported project:", latestProject.projectId);
       }
-
     } catch (error) {
-      console.error('Import failed:', error);
-      alert('Failed to import project');
+      console.error("Import failed:", error);
+      alert("Failed to import project");
     }
   };
 
@@ -263,7 +267,7 @@ Generate photorealistic ${viewType} view maintaining exact proportions and style
         setLocationData(context.location);
         setBuildingDNA(context.buildingDNA);
         setFloorPlanImage(context.floorPlanUrl);
-        console.log('🔄 Loaded project:', projectId);
+        console.log("🔄 Loaded project:", projectId);
       }
     };
 
@@ -274,14 +278,16 @@ Generate photorealistic ${viewType} view maintaining exact proportions and style
           <p>No saved projects</p>
         ) : (
           <ul>
-            {projects.map(project => (
+            {projects.map((project) => (
               <li key={project.projectId}>
                 <button onClick={() => loadProject(project.projectId)}>
                   <strong>{project.metadata.buildingProgram}</strong>
                   <br />
                   {project.location.address}
                   <br />
-                  <small>{new Date(project.timestamp).toLocaleDateString()}</small>
+                  <small>
+                    {new Date(project.timestamp).toLocaleDateString()}
+                  </small>
                 </button>
               </li>
             ))}
@@ -314,11 +320,13 @@ Generate photorealistic ${viewType} view maintaining exact proportions and style
         type="file"
         accept=".json"
         onChange={handleImportProject}
-        style={{ display: 'none' }}
+        style={{ display: "none" }}
         id="import-project"
       />
       <label htmlFor="import-project">
-        <button onClick={() => document.getElementById('import-project').click()}>
+        <button
+          onClick={() => document.getElementById("import-project").click()}
+        >
           Import Project
         </button>
       </label>

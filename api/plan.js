@@ -33,7 +33,6 @@ export default async function handler(req, res) {
       program,
       area,
       climate,
-      styleWeights,
       siteMetrics,
       programSpaces,
       seed,

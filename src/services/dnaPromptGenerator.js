@@ -1,3 +1,15 @@
+/**
+ * DNA-Driven Prompt Generator — ACTIVE VIEW-PROMPT GENERATOR
+ *
+ * Generates unique, view-specific prompts from Master DNA. Used by
+ * panelOrchestrator.js and togetherAIService.js. Imports negative-prompt
+ * constants from the canonical a1/panelPromptBuilders.js.
+ *
+ * Not to be confused with:
+ * - a1/panelPromptBuilders.js (canonical per-panel prompt builders)
+ * - dnaPromptContext.js (structured DNA context embedding)
+ */
+
 import logger from "../utils/logger.js";
 import {
   FLOOR_PLAN_NEGATIVE,
@@ -5,12 +17,6 @@ import {
   SECTION_NEGATIVE,
   SITE_PLAN_NEGATIVE,
 } from "./a1/panelPromptBuilders.js";
-
-/**
- * DNA-Driven Prompt Generator
- * Generates UNIQUE, SPECIFIC prompts for each architectural view
- * Ensures NO duplicate images while maintaining perfect consistency
- */
 
 class DNAPromptGenerator {
   constructor() {

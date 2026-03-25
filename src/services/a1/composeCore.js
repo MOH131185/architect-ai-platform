@@ -1,8 +1,9 @@
 /**
  * A1 Compose Core
  *
- * Shared composition logic for both local dev (server.js) and
- * Vercel serverless (api/a1/compose.js).
+ * Canonical public compose-core module used by the live A1 compose route and
+ * by browser/runtime ESM consumers. The CommonJS sibling `composeCore.cjs`
+ * exists only as a compatibility mirror for CJS-only tooling and tests.
  *
  * Single source of truth for:
  *  - Layout template normalization (uk-riba-standard -> board-v2)
@@ -15,7 +16,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Grid constants (inline to avoid ESM/CJS import issues in server.js)
+// Grid constants (inline to avoid ESM/CJS import issues in server.cjs)
 // ---------------------------------------------------------------------------
 
 /** A1 landscape at 300 DPI */
@@ -336,7 +337,7 @@ export function normalizeLayoutTemplate(raw) {
  *
  * @param {Object}  opts
  * @param {string}  [opts.layoutTemplate] – raw template name (will be normalised)
- * @param {string}  [opts.layoutConfig]   – alias accepted by server.js
+ * @param {string}  [opts.layoutConfig]   – alias accepted by server.cjs
  * @param {number}  [opts.floorCount=2]   – number of floors
  * @param {boolean} [opts.highRes=false]  – use print resolution
  * @returns {{ layout: Object, width: number, height: number, layoutTemplate: string }}

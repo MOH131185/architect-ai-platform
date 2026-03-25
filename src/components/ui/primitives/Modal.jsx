@@ -1,10 +1,10 @@
-import React from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
-import { cva } from 'class-variance-authority';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import React from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion, AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
+import { cva } from "class-variance-authority";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -14,24 +14,24 @@ function cn(...inputs) {
 // Modal content size variants
 const modalVariants = cva(
   // Base styles
-  'relative bg-white rounded-2xl shadow-2xl w-full max-h-[85vh] overflow-hidden flex flex-col',
+  "relative bg-white rounded-2xl shadow-2xl w-full max-h-[85vh] overflow-hidden flex flex-col",
   {
     variants: {
       size: {
-        sm: 'max-w-sm',
-        md: 'max-w-md',
-        lg: 'max-w-lg',
-        xl: 'max-w-xl',
-        '2xl': 'max-w-2xl',
-        '3xl': 'max-w-3xl',
-        '4xl': 'max-w-4xl',
-        full: 'max-w-[calc(100vw-2rem)]',
+        sm: "max-w-sm",
+        md: "max-w-md",
+        lg: "max-w-lg",
+        xl: "max-w-xl",
+        "2xl": "max-w-2xl",
+        "3xl": "max-w-3xl",
+        "4xl": "max-w-4xl",
+        full: "max-w-[calc(100vw-2rem)]",
       },
     },
     defaultVariants: {
-      size: 'md',
+      size: "md",
     },
-  }
+  },
 );
 
 // Animation variants
@@ -54,7 +54,7 @@ const Modal = ({
   open,
   onOpenChange,
   children,
-  size = 'md',
+  size = "md",
   className,
   showClose = true,
   closeOnOverlayClick = true,
@@ -70,15 +70,17 @@ const Modal = ({
                 className="fixed inset-0 z-modal-backdrop bg-black/50 backdrop-blur-sm"
                 {...overlayAnimation}
                 transition={{ duration: 0.2 }}
-                onClick={closeOnOverlayClick ? () => onOpenChange(false) : undefined}
+                onClick={
+                  closeOnOverlayClick ? () => onOpenChange(false) : undefined
+                }
               />
             </Dialog.Overlay>
             <Dialog.Content asChild>
               <motion.div
                 className={cn(
-                  'fixed left-1/2 top-1/2 z-modal -translate-x-1/2 -translate-y-1/2',
+                  "fixed left-1/2 top-1/2 z-modal -translate-x-1/2 -translate-y-1/2",
                   modalVariants({ size }),
-                  className
+                  className,
                 )}
                 {...contentAnimation}
                 transition={{ duration: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
@@ -110,30 +112,34 @@ const Modal = ({
 const ModalHeader = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex flex-col space-y-1.5 p-6 pb-4', className)}
+    className={cn("flex flex-col space-y-1.5 p-6 pb-4", className)}
     {...props}
   />
 ));
 
-ModalHeader.displayName = 'ModalHeader';
+ModalHeader.displayName = "ModalHeader";
 
 /**
  * Modal Title
  */
-const ModalTitle = React.forwardRef(({ className, ...props }, ref) => (
-  <Dialog.Title asChild>
-    <h2
-      ref={ref}
-      className={cn(
-        'text-lg font-semibold leading-none tracking-tight text-gray-900',
-        className
-      )}
-      {...props}
-    />
-  </Dialog.Title>
-));
+const ModalTitle = React.forwardRef(
+  ({ className, children, ...props }, ref) => (
+    <Dialog.Title asChild>
+      <h2
+        ref={ref}
+        className={cn(
+          "text-lg font-semibold leading-none tracking-tight text-gray-900",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </h2>
+    </Dialog.Title>
+  ),
+);
 
-ModalTitle.displayName = 'ModalTitle';
+ModalTitle.displayName = "ModalTitle";
 
 /**
  * Modal Description
@@ -142,13 +148,13 @@ const ModalDescription = React.forwardRef(({ className, ...props }, ref) => (
   <Dialog.Description asChild>
     <p
       ref={ref}
-      className={cn('text-sm text-gray-500', className)}
+      className={cn("text-sm text-gray-500", className)}
       {...props}
     />
   </Dialog.Description>
 ));
 
-ModalDescription.displayName = 'ModalDescription';
+ModalDescription.displayName = "ModalDescription";
 
 /**
  * Modal Body (scrollable content area)
@@ -156,12 +162,12 @@ ModalDescription.displayName = 'ModalDescription';
 const ModalBody = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex-1 overflow-y-auto px-6 py-2', className)}
+    className={cn("flex-1 overflow-y-auto px-6 py-2", className)}
     {...props}
   />
 ));
 
-ModalBody.displayName = 'ModalBody';
+ModalBody.displayName = "ModalBody";
 
 /**
  * Modal Footer
@@ -170,14 +176,14 @@ const ModalFooter = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
     className={cn(
-      'flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 p-6 pt-4 border-t border-gray-100',
-      className
+      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 p-6 pt-4 border-t border-gray-100",
+      className,
     )}
     {...props}
   />
 ));
 
-ModalFooter.displayName = 'ModalFooter';
+ModalFooter.displayName = "ModalFooter";
 
 /**
  * Modal Trigger (if needed for declarative usage)

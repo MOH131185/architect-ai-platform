@@ -21,7 +21,7 @@ import {
   validateRules,
   buildCorrectionPrompt,
   RULE_CATEGORIES,
-} from '../reasoning/hybridReasoningEngine.js';
+} from "../reasoning/hybridReasoningEngine.js";
 
 // Default configuration
 const DEFAULT_OPTIONS = {
@@ -124,7 +124,7 @@ export async function runDesignLoop(inputs, options = {}) {
     iteration: 0,
     design: JSON.parse(JSON.stringify(design)),
     score: design.score?.total || 0,
-    action: 'initial',
+    action: "initial",
     timestamp: new Date().toISOString(),
   });
 
@@ -134,15 +134,18 @@ export async function runDesignLoop(inputs, options = {}) {
     // Check if we've reached the quality threshold
     if (currentScore >= opts.qualityThreshold) {
       console.log(
-        `[DesignLoop] Quality threshold reached: ${currentScore} >= ${opts.qualityThreshold}`
+        `[DesignLoop] Quality threshold reached: ${currentScore} >= ${opts.qualityThreshold}`,
       );
       break;
     }
 
     // Check if improvement has stalled
-    if (iteration > 0 && currentScore - previousScore < opts.improvementThreshold) {
+    if (
+      iteration > 0 &&
+      currentScore - previousScore < opts.improvementThreshold
+    ) {
       console.log(
-        `[DesignLoop] Improvement stalled: ${currentScore - previousScore} < ${opts.improvementThreshold}`
+        `[DesignLoop] Improvement stalled: ${currentScore - previousScore} < ${opts.improvementThreshold}`,
       );
       break;
     }
@@ -166,12 +169,14 @@ export async function runDesignLoop(inputs, options = {}) {
       design: JSON.parse(JSON.stringify(design)),
       score: design.score?.total || 0,
       critique,
-      action: 'refine',
+      action: "refine",
       timestamp: new Date().toISOString(),
     });
 
     if (opts.logIterations) {
-      console.log(`[DesignLoop] Iteration ${iteration}: Score ${design.score?.total || 0}`);
+      console.log(
+        `[DesignLoop] Iteration ${iteration}: Score ${design.score?.total || 0}`,
+      );
     }
   }
 
@@ -203,15 +208,18 @@ export async function runDesignLoop(inputs, options = {}) {
 async function generateInitialDesign(inputs) {
   // Use existing pipeline to generate initial design
   try {
-    const { getEngine } = await import('./engineRouter.js');
+    const { getEngine } = await import("./engineRouter.js");
 
     // Get program reasoner
-    const programReasoner = await getEngine('programReasoner');
+    const programReasoner = await getEngine("programReasoner");
     const programDNA = await programReasoner.generateProgram(inputs);
 
     // Get floor plan generator
-    const floorPlanGenerator = await getEngine('floorPlanGenerator');
-    const geometryDNA = await floorPlanGenerator.generateLayout(programDNA, inputs.sitePolygon);
+    const floorPlanGenerator = await getEngine("floorPlanGenerator");
+    const geometryDNA = await floorPlanGenerator.generateLayout(
+      programDNA,
+      inputs.sitePolygon,
+    );
 
     // Score the design
     const score = await scoreDesign({ programDNA, geometryDNA });
@@ -224,14 +232,14 @@ async function generateInitialDesign(inputs) {
       inputs,
     };
   } catch (error) {
-    console.warn('[DesignLoop] Engine error, using fallback:', error.message);
+    console.warn("[DesignLoop] Engine error, using fallback:", error.message);
 
     // Fallback: Return basic structure
     return {
       programDNA: inputs.programDNA || {},
       geometryDNA: inputs.geometryDNA || {},
       styleDNA: inputs.style || {},
-      score: { total: 50, grade: 'C' },
+      score: { total: 50, grade: "C" },
       inputs,
     };
   }
@@ -259,8 +267,8 @@ export async function critiqueDesign(design) {
 
     // Call LLM for critique (using Qwen via Together.ai)
     const prompt = CRITIQUE_PROMPTS.general.replace(
-      '{designData}',
-      JSON.stringify(designData, null, 2)
+      "{designData}",
+      JSON.stringify(designData, null, 2),
     );
 
     // MVP: Use static critique since LLM call would require API
@@ -269,7 +277,7 @@ export async function critiqueDesign(design) {
 
     return critique;
   } catch (error) {
-    console.warn('[DesignLoop] Critique failed:', error.message);
+    console.warn("[DesignLoop] Critique failed:", error.message);
     return generateDefaultCritique(design);
   }
 }
@@ -284,45 +292,46 @@ function generateMVPCritique(design) {
   // Check circulation
   if (score.circulation < 80) {
     issues.push({
-      area: 'circulation',
-      severity: score.circulation < 60 ? 'high' : 'medium',
-      suggestion: 'Optimize hallway layout to reduce dead-end corridors',
+      area: "circulation",
+      severity: score.circulation < 60 ? "high" : "medium",
+      suggestion: "Optimize hallway layout to reduce dead-end corridors",
     });
   }
 
   // Check daylight
   if (score.daylight < 80) {
     issues.push({
-      area: 'daylight',
-      severity: score.daylight < 60 ? 'high' : 'medium',
-      suggestion: 'Increase south-facing windows in living areas',
+      area: "daylight",
+      severity: score.daylight < 60 ? "high" : "medium",
+      suggestion: "Increase south-facing windows in living areas",
     });
   }
 
   // Check adjacencies
   if (score.adjacency < 85) {
     issues.push({
-      area: 'adjacency',
-      severity: score.adjacency < 70 ? 'high' : 'low',
-      suggestion: 'Improve connection between living and dining areas',
+      area: "adjacency",
+      severity: score.adjacency < 70 ? "high" : "low",
+      suggestion: "Improve connection between living and dining areas",
     });
   }
 
   // Check orientation
   if (score.orientation < 80) {
     issues.push({
-      area: 'orientation',
-      severity: 'medium',
-      suggestion: 'Rotate living room to face south for better solar gain',
+      area: "orientation",
+      severity: "medium",
+      suggestion: "Rotate living room to face south for better solar gain",
     });
   }
 
   // Check compactness
   if (score.compactness < 70) {
     issues.push({
-      area: 'compactness',
-      severity: 'low',
-      suggestion: 'Consider more compact floor plan to reduce external surface area',
+      area: "compactness",
+      severity: "low",
+      suggestion:
+        "Consider more compact floor plan to reduce external surface area",
     });
   }
 
@@ -344,11 +353,19 @@ function generateMVPCritique(design) {
 function generateDefaultCritique(design) {
   return {
     issues: [
-      { area: 'circulation', severity: 'medium', suggestion: 'Review hallway efficiency' },
-      { area: 'daylight', severity: 'medium', suggestion: 'Consider window placement' },
+      {
+        area: "circulation",
+        severity: "medium",
+        suggestion: "Review hallway efficiency",
+      },
+      {
+        area: "daylight",
+        severity: "medium",
+        suggestion: "Consider window placement",
+      },
     ],
-    overallAssessment: 'Design requires minor improvements',
-    priorityAreas: ['circulation', 'daylight'],
+    overallAssessment: "Design requires minor improvements",
+    priorityAreas: ["circulation", "daylight"],
     estimatedImprovement: 5,
   };
 }
@@ -358,18 +375,18 @@ function generateDefaultCritique(design) {
  */
 function getOverallAssessment(score) {
   if (score >= 90) {
-    return 'Excellent design with minor optimization opportunities';
+    return "Excellent design with minor optimization opportunities";
   }
   if (score >= 80) {
-    return 'Good design with some areas for improvement';
+    return "Good design with some areas for improvement";
   }
   if (score >= 70) {
-    return 'Acceptable design requiring attention to several issues';
+    return "Acceptable design requiring attention to several issues";
   }
   if (score >= 60) {
-    return 'Design needs significant improvements in multiple areas';
+    return "Design needs significant improvements in multiple areas";
   }
-  return 'Design requires fundamental reconsideration of layout';
+  return "Design requires fundamental reconsideration of layout";
 }
 
 /**
@@ -387,20 +404,30 @@ export async function refineDesign(design, critique, inputs) {
     // Apply refinements based on critique priority areas
     for (const area of critique.priorityAreas || []) {
       switch (area) {
-        case 'circulation':
-          refinedDesign.programDNA = applyCirculationFix(refinedDesign.programDNA);
+        case "circulation":
+          refinedDesign.programDNA = applyCirculationFix(
+            refinedDesign.programDNA,
+          );
           break;
-        case 'daylight':
+        case "daylight":
           refinedDesign.programDNA = applyDaylightFix(refinedDesign.programDNA);
           break;
-        case 'adjacency':
-          refinedDesign.programDNA = applyAdjacencyFix(refinedDesign.programDNA);
+        case "adjacency":
+          refinedDesign.programDNA = applyAdjacencyFix(
+            refinedDesign.programDNA,
+          );
           break;
-        case 'orientation':
-          refinedDesign.programDNA = applyOrientationFix(refinedDesign.programDNA);
+        case "orientation":
+          refinedDesign.programDNA = applyOrientationFix(
+            refinedDesign.programDNA,
+          );
           break;
-        case 'compactness':
-          refinedDesign.programDNA = applyCompactnessFix(refinedDesign.programDNA);
+        case "compactness":
+          refinedDesign.programDNA = applyCompactnessFix(
+            refinedDesign.programDNA,
+          );
+          break;
+        default:
           break;
       }
     }
@@ -408,14 +435,17 @@ export async function refineDesign(design, critique, inputs) {
     // Regenerate geometry if program changed
     if (refinedDesign.programDNA !== design.programDNA) {
       try {
-        const { getEngine } = await import('./engineRouter.js');
-        const floorPlanGenerator = await getEngine('floorPlanGenerator');
+        const { getEngine } = await import("./engineRouter.js");
+        const floorPlanGenerator = await getEngine("floorPlanGenerator");
         refinedDesign.geometryDNA = await floorPlanGenerator.generateLayout(
           refinedDesign.programDNA,
-          inputs.sitePolygon
+          inputs.sitePolygon,
         );
       } catch (error) {
-        console.warn('[DesignLoop] Geometry regeneration failed:', error.message);
+        console.warn(
+          "[DesignLoop] Geometry regeneration failed:",
+          error.message,
+        );
       }
     }
 
@@ -424,7 +454,7 @@ export async function refineDesign(design, critique, inputs) {
 
     return refinedDesign;
   } catch (error) {
-    console.warn('[DesignLoop] Refinement failed:', error.message);
+    console.warn("[DesignLoop] Refinement failed:", error.message);
 
     // Return original with slightly improved score (simulate improvement)
     return {
@@ -442,13 +472,14 @@ export async function refineDesign(design, critique, inputs) {
  */
 async function scoreDesign(design) {
   try {
-    const { default: qualityScoring } = await import('../quality/qualityScoring.js');
+    const { default: qualityScoring } =
+      await import("../quality/qualityScoring.js");
     return qualityScoring.scoreDesign(design);
   } catch (error) {
     // Fallback scoring
     return {
       total: 70,
-      grade: 'B',
+      grade: "B",
       details: {
         adjacency: 75,
         circulation: 70,
@@ -467,7 +498,7 @@ function applyCirculationFix(programDNA) {
   // Mark rooms for better circulation
   const rooms = programDNA?.rooms || [];
   rooms.forEach((room) => {
-    if (room.adjacencies?.includes('hallway')) {
+    if (room.adjacencies?.includes("hallway")) {
       room.circulationOptimized = true;
     }
   });
@@ -477,9 +508,9 @@ function applyCirculationFix(programDNA) {
 function applyDaylightFix(programDNA) {
   const rooms = programDNA?.rooms || [];
   rooms.forEach((room) => {
-    if (['living_room', 'living', 'dining'].includes(room.id?.toLowerCase())) {
-      room.preferredOrientation = 'south';
-      room.requirements = [...(room.requirements || []), 'maximize_glazing'];
+    if (["living_room", "living", "dining"].includes(room.id?.toLowerCase())) {
+      room.preferredOrientation = "south";
+      room.requirements = [...(room.requirements || []), "maximize_glazing"];
     }
   });
   return { ...programDNA, rooms };
@@ -488,9 +519,9 @@ function applyDaylightFix(programDNA) {
 function applyAdjacencyFix(programDNA) {
   // Ensure living-kitchen-dining chain
   const rooms = programDNA?.rooms || [];
-  const living = rooms.find((r) => r.id?.toLowerCase().includes('living'));
-  const kitchen = rooms.find((r) => r.id?.toLowerCase().includes('kitchen'));
-  const dining = rooms.find((r) => r.id?.toLowerCase().includes('dining'));
+  const living = rooms.find((r) => r.id?.toLowerCase().includes("living"));
+  const kitchen = rooms.find((r) => r.id?.toLowerCase().includes("kitchen"));
+  const dining = rooms.find((r) => r.id?.toLowerCase().includes("dining"));
 
   if (living && kitchen && !living.adjacencies?.includes(kitchen.id)) {
     living.adjacencies = [...(living.adjacencies || []), kitchen.id];
@@ -505,13 +536,17 @@ function applyAdjacencyFix(programDNA) {
 function applyOrientationFix(programDNA) {
   const rooms = programDNA?.rooms || [];
   rooms.forEach((room) => {
-    const id = room.id?.toLowerCase() || '';
-    if (id.includes('bedroom')) {
-      room.preferredOrientation = 'east';
-    } else if (id.includes('living') || id.includes('dining')) {
-      room.preferredOrientation = 'south';
-    } else if (id.includes('kitchen') || id.includes('bathroom') || id.includes('utility')) {
-      room.preferredOrientation = 'north';
+    const id = room.id?.toLowerCase() || "";
+    if (id.includes("bedroom")) {
+      room.preferredOrientation = "east";
+    } else if (id.includes("living") || id.includes("dining")) {
+      room.preferredOrientation = "south";
+    } else if (
+      id.includes("kitchen") ||
+      id.includes("bathroom") ||
+      id.includes("utility")
+    ) {
+      room.preferredOrientation = "north";
     }
   });
   return { ...programDNA, rooms };
@@ -570,7 +605,7 @@ export async function runMultiPassCorrection(design, options = {}) {
   let currentDesign = JSON.parse(JSON.stringify(design));
   let iteration = 0;
   let converged = false;
-  let stopReason = '';
+  let stopReason = "";
 
   // Initial scoring
   let scores = await calculateMultiPassScores(currentDesign);
@@ -580,7 +615,7 @@ export async function runMultiPassCorrection(design, options = {}) {
     iteration: 0,
     design: JSON.parse(JSON.stringify(currentDesign)),
     scores: { ...scores },
-    action: 'initial',
+    action: "initial",
     violations: [],
     corrections: [],
     timestamp: new Date().toISOString(),
@@ -588,7 +623,7 @@ export async function runMultiPassCorrection(design, options = {}) {
 
   if (opts.logProgress) {
     console.log(
-      `[MultiPass] Starting auto-correction. Initial scores: quality=${scores.total.toFixed(2)}, drift=${scores.drift.toFixed(3)}`
+      `[MultiPass] Starting auto-correction. Initial scores: quality=${scores.total.toFixed(2)}, drift=${scores.drift.toFixed(3)}`,
     );
   }
 
@@ -600,7 +635,7 @@ export async function runMultiPassCorrection(design, options = {}) {
       stopReason = `quality_threshold_met (${scores.total.toFixed(2)} >= ${opts.qualityThreshold})`;
       if (opts.logProgress) {
         console.log(
-          `[MultiPass] Quality threshold met: ${scores.total.toFixed(2)} >= ${opts.qualityThreshold}`
+          `[MultiPass] Quality threshold met: ${scores.total.toFixed(2)} >= ${opts.qualityThreshold}`,
         );
       }
       break;
@@ -612,7 +647,7 @@ export async function runMultiPassCorrection(design, options = {}) {
       stopReason = `drift_threshold_met (${scores.drift.toFixed(3)} < ${opts.driftThreshold})`;
       if (opts.logProgress) {
         console.log(
-          `[MultiPass] Drift threshold met: ${scores.drift.toFixed(3)} < ${opts.driftThreshold}`
+          `[MultiPass] Drift threshold met: ${scores.drift.toFixed(3)} < ${opts.driftThreshold}`,
         );
       }
       break;
@@ -621,7 +656,9 @@ export async function runMultiPassCorrection(design, options = {}) {
     iteration++;
 
     if (opts.logProgress) {
-      console.log(`[MultiPass] Starting iteration ${iteration}/${opts.maxIterations}...`);
+      console.log(
+        `[MultiPass] Starting iteration ${iteration}/${opts.maxIterations}...`,
+      );
     }
 
     // Step 1: Validate against rules
@@ -645,13 +682,15 @@ export async function runMultiPassCorrection(design, options = {}) {
           },
           {
             maxSelfCorrectIterations: 1, // Single pass per main iteration
-          }
+          },
         );
 
         corrections = reasoningResult.corrections || [];
 
         if (opts.logProgress) {
-          console.log(`[MultiPass] Reasoning suggested ${corrections.length} corrections`);
+          console.log(
+            `[MultiPass] Reasoning suggested ${corrections.length} corrections`,
+          );
         }
       } catch (error) {
         console.warn(`[MultiPass] Reasoning failed:`, error.message);
@@ -677,7 +716,7 @@ export async function runMultiPassCorrection(design, options = {}) {
       iteration,
       design: JSON.parse(JSON.stringify(currentDesign)),
       scores: { ...scores },
-      action: 'correction',
+      action: "correction",
       violations,
       corrections,
       timestamp: new Date().toISOString(),
@@ -689,7 +728,7 @@ export async function runMultiPassCorrection(design, options = {}) {
 
     if (opts.logProgress) {
       console.log(
-        `[MultiPass] Iteration ${iteration} complete. Scores: quality=${scores.total.toFixed(2)}, drift=${scores.drift.toFixed(3)}`
+        `[MultiPass] Iteration ${iteration} complete. Scores: quality=${scores.total.toFixed(2)}, drift=${scores.drift.toFixed(3)}`,
       );
     }
   }
@@ -718,8 +757,14 @@ export async function runMultiPassCorrection(design, options = {}) {
       options: opts,
       startTime: history[0]?.timestamp,
       endTime: new Date().toISOString(),
-      totalCorrections: history.reduce((sum, h) => sum + (h.corrections?.length || 0), 0),
-      totalViolations: history.reduce((sum, h) => sum + (h.violations?.length || 0), 0),
+      totalCorrections: history.reduce(
+        (sum, h) => sum + (h.corrections?.length || 0),
+        0,
+      ),
+      totalViolations: history.reduce(
+        (sum, h) => sum + (h.violations?.length || 0),
+        0,
+      ),
     },
   };
 }
@@ -734,7 +779,8 @@ async function calculateMultiPassScores(design) {
   // Get base quality score
   let qualityScore;
   try {
-    const { default: qualityScoring } = await import('../quality/qualityScoring.js');
+    const { default: qualityScoring } =
+      await import("../quality/qualityScoring.js");
     const result = qualityScoring.calculateQualityScore({
       geometryDNA: design.geometryDNA,
       programDNA: design.programDNA,
@@ -831,10 +877,16 @@ function calculateDriftScore(design) {
 
   // Factor 4: Material consistency
   if (design.styleDNA?.materials && renderMetadata.detectedMaterials) {
-    const specMaterials = new Set(design.styleDNA.materials.map((m) => m.name?.toLowerCase()));
-    const renderMaterials = new Set(renderMetadata.detectedMaterials.map((m) => m.toLowerCase()));
+    const specMaterials = new Set(
+      design.styleDNA.materials.map((m) => m.name?.toLowerCase()),
+    );
+    const renderMaterials = new Set(
+      renderMetadata.detectedMaterials.map((m) => m.toLowerCase()),
+    );
 
-    const intersection = new Set([...specMaterials].filter((m) => renderMaterials.has(m)));
+    const intersection = new Set(
+      [...specMaterials].filter((m) => renderMaterials.has(m)),
+    );
     const union = new Set([...specMaterials, ...renderMaterials]);
 
     if (union.size > 0) {
@@ -848,7 +900,8 @@ function calculateDriftScore(design) {
   }
 
   // Average all drift factors
-  const totalDrift = driftFactors.reduce((sum, d) => sum + d, 0) / driftFactors.length;
+  const totalDrift =
+    driftFactors.reduce((sum, d) => sum + d, 0) / driftFactors.length;
 
   // Clamp to 0-1
   return Math.max(0, Math.min(1, totalDrift));
@@ -875,7 +928,9 @@ function calculateStructuralConsistency(design) {
   // Check load-bearing walls
   let loadBearingWalls = 0;
   for (const floor of geometryDNA.floors || []) {
-    loadBearingWalls += (floor.walls || []).filter((w) => w.isLoadBearing).length;
+    loadBearingWalls += (floor.walls || []).filter(
+      (w) => w.isLoadBearing,
+    ).length;
   }
   if (loadBearingWalls < 2) {
     score -= 0.2;
@@ -919,7 +974,7 @@ function calculateStyleConsistency(design) {
  */
 function calculateComplianceLevel(design) {
   // Run rule validation
-  const violations = validateRules(design, ['code']);
+  const violations = validateRules(design, ["code"]);
 
   // Score based on number of code violations
   const violationCount = violations.length;
@@ -965,7 +1020,9 @@ function calculateFallbackQuality(design) {
   }
 
   // Bonus for openings
-  const hasOpenings = design.geometryDNA?.floors?.some((f) => f.openings?.length > 0);
+  const hasOpenings = design.geometryDNA?.floors?.some(
+    (f) => f.openings?.length > 0,
+  );
   if (hasOpenings) {
     score += 0.1;
   }
@@ -984,75 +1041,75 @@ function generateRuleBasedCorrections(violations) {
 
   for (const violation of violations) {
     switch (violation.rule) {
-      case 'min_column_spacing':
+      case "min_column_spacing":
         corrections.push({
-          type: 'adjust_grid',
-          target: 'structuralGrid',
-          action: 'increase_spacing',
+          type: "adjust_grid",
+          target: "structuralGrid",
+          action: "increase_spacing",
           suggestion: violation.suggestion,
-          priority: violation.severity === 'critical' ? 'high' : 'medium',
+          priority: violation.severity === "critical" ? "high" : "medium",
         });
         break;
 
-      case 'fire_escape_distance':
+      case "fire_escape_distance":
         corrections.push({
-          type: 'add_opening',
-          target: 'floors',
-          action: 'add_fire_exit',
+          type: "add_opening",
+          target: "floors",
+          action: "add_fire_exit",
           suggestion: violation.suggestion,
-          priority: 'high',
+          priority: "high",
         });
         break;
 
-      case 'min_corridor_width':
+      case "min_corridor_width":
         corrections.push({
-          type: 'adjust_dimension',
-          target: 'corridors',
-          action: 'increase_width',
+          type: "adjust_dimension",
+          target: "corridors",
+          action: "increase_width",
           value: 1.2, // UK minimum
           suggestion: violation.suggestion,
-          priority: 'high',
+          priority: "high",
         });
         break;
 
-      case 'daylight_factor':
+      case "daylight_factor":
         corrections.push({
-          type: 'adjust_opening',
-          target: 'windows',
-          action: 'increase_area',
+          type: "adjust_opening",
+          target: "windows",
+          action: "increase_area",
           suggestion: violation.suggestion,
-          priority: 'medium',
+          priority: "medium",
         });
         break;
 
-      case 'ceiling_height':
+      case "ceiling_height":
         corrections.push({
-          type: 'adjust_dimension',
-          target: 'floors',
-          action: 'increase_height',
+          type: "adjust_dimension",
+          target: "floors",
+          action: "increase_height",
           value: 2.4,
           suggestion: violation.suggestion,
-          priority: 'medium',
+          priority: "medium",
         });
         break;
 
-      case 'ventilation_rate':
+      case "ventilation_rate":
         corrections.push({
-          type: 'add_feature',
-          target: 'rooms',
-          action: 'add_ventilation',
+          type: "add_feature",
+          target: "rooms",
+          action: "add_ventilation",
           suggestion: violation.suggestion,
-          priority: 'medium',
+          priority: "medium",
         });
         break;
 
       default:
         // Generic correction
         corrections.push({
-          type: 'generic',
+          type: "generic",
           rule: violation.rule,
           suggestion: violation.suggestion,
-          priority: 'low',
+          priority: "low",
         });
     }
   }
@@ -1073,29 +1130,31 @@ function applyCorrections(design, corrections) {
   for (const correction of corrections) {
     try {
       switch (correction.type) {
-        case 'adjust_grid':
+        case "adjust_grid":
           applyGridCorrection(corrected, correction);
           break;
 
-        case 'add_opening':
+        case "add_opening":
           applyOpeningCorrection(corrected, correction);
           break;
 
-        case 'adjust_dimension':
+        case "adjust_dimension":
           applyDimensionCorrection(corrected, correction);
           break;
 
-        case 'adjust_opening':
+        case "adjust_opening":
           applyWindowCorrection(corrected, correction);
           break;
 
-        case 'add_feature':
+        case "add_feature":
           applyFeatureCorrection(corrected, correction);
           break;
 
         default:
           // Log unknown correction type
-          console.warn(`[MultiPass] Unknown correction type: ${correction.type}`);
+          console.warn(
+            `[MultiPass] Unknown correction type: ${correction.type}`,
+          );
       }
     } catch (error) {
       console.warn(`[MultiPass] Failed to apply correction:`, error.message);
@@ -1136,18 +1195,20 @@ function applyOpeningCorrection(design, correction) {
     }
 
     // Check if fire exit already exists
-    const hasFireExit = floor.openings.some((o) => o.type === 'fire_exit' || o.isEmergencyExit);
+    const hasFireExit = floor.openings.some(
+      (o) => o.type === "fire_exit" || o.isEmergencyExit,
+    );
 
-    if (!hasFireExit && correction.action === 'add_fire_exit') {
+    if (!hasFireExit && correction.action === "add_fire_exit") {
       // Add fire exit
       floor.openings.push({
         id: `fire_exit_${floor.level}`,
-        type: 'fire_exit',
+        type: "fire_exit",
         isEmergencyExit: true,
         width: 0.9,
         height: 2.1,
         position: { x: 0, y: 0 }, // Will be optimized later
-        notes: 'Added by auto-correction',
+        notes: "Added by auto-correction",
       });
     }
   }
@@ -1164,19 +1225,23 @@ function applyDimensionCorrection(design, correction) {
   const { target, action, value } = correction;
 
   for (const floor of design.geometryDNA.floors) {
-    if (target === 'floors' && action === 'increase_height') {
+    if (target === "floors" && action === "increase_height") {
       floor.height = Math.max(floor.height || 2.4, value);
     }
 
-    if (target === 'corridors' && action === 'increase_width') {
+    if (target === "corridors" && action === "increase_width") {
       const corridors = (floor.rooms || []).filter(
         (r) =>
-          r.name?.toLowerCase().includes('corridor') || r.name?.toLowerCase().includes('hallway')
+          r.name?.toLowerCase().includes("corridor") ||
+          r.name?.toLowerCase().includes("hallway"),
       );
 
       for (const corridor of corridors) {
         if (corridor.dimensions) {
-          const minDim = Math.min(corridor.dimensions.width, corridor.dimensions.length);
+          const minDim = Math.min(
+            corridor.dimensions.width,
+            corridor.dimensions.length,
+          );
           if (minDim < value) {
             // Increase the smaller dimension
             if (corridor.dimensions.width < corridor.dimensions.length) {
@@ -1184,7 +1249,8 @@ function applyDimensionCorrection(design, correction) {
             } else {
               corridor.dimensions.length = value;
             }
-            corridor.area = corridor.dimensions.width * corridor.dimensions.length;
+            corridor.area =
+              corridor.dimensions.width * corridor.dimensions.length;
           }
         }
       }
@@ -1201,13 +1267,13 @@ function applyWindowCorrection(design, correction) {
   }
 
   for (const floor of design.geometryDNA.floors) {
-    const windows = (floor.openings || []).filter((o) => o.type === 'window');
+    const windows = (floor.openings || []).filter((o) => o.type === "window");
 
     // Increase window sizes by 20%
     for (const window of windows) {
       window.width = (window.width || 1.0) * 1.2;
       window.height = (window.height || 1.2) * 1.2;
-      window.notes = (window.notes || '') + ' [Enlarged by auto-correction]';
+      window.notes = (window.notes || "") + " [Enlarged by auto-correction]";
     }
   }
 }
@@ -1222,10 +1288,10 @@ function applyFeatureCorrection(design, correction) {
 
   for (const floor of design.geometryDNA.floors) {
     for (const room of floor.rooms || []) {
-      if (correction.action === 'add_ventilation') {
+      if (correction.action === "add_ventilation") {
         room.requirements = room.requirements || [];
-        if (!room.requirements.includes('mechanical_ventilation')) {
-          room.requirements.push('mechanical_ventilation');
+        if (!room.requirements.includes("mechanical_ventilation")) {
+          room.requirements.push("mechanical_ventilation");
         }
       }
     }
@@ -1267,8 +1333,9 @@ export function validateDesign(design) {
     scores,
     summary: {
       totalViolations: violations.length,
-      criticalViolations: violations.filter((v) => v.severity === 'critical').length,
-      warnings: violations.filter((v) => v.severity === 'warning').length,
+      criticalViolations: violations.filter((v) => v.severity === "critical")
+        .length,
+      warnings: violations.filter((v) => v.severity === "warning").length,
     },
   };
 }

@@ -1,9 +1,13 @@
 /**
- * Two-Pass DNA Generator
+ * Two-Pass DNA Generator — CANONICAL DNA GENERATOR
+ *
+ * Single source of truth for DNA generation in the live production flow.
+ * Called by dnaWorkflowOrchestrator.js (the canonical orchestrator).
  *
  * Implements strict two-pass DNA generation using Qwen2.5-72B:
  * - Pass A (Author): Generate structured JSON DNA
  * - Pass B (Reviewer): Validate and repair DNA
+ * - Pass C (Optional, geometryVolumeFirst flag): 3D volume specification
  *
  * NO FALLBACK DNA - errors are surfaced to the user.
  */
@@ -49,7 +53,7 @@ class TwoPassDNAGenerator {
         .replace(/\r/g, "\\n") // Old Mac newlines
         .replace(/\n/g, "\\n") // Unix newlines (unescaped)
         .replace(/\t/g, "\\t") // Tabs
-        .replace(/[\x00-\x1F\x7F]/g, (char) => {
+        .replace(new RegExp(String.raw`[\x00-\x1F\x7F]`, "g"), (char) => {
           // Escape other control characters
           const hex = char.charCodeAt(0).toString(16).padStart(4, "0");
           return `\\u${hex}`;
@@ -393,26 +397,33 @@ class TwoPassDNAGenerator {
     portfolioAnalysis = null,
     locationData = null,
   ) {
-    logger.info("🧬 Generating 3 DNA variants (Conservative / Moderate / Bold)...");
+    logger.info(
+      "🧬 Generating 3 DNA variants (Conservative / Moderate / Bold)...",
+    );
 
     const VARIANTS = [
       {
         label: "Conservative",
-        description: "Traditional layout with conventional materials and proven proportions",
-        temperature: 0.10,
-        styleHint: "traditional, well-proportioned, conventional materials, proven layout",
+        description:
+          "Traditional layout with conventional materials and proven proportions",
+        temperature: 0.1,
+        styleHint:
+          "traditional, well-proportioned, conventional materials, proven layout",
       },
       {
         label: "Moderate",
-        description: "Balanced design blending modern comfort with classic form",
-        temperature: 0.30,
+        description:
+          "Balanced design blending modern comfort with classic form",
+        temperature: 0.3,
         styleHint: "", // default — no extra hint
       },
       {
         label: "Bold",
-        description: "Distinctive design with creative materials and expressive form",
-        temperature: 0.60,
-        styleHint: "distinctive, expressive form, mixed materials, contemporary flair",
+        description:
+          "Distinctive design with creative materials and expressive form",
+        temperature: 0.6,
+        styleHint:
+          "distinctive, expressive form, mixed materials, contemporary flair",
       },
     ];
 
@@ -421,7 +432,9 @@ class TwoPassDNAGenerator {
       VARIANTS.map(async (variant) => {
         try {
           const effectiveLocation =
-            locationData || projectContext.location || projectContext.locationData;
+            locationData ||
+            projectContext.location ||
+            projectContext.locationData;
           const siteMetrics =
             projectContext.siteMetrics || projectContext.siteAnalysis;
           const programSpec = {
@@ -433,7 +446,8 @@ class TwoPassDNAGenerator {
             programSpaces: projectContext.programSpaces || [],
             area: projectContext.area || 150,
           };
-          const portfolioSummary = portfolioAnalysis || projectContext.blendedStyle;
+          const portfolioSummary =
+            portfolioAnalysis || projectContext.blendedStyle;
 
           const requestPayload = buildDNARequestPayload(
             effectiveLocation,
@@ -498,7 +512,11 @@ class TwoPassDNAGenerator {
    * @param {number} [options.temperature=0.3]
    * @param {string} [options.styleHint='']
    */
-  async passA_generateStructuredDNA(requestPayload, projectContext, options = {}) {
+  async passA_generateStructuredDNA(
+    requestPayload,
+    projectContext,
+    options = {},
+  ) {
     const lockedProgramRooms = Array.isArray(requestPayload?.program?.rooms)
       ? requestPayload.program.rooms
       : [];

@@ -57,6 +57,10 @@ async function proxyToRunPod(method, path, body = null, res) {
     }
 
     const response = await fetch(url, fetchOptions);
+    const contractVersion = response.headers.get("x-genarch-contract-version");
+    if (contractVersion) {
+      res.setHeader("X-Genarch-Contract-Version", contractVersion);
+    }
 
     // Handle non-JSON responses (e.g., errors)
     const contentType = response.headers.get("content-type") || "";

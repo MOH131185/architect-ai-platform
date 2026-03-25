@@ -1,8 +1,16 @@
-import React, { useEffect } from 'react';
-import { Sparkles, ChevronLeft, Clock, AlertCircle, Check, Search, MapPin } from 'lucide-react';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
-import { useGeneration } from '../hooks/useGeneration.js';
-import { motion } from 'framer-motion';
+import React, { useEffect } from "react";
+import {
+  Sparkles,
+  ChevronLeft,
+  Clock,
+  AlertCircle,
+  Check,
+  Search,
+  MapPin,
+} from "lucide-react";
+import { useArchitectWorkflow } from "../hooks/useArchitectWorkflow.js";
+import { useGeneration } from "../hooks/useGeneration.js";
+import { motion } from "framer-motion";
 
 // DNA Helix Animation Component
 const DNAHelix = ({ className = "" }) => (
@@ -14,13 +22,13 @@ const DNAHelix = ({ className = "" }) => (
         animate={{
           scaleY: [0.5, 1.5, 0.5],
           opacity: [0.5, 1, 0.5],
-          backgroundColor: ["#6366f1", "#a855f7", "#6366f1"]
+          backgroundColor: ["#6366f1", "#a855f7", "#6366f1"],
         }}
         transition={{
           duration: 1.5,
           repeat: Infinity,
           delay: i * 0.15,
-          ease: "easeInOut"
+          ease: "easeInOut",
         }}
       />
     ))}
@@ -40,7 +48,7 @@ const MagnifierScan = () => (
       transition={{
         duration: 4,
         repeat: Infinity,
-        ease: "linear"
+        ease: "linear",
       }}
     >
       <Search className="w-10 h-10 text-indigo-600 fill-indigo-100/50" />
@@ -59,12 +67,8 @@ const MagnifierScan = () => (
  */
 const AIGeneration = () => {
   const { prevStep } = useArchitectWorkflow();
-  const {
-    isLoading,
-    generationProgress,
-    elapsedTime,
-    generateDesigns
-  } = useGeneration();
+  const { isLoading, generationProgress, elapsedTime, generateDesigns } =
+    useGeneration();
 
   // Track elapsed time
   useEffect(() => {
@@ -76,10 +80,18 @@ const AIGeneration = () => {
   }, [isLoading]);
 
   const progressPercentage = generationProgress.percentage || 0;
-  const phases = ['Initialization', 'Setup', 'Validation', 'Analysis', 'Workflow', 'Generation', 'Complete'];
+  const phases = [
+    "Initialization",
+    "Setup",
+    "Validation",
+    "Analysis",
+    "Workflow",
+    "Generation",
+    "Complete",
+  ];
 
   // Determine current active animation
-  const currentStepName = phases[generationProgress.step] || 'Init';
+  const currentStepName = phases[generationProgress.step] || "Init";
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -90,15 +102,21 @@ const AIGeneration = () => {
             <Sparkles className="w-6 h-6 text-indigo-600" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-800">AI Design Generation</h2>
-            <p className="text-gray-600">Generate comprehensive architectural designs with AI</p>
+            <h2 className="text-2xl font-bold text-gray-800">
+              AI Design Generation
+            </h2>
+            <p className="text-gray-600">
+              Generate comprehensive architectural designs with AI
+            </p>
           </div>
         </div>
 
         {!isLoading ? (
           <>
             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 mb-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">What AI will generate:</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                What AI will generate:
+              </h3>
               <div className="grid md:grid-cols-2 gap-3 text-sm text-gray-700">
                 <div className="flex items-start">
                   <div className="w-2 h-2 bg-indigo-500 rounded-full mt-1.5 mr-2"></div>
@@ -131,10 +149,13 @@ const AIGeneration = () => {
               <div className="flex items-start">
                 <AlertCircle className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-blue-900 mb-1">Generation Time</p>
+                  <p className="text-sm font-medium text-blue-900 mb-1">
+                    Generation Time
+                  </p>
                   <p className="text-sm text-blue-800">
-                    Expected time: 45-60 seconds for complete A1 sheet.
-                    Please wait while AI analyzes your requirements and generates the design.
+                    Expected time: 45-60 seconds for complete A1 sheet. Please
+                    wait while AI analyzes your requirements and generates the
+                    design.
                   </p>
                 </div>
               </div>
@@ -152,7 +173,7 @@ const AIGeneration = () => {
           <div className="space-y-8">
             {/* Visual Animation Area */}
             <div className="flex items-center justify-center py-8 min-h-[120px]">
-              {currentStepName === 'Analysis' ? (
+              {currentStepName === "Analysis" ? (
                 <MagnifierScan />
               ) : (
                 <DNAHelix className="h-16" />
@@ -163,8 +184,12 @@ const AIGeneration = () => {
             <div>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  {currentStepName === 'Analysis' ? <Search className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
-                  {generationProgress.message || 'Processing...'}
+                  {currentStepName === "Analysis" ? (
+                    <Search className="w-4 h-4" />
+                  ) : (
+                    <Sparkles className="w-4 h-4" />
+                  )}
+                  {generationProgress.message || "Processing..."}
                 </span>
                 <span className="text-sm font-semibold text-indigo-600">
                   {progressPercentage}%
@@ -174,7 +199,13 @@ const AIGeneration = () => {
               {/* DNA Chain Background for Progress Bar */}
               <div className="w-full h-4 bg-gray-100 rounded-full relative overflow-hidden ring-1 ring-gray-200">
                 {/* Background Pattern */}
-                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'repeating-linear-gradient(45deg, #6366f1 0, #6366f1 10px, transparent 10px, transparent 20px)' }}></div>
+                <div
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(45deg, #6366f1 0, #6366f1 10px, transparent 10px, transparent 20px)",
+                  }}
+                ></div>
 
                 {/* Active Progress */}
                 <motion.div
@@ -197,20 +228,22 @@ const AIGeneration = () => {
                 return (
                   <div
                     key={phase}
-                    className={`flex items-center p-3 rounded-xl transition-all border ${isCurrent
-                        ? 'bg-indigo-50 border-indigo-200 shadow-sm'
+                    className={`flex items-center p-3 rounded-xl transition-all border ${
+                      isCurrent
+                        ? "bg-indigo-50 border-indigo-200 shadow-sm"
                         : isComplete
-                          ? 'bg-white border-green-100 text-green-700'
-                          : 'bg-white border-transparent opacity-50'
-                      }`}
+                          ? "bg-white border-green-100 text-green-700"
+                          : "bg-white border-transparent opacity-50"
+                    }`}
                   >
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 transition-colors ${isCurrent
-                          ? 'bg-indigo-100 text-indigo-600'
+                      className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 transition-colors ${
+                        isCurrent
+                          ? "bg-indigo-100 text-indigo-600"
                           : isComplete
-                            ? 'bg-green-100 text-green-600'
-                            : 'bg-gray-100 text-gray-400'
-                        }`}
+                            ? "bg-green-100 text-green-600"
+                            : "bg-gray-100 text-gray-400"
+                      }`}
                     >
                       {isComplete ? (
                         <Check className="w-4 h-4" />
@@ -222,21 +255,24 @@ const AIGeneration = () => {
                       )}
                     </div>
 
-                    <span className={`font-medium ${isCurrent ? 'text-indigo-900' : ''}`}>
+                    <span
+                      className={`font-medium ${isCurrent ? "text-indigo-900" : ""}`}
+                    >
                       {phase}
                     </span>
 
-                    {isCurrent && phase === 'Analysis' && (
+                    {isCurrent && phase === "Analysis" && (
                       <span className="ml-auto text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full animate-pulse">
                         Scanning Location...
                       </span>
                     )}
 
-                    {isCurrent && (phase === 'Workflow' || phase === 'Generation') && (
-                      <span className="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full animate-pulse">
-                        Generating DNA...
-                      </span>
-                    )}
+                    {isCurrent &&
+                      (phase === "Workflow" || phase === "Generation") && (
+                        <span className="ml-auto text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full animate-pulse">
+                          Generating DNA...
+                        </span>
+                      )}
                   </div>
                 );
               })}

@@ -1,6 +1,6 @@
 # ArchitectAI Genarch Pipeline - Deployment Guide
 
-This guide covers deploying the genarch floor plan generation pipeline to a persistent backend server. The genarch pipeline cannot run on Vercel serverless functions because it requires:
+This guide covers deploying the genarch floor plan generation pipeline to a persistent backend server. The supported product surface is backend-only: Vercel/Express proxies call the separate genarch deployment server-side, and no browser-exposed genarch API key is part of the supported app. The genarch pipeline cannot run on Vercel serverless functions because it requires:
 
 - **Python runtime** for genarch floor plan generation
 - **Blender** for 3D rendering (Phase 2)
@@ -74,7 +74,6 @@ OPENAI_REASONING_API_KEY=sk-xxx  # Optional
 
 # Authentication
 GENARCH_API_KEY=<generated-by-setup>
-REACT_APP_GENARCH_API_KEY=<same-as-above>
 API_KEY_AUTH_ENABLED=true
 
 # CORS
@@ -101,14 +100,16 @@ sudo certbot --nginx -d api.archiaisolution.pro
 sudo systemctl reload nginx
 ```
 
-### 7. Update Frontend
+### 7. Update Vercel Project Environment
 
-In your Vercel dashboard, add environment variable:
+In your Vercel dashboard, add server-side environment variables:
 
 ```
-REACT_APP_API_PROXY_URL=https://api.archiaisolution.pro
-REACT_APP_GENARCH_API_KEY=<your-genarch-api-key>
+RUNPOD_GENARCH_URL=https://genarch.yourdomain.com
+GENARCH_API_KEY=<your-genarch-api-key>
 ```
+
+Do not expose `GENARCH_API_KEY` via any `REACT_APP_*` browser variable. The dormant browser client lives in `src/_legacy/genarchPipelineService.js` only as an unsupported prototype.
 
 ## API Authentication
 
@@ -274,8 +275,8 @@ When scaling is needed:
 
 ### "401 Unauthorized" errors
 
-- Check `GENARCH_API_KEY` matches in server and client
-- Verify `REACT_APP_GENARCH_API_KEY` is set in frontend
+- Check `GENARCH_API_KEY` matches between the backend host and Vercel server-side env vars
+- Verify `GENARCH_API_KEY` is configured in both Vercel server-side env vars and the backend host
 
 ### "503 Service unavailable"
 

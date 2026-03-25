@@ -5,11 +5,19 @@
  * Redesigned with new UI components and design system.
  */
 
-import React, { useRef, useCallback, useEffect, useState } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useRef,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, X } from "lucide-react";
 import { useArchitectAIWorkflow } from "../hooks/useArchitectAIWorkflow.js";
 import { useWizardState } from "../hooks/useWizardState.js";
+import { getDemoProject, buildDemoResult } from "../data/demoProjects.js";
 import { normalizeSiteSnapshot } from "../types/schemas.js";
 import { computeSiteMetrics } from "../utils/geometry.js";
 import { locationIntelligence } from "../services/locationIntelligence.js";
@@ -31,7 +39,6 @@ import IntelligenceStep from "./steps/IntelligenceStep.jsx";
 import PortfolioStep from "./steps/PortfolioStep.jsx";
 import SpecsStep from "./steps/SpecsStep.jsx";
 import GenerateStep from "./steps/GenerateStep.jsx";
-import ResultsStep from "./steps/ResultsStep.jsx";
 
 // Landing page
 import LandingPage from "./LandingPage.jsx";
@@ -40,6 +47,8 @@ import LandingPage from "./LandingPage.jsx";
 import { Card } from "./ui";
 import { AppShell, PageTransition } from "./layout";
 import "../styles/deepgram.css";
+
+const ResultsStep = lazy(() => import("./steps/ResultsStep.jsx"));
 
 // Step Progress Bar Component
 const StepProgressBar = ({ steps, currentStep }) => {
@@ -109,6 +118,7 @@ const ArchitectAIWizardContainer = () => {
     modifySheetWorkflow,
     exportSheetWorkflow,
     clearError,
+    loadDemoResult,
   } = useArchitectAIWorkflow();
 
   // Use the custom hook for state management
@@ -235,6 +245,20 @@ const ArchitectAIWizardContainer = () => {
     hasPanelOutput,
     isGenerationTimerRunning,
   ]);
+
+  // --- Demo mode: skip straight to results with pre-generated output ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "true") {
+      sessionStorage.setItem("investorDemo", "true");
+      const project = getDemoProject("demo_residential_001");
+      const demoResult = buildDemoResult(project);
+      loadDemoResult(demoResult);
+      setGeneratedDesignId("demo_residential_001");
+      setGenerationElapsedSeconds(175);
+      setCurrentStep(6);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Cleanup object URLs on unmount to prevent memory leaks
@@ -402,7 +426,7 @@ const ArchitectAIWizardContainer = () => {
     } finally {
       setIsDetectingLocation(false);
     }
-  }, []);
+  }, [setAddress, setIsDetectingLocation, setLocationAccuracy]);
 
   /**
    * Get seasonal climate, sun path, and wind from OpenWeather
@@ -652,129 +676,150 @@ const ArchitectAIWizardContainer = () => {
     } finally {
       setIsDetectingLocation(false);
     }
-  }, [address, clearError, sitePolygon]);
+  }, [
+    address,
+    clearError,
+    fetchClimateWindSun,
+    setIsDetectingLocation,
+    setLocationData,
+    setSiteMetrics,
+    setSitePolygon,
+    sitePolygon,
+  ]);
 
-  const handleSitePolygonChange = useCallback((polygon) => {
-    setSitePolygon(polygon);
-    if (polygon && polygon.length > 0) {
-      const metrics = computeSiteMetrics(polygon);
-      setSiteMetrics(metrics);
-    }
-  }, []);
+  const handleSitePolygonChange = useCallback(
+    (polygon) => {
+      setSitePolygon(polygon);
+      if (polygon && polygon.length > 0) {
+        const metrics = computeSiteMetrics(polygon);
+        setSiteMetrics(metrics);
+      }
+    },
+    [setSiteMetrics, setSitePolygon],
+  );
 
   // Handle boundary updates from SiteBoundaryEditor
-  const handleBoundaryUpdated = useCallback((boundaryData) => {
-    if (!boundaryData) return;
+  const handleBoundaryUpdated = useCallback(
+    (boundaryData) => {
+      if (!boundaryData) return;
 
-    const polygon = boundaryData.polygon || [];
-    setSitePolygon(polygon);
-    setSiteMetrics(
-      polygon && polygon.length >= 3 ? computeSiteMetrics(polygon) : null,
-    );
-  }, []);
+      const polygon = boundaryData.polygon || [];
+      setSitePolygon(polygon);
+      setSiteMetrics(
+        polygon && polygon.length >= 3 ? computeSiteMetrics(polygon) : null,
+      );
+    },
+    [setSiteMetrics, setSitePolygon],
+  );
 
   /**
    * Portfolio handlers
    */
-  const handleRemovePortfolioFile = useCallback((index) => {
-    setPortfolioFiles((prev) => {
-      const newFiles = [...prev];
-      // Revoke object URL if it exists to prevent memory leak
-      if (newFiles[index]?.preview) {
-        URL.revokeObjectURL(newFiles[index].preview);
+  const handleRemovePortfolioFile = useCallback(
+    (index) => {
+      setPortfolioFiles((prev) => {
+        const newFiles = [...prev];
+        // Revoke object URL if it exists to prevent memory leak
+        if (newFiles[index]?.preview) {
+          URL.revokeObjectURL(newFiles[index].preview);
+        }
+        newFiles.splice(index, 1);
+        logger.info("Portfolio file removed", { index });
+        return newFiles;
+      });
+    },
+    [setPortfolioFiles],
+  );
+
+  const handlePortfolioUpload = useCallback(
+    async (eventOrFiles) => {
+      // Handle both event object and files array
+      let files;
+      if (Array.isArray(eventOrFiles)) {
+        files = eventOrFiles;
+      } else if (eventOrFiles?.target?.files) {
+        files = Array.from(eventOrFiles.target.files);
+      } else {
+        return;
       }
-      newFiles.splice(index, 1);
-      logger.info("Portfolio file removed", { index });
-      return newFiles;
-    });
-  }, []);
 
-  const handlePortfolioUpload = useCallback(async (eventOrFiles) => {
-    // Handle both event object and files array
-    let files;
-    if (Array.isArray(eventOrFiles)) {
-      files = eventOrFiles;
-    } else if (eventOrFiles?.target?.files) {
-      files = Array.from(eventOrFiles.target.files);
-    } else {
-      return;
-    }
+      if (files.length === 0) return;
 
-    if (files.length === 0) return;
+      setIsUploading(true);
 
-    setIsUploading(true);
+      try {
+        const processedFiles = [];
 
-    try {
-      const processedFiles = [];
+        for (const originalFile of files) {
+          const isPdf =
+            originalFile.type === "application/pdf" ||
+            originalFile.name.toLowerCase().endsWith(".pdf");
+          let preview = null;
+          let dataUrl = null; // For API usage
+          let storedFile = originalFile;
 
-      for (const originalFile of files) {
-        const isPdf =
-          originalFile.type === "application/pdf" ||
-          originalFile.name.toLowerCase().endsWith(".pdf");
-        let preview = null;
-        let dataUrl = null; // For API usage
-        let storedFile = originalFile;
+          if (isPdf) {
+            try {
+              logger.info("Converting PDF to PNG for preview", {
+                fileName: originalFile.name,
+              });
+              const pngFile = await convertPdfFileToImageFile(originalFile);
+              storedFile = pngFile;
+              preview = URL.createObjectURL(pngFile);
 
-        if (isPdf) {
-          try {
-            logger.info("Converting PDF to PNG for preview", {
-              fileName: originalFile.name,
-            });
-            const pngFile = await convertPdfFileToImageFile(originalFile);
-            storedFile = pngFile;
-            preview = URL.createObjectURL(pngFile);
+              // Convert to base64 for API usage
+              dataUrl = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(pngFile);
+              });
+
+              logger.info("PDF converted successfully", {
+                fileName: pngFile.name,
+              });
+            } catch (pdfErr) {
+              logger.warn("PDF conversion failed", pdfErr);
+              alert(
+                `Failed to convert PDF: ${originalFile.name}\n${pdfErr.message}`,
+              );
+              continue;
+            }
+          } else if (originalFile.type.startsWith("image/")) {
+            preview = URL.createObjectURL(originalFile);
 
             // Convert to base64 for API usage
             dataUrl = await new Promise((resolve) => {
               const reader = new FileReader();
               reader.onloadend = () => resolve(reader.result);
-              reader.readAsDataURL(pngFile);
+              reader.readAsDataURL(originalFile);
             });
-
-            logger.info("PDF converted successfully", {
-              fileName: pngFile.name,
-            });
-          } catch (pdfErr) {
-            logger.warn("PDF conversion failed", pdfErr);
-            alert(
-              `Failed to convert PDF: ${originalFile.name}\n${pdfErr.message}`,
-            );
-            continue;
           }
-        } else if (originalFile.type.startsWith("image/")) {
-          preview = URL.createObjectURL(originalFile);
 
-          // Convert to base64 for API usage
-          dataUrl = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(originalFile);
+          processedFiles.push({
+            name: storedFile.name,
+            size: `${(storedFile.size / 1024 / 1024).toFixed(2)} MB`,
+            file: storedFile,
+            preview, // Blob URL for UI preview
+            dataUrl, // Base64 data URL for API usage
+            type: storedFile.type,
+            convertedFromPdf: isPdf,
           });
         }
 
-        processedFiles.push({
-          name: storedFile.name,
-          size: `${(storedFile.size / 1024 / 1024).toFixed(2)} MB`,
-          file: storedFile,
-          preview, // Blob URL for UI preview
-          dataUrl, // Base64 data URL for API usage
-          type: storedFile.type,
-          convertedFromPdf: isPdf,
-        });
+        if (processedFiles.length > 0) {
+          setPortfolioFiles((prev) => [...prev, ...processedFiles]);
+          logger.success("Portfolio files uploaded", {
+            count: processedFiles.length,
+          });
+        }
+      } catch (err) {
+        logger.error("Portfolio upload failed", err);
+      } finally {
+        setIsUploading(false);
       }
-
-      if (processedFiles.length > 0) {
-        setPortfolioFiles((prev) => [...prev, ...processedFiles]);
-        logger.success("Portfolio files uploaded", {
-          count: processedFiles.length,
-        });
-      }
-    } catch (err) {
-      logger.error("Portfolio upload failed", err);
-    } finally {
-      setIsUploading(false);
-    }
-  }, []);
+    },
+    [setIsUploading, setPortfolioFiles],
+  );
 
   /**
    * Specs handlers
@@ -971,7 +1016,15 @@ const ArchitectAIWizardContainer = () => {
     } finally {
       setIsGeneratingSpaces(false);
     }
-  }, [projectDetails, locationData, siteMetrics]);
+  }, [
+    locationData,
+    projectDetails,
+    setIsGeneratingSpaces,
+    setProgramSpaces,
+    setProgramWarnings,
+    setProjectDetails,
+    siteMetrics,
+  ]);
 
   const handleProgramSpacesChange = useCallback(
     (spaces) => {
@@ -992,7 +1045,7 @@ const ArchitectAIWizardContainer = () => {
 
       setProgramSpaces(normalizedSpaces);
     },
-    [projectDetails.floorCount, projectDetails.floorMetrics],
+    [projectDetails.floorCount, projectDetails.floorMetrics, setProgramSpaces],
   );
 
   const handleImportProgram = useCallback(async () => {
@@ -1045,7 +1098,7 @@ const ArchitectAIWizardContainer = () => {
     } catch (err) {
       logger.error("Import failed", err);
     }
-  }, []);
+  }, [setProgramSpaces, setProgramWarnings]);
 
   const handleExportProgram = useCallback(async () => {
     try {
@@ -1134,7 +1187,14 @@ const ArchitectAIWizardContainer = () => {
     } finally {
       setIsDetectingEntrance(false);
     }
-  }, [sitePolygon, locationData, siteMetrics]);
+  }, [
+    locationData,
+    setAutoDetectResult,
+    setIsDetectingEntrance,
+    setProjectDetails,
+    siteMetrics,
+    sitePolygon,
+  ]);
 
   /**
    * Generation handler
@@ -1293,15 +1353,19 @@ const ArchitectAIWizardContainer = () => {
       setIsGenerationTimerRunning(false);
     }
   }, [
-    locationData,
-    sitePolygon,
-    siteMetrics,
-    projectDetails,
-    programSpaces,
-    materialWeight,
     characteristicWeight,
     generateSheet,
     handleGenerateSpaces,
+    locationData,
+    materialWeight,
+    portfolioFiles,
+    programSpaces,
+    programWarnings,
+    projectDetails,
+    setCurrentStep,
+    setGeneratedDesignId,
+    siteMetrics,
+    sitePolygon,
   ]);
 
   /**
@@ -1383,11 +1447,11 @@ const ArchitectAIWizardContainer = () => {
    */
   const handleNext = useCallback(() => {
     setCurrentStep((prev) => Math.min(prev + 1, 6));
-  }, []);
+  }, [setCurrentStep]);
 
   const handleBack = useCallback(() => {
     setCurrentStep((prev) => Math.max(prev - 1, 0));
-  }, []);
+  }, [setCurrentStep]);
 
   const handleStartNew = useCallback(() => {
     setCurrentStep(0);
@@ -1414,7 +1478,21 @@ const ArchitectAIWizardContainer = () => {
     setGenerationStartAtMs(null);
     setGenerationElapsedSeconds(0);
     setIsGenerationTimerRunning(false);
-  }, []);
+  }, [
+    setAddress,
+    setCurrentStep,
+    setGeneratedDesignId,
+    setGenerationElapsedSeconds,
+    setGenerationStartAtMs,
+    setIsGenerationTimerRunning,
+    setLocationData,
+    setPortfolioFiles,
+    setProgramSpaces,
+    setProgramWarnings,
+    setProjectDetails,
+    setSiteMetrics,
+    setSitePolygon,
+  ]);
 
   /**
    * Render current step
@@ -1422,7 +1500,14 @@ const ArchitectAIWizardContainer = () => {
   const renderStep = () => {
     switch (currentStep) {
       case 0:
-        return <LandingPage onStart={() => setCurrentStep(1)} />;
+        return (
+          <LandingPage
+            onStart={() => setCurrentStep(1)}
+            onDemo={() => {
+              window.location.search = "?demo=true";
+            }}
+          />
+        );
 
       case 1:
         return (
@@ -1509,17 +1594,25 @@ const ArchitectAIWizardContainer = () => {
 
       case 6:
         return (
-          <ResultsStep
-            result={result}
-            designId={generatedDesignId}
-            generationElapsedSeconds={generationElapsedSeconds}
-            onModify={handleModify}
-            onExport={handleExport}
-            onExportCAD={handleExportCAD}
-            onExportBIM={handleExportBIM}
-            onBack={handleBack}
-            onStartNew={handleStartNew}
-          />
+          <Suspense
+            fallback={
+              <Card className="border border-navy-700 bg-navy-950/70 p-8 text-center text-white">
+                Preparing results workspace...
+              </Card>
+            }
+          >
+            <ResultsStep
+              result={result}
+              designId={generatedDesignId}
+              generationElapsedSeconds={generationElapsedSeconds}
+              onModify={handleModify}
+              onExport={handleExport}
+              onExportCAD={handleExportCAD}
+              onExportBIM={handleExportBIM}
+              onBack={handleBack}
+              onStartNew={handleStartNew}
+            />
+          </Suspense>
         );
 
       default:

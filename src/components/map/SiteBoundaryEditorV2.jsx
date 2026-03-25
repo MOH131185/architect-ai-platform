@@ -30,12 +30,7 @@ import {
   calculateBounds,
   boundsToGoogleBounds,
 } from "./mapUtils.js";
-import {
-  ringToLatLngArray,
-  latLngArrayToRing,
-  openRing,
-  closeRing,
-} from "./boundaryGeometry.js";
+import { closeRing } from "./boundaryGeometry.js";
 import logger from "../../utils/logger.js";
 
 // Editor modes
@@ -87,29 +82,61 @@ export function SiteBoundaryEditorV2({
 
   // Boundary state hook (single source of truth)
   const {
-    ring,
     vertices,
     polygon,
     metrics,
-    validation,
     canUndo,
     canRedo,
     setPolygon,
     setRing,
-    addVertex,
-    removeVertex,
-    updateVertex,
     updateVertexTransient,
-    commitToHistory,
     clearPolygon,
-    resetPolygon,
     undo,
     redo,
-    reverseOrder,
     exportGeoJSON,
     getFormattedMetrics,
     convertToDNA,
   } = useBoundaryState(initialBoundaryPolygon);
+
+  const polygonLength = polygon.length;
+
+  const handleAutoDetect = useCallback(async () => {
+    setIsLoadingBoundary(true);
+
+    try {
+      let detectionCenter = center;
+
+      if (siteAddress) {
+        try {
+          const geocoded = await geocodeAddress(siteAddress);
+          detectionCenter = { lat: geocoded.lat, lng: geocoded.lng };
+        } catch (err) {
+          logger.warn("Geocoding failed, using provided center:", err);
+        }
+      }
+
+      const boundary = await fetchAutoBoundary(siteAddress, detectionCenter);
+      setPolygon(boundary);
+
+      if (map && google) {
+        const bounds = calculateBounds(boundary);
+        if (bounds) {
+          const googleBounds = boundsToGoogleBounds(bounds, google);
+          map.fitBounds(googleBounds);
+        }
+      }
+
+      setMode(MODES.SELECT);
+    } catch (err) {
+      logger.error("Auto-detect failed:", err);
+      setValidationWarning(
+        "Auto-detection failed. Please draw the boundary manually.",
+      );
+      setTimeout(() => setValidationWarning(null), 5000);
+    } finally {
+      setIsLoadingBoundary(false);
+    }
+  }, [center, geocodeAddress, google, map, setPolygon, siteAddress]);
 
   // ============================================================
   // INITIALIZATION
@@ -120,7 +147,7 @@ export function SiteBoundaryEditorV2({
     if (initialBoundaryPolygon && initialBoundaryPolygon.length > 0) {
       setPolygon(initialBoundaryPolygon, false);
     }
-  }, []);
+  }, [initialBoundaryPolygon, setPolygon]);
 
   // Auto-detect boundary when map loads if no polygon exists
   useEffect(() => {
@@ -128,19 +155,26 @@ export function SiteBoundaryEditorV2({
       isLoaded &&
       map &&
       google &&
-      polygon.length === 0 &&
+      polygonLength === 0 &&
       !isLoadingBoundary
     ) {
       handleAutoDetect();
     }
-  }, [isLoaded, map, google, polygon.length, isLoadingBoundary]);
+  }, [
+    google,
+    handleAutoDetect,
+    isLoaded,
+    isLoadingBoundary,
+    map,
+    polygonLength,
+  ]);
 
   // ============================================================
   // NOTIFY PARENT OF CHANGES
   // ============================================================
 
   useEffect(() => {
-    if (onBoundaryChange && polygon.length >= 3) {
+    if (onBoundaryChange && polygonLength >= 3) {
       const formattedMetrics = getFormattedMetrics();
       const dna = convertToDNA();
 
@@ -167,7 +201,15 @@ export function SiteBoundaryEditorV2({
           : null,
       });
     }
-  }, [polygon]);
+  }, [
+    convertToDNA,
+    exportGeoJSON,
+    getFormattedMetrics,
+    metrics.segments,
+    onBoundaryChange,
+    polygon,
+    polygonLength,
+  ]);
 
   // ============================================================
   // POLYGON OVERLAY (non-editable display)
@@ -183,7 +225,7 @@ export function SiteBoundaryEditorV2({
     }
 
     // Create new overlay if polygon exists and not in edit/draw mode
-    if (polygon.length >= 3 && mode === MODES.SELECT) {
+    if (polygonLength >= 3 && mode === MODES.SELECT) {
       polygonOverlayRef.current = new google.maps.Polygon({
         paths: polygon,
         strokeColor: "#3B82F6",
@@ -202,18 +244,18 @@ export function SiteBoundaryEditorV2({
         polygonOverlayRef.current = null;
       }
     };
-  }, [map, google, isLoaded, polygon, mode]);
+  }, [google, isLoaded, map, mode, polygon, polygonLength]);
 
   // Fit bounds when polygon changes significantly
   useEffect(() => {
-    if (map && google && polygon.length >= 3 && mode === MODES.SELECT) {
+    if (map && google && polygonLength >= 3 && mode === MODES.SELECT) {
       const bounds = calculateBounds(polygon);
       if (bounds) {
         const googleBounds = boundsToGoogleBounds(bounds, google);
         map.fitBounds(googleBounds);
       }
     }
-  }, [map, google, polygon.length > 2 ? polygon[0].lat : null]);
+  }, [google, map, mode, polygon, polygonLength]);
 
   // ============================================================
   // PRECISION POLYGON EDITOR (Edit Mode)
@@ -273,7 +315,7 @@ export function SiteBoundaryEditorV2({
         polygonEditorRef.current = null;
       }
     };
-  }, [map, google, isLoaded, mode]);
+  }, [google, isLoaded, map, mode, setRing, updateVertexTransient, vertices]);
 
   // Update editor vertices when they change externally (e.g., from table)
   useEffect(() => {
@@ -304,7 +346,7 @@ export function SiteBoundaryEditorV2({
         },
         onDrawingCancel: () => {
           // If we had a polygon before, stay in select mode
-          if (polygon.length >= 3) {
+          if (polygonLength >= 3) {
             setMode(MODES.SELECT);
           }
         },
@@ -324,52 +366,11 @@ export function SiteBoundaryEditorV2({
         drawingManagerRef.current = null;
       }
     };
-  }, [map, google, isLoaded, mode]);
+  }, [google, isLoaded, map, mode, polygonLength, setRing]);
 
   // ============================================================
   // EVENT HANDLERS
   // ============================================================
-
-  const handleAutoDetect = useCallback(async () => {
-    setIsLoadingBoundary(true);
-
-    try {
-      let detectionCenter = center;
-
-      // Geocode address if provided
-      if (siteAddress) {
-        try {
-          const geocoded = await geocodeAddress(siteAddress);
-          detectionCenter = { lat: geocoded.lat, lng: geocoded.lng };
-        } catch (err) {
-          logger.warn("Geocoding failed, using provided center:", err);
-        }
-      }
-
-      // Fetch auto-detected boundary
-      const boundary = await fetchAutoBoundary(siteAddress, detectionCenter);
-      setPolygon(boundary);
-
-      // Fit map to boundary
-      if (map && google) {
-        const bounds = calculateBounds(boundary);
-        if (bounds) {
-          const googleBounds = boundsToGoogleBounds(bounds, google);
-          map.fitBounds(googleBounds);
-        }
-      }
-
-      setMode(MODES.SELECT);
-    } catch (err) {
-      logger.error("Auto-detect failed:", err);
-      setValidationWarning(
-        "Auto-detection failed. Please draw the boundary manually.",
-      );
-      setTimeout(() => setValidationWarning(null), 5000);
-    } finally {
-      setIsLoadingBoundary(false);
-    }
-  }, [siteAddress, center, geocodeAddress, setPolygon, map, google]);
 
   const handleModeChange = useCallback(
     (newMode) => {
@@ -463,8 +464,6 @@ export function SiteBoundaryEditorV2({
   // ============================================================
   // RENDER
   // ============================================================
-
-  const formattedMetrics = getFormattedMetrics();
 
   return (
     <div className="space-y-4">

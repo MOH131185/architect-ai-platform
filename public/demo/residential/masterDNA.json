@@ -1,0 +1,221 @@
+{
+  "dimensions": {
+    "length": 10.9,
+    "width": 7.2,
+    "height": 6.4,
+    "floors": 2,
+    "totalHeight": 6.4,
+    "floorCount": 2
+  },
+  "materials": [
+    {
+      "name": "brick",
+      "hexColor": "#B8604E",
+      "application": "exterior walls"
+    },
+    {
+      "name": "wood",
+      "hexColor": "#8B4513",
+      "application": "roof"
+    },
+    {
+      "name": "glass",
+      "hexColor": "#CCCCCC",
+      "application": "trim"
+    }
+  ],
+  "roof": {
+    "type": "gable",
+    "pitch": 35,
+    "material": "wood"
+  },
+  "rooms": [
+    {
+      "name": "Living Room",
+      "area_m2": 28,
+      "floor": "ground",
+      "orientation": "any",
+      "instanceId": "room_gf_001"
+    },
+    {
+      "name": "Kitchen-Dining",
+      "area_m2": 30,
+      "floor": "ground",
+      "orientation": "any",
+      "instanceId": "room_gf_002"
+    },
+    {
+      "name": "Hallway",
+      "area_m2": 8,
+      "floor": "ground",
+      "orientation": "any",
+      "instanceId": "room_gf_003"
+    },
+    {
+      "name": "WC",
+      "area_m2": 3,
+      "floor": "ground",
+      "orientation": "any",
+      "instanceId": "room_gf_004"
+    },
+    {
+      "name": "Utility",
+      "area_m2": 5,
+      "floor": "ground",
+      "orientation": "any",
+      "instanceId": "room_gf_005"
+    },
+    {
+      "name": "Master Bedroom",
+      "area_m2": 22,
+      "floor": "first",
+      "orientation": "any",
+      "instanceId": "room_ff_001"
+    },
+    {
+      "name": "Bedroom 2",
+      "area_m2": 16,
+      "floor": "first",
+      "orientation": "any",
+      "instanceId": "room_ff_002"
+    },
+    {
+      "name": "Bedroom 3",
+      "area_m2": 12,
+      "floor": "first",
+      "orientation": "any",
+      "instanceId": "room_ff_003"
+    },
+    {
+      "name": "Bathroom",
+      "area_m2": 8,
+      "floor": "first",
+      "orientation": "any",
+      "instanceId": "room_ff_004"
+    },
+    {
+      "name": "En-suite",
+      "area_m2": 5,
+      "floor": "first",
+      "orientation": "any",
+      "instanceId": "room_ff_005"
+    }
+  ],
+  "architecturalStyle": "modern",
+  "locationContext": "temperate oceanic climate, northern hemisphere orientation",
+  "climateDesign": {
+    "zone": "temperate oceanic",
+    "orientation": "northern hemisphere"
+  },
+  "_structured": {
+    "version": "2.0",
+    "site": {
+      "polygon": [],
+      "area_m2": 150,
+      "orientation": 0,
+      "climate_zone": "temperate oceanic",
+      "sun_path": "northern hemisphere",
+      "wind_profile": "moderate"
+    },
+    "program": {
+      "floors": 2,
+      "rooms": [
+        {
+          "name": "Living Room",
+          "area_m2": 28,
+          "floor": "ground",
+          "orientation": "any",
+          "instanceId": "room_gf_001",
+          "roomHash": "c109654e16e8aca3"
+        },
+        {
+          "name": "Kitchen-Dining",
+          "area_m2": 30,
+          "floor": "ground",
+          "orientation": "any",
+          "instanceId": "room_gf_002",
+          "roomHash": "9519bdd758d36bfc"
+        },
+        {
+          "name": "Hallway",
+          "area_m2": 8,
+          "floor": "ground",
+          "orientation": "any",
+          "instanceId": "room_gf_003",
+          "roomHash": "73b61670ea7812d7"
+        },
+        {
+          "name": "WC",
+          "area_m2": 3,
+          "floor": "ground",
+          "orientation": "any",
+          "instanceId": "room_gf_004",
+          "roomHash": "8f45ddc7a91d51a2"
+        },
+        {
+          "name": "Utility",
+          "area_m2": 5,
+          "floor": "ground",
+          "orientation": "any",
+          "instanceId": "room_gf_005",
+          "roomHash": "0774c9af5cc83a2c"
+        },
+        {
+          "name": "Master Bedroom",
+          "area_m2": 22,
+          "floor": "first",
+          "orientation": "any",
+          "instanceId": "room_ff_001",
+          "roomHash": "e54b1fdb0e5f4232"
+        },
+        {
+          "name": "Bedroom 2",
+          "area_m2": 16,
+          "floor": "first",
+          "orientation": "any",
+          "instanceId": "room_ff_002",
+          "roomHash": "fc124f8c07749157"
+        },
+        {
+          "name": "Bedroom 3",
+          "area_m2": 12,
+          "floor": "first",
+          "orientation": "any",
+          "instanceId": "room_ff_003",
+          "roomHash": "d5bb719f3cb0d34c"
+        },
+        {
+          "name": "Bathroom",
+          "area_m2": 8,
+          "floor": "first",
+          "orientation": "any",
+          "instanceId": "room_ff_004",
+          "roomHash": "fe19b211cdaaeafa"
+        },
+        {
+          "name": "En-suite",
+          "area_m2": 5,
+          "floor": "first",
+          "orientation": "any",
+          "instanceId": "room_ff_005",
+          "roomHash": "a44c8818d76c3597"
+        }
+      ]
+    },
+    "style": {
+      "architecture": "modern",
+      "materials": ["brick", "wood", "glass"],
+      "windows": {
+        "pattern": "regular",
+        "proportion": "large"
+      }
+    },
+    "geometry_rules": {
+      "grid": "rectangular",
+      "max_span": "6m",
+      "roof_type": "gable"
+    },
+    "dnaHash": "491d6cab0ea44008"
+  },
+  "designFingerprint": "design_77777_1770763573403"
+}

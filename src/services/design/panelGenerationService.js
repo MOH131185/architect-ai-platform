@@ -1,10 +1,14 @@
 /**
- * Panel Generation Service (Phase 1 - Planning + Sequential Generation)
+ * Panel Generation Service — CANONICAL PANEL-GENERATION IMPLEMENTATION
  *
- * Pure service that plans A1 panel jobs and runs them sequentially.
- * Uses specialized prompt builders for each of 14 panel types.
+ * Single source of truth for panel planning and sequential generation.
+ * Plans A1 panel jobs (planA1Panels) and generates them sequentially
+ * (generateA1PanelsSequential) with canonical renders, quality gates,
+ * control images, and specialized prompt builders.
  *
- * ENHANCED: Now uses structured DNA context for all prompts
+ * Re-exported by ../panelGenerationService.js (adapter facade).
+ * Primary prompt builder: a1/panelPromptBuilders.js (buildPanelPrompt).
+ * Fallback prompt builder: dnaPromptContext.js (adapter → canonical).
  */
 
 import {

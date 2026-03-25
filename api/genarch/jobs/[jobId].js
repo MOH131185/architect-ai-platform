@@ -45,6 +45,10 @@ async function proxyToRunPod(method, path, res) {
       method,
       headers: buildHeaders(),
     });
+    const contractVersion = response.headers.get("x-genarch-contract-version");
+    if (contractVersion) {
+      res.setHeader("X-Genarch-Contract-Version", contractVersion);
+    }
 
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {

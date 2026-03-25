@@ -30,15 +30,8 @@
  */
 
 // Node.js 'module' import is handled conditionally below
-import {
-  isFeatureEnabled,
-  getAllFeatureFlags,
-} from "../../config/featureFlags.js";
-import {
-  normalizeToCanonical,
-  assertValidPanelType,
-  ALL_PANEL_TYPES,
-} from "../../config/panelRegistry.js";
+import { getAllFeatureFlags } from "../../config/featureFlags.js";
+import { normalizeToCanonical } from "../../config/panelRegistry.js";
 import logger from "../core/logger.js";
 
 // Detect environment (browser vs Node.js)
@@ -48,7 +41,6 @@ const isNode =
 // Create require for Node.js built-in modules (only in Node.js environment)
 // In browser, this will be null and fs operations will be skipped
 // Use eval to completely hide from Webpack's static analysis
-let _require = null;
 let _fs = null;
 let _path = null;
 if (isNode) {
@@ -56,12 +48,10 @@ if (isNode) {
     // Use eval + indirect string to hide from Webpack bundler
     // eslint-disable-next-line no-eval
     const nodeRequire = eval("require");
-    _require = nodeRequire;
-    _fs = nodeRequire("f" + "s");
-    _path = nodeRequire("pat" + "h");
+    _fs = nodeRequire("fs");
+    _path = nodeRequire("path");
   } catch (e) {
     // Browser environment - require not available
-    _require = null;
     _fs = null;
     _path = null;
   }

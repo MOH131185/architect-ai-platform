@@ -1,9 +1,12 @@
 /**
- * Panel Orchestrator
+ * Panel Orchestrator — ACTIVE MID-LEVEL ORCHESTRATOR
  *
- * Orchestrates generation of individual panels for Hybrid A1 mode.
- * Generates panels sequentially with paced requests, maintains DNA consistency,
- * and uses deterministic seed derivation.
+ * Called by dnaWorkflowOrchestrator.js to orchestrate sequential generation
+ * of individual panels. Uses dnaPromptGenerator for view-specific prompts,
+ * togetherAIService for image generation, and deterministic seed derivation.
+ *
+ * Not to be confused with design/panelGenerationService.js (canonical panel
+ * planning + generation with quality gates and canonical renders).
  */
 
 import dnaPromptGenerator from "./dnaPromptGenerator.js";

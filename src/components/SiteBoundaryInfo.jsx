@@ -3,7 +3,7 @@
  * Displays detected site boundary shape, confidence, and source
  */
 
-import React from 'react';
+import React from "react";
 
 const SiteBoundaryInfo = ({
   shapeType,
@@ -11,68 +11,46 @@ const SiteBoundaryInfo = ({
   source,
   area,
   vertexCount,
-  onRefine
+  onRefine,
 }) => {
-  // Determine confidence color
-  const getConfidenceColor = (conf) => {
-    if (conf >= 0.8) return 'text-green-600 bg-green-50 border-green-200';
-    if (conf >= 0.6) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    return 'text-orange-600 bg-orange-50 border-orange-200';
-  };
-
   // Get shape icon
   const getShapeIcon = (shape) => {
     const icons = {
-      'triangle': '🔺',
-      'triangular': '🔺',
-      'rectangle': '▭',
-      'rectangular': '▭',
-      'pentagon': '⬟',
-      'L-shaped': '⌐',
-      'hexagon': '⬡',
-      'irregular': '⬢',
-      'polygon': '⬢',
-      'complex polygon': '⬢',
-      'irregular quadrilateral': '⬢'
+      triangle: "🔺",
+      triangular: "🔺",
+      rectangle: "▭",
+      rectangular: "▭",
+      pentagon: "⬟",
+      "L-shaped": "⌐",
+      hexagon: "⬡",
+      irregular: "⬢",
+      polygon: "⬢",
+      "complex polygon": "⬢",
+      "irregular quadrilateral": "⬢",
     };
 
-    return icons[shape] || '⬢';
+    return icons[shape] || "⬢";
   };
 
   // Get confidence label
   const getConfidenceLabel = (conf) => {
-    if (conf >= 0.9) return 'Excellent';
-    if (conf >= 0.75) return 'High';
-    if (conf >= 0.6) return 'Good';
-    if (conf >= 0.4) return 'Moderate';
-    return 'Low';
-  };
-
-  // Get source badge color
-  const getSourceBadgeColor = (src) => {
-    if (src?.includes('OpenStreetMap') || src?.includes('OSM')) {
-      return 'bg-blue-100 text-blue-800';
-    }
-    if (src?.includes('Google')) {
-      return 'bg-purple-100 text-purple-800';
-    }
-    if (src?.includes('estimated') || src?.includes('Fallback')) {
-      return 'bg-gray-100 text-gray-800';
-    }
-    return 'bg-indigo-100 text-indigo-800';
+    if (conf >= 0.9) return "Excellent";
+    if (conf >= 0.75) return "High";
+    if (conf >= 0.6) return "Good";
+    if (conf >= 0.4) return "Moderate";
+    return "Low";
   };
 
   const confidencePercent = Math.round((confidence || 0) * 100);
-  const confidenceClass = getConfidenceColor(confidence || 0);
 
   return (
     <div className="liquid-glass-card rounded-lg border border-white/30 p-4 shadow-lg bg-white/10 backdrop-blur-xl">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-white">
-          Detected Site Boundary
-        </h3>
-        <span className={`text-xs px-2 py-1 rounded-full liquid-glass border border-white/20 text-white/90`}>
-          {source || 'Unknown'}
+        <h3 className="text-sm font-bold text-white">Detected Site Boundary</h3>
+        <span
+          className={`text-xs px-2 py-1 rounded-full liquid-glass border border-white/20 text-white/90`}
+        >
+          {source || "Unknown"}
         </span>
       </div>
 
@@ -84,21 +62,25 @@ const SiteBoundaryInfo = ({
             <span>Shape:</span>
           </span>
           <span className="text-sm font-semibold text-white capitalize">
-            {shapeType || 'Unknown'}
+            {shapeType || "Unknown"}
           </span>
         </div>
 
         {/* Confidence Score */}
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-white/90 font-medium">Confidence:</span>
-            <span className={`text-sm font-semibold px-2 py-0.5 rounded border ${
-              confidence >= 0.8
-                ? 'bg-green-500/30 border-green-400/50 text-green-200'
-                : confidence >= 0.6
-                ? 'bg-yellow-500/30 border-yellow-400/50 text-yellow-200'
-                : 'bg-orange-500/30 border-orange-400/50 text-orange-200'
-            }`}>
+            <span className="text-sm text-white/90 font-medium">
+              Confidence:
+            </span>
+            <span
+              className={`text-sm font-semibold px-2 py-0.5 rounded border ${
+                confidence >= 0.8
+                  ? "bg-green-500/30 border-green-400/50 text-green-200"
+                  : confidence >= 0.6
+                    ? "bg-yellow-500/30 border-yellow-400/50 text-yellow-200"
+                    : "bg-orange-500/30 border-orange-400/50 text-orange-200"
+              }`}
+            >
               {confidencePercent}% · {getConfidenceLabel(confidence)}
             </span>
           </div>
@@ -108,10 +90,10 @@ const SiteBoundaryInfo = ({
             <div
               className={`h-2 rounded-full transition-all ${
                 confidence >= 0.8
-                  ? 'bg-green-400'
+                  ? "bg-green-400"
                   : confidence >= 0.6
-                  ? 'bg-yellow-400'
-                  : 'bg-orange-400'
+                    ? "bg-yellow-400"
+                    : "bg-orange-400"
               }`}
               style={{ width: `${confidencePercent}%` }}
             />
@@ -141,8 +123,9 @@ const SiteBoundaryInfo = ({
         {/* Confidence Warning */}
         {confidence < 0.6 && (
           <div className="mt-3 p-2 liquid-glass border border-yellow-400/50 rounded text-xs text-yellow-200 bg-yellow-500/10">
-            <strong>⚠️ Low Confidence:</strong> The detected boundary may not be accurate.
-            Consider manually adjusting the site boundary for better results.
+            <strong>⚠️ Low Confidence:</strong> The detected boundary may not be
+            accurate. Consider manually adjusting the site boundary for better
+            results.
           </div>
         )}
 

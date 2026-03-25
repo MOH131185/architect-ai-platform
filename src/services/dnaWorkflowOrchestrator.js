@@ -20,7 +20,9 @@ import twoPassDNAGenerator from "./twoPassDNAGenerator.js";
 import { generateGeometryDNA } from "./geometryReasoningService.js";
 import { buildGeometryModel, createSceneSpec } from "./geometryBuilder.js";
 import { renderGeometryPlaceholders } from "./geometryRenderService.js";
-import designHistoryService from "./designHistoryService.js";
+// designHistoryService removed — persistence is now handled exclusively by
+// designHistoryRepository (called from useArchitectAIWorkflow.js after this
+// orchestrator returns). See Phase 2 consolidation.
 import dnaValidator from "./dnaValidator.js";
 import normalizeDNA from "./dnaNormalization.js";
 import {
@@ -42,10 +44,13 @@ import {
 } from "./panelGenerationService.js";
 import { derivePanelSeedsFromDNA } from "./seedDerivation.js";
 import baselineArtifactStore from "./baselineArtifactStore.js";
+import { composeA1Sheet } from "./dnaWorkflow/composeA1Sheet.js";
+import { finalizeMultiPanelRun } from "./dnaWorkflow/finalizeRun.js";
+import { preparePortfolioStyleDataUrl } from "./dnaWorkflow/portfolioStyle.js";
+import { createProgressReporter } from "./dnaWorkflow/progressReporter.js";
 // compositeA1Sheet and architecturalSheetService are not needed here;
 // they are imported directly by aiModificationService.js.
 import { getFeatureValue, isFeatureEnabled } from "../config/featureFlags.js";
-import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
   validateAndCorrectFootprint,
   polygonToLocalXY,
@@ -98,11 +103,6 @@ import {
   GenerationPreflight,
   PreflightError,
 } from "./validation/GenerationPreflight.js";
-import {
-  saveRunSnapshot,
-  buildPanelManifest,
-  computeRunMetrics,
-} from "./validation/runInstrumentation.js";
 // Canonical Geometry Pack - geometry-first authority
 import {
   buildCanonicalPack,
@@ -149,7 +149,6 @@ class DNAWorkflowOrchestrator {
     this.pipeline = projectDNAPipeline;
     this.clipService = clipEmbeddingService;
     this.dnaGenerator = enhancedDesignDNAService;
-    this.historyService = designHistoryService;
     this.validator = dnaValidator;
 
     logger.info("🎼 DNA Workflow Orchestrator initialized");
@@ -229,19 +228,7 @@ class DNAWorkflowOrchestrator {
         }
       }
 
-      // 5. Save to legacy history service for compatibility
-      const legacyProjectId = this.historyService.saveDesignContext({
-        projectId,
-        location: locationData,
-        buildingDNA: masterDNA,
-        prompt: this.buildInitialPrompt(projectContext, locationData),
-        metadata: {
-          buildingProgram: projectContext.buildingProgram,
-          floorArea: projectContext.floorArea,
-          floors: projectContext.floors,
-          style: projectContext.style,
-        },
-      });
+      // Persistence is handled by the caller (useArchitectAIWorkflow → designHistoryRepository)
 
       logger.info("\n✅ ========================================");
       logger.success(" PROJECT INITIALIZED SUCCESSFULLY");
@@ -291,9 +278,12 @@ class DNAWorkflowOrchestrator {
     logger.info("📐 ========================================\n");
 
     try {
-      // 1. Load project DNA
-      const legacyContext = this.historyService.getDesignContext(projectId);
-      if (!legacyContext) {
+      // 1. Load project DNA from canonical repository
+      const { default: designHistoryRepository } =
+        await import("./designHistoryRepository.js");
+      const designRecord =
+        await designHistoryRepository.getDesignById(projectId);
+      if (!designRecord) {
         throw new Error("Project not found. Initialize project first.");
       }
 
@@ -303,7 +293,7 @@ class DNAWorkflowOrchestrator {
         await this.clipService.generateEmbedding(floorPlanImageUrl);
 
       // 3. Generate text embedding for prompt
-      const prompt = generationData.prompt || legacyContext.prompt;
+      const prompt = generationData.prompt || designRecord.basePrompt || "";
       const textEmbeddingResult =
         await this.clipService.generateTextEmbedding(prompt);
 
@@ -314,9 +304,9 @@ class DNAWorkflowOrchestrator {
         floorPlanImage: floorPlanImageUrl,
         prompt,
         promptEmbedding: textEmbeddingResult.embedding,
-        designDNA: legacyContext.buildingDNA,
-        locationData: legacyContext.location,
-        projectContext: legacyContext.metadata,
+        designDNA: designRecord.dna || designRecord.masterDNA || {},
+        locationData: designRecord.locationData || {},
+        projectContext: designRecord.projectContext || {},
         imageEmbedding: embeddingResult.embedding, // Store image embedding too
       });
 
@@ -753,27 +743,13 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       overrides.driftValidator?.validateMultiPanelConsistency ||
       validateMultiPanelConsistency;
     const baselineStore = overrides.baselineStore || baselineArtifactStore;
-    const historyService = overrides.historyService || this.historyService;
+    // historyService removed — persistence handled by caller (useArchitectAIWorkflow)
     const panelTypesOverride = overrides.panelTypes;
     const fetchImpl =
       overrides.composeClient || (typeof fetch === "function" ? fetch : null);
     const progressCallback =
       typeof options?.onProgress === "function" ? options.onProgress : null;
-    const reportProgress = (stage, message, percent) => {
-      if (!progressCallback) return;
-      const clamped =
-        typeof percent === "number" && Number.isFinite(percent)
-          ? Math.max(0, Math.min(100, Math.round(percent)))
-          : undefined;
-      try {
-        progressCallback({
-          stage,
-          message,
-          percent: clamped,
-          percentage: clamped,
-        });
-      } catch {}
-    };
+    const reportProgress = createProgressReporter(progressCallback);
 
     const panelDelayMs =
       typeof overrides.panelDelayMs === "number" &&
@@ -799,101 +775,83 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
     try {
       reportProgress("analysis", "Starting multi-panel generation...", 2);
 
-      // Convert first portfolio image to data URL for style reference
-      let portfolioStyleDataUrl = null;
-      if (portfolioFiles && portfolioFiles.length > 0) {
-        try {
-          const firstFile = portfolioFiles[0]?.file || portfolioFiles[0];
-          if (firstFile instanceof Blob) {
-            const buffer = await firstFile.arrayBuffer();
-            const base64 = btoa(
-              new Uint8Array(buffer).reduce(
-                (data, byte) => data + String.fromCharCode(byte),
-                "",
-              ),
-            );
-            const mime = firstFile.type || "image/jpeg";
-            portfolioStyleDataUrl = `data:${mime};base64,${base64}`;
-            logger.info(
-              `🎨 Portfolio style image prepared (${Math.round(base64.length / 1024)}KB)`,
-            );
-          }
-        } catch (portfolioErr) {
-          logger.warn(
-            "Could not convert portfolio image for style reference:",
-            portfolioErr.message,
-          );
-        }
-      }
+      const portfolioStyleDataUrl = await preparePortfolioStyleDataUrl(
+        portfolioFiles,
+        logger,
+      );
 
       let masterDNA;
 
       if (preSelectedDNA) {
         // STEP 1 (SKIP): Use pre-selected DNA from variant selection
-        logger.info("🧬 STEP 1: Using pre-selected DNA variant (skipping generation)");
+        logger.info(
+          "🧬 STEP 1: Using pre-selected DNA variant (skipping generation)",
+        );
         reportProgress("dna", "Using selected design variant...", 20);
         masterDNA = preSelectedDNA;
       } else {
-      // STEP 1: Generate Master DNA via Qwen
-      logger.info("🧬 STEP 1: Generating Master DNA...");
-      reportProgress("dna", "Generating master design DNA...", 10);
+        // STEP 1: Generate Master DNA via Qwen
+        logger.info("🧬 STEP 1: Generating Master DNA...");
+        reportProgress("dna", "Generating master design DNA...", 10);
 
-      // Extract portfolio analysis if files provided
-      let portfolioAnalysis = null;
-      if (portfolioFiles && portfolioFiles.length > 0) {
-        try {
-          portfolioAnalysis =
-            await dnaGeneratorInstance.extractDNAFromPortfolio(portfolioFiles);
-        } catch (err) {
-          logger.warn(
-            "Portfolio analysis failed, continuing without it:",
-            err.message,
-          );
+        // Extract portfolio analysis if files provided
+        let portfolioAnalysis = null;
+        if (portfolioFiles && portfolioFiles.length > 0) {
+          try {
+            portfolioAnalysis =
+              await dnaGeneratorInstance.extractDNAFromPortfolio(
+                portfolioFiles,
+              );
+          } catch (err) {
+            logger.warn(
+              "Portfolio analysis failed, continuing without it:",
+              err.message,
+            );
+          }
         }
-      }
 
-      // Use two-pass DNA generator if enabled (default: true for strict consistency)
-      // Allow tests to override (avoid network calls, deterministic mocks).
-      const useTwoPassDNA =
-        typeof overrides.useTwoPassDNA === "boolean"
-          ? overrides.useTwoPassDNA
-          : isFeatureEnabled("twoPassDNA");
-      const twoPassGenerator =
-        overrides.twoPassDNAGenerator || twoPassDNAGenerator;
-      let dnaResponse;
+        // Use two-pass DNA generator if enabled (default: true for strict consistency)
+        // Allow tests to override (avoid network calls, deterministic mocks).
+        const useTwoPassDNA =
+          typeof overrides.useTwoPassDNA === "boolean"
+            ? overrides.useTwoPassDNA
+            : isFeatureEnabled("twoPassDNA");
+        const twoPassGenerator =
+          overrides.twoPassDNAGenerator || twoPassDNAGenerator;
+        let dnaResponse;
 
-      if (useTwoPassDNA) {
-        logger.info("   Using Two-Pass DNA Generator (strict mode)");
-        try {
-          dnaResponse = await twoPassGenerator.generateMasterDesignDNA(
+        if (useTwoPassDNA) {
+          logger.info("   Using Two-Pass DNA Generator (strict mode)");
+          try {
+            dnaResponse = await twoPassGenerator.generateMasterDesignDNA(
+              projectContext,
+              portfolioAnalysis,
+              locationData,
+            );
+
+            if (!dnaResponse.success) {
+              throw new Error("Two-pass DNA generation failed");
+            }
+          } catch (twoPassError) {
+            logger.error(
+              "❌ Two-Pass DNA generation failed:",
+              twoPassError.message,
+            );
+            throw new Error(
+              `DNA generation failed: ${twoPassError.message}. Please check your inputs and try again.`,
+            );
+          }
+        } else {
+          logger.info("   Using Legacy DNA Generator");
+          dnaResponse = await dnaGeneratorInstance.generateMasterDesignDNA(
             projectContext,
             portfolioAnalysis,
             locationData,
           );
-
-          if (!dnaResponse.success) {
-            throw new Error("Two-pass DNA generation failed");
-          }
-        } catch (twoPassError) {
-          logger.error(
-            "❌ Two-Pass DNA generation failed:",
-            twoPassError.message,
-          );
-          throw new Error(
-            `DNA generation failed: ${twoPassError.message}. Please check your inputs and try again.`,
-          );
         }
-      } else {
-        logger.info("   Using Legacy DNA Generator");
-        dnaResponse = await dnaGeneratorInstance.generateMasterDesignDNA(
-          projectContext,
-          portfolioAnalysis,
-          locationData,
-        );
-      }
 
-      // Extract masterDNA from response (handles both direct DNA and wrapped response)
-      masterDNA = dnaResponse.masterDNA || dnaResponse;
+        // Extract masterDNA from response (handles both direct DNA and wrapped response)
+        masterDNA = dnaResponse.masterDNA || dnaResponse;
       } // end of else (no preSelectedDNA)
 
       // Log DNA quality
@@ -1175,7 +1133,10 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         // ── Defensive fallback: ensure typesCDS.massing has widthM/depthM ──
         // Without these, BuildingModel falls back to inaccurate area-based guesses
         // and the canonical geometry pack may be empty or broken.
-        if (typesCDS && (!typesCDS.massing?.widthM || !typesCDS.massing?.depthM)) {
+        if (
+          typesCDS &&
+          (!typesCDS.massing?.widthM || !typesCDS.massing?.depthM)
+        ) {
           typesCDS.massing = typesCDS.massing || {};
           typesCDS.massing.widthM =
             typesCDS.massing.widthM ||
@@ -1499,19 +1460,16 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         cdsForPack = {
           massing: {
             widthM:
-              masterDNA.dimensions.length ||
-              masterDNA.dimensions.width ||
-              12,
+              masterDNA.dimensions.length || masterDNA.dimensions.width || 12,
             depthM:
-              masterDNA.dimensions.width ||
-              masterDNA.dimensions.depth ||
-              8,
+              masterDNA.dimensions.width || masterDNA.dimensions.depth || 8,
             levelCount:
               masterDNA.dimensions.floorCount ||
               masterDNA.dimensions.floors ||
               2,
             floorToFloorM: masterDNA.dimensions.groundFloorHeight || 3.0,
-            roofType: masterDNA.roofType || masterDNA.style?.roofType || "gable",
+            roofType:
+              masterDNA.roofType || masterDNA.style?.roofType || "gable",
           },
           program: {
             levelCount:
@@ -1896,12 +1854,13 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             type: job.type,
             imageUrl: null,
             svgPanel: true,
+            runId,
             seed: job.seed,
             prompt: job.prompt,
             width: job.width,
             height: job.height,
             dnaSnapshot: job.dnaSnapshot,
-            meta: { ...job.meta, model: "svg", generatorUsed: "svg" },
+            meta: { ...job.meta, runId, model: "svg", generatorUsed: "svg" },
           };
           generatedPanels.push(panelResult);
           reportProgress("rendering", `${job.type} (SVG)`, panelDonePercent);
@@ -1943,6 +1902,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               type: job.type,
               imageUrl: canonicalParams.init_image, // SVG data URL
               svgPanel: true,
+              runId,
               seed: job.seed,
               prompt: job.prompt,
               width: job.width,
@@ -1952,6 +1912,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               cdsHash: cdsForPack?.hash || null,
               meta: {
                 ...job.meta,
+                runId,
                 model: "canonical_svg",
                 generatorUsed: "canonical_geometry_pack",
                 hadCanonicalControl: true,
@@ -1985,7 +1946,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           // style reference be used as init_image for color/material transfer.
           const skipGeometryForPortfolioStyle =
             job.type === "hero_3d" && !!portfolioStyleDataUrl;
-          if (canonicalPack && hasCanonicalPack(canonicalPack) && !skipGeometryForPortfolioStyle) {
+          if (
+            canonicalPack &&
+            hasCanonicalPack(canonicalPack) &&
+            !skipGeometryForPortfolioStyle
+          ) {
             const canonicalParams = getCanonicalInitImageParams(
               canonicalPack,
               job.type,
@@ -2008,8 +1973,13 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           // Only used when canonical pack doesn't provide a control for this panel
           // SKIP for 3D photorealistic panels — Together.ai FLUX returns 500 with SVG init_images
           const SKIP_PROCEDURAL_FOR_3D = new Set([
-            "hero_3d", "exterior_front_3d", "interior_3d",
-            "axonometric", "axonometric_3d", "site_diagram", "site_plan",
+            "hero_3d",
+            "exterior_front_3d",
+            "interior_3d",
+            "axonometric",
+            "axonometric_3d",
+            "site_diagram",
+            "site_plan",
           ]);
           if (
             !geometryRender &&
@@ -2116,9 +2086,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             styleReferenceUrl: effectiveStyleReference,
             // NEW: Per-panel strength from HERO_CONTROL_STRENGTH (axonometric: 0.7, elevations: 0.6, sections: 0.5)
             styleReferenceStrength: effectiveStyleReference
-              ? (job.type === "hero_3d" && portfolioStyleDataUrl
-                  ? 0.25  // Portfolio style: 75% creative freedom for photorealism
-                  : HERO_CONTROL_STRENGTH[job.type] || 0.6)
+              ? job.type === "hero_3d" && portfolioStyleDataUrl
+                ? 0.25 // Portfolio style: 75% creative freedom for photorealism
+                : HERO_CONTROL_STRENGTH[job.type] || 0.6
               : null,
             // NEW: Floor plan mask for interior_3d window alignment
             floorPlanMaskUrl: effectiveFloorPlanMask,
@@ -2128,6 +2098,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             id: job.id,
             type: job.type,
             imageUrl: result.url || result.imageUrls?.[0],
+            runId,
             seed: result.seedUsed || job.seed,
             prompt: job.prompt,
             negativePrompt: job.negativePrompt,
@@ -2139,6 +2110,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             cdsHash: canonicalDesignState?.hash || null,
             meta: {
               ...job.meta,
+              runId,
               hadGeometryControl: !!geometryRender,
               hadCanonicalControl:
                 geometryRender?.type === "canonical_geometry",
@@ -2340,10 +2312,12 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         (p) => p.meta?.hadCanonicalControl && p.meta?.tier !== 1,
       );
       const tier3Panels = generatedPanels.filter(
-        (p) => !p.meta?.hadCanonicalControl && p.meta?.tier !== 1 && !p.svgPanel,
+        (p) =>
+          !p.meta?.hadCanonicalControl && p.meta?.tier !== 1 && !p.svgPanel,
       );
       const dataPanels = generatedPanels.filter(
-        (p) => p.meta?.generatorUsed === "data_panel_svg" || p.meta?.isDataPanel,
+        (p) =>
+          p.meta?.generatorUsed === "data_panel_svg" || p.meta?.isDataPanel,
       );
 
       logger.success(
@@ -2397,13 +2371,14 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               id: job.id,
               type: job.type,
               imageUrl: result.url || result.imageUrls?.[0],
+              runId,
               seed: result.seedUsed || job.seed,
               prompt: job.prompt,
               negativePrompt: job.negativePrompt,
               width: result.metadata?.width || job.width,
               height: result.metadata?.height || job.height,
               dnaSnapshot: job.dnaSnapshot,
-              meta: job.meta,
+              meta: { ...(job.meta || {}), runId },
             });
             existingTypes.add(type);
             logger.success(`✅ Retried and captured ${type}`);
@@ -2850,385 +2825,46 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       // STEP 8: Compose sheet via /api/a1/compose
       logger.info("🖼️  STEP 8: Composing A1 sheet...");
       reportProgress("finalizing", "Composing A1 sheet...", 90);
-      if (!fetchImpl) {
-        throw new Error(
-          "Fetch API is not available and no composeClient override was provided",
-        );
-      }
-      // Enrich floor plan panels with roomCount from DNA so compose API
-      // validation passes (it checks roomCount > 0 for floor_plan_* panels)
-      const dnaRooms = masterDNA?.rooms || masterDNA?.program?.rooms || [];
-      // Use the designFingerprint that planA1Panels assigned to panels.
-      // This MUST match panel.meta.designFingerprint or the compose API
-      // will reject with FINGERPRINT_MISMATCH.
-      const panelFingerprint =
-        masterDNA?.designFingerprint ||
-        generatedPanels[0]?.meta?.designFingerprint ||
-        designId;
-
-      // Build site overlay – drop base64 data URLs that exceed 2MB to
-      // stay within Vercel's 4.5MB body limit.  The compose endpoint
-      // can still render the site panel without the overlay image.
-      let siteOverlay = null;
-      if (siteSnapshot?.dataUrl) {
-        const dataUrlBytes = siteSnapshot.dataUrl.length;
-        if (dataUrlBytes < 2_000_000) {
-          siteOverlay = { imageUrl: siteSnapshot.dataUrl };
-        } else {
-          logger.warn(
-            `⚠️ Site snapshot too large (${(dataUrlBytes / 1_000_000).toFixed(1)}MB) – omitting from compose payload`,
-          );
-        }
-      }
-
-      // COMPOSE GATE: Formal pre-compose validation (fail-closed)
-      {
-        const { validateBeforeCompose } =
-          await import("./validation/ComposeGate.js");
-        const composeGateResult = validateBeforeCompose(
-          generatedPanels,
-          canonicalDesignState,
-          programLock,
-          canonicalPack,
-          { strict: isFeatureEnabled("requireCanonicalPack") },
-        );
-        if (!composeGateResult.valid) {
-          logger.error(
-            `❌ ComposeGate: ${composeGateResult.errors.length} error(s)`,
-          );
-          for (const err of composeGateResult.errors) {
-            logger.error(`   ${err}`);
-          }
-          throw new Error(
-            `Composition blocked: ${composeGateResult.errors[0]}`,
-          );
-        }
-        logger.info("✅ ComposeGate passed");
-      }
-
-      const composePayload = {
+      const compositionResult = await composeA1Sheet({
+        apiBaseUrl: API_BASE_URL,
+        canonicalDesignState,
+        canonicalPack,
         designId,
-        designFingerprint: panelFingerprint,
+        fetchImpl,
         floorCount,
-        // Metadata hashes for title block rendering
-        dnaHash: masterDNA?.dnaHash || computeCDSHashSync(masterDNA || {}),
-        geometryHash: canonicalPack?.geometryHash || null,
-        programHash: programLock?.hash || null,
-        panels: generatedPanels.map((p) => {
-          // Compose API only needs: geometryHash, roomCount, wallCount, runId, cdsHash
-          // Build a minimal meta to keep payload well under Vercel's 4.5MB body limit
-          const rawMeta = p.meta || {};
-          const meta = {
-            ...(rawMeta.geometryHash   ? { geometryHash:   rawMeta.geometryHash }   : {}),
-            ...(rawMeta.geometry_hash  ? { geometry_hash:  rawMeta.geometry_hash }  : {}),
-            ...(rawMeta.cdsHash        ? { cdsHash:        rawMeta.cdsHash }        : {}),
-            ...(rawMeta.cds_hash       ? { cds_hash:       rawMeta.cds_hash }       : {}),
-            ...(rawMeta.runId          ? { runId:          rawMeta.runId }          : {}),
-            ...(rawMeta.roomCount      ? { roomCount:      rawMeta.roomCount }      : {}),
-            ...(rawMeta.wallCount      ? { wallCount:      rawMeta.wallCount }      : {}),
-          };
-          if (p.type?.includes("floor_plan") && !meta.roomCount) {
-            const floorIndex =
-              p.type === "floor_plan_ground"
-                ? 0
-                : p.type === "floor_plan_first"
-                  ? 1
-                  : 2;
-            const floorRooms = dnaRooms.filter((r) => {
-              const level = r.floor ?? r.level ?? 0;
-              return level === floorIndex;
-            });
-            meta.roomCount = floorRooms.length || dnaRooms.length || 1;
-            meta.wallCount = meta.roomCount * 4; // approximate
-          }
-          // For SVG panels: prefer raw SVG string over base64 data URL — saves ~33%
-          // For FLUX panels: imageUrl is a CDN URL (tiny), keep as-is
-          let imageUrl = p.imageUrl;
-          const isSvgDataUrl =
-            typeof imageUrl === "string" && imageUrl.startsWith("data:image/svg");
-          if (isSvgDataUrl && p.svg) {
-            // Use raw SVG markup — much smaller than base64 encoding
-            imageUrl = p.svg;
-          } else if (isSvgDataUrl) {
-            // Decode base64 SVG back to raw markup to save bandwidth
-            try {
-              const b64 = imageUrl.replace(/^data:image\/svg\+xml;base64,/, "");
-              imageUrl = decodeURIComponent(escape(atob(b64)));
-            } catch (_) {
-              // Keep original data URL if decode fails
-            }
-          }
-          return {
-            type: p.type,
-            imageUrl,
-            label: p.type.toUpperCase().replace(/_/g, " "),
-            meta,
-            ...(p.svgPanel ? { svgPanel: true } : {}),
-          };
-        }),
-        siteOverlay,
-        layoutConfig: "uk-riba-standard",
-        // TRIMMED: Only fields the compose endpoint actually uses for SVG data panels
-        masterDNA: {
-          rooms: masterDNA?.rooms || masterDNA?.program?.rooms || [],
-          materials: normalizeMaterials(masterDNA),
-          dimensions: masterDNA?.dimensions || {},
-          architecturalStyle: masterDNA?.architecturalStyle,
-          roof: masterDNA?.roof,
-        },
-        projectContext: {
-          programSpaces: projectContext?.programSpaces || [],
-          buildingProgram: projectContext?.buildingProgram,
-        },
-        locationData: {
-          climate: locationData?.climate || {},
-          sunPath: locationData?.sunPath || {},
-          address: locationData?.address || projectContext?.address || "",
-          coordinates: locationData?.coordinates || null,
-          zoning: locationData?.zoning || {},
-        },
-      };
-
-      const composeBody = JSON.stringify(composePayload);
-      const bodyMB = composeBody.length / 1_000_000;
-      logger.info(`📦 Compose payload size: ${bodyMB.toFixed(2)}MB`);
-      if (bodyMB > 3.5) {
-        logger.warn(
-          `⚠️ Compose payload large (${bodyMB.toFixed(2)}MB). Breakdown:`,
-        );
-        for (const p of composePayload.panels) {
-          const imageKB = ((p.imageUrl || "").length / 1000).toFixed(1);
-          const metaKB = (JSON.stringify(p.meta || {}).length / 1000).toFixed(1);
-          logger.warn(`   ${p.type}: imageUrl=${imageKB}KB meta=${metaKB}KB`);
-        }
-        logger.warn(
-          `   masterDNA: ${(JSON.stringify(composePayload.masterDNA).length / 1000).toFixed(1)}KB`,
-        );
-        logger.warn(
-          `   siteOverlay: ${(JSON.stringify(composePayload.siteOverlay || null).length / 1000).toFixed(1)}KB`,
-        );
-        if (bodyMB >= 4.4) {
-          logger.error(`❌ Compose payload too large (${bodyMB.toFixed(2)}MB) – Vercel will reject it`);
-          throw new Error(`Compose payload too large: ${bodyMB.toFixed(2)}MB exceeds 4.4MB safety limit`);
-        }
-      }
-
-      const composeResponse = await fetchImpl(
-        `${API_BASE_URL}/api/a1/compose`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: composeBody,
-        },
-      );
-
-      if (!composeResponse.ok) {
-        let errorDetail = "";
-        try {
-          const errorBody = await composeResponse.json();
-          errorDetail =
-            errorBody.message || errorBody.error || JSON.stringify(errorBody);
-          logger.error(`❌ Compose API error: ${errorDetail}`);
-        } catch (_) {
-          /* ignore parse errors */
-        }
-        throw new Error(
-          `Composition failed: ${composeResponse.status} – ${errorDetail}`,
-        );
-      }
-
-      const compositionResult = await composeResponse.json();
-      logger.success("✅ A1 sheet composed successfully");
-
-      // Log QA results from compose endpoint
-      if (compositionResult.qa) {
-        const qa = compositionResult.qa;
-        if (qa.allPassed) {
-          logger.success(`✅ QA gates: ${qa.summary?.passed}/${qa.summary?.total} passed`);
-        } else if (qa.error) {
-          logger.warn(`⚠️  QA gates skipped: ${qa.error}`);
-        } else {
-          logger.warn(`⚠️  QA gates: ${qa.summary?.passed}/${qa.summary?.total} passed, ${qa.failures?.length || 0} failures`);
-        }
-      }
-      if (compositionResult.critique) {
-        const crit = compositionResult.critique;
-        if (crit.overallPass) {
-          logger.success(`✅ Vision QA (Opus Critic): PASSED — visual score: ${crit.visualScore?.overall_presentation || "N/A"}/10`);
-        } else if (crit.error) {
-          logger.warn(`⚠️  Vision QA skipped: ${crit.error}`);
-        } else {
-          logger.warn(`⚠️  Vision QA: ISSUES FOUND — ${crit.layoutIssues?.length || 0} layout, ${crit.regeneratePanels?.length || 0} regen needed`);
-        }
-      }
-
-      reportProgress("finalizing", "A1 sheet composed", 92);
-
-      // STEP 9: Save to baseline artifact store
-      logger.info("💾 STEP 9: Saving baseline artifacts...");
-      reportProgress("finalizing", "Saving baseline artifacts...", 93);
-      const panelsMap = {};
-      generatedPanels.forEach((panel) => {
-        panelsMap[panel.type] = {
-          imageUrl: panel.imageUrl,
-          seed: panel.seed,
-          prompt: panel.prompt,
-          negativePrompt: panel.negativePrompt,
-          width: panel.width,
-          height: panel.height,
-          coordinates: compositionResult.coordinates[panel.type] || {},
-          metadata: panel.meta,
-        };
-      });
-
-      const baselineBundle = {
-        designId,
-        sheetId,
-        baselineImageUrl: compositionResult.composedSheetUrl,
-        siteSnapshotUrl: siteSnapshot?.dataUrl || null,
-        baselineDNA: masterDNA,
-        geometryBaseline: geometryDNA
-          ? {
-              geometryDNA,
-              renders: geometryRenders,
-              scene: geometryScene,
-            }
-          : null,
-        baselineLayout: {
-          panelCoordinates: Object.values(compositionResult.coordinates),
-          layoutKey: "uk-riba-standard",
-          sheetWidth: compositionResult.metadata.width,
-          sheetHeight: compositionResult.metadata.height,
-        },
-        panels: panelsMap,
-        metadata: {
-          seed: effectiveBaseSeed,
-          model: "black-forest-labs/FLUX.1-schnell",
-          dnaHash: "",
-          layoutHash: "",
-          width: compositionResult.metadata.width,
-          height: compositionResult.metadata.height,
-          a1LayoutKey: "uk-riba-standard",
-          generatedAt: new Date().toISOString(),
-          workflow: PIPELINE_MODE.MULTI_PANEL,
-          consistencyScore: consistencyReport.consistencyScore,
-          panelCount: generatedPanels.length,
-          panelValidations,
-          hasGeometryControl: !!geometryDNA,
-        },
-        seeds: {
-          base: effectiveBaseSeed,
-          derivationMethod: "hash-derived",
-          panelSeeds: panelSeeds,
-        },
-        basePrompt: "",
-        consistencyLocks: [],
-        // P0: Gate artifacts for audit and modify-drift detection
-        programLock: programLock || null,
-        canonicalDesignState: canonicalDesignState || null,
-      };
-
-      await baselineStore.saveBaselineArtifacts({
-        designId,
-        sheetId,
-        bundle: baselineBundle,
-      });
-
-      logger.success("✅ Baseline artifacts saved");
-
-      // P0: Save instrumentation snapshot for audit
-      try {
-        const panelManifest = buildPanelManifest(
-          generatedPanels,
-          canonicalDesignState,
-          programLock,
-        );
-        const metrics = computeRunMetrics({
-          programLock,
-          gateProgram: gateProgramReport,
-          gateDrift: null,
-          panels: generatedPanels,
-          cds: canonicalDesignState,
-        });
-        saveRunSnapshot(designId, {
-          cds: canonicalDesignState,
-          programLock,
-          panelManifest,
-          gateProgram: gateProgramReport,
-          metrics,
-        });
-        logger.info(`📊 Run instrumentation saved for ${designId}`);
-      } catch (instrErr) {
-        logger.warn("⚠️ Run instrumentation failed:", instrErr.message);
-      }
-
-      // STEP 10: Save to design history
-      logger.info("📝 STEP 10: Saving to design history...");
-      reportProgress("finalizing", "Saving design history...", 94);
-      await historyService.createDesign({
-        designId,
-        masterDNA,
-        geometryDNA: geometryDNA || masterDNA.geometry || null,
-        geometryRenders: geometryRenders,
-        mainPrompt: "Multi-panel A1 generation",
-        seed: effectiveBaseSeed,
-        seedsByView: panelSeeds,
-        resultUrl: compositionResult.composedSheetUrl,
-        a1SheetUrl: compositionResult.composedSheetUrl,
-        projectContext,
+        generatedPanels,
         locationData,
-        styleBlendPercent: 70,
-        width: compositionResult.metadata.width,
-        height: compositionResult.metadata.height,
-        model: "black-forest-labs/FLUX.1-schnell",
-        a1LayoutKey: "uk-riba-standard",
-        siteSnapshot,
-        a1SheetMetadata: compositionResult.metadata,
-        panelMap: panelsMap,
-      });
-
-      logger.success("✅ Design saved to history");
-      reportProgress("finalizing", "Finalizing...", 95);
-
-      // STEP 11: Return complete result
-      logger.info("\n✅ ========================================");
-      logger.info("✅ MULTI-PANEL A1 WORKFLOW COMPLETE");
-      logger.info("✅ ========================================\n");
-
-      return {
-        success: true,
-        designId,
-        sheetId,
+        logger,
         masterDNA,
-        panels: generatedPanels,
-        panelMap: panelsMap,
-        composedSheetUrl: compositionResult.composedSheetUrl,
-        coordinates: compositionResult.coordinates,
-        geometryDNA: geometryDNA || masterDNA.geometry || null,
-        geometryRenders: geometryRenders,
-        geometryScene,
-        consistencyReport,
-        baselineBundle,
+        programLock,
+        projectContext,
+        runId,
+        siteSnapshot,
+        strictCanonicalPack: isFeatureEnabled("requireCanonicalPack"),
+      });
+      reportProgress("finalizing", "A1 sheet composed", 92);
+      return await finalizeMultiPanelRun({
+        baselineStore,
         canonicalDesignState: canonicalDesignState || null,
-        seeds: {
-          base: effectiveBaseSeed,
-          panelSeeds,
-        },
+        compositionResult,
+        consistencyReport,
+        designId,
+        effectiveBaseSeed,
+        gateProgramReport,
+        generatedPanels,
+        geometryDNA,
+        geometryRenders,
+        geometryScene,
+        logger,
+        masterDNA,
+        panelSeeds,
         panelValidations,
-        // QA results from compose endpoint
-        qa: compositionResult.qa || null,
-        critique: compositionResult.critique || null,
-        metadata: {
-          workflow: PIPELINE_MODE.MULTI_PANEL,
-          panelCount: generatedPanels.length,
-          consistencyScore: consistencyReport.consistencyScore,
-          generatedAt: new Date().toISOString(),
-          baseSeed: effectiveBaseSeed,
-          panelSeeds,
-          qaAllPassed: compositionResult.qa?.allPassed ?? null,
-          critiqueOverallPass: compositionResult.critique?.overallPass ?? null,
-        },
-      };
+        programLock: programLock || null,
+        reportProgress,
+        runId,
+        sheetId,
+        siteSnapshot,
+      });
     } catch (error) {
       const errorMsg = error.message || "Unknown error";
       const stackTrace = error.stack?.split("\n").slice(0, 5).join("\n") || "";
@@ -3242,58 +2878,6 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       };
     }
   }
-}
-
-/**
- * Normalize materials from DNA to a consistent array format.
- * LLMs put materials in different locations (dna.materials, dna.style.materials,
- * dna._structured.style.materials) and sometimes as an object instead of array.
- * @param {Object} dna - Master DNA object
- * @returns {Array<{name: string, hexColor: string, application: string}>}
- */
-function normalizeMaterials(dna) {
-  if (!dna) return [];
-  const candidates = [
-    dna.materials,
-    dna.style?.materials,
-    dna._structured?.style?.materials,
-  ];
-  for (const mats of candidates) {
-    if (Array.isArray(mats) && mats.length > 0) {
-      return mats.map((m) => ({
-        name: typeof m === "string" ? m : m.name || m.type || "material",
-        hexColor: m.hexColor || m.color_hex || "#808080",
-        application: m.application || m.use || "",
-      }));
-    }
-  }
-  // Handle object-shaped materials ({exterior: {...}, roof: {...}})
-  if (
-    dna.materials &&
-    typeof dna.materials === "object" &&
-    !Array.isArray(dna.materials)
-  ) {
-    return Object.entries(dna.materials)
-      .filter(([, v]) => v && typeof v === "object")
-      .map(([key, v]) => ({
-        name: v.name || v.material || key,
-        hexColor: v.hexColor || v.color_hex || "#808080",
-        application: v.application || key,
-      }));
-  }
-  return [];
-}
-
-function buildPanelMetadata(sections = []) {
-  return sections.map((section) => ({
-    id: section.id,
-    name: section.name,
-    status: "rendered",
-    keywords: section.keywords || [],
-    minCount: section.minCount || 1,
-    idealCount: section.idealCount || section.minCount || 1,
-    position: section.position || null,
-  }));
 }
 
 // Export singleton instance

@@ -24,6 +24,23 @@ import {
   UnsupportedPipelineModeError,
 } from "../services/workflowRouter.js";
 
+const STAGES = Object.freeze([
+  "analysis",
+  "dna",
+  "layout",
+  "rendering",
+  "finalizing",
+]);
+
+const getStageForStep = (step) =>
+  STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
+  "analysis";
+
+const getStepForStage = (stage) => {
+  const index = STAGES.indexOf(stage);
+  return index >= 0 ? index + 1 : 0;
+};
+
 /**
  * useArchitectAIWorkflow Hook
  * @returns {Object} Workflow state and functions
@@ -48,20 +65,8 @@ export function useArchitectAIWorkflow() {
     envRef.current = createEnvironmentAdapter();
   }
 
-  const defaultFeatureFlags = {
-    geometryVolumeFirst: isFeatureEnabled("geometryVolumeFirst"),
-  };
-
-  const STAGES = ["analysis", "dna", "layout", "rendering", "finalizing"];
-
-  const getStageForStep = (step) =>
-    STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
-    "analysis";
-
-  const getStepForStage = (stage) => {
-    const index = STAGES.indexOf(stage);
-    return index >= 0 ? index + 1 : 0;
-  };
+  const previousGeometryDNA = result?.geometryDNA || null;
+  const previousGeometryRenders = result?.geometryRenders || null;
 
   /**
    * Generate A1 sheet
@@ -171,6 +176,8 @@ export function useArchitectAIWorkflow() {
 
       // Save to design history
       const designId = await designHistoryRepository.saveDesign({
+        designId: sheetResult.designId || undefined,
+        sheetId: sheetResult.sheetId || undefined,
         dna: sheetResult.dna,
         basePrompt: sheetResult.prompt,
         seed: sheetResult.seed,
@@ -182,16 +189,26 @@ export function useArchitectAIWorkflow() {
         siteSnapshot: params.siteSnapshot,
         resultUrl: sheetResult.composedSheetUrl,
         composedSheetUrl: sheetResult.composedSheetUrl,
+        pdfUrl: sheetResult.pdfUrl || null,
         panels: sheetResult.panelMap || sheetResult.panels,
         panelMap: sheetResult.panelMap || sheetResult.panels,
         panelCoordinates: sheetResult.panelCoordinates,
+        qa: sheetResult.qa || null,
+        critique: sheetResult.critique || null,
+        trace: sheetResult.trace || null,
+        baselineBundle: sheetResult.baselineBundle || null,
         a1Sheet: {
+          sheetId: sheetResult.sheetId || undefined,
           url: sheetResult.composedSheetUrl,
           composedSheetUrl: sheetResult.composedSheetUrl,
+          pdfUrl: sheetResult.pdfUrl || null,
           metadata: sheetResult.metadata,
           panels: sheetResult.panelMap || sheetResult.panels,
           panelMap: sheetResult.panelMap || sheetResult.panels,
           coordinates: sheetResult.panelCoordinates,
+          qa: sheetResult.qa || null,
+          critique: sheetResult.critique || null,
+          trace: sheetResult.trace || null,
         },
       });
 
@@ -223,7 +240,29 @@ export function useArchitectAIWorkflow() {
           `   Stack: ${err.stack.split("\n").slice(0, 3).join("\n")}`,
         );
       }
-      setError(err.message);
+      // User-friendly error messages for common failure modes
+      const msg = err.message || "";
+      if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
+        setError(
+          "API rate limit reached. Please wait 60 seconds and try again.",
+        );
+      } else if (
+        msg.includes("401") ||
+        msg.toLowerCase().includes("unauthorized")
+      ) {
+        setError(
+          "API key invalid or expired. Check your Together.ai configuration.",
+        );
+      } else if (
+        msg.toLowerCase().includes("timeout") ||
+        msg.includes("ETIMEDOUT")
+      ) {
+        setError(
+          "Generation timed out. The AI service may be under heavy load — try again shortly.",
+        );
+      } else {
+        setError(msg);
+      }
       throw err;
     } finally {
       setLoading(false);
@@ -238,140 +277,143 @@ export function useArchitectAIWorkflow() {
    * @param {Object} params.modifyRequest - Modification request
    * @returns {Promise<ModifyResult>} Modification result
    */
-  const modifySheetWorkflow = useCallback(async (params) => {
-    setLoading(true);
-    setError(null);
-    setProgress({
-      step: 0,
-      total: 6,
-      message: "Starting modification...",
-      stage: "analysis",
-      percentage: 0,
-    });
-
-    try {
+  const modifySheetWorkflow = useCallback(
+    async (params) => {
+      setLoading(true);
+      setError(null);
       setProgress({
-        step: 1,
+        step: 0,
         total: 6,
-        message: "Loading baseline...",
+        message: "Starting modification...",
         stage: "analysis",
-        percentage: 17,
+        percentage: 0,
       });
 
-      const modifyResult = await modifySheet({
-        designRef: {
-          id: params.designId,
-          sheetId: params.sheetId || "default",
-        },
-        baseSheet: null, // Will be loaded from baseline
-        dna: null, // Will be loaded from baseline
-        modifyRequest: params.modifyRequest,
-        env: envRef.current,
-        featureFlags: {
-          ...defaultFeatureFlags,
-          ...(params.featureFlags || {}),
-        },
-        seed: null, // Will use baseline seed
-      });
+      try {
+        setProgress({
+          step: 1,
+          total: 6,
+          message: "Loading baseline...",
+          stage: "analysis",
+          percentage: 17,
+        });
 
-      const normalizedModifyResult = {
-        ...modifyResult,
-        url: modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
-        composedSheetUrl:
-          modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
-        geometryDNA:
-          modifyResult.geometryDNA ||
-          modifyResult.sheet?.geometryDNA ||
-          result?.geometryDNA ||
-          null,
-        geometryRenders:
-          modifyResult.geometryRenders ||
-          modifyResult.sheet?.geometryRenders ||
-          result?.geometryRenders ||
-          null,
-        a1Sheet: modifyResult.sheet
-          ? {
-              ...modifyResult.sheet,
-              url: modifyResult.sheet.url,
-              composedSheetUrl:
-                modifyResult.sheet.composedSheetUrl || modifyResult.sheet.url,
-            }
-          : modifyResult.a1Sheet,
-      };
+        const modifyResult = await modifySheet({
+          designRef: {
+            id: params.designId,
+            sheetId: params.sheetId || "default",
+          },
+          baseSheet: null, // Will be loaded from baseline
+          dna: null, // Will be loaded from baseline
+          modifyRequest: params.modifyRequest,
+          env: envRef.current,
+          featureFlags: {
+            geometryVolumeFirst: isFeatureEnabled("geometryVolumeFirst"),
+            ...(params.featureFlags || {}),
+          },
+          seed: null, // Will use baseline seed
+        });
 
-      // Save version to design history
-      await designHistoryRepository.updateDesignVersion(params.designId, {
-        resultUrl:
-          normalizedModifyResult.sheet.url ||
-          normalizedModifyResult.sheet.composedSheetUrl,
-        composedSheetUrl:
-          normalizedModifyResult.sheet.composedSheetUrl ||
-          normalizedModifyResult.sheet.url,
-        deltaPrompt: params.modifyRequest.customPrompt,
-        quickToggles: params.modifyRequest.quickToggles,
-        seed: normalizedModifyResult.sheet.seed,
-        driftScore: normalizedModifyResult.driftScore,
-        consistencyScore: 1 - normalizedModifyResult.driftScore,
-        panelMap:
-          normalizedModifyResult.sheet.panelMap ||
-          normalizedModifyResult.sheet.panels ||
-          null,
-        panels:
-          normalizedModifyResult.sheet.panelMap ||
-          normalizedModifyResult.sheet.panels ||
-          null,
-        panelCoordinates:
-          normalizedModifyResult.sheet.panelCoordinates ||
-          normalizedModifyResult.sheet.coordinates ||
-          normalizedModifyResult.sheet.metadata?.coordinates ||
-          null,
-        geometryDNA:
-          normalizedModifyResult.geometryDNA ||
-          normalizedModifyResult.sheet.geometryDNA ||
-          result?.geometryDNA ||
-          null,
-        geometryRenders:
-          normalizedModifyResult.geometryRenders ||
-          normalizedModifyResult.sheet.geometryRenders ||
-          result?.geometryRenders ||
-          null,
-        metadata: {
-          ...(normalizedModifyResult.versionMetadata || {}),
+        const normalizedModifyResult = {
+          ...modifyResult,
+          url: modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
+          composedSheetUrl:
+            modifyResult.sheet?.composedSheetUrl || modifyResult.sheet?.url,
+          geometryDNA:
+            modifyResult.geometryDNA ||
+            modifyResult.sheet?.geometryDNA ||
+            previousGeometryDNA ||
+            null,
+          geometryRenders:
+            modifyResult.geometryRenders ||
+            modifyResult.sheet?.geometryRenders ||
+            previousGeometryRenders ||
+            null,
+          a1Sheet: modifyResult.sheet
+            ? {
+                ...modifyResult.sheet,
+                url: modifyResult.sheet.url,
+                composedSheetUrl:
+                  modifyResult.sheet.composedSheetUrl || modifyResult.sheet.url,
+              }
+            : modifyResult.a1Sheet,
+        };
+
+        // Save version to design history
+        await designHistoryRepository.updateDesignVersion(params.designId, {
+          resultUrl:
+            normalizedModifyResult.sheet.url ||
+            normalizedModifyResult.sheet.composedSheetUrl,
+          composedSheetUrl:
+            normalizedModifyResult.sheet.composedSheetUrl ||
+            normalizedModifyResult.sheet.url,
+          deltaPrompt: params.modifyRequest.customPrompt,
+          quickToggles: params.modifyRequest.quickToggles,
+          seed: normalizedModifyResult.sheet.seed,
+          driftScore: normalizedModifyResult.driftScore,
+          consistencyScore: 1 - normalizedModifyResult.driftScore,
           panelMap:
             normalizedModifyResult.sheet.panelMap ||
             normalizedModifyResult.sheet.panels ||
             null,
-          coordinates:
+          panels:
+            normalizedModifyResult.sheet.panelMap ||
+            normalizedModifyResult.sheet.panels ||
+            null,
+          panelCoordinates:
             normalizedModifyResult.sheet.panelCoordinates ||
             normalizedModifyResult.sheet.coordinates ||
             normalizedModifyResult.sheet.metadata?.coordinates ||
             null,
-        },
-      });
+          geometryDNA:
+            normalizedModifyResult.geometryDNA ||
+            normalizedModifyResult.sheet.geometryDNA ||
+            previousGeometryDNA ||
+            null,
+          geometryRenders:
+            normalizedModifyResult.geometryRenders ||
+            normalizedModifyResult.sheet.geometryRenders ||
+            previousGeometryRenders ||
+            null,
+          metadata: {
+            ...(normalizedModifyResult.versionMetadata || {}),
+            panelMap:
+              normalizedModifyResult.sheet.panelMap ||
+              normalizedModifyResult.sheet.panels ||
+              null,
+            coordinates:
+              normalizedModifyResult.sheet.panelCoordinates ||
+              normalizedModifyResult.sheet.coordinates ||
+              normalizedModifyResult.sheet.metadata?.coordinates ||
+              null,
+          },
+        });
 
-      setResult(normalizedModifyResult);
-      setProgress({
-        step: 6,
-        total: 6,
-        message: "Complete!",
-        stage: "finalizing",
-        percentage: 100,
-      });
+        setResult(normalizedModifyResult);
+        setProgress({
+          step: 6,
+          total: 6,
+          message: "Complete!",
+          stage: "finalizing",
+          percentage: 100,
+        });
 
-      logger.success("Sheet modification complete", {
-        versionId: normalizedModifyResult.versionId,
-        driftScore: normalizedModifyResult.driftScore,
-      });
+        logger.success("Sheet modification complete", {
+          versionId: normalizedModifyResult.versionId,
+          driftScore: normalizedModifyResult.driftScore,
+        });
 
-      return normalizedModifyResult;
-    } catch (err) {
-      logger.error("Sheet modification failed", err);
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        return normalizedModifyResult;
+      } catch (err) {
+        logger.error("Sheet modification failed", err);
+        setError(err.message);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [previousGeometryDNA, previousGeometryRenders],
+  );
 
   /**
    * Export sheet
@@ -460,6 +502,21 @@ export function useArchitectAIWorkflow() {
     });
   }, []);
 
+  /**
+   * Load a pre-built result (used by demo mode to bypass live generation).
+   * @param {Object} demoResult - A result object matching the SheetResult shape
+   */
+  const loadDemoResult = useCallback((demoResult) => {
+    setResult(demoResult);
+    setProgress({
+      step: 5,
+      total: 5,
+      message: "Demo loaded",
+      stage: "finalizing",
+      percentage: 100,
+    });
+  }, []);
+
   return {
     // State
     loading,
@@ -475,6 +532,7 @@ export function useArchitectAIWorkflow() {
     listDesigns,
     clearError,
     reset,
+    loadDemoResult,
 
     // Environment
     env: envRef.current,

@@ -1,8 +1,12 @@
 /**
- * A1 Compose Core – CommonJS wrapper
+ * A1 Compose Core – CommonJS compatibility mirror
  *
- * Mirrors the ESM composeCore.js for use in server.js (which is CommonJS).
- * If you change composeCore.js, keep this file in sync.
+ * `composeCore.js` is the canonical public module used by the live compose
+ * route and ESM callers. This file exists only for CommonJS-only tooling and
+ * tests that still need synchronous access to the compose-core surface.
+ *
+ * Keep the exported behavior compatible with composeCore.js, but do not treat
+ * this file as an independent source of truth.
  *
  * @module services/a1/composeCore (CJS)
  */
@@ -88,7 +92,103 @@ const PANEL_LABELS = {
   material_palette: "MATERIAL PALETTE", climate_card: "CLIMATE ANALYSIS",
 };
 
-const COVER_FIT_PANELS = ["hero_3d", "interior_3d", "site_diagram"];
+const DRAWING_NUMBERS = {
+  hero_3d: "3D-01",
+  interior_3d: "3D-02",
+  axonometric: "3D-03",
+  site_diagram: "SP-01",
+  floor_plan_ground: "GA-00-01",
+  floor_plan_first: "GA-01-01",
+  floor_plan_level2: "GA-02-01",
+  elevation_north: "EL-N-01",
+  elevation_south: "EL-S-01",
+  elevation_east: "EL-E-01",
+  elevation_west: "EL-W-01",
+  section_AA: "SC-AA-01",
+  section_BB: "SC-BB-01",
+  schedules_notes: "SC-01",
+  material_palette: "MP-01",
+  climate_card: "AN-01",
+  title_block: "A1-001",
+};
+
+const PANEL_SCALES = {
+  hero_3d: "NTS",
+  interior_3d: "NTS",
+  axonometric: "NTS",
+  site_diagram: "1:500",
+  floor_plan_ground: "1:100",
+  floor_plan_first: "1:100",
+  floor_plan_level2: "1:100",
+  elevation_north: "1:100",
+  elevation_south: "1:100",
+  elevation_east: "1:100",
+  elevation_west: "1:100",
+  section_AA: "1:50",
+  section_BB: "1:50",
+  schedules_notes: "N/A",
+  material_palette: "N/A",
+  climate_card: "N/A",
+  title_block: "N/A",
+};
+
+const PANEL_FIT_POLICY = {
+  hero_3d: "cover",
+  interior_3d: "cover",
+  site_diagram: "cover",
+  axonometric: "contain",
+  material_palette: "contain",
+  climate_card: "contain",
+  floor_plan_ground: "contain",
+  floor_plan_first: "contain",
+  floor_plan_level2: "contain",
+  elevation_north: "contain",
+  elevation_south: "contain",
+  elevation_east: "contain",
+  elevation_west: "contain",
+  section_AA: "contain",
+  section_BB: "contain",
+  schedules_notes: "contain",
+  title_block: "contain",
+};
+
+const COVER_FIT_PANELS = Object.entries(PANEL_FIT_POLICY)
+  .filter(([, mode]) => mode === "cover")
+  .map(([key]) => key);
+
+function roundTo(value, step) {
+  const safeStep = Number.isFinite(step) && step > 0 ? step : 64;
+  return Math.round(value / safeStep) * safeStep;
+}
+
+function getSlotDimensions(panelType, opts) {
+  opts = opts || {};
+  const baseEdge = opts.baseEdge || 1408;
+  const layoutTemplate = opts.layoutTemplate || "board-v2";
+  const grid = layoutTemplate === "legacy" ? GRID_SPEC : GRID_12COL;
+  const slot = grid[panelType];
+
+  if (!slot) {
+    return { width: 1024, height: 1024, aspect: 1 };
+  }
+
+  const aspect = slot.width / slot.height;
+  let width;
+  let height;
+
+  if (aspect >= 1) {
+    width = roundTo(Math.min(baseEdge, 1408), 64);
+    height = roundTo(width / aspect, 64);
+  } else {
+    height = roundTo(Math.min(baseEdge, 1408), 64);
+    width = roundTo(height * aspect, 64);
+  }
+
+  width = Math.max(256, Math.min(1440, width));
+  height = Math.max(256, Math.min(1440, height));
+
+  return { width, height, aspect };
+}
 
 // ---------------------------------------------------------------------------
 // Canonical key normalisation
@@ -181,12 +281,21 @@ function toPixelRect(entry, sheetWidth, sheetHeight) {
 }
 
 function getPanelFitMode(panelType) {
-  return COVER_FIT_PANELS.includes(panelType) ? "cover" : "contain";
+  return PANEL_FIT_POLICY[panelType] || "contain";
 }
 
 function getPanelAnnotation(panelType) {
   const label = PANEL_LABELS[panelType] || String(panelType || "").toUpperCase();
-  return { label };
+  const drawingNumber = DRAWING_NUMBERS[panelType] || "";
+  const scale = PANEL_SCALES[panelType] || "NTS";
+  return {
+    label,
+    drawingNumber,
+    scale,
+    fullAnnotation: drawingNumber
+      ? `${drawingNumber}  ${label}  SCALE: ${scale}`
+      : `${label}  SCALE: ${scale}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +305,18 @@ function getPanelAnnotation(panelType) {
 const STRICT_PANELS = new Set([
   "hero_3d", "floor_plan_ground", "floor_plan_first", "floor_plan_level2",
   "elevation_north", "elevation_south", "elevation_east", "elevation_west",
+]);
+
+const LENIENT_PANELS = new Set([
+  "interior_3d",
+  "axonometric",
+  "site_diagram",
+  "section_AA",
+  "section_BB",
+  "schedules_notes",
+  "material_palette",
+  "climate_card",
+  "title_block",
 ]);
 
 function isStrictPanel(panelType) {
@@ -209,8 +330,9 @@ function isStrictPanel(panelType) {
 module.exports = {
   A1_WIDTH, A1_HEIGHT, WORKING_WIDTH, WORKING_HEIGHT,
   LABEL_HEIGHT, LABEL_PADDING, FRAME_STROKE_WIDTH, FRAME_STROKE_COLOR,
-  GRID_12COL, GRID_SPEC, PANEL_LABELS, COVER_FIT_PANELS,
+  GRID_12COL, GRID_SPEC, PANEL_LABELS, DRAWING_NUMBERS, PANEL_SCALES,
+  PANEL_FIT_POLICY, COVER_FIT_PANELS,
   normalizeKey, normalizeLayoutTemplate, resolveLayout,
   toPixelRect, getPanelFitMode, getPanelAnnotation,
-  isStrictPanel, STRICT_PANELS,
+  getSlotDimensions, isStrictPanel, STRICT_PANELS, LENIENT_PANELS,
 };

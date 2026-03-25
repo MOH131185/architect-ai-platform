@@ -1,19 +1,22 @@
 # A1 Panel Pipeline Plan
 
 ## Current A1 FLUX touchpoints
+
 - `src/services/dnaWorkflowOrchestrator.js`: `runA1SheetWorkflow` builds strict/standard prompts then calls `generateA1SheetImage` (Together FLUX one-shot). Hybrid path uses `orchestratePanelGeneration` + `compositeA1Sheet` but stays client-side canvas and is not wired to baseline/drift logic.
 - `src/services/pureOrchestrator.js`: uses `buildSheetPrompt` / `buildStrictA1Prompt` then `createTogetherAIClient().generateA1SheetImage` with `A1_ARCH_FINAL` preset.
 - `src/services/togetherAIService.js`: `generateA1SheetImage` (one-shot, landscape locked) hitting `/api/together/image`; also has unified-sheet helper via `architecturalSheetService.generateA1SheetPrompt`.
 - `src/services/a1SheetPromptBuilder.js`, `a1SheetPromptGenerator.js`, `strictA1PromptGenerator.js`: strict grid-contract prompts used for one-shot FLUX.
-- Server: `api/together-image.js` proxies FLUX image generations; `server.js` hosts proxy endpoints (`/api/together/image`, etc.).
+- Server: `api/together-image.js` proxies FLUX image generations; `server.cjs` hosts proxy endpoints (`/api/together/image`, etc.).
 - Baseline/drift: `src/services/baselineArtifactStore.js` stores single-sheet artifacts; `sheetConsistencyGuard`, `a1SheetValidator` expect single image; seeds/panel coords from `sheetLayoutConfig`.
 - Existing panel flow: `src/services/panelOrchestrator.js` derives seeds/prompts per panel and uses `generateArchitecturalImage`, but layout is loose and not integrated with deterministic/baseline bundles.
 
 ## Proposed panel schema
+
 - `type A1PanelType = 'hero_3d' | 'axonometric' | 'floor_plan_ground' | 'floor_plan_first' | 'elevation_north' | 'elevation_south' | 'elevation_east' | 'elevation_west' | 'section_AA' | 'section_BB' | 'site_diagram' | 'program_diagram' | 'climate_diagram'`.
 - `interface GeneratedPanel { id: string; type: A1PanelType; imageUrl: string; width: number; height: number; seed: number; prompt: string; negativePrompt: string; dnaSnapshot: MasterDNA; orientation?: 'landscape' | 'portrait'; meta?: { viewName?: string; levelIndex?: number; timestamp?: string; camera?: any }; }`.
 
 ## New services to add
+
 - `src/services/panelGenerationService.ts` (pure):
   - Input: `masterDNA`, `siteBoundary/siteSnapshot`, `buildingType`, `entranceOrientation`, `programSpaces`, `seed`.
   - Build panel job list (array of `{ panelType, prompt, negativePrompt, width, height, seed, priority }`), including hero 3D, axonometric, ground plan, first plan (if >1 storey), 2–4 elevations (based on entrance orientation and site), 1–2 sections.
@@ -28,6 +31,7 @@
   - Reads “grid contract” from `a1LayoutTemplate`/`sheetLayoutConfig` to place panels; outputs PNG buffer, optional PDF via `a1PDFExportService`.
 
 ## Workflow refactor outline
+
 - `dnaWorkflowOrchestrator` and `pureOrchestrator`:
   - Swap one-shot FLUX path for: DNA → panel job plan via `panelGenerationService` → panel generations → `a1LayoutComposer` (server route) → assembled A1 + panel metadata.
   - UI unchanged (“Generate A1” only); multi-panel complexity stays in services.
@@ -43,6 +47,7 @@
   - Update drift checks to compare panel hashes/seeds; keep full-sheet SSIM/pHash for compatibility.
 
 ## Testing strategy
+
 - Unit: panel prompt builders (hero, plans, elevations NSEW, sections) ensure DNA dimensions, program table, materials, entrance orientation, climate propagate.
 - Integration: feed 3–4 dummy `GeneratedPanel` PNGs (colored boxes) into `a1LayoutComposer`; assert output dimensions, reserved site slot, labels, and panel coordinate map.
 - E2E: stub FLUX in `/api/together/image` to return colored boxes; run full pipeline via orchestrator, verify composed A1 respects 5×3 grid, seeds preserved in metadata, overlay placeholder intact, drift/baseline logic still executes.

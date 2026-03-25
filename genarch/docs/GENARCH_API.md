@@ -8,6 +8,15 @@ The genarch API provides async job-based floor plan generation. Jobs run in the 
 
 **Base URL (Development):** `http://localhost:3001/api/genarch`
 
+## Contract Version
+
+- **Shared contract version:** `1.0.0`
+- **Source of truth:** `src/contracts/genarch-api-v1.json`
+- **Response field:** `contractVersion`
+- **Response header:** `X-Genarch-Contract-Version`
+
+This contract defines the supported job statuses, request defaults, artifact names, and the required Python pipeline outputs. The browser service, Express server, and genarch deployment must stay aligned to this file.
+
 ---
 
 ## Endpoints
@@ -53,6 +62,7 @@ Creates and starts a new genarch pipeline job.
 
 ```json
 {
+  "contractVersion": "1.0.0",
   "success": true,
   "message": "Job created and started",
   "job": {
@@ -83,6 +93,7 @@ Get the status and progress of a job.
 
 ```json
 {
+  "contractVersion": "1.0.0",
   "success": true,
   "job": {
     "id": "gen-m1abc2d3-x4y5z6",
@@ -149,6 +160,7 @@ List all jobs, optionally filtered by status.
 
 ```json
 {
+  "contractVersion": "1.0.0",
   "success": true,
   "jobs": [
     {
@@ -176,6 +188,7 @@ Cancel a running job.
 
 ```json
 {
+  "contractVersion": "1.0.0",
   "success": true,
   "message": "Job gen-m1abc2d3-x4y5z6 cancelled"
 }
@@ -216,9 +229,9 @@ curl -O http://localhost:3001/api/genarch/runs/gen-m1abc2d3-x4y5z6/model.glb
 ```javascript
 // Create a job
 const createJob = async (prompt) => {
-  const response = await fetch('http://localhost:3001/api/genarch/jobs', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const response = await fetch("http://localhost:3001/api/genarch/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       prompt,
       seed: 42,
@@ -231,14 +244,18 @@ const createJob = async (prompt) => {
 // Poll for completion
 const pollJob = async (jobId, intervalMs = 2000) => {
   while (true) {
-    const response = await fetch(`http://localhost:3001/api/genarch/jobs/${jobId}`);
+    const response = await fetch(
+      `http://localhost:3001/api/genarch/jobs/${jobId}`,
+    );
     const data = await response.json();
 
-    if (data.job.status === 'completed' || data.job.status === 'failed') {
+    if (data.job.status === "completed" || data.job.status === "failed") {
       return data.job;
     }
 
-    console.log(`Progress: ${data.job.progress.percent}% - ${data.job.progress.message}`);
+    console.log(
+      `Progress: ${data.job.progress.percent}% - ${data.job.progress.message}`,
+    );
     await new Promise((r) => setTimeout(r, intervalMs));
   }
 };
@@ -246,19 +263,19 @@ const pollJob = async (jobId, intervalMs = 2000) => {
 // Full workflow
 const generateFloorPlan = async () => {
   // Start job
-  const { job } = await createJob('modern 3-bedroom house 180sqm');
+  const { job } = await createJob("modern 3-bedroom house 180sqm");
   console.log(`Job started: ${job.id}`);
 
   // Wait for completion
   const result = await pollJob(job.id);
 
-  if (result.status === 'completed') {
-    console.log('Artifacts:');
+  if (result.status === "completed") {
+    console.log("Artifacts:");
     console.log(`  PDF: ${result.artifacts.a1Sheet?.url}`);
     console.log(`  DXF: ${result.artifacts.planDxf?.url}`);
     console.log(`  JSON: ${result.artifacts.planJson?.url}`);
   } else {
-    console.error('Job failed:', result.error);
+    console.error("Job failed:", result.error);
   }
 };
 ```

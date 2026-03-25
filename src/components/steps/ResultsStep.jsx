@@ -8,8 +8,9 @@
 import React, { useState } from "react";
 
 import { motion } from "framer-motion";
-import { Download, Home, FileCode, Bug } from "lucide-react";
+import { Download, Home, FileCode, Bug, Eye } from "lucide-react";
 
+import { isDemoMode } from "../../data/demoProjects.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import debugRecorder from "../../services/debug/DebugRunRecorder.js";
 import { fadeInUp, staggerChildren } from "../../styles/animations.js";
@@ -202,6 +203,28 @@ const ResultsStep = ({
         initial="initial"
         animate="animate"
       >
+        {/* Demo Mode Banner */}
+        {isDemoMode() && (
+          <motion.div variants={fadeInUp}>
+            <Card
+              variant="glass"
+              padding="sm"
+              className="border-blue-500/30 bg-blue-900/20"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-blue-300 flex items-center">
+                  <Eye className="w-4 h-4 mr-2 flex-shrink-0" />
+                  Viewing pre-generated demo — real AI output from a 150 m&#178;
+                  London home.
+                </p>
+                <Button variant="outline" size="sm" onClick={onStartNew}>
+                  Try Live Generation
+                </Button>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
           <h2 className="text-4xl font-bold text-white mb-4 font-heading">
@@ -298,7 +321,20 @@ const ResultsStep = ({
 
           {/* AI Modify Panel */}
           <motion.div variants={fadeInUp}>
-            <AIModifyPanel designId={designId} onModify={onModify} />
+            {isDemoMode() ? (
+              <Card variant="glass" padding="md">
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  AI Modify
+                </h3>
+                <p className="text-sm text-gray-400">
+                  AI-powered modification is available in live generation mode.
+                  Click "Try Live Generation" above to create your own design
+                  and modify it.
+                </p>
+              </Card>
+            ) : (
+              <AIModifyPanel designId={designId} onModify={onModify} />
+            )}
           </motion.div>
         </div>
 

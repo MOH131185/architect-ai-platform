@@ -30,7 +30,7 @@ import {
 import { PANEL_REGISTRY, normalizeToCanonical } from '../../src/config/panelRegistry.js';
 
 // ---------------------------------------------------------------------------
-// Constants matching server.js QA gates
+// Constants matching server.cjs QA gates
 // ---------------------------------------------------------------------------
 
 const MIN_OCCUPANCY = 0.40;
@@ -89,7 +89,7 @@ function buildMockPanels(floorCount = 2) {
 }
 
 // ---------------------------------------------------------------------------
-// Simulate QA gate logic (mirrors server.js without sharp)
+// Simulate QA gate logic (mirrors server.cjs without sharp)
 // ---------------------------------------------------------------------------
 
 function simulateComposeQA(mockPanels, layout) {
@@ -342,20 +342,20 @@ console.log('      → Relative commands (m/l/c/s/q) and arc (A) are not handled
 console.log('   2. Trim-to-content threshold (15) may be too aggressive for light-grey backgrounds');
 console.log('   3. climate_card and floor_plan_level2 have ~1% overlap in GRID_12COL (cosmetic)');
 console.log('   4. PDF export uses browser print dialog — no server-side A1 PDF pipeline yet');
-console.log('   5. CJS composeCore.cjs must be manually kept in sync with ESM composeCore.js');
+console.log('   5. composeCore.cjs is a CJS compatibility mirror; composeCore.js remains canonical');
 
 console.log('\n' + '═'.repeat(60));
 
 // Diff summary
 console.log('\n📝 Phase 3+4 Diff Summary:');
 console.log('   Modified files:');
-console.log('     server.js                            – QA gates (SVG rewrite, trim, occupancy, fail-closed)');
+console.log('     server.cjs                            – QA gates (SVG rewrite, trim, occupancy, fail-closed)');
 console.log('     src/services/dnaWorkflowOrchestrator.js – @deprecated dead paths, removed dead imports');
 console.log('     src/services/multiModelImageService.js  – category routing, style-conditioned SDXL');
 console.log('     src/ArchitectAIEnhanced.js              – PDF export messaging alignment');
 console.log('   New files:');
-console.log('     src/services/a1/composeCore.js        – shared compose core (ESM)');
-console.log('     src/services/a1/composeCore.cjs       – shared compose core (CJS mirror)');
+console.log('     src/services/a1/composeCore.js        – canonical compose core (ESM)');
+console.log('     src/services/a1/composeCore.cjs       – CJS compatibility mirror');
 console.log('     scripts/tests/test-compose-core-and-routing.mjs – 16 Phase 1+2 tests');
 console.log('     scripts/tests/test-phase3-phase4-regression.mjs – 20 Phase 3+4 tests');
 console.log('     scripts/tests/test-qa-dry-run.mjs     – this QA dry-run');

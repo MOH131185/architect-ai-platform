@@ -17,17 +17,17 @@ import {
   MapPin,
   FileText,
   Sparkles,
-  Play,
-  Code,
-  Globe,
-  Lock,
+  Eye,
+  Layers,
+  Target,
+  Rocket,
   Download,
 } from "lucide-react";
 import CompanyLogo from "./ui/CompanyLogo.jsx";
 import AnimatedBlueprintLogo from "./ui/AnimatedBlueprintLogo.jsx";
 import "../styles/design-tokens.css";
 
-const LandingPage = ({ onStart }) => {
+const LandingPage = ({ onStart, onDemo }) => {
   // Features data
   const features = [
     {
@@ -69,26 +69,45 @@ const LandingPage = ({ onStart }) => {
     { icon: MapPin, title: "Location", desc: "Set site location" },
     { icon: Sparkles, title: "Intelligence", desc: "Climate analysis" },
     { icon: FileText, title: "Portfolio", desc: "Upload references" },
-    { icon: Code, title: "Generate", desc: "AI creates design" },
+    { icon: Sparkles, title: "Generate", desc: "AI creates design" },
     { icon: Download, title: "Export", desc: "Download A1 sheet" },
   ];
 
-  // Solutions data
-  const solutions = [
+  // Technology roadmap
+  const roadmap = [
     {
-      icon: Building2,
-      title: "Build with APIs",
-      desc: "Architecture AI Infrastructure for Builders",
+      icon: Target,
+      title: "What's Working Today",
+      accent: "#22c55e",
+      items: [
+        "Multi-panel A1 architectural sheets",
+        "Design DNA consistency system (98%+)",
+        "SVG + FLUX hybrid rendering",
+        "Climate-aware site analysis",
+        "AI-powered floor plan layout",
+      ],
     },
     {
-      icon: Globe,
-      title: "Integrate ArchiAI",
-      desc: "Architecture AI for Platforms & Partners",
+      icon: Layers,
+      title: "In Development",
+      accent: "#3b82f6",
+      items: [
+        "Deterministic geometry pipeline",
+        "ControlNet-locked renders",
+        "Enhanced CAD/BIM export",
+        "Portfolio-trained style models",
+      ],
     },
     {
-      icon: Lock,
-      title: "Custom Models",
-      desc: "Architecture AI Solutions Built with You",
+      icon: Rocket,
+      title: "On the Horizon",
+      accent: "#a855f7",
+      items: [
+        "Real-time design collaboration",
+        "Multi-building campus design",
+        "Regulatory compliance AI",
+        "Full BIM automation",
+      ],
     },
   ];
 
@@ -175,7 +194,7 @@ const LandingPage = ({ onStart }) => {
                 How It Works
               </a>
               <a
-                href="#pricing"
+                href="#technology"
                 className="text-sm transition-colors"
                 style={{ color: "rgba(255, 255, 255, 0.6)" }}
                 onMouseOver={(e) =>
@@ -185,11 +204,12 @@ const LandingPage = ({ onStart }) => {
                   (e.target.style.color = "rgba(255, 255, 255, 0.6)")
                 }
               >
-                Pricing
+                Technology
               </a>
             </div>
             <div className="flex items-center gap-4">
               <button
+                onClick={onDemo}
                 className="text-sm transition-colors"
                 style={{ color: "rgba(255, 255, 255, 0.6)" }}
                 onMouseOver={(e) =>
@@ -199,7 +219,7 @@ const LandingPage = ({ onStart }) => {
                   (e.target.style.color = "rgba(255, 255, 255, 0.6)")
                 }
               >
-                Log In
+                View Demo
               </button>
               <button
                 onClick={onStart}
@@ -221,7 +241,7 @@ const LandingPage = ({ onStart }) => {
                   e.target.style.transform = "translateY(0)";
                 }}
               >
-                Sign Up Free
+                Start Designing
               </button>
             </div>
           </div>
@@ -269,7 +289,7 @@ const LandingPage = ({ onStart }) => {
                 color: "rgba(255, 255, 255, 0.95)",
               }}
             >
-              <span className="block">Architecture AI APIs</span>
+              <span className="block">AI-Generated Architectural</span>
               <span
                 className="block"
                 style={{
@@ -280,7 +300,7 @@ const LandingPage = ({ onStart }) => {
                   backgroundClip: "text",
                 }}
               >
-                that just work
+                Drawings in Minutes
               </span>
             </motion.h1>
 
@@ -292,10 +312,9 @@ const LandingPage = ({ onStart }) => {
               className="text-lg md:text-xl mb-12 max-w-3xl mx-auto leading-relaxed"
               style={{ color: "rgba(255, 255, 255, 0.65)" }}
             >
-              Build with the most accurate, realistic, and cost-effective APIs
-              for architectural design generation. Trusted by architects and
-              leading firms. Available in real-time and batch, cloud and
-              self-hosted.
+              From site brief to professional A1 sheets — floor plans,
+              elevations, sections, and 3D views with 98% cross-view
+              consistency. Powered by Design DNA.
             </motion.p>
 
             {/* CTA Buttons */}
@@ -329,10 +348,11 @@ const LandingPage = ({ onStart }) => {
                     "0 4px 20px rgba(37, 99, 235, 0.25)";
                 }}
               >
-                Sign Up Free
+                Start Designing
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </button>
               <button
+                onClick={onDemo}
                 className="group px-8 py-4 rounded-xl text-base font-medium transition-all flex items-center min-w-[200px] justify-center"
                 style={{
                   backgroundColor: "rgba(255, 255, 255, 0.05)",
@@ -351,8 +371,8 @@ const LandingPage = ({ onStart }) => {
                     "rgba(255, 255, 255, 0.15)";
                 }}
               >
-                <Play className="w-5 h-5 mr-2" />
-                Playground
+                <Eye className="w-5 h-5 mr-2" />
+                See Live Example
               </button>
             </motion.div>
 
@@ -395,14 +415,14 @@ const LandingPage = ({ onStart }) => {
                 color: "rgba(255, 255, 255, 0.95)",
               }}
             >
-              Choose your Architecture AI journey
+              Built for Architectural Professionals
             </h2>
             <p
               className="text-lg max-w-2xl mx-auto"
               style={{ color: "rgba(255, 255, 255, 0.6)" }}
             >
-              Choose the path that best fits your business needs and technical
-              requirements.
+              Professional-grade AI generation with Design DNA consistency,
+              climate intelligence, and UK RIBA-standard output.
             </p>
           </motion.div>
 
@@ -541,8 +561,12 @@ const LandingPage = ({ onStart }) => {
         </div>
       </section>
 
-      {/* Solutions Section */}
-      <section className="py-20 px-6" style={{ backgroundColor: "#0f172a" }}>
+      {/* Technology Roadmap */}
+      <section
+        id="technology"
+        className="py-20 px-6"
+        style={{ backgroundColor: "#0f172a" }}
+      >
         <div className="container mx-auto max-w-6xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -557,20 +581,19 @@ const LandingPage = ({ onStart }) => {
                 color: "rgba(255, 255, 255, 0.95)",
               }}
             >
-              Solutions that scale
+              Technology Roadmap
             </h2>
             <p
               className="text-lg max-w-2xl mx-auto"
               style={{ color: "rgba(255, 255, 255, 0.6)" }}
             >
-              As the industry's architecture AI leader, ArchiAI drives better
-              outcomes with enterprise solutions that deliver intelligent design
-              experiences safely, securely, and at scale.
+              A clear path from working MVP to production-grade architectural
+              AI.
             </p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {solutions.map((solution, index) => (
+            {roadmap.map((phase, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
@@ -580,53 +603,54 @@ const LandingPage = ({ onStart }) => {
                 className="p-8 rounded-2xl transition-all duration-300"
                 style={{
                   backgroundColor: "rgba(255, 255, 255, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  border: `1px solid ${phase.accent}33`,
                   backdropFilter: "blur(12px)",
                 }}
                 onMouseOver={(e) => {
                   e.currentTarget.style.backgroundColor =
                     "rgba(255, 255, 255, 0.06)";
-                  e.currentTarget.style.borderColor = "rgba(37, 99, 235, 0.3)";
+                  e.currentTarget.style.borderColor = `${phase.accent}66`;
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.backgroundColor =
                     "rgba(255, 255, 255, 0.04)";
-                  e.currentTarget.style.borderColor =
-                    "rgba(255, 255, 255, 0.08)";
+                  e.currentTarget.style.borderColor = `${phase.accent}33`;
                 }}
               >
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
                   style={{
-                    backgroundColor: "rgba(37, 99, 235, 0.1)",
-                    border: "1px solid rgba(37, 99, 235, 0.2)",
+                    backgroundColor: `${phase.accent}1a`,
+                    border: `1px solid ${phase.accent}33`,
                   }}
                 >
-                  <solution.icon
+                  <phase.icon
                     className="w-6 h-6"
-                    style={{ color: "#60a5fa" }}
+                    style={{ color: phase.accent }}
                   />
                 </div>
                 <h3
-                  className="text-xl font-semibold mb-2"
+                  className="text-xl font-semibold mb-4"
                   style={{ color: "rgba(255, 255, 255, 0.95)" }}
                 >
-                  {solution.title}
+                  {phase.title}
                 </h3>
-                <p
-                  className="mb-4"
-                  style={{ color: "rgba(255, 255, 255, 0.6)" }}
-                >
-                  {solution.desc}
-                </p>
-                <button
-                  className="flex items-center gap-2 transition-colors"
-                  style={{ color: "#60a5fa" }}
-                  onMouseOver={(e) => (e.currentTarget.style.color = "#93c5fd")}
-                  onMouseOut={(e) => (e.currentTarget.style.color = "#60a5fa")}
-                >
-                  Learn more <ArrowRight className="w-4 h-4" />
-                </button>
+                <ul className="space-y-2">
+                  {phase.items.map((item, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Check
+                        className="w-4 h-4 mt-0.5 flex-shrink-0"
+                        style={{ color: phase.accent }}
+                      />
+                      <span
+                        className="text-sm"
+                        style={{ color: "rgba(255, 255, 255, 0.7)" }}
+                      >
+                        {item}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </motion.div>
             ))}
           </div>
@@ -653,14 +677,14 @@ const LandingPage = ({ onStart }) => {
                 color: "rgba(255, 255, 255, 0.95)",
               }}
             >
-              Unlock architecture AI at scale with an API Call
+              Ready to see AI-powered architecture in action?
             </h2>
             <p
               className="text-lg mb-8 max-w-2xl mx-auto"
               style={{ color: "rgba(255, 255, 255, 0.6)" }}
             >
-              Get intelligent design generation with analysis and understanding
-              on the world's best architecture AI platform.
+              Generate professional A1 architectural sheets with floor plans,
+              elevations, sections, and 3D views — all from a single brief.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
@@ -683,9 +707,10 @@ const LandingPage = ({ onStart }) => {
                   e.target.style.transform = "translateY(0)";
                 }}
               >
-                Sign Up Free
+                Start Designing
               </button>
               <button
+                onClick={onDemo}
                 className="px-8 py-4 rounded-xl text-base font-medium transition-all min-w-[200px]"
                 style={{
                   backgroundColor: "rgba(255, 255, 255, 0.05)",
@@ -701,7 +726,7 @@ const LandingPage = ({ onStart }) => {
                   e.target.style.borderColor = "rgba(255, 255, 255, 0.15)";
                 }}
               >
-                Get a Demo
+                See Live Example
               </button>
             </div>
           </motion.div>
@@ -741,9 +766,8 @@ const LandingPage = ({ onStart }) => {
             >
               {["Documentation", "API Reference", "Support", "Privacy"].map(
                 (item) => (
-                  <a
+                  <span
                     key={item}
-                    href="#"
                     className="transition-colors"
                     onMouseOver={(e) =>
                       (e.target.style.color = "rgba(255, 255, 255, 0.9)")
@@ -753,7 +777,7 @@ const LandingPage = ({ onStart }) => {
                     }
                   >
                     {item}
-                  </a>
+                  </span>
                 ),
               )}
             </div>

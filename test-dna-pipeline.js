@@ -395,7 +395,9 @@ console.log("Next Steps:");
 console.log(
   "1. Review integration examples in src/examples/dnaWorkflowIntegrationExample.js",
 );
-console.log("2. Integrate with ArchitectAIEnhanced.js main application");
+console.log(
+  "2. Integrate with the live App.js -> ArchitectAIWizardContainer.jsx workflow",
+);
 console.log("3. Test with real AI generation workflow");
 console.log("4. Monitor consistency scores and iterate");
 console.log("");

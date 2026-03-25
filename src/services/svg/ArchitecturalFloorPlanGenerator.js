@@ -1118,6 +1118,8 @@ class ArchitecturalFloorPlanGenerator {
             ww = windowDepth;
             wh = windowWidth;
             break;
+          default:
+            return;
         }
 
         // Window opening (break in wall)

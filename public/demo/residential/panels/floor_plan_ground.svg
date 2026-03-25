@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 656" width="1200" height="656"><style><![CDATA[
+    /* --- Text --- */
+    .title {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 16px;
+      font-weight: bold;
+      fill: #000000;
+      text-anchor: middle;
+    }
+    .room-label {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      font-weight: bold;
+      fill: #000000;
+      text-anchor: middle;
+    }
+    .area-label {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9px;
+      fill: #333333;
+      text-anchor: middle;
+    }
+
+    /* --- Rooms --- */
+    .room-fill {
+      fill: #FFFFFF;
+      stroke: none;
+    }
+    .circulation-fill {
+      fill: #F5F5F5;
+      stroke: none;
+    }
+
+    /* --- Walls --- */
+    .wall-external-cut {
+      fill: #1A1A1A;
+      stroke: #000000;
+      stroke-width: 3;
+    }
+    .wall-internal-fill {
+      fill: #1A1A1A;
+      stroke: #000000;
+      stroke-width: 1.8;
+    }
+    .wall-poche line {
+      stroke: #444444;
+      stroke-width: 0.3;
+    }
+
+    /* --- Windows --- */
+    .window {
+      fill: #D6EAF8;
+      stroke: #333333;
+      stroke-width: 1.2;
+    }
+    .window-frame {
+      fill: #333333;
+      stroke: #000000;
+      stroke-width: 0.8;
+    }
+    .window-glazing-bar {
+      stroke: #333333;
+      stroke-width: 0.5;
+    }
+
+    /* --- Doors --- */
+    .door {
+      fill: #6B4226;
+      stroke: #000000;
+      stroke-width: 1;
+    }
+    .door-opening {
+      fill: #FFFFFF;
+      stroke: none;
+    }
+    .door-swing {
+      fill: none;
+      stroke: #999999;
+      stroke-width: 0.5;
+      stroke-dasharray: 4 2;
+    }
+
+    /* --- Stairs --- */
+    .stair-cut {
+      fill: #F0F0F0;
+      stroke: #000000;
+      stroke-width: 1;
+    }
+
+    /* --- Elevation / Section backgrounds --- */
+    .sky {
+      fill: #E8F4FD;
+    }
+    .ground {
+      fill: #D5E8D4;
+    }
+    .ground-line {
+      stroke: #333333;
+      stroke-width: 1.5;
+    }
+
+    /* --- Roof --- */
+    .roof {
+      fill: #C0C0C0;
+      stroke: #222222;
+      stroke-width: 2;
+    }
+
+    /* --- Slabs and Foundation --- */
+    .slab-cut {
+      fill: #D0D0D0;
+      stroke: #000000;
+      stroke-width: 1;
+    }
+    .foundation {
+      fill: #C8B8A0;
+      stroke: #000000;
+      stroke-width: 1.2;
+    }
+
+    /* --- Hatching --- */
+    .hatch {
+      stroke: #666666;
+      stroke-width: 0.3;
+    }
+    .hatch-slab {
+      stroke: #666666;
+      stroke-width: 0.24;
+    }
+
+    /* --- Dimensions --- */
+    .dimension line {
+      stroke: #333333;
+      stroke-width: 0.5;
+    }
+    .dimension-text {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      fill: #333333;
+      text-anchor: middle;
+    }
+
+    /* --- Level markers --- */
+    .level-marker {
+      stroke: #333333;
+      stroke-width: 0.8;
+    }
+    .level-marker-dashed {
+      stroke: #333333;
+      stroke-width: 0.5;
+      stroke-dasharray: 6 3;
+    }
+    .level-text {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9px;
+      fill: #000000;
+    }
+  ]]></style>
+  <defs>
+    <pattern id="wall-hatch" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#444444" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  
+  <defs>
+    <pattern id="slab-hatch" patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="12" stroke="#444444" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <text class="title" x="600" y="30">Ground Floor</text><g id="plan-content" transform="translate(600, 328) scale(1, -1)"><path class="room-fill" d="M -812.81,-264.00 L -420.00,-264.00 L -420.00,63.34 L -812.81,63.34 Z"/><path class="room-fill" d="M -11.19,-264.00 L 398.70,-264.00 L 398.70,28.78 L -11.19,28.78 Z"/><path class="circulation-fill" d="M -412.00,71.34 L -234.03,71.34 L -234.03,264.00 L -412.00,264.00 Z"/><path class="room-fill" d="M -226.03,71.34 L -46.74,71.34 L -46.74,190.87 L -226.03,190.87 Z"/><path class="room-fill" d="M -38.74,71.34 L 121.63,71.34 L 121.63,151.52 L -38.74,151.52 Z"/><g id="external-walls"><path class="wall-external-cut" d="M -436.00,-288.00 L 436.00,-288.00 L 436.00,288.00 L -436.00,288.00 Z M -415.97,274.77 L 415.97,274.77 L 415.97,-274.77 L -415.97,-274.77 Z" fill-rule="evenodd"/><path fill="none" stroke="#000000" stroke-width="0.8" d="M -415.97,-274.77 L 415.97,-274.77 L 415.97,274.77 L -415.97,274.77 Z"/><defs><clipPath id="wall-clip-cu7x7b"><path d="M -436.00,-288.00 L 436.00,-288.00 L 436.00,288.00 L -436.00,288.00 Z M -415.97,274.77 L 415.97,274.77 L 415.97,-274.77 L -415.97,-274.77 Z" fill-rule="evenodd"/></clipPath></defs><g class="wall-poche" clip-path="url(#wall-clip-cu7x7b)"><line class="hatch" x1="-436" y1="-288" x2="5564" y2="288"/></g></g><g id="internal-walls"><path class="wall-internal-fill" d="M -11.192544794698625 54.060468320168546 L 121.62731933784221 54.060468320168546 L 121.62731933784221 46.060468320168546 L -11.192544794698625 46.060468320168546 Z"/><path class="wall-internal-fill" d="M -234.02690604130228 71.33954600441794 L -234.02690604130228 190.86704821116444 L -226.02690604130228 190.86704821116444 L -226.02690604130228 71.33954600441794 Z"/><path class="wall-internal-fill" d="M -140.38127938624243 71.33954600441794 L -140.38127938624243 151.52103203893031 L -132.38127938624243 151.52103203893031 L -132.38127938624243 71.33954600441794 Z"/><path class="wall-internal-fill" d="M -46.73565273118256 71.33954600441794 L -46.73565273118256 151.52103203893031 L -38.73565273118256 151.52103203893031 L -38.73565273118256 71.33954600441794 Z"/></g><g id="openings"><g transform="translate(-348.8, -288) rotate(0)"><rect class="door-opening" x="-56" y="-1.8666666666666667" width="112" height="3.7333333333333334"/><rect class="window-frame" x="-56" y="-4.666666666666667" width="112" height="9.333333333333334"/><rect class="window" x="-53.666666666666664" y="-2.3333333333333335" width="107.33333333333333" height="4.666666666666667"/><line class="window-glazing-bar" x1="0" y1="-4.666666666666667" x2="0" y2="4.666666666666667"/></g><g transform="translate(-174.4, -288) rotate(0)"><rect class="door-opening" x="-56" y="-1.8666666666666667" width="112" height="3.7333333333333334"/><rect class="window-frame" x="-56" y="-4.666666666666667" width="112" height="9.333333333333334"/><rect class="window" x="-53.666666666666664" y="-2.3333333333333335" width="107.33333333333333" height="4.666666666666667"/><line class="window-glazing-bar" x1="0" y1="-4.666666666666667" x2="0" y2="4.666666666666667"/></g><g transform="translate(0, -288) rotate(0)"><rect class="door-opening" x="-67.2" y="-2.24" width="134.4" height="4.48"/><rect class="window-frame" x="-67.2" y="-5.6000000000000005" width="134.4" height="11.200000000000001"/><rect class="window" x="-64.4" y="-2.8000000000000003" width="128.8" height="5.6000000000000005"/><line class="window-glazing-bar" x1="0" y1="-5.6000000000000005" x2="0" y2="5.6000000000000005"/></g><g transform="translate(174.39999999999992, -288) rotate(0)"><rect class="door-opening" x="-67.2" y="-2.24" width="134.4" height="4.48"/><rect class="window-frame" x="-67.2" y="-5.6000000000000005" width="134.4" height="11.200000000000001"/><rect class="window" x="-64.4" y="-2.8000000000000003" width="128.8" height="5.6000000000000005"/><line class="window-glazing-bar" x1="0" y1="-5.6000000000000005" x2="0" y2="5.6000000000000005"/></g><g transform="translate(348.8, -288) rotate(0)"><rect class="door-opening" x="-67.2" y="-2.24" width="134.4" height="4.48"/><rect class="window-frame" x="-67.2" y="-5.6000000000000005" width="134.4" height="11.200000000000001"/><rect class="window" x="-64.4" y="-2.8000000000000003" width="128.8" height="5.6000000000000005"/><line class="window-glazing-bar" x1="0" y1="-5.6000000000000005" x2="0" y2="5.6000000000000005"/></g><g transform="translate(436, -144) rotate(90)"><rect class="door-opening" x="-57.6" y="-1.92" width="115.2" height="3.84"/><rect class="window-frame" x="-57.6" y="-4.8" width="115.2" height="9.6"/><rect class="window" x="-55.2" y="-2.4" width="110.4" height="4.8"/><line class="window-glazing-bar" x1="0" y1="-4.8" x2="0" y2="4.8"/></g><g transform="translate(436, 144) rotate(90)"><rect class="door-opening" x="-48" y="-1.6" width="96" height="3.2"/><rect class="window-frame" x="-48" y="-4" width="96" height="8"/><rect class="window" x="-46" y="-2" width="92" height="4"/><line class="window-glazing-bar" x1="0" y1="-4" x2="0" y2="4"/></g><g transform="translate(290.66666666666663, 288) rotate(180)"><rect class="door-opening" x="-40" y="-1.3333333333333333" width="80" height="2.6666666666666665"/><rect class="window-frame" x="-40" y="-3.3333333333333335" width="80" height="6.666666666666667"/><rect class="window" x="-38.333333333333336" y="-1.6666666666666667" width="76.66666666666667" height="3.3333333333333335"/><line class="window-glazing-bar" x1="0" y1="-3.3333333333333335" x2="0" y2="3.3333333333333335"/></g><g transform="translate(0, 288) rotate(180)"><rect class="door-opening" x="-40" y="-1.3333333333333333" width="80" height="2.6666666666666665"/><rect class="window-frame" x="-40" y="-3.3333333333333335" width="80" height="6.666666666666667"/><rect class="window" x="-38.333333333333336" y="-1.6666666666666667" width="76.66666666666667" height="3.3333333333333335"/><line class="window-glazing-bar" x1="0" y1="-3.3333333333333335" x2="0" y2="3.3333333333333335"/></g><g transform="translate(-290.66666666666674, 288) rotate(180)"><rect class="door-opening" x="-28" y="-0.9333333333333333" width="56" height="1.8666666666666667"/><rect class="window-frame" x="-28" y="-2.3333333333333335" width="56" height="4.666666666666667"/><rect class="window" x="-26.833333333333332" y="-1.1666666666666667" width="53.666666666666664" height="2.3333333333333335"/><line class="window-glazing-bar" x1="0" y1="-2.3333333333333335" x2="0" y2="2.3333333333333335"/></g><g transform="translate(-436, 144) rotate(-90)"><rect class="door-opening" x="-30.8" y="-1.0266666666666666" width="61.6" height="2.0533333333333332"/><rect class="window-frame" x="-30.8" y="-2.566666666666667" width="61.6" height="5.133333333333334"/><rect class="window" x="-29.516666666666666" y="-1.2833333333333334" width="59.03333333333333" height="2.566666666666667"/><line class="window-glazing-bar" x1="0" y1="-2.566666666666667" x2="0" y2="2.566666666666667"/></g><g transform="translate(-436, -144) rotate(-90)"><rect class="door-opening" x="-48.4" y="-1.6133333333333333" width="96.8" height="3.2266666666666666"/><rect class="window-frame" x="-48.4" y="-4.033333333333333" width="96.8" height="8.066666666666666"/><rect class="window" x="-46.38333333333333" y="-2.0166666666666666" width="92.76666666666667" height="4.033333333333333"/><line class="window-glazing-bar" x1="0" y1="-4.033333333333333" x2="0" y2="4.033333333333333"/></g><g transform="translate(0, -288) rotate(0)"><rect class="door-opening" x="-40" y="-7.5" width="80" height="15"/><line stroke="#333" stroke-width="1.5" x1="-40" y1="-7.5" x2="-40" y2="7.5"/><line stroke="#333" stroke-width="1.5" x1="40" y1="-7.5" x2="40" y2="7.5"/><rect class="door" x="-40" y="0" width="80" height="3.9111111111111114"/><path class="door-swing" d="M -40 0 A 68 68 0 0 1 28 68"/></g><g transform="translate(-230.02690604130228, 131.10329710779118) rotate(90)"><rect class="door-opening" x="-36" y="-4" width="72" height="8"/><line stroke="#333" stroke-width="1.5" x1="-36" y1="-4" x2="-36" y2="4"/><line stroke="#333" stroke-width="1.5" x1="36" y1="-4" x2="36" y2="4"/><rect class="door" x="-36" y="0" width="72" height="3.52"/><path class="door-swing" d="M -36 0 A 61.199999999999996 61.199999999999996 0 0 1 25.199999999999996 61.199999999999996"/></g><g transform="translate(55.21738727157179, 50.060468320168546) rotate(0)"><rect class="door-opening" x="-36" y="-4" width="72" height="8"/><line stroke="#333" stroke-width="1.5" x1="-36" y1="-4" x2="-36" y2="4"/><line stroke="#333" stroke-width="1.5" x1="36" y1="-4" x2="36" y2="4"/><rect class="door" x="-36" y="0" width="72" height="3.52"/><path class="door-swing" d="M -36 0 A 61.199999999999996 61.199999999999996 0 0 1 25.199999999999996 61.199999999999996"/></g><g transform="translate(-230.02690604130228, 131.10329710779118) rotate(90)"><rect class="door-opening" x="-36" y="-4" width="72" height="8"/><line stroke="#333" stroke-width="1.5" x1="-36" y1="-4" x2="-36" y2="4"/><line stroke="#333" stroke-width="1.5" x1="36" y1="-4" x2="36" y2="4"/><rect class="door" x="-36" y="0" width="72" height="3.52"/><path class="door-swing" d="M -36 0 A 61.199999999999996 61.199999999999996 0 0 1 25.199999999999996 61.199999999999996"/></g><g transform="translate(55.21738727157179, 50.060468320168546) rotate(0)"><rect class="door-opening" x="-36" y="-4" width="72" height="8"/><line stroke="#333" stroke-width="1.5" x1="-36" y1="-4" x2="-36" y2="4"/><line stroke="#333" stroke-width="1.5" x1="36" y1="-4" x2="36" y2="4"/><rect class="door" x="-36" y="0" width="72" height="3.52"/><path class="door-swing" d="M -36 0 A 61.199999999999996 61.199999999999996 0 0 1 25.199999999999996 61.199999999999996"/></g></g><g id="stairs"><rect class="stair-cut" x="-40" y="-208" width="80" height="240"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-208" x2="40" y2="-208"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-190.85714285714286" x2="40" y2="-190.85714285714286"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-173.71428571428572" x2="40" y2="-173.71428571428572"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-156.57142857142856" x2="40" y2="-156.57142857142856"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-139.42857142857144" x2="40" y2="-139.42857142857144"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-122.28571428571429" x2="40" y2="-122.28571428571429"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-105.14285714285714" x2="40" y2="-105.14285714285714"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-88" x2="40" y2="-88"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-70.85714285714286" x2="40" y2="-70.85714285714286"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-53.71428571428572" x2="40" y2="-53.71428571428572"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-36.571428571428584" x2="40" y2="-36.571428571428584"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-19.428571428571445" x2="40" y2="-19.428571428571445"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="-2.2857142857142776" x2="40" y2="-2.2857142857142776"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="14.857142857142861" x2="40" y2="14.857142857142861"/><line stroke="#666" stroke-width="0.5" x1="-40" y1="32" x2="40" y2="32"/><path fill="#333" d="M 0 -188 l -8 15 l 16 0 Z"/><text transform="scale(1,-1)" x="0" y="88" text-anchor="middle" font-family="Arial" font-size="8" fill="#333">UP</text></g></g><g id="room-labels"><text class="room-label" x="-16.403727602650747" y="422.33022699779104">Kitchen-Dining</text><text class="area-label" x="-16.403727602650747" y="438.33022699779104">20 m²</text><text class="area-label" x="-16.403727602650747" y="450.33022699779104" font-size="7" fill="#94a3b8">4.9m × 4.1m</text><text class="room-label" x="793.7544286504449" y="439.60930468204043">Living Room</text><text class="area-label" x="793.7544286504449" y="455.60930468204043">19 m²</text><text class="area-label" x="793.7544286504449" y="467.60930468204043" font-size="7" fill="#94a3b8">5.1m × 3.7m</text><text class="room-label" x="276.9865469793489" y="154.33022699779102">Hallway</text><text class="area-label" x="276.9865469793489" y="170.33022699779102">5 m²</text><text class="area-label" x="276.9865469793489" y="182.33022699779102" font-size="7" fill="#94a3b8">2.2m × 2.4m</text><text class="room-label" x="463.61872061375755" y="190.89670289220882">Utility</text><text class="area-label" x="463.61872061375755" y="206.89670289220882">3 m²</text><text class="area-label" x="463.61872061375755" y="218.89670289220882" font-size="7" fill="#94a3b8">2.2m × 1.5m</text><text class="room-label" x="641.4458333033298" y="210.56971097832587">WC</text><text class="area-label" x="641.4458333033298" y="226.56971097832587">2 m²</text><text class="area-label" x="641.4458333033298" y="238.56971097832587" font-size="7" fill="#94a3b8">2.0m × 1.0m</text></g><g id="furniture"><rect fill="#efefef" stroke="#777" stroke-width="0.7" x="-51.40372760265075" y="313.7613858962448" width="70" height="14" rx="1"/><circle fill="#e0e8f0" stroke="#777" stroke-width="0.5" cx="-26.903727602650747" cy="320.7613858962448" r="4.8999999999999995"/><circle fill="none" stroke="#777" stroke-width="0.4" cx="-6.043727602650748" cy="318.6613858962448" r="2.8000000000000003"/><circle fill="none" stroke="#777" stroke-width="0.4" cx="1.2362723973492535" cy="318.6613858962448" r="2.8000000000000003"/><circle fill="none" stroke="#777" stroke-width="0.4" cx="-6.043727602650748" cy="322.8613858962448" r="2.8000000000000003"/><circle fill="none" stroke="#777" stroke-width="0.4" cx="1.2362723973492535" cy="322.8613858962448" r="2.8000000000000003"/><rect fill="none" stroke="#777" stroke-width="0.7" x="-36.40372760265075" y="461.06418159823284" width="40" height="25" rx="1"/><rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="-20.403727602650747" y="452.81418159823284" width="8" height="6.25"/><rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="-20.403727602650747" y="488.06418159823284" width="8" height="6.25"/><rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="-44.65372760265075" y="469.56418159823284" width="6.25" height="8"/><rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="5.596272397349253" y="469.56418159823284" width="6.25" height="8"/><rect fill="none" stroke="#777" stroke-width="0.7" x="766.2544286504449" y="430.60930468204043" width="55" height="30" rx="2"/><rect fill="#e8e8e8" stroke="#777" stroke-width="0.5" x="766.2544286504449" y="430.60930468204043" width="55" height="9" rx="1"/><line stroke="#aaa" stroke-width="0.4" x1="784.5877619837783" y1="439.60930468204043" x2="784.5877619837783" y2="460.60930468204043"/><line stroke="#aaa" stroke-width="0.4" x1="802.9210953171115" y1="439.60930468204043" x2="802.9210953171115" y2="460.60930468204043"/><rect fill="#e8f0f8" stroke="#777" stroke-width="0.6" x="601.3550902860736" y="198.19478709541679" width="16.70447625719008" height="36.74984776581818" rx="3"/><circle fill="#777" cx="609.7073284146686" cy="200.8675032965672" r="1.3363581005752065"/><rect fill="#e8e8e8" stroke="#777" stroke-width="0.5" x="652.8048771582191" y="209.88792047544985" width="9.354506704026445" height="6.681790502876033" rx="1"/><ellipse fill="#e8e8e8" stroke="#777" stroke-width="0.5" cx="657.4821305102323" cy="218.57424812918867" rx="4.2095280168119" ry="4.6772533520132225"/><circle fill="#e8f0f8" stroke="#777" stroke-width="0.5" cx="681.5365763205859" cy="204.542488073149" r="4.00907430172562"/></g><g id="dimensions"><g class="dimension" id="plan-dim-width"><line stroke="#999" stroke-width="0.3" x1="164" y1="668" x2="164" y2="658"/><line stroke="#999" stroke-width="0.3" x1="1036" y1="668" x2="1036" y2="658"/><line x1="164" y1="656" x2="1036" y2="656"/><polygon fill="#444" points="164,656 170,653 170,659"/><polygon fill="#444" points="1036,656 1030,653 1030,659"/><text class="dimension-text" x="600" y="648">10.90 m</text></g><g class="dimension" id="plan-dim-depth"><line stroke="#999" stroke-width="0.3" x1="112" y1="40" x2="122" y2="40"/><line stroke="#999" stroke-width="0.3" x1="112" y1="616" x2="122" y2="616"/><line x1="124" y1="40" x2="124" y2="616"/><polygon fill="#444" points="124,40 121,46 127,46"/><polygon fill="#444" points="124,616 121,610 127,610"/><text class="dimension-text" x="139" y="328" transform="rotate(-90, 139, 328)">7.20 m</text></g></g><g id="section-cut-lines"><line x1="134" y1="328" x2="1066" y2="328" stroke="#555" stroke-width="0.8" stroke-dasharray="12 3 3 3"/><circle cx="123" cy="328" r="9" fill="white" stroke="#333" stroke-width="1"/><text x="123" y="331.5" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">A</text><circle cx="1077" cy="328" r="9" fill="white" stroke="#333" stroke-width="1"/><text x="1077" y="331.5" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">A</text><polygon fill="#333" points="123,341 119,338 127,338"/><polygon fill="#333" points="1077,341 1073,338 1081,338"/><line x1="600" y1="10" x2="600" y2="646" stroke="#555" stroke-width="0.8" stroke-dasharray="12 3 3 3"/><circle cx="600" cy="-1" r="9" fill="white" stroke="#333" stroke-width="1"/><text x="600" y="2.5" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">B</text><circle cx="600" cy="657" r="9" fill="white" stroke="#333" stroke-width="1"/><text x="600" y="660.5" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">B</text><polygon fill="#333" points="587,-1 590,-5 590,3"/><polygon fill="#333" points="587,657 590,653 590,661"/></g>
+    <g transform="translate(1150, 60)">
+      <circle cx="0" cy="0" r="15" fill="none" stroke="#333" stroke-width="1"/>
+      <polygon points="0,-12 -4,4 0,0 4,4" fill="#333"/>
+      <text x="0" y="-20" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">N</text>
+    </g>
+  
+    <g transform="translate(1050, 616)">
+      <rect x="0" y="-2" width="80" height="4" fill="#333"/>
+      <line x1="0" y1="-6" x2="0" y2="6" stroke="#333" stroke-width="1"/>
+      <line x1="80" y1="-6" x2="80" y2="6" stroke="#333" stroke-width="1"/>
+      <text x="0" y="18" text-anchor="start" font-family="Arial" font-size="9" fill="#333">0</text>
+      <text x="80" y="18" text-anchor="end" font-family="Arial" font-size="9" fill="#333">1 m</text>
+    </g>
+  <g id="title-block"><rect x="1010" y="606" width="180" height="40" fill="#ffffff" stroke="#333" stroke-width="1"/><line x1="1010" y1="626" x2="1190" y2="626" stroke="#333" stroke-width="0.5"/><text x="1015" y="620" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#333">Ground Floor Plan</text><text x="1015" y="639" font-family="Arial, sans-serif" font-size="7" fill="#666">Dwg: A-100</text><text x="1185" y="639" font-family="Arial, sans-serif" font-size="7" fill="#666" text-anchor="end">Scale 1:12.5</text></g></svg>

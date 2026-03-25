@@ -49,7 +49,7 @@ export const ServiceName = {
   OPENAI_REASONING: "openai-reasoning",
   OPENAI_IMAGES: "openai-images",
   OPENAI_LEGACY: "openai-legacy",
-  REPLICATE: "replicate",
+  /** @deprecated Replicate removed — Together.ai is primary */
   TOGETHER_AI: "together-ai",
   MIDJOURNEY: "midjourney",
 };
@@ -100,14 +100,7 @@ const API_KEY_CONFIG = {
     clientSide: true,
     description: "Legacy OpenAI API key (deprecated)",
   },
-  [ServiceName.REPLICATE]: {
-    envVars: IS_PROD
-      ? ["REPLICATE_API_TOKEN", "REACT_APP_REPLICATE_API_KEY"]
-      : ["REACT_APP_REPLICATE_API_KEY"],
-    required: false, // Fallback image generation
-    clientSide: false,
-    description: "Replicate API for SDXL image generation",
-  },
+  /** @deprecated Replicate removed — Together.ai is primary image service */
   [ServiceName.TOGETHER_AI]: {
     envVars: ["TOGETHER_API_KEY"],
     required: true, // PRIMARY — all image generation and reasoning
@@ -412,8 +405,7 @@ export function getApiBaseUrl(service) {
       return `${baseUrl}/openai`;
     case "openai-images":
       return `${baseUrl}/openai/images`;
-    case "replicate":
-      return `${baseUrl}/replicate`;
+    // replicate removed — Together.ai is primary
     case "together-ai":
       return `${baseUrl}/together`;
     case "midjourney":

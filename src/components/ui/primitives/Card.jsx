@@ -1,8 +1,8 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { cva } from 'class-variance-authority';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import React from "react";
+import { motion } from "framer-motion";
+import { cva } from "class-variance-authority";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -12,42 +12,42 @@ function cn(...inputs) {
 // Card variants using CVA
 const cardVariants = cva(
   // Base styles
-  'bg-white border border-gray-200 transition-all duration-300 ease-smooth',
+  "bg-white border border-gray-200 transition-all duration-300 ease-smooth",
   {
     variants: {
       variant: {
-        default: 'shadow-soft hover:shadow-soft-lg',
-        elevated: 'shadow-soft-md hover:shadow-soft-lg',
-        outline: 'shadow-none hover:border-gray-300',
-        ghost: 'border-transparent shadow-none hover:bg-gray-50',
-        glass: 'bg-white/80 backdrop-blur-xl border-white/20',
+        default: "shadow-soft hover:shadow-soft-lg",
+        elevated: "shadow-soft-md hover:shadow-soft-lg",
+        outline: "shadow-none hover:border-gray-300",
+        ghost: "border-transparent shadow-none hover:bg-gray-50",
+        glass: "bg-white/80 backdrop-blur-xl border-white/20",
       },
       padding: {
-        none: 'p-0',
-        sm: 'p-4',
-        md: 'p-6',
-        lg: 'p-8',
-        xl: 'p-10',
+        none: "p-0",
+        sm: "p-4",
+        md: "p-6",
+        lg: "p-8",
+        xl: "p-10",
       },
       radius: {
-        none: 'rounded-none',
-        sm: 'rounded-lg',
-        md: 'rounded-xl',
-        lg: 'rounded-2xl',
-        full: 'rounded-3xl',
+        none: "rounded-none",
+        sm: "rounded-lg",
+        md: "rounded-xl",
+        lg: "rounded-2xl",
+        full: "rounded-3xl",
       },
       interactive: {
-        true: 'cursor-pointer',
-        false: '',
+        true: "cursor-pointer",
+        false: "",
       },
     },
     defaultVariants: {
-      variant: 'default',
-      padding: 'md',
-      radius: 'md',
+      variant: "default",
+      padding: "md",
+      radius: "md",
       interactive: false,
     },
-  }
+  },
 );
 
 // Animation variants for hover
@@ -72,7 +72,7 @@ const Card = React.forwardRef(
       onClick,
       ...props
     },
-    ref
+    ref,
   ) => {
     const isInteractive = interactive || !!onClick;
 
@@ -81,8 +81,13 @@ const Card = React.forwardRef(
         <motion.div
           ref={ref}
           className={cn(
-            cardVariants({ variant, padding, radius, interactive: isInteractive }),
-            className
+            cardVariants({
+              variant,
+              padding,
+              radius,
+              interactive: isInteractive,
+            }),
+            className,
           )}
           initial="rest"
           whileHover="hover"
@@ -100,8 +105,13 @@ const Card = React.forwardRef(
       <div
         ref={ref}
         className={cn(
-          cardVariants({ variant, padding, radius, interactive: isInteractive }),
-          className
+          cardVariants({
+            variant,
+            padding,
+            radius,
+            interactive: isInteractive,
+          }),
+          className,
         )}
         onClick={onClick}
         {...props}
@@ -109,10 +119,10 @@ const Card = React.forwardRef(
         {children}
       </div>
     );
-  }
+  },
 );
 
-Card.displayName = 'Card';
+Card.displayName = "Card";
 
 /**
  * Card Header subcomponent
@@ -120,47 +130,48 @@ Card.displayName = 'Card';
 const CardHeader = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex flex-col space-y-1.5', className)}
+    className={cn("flex flex-col space-y-1.5", className)}
     {...props}
   />
 ));
 
-CardHeader.displayName = 'CardHeader';
+CardHeader.displayName = "CardHeader";
 
 /**
  * Card Title subcomponent
  */
-const CardTitle = React.forwardRef(({ className, ...props }, ref) => (
+const CardTitle = React.forwardRef(({ className, children, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn('text-lg font-semibold leading-none tracking-tight text-gray-900', className)}
+    className={cn(
+      "text-lg font-semibold leading-none tracking-tight text-gray-900",
+      className,
+    )}
     {...props}
-  />
+  >
+    {children}
+  </h3>
 ));
 
-CardTitle.displayName = 'CardTitle';
+CardTitle.displayName = "CardTitle";
 
 /**
  * Card Description subcomponent
  */
 const CardDescription = React.forwardRef(({ className, ...props }, ref) => (
-  <p
-    ref={ref}
-    className={cn('text-sm text-gray-500', className)}
-    {...props}
-  />
+  <p ref={ref} className={cn("text-sm text-gray-500", className)} {...props} />
 ));
 
-CardDescription.displayName = 'CardDescription';
+CardDescription.displayName = "CardDescription";
 
 /**
  * Card Content subcomponent
  */
 const CardContent = React.forwardRef(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('', className)} {...props} />
+  <div ref={ref} className={cn("", className)} {...props} />
 ));
 
-CardContent.displayName = 'CardContent';
+CardContent.displayName = "CardContent";
 
 /**
  * Card Footer subcomponent
@@ -168,12 +179,12 @@ CardContent.displayName = 'CardContent';
 const CardFooter = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn('flex items-center pt-4', className)}
+    className={cn("flex items-center pt-4", className)}
     {...props}
   />
 ));
 
-CardFooter.displayName = 'CardFooter';
+CardFooter.displayName = "CardFooter";
 
 // Export all components
 export {

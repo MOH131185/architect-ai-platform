@@ -131,7 +131,6 @@ if ! grep -q "GENARCH_API_KEY=" "$APP_DIR/.env" || grep -q "GENARCH_API_KEY=your
     GENERATED_KEY=$(openssl rand -hex 32)
     log_info "Generating GENARCH_API_KEY..."
     sed -i "s/GENARCH_API_KEY=.*/GENARCH_API_KEY=$GENERATED_KEY/" "$APP_DIR/.env"
-    sed -i "s/REACT_APP_GENARCH_API_KEY=.*/REACT_APP_GENARCH_API_KEY=$GENERATED_KEY/" "$APP_DIR/.env"
     log_warn "Generated API key (save this!): $GENERATED_KEY"
 fi
 

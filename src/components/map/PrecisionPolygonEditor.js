@@ -21,7 +21,6 @@ import {
   snapToEdge,
   constrainToAngle,
   wouldCauseSelfIntersection,
-  openRing,
   closeRing,
   roundCoord,
   SNAP_PIXEL_THRESHOLD,

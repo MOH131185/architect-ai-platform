@@ -1,11 +1,12 @@
 /**
- * Panel Prompt Builders
+ * Panel Prompt Builders — CANONICAL PANEL PROMPT BUILDER
  *
- * Specialized prompt builders for each of the 14 panel types in multi-panel A1 generation.
- * Each builder creates highly specific prompts with consistency locks and DNA integration.
+ * Single source of truth for per-panel prompt construction. Provides
+ * specialized prompt builders for each of the 14 panel types, with
+ * Design Fingerprint constraint injection for strict cross-panel consistency.
  *
- * ENHANCED: Now includes Design Fingerprint constraint injection for strict cross-panel consistency.
- * All panels after hero_3d receive the fingerprint lock to ensure THE SAME building is shown.
+ * Imported by: dnaWorkflowOrchestrator, design/panelGenerationService,
+ * panelOrchestrator, dnaPromptGenerator (negative-prompt constants).
  *
  * @module services/a1/panelPromptBuilders
  */

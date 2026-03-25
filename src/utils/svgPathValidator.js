@@ -212,6 +212,9 @@ export function validateSVG(svgString, options = {}) {
         case "abort":
           // Don't sanitize, will return error
           break;
+
+        default:
+          break;
       }
     }
   }

@@ -1,14 +1,22 @@
-import React from 'react';
-import { Download, Wand2, Eye, X, ZoomIn, ZoomOut, Maximize2, ChevronLeft } from 'lucide-react';
-import { useDesignContext } from '../context/DesignContext.jsx';
-import { useArchitectWorkflow } from '../hooks/useArchitectWorkflow.js';
-import A1SheetViewer from '../components/A1SheetViewer.jsx';
-import A1PanelGallery from '../components/A1PanelGallery.jsx';
-import GeometryDebugViewer from '../components/GeometryDebugViewer.jsx';
-import AIModifyPanel from '../components/AIModifyPanel.jsx';
-import ModifyDesignDrawer from '../components/ModifyDesignDrawer.js';
-import logger from '../utils/logger.js';
-
+import React from "react";
+import {
+  Download,
+  Wand2,
+  Eye,
+  X,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  ChevronLeft,
+} from "lucide-react";
+import { useDesignContext } from "../context/DesignContext.jsx";
+import { useArchitectWorkflow } from "../hooks/useArchitectWorkflow.js";
+import A1SheetViewer from "../components/A1SheetViewer.jsx";
+import A1PanelGallery from "../components/A1PanelGallery.jsx";
+import GeometryDebugViewer from "../components/GeometryDebugViewer.jsx";
+import AIModifyPanel from "../components/AIModifyPanel.jsx";
+import ModifyDesignDrawer from "../components/ModifyDesignDrawer.js";
+import logger from "../utils/logger.js";
 
 /**
  * ResultsAndModify - Step 6: Display results and enable modifications
@@ -40,7 +48,7 @@ const ResultsAndModify = () => {
     setIsDragging,
     dragStart,
     setDragStart,
-    closeImageModal
+    closeImageModal,
   } = useDesignContext();
 
   const { prevStep } = useArchitectWorkflow();
@@ -49,7 +57,9 @@ const ResultsAndModify = () => {
     return (
       <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
         <Eye className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-gray-800 mb-2">No Design Generated Yet</h3>
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">
+          No Design Generated Yet
+        </h3>
         <p className="text-gray-600 mb-6">
           Please complete the generation step to see results.
         </p>
@@ -70,11 +80,14 @@ const ResultsAndModify = () => {
   // Enhanced download handler with proper blob conversion and proxy support
   const handleDownloadA1Sheet = async () => {
     try {
-      logger.info('📥 Download triggered from Results page');
+      logger.info("📥 Download triggered from Results page");
 
       // Create filename with timestamp and design ID
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-      const filename = `A1-Sheet-${currentDesignId || 'design'}-${timestamp}.png`;
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .split("T")[0];
+      const filename = `A1-Sheet-${currentDesignId || "design"}-${timestamp}.png`;
 
       let imageUrl = composedSheetUrl;
 
@@ -83,19 +96,24 @@ const ResultsAndModify = () => {
         if (!url) return null;
 
         // If already a proxy URL, return as-is
-        if (url.includes('/api/proxy') || url.includes('/api/proxy-image')) {
+        if (url.includes("/api/proxy") || url.includes("/api/proxy-image")) {
           return url;
         }
 
         // Check if it's a cross-origin URL that needs proxying
-        const needsProxy = url.startsWith('http') &&
+        const needsProxy =
+          url.startsWith("http") &&
           !url.startsWith(window.location.origin) &&
-          !url.startsWith('http://localhost') &&
-          !url.startsWith('data:');
+          !url.startsWith("http://localhost") &&
+          !url.startsWith("data:");
 
         if (needsProxy) {
-          const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const proxyBase = isDev ? 'http://localhost:3001/api/proxy/image' : '/api/proxy-image';
+          const isDev =
+            window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1";
+          const proxyBase = isDev
+            ? "http://localhost:3001/api/proxy/image"
+            : "/api/proxy-image";
           return `${proxyBase}?url=${encodeURIComponent(url)}`;
         }
 
@@ -103,9 +121,9 @@ const ResultsAndModify = () => {
       };
 
       // Method 1: If it's a data URL, convert to blob
-      if (imageUrl && imageUrl.startsWith('data:')) {
-        logger.success(' Data URL detected, converting to blob...');
-        const arr = imageUrl.split(',');
+      if (imageUrl && imageUrl.startsWith("data:")) {
+        logger.success(" Data URL detected, converting to blob...");
+        const arr = imageUrl.split(",");
         const mime = arr[0].match(/:(.*?);/)[1];
         const bstr = atob(arr[1]);
         let n = bstr.length;
@@ -113,10 +131,10 @@ const ResultsAndModify = () => {
         while (n--) {
           u8arr[n] = bstr.charCodeAt(n);
         }
-        const blob = new Blob([u8arr], { type: mime || 'image/png' });
+        const blob = new Blob([u8arr], { type: mime || "image/png" });
         const url = window.URL.createObjectURL(blob);
 
-        const link = document.createElement('a');
+        const link = document.createElement("a");
         link.href = url;
         link.download = filename;
         document.body.appendChild(link);
@@ -126,18 +144,21 @@ const ResultsAndModify = () => {
         // Clean up
         setTimeout(() => window.URL.revokeObjectURL(url), 100);
 
-        logger.success('A1 sheet downloaded successfully');
+        logger.success("A1 sheet downloaded successfully");
         return;
       }
 
       // Method 2: Use proxy URL for cross-origin images
       const proxiedUrl = getProxiedUrl(imageUrl);
-      logger.info('🌐 Fetching image via proxy...', proxiedUrl?.substring(0, 100));
+      logger.info(
+        "🌐 Fetching image via proxy...",
+        proxiedUrl?.substring(0, 100),
+      );
 
       const response = await fetch(proxiedUrl, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-cache'
+        method: "GET",
+        mode: "cors",
+        cache: "no-cache",
       });
 
       if (!response.ok) {
@@ -147,15 +168,15 @@ const ResultsAndModify = () => {
       let blob = await response.blob();
 
       // Validate blob is actually an image
-      if (!blob.type.startsWith('image/')) {
-        logger.warn('Blob type is not image, forcing PNG type');
+      if (!blob.type.startsWith("image/")) {
+        logger.warn("Blob type is not image, forcing PNG type");
         const arrayBuffer = await blob.arrayBuffer();
-        blob = new Blob([arrayBuffer], { type: 'image/png' });
+        blob = new Blob([arrayBuffer], { type: "image/png" });
       }
 
       const url = window.URL.createObjectURL(blob);
 
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
       link.download = filename;
       document.body.appendChild(link);
@@ -165,11 +186,12 @@ const ResultsAndModify = () => {
       // Clean up
       setTimeout(() => window.URL.revokeObjectURL(url), 100);
 
-      logger.success('A1 sheet downloaded successfully');
-
+      logger.success("A1 sheet downloaded successfully");
     } catch (error) {
-      logger.error('❌ Download failed:', error);
-      alert(`Download failed: ${error.message}\n\nPlease try using the download button in the A1 sheet viewer above, or right-click the image and select "Save image as..."`);
+      logger.error("❌ Download failed:", error);
+      alert(
+        `Download failed: ${error.message}\n\nPlease try using the download button in the A1 sheet viewer above, or right-click the image and select "Save image as..."`,
+      );
     }
   };
 
@@ -177,7 +199,7 @@ const ResultsAndModify = () => {
   const handleWheel = (e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setImageZoom(prev => Math.max(0.5, Math.min(prev + delta, 3)));
+    setImageZoom((prev) => Math.max(0.5, Math.min(prev + delta, 3)));
   };
 
   const handleMouseDown = (e) => {
@@ -189,7 +211,7 @@ const ResultsAndModify = () => {
     if (!isDragging) return;
     setImagePan({
       x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y
+      y: e.clientY - dragStart.y,
     });
   };
 
@@ -247,7 +269,9 @@ const ResultsAndModify = () => {
 
       {/* A1 Sheet Display - FIXED: Pass correct prop name */}
       <div className="bg-white rounded-2xl shadow-xl p-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">A1 Comprehensive Sheet</h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-4">
+          A1 Comprehensive Sheet
+        </h3>
         <A1SheetViewer
           sheetData={a1Sheet}
           sitePlanAttachment={generatedDesigns.sitePlanAttachment}
@@ -255,8 +279,9 @@ const ResultsAndModify = () => {
           showToast={(msg) => logger.info(msg)}
         />
         <p className="text-sm text-gray-500 mt-4">
-          <strong>Use the controls above to zoom and download.</strong> All views embedded in UK RIBA standard format.
-          The A1 sheet is displayed at high resolution and includes all architectural views.
+          <strong>Use the controls above to zoom and download.</strong> All
+          views embedded in UK RIBA standard format. The A1 sheet is displayed
+          at high resolution and includes all architectural views.
         </p>
       </div>
 
@@ -268,8 +293,15 @@ const ResultsAndModify = () => {
 
       {/* Geometry Debug Viewer */}
       <div className="bg-white rounded-2xl shadow-xl p-6">
-        <h3 className="text-xl font-bold text-gray-800 mb-4">Geometry Renders (Debug)</h3>
-        <GeometryDebugViewer geometryRenders={generatedDesigns.geometryRenders || generatedDesigns.a1Sheet?.geometryRenders} />
+        <h3 className="text-xl font-bold text-gray-800 mb-4">
+          Geometry Renders (Debug)
+        </h3>
+        <GeometryDebugViewer
+          geometryRenders={
+            generatedDesigns.geometryRenders ||
+            generatedDesigns.a1Sheet?.geometryRenders
+          }
+        />
       </div>
 
       {/* Design DNA Information */}
@@ -284,7 +316,10 @@ const ResultsAndModify = () => {
                   {masterDNA.dimensions.length}m × {masterDNA.dimensions.width}m
                 </p>
                 <p className="text-sm text-gray-500">
-                  Height: {masterDNA.dimensions.totalHeight || masterDNA.dimensions.height}m
+                  Height:{" "}
+                  {masterDNA.dimensions.totalHeight ||
+                    masterDNA.dimensions.height}
+                  m
                 </p>
               </div>
             )}
@@ -293,7 +328,9 @@ const ResultsAndModify = () => {
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-sm text-gray-600 mb-1">Primary Material</p>
                 <p className="text-lg font-semibold text-gray-800">
-                  {masterDNA.materials.exterior?.primary || masterDNA.materials[0]?.name || 'N/A'}
+                  {masterDNA.materials.exterior?.primary ||
+                    masterDNA.materials[0]?.name ||
+                    "N/A"}
                 </p>
               </div>
             )}
@@ -301,14 +338,18 @@ const ResultsAndModify = () => {
             <div className="bg-gray-50 rounded-xl p-4">
               <p className="text-sm text-gray-600 mb-1">Design ID</p>
               <p className="text-sm font-mono text-gray-800">
-                {currentDesignId || 'N/A'}
+                {currentDesignId || "N/A"}
               </p>
             </div>
 
             {masterDNA.seed && (
               <div className="bg-gray-50 rounded-xl p-4">
-                <p className="text-sm text-gray-600 mb-1">Seed (for consistency)</p>
-                <p className="text-sm font-mono text-gray-800">{masterDNA.seed}</p>
+                <p className="text-sm text-gray-600 mb-1">
+                  Seed (for consistency)
+                </p>
+                <p className="text-sm font-mono text-gray-800">
+                  {masterDNA.seed}
+                </p>
               </div>
             )}
           </div>
@@ -320,10 +361,14 @@ const ResultsAndModify = () => {
         <h3 className="text-xl font-bold text-gray-800 mb-4">Export Options</h3>
         <div className="grid md:grid-cols-4 gap-4">
           {[
-            { format: 'PDF', description: 'Portable Document', icon: Download },
-            { format: 'DWG', description: 'AutoCAD Drawing', icon: Download },
-            { format: 'RVT', description: 'Revit BIM Model', icon: Download },
-            { format: 'IFC', description: 'Industry Foundation', icon: Download }
+            { format: "PDF", description: "Portable Document", icon: Download },
+            { format: "DWG", description: "AutoCAD Drawing", icon: Download },
+            { format: "RVT", description: "Revit BIM Model", icon: Download },
+            {
+              format: "IFC",
+              description: "Industry Foundation",
+              icon: Download,
+            },
           ].map((option) => (
             <button
               key={option.format}
@@ -347,7 +392,7 @@ const ResultsAndModify = () => {
           designId={currentDesignId}
           currentDesign={generatedDesigns}
           onModificationComplete={(modifiedDesign) => {
-            logger.info('✅ Modification complete:', modifiedDesign);
+            logger.info("✅ Modification complete:", modifiedDesign);
             setShowModifyDrawer(false);
           }}
           onClose={() => setShowModifyDrawer(false)}
@@ -371,7 +416,7 @@ const ResultsAndModify = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setImageZoom(prev => Math.min(prev + 0.2, 3));
+                setImageZoom((prev) => Math.min(prev + 0.2, 3));
               }}
               className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
             >
@@ -380,7 +425,7 @@ const ResultsAndModify = () => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setImageZoom(prev => Math.max(prev - 0.2, 0.5));
+                setImageZoom((prev) => Math.max(prev - 0.2, 0.5));
               }}
               className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
             >
@@ -412,17 +457,17 @@ const ResultsAndModify = () => {
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onClick={(e) => e.stopPropagation()}
-            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+            style={{ cursor: isDragging ? "grabbing" : "grab" }}
           >
             <img
               src={modalImage}
               alt={modalImageTitle}
               style={{
                 transform: `scale(${imageZoom}) translate(${imagePan.x / imageZoom}px, ${imagePan.y / imageZoom}px)`,
-                transition: isDragging ? 'none' : 'transform 0.1s',
-                maxWidth: '90vw',
-                maxHeight: '90vh',
-                objectFit: 'contain'
+                transition: isDragging ? "none" : "transform 0.1s",
+                maxWidth: "90vw",
+                maxHeight: "90vh",
+                objectFit: "contain",
               }}
               draggable={false}
             />

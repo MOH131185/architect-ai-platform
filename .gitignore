@@ -60,3 +60,13 @@ qa_results/
 
 # Agent/IDE cache
 .agent/
+.claude/worktrees/
+
+# Test/debug artifacts
+.coverage
+debug_runs/
+test-portfolio.png
+eslint-report.json
+build_active_*/
+build_active_ci/
+build_phase*/

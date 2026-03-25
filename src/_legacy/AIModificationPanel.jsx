@@ -8,17 +8,28 @@
  * - Maintain consistency with original DNA
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit, History, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-import designGenerationHistory from '../services/designGenerationHistory.js';
-import aiModificationService from '../services/aiModificationService.js';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Plus,
+  Edit,
+  History,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+} from "lucide-react";
+import designGenerationHistory from "../services/designGenerationHistory.js";
+import aiModificationService from "../services/aiModificationService.js";
 
-const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete }) => {
+const AIModificationPanel = ({
+  sessionId,
+  currentDesign,
+  onModificationComplete,
+}) => {
   const [missingViews, setMissingViews] = useState([]);
   const [modifications, setModifications] = useState([]);
-  const [activeTab, setActiveTab] = useState('missing'); // 'missing', 'modify', 'history'
+  const [activeTab, setActiveTab] = useState("missing"); // 'missing', 'modify', 'history'
   const [generatingView, setGeneratingView] = useState(null);
-  const [modificationPrompt, setModificationPrompt] = useState('');
+  const [modificationPrompt, setModificationPrompt] = useState("");
   const [session, setSession] = useState(null);
 
   const loadSessionData = useCallback(() => {
@@ -37,7 +48,6 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
     }
   }, [sessionId, loadSessionData]);
 
-
   const handleAddView = async (viewType) => {
     setGeneratingView(viewType);
 
@@ -45,7 +55,7 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
       const result = await aiModificationService.addMissingView({
         sessionId: sessionId,
         viewType: viewType,
-        useOriginalDNA: true
+        useOriginalDNA: true,
       });
 
       if (result.success) {
@@ -55,16 +65,16 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
         // Notify parent component
         if (onModificationComplete) {
           onModificationComplete({
-            type: 'view-added',
+            type: "view-added",
             viewType: viewType,
-            result: result
+            result: result,
           });
         }
       } else {
         alert(`Failed to add ${viewType}: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error adding view:', error);
+      console.error("Error adding view:", error);
       alert(`Error: ${error.message}`);
     } finally {
       setGeneratingView(null);
@@ -73,36 +83,36 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
 
   const handleModifyA1Sheet = async () => {
     if (!modificationPrompt.trim()) {
-      alert('Please enter modification instructions');
+      alert("Please enter modification instructions");
       return;
     }
 
-    setGeneratingView('a1-sheet-modify');
+    setGeneratingView("a1-sheet-modify");
 
     try {
       const result = await aiModificationService.modifyA1Sheet({
         sessionId: sessionId,
         userPrompt: modificationPrompt,
-        keepElements: [] // Can be customized
+        keepElements: [], // Can be customized
       });
 
       if (result.success) {
-        console.log('✅ Successfully modified A1 sheet');
+        console.log("✅ Successfully modified A1 sheet");
         loadSessionData();
 
         if (onModificationComplete) {
           onModificationComplete({
-            type: 'a1-modified',
-            result: result
+            type: "a1-modified",
+            result: result,
           });
         }
 
-        setModificationPrompt('');
+        setModificationPrompt("");
       } else {
         alert(`Failed to modify A1 sheet: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error modifying A1 sheet:', error);
+      console.error("Error modifying A1 sheet:", error);
       alert(`Error: ${error.message}`);
     } finally {
       setGeneratingView(null);
@@ -111,20 +121,20 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
 
   const getViewCategoryLabel = (category) => {
     const labels = {
-      floorPlans: 'Floor Plans',
-      technicalDrawings: 'Technical Drawings',
-      threeD: '3D Views'
+      floorPlans: "Floor Plans",
+      technicalDrawings: "Technical Drawings",
+      threeD: "3D Views",
     };
     return labels[category] || category;
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'completed':
+      case "completed":
         return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case 'processing':
+      case "processing":
         return <Clock className="w-4 h-4 text-blue-600 animate-spin" />;
-      case 'failed':
+      case "failed":
         return <AlertCircle className="w-4 h-4 text-red-600" />;
       default:
         return <Clock className="w-4 h-4 text-gray-400" />;
@@ -144,7 +154,8 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <p className="text-yellow-800 text-sm">
-          No active session. Generate a design first to use modification features.
+          No active session. Generate a design first to use modification
+          features.
         </p>
       </div>
     );
@@ -170,12 +181,21 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
             <CheckCircle className="w-5 h-5 text-indigo-600" />
           </div>
           <div className="flex-1">
-            <h4 className="font-semibold text-gray-800 mb-1">Original Design DNA Locked</h4>
+            <h4 className="font-semibold text-gray-800 mb-1">
+              Original Design DNA Locked
+            </h4>
             <div className="text-sm text-gray-700 space-y-1">
-              <p>📏 Dimensions: {session.original.dna?.dimensions?.length}m × {session.original.dna?.dimensions?.width}m × {session.original.dna?.dimensions?.height}m</p>
-              <p>🎨 Style: {session.original.dna?.style || 'Modern'}</p>
+              <p>
+                📏 Dimensions: {session.original.dna?.dimensions?.length}m ×{" "}
+                {session.original.dna?.dimensions?.width}m ×{" "}
+                {session.original.dna?.dimensions?.height}m
+              </p>
+              <p>🎨 Style: {session.original.dna?.style || "Modern"}</p>
               <p>🎲 Seed: {session.original.seed}</p>
-              <p className="text-xs text-indigo-600 mt-2">All new generations will maintain these exact specifications for consistency</p>
+              <p className="text-xs text-indigo-600 mt-2">
+                All new generations will maintain these exact specifications for
+                consistency
+              </p>
             </div>
           </div>
         </div>
@@ -184,11 +204,11 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
       {/* Tabs */}
       <div className="flex space-x-2 border-b">
         <button
-          onClick={() => setActiveTab('missing')}
+          onClick={() => setActiveTab("missing")}
           className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'missing'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-600 hover:text-gray-800'
+            activeTab === "missing"
+              ? "text-indigo-600 border-b-2 border-indigo-600"
+              : "text-gray-600 hover:text-gray-800"
           }`}
         >
           <span className="flex items-center space-x-2">
@@ -197,11 +217,11 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
           </span>
         </button>
         <button
-          onClick={() => setActiveTab('modify')}
+          onClick={() => setActiveTab("modify")}
           className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'modify'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-600 hover:text-gray-800'
+            activeTab === "modify"
+              ? "text-indigo-600 border-b-2 border-indigo-600"
+              : "text-gray-600 hover:text-gray-800"
           }`}
         >
           <span className="flex items-center space-x-2">
@@ -210,11 +230,11 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
           </span>
         </button>
         <button
-          onClick={() => setActiveTab('history')}
+          onClick={() => setActiveTab("history")}
           className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'history'
-              ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-600 hover:text-gray-800'
+            activeTab === "history"
+              ? "text-indigo-600 border-b-2 border-indigo-600"
+              : "text-gray-600 hover:text-gray-800"
           }`}
         >
           <span className="flex items-center space-x-2">
@@ -227,12 +247,14 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
       {/* Tab Content */}
       <div className="mt-4">
         {/* Missing Views Tab */}
-        {activeTab === 'missing' && (
+        {activeTab === "missing" && (
           <div className="space-y-4">
             {missingViews.length === 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
                 <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
-                <p className="text-green-800 font-semibold">All views generated!</p>
+                <p className="text-green-800 font-semibold">
+                  All views generated!
+                </p>
                 <p className="text-green-700 text-sm mt-1">
                   Your design includes all standard architectural drawings.
                 </p>
@@ -240,16 +262,17 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
             ) : (
               <>
                 <p className="text-sm text-gray-600">
-                  Click on any missing view below to generate it using the original design DNA:
+                  Click on any missing view below to generate it using the
+                  original design DNA:
                 </p>
 
-                {Object.keys(groupedMissingViews).map(category => (
+                {Object.keys(groupedMissingViews).map((category) => (
                   <div key={category} className="space-y-2">
                     <h4 className="font-semibold text-gray-800 text-sm uppercase tracking-wide">
                       {getViewCategoryLabel(category)}
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {groupedMissingViews[category].map(view => (
+                      {groupedMissingViews[category].map((view) => (
                         <button
                           key={view.type}
                           onClick={() => handleAddView(view.type)}
@@ -275,7 +298,7 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
         )}
 
         {/* Modify A1 Sheet Tab */}
-        {activeTab === 'modify' && (
+        {activeTab === "modify" && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -290,19 +313,25 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
             </div>
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-semibold text-blue-900 text-sm mb-2">Consistency Guarantee</h4>
+              <h4 className="font-semibold text-blue-900 text-sm mb-2">
+                Consistency Guarantee
+              </h4>
               <p className="text-blue-800 text-xs">
-                The modified A1 sheet will maintain the same building dimensions, materials, and style as your original design.
-                Only the requested changes will be applied.
+                The modified A1 sheet will maintain the same building
+                dimensions, materials, and style as your original design. Only
+                the requested changes will be applied.
               </p>
             </div>
 
             <button
               onClick={handleModifyA1Sheet}
-              disabled={!modificationPrompt.trim() || generatingView === 'a1-sheet-modify'}
+              disabled={
+                !modificationPrompt.trim() ||
+                generatingView === "a1-sheet-modify"
+              }
               className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
-              {generatingView === 'a1-sheet-modify' ? (
+              {generatingView === "a1-sheet-modify" ? (
                 <>
                   <Clock className="w-5 h-5 animate-spin" />
                   <span>Generating Modified Sheet...</span>
@@ -318,12 +347,14 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
         )}
 
         {/* History Tab */}
-        {activeTab === 'history' && (
+        {activeTab === "history" && (
           <div className="space-y-3">
             {modifications.length === 0 ? (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
                 <History className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600 font-semibold">No modifications yet</p>
+                <p className="text-gray-600 font-semibold">
+                  No modifications yet
+                </p>
                 <p className="text-gray-500 text-sm mt-1">
                   Your modification history will appear here
                 </p>
@@ -331,12 +362,17 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
             ) : (
               <div className="space-y-3">
                 {modifications.map((mod, index) => (
-                  <div key={mod.id} className="border border-gray-200 rounded-lg p-4 space-y-2">
+                  <div
+                    key={mod.id}
+                    className="border border-gray-200 rounded-lg p-4 space-y-2"
+                  >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         {getStatusIcon(mod.status)}
                         <span className="font-semibold text-gray-800 text-sm">
-                          {mod.type === 'add-view' ? 'Added View' : 'Modified A1 Sheet'}
+                          {mod.type === "add-view"
+                            ? "Added View"
+                            : "Modified A1 Sheet"}
                         </span>
                       </div>
                       <span className="text-xs text-gray-500">
@@ -348,11 +384,13 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
 
                     {mod.request?.userPrompt && (
                       <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-600 italic">"{mod.request.userPrompt}"</p>
+                        <p className="text-xs text-gray-600 italic">
+                          "{mod.request.userPrompt}"
+                        </p>
                       </div>
                     )}
 
-                    {mod.status === 'completed' && mod.response?.data?.url && (
+                    {mod.status === "completed" && mod.response?.data?.url && (
                       <div className="pt-2">
                         <img
                           src={mod.response.data.url}
@@ -362,9 +400,11 @@ const AIModificationPanel = ({ sessionId, currentDesign, onModificationComplete 
                       </div>
                     )}
 
-                    {mod.status === 'failed' && (
+                    {mod.status === "failed" && (
                       <div className="bg-red-50 border border-red-200 rounded p-2">
-                        <p className="text-xs text-red-700">Error: {mod.error}</p>
+                        <p className="text-xs text-red-700">
+                          Error: {mod.error}
+                        </p>
                       </div>
                     )}
                   </div>

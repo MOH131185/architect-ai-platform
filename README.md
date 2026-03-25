@@ -33,12 +33,12 @@ Site Polygon  →  Blended Style    →    Materials    →  Validated    →  S
 
 ### Benefits
 
-| Metric | Before (Separate Views) | After (A1 One-Shot) |
-|--------|------------------------|---------------------|
-| **Cross-View Consistency** | 70% | **98%+** ⬆ |
-| **Material Consistency** | 60% | **99%** ⬆ |
-| **Generation Time** | ~3 minutes | **~30-40 seconds** ⬇ |
-| **Output Format** | 13 separate images | **1 professional sheet** ⬆ |
+| Metric                     | Before (Separate Views) | After (A1 One-Shot)        |
+| -------------------------- | ----------------------- | -------------------------- |
+| **Cross-View Consistency** | 70%                     | **98%+** ⬆                 |
+| **Material Consistency**   | 60%                     | **99%** ⬆                  |
+| **Generation Time**        | ~3 minutes              | **~30-40 seconds** ⬇       |
+| **Output Format**          | 13 separate images      | **1 professional sheet** ⬆ |
 
 ### How to Use
 
@@ -61,7 +61,7 @@ A1 One-Shot is **enabled by default**. Simply click "Generate AI Designs" and th
   - `REACT_APP_GOOGLE_MAPS_API_KEY` - **REQUIRED** for geocoding and 3D maps
   - `REACT_APP_OPENWEATHER_API_KEY` - **REQUIRED** for climate data
   - `OPENAI_REASONING_API_KEY` - **OPTIONAL** fallback for reasoning only (Together.ai is primary)
-  
+
 **Note:** Legacy providers (DALL-E, Replicate, OpenArt, Maginary) have been removed. All image generation uses Together.ai FLUX.1-dev exclusively.
 
 ### Installation
@@ -86,23 +86,30 @@ cp env.template .env
 ### Running Locally
 
 #### Option 1: Full Development Environment (Recommended)
+
 ```bash
 npm run dev
 ```
+
 This starts:
+
 - React app on `http://localhost:3000`
 - Express API proxy on `http://localhost:3001`
 
 #### Option 2: React Only
+
 ```bash
 npm start
 ```
+
 Open [http://localhost:3000](http://localhost:3000)
 
 #### Option 3: API Server Only
+
 ```bash
 npm run server
 ```
+
 API proxy runs on `http://localhost:3001`
 
 ---
@@ -110,23 +117,35 @@ API proxy runs on `http://localhost:3001`
 ## 📋 Available Commands
 
 ### Development
+
 - `npm run dev` - Start both React and Express servers concurrently **(recommended)**
 - `npm start` - Start React development server only
 - `npm run server` - Start Express API proxy only
 
-### Testing
-- `npm test` - Run Jest test suite in interactive mode
-- `npm run test:coverage` - Run tests with coverage report
-- `node scripts/test-a1-one-shot.js` - Test A1 One-Shot workflow end-to-end
-- `node test-together-api-connection.js` - Test Together.ai connectivity
-- `node test-dna-pipeline.js` - Test DNA generation pipeline
+### Canonical Validation
+
+- `npm run verify:active` - Run the protected active-path validation suite and build
+- `npm run validate:active` - Run the protected active-path checks without building
+- `npm run test:compose:routing` - Validate A1 compose core and routing contracts
+- `npm run test:dna:pipeline` - Validate the DNA pipeline
+- `npm run test:clinic:a1` - Validate clinic A1 prompt generation
+- `npm run build:active` - Build with a dedicated output path for stable local verification on Windows
+
+### Legacy or Manual Diagnostics
+
+- `npm test` - Run the CRA/Jest suite in interactive mode
+- `npm run test:coverage` - Run CRA/Jest coverage output
+- `node test-together-api-connection.js` - Manual Together.ai connectivity check
+- `node scripts/smoke/runA1Smoke.mjs` - Manual smoke workflow for live API debugging, not part of protected CI
 
 ### Validation
+
 - `npm run check:env` - Verify all required environment variables
 - `npm run check:contracts` - Validate service contracts
 - `npm run check:all` - Run all validation checks
 
 ### Build & Deploy
+
 - `npm run build` - Create production build
 - `git push origin main` - Auto-deploys to Vercel (if configured)
 
@@ -137,33 +156,40 @@ API proxy runs on `http://localhost:3001`
 ```
 architect-ai-platform/
 ├── src/
-│   ├── ArchitectAIEnhanced.js      # Main application (2000+ lines)
-│   ├── App.js                       # Entry point
-│   ├── components/                  # React components
+│   ├── App.js                                # Entry point
+│   ├── components/
+│   │   ├── ArchitectAIWizardContainer.jsx    # Main wizard shell
+│   │   ├── steps/                            # Wizard step components
+│   │   │   ├── GenerateStep.jsx
+│   │   │   ├── ResultsStep.jsx
+│   │   │   └── ...
 │   │   ├── A1SheetViewer.jsx
-│   │   ├── SitePolygonDrawer.jsx
 │   │   └── ...
-│   ├── services/                    # 40+ AI/logic services
-│   │   ├── togetherAIService.js    # FLUX image generation
-│   │   ├── togetherAIReasoningService.js
-│   │   ├── reasoningOrchestrator.js # OpenAI → Together.ai fallback
-│   │   ├── enhancedDNAGenerator.js # Design DNA system
-│   │   ├── dnaValidator.js
-│   │   ├── dnaPromptGenerator.js
-│   │   ├── dnaWorkflowOrchestrator.js # A1 workflow orchestration
+│   ├── hooks/
+│   │   └── useArchitectAIWorkflow.js         # Core generation hook
+│   ├── services/                             # AI/logic services
+│   │   ├── dnaWorkflowOrchestrator.js        # Multi-panel A1 orchestration
+│   │   ├── twoPassDNAGenerator.js            # Two-pass DNA (Author+Reviewer)
+│   │   ├── panelOrchestrator.js              # Panel generation orchestration
+│   │   ├── multiModelImageService.js         # FLUX + SDXL image wrapper
+│   │   ├── dnaPromptGenerator.js             # DNA → per-panel prompts
+│   │   ├── dnaValidator.js                   # DNA validation
+│   │   ├── a1/panelPromptBuilders.js         # Specialized panel prompts
 │   │   └── ...
 │   ├── config/
-│   │   └── featureFlags.js         # Feature toggle system
-│   └── hooks/
-├── api/                             # Vercel Serverless Functions
-│   ├── together-chat.js            # Together.ai reasoning proxy
-│   ├── together-image.js           # Together.ai image proxy
-│   ├── openai-chat.js              # OpenAI fallback proxy
+│   │   ├── featureFlags.js                   # Feature toggle system
+│   │   └── fluxPresets.js                    # FLUX model presets
+│   └── _legacy/                              # Quarantined dead code
+├── api/                                      # Vercel Serverless Functions
+│   ├── together-chat.js
+│   ├── together-image.js
+│   ├── a1/compose.js                         # Server-side A1 composition
 │   └── ...
 ├── scripts/
-│   ├── test-a1-one-shot.js        # A1 workflow test
+│   ├── check-env.cjs
+│   ├── check-contracts.cjs
 │   └── ...
-├── server.js                        # Express API proxy (development)
+├── server.cjs                                # Express API proxy (development)
 └── package.json
 ```
 
@@ -179,38 +205,29 @@ architect-ai-platform/
 
 ### Testing
 
-### Run Comprehensive Test Suite
+### Run Active Validation Suite
+
 ```bash
-node scripts/test-a1-one-shot.js
+npm run verify:active
 ```
 
 Expected output:
-```
-🧪 Testing A1 One-Shot Workflow...
 
-📋 Test Parameters:
-   Location: 123 Test Street, London, UK
-   Program: residential
-   Area: 200 m²
-   Floors: 2
-
-🚀 Running A1 Sheet Workflow...
-
-✅ A1 Sheet workflow completed successfully!
-   The workflow generates a single comprehensive A1 sheet
-   with all views embedded and style/climate/portfolio blended.
+```bash
+> npm run check:contracts
+> npm run test:compose:routing
+> npm run test:dna:pipeline
+> npm run test:clinic:a1
+> npm run build:active
 ```
 
 ### Test Individual Services
+
 ```bash
-# Test Together.ai connectivity
-node test-together-api-connection.js
-
-# Test DNA generation
-node test-dna-pipeline.js
-
-# Test A1 one-shot workflow
-node scripts/test-a1-one-shot.js
+npm run test:compose:routing
+npm run test:dna:pipeline
+npm run test:clinic:a1
+npm run build:active
 ```
 
 ---
@@ -218,27 +235,33 @@ node scripts/test-a1-one-shot.js
 ## 📚 Documentation
 
 ### Core Documentation
+
 - 📖 **[CLAUDE.md](./CLAUDE.md)** - Complete developer guide (for Claude Code)
 - 📋 **[API_SETUP.md](./API_SETUP.md)** - AI integration reference
 - 🔧 **[VERCEL_ENV_SETUP.md](./VERCEL_ENV_SETUP.md)** - Deployment guide
 
 ### System Documentation
+
 - 🧬 **[DNA_SYSTEM_ARCHITECTURE.md](./DNA_SYSTEM_ARCHITECTURE.md)** - Design DNA system
 - ✓ **[CONSISTENCY_SYSTEM_COMPLETE.md](./CONSISTENCY_SYSTEM_COMPLETE.md)** - 98% consistency details
 - 🔧 **[FIX_SUMMARY.md](./FIX_SUMMARY.md)** - Recent critical fixes
 - 📐 **[A1_SHEET_ONE_SHOT_IMPLEMENTATION.md](./A1_SHEET_ONE_SHOT_IMPLEMENTATION.md)** - A1 workflow details
+- 🛰️ **[docs/GENARCH_OPERATIONS_RUNBOOK.md](./docs/GENARCH_OPERATIONS_RUNBOOK.md)** - Backend-only genarch API operations and contract checks
 
 ---
 
 ## 🚀 Deployment
 
 ### Vercel (Automatic)
+
 This repository auto-deploys to Vercel:
+
 1. Push to `main` branch triggers deployment
 2. Set environment variables in Vercel dashboard
 3. Production URL: https://www.archiaisolution.pro
 
 ### Manual Deployment
+
 ```bash
 # Build production bundle
 npm run build
@@ -251,17 +274,21 @@ npm run build
 ## 🔑 Environment Variables
 
 ### Required
+
 - `TOGETHER_API_KEY` - Together.ai API key (requires paid tier for FLUX models)
 
 ### Recommended
+
 - `REACT_APP_GOOGLE_MAPS_API_KEY` - Google Maps geocoding and 3D maps
 - `REACT_APP_OPENWEATHER_API_KEY` - Climate data analysis
 
 ### Optional (Fallbacks)
+
 - `REACT_APP_OPENAI_API_KEY` - GPT-4 reasoning fallback
 - `REACT_APP_REPLICATE_API_KEY` - SDXL image generation fallback
 
 ### Validation
+
 ```bash
 # Check if all required variables are present
 npm run check:env
@@ -272,6 +299,7 @@ npm run check:env
 ## 💰 API Costs
 
 ### Per Design Generation (DNA-Enhanced)
+
 - Together.ai Qwen 2.5 72B (DNA): ~$0.02-$0.03
 - Together.ai FLUX.1-dev (13 images): ~$0.13-$0.20
 - **Total**: ~$0.15-$0.23 per complete design
@@ -283,21 +311,25 @@ npm run check:env
 ## 🐛 Troubleshooting
 
 ### Only 2 views generate (missing 11 views)
+
 **Cause**: Rate limiting - delay too short or rate limit hit
 **Fix**: Verify `togetherAIService.js:337` shows `delayMs = 6000`
 **Action**: Wait 60 seconds before retrying
 
 ### No views generate at all
+
 **Cause**: Express server not running or API key missing
 **Fix**: Start server with `npm run server` in separate terminal
 **Verify**: Check `.env` has `TOGETHER_API_KEY=tgp_v1_...`
 
 ### Views are inconsistent (different colors/materials)
+
 **Cause**: Legacy workflow bypassing DNA system
 **Fix**: Verify console shows "🧬 Using DNA-Enhanced FLUX workflow"
 **Note**: `geometryFirst` flag is experimental and may not be fully functional (TypeScript core files incomplete)
 
 ### Together.ai "Insufficient credits" error
+
 **Cause**: Free tier doesn't support FLUX models
 **Fix**: Add $5-10 credits at https://api.together.ai/settings/billing
 
@@ -306,6 +338,7 @@ npm run check:env
 ## 🤝 Contributing
 
 Contributions welcome! Please:
+
 1. Fork the repository
 2. Create a feature branch
 3. Run tests: `npm test` (note: geometry-first tests may fail - feature is experimental)
@@ -322,6 +355,7 @@ Contributions welcome! Please:
 ## 🙏 Credits
 
 Built with:
+
 - [React](https://reactjs.org/)
 - [Three.js](https://threejs.org/) - 3D geometry rendering
 - [Together.ai](https://together.ai/) - FLUX.1-dev & Qwen 2.5 72B
@@ -330,6 +364,6 @@ Built with:
 
 ---
 
-**Status**: ✅ Production Ready | **Test Coverage**: 100% (49/49) | **Consistency**: 98%+
+**Status**: ✅ Production Ready | **Active CI**: Contract + compose + DNA + clinic + build | **Consistency**: 98%+
 
 Generated with [Claude Code](https://claude.com/claude-code)

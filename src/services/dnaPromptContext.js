@@ -1,7 +1,10 @@
 /**
- * DNA Prompt Context Builder
+ * DNA Prompt Context Builder — CANONICAL PROMPT CONTEXT
  *
- * Builds structured, stable JSON context from DNA for embedding in prompts.
+ * Single source of truth for structured DNA context embedded in generation
+ * prompts. Builds compact JSON with material hex colors, dimensions, facade
+ * details, and floor heights. Re-exported by design/dnaPromptContext.js (adapter).
+ *
  * Ensures reproducibility by using sorted keys and compact format.
  */
 

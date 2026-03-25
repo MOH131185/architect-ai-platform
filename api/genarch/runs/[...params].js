@@ -74,6 +74,10 @@ export default async function handler(req, res) {
       method: "GET",
       headers: buildHeaders(),
     });
+    const contractVersion = response.headers.get("x-genarch-contract-version");
+    if (contractVersion) {
+      res.setHeader("X-Genarch-Contract-Version", contractVersion);
+    }
 
     if (!response.ok) {
       // Try to parse as JSON error

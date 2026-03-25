@@ -4,11 +4,17 @@
  * Returns the health status of the API and configured services.
  */
 
+import {
+  GENARCH_CONTRACT_VERSION,
+  GENARCH_VERSION_HEADER,
+} from "../src/services/genarch/genarchContract.js";
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader(GENARCH_VERSION_HEADER, GENARCH_CONTRACT_VERSION);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -26,6 +32,13 @@ export default async function handler(req, res) {
       openai: !!process.env.OPENAI_REASONING_API_KEY,
       genarch:
         !!process.env.RUNPOD_GENARCH_URL && !!process.env.GENARCH_API_KEY,
+    },
+    contracts: {
+      genarchApi: GENARCH_CONTRACT_VERSION,
+    },
+    productSurface: {
+      genarchApi: "backend-only",
+      genarchFrontend: "dormant-legacy",
     },
     env: {
       RUNPOD_GENARCH_URL: process.env.RUNPOD_GENARCH_URL

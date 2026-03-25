@@ -433,6 +433,18 @@ export function normalizeSheetMetadata(metadata) {
     height: metadata.height || 1269,
     a1LayoutKey: metadata.a1LayoutKey || "uk-riba-standard",
     workflow: metadata.workflow || PIPELINE_MODE.MULTI_PANEL,
+    transport: metadata.transport || null,
+    durationMs: metadata.durationMs || null,
+    traceId: metadata.traceId || null,
+    runId: metadata.runId || null,
+    manifestUrl: metadata.manifestUrl || null,
+    manifestFile: metadata.manifestFile || null,
+    outputFile: metadata.outputFile || null,
+    pdfOutputFile: metadata.pdfOutputFile || null,
+    pdfUrl: metadata.pdfUrl || null,
+    qaAllPassed: metadata.qaAllPassed ?? null,
+    critiqueOverallPass: metadata.critiqueOverallPass ?? null,
+    hashValidation: metadata.hashValidation || null,
   };
 }
 
@@ -533,9 +545,12 @@ export function normalizeMultiPanelResult(raw) {
 
   const normalized = {
     success: raw.success !== false,
+    designId: raw.designId || raw.id || null,
+    sheetId: raw.sheetId || raw.a1Sheet?.sheetId || null,
     url: composedSheetUrl,
     composedSheetUrl,
     resultUrl: composedSheetUrl,
+    pdfUrl: raw.pdfUrl || raw.a1Sheet?.pdfUrl || null,
     masterDNA: raw.masterDNA || raw.dna,
     dna: raw.masterDNA || raw.dna,
     seed: raw.metadata?.baseSeed || raw.seed || raw.seeds?.base || Date.now(),
@@ -552,18 +567,26 @@ export function normalizeMultiPanelResult(raw) {
     locationData: raw.locationData,
     geometryDNA,
     geometryRenders,
+    qa: raw.qa || raw.a1Sheet?.qa || null,
+    critique: raw.critique || raw.a1Sheet?.critique || null,
+    trace: raw.trace || raw.a1Sheet?.trace || null,
   };
 
   normalized.a1Sheet = {
     ...(raw.a1Sheet || {}),
+    sheetId: normalized.sheetId,
     url: composedSheetUrl,
     composedSheetUrl,
+    pdfUrl: normalized.pdfUrl,
     metadata: normalizedMetadata,
     panels: panelMap,
     panelMap,
     coordinates,
     geometryDNA,
     geometryRenders,
+    qa: normalized.qa,
+    critique: normalized.critique,
+    trace: normalized.trace,
   };
 
   return normalized;

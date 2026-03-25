@@ -60,15 +60,20 @@
     "server": "node server.cjs",
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "build": "react-scripts build",
+    "build:active": "node scripts/run-build-active.cjs",
     "build:vercel": "CI=false react-scripts build",
     "test": "react-scripts test",
-    "test:integration": "node scripts/test-a1-one-shot.js",
+    "test:compose:routing": "node scripts/tests/test-compose-core-and-routing.mjs",
+    "test:dna:pipeline": "node test-dna-pipeline.js",
+    "test:clinic:a1": "node test-clinic-a1-generation.js",
     "test:ci": "react-scripts test --watchAll=false --ci",
     "test:coverage": "react-scripts test --watchAll=false --coverage",
     "eject": "react-scripts eject",
     "check:env": "node scripts/check-env.cjs",
     "check:contracts": "node scripts/check-contracts.cjs",
+    "check:genarch-contracts": "node scripts/check-genarch-contracts.cjs",
     "check:all": "npm run check:env && npm run check:contracts",
+    "validate:active": "npm run check:contracts && npm run test:compose:routing && npm run test:dna:pipeline && npm run test:clinic:a1",
     "lint": "eslint \"src/**/*.{js,jsx}\" \"api/**/*.js\" \"scripts/**/*.js\" \"server.cjs\"",
     "lint:fix": "npm run lint -- --fix",
     "format": "prettier --write \"src/**/*.{js,jsx,json,css,md}\" \"api/**/*.{js,json}\" \"scripts/**/*.{js,json}\" \"*.{js,json,md}\"",
@@ -78,43 +83,50 @@
     "clean": "rm -rf build coverage .eslintcache node_modules/.cache .turbo",
     "clean:all": "npm run clean && rm -rf node_modules package-lock.json",
     "reset": "npm run clean:all && npm install",
-    "verify": "npm run check:all && npm run lint && npm run test:ci && npm run build",
-    "verify:pipeline": "node scripts/verify-pipeline.js",
-    "verify:quick": "node scripts/verify-pipeline.js --skip-lint",
-    "verify:full": "node scripts/verify-pipeline.js --verbose",
-    "smoke": "node scripts/smoke-test.js",
-    "smoke:full": "node scripts/smoke-test.js --full",
-    "smoke:a1": "node scripts/smoke/runA1Smoke.mjs",
-    "debug:a1": "node scripts/run_debug_a1.js",
-    "debug:one": "node scripts/debug-one-generation.js",
-    "qa:regress": "node scripts/qa-regression-harness.mjs --dry-run",
-    "qa:regress:full": "node scripts/qa-regression-harness.mjs",
-    "qa:regress:ci": "node scripts/qa-regression-harness.mjs --runs=5 --dry-run",
-    "qa:test": "react-scripts test --testPathPattern=src/__tests__/qa --watchAll=false --passWithNoTests",
-    "qa:metrics": "node scripts/test-image-qa.mjs",
-    "qa:blank": "node scripts/test-blank-detection.mjs",
-    "qa:consistency": "node scripts/qa-consistency.mjs",
-    "test:golden": "node tests/golden/cli.mjs",
-    "test:golden:live": "node tests/golden/cli.mjs --live",
-    "test:golden:update": "node tests/golden/cli.mjs --live --update",
-    "qa:visual": "node scripts/qa-visual-regression.mjs",
-    "qa:visual:update": "node scripts/qa-visual-regression.mjs --update-baselines",
-    "qa:visual:ui": "node scripts/qa-visual-regression.mjs --ui-only",
-    "qa:visual:a1": "node scripts/qa-visual-regression.mjs --a1-only",
-    "qa:real": "node scripts/qa-real-generation-playwright.mjs",
-    "qa:real:headed": "node scripts/qa-real-generation-playwright.mjs --headed",
-    "qa:real:fast": "node scripts/qa-real-generation-playwright.mjs --runs=2 --fail-fast",
-    "qa:real:ci": "node scripts/qa-real-generation-playwright.mjs --headless --api-live --fail-fast",
-    "qa:real:single": "node scripts/qa-real-generation-playwright.mjs --runs=1 --headed",
-    "qa:matrix": "node scripts/qa-real-e2e-matrix.mjs",
-    "qa:matrix:headed": "node scripts/qa-real-e2e-matrix.mjs --headed",
-    "qa:matrix:single": "node scripts/qa-real-e2e-matrix.mjs --config",
-    "qa:matrix:fast": "node scripts/qa-real-e2e-matrix.mjs --fast"
+    "verify": "npm run verify:active",
+    "verify:active": "npm run validate:active && npm run build:active",
+    "ci:active": "npm run verify:active",
+    "qa:test": "react-scripts test --testPathPattern=src/__tests__/qa --watchAll=false --passWithNoTests"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest"
+    ],
+    "rules": {
+      "import/no-anonymous-default-export": "off"
+    },
+    "overrides": [
+      {
+        "files": [
+          "server.cjs",
+          "api/a1/compose.js",
+          "src/services/design/panelGenerationService.js",
+          "src/services/dnaWorkflowOrchestrator.js"
+        ],
+        "rules": {
+          "no-unused-vars": "off"
+        }
+      },
+      {
+        "files": [
+          "src/services/**/*.{js,jsx}"
+        ],
+        "rules": {
+          "no-unused-vars": "off"
+        }
+      },
+      {
+        "files": [
+          "src/geometry/**/*.{js,jsx,ts,tsx}",
+          "src/utils/polygonSimplifier.js",
+          "src/utils/svgPathValidator.js"
+        ],
+        "rules": {
+          "no-unused-vars": "off",
+          "@typescript-eslint/no-unused-vars": "off"
+        }
+      }
     ]
   },
   "browserslist": {

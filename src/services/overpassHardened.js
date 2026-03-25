@@ -239,8 +239,9 @@ async function executeQuery(query, options = {}) {
 
         // Don't retry on last attempt
         if (attempt < maxRetries) {
-          logger.debug(`[Overpass] Waiting ${retryDelay}ms before retry`);
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          const waitMs = retryDelay;
+          logger.debug(`[Overpass] Waiting ${waitMs}ms before retry`);
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
           retryDelay = Math.min(
             retryDelay * CONFIG.BACKOFF_MULTIPLIER,
             CONFIG.MAX_RETRY_DELAY_MS,

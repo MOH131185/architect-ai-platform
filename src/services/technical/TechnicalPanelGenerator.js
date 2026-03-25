@@ -126,20 +126,37 @@ export class TechnicalPanelGenerator {
 
     // Only handle technical panels
     if (styleZone !== "technical") {
-      throw new Error(`TechnicalPanelGenerator only handles technical panels, not ${panelType}`);
+      throw new Error(
+        `TechnicalPanelGenerator only handles technical panels, not ${panelType}`,
+      );
     }
 
     logger.info(`Generating technical panel: ${panelType}`);
 
     // Try vector generation first if available
-    if (this.useVectorGeneration && this.canGenerateVector(panelType, masterDNA)) {
+    if (
+      this.useVectorGeneration &&
+      this.canGenerateVector(panelType, masterDNA)
+    ) {
       logger.info(`  Using vector/SVG generation for ${panelType}`);
-      return this.generateVectorPanel(panelType, masterDNA, fingerprint, options);
+      return this.generateVectorPanel(
+        panelType,
+        masterDNA,
+        fingerprint,
+        options,
+      );
     }
 
     // Fall back to diffusion with strict orthographic prompts
-    logger.info(`  Using diffusion with strict orthographic prompts for ${panelType}`);
-    return this.generateDiffusionPanel(panelType, masterDNA, fingerprint, options);
+    logger.info(
+      `  Using diffusion with strict orthographic prompts for ${panelType}`,
+    );
+    return this.generateDiffusionPanel(
+      panelType,
+      masterDNA,
+      fingerprint,
+      options,
+    );
   }
 
   /**
@@ -148,7 +165,9 @@ export class TechnicalPanelGenerator {
   canGenerateVector(panelType, masterDNA) {
     // Check if we have sufficient geometry data
     const hasGeometry = masterDNA?._geometry || masterDNA?.geometry;
-    const hasRooms = masterDNA?.rooms?.length > 0 || masterDNA?._structured?.program?.rooms?.length > 0;
+    const hasRooms =
+      masterDNA?.rooms?.length > 0 ||
+      masterDNA?._structured?.program?.rooms?.length > 0;
 
     // Vector generation requires geometry data
     if (!hasGeometry && !hasRooms) {
@@ -170,11 +189,20 @@ export class TechnicalPanelGenerator {
       let svgContent;
 
       if (panelType.includes("floor_plan")) {
-        svgContent = this.generateFloorPlanSVG(panelType, masterDNA, { width, height });
+        svgContent = this.generateFloorPlanSVG(panelType, masterDNA, {
+          width,
+          height,
+        });
       } else if (panelType.includes("elevation")) {
-        svgContent = this.generateElevationSVG(panelType, masterDNA, { width, height });
+        svgContent = this.generateElevationSVG(panelType, masterDNA, {
+          width,
+          height,
+        });
       } else if (panelType.includes("section")) {
-        svgContent = this.generateSectionSVG(panelType, masterDNA, { width, height });
+        svgContent = this.generateSectionSVG(panelType, masterDNA, {
+          width,
+          height,
+        });
       } else if (panelType === "site_diagram") {
         svgContent = this.generateSiteDiagramSVG(masterDNA, { width, height });
       }
@@ -195,20 +223,36 @@ export class TechnicalPanelGenerator {
         },
       };
     } catch (error) {
-      logger.warn(`Vector generation failed for ${panelType}: ${error.message}`);
+      logger.warn(
+        `Vector generation failed for ${panelType}: ${error.message}`,
+      );
       logger.info(`  Falling back to diffusion generation`);
-      return this.generateDiffusionPanel(panelType, masterDNA, fingerprint, options);
+      return this.generateDiffusionPanel(
+        panelType,
+        masterDNA,
+        fingerprint,
+        options,
+      );
     }
   }
 
   /**
    * Generate a panel using diffusion with strict orthographic prompts
    */
-  async generateDiffusionPanel(panelType, masterDNA, fingerprint, options = {}) {
+  async generateDiffusionPanel(
+    panelType,
+    masterDNA,
+    fingerprint,
+    options = {},
+  ) {
     const { width, height } = this.config.resolution;
 
     // Build strict orthographic prompt
-    const prompt = this.buildStrictOrthographicPrompt(panelType, masterDNA, fingerprint);
+    const prompt = this.buildStrictOrthographicPrompt(
+      panelType,
+      masterDNA,
+      fingerprint,
+    );
     const negativePrompt = this.buildNegativePrompt(panelType);
 
     return {
@@ -284,7 +328,9 @@ watermark, text overlay, logo,
 incomplete, cut off, partial,
 grid paper, graph paper, lined paper,
 collage, multiple views, split image
-`.trim().replace(/\n/g, ", ");
+`
+      .trim()
+      .replace(/\n/g, ", ");
   }
 
   /**
@@ -292,12 +338,16 @@ collage, multiple views, split image
    */
   getPanelBasePrompt(panelType, masterDNA) {
     const dims = masterDNA?.dimensions || {};
-    const rooms = masterDNA?._structured?.program?.rooms || masterDNA?.rooms || [];
+    const rooms =
+      masterDNA?._structured?.program?.rooms || masterDNA?.rooms || [];
 
     const prompts = {
       floor_plan_ground: `
 Architectural floor plan, ground floor level, 2D overhead orthographic view,
-showing ${rooms.filter(r => r.floor === "ground" || r.floor === 0).map(r => r.name).join(", ")},
+showing ${rooms
+        .filter((r) => r.floor === "ground" || r.floor === 0)
+        .map((r) => r.name)
+        .join(", ")},
 building footprint ${dims.length || 15}m × ${dims.width || 10}m,
 clear wall outlines, door swings, window symbols,
 room labels with dimensions, circulation arrows
@@ -366,7 +416,10 @@ landscape indication, neighboring context
 `.trim(),
     };
 
-    return prompts[panelType] || `Architectural ${panelType} drawing, technical orthographic view`;
+    return (
+      prompts[panelType] ||
+      `Architectural ${panelType} drawing, technical orthographic view`
+    );
   }
 
   // =============================================================================
@@ -378,7 +431,8 @@ landscape indication, neighboring context
    */
   generateFloorPlanSVG(panelType, masterDNA, { width, height }) {
     const { colors, lineweights } = this.config;
-    const rooms = masterDNA?._structured?.program?.rooms || masterDNA?.rooms || [];
+    const rooms =
+      masterDNA?._structured?.program?.rooms || masterDNA?.rooms || [];
     const dims = masterDNA?.dimensions || { length: 15, width: 10 };
 
     // Determine which floor to show
@@ -388,14 +442,15 @@ landscape indication, neighboring context
         ? 1
         : 2;
     const floorRooms = rooms.filter(
-      (r) => r.floor === floorLevel || r.floor === "ground" && floorLevel === 0
+      (r) =>
+        r.floor === floorLevel || (r.floor === "ground" && floorLevel === 0),
     );
 
     // Calculate scale to fit
     const margin = 100;
     const scale = Math.min(
       (width - 2 * margin) / dims.length,
-      (height - 2 * margin) / dims.width
+      (height - 2 * margin) / dims.width,
     );
 
     // Start SVG
@@ -413,7 +468,7 @@ landscape indication, neighboring context
     // Draw rooms (simplified - would use actual room geometry in production)
     let roomX = 0;
     for (const room of floorRooms.slice(0, 4)) {
-      const roomWidth = (room.area_m2 || 20) / dims.width * scale;
+      const roomWidth = ((room.area_m2 || 20) / dims.width) * scale;
       svg += `
     <rect x="${roomX}" y="0" width="${roomWidth}" height="${bHeight}"
           fill="none" stroke="${colors.walls}" stroke-width="${lineweights.major}"/>
@@ -454,13 +509,14 @@ landscape indication, neighboring context
   generateElevationSVG(panelType, masterDNA, { width, height }) {
     const { colors, lineweights } = this.config;
     const dims = masterDNA?.dimensions || { length: 15, height: 7.5 };
-    const roof = masterDNA?._structured?.geometry?.roof || masterDNA?.roof || { type: "gable", pitch: 35 };
+    const roof = masterDNA?._structured?.geometry?.roof ||
+      masterDNA?.roof || { type: "gable", pitch: 35 };
 
     // Calculate scale
     const margin = 100;
     const scale = Math.min(
       (width - 2 * margin) / dims.length,
-      (height - 2 * margin) / (dims.height + 3) // Extra for roof
+      (height - 2 * margin) / (dims.height + 3), // Extra for roof
     );
 
     const bWidth = dims.length * scale;
@@ -472,7 +528,8 @@ landscape indication, neighboring context
   <g transform="translate(${margin}, ${margin + 50})">`;
 
     // Draw roof (gable)
-    const roofPeak = Math.tan((roof.pitch || 35) * Math.PI / 180) * (bWidth / 2);
+    const roofPeak =
+      Math.tan(((roof.pitch || 35) * Math.PI) / 180) * (bWidth / 2);
     svg += `
     <polygon points="0,0 ${bWidth / 2},${-roofPeak} ${bWidth},0"
              fill="none" stroke="${colors.outline}" stroke-width="${lineweights.outline}"/>`;
@@ -532,12 +589,16 @@ landscape indication, neighboring context
    */
   generateSectionSVG(panelType, masterDNA, { width, height }) {
     const { colors, lineweights } = this.config;
-    const dims = masterDNA?.dimensions || { length: 15, height: 7.5, floors: 2 };
+    const dims = masterDNA?.dimensions || {
+      length: 15,
+      height: 7.5,
+      floors: 2,
+    };
 
     const margin = 100;
     const scale = Math.min(
       (width - 2 * margin) / dims.length,
-      (height - 2 * margin) / (dims.height + 3)
+      (height - 2 * margin) / (dims.height + 3),
     );
 
     const bWidth = dims.length * scale;
@@ -561,7 +622,7 @@ landscape indication, neighboring context
     }
 
     // Draw roof triangle
-    const roofPeak = Math.tan(35 * Math.PI / 180) * (bWidth / 2);
+    const roofPeak = Math.tan((35 * Math.PI) / 180) * (bWidth / 2);
     svg += `
     <polygon points="0,0 ${bWidth / 2},${-roofPeak} ${bWidth},0"
              fill="none" stroke="${colors.outline}" stroke-width="${lineweights.outline}"/>`;
@@ -662,5 +723,3 @@ landscape indication, neighboring context
 const technicalGenerator = new TechnicalPanelGenerator();
 
 export default technicalGenerator;
-
-export { TECHNICAL_CONFIG };

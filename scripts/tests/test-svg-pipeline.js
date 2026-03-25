@@ -5,19 +5,19 @@
  * Generates floor plans, elevations, sections, and 3D views as vector SVGs.
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
+const PROJECT_ROOT = path.resolve(__dirname, "../..");
 
 // Dynamic imports for ESM modules
 async function loadModules() {
-  const modulePath = path.join(PROJECT_ROOT, 'src/services/svg/index.js');
+  const modulePath = path.join(PROJECT_ROOT, "src/services/svg/index.js");
   // Convert Windows path to file:// URL for ESM import
-  const moduleUrl = 'file:///' + modulePath.replace(/\\/g, '/');
+  const moduleUrl = "file:///" + modulePath.replace(/\\/g, "/");
   const SVGServices = await import(moduleUrl);
   return SVGServices;
 }
@@ -25,14 +25,14 @@ async function loadModules() {
 // Load the DNA from the previous test
 const DNA_PATH = path.join(
   PROJECT_ROOT,
-  'outputs/detached-house-DN158BQ-2025-12-28T13-19-02-155Z-dna.json'
+  "outputs/detached-house-DN158BQ-2025-12-28T13-19-02-155Z-dna.json",
 );
-const OUTPUT_DIR = path.join(PROJECT_ROOT, 'outputs/svg-test');
+const OUTPUT_DIR = path.join(PROJECT_ROOT, "outputs/svg-test");
 
 async function main() {
-  console.log('\n' + '═'.repeat(70));
-  console.log('  SVG PIPELINE TEST - Professional Architectural Drawings');
-  console.log('═'.repeat(70) + '\n');
+  console.log("\n" + "═".repeat(70));
+  console.log("  SVG PIPELINE TEST - Professional Architectural Drawings");
+  console.log("═".repeat(70) + "\n");
 
   // Create output directory
   if (!fs.existsSync(OUTPUT_DIR)) {
@@ -40,24 +40,28 @@ async function main() {
   }
 
   // Load DNA
-  console.log('📋 Loading Design DNA...');
+  console.log("📋 Loading Design DNA...");
   if (!fs.existsSync(DNA_PATH)) {
-    console.error('❌ DNA file not found. Run the detached house test first.');
+    console.error("❌ DNA file not found. Run the detached house test first.");
     process.exit(1);
   }
 
-  const dna = JSON.parse(fs.readFileSync(DNA_PATH, 'utf-8'));
-  console.log(`   ✓ Loaded DNA for ${dna.dimensions.length}m × ${dna.dimensions.width}m building`);
-  console.log(`   ✓ ${dna.rooms.length} rooms over ${dna.dimensions.floors} floors`);
+  const dna = JSON.parse(fs.readFileSync(DNA_PATH, "utf-8"));
+  console.log(
+    `   ✓ Loaded DNA for ${dna.dimensions.length}m × ${dna.dimensions.width}m building`,
+  );
+  console.log(
+    `   ✓ ${dna.rooms.length} rooms over ${dna.dimensions.floors} floors`,
+  );
   console.log(`   ✓ ${dna.materials.length} materials defined`);
 
   // Load SVG services
-  console.log('\n📦 Loading SVG Services...');
+  console.log("\n📦 Loading SVG Services...");
   const SVGServices = await loadModules();
-  console.log('   ✓ SVG generators loaded');
+  console.log("   ✓ SVG generators loaded");
 
   // Prepare geometry-like data structure from DNA for the generators
-  const geometry = buildGeometryFromDNA(dna);
+  buildGeometryFromDNA(dna);
 
   const results = {
     floorPlans: {},
@@ -68,9 +72,9 @@ async function main() {
   };
 
   // Generate Floor Plans
-  console.log('\n🏠 Generating Floor Plans...');
+  console.log("\n🏠 Generating Floor Plans...");
   for (let floor = 0; floor < dna.dimensions.floors; floor++) {
-    const floorName = floor === 0 ? 'ground' : `first`;
+    const floorName = floor === 0 ? "ground" : `first`;
     try {
       const svg = SVGServices.generateFloorPlanFromDNA(dna, floor, {
         scale: 50,
@@ -89,8 +93,8 @@ async function main() {
   }
 
   // Generate Elevations
-  console.log('\n🏛️ Generating Elevations...');
-  for (const direction of ['north', 'south', 'east', 'west']) {
+  console.log("\n🏛️ Generating Elevations...");
+  for (const direction of ["north", "south", "east", "west"]) {
     try {
       const svg = SVGServices.generateElevationFromDNA(dna, direction, {
         scale: 50,
@@ -110,8 +114,8 @@ async function main() {
   }
 
   // Generate Sections
-  console.log('\n📐 Generating Sections...');
-  for (const sectionType of ['longitudinal', 'transverse']) {
+  console.log("\n📐 Generating Sections...");
+  for (const sectionType of ["longitudinal", "transverse"]) {
     try {
       const svg = SVGServices.generateSectionFromDNA(dna, sectionType, {
         scale: 50,
@@ -132,11 +136,11 @@ async function main() {
   }
 
   // Generate 3D Views
-  console.log('\n🎨 Generating 3D Views...');
+  console.log("\n🎨 Generating 3D Views...");
   const viewTypes = [
-    { name: 'perspective', type: 'perspective' },
-    { name: 'isometric', type: 'isometric' },
-    { name: 'axonometric', type: 'axonometric' },
+    { name: "perspective", type: "perspective" },
+    { name: "isometric", type: "isometric" },
+    { name: "axonometric", type: "axonometric" },
   ];
 
   for (const view of viewTypes) {
@@ -157,21 +161,23 @@ async function main() {
   }
 
   // Generate Axonometric Views
-  console.log('\n🔷 Generating Axonometric Views...');
-  const axonTypes = ['standard', 'cutaway', 'exploded'];
+  console.log("\n🔷 Generating Axonometric Views...");
+  const axonTypes = ["standard", "cutaway", "exploded"];
   for (const axonType of axonTypes) {
     try {
       let svg;
       switch (axonType) {
-        case 'standard':
+        case "standard":
           svg = SVGServices.generateStandardAxon(dna, { scale: 25 });
           break;
-        case 'cutaway':
+        case "cutaway":
           svg = SVGServices.generateCutawayAxon(dna, { scale: 25 });
           break;
-        case 'exploded':
+        case "exploded":
           svg = SVGServices.generateExplodedAxon(dna, { scale: 25 });
           break;
+        default:
+          continue;
       }
 
       const filename = `axon_${axonType}.svg`;
@@ -184,7 +190,7 @@ async function main() {
   }
 
   // Generate complete package
-  console.log('\n📦 Generating Complete Package...');
+  console.log("\n📦 Generating Complete Package...");
   try {
     const package_ = SVGServices.generateCompletePackage(dna, {
       floorPlanScale: 50,
@@ -198,36 +204,42 @@ async function main() {
 
     // Save manifest
     const manifest = {
-      project: 'Detached House DN15 8BQ',
+      project: "Detached House DN15 8BQ",
       generatedAt: new Date().toISOString(),
       dnaHash: package_.metadata?.dnaHash,
       files: results,
     };
-    fs.writeFileSync(path.join(OUTPUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
-    console.log('   ✓ manifest.json saved');
+    fs.writeFileSync(
+      path.join(OUTPUT_DIR, "manifest.json"),
+      JSON.stringify(manifest, null, 2),
+    );
+    console.log("   ✓ manifest.json saved");
   } catch (error) {
     console.log(`   ⚠ Complete package: ${error.message}`);
   }
 
   // Summary
-  const totalFiles = Object.values(results).reduce((acc, obj) => acc + Object.keys(obj).length, 0);
+  const totalFiles = Object.values(results).reduce(
+    (acc, obj) => acc + Object.keys(obj).length,
+    0,
+  );
 
-  console.log('\n' + '═'.repeat(70));
-  console.log('  SVG PIPELINE TEST COMPLETE');
-  console.log('═'.repeat(70));
+  console.log("\n" + "═".repeat(70));
+  console.log("  SVG PIPELINE TEST COMPLETE");
+  console.log("═".repeat(70));
   console.log(`   📁 Output Directory: ${OUTPUT_DIR}`);
   console.log(`   📄 Files Generated: ${totalFiles}`);
-  console.log('');
-  console.log('   Generated Views:');
+  console.log("");
+  console.log("   Generated Views:");
   console.log(`     • Floor Plans: ${Object.keys(results.floorPlans).length}`);
   console.log(`     • Elevations: ${Object.keys(results.elevations).length}`);
   console.log(`     • Sections: ${Object.keys(results.sections).length}`);
   console.log(`     • 3D Views: ${Object.keys(results.views3D).length}`);
   console.log(`     • Axonometric: ${Object.keys(results.axonometric).length}`);
-  console.log('═'.repeat(70) + '\n');
+  console.log("═".repeat(70) + "\n");
 
   // List output files
-  console.log('📂 Output Files:');
+  console.log("📂 Output Files:");
   const files = fs.readdirSync(OUTPUT_DIR);
   files.forEach((file) => {
     const stats = fs.statSync(path.join(OUTPUT_DIR, file));
@@ -246,7 +258,9 @@ function buildGeometryFromDNA(dna) {
   const floorRooms = {};
   rooms.forEach((room) => {
     const floor = room.floor || 0;
-    if (!floorRooms[floor]) {floorRooms[floor] = [];}
+    if (!floorRooms[floor]) {
+      floorRooms[floor] = [];
+    }
     floorRooms[floor].push(room);
   });
 
@@ -302,7 +316,7 @@ function buildGeometryFromDNA(dna) {
       length: dimensions.length,
       rooms: floorRooms[floor] || [],
       wallThickness: 0.3,
-      name: floor === 0 ? 'Ground Floor' : `Floor ${floor}`,
+      name: floor === 0 ? "Ground Floor" : `Floor ${floor}`,
     }),
   };
 }
@@ -324,10 +338,10 @@ function generateOpenings(dna) {
     const floor = room.floor || 0;
 
     // Place windows based on room position
-    const direction = index % 2 === 0 ? 'south' : 'north';
+    const direction = index % 2 === 0 ? "south" : "north";
     windows.forEach((win, winIndex) => {
       openings[direction].push({
-        type: 'window',
+        type: "window",
         floor: floor,
         x: 2 + index * 2 + winIndex,
         y: 1,
@@ -339,7 +353,7 @@ function generateOpenings(dna) {
 
   // Add main entrance
   openings.south.push({
-    type: 'door',
+    type: "door",
     floor: 0,
     x: dna.dimensions.width / 2,
     y: 0,
@@ -352,6 +366,6 @@ function generateOpenings(dna) {
 
 // Run
 main().catch((error) => {
-  console.error('❌ Test failed:', error);
+  console.error("❌ Test failed:", error);
   process.exit(1);
 });

@@ -15,6 +15,12 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const {
+  CONTRACT_VERSION,
+  ARTIFACT_SPECS,
+  JOB_DEFAULTS,
+  STATUS,
+} = require('./genarchContract.cjs');
 
 const JOBS = new Map();
 
@@ -33,15 +39,6 @@ const GENARCH_PACKAGE = process.env.GENARCH_PACKAGE_DIR
 
 // Public route for serving artifacts
 const GENARCH_PUBLIC_ROUTE = process.env.GENARCH_PUBLIC_ROUTE || '/api/genarch/runs';
-
-// Job statuses
-const STATUS = {
-  QUEUED: 'queued',
-  RUNNING: 'running',
-  COMPLETED: 'completed',
-  FAILED: 'failed',
-  CANCELLED: 'cancelled',
-};
 
 // Phase labels for progress tracking
 const PHASES = {
@@ -88,11 +85,11 @@ function createJob(options = {}) {
     prompt: options.prompt || null,
     constraintsPath: options.constraintsPath || null,
     seed: options.seed || Math.floor(Math.random() * 1000000),
-    skipPhase2: options.skipPhase2 ?? true, // Skip Blender by default (not always available)
-    skipPhase3: options.skipPhase3 ?? true, // Phase 3 not implemented yet
-    skipPhase4: options.skipPhase4 ?? false,
-    driftThreshold: options.driftThreshold ?? 0.15,
-    strict: options.strict ?? false,
+    skipPhase2: options.skipPhase2 ?? JOB_DEFAULTS.skipPhase2,
+    skipPhase3: options.skipPhase3 ?? JOB_DEFAULTS.skipPhase3,
+    skipPhase4: options.skipPhase4 ?? JOB_DEFAULTS.skipPhase4,
+    driftThreshold: options.driftThreshold ?? JOB_DEFAULTS.driftThreshold,
+    strict: options.strict ?? JOB_DEFAULTS.strict,
     blenderPath: options.blenderPath || process.env.BLENDER_PATH || null,
     verbose: options.verbose ?? true,
   };
@@ -327,28 +324,14 @@ function buildArtifactUrls(job) {
   const artifacts = {};
   const runPath = job.paths.run;
 
-  // Check each potential output
-  const files = [
-    { key: 'planJson', path: 'plan.json', type: 'application/json' },
-    { key: 'planDxf', path: 'plan.dxf', type: 'application/dxf' },
-    { key: 'modelGlb', path: 'model.glb', type: 'model/gltf-binary' },
-    { key: 'modelObj', path: 'model.obj', type: 'text/plain' },
-    { key: 'runJson', path: 'run.json', type: 'application/json' },
-    { key: 'constraintsJson', path: 'constraints.json', type: 'application/json' },
-    { key: 'pipelineManifest', path: 'pipeline_manifest.json', type: 'application/json' },
-    { key: 'a1Sheet', path: 'phase4/A1_sheet.pdf', type: 'application/pdf' },
-    { key: 'sheetManifest', path: 'phase4/sheet_manifest.json', type: 'application/json' },
-    { key: 'assetReport', path: 'asset_report.json', type: 'application/json' },
-    { key: 'driftReport', path: 'drift_report.json', type: 'application/json' },
-  ];
-
-  for (const { key, path: filePath, type } of files) {
+  for (const { key, relativePath, contentType } of ARTIFACT_SPECS) {
+    const filePath = relativePath;
     const fullPath = path.join(runPath, filePath);
     if (fs.existsSync(fullPath)) {
       artifacts[key] = {
         url: `${GENARCH_PUBLIC_ROUTE}/${job.id}/${filePath}`,
         filename: path.basename(filePath),
-        type,
+        type: contentType,
         size: fs.statSync(fullPath).size,
       };
     }
@@ -444,6 +427,7 @@ function serializeJob(job) {
   if (!job) return null;
 
   return {
+    contractVersion: CONTRACT_VERSION,
     id: job.id,
     status: job.status,
     createdAt: job.createdAt,
@@ -478,5 +462,7 @@ module.exports = {
   serializeJob,
   DEFAULT_RUNS_ROOT,
   GENARCH_PUBLIC_ROUTE,
+  CONTRACT_VERSION,
+  ARTIFACT_SPECS,
   STATUS,
 };

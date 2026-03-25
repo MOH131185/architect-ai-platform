@@ -1,11 +1,15 @@
 /**
- * Design Generation History Service
+ * Design Generation History — EPHEMERAL SESSION HELPER
  *
- * Manages the complete history of AI design generations including:
- * - Original DNA and prompts
- * - Generated results (A1 sheets, views, drawings)
- * - Modification requests and results
- * - Consistency tracking across generations
+ * In-memory session tracker for the current browser tab. Tracks generation
+ * sessions, modification requests, missing-view detection, and original DNA/seed
+ * references for the AI modify workflow. NOT a persisted design store.
+ *
+ * Backend: in-memory (array) + optional localStorage mirror (key: "architectAI_generationHistory")
+ * Scope: single browser session / tab
+ * Relationship to canonical store: reads nothing from designHistoryRepository;
+ *   callers (useGeneration, aiModificationService, AIModificationPanel) use this
+ *   for ephemeral session context only.
  */
 
 import runtimeEnv from "../utils/runtimeEnv.js";

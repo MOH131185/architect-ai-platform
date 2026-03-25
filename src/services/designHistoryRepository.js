@@ -1,5 +1,12 @@
 /**
- * Design History Repository
+ * Design History Repository — CANONICAL PERSISTED STORE
+ *
+ * Single source of truth for persisted design records, versions, and metadata.
+ * All active flows (generation, modification, retrieval) MUST read/write through
+ * this repository. Other history services are adapters or ephemeral helpers.
+ *
+ * Backend: localStorage via storageManager (key: "design_history")
+ * Schema version: 2
  *
  * Encapsulates persistence of design history using pluggable storage backends.
  * Applies aggressive sanitization to avoid localStorage quota errors.
@@ -214,6 +221,18 @@ const VERSION_METADATA_KEYS = [
   "panelCoordinates",
   "coordinates",
   "dpi",
+  "transport",
+  "durationMs",
+  "traceId",
+  "runId",
+  "manifestUrl",
+  "manifestFile",
+  "outputFile",
+  "pdfOutputFile",
+  "pdfUrl",
+  "qaAllPassed",
+  "critiqueOverallPass",
+  "hashValidation",
 ];
 
 function sanitizeVersionMetadata(metadata = {}) {
@@ -397,6 +416,7 @@ function buildDesignPayload(design, existingDesign = null) {
     id: designId,
     designId,
     projectId: design.projectId || designId,
+    sheetId: design.sheetId || design.a1Sheet?.sheetId || "default",
     dna: compressedDNA,
     masterDNA: compressedDNA,
     masterDNAFull: canonicalDNA,
@@ -425,6 +445,7 @@ function buildDesignPayload(design, existingDesign = null) {
     resultUrl: sheetUrl,
     a1Sheet: {
       ...(clonedA1Sheet || {}),
+      sheetId: design.sheetId || clonedA1Sheet?.sheetId || "default",
       url: sheetUrl,
       composedSheetUrl: sheetUrl,
       metadata: sheetMetadata,
@@ -643,35 +664,51 @@ class DesignHistoryRepository {
     }
 
     // Persist geometry baseline separately if available
-    if (design.geometryDNA || design.geometryRenders) {
+    if (design.baselineBundle || design.geometryDNA || design.geometryRenders) {
       try {
+        const baselineBundle = design.baselineBundle || {
+          designId,
+          sheetId: design.sheetId || design.a1Sheet?.sheetId || "default",
+          baselineImageUrl:
+            design.resultUrl ||
+            design.composedSheetUrl ||
+            design.a1Sheet?.url ||
+            "",
+          baselineDNA: design.masterDNA || design.dna || {},
+          geometryBaseline: {
+            geometryDNA:
+              design.geometryDNA ||
+              design.masterDNA?.geometry ||
+              design.dna?.geometry ||
+              null,
+            renders:
+              design.geometryRenders || design.a1Sheet?.geometryRenders || null,
+          },
+          metadata: {
+            seed: design.seed || Date.now(),
+            model:
+              design.sheetMetadata?.model ||
+              design.a1Sheet?.metadata?.model ||
+              "FLUX.1-schnell",
+            width:
+              design.sheetMetadata?.width ||
+              design.a1Sheet?.metadata?.width ||
+              1792,
+            height:
+              design.sheetMetadata?.height ||
+              design.a1Sheet?.metadata?.height ||
+              1269,
+            a1LayoutKey:
+              design.sheetMetadata?.a1LayoutKey ||
+              design.a1Sheet?.metadata?.a1LayoutKey ||
+              "uk-riba-standard",
+            workflow: PIPELINE_MODE.MULTI_PANEL,
+          },
+        };
         await baselineArtifactStore.saveBaselineArtifacts({
           designId,
-          sheetId: "default",
-          bundle: {
-            designId,
-            sheetId: "default",
-            baselineImageUrl:
-              design.resultUrl ||
-              design.composedSheetUrl ||
-              design.a1Sheet?.url ||
-              "",
-            baselineDNA: design.masterDNA || design.dna || {},
-            geometryBaseline: {
-              geometryDNA:
-                design.geometryDNA ||
-                design.masterDNA?.geometry ||
-                design.dna?.geometry ||
-                null,
-              renders:
-                design.geometryRenders ||
-                design.a1Sheet?.geometryRenders ||
-                null,
-            },
-            metadata: {
-              workflow: PIPELINE_MODE.MULTI_PANEL,
-            },
-          },
+          sheetId: baselineBundle.sheetId || "default",
+          bundle: baselineBundle,
         });
       } catch {
         // Ignore baseline save errors

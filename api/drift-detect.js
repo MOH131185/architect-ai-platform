@@ -1,14 +1,14 @@
 /**
  * Drift Detection API Endpoint
- * 
+ *
  * Server-side SSIM and pHash computation for drift detection.
  * Compares baseline and candidate images at whole-sheet and per-panel levels.
- * 
+ *
  * Uses sharp + pixelmatch (already in deps) instead of canvas
  */
 
-import sharp from 'sharp';
-import pixelmatch from 'pixelmatch';
+import sharp from "sharp";
+import pixelmatch from "pixelmatch";
 
 /**
  * Compute SSIM-like similarity using pixelmatch
@@ -22,15 +22,15 @@ function computeSimilarity(img1Data, img2Data, width, height) {
   try {
     // pixelmatch returns number of different pixels
     const diffPixels = pixelmatch(img1Data, img2Data, null, width, height, {
-      threshold: 0.1
+      threshold: 0.1,
     });
 
     const totalPixels = width * height;
-    const similarity = 1 - (diffPixels / totalPixels);
+    const similarity = 1 - diffPixels / totalPixels;
 
     return Math.max(0, Math.min(1, similarity));
   } catch (error) {
-    console.warn('Similarity computation failed:', error.message);
+    console.warn("Similarity computation failed:", error.message);
     return 0;
   }
 }
@@ -42,31 +42,42 @@ function computePHash(imgData, width, height) {
   try {
     // Simplified perceptual hash: reduce to 8x8 grayscale, compute DCT-like hash
     const blockSize = Math.max(1, Math.floor(Math.min(width, height) / 8));
-    let hash = '';
+    let hash = "";
 
     for (let by = 0; by < 8; by++) {
       for (let bx = 0; bx < 8; bx++) {
         let sum = 0;
         let count = 0;
 
-        for (let y = by * blockSize; y < (by + 1) * blockSize && y < height; y++) {
-          for (let x = bx * blockSize; x < (bx + 1) * blockSize && x < width; x++) {
+        for (
+          let y = by * blockSize;
+          y < (by + 1) * blockSize && y < height;
+          y++
+        ) {
+          for (
+            let x = bx * blockSize;
+            x < (bx + 1) * blockSize && x < width;
+            x++
+          ) {
             const idx = (y * width + x) * 4;
             // Grayscale: 0.299R + 0.587G + 0.114B
-            sum += imgData[idx] * 0.299 + imgData[idx + 1] * 0.587 + imgData[idx + 2] * 0.114;
+            sum +=
+              imgData[idx] * 0.299 +
+              imgData[idx + 1] * 0.587 +
+              imgData[idx + 2] * 0.114;
             count++;
           }
         }
 
         const avg = count > 0 ? sum / count : 0;
-        hash += avg > 128 ? '1' : '0';
+        hash += avg > 128 ? "1" : "0";
       }
     }
 
     return hash;
   } catch (error) {
-    console.warn('PHash computation failed:', error.message);
-    return '0'.repeat(64);
+    console.warn("PHash computation failed:", error.message);
+    return "0".repeat(64);
   }
 }
 
@@ -74,13 +85,15 @@ function computePHash(imgData, width, height) {
  * Compute Hamming distance between two hashes
  */
 function hammingDistance(hash1, hash2) {
-  if (!hash1 || !hash2) { return 64; }
+  if (!hash1 || !hash2) {
+    return 64;
+  }
 
   const len = Math.max(hash1.length, hash2.length);
   let distance = 0;
 
   for (let i = 0; i < len; i++) {
-    if ((hash1[i] || '0') !== (hash2[i] || '0')) {
+    if ((hash1[i] || "0") !== (hash2[i] || "0")) {
       distance++;
     }
   }
@@ -97,12 +110,12 @@ async function loadImageData(urlOrBuffer) {
 
     if (Buffer.isBuffer(urlOrBuffer)) {
       input = urlOrBuffer;
-    } else if (typeof urlOrBuffer === 'string') {
-      if (urlOrBuffer.startsWith('data:')) {
+    } else if (typeof urlOrBuffer === "string") {
+      if (urlOrBuffer.startsWith("data:")) {
         // Data URL
-        const base64Data = urlOrBuffer.split(',')[1];
-        input = Buffer.from(base64Data, 'base64');
-      } else if (urlOrBuffer.startsWith('http')) {
+        const base64Data = urlOrBuffer.split(",")[1];
+        input = Buffer.from(base64Data, "base64");
+      } else if (urlOrBuffer.startsWith("http")) {
         // Remote URL - fetch it
         const response = await fetch(urlOrBuffer);
         if (!response.ok) {
@@ -114,12 +127,14 @@ async function loadImageData(urlOrBuffer) {
         input = urlOrBuffer;
       }
     } else {
-      throw new Error('Invalid image input');
+      throw new Error("Invalid image input");
     }
 
     const image = sharp(input);
-    const metadata = await image.metadata();
-    const { data, info } = await image.raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+    const { data, info } = await image
+      .raw()
+      .ensureAlpha()
+      .toBuffer({ resolveWithObject: true });
 
     return {
       data,
@@ -141,7 +156,12 @@ function extractRegion(imageData, fullWidth, x, y, width, height) {
   for (let row = 0; row < height; row++) {
     const srcOffset = ((y + row) * fullWidth + x) * 4;
     const dstOffset = row * width * 4;
-    imageData.data.copy(regionData, dstOffset, srcOffset, srcOffset + width * 4);
+    imageData.data.copy(
+      regionData,
+      dstOffset,
+      srcOffset,
+      srcOffset + width * 4,
+    );
   }
 
   return {
@@ -153,16 +173,16 @@ function extractRegion(imageData, fullWidth, x, y, width, height) {
 
 export default async function handler(req, res) {
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
@@ -170,8 +190,8 @@ export default async function handler(req, res) {
 
     if (!baselineUrl || !candidateUrl) {
       return res.status(400).json({
-        error: 'baselineUrl and candidateUrl required',
-        degraded: false
+        error: "baselineUrl and candidateUrl required",
+        degraded: false,
       });
     }
 
@@ -183,7 +203,10 @@ export default async function handler(req, res) {
         loadImageData(candidateUrl),
       ]);
     } catch (loadError) {
-      console.error('Failed to load images for drift detection:', loadError.message);
+      console.error(
+        "Failed to load images for drift detection:",
+        loadError.message,
+      );
       // Return degraded result instead of silently passing
       return res.status(200).json({
         degraded: true,
@@ -192,35 +215,38 @@ export default async function handler(req, res) {
           ssim: null,
           pHash: null,
           passed: null,
-          warning: 'Drift detection unavailable - images could not be loaded'
+          warning: "Drift detection unavailable - images could not be loaded",
         },
         panels: [],
         summary: {
           totalPanels: 0,
           passedPanels: 0,
           failedPanels: 0,
-          warning: 'QA degraded - manual review recommended'
-        }
+          warning: "QA degraded - manual review recommended",
+        },
       });
     }
 
     // Check dimensions match
-    if (baselineImg.width !== candidateImg.width || baselineImg.height !== candidateImg.height) {
+    if (
+      baselineImg.width !== candidateImg.width ||
+      baselineImg.height !== candidateImg.height
+    ) {
       return res.status(200).json({
         degraded: true,
-        degradedReason: 'Image dimensions mismatch',
+        degradedReason: "Image dimensions mismatch",
         wholeSheet: {
           ssim: 0,
           pHash: 64,
           passed: false,
-          warning: 'Baseline and candidate have different dimensions'
+          warning: "Baseline and candidate have different dimensions",
         },
         panels: [],
         summary: {
           totalPanels: 0,
           passedPanels: 0,
-          failedPanels: 0
-        }
+          failedPanels: 0,
+        },
       });
     }
 
@@ -229,10 +255,18 @@ export default async function handler(req, res) {
       baselineImg.data,
       candidateImg.data,
       baselineImg.width,
-      baselineImg.height
+      baselineImg.height,
     );
-    const baselinePHash = computePHash(baselineImg.data, baselineImg.width, baselineImg.height);
-    const candidatePHash = computePHash(candidateImg.data, candidateImg.width, candidateImg.height);
+    const baselinePHash = computePHash(
+      baselineImg.data,
+      baselineImg.width,
+      baselineImg.height,
+    );
+    const candidatePHash = computePHash(
+      candidateImg.data,
+      candidateImg.width,
+      candidateImg.height,
+    );
     const pHashDistance = hammingDistance(baselinePHash, candidatePHash);
 
     // Compute per-panel metrics
@@ -253,19 +287,33 @@ export default async function handler(req, res) {
             ssim: null,
             pHashDistance: null,
             passed: null,
-            warning: 'Invalid panel coordinates'
+            warning: "Invalid panel coordinates",
           });
           continue;
         }
 
-        const baselineRegion = extractRegion(baselineImg, baselineImg.width, x, y, width, height);
-        const candidateRegion = extractRegion(candidateImg, candidateImg.width, x, y, width, height);
+        const baselineRegion = extractRegion(
+          baselineImg,
+          baselineImg.width,
+          x,
+          y,
+          width,
+          height,
+        );
+        const candidateRegion = extractRegion(
+          candidateImg,
+          candidateImg.width,
+          x,
+          y,
+          width,
+          height,
+        );
 
         const panelSimilarity = computeSimilarity(
           baselineRegion.data,
           candidateRegion.data,
           width,
-          height
+          height,
         );
         const panelBaseHash = computePHash(baselineRegion.data, width, height);
         const panelCandHash = computePHash(candidateRegion.data, width, height);
@@ -276,7 +324,7 @@ export default async function handler(req, res) {
           name: panel.name,
           ssim: panelSimilarity,
           pHashDistance: panelPHashDist,
-          passed: panelSimilarity >= 0.95 && panelPHashDist <= 5
+          passed: panelSimilarity >= 0.95 && panelPHashDist <= 5,
         });
       } catch (panelError) {
         panelMetrics.push({
@@ -285,7 +333,7 @@ export default async function handler(req, res) {
           ssim: null,
           pHashDistance: null,
           passed: null,
-          warning: panelError.message
+          warning: panelError.message,
         });
       }
     }
@@ -295,19 +343,18 @@ export default async function handler(req, res) {
       wholeSheet: {
         ssim: wholeSheetSimilarity,
         pHash: pHashDistance,
-        passed: wholeSheetSimilarity >= 0.92
+        passed: wholeSheetSimilarity >= 0.92,
       },
       panels: panelMetrics,
       summary: {
         totalPanels: panelMetrics.length,
-        passedPanels: panelMetrics.filter(p => p.passed === true).length,
-        failedPanels: panelMetrics.filter(p => p.passed === false).length,
-        unknownPanels: panelMetrics.filter(p => p.passed === null).length
-      }
+        passedPanels: panelMetrics.filter((p) => p.passed === true).length,
+        failedPanels: panelMetrics.filter((p) => p.passed === false).length,
+        unknownPanels: panelMetrics.filter((p) => p.passed === null).length,
+      },
     });
-
   } catch (error) {
-    console.error('Drift detection error:', error);
+    console.error("Drift detection error:", error);
     // Return degraded result with warning instead of silently passing
     return res.status(200).json({
       degraded: true,
@@ -316,15 +363,15 @@ export default async function handler(req, res) {
         ssim: null,
         pHash: null,
         passed: null,
-        warning: `Drift detection failed: ${error.message}`
+        warning: `Drift detection failed: ${error.message}`,
       },
       panels: [],
       summary: {
         totalPanels: 0,
         passedPanels: 0,
         failedPanels: 0,
-        warning: 'QA degraded - manual review recommended'
-      }
+        warning: "QA degraded - manual review recommended",
+      },
     });
   }
 }

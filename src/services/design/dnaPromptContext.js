@@ -1,31 +1,22 @@
 /**
- * DNA Prompt Context - Stub
+ * DNA Prompt Context — ADAPTER
+ *
+ * Re-exports from the canonical implementation at ../dnaPromptContext.js.
+ * Exists so that design/panelGenerationService.js can import from a sibling
+ * path without reaching outside the design/ directory.
+ *
+ * Canonical source: src/services/dnaPromptContext.js
  */
 
-export function build3DPanelPrompt(dna) {
-  return "";
-}
+import dnaPromptContext from "../dnaPromptContext.js";
 
-export function buildPlanPrompt(dna) {
-  return "";
-}
-
-export function buildElevationPrompt(dna) {
-  return "";
-}
-
-export function buildSectionPrompt(dna) {
-  return "";
-}
-
-export function buildNegativePrompt(params) {
-  return "";
-}
-
-export default {
+export {
   build3DPanelPrompt,
   buildPlanPrompt,
   buildElevationPrompt,
   buildSectionPrompt,
   buildNegativePrompt,
-};
+  buildStructuredDNAContext,
+} from "../dnaPromptContext.js";
+
+export default dnaPromptContext;

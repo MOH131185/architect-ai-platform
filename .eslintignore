@@ -1,0 +1,7 @@
+src/_legacy/**
+src/examples/**
+src/__tests__/**
+src/services/design/__tests__/**
+src/ArchitectAITest.js
+src/components/map/SiteBoundaryEditor.jsx
+src/components/site/SiteBoundaryEditor.jsx

@@ -1,59 +1,49 @@
-name: CI Pipeline
+name: Active App CI
 
 on:
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      - 'genarch/**'
   pull_request:
     branches: [ main, develop ]
+    paths-ignore:
+      - 'genarch/**'
 
 jobs:
-  test:
+  active-path:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [20.x]
-    
+    timeout-minutes: 20
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Use Node.js ${{ matrix.node-version }}
+
+    - name: Use Node.js 20.x
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: 20.x
         cache: 'npm'
-    
+
     - name: Install dependencies
-      run: npm install
-    
-    - name: Run environment checks
-      run: npm run check:env
-      env:
-        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY || 'test-key' }}
-        REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'test-key' }}
-        REACT_APP_OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY || 'test-key' }}
-    
+      run: npm ci
+
     - name: Run contract checks
       run: npm run check:contracts
-    
-    - name: Run A1-only generation test
-      run: node test-a1-only-generation.js
-      continue-on-error: true
-      env:
-        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-    
-    - name: Run A1 modify consistency test
-      run: node test-a1-modify-consistency.js
-      continue-on-error: true
-      env:
-        TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-    
-    - name: Run unit tests
-      run: npm test -- --watchAll=false --coverage
-      continue-on-error: true
-    
-    - name: Build
-      run: npm run build:vercel
+
+    - name: Run genarch boundary contract check
+      run: npm run check:genarch-contracts
+
+    - name: Run compose core and routing test
+      run: npm run test:compose:routing
+
+    - name: Run DNA pipeline test
+      run: npm run test:dna:pipeline
+
+    - name: Run clinic A1 generation test
+      run: npm run test:clinic:a1
+
+    - name: Build active app path
+      run: npm run build:active
       env:
         TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY || 'test-key' }}
         REACT_APP_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'test-key' }}

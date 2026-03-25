@@ -43,11 +43,17 @@ const GenerateStep = ({
   }, [isLoading, generationComplete, onGenerate]);
 
   const stages = [
-    { label: "Analyzing site context", key: "analysis" },
-    { label: "Generating Design DNA", key: "dna" },
-    { label: "Creating A1 sheet layout", key: "layout" },
-    { label: "Rendering architectural views", key: "rendering" },
-    { label: "Finalizing design", key: "finalizing" },
+    { label: "Analyzing site conditions and requirements", key: "analysis" },
+    {
+      label: "Generating Design DNA — dimensions, materials, rooms",
+      key: "dna",
+    },
+    {
+      label: "Planning A1 sheet — floor plans, elevations, sections",
+      key: "layout",
+    },
+    { label: "Rendering panels with FLUX AI (2-3 minutes)", key: "rendering" },
+    { label: "Composing final A1 architectural sheet", key: "finalizing" },
   ];
 
   const currentStage = progress?.stage || "analysis";

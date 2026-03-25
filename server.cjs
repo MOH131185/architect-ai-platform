@@ -14,6 +14,11 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const geometryJobManager = require('./server/geometry/renderJobManager.cjs');
 const genarchJobManager = require('./server/genarch/genarchJobManager.cjs');
+const {
+  CONTRACT_VERSION: GENARCH_CONTRACT_VERSION,
+  JOB_DEFAULTS: GENARCH_JOB_DEFAULTS,
+  VERSION_HEADER_NAME: GENARCH_VERSION_HEADER,
+} = require('./server/genarch/genarchContract.cjs');
 const { resolveAiApiLimiterMax, resolveImageGenerationLimiterMax } = require('./server/utils/rateLimitConfig.cjs');
 const { genarchAuth, geometryAuth } = require('./server/middleware/apiKeyAuth.cjs');
 const { mountImageProxy } = require('./server/utils/imageProxy.cjs');
@@ -38,6 +43,18 @@ const GENARCH_MAX_JOB_AGE_HOURS = parseInt(process.env.GENARCH_MAX_JOB_AGE_HOURS
 // A1 compose output (used to avoid returning huge base64 payloads)
 const A1_COMPOSE_OUTPUT_DIR =
   process.env.A1_COMPOSE_OUTPUT_DIR || path.join(process.cwd(), 'qa_results', 'a1_compose_outputs');
+
+function setGenarchContractHeaders(res) {
+  res.setHeader(GENARCH_VERSION_HEADER, GENARCH_CONTRACT_VERSION);
+}
+
+function sendGenarchJson(res, statusCode, payload) {
+  setGenarchContractHeaders(res);
+  return res.status(statusCode).json({
+    contractVersion: GENARCH_CONTRACT_VERSION,
+    ...payload,
+  });
+}
 const A1_COMPOSE_MAX_DATAURL_BYTES = parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || '', 10) || 4.5 * 1024 * 1024;
 try {
   fs.mkdirSync(A1_COMPOSE_OUTPUT_DIR, { recursive: true });
@@ -231,6 +248,7 @@ app.get('/api/health', (req, res) => {
     // ignore
   }
 
+  setGenarchContractHeaders(res);
   res.json({
     status: 'ok',
     // Primary providers
@@ -243,6 +261,13 @@ app.get('/api/health', (req, res) => {
     // Genarch pipeline
     genarch: genarchAvailable,
     blender: !!process.env.BLENDER_PATH,
+    contracts: {
+      genarchApi: GENARCH_CONTRACT_VERSION,
+    },
+    productSurface: {
+      genarchApi: 'backend-only',
+      genarchFrontend: 'dormant-legacy',
+    },
     // Legacy (deprecated)
     openai: !!process.env.REACT_APP_OPENAI_API_KEY,
     replicate: !!process.env.REACT_APP_REPLICATE_API_KEY,
@@ -2325,18 +2350,18 @@ app.post('/api/genarch/jobs', aiApiLimiter, genarchAuth, async (req, res) => {
       prompt,
       constraintsPath,
       seed,
-      skipPhase2 = true,
-      skipPhase3 = true,
-      skipPhase4 = false,
-      driftThreshold = 0.15,
-      strict = false,
+      skipPhase2 = GENARCH_JOB_DEFAULTS.skipPhase2,
+      skipPhase3 = GENARCH_JOB_DEFAULTS.skipPhase3,
+      skipPhase4 = GENARCH_JOB_DEFAULTS.skipPhase4,
+      driftThreshold = GENARCH_JOB_DEFAULTS.driftThreshold,
+      strict = GENARCH_JOB_DEFAULTS.strict,
       blenderPath,
-      waitForResult = false,
+      waitForResult = GENARCH_JOB_DEFAULTS.waitForResult,
     } = req.body;
 
     // Validate input
     if (!prompt && !constraintsPath) {
-      return res.status(400).json({
+      return sendGenarchJson(res, 400, {
         success: false,
         error: 'MISSING_INPUT',
         message: 'Either prompt or constraintsPath is required',
@@ -2364,14 +2389,14 @@ app.post('/api/genarch/jobs', aiApiLimiter, genarchAuth, async (req, res) => {
       try {
         await genarchJobManager.runJob(job, { waitForResult: true });
       } catch (runError) {
-        return res.status(500).json({
+        return sendGenarchJson(res, 500, {
           success: false,
           error: 'JOB_FAILED',
           message: runError.message,
           job: genarchJobManager.serializeJob(job),
         });
       }
-      return res.status(200).json({
+      return sendGenarchJson(res, 200, {
         success: true,
         job: genarchJobManager.serializeJob(job),
       });
@@ -2380,14 +2405,14 @@ app.post('/api/genarch/jobs', aiApiLimiter, genarchAuth, async (req, res) => {
     // Async mode: return immediately
     genarchJobManager.runJob(job, { waitForResult: false });
 
-    return res.status(202).json({
+    return sendGenarchJson(res, 202, {
       success: true,
       message: 'Job created and started',
       job: genarchJobManager.serializeJob(job),
     });
   } catch (error) {
     console.error('[Genarch] Job creation error:', error);
-    return res.status(500).json({
+    return sendGenarchJson(res, 500, {
       success: false,
       error: 'JOB_CREATION_FAILED',
       message: error.message,
@@ -2404,14 +2429,14 @@ app.get('/api/genarch/jobs', genarchAuth, (req, res) => {
     const { status } = req.query;
     const jobs = genarchJobManager.listJobs(status || null);
 
-    return res.status(200).json({
+    return sendGenarchJson(res, 200, {
       success: true,
       jobs,
       count: jobs.length,
     });
   } catch (error) {
     console.error('[Genarch] List jobs error:', error);
-    return res.status(500).json({
+    return sendGenarchJson(res, 500, {
       success: false,
       error: 'LIST_FAILED',
       message: error.message,
@@ -2429,20 +2454,20 @@ app.get('/api/genarch/jobs/:jobId', genarchAuth, (req, res) => {
     const job = genarchJobManager.getJob(jobId);
 
     if (!job) {
-      return res.status(404).json({
+      return sendGenarchJson(res, 404, {
         success: false,
         error: 'JOB_NOT_FOUND',
         message: `Job ${jobId} not found`,
       });
     }
 
-    return res.status(200).json({
+    return sendGenarchJson(res, 200, {
       success: true,
       job: genarchJobManager.serializeJob(job),
     });
   } catch (error) {
     console.error('[Genarch] Get job error:', error);
-    return res.status(500).json({
+    return sendGenarchJson(res, 500, {
       success: false,
       error: 'GET_JOB_FAILED',
       message: error.message,
@@ -2462,26 +2487,26 @@ app.delete('/api/genarch/jobs/:jobId', genarchAuth, (req, res) => {
     if (!cancelled) {
       const job = genarchJobManager.getJob(jobId);
       if (!job) {
-        return res.status(404).json({
+        return sendGenarchJson(res, 404, {
           success: false,
           error: 'JOB_NOT_FOUND',
           message: `Job ${jobId} not found`,
         });
       }
-      return res.status(400).json({
+      return sendGenarchJson(res, 400, {
         success: false,
         error: 'CANNOT_CANCEL',
         message: `Job ${jobId} is not running (status: ${job.status})`,
       });
     }
 
-    return res.status(200).json({
+    return sendGenarchJson(res, 200, {
       success: true,
       message: `Job ${jobId} cancelled`,
     });
   } catch (error) {
     console.error('[Genarch] Cancel job error:', error);
-    return res.status(500).json({
+    return sendGenarchJson(res, 500, {
       success: false,
       error: 'CANCEL_FAILED',
       message: error.message,
@@ -2496,7 +2521,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
     const filePath = req.params[1];
 
     if (!filePath) {
-      return res.status(400).json({
+      return sendGenarchJson(res, 400, {
         success: false,
         error: 'MISSING_PATH',
         message: 'File path is required',
@@ -2506,7 +2531,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
     // Validate file path to prevent directory traversal
     const normalizedPath = path.normalize(filePath);
     if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
-      return res.status(400).json({
+      return sendGenarchJson(res, 400, {
         success: false,
         error: 'INVALID_PATH',
         message: 'Invalid file path',
@@ -2515,7 +2540,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
 
     const runPath = genarchJobManager.getJobRunPath(jobId);
     if (!runPath) {
-      return res.status(404).json({
+      return sendGenarchJson(res, 404, {
         success: false,
         error: 'JOB_NOT_FOUND',
         message: `Job ${jobId} not found`,
@@ -2526,7 +2551,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
 
     // Ensure the resolved path is within the run folder
     if (!fullPath.startsWith(path.resolve(runPath))) {
-      return res.status(403).json({
+      return sendGenarchJson(res, 403, {
         success: false,
         error: 'ACCESS_DENIED',
         message: 'Access denied',
@@ -2534,7 +2559,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
     }
 
     if (!fs.existsSync(fullPath)) {
-      return res.status(404).json({
+      return sendGenarchJson(res, 404, {
         success: false,
         error: 'FILE_NOT_FOUND',
         message: `File not found: ${filePath}`,
@@ -2556,6 +2581,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
 
     const contentType = contentTypes[ext] || 'application/octet-stream';
 
+    setGenarchContractHeaders(res);
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${path.basename(fullPath)}"`);
     res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -2563,7 +2589,7 @@ app.get(/^\/api\/genarch\/runs\/([^/]+)\/(.+)$/, genarchAuth, (req, res) => {
     res.sendFile(fullPath);
   } catch (error) {
     console.error('[Genarch] Serve file error:', error);
-    return res.status(500).json({
+    return sendGenarchJson(res, 500, {
       success: false,
       error: 'SERVE_FAILED',
       message: error.message,

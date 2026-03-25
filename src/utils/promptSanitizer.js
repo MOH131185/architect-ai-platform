@@ -4,6 +4,12 @@
  * Prevents injection attacks and ensures safe prompt construction
  */
 
+const CONTROL_CHARS_WITH_NEWLINES_REGEX = new RegExp(
+  String.raw`[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]`,
+  "g",
+);
+const CONTROL_CHARS_ALL_REGEX = new RegExp(String.raw`[\x00-\x1F\x7F]`, "g");
+
 /**
  * Sanitizes user input for use in AI prompts
  * @param {string} input - Raw user input
@@ -14,15 +20,11 @@
  * @returns {string} - Sanitized input
  */
 export function sanitizePromptInput(input, options = {}) {
-  const {
-    maxLength = 2000,
-    allowNewlines = true,
-    stripHtml = true
-  } = options;
+  const { maxLength = 2000, allowNewlines = true, stripHtml = true } = options;
 
   // Handle null/undefined
   if (input == null) {
-    return '';
+    return "";
   }
 
   // Convert to string
@@ -30,19 +32,19 @@ export function sanitizePromptInput(input, options = {}) {
 
   // Strip HTML tags if enabled
   if (stripHtml) {
-    sanitized = sanitized.replace(/<[^>]*>/g, '');
+    sanitized = sanitized.replace(/<[^>]*>/g, "");
   }
 
   // Remove potentially dangerous characters
   // Remove control characters except newlines/tabs (if allowed)
   if (allowNewlines) {
-    sanitized = sanitized.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+    sanitized = sanitized.replace(CONTROL_CHARS_WITH_NEWLINES_REGEX, "");
   } else {
-    sanitized = sanitized.replace(/[\x00-\x1F\x7F]/g, ' ');
+    sanitized = sanitized.replace(CONTROL_CHARS_ALL_REGEX, " ");
   }
 
   // Remove zero-width characters that could be used for obfuscation
-  sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF]/g, "");
 
   // Trim whitespace
   sanitized = sanitized.trim();
@@ -53,7 +55,7 @@ export function sanitizePromptInput(input, options = {}) {
   }
 
   // Remove multiple consecutive spaces
-  sanitized = sanitized.replace(/\s+/g, ' ');
+  sanitized = sanitized.replace(/\s+/g, " ");
 
   // Remove prompt injection patterns
   sanitized = sanitizePromptInjection(sanitized);
@@ -90,13 +92,13 @@ function sanitizePromptInjection(input) {
     // SQL injection-like patterns (though not SQL, similar concept)
     /;\s*DROP\s+/gi,
     /--\s*$/gm,
-    /\/\*.*?\*\//g
+    /\/\*.*?\*\//g,
   ];
 
   let sanitized = input;
 
   for (const pattern of injectionPatterns) {
-    sanitized = sanitized.replace(pattern, '');
+    sanitized = sanitized.replace(pattern, "");
   }
 
   return sanitized;
@@ -109,18 +111,14 @@ function sanitizePromptInjection(input) {
  * @returns {Object} - { valid: boolean, error: string|null, sanitized: string }
  */
 export function validatePromptInput(input, options = {}) {
-  const {
-    minLength = 0,
-    maxLength = 2000,
-    required = false
-  } = options;
+  const { minLength = 0, required = false } = options;
 
   // Check if input exists
   if (required && (!input || String(input).trim().length === 0)) {
     return {
       valid: false,
-      error: 'Input is required',
-      sanitized: ''
+      error: "Input is required",
+      sanitized: "",
     };
   }
 
@@ -132,7 +130,7 @@ export function validatePromptInput(input, options = {}) {
     return {
       valid: false,
       error: `Input must be at least ${minLength} characters`,
-      sanitized
+      sanitized,
     };
   }
 
@@ -140,15 +138,15 @@ export function validatePromptInput(input, options = {}) {
   if (input && input.trim().length > 0 && sanitized.length === 0) {
     return {
       valid: false,
-      error: 'Input contains only invalid characters',
-      sanitized: ''
+      error: "Input contains only invalid characters",
+      sanitized: "",
     };
   }
 
   return {
     valid: true,
     error: null,
-    sanitized
+    sanitized,
   };
 }
 
@@ -158,12 +156,12 @@ export function validatePromptInput(input, options = {}) {
  * @returns {number|null} - Sanitized number or null if invalid
  */
 export function sanitizeDimensionInput(value) {
-  if (value == null || value === '') {
+  if (value == null || value === "") {
     return null;
   }
 
   // Convert to string and remove non-numeric characters except decimal point
-  const sanitized = String(value).replace(/[^\d.]/g, '');
+  const sanitized = String(value).replace(/[^\d.]/g, "");
 
   // Parse as float
   const parsed = parseFloat(sanitized);
@@ -183,14 +181,14 @@ export function sanitizeDimensionInput(value) {
  * @returns {Object} - Sanitized dimensions object
  */
 export function sanitizeDimensions(dimensions) {
-  if (!dimensions || typeof dimensions !== 'object') {
+  if (!dimensions || typeof dimensions !== "object") {
     return { length: null, width: null, height: null };
   }
 
   return {
     length: sanitizeDimensionInput(dimensions.length),
     width: sanitizeDimensionInput(dimensions.width),
-    height: sanitizeDimensionInput(dimensions.height)
+    height: sanitizeDimensionInput(dimensions.height),
   };
 }
 
@@ -198,5 +196,5 @@ export default {
   sanitizePromptInput,
   validatePromptInput,
   sanitizeDimensionInput,
-  sanitizeDimensions
+  sanitizeDimensions,
 };

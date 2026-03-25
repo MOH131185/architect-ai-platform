@@ -4,48 +4,63 @@
  * Maintains consistency by preserving seeds and DNA context
  */
 
-import designHistoryStore, { VIEW_IDS } from './designHistoryStore.js';
-import enhancedDNAGenerator from './enhancedDNAGenerator.js';
-import dnaPromptGenerator from './dnaPromptGenerator.js';
-import { generateSingleView } from './togetherAIService.js';
-import togetherAIReasoningService from './togetherAIReasoningService.js';
-import logger from '../utils/logger.js';
-
+import designHistoryStore, { VIEW_IDS } from "./designHistoryStore.js";
+import enhancedDNAGenerator from "./enhancedDNAGenerator.js";
+import dnaPromptGenerator from "./dnaPromptGenerator.js";
+import { generateSingleView } from "./togetherAIService.js";
+import togetherAIReasoningService from "./togetherAIReasoningService.js";
+import logger from "../utils/logger.js";
 
 /**
  * View type to ViewId mapping
  */
 const VIEW_TYPE_TO_ID = {
-  'floor_plan_ground': VIEW_IDS.PLAN_GROUND,
-  'floor_plan_upper': VIEW_IDS.PLAN_UPPER,
-  'elevation_north': VIEW_IDS.ELEV_N,
-  'elevation_south': VIEW_IDS.ELEV_S,
-  'elevation_east': VIEW_IDS.ELEV_E,
-  'elevation_west': VIEW_IDS.ELEV_W,
-  'section_longitudinal': VIEW_IDS.SECT_LONG,
-  'section_cross': VIEW_IDS.SECT_TRANS,
-  'exterior_front_3d': VIEW_IDS.V_EXTERIOR,
-  'axonometric_3d': VIEW_IDS.V_AXON,
-  'site_3d': VIEW_IDS.V_SITE,
-  'interior_3d': VIEW_IDS.V_INTERIOR
+  floor_plan_ground: VIEW_IDS.PLAN_GROUND,
+  floor_plan_upper: VIEW_IDS.PLAN_UPPER,
+  elevation_north: VIEW_IDS.ELEV_N,
+  elevation_south: VIEW_IDS.ELEV_S,
+  elevation_east: VIEW_IDS.ELEV_E,
+  elevation_west: VIEW_IDS.ELEV_W,
+  section_longitudinal: VIEW_IDS.SECT_LONG,
+  section_cross: VIEW_IDS.SECT_TRANS,
+  exterior_front_3d: VIEW_IDS.V_EXTERIOR,
+  axonometric_3d: VIEW_IDS.V_AXON,
+  site_3d: VIEW_IDS.V_SITE,
+  interior_3d: VIEW_IDS.V_INTERIOR,
 };
 
 /**
  * View dimensions mapping
  */
 const VIEW_CONFIGS = {
-  [VIEW_IDS.PLAN_GROUND]: { width: 1024, height: 1024, type: 'floor_plan_ground' },
-  [VIEW_IDS.PLAN_UPPER]: { width: 1024, height: 1024, type: 'floor_plan_upper' },
-  [VIEW_IDS.ELEV_N]: { width: 1024, height: 1024, type: 'elevation_north' },
-  [VIEW_IDS.ELEV_S]: { width: 1024, height: 1024, type: 'elevation_south' },
-  [VIEW_IDS.ELEV_E]: { width: 1024, height: 1024, type: 'elevation_east' },
-  [VIEW_IDS.ELEV_W]: { width: 1024, height: 1024, type: 'elevation_west' },
-  [VIEW_IDS.SECT_LONG]: { width: 1024, height: 1024, type: 'section_longitudinal' },
-  [VIEW_IDS.SECT_TRANS]: { width: 1024, height: 1024, type: 'section_cross' },
-  [VIEW_IDS.V_EXTERIOR]: { width: 1024, height: 1024, type: 'exterior_front_3d' },
-  [VIEW_IDS.V_AXON]: { width: 1024, height: 1024, type: 'axonometric_3d' },
-  [VIEW_IDS.V_SITE]: { width: 1024, height: 1024, type: 'site_3d' },
-  [VIEW_IDS.V_INTERIOR]: { width: 1536, height: 1024, type: 'interior_3d' }
+  [VIEW_IDS.PLAN_GROUND]: {
+    width: 1024,
+    height: 1024,
+    type: "floor_plan_ground",
+  },
+  [VIEW_IDS.PLAN_UPPER]: {
+    width: 1024,
+    height: 1024,
+    type: "floor_plan_upper",
+  },
+  [VIEW_IDS.ELEV_N]: { width: 1024, height: 1024, type: "elevation_north" },
+  [VIEW_IDS.ELEV_S]: { width: 1024, height: 1024, type: "elevation_south" },
+  [VIEW_IDS.ELEV_E]: { width: 1024, height: 1024, type: "elevation_east" },
+  [VIEW_IDS.ELEV_W]: { width: 1024, height: 1024, type: "elevation_west" },
+  [VIEW_IDS.SECT_LONG]: {
+    width: 1024,
+    height: 1024,
+    type: "section_longitudinal",
+  },
+  [VIEW_IDS.SECT_TRANS]: { width: 1024, height: 1024, type: "section_cross" },
+  [VIEW_IDS.V_EXTERIOR]: {
+    width: 1024,
+    height: 1024,
+    type: "exterior_front_3d",
+  },
+  [VIEW_IDS.V_AXON]: { width: 1024, height: 1024, type: "axonometric_3d" },
+  [VIEW_IDS.V_SITE]: { width: 1024, height: 1024, type: "site_3d" },
+  [VIEW_IDS.V_INTERIOR]: { width: 1536, height: 1024, type: "interior_3d" },
 };
 
 /**
@@ -58,9 +73,14 @@ function computeImpactedViews(changeRequest, currentDNA) {
   const changeLower = changeRequest.toLowerCase();
 
   // Dimension changes affect plans, elevations, and sections
-  if (changeLower.includes('dimension') || changeLower.includes('size') || 
-      changeLower.includes('length') || changeLower.includes('width') || 
-      changeLower.includes('height') || changeLower.includes('floor')) {
+  if (
+    changeLower.includes("dimension") ||
+    changeLower.includes("size") ||
+    changeLower.includes("length") ||
+    changeLower.includes("width") ||
+    changeLower.includes("height") ||
+    changeLower.includes("floor")
+  ) {
     impactedViews.add(VIEW_IDS.PLAN_GROUND);
     impactedViews.add(VIEW_IDS.PLAN_UPPER);
     impactedViews.add(VIEW_IDS.ELEV_N);
@@ -72,8 +92,12 @@ function computeImpactedViews(changeRequest, currentDNA) {
   }
 
   // Material/palette changes affect elevations and 3D views
-  if (changeLower.includes('material') || changeLower.includes('color') || 
-      changeLower.includes('palette') || changeLower.includes('facade')) {
+  if (
+    changeLower.includes("material") ||
+    changeLower.includes("color") ||
+    changeLower.includes("palette") ||
+    changeLower.includes("facade")
+  ) {
     impactedViews.add(VIEW_IDS.ELEV_N);
     impactedViews.add(VIEW_IDS.ELEV_S);
     impactedViews.add(VIEW_IDS.ELEV_E);
@@ -83,23 +107,33 @@ function computeImpactedViews(changeRequest, currentDNA) {
   }
 
   // Layout/room changes affect plans
-  if (changeLower.includes('room') || changeLower.includes('layout') || 
-      changeLower.includes('plan') || changeLower.includes('space')) {
+  if (
+    changeLower.includes("room") ||
+    changeLower.includes("layout") ||
+    changeLower.includes("plan") ||
+    changeLower.includes("space")
+  ) {
     impactedViews.add(VIEW_IDS.PLAN_GROUND);
     impactedViews.add(VIEW_IDS.PLAN_UPPER);
   }
 
   // Interior changes affect interior view and plans
-  if (changeLower.includes('interior') || changeLower.includes('furniture') || 
-      changeLower.includes('decoration')) {
+  if (
+    changeLower.includes("interior") ||
+    changeLower.includes("furniture") ||
+    changeLower.includes("decoration")
+  ) {
     impactedViews.add(VIEW_IDS.V_INTERIOR);
     impactedViews.add(VIEW_IDS.PLAN_GROUND);
     impactedViews.add(VIEW_IDS.PLAN_UPPER);
   }
 
   // Window/door changes affect elevations and sections
-  if (changeLower.includes('window') || changeLower.includes('door') || 
-      changeLower.includes('opening')) {
+  if (
+    changeLower.includes("window") ||
+    changeLower.includes("door") ||
+    changeLower.includes("opening")
+  ) {
     impactedViews.add(VIEW_IDS.ELEV_N);
     impactedViews.add(VIEW_IDS.ELEV_S);
     impactedViews.add(VIEW_IDS.ELEV_E);
@@ -109,8 +143,11 @@ function computeImpactedViews(changeRequest, currentDNA) {
   }
 
   // Roof changes affect elevations, sections, and exterior views
-  if (changeLower.includes('roof') || changeLower.includes('gable') || 
-      changeLower.includes('pitch')) {
+  if (
+    changeLower.includes("roof") ||
+    changeLower.includes("gable") ||
+    changeLower.includes("pitch")
+  ) {
     impactedViews.add(VIEW_IDS.ELEV_N);
     impactedViews.add(VIEW_IDS.ELEV_S);
     impactedViews.add(VIEW_IDS.ELEV_E);
@@ -122,8 +159,11 @@ function computeImpactedViews(changeRequest, currentDNA) {
   }
 
   // Site changes affect site view
-  if (changeLower.includes('site') || changeLower.includes('location') || 
-      changeLower.includes('boundary')) {
+  if (
+    changeLower.includes("site") ||
+    changeLower.includes("location") ||
+    changeLower.includes("boundary")
+  ) {
     impactedViews.add(VIEW_IDS.V_SITE);
   }
 
@@ -134,7 +174,7 @@ function computeImpactedViews(changeRequest, currentDNA) {
  * Update DNA based on change request
  */
 async function updateDNAAndPrompts(designId, changeRequest, projectContext) {
-  logger.info('🧬 Updating DNA based on change request...');
+  logger.info("🧬 Updating DNA based on change request...");
 
   // Get latest stable DNA
   const latestStable = await designHistoryStore.getLatestStable(designId);
@@ -152,7 +192,7 @@ CURRENT DESIGN DNA:
 ${JSON.stringify(latestStable.masterDNA, null, 2)}
 
 RECENT CHANGES:
-${aiContext.recentChanges.map(c => `- ${c.changeRequest} (${c.timestamp})`).join('\n')}
+${aiContext.recentChanges.map((c) => `- ${c.changeRequest} (${c.timestamp})`).join("\n")}
 
 REQUESTED MODIFICATION:
 ${changeRequest}
@@ -168,13 +208,13 @@ REQUIREMENTS:
     const updatedDNA = await togetherAIReasoningService.generateUpdatedDNA({
       currentDNA: latestStable.masterDNA,
       changeRequest,
-      projectContext
+      projectContext,
     });
 
-    logger.success(' DNA updated successfully');
+    logger.success(" DNA updated successfully");
     return updatedDNA || latestStable.masterDNA; // Fallback to current if update fails
   } catch (error) {
-    logger.warn('⚠️ DNA update failed, using current DNA:', error);
+    logger.warn("⚠️ DNA update failed, using current DNA:", error);
     return latestStable.masterDNA; // Fallback to current DNA
   }
 }
@@ -187,9 +227,11 @@ async function generateImpactedViewsSequentially(
   masterDNA,
   seedsByView,
   selectedViews,
-  projectContext
+  projectContext,
 ) {
-  logger.info(`🎨 Generating ${selectedViews.length} impacted views sequentially...`);
+  logger.info(
+    `🎨 Generating ${selectedViews.length} impacted views sequentially...`,
+  );
 
   const results = {};
   const delayMs = 6000; // Enforced delay between requests
@@ -204,8 +246,8 @@ async function generateImpactedViewsSequentially(
     }
 
     // Get prompt for this view
-    const promptKey = Object.keys(promptsByView).find(key => 
-      VIEW_TYPE_TO_ID[key] === viewId
+    const promptKey = Object.keys(promptsByView).find(
+      (key) => VIEW_TYPE_TO_ID[key] === viewId,
     );
 
     if (!promptKey) {
@@ -214,25 +256,29 @@ async function generateImpactedViewsSequentially(
     }
 
     const prompt = promptsByView[promptKey];
-    const seed = seedsByView[viewId] || masterDNA.seed || Math.floor(Math.random() * 1e6);
+    const seed =
+      seedsByView[viewId] || masterDNA.seed || Math.floor(Math.random() * 1e6);
 
     try {
-      logger.info(`\n🎨 [${i + 1}/${selectedViews.length}] Generating ${viewId}...`);
+      logger.info(
+        `\n🎨 [${i + 1}/${selectedViews.length}] Generating ${viewId}...`,
+      );
 
       const result = await generateSingleView(
         {
           viewType: viewConfig.type,
           prompt,
-          masterDNA
+          masterDNA,
         },
         seed,
-        i === 0 ? 0 : delayMs // No delay before first view
+        i === 0 ? 0 : delayMs, // No delay before first view
       );
 
       results[viewId] = result.url;
 
-      logger.success(` [${i + 1}/${selectedViews.length}] ${viewId} generated successfully`);
-
+      logger.success(
+        ` [${i + 1}/${selectedViews.length}] ${viewId} generated successfully`,
+      );
     } catch (error) {
       logger.error(`❌ Failed to generate ${viewId}:`, error);
       results[viewId] = null; // Mark as failed
@@ -245,8 +291,13 @@ async function generateImpactedViewsSequentially(
 /**
  * Apply modification to design
  */
-export async function applyModification({ designId, changeRequest, selectedViews, projectContext }) {
-  logger.info('🔧 Applying modification to design...');
+export async function applyModification({
+  designId,
+  changeRequest,
+  selectedViews,
+  projectContext,
+}) {
+  logger.info("🔧 Applying modification to design...");
   logger.info(`   Design ID: ${designId}`);
   logger.info(`   Change request: ${changeRequest.substring(0, 100)}...`);
   logger.info(`   Selected views: ${selectedViews.length}`);
@@ -256,27 +307,37 @@ export async function applyModification({ designId, changeRequest, selectedViews
     let viewsToRegenerate = selectedViews || [];
     if (viewsToRegenerate.length === 0) {
       const latestStable = await designHistoryStore.getLatestStable(designId);
-      viewsToRegenerate = computeImpactedViews(changeRequest, latestStable.masterDNA);
-      logger.info(`   Auto-detected ${viewsToRegenerate.length} impacted views`);
+      viewsToRegenerate = computeImpactedViews(
+        changeRequest,
+        latestStable.masterDNA,
+      );
+      logger.info(
+        `   Auto-detected ${viewsToRegenerate.length} impacted views`,
+      );
     }
 
     // Step 2: Update DNA based on change request
-    const updatedDNA = await updateDNAAndPrompts(designId, changeRequest, projectContext);
+    const updatedDNA = await updateDNAAndPrompts(
+      designId,
+      changeRequest,
+      projectContext,
+    );
 
     // Step 3: Generate prompts for impacted views
     const promptsByView = dnaPromptGenerator.generatePromptsForViews(
       updatedDNA,
       viewsToRegenerate,
-      projectContext
+      projectContext,
     );
 
     // Step 4: Get seeds for views (preserve existing seeds)
     const latestStable = await designHistoryStore.getLatestStable(designId);
     const seedsByView = {};
-    viewsToRegenerate.forEach(viewId => {
-      seedsByView[viewId] = latestStable.seedsByView?.[viewId] || 
-                            updatedDNA.seed || 
-                            Math.floor(Math.random() * 1e6);
+    viewsToRegenerate.forEach((viewId) => {
+      seedsByView[viewId] =
+        latestStable.seedsByView?.[viewId] ||
+        updatedDNA.seed ||
+        Math.floor(Math.random() * 1e6);
     });
 
     // Step 5: Generate impacted views sequentially
@@ -285,7 +346,7 @@ export async function applyModification({ designId, changeRequest, selectedViews
       updatedDNA,
       seedsByView,
       viewsToRegenerate,
-      projectContext
+      projectContext,
     );
 
     // Step 6: Save run to history
@@ -295,12 +356,14 @@ export async function applyModification({ designId, changeRequest, selectedViews
       masterDNA: updatedDNA,
       promptsByView,
       seedsByView,
-      resultsByView
+      resultsByView,
     });
 
-    logger.success(' Modification applied successfully');
+    logger.success(" Modification applied successfully");
     logger.info(`   Run ID: ${run.runId}`);
-    logger.info(`   Generated: ${Object.values(resultsByView).filter(r => r).length}/${viewsToRegenerate.length} views`);
+    logger.info(
+      `   Generated: ${Object.values(resultsByView).filter((r) => r).length}/${viewsToRegenerate.length} views`,
+    );
 
     return {
       dna: updatedDNA,
@@ -308,11 +371,10 @@ export async function applyModification({ designId, changeRequest, selectedViews
       seedsByView,
       resultsByView,
       runId: run.runId,
-      impactedViews: viewsToRegenerate
+      impactedViews: viewsToRegenerate,
     };
-
   } catch (error) {
-    logger.error('❌ Failed to apply modification:', error);
+    logger.error("❌ Failed to apply modification:", error);
     throw error;
   }
 }
@@ -320,6 +382,5 @@ export async function applyModification({ designId, changeRequest, selectedViews
 export default {
   applyModification,
   computeImpactedViews,
-  VIEW_CONFIGS
+  VIEW_CONFIGS,
 };
-

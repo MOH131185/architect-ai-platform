@@ -85,7 +85,6 @@ export default async function handler(req, res) {
     );
 
     const startTime = Date.now();
-    const traceId = `trace_${startTime}_${Math.random().toString(36).substring(2, 9)}`;
 
     const response = await fetch(
       "https://api.together.xyz/v1/chat/completions",
@@ -136,7 +135,7 @@ export default async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    // Return raw Together AI response - matches dev proxy (server.js) format
+    // Return raw Together AI response - matches dev proxy (server.cjs) format
     // All client code expects response.choices[0].message.content
     res.status(200).json(data);
   } catch (error) {

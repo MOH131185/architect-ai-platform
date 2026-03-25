@@ -1,6 +1,6 @@
 /**
  * Sheet Export Service
- * 
+ *
  * Unified export service for all A1 sheet formats:
  * - SVG (vector)
  * - PNG (raster, 300 DPI)
@@ -10,15 +10,18 @@
  * - XLSX/CSV (cost reports)
  */
 
-import { composeA1SheetSVG, composeA1SheetBitmap, exportSheetArtifact } from './sheetComposer.js';
-import bimService from './bimService.js';
-import logger from '../utils/logger.js';
-
+import {
+  composeA1SheetSVG,
+  composeA1SheetBitmap,
+  exportSheetArtifact,
+} from "./sheetComposer.js";
+import bimService from "./bimService.js";
+import logger from "../utils/logger.js";
 
 class SheetExportService {
   /**
    * Export design in specified format
-   * 
+   *
    * @param {Object} params - Export parameters
    * @param {string} params.format - Export format (svg, png, pdf, dwg, ifc, xlsx)
    * @param {Object} params.designProject - Complete design project data
@@ -31,29 +34,29 @@ class SheetExportService {
     logger.info(`📤 [SheetExport] Exporting as ${format.toUpperCase()}...`);
 
     switch (format.toLowerCase()) {
-      case 'svg':
+      case "svg":
         return await this.exportSVG(designProject, sheetArtifact);
-      
-      case 'png':
+
+      case "png":
         return await this.exportPNG(designProject, sheetArtifact);
-      
-      case 'pdf':
+
+      case "pdf":
         return await this.exportPDF(designProject, sheetArtifact);
-      
-      case 'dwg':
-      case 'dxf':
+
+      case "dwg":
+      case "dxf":
         return await this.exportDWG(designProject, format);
-      
-      case 'rvt':
+
+      case "rvt":
         return await this.exportRVT(designProject);
-      
-      case 'ifc':
+
+      case "ifc":
         return await this.exportIFC(designProject);
-      
-      case 'xlsx':
-      case 'csv':
+
+      case "xlsx":
+      case "csv":
         return await this.exportCost(designProject, format);
-      
+
       default:
         throw new Error(`Unsupported export format: ${format}`);
     }
@@ -63,35 +66,39 @@ class SheetExportService {
    * Export as SVG
    */
   async exportSVG(designProject, sheetArtifact = null) {
-    logger.info('📐 Exporting SVG...');
+    logger.info("📐 Exporting SVG...");
 
     // Use existing artifact if available
-    if (sheetArtifact && sheetArtifact.type === 'svg' && sheetArtifact.svgContent) {
-      logger.info('✅ Using existing SVG artifact');
-      return new Blob([sheetArtifact.svgContent], { type: 'image/svg+xml' });
+    if (
+      sheetArtifact &&
+      sheetArtifact.type === "svg" &&
+      sheetArtifact.svgContent
+    ) {
+      logger.info("✅ Using existing SVG artifact");
+      return new Blob([sheetArtifact.svgContent], { type: "image/svg+xml" });
     }
 
     // Compose new SVG
     const artifact = await composeA1SheetSVG(designProject, {
       designId: designProject.designId,
       seed: designProject.seed,
-      geometryFirst: designProject.geometryFirst || false
+      geometryFirst: designProject.geometryFirst || false,
     });
 
-    return new Blob([artifact.svgContent], { type: 'image/svg+xml' });
+    return new Blob([artifact.svgContent], { type: "image/svg+xml" });
   }
 
   /**
    * Export as PNG
    */
   async exportPNG(designProject, sheetArtifact = null) {
-    logger.info('📐 Exporting PNG...');
+    logger.info("📐 Exporting PNG...");
 
     // Use existing artifact if available
     if (sheetArtifact && sheetArtifact.url) {
       const response = await fetch(sheetArtifact.url);
       if (response.ok) {
-        logger.info('✅ Using existing PNG artifact');
+        logger.info("✅ Using existing PNG artifact");
         return await response.blob();
       }
     }
@@ -104,42 +111,47 @@ class SheetExportService {
       }
     }
 
-    throw new Error('No PNG artifact available. Generate A1 sheet first.');
+    throw new Error("No PNG artifact available. Generate A1 sheet first.");
   }
 
   /**
    * Export as PDF
    */
   async exportPDF(designProject, sheetArtifact = null) {
-    logger.info('📐 Exporting PDF...');
+    logger.info("📐 Exporting PDF...");
 
     // PDF requires server-side rendering
     // For now, return SVG and suggest external conversion
-    throw new Error('PDF export requires server-side rendering (puppeteer). Export as SVG and convert externally.');
+    throw new Error(
+      "PDF export requires server-side rendering (puppeteer). Export as SVG and convert externally.",
+    );
   }
 
   /**
    * Export as DWG/DXF
    */
-  async exportDWG(designProject, format = 'dwg') {
+  async exportDWG(designProject, format = "dwg") {
     logger.info(`📐 Exporting ${format.toUpperCase()}...`);
 
     const { masterDNA, geometry } = designProject;
 
     if (!geometry && !masterDNA) {
-      throw new Error('No geometry or DNA available for CAD export');
+      throw new Error("No geometry or DNA available for CAD export");
     }
 
     try {
       // Use BIM service to generate DWG/DXF
-      const cadContent = await bimService.exportToDWG(geometry || masterDNA, masterDNA);
-      return new Blob([cadContent], { type: 'application/x-dwg' });
+      const cadContent = await bimService.exportToDWG(
+        geometry || masterDNA,
+        masterDNA,
+      );
+      return new Blob([cadContent], { type: "application/x-dwg" });
     } catch (error) {
-      console.warn('⚠️  BIM service export failed, using placeholder:', error);
-      
+      console.warn("⚠️  BIM service export failed, using placeholder:", error);
+
       // Fallback: generate placeholder DWG text
       const placeholder = this.generateDWGPlaceholder(masterDNA, designProject);
-      return new Blob([placeholder], { type: 'text/plain' });
+      return new Blob([placeholder], { type: "text/plain" });
     }
   }
 
@@ -147,20 +159,26 @@ class SheetExportService {
    * Export as Revit (RVT)
    */
   async exportRVT(designProject) {
-    logger.info('📐 Exporting RVT...');
+    logger.info("📐 Exporting RVT...");
 
     const { masterDNA, geometry } = designProject;
 
     try {
       // Use BIM service to generate RVT
-      const rvtContent = await bimService.exportToRVT(geometry || masterDNA, masterDNA);
-      return new Blob([rvtContent], { type: 'application/x-rvt' });
+      const rvtContent = await bimService.exportToRVT(
+        geometry || masterDNA,
+        masterDNA,
+      );
+      return new Blob([rvtContent], { type: "application/x-rvt" });
     } catch (error) {
-      console.warn('⚠️  BIM service RVT export failed, using placeholder:', error);
-      
+      console.warn(
+        "⚠️  BIM service RVT export failed, using placeholder:",
+        error,
+      );
+
       // Fallback: generate placeholder
       const placeholder = this.generateRVTPlaceholder(masterDNA, designProject);
-      return new Blob([placeholder], { type: 'text/plain' });
+      return new Blob([placeholder], { type: "text/plain" });
     }
   }
 
@@ -168,46 +186,54 @@ class SheetExportService {
    * Export as IFC
    */
   async exportIFC(designProject) {
-    logger.info('📐 Exporting IFC...');
+    logger.info("📐 Exporting IFC...");
 
     const { masterDNA, geometry } = designProject;
 
     if (!geometry && !masterDNA) {
-      throw new Error('No geometry or DNA available for IFC export');
+      throw new Error("No geometry or DNA available for IFC export");
     }
 
     try {
       // Use BIM service to generate IFC
-      const ifcContent = await bimService.exportToIFC(geometry || masterDNA, masterDNA);
-      return new Blob([ifcContent], { type: 'application/x-step' });
+      const ifcContent = await bimService.exportToIFC(
+        geometry || masterDNA,
+        masterDNA,
+      );
+      return new Blob([ifcContent], { type: "application/x-step" });
     } catch (error) {
-      console.warn('⚠️  BIM service IFC export failed, using placeholder:', error);
-      
+      console.warn(
+        "⚠️  BIM service IFC export failed, using placeholder:",
+        error,
+      );
+
       // Fallback: generate placeholder IFC
       const placeholder = this.generateIFCPlaceholder(masterDNA, designProject);
-      return new Blob([placeholder], { type: 'text/plain' });
+      return new Blob([placeholder], { type: "text/plain" });
     }
   }
 
   /**
    * Export cost report as XLSX/CSV
    */
-  async exportCost(designProject, format = 'xlsx') {
+  async exportCost(designProject, format = "xlsx") {
     logger.info(`📐 Exporting cost report as ${format.toUpperCase()}...`);
 
     const { costReport } = designProject;
 
     if (!costReport) {
-      throw new Error('No cost report available. Generate cost estimate first.');
+      throw new Error(
+        "No cost report available. Generate cost estimate first.",
+      );
     }
 
-    if (format === 'csv') {
+    if (format === "csv") {
       const csv = this.generateCostCSV(costReport);
-      return new Blob([csv], { type: 'text/csv' });
+      return new Blob([csv], { type: "text/csv" });
     }
 
     // XLSX would require a library like xlsx or exceljs
-    throw new Error('XLSX export requires additional library. Use CSV format.');
+    throw new Error("XLSX export requires additional library. Use CSV format.");
   }
 
   /**
@@ -215,19 +241,19 @@ class SheetExportService {
    */
   generateCostCSV(costReport) {
     const rows = [
-      ['Item', 'Quantity', 'Unit', 'Rate', 'Cost'],
-      ['', '', '', '', ''],
+      ["Item", "Quantity", "Unit", "Rate", "Cost"],
+      ["", "", "", "", ""],
       ...Object.entries(costReport.breakdown || {}).map(([item, data]) => [
         item,
-        data.quantity || '',
-        data.unit || '',
-        data.rate || '',
-        data.cost || ''
+        data.quantity || "",
+        data.unit || "",
+        data.rate || "",
+        data.cost || "",
       ]),
-      ['', '', '', 'TOTAL', costReport.totalCost || costReport.total || 0]
+      ["", "", "", "TOTAL", costReport.totalCost || costReport.total || 0],
     ];
 
-    return rows.map(row => row.join(',')).join('\n');
+    return rows.map((row) => row.join(",")).join("\n");
   }
 
   /**
@@ -236,13 +262,13 @@ class SheetExportService {
   generateDWGPlaceholder(masterDNA, designProject) {
     const dimensions = masterDNA?.dimensions || {};
     return `AutoCAD Drawing File
-Project: ${designProject.projectName || 'Architectural Design'}
+Project: ${designProject.projectName || "Architectural Design"}
 Generated by ArchitectAI Platform
 Date: ${new Date().toLocaleDateString()}
 
-Dimensions: ${dimensions.length || 'N/A'}m × ${dimensions.width || 'N/A'}m × ${dimensions.totalHeight || 'N/A'}m
-Floors: ${dimensions.floorCount || 'N/A'}
-Style: ${masterDNA?.architecturalStyle || 'Contemporary'}
+Dimensions: ${dimensions.length || "N/A"}m × ${dimensions.width || "N/A"}m × ${dimensions.totalHeight || "N/A"}m
+Floors: ${dimensions.floorCount || "N/A"}
+Style: ${masterDNA?.architecturalStyle || "Contemporary"}
 
 [Binary DWG data would be here in full implementation]
 
@@ -255,7 +281,7 @@ This is a placeholder. Implement bimService.exportToDWG() for real CAD export.
    */
   generateRVTPlaceholder(masterDNA, designProject) {
     return `Revit Project File
-Project: ${designProject.projectName || 'Architectural Design'}
+Project: ${designProject.projectName || "Architectural Design"}
 Generated by ArchitectAI Platform
 Date: ${new Date().toLocaleDateString()}
 
@@ -270,12 +296,12 @@ This is a placeholder. Implement bimService.exportToRVT() for real Revit export.
    */
   generateIFCPlaceholder(masterDNA, designProject) {
     const dimensions = masterDNA?.dimensions || {};
-    const projectName = designProject.projectName || 'Architectural Design';
+    const projectName = designProject.projectName || "Architectural Design";
 
     return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ArchitectAI Generated Model'),'2;1');
-FILE_NAME('${projectName.replace(/\s/g, '_')}.ifc','${new Date().toISOString()}',('ArchitectAI'),('AI Architecture Platform'),'IFC4','ArchitectAI Export','');
+FILE_NAME('${projectName.replace(/\s/g, "_")}.ifc','${new Date().toISOString()}',('ArchitectAI'),('AI Architecture Platform'),'IFC4','ArchitectAI Export','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 
@@ -305,11 +331,14 @@ END-ISO-10303-21;`;
    * Generate IFC GUID
    */
   generateGUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+      /[xy]/g,
+      function (c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      },
+    );
   }
 }
 
@@ -318,4 +347,3 @@ const sheetExportService = new SheetExportService();
 
 export default sheetExportService;
 export { sheetExportService };
-

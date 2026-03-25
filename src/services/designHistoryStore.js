@@ -1,31 +1,41 @@
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
 /**
- * Design History Store
- * IndexedDB wrapper for storing design history with full project runs
- * Supports versioning, modification tracking, and AI context building
+ * Design History Store — ISOLATED MODIFICATION-RUN STORE
+ *
+ * IndexedDB-backed store for per-view modification runs (change requests,
+ * impacted views, per-view seeds/prompts/results). This is NOT a competing
+ * persistence authority for design records — it stores a different concern
+ * (granular modification runs) in a separate database (IndexedDB "architect_ai_history").
+ *
+ * The canonical persisted design record lives in designHistoryRepository.js
+ * (localStorage). Originally used by modifyWorkflowOrchestrator.js
+ * (now quarantined in _legacy/) for tracking incremental modification history.
+ *
+ * Backend: IndexedDB (DB: "architect_ai_history", store: "projects")
+ * Schema: { designId, baseMasterDNA, baseSeedsByView, runs[] }
  */
 
-const DB_NAME = 'architect_ai_history';
+const DB_NAME = "architect_ai_history";
 const DB_VERSION = 1;
-const STORE_NAME = 'projects';
+const STORE_NAME = "projects";
 
 /**
  * ViewId type definitions matching the plan
  */
 export const VIEW_IDS = {
-  PLAN_GROUND: 'plan_ground',
-  PLAN_UPPER: 'plan_upper',
-  ELEV_N: 'elev_n',
-  ELEV_S: 'elev_s',
-  ELEV_E: 'elev_e',
-  ELEV_W: 'elev_w',
-  SECT_LONG: 'sect_long',
-  SECT_TRANS: 'sect_trans',
-  V_EXTERIOR: 'v_exterior',
-  V_AXON: 'v_axon',
-  V_SITE: 'v_site',
-  V_INTERIOR: 'v_interior'
+  PLAN_GROUND: "plan_ground",
+  PLAN_UPPER: "plan_upper",
+  ELEV_N: "elev_n",
+  ELEV_S: "elev_s",
+  ELEV_E: "elev_e",
+  ELEV_W: "elev_w",
+  SECT_LONG: "sect_long",
+  SECT_TRANS: "sect_trans",
+  V_EXTERIOR: "v_exterior",
+  V_AXON: "v_axon",
+  V_SITE: "v_site",
+  V_INTERIOR: "v_interior",
 };
 
 /**
@@ -41,9 +51,9 @@ function openDB() {
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'designId' });
-        store.createIndex('createdAt', 'createdAt', { unique: false });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
+        const store = db.createObjectStore(STORE_NAME, { keyPath: "designId" });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+        store.createIndex("timestamp", "timestamp", { unique: false });
       }
     };
   });
@@ -55,7 +65,7 @@ function openDB() {
 export async function getProject(designId) {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const transaction = db.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(designId);
 
@@ -64,7 +74,7 @@ export async function getProject(designId) {
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
-    logger.error('❌ Failed to get project:', error);
+    logger.error("❌ Failed to get project:", error);
     return null;
   }
 }
@@ -81,11 +91,11 @@ export async function saveBase(projectData) {
       seedsByView,
       projectType,
       programSpaces,
-      createdAt = new Date().toISOString()
+      createdAt = new Date().toISOString(),
     } = projectData;
 
     if (!designId) {
-      throw new Error('designId is required');
+      throw new Error("designId is required");
     }
 
     const project = {
@@ -96,13 +106,13 @@ export async function saveBase(projectData) {
       baseSeedsByView: seedsByView || {},
       projectType: projectType || null,
       programSpaces: programSpaces || [],
-      runs: []
+      runs: [],
     };
 
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const transaction = db.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
-    
+
     // Check if project exists
     const existing = await new Promise((resolve, reject) => {
       const request = store.get(designId);
@@ -125,7 +135,7 @@ export async function saveBase(projectData) {
     logger.info(`✅ Saved base project: ${designId}`);
     return project;
   } catch (error) {
-    logger.error('❌ Failed to save base project:', error);
+    logger.error("❌ Failed to save base project:", error);
     throw error;
   }
 }
@@ -141,7 +151,7 @@ export async function appendRun(designId, runData) {
       masterDNA,
       promptsByView,
       seedsByView,
-      resultsByView
+      resultsByView,
     } = runData;
 
     const runId = `run_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -155,7 +165,7 @@ export async function appendRun(designId, runData) {
       masterDNA,
       promptsByView,
       seedsByView,
-      resultsByView
+      resultsByView,
     };
 
     const project = await getProject(designId);
@@ -167,9 +177,9 @@ export async function appendRun(designId, runData) {
     project.runs.push(run);
 
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const transaction = db.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
-    
+
     await new Promise((resolve, reject) => {
       const request = store.put(project);
       request.onsuccess = () => resolve();
@@ -179,7 +189,7 @@ export async function appendRun(designId, runData) {
     logger.info(`✅ Appended run ${runId} to project ${designId}`);
     return run;
   } catch (error) {
-    logger.error('❌ Failed to append run:', error);
+    logger.error("❌ Failed to append run:", error);
     throw error;
   }
 }
@@ -201,7 +211,7 @@ export async function getLatestStable(designId) {
         seedsByView: latestRun.seedsByView,
         promptsByView: latestRun.promptsByView,
         runId: latestRun.runId,
-        timestamp: latestRun.timestamp
+        timestamp: latestRun.timestamp,
       };
     }
 
@@ -210,10 +220,10 @@ export async function getLatestStable(designId) {
       seedsByView: project.baseSeedsByView,
       promptsByView: {},
       runId: null,
-      timestamp: project.createdAt
+      timestamp: project.createdAt,
     };
   } catch (error) {
-    logger.error('❌ Failed to get latest stable:', error);
+    logger.error("❌ Failed to get latest stable:", error);
     return null;
   }
 }
@@ -230,7 +240,7 @@ export async function listRuns(designId) {
 
     return project.runs || [];
   } catch (error) {
-    logger.error('❌ Failed to list runs:', error);
+    logger.error("❌ Failed to list runs:", error);
     return [];
   }
 }
@@ -253,16 +263,16 @@ export async function buildAIContext(designId) {
       baseDNA: project.baseMasterDNA,
       currentDNA: latestStable.masterDNA,
       currentSeeds: latestStable.seedsByView,
-      recentChanges: recentRuns.map(run => ({
+      recentChanges: recentRuns.map((run) => ({
         timestamp: run.timestamp,
         changeRequest: run.changeRequest,
-        impactedViews: run.impactedViews
-      }))
+        impactedViews: run.impactedViews,
+      })),
     };
 
     return context;
   } catch (error) {
-    logger.error('❌ Failed to build AI context:', error);
+    logger.error("❌ Failed to build AI context:", error);
     return null;
   }
 }
@@ -273,7 +283,7 @@ export async function buildAIContext(designId) {
 export async function getAllProjects() {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const transaction = db.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.getAll();
 
@@ -282,7 +292,7 @@ export async function getAllProjects() {
       request.onerror = () => reject(request.error);
     });
   } catch (error) {
-    logger.error('❌ Failed to get all projects:', error);
+    logger.error("❌ Failed to get all projects:", error);
     return [];
   }
 }
@@ -293,9 +303,9 @@ export async function getAllProjects() {
 export async function deleteProject(designId) {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const transaction = db.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
-    
+
     await new Promise((resolve, reject) => {
       const request = store.delete(designId);
       request.onsuccess = () => resolve();
@@ -305,7 +315,7 @@ export async function deleteProject(designId) {
     logger.info(`🗑️ Deleted project: ${designId}`);
     return true;
   } catch (error) {
-    logger.error('❌ Failed to delete project:', error);
+    logger.error("❌ Failed to delete project:", error);
     throw error;
   }
 }
@@ -319,6 +329,5 @@ export default {
   buildAIContext,
   getAllProjects,
   deleteProject,
-  VIEW_IDS
+  VIEW_IDS,
 };
-

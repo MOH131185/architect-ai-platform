@@ -14,7 +14,7 @@
  * Schema version for Design DNA contracts
  * Increment minor version for backward-compatible changes, major for breaking changes
  */
-export const DNA_VERSION = '1.0.0';
+export const DNA_VERSION = "1.0.0";
 
 /* ============================================================================
  * TELEMETRY & METADATA
@@ -256,7 +256,7 @@ export const DNA_VERSION = '1.0.0';
  * Single generated image with metadata
  *
  * @typedef {Object} GeneratedImage
- * @property {string} url - Image URL (Azure blob, Replicate CDN, or data URL)
+ * @property {string} url - Image URL (Together.ai CDN or data URL)
  * @property {string} viewType - View type (e.g., 'floor_plan_2d', 'exterior_front', 'elevation_north')
  * @property {number} [width] - Image width in pixels
  * @property {number} [height] - Image height in pixels
@@ -502,7 +502,7 @@ export function createMeta(source, latencyMs, options = {}) {
     costUsd: options.costUsd,
     tokenUsage: options.tokenUsage,
     timestamp: new Date().toISOString(),
-    dnaVersion: DNA_VERSION
+    dnaVersion: DNA_VERSION,
   };
 }
 
@@ -523,7 +523,7 @@ export function createError(code, message, source, isFallback, details) {
     source,
     isFallback,
     details,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -534,7 +534,7 @@ export function createError(code, message, source, isFallback, details) {
  * @returns {boolean}
  */
 export function isFallbackResult(result) {
-  return result && typeof result === 'object' && result.isFallback === true;
+  return result && typeof result === "object" && result.isFallback === true;
 }
 
 /**
@@ -544,7 +544,7 @@ export function isFallbackResult(result) {
  * @returns {boolean}
  */
 export function isSuccessResult(result) {
-  return result && typeof result === 'object' && result.success === true;
+  return result && typeof result === "object" && result.success === true;
 }
 
 /**

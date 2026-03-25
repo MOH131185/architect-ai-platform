@@ -391,10 +391,6 @@ class ModelSelector {
     return {
       together: {
         "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
-          input: 0.00035, // per 1K tokens
-          output: 0.0014, // per 1K tokens
-        },
-        "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
           input: 0.0035,
           output: 0.0035,
         },
@@ -500,11 +496,9 @@ class ModelSelector {
    */
   selectModel(taskType, context = {}) {
     const {
-      priority = "balanced",
       budget = "medium",
       timeConstraint = "normal",
       qualityRequirement = "high",
-      fallbackEnabled = true,
     } = context;
 
     // Get model configuration for task
@@ -515,9 +509,6 @@ class ModelSelector {
       );
       return this.modelMatrix.DNA_GENERATION.primary;
     }
-
-    // Check task profile
-    const profile = this.matchTaskProfile(taskType, context);
 
     // Select based on priorities
     let selectedModel = modelConfig.primary;
@@ -745,7 +736,7 @@ class ModelSelector {
   // Helper methods
 
   matchTaskProfile(taskType, context) {
-    for (const [profileName, profile] of Object.entries(this.taskProfiles)) {
+    for (const profile of Object.values(this.taskProfiles)) {
       if (context.priority === profile.priority) {
         return profile;
       }
@@ -883,7 +874,6 @@ class ModelSelector {
       "black-forest-labs/FLUX.1-schnell": true,
       "black-forest-labs/FLUX.1.1-pro": true,
       "black-forest-labs/FLUX.1-kontext-max": true,
-      "meta-llama/Llama-3.3-70B-Instruct-Turbo": true,
       "gpt-4": true,
       "gpt-4o": true,
     };

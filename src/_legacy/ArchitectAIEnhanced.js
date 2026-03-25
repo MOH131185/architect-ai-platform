@@ -1683,93 +1683,124 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
 
   // Panel types that use FLUX and can be regenerated (not deterministic SVG)
   const FLUX_PANEL_TYPES = new Set([
-    'hero_3d', 'exterior_front_3d', 'interior_3d', 'axonometric_3d', 'site_plan',
+    "hero_3d",
+    "exterior_front_3d",
+    "interior_3d",
+    "axonometric_3d",
+    "site_plan",
   ]);
 
   // Regenerate a single FLUX panel with a new random seed
-  const regenerateSinglePanel = useCallback(async (panelType) => {
-    if (regeneratingPanel) return; // Prevent concurrent regeneration
-    const panels = generatedDesigns?.a1Sheet?.panels;
-    const panelData = panels?.[panelType];
-    if (!panelData) return;
+  const regenerateSinglePanel = useCallback(
+    async (panelType) => {
+      if (regeneratingPanel) return; // Prevent concurrent regeneration
+      const panels = generatedDesigns?.a1Sheet?.panels;
+      const panelData = panels?.[panelType];
+      if (!panelData) return;
 
-    const prompt = panelData.prompt || panelData.meta?.prompt || '';
-    if (!prompt) {
-      console.warn(`No prompt found for panel ${panelType}, cannot regenerate`);
-      return;
-    }
-
-    setRegeneratingPanel(panelType);
-    try {
-      const { generateArchitecturalImage } = await import('./services/togetherAIService.js');
-      const newSeed = Math.floor(Math.random() * 1e6);
-      const width = panelData.width || panelData.meta?.width || 1500;
-      const height = panelData.height || panelData.meta?.height || 1500;
-
-      console.log(`🔄 Regenerating ${panelType} with new seed ${newSeed}`);
-      const result = await generateArchitecturalImage({
-        viewType: panelType,
-        designDNA: generatedDesigns?.masterDNA || generatedDesigns?.a1Sheet?.baselineBundle?.baselineDNA || {},
-        prompt,
-        seed: newSeed,
-        width,
-        height,
-      });
-
-      if (result?.url) {
-        // Update the panel in state with new image
-        setGeneratedDesigns((prev) => {
-          const updatedPanels = { ...prev.a1Sheet.panels };
-          updatedPanels[panelType] = {
-            ...updatedPanels[panelType],
-            url: result.url,
-            imageUrl: result.url,
-            seed: newSeed,
-            meta: { ...(updatedPanels[panelType]?.meta || {}), regenerated: true, newSeed },
-          };
-          return {
-            ...prev,
-            a1Sheet: { ...prev.a1Sheet, panels: updatedPanels, _panelsDirty: true },
-          };
-        });
-        console.log(`✅ ${panelType} regenerated successfully`);
+      const prompt = panelData.prompt || panelData.meta?.prompt || "";
+      if (!prompt) {
+        console.warn(
+          `No prompt found for panel ${panelType}, cannot regenerate`,
+        );
+        return;
       }
-    } catch (error) {
-      console.error(`❌ Failed to regenerate ${panelType}:`, error);
-      setToastMessage(`Failed to regenerate panel: ${error.message}`);
-      setTimeout(() => setToastMessage(''), 4000);
-    } finally {
-      setRegeneratingPanel(null);
-    }
-  }, [regeneratingPanel, generatedDesigns]);
+
+      setRegeneratingPanel(panelType);
+      try {
+        const { generateArchitecturalImage } =
+          await import("./services/togetherAIService.js");
+        const newSeed = Math.floor(Math.random() * 1e6);
+        const width = panelData.width || panelData.meta?.width || 1500;
+        const height = panelData.height || panelData.meta?.height || 1500;
+
+        console.log(`🔄 Regenerating ${panelType} with new seed ${newSeed}`);
+        const result = await generateArchitecturalImage({
+          viewType: panelType,
+          designDNA:
+            generatedDesigns?.masterDNA ||
+            generatedDesigns?.a1Sheet?.baselineBundle?.baselineDNA ||
+            {},
+          prompt,
+          seed: newSeed,
+          width,
+          height,
+        });
+
+        if (result?.url) {
+          // Update the panel in state with new image
+          setGeneratedDesigns((prev) => {
+            const updatedPanels = { ...prev.a1Sheet.panels };
+            updatedPanels[panelType] = {
+              ...updatedPanels[panelType],
+              url: result.url,
+              imageUrl: result.url,
+              seed: newSeed,
+              meta: {
+                ...(updatedPanels[panelType]?.meta || {}),
+                regenerated: true,
+                newSeed,
+              },
+            };
+            return {
+              ...prev,
+              a1Sheet: {
+                ...prev.a1Sheet,
+                panels: updatedPanels,
+                _panelsDirty: true,
+              },
+            };
+          });
+          console.log(`✅ ${panelType} regenerated successfully`);
+        }
+      } catch (error) {
+        console.error(`❌ Failed to regenerate ${panelType}:`, error);
+        setToastMessage(`Failed to regenerate panel: ${error.message}`);
+        setTimeout(() => setToastMessage(""), 4000);
+      } finally {
+        setRegeneratingPanel(null);
+      }
+    },
+    [regeneratingPanel, generatedDesigns],
+  );
 
   // Recompose A1 sheet from current panel set (after cherry-picking)
   const recomposeSheet = useCallback(async () => {
     const panels = generatedDesigns?.a1Sheet?.panels;
     if (!panels || !generatedDesigns?.a1Sheet?._panelsDirty) return;
 
-    setRegeneratingPanel('__recomposing__');
+    setRegeneratingPanel("__recomposing__");
     try {
       // Build panels array from current panel map
-      const panelArray = Object.entries(panels).map(([type, panel]) => ({
-        type,
-        imageUrl: panel.url || panel.imageUrl || (typeof panel === 'string' ? panel : ''),
-        label: type.toUpperCase().replace(/_/g, ' '),
-        meta: panel.meta || {},
-        ...(panel.svgPanel ? { svgPanel: true } : {}),
-      })).filter(p => p.imageUrl);
+      const panelArray = Object.entries(panels)
+        .map(([type, panel]) => ({
+          type,
+          imageUrl:
+            panel.url ||
+            panel.imageUrl ||
+            (typeof panel === "string" ? panel : ""),
+          label: type.toUpperCase().replace(/_/g, " "),
+          meta: panel.meta || {},
+          ...(panel.svgPanel ? { svgPanel: true } : {}),
+        }))
+        .filter((p) => p.imageUrl);
 
-      const masterDNA = generatedDesigns.masterDNA || generatedDesigns.a1Sheet?.baselineBundle?.baselineDNA || {};
-      const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+      const masterDNA =
+        generatedDesigns.masterDNA ||
+        generatedDesigns.a1Sheet?.baselineBundle?.baselineDNA ||
+        {};
+      const API_BASE_URL = process.env.REACT_APP_API_URL || "";
 
-      console.log(`🔄 Recomposing A1 sheet with ${panelArray.length} panels...`);
+      console.log(
+        `🔄 Recomposing A1 sheet with ${panelArray.length} panels...`,
+      );
       const response = await fetch(`${API_BASE_URL}/api/a1/compose`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           designId: generatedDesigns.designId || `recompose_${Date.now()}`,
           panels: panelArray,
-          layoutConfig: 'uk-riba-standard',
+          layoutConfig: "uk-riba-standard",
           masterDNA: {
             rooms: masterDNA.rooms || masterDNA.program?.rooms || [],
             materials: masterDNA.materials || [],
@@ -1777,8 +1808,17 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
             architecturalStyle: masterDNA.architecturalStyle,
             roof: masterDNA.roof,
           },
-          projectContext: { programSpaces: [], buildingProgram: masterDNA.buildingType },
-          locationData: { climate: {}, sunPath: {}, address: '', coordinates: null, zoning: {} },
+          projectContext: {
+            programSpaces: [],
+            buildingProgram: masterDNA.buildingType,
+          },
+          locationData: {
+            climate: {},
+            sunPath: {},
+            address: "",
+            coordinates: null,
+            zoning: {},
+          },
         }),
       });
 
@@ -1795,12 +1835,12 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
             _panelsDirty: false,
           },
         }));
-        console.log('✅ A1 sheet recomposed successfully');
+        console.log("✅ A1 sheet recomposed successfully");
       }
     } catch (error) {
-      console.error('❌ Recompose failed:', error);
+      console.error("❌ Recompose failed:", error);
       setToastMessage(`Recompose failed: ${error.message}`);
-      setTimeout(() => setToastMessage(''), 4000);
+      setTimeout(() => setToastMessage(""), 4000);
     } finally {
       setRegeneratingPanel(null);
     }
@@ -2621,9 +2661,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
     setSelectedVariantIndex(null);
 
     try {
-      const { default: twoPassDNAGenerator } = await import(
-        "./services/twoPassDNAGenerator"
-      );
+      const { default: twoPassDNAGenerator } =
+        await import("./services/twoPassDNAGenerator");
 
       const projectContext = {
         buildingProgram: projectDetails?.program || "mixed-use building",
@@ -2642,12 +2681,11 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
         floorCountLocked: floorCountLocked,
       };
 
-      const variants =
-        await twoPassDNAGenerator.generateDNAVariants(
-          projectContext,
-          null,
-          locationData,
-        );
+      const variants = await twoPassDNAGenerator.generateDNAVariants(
+        projectContext,
+        null,
+        locationData,
+      );
 
       if (variants && variants.length > 0) {
         setDnaVariants(variants);
@@ -6357,47 +6395,68 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                           </span>
                         </div>
                       )}
-                      {generatedDesigns.a1Sheet?.qa && !generatedDesigns.a1Sheet.qa.skipped && (
-                        <div
-                          className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
-                            generatedDesigns.a1Sheet.qa.allPassed
-                              ? "border-green-400/50 bg-green-500/20 text-green-200"
-                              : "border-yellow-400/50 bg-yellow-500/20 text-yellow-200"
-                          }`}
-                        >
-                          <span className="font-bold">
-                            QA Gates: {generatedDesigns.a1Sheet.qa.summary?.passed}/{generatedDesigns.a1Sheet.qa.summary?.total}
-                          </span>
-                          {generatedDesigns.a1Sheet.qa.failures?.length > 0 && (
-                            <span className="ml-2 text-xs opacity-90">
-                              ({generatedDesigns.a1Sheet.qa.failures.length} issues)
+                      {generatedDesigns.a1Sheet?.qa &&
+                        !generatedDesigns.a1Sheet.qa.skipped && (
+                          <div
+                            className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                              generatedDesigns.a1Sheet.qa.allPassed
+                                ? "border-green-400/50 bg-green-500/20 text-green-200"
+                                : "border-yellow-400/50 bg-yellow-500/20 text-yellow-200"
+                            }`}
+                          >
+                            <span className="font-bold">
+                              QA Gates:{" "}
+                              {generatedDesigns.a1Sheet.qa.summary?.passed}/
+                              {generatedDesigns.a1Sheet.qa.summary?.total}
                             </span>
-                          )}
-                        </div>
-                      )}
-                      {generatedDesigns.a1Sheet?.critique && !generatedDesigns.a1Sheet.critique.skipped && (
-                        <div
-                          className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
-                            generatedDesigns.a1Sheet.critique.overallPass
-                              ? "border-green-400/50 bg-green-500/20 text-green-200"
-                              : "border-yellow-400/50 bg-yellow-500/20 text-yellow-200"
-                          }`}
-                        >
-                          <span className="font-bold">
-                            Vision QA: {generatedDesigns.a1Sheet.critique.overallPass ? "PASS" : "ISSUES"}
-                          </span>
-                          {generatedDesigns.a1Sheet.critique.visualScore?.overall_presentation && (
-                            <span className="ml-2 text-xs opacity-90">
-                              ({generatedDesigns.a1Sheet.critique.visualScore.overall_presentation}/10)
+                            {generatedDesigns.a1Sheet.qa.failures?.length >
+                              0 && (
+                              <span className="ml-2 text-xs opacity-90">
+                                ({generatedDesigns.a1Sheet.qa.failures.length}{" "}
+                                issues)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      {generatedDesigns.a1Sheet?.critique &&
+                        !generatedDesigns.a1Sheet.critique.skipped && (
+                          <div
+                            className={`px-4 py-2 rounded-lg text-sm font-medium liquid-glass border ${
+                              generatedDesigns.a1Sheet.critique.overallPass
+                                ? "border-green-400/50 bg-green-500/20 text-green-200"
+                                : "border-yellow-400/50 bg-yellow-500/20 text-yellow-200"
+                            }`}
+                          >
+                            <span className="font-bold">
+                              Vision QA:{" "}
+                              {generatedDesigns.a1Sheet.critique.overallPass
+                                ? "PASS"
+                                : "ISSUES"}
                             </span>
-                          )}
-                          {generatedDesigns.a1Sheet.critique.regeneratePanels?.length > 0 && (
-                            <span className="ml-1 text-xs opacity-90">
-                              — {generatedDesigns.a1Sheet.critique.regeneratePanels.length} panel(s) flagged
-                            </span>
-                          )}
-                        </div>
-                      )}
+                            {generatedDesigns.a1Sheet.critique.visualScore
+                              ?.overall_presentation && (
+                              <span className="ml-2 text-xs opacity-90">
+                                (
+                                {
+                                  generatedDesigns.a1Sheet.critique.visualScore
+                                    .overall_presentation
+                                }
+                                /10)
+                              </span>
+                            )}
+                            {generatedDesigns.a1Sheet.critique.regeneratePanels
+                              ?.length > 0 && (
+                              <span className="ml-1 text-xs opacity-90">
+                                —{" "}
+                                {
+                                  generatedDesigns.a1Sheet.critique
+                                    .regeneratePanels.length
+                                }{" "}
+                                panel(s) flagged
+                              </span>
+                            )}
+                          </div>
+                        )}
                     </div>
                   )}
 
@@ -6432,13 +6491,19 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         {generatedDesigns.a1Sheet?._panelsDirty && (
                           <button
                             onClick={recomposeSheet}
-                            disabled={regeneratingPanel === '__recomposing__'}
+                            disabled={regeneratingPanel === "__recomposing__"}
                             className="mb-4 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50"
                           >
-                            {regeneratingPanel === '__recomposing__' ? (
-                              <><Loader2 className="w-4 h-4 animate-spin" /> Recomposing Sheet...</>
+                            {regeneratingPanel === "__recomposing__" ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                                Recomposing Sheet...
+                              </>
                             ) : (
-                              <><RefreshCw className="w-4 h-4" /> Recompose A1 Sheet with Updated Panels</>
+                              <>
+                                <RefreshCw className="w-4 h-4" /> Recompose A1
+                                Sheet with Updated Panels
+                              </>
                             )}
                           </button>
                         )}
@@ -6458,28 +6523,35 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                               const label =
                                 PANEL_LABELS[panelType] ||
                                 panelType.replace(/_/g, " ").toUpperCase();
-                              const isFluxPanel = FLUX_PANEL_TYPES.has(panelType);
-                              const isRegenerating = regeneratingPanel === panelType;
+                              const isFluxPanel =
+                                FLUX_PANEL_TYPES.has(panelType);
+                              const isRegenerating =
+                                regeneratingPanel === panelType;
                               return (
                                 <div
                                   key={panelType}
                                   className={`group relative bg-navy-800/50 border rounded-xl overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-200 ${
                                     isRegenerating
-                                      ? 'border-yellow-400/50 shadow-yellow-500/10'
+                                      ? "border-yellow-400/50 shadow-yellow-500/10"
                                       : panel?.meta?.regenerated
-                                        ? 'border-emerald-400/50 hover:border-emerald-400/80 shadow-emerald-500/10'
-                                        : 'border-white/10 hover:border-blue-400/50 hover:shadow-blue-500/10'
+                                        ? "border-emerald-400/50 hover:border-emerald-400/80 shadow-emerald-500/10"
+                                        : "border-white/10 hover:border-blue-400/50 hover:shadow-blue-500/10"
                                   }`}
-                                  onClick={() => !isRegenerating && openImageModal(url, label)}
+                                  onClick={() =>
+                                    !isRegenerating &&
+                                    openImageModal(url, label)
+                                  }
                                 >
                                   {/* Tier badge */}
                                   <div className="absolute top-2 left-2 z-10">
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                      isFluxPanel
-                                        ? 'bg-purple-500/80 text-white'
-                                        : 'bg-emerald-500/80 text-white'
-                                    }`}>
-                                      {isFluxPanel ? 'FLUX' : 'SVG'}
+                                    <span
+                                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                        isFluxPanel
+                                          ? "bg-purple-500/80 text-white"
+                                          : "bg-emerald-500/80 text-white"
+                                      }`}
+                                    >
+                                      {isFluxPanel ? "FLUX" : "SVG"}
                                     </span>
                                     {panel?.meta?.regenerated && (
                                       <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-500/80 text-white">
@@ -6492,13 +6564,15 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                                     {isRegenerating && (
                                       <div className="absolute inset-0 bg-black/60 z-10 flex flex-col items-center justify-center">
                                         <Loader2 className="w-8 h-8 text-yellow-400 animate-spin mb-2" />
-                                        <span className="text-yellow-300 text-xs font-medium">Regenerating...</span>
+                                        <span className="text-yellow-300 text-xs font-medium">
+                                          Regenerating...
+                                        </span>
                                       </div>
                                     )}
                                     <img
                                       src={url}
                                       alt={label}
-                                      className={`w-full h-full object-cover transition-transform duration-300 ${isRegenerating ? 'opacity-40' : 'group-hover:scale-105'}`}
+                                      className={`w-full h-full object-cover transition-transform duration-300 ${isRegenerating ? "opacity-40" : "group-hover:scale-105"}`}
                                       loading="lazy"
                                       onError={(e) => {
                                         e.target.style.display = "none";
@@ -6522,7 +6596,9 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                                           className="p-1 rounded hover:bg-white/10 transition-colors disabled:opacity-30"
                                           title="Regenerate this panel with a new seed"
                                         >
-                                          <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'text-yellow-400 animate-spin' : 'text-white/40 hover:text-orange-300'}`} />
+                                          <RefreshCw
+                                            className={`w-3.5 h-3.5 ${isRegenerating ? "text-yellow-400 animate-spin" : "text-white/40 hover:text-orange-300"}`}
+                                          />
                                         </button>
                                       )}
                                       <ZoomIn className="w-3.5 h-3.5 text-white/40 group-hover:text-blue-300 transition-colors" />
@@ -7946,9 +8022,8 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                         const cds = generatedDesigns?.canonicalDesignState;
                         if (cds) {
                           // Real DXF from BuildingModel geometry
-                          const { createBuildingModel } = await import(
-                            "./geometry/BuildingModel.js"
-                          );
+                          const { createBuildingModel } =
+                            await import("./geometry/BuildingModel.js");
                           const model = createBuildingModel(cds);
                           const vectorPlan = model.toVectorPlan();
                           const dxfContent = exportToDXF(vectorPlan, {
@@ -7961,9 +8036,7 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                             dxfContent,
                             "application/dxf",
                           );
-                          showToast(
-                            "DXF exported from BuildingModel geometry",
-                          );
+                          showToast("DXF exported from BuildingModel geometry");
                         } else {
                           // Fallback: placeholder DWG
                           const downloadDetails = {
@@ -8027,12 +8100,10 @@ IMPORTANT: Use double quotes for all strings, no trailing commas, no comments.`;
                       try {
                         const cds = generatedDesigns?.canonicalDesignState;
                         if (cds) {
-                          const { createBuildingModel } = await import(
-                            "./geometry/BuildingModel.js"
-                          );
-                          const { exportToIFC } = await import(
-                            "./utils/ifcWriter.js"
-                          );
+                          const { createBuildingModel } =
+                            await import("./geometry/BuildingModel.js");
+                          const { exportToIFC } =
+                            await import("./utils/ifcWriter.js");
                           const model = createBuildingModel(cds);
                           const ifcContent = exportToIFC(model, {
                             projectName: projectDetails?.program

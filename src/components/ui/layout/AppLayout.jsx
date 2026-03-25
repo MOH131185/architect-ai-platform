@@ -1,9 +1,9 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { Navbar } from './Navbar.jsx';
-import { Footer } from './Footer.jsx';
+import React from "react";
+import { motion } from "framer-motion";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+import { Navbar } from "./Navbar.jsx";
+import { Footer } from "./Footer.jsx";
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -20,32 +20,30 @@ const AppLayout = ({
   showFooter = true,
   navbarProps = {},
   footerProps = {},
-  background = 'default',
+  background = "default",
   ...props
 }) => {
   const backgroundClasses = {
-    default: 'bg-white',
-    gray: 'bg-gray-50',
-    gradient: 'bg-gradient-to-b from-white to-gray-50',
-    topography: 'bg-topography',
-    grid: 'bg-grid',
-    dots: 'bg-dots',
+    default: "bg-white",
+    gray: "bg-gray-50",
+    gradient: "bg-gradient-to-b from-white to-gray-50",
+    topography: "bg-topography",
+    grid: "bg-grid",
+    dots: "bg-dots",
   };
 
   return (
     <div
       className={cn(
-        'min-h-screen flex flex-col',
+        "min-h-screen flex flex-col",
         backgroundClasses[background] || backgroundClasses.default,
-        className
+        className,
       )}
       {...props}
     >
       {showNavbar && <Navbar {...navbarProps} />}
 
-      <main className="flex-1">
-        {children}
-      </main>
+      <main className="flex-1">{children}</main>
 
       {showFooter && <Footer {...footerProps} />}
     </div>
@@ -61,7 +59,7 @@ const Page = React.forwardRef(
       return (
         <motion.div
           ref={ref}
-          className={cn('w-full', className)}
+          className={cn("w-full", className)}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -74,14 +72,14 @@ const Page = React.forwardRef(
     }
 
     return (
-      <div ref={ref} className={cn('w-full', className)} {...props}>
+      <div ref={ref} className={cn("w-full", className)} {...props}>
         {children}
       </div>
     );
-  }
+  },
 );
 
-Page.displayName = 'Page';
+Page.displayName = "Page";
 
 /**
  * Step wrapper for wizard steps with slide animation
@@ -89,13 +87,13 @@ Page.displayName = 'Page';
 const StepWrapper = ({
   className,
   children,
-  direction = 'forward',
+  direction = "forward",
   ...props
 }) => {
   const variants = {
     initial: {
       opacity: 0,
-      x: direction === 'forward' ? 50 : -50,
+      x: direction === "forward" ? 50 : -50,
     },
     animate: {
       opacity: 1,
@@ -103,13 +101,13 @@ const StepWrapper = ({
     },
     exit: {
       opacity: 0,
-      x: direction === 'forward' ? -50 : 50,
+      x: direction === "forward" ? -50 : 50,
     },
   };
 
   return (
     <motion.div
-      className={cn('w-full', className)}
+      className={cn("w-full", className)}
       variants={variants}
       initial="initial"
       animate="animate"
@@ -131,73 +129,63 @@ const CenteredLayout = React.forwardRef(
       <div
         ref={ref}
         className={cn(
-          'min-h-[calc(100vh-4rem)] flex items-center justify-center p-4',
-          className
+          "min-h-[calc(100vh-4rem)] flex items-center justify-center p-4",
+          className,
         )}
         {...props}
       >
         {children}
       </div>
     );
-  }
+  },
 );
 
-CenteredLayout.displayName = 'CenteredLayout';
+CenteredLayout.displayName = "CenteredLayout";
 
 /**
  * Two-column layout for wizard steps
  */
 const SplitLayout = React.forwardRef(
-  ({ className, left, right, ratio = '1:1', ...props }, ref) => {
+  ({ className, left, right, ratio = "1:1", ...props }, ref) => {
     const ratioClasses = {
-      '1:1': 'md:grid-cols-2',
-      '1:2': 'md:grid-cols-3',
-      '2:1': 'md:grid-cols-3',
-      '1:3': 'md:grid-cols-4',
-      '3:1': 'md:grid-cols-4',
+      "1:1": "md:grid-cols-2",
+      "1:2": "md:grid-cols-3",
+      "2:1": "md:grid-cols-3",
+      "1:3": "md:grid-cols-4",
+      "3:1": "md:grid-cols-4",
     };
 
     const leftSpanClasses = {
-      '1:1': '',
-      '1:2': '',
-      '2:1': 'md:col-span-2',
-      '1:3': '',
-      '3:1': 'md:col-span-3',
+      "1:1": "",
+      "1:2": "",
+      "2:1": "md:col-span-2",
+      "1:3": "",
+      "3:1": "md:col-span-3",
     };
 
     const rightSpanClasses = {
-      '1:1': '',
-      '1:2': 'md:col-span-2',
-      '2:1': '',
-      '1:3': 'md:col-span-3',
-      '3:1': '',
+      "1:1": "",
+      "1:2": "md:col-span-2",
+      "2:1": "",
+      "1:3": "md:col-span-3",
+      "3:1": "",
     };
 
     return (
       <div
         ref={ref}
-        className={cn(
-          'grid grid-cols-1 gap-8',
-          ratioClasses[ratio],
-          className
-        )}
+        className={cn("grid grid-cols-1 gap-8", ratioClasses[ratio], className)}
         {...props}
       >
         <div className={leftSpanClasses[ratio]}>{left}</div>
         <div className={rightSpanClasses[ratio]}>{right}</div>
       </div>
     );
-  }
+  },
 );
 
-SplitLayout.displayName = 'SplitLayout';
+SplitLayout.displayName = "SplitLayout";
 
-export {
-  AppLayout,
-  Page,
-  StepWrapper,
-  CenteredLayout,
-  SplitLayout,
-};
+export { AppLayout, Page, StepWrapper, CenteredLayout, SplitLayout };
 
 export default AppLayout;

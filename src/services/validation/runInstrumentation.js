@@ -12,7 +12,7 @@ const RUN_STORAGE_KEY = "archiAI_debug_runs";
  * Save a run snapshot (browser: sessionStorage, Node: fs).
  *
  * @param {string} designId
- * @param {Object} artifacts - { cds, programLock, panelManifest, gateProgram, gateDrift }
+ * @param {Object} artifacts - { cds, programLock, panelManifest, gateProgram, gateDrift, metrics, composeTrace, composeManifest }
  */
 export function saveRunSnapshot(designId, artifacts) {
   const snapshot = {
@@ -76,6 +76,24 @@ export function saveRunSnapshot(designId, artifacts) {
       fs.writeFileSync(
         path.join(dir, "gate_drift.json"),
         JSON.stringify(artifacts.gateDrift, null, 2),
+      );
+    }
+    if (artifacts.metrics) {
+      fs.writeFileSync(
+        path.join(dir, "metrics.json"),
+        JSON.stringify(artifacts.metrics, null, 2),
+      );
+    }
+    if (artifacts.composeTrace) {
+      fs.writeFileSync(
+        path.join(dir, "compose_trace.json"),
+        JSON.stringify(artifacts.composeTrace, null, 2),
+      );
+    }
+    if (artifacts.composeManifest) {
+      fs.writeFileSync(
+        path.join(dir, "compose_manifest.json"),
+        JSON.stringify(artifacts.composeManifest, null, 2),
       );
     }
     if (artifacts.cds?.hash) {

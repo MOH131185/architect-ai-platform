@@ -1,8 +1,8 @@
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
 /**
  * BIM Service for Parametric Building Models
- * 
+ *
  * REFACTORED: Exports real DWG/DXF and IFC from geometry
  * Creates unified 3D building geometry from project specifications
  * Derives 2D floor plans, elevations, sections, and 3D views from single model
@@ -10,7 +10,7 @@ import logger from '../utils/logger.js';
 
 class BIMService {
   constructor() {
-    logger.info('BIM Service initialized');
+    logger.info("BIM Service initialized");
   }
 
   /**
@@ -18,10 +18,10 @@ class BIMService {
    * REFACTORED: Now generates real DWG/DXF content from geometry
    */
   exportToDWG(geometry, dna) {
-    logger.info('📐 Exporting to DWG format...');
+    logger.info("📐 Exporting to DWG format...");
 
     if (!geometry && !dna) {
-      throw new Error('Geometry or DNA required for DWG export');
+      throw new Error("Geometry or DNA required for DWG export");
     }
 
     // Generate DXF (text-based CAD format, easier than binary DWG)
@@ -32,11 +32,11 @@ class BIMService {
    * Export geometry to DXF format (text-based CAD)
    */
   exportToDXF(geometry, dna) {
-    logger.info('📐 Generating DXF content...');
+    logger.info("📐 Generating DXF content...");
 
     const dimensions = dna?.dimensions || geometry?.boundingBox || {};
     const materials = dna?.materials || [];
-    const projectID = dna?.projectID || 'UNKNOWN';
+    const projectID = dna?.projectID || "UNKNOWN";
 
     // DXF header
     let dxf = `0
@@ -123,7 +123,7 @@ WALLS
 70
 1
 `;
-        wall.vertices.forEach(vertex => {
+        wall.vertices.forEach((vertex) => {
           dxf += `0
 VERTEX
 8
@@ -225,17 +225,17 @@ EOF
    * REFACTORED: Now generates real IFC 4 content
    */
   exportToIFC(geometry, dna) {
-    logger.info('📐 Generating IFC content...');
+    logger.info("📐 Generating IFC content...");
 
     const dimensions = dna?.dimensions || geometry?.boundingBox || {};
-    const projectID = dna?.projectID || 'UNKNOWN';
-    const projectName = dna?.projectName || 'Architectural Project';
+    const projectID = dna?.projectID || "UNKNOWN";
+    const projectName = dna?.projectName || "Architectural Project";
 
     // Generate IFC header
     let ifc = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ArchitectAI Generated Model'),'2;1');
-FILE_NAME('${projectName.replace(/\s/g, '_')}.ifc','${new Date().toISOString()}',('ArchitectAI'),('AI Architecture Platform'),'IFC4','ArchitectAI Export','');
+FILE_NAME('${projectName.replace(/\s/g, "_")}.ifc','${new Date().toISOString()}',('ArchitectAI'),('AI Architecture Platform'),'IFC4','ArchitectAI Export','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 
@@ -272,7 +272,7 @@ DATA;
 
     // Walls (simplified)
     if (geometry?.walls) {
-      geometry.walls.forEach(wall => {
+      geometry.walls.forEach((wall) => {
         ifc += `/* Wall ${wall.id}: ${wall.thickness}m thick, ${wall.height}m high */\n`;
         ifc += `#${entityId++}=IFCWALL('${this.generateIFCGUID()}',$,'${wall.id}',$,$,#${entityId},$,$,$);\n`;
         entityId += 3; // Skip placement entities for brevity
@@ -281,7 +281,9 @@ DATA;
 
     ifc += `\nENDSEC;\nEND-ISO-10303-21;`;
 
-    logger.success(` IFC generated (${ifc.length} bytes, ${entityId} entities)`);
+    logger.success(
+      ` IFC generated (${ifc.length} bytes, ${entityId} entities)`,
+    );
     return ifc;
   }
 
@@ -290,8 +292,9 @@ DATA;
    */
   generateIFCGUID() {
     // IFC uses base64-encoded GUIDs
-    const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$';
-    let guid = '';
+    const chars =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+    let guid = "";
     for (let i = 0; i < 22; i++) {
       guid += chars[Math.floor(Math.random() * chars.length)];
     }
@@ -302,12 +305,12 @@ DATA;
    * Export to Revit format
    */
   exportToRVT(geometry, dna) {
-    logger.info('📐 Generating RVT placeholder...');
-    
+    logger.info("📐 Generating RVT placeholder...");
+
     // RVT is a proprietary binary format
     // Real implementation would require Revit API or third-party library
     return `Revit Project File
-Project: ${dna?.projectID || 'Architectural Design'}
+Project: ${dna?.projectID || "Architectural Design"}
 Generated: ${new Date().toISOString()}
 
 [Binary RVT data would be here]
@@ -325,34 +328,55 @@ Export as IFC instead for interoperability.
    */
   generateParametricModel(projectContext) {
     const {
-      buildingProgram = 'house',
+      buildingProgram = "house",
       floorArea = 200,
-      architecturalStyle = 'contemporary',
-      materials = 'brick and glass',
-      entranceDirection = 'N',
-      blendedStyle
+      architecturalStyle = "contemporary",
+      materials = "brick and glass",
+      entranceDirection = "N",
+      blendedStyle,
     } = projectContext;
 
-    logger.info('🏗️ Generating parametric building model...');
+    logger.info("🏗️ Generating parametric building model...");
 
     // Calculate building dimensions based on program and area
-    const dimensions = this.calculateBuildingDimensions(floorArea, buildingProgram);
+    const dimensions = this.calculateBuildingDimensions(
+      floorArea,
+      buildingProgram,
+    );
 
     // Generate floor geometry
     const floorCount = this.calculateFloorCount(floorArea, buildingProgram);
-    const floors = this.generateFloorGeometry(dimensions, floorCount, buildingProgram);
+    const floors = this.generateFloorGeometry(
+      dimensions,
+      floorCount,
+      buildingProgram,
+    );
 
     // Generate structural elements
-    const structure = this.generateStructuralElements(dimensions, floorCount, architecturalStyle);
+    const structure = this.generateStructuralElements(
+      dimensions,
+      floorCount,
+      architecturalStyle,
+    );
 
     // Generate envelope (walls, windows, doors)
-    const envelope = this.generateBuildingEnvelope(dimensions, floorCount, entranceDirection, architecturalStyle, blendedStyle);
+    const envelope = this.generateBuildingEnvelope(
+      dimensions,
+      floorCount,
+      entranceDirection,
+      architecturalStyle,
+      blendedStyle,
+    );
 
     // Generate roof geometry
     const roof = this.generateRoofGeometry(dimensions, architecturalStyle);
 
     // Generate spatial organization
-    const spaces = this.generateSpaceLayout(dimensions, floorCount, buildingProgram);
+    const spaces = this.generateSpaceLayout(
+      dimensions,
+      floorCount,
+      buildingProgram,
+    );
 
     const model = {
       metadata: {
@@ -362,7 +386,7 @@ Export as IFC instead for interoperability.
         materials,
         entranceDirection,
         floorCount,
-        generated: new Date().toISOString()
+        generated: new Date().toISOString(),
       },
       geometry: {
         dimensions,
@@ -370,21 +394,26 @@ Export as IFC instead for interoperability.
         structure,
         envelope,
         roof,
-        spaces
+        spaces,
       },
       // Provide methods to derive different views
       views: {
         floorPlans: this.deriveFloorPlans(floors, spaces, dimensions),
         elevations: this.deriveElevations(envelope, dimensions, floorCount),
-        sections: this.deriveSections(structure, floors, dimensions, floorCount),
-        axonometric: this.deriveAxonometric(dimensions, floorCount, envelope)
-      }
+        sections: this.deriveSections(
+          structure,
+          floors,
+          dimensions,
+          floorCount,
+        ),
+        axonometric: this.deriveAxonometric(dimensions, floorCount, envelope),
+      },
     };
 
-    logger.info('✅ Parametric model generated:', {
+    logger.info("✅ Parametric model generated:", {
       dimensions: `${dimensions.length}m × ${dimensions.width}m`,
       floors: floorCount,
-      spaces: spaces.length
+      spaces: spaces.length,
     });
 
     return model;
@@ -397,11 +426,14 @@ Export as IFC instead for interoperability.
     // Determine optimal proportions based on building type
     let aspectRatio = 1.5; // Default length:width ratio
 
-    if (buildingProgram.includes('villa') || buildingProgram.includes('house')) {
+    if (
+      buildingProgram.includes("villa") ||
+      buildingProgram.includes("house")
+    ) {
       aspectRatio = 1.4; // More compact
-    } else if (buildingProgram.includes('office')) {
+    } else if (buildingProgram.includes("office")) {
       aspectRatio = 1.8; // More elongated
-    } else if (buildingProgram.includes('apartment')) {
+    } else if (buildingProgram.includes("apartment")) {
       aspectRatio = 2.0; // Linear
     }
 
@@ -418,7 +450,7 @@ Export as IFC instead for interoperability.
       width: Math.round(width * 10) / 10,
       height: floorCount * 3.5,
       floorHeight: 3.5,
-      floorCount
+      floorCount,
     };
   }
 
@@ -426,7 +458,7 @@ Export as IFC instead for interoperability.
    * Calculate number of floors based on area and building type
    */
   calculateFloorCount(area, buildingType) {
-    if (buildingType.includes('cottage') || buildingType.includes('bungalow')) {
+    if (buildingType.includes("cottage") || buildingType.includes("bungalow")) {
       return 1;
     }
     if (area < 150) return 1;
@@ -446,11 +478,11 @@ Export as IFC instead for interoperability.
         level: i,
         elevation: i * dimensions.floorHeight,
         outline: this.generateFloorOutline(dimensions),
-        type: i === 0 ? 'ground' : i === floorCount - 1 ? 'top' : 'typical',
+        type: i === 0 ? "ground" : i === floorCount - 1 ? "top" : "typical",
         slab: {
           thickness: i === 0 ? 0.2 : 0.18, // Ground floor thicker
-          material: 'reinforced concrete'
-        }
+          material: "reinforced concrete",
+        },
       };
       floors.push(floor);
     }
@@ -465,14 +497,14 @@ Export as IFC instead for interoperability.
     // Simple rectangular footprint for now
     // Future enhancement: Add complexity based on style
     return {
-      type: 'rectangle',
+      type: "rectangle",
       points: [
         { x: 0, y: 0 },
         { x: dimensions.length, y: 0 },
         { x: dimensions.length, y: dimensions.width },
-        { x: 0, y: dimensions.width }
+        { x: 0, y: dimensions.width },
       ],
-      area: dimensions.length * dimensions.width
+      area: dimensions.length * dimensions.width,
     };
   }
 
@@ -483,7 +515,7 @@ Export as IFC instead for interoperability.
     const { length, width, floorHeight } = dimensions;
 
     // Generate structural grid
-    const columnSpacing = architecturalStyle.includes('modern') ? 6.0 : 4.5;
+    const columnSpacing = architecturalStyle.includes("modern") ? 6.0 : 4.5;
     const columns = [];
     const beams = [];
 
@@ -495,7 +527,7 @@ Export as IFC instead for interoperability.
             position: { x, y },
             height: floorCount * floorHeight,
             size: { width: 0.4, depth: 0.4 },
-            material: 'reinforced concrete'
+            material: "reinforced concrete",
           });
         }
       }
@@ -507,15 +539,23 @@ Export as IFC instead for interoperability.
     return {
       columns,
       beams,
-      system: architecturalStyle.includes('steel') ? 'steel frame' : 'concrete frame',
-      gridSpacing: columnSpacing
+      system: architecturalStyle.includes("steel")
+        ? "steel frame"
+        : "concrete frame",
+      gridSpacing: columnSpacing,
     };
   }
 
   /**
    * Generate building envelope (walls, windows, doors)
    */
-  generateBuildingEnvelope(dimensions, floorCount, entranceDirection, architecturalStyle, blendedStyle) {
+  generateBuildingEnvelope(
+    dimensions,
+    floorCount,
+    entranceDirection,
+    architecturalStyle,
+    blendedStyle,
+  ) {
     const { length, width, floorHeight } = dimensions;
 
     // Determine window-to-wall ratio based on style
@@ -523,17 +563,41 @@ Export as IFC instead for interoperability.
 
     // Generate walls for each facade
     const facades = {
-      north: this.generateFacade('north', length, floorCount * floorHeight, windowRatio, entranceDirection === 'N'),
-      south: this.generateFacade('south', length, floorCount * floorHeight, windowRatio, entranceDirection === 'S'),
-      east: this.generateFacade('east', width, floorCount * floorHeight, windowRatio, entranceDirection === 'E'),
-      west: this.generateFacade('west', width, floorCount * floorHeight, windowRatio, entranceDirection === 'W')
+      north: this.generateFacade(
+        "north",
+        length,
+        floorCount * floorHeight,
+        windowRatio,
+        entranceDirection === "N",
+      ),
+      south: this.generateFacade(
+        "south",
+        length,
+        floorCount * floorHeight,
+        windowRatio,
+        entranceDirection === "S",
+      ),
+      east: this.generateFacade(
+        "east",
+        width,
+        floorCount * floorHeight,
+        windowRatio,
+        entranceDirection === "E",
+      ),
+      west: this.generateFacade(
+        "west",
+        width,
+        floorCount * floorHeight,
+        windowRatio,
+        entranceDirection === "W",
+      ),
     };
 
     return {
       facades,
       wallThickness: 0.3,
-      insulationValue: 'R-30',
-      materials: blendedStyle?.materials || ['brick', 'glass', 'metal panels']
+      insulationValue: "R-30",
+      materials: blendedStyle?.materials || ["brick", "glass", "metal panels"],
     };
   }
 
@@ -541,13 +605,17 @@ Export as IFC instead for interoperability.
    * Determine window-to-wall ratio based on architectural style
    */
   getWindowRatio(architecturalStyle, blendedStyle) {
-    const style = (architecturalStyle + ' ' + (blendedStyle?.styleName || '')).toLowerCase();
+    const style = (
+      architecturalStyle +
+      " " +
+      (blendedStyle?.styleName || "")
+    ).toLowerCase();
 
-    if (style.includes('modern') || style.includes('contemporary')) {
+    if (style.includes("modern") || style.includes("contemporary")) {
       return 0.4; // 40% glazing
-    } else if (style.includes('traditional') || style.includes('vernacular')) {
+    } else if (style.includes("traditional") || style.includes("vernacular")) {
       return 0.25; // 25% glazing
-    } else if (style.includes('sustainable') || style.includes('passive')) {
+    } else if (style.includes("sustainable") || style.includes("passive")) {
       return 0.35; // Balanced for passive solar
     }
 
@@ -564,7 +632,7 @@ Export as IFC instead for interoperability.
       height,
       windowRatio,
       windows: [],
-      doors: []
+      doors: [],
     };
 
     // Generate windows on each floor
@@ -582,7 +650,7 @@ Export as IFC instead for interoperability.
           width: windowWidth,
           height: windowHeight,
           floor,
-          type: 'casement'
+          type: "casement",
         });
       }
     }
@@ -593,7 +661,7 @@ Export as IFC instead for interoperability.
         position: { x: length / 2, y: 0 },
         width: 1.2,
         height: 2.4,
-        type: 'main entrance'
+        type: "main entrance",
       });
     }
 
@@ -606,23 +674,23 @@ Export as IFC instead for interoperability.
   generateRoofGeometry(dimensions, architecturalStyle) {
     const style = architecturalStyle.toLowerCase();
 
-    let roofType = 'flat';
+    let roofType = "flat";
     let slope = 0;
 
-    if (style.includes('traditional') || style.includes('vernacular')) {
-      roofType = 'pitched';
+    if (style.includes("traditional") || style.includes("vernacular")) {
+      roofType = "pitched";
       slope = 30; // degrees
-    } else if (style.includes('modern') || style.includes('contemporary')) {
-      roofType = 'flat';
+    } else if (style.includes("modern") || style.includes("contemporary")) {
+      roofType = "flat";
       slope = 2; // minimum drainage slope
     }
 
     return {
       type: roofType,
       slope,
-      material: roofType === 'flat' ? 'membrane' : 'tiles',
-      overhang: roofType === 'pitched' ? 0.6 : 0.2,
-      area: dimensions.length * dimensions.width
+      material: roofType === "flat" ? "membrane" : "tiles",
+      overhang: roofType === "pitched" ? 0.6 : 0.2,
+      area: dimensions.length * dimensions.width,
     };
   }
 
@@ -634,35 +702,103 @@ Export as IFC instead for interoperability.
     const { length, width } = dimensions;
 
     // Different layouts based on program
-    if (buildingProgram.includes('house') || buildingProgram.includes('villa')) {
+    if (
+      buildingProgram.includes("house") ||
+      buildingProgram.includes("villa")
+    ) {
       // Ground floor: Living, kitchen, dining
       if (floorCount >= 1) {
         spaces.push(
-          { name: 'Living Room', floor: 0, area: length * width * 0.3, position: { x: 0, y: 0 } },
-          { name: 'Kitchen', floor: 0, area: length * width * 0.2, position: { x: length * 0.6, y: 0 } },
-          { name: 'Dining', floor: 0, area: length * width * 0.15, position: { x: length * 0.3, y: 0 } }
+          {
+            name: "Living Room",
+            floor: 0,
+            area: length * width * 0.3,
+            position: { x: 0, y: 0 },
+          },
+          {
+            name: "Kitchen",
+            floor: 0,
+            area: length * width * 0.2,
+            position: { x: length * 0.6, y: 0 },
+          },
+          {
+            name: "Dining",
+            floor: 0,
+            area: length * width * 0.15,
+            position: { x: length * 0.3, y: 0 },
+          },
         );
       }
       // Upper floors: Bedrooms
       if (floorCount >= 2) {
         spaces.push(
-          { name: 'Master Bedroom', floor: 1, area: length * width * 0.25, position: { x: 0, y: 0 } },
-          { name: 'Bedroom 2', floor: 1, area: length * width * 0.15, position: { x: length * 0.5, y: 0 } },
-          { name: 'Bathroom', floor: 1, area: length * width * 0.1, position: { x: length * 0.7, y: width * 0.5 } }
+          {
+            name: "Master Bedroom",
+            floor: 1,
+            area: length * width * 0.25,
+            position: { x: 0, y: 0 },
+          },
+          {
+            name: "Bedroom 2",
+            floor: 1,
+            area: length * width * 0.15,
+            position: { x: length * 0.5, y: 0 },
+          },
+          {
+            name: "Bathroom",
+            floor: 1,
+            area: length * width * 0.1,
+            position: { x: length * 0.7, y: width * 0.5 },
+          },
         );
       }
-    } else if (buildingProgram.includes('office')) {
+    } else if (buildingProgram.includes("office")) {
       spaces.push(
-        { name: 'Open Office', floor: 0, area: length * width * 0.5, position: { x: 0, y: 0 } },
-        { name: 'Meeting Rooms', floor: 0, area: length * width * 0.2, position: { x: length * 0.6, y: 0 } },
-        { name: 'Reception', floor: 0, area: length * width * 0.15, position: { x: length * 0.8, y: 0 } }
+        {
+          name: "Open Office",
+          floor: 0,
+          area: length * width * 0.5,
+          position: { x: 0, y: 0 },
+        },
+        {
+          name: "Meeting Rooms",
+          floor: 0,
+          area: length * width * 0.2,
+          position: { x: length * 0.6, y: 0 },
+        },
+        {
+          name: "Reception",
+          floor: 0,
+          area: length * width * 0.15,
+          position: { x: length * 0.8, y: 0 },
+        },
       );
-    } else if (buildingProgram.includes('clinic')) {
+    } else if (buildingProgram.includes("clinic")) {
       spaces.push(
-        { name: 'Reception', floor: 0, area: length * width * 0.15, position: { x: 0, y: 0 } },
-        { name: 'Waiting Area', floor: 0, area: length * width * 0.2, position: { x: length * 0.2, y: 0 } },
-        { name: 'Consultation Room 1', floor: 0, area: length * width * 0.1, position: { x: length * 0.5, y: 0 } },
-        { name: 'Consultation Room 2', floor: 0, area: length * width * 0.1, position: { x: length * 0.65, y: 0 } }
+        {
+          name: "Reception",
+          floor: 0,
+          area: length * width * 0.15,
+          position: { x: 0, y: 0 },
+        },
+        {
+          name: "Waiting Area",
+          floor: 0,
+          area: length * width * 0.2,
+          position: { x: length * 0.2, y: 0 },
+        },
+        {
+          name: "Consultation Room 1",
+          floor: 0,
+          area: length * width * 0.1,
+          position: { x: length * 0.5, y: 0 },
+        },
+        {
+          name: "Consultation Room 2",
+          floor: 0,
+          area: length * width * 0.1,
+          position: { x: length * 0.65, y: 0 },
+        },
       );
     }
 
@@ -676,7 +812,7 @@ Export as IFC instead for interoperability.
     const plans = {};
 
     floors.forEach((floor, index) => {
-      const levelSpaces = spaces.filter(s => s.floor === index);
+      const levelSpaces = spaces.filter((s) => s.floor === index);
 
       plans[`floor_${index}`] = {
         level: index,
@@ -685,10 +821,14 @@ Export as IFC instead for interoperability.
         spaces: levelSpaces,
         dimensions: {
           length: dimensions.length,
-          width: dimensions.width
+          width: dimensions.width,
         },
         // SVG-like representation for 2D rendering
-        elements: this.generateFloorPlanElements(floor.outline, levelSpaces, dimensions)
+        elements: this.generateFloorPlanElements(
+          floor.outline,
+          levelSpaces,
+          dimensions,
+        ),
       };
     });
 
@@ -703,20 +843,20 @@ Export as IFC instead for interoperability.
 
     // Outer walls
     elements.push({
-      type: 'wall',
+      type: "wall",
       points: outline.points,
       thickness: 0.3,
-      style: 'exterior'
+      style: "exterior",
     });
 
     // Space divisions (simplified)
-    spaces.forEach(space => {
+    spaces.forEach((space) => {
       elements.push({
-        type: 'space',
+        type: "space",
         name: space.name,
         position: space.position,
         area: space.area,
-        label: `${space.name}\n${Math.round(space.area)}m²`
+        label: `${space.name}\n${Math.round(space.area)}m²`,
       });
     });
 
@@ -729,7 +869,7 @@ Export as IFC instead for interoperability.
   deriveElevations(envelope, dimensions, floorCount) {
     const elevations = {};
 
-    ['north', 'south', 'east', 'west'].forEach(direction => {
+    ["north", "south", "east", "west"].forEach((direction) => {
       const facade = envelope.facades[direction];
 
       elevations[direction] = {
@@ -740,7 +880,11 @@ Export as IFC instead for interoperability.
         doors: facade.doors,
         materials: envelope.materials,
         // 2D projection data
-        projection: this.generateElevationProjection(facade, dimensions, floorCount)
+        projection: this.generateElevationProjection(
+          facade,
+          dimensions,
+          floorCount,
+        ),
       };
     });
 
@@ -755,39 +899,45 @@ Export as IFC instead for interoperability.
 
     // Ground line
     elements.push({
-      type: 'line',
-      points: [{ x: 0, y: 0 }, { x: facade.length, y: 0 }],
-      style: 'ground'
+      type: "line",
+      points: [
+        { x: 0, y: 0 },
+        { x: facade.length, y: 0 },
+      ],
+      style: "ground",
     });
 
     // Floor lines
     for (let i = 1; i <= floorCount; i++) {
       elements.push({
-        type: 'line',
-        points: [{ x: 0, y: i * 3.5 }, { x: facade.length, y: i * 3.5 }],
-        style: 'floor'
+        type: "line",
+        points: [
+          { x: 0, y: i * 3.5 },
+          { x: facade.length, y: i * 3.5 },
+        ],
+        style: "floor",
       });
     }
 
     // Windows
-    facade.windows.forEach(window => {
+    facade.windows.forEach((window) => {
       elements.push({
-        type: 'rectangle',
+        type: "rectangle",
         position: window.position,
         width: window.width,
         height: window.height,
-        style: 'window'
+        style: "window",
       });
     });
 
     // Doors
-    facade.doors.forEach(door => {
+    facade.doors.forEach((door) => {
       elements.push({
-        type: 'rectangle',
+        type: "rectangle",
         position: door.position,
         width: door.width,
         height: door.height,
-        style: 'door'
+        style: "door",
       });
     });
 
@@ -799,8 +949,20 @@ Export as IFC instead for interoperability.
    */
   deriveSections(structure, floors, dimensions, floorCount) {
     return {
-      longitudinal: this.generateSectionView('longitudinal', dimensions, floors, structure, floorCount),
-      cross: this.generateSectionView('cross', dimensions, floors, structure, floorCount)
+      longitudinal: this.generateSectionView(
+        "longitudinal",
+        dimensions,
+        floors,
+        structure,
+        floorCount,
+      ),
+      cross: this.generateSectionView(
+        "cross",
+        dimensions,
+        floors,
+        structure,
+        floorCount,
+      ),
     };
   }
 
@@ -808,48 +970,55 @@ Export as IFC instead for interoperability.
    * Generate section view (cut-through)
    */
   generateSectionView(type, dimensions, floors, structure, floorCount) {
-    const width = type === 'longitudinal' ? dimensions.length : dimensions.width;
+    const width =
+      type === "longitudinal" ? dimensions.length : dimensions.width;
     const elements = [];
 
     // Foundation
     elements.push({
-      type: 'rectangle',
+      type: "rectangle",
       position: { x: 0, y: -0.5 },
       width: width,
       height: 0.5,
-      style: 'foundation',
-      fill: 'solid'
+      style: "foundation",
+      fill: "solid",
     });
 
     // Floor slabs
-    floors.forEach(floor => {
+    floors.forEach((floor) => {
       elements.push({
-        type: 'line',
-        points: [{ x: 0, y: floor.elevation }, { x: width, y: floor.elevation }],
+        type: "line",
+        points: [
+          { x: 0, y: floor.elevation },
+          { x: width, y: floor.elevation },
+        ],
         thickness: floor.slab.thickness,
-        style: 'slab',
-        fill: 'poche'
+        style: "slab",
+        fill: "poche",
       });
     });
 
     // Roof
     elements.push({
-      type: 'line',
-      points: [{ x: 0, y: floorCount * 3.5 }, { x: width, y: floorCount * 3.5 }],
+      type: "line",
+      points: [
+        { x: 0, y: floorCount * 3.5 },
+        { x: width, y: floorCount * 3.5 },
+      ],
       thickness: 0.2,
-      style: 'roof'
+      style: "roof",
     });
 
     // Columns (cut through)
-    structure.columns.forEach(col => {
-      const xPos = type === 'longitudinal' ? col.position.x : col.position.y;
+    structure.columns.forEach((col) => {
+      const xPos = type === "longitudinal" ? col.position.x : col.position.y;
       elements.push({
-        type: 'rectangle',
+        type: "rectangle",
         position: { x: xPos - col.size.width / 2, y: 0 },
         width: col.size.width,
         height: col.height,
-        style: 'column',
-        fill: 'poche'
+        style: "column",
+        fill: "poche",
       });
     });
 
@@ -857,7 +1026,7 @@ Export as IFC instead for interoperability.
       type,
       width,
       height: floorCount * 3.5 + 0.5,
-      elements
+      elements,
     };
   }
 
@@ -868,14 +1037,14 @@ Export as IFC instead for interoperability.
     // Simplified axonometric data
     // In a real implementation, this would include 3D to 2D isometric projection
     return {
-      type: 'axonometric',
+      type: "axonometric",
       angle: 45, // degrees
       dimensions,
       floorCount,
       envelope: {
         simplified: true,
-        materials: envelope.materials
-      }
+        materials: envelope.materials,
+      },
     };
   }
 
@@ -883,7 +1052,7 @@ Export as IFC instead for interoperability.
    * Export model to IFC format (Industry Foundation Classes)
    * Enhanced version with proper geometry
    */
-  exportToIFC(model) {
+  exportModelToIFC(model) {
     const { metadata, geometry } = model;
 
     let ifc = `ISO-10303-21;
@@ -928,7 +1097,7 @@ DATA;
     });
 
     // Add spaces
-    geometry.spaces.forEach(space => {
+    geometry.spaces.forEach((space) => {
       ifc += `#${entityId}=IFCSPACE('${this.generateGUID()}',#2,'${space.name}','Area: ${Math.round(space.area)}m²',$,#${entityId + 1},$,$,.ELEMENT.,$,$,$);\n`;
       ifc += `#${entityId + 1}=IFCLOCALPLACEMENT($,#${entityId + 2});\n`;
       ifc += `#${entityId + 2}=IFCAXIS2PLACEMENT3D(#${entityId + 3},$,$);\n`;
@@ -945,11 +1114,14 @@ DATA;
    * Generate GUID for IFC entities
    */
   generateGUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+      /[xy]/g,
+      function (c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      },
+    );
   }
 
   /**
@@ -957,40 +1129,49 @@ DATA;
    * This ensures 100% orthographic 2D output with no 3D elements
    */
   generate2DFloorPlan(projectContext, floorLevel = 0) {
-    logger.info('🏗️ Generating geometrically perfect 2D floor plan with BIM...');
+    logger.info(
+      "🏗️ Generating geometrically perfect 2D floor plan with BIM...",
+    );
 
     // Get or generate building dimensions
     const {
       floorArea = 200,
-      buildingProgram = 'house',
+      buildingProgram = "house",
       buildingDNA,
-      entranceDirection = 'N'
+      entranceDirection = "N",
     } = projectContext;
 
-    const dimensions = this.calculateBuildingDimensions(floorArea, buildingProgram);
-    const spaces = this.generateSpaceLayout(dimensions, dimensions.floorCount, buildingProgram);
-    const floorSpaces = spaces.filter(s => s.floor === floorLevel);
+    const dimensions = this.calculateBuildingDimensions(
+      floorArea,
+      buildingProgram,
+    );
+    const spaces = this.generateSpaceLayout(
+      dimensions,
+      dimensions.floorCount,
+      buildingProgram,
+    );
+    const floorSpaces = spaces.filter((s) => s.floor === floorLevel);
 
     // Create SVG-like structure for perfect 2D representation
     const floorPlan = {
       width: dimensions.length * 100, // Scale to pixels (1m = 100px)
       height: dimensions.width * 100,
       scale: 100,
-      elements: []
+      elements: [],
     };
 
     // 1. Add outer walls (thick black lines)
     const wallThickness = 30; // pixels
     floorPlan.elements.push({
-      type: 'rect',
+      type: "rect",
       x: 0,
       y: 0,
       width: floorPlan.width,
       height: floorPlan.height,
-      stroke: '#000000',
+      stroke: "#000000",
       strokeWidth: wallThickness,
-      fill: 'none',
-      layer: 'walls'
+      fill: "none",
+      layer: "walls",
     });
 
     // 2. Add interior walls based on spaces
@@ -1010,36 +1191,38 @@ DATA;
 
     // 7. Add north arrow
     floorPlan.elements.push({
-      type: 'northArrow',
+      type: "northArrow",
       x: floorPlan.width - 150,
       y: 50,
       size: 40,
-      layer: 'annotations'
+      layer: "annotations",
     });
 
     // 8. Add scale bar
     floorPlan.elements.push({
-      type: 'scaleBar',
+      type: "scaleBar",
       x: 50,
       y: floorPlan.height - 50,
       length: 500, // 5 meters
-      label: '0  1  2  3  4  5m',
-      layer: 'annotations'
+      label: "0  1  2  3  4  5m",
+      layer: "annotations",
     });
 
-    logger.success(` BIM 2D floor plan generated: ${floorPlan.elements.length} elements`);
+    logger.success(
+      ` BIM 2D floor plan generated: ${floorPlan.elements.length} elements`,
+    );
 
     return {
       success: true,
-      type: 'orthographic', // Explicitly specify orthographic projection
-      format: 'svg', // SVG-compatible vector format
+      type: "orthographic", // Explicitly specify orthographic projection
+      format: "svg", // SVG-compatible vector format
       floorPlan,
       metadata: {
         level: floorLevel,
         area: floorArea,
         dimensions: `${dimensions.length}m × ${dimensions.width}m`,
-        program: buildingProgram
-      }
+        program: buildingProgram,
+      },
     };
   }
 
@@ -1052,27 +1235,27 @@ DATA;
 
     // Add vertical wall at 40% of length
     floorPlan.elements.push({
-      type: 'line',
+      type: "line",
       x1: dimensions.length * 0.4 * scale,
       y1: 0,
       x2: dimensions.length * 0.4 * scale,
       y2: floorPlan.height,
-      stroke: '#000000',
+      stroke: "#000000",
       strokeWidth: wallThickness,
-      layer: 'walls'
+      layer: "walls",
     });
 
     // Add horizontal wall at 60% of width for upper floor
-    if (spaces.some(s => s.name.includes('Bedroom'))) {
+    if (spaces.some((s) => s.name.includes("Bedroom"))) {
       floorPlan.elements.push({
-        type: 'line',
+        type: "line",
         x1: dimensions.length * 0.4 * scale,
         y1: dimensions.width * 0.6 * scale,
         x2: floorPlan.width,
         y2: dimensions.width * 0.6 * scale,
-        stroke: '#000000',
+        stroke: "#000000",
         strokeWidth: wallThickness,
-        layer: 'walls'
+        layer: "walls",
       });
     }
   }
@@ -1088,55 +1271,66 @@ DATA;
     if (floorLevel === 0) {
       let doorX, doorY, rotation;
 
-      switch(entranceDirection) {
-        case 'N':
+      switch (entranceDirection) {
+        case "N":
           doorX = floorPlan.width / 2;
           doorY = floorPlan.height - 15;
           rotation = 0;
           break;
-        case 'S':
+        case "S":
           doorX = floorPlan.width / 2;
           doorY = 15;
           rotation = 180;
           break;
-        case 'E':
+        case "E":
           doorX = floorPlan.width - 15;
           doorY = floorPlan.height / 2;
           rotation = 90;
           break;
-        case 'W':
+        case "W":
           doorX = 15;
           doorY = floorPlan.height / 2;
           rotation = 270;
           break;
+        default:
+          doorX = floorPlan.width / 2;
+          doorY = floorPlan.height - 15;
+          rotation = 0;
+          break;
       }
 
       floorPlan.elements.push({
-        type: 'door',
+        type: "door",
         x: doorX,
         y: doorY,
         width: doorWidth,
         rotation,
-        swing: 'single',
-        layer: 'doors'
+        swing: "single",
+        layer: "doors",
       });
     }
 
     // Interior doors
     const interiorDoors = [
-      { x: dimensions.length * 0.4 * scale - 45, y: dimensions.width * 0.3 * scale },
-      { x: dimensions.length * 0.6 * scale, y: dimensions.width * 0.6 * scale - 45 }
+      {
+        x: dimensions.length * 0.4 * scale - 45,
+        y: dimensions.width * 0.3 * scale,
+      },
+      {
+        x: dimensions.length * 0.6 * scale,
+        y: dimensions.width * 0.6 * scale - 45,
+      },
     ];
 
-    interiorDoors.forEach(door => {
+    interiorDoors.forEach((door) => {
       floorPlan.elements.push({
-        type: 'door',
+        type: "door",
         x: door.x,
         y: door.y,
         width: 80,
         rotation: 0,
-        swing: 'single',
-        layer: 'doors'
+        swing: "single",
+        layer: "doors",
       });
     });
   }
@@ -1152,37 +1346,37 @@ DATA;
     // North wall windows
     for (let i = 1; i <= 3; i++) {
       floorPlan.elements.push({
-        type: 'window',
+        type: "window",
         x: (floorPlan.width / 4) * i - windowWidth / 2,
         y: floorPlan.height - 15,
         width: windowWidth,
         depth: windowDepth,
-        layer: 'windows'
+        layer: "windows",
       });
     }
 
     // South wall windows
     for (let i = 1; i <= 3; i++) {
       floorPlan.elements.push({
-        type: 'window',
+        type: "window",
         x: (floorPlan.width / 4) * i - windowWidth / 2,
         y: 0,
         width: windowWidth,
         depth: windowDepth,
-        layer: 'windows'
+        layer: "windows",
       });
     }
 
     // East wall windows
     for (let i = 1; i <= 2; i++) {
       floorPlan.elements.push({
-        type: 'window',
+        type: "window",
         x: floorPlan.width - 15,
         y: (floorPlan.height / 3) * i - windowWidth / 2,
         width: windowWidth,
         depth: windowDepth,
         rotation: 90,
-        layer: 'windows'
+        layer: "windows",
       });
     }
   }
@@ -1193,29 +1387,30 @@ DATA;
   addSpaceLabels(floorPlan, spaces, dimensions) {
     const scale = floorPlan.scale;
 
-    spaces.forEach(space => {
-      const centerX = space.position.x * scale + (dimensions.length * 0.2 * scale);
-      const centerY = space.position.y * scale + (dimensions.width * 0.2 * scale);
+    spaces.forEach((space) => {
+      const centerX =
+        space.position.x * scale + dimensions.length * 0.2 * scale;
+      const centerY = space.position.y * scale + dimensions.width * 0.2 * scale;
 
       floorPlan.elements.push({
-        type: 'text',
+        type: "text",
         x: centerX,
         y: centerY,
         text: space.name,
         fontSize: 14,
-        fontWeight: 'bold',
-        textAnchor: 'middle',
-        layer: 'labels'
+        fontWeight: "bold",
+        textAnchor: "middle",
+        layer: "labels",
       });
 
       floorPlan.elements.push({
-        type: 'text',
+        type: "text",
         x: centerX,
         y: centerY + 20,
         text: `${Math.round(space.area)}m²`,
         fontSize: 12,
-        textAnchor: 'middle',
-        layer: 'labels'
+        textAnchor: "middle",
+        layer: "labels",
       });
     });
   }
@@ -1229,31 +1424,31 @@ DATA;
 
     // Horizontal dimension (width)
     floorPlan.elements.push({
-      type: 'dimension',
+      type: "dimension",
       x1: 0,
       y1: -offset,
       x2: floorPlan.width,
       y2: -offset,
       label: `${dimensions.length}m`,
-      layer: 'dimensions'
+      layer: "dimensions",
     });
 
     // Vertical dimension (height)
     floorPlan.elements.push({
-      type: 'dimension',
+      type: "dimension",
       x1: -offset,
       y1: 0,
       x2: -offset,
       y2: floorPlan.height,
       label: `${dimensions.width}m`,
-      layer: 'dimensions'
+      layer: "dimensions",
     });
   }
 
   /**
    * Export model to DWG-like format (AutoCAD-compatible text representation)
    */
-  exportToDWG(model) {
+  exportModelToDWG(model) {
     const { metadata, geometry, views } = model;
 
     let dwg = `AutoCAD Drawing Exchange Format
@@ -1270,23 +1465,30 @@ Floors: ${metadata.floorCount}
 LAYERS:\n`;
 
     // Define layers for different element types
-    const layers = ['WALLS', 'WINDOWS', 'DOORS', 'STRUCTURE', 'DIMENSIONS', 'TEXT'];
-    layers.forEach(layer => {
+    const layers = [
+      "WALLS",
+      "WINDOWS",
+      "DOORS",
+      "STRUCTURE",
+      "DIMENSIONS",
+      "TEXT",
+    ];
+    layers.forEach((layer) => {
       dwg += `LAYER: ${layer}\n`;
     });
 
     dwg += `\nFLOOR PLANS:\n`;
-    Object.keys(views.floorPlans).forEach(key => {
+    Object.keys(views.floorPlans).forEach((key) => {
       const plan = views.floorPlans[key];
       dwg += `\nLevel ${plan.level} (Elevation ${plan.elevation}m):\n`;
       dwg += `  Outline: ${plan.dimensions.length}m x ${plan.dimensions.width}m\n`;
-      plan.spaces.forEach(space => {
+      plan.spaces.forEach((space) => {
         dwg += `  - ${space.name}: ${Math.round(space.area)}m²\n`;
       });
     });
 
     dwg += `\nELEVATIONS:\n`;
-    Object.keys(views.elevations).forEach(direction => {
+    Object.keys(views.elevations).forEach((direction) => {
       const elev = views.elevations[direction];
       dwg += `${direction.toUpperCase()}: ${elev.width}m x ${elev.height}m\n`;
       dwg += `  Windows: ${elev.windows.length}\n`;

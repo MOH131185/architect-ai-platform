@@ -1,0 +1,89 @@
+{
+  "name": "genarch-api",
+  "contractVersion": "1.0.0",
+  "responseVersionField": "contractVersion",
+  "versionHeader": "X-Genarch-Contract-Version",
+  "apiBasePath": "/api/genarch",
+  "separateDeploymentBoundary": true,
+  "jobStatuses": ["queued", "running", "completed", "failed", "cancelled"],
+  "jobDefaults": {
+    "skipPhase2": true,
+    "skipPhase3": true,
+    "skipPhase4": false,
+    "strict": false,
+    "driftThreshold": 0.15,
+    "waitForResult": false
+  },
+  "artifacts": [
+    {
+      "key": "planJson",
+      "relativePath": "plan.json",
+      "contentType": "application/json"
+    },
+    {
+      "key": "planDxf",
+      "relativePath": "plan.dxf",
+      "contentType": "application/dxf"
+    },
+    {
+      "key": "modelGlb",
+      "relativePath": "model.glb",
+      "contentType": "model/gltf-binary"
+    },
+    {
+      "key": "modelObj",
+      "relativePath": "model.obj",
+      "contentType": "text/plain"
+    },
+    {
+      "key": "runJson",
+      "relativePath": "run.json",
+      "contentType": "application/json"
+    },
+    {
+      "key": "constraintsJson",
+      "relativePath": "constraints.json",
+      "contentType": "application/json"
+    },
+    {
+      "key": "pipelineManifest",
+      "relativePath": "pipeline_manifest.json",
+      "contentType": "application/json"
+    },
+    {
+      "key": "a1Sheet",
+      "relativePath": "phase4/A1_sheet.pdf",
+      "contentType": "application/pdf"
+    },
+    {
+      "key": "sheetManifest",
+      "relativePath": "phase4/sheet_manifest.json",
+      "contentType": "application/json"
+    },
+    {
+      "key": "assetReport",
+      "relativePath": "asset_report.json",
+      "contentType": "application/json"
+    },
+    {
+      "key": "driftReport",
+      "relativePath": "drift_report.json",
+      "contentType": "application/json"
+    }
+  ],
+  "pipelineManifest": {
+    "requiredTopLevelKeys": [
+      "version",
+      "pipeline",
+      "run_id",
+      "started_at",
+      "completed_at",
+      "phases",
+      "validation",
+      "errors",
+      "warnings",
+      "outputs"
+    ],
+    "requiredOutputKeys": ["plan_json", "plan_dxf", "model_glb", "a1_sheet"]
+  }
+}

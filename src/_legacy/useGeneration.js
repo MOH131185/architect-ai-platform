@@ -150,7 +150,9 @@ export const useGeneration = () => {
   );
 
   /**
-   * Generate style signature for portfolio consistency (DALL·E 3)
+   * Generate style signature for portfolio consistency.
+   * Legacy DALL-E 3 path removed — aiIntegrationService no longer exists.
+   * Returns cached signature or null; Together.ai pipeline does not use this.
    */
   const generateStyleSignature = useCallback(async () => {
     if (projectStyleSignature || portfolioFiles.length === 0) {
@@ -158,53 +160,9 @@ export const useGeneration = () => {
       return projectStyleSignature;
     }
 
-    logger.info(
-      "Generating project style signature for DALL·E 3 consistency",
-      null,
-      "🎨",
-    );
-
-    try {
-      const aiIntegrationService = (
-        await import("../services/aiIntegrationService")
-      ).default;
-
-      const styleSignature = await aiIntegrationService.generateStyleSignature(
-        { portfolioFiles },
-        {
-          buildingProgram: projectDetails?.program,
-          area: projectDetails?.area,
-          floorArea: parseInt(projectDetails?.area) || 200,
-        },
-        locationData || {},
-      );
-
-      setProjectStyleSignature(styleSignature);
-
-      // Persist to localStorage for this session
-      try {
-        localStorage.setItem(
-          "projectStyleSignature",
-          JSON.stringify(styleSignature),
-        );
-      } catch (storageError) {
-        logger.warn("Failed to persist style signature", storageError);
-      }
-
-      logger.info("Style signature generated and cached", null, "✅");
-      return styleSignature;
-    } catch (error) {
-      logger.error("Style signature generation failed", error);
-      // Continue without style signature - services will use fallback
-      return null;
-    }
-  }, [
-    projectStyleSignature,
-    portfolioFiles,
-    projectDetails,
-    locationData,
-    setProjectStyleSignature,
-  ]);
+    // Legacy aiIntegrationService removed — return null (Together.ai pipeline ignores this)
+    return null;
+  }, [projectStyleSignature, portfolioFiles]);
 
   /**
    * Analyze portfolio for style extraction
@@ -475,27 +433,18 @@ export const useGeneration = () => {
           timestamp: Date.now(),
         });
 
-        // Also save to designHistoryService for AIModifyPanel compatibility
-        const designHistoryService = (
-          await import("../services/designHistoryService")
-        ).default;
-        await designHistoryService.createDesign({
-          designId,
-          mainPrompt: promptResult.prompt,
+        // Save to canonical design history repository
+        const { default: designHistoryRepository } =
+          await import("../services/designHistoryRepository");
+        await designHistoryRepository.saveDesign({
+          id: designId,
+          dna: aiResult.masterDNA || {},
           basePrompt: promptResult.prompt,
-          masterDNA: aiResult.masterDNA || {},
           seed: projectSeed,
-          seedsByView: { a1Sheet: projectSeed },
           resultUrl: aiResult.a1Sheet.url,
           composedSheetUrl:
             aiResult.a1Sheet.composedSheetUrl || aiResult.a1Sheet.url,
-          a1SheetUrl: aiResult.a1Sheet.url,
           projectContext: projectContext || {},
-          styleBlendPercent: 70,
-          width: 1792,
-          height: 1269,
-          model: "black-forest-labs/FLUX.1-schnell",
-          a1LayoutKey: "uk-riba-standard",
           siteSnapshot: aiResult.sitePlanAttachment || null,
           panelMap: aiResult.panelMap || aiResult.panels,
           panels: aiResult.panelMap || aiResult.panels,

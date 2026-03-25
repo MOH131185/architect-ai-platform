@@ -1,6 +1,6 @@
-# RunPod + Vercel Deployment Checklist
+# RunPod + Vercel Proxy Deployment Checklist
 
-Complete checklist for deploying the genarch pipeline on RunPod with Vercel frontend.
+Complete checklist for deploying the genarch pipeline on RunPod with a Vercel server-side proxy. The supported surface is backend-only; there is no supported browser genarch mode in the current React app.
 
 ## Architecture
 
@@ -324,13 +324,13 @@ file A1_sheet.pdf
 # Should show: PDF document
 ```
 
-### 4.5 Test from Browser
+### 4.5 Verify Proxy + Contract Surface
 
-1. Open your Vercel app in browser
-2. Navigate to generate step
-3. Enable genarch mode (if feature flagged)
-4. Start generation
-5. Verify PDF downloads
+1. Call the Vercel proxy health/status endpoints from curl or Postman
+2. Confirm `X-Genarch-Contract-Version` is present on `/api/genarch/*` responses
+3. Confirm `/api/health` reports `productSurface.genarchApi=backend-only`
+4. Confirm `GENARCH_API_KEY` is only configured server-side
+5. Download `phase4/A1_sheet.pdf` through the proxy and verify the artifact resolves
 
 ---
 
