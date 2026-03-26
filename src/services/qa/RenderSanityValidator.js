@@ -54,6 +54,37 @@ export const THIN_STRIP_WIDTH_THRESHOLD = 0.05;
  */
 export const THIN_STRIP_HEIGHT_THRESHOLD = 0.05;
 
+const PANEL_SANITY_THRESHOLDS = {
+  floor_plan: {
+    minOccupancyRatio: 0.055,
+    minBboxWidthRatio: 0.34,
+    minBboxHeightRatio: 0.26,
+    thinStripWidthThreshold: 0.12,
+    thinStripHeightThreshold: 0.12,
+  },
+  elevation: {
+    minOccupancyRatio: 0.035,
+    minBboxWidthRatio: 0.28,
+    minBboxHeightRatio: 0.18,
+    thinStripWidthThreshold: 0.1,
+    thinStripHeightThreshold: 0.08,
+  },
+  section: {
+    minOccupancyRatio: 0.045,
+    minBboxWidthRatio: 0.28,
+    minBboxHeightRatio: 0.22,
+    thinStripWidthThreshold: 0.1,
+    thinStripHeightThreshold: 0.1,
+  },
+  site: {
+    minOccupancyRatio: 0.04,
+    minBboxWidthRatio: 0.24,
+    minBboxHeightRatio: 0.24,
+    thinStripWidthThreshold: 0.08,
+    thinStripHeightThreshold: 0.08,
+  },
+};
+
 /**
  * Pixel intensity threshold to distinguish foreground from background.
  * Pixels with ALL channels >= this value are considered "white" (background).
@@ -83,6 +114,28 @@ export const SANITY_CHECK_PANEL_TYPES = [
   "section_BB",
   "site_plan",
 ];
+
+function getPanelThresholds(panelType) {
+  if (String(panelType).startsWith("floor_plan_")) {
+    return PANEL_SANITY_THRESHOLDS.floor_plan;
+  }
+  if (String(panelType).startsWith("elevation_")) {
+    return PANEL_SANITY_THRESHOLDS.elevation;
+  }
+  if (String(panelType).startsWith("section_")) {
+    return PANEL_SANITY_THRESHOLDS.section;
+  }
+  if (panelType === "site_plan") {
+    return PANEL_SANITY_THRESHOLDS.site;
+  }
+  return {
+    minOccupancyRatio: MIN_OCCUPANCY_RATIO,
+    minBboxWidthRatio: MIN_BBOX_RATIO,
+    minBboxHeightRatio: MIN_BBOX_RATIO,
+    thinStripWidthThreshold: THIN_STRIP_WIDTH_THRESHOLD,
+    thinStripHeightThreshold: THIN_STRIP_HEIGHT_THRESHOLD,
+  };
+}
 
 // ============================================================================
 // VALIDATION RESULT TYPES
@@ -236,6 +289,7 @@ export async function computeSanityMetrics(imageBuffer) {
 export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
   const failures = [];
   const warnings = [];
+  const thresholds = getPanelThresholds(panelType);
 
   // Skip validation for non-technical panels
   if (!SANITY_CHECK_PANEL_TYPES.includes(panelType)) {
@@ -255,37 +309,37 @@ export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
   const metrics = await computeSanityMetrics(imageBuffer);
 
   // Rule 1: Minimum occupancy ratio
-  if (metrics.occupancyRatio < MIN_OCCUPANCY_RATIO) {
+  if (metrics.occupancyRatio < thresholds.minOccupancyRatio) {
     failures.push(
-      `OCCUPANCY_TOO_LOW: occupancy=${(metrics.occupancyRatio * 100).toFixed(2)}% < ${MIN_OCCUPANCY_RATIO * 100}% threshold`,
+      `OCCUPANCY_TOO_LOW: occupancy=${(metrics.occupancyRatio * 100).toFixed(2)}% < ${(thresholds.minOccupancyRatio * 100).toFixed(1)}% threshold`,
     );
   }
 
   // Rule 2: Minimum bounding box width ratio
-  if (metrics.boundingBox.widthRatio < MIN_BBOX_RATIO) {
+  if (metrics.boundingBox.widthRatio < thresholds.minBboxWidthRatio) {
     failures.push(
-      `BBOX_WIDTH_TOO_SMALL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${MIN_BBOX_RATIO * 100}% threshold`,
+      `BBOX_WIDTH_TOO_SMALL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${(thresholds.minBboxWidthRatio * 100).toFixed(1)}% threshold`,
     );
   }
 
   // Rule 3: Minimum bounding box height ratio
-  if (metrics.boundingBox.heightRatio < MIN_BBOX_RATIO) {
+  if (metrics.boundingBox.heightRatio < thresholds.minBboxHeightRatio) {
     failures.push(
-      `BBOX_HEIGHT_TOO_SMALL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${MIN_BBOX_RATIO * 100}% threshold`,
+      `BBOX_HEIGHT_TOO_SMALL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${(thresholds.minBboxHeightRatio * 100).toFixed(1)}% threshold`,
     );
   }
 
   // Rule 4: Thin strip detection (vertical)
-  if (metrics.boundingBox.widthRatio < THIN_STRIP_WIDTH_THRESHOLD) {
+  if (metrics.boundingBox.widthRatio < thresholds.thinStripWidthThreshold) {
     failures.push(
-      `THIN_STRIP_VERTICAL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${THIN_STRIP_WIDTH_THRESHOLD * 100}% (thin vertical strip detected)`,
+      `THIN_STRIP_VERTICAL: bboxWidth=${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% < ${(thresholds.thinStripWidthThreshold * 100).toFixed(1)}% (thin vertical strip detected)`,
     );
   }
 
   // Rule 5: Thin strip detection (horizontal)
-  if (metrics.boundingBox.heightRatio < THIN_STRIP_HEIGHT_THRESHOLD) {
+  if (metrics.boundingBox.heightRatio < thresholds.thinStripHeightThreshold) {
     failures.push(
-      `THIN_STRIP_HORIZONTAL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${THIN_STRIP_HEIGHT_THRESHOLD * 100}% (thin horizontal strip detected)`,
+      `THIN_STRIP_HORIZONTAL: bboxHeight=${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% < ${(thresholds.thinStripHeightThreshold * 100).toFixed(1)}% (thin horizontal strip detected)`,
     );
   }
 
@@ -327,7 +381,12 @@ export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
   // Build blocker message
   let blockerMessage = null;
   if (failures.length > 0) {
-    blockerMessage = buildBlockerMessage(panelType, metrics, failures);
+    blockerMessage = buildBlockerMessage(
+      panelType,
+      metrics,
+      failures,
+      thresholds,
+    );
   }
 
   return {
@@ -348,14 +407,14 @@ export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
  * @param {string[]} failures - List of failures
  * @returns {string} Formatted blocker message
  */
-function buildBlockerMessage(panelType, metrics, failures) {
+function buildBlockerMessage(panelType, metrics, failures, thresholds) {
   const lines = [
     `[RenderSanityValidator] BLOCKED: ${panelType}`,
     ``,
     `Measured values:`,
-    `  - Occupancy ratio: ${(metrics.occupancyRatio * 100).toFixed(2)}% (min: ${MIN_OCCUPANCY_RATIO * 100}%)`,
-    `  - BBox width ratio: ${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% (min: ${MIN_BBOX_RATIO * 100}%)`,
-    `  - BBox height ratio: ${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% (min: ${MIN_BBOX_RATIO * 100}%)`,
+    `  - Occupancy ratio: ${(metrics.occupancyRatio * 100).toFixed(2)}% (min: ${(thresholds.minOccupancyRatio * 100).toFixed(1)}%)`,
+    `  - BBox width ratio: ${(metrics.boundingBox.widthRatio * 100).toFixed(2)}% (min: ${(thresholds.minBboxWidthRatio * 100).toFixed(1)}%)`,
+    `  - BBox height ratio: ${(metrics.boundingBox.heightRatio * 100).toFixed(2)}% (min: ${(thresholds.minBboxHeightRatio * 100).toFixed(1)}%)`,
     `  - BBox dimensions: ${metrics.boundingBox.width}x${metrics.boundingBox.height} px`,
     `  - Canvas size: ${metrics.canvasWidth}x${metrics.canvasHeight} px`,
     ``,

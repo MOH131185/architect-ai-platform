@@ -564,7 +564,7 @@ export const FEATURE_FLAGS = {
    * @type {boolean}
    * @default false
    */
-  allowTechnicalFallback: true,
+  allowTechnicalFallback: false,
 
   // =========================================================================
   // GENERATION HOT-PATH FLAGS (used by panelGenerationService / orchestrator)
@@ -969,7 +969,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.programComplianceGate = true;
   FEATURE_FLAGS.driftGate = true;
   FEATURE_FLAGS.cdsRequired = true;
-  FEATURE_FLAGS.allowTechnicalFallback = true;
+  FEATURE_FLAGS.allowTechnicalFallback = false;
   // QA / Review systems defaults
   FEATURE_FLAGS.qaGates = true;
   FEATURE_FLAGS.opusSheetCritic = true;

@@ -1,54 +1,154 @@
 /**
  * SVG Font Embedder
  *
- * Injects a base64-encoded @font-face into SVG strings so that text renders
- * correctly in sandboxed contexts (Canvas Image, Sharp/librsvg on Vercel).
+ * Injects a base64-encoded @font-face into SVG strings so text renders
+ * correctly in Sharp/librsvg and other sandboxed rasterizers.
  *
- * Uses Inter (Google Fonts) fetched once and cached in memory.
- * Falls back gracefully if the font cannot be loaded.
+ * The previous implementation depended entirely on a runtime Google Fonts
+ * fetch and browser-only `btoa`. That was brittle in Node/Sharp contexts and
+ * could silently fall back to missing glyphs. This version prefers local
+ * system fonts when running under Node, then falls back to remote Inter.
  *
  * @module utils/svgFontEmbedder
  */
 
-// Google Fonts CDN URL for Inter (Latin subset, woff2, variable font v20)
 const INTER_REGULAR_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
-// Inter Bold — same variable font file covers all weights in v20
 const INTER_BOLD_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
+
+const REGULAR_FONT_CANDIDATES = [
+  "C:/Windows/Fonts/arial.ttf",
+  "C:/Windows/Fonts/segoeui.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+  "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+  "/System/Library/Fonts/Supplemental/Arial.ttf",
+];
+
+const BOLD_FONT_CANDIDATES = [
+  "C:/Windows/Fonts/arialbd.ttf",
+  "C:/Windows/Fonts/segoeuib.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+];
 
 let cachedRegular = null;
 let cachedBold = null;
 let fetchAttempted = false;
 
-/**
- * Fetch a font from URL and return as base64 string.
- * Works in both browser (fetch + arrayBuffer) and Node.js (fetch or https).
- */
-async function fetchFontAsBase64(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Font fetch failed: ${response.status}`);
-  const buffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  // Convert to base64
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+function isNodeRuntime() {
+  return Boolean(
+    typeof process !== "undefined" &&
+      process?.versions &&
+      process.versions.node,
+  );
+}
+
+function toBase64(bytes) {
+  if (!bytes) {
+    return null;
   }
-  return btoa(binary);
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes).toString("base64");
+  }
+
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  if (typeof btoa === "function") {
+    return btoa(binary);
+  }
+  throw new Error("No base64 encoder available");
+}
+
+async function loadLocalFontAsBase64(paths, descriptor) {
+  if (!isNodeRuntime()) {
+    return null;
+  }
+
+  try {
+    const fsModuleSpecifier = "node:fs/promises";
+    const { readFile } = await import(
+      /* webpackIgnore: true */ fsModuleSpecifier
+    );
+
+    for (const fontPath of paths) {
+      try {
+        const fontBuffer = await readFile(fontPath);
+        if (fontBuffer?.length) {
+          return {
+            base64: fontBuffer.toString("base64"),
+            mime: "font/ttf",
+            format: "truetype",
+            source: fontPath,
+            descriptor,
+          };
+        }
+      } catch {
+        // Try next candidate path.
+      }
+    }
+  } catch {
+    // Ignore Node font loading failures and fall back to remote fetch.
+  }
+
+  return null;
+}
+
+async function fetchFontAsBase64(url, descriptor) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Font fetch failed: ${response.status}`);
+  }
+  const buffer = await response.arrayBuffer();
+  return {
+    base64: toBase64(new Uint8Array(buffer)),
+    mime: "font/woff2",
+    format: "woff2",
+    source: url,
+    descriptor,
+  };
+}
+
+function normalizeTypography(svgString) {
+  if (!svgString || typeof svgString !== "string") {
+    return svgString;
+  }
+
+  return svgString
+    .replace(/\u2026/g, "...")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u00D7/g, "x")
+    .replace(/\u00B2/g, "2")
+    .replace(/\u00B0C/g, " C")
+    .replace(/\u2713/g, "OK")
+    .replace(/\u2717/g, "NO")
+    .replace(/\u00A0/g, " ");
 }
 
 /**
- * Load and cache both font weights. Only fetches once per process/page.
+ * Load and cache both font weights. Only resolves once per process/page.
  */
 async function ensureFontsLoaded() {
-  if (fetchAttempted) return;
+  if (fetchAttempted) {
+    return;
+  }
   fetchAttempted = true;
+
   try {
     const [regular, bold] = await Promise.all([
-      fetchFontAsBase64(INTER_REGULAR_URL),
-      fetchFontAsBase64(INTER_BOLD_URL),
+      loadLocalFontAsBase64(REGULAR_FONT_CANDIDATES, "regular").then(
+        (font) => font || fetchFontAsBase64(INTER_REGULAR_URL, "regular"),
+      ),
+      loadLocalFontAsBase64(BOLD_FONT_CANDIDATES, "bold").then(
+        (font) => font || fetchFontAsBase64(INTER_BOLD_URL, "bold"),
+      ),
     ]);
+
     cachedRegular = regular;
     cachedBold = bold;
   } catch (err) {
@@ -56,29 +156,33 @@ async function ensureFontsLoaded() {
   }
 }
 
+function buildEmbeddedFaceRule(font, weight) {
+  if (!font?.base64) {
+    return "";
+  }
+  return `
+    @font-face {
+      font-family: 'EmbeddedSans';
+      src: url(data:${font.mime};base64,${font.base64}) format('${font.format}');
+      font-weight: ${weight};
+      font-style: normal;
+    }`;
+}
+
 /**
  * Build the <defs><style> block with embedded @font-face rules.
  */
 function buildFontDefs() {
-  if (!cachedRegular) return "";
-  let css = `
-    @font-face {
-      font-family: 'EmbeddedSans';
-      src: url(data:font/woff2;base64,${cachedRegular}) format('woff2');
-      font-weight: normal;
-      font-style: normal;
-    }`;
-  if (cachedBold) {
-    css += `
-    @font-face {
-      font-family: 'EmbeddedSans';
-      src: url(data:font/woff2;base64,${cachedBold}) format('woff2');
-      font-weight: bold;
-      font-style: normal;
-    }`;
+  if (!cachedRegular?.base64) {
+    return "";
+  }
+
+  let css = buildEmbeddedFaceRule(cachedRegular, "normal");
+  if (cachedBold?.base64) {
+    css += buildEmbeddedFaceRule(cachedBold, "bold");
   }
   css += `
-    text, tspan { font-family: 'EmbeddedSans', Arial, Helvetica, sans-serif !important; }`;
+    text, tspan { font-family: 'EmbeddedSans', 'Segoe UI', Arial, Helvetica, sans-serif !important; }`;
   return `<defs><style type="text/css">${css}</style></defs>`;
 }
 
@@ -86,21 +190,22 @@ function buildFontDefs() {
  * Replace all font-family references in an SVG string with EmbeddedSans fallback.
  */
 function replaceFontFamilies(svgString) {
-  // Replace font-family="..." attribute values
-  let result = svgString.replace(
-    /font-family="([^"]*)"/g,
-    (match, families) => {
-      if (families.includes("EmbeddedSans")) return match;
-      if (families.includes("monospace")) return match; // preserve monospace
-      return `font-family="'EmbeddedSans', ${families}"`;
-    },
-  );
-  // Replace font-family: '...' or font-family: ... in CSS
-  result = result.replace(/font-family:\s*([^;}"]+)/g, (match, families) => {
-    if (families.includes("EmbeddedSans")) return match;
-    if (families.includes("monospace")) return match;
-    return `font-family: 'EmbeddedSans', ${families.trim()}`;
+  let result = normalizeTypography(svgString);
+
+  result = result.replace(/font-family="([^"]*)"/g, (match, families) => {
+    if (families.includes("EmbeddedSans") || families.includes("monospace")) {
+      return match;
+    }
+    return 'font-family="EmbeddedSans, Segoe UI, Arial, Helvetica, sans-serif"';
   });
+
+  result = result.replace(/font-family:\s*([^;}"]+)/g, (match, families) => {
+    if (families.includes("EmbeddedSans") || families.includes("monospace")) {
+      return match;
+    }
+    return "font-family: EmbeddedSans, 'Segoe UI', Arial, Helvetica, sans-serif";
+  });
+
   return result;
 }
 
@@ -115,16 +220,15 @@ export async function embedFontInSVG(svgString) {
 
   await ensureFontsLoaded();
 
-  // If fonts couldn't be loaded, still try to return the SVG as-is
-  if (!cachedRegular) return svgString;
+  const normalizedSvg = replaceFontFamilies(svgString);
+
+  // If fonts couldn't be loaded, still return typography-normalized SVG.
+  if (!cachedRegular?.base64) return normalizedSvg;
 
   const fontDefs = buildFontDefs();
 
   // Insert <defs> after the <svg ...> opening tag
-  let result = svgString.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
-
-  // Replace font-family references throughout
-  result = replaceFontFamilies(result);
+  const result = normalizedSvg.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
 
   return result;
 }
@@ -135,11 +239,11 @@ export async function embedFontInSVG(svgString) {
  */
 export function embedFontInSVGSync(svgString) {
   if (!svgString || typeof svgString !== "string") return svgString;
-  if (!cachedRegular) return svgString;
+  const normalizedSvg = replaceFontFamilies(svgString);
+  if (!cachedRegular?.base64) return normalizedSvg;
 
   const fontDefs = buildFontDefs();
-  let result = svgString.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
-  result = replaceFontFamilies(result);
+  const result = normalizedSvg.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
   return result;
 }
 

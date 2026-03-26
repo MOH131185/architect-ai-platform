@@ -279,7 +279,7 @@ function truncateModelName(model, maxChars = 18) {
   if (str.length <= maxChars) {
     return str;
   }
-  return str.substring(0, maxChars - 1) + "…";
+  return str.substring(0, Math.max(0, maxChars - 3)) + "...";
 }
 
 /**
@@ -388,7 +388,7 @@ function generateBuildStampSvg({
   const modeBadgeWidth = 100;
 
   // Meshy indicator
-  const meshyIndicator = meshyUsed ? "3D:✓" : "3D:✗";
+  const meshyIndicator = meshyUsed ? "3D:Y" : "3D:N";
   const meshyColor = meshyUsed ? "#22c55e" : "#94a3b8";
 
   // Layout constants for Row 4 (robust positioning)
@@ -452,7 +452,7 @@ function generateBuildStampSvg({
     <!-- Verification Badge -->
     <circle cx="${x + stampWidth - 16}" cy="${y + 64}" r="10" fill="${modeColor}" />
     <text x="${x + stampWidth - 16}" y="${y + 68}" font-family="${fontStack}" font-size="10" font-weight="700" fill="white" text-anchor="middle">
-      ✓
+      OK
     </text>
   </svg>`;
 }
@@ -2661,6 +2661,19 @@ async function placePanelImage({
     return Math.max(0, Math.min(1, occ));
   };
 
+  const getDefaultMinSlotOccupancy = () => {
+    if (panelType.startsWith("floor_plan_")) {
+      return 0.52;
+    }
+    if (panelType.startsWith("section_")) {
+      return 0.48;
+    }
+    if (panelType.startsWith("elevation_")) {
+      return 0.42;
+    }
+    return 0.4;
+  };
+
   // Optional auto-rotate to maximize slot usage (QA-driven)
   let rotated = false;
   const canAutoRotate =
@@ -2694,7 +2707,7 @@ async function placePanelImage({
   // HARD QA GATE: Occupancy (fail closed on undersized drawings)
   const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy)
     ? qa.minSlotOccupancy
-    : 0.4; // Lowered from 0.55 – AI-generated panels rarely match slot aspect exactly
+    : getDefaultMinSlotOccupancy();
   const shouldEnforceOccupancy =
     qa?.enabled &&
     mode !== "cover" &&
@@ -2818,7 +2831,7 @@ async function buildPlaceholder(sharp, width, height, type, constants) {
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#f5f5f5" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
       <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="Arial, sans-serif" font-weight="700"
-        text-anchor="middle" fill="#9ca3af">PANEL MISSING – REGENERATE</text>
+        text-anchor="middle" fill="#9ca3af">PANEL MISSING - REGENERATE</text>
       <text x="${width / 2}" y="${height / 2 + 18}" font-size="14" font-family="Arial, sans-serif"
         text-anchor="middle" fill="#b91c1c">${(type || "").toUpperCase()}</text>
     </svg>
@@ -2896,7 +2909,7 @@ async function buildTitleBlockBuffer(
 
       <rect x="${width / 2 + 4}" y="236" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${width / 2 + 8}" y="250" font-family="Arial, sans-serif" font-size="7" fill="#64748b">DATE</text>
-      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.date || "—")}</text>
+      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.date || "-")}</text>
 
       <!-- RIBA Stage / Status -->
       <line x1="8" y1="276" x2="${width - 8}" y2="276" stroke="#e2e8f0" stroke-width="1" />

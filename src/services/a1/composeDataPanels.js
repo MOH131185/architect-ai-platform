@@ -9,6 +9,16 @@ export function escapeXml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function toAsciiLabel(value) {
+  return String(value ?? "")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u00D7/g, "x")
+    .replace(/\u00B2/g, "2")
+    .replace(/\u00B0C/g, " C")
+    .replace(/\u00A0/g, " ");
+}
+
 /**
  * Normalize materials from DNA into a consistent array.
  * Handles: array at .materials, .style.materials, ._structured.style.materials,
@@ -81,7 +91,7 @@ export async function buildSchedulesBuffer(
         : room.name || room.type || `Room ${idx + 1}`;
     const areaRaw = room.dimensions || room.area || room.area_m2 || "";
     const area =
-      typeof areaRaw === "number" ? `${areaRaw.toFixed(1)} m\u00B2` : areaRaw;
+      typeof areaRaw === "number" ? `${areaRaw.toFixed(1)} sq m` : areaRaw;
     const floor =
       room.floor != null
         ? room.floor === 0 || room.floor === "ground"
@@ -94,9 +104,9 @@ export async function buildSchedulesBuffer(
         : "";
     roomRows += `
       <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}.</text>
-      <text x="${leftMargin + 20}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${escapeXml(name)}</text>
-      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(String(area))}</text>
-      <text x="${colFloor}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(floor)}</text>`;
+      <text x="${leftMargin + 20}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${escapeXml(toAsciiLabel(name))}</text>
+      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(toAsciiLabel(String(area)))}</text>
+      <text x="${colFloor}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(toAsciiLabel(floor))}</text>`;
   });
 
   const roomsEndY = headerY + 20 + displayRooms.length * rowHeight + 10;
@@ -111,8 +121,8 @@ export async function buildSchedulesBuffer(
         : mat.name || mat.type || `Material ${idx + 1}`;
     const application = mat.application || "";
     matRows += `
-      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}. ${escapeXml(name)}</text>
-      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(application)}</text>`;
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${idx + 1}. ${escapeXml(toAsciiLabel(name))}</text>
+      <text x="${colArea}" y="${y}" font-family="Arial, sans-serif" font-size="9" fill="#475569">${escapeXml(toAsciiLabel(application))}</text>`;
   });
 
   const svg = `
@@ -191,8 +201,8 @@ export async function buildMaterialPaletteBuffer(
 
     swatches += `
       <rect x="${x}" y="${y}" width="${swatchW}" height="${swatchH}" fill="${escapeXml(hexColor)}" stroke="#e2e8f0" stroke-width="1" rx="3" />
-      <text x="${x}" y="${y + swatchH + 12}" font-family="Arial, sans-serif" font-size="9" font-weight="600" fill="#1f2937">${escapeXml(name)}</text>
-      <text x="${x}" y="${y + swatchH + 24}" font-family="Arial, sans-serif" font-size="8" fill="#64748b">${escapeXml(hexColor)} — ${escapeXml(application)}</text>`;
+      <text x="${x}" y="${y + swatchH + 12}" font-family="Arial, sans-serif" font-size="9" font-weight="600" fill="#1f2937">${escapeXml(toAsciiLabel(name))}</text>
+      <text x="${x}" y="${y + swatchH + 24}" font-family="Arial, sans-serif" font-size="8" fill="#64748b">${escapeXml(hexColor)} - ${escapeXml(toAsciiLabel(application))}</text>`;
   });
 
   const svg = `
@@ -254,7 +264,7 @@ export async function buildClimateCardBuffer(
       value:
         typeof seasonal.summer === "string"
           ? seasonal.summer
-          : `${seasonal.summer.tempHigh || seasonal.summer.avgTemp || "—"}°C`,
+          : `${seasonal.summer.tempHigh || seasonal.summer.avgTemp || "-"} C`,
     });
   }
   if (seasonal.winter) {
@@ -263,7 +273,7 @@ export async function buildClimateCardBuffer(
       value:
         typeof seasonal.winter === "string"
           ? seasonal.winter
-          : `${seasonal.winter.tempLow || seasonal.winter.avgTemp || "—"}°C`,
+          : `${seasonal.winter.tempLow || seasonal.winter.avgTemp || "-"} C`,
     });
   }
   if (sunPath.summer) {
@@ -276,8 +286,8 @@ export async function buildClimateCardBuffer(
   let dataRows = "";
   rows.forEach((row) => {
     dataRows += `
-      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">${escapeXml(row.label)}</text>
-      <text x="${leftMargin}" y="${y + 13}" font-family="Arial, sans-serif" font-size="10" fill="#1f2937">${escapeXml(String(row.value).substring(0, 60))}</text>
+      <text x="${leftMargin}" y="${y}" font-family="Arial, sans-serif" font-size="8" font-weight="700" fill="#64748b">${escapeXml(toAsciiLabel(row.label))}</text>
+      <text x="${leftMargin}" y="${y + 13}" font-family="Arial, sans-serif" font-size="10" fill="#1f2937">${escapeXml(toAsciiLabel(String(row.value).substring(0, 60)))}</text>
       <line x1="8" y1="${y + 18}" x2="${width - 8}" y2="${y + 18}" stroke="#f1f5f9" stroke-width="1" />`;
     y += lineH + 16;
   });
