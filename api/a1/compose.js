@@ -555,6 +555,7 @@ async function handleComposeRequest(req, res, trace) {
     siteOverlay = null,
     layoutConfig = "board-v2",
     titleBlock = null,
+    minSlotOccupancy: requestedMinSlotOccupancy = null,
     masterDNA = null,
     projectContext = null,
     locationData = null,
@@ -1090,7 +1091,9 @@ async function handleComposeRequest(req, res, trace) {
   const boardSpecVersion = null;
   const qaEnabled = !skipValidation;
   const rotateToFit = qaEnabled;
-  const minSlotOccupancy = 0.4;
+  const minSlotOccupancy = Number.isFinite(requestedMinSlotOccupancy)
+    ? requestedMinSlotOccupancy
+    : undefined;
 
   console.log(
     `[A1 Compose] Using ${layoutTemplate.toUpperCase()} layout (floors=${floorCount}, ${width}x${height}px)`,

@@ -19,11 +19,14 @@ import {
   resolveLayout,
   toPixelRect,
   getPanelFitMode,
+  getDefaultMinSlotOccupancy,
   isStrictPanel,
   STRICT_PANELS,
   LENIENT_PANELS,
   WORKING_WIDTH,
   WORKING_HEIGHT,
+  LABEL_HEIGHT,
+  LABEL_PADDING,
   getPanelAnnotation,
 } from '../../src/services/a1/composeCore.js';
 
@@ -33,7 +36,6 @@ import { PANEL_REGISTRY, normalizeToCanonical } from '../../src/config/panelRegi
 // Constants matching server.cjs QA gates
 // ---------------------------------------------------------------------------
 
-const MIN_OCCUPANCY = 0.40;
 const MIN_TRIM_DIM = 50;
 const TECHNICAL_PANELS = new Set([
   'floor_plan_ground', 'floor_plan_first', 'floor_plan_level2',
@@ -119,6 +121,12 @@ function simulateComposeQA(mockPanels, layout) {
     const rect = toPixelRect(panelLayout, WORKING_WIDTH, WORKING_HEIGHT);
     const fitMode = getPanelFitMode(canonicalType);
     const isTechnical = TECHNICAL_PANELS.has(canonicalType);
+    const targetWidth = rect.width;
+    const targetHeight = Math.max(10, rect.height - LABEL_HEIGHT - LABEL_PADDING);
+    const minOccupancy = getDefaultMinSlotOccupancy(
+      canonicalType,
+      targetWidth / targetHeight,
+    );
 
     // Simulate image metadata
     const imgW = panel.meta?.width || 1000;
@@ -127,19 +135,20 @@ function simulateComposeQA(mockPanels, layout) {
     // Occupancy calculation (contain mode)
     let occupancy = 1.0;
     if (fitMode === 'contain') {
-      const scale = Math.min(rect.width / imgW, rect.height / imgH);
+      const scale = Math.min(targetWidth / imgW, targetHeight / imgH);
       const drawnW = imgW * scale;
       const drawnH = imgH * scale;
-      occupancy = (drawnW * drawnH) / (rect.width * rect.height);
+      occupancy = (drawnW * drawnH) / (targetWidth * targetHeight);
       occupancy = Math.max(0, Math.min(1, occupancy));
 
-      if (occupancy < MIN_OCCUPANCY && isTechnical && isStrictPanel(canonicalType)) {
+      if (occupancy < minOccupancy && isTechnical && isStrictPanel(canonicalType)) {
         strictFailures.push(canonicalType);
         panelQA[canonicalType] = {
           status: 'FAILED',
-          reason: `LOW_OCCUPANCY: ${(occupancy * 100).toFixed(1)}% < ${MIN_OCCUPANCY * 100}%`,
+          reason: `LOW_OCCUPANCY: ${(occupancy * 100).toFixed(1)}% < ${(minOccupancy * 100).toFixed(1)}%`,
           fitMode,
           occupancy: +(occupancy * 100).toFixed(1),
+          minOccupancy: +(minOccupancy * 100).toFixed(1),
         };
         continue;
       }
@@ -161,6 +170,7 @@ function simulateComposeQA(mockPanels, layout) {
       status: 'OK',
       fitMode,
       occupancy: +(occupancy * 100).toFixed(1),
+      minOccupancy: +(minOccupancy * 100).toFixed(1),
       slotSize: `${rect.width}x${rect.height}`,
       inputSize: `${imgW}x${imgH}`,
       generator: panel.meta?.generatorUsed || 'unknown',
@@ -245,8 +255,8 @@ for (const [key, qa] of Object.entries(panelQA)) {
     console.log(`   ❌ ${key}: THIN_STRIP detected`);
     sliverFound = true;
   }
-  if (qa.occupancy !== undefined && qa.occupancy < MIN_OCCUPANCY * 100) {
-    console.log(`   ⚠️  ${key}: low occupancy ${qa.occupancy}%`);
+  if (qa.status === 'FAILED' && qa.reason?.includes('LOW_OCCUPANCY')) {
+    console.log(`   ⚠️  ${key}: low occupancy ${qa.occupancy}% (min ${qa.minOccupancy}%)`);
     sliverFound = true;
   }
 }

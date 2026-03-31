@@ -342,6 +342,14 @@ test("compose.js uses composeCoreGetPanelFitMode", () => {
   );
 });
 
+test("compose.js does not hard-code a 0.4 minSlotOccupancy override", () => {
+  const content = readFileSync(join(repoRoot, "api/a1/compose.js"), "utf-8");
+  assert(
+    !content.includes("const minSlotOccupancy = 0.4;"),
+    "Route should not force a fixed 0.4 minSlotOccupancy override",
+  );
+});
+
 // ============================================================================
 // 8. Dead path deprecation markers
 // ============================================================================
