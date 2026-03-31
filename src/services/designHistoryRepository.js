@@ -28,6 +28,8 @@ import baselineArtifactStore from "./baselineArtifactStore.js";
 const MAX_DESIGNS = 2;
 const MAX_VERSIONS_PER_DESIGN = 3;
 const MAX_PAYLOAD_BYTES = 4.5 * 1024 * 1024;
+const MAX_HISTORY_BYTES = 4.5 * 1024 * 1024;
+const MAX_PORTFOLIO_FILES = 10;
 
 /**
  * Storage backend interface
@@ -206,7 +208,108 @@ function sanitizeSiteSnapshot(snapshot) {
     sanitized.dataUrl = stripDataUrl(sanitized.dataUrl);
   }
 
+  if (sanitized.metadata && typeof sanitized.metadata === "object") {
+    sanitized.metadata = compactSiteSnapshotMetadata(sanitized.metadata);
+  }
+
   return sanitized;
+}
+
+function compactPortfolioFiles(files = []) {
+  if (!Array.isArray(files)) {
+    return [];
+  }
+
+  return files.slice(0, MAX_PORTFOLIO_FILES).map((file) => ({
+    name: file?.name || null,
+    size: file?.size || null,
+    type: file?.type || null,
+    convertedFromPdf: Boolean(file?.convertedFromPdf),
+  }));
+}
+
+function compactPortfolioBlend(blend = {}) {
+  if (!blend || typeof blend !== "object") {
+    return blend || null;
+  }
+
+  const compacted = {
+    materialWeight: blend.materialWeight ?? null,
+    characteristicWeight: blend.characteristicWeight ?? null,
+    localStyle: blend.localStyle ?? null,
+    climateStyle: blend.climateStyle ?? null,
+  };
+
+  const portfolioFiles = compactPortfolioFiles(blend.portfolioFiles);
+  if (portfolioFiles.length > 0) {
+    compacted.portfolioFiles = portfolioFiles;
+    compacted.portfolioCount = Array.isArray(blend.portfolioFiles)
+      ? blend.portfolioFiles.length
+      : portfolioFiles.length;
+  }
+
+  return compacted;
+}
+
+function compactLocationData(locationData = {}) {
+  if (!locationData || typeof locationData !== "object") {
+    return locationData || {};
+  }
+
+  const sanitized = cloneData(locationData) || {};
+  stripDataUrlsDeep(sanitized);
+
+  delete sanitized.siteAnalysis;
+  delete sanitized.siteDNA;
+  delete sanitized.mapImageUrl;
+  delete sanitized.siteMapUrl;
+  delete sanitized.streetViewUrl;
+  delete sanitized.nearbyPlaces;
+  delete sanitized.rawApiResponse;
+
+  return sanitized;
+}
+
+function compactProjectContext(projectContext = {}) {
+  if (!projectContext || typeof projectContext !== "object") {
+    return projectContext || {};
+  }
+
+  const sanitized = cloneData(projectContext) || {};
+  stripDataUrlsDeep(sanitized);
+
+  if (sanitized.portfolioBlend) {
+    sanitized.portfolioBlend = compactPortfolioBlend(sanitized.portfolioBlend);
+  }
+
+  if (sanitized.location && typeof sanitized.location === "object") {
+    sanitized.location = compactLocationData(sanitized.location);
+  }
+
+  delete sanitized.siteAnalysis;
+  delete sanitized.siteDNA;
+
+  return sanitized;
+}
+
+function compactSiteSnapshotMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== "object") {
+    return metadata || {};
+  }
+
+  const sanitized = cloneData(metadata) || {};
+  stripDataUrlsDeep(sanitized);
+
+  return {
+    siteMetrics: sanitized.siteMetrics || null,
+    climateSummary: sanitized.climateSummary || null,
+    center: sanitized.center || null,
+    zoom: sanitized.zoom || null,
+    mapType: sanitized.mapType || null,
+    size: sanitized.size || null,
+    polygonStyle: sanitized.polygonStyle || null,
+    capturedAt: sanitized.capturedAt || null,
+  };
 }
 
 const VERSION_METADATA_KEYS = [
@@ -390,11 +493,9 @@ function buildDesignPayload(design, existingDesign = null) {
     sheetMetadata.panelCoordinates ||
     null;
 
-  const sanitizedProjectContext = cloneData(design.projectContext) || {};
-  stripDataUrlsDeep(sanitizedProjectContext);
+  const sanitizedProjectContext = compactProjectContext(design.projectContext);
 
-  const sanitizedLocationData = cloneData(design.locationData) || {};
-  stripDataUrlsDeep(sanitizedLocationData);
+  const sanitizedLocationData = compactLocationData(design.locationData);
 
   const sanitizedOverlays = cloneData(design.overlays) || [];
   stripDataUrlsDeep(sanitizedOverlays);
@@ -556,6 +657,192 @@ function enforceHistoryCap(designs = []) {
   return trimmed;
 }
 
+function getEntryTimestamp(entry) {
+  const raw = entry?.updatedAt || entry?.createdAt || null;
+  const parsed = raw ? new Date(raw).getTime() : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function removePanelMapsFromEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return entry;
+  }
+
+  const next = { ...entry };
+
+  if ("panelMap" in next) next.panelMap = null;
+  if ("panels" in next) next.panels = null;
+  if ("panelCoordinates" in next) next.panelCoordinates = null;
+
+  if (next.sheetMetadata && typeof next.sheetMetadata === "object") {
+    const metadata = { ...next.sheetMetadata };
+    delete metadata.panelMap;
+    delete metadata.panels;
+    delete metadata.panelLayout;
+    delete metadata.panelsArray;
+    next.sheetMetadata = metadata;
+  }
+
+  if (next.a1Sheet && typeof next.a1Sheet === "object") {
+    const nextA1 = { ...next.a1Sheet };
+    if ("panelMap" in nextA1) nextA1.panelMap = null;
+    if ("panels" in nextA1) nextA1.panels = null;
+    if ("coordinates" in nextA1) nextA1.coordinates = null;
+    if ("geometryRenders" in nextA1) nextA1.geometryRenders = null;
+
+    if (nextA1.metadata && typeof nextA1.metadata === "object") {
+      const metadata = { ...nextA1.metadata };
+      delete metadata.panelMap;
+      delete metadata.panels;
+      delete metadata.panelLayout;
+      delete metadata.panelsArray;
+      delete metadata.coordinates;
+      delete metadata.panelCoordinates;
+      nextA1.metadata = metadata;
+    }
+
+    next.a1Sheet = nextA1;
+  }
+
+  return next;
+}
+
+function trimHistoryForStorage(history, maxBytes = MAX_HISTORY_BYTES) {
+  if (!Array.isArray(history)) {
+    return history;
+  }
+
+  let candidate = history;
+  const originalBytes = estimateSize(candidate);
+  if (originalBytes <= maxBytes) {
+    return candidate;
+  }
+
+  const applied = [];
+
+  const apply = (label, transform) => {
+    if (estimateSize(candidate) <= maxBytes) {
+      return;
+    }
+
+    candidate = transform(candidate);
+    applied.push(label);
+  };
+
+  apply("drop masterDNAFull", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      if (!("masterDNAFull" in entry)) return entry;
+      const { masterDNAFull, ...rest } = entry;
+      return rest;
+    }),
+  );
+
+  apply("compact projectContext", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      return {
+        ...entry,
+        projectContext: compactProjectContext(entry.projectContext),
+      };
+    }),
+  );
+
+  apply("compact locationData", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      return {
+        ...entry,
+        locationData: compactLocationData(entry.locationData),
+      };
+    }),
+  );
+
+  apply("compact siteSnapshot metadata", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      if (!entry.siteSnapshot || typeof entry.siteSnapshot !== "object") {
+        return entry;
+      }
+
+      return {
+        ...entry,
+        siteSnapshot: sanitizeSiteSnapshot(entry.siteSnapshot),
+      };
+    }),
+  );
+
+  apply("drop blendedStyle", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      return { ...entry, blendedStyle: null };
+    }),
+  );
+
+  apply("cap versions to 1", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      if (!Array.isArray(entry.versions) || entry.versions.length <= 1) {
+        return entry;
+      }
+      return { ...entry, versions: entry.versions.slice(0, 1) };
+    }),
+  );
+
+  apply("remove panel maps", (items) => items.map(removePanelMapsFromEntry));
+
+  apply("drop projectContext", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      return { ...entry, projectContext: {} };
+    }),
+  );
+
+  apply("drop locationData", (items) =>
+    items.map((entry) => {
+      if (!entry || typeof entry !== "object") return entry;
+      return { ...entry, locationData: {} };
+    }),
+  );
+
+  if (estimateSize(candidate) > maxBytes) {
+    const designEntries = candidate.filter(
+      (entry) =>
+        entry && typeof entry === "object" && (entry.designId || entry.id),
+    );
+
+    if (designEntries.length > 1) {
+      const newest = [...designEntries].sort(
+        (a, b) => getEntryTimestamp(b) - getEntryTimestamp(a),
+      )[0];
+      const removed = designEntries.filter((entry) => entry !== newest);
+
+      removed.forEach((entry) => {
+        if (entry?.siteSnapshot?.key) {
+          deleteSiteSnapshot(entry.siteSnapshot.key);
+        }
+      });
+
+      candidate = candidate.filter(
+        (entry) =>
+          !(entry && typeof entry === "object" && (entry.designId || entry.id)),
+      );
+      candidate.push(newest);
+      applied.push("keep only most recent design");
+    }
+  }
+
+  const finalBytes = estimateSize(candidate);
+  logger.warn("Trimmed design history to fit storage budget", {
+    originalKB: (originalBytes / 1024).toFixed(2),
+    finalKB: (finalBytes / 1024).toFixed(2),
+    maxKB: (maxBytes / 1024).toFixed(2),
+    applied,
+  });
+
+  return candidate;
+}
+
 /**
  * Design History Repository
  */
@@ -654,7 +941,8 @@ class DesignHistoryRepository {
     }
 
     const cappedDesigns = enforceHistoryCap(updatedDesigns);
-    const saved = await this.persistDesigns(cappedDesigns);
+    const storageReadyDesigns = trimHistoryForStorage(cappedDesigns);
+    const saved = await this.persistDesigns(storageReadyDesigns);
 
     if (!saved) {
       const usage = await storageManager.getStorageUsage();
@@ -758,7 +1046,8 @@ class DesignHistoryRepository {
       ...allDesigns.slice(index + 1),
     ]);
 
-    const saved = await this.persistDesigns(cappedDesigns);
+    const storageReadyDesigns = trimHistoryForStorage(cappedDesigns);
+    const saved = await this.persistDesigns(storageReadyDesigns);
     if (!saved) {
       const usage = await storageManager.getStorageUsage();
       throw new Error(

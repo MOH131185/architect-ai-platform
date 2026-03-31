@@ -3,34 +3,34 @@
  *
  * Manages storage with pluggable backends (localStorage, IndexedDB).
  * Prevents app crashes from storage quota errors.
- * 
+ *
  * REFACTORED: Now supports multiple backend types via factory pattern.
  */
 
-import logger from './logger.js';
+import logger from "./logger.js";
 
 /**
  * Storage Backend Interface
  */
 class StorageBackend {
   async setItem(key, value) {
-    throw new Error('Not implemented');
+    throw new Error("Not implemented");
   }
 
   async getItem(key) {
-    throw new Error('Not implemented');
+    throw new Error("Not implemented");
   }
 
   async removeItem(key) {
-    throw new Error('Not implemented');
+    throw new Error("Not implemented");
   }
 
   async getAllKeys() {
-    throw new Error('Not implemented');
+    throw new Error("Not implemented");
   }
 
   async clear() {
-    throw new Error('Not implemented');
+    throw new Error("Not implemented");
   }
 }
 
@@ -38,7 +38,7 @@ class StorageBackend {
  * LocalStorage Backend
  */
 class LocalStorageBackend extends StorageBackend {
-  constructor(prefix = 'archiAI_') {
+  constructor(prefix = "archiAI_") {
     super();
     this.prefix = prefix;
   }
@@ -63,7 +63,7 @@ class LocalStorageBackend extends StorageBackend {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(this.prefix)) {
-        keys.push(key.replace(this.prefix, ''));
+        keys.push(key.replace(this.prefix, ""));
       }
     }
     return keys;
@@ -81,7 +81,7 @@ class LocalStorageBackend extends StorageBackend {
  * IndexedDB Backend (future implementation)
  */
 class IndexedDBBackend extends StorageBackend {
-  constructor(dbName = 'archiAI', storeName = 'storage', prefix = 'archiAI_') {
+  constructor(dbName = "archiAI", storeName = "storage", prefix = "archiAI_") {
     super();
     this.dbName = dbName;
     this.storeName = storeName;
@@ -119,7 +119,7 @@ class IndexedDBBackend extends StorageBackend {
     const prefixedKey = this.prefix + key;
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const transaction = this.db.transaction([this.storeName], "readwrite");
       const store = transaction.objectStore(this.storeName);
       const request = store.put(value, prefixedKey);
 
@@ -133,7 +133,7 @@ class IndexedDBBackend extends StorageBackend {
     const prefixedKey = this.prefix + key;
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const transaction = this.db.transaction([this.storeName], "readonly");
       const store = transaction.objectStore(this.storeName);
       const request = store.get(prefixedKey);
 
@@ -147,7 +147,7 @@ class IndexedDBBackend extends StorageBackend {
     const prefixedKey = this.prefix + key;
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const transaction = this.db.transaction([this.storeName], "readwrite");
       const store = transaction.objectStore(this.storeName);
       const request = store.delete(prefixedKey);
 
@@ -160,14 +160,14 @@ class IndexedDBBackend extends StorageBackend {
     await this.init();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const transaction = this.db.transaction([this.storeName], "readonly");
       const store = transaction.objectStore(this.storeName);
       const request = store.getAllKeys();
 
       request.onsuccess = () => {
         const keys = request.result
-          .filter(k => k.startsWith(this.prefix))
-          .map(k => k.replace(this.prefix, ''));
+          .filter((k) => k.startsWith(this.prefix))
+          .map((k) => k.replace(this.prefix, ""));
         resolve(keys);
       };
       request.onerror = () => reject(request.error);
@@ -190,17 +190,17 @@ class IndexedDBBackend extends StorageBackend {
  * @param {Object} options - Backend options
  * @returns {StorageBackend} Backend instance
  */
-export function createStorageBackend(kind = 'localStorage', options = {}) {
-  const prefix = options.prefix || 'archiAI_';
+export function createStorageBackend(kind = "localStorage", options = {}) {
+  const prefix = options.prefix || "archiAI_";
 
   switch (kind) {
-    case 'indexedDB':
+    case "indexedDB":
       return new IndexedDBBackend(
-        options.dbName || 'archiAI',
-        options.storeName || 'storage',
-        prefix
+        options.dbName || "archiAI",
+        options.storeName || "storage",
+        prefix,
       );
-    case 'localStorage':
+    case "localStorage":
     default:
       return new LocalStorageBackend(prefix);
   }
@@ -210,7 +210,7 @@ class StorageManager {
   constructor(maxItems = 50, maxSizeMB = 5, backend = null) {
     this.maxItems = maxItems;
     this.maxSize = maxSizeMB * 1024 * 1024; // Convert to bytes
-    this.storagePrefix = 'archiAI_';
+    this.storagePrefix = "archiAI_";
     this.backend = backend || new LocalStorageBackend(this.storagePrefix);
   }
 
@@ -232,13 +232,21 @@ class StorageManager {
       if (options.addTimestamp) {
         if (Array.isArray(value)) {
           // For arrays, wrap in an object to preserve array structure
-          dataToStore = { _data: value, _timestamp: Date.now(), _schemaVersion: 2 };
-        } else if (value && typeof value === 'object') {
+          dataToStore = {
+            _data: value,
+            _timestamp: Date.now(),
+            _schemaVersion: 2,
+          };
+        } else if (value && typeof value === "object") {
           // For objects, use spread
           dataToStore = { ...value, _timestamp: Date.now(), _schemaVersion: 2 };
         } else {
           // For primitives, wrap in object
-          dataToStore = { _data: value, _timestamp: Date.now(), _schemaVersion: 2 };
+          dataToStore = {
+            _data: value,
+            _timestamp: Date.now(),
+            _schemaVersion: 2,
+          };
         }
       } else {
         dataToStore = value;
@@ -251,33 +259,40 @@ class StorageManager {
       if (sizeBytes > this.maxSize) {
         logger.warn(`Item ${key} exceeds max size`, {
           sizeMB: (sizeBytes / 1024 / 1024).toFixed(2),
-          maxMB: (this.maxSize / 1024 / 1024).toFixed(2)
+          maxMB: (this.maxSize / 1024 / 1024).toFixed(2),
         });
         await this.cleanup(key);
       }
 
       try {
         await this.backend.setItem(key, serialized);
-        logger.debug(`Successfully stored ${key}`, {
-          sizeKB: (sizeBytes / 1024).toFixed(2)
-        }, '💾');
+        logger.debug(
+          `Successfully stored ${key}`,
+          {
+            sizeKB: (sizeBytes / 1024).toFixed(2),
+          },
+          "💾",
+        );
         return true;
       } catch (innerError) {
         logger.error(`Failed to store ${key}`, {
           errorName: innerError.name,
           errorMessage: innerError.message,
           sizeKB: (sizeBytes / 1024).toFixed(2),
-          storageUsage: await this.getStorageUsage()
+          storageUsage: await this.getStorageUsage(),
         });
         throw innerError; // Re-throw to be caught by outer catch
       }
-
     } catch (error) {
-      if (error.name === 'QuotaExceededError') {
-        logger.warn('Storage quota exceeded, performing cleanup', {
-          currentUsage: `${await this.getStorageUsage()}%`,
-          key
-        }, '💾');
+      if (error.name === "QuotaExceededError") {
+        logger.warn(
+          "Storage quota exceeded, performing cleanup",
+          {
+            currentUsage: `${await this.getStorageUsage()}%`,
+            key,
+          },
+          "💾",
+        );
         await this.cleanup(key);
 
         try {
@@ -287,7 +302,7 @@ class StorageManager {
           await this.backend.setItem(key, serialized);
           logger.success(`Successfully stored ${key} after cleanup`, {
             sizeKB: (retrySize / 1024).toFixed(2),
-            newUsage: `${await this.getStorageUsage()}%`
+            newUsage: `${await this.getStorageUsage()}%`,
           });
           return true;
         } catch (retryError) {
@@ -296,34 +311,40 @@ class StorageManager {
           // overwritten due to temporary quota allocation behavior in some browsers.
           try {
             const keysAfterCleanup = await this.backend.getAllKeys();
-            const otherKeys = keysAfterCleanup.filter(k => k !== key);
+            const otherKeys = keysAfterCleanup.filter((k) => k !== key);
 
             if (otherKeys.length === 0) {
               const existingValue = await this.backend.getItem(key);
               const serialized = JSON.stringify(dataToStore);
 
-              if (existingValue && existingValue.length > serialized.length) {
+              if (existingValue) {
                 const retrySize = new Blob([serialized]).size;
-                logger.warn(`Only ${key} remains in storage; dropping previous value and retrying`, {
-                  existingSizeKB: (existingValue.length / 1024).toFixed(2),
-                  attemptedSizeKB: (retrySize / 1024).toFixed(2)
-                });
+                logger.warn(
+                  `Only ${key} remains in storage; dropping previous value and retrying`,
+                  {
+                    existingSizeKB: (existingValue.length / 1024).toFixed(2),
+                    attemptedSizeKB: (retrySize / 1024).toFixed(2),
+                  },
+                );
 
                 await this.backend.removeItem(key);
                 await this.backend.setItem(key, serialized);
 
-                logger.success(`Successfully stored ${key} after dropping previous value`, {
-                  sizeKB: (retrySize / 1024).toFixed(2),
-                  newUsage: `${await this.getStorageUsage()}%`
-                });
+                logger.success(
+                  `Successfully stored ${key} after dropping previous value`,
+                  {
+                    sizeKB: (retrySize / 1024).toFixed(2),
+                    newUsage: `${await this.getStorageUsage()}%`,
+                  },
+                );
                 return true;
               }
             }
           } catch (finalAttemptError) {
-            logger.warn('Final storage recovery attempt failed', {
+            logger.warn("Final storage recovery attempt failed", {
               key,
               errorName: finalAttemptError?.name,
-              errorMessage: finalAttemptError?.message
+              errorMessage: finalAttemptError?.message,
             });
           }
 
@@ -331,7 +352,9 @@ class StorageManager {
             error: retryError.name,
             message: retryError.message,
             usageAfterCleanup: `${await this.getStorageUsage()}%`,
-            attemptedSizeKB: (new Blob([JSON.stringify(value)]).size / 1024).toFixed(2)
+            attemptedSizeKB: (
+              new Blob([JSON.stringify(value)]).size / 1024
+            ).toFixed(2),
           });
           return false;
         }
@@ -340,16 +363,22 @@ class StorageManager {
           errorName: error.name,
           errorMessage: error.message,
           errorType: typeof error,
-          isSecurityError: error.name === 'SecurityError',
+          isSecurityError: error.name === "SecurityError",
           isDOMException: error instanceof DOMException,
-          code: error.code || 'N/A'
+          code: error.code || "N/A",
         });
 
         // Provide specific guidance based on error type
-        if (error.name === 'SecurityError') {
-          logger.error('SecurityError detected: Check if cookies/storage are enabled, try regular browsing mode (not incognito), check if site is in restricted mode', null, '🔒');
-        } else if (error.name === 'InvalidStateError') {
-          logger.error('InvalidStateError detected: Storage may be corrupted, try clearing browser cache and cookies');
+        if (error.name === "SecurityError") {
+          logger.error(
+            "SecurityError detected: Check if cookies/storage are enabled, try regular browsing mode (not incognito), check if site is in restricted mode",
+            null,
+            "🔒",
+          );
+        } else if (error.name === "InvalidStateError") {
+          logger.error(
+            "InvalidStateError detected: Storage may be corrupted, try clearing browser cache and cookies",
+          );
         }
 
         return false;
@@ -374,9 +403,9 @@ class StorageManager {
       const parsed = JSON.parse(item);
 
       // Handle timestamp wrapper
-      if (parsed && typeof parsed === 'object' && '_timestamp' in parsed) {
+      if (parsed && typeof parsed === "object" && "_timestamp" in parsed) {
         // If _data exists, this was an array or primitive wrapped for timestamp
-        if ('_data' in parsed) {
+        if ("_data" in parsed) {
           return parsed._data;
         }
 
@@ -413,14 +442,14 @@ class StorageManager {
    */
   async cleanup(preserveKey, removePercentage = 0.8) {
     try {
-      logger.info('Starting storage cleanup', null, '🧹');
+      logger.info("Starting storage cleanup", null, "🧹");
 
       // Get all keys
       const allKeys = await this.backend.getAllKeys();
-      const keys = allKeys.filter(k => k !== preserveKey);
+      const keys = allKeys.filter((k) => k !== preserveKey);
 
       if (keys.length === 0) {
-        logger.warn('No items to clean up');
+        logger.warn("No items to clean up");
         return;
       }
 
@@ -434,13 +463,18 @@ class StorageManager {
           } catch {
             return { key, timestamp: 0 };
           }
-        })
+        }),
       );
 
-      const sorted = keysWithTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+      const sorted = keysWithTimestamps.sort(
+        (a, b) => a.timestamp - b.timestamp,
+      );
 
       // Remove oldest items - very aggressive (80% instead of 50%) to ensure space
-      const toRemove = Math.max(1, Math.floor(sorted.length * removePercentage));
+      const toRemove = Math.max(
+        1,
+        Math.floor(sorted.length * removePercentage),
+      );
       const removed = sorted.slice(0, toRemove);
 
       for (const item of removed) {
@@ -448,10 +482,10 @@ class StorageManager {
       }
 
       logger.success(`Cleaned up ${removed.length} old items`, {
-        storageUsage: `${await this.getStorageUsage()}%`
+        storageUsage: `${await this.getStorageUsage()}%`,
       });
     } catch (error) {
-      logger.error('Cleanup error', error);
+      logger.error("Cleanup error", error);
     }
   }
 
@@ -487,9 +521,9 @@ class StorageManager {
     try {
       await this.backend.clear();
       const keys = await this.backend.getAllKeys();
-      logger.info(`Cleared ${keys.length} items`, null, '🗑️');
+      logger.info(`Cleared ${keys.length} items`, null, "🗑️");
     } catch (error) {
-      logger.error('Clear all error', error);
+      logger.error("Clear all error", error);
     }
   }
 
@@ -526,7 +560,7 @@ class StorageManager {
         totalSizeKB: (totalSize / 1024).toFixed(2),
         usagePercent: await this.getStorageUsage(),
         oldestItem: await this.getOldestItem(),
-        newestItem: await this.getNewestItem()
+        newestItem: await this.getNewestItem(),
       };
     } catch {
       return null;
@@ -539,29 +573,33 @@ class StorageManager {
    * @returns {Promise<Object>} Storage stats
    */
   async debugStorage() {
-    logger.info('🔍 ========================================');
-    logger.info('🔍 STORAGE DEBUG INFORMATION');
-    logger.info('🔍 ========================================\n');
+    logger.info("🔍 ========================================");
+    logger.info("🔍 STORAGE DEBUG INFORMATION");
+    logger.info("🔍 ========================================\n");
 
     const stats = await this.getStats();
     if (stats) {
       logger.info(`📊 Total Items: ${stats.itemCount}`);
       logger.info(`📦 Total Size: ${stats.totalSizeKB} KB`);
       logger.info(`💾 Usage: ${stats.usagePercent}%`);
-      logger.info(`🕐 Oldest Item: ${stats.oldestItem ? new Date(stats.oldestItem).toISOString() : 'N/A'}`);
-      logger.info(`🕑 Newest Item: ${stats.newestItem ? new Date(stats.newestItem).toISOString() : 'N/A'}`);
+      logger.info(
+        `🕐 Oldest Item: ${stats.oldestItem ? new Date(stats.oldestItem).toISOString() : "N/A"}`,
+      );
+      logger.info(
+        `🕑 Newest Item: ${stats.newestItem ? new Date(stats.newestItem).toISOString() : "N/A"}`,
+      );
     }
 
-    logger.info('\n📋 Keys by Size:');
+    logger.info("\n📋 Keys by Size:");
     const keys = await this.getAllKeys();
     const keysSizes = await Promise.all(
       keys.map(async (key) => {
         const item = await this.backend.getItem(key);
         return {
           key,
-          sizeKB: item ? (item.length / 1024).toFixed(2) : 0
+          sizeKB: item ? (item.length / 1024).toFixed(2) : 0,
         };
-      })
+      }),
     );
 
     keysSizes.sort((a, b) => parseFloat(b.sizeKB) - parseFloat(a.sizeKB));
@@ -570,7 +608,7 @@ class StorageManager {
       logger.info(`   ${index + 1}. ${item.key}: ${item.sizeKB} KB`);
     });
 
-    logger.info('\n🔍 ========================================\n');
+    logger.info("\n🔍 ========================================\n");
 
     return stats;
   }
@@ -580,32 +618,32 @@ class StorageManager {
    * @returns {Promise<Object>} Test results
    */
   async testStorage() {
-    const testKey = 'storage_test';
-    const testData = { test: 'data', timestamp: Date.now() };
+    const testKey = "storage_test";
+    const testData = { test: "data", timestamp: Date.now() };
 
-    logger.info('Testing storage write capability', null, '🧪');
+    logger.info("Testing storage write capability", null, "🧪");
 
     try {
       const success = await this.setItem(testKey, testData);
 
       if (!success) {
-        logger.error('Storage write failed');
-        return { success: false, error: 'Write failed' };
+        logger.error("Storage write failed");
+        return { success: false, error: "Write failed" };
       }
 
       const retrieved = await this.getItem(testKey);
 
       if (JSON.stringify(retrieved) !== JSON.stringify(testData)) {
-        logger.error('Storage read mismatch');
-        return { success: false, error: 'Read mismatch' };
+        logger.error("Storage read mismatch");
+        return { success: false, error: "Read mismatch" };
       }
 
       await this.removeItem(testKey);
-      logger.success('Storage test passed');
+      logger.success("Storage test passed");
 
       return { success: true };
     } catch (error) {
-      logger.error('Storage test error', error);
+      logger.error("Storage test error", error);
       return { success: false, error: error.message };
     }
   }
@@ -659,4 +697,9 @@ class StorageManager {
 const storageManager = new StorageManager();
 
 export default storageManager;
-export { StorageManager, StorageBackend, LocalStorageBackend, IndexedDBBackend };
+export {
+  StorageManager,
+  StorageBackend,
+  LocalStorageBackend,
+  IndexedDBBackend,
+};
