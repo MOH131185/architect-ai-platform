@@ -22,12 +22,6 @@
  * Run with: node scripts/tests/test-compose-core-and-routing.mjs
  */
 
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 // ---------------------------------------------------------------------------
 // Minimal test harness
 // ---------------------------------------------------------------------------
@@ -98,6 +92,23 @@ test('2. resolveLayout returns GRID_12COL slot count for board-v2', () => {
   assert(r.layout.hero_3d, 'Missing hero_3d slot');
   assert(r.layout.floor_plan_ground, 'Missing floor_plan_ground slot');
   assert(r.layout.title_block, 'Missing title_block slot');
+});
+
+test('2b. board-v2 keeps data cards readable by widening top-right and bottom-right slots', () => {
+  const r = composeCore.resolveLayout({ layoutTemplate: 'board-v2', floorCount: 2 });
+
+  assert(r.layout.material_palette.y < 0.1, 'material_palette should be stacked in the top-right');
+  assert(r.layout.climate_card.y < 0.3, 'climate_card should stay in the upper-right stack');
+  assert(r.layout.schedules_notes.y > 0.7, 'schedules_notes should stay in the bottom info rail');
+  assert(r.layout.title_block.y > 0.7, 'title_block should stay in the bottom info rail');
+  assert(
+    r.layout.schedules_notes.width > r.layout.material_palette.width,
+    'schedules_notes should be wider than material_palette for legibility',
+  );
+  assert(
+    r.layout.title_block.width > r.layout.climate_card.width,
+    'title_block should be wider than climate_card for legibility',
+  );
 });
 
 test('3. resolveLayout returns legacy grid for layoutTemplate=legacy', () => {

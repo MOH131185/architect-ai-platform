@@ -57,6 +57,10 @@ function escXml(str) {
     .replace(/'/g, "&apos;");
 }
 
+function isFiniteSvgNumber(value) {
+  return Number.isFinite(value);
+}
+
 // =============================================================================
 // FLOOR PLAN PROJECTION
 // =============================================================================
@@ -1540,6 +1544,10 @@ function drawSectionCutWalls(
  * Draw section stairs
  */
 function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
+  if (!model.stairs || model.stairs.length === 0) {
+    return "";
+  }
+
   let svg = '<g id="section-stairs">';
 
   const stair = model.stairs[0];
@@ -1551,6 +1559,14 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
   const stairX =
     offsetX + (isLongitudinal ? posX : posY) * pxPerMM - stairWidthPx / 2;
 
+  if (
+    ![stairWidthPx, stairLengthPx, stairX, groundY, pxPerMM].every(
+      isFiniteSvgNumber,
+    )
+  ) {
+    return "";
+  }
+
   // Draw stair treads connecting floors
   for (let floorIdx = 0; floorIdx < model.floors.length - 1; floorIdx++) {
     const lowerFloor = model.floors[floorIdx];
@@ -1561,7 +1577,12 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
     const stairBottomY = groundY - (lowerFloor.zBase || 0) * pxPerMM;
     const stairTopY = groundY - (upperFloor.zBase || 0) * pxPerMM;
     const stairRisePx = stairBottomY - stairTopY;
-    if (stairRisePx <= 0) continue; // No rise, skip this flight
+    if (
+      ![stairBottomY, stairTopY, stairRisePx].every(isFiniteSvgNumber) ||
+      stairRisePx <= 0
+    ) {
+      continue;
+    } // No rise, skip this flight
     const numTreads = Math.max(1, Math.round(stairRisePx / (200 * pxPerMM)));
 
     // Draw individual treads
@@ -1571,22 +1592,33 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
       const treadX2 = stairX + ((t + 1) / numTreads) * stairLengthPx;
 
       // Horizontal tread
-      svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX1}" y1="${treadY}" x2="${Math.min(treadX2, stairX + stairLengthPx)}" y2="${treadY}"/>`;
+      const clampedTreadX2 = Math.min(treadX2, stairX + stairLengthPx);
+      if ([treadX1, treadY, clampedTreadX2].every(isFiniteSvgNumber)) {
+        svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX1}" y1="${treadY}" x2="${clampedTreadX2}" y2="${treadY}"/>`;
+      }
 
       // Vertical riser
       if (t < numTreads) {
         const nextTreadY = stairBottomY - ((t + 1) / numTreads) * stairRisePx;
-        svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        if ([treadX2, treadY, nextTreadY].every(isFiniteSvgNumber)) {
+          svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        }
       }
     }
 
     // Stair outline
-    svg += `<path stroke="#333" stroke-width="${LW.wallProfile}" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    if (
+      [stairX, stairBottomY, stairLengthPx, stairTopY].every(isFiniteSvgNumber)
+    ) {
+      svg += `<path stroke="#333" stroke-width="${LW.wallProfile}" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    }
   }
 
   // Stair label
   const stairLabelY = groundY - (model.floors[0].floorHeight * pxPerMM) / 2;
-  svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
+  if ([stairX, stairLengthPx, stairLabelY].every(isFiniteSvgNumber)) {
+    svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
+  }
 
   svg += "</g>";
   return svg;
