@@ -34,6 +34,7 @@ import {
   normalizeKey as composeCoreNormalizeKey,
   resolveLayout as composeCoreResolveLayout,
   getPanelFitMode as composeCoreGetPanelFitMode,
+  getDefaultMinSlotOccupancy as composeCoreGetDefaultMinSlotOccupancy,
 } from "../../src/services/a1/composeCore.js";
 
 import {
@@ -2662,16 +2663,14 @@ async function placePanelImage({
   };
 
   const getDefaultMinSlotOccupancy = () => {
-    if (panelType.startsWith("floor_plan_")) {
-      return 0.52;
-    }
-    if (panelType.startsWith("section_")) {
-      return 0.48;
-    }
-    if (panelType.startsWith("elevation_")) {
-      return 0.42;
-    }
-    return 0.4;
+    const slotAspect =
+      Number.isFinite(targetWidth) &&
+      Number.isFinite(targetHeight) &&
+      targetWidth > 0 &&
+      targetHeight > 0
+        ? targetWidth / targetHeight
+        : 1;
+    return composeCoreGetDefaultMinSlotOccupancy(panelType, slotAspect);
   };
 
   // Optional auto-rotate to maximize slot usage (QA-driven)

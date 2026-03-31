@@ -284,6 +284,24 @@ function getPanelFitMode(panelType) {
   return PANEL_FIT_POLICY[panelType] || "contain";
 }
 
+function getDefaultMinSlotOccupancy(panelType, slotAspect) {
+  const normalizedAspect =
+    Number.isFinite(slotAspect) && slotAspect > 0
+      ? Math.max(slotAspect, 1 / slotAspect)
+      : 1;
+
+  if (panelType.startsWith("floor_plan_")) {
+    return Math.max(0.18, Math.min(0.52, 1.2 / normalizedAspect));
+  }
+  if (panelType.startsWith("section_")) {
+    return 0.48;
+  }
+  if (panelType.startsWith("elevation_")) {
+    return 0.42;
+  }
+  return 0.4;
+}
+
 function getPanelAnnotation(panelType) {
   const label = PANEL_LABELS[panelType] || String(panelType || "").toUpperCase();
   const drawingNumber = DRAWING_NUMBERS[panelType] || "";
@@ -333,6 +351,6 @@ module.exports = {
   GRID_12COL, GRID_SPEC, PANEL_LABELS, DRAWING_NUMBERS, PANEL_SCALES,
   PANEL_FIT_POLICY, COVER_FIT_PANELS,
   normalizeKey, normalizeLayoutTemplate, resolveLayout,
-  toPixelRect, getPanelFitMode, getPanelAnnotation,
+  toPixelRect, getPanelFitMode, getDefaultMinSlotOccupancy, getPanelAnnotation,
   getSlotDimensions, isStrictPanel, STRICT_PANELS, LENIENT_PANELS,
 };

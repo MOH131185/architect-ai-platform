@@ -64,6 +64,12 @@ function assertEqual(actual, expected, message) {
   }
 }
 
+function getComposeSlotAspect(slot, width, height, labelHeight, labelPadding) {
+  const targetWidth = slot.width * width;
+  const targetHeight = Math.max(10, slot.height * height - labelHeight - labelPadding);
+  return targetWidth / targetHeight;
+}
+
 // ============================================================================
 // 1. Layout alias normalization
 // ============================================================================
@@ -138,6 +144,61 @@ await testAsync("resolveLayout removes floor_plan_level2 for 2-floor", async () 
   assert(layout.floor_plan_ground, "floor_plan_ground present");
   assert(layout.floor_plan_first, "floor_plan_first present");
   assertEqual(layout.floor_plan_level2, undefined, "floor_plan_level2 removed for 2-floor");
+});
+
+await testAsync("single-floor board-v2 relaxes floor-plan occupancy for ultra-wide slot", async () => {
+  const {
+    resolveLayout,
+    WORKING_WIDTH,
+    WORKING_HEIGHT,
+    LABEL_HEIGHT,
+    LABEL_PADDING,
+    getDefaultMinSlotOccupancy,
+  } = await import("../../src/services/a1/composeCore.js");
+  const { layout } = resolveLayout({ floorCount: 1, layoutTemplate: "board-v2" });
+  const slot = layout.floor_plan_ground;
+  const min = getDefaultMinSlotOccupancy(
+    "floor_plan_ground",
+    getComposeSlotAspect(slot, WORKING_WIDTH, WORKING_HEIGHT, LABEL_HEIGHT, LABEL_PADDING),
+  );
+  assert(min <= 0.2, `Expected relaxed 1-floor occupancy threshold, got ${min}`);
+});
+
+await testAsync("two-floor board-v2 scales floor-plan occupancy below the 3-floor default", async () => {
+  const {
+    resolveLayout,
+    WORKING_WIDTH,
+    WORKING_HEIGHT,
+    LABEL_HEIGHT,
+    LABEL_PADDING,
+    getDefaultMinSlotOccupancy,
+  } = await import("../../src/services/a1/composeCore.js");
+  const { layout } = resolveLayout({ floorCount: 2, layoutTemplate: "board-v2" });
+  const slot = layout.floor_plan_ground;
+  const min = getDefaultMinSlotOccupancy(
+    "floor_plan_ground",
+    getComposeSlotAspect(slot, WORKING_WIDTH, WORKING_HEIGHT, LABEL_HEIGHT, LABEL_PADDING),
+  );
+  assert(min < 0.4, `Expected 2-floor occupancy threshold below 0.4, got ${min}`);
+  assert(min > 0.3, `Expected 2-floor occupancy threshold above 0.3, got ${min}`);
+});
+
+await testAsync("three-floor board-v2 keeps the strict floor-plan occupancy default", async () => {
+  const {
+    resolveLayout,
+    WORKING_WIDTH,
+    WORKING_HEIGHT,
+    LABEL_HEIGHT,
+    LABEL_PADDING,
+    getDefaultMinSlotOccupancy,
+  } = await import("../../src/services/a1/composeCore.js");
+  const { layout } = resolveLayout({ floorCount: 3, layoutTemplate: "board-v2" });
+  const slot = layout.floor_plan_ground;
+  const min = getDefaultMinSlotOccupancy(
+    "floor_plan_ground",
+    getComposeSlotAspect(slot, WORKING_WIDTH, WORKING_HEIGHT, LABEL_HEIGHT, LABEL_PADDING),
+  );
+  assertEqual(min, 0.52, "Expected 3-floor occupancy threshold to remain strict");
 });
 
 // ============================================================================
@@ -287,9 +348,9 @@ test("compose.js uses composeCoreGetPanelFitMode", () => {
 console.log("\n\ud83d\udcca TEST 8: Dead Path Deprecation Markers");
 console.log("=".repeat(60));
 
-test("design/dnaWorkflowOrchestrator.js has @deprecated marker", () => {
+test("_legacy/design_dnaWorkflowOrchestrator.js has @deprecated marker", () => {
   const content = readFileSync(
-    join(repoRoot, "src/services/design/dnaWorkflowOrchestrator.js"),
+    join(repoRoot, "src/_legacy/design_dnaWorkflowOrchestrator.js"),
     "utf-8",
   );
   assert(content.includes("@deprecated"), "Should have @deprecated JSDoc tag");

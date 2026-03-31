@@ -405,6 +405,30 @@ export function getPanelFitMode(panelType) {
 }
 
 /**
+ * Default minimum slot occupancy for QA gates.
+ * Floor-plan slots become progressively wider when 1- and 2-floor boards
+ * expand to fill removed plan columns, so the occupancy floor needs to scale
+ * with slot aspect to avoid impossible contain-fit failures.
+ */
+export function getDefaultMinSlotOccupancy(panelType, slotAspect = 1) {
+  const normalizedAspect =
+    Number.isFinite(slotAspect) && slotAspect > 0
+      ? Math.max(slotAspect, 1 / slotAspect)
+      : 1;
+
+  if (panelType.startsWith("floor_plan_")) {
+    return Math.max(0.18, Math.min(0.52, 1.2 / normalizedAspect));
+  }
+  if (panelType.startsWith("section_")) {
+    return 0.48;
+  }
+  if (panelType.startsWith("elevation_")) {
+    return 0.42;
+  }
+  return 0.4;
+}
+
+/**
  * Get RIBA-style annotation for a panel.
  */
 export function getPanelAnnotation(panelType) {
