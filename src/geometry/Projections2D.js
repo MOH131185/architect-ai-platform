@@ -41,6 +41,10 @@ function escXml(str) {
     .replace(/'/g, "&apos;");
 }
 
+function isFiniteSvgNumber(value) {
+  return Number.isFinite(value);
+}
+
 // =============================================================================
 // FLOOR PLAN PROJECTION
 // =============================================================================
@@ -810,9 +814,7 @@ function drawElevationOpenings(
     logger.debug(
       `[Projections2D] No openings for ${orientation} — generating default windows`,
     );
-    const facadeWidthMM = isNS
-      ? model.envelope.width
-      : model.envelope.depth;
+    const facadeWidthMM = isNS ? model.envelope.width : model.envelope.depth;
     const floorCount = model.floors?.length || 1;
     const windowsPerFloor = Math.max(2, Math.round(facadeWidthMM / 3000));
     const windowWidth = 1200;
@@ -827,7 +829,11 @@ function drawElevationOpenings(
       for (let wi = 0; wi < windowsPerFloor; wi++) {
         const posX = -facadeWidthMM / 2 + spacing * (wi + 1);
         // Ground floor first opening on main facade is a door
-        if (fi === 0 && wi === 0 && (orientation === "S" || orientation === "N")) {
+        if (
+          fi === 0 &&
+          wi === 0 &&
+          (orientation === "S" || orientation === "N")
+        ) {
           facadeOpenings.push({
             type: "door",
             floorIndex: fi,
@@ -1351,6 +1357,10 @@ function drawSectionCutWalls(
  * Draw section stairs
  */
 function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
+  if (!model.stairs || model.stairs.length === 0) {
+    return "";
+  }
+
   let svg = '<g id="section-stairs">';
 
   const stair = model.stairs[0];
@@ -1359,9 +1369,16 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
 
   const posX = stair.position?.x ?? 0;
   const posY = stair.position?.y ?? 0;
-  const stairX = offsetX +
-    (isLongitudinal ? posX : posY) * pxPerMM -
-    stairWidthPx / 2;
+  const stairX =
+    offsetX + (isLongitudinal ? posX : posY) * pxPerMM - stairWidthPx / 2;
+
+  if (
+    ![stairWidthPx, stairLengthPx, stairX, groundY, pxPerMM].every(
+      isFiniteSvgNumber,
+    )
+  ) {
+    return "";
+  }
 
   // Draw stair treads connecting floors
   for (let floorIdx = 0; floorIdx < model.floors.length - 1; floorIdx++) {
@@ -1373,7 +1390,12 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
     const stairBottomY = groundY - (lowerFloor.zBase || 0) * pxPerMM;
     const stairTopY = groundY - (upperFloor.zBase || 0) * pxPerMM;
     const stairRisePx = stairBottomY - stairTopY;
-    if (stairRisePx <= 0) continue; // No rise, skip this flight
+    if (
+      ![stairBottomY, stairTopY, stairRisePx].every(isFiniteSvgNumber) ||
+      stairRisePx <= 0
+    ) {
+      continue;
+    } // No rise, skip this flight
     const numTreads = Math.max(1, Math.round(stairRisePx / (200 * pxPerMM)));
 
     // Draw individual treads
@@ -1383,22 +1405,33 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
       const treadX2 = stairX + ((t + 1) / numTreads) * stairLengthPx;
 
       // Horizontal tread
-      svg += `<line stroke="#666" stroke-width="1" x1="${treadX1}" y1="${treadY}" x2="${Math.min(treadX2, stairX + stairLengthPx)}" y2="${treadY}"/>`;
+      const clampedTreadX2 = Math.min(treadX2, stairX + stairLengthPx);
+      if ([treadX1, treadY, clampedTreadX2].every(isFiniteSvgNumber)) {
+        svg += `<line stroke="#666" stroke-width="1" x1="${treadX1}" y1="${treadY}" x2="${clampedTreadX2}" y2="${treadY}"/>`;
+      }
 
       // Vertical riser
       if (t < numTreads) {
         const nextTreadY = stairBottomY - ((t + 1) / numTreads) * stairRisePx;
-        svg += `<line stroke="#666" stroke-width="1" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        if ([treadX2, treadY, nextTreadY].every(isFiniteSvgNumber)) {
+          svg += `<line stroke="#666" stroke-width="1" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        }
       }
     }
 
     // Stair outline
-    svg += `<path stroke="#333" stroke-width="1.5" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    if (
+      [stairX, stairBottomY, stairLengthPx, stairTopY].every(isFiniteSvgNumber)
+    ) {
+      svg += `<path stroke="#333" stroke-width="1.5" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    }
   }
 
   // Stair label
   const stairLabelY = groundY - (model.floors[0].floorHeight * pxPerMM) / 2;
-  svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
+  if ([stairX, stairLengthPx, stairLabelY].every(isFiniteSvgNumber)) {
+    svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
+  }
 
   svg += "</g>";
   return svg;
@@ -1463,11 +1496,14 @@ function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
   // If the selected profile is flat (2 points at same Z), synthesise a peaked
   // cross-section using the ridge height from the other facade's profile.
   // Sections should always show the roof pitch, not just the eave line.
-  if (roofProfile && roofProfile.length === 2 &&
-      Math.abs(roofProfile[0].z - roofProfile[1].z) < 1) {
+  if (
+    roofProfile &&
+    roofProfile.length === 2 &&
+    Math.abs(roofProfile[0].z - roofProfile[1].z) < 1
+  ) {
     const otherProfile = model.getRoofProfile(isLongitudinal ? "E" : "N");
     if (otherProfile && otherProfile.length > 2) {
-      const peakZ = Math.max(...otherProfile.map(p => p.z));
+      const peakZ = Math.max(...otherProfile.map((p) => p.z));
       const eaveZ = roofProfile[0].z;
       if (peakZ > eaveZ) {
         roofProfile = [
