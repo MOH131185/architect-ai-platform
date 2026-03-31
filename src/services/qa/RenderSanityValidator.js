@@ -115,7 +115,7 @@ export const SANITY_CHECK_PANEL_TYPES = [
   "site_plan",
 ];
 
-function getPanelThresholds(panelType) {
+function getBasePanelThresholds(panelType) {
   if (String(panelType).startsWith("floor_plan_")) {
     return PANEL_SANITY_THRESHOLDS.floor_plan;
   }
@@ -135,6 +135,75 @@ function getPanelThresholds(panelType) {
     thinStripWidthThreshold: THIN_STRIP_WIDTH_THRESHOLD,
     thinStripHeightThreshold: THIN_STRIP_HEIGHT_THRESHOLD,
   };
+}
+
+function getSafeAspectRatio(width, height) {
+  return Number.isFinite(width) &&
+    Number.isFinite(height) &&
+    width > 0 &&
+    height > 0
+    ? width / height
+    : null;
+}
+
+function getContainedExtentRatios(contentAspect, slotAspect) {
+  if (!contentAspect || !slotAspect) {
+    return null;
+  }
+
+  if (contentAspect >= slotAspect) {
+    return {
+      widthRatio: 1,
+      heightRatio: slotAspect / contentAspect,
+    };
+  }
+
+  return {
+    widthRatio: contentAspect / slotAspect,
+    heightRatio: 1,
+  };
+}
+
+/**
+ * Resolve effective thresholds for a panel validation run.
+ *
+ * When compose provides both the original image aspect and the actual slot
+ * aspect, relax bbox min-width/height floors only when the slot is so wide or
+ * tall that the fixed defaults would be impossible under contain-fit.
+ *
+ * @param {string} panelType
+ * @param {Object} [opts]
+ * @param {number} [opts.originalWidth]
+ * @param {number} [opts.originalHeight]
+ * @param {number} [opts.slotWidth]
+ * @param {number} [opts.slotHeight]
+ * @returns {Object}
+ */
+export function resolvePanelThresholds(panelType, opts = {}) {
+  const thresholds = { ...getBasePanelThresholds(panelType) };
+  const slotAspect = getSafeAspectRatio(opts.slotWidth, opts.slotHeight);
+  const imageAspect = getSafeAspectRatio(
+    opts.originalWidth,
+    opts.originalHeight,
+  );
+  const expected = getContainedExtentRatios(imageAspect, slotAspect);
+
+  if (!expected) {
+    return thresholds;
+  }
+
+  const bboxSlack = String(panelType).startsWith("floor_plan_") ? 0.9 : 0.88;
+
+  thresholds.minBboxWidthRatio = Math.max(
+    thresholds.thinStripWidthThreshold,
+    Math.min(thresholds.minBboxWidthRatio, expected.widthRatio * bboxSlack),
+  );
+  thresholds.minBboxHeightRatio = Math.max(
+    thresholds.thinStripHeightThreshold,
+    Math.min(thresholds.minBboxHeightRatio, expected.heightRatio * bboxSlack),
+  );
+
+  return thresholds;
 }
 
 // ============================================================================
@@ -289,7 +358,7 @@ export async function computeSanityMetrics(imageBuffer) {
 export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
   const failures = [];
   const warnings = [];
-  const thresholds = getPanelThresholds(panelType);
+  const thresholds = resolvePanelThresholds(panelType, opts);
 
   // Skip validation for non-technical panels
   if (!SANITY_CHECK_PANEL_TYPES.includes(panelType)) {
@@ -352,7 +421,9 @@ export async function validateRenderSanity(imageBuffer, panelType, opts = {}) {
       await import("../a1/composeCore.js");
     const fitMode = getPanelFitMode(panelType);
     if (fitMode === "contain") {
-      const { aspect: slotAspect } = getSlotDimensions(panelType);
+      const slotAspect =
+        getSafeAspectRatio(opts.slotWidth, opts.slotHeight) ||
+        getSlotDimensions(panelType).aspect;
       // Prefer caller-supplied original dimensions (compose path passes pre-resize sizes);
       // fall back to sharp metadata (A1ExportGate path with original image buffers).
       let origW, origH;
@@ -554,6 +625,7 @@ const RenderSanityValidator = {
 
   // Core functions
   computeSanityMetrics,
+  resolvePanelThresholds,
   validateRenderSanity,
   validateBatch,
   validatePanelsFromUrls,

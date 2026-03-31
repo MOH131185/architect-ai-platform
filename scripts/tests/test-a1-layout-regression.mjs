@@ -201,6 +201,65 @@ await testAsync("three-floor board-v2 keeps the strict floor-plan occupancy defa
   assertEqual(min, 0.52, "Expected 3-floor occupancy threshold to remain strict");
 });
 
+await testAsync("single-floor board-v2 relaxes render-sanity floor-plan bbox width for wide slots", async () => {
+  const {
+    resolveLayout,
+    toPixelRect,
+    WORKING_WIDTH,
+    WORKING_HEIGHT,
+    LABEL_HEIGHT,
+    LABEL_PADDING,
+  } = await import("../../src/services/a1/composeCore.js");
+  const { resolvePanelThresholds } = await import(
+    "../../src/services/qa/RenderSanityValidator.js"
+  );
+  const { layout } = resolveLayout({ floorCount: 1, layoutTemplate: "board-v2" });
+  const rect = toPixelRect(layout.floor_plan_ground, WORKING_WIDTH, WORKING_HEIGHT);
+  const thresholds = resolvePanelThresholds("floor_plan_ground", {
+    originalWidth: 1580,
+    originalHeight: 1060,
+    slotWidth: rect.width,
+    slotHeight: Math.max(10, rect.height - LABEL_HEIGHT - LABEL_PADDING),
+  });
+
+  assert(
+    thresholds.minBboxWidthRatio < 0.34,
+    `Expected 1-floor bbox width threshold below 0.34, got ${thresholds.minBboxWidthRatio}`,
+  );
+  assert(
+    thresholds.minBboxWidthRatio > 0.12,
+    `Expected 1-floor bbox width threshold to stay above thin-strip floor, got ${thresholds.minBboxWidthRatio}`,
+  );
+});
+
+await testAsync("three-floor board-v2 keeps the strict render-sanity floor-plan bbox width threshold", async () => {
+  const {
+    resolveLayout,
+    toPixelRect,
+    WORKING_WIDTH,
+    WORKING_HEIGHT,
+    LABEL_HEIGHT,
+    LABEL_PADDING,
+  } = await import("../../src/services/a1/composeCore.js");
+  const { resolvePanelThresholds } = await import(
+    "../../src/services/qa/RenderSanityValidator.js"
+  );
+  const { layout } = resolveLayout({ floorCount: 3, layoutTemplate: "board-v2" });
+  const rect = toPixelRect(layout.floor_plan_ground, WORKING_WIDTH, WORKING_HEIGHT);
+  const thresholds = resolvePanelThresholds("floor_plan_ground", {
+    originalWidth: 1580,
+    originalHeight: 1060,
+    slotWidth: rect.width,
+    slotHeight: Math.max(10, rect.height - LABEL_HEIGHT - LABEL_PADDING),
+  });
+
+  assertEqual(
+    thresholds.minBboxWidthRatio,
+    0.34,
+    "Expected 3-floor bbox width threshold to remain strict",
+  );
+});
+
 // ============================================================================
 // 3. Aspect contract
 // ============================================================================
