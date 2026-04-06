@@ -19,6 +19,19 @@ import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
 import normalizeDNA from "./dnaNormalization.js";
 import logger from "../utils/logger.js";
 
+const PORTFOLIO_VISION_MODELS = [
+  process.env.REACT_APP_PORTFOLIO_VISION_MODEL,
+  process.env.REACT_APP_AI_MODEL_PORTFOLIO,
+  "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+  "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+  "gpt-4o",
+].filter(
+  (model, index, allModels) =>
+    typeof model === "string" &&
+    model.trim().length > 0 &&
+    allModels.indexOf(model) === index,
+);
+
 class EnhancedDesignDNAService {
   constructor() {
     this.openai = togetherAIReasoningService;
@@ -393,14 +406,13 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
         "   📸 Calling Together AI Llama Vision API for portfolio analysis...",
       );
 
-      const response = await this.openai.chatCompletion(
-        [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `You are an expert architectural analyst. Analyze this architectural image and extract EXACT Design DNA. Return ONLY valid JSON with this structure:
+      const requestMessages = [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `You are an expert architectural analyst. Analyze this architectural image and extract EXACT Design DNA. Return ONLY valid JSON with this structure:
 
 {
   "materials": {
@@ -428,22 +440,44 @@ CRITICAL: Every specification must be EXACT and IDENTICAL across all views. No v
 }
 
 Respond with ONLY the JSON object, no other text.`,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
               },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageUrl,
-                },
-              },
-            ],
-          },
-        ],
-        {
-          model: "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-          temperature: 0.1,
-          max_tokens: 2000,
+            },
+          ],
         },
-      );
+      ];
+
+      let response = null;
+      let lastVisionError = null;
+
+      for (const model of PORTFOLIO_VISION_MODELS) {
+        try {
+          logger.info(`   🧠 Trying portfolio vision model: ${model}`);
+          response = await this.openai.chatCompletion(requestMessages, {
+            model,
+            temperature: 0.1,
+            max_tokens: 2000,
+          });
+          logger.info(`   ✅ Portfolio vision succeeded with ${model}`);
+          break;
+        } catch (modelError) {
+          lastVisionError = modelError;
+          logger.warn(
+            `   ⚠️ Portfolio vision model failed (${model}): ${modelError.message}`,
+          );
+        }
+      }
+
+      if (!response) {
+        throw (
+          lastVisionError ||
+          new Error("No portfolio vision model produced a response")
+        );
+      }
 
       // Validate response structure
       if (

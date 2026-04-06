@@ -1,106 +1,146 @@
-import enhancedDesignDNAService from '../../services/enhancedDesignDNAService.js';
-import togetherAIReasoningService from '../../services/togetherAIReasoningService.js';
+import enhancedDesignDNAService from "../../services/enhancedDesignDNAService.js";
+import togetherAIReasoningService from "../../services/togetherAIReasoningService.js";
 
 // Mock dependencies
-jest.mock('../../services/togetherAIReasoningService');
-jest.mock('../../utils/logger', () => ({
-    info: jest.fn(),
-    success: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
+jest.mock("../../services/togetherAIReasoningService");
+jest.mock("../../utils/logger", () => ({
+  info: jest.fn(),
+  success: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
 }));
 
-describe('EnhancedDesignDNAService', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
+describe("EnhancedDesignDNAService", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe("generateMasterDesignDNA", () => {
+    it("should generate DNA successfully", async () => {
+      const mockDNA = {
+        dimensions: { length: 10, width: 10, height: 3, floors: 1 },
+        materials: [{ name: "Brick", hexColor: "#B22222" }],
+        roof: { type: "Gable" },
+      };
+
+      togetherAIReasoningService.chatCompletion.mockResolvedValue({
+        choices: [{ message: { content: JSON.stringify(mockDNA) } }],
+      });
+
+      const result = await enhancedDesignDNAService.generateMasterDesignDNA({
+        floorArea: 100,
+        architecturalStyle: "Modern",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.masterDNA.dimensions.length).toBe(10);
+      expect(result.masterDNA.is_authoritative).toBe(true);
     });
 
-    describe('generateMasterDesignDNA', () => {
-        it('should generate DNA successfully', async () => {
-            const mockDNA = {
-                dimensions: { length: 10, width: 10, height: 3, floors: 1 },
-                materials: [{ name: 'Brick', hexColor: '#B22222' }],
-                roof: { type: 'Gable' }
-            };
+    it("should handle errors and return fallback", async () => {
+      togetherAIReasoningService.chatCompletion.mockRejectedValue(
+        new Error("API Error"),
+      );
 
-            togetherAIReasoningService.chatCompletion.mockResolvedValue({
-                choices: [{ message: { content: JSON.stringify(mockDNA) } }]
-            });
+      const result = await enhancedDesignDNAService.generateMasterDesignDNA({
+        floorArea: 100,
+      });
 
-            const result = await enhancedDesignDNAService.generateMasterDesignDNA({
-                floorArea: 100,
-                architecturalStyle: 'Modern'
-            });
+      expect(result.success).toBe(false);
+      expect(result.masterDNA).toBeDefined(); // Should return fallback
+      expect(result.error).toBeDefined();
+    });
+  });
 
-            expect(result.success).toBe(true);
-            expect(result.masterDNA.dimensions.length).toBe(10);
-            expect(result.masterDNA.is_authoritative).toBe(true);
-        });
+  describe("extractDNAFromPortfolio", () => {
+    it("should extract DNA from image URL", async () => {
+      const mockAnalysis = { style: "Minimalist", materials: ["Concrete"] };
+      togetherAIReasoningService.chatCompletion.mockResolvedValue({
+        choices: [{ message: { content: JSON.stringify(mockAnalysis) } }],
+      });
 
-        it('should handle errors and return fallback', async () => {
-            togetherAIReasoningService.chatCompletion.mockRejectedValue(new Error('API Error'));
+      const portfolioFiles = [{ url: "http://example.com/image.jpg" }];
+      const result =
+        await enhancedDesignDNAService.extractDNAFromPortfolio(portfolioFiles);
 
-            const result = await enhancedDesignDNAService.generateMasterDesignDNA({
-                floorArea: 100
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.masterDNA).toBeDefined(); // Should return fallback
-            expect(result.error).toBeDefined();
-        });
+      expect(result).toEqual(mockAnalysis);
+      expect(togetherAIReasoningService.chatCompletion).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "image_url",
+                image_url: expect.objectContaining({
+                  url: "http://example.com/image.jpg",
+                }),
+              }),
+            ]),
+          }),
+        ]),
+        expect.any(Object),
+      );
     });
 
-    describe('extractDNAFromPortfolio', () => {
-        it('should extract DNA from image URL', async () => {
-            const mockAnalysis = { style: 'Minimalist', materials: ['Concrete'] };
-            togetherAIReasoningService.chatCompletion.mockResolvedValue({
-                choices: [{ message: { content: JSON.stringify(mockAnalysis) } }]
-            });
+    it("should extract DNA from pngDataUrl (PDF conversion)", async () => {
+      const mockAnalysis = { style: "Modern" };
+      togetherAIReasoningService.chatCompletion.mockResolvedValue({
+        choices: [{ message: { content: JSON.stringify(mockAnalysis) } }],
+      });
 
-            const portfolioFiles = [{ url: 'http://example.com/image.jpg' }];
-            const result = await enhancedDesignDNAService.extractDNAFromPortfolio(portfolioFiles);
+      const portfolioFiles = [{ pngDataUrl: "data:image/png;base64,xyz" }];
+      const result =
+        await enhancedDesignDNAService.extractDNAFromPortfolio(portfolioFiles);
 
-            expect(result).toEqual(mockAnalysis);
-            expect(togetherAIReasoningService.chatCompletion).toHaveBeenCalledWith(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        role: 'user',
-                        content: expect.arrayContaining([
-                            expect.objectContaining({
-                                type: 'image_url',
-                                image_url: expect.objectContaining({ url: 'http://example.com/image.jpg' })
-                            })
-                        ])
-                    })
-                ]),
-                expect.any(Object)
-            );
-        });
-
-        it('should extract DNA from pngDataUrl (PDF conversion)', async () => {
-            const mockAnalysis = { style: 'Modern' };
-            togetherAIReasoningService.chatCompletion.mockResolvedValue({
-                choices: [{ message: { content: JSON.stringify(mockAnalysis) } }]
-            });
-
-            const portfolioFiles = [{ pngDataUrl: 'data:image/png;base64,xyz' }];
-            const result = await enhancedDesignDNAService.extractDNAFromPortfolio(portfolioFiles);
-
-            expect(result).toEqual(mockAnalysis);
-            expect(togetherAIReasoningService.chatCompletion).toHaveBeenCalledWith(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        role: 'user',
-                        content: expect.arrayContaining([
-                            expect.objectContaining({
-                                type: 'image_url',
-                                image_url: expect.objectContaining({ url: 'data:image/png;base64,xyz' })
-                            })
-                        ])
-                    })
-                ]),
-                expect.any(Object)
-            );
-        });
+      expect(result).toEqual(mockAnalysis);
+      expect(togetherAIReasoningService.chatCompletion).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "user",
+            content: expect.arrayContaining([
+              expect.objectContaining({
+                type: "image_url",
+                image_url: expect.objectContaining({
+                  url: "data:image/png;base64,xyz",
+                }),
+              }),
+            ]),
+          }),
+        ]),
+        expect.any(Object),
+      );
     });
+
+    it("should fall back across portfolio vision models when a Together model is unavailable", async () => {
+      const mockAnalysis = { style: { name: "Contemporary" } };
+      togetherAIReasoningService.chatCompletion
+        .mockRejectedValueOnce(
+          new Error("Together AI API error: 400 - model unavailable"),
+        )
+        .mockRejectedValueOnce(
+          new Error("Together AI API error: 400 - model unavailable"),
+        )
+        .mockResolvedValueOnce({
+          choices: [{ message: { content: JSON.stringify(mockAnalysis) } }],
+        });
+
+      const portfolioFiles = [{ url: "http://example.com/image.jpg" }];
+      const result =
+        await enhancedDesignDNAService.extractDNAFromPortfolio(portfolioFiles);
+
+      expect(result).toEqual(mockAnalysis);
+      expect(togetherAIReasoningService.chatCompletion).toHaveBeenCalledTimes(
+        3,
+      );
+      expect(
+        togetherAIReasoningService.chatCompletion.mock.calls[0][1].model,
+      ).toBe("meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo");
+      expect(
+        togetherAIReasoningService.chatCompletion.mock.calls[1][1].model,
+      ).toBe("meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo");
+      expect(
+        togetherAIReasoningService.chatCompletion.mock.calls[2][1].model,
+      ).toBe("gpt-4o");
+    });
+  });
 });

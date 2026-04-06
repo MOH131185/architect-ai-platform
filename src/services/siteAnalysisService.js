@@ -15,19 +15,61 @@
  * - Polygon area computation
  */
 
-import axios from 'axios';
-import { simplifyPolygon, detectBuildingType } from '../utils/polygonSimplifier.js';
-import { detectPropertyBoundary, analyzeShapeType } from './propertyBoundaryService.js';
-import runtimeEnv from '../utils/runtimeEnv.js';
-import logger from '../utils/logger.js';
+import axios from "axios";
+import {
+  simplifyPolygon,
+  detectBuildingType,
+} from "../utils/polygonSimplifier.js";
+import {
+  detectPropertyBoundary,
+  analyzeShapeType,
+} from "./propertyBoundaryService.js";
+import runtimeEnv from "../utils/runtimeEnv.js";
+import logger from "../utils/logger.js";
 
+function getGooglePlacesProxyBaseUrl() {
+  const explicitBase = (process.env.REACT_APP_API_PROXY_URL || "").trim();
+
+  if (!runtimeEnv.isBrowser) {
+    if (explicitBase) {
+      return explicitBase.replace(/\/+$/, "");
+    }
+    return process.env.NODE_ENV === "production" ? "" : "http://localhost:3001";
+  }
+
+  const hostname = window.location?.hostname || "";
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+
+  if (explicitBase) {
+    const normalizedBase = explicitBase.replace(/\/+$/, "");
+    const pointsToLocalProxy =
+      /\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(normalizedBase) ||
+      /\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\//i.test(normalizedBase);
+
+    if (!isLocalHost && pointsToLocalProxy) {
+      return "";
+    }
+
+    return normalizedBase;
+  }
+
+  return isLocalHost ? "http://localhost:3001" : "";
+}
+
+function buildGooglePlacesProxyUrl(path, params) {
+  const baseUrl = getGooglePlacesProxyBaseUrl();
+  const query = new URLSearchParams(params).toString();
+  return `${baseUrl}${path}?${query}`;
+}
 
 class SiteAnalysisService {
   constructor() {
     this.googleMapsApiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
-    this.cachePrefix = 'siteAnalysis_';
+    this.cachePrefix = "siteAnalysis_";
     this.cacheTTL = 60 * 60 * 1000; // 1 hour in milliseconds
-    logger.info('🗺️  Site Analysis Service initialized with polygon detection and caching');
+    logger.info(
+      "🗺️  Site Analysis Service initialized with polygon detection and caching",
+    );
   }
 
   /**
@@ -44,15 +86,19 @@ class SiteAnalysisService {
       const age = Date.now() - timestamp;
 
       if (age < this.cacheTTL) {
-        logger.info(`   ✓ Using cached site analysis (age: ${Math.round(age / 1000)}s)`);
+        logger.info(
+          `   ✓ Using cached site analysis (age: ${Math.round(age / 1000)}s)`,
+        );
         return data;
       } else {
-        logger.info(`   × Cache expired (age: ${Math.round(age / 1000)}s), fetching fresh data`);
+        logger.info(
+          `   × Cache expired (age: ${Math.round(age / 1000)}s), fetching fresh data`,
+        );
         session.removeItem(cacheKey);
         return null;
       }
     } catch (error) {
-      logger.warn('Cache read error:', error);
+      logger.warn("Cache read error:", error);
       return null;
     }
   }
@@ -69,12 +115,12 @@ class SiteAnalysisService {
 
       const cacheEntry = {
         data,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
       session.setItem(cacheKey, JSON.stringify(cacheEntry));
-      logger.info('   ✓ Site analysis cached successfully');
+      logger.info("   ✓ Site analysis cached successfully");
     } catch (error) {
-      logger.warn('Cache write error:', error);
+      logger.warn("Cache write error:", error);
       // Continue without caching
     }
   }
@@ -85,10 +131,14 @@ class SiteAnalysisService {
    * ENHANCED: Now includes actual property boundary polygon detection and caching
    */
   async analyzeSiteContext(address, coordinates) {
-    logger.info('🔍 Analyzing site context for:', address);
+    logger.info("🔍 Analyzing site context for:", address);
 
     // Generate cache key from address and coordinates
-    const cacheKey = `${this.cachePrefix}${address}_${coordinates.lat}_${coordinates.lng}`.replace(/[^a-zA-Z0-9_]/g, '_');
+    const cacheKey =
+      `${this.cachePrefix}${address}_${coordinates.lat}_${coordinates.lng}`.replace(
+        /[^a-zA-Z0-9_]/g,
+        "_",
+      );
 
     // Check cache first
     const cachedResult = this.getCachedAnalysis(cacheKey);
@@ -104,20 +154,30 @@ class SiteAnalysisService {
       const propertyBoundary = await this.getPropertyBoundary(
         coordinates,
         geocodeData?.placeId,
-        geocodeData
+        geocodeData,
       );
 
       // Analyze street view and orientation
       const streetContext = await this.analyzeStreetContext(coordinates);
 
       // Determine plot characteristics (enhanced with actual boundary data)
-      const plotAnalysis = this.analyzePlotCharacteristics(geocodeData, streetContext, propertyBoundary);
+      const plotAnalysis = this.analyzePlotCharacteristics(
+        geocodeData,
+        streetContext,
+        propertyBoundary,
+      );
 
       // Generate site-specific design constraints
-      const designConstraints = this.generateDesignConstraints(plotAnalysis, geocodeData);
+      const designConstraints = this.generateDesignConstraints(
+        plotAnalysis,
+        geocodeData,
+      );
 
       // Determine optimal building orientation
-      const optimalOrientation = this.calculateOptimalOrientation(plotAnalysis, streetContext);
+      const optimalOrientation = this.calculateOptimalOrientation(
+        plotAnalysis,
+        streetContext,
+      );
 
       const result = {
         success: true,
@@ -127,11 +187,14 @@ class SiteAnalysisService {
 
           // NEW: Actual site boundary data with enhanced shape detection
           siteBoundary: propertyBoundary?.polygon || null,
-          surfaceArea: propertyBoundary?.area || plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth,
-          surfaceAreaUnit: propertyBoundary?.unit || 'm²',
-          boundarySource: propertyBoundary?.source || 'estimated',
-          boundaryShapeType: propertyBoundary?.shapeType || plotAnalysis.plotShape,
-          boundaryConfidence: propertyBoundary?.confidence || 0.40,
+          surfaceArea:
+            propertyBoundary?.area ||
+            plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth,
+          surfaceAreaUnit: propertyBoundary?.unit || "m²",
+          boundarySource: propertyBoundary?.source || "estimated",
+          boundaryShapeType:
+            propertyBoundary?.shapeType || plotAnalysis.plotShape,
+          boundaryConfidence: propertyBoundary?.confidence || 0.4,
 
           plotType: plotAnalysis.plotType,
           plotShape: propertyBoundary?.shapeType || plotAnalysis.plotShape, // Use detected shape
@@ -145,7 +208,10 @@ class SiteAnalysisService {
           frontSetback: designConstraints.frontSetback,
           sideSetbacks: designConstraints.sideSetbacks,
           buildableArea: plotAnalysis.buildableArea,
-          recommendations: this.generateSiteRecommendations(plotAnalysis, streetContext),
+          recommendations: this.generateSiteRecommendations(
+            plotAnalysis,
+            streetContext,
+          ),
 
           // 🆕 plotGeometry - formatted for locationAwareDNAModifier compatibility
           plotGeometry: {
@@ -153,12 +219,14 @@ class SiteAnalysisService {
             dimensions: {
               width: plotAnalysis.dimensions.width,
               length: plotAnalysis.dimensions.depth, // depth is same as length
-              area: propertyBoundary?.area || (plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth)
+              area:
+                propertyBoundary?.area ||
+                plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth,
             },
             slope: 0, // TODO: Add slope detection from elevation API
             orientation: optimalOrientation,
             shapeType: propertyBoundary?.shapeType,
-            confidence: propertyBoundary?.confidence
+            confidence: propertyBoundary?.confidence,
           },
 
           // 🆕 PlanJSON-compatible site geometry
@@ -167,9 +235,9 @@ class SiteAnalysisService {
             plotAnalysis,
             streetContext,
             propertyBoundary?.area,
-            propertyBoundary?.shapeType
-          )
-        }
+            propertyBoundary?.shapeType,
+          ),
+        },
       };
 
       // Save to cache before returning
@@ -177,11 +245,11 @@ class SiteAnalysisService {
 
       return result;
     } catch (error) {
-      logger.error('❌ Site analysis failed:', error);
+      logger.error("❌ Site analysis failed:", error);
       return {
         success: false,
         siteAnalysis: this.getFallbackSiteAnalysis(address, coordinates),
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -195,7 +263,7 @@ class SiteAnalysisService {
     try {
       const response = await axios.get(url);
 
-      if (response.data.status === 'OK' && response.data.results.length > 0) {
+      if (response.data.status === "OK" && response.data.results.length > 0) {
         const result = response.data.results[0];
 
         return {
@@ -203,13 +271,13 @@ class SiteAnalysisService {
           addressComponents: result.address_components,
           geometry: result.geometry,
           placeId: result.place_id,
-          types: result.types
+          types: result.types,
         };
       }
 
-      throw new Error('Geocoding failed');
+      throw new Error("Geocoding failed");
     } catch (error) {
-      logger.error('Geocoding error:', error);
+      logger.error("Geocoding error:", error);
       return null;
     }
   }
@@ -220,52 +288,68 @@ class SiteAnalysisService {
    * ENHANCED: Uses new propertyBoundaryService with intelligent shape detection
    */
   async getPropertyBoundary(coordinates, placeId, addressDetails) {
-    logger.info('🔍 Fetching property boundary polygon with enhanced detection...');
+    logger.info(
+      "🔍 Fetching property boundary polygon with enhanced detection...",
+    );
 
     // Build full address string for better detection
-    const fullAddress = addressDetails?.formattedAddress || '';
+    const fullAddress = addressDetails?.formattedAddress || "";
 
     try {
       // PRIORITY 1: Use enhanced property boundary service (multi-source with intelligent fallbacks)
-      logger.info('🔍 PRIORITY 1: Enhanced multi-source boundary detection...');
-      const enhancedBoundary = await detectPropertyBoundary(coordinates, fullAddress);
+      logger.info("🔍 PRIORITY 1: Enhanced multi-source boundary detection...");
+      const enhancedBoundary = await detectPropertyBoundary(
+        coordinates,
+        fullAddress,
+      );
 
-      if (enhancedBoundary && enhancedBoundary.polygon && enhancedBoundary.polygon.length >= 3) {
-        logger.success(' Property boundary detected via enhanced service');
+      if (
+        enhancedBoundary &&
+        enhancedBoundary.polygon &&
+        enhancedBoundary.polygon.length >= 3
+      ) {
+        logger.success(" Property boundary detected via enhanced service");
         logger.info(`   📐 Shape: ${enhancedBoundary.shapeType}`);
         logger.info(`   📐 Area: ${enhancedBoundary.area}m²`);
         logger.info(`   📊 Source: ${enhancedBoundary.source}`);
-        logger.info(`   🎯 Confidence: ${(enhancedBoundary.confidence * 100).toFixed(0)}%`);
+        logger.info(
+          `   🎯 Confidence: ${(enhancedBoundary.confidence * 100).toFixed(0)}%`,
+        );
 
         return {
           polygon: enhancedBoundary.polygon,
           area: enhancedBoundary.area,
-          unit: 'm²',
+          unit: "m²",
           source: enhancedBoundary.source,
           shapeType: enhancedBoundary.shapeType,
           confidence: enhancedBoundary.confidence,
-          metadata: enhancedBoundary.metadata || {}
+          metadata: enhancedBoundary.metadata || {},
         };
       }
 
       // PRIORITY 2: Fallback to legacy OpenStreetMap detection
-      logger.info('🔍 PRIORITY 2: Fallback to legacy OpenStreetMap detection...');
-      const hasStreetNumber = addressDetails?.addressComponents?.some(
-        component => component.types.includes('street_number')
+      logger.info(
+        "🔍 PRIORITY 2: Fallback to legacy OpenStreetMap detection...",
       );
-      const houseNumber = addressDetails?.addressComponents?.find(
-        component => component.types.includes('street_number')
+      const hasStreetNumber = addressDetails?.addressComponents?.some(
+        (component) => component.types.includes("street_number"),
+      );
+      const houseNumber = addressDetails?.addressComponents?.find((component) =>
+        component.types.includes("street_number"),
       )?.long_name;
 
       const enhancedAddressDetails = {
         ...addressDetails,
         hasStreetNumber,
-        houseNumber
+        houseNumber,
       };
 
-      const osmBoundary = await this.getOSMPropertyBoundary(coordinates, enhancedAddressDetails);
+      const osmBoundary = await this.getOSMPropertyBoundary(
+        coordinates,
+        enhancedAddressDetails,
+      );
       if (osmBoundary && osmBoundary.polygon) {
-        logger.success(' Property boundary from legacy OpenStreetMap');
+        logger.success(" Property boundary from legacy OpenStreetMap");
         logger.info(`   📐 Area: ${osmBoundary.area}m²`);
 
         // Enhance with shape analysis
@@ -274,15 +358,15 @@ class SiteAnalysisService {
         return {
           ...osmBoundary,
           shapeType,
-          confidence: 0.90
+          confidence: 0.9,
         };
       }
 
       // PRIORITY 3: Fallback to Google Geocoding/Places
-      logger.info('🔍 PRIORITY 3: Trying Google Geocoding/Places...');
+      logger.info("🔍 PRIORITY 3: Trying Google Geocoding/Places...");
       const placesBoundary = await this.getPlaceGeometry(coordinates, placeId);
       if (placesBoundary && placesBoundary.polygon) {
-        logger.success(' Property boundary from Google Places');
+        logger.success(" Property boundary from Google Places");
         logger.info(`   📐 Area: ${placesBoundary.area}m²`);
 
         // Enhance with shape analysis
@@ -291,14 +375,16 @@ class SiteAnalysisService {
         return {
           ...placesBoundary,
           shapeType,
-          confidence: 0.60
+          confidence: 0.6,
         };
       }
 
-      logger.info('⚠️  No property boundary found from any source - using intelligent estimation');
+      logger.info(
+        "⚠️  No property boundary found from any source - using intelligent estimation",
+      );
       return null;
     } catch (error) {
-      logger.error('Property boundary detection error:', error);
+      logger.error("Property boundary detection error:", error);
       return null;
     }
   }
@@ -314,9 +400,13 @@ class SiteAnalysisService {
     const maxRetries = 2;
     const baseTimeout = 30000; // 30 seconds base timeout
 
-    logger.info(`🎯 Searching for exact building geometry${retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : ''}`);
+    logger.info(
+      `🎯 Searching for exact building geometry${retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : ""}`,
+    );
     logger.info(`   Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
-    logger.info(`   Address precision: ${addressDetails?.hasStreetNumber ? 'PRECISE (has house number)' : 'GENERAL (no house number)'}`);
+    logger.info(
+      `   Address precision: ${addressDetails?.hasStreetNumber ? "PRECISE (has house number)" : "GENERAL (no house number)"}`,
+    );
 
     // STRATEGY 1: Point-in-polygon query (most accurate - finds building containing the exact point)
     // STRATEGY 2: Nearby search with tight radius (fallback if point not inside any building)
@@ -344,29 +434,46 @@ class SiteAnalysisService {
 
     try {
       // Increase timeout with each retry attempt
-      const timeoutMs = baseTimeout + (retryCount * 10000);
+      const timeoutMs = baseTimeout + retryCount * 10000;
 
       // TRY STRATEGY 1: Point-in-polygon (exact location)
-      logger.info(`   🎯 Strategy 1: Searching for building at EXACT coordinates...`);
-      let response = await axios.get('https://overpass-api.de/api/interpreter', {
-        params: { data: pointQuery },
-        timeout: timeoutMs
-      });
+      logger.info(
+        `   🎯 Strategy 1: Searching for building at EXACT coordinates...`,
+      );
+      let response = await axios.get(
+        "https://overpass-api.de/api/interpreter",
+        {
+          params: { data: pointQuery },
+          timeout: timeoutMs,
+        },
+      );
 
       // If no results from point query, try nearby search
-      if (!response.data || !response.data.elements || response.data.elements.length === 0) {
-        logger.info(`   📍 Strategy 2: No building at exact point, searching within ${searchRadius}m radius...`);
-        response = await axios.get('https://overpass-api.de/api/interpreter', {
+      if (
+        !response.data ||
+        !response.data.elements ||
+        response.data.elements.length === 0
+      ) {
+        logger.info(
+          `   📍 Strategy 2: No building at exact point, searching within ${searchRadius}m radius...`,
+        );
+        response = await axios.get("https://overpass-api.de/api/interpreter", {
           params: { data: nearbyQuery },
-          timeout: timeoutMs
+          timeout: timeoutMs,
         });
       }
 
-      if (response.data && response.data.elements && response.data.elements.length > 0) {
-        logger.info(`   Found ${response.data.elements.length} potential properties`);
+      if (
+        response.data &&
+        response.data.elements &&
+        response.data.elements.length > 0
+      ) {
+        logger.info(
+          `   Found ${response.data.elements.length} potential properties`,
+        );
 
         // Filter to only actual buildings (exclude large landuse polygons)
-        const buildings = response.data.elements.filter(element => {
+        const buildings = response.data.elements.filter((element) => {
           const tags = element.tags || {};
 
           // Must have 'building' tag
@@ -379,13 +486,17 @@ class SiteAnalysisService {
 
             // For precise addresses, only accept residential-sized buildings (< 300m²)
             if (addressDetails?.hasStreetNumber && area > 300) {
-              logger.info(`   ⏭️ Skipping large building (${area.toFixed(0)}m²) - likely not a single house`);
+              logger.info(
+                `   ⏭️ Skipping large building (${area.toFixed(0)}m²) - likely not a single house`,
+              );
               return false;
             }
 
             // Exclude huge landuse polygons (> 1000m²)
             if (area > 1000) {
-              logger.info(`   ⏭️ Skipping very large polygon (${area.toFixed(0)}m²)`);
+              logger.info(
+                `   ⏭️ Skipping very large polygon (${area.toFixed(0)}m²)`,
+              );
               return false;
             }
           }
@@ -396,7 +507,9 @@ class SiteAnalysisService {
         logger.info(`   Filtered to ${buildings.length} actual buildings`);
 
         if (buildings.length === 0) {
-          logger.info('   ⚠️ No suitable residential buildings found after filtering');
+          logger.info(
+            "   ⚠️ No suitable residential buildings found after filtering",
+          );
           return null;
         }
 
@@ -405,12 +518,16 @@ class SiteAnalysisService {
         const targetHouseNumber = addressDetails?.houseNumber;
 
         if (targetHouseNumber) {
-          logger.info(`   🔍 Looking for building with house number: ${targetHouseNumber}`);
+          logger.info(
+            `   🔍 Looking for building with house number: ${targetHouseNumber}`,
+          );
 
           for (const element of buildings) {
-            const osmHouseNumber = element.tags?.['addr:housenumber'];
+            const osmHouseNumber = element.tags?.["addr:housenumber"];
             if (osmHouseNumber && osmHouseNumber === targetHouseNumber) {
-              logger.info(`   🎯 EXACT MATCH FOUND! Building ${element.id} has addr:housenumber = ${osmHouseNumber}`);
+              logger.info(
+                `   🎯 EXACT MATCH FOUND! Building ${element.id} has addr:housenumber = ${osmHouseNumber}`,
+              );
               exactMatchElement = element;
               break;
             }
@@ -422,7 +539,9 @@ class SiteAnalysisService {
         let minDistance = Infinity;
 
         if (!exactMatchElement) {
-          logger.info('   📏 No exact house number match, selecting by distance...');
+          logger.info(
+            "   📏 No exact house number match, selecting by distance...",
+          );
 
           for (const element of buildings) {
             // Get element's center point
@@ -430,10 +549,17 @@ class SiteAnalysisService {
             if (!elementCenter) continue;
 
             // Calculate distance from target coordinates
-            const distance = this.calculateDistance(lat, lng, elementCenter.lat, elementCenter.lon);
+            const distance = this.calculateDistance(
+              lat,
+              lng,
+              elementCenter.lat,
+              elementCenter.lon,
+            );
 
-            const osmHouseNumber = element.tags?.['addr:housenumber'];
-            logger.info(`   📍 Building ${element.id}: ${distance.toFixed(1)}m away, type: ${element.tags?.building}${osmHouseNumber ? `, house#: ${osmHouseNumber}` : ''}`);
+            const osmHouseNumber = element.tags?.["addr:housenumber"];
+            logger.info(
+              `   📍 Building ${element.id}: ${distance.toFixed(1)}m away, type: ${element.tags?.building}${osmHouseNumber ? `, house#: ${osmHouseNumber}` : ""}`,
+            );
 
             if (distance < minDistance) {
               minDistance = distance;
@@ -441,13 +567,22 @@ class SiteAnalysisService {
             }
           }
 
-          logger.info(`   ✅ Selected closest building at ${minDistance.toFixed(1)}m distance`);
+          logger.info(
+            `   ✅ Selected closest building at ${minDistance.toFixed(1)}m distance`,
+          );
         } else {
           // Calculate distance for the exact match
           const elementCenter = this.getElementCenter(exactMatchElement);
           if (elementCenter) {
-            minDistance = this.calculateDistance(lat, lng, elementCenter.lat, elementCenter.lon);
-            logger.info(`   ✅ Using exact house number match at ${minDistance.toFixed(1)}m distance`);
+            minDistance = this.calculateDistance(
+              lat,
+              lng,
+              elementCenter.lat,
+              elementCenter.lon,
+            );
+            logger.info(
+              `   ✅ Using exact house number match at ${minDistance.toFixed(1)}m distance`,
+            );
           }
         }
 
@@ -459,62 +594,75 @@ class SiteAnalysisService {
             // Compute area
             const area = this.computePolygonArea(polygon);
 
-            const osmHouseNumber = closestElement.tags?.['addr:housenumber'];
+            const osmHouseNumber = closestElement.tags?.["addr:housenumber"];
             const isExactMatch = exactMatchElement !== null;
 
-            logger.info(`   ✅ Property boundary: ${polygon.length} vertices, ${area.toFixed(0)}m²`);
-            logger.info(`   📊 Building type: ${closestElement.tags?.building}`);
+            logger.info(
+              `   ✅ Property boundary: ${polygon.length} vertices, ${area.toFixed(0)}m²`,
+            );
+            logger.info(
+              `   📊 Building type: ${closestElement.tags?.building}`,
+            );
             logger.info(`   🆔 OSM ID: ${closestElement.id}`);
-            logger.info(`   🏠 House number: ${osmHouseNumber || 'N/A'}`);
-            logger.info(`   ${isExactMatch ? '🎯 Selection method: EXACT HOUSE NUMBER MATCH' : '📏 Selection method: DISTANCE-BASED (closest building)'}`);
+            logger.info(`   🏠 House number: ${osmHouseNumber || "N/A"}`);
+            logger.info(
+              `   ${isExactMatch ? "🎯 Selection method: EXACT HOUSE NUMBER MATCH" : "📏 Selection method: DISTANCE-BASED (closest building)"}`,
+            );
 
             return {
               polygon: polygon,
               area: area,
-              unit: 'm²',
-              source: 'OpenStreetMap',
+              unit: "m²",
+              source: "OpenStreetMap",
               metadata: {
                 osmId: closestElement.id,
-                type: closestElement.tags?.building || 'unknown',
+                type: closestElement.tags?.building || "unknown",
                 distance: minDistance,
                 buildingType: closestElement.tags?.building,
                 houseNumber: osmHouseNumber,
                 isExactMatch: isExactMatch,
-                targetHouseNumber: targetHouseNumber
-              }
+                targetHouseNumber: targetHouseNumber,
+              },
             };
           }
         }
       }
 
-      logger.info('   ⚠️ No suitable property boundary found');
+      logger.info("   ⚠️ No suitable property boundary found");
       return null;
     } catch (error) {
       // Handle timeout errors with retry logic
-      const isTimeout = error.code === 'ECONNABORTED' ||
-                        error.code === 'ERR_BAD_RESPONSE' ||
-                        error.response?.status === 504 ||
-                        error.response?.status === 503;
+      const isTimeout =
+        error.code === "ECONNABORTED" ||
+        error.code === "ERR_BAD_RESPONSE" ||
+        error.response?.status === 504 ||
+        error.response?.status === 503;
 
       if (isTimeout && retryCount < maxRetries) {
         const delayMs = 1000 * Math.pow(2, retryCount); // Exponential backoff: 1s, 2s
         logger.info(`⚠️ OSM API timeout - retrying in ${delayMs}ms...`);
         logger.info(`   Error: ${error.message}`);
 
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        return this.getOSMPropertyBoundary(coordinates, addressDetails, retryCount + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return this.getOSMPropertyBoundary(
+          coordinates,
+          addressDetails,
+          retryCount + 1,
+        );
       }
 
       // Log detailed error information
-      logger.error('OSM boundary fetch error:', {
+      logger.error("OSM boundary fetch error:", {
         message: error.message,
         code: error.code,
         status: error.response?.status,
-        retryCount: retryCount
+        retryCount: retryCount,
       });
 
       if (isTimeout) {
-        logger.info('⚠️ OSM API still timing out after retries - falling back to Google Places');
+        logger.info(
+          "⚠️ OSM API still timing out after retries - falling back to Google Places",
+        );
       }
 
       return null;
@@ -528,7 +676,7 @@ class SiteAnalysisService {
   extractOSMPolygon(element) {
     const coords = [];
 
-    if (element.type === 'way' && element.geometry) {
+    if (element.type === "way" && element.geometry) {
       // Way element has geometry array - simple polygon
       for (const node of element.geometry) {
         coords.push({ lat: node.lat, lng: node.lon });
@@ -542,11 +690,11 @@ class SiteAnalysisService {
           coords.push({ lat: first.lat, lng: first.lng });
         }
       }
-    } else if (element.type === 'relation' && element.members) {
+    } else if (element.type === "relation" && element.members) {
       // Relation element - can be complex multipolygon (L-shaped, U-shaped, etc.)
       // Extract outer way (main building outline)
       for (const member of element.members) {
-        if (member.role === 'outer' && member.geometry) {
+        if (member.role === "outer" && member.geometry) {
           for (const node of member.geometry) {
             coords.push({ lat: node.lat, lng: node.lon });
           }
@@ -575,7 +723,9 @@ class SiteAnalysisService {
 
       // Detect building type
       const buildingType = detectBuildingType(simplified);
-      logger.info(`   🏠 Building type: ${buildingType.type} (confidence: ${buildingType.confidence})`);
+      logger.info(
+        `   🏠 Building type: ${buildingType.type} (confidence: ${buildingType.confidence})`,
+      );
 
       return simplified;
     }
@@ -592,12 +742,12 @@ class SiteAnalysisService {
     }
 
     // Calculate centroid of the polygon
-    const lats = element.geometry.map(node => node.lat);
-    const lons = element.geometry.map(node => node.lon);
+    const lats = element.geometry.map((node) => node.lat);
+    const lons = element.geometry.map((node) => node.lon);
 
     return {
       lat: lats.reduce((sum, lat) => sum + lat, 0) / lats.length,
-      lon: lons.reduce((sum, lon) => sum + lon, 0) / lons.length
+      lon: lons.reduce((sum, lon) => sum + lon, 0) / lons.length,
     };
   }
 
@@ -607,15 +757,15 @@ class SiteAnalysisService {
    */
   calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371000; // Earth radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c;
   }
@@ -636,13 +786,16 @@ class SiteAnalysisService {
 
       try {
         const geocodeResponse = await axios.get(geocodeUrl);
-        if (geocodeResponse.data.status === 'OK' && geocodeResponse.data.results.length > 0) {
+        if (
+          geocodeResponse.data.status === "OK" &&
+          geocodeResponse.data.results.length > 0
+        ) {
           geocodeData = geocodeResponse.data.results[0];
           locationType = geocodeData.geometry?.location_type;
           logger.info(`   📍 Geocoding precision: ${locationType}`);
         }
       } catch (error) {
-        logger.warn('   ⚠️ Geocoding API failed:', error.message);
+        logger.warn("   ⚠️ Geocoding API failed:", error.message);
       }
 
       // STEP 2: Determine building footprint based on location precision
@@ -655,40 +808,57 @@ class SiteAnalysisService {
       // GEOMETRIC_CENTER = moderate (property center)
       // APPROXIMATE = poor (area/neighborhood)
 
-      if (locationType === 'ROOFTOP' || locationType === 'RANGE_INTERPOLATED') {
+      if (locationType === "ROOFTOP" || locationType === "RANGE_INTERPOLATED") {
         // High precision - create realistic building footprint estimate
-        logger.info('   🏠 High precision address - creating building footprint estimate');
+        logger.info(
+          "   🏠 High precision address - creating building footprint estimate",
+        );
 
         // Estimate typical building dimensions based on address type
-        const buildingWidth = 12;  // meters (typical building width)
-        const buildingDepth = 15;  // meters (typical building depth)
+        const buildingWidth = 12; // meters (typical building width)
+        const buildingDepth = 15; // meters (typical building depth)
 
         // Create rectangular footprint centered on coordinates
-        polygon = this.createBuildingFootprint(lat, lng, buildingWidth, buildingDepth);
+        polygon = this.createBuildingFootprint(
+          lat,
+          lng,
+          buildingWidth,
+          buildingDepth,
+        );
         area = this.computePolygonArea(polygon);
         estimatedFootprint = true;
 
-        logger.info(`   📐 Created ${buildingWidth}m × ${buildingDepth}m building footprint: ${area}m²`);
-
+        logger.info(
+          `   📐 Created ${buildingWidth}m × ${buildingDepth}m building footprint: ${area}m²`,
+        );
       } else {
         // Lower precision - try to get bounds from Places API
         let viewport = null;
 
         if (placeId) {
-          const detailsUrl = `http://localhost:3001/api/google/places/details?place_id=${placeId}&fields=geometry`;
+          const detailsUrl = buildGooglePlacesProxyUrl(
+            "/api/google/places/details",
+            { place_id: placeId, fields: "geometry" },
+          );
           const detailsResponse = await axios.get(detailsUrl);
 
-          if (detailsResponse.data.status === 'OK') {
+          if (detailsResponse.data.status === "OK") {
             viewport = detailsResponse.data.result.geometry?.viewport;
           }
         }
 
         // Fallback: Use Nearby Search
         if (!viewport) {
-          const searchUrl = `http://localhost:3001/api/google/places/nearby?location=${lat},${lng}&radius=10`;
+          const searchUrl = buildGooglePlacesProxyUrl(
+            "/api/google/places/nearby",
+            { location: `${lat},${lng}`, radius: "10" },
+          );
           const searchResponse = await axios.get(searchUrl);
 
-          if (searchResponse.data.status === 'OK' && searchResponse.data.results.length > 0) {
+          if (
+            searchResponse.data.status === "OK" &&
+            searchResponse.data.results.length > 0
+          ) {
             viewport = searchResponse.data.results[0].geometry?.viewport;
           }
         }
@@ -702,16 +872,25 @@ class SiteAnalysisService {
           const MAX_REASONABLE_AREA = 500; // m² - max reasonable for single residential building
 
           if (area > MAX_REASONABLE_AREA) {
-            logger.info(`   ⚠️ Viewport too large (${area}m²) - creating estimated footprint instead`);
+            logger.info(
+              `   ⚠️ Viewport too large (${area}m²) - creating estimated footprint instead`,
+            );
 
             // Replace with reasonable building footprint
             const buildingWidth = 12;
             const buildingDepth = 15;
-            polygon = this.createBuildingFootprint(lat, lng, buildingWidth, buildingDepth);
+            polygon = this.createBuildingFootprint(
+              lat,
+              lng,
+              buildingWidth,
+              buildingDepth,
+            );
             area = this.computePolygonArea(polygon);
             estimatedFootprint = true;
 
-            logger.info(`   📐 Replaced with ${buildingWidth}m × ${buildingDepth}m footprint: ${area}m²`);
+            logger.info(
+              `   📐 Replaced with ${buildingWidth}m × ${buildingDepth}m footprint: ${area}m²`,
+            );
           }
         }
       }
@@ -720,20 +899,29 @@ class SiteAnalysisService {
         return {
           polygon: polygon,
           area: area,
-          unit: 'm²',
-          source: estimatedFootprint ? 'Google Geocoding (estimated footprint)' : 'Google Places',
+          unit: "m²",
+          source: estimatedFootprint
+            ? "Google Geocoding (estimated footprint)"
+            : "Google Places",
           metadata: {
             placeId: placeId,
-            type: estimatedFootprint ? 'estimated_building_footprint' : 'viewport_bounds',
+            type: estimatedFootprint
+              ? "estimated_building_footprint"
+              : "viewport_bounds",
             locationType: locationType,
-            precision: locationType === 'ROOFTOP' ? 'high' : locationType === 'RANGE_INTERPOLATED' ? 'medium' : 'low'
-          }
+            precision:
+              locationType === "ROOFTOP"
+                ? "high"
+                : locationType === "RANGE_INTERPOLATED"
+                  ? "medium"
+                  : "low",
+          },
         };
       }
 
       return null;
     } catch (error) {
-      logger.error('Google Places geometry error:', error);
+      logger.error("Google Places geometry error:", error);
       return null;
     }
   }
@@ -746,8 +934,10 @@ class SiteAnalysisService {
     const R = 6371000; // Earth radius in meters
 
     // Calculate offset in degrees for width and depth
-    const latOffset = (depthMeters / 2) / R * (180 / Math.PI);
-    const lngOffset = (widthMeters / 2) / R * (180 / Math.PI) / Math.cos(centerLat * Math.PI / 180);
+    const latOffset = (depthMeters / 2 / R) * (180 / Math.PI);
+    const lngOffset =
+      ((widthMeters / 2 / R) * (180 / Math.PI)) /
+      Math.cos((centerLat * Math.PI) / 180);
 
     // Create rectangle centered on the point
     return [
@@ -755,7 +945,7 @@ class SiteAnalysisService {
       { lat: centerLat - latOffset, lng: centerLng + lngOffset }, // SE corner
       { lat: centerLat + latOffset, lng: centerLng + lngOffset }, // NE corner
       { lat: centerLat + latOffset, lng: centerLng - lngOffset }, // NW corner
-      { lat: centerLat - latOffset, lng: centerLng - lngOffset }  // Close polygon
+      { lat: centerLat - latOffset, lng: centerLng - lngOffset }, // Close polygon
     ];
   }
 
@@ -770,7 +960,7 @@ class SiteAnalysisService {
       { lat: southwest.lat, lng: northeast.lng }, // SE corner
       { lat: northeast.lat, lng: northeast.lng }, // NE corner
       { lat: northeast.lat, lng: southwest.lng }, // NW corner
-      { lat: southwest.lat, lng: southwest.lng }  // Close polygon
+      { lat: southwest.lat, lng: southwest.lng }, // Close polygon
     ];
   }
 
@@ -788,12 +978,16 @@ class SiteAnalysisService {
     const earthRadius = 6371000; // meters
 
     // Calculate centroid for reference point
-    const centerLat = polygon.reduce((sum, p) => sum + p.lat, 0) / polygon.length;
+    const centerLat =
+      polygon.reduce((sum, p) => sum + p.lat, 0) / polygon.length;
 
     // Convert to Cartesian coordinates (meters from centroid)
-    const cartesian = polygon.map(p => ({
-      x: (p.lng - polygon[0].lng) * Math.PI / 180 * earthRadius * Math.cos(centerLat * Math.PI / 180),
-      y: (p.lat - polygon[0].lat) * Math.PI / 180 * earthRadius
+    const cartesian = polygon.map((p) => ({
+      x:
+        (((p.lng - polygon[0].lng) * Math.PI) / 180) *
+        earthRadius *
+        Math.cos((centerLat * Math.PI) / 180),
+      y: (((p.lat - polygon[0].lat) * Math.PI) / 180) * earthRadius,
     }));
 
     // Shoelace formula for polygon area
@@ -815,11 +1009,15 @@ class SiteAnalysisService {
 
     try {
       // Use Google Places API to find nearby roads (via proxy)
-      const url = `http://localhost:3001/api/google/places/nearby?location=${lat},${lng}&radius=50&type=route`;
+      const url = buildGooglePlacesProxyUrl("/api/google/places/nearby", {
+        location: `${lat},${lng}`,
+        radius: "50",
+        type: "route",
+      });
 
       const response = await axios.get(url);
 
-      if (response.data.status === 'OK' && response.data.results.length > 0) {
+      if (response.data.status === "OK" && response.data.results.length > 0) {
         const nearbyRoads = response.data.results;
 
         // Analyze primary road
@@ -829,14 +1027,14 @@ class SiteAnalysisService {
           primaryRoad: primaryRoad.name,
           roadType: this.classifyRoadType(primaryRoad),
           orientation: this.estimateRoadOrientation(coordinates),
-          curvature: 'straight', // Simplified - could be enhanced with directions API
-          adjacentRoads: nearbyRoads.length - 1
+          curvature: "straight", // Simplified - could be enhanced with directions API
+          adjacentRoads: nearbyRoads.length - 1,
         };
       }
 
       return this.getFallbackStreetContext();
     } catch (error) {
-      logger.error('Street context error:', error);
+      logger.error("Street context error:", error);
       return this.getFallbackStreetContext();
     }
   }
@@ -845,19 +1043,23 @@ class SiteAnalysisService {
    * Classify road type from place data
    */
   classifyRoadType(roadData) {
-    const name = roadData.name?.toLowerCase() || '';
+    const name = roadData.name?.toLowerCase() || "";
 
-    if (name.includes('highway') || name.includes('freeway')) {
-      return 'highway';
-    } else if (name.includes('avenue') || name.includes('boulevard')) {
-      return 'major_street';
-    } else if (name.includes('lane') || name.includes('court') || name.includes('close')) {
-      return 'residential_lane';
-    } else if (name.includes('street') || name.includes('road')) {
-      return 'local_street';
+    if (name.includes("highway") || name.includes("freeway")) {
+      return "highway";
+    } else if (name.includes("avenue") || name.includes("boulevard")) {
+      return "major_street";
+    } else if (
+      name.includes("lane") ||
+      name.includes("court") ||
+      name.includes("close")
+    ) {
+      return "residential_lane";
+    } else if (name.includes("street") || name.includes("road")) {
+      return "local_street";
     }
 
-    return 'local_street';
+    return "local_street";
   }
 
   /**
@@ -867,7 +1069,7 @@ class SiteAnalysisService {
   estimateRoadOrientation(coordinates) {
     // In a full implementation, would use Google Directions API
     // For now, return based on coordinate alignment
-    return 'north_south'; // or 'east_west'
+    return "north_south"; // or 'east_west'
   }
 
   /**
@@ -895,10 +1097,12 @@ class SiteAnalysisService {
       dimensions = this.calculatePolygonDimensions(propertyBoundary.polygon);
       buildableArea = this.calculateBuildableArea(dimensions, plotType);
 
-      logger.info(`📐 Using actual plot dimensions: ${dimensions.width}m × ${dimensions.depth}m (${propertyBoundary.area}m²)`);
+      logger.info(
+        `📐 Using actual plot dimensions: ${dimensions.width}m × ${dimensions.depth}m (${propertyBoundary.area}m²)`,
+      );
     } else {
       // Fallback: Estimate plot shape
-      plotShape = isCornerLot ? 'L-shaped' : 'rectangular';
+      plotShape = isCornerLot ? "L-shaped" : "rectangular";
 
       // Fallback: Estimate dimensions
       dimensions = this.estimatePlotDimensions(plotType, isCornerLot);
@@ -906,7 +1110,7 @@ class SiteAnalysisService {
       // Calculate buildable area (accounting for setbacks)
       buildableArea = this.calculateBuildableArea(dimensions, plotType);
 
-      logger.info('⚠️  Using estimated plot dimensions');
+      logger.info("⚠️  Using estimated plot dimensions");
     }
 
     return {
@@ -916,7 +1120,7 @@ class SiteAnalysisService {
       isCornerLot,
       buildableArea,
       frontage: dimensions.width,
-      depth: dimensions.depth
+      depth: dimensions.depth,
     };
   }
 
@@ -926,7 +1130,7 @@ class SiteAnalysisService {
    */
   detectPolygonShape(polygon) {
     if (!polygon || polygon.length === 0) {
-      return 'rectangular';
+      return "rectangular";
     }
 
     // Use enhanced shape analysis
@@ -934,13 +1138,13 @@ class SiteAnalysisService {
 
     // Map to legacy shape names if needed
     const shapeMap = {
-      'triangle': 'triangular',
-      'rectangle': 'rectangular',
-      'irregular quadrilateral': 'irregular',
-      'pentagon': 'L-shaped',
-      'hexagon': 'irregular',
-      'polygon': 'irregular',
-      'complex polygon': 'irregular'
+      triangle: "triangular",
+      rectangle: "rectangular",
+      "irregular quadrilateral": "irregular",
+      pentagon: "L-shaped",
+      hexagon: "irregular",
+      polygon: "irregular",
+      "complex polygon": "irregular",
     };
 
     return shapeMap[shapeType] || shapeType;
@@ -951,8 +1155,8 @@ class SiteAnalysisService {
    */
   calculatePolygonDimensions(polygon) {
     // Find min/max coordinates
-    const lats = polygon.map(p => p.lat);
-    const lngs = polygon.map(p => p.lng);
+    const lats = polygon.map((p) => p.lat);
+    const lngs = polygon.map((p) => p.lng);
 
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
@@ -963,12 +1167,15 @@ class SiteAnalysisService {
     const earthRadius = 6371000;
     const centerLat = (minLat + maxLat) / 2;
 
-    const width = (maxLng - minLng) * Math.PI / 180 * earthRadius * Math.cos(centerLat * Math.PI / 180);
-    const depth = (maxLat - minLat) * Math.PI / 180 * earthRadius;
+    const width =
+      (((maxLng - minLng) * Math.PI) / 180) *
+      earthRadius *
+      Math.cos((centerLat * Math.PI) / 180);
+    const depth = (((maxLat - minLat) * Math.PI) / 180) * earthRadius;
 
     return {
       width: Math.round(width),
-      depth: Math.round(depth)
+      depth: Math.round(depth),
     };
   }
 
@@ -985,16 +1192,22 @@ class SiteAnalysisService {
    */
   estimatePlotType(addressComponents) {
     // Look for neighborhood type indicators
-    const route = addressComponents.find(c => c.types.includes('route'))?.long_name || '';
-    const locality = addressComponents.find(c => c.types.includes('locality'))?.long_name || '';
+    const route =
+      addressComponents.find((c) => c.types.includes("route"))?.long_name || "";
+    const locality =
+      addressComponents.find((c) => c.types.includes("locality"))?.long_name ||
+      "";
 
-    if (route.toLowerCase().includes('lane') || route.toLowerCase().includes('court')) {
-      return 'suburban_residential';
-    } else if (locality.includes('CBD') || locality.includes('City')) {
-      return 'urban_residential';
+    if (
+      route.toLowerCase().includes("lane") ||
+      route.toLowerCase().includes("court")
+    ) {
+      return "suburban_residential";
+    } else if (locality.includes("CBD") || locality.includes("City")) {
+      return "urban_residential";
     }
 
-    return 'suburban_residential';
+    return "suburban_residential";
   }
 
   /**
@@ -1005,19 +1218,21 @@ class SiteAnalysisService {
     const typicalDimensions = {
       suburban_residential: {
         width: isCornerLot ? 18 : 15, // meters
-        depth: isCornerLot ? 18 : 30  // meters
+        depth: isCornerLot ? 18 : 30, // meters
       },
       urban_residential: {
         width: isCornerLot ? 12 : 10,
-        depth: isCornerLot ? 15 : 20
+        depth: isCornerLot ? 15 : 20,
       },
       rural_residential: {
         width: isCornerLot ? 25 : 20,
-        depth: isCornerLot ? 30 : 40
-      }
+        depth: isCornerLot ? 30 : 40,
+      },
     };
 
-    return typicalDimensions[plotType] || typicalDimensions.suburban_residential;
+    return (
+      typicalDimensions[plotType] || typicalDimensions.suburban_residential
+    );
   }
 
   /**
@@ -1028,18 +1243,19 @@ class SiteAnalysisService {
     const setbacks = {
       suburban_residential: { front: 6, side: 1.5, rear: 3 },
       urban_residential: { front: 4, side: 1, rear: 2 },
-      rural_residential: { front: 10, side: 3, rear: 5 }
+      rural_residential: { front: 10, side: 3, rear: 5 },
     };
 
     const plotSetbacks = setbacks[plotType] || setbacks.suburban_residential;
 
-    const buildableWidth = dimensions.width - (2 * plotSetbacks.side);
-    const buildableDepth = dimensions.depth - (plotSetbacks.front + plotSetbacks.rear);
+    const buildableWidth = dimensions.width - 2 * plotSetbacks.side;
+    const buildableDepth =
+      dimensions.depth - (plotSetbacks.front + plotSetbacks.rear);
 
     return {
       width: Math.max(buildableWidth, 8), // Minimum 8m buildable width
       depth: Math.max(buildableDepth, 10), // Minimum 10m buildable depth
-      area: buildableWidth * buildableDepth
+      area: buildableWidth * buildableDepth,
     };
   }
 
@@ -1048,18 +1264,18 @@ class SiteAnalysisService {
    */
   generateDesignConstraints(plotAnalysis, geocodeData) {
     const constraints = {
-      frontSetback: this.calculateSetback(plotAnalysis.plotType, 'front'),
-      sideSetbacks: this.calculateSetback(plotAnalysis.plotType, 'side'),
-      rearSetback: this.calculateSetback(plotAnalysis.plotType, 'rear'),
+      frontSetback: this.calculateSetback(plotAnalysis.plotType, "front"),
+      sideSetbacks: this.calculateSetback(plotAnalysis.plotType, "side"),
+      rearSetback: this.calculateSetback(plotAnalysis.plotType, "rear"),
       maxBuildingHeight: this.calculateMaxHeight(plotAnalysis.plotType),
       maxSiteCoverage: this.calculateMaxSiteCoverage(plotAnalysis.plotType),
-      plotRatio: this.calculateFloorAreaRatio(plotAnalysis.plotType)
+      plotRatio: this.calculateFloorAreaRatio(plotAnalysis.plotType),
     };
 
     // Add corner lot specific constraints
     if (plotAnalysis.isCornerLot) {
       constraints.cornerSetback = 3; // meters
-      constraints.primaryFrontage = 'longest_street';
+      constraints.primaryFrontage = "longest_street";
       constraints.dualAccess = true;
     }
 
@@ -1073,7 +1289,7 @@ class SiteAnalysisService {
     const setbacks = {
       suburban_residential: { front: 6, side: 1.5, rear: 3 },
       urban_residential: { front: 4, side: 1, rear: 2 },
-      rural_residential: { front: 10, side: 3, rear: 5 }
+      rural_residential: { front: 10, side: 3, rear: 5 },
     };
 
     return setbacks[plotType]?.[side] || setbacks.suburban_residential[side];
@@ -1084,9 +1300,9 @@ class SiteAnalysisService {
    */
   calculateMaxHeight(plotType) {
     const maxHeights = {
-      suburban_residential: 9,  // meters (typically 2 stories)
-      urban_residential: 12,    // meters (up to 3 stories)
-      rural_residential: 9      // meters
+      suburban_residential: 9, // meters (typically 2 stories)
+      urban_residential: 12, // meters (up to 3 stories)
+      rural_residential: 9, // meters
     };
 
     return maxHeights[plotType] || 9;
@@ -1097,9 +1313,9 @@ class SiteAnalysisService {
    */
   calculateMaxSiteCoverage(plotType) {
     const coverage = {
-      suburban_residential: 0.5,  // 50%
-      urban_residential: 0.6,     // 60%
-      rural_residential: 0.3      // 30%
+      suburban_residential: 0.5, // 50%
+      urban_residential: 0.6, // 60%
+      rural_residential: 0.3, // 30%
     };
 
     return coverage[plotType] || 0.5;
@@ -1112,7 +1328,7 @@ class SiteAnalysisService {
     const far = {
       suburban_residential: 0.6,
       urban_residential: 1.0,
-      rural_residential: 0.4
+      rural_residential: 0.4,
     };
 
     return far[plotType] || 0.6;
@@ -1125,18 +1341,18 @@ class SiteAnalysisService {
     // For corner lots, primary frontage should face longer street
     if (plotAnalysis.isCornerLot) {
       return {
-        primaryFrontage: 'north', // Would be determined from actual road data
-        secondaryFrontage: 'east',
-        mainEntrance: 'corner_chamfer',
-        reasoning: 'Corner lot - dual frontage with chamfered corner entrance'
+        primaryFrontage: "north", // Would be determined from actual road data
+        secondaryFrontage: "east",
+        mainEntrance: "corner_chamfer",
+        reasoning: "Corner lot - dual frontage with chamfered corner entrance",
       };
     }
 
     // For standard lots, orient to street
     return {
-      primaryFrontage: 'north',
-      mainEntrance: 'front_center',
-      reasoning: 'Standard lot - central entrance on primary street frontage'
+      primaryFrontage: "north",
+      mainEntrance: "front_center",
+      reasoning: "Standard lot - central entrance on primary street frontage",
     };
   }
 
@@ -1147,21 +1363,33 @@ class SiteAnalysisService {
     const recommendations = [];
 
     if (plotAnalysis.isCornerLot) {
-      recommendations.push('Consider chamfered corner entrance for dual street address');
-      recommendations.push('Maximize street frontage with articulated facades on both streets');
-      recommendations.push('Provide landscape buffer on both street frontages');
+      recommendations.push(
+        "Consider chamfered corner entrance for dual street address",
+      );
+      recommendations.push(
+        "Maximize street frontage with articulated facades on both streets",
+      );
+      recommendations.push("Provide landscape buffer on both street frontages");
     }
 
-    if (plotAnalysis.plotShape === 'narrow') {
-      recommendations.push('Use elongated floor plan to maximize use of narrow lot');
-      recommendations.push('Consider side access for vehicle parking');
-      recommendations.push('Maximize natural light with skylights or high windows');
+    if (plotAnalysis.plotShape === "narrow") {
+      recommendations.push(
+        "Use elongated floor plan to maximize use of narrow lot",
+      );
+      recommendations.push("Consider side access for vehicle parking");
+      recommendations.push(
+        "Maximize natural light with skylights or high windows",
+      );
     }
 
-    if (streetContext.roadType === 'major_street') {
-      recommendations.push('Provide acoustic buffer from busy street (setback or landscaping)');
-      recommendations.push('Orient living spaces away from street noise');
-      recommendations.push('Consider privacy screening on street-facing facades');
+    if (streetContext.roadType === "major_street") {
+      recommendations.push(
+        "Provide acoustic buffer from busy street (setback or landscaping)",
+      );
+      recommendations.push("Orient living spaces away from street noise");
+      recommendations.push(
+        "Consider privacy screening on street-facing facades",
+      );
     }
 
     return recommendations;
@@ -1174,12 +1402,12 @@ class SiteAnalysisService {
     return {
       address: address,
       coordinates: coordinates,
-      plotType: 'suburban_residential',
-      plotShape: 'rectangular',
+      plotType: "suburban_residential",
+      plotShape: "rectangular",
       plotDimensions: { width: 15, depth: 30 },
-      streetOrientation: 'north_south',
-      roadType: 'local_street',
-      roadCurvature: 'straight',
+      streetOrientation: "north_south",
+      roadType: "local_street",
+      roadCurvature: "straight",
       isCornerLot: false,
       constraints: {
         frontSetback: 6,
@@ -1187,67 +1415,75 @@ class SiteAnalysisService {
         rearSetback: 3,
         maxBuildingHeight: 9,
         maxSiteCoverage: 0.5,
-        plotRatio: 0.6
+        plotRatio: 0.6,
       },
       optimalBuildingOrientation: {
-        primaryFrontage: 'north',
-        mainEntrance: 'front_center',
-        reasoning: 'Standard suburban lot'
+        primaryFrontage: "north",
+        mainEntrance: "front_center",
+        reasoning: "Standard suburban lot",
       },
       buildableArea: { width: 12, depth: 21, area: 252 },
-      recommendations: ['Standard rectangular lot - central entrance recommended'],
+      recommendations: [
+        "Standard rectangular lot - central entrance recommended",
+      ],
       // 🆕 plotGeometry - formatted for locationAwareDNAModifier compatibility
       plotGeometry: {
-        shape: 'rectangular',
+        shape: "rectangular",
         dimensions: {
           width: 15,
           length: 30,
-          area: 450
+          area: 450,
         },
         slope: 0,
         orientation: {
-          primaryFrontage: 'north',
-          mainEntrance: 'front_center',
-          reasoning: 'Standard suburban lot'
-        }
+          primaryFrontage: "north",
+          mainEntrance: "front_center",
+          reasoning: "Standard suburban lot",
+        },
       },
       // 🆕 PlanJSON-compatible site geometry (fallback)
       siteGeometry: {
-        polygon: [[0, 0], [15, 0], [15, 30], [0, 30], [0, 0]],
+        polygon: [
+          [0, 0],
+          [15, 0],
+          [15, 30],
+          [0, 30],
+          [0, 0],
+        ],
         width_m: 15,
         depth_m: 30,
         area_m2: 450,
         north_deg: 0, // assume north is up
-        street_side: 'south',
+        street_side: "south",
         setbacks: {
           front_m: 6,
           rear_m: 3,
-          side_m: 1.5
-        }
+          side_m: 1.5,
+        },
       },
-      isFallback: true
+      isFallback: true,
     };
   }
 
   getFallbackStreetContext() {
     return {
-      primaryRoad: 'Local Street',
-      roadType: 'local_street',
-      orientation: 'north_south',
-      curvature: 'straight',
-      adjacentRoads: 1
+      primaryRoad: "Local Street",
+      roadType: "local_street",
+      orientation: "north_south",
+      curvature: "straight",
+      adjacentRoads: 1,
     };
   }
 
   getFallbackPlotAnalysis() {
     return {
-      plotType: 'suburban_residential',
-      plotShape: 'rectangular',
+      plotType: "suburban_residential",
+      plotShape: "rectangular",
       dimensions: { width: 15, depth: 30 },
       isCornerLot: false,
       buildableArea: { width: 12, depth: 21, area: 252 },
       frontage: 15,
-      depth: 30
+      depth: 30,
     };
   }
 
@@ -1256,7 +1492,13 @@ class SiteAnalysisService {
    * Computes north_deg from street orientation or polygon
    * ENHANCED: Now includes detected shape type
    */
-  convertToSiteGeometry(polygon, plotAnalysis, streetContext, computedArea, shapeType) {
+  convertToSiteGeometry(
+    polygon,
+    plotAnalysis,
+    streetContext,
+    computedArea,
+    shapeType,
+  ) {
     // Use actual polygon or generate rectangular boundary
     let sitePolygon = polygon;
     if (!sitePolygon) {
@@ -1268,7 +1510,7 @@ class SiteAnalysisService {
         [w, 0],
         [w, d],
         [0, d],
-        [0, 0] // close polygon
+        [0, 0], // close polygon
       ];
     }
 
@@ -1276,10 +1518,10 @@ class SiteAnalysisService {
     let north_deg = 0;
     if (streetContext?.orientation) {
       const orientationMap = {
-        'north_south': 0,
-        'east_west': 90,
-        'northeast_southwest': 45,
-        'northwest_southeast': 315
+        north_south: 0,
+        east_west: 90,
+        northeast_southwest: 45,
+        northwest_southeast: 315,
       };
       north_deg = orientationMap[streetContext.orientation] || 0;
     } else if (polygon) {
@@ -1288,26 +1530,28 @@ class SiteAnalysisService {
     }
 
     // Determine street side (front is typically south in northern hemisphere)
-    let street_side = 'south';
-    if (north_deg >= 0 && north_deg < 45) street_side = 'south';
-    else if (north_deg >= 45 && north_deg < 135) street_side = 'west';
-    else if (north_deg >= 135 && north_deg < 225) street_side = 'north';
-    else if (north_deg >= 225 && north_deg < 315) street_side = 'east';
-    else street_side = 'south';
+    let street_side = "south";
+    if (north_deg >= 0 && north_deg < 45) street_side = "south";
+    else if (north_deg >= 45 && north_deg < 135) street_side = "west";
+    else if (north_deg >= 135 && north_deg < 225) street_side = "north";
+    else if (north_deg >= 225 && north_deg < 315) street_side = "east";
+    else street_side = "south";
 
     return {
       polygon: sitePolygon,
       width_m: plotAnalysis.dimensions.width,
       depth_m: plotAnalysis.dimensions.depth,
-      area_m2: computedArea || (plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth),
+      area_m2:
+        computedArea ||
+        plotAnalysis.dimensions.width * plotAnalysis.dimensions.depth,
       north_deg: north_deg,
       street_side: street_side,
       shape_type: shapeType || this.detectPolygonShape(polygon),
       setbacks: {
         front_m: 6,
         rear_m: 3,
-        side_m: 1.5
-      }
+        side_m: 1.5,
+      },
     };
   }
 
@@ -1329,7 +1573,7 @@ class SiteAnalysisService {
       if (length > maxLength) {
         maxLength = length;
         // Calculate angle in degrees (0 = north, 90 = east)
-        longestEdgeAngle = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+        longestEdgeAngle = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
       }
     }
 

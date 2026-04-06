@@ -34,8 +34,36 @@ const getFeatureFlags = () => {
 
 // SECURITY: API keys handled server-side via proxy (secureApiClient pattern)
 // All API calls route through API_BASE_URL proxy to keep keys secure
-const API_BASE_URL =
-  process.env.REACT_APP_API_PROXY_URL || "http://localhost:3001";
+function resolveApiBaseUrl() {
+  const explicitBase = (process.env.REACT_APP_API_PROXY_URL || "").trim();
+
+  if (typeof window === "undefined") {
+    if (explicitBase) {
+      return explicitBase.replace(/\/+$/, "");
+    }
+    return process.env.NODE_ENV === "production" ? "" : "http://localhost:3001";
+  }
+
+  const hostname = window.location?.hostname || "";
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+
+  if (explicitBase) {
+    const normalizedBase = explicitBase.replace(/\/+$/, "");
+    const pointsToLocalProxy =
+      /\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(normalizedBase) ||
+      /\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?\//i.test(normalizedBase);
+
+    if (!isLocalHost && pointsToLocalProxy) {
+      return "";
+    }
+
+    return normalizedBase;
+  }
+
+  return isLocalHost ? "http://localhost:3001" : "";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 let consecutiveRateLimitErrors = 0;
 
 /**
