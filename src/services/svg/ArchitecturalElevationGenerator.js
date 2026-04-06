@@ -22,19 +22,21 @@ const MATERIAL_PATTERNS = {
     create: (color = "#B8604E", scale = 50) => {
       const mm = (v) => +((v * scale) / 1000).toFixed(2);
       const courseH = mm(75); // 65mm brick + 10mm mortar
-      const patW = mm(225); // 215mm brick + 10mm mortar
+      const brickW = mm(225); // 215mm brick + 10mm mortar
+      const patW = mm(450); // 2 bricks wide for visible repeat
       const patH = mm(150); // 2 courses
       const halfBrick = mm(112.5); // half-brick offset for stretcher bond
       const jw = Math.max(0.3, mm(10) * 0.8);
-      const js = "rgba(255,255,255,0.5)";
+      const js = "#FFFFFF";
       return `
       <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
         <rect width="${patW}" height="${patH}" fill="${color}"/>
         <line x1="0" y1="0" x2="${patW}" y2="0" stroke="${js}" stroke-width="${jw}"/>
         <line x1="0" y1="${courseH}" x2="${patW}" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
         <line x1="0" y1="${patH}" x2="${patW}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
-        <line x1="0" y1="0" x2="0" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${brickW}" y1="0" x2="${brickW}" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
         <line x1="${halfBrick}" y1="${courseH}" x2="${halfBrick}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${brickW + halfBrick}" y1="${courseH}" x2="${brickW + halfBrick}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
       </pattern>
       `;
     },

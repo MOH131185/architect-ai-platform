@@ -382,18 +382,18 @@ const FURNITURE_SYMBOLS = {
  */
 const WALL_PATTERNS = {
   exterior: `
-    <pattern id="exterior-wall-hatch" patternUnits="userSpaceOnUse" width="8" height="8">
-      <rect width="8" height="8" fill="#000000"/>
+    <pattern id="exterior-wall-hatch" patternUnits="userSpaceOnUse" width="12" height="12">
+      <rect width="12" height="12" fill="#000000"/>
     </pattern>
   `,
   interior: `
-    <pattern id="interior-wall-hatch" patternUnits="userSpaceOnUse" width="6" height="6">
-      <rect width="6" height="6" fill="#333333"/>
+    <pattern id="interior-wall-hatch" patternUnits="userSpaceOnUse" width="9" height="9">
+      <rect width="9" height="9" fill="#333333"/>
     </pattern>
   `,
   diagonal: `
-    <pattern id="diagonal-hatch" patternUnits="userSpaceOnUse" width="10" height="10" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="10" stroke="#444" stroke-width="2"/>
+    <pattern id="diagonal-hatch" patternUnits="userSpaceOnUse" width="15" height="15" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="15" stroke="#444" stroke-width="2"/>
     </pattern>
   `,
 };
@@ -631,14 +631,6 @@ class ArchitecturalFloorPlanGenerator {
         ${WALL_PATTERNS.interior}
         ${WALL_PATTERNS.diagonal}
 
-        <!-- Dimension arrow markers -->
-        <marker id="dim-arrow-start" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto">
-          <path d="M10,0 L0,3 L10,6" fill="none" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
-        </marker>
-        <marker id="dim-arrow-end" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
-          <path d="M0,0 L10,3 L0,6" fill="none" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
-        </marker>
-
         <!-- Door swing arc clip -->
         <clipPath id="door-swing-clip">
           <rect x="-100" y="-100" width="1000" height="1000"/>
@@ -873,7 +865,7 @@ class ArchitecturalFloorPlanGenerator {
 
       parts.push(`
         <polygon points="${points}"
-                 fill="${fillPattern}" stroke="${strokeColor}" stroke-width="${this.scaleLineWeight(isExterior ? 1.5 : 1)}"
+                 fill="${fillPattern}" stroke="${strokeColor}" stroke-width="${this.scaleLineWeight(isExterior ? 2.5 : 1.0)}"
                  data-wall-id="${wall.id || ""}" data-wall-type="${wallType}"/>
       `);
 
@@ -1435,6 +1427,8 @@ class ArchitecturalFloorPlanGenerator {
         this.margin - dimOffset,
         `${width.toFixed(2)}m`,
         "horizontal",
+        this.margin,
+        this.margin,
       ),
     );
 
@@ -1447,6 +1441,8 @@ class ArchitecturalFloorPlanGenerator {
         this.margin + length * this.scale,
         `${length.toFixed(2)}m`,
         "vertical",
+        this.margin + width * this.scale,
+        this.margin + width * this.scale,
       ),
     );
 
@@ -1484,35 +1480,49 @@ class ArchitecturalFloorPlanGenerator {
   /**
    * Draw a dimension line with text
    */
-  drawDimensionLine(x1, y1, x2, y2, text, orientation) {
+  drawDimensionLine(x1, y1, x2, y2, text, orientation, wallEdge1, wallEdge2) {
     const midX = (x1 + x2) / 2;
     const midY = (y1 + y2) / 2;
+    const dimStroke = this.scaleLineWeight(0.5);
+    const witnessStroke = this.scaleLineWeight(0.3);
+    const col = this.colors.dimension;
 
-    const tick = 5;
-    let tick1, tick2, textY, textRotate;
+    const t = 2; // tick half-size → 4px diagonal at 45°
+    let witness1, witness2, tick1, tick2, textX, textY, textRotate;
 
     if (orientation === "horizontal") {
-      tick1 = `M${x1},${y1 - tick} L${x1},${y1 + tick}`;
-      tick2 = `M${x2},${y2 - tick} L${x2},${y2 + tick}`;
+      // Witness lines: vertical from wall edge down/up to 2px past dim line
+      witness1 = `<line x1="${x1}" y1="${wallEdge1}" x2="${x1}" y2="${y1 - 2}" stroke="${col}" stroke-width="${witnessStroke}"/>`;
+      witness2 = `<line x1="${x2}" y1="${wallEdge2}" x2="${x2}" y2="${y2 - 2}" stroke="${col}" stroke-width="${witnessStroke}"/>`;
+      // 45° serif ticks
+      tick1 = `M${x1 - t},${y1 + t} L${x1 + t},${y1 - t}`;
+      tick2 = `M${x2 - t},${y2 + t} L${x2 + t},${y2 - t}`;
+      textX = midX;
       textY = midY - 5;
       textRotate = "";
     } else {
-      tick1 = `M${x1 - tick},${y1} L${x1 + tick},${y1}`;
-      tick2 = `M${x2 - tick},${y2} L${x2 + tick},${y2}`;
+      // Witness lines: horizontal from wall edge to 2px past dim line
+      witness1 = `<line x1="${wallEdge1}" y1="${y1}" x2="${x1 + 2}" y2="${y1}" stroke="${col}" stroke-width="${witnessStroke}"/>`;
+      witness2 = `<line x1="${wallEdge2}" y1="${y2}" x2="${x2 + 2}" y2="${y2}" stroke="${col}" stroke-width="${witnessStroke}"/>`;
+      // 45° serif ticks
+      tick1 = `M${x1 - t},${y1 + t} L${x1 + t},${y1 - t}`;
+      tick2 = `M${x2 - t},${y2 + t} L${x2 + t},${y2 - t}`;
+      textX = midX - 5;
       textY = midY;
-      textRotate = `transform="rotate(-90, ${midX + 15}, ${textY})"`;
+      textRotate = `transform="rotate(-90, ${textX}, ${textY})"`;
     }
 
     return `
       <g class="dimension-line">
+        ${witness1}
+        ${witness2}
         <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-              stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"
-              marker-start="url(#dim-arrow-start)" marker-end="url(#dim-arrow-end)"/>
-        <path d="${tick1}" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"/>
-        <path d="${tick2}" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"/>
-        <text x="${orientation === "horizontal" ? midX : midX + 15}" y="${textY}"
+              stroke="${col}" stroke-width="${dimStroke}"/>
+        <path d="${tick1}" stroke="${col}" stroke-width="${dimStroke}"/>
+        <path d="${tick2}" stroke="${col}" stroke-width="${dimStroke}"/>
+        <text x="${textX}" y="${textY}"
               text-anchor="middle" font-family="Arial, sans-serif" font-size="10"
-              fill="${this.colors.dimension}" ${textRotate}>${text}</text>
+              fill="${col}" ${textRotate}>${text}</text>
       </g>
     `;
   }

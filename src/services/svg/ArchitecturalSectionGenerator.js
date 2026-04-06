@@ -37,11 +37,11 @@ export const HATCH_PATTERNS = {
  * Section line weights (mm at 1:100 scale)
  */
 const LINE_WEIGHTS = {
-  CUT: 0.7, // Cut elements (walls, floors cut by section plane)
-  PROFILE: 0.5, // Building profile beyond section
+  CUT: 1.2, // Cut elements (walls, floors cut by section plane)
+  PROFILE: 0.7, // Building profile beyond section
   HIDDEN: 0.25, // Hidden/dashed lines
   DIMENSION: 0.18, // Dimension lines and text
-  HATCH: 0.13, // Hatching patterns
+  HATCH: 0.35, // Hatching patterns (min visible at 1:100 @ 96dpi)
 };
 
 /**
@@ -306,34 +306,26 @@ function generateDefs(materials) {
   return `
   <defs>
     <!-- Concrete hatch pattern (45° diagonal lines) -->
-    <pattern id="hatch-concrete" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="8" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
+    <pattern id="hatch-concrete" patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="12" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
     </pattern>
 
     <!-- Brick hatch pattern (cross-hatch) -->
-    <pattern id="hatch-brick" patternUnits="userSpaceOnUse" width="10" height="10">
-      <line x1="0" y1="5" x2="10" y2="5" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
-      <line x1="5" y1="0" x2="5" y2="10" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
+    <pattern id="hatch-brick" patternUnits="userSpaceOnUse" width="15" height="15">
+      <line x1="0" y1="7.5" x2="15" y2="7.5" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
+      <line x1="7.5" y1="0" x2="7.5" y2="15" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
     </pattern>
 
     <!-- Insulation hatch pattern (zigzag) -->
-    <pattern id="hatch-insulation" patternUnits="userSpaceOnUse" width="20" height="10">
-      <path d="M0,5 L5,0 L10,5 L15,0 L20,5" fill="none" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
+    <pattern id="hatch-insulation" patternUnits="userSpaceOnUse" width="30" height="15">
+      <path d="M0,7.5 L7.5,0 L15,7.5 L22.5,0 L30,7.5" fill="none" stroke="${COLORS.hatchLine}" stroke-width="${LINE_WEIGHTS.HATCH}"/>
     </pattern>
 
     <!-- Earth/ground pattern (stipple) -->
-    <pattern id="hatch-earth" patternUnits="userSpaceOnUse" width="10" height="10">
-      <circle cx="2" cy="2" r="1" fill="${COLORS.ground}"/>
-      <circle cx="7" cy="7" r="1" fill="${COLORS.ground}"/>
+    <pattern id="hatch-earth" patternUnits="userSpaceOnUse" width="15" height="15">
+      <circle cx="3" cy="3" r="1.5" fill="${COLORS.ground}"/>
+      <circle cx="10.5" cy="10.5" r="1.5" fill="${COLORS.ground}"/>
     </pattern>
-
-    <!-- Dimension arrow markers -->
-    <marker id="dim-arrow-start" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto">
-      <path d="M10,0 L0,3 L10,6" fill="none" stroke="${COLORS.dimension}" stroke-width="1"/>
-    </marker>
-    <marker id="dim-arrow-end" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
-      <path d="M0,0 L10,3 L0,6" fill="none" stroke="${COLORS.dimension}" stroke-width="1"/>
-    </marker>
 
     <!-- Section marker circle -->
     <marker id="section-marker" markerWidth="20" markerHeight="20" refX="10" refY="10">
@@ -542,14 +534,30 @@ function generateInternalElements(
 
   // Extract rooms per floor from populatedGeometry (authoritative) or DNA fallback
   let roomsByFloor = {};
+  let hasSpatialData = false;
   if (dna?.populatedGeometry?.floors?.length > 0) {
     dna.populatedGeometry.floors.forEach((floor) => {
       const level = floor.level ?? 0;
-      roomsByFloor[level] = (floor.rooms || []).map((r) => ({
-        name: r.name || r.type || "Room",
-        area: r.area || 15,
-        floor: level,
-      }));
+      roomsByFloor[level] = (floor.rooms || []).map((r) => {
+        const cx = r.centroid?.x ?? r.bbox?.x ?? r.x;
+        const bx = r.bbox?.x ?? r.x;
+        const bw = r.bbox?.width ?? r.width;
+        if (cx == null && bx == null) {
+          console.warn(
+            `Section: room "${r.name || r.type}" has no centroid or position — falling back to proportional layout`,
+          );
+        } else {
+          hasSpatialData = true;
+        }
+        return {
+          name: r.name || r.type || "Room",
+          area: r.area || 15,
+          floor: level,
+          centroidX: cx,
+          bboxX: bx,
+          bboxW: bw,
+        };
+      });
     });
   } else {
     const rooms = dna?.rooms || dna?.program?.rooms || [];
@@ -578,42 +586,89 @@ function generateInternalElements(
     const floorY = -(floorIdx + 1) * floorHeight;
 
     if (floorRooms.length > 1) {
-      // Calculate proportional room widths from areas
-      const totalArea = floorRooms.reduce((sum, r) => sum + (r.area || 15), 0);
-      let currentX = 0;
+      // Use actual room coordinates when available, otherwise fall back to proportional
+      const useSpatial =
+        hasSpatialData &&
+        floorRooms.every((r) => r.bboxX != null && r.bboxW != null);
 
-      floorRooms.forEach((room, i) => {
-        const roomWidth = (room.area / totalArea) * cuttingW;
+      if (useSpatial) {
+        // Sort rooms by X position (left to right along section cut)
+        const sorted = [...floorRooms].sort((a, b) => a.bboxX - b.bboxX);
 
-        // Draw partition wall between rooms (skip first room's left edge)
-        if (i > 0) {
+        sorted.forEach((room, i) => {
+          const roomLeftPx = room.bboxX * pixelsPerMeter;
+          const roomRightPx = (room.bboxX + room.bboxW) * pixelsPerMeter;
+
+          // Draw partition between adjacent rooms
+          if (i > 0) {
+            const prevRight =
+              (sorted[i - 1].bboxX + sorted[i - 1].bboxW) * pixelsPerMeter;
+            const partX = (prevRight + roomLeftPx) / 2 - partitionW / 2;
+            parts.push(`
+              <rect x="${partX.toFixed(1)}" y="${(floorY + 10).toFixed(1)}"
+                    width="${partitionW.toFixed(1)}" height="${(floorHeight - 20).toFixed(1)}"
+                    fill="${COLORS.profile}" stroke="${COLORS.cut}" stroke-width="${LINE_WEIGHTS.CUT}"/>
+            `);
+          }
+
+          // Draw room name label at centroid or bbox center
+          const labelX =
+            room.centroidX != null
+              ? room.centroidX * pixelsPerMeter
+              : (roomLeftPx + roomRightPx) / 2;
+          const labelY = floorY + floorHeight * 0.55;
           parts.push(`
-            <rect x="${currentX.toFixed(1)}" y="${(floorY + 10).toFixed(1)}"
-                  width="${partitionW.toFixed(1)}" height="${(floorHeight - 20).toFixed(1)}"
-                  fill="${COLORS.profile}" stroke="${COLORS.cut}" stroke-width="${LINE_WEIGHTS.CUT}"/>
+            <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
+                  font-family="Arial, sans-serif" font-size="11" font-weight="500"
+                  fill="${COLORS.dimension}" text-anchor="middle">${room.name}</text>
           `);
-        }
 
-        // Draw room name label
-        const labelX = currentX + roomWidth / 2;
-        const labelY = floorY + floorHeight * 0.55;
-        parts.push(`
-          <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
-                font-family="Arial, sans-serif" font-size="11" font-weight="500"
-                fill="${COLORS.dimension}" text-anchor="middle">${room.name}</text>
-        `);
+          if (room.area) {
+            parts.push(`
+              <text x="${labelX.toFixed(1)}" y="${(labelY + 14).toFixed(1)}"
+                    font-family="Arial, sans-serif" font-size="8"
+                    fill="${COLORS.dimension}" text-anchor="middle">${room.area.toFixed(1)}m²</text>
+            `);
+          }
+        });
+      } else {
+        // Fallback: proportional layout from area ratios
+        const totalArea = floorRooms.reduce(
+          (sum, r) => sum + (r.area || 15),
+          0,
+        );
+        let currentX = 0;
 
-        // Draw room area below name
-        if (room.area) {
+        floorRooms.forEach((room, i) => {
+          const roomWidth = (room.area / totalArea) * cuttingW;
+
+          if (i > 0) {
+            parts.push(`
+              <rect x="${currentX.toFixed(1)}" y="${(floorY + 10).toFixed(1)}"
+                    width="${partitionW.toFixed(1)}" height="${(floorHeight - 20).toFixed(1)}"
+                    fill="${COLORS.profile}" stroke="${COLORS.cut}" stroke-width="${LINE_WEIGHTS.CUT}"/>
+            `);
+          }
+
+          const labelX = currentX + roomWidth / 2;
+          const labelY = floorY + floorHeight * 0.55;
           parts.push(`
-            <text x="${labelX.toFixed(1)}" y="${(labelY + 14).toFixed(1)}"
-                  font-family="Arial, sans-serif" font-size="8"
-                  fill="${COLORS.dimension}" text-anchor="middle">${room.area.toFixed(1)}m²</text>
+            <text x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}"
+                  font-family="Arial, sans-serif" font-size="11" font-weight="500"
+                  fill="${COLORS.dimension}" text-anchor="middle">${room.name}</text>
           `);
-        }
 
-        currentX += roomWidth;
-      });
+          if (room.area) {
+            parts.push(`
+              <text x="${labelX.toFixed(1)}" y="${(labelY + 14).toFixed(1)}"
+                    font-family="Arial, sans-serif" font-size="8"
+                    fill="${COLORS.dimension}" text-anchor="middle">${room.area.toFixed(1)}m²</text>
+            `);
+          }
+
+          currentX += roomWidth;
+        });
+      }
     } else if (floorRooms.length === 1) {
       // Single room: just label
       const labelX = cuttingW / 2;
@@ -694,24 +749,44 @@ function generateDimensions(
   const buildingH = buildingHeight * pixelsPerMeter;
   const dimOffset = 40;
   const textOffset = 15;
+  const col = COLORS.dimension;
+  const dimSW = LINE_WEIGHTS.DIMENSION;
+  const witnessSW = +(dimSW * 0.6).toFixed(3);
+  const t = 2; // tick half-size → 4px diagonal at 45°
 
   // Horizontal dimension (building length)
+  // Witness lines: vertical from building base (y=0) down to dim line + 2px
   parts.push(`
+    <line x1="0" y1="0" x2="0" y2="${dimOffset + 2}"
+          stroke="${col}" stroke-width="${witnessSW}"/>
+    <line x1="${cuttingW}" y1="0" x2="${cuttingW}" y2="${dimOffset + 2}"
+          stroke="${col}" stroke-width="${witnessSW}"/>
     <line x1="0" y1="${dimOffset}" x2="${cuttingW}" y2="${dimOffset}"
-          stroke="${COLORS.dimension}" stroke-width="${LINE_WEIGHTS.DIMENSION}"
-          marker-start="url(#dim-arrow-start)" marker-end="url(#dim-arrow-end)"/>
+          stroke="${col}" stroke-width="${dimSW}"/>
+    <path d="M${-t},${dimOffset + t} L${t},${dimOffset - t}"
+          stroke="${col}" stroke-width="${dimSW}"/>
+    <path d="M${cuttingW - t},${dimOffset + t} L${cuttingW + t},${dimOffset - t}"
+          stroke="${col}" stroke-width="${dimSW}"/>
     <text x="${cuttingW / 2}" y="${dimOffset + textOffset}"
-          font-family="Arial, sans-serif" font-size="14" fill="${COLORS.dimension}"
+          font-family="Arial, sans-serif" font-size="14" fill="${col}"
           text-anchor="middle">${cuttingLength.toFixed(1)}m</text>`);
 
   // Vertical dimension (total height)
   const vertDimX = -dimOffset;
+  // Witness lines: horizontal from building left edge (x=0) to dim line - 2px
   parts.push(`
+    <line x1="0" y1="0" x2="${vertDimX - 2}" y2="0"
+          stroke="${col}" stroke-width="${witnessSW}"/>
+    <line x1="0" y1="${-buildingH}" x2="${vertDimX - 2}" y2="${-buildingH}"
+          stroke="${col}" stroke-width="${witnessSW}"/>
     <line x1="${vertDimX}" y1="0" x2="${vertDimX}" y2="${-buildingH}"
-          stroke="${COLORS.dimension}" stroke-width="${LINE_WEIGHTS.DIMENSION}"
-          marker-start="url(#dim-arrow-start)" marker-end="url(#dim-arrow-end)"/>
+          stroke="${col}" stroke-width="${dimSW}"/>
+    <path d="M${vertDimX - t},${t} L${vertDimX + t},${-t}"
+          stroke="${col}" stroke-width="${dimSW}"/>
+    <path d="M${vertDimX - t},${-buildingH + t} L${vertDimX + t},${-buildingH - t}"
+          stroke="${col}" stroke-width="${dimSW}"/>
     <text x="${vertDimX - textOffset}" y="${-buildingH / 2}"
-          font-family="Arial, sans-serif" font-size="14" fill="${COLORS.dimension}"
+          font-family="Arial, sans-serif" font-size="14" fill="${col}"
           text-anchor="middle" transform="rotate(-90, ${vertDimX - textOffset}, ${-buildingH / 2})">${buildingHeight.toFixed(1)}m</text>`);
 
   // Floor heights
@@ -720,7 +795,7 @@ function generateDimensions(
     const levelLabel = i === 0 ? "GL" : `L${i}`;
     parts.push(`
       <text x="${-20}" y="${floorY + 5}"
-            font-family="Arial, sans-serif" font-size="12" fill="${COLORS.dimension}"
+            font-family="Arial, sans-serif" font-size="12" fill="${col}"
             text-anchor="end">${levelLabel}</text>`);
   }
 
