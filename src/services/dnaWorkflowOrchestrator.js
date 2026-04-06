@@ -1236,74 +1236,113 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           // Inject AI coordinates into programRooms using fuzzy matching
           // to handle name differences between AI output and programSpaces
           // (e.g. "Hall" vs "Hallway", "WC" vs "Toilet")
-          const ROOM_ALIASES = {
-            wc: ["toilet", "cloakroom", "powder room", "lavatory", "guest wc"],
-            toilet: ["wc", "cloakroom", "powder room", "guest wc"],
-            "guest wc": ["wc", "toilet", "cloakroom"],
-            "living room": [
-              "lounge",
-              "living",
-              "sitting room",
-              "reception",
-              "reception room",
-            ],
-            lounge: ["living room", "living", "sitting room", "reception room"],
-            "reception room": ["living room", "lounge", "sitting room"],
-            kitchen: ["kitchen-dining", "kitchen/dining", "kitchen diner"],
-            "kitchen-dining": ["kitchen", "dining kitchen", "kitchen diner"],
-            "kitchen diner": ["kitchen", "kitchen-dining", "dining kitchen"],
-            "dining room": ["dining", "dining area"],
-            hallway: ["hall", "entrance hall", "entrance", "corridor"],
-            hall: ["hallway", "entrance hall", "entrance"],
-            landing: ["upper hall", "first floor landing", "upper landing"],
-            "master bedroom": [
-              "bedroom 1",
-              "main bedroom",
-              "principal bedroom",
-            ],
-            "bedroom 1": ["master bedroom", "main bedroom"],
-            "en-suite": [
-              "ensuite",
-              "en suite",
-              "ensuite bathroom",
-              "shower room",
-            ],
-            ensuite: ["en-suite", "en suite", "shower room"],
-            "shower room": ["en-suite", "ensuite", "en suite"],
-            utility: ["utility room", "laundry", "boot room"],
-            "utility room": ["utility", "laundry"],
-            study: ["home office", "office"],
-            "home office": ["study", "office"],
-            bathroom: ["family bathroom", "main bathroom"],
-            "family bathroom": ["bathroom", "main bathroom"],
+          const ROOM_CANONICAL_NAMES = {
+            wc: "wc",
+            toilet: "wc",
+            cloakroom: "wc",
+            "powder room": "wc",
+            lavatory: "wc",
+            "guest wc": "wc",
+            "living room": "living room",
+            living: "living room",
+            lounge: "living room",
+            "sitting room": "living room",
+            reception: "living room",
+            "reception room": "living room",
+            kitchen: "kitchen",
+            "kitchen dining": "kitchen dining",
+            "kitchen-dining": "kitchen dining",
+            "kitchen/dining": "kitchen dining",
+            "kitchen diner": "kitchen dining",
+            "dining kitchen": "kitchen dining",
+            dining: "dining room",
+            "dining area": "dining room",
+            "dining room": "dining room",
+            hall: "circulation",
+            hallway: "circulation",
+            corridor: "circulation",
+            circulation: "circulation",
+            landing: "circulation",
+            stairwell: "circulation",
+            "entrance hall": "circulation",
+            "upper hall": "circulation",
+            "upper landing": "circulation",
+            "first floor landing": "circulation",
+            "staircase circulation": "circulation",
+            "staircase and circulation": "circulation",
+            "staircase & circulation": "circulation",
+            "master bedroom": "master bedroom",
+            "bedroom 1": "master bedroom",
+            "main bedroom": "master bedroom",
+            "principal bedroom": "master bedroom",
+            "en-suite": "ensuite",
+            ensuite: "ensuite",
+            "en suite": "ensuite",
+            "ensuite bathroom": "ensuite",
+            "shower room": "ensuite",
+            utility: "utility",
+            "utility room": "utility",
+            laundry: "utility",
+            "boot room": "utility",
+            study: "study",
+            office: "study",
+            "home office": "study",
+            bathroom: "bathroom",
+            "family bathroom": "bathroom",
+            "main bathroom": "bathroom",
           };
 
+          function normalizeRoomKey(value) {
+            return String(value || "")
+              .toLowerCase()
+              .replace(/&/g, " and ")
+              .replace(/[/,_-]/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+          }
+
+          function canonicalizeRoomName(value) {
+            const normalized = normalizeRoomKey(value);
+            return ROOM_CANONICAL_NAMES[normalized] || normalized;
+          }
+
           function fuzzyMatchRoom(spaces, aiRoom, levelIndex) {
-            const aiName = (aiRoom.name || "").toLowerCase().trim();
-            // 1) Exact case-insensitive + level
-            let match = spaces.find(
-              (s) =>
-                (s.name || "").toLowerCase().trim() === aiName &&
-                (s.levelIndex || 0) === levelIndex,
+            const aiName = normalizeRoomKey(aiRoom.name);
+            const aiCanonical = canonicalizeRoomName(aiRoom.name);
+            const levelSpaces = spaces.filter(
+              (space) => (space.levelIndex || 0) === levelIndex,
+            );
+
+            // 1) Exact normalized name match
+            let match = levelSpaces.find(
+              (space) => normalizeRoomKey(space.name) === aiName,
             );
             if (match) return match;
 
-            // 2) Alias lookup
-            const aliases = ROOM_ALIASES[aiName] || [];
-            match = spaces.find((s) => {
-              const sn = (s.name || "").toLowerCase().trim();
-              return aliases.includes(sn) && (s.levelIndex || 0) === levelIndex;
+            // 2) Canonical name match across known aliases/synonyms
+            match = levelSpaces.find((space) => {
+              const programCanonical = canonicalizeRoomName(
+                space.program || space.category,
+              );
+              const nameCanonical = canonicalizeRoomName(space.name);
+              return (
+                nameCanonical === aiCanonical ||
+                programCanonical === aiCanonical
+              );
             });
             if (match) return match;
 
-            // 3) Partial substring match
-            match = spaces.find((s) => {
-              const sn = (s.name || "").toLowerCase().trim();
+            // 3) Partial normalized/canonical substring match
+            match = levelSpaces.find((space) => {
+              const normalizedName = normalizeRoomKey(space.name);
+              const canonicalName = canonicalizeRoomName(space.name);
               return (
-                (sn.includes(aiName) || aiName.includes(sn)) &&
-                sn.length > 0 &&
-                aiName.length > 0 &&
-                (s.levelIndex || 0) === levelIndex
+                (normalizedName.includes(aiName) ||
+                  aiName.includes(normalizedName) ||
+                  canonicalName.includes(aiCanonical) ||
+                  aiCanonical.includes(canonicalName)) &&
+                normalizedName.length > 0 &&
+                aiName.length > 0
               );
             });
             return match || null;
