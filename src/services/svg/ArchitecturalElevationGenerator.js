@@ -13,101 +13,163 @@
  */
 
 // Material Pattern Definitions
+// All dimensions derive from real-world mm sizes scaled by the drawing scale
+// parameter (px per meter). Pattern factories: create(color, scale).
 const MATERIAL_PATTERNS = {
+  // Stretcher bond — 215×65mm bricks, 10mm mortar joints
   brick: {
     id: "brick-pattern",
-    width: 11,
-    height: 7,
-    create: (color = "#B8604E") => `
-      <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="11" height="7">
-        <rect width="11" height="7" fill="${color}"/>
-        <line x1="0" y1="3.5" x2="11" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
-        <line x1="5.5" y1="0" x2="5.5" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
-        <line x1="0" y1="0" x2="0" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
-        <line x1="11" y1="0" x2="11" y2="3.5" stroke="#8B4513" stroke-width="0.4"/>
-        <line x1="2.75" y1="3.5" x2="2.75" y2="7" stroke="#8B4513" stroke-width="0.4"/>
-        <line x1="8.25" y1="3.5" x2="8.25" y2="7" stroke="#8B4513" stroke-width="0.4"/>
+    create: (color = "#B8604E", scale = 50) => {
+      const mm = (v) => +((v * scale) / 1000).toFixed(2);
+      const courseH = mm(75); // 65mm brick + 10mm mortar
+      const patW = mm(225); // 215mm brick + 10mm mortar
+      const patH = mm(150); // 2 courses
+      const halfBrick = mm(112.5); // half-brick offset for stretcher bond
+      const jw = Math.max(0.3, mm(10) * 0.8);
+      const js = "rgba(255,255,255,0.5)";
+      return `
+      <pattern id="brick-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${color}"/>
+        <line x1="0" y1="0" x2="${patW}" y2="0" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${courseH}" x2="${patW}" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${patH}" x2="${patW}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="0" x2="0" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${halfBrick}" y1="${courseH}" x2="${halfBrick}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
       </pattern>
-    `,
+      `;
+    },
   },
 
+  // Horizontal timber cladding — 150mm planks with shadow lines
   timber: {
     id: "timber-pattern",
-    width: 30,
-    height: 200,
-    create: (color = "#DEB887") => `
-      <pattern id="timber-pattern" patternUnits="userSpaceOnUse" width="30" height="200">
-        <rect width="30" height="200" fill="${color}"/>
-        <line x1="0" y1="0" x2="0" y2="200" stroke="#A0522D" stroke-width="0.5"/>
-        <line x1="30" y1="0" x2="30" y2="200" stroke="#A0522D" stroke-width="0.5"/>
-        <path d="M5,0 Q8,50 5,100 Q3,150 6,200" stroke="#A0522D" stroke-width="0.3" fill="none"/>
-        <path d="M15,0 Q12,60 15,120 Q18,180 15,200" stroke="#A0522D" stroke-width="0.3" fill="none"/>
-        <path d="M25,0 Q23,40 25,80 Q28,140 24,200" stroke="#A0522D" stroke-width="0.3" fill="none"/>
+    create: (color = "#DEB887", scale = 50) => {
+      const mm = (v) => +((v * scale) / 1000).toFixed(2);
+      const plankH = mm(150);
+      const patW = mm(200);
+      const grainY1 = mm(50);
+      const grainY2 = mm(100);
+      const shadowY = mm(148);
+      const shadowSW = Math.max(0.4, +mm(3));
+      const edgeSW = Math.max(0.3, +mm(2));
+      return `
+      <pattern id="timber-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${plankH}">
+        <rect width="${patW}" height="${plankH}" fill="${color}"/>
+        <line x1="0" y1="${grainY1}" x2="${patW}" y2="${grainY1}" stroke="rgba(0,0,0,0.05)" stroke-width="0.3"/>
+        <line x1="0" y1="${grainY2}" x2="${patW}" y2="${grainY2}" stroke="rgba(0,0,0,0.04)" stroke-width="0.3"/>
+        <line x1="0" y1="${shadowY}" x2="${patW}" y2="${shadowY}" stroke="rgba(0,0,0,0.15)" stroke-width="${shadowSW}"/>
+        <line x1="0" y1="${plankH}" x2="${patW}" y2="${plankH}" stroke="rgba(0,0,0,0.25)" stroke-width="${edgeSW}"/>
       </pattern>
-    `,
+      `;
+    },
   },
 
+  // Smooth render/stucco — flat wash with faint texture banding
   render: {
     id: "render-pattern",
-    width: 4,
-    height: 4,
-    create: (color = "#F5F5DC") => `
-      <pattern id="render-pattern" patternUnits="userSpaceOnUse" width="4" height="4">
-        <rect width="4" height="4" fill="${color}"/>
-        <circle cx="1" cy="1" r="0.3" fill="#E8E8D0"/>
-        <circle cx="3" cy="3" r="0.2" fill="#E8E8D0"/>
+    create: (color = "#F5F5F5", scale = 50) => {
+      const mm = (v) => +((v * scale) / 1000).toFixed(2);
+      const patW = mm(100);
+      const patH = mm(100);
+      const lineY = mm(50);
+      return `
+      <pattern id="render-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${color}"/>
+        <line x1="0" y1="${lineY}" x2="${patW}" y2="${lineY}" stroke="rgba(0,0,0,0.04)" stroke-width="0.5"/>
       </pattern>
-    `,
+      `;
+    },
   },
 
+  // Ashlar stone — random-width blocks, 3 courses at 200mm
   stone: {
     id: "stone-pattern",
-    width: 40,
-    height: 25,
-    create: (color = "#D3D3D3") => `
-      <pattern id="stone-pattern" patternUnits="userSpaceOnUse" width="40" height="25">
-        <rect width="40" height="25" fill="${color}"/>
-        <path d="M0,12.5 L40,12.5" stroke="#A9A9A9" stroke-width="0.5"/>
-        <path d="M20,0 L20,12.5" stroke="#A9A9A9" stroke-width="0.5"/>
-        <path d="M0,0 L0,12.5" stroke="#A9A9A9" stroke-width="0.5"/>
-        <path d="M40,0 L40,12.5" stroke="#A9A9A9" stroke-width="0.5"/>
-        <path d="M10,12.5 L10,25" stroke="#A9A9A9" stroke-width="0.5"/>
-        <path d="M30,12.5 L30,25" stroke="#A9A9A9" stroke-width="0.5"/>
+    create: (color = "#D3D3D3", scale = 50) => {
+      const mm = (v) => +((v * scale) / 1000).toFixed(2);
+      const patW = mm(800);
+      const patH = mm(600);
+      const cH = mm(200);
+      const y2 = cH,
+        y3 = mm(400),
+        y4 = patH;
+      const jw = Math.max(0.3, +mm(8));
+      const js = "rgba(0,0,0,0.2)";
+      // Irregular joint positions per course
+      const c1j1 = mm(350),
+        c1j2 = mm(600);
+      const c2j1 = mm(200),
+        c2j2 = mm(500);
+      const c3j1 = mm(300),
+        c3j2 = mm(550);
+      return `
+      <pattern id="stone-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${color}"/>
+        <line x1="0" y1="${y2}" x2="${patW}" y2="${y2}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${y3}" x2="${patW}" y2="${y3}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${y4}" x2="${patW}" y2="${y4}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c1j1}" y1="0" x2="${c1j1}" y2="${y2}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c1j2}" y1="0" x2="${c1j2}" y2="${y2}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c2j1}" y1="${y2}" x2="${c2j1}" y2="${y3}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c2j2}" y1="${y2}" x2="${c2j2}" y2="${y3}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c3j1}" y1="${y3}" x2="${c3j1}" y2="${y4}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c3j2}" y1="${y3}" x2="${c3j2}" y2="${y4}" stroke="${js}" stroke-width="${jw}"/>
       </pattern>
-    `,
+      `;
+    },
   },
 
+  // Slate — fish-scale overlapping rows, 600×300mm tiles, 150mm overlap
   slate: {
     id: "slate-pattern",
-    width: 15,
-    height: 10,
-    create: (color = "#708090") => `
-      <pattern id="slate-pattern" patternUnits="userSpaceOnUse" width="15" height="10">
-        <rect width="15" height="10" fill="${color}"/>
-        <line x1="0" y1="10" x2="15" y2="10" stroke="#4A5568" stroke-width="0.5"/>
-        <line x1="7.5" y1="0" x2="7.5" y2="10" stroke="#4A5568" stroke-width="0.3"/>
+    create: (color = "#708090", scale = 50) => {
+      const mm = (v) => +((v * scale) / 1000).toFixed(2);
+      const expose = mm(150);
+      const patW = mm(600);
+      const patH = mm(300);
+      const halfW = mm(300);
+      const arcDrop = mm(180);
+      const arcDrop2 = mm(330);
+      return `
+      <pattern id="slate-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${color}"/>
+        <path d="M0,${expose} Q${halfW},${arcDrop} ${patW},${expose}" stroke="rgba(0,0,0,0.25)" stroke-width="0.6" fill="none"/>
+        <line x1="0" y1="0" x2="0" y2="${expose}" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+        <path d="M${-halfW},${patH} Q0,${arcDrop2} ${halfW},${patH}" stroke="rgba(0,0,0,0.25)" stroke-width="0.6" fill="none"/>
+        <path d="M${halfW},${patH} Q${patW},${arcDrop2} ${mm(900)},${patH}" stroke="rgba(0,0,0,0.25)" stroke-width="0.6" fill="none"/>
+        <line x1="${halfW}" y1="${expose}" x2="${halfW}" y2="${patH}" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
       </pattern>
-    `,
+      `;
+    },
   },
 
+  // Clay tiles — fish-scale overlapping rows (warmer colors)
   tiles: {
     id: "tiles-pattern",
-    width: 12,
-    height: 15,
-    create: (color = "#8B4513") => `
-      <pattern id="tiles-pattern" patternUnits="userSpaceOnUse" width="12" height="15">
-        <rect width="12" height="15" fill="${color}"/>
-        <path d="M0,15 Q6,12 12,15" stroke="#6B3000" stroke-width="0.5" fill="none"/>
-        <path d="M6,0 Q12,-3 18,0" stroke="#6B3000" stroke-width="0.5" fill="none" transform="translate(-6,7.5)"/>
+    create: (color = "#8B4513", scale = 50) => {
+      const mm = (v) => +((v * scale) / 1000).toFixed(2);
+      const expose = mm(150);
+      const patW = mm(600);
+      const patH = mm(300);
+      const halfW = mm(300);
+      const arcDrop = mm(180);
+      const arcDrop2 = mm(330);
+      return `
+      <pattern id="tiles-pattern" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${color}"/>
+        <path d="M0,${expose} Q${halfW},${arcDrop} ${patW},${expose}" stroke="rgba(0,0,0,0.3)" stroke-width="0.6" fill="none"/>
+        <line x1="0" y1="0" x2="0" y2="${expose}" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <path d="M${-halfW},${patH} Q0,${arcDrop2} ${halfW},${patH}" stroke="rgba(0,0,0,0.3)" stroke-width="0.6" fill="none"/>
+        <path d="M${halfW},${patH} Q${patW},${arcDrop2} ${mm(900)},${patH}" stroke="rgba(0,0,0,0.3)" stroke-width="0.6" fill="none"/>
+        <line x1="${halfW}" y1="${expose}" x2="${halfW}" y2="${patH}" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
       </pattern>
-    `,
+      `;
+    },
   },
 
+  // Glass — reflection diagonal (not a physical tiling material)
   glass: {
     id: "glass-pattern",
-    width: 10,
-    height: 10,
-    create: (color = "#87CEEB") => `
+    create: (color = "#87CEEB", scale = 50) => `
       <pattern id="glass-pattern" patternUnits="userSpaceOnUse" width="10" height="10">
         <rect width="10" height="10" fill="${color}" fill-opacity="0.3"/>
         <line x1="0" y1="0" x2="10" y2="10" stroke="#ADD8E6" stroke-width="0.2"/>
@@ -284,7 +346,7 @@ function generate(elevationData, dna, options = {}) {
 
   <!-- Definitions -->
   <defs>
-    ${generatePatternDefs(materials, showMaterialPatterns)}
+    ${generatePatternDefs(materials, showMaterialPatterns, scale)}
     ${generateFilterDefs()}
   </defs>
 
@@ -395,14 +457,14 @@ function generate(elevationData, dna, options = {}) {
 /**
  * Generate pattern definitions
  */
-function generatePatternDefs(materials, showPatterns) {
+function generatePatternDefs(materials, showPatterns, scale = 50) {
   if (!showPatterns) {
     return "";
   }
 
   let defs = "";
 
-  // Add all material patterns
+  // Add all material patterns (scale-proportional)
   Object.entries(MATERIAL_PATTERNS).forEach(([name, pattern]) => {
     const material = materials.find(
       (m) =>
@@ -410,7 +472,7 @@ function generatePatternDefs(materials, showPatterns) {
         m.application?.toLowerCase().includes(name),
     );
     const color = material?.hexColor || undefined;
-    defs += pattern.create(color);
+    defs += pattern.create(color, scale);
   });
 
   return defs;

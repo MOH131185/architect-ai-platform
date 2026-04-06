@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { GeometryModel } from '../core/designSchema.js';
 import { createThreeJSScene } from '../geometry/buildGeometry.js';
 import { createCamera, getCameraForView } from '../geometry/cameras.js';
+import { lineWeightToPx, LINE_WEIGHTS_MM } from '../geometry/drawingStyles.js';
 
 /**
  * Render view from geometry
@@ -54,32 +55,36 @@ function renderTechnical2D(
     throw new Error(`Unknown view type: ${viewType}`);
   }
 
+  // Line weights from mm standard (ISO 128 / BS 8888)
+  const wallCutPx = lineWeightToPx(LINE_WEIGHTS_MM.wallCut);
+  const wallProfilePx = lineWeightToPx(LINE_WEIGHTS_MM.wallProfile);
+
   // Build SVG content
   let svg = `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${width}" height="${height}" fill="white"/>
-  <g stroke="black" stroke-width="2" fill="none">
+  <g stroke="black" fill="none">
 `;
 
   // Project geometry to 2D based on view type
   if (viewType.includes('plan')) {
-    // Top-down view
+    // Top-down view — wall cuts use heavy line weight
     geometry.walls.forEach(wall => {
       const x1 = (wall.vertices[0].x / geometry.boundingBox.width) * width;
       const y1 = (wall.vertices[0].y / geometry.boundingBox.depth) * height;
       const x2 = (wall.vertices[1].x / geometry.boundingBox.width) * width;
       const y2 = (wall.vertices[1].y / geometry.boundingBox.depth) * height;
-      
-      svg += `    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>\n`;
+
+      svg += `    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${wallCutPx}"/>\n`;
     });
   } else if (viewType.includes('elevation')) {
-    // Front view
+    // Front view — wall profiles use medium line weight
     geometry.walls.filter(w => w.isExterior).forEach(wall => {
       const x1 = (wall.vertices[0].x / geometry.boundingBox.width) * width;
       const y1 = height - (wall.vertices[0].z / geometry.boundingBox.height) * height;
       const x2 = (wall.vertices[1].x / geometry.boundingBox.width) * width;
       const y2 = height - (wall.vertices[2].z / geometry.boundingBox.height) * height;
-      
-      svg += `    <rect x="${Math.min(x1, x2)}" y="${Math.min(y1, y2)}" width="${Math.abs(x2 - x1)}" height="${Math.abs(y2 - y1)}"/>\n`;
+
+      svg += `    <rect x="${Math.min(x1, x2)}" y="${Math.min(y1, y2)}" width="${Math.abs(x2 - x1)}" height="${Math.abs(y2 - y1)}" stroke-width="${wallProfilePx}"/>\n`;
     });
   }
 

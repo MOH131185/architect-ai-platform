@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+<rect width="800" height="600" fill="white"/>
+<text x="400" y="30" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#333">Material Pattern Verification (scale=50 px/m)</text>
+<text x="400" y="48" text-anchor="middle" font-family="Arial" font-size="10" fill="#666">All dims from real-world mm, scaled proportionally</text>
+<defs><pattern id="demo-brick" patternUnits="userSpaceOnUse" width="11.25" height="7.5">
+        <rect width="11.25" height="7.5" fill="#B8604E"/>
+        <line x1="0" y1="0" x2="11.25" y2="0" stroke="rgba(255,255,255,0.5)" stroke-width="0.4"/>
+        <line x1="0" y1="3.75" x2="11.25" y2="3.75" stroke="rgba(255,255,255,0.5)" stroke-width="0.4"/>
+        <line x1="0" y1="7.5" x2="11.25" y2="7.5" stroke="rgba(255,255,255,0.5)" stroke-width="0.4"/>
+        <line x1="0" y1="0" x2="0" y2="3.75" stroke="rgba(255,255,255,0.5)" stroke-width="0.4"/>
+        <line x1="5.63" y1="3.75" x2="5.63" y2="7.5" stroke="rgba(255,255,255,0.5)" stroke-width="0.4"/>
+      </pattern><pattern id="demo-stone" patternUnits="userSpaceOnUse" width="40" height="30">
+        <rect width="40" height="30" fill="#D3D3D3"/>
+        <line x1="0" y1="10" x2="40" y2="10" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="0" y1="20" x2="40" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="0" y1="30" x2="40" y2="30" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="17.5" y1="0" x2="17.5" y2="10" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="30" y1="0" x2="30" y2="10" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="10" y1="10" x2="10" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="25" y1="10" x2="25" y2="20" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="15" y1="20" x2="15" y2="30" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+        <line x1="27.5" y1="20" x2="27.5" y2="30" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>
+      </pattern><pattern id="demo-render" patternUnits="userSpaceOnUse" width="5" height="5">
+        <rect width="5" height="5" fill="#F5F5F5"/>
+        <line x1="0" y1="2.5" x2="5" y2="2.5" stroke="rgba(0,0,0,0.04)" stroke-width="0.5"/>
+      </pattern><pattern id="demo-slate" patternUnits="userSpaceOnUse" width="30" height="15">
+        <rect width="30" height="15" fill="#708090"/>
+        <path d="M0,7.5 Q15,9 30,7.5" stroke="rgba(0,0,0,0.25)" stroke-width="0.6" fill="none"/>
+        <line x1="0" y1="0" x2="0" y2="7.5" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+        <path d="M-15,15 Q0,16.5 15,15" stroke="rgba(0,0,0,0.25)" stroke-width="0.6" fill="none"/>
+        <path d="M15,15 Q30,16.5 45,15" stroke="rgba(0,0,0,0.25)" stroke-width="0.6" fill="none"/>
+        <line x1="15" y1="7.5" x2="15" y2="15" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+      </pattern><pattern id="demo-timber" patternUnits="userSpaceOnUse" width="10" height="7.5">
+        <rect width="10" height="7.5" fill="#DEB887"/>
+        <line x1="0" y1="2.5" x2="10" y2="2.5" stroke="rgba(0,0,0,0.05)" stroke-width="0.3"/>
+        <line x1="0" y1="5" x2="10" y2="5" stroke="rgba(0,0,0,0.04)" stroke-width="0.3"/>
+        <line x1="0" y1="7.4" x2="10" y2="7.4" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+        <line x1="0" y1="7.5" x2="10" y2="7.5" stroke="rgba(0,0,0,0.25)" stroke-width="0.3"/>
+      </pattern></defs><rect x="40" y="60" width="120" height="80" fill="url(#demo-brick)" stroke="#333" stroke-width="1"/><text x="100" y="155" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Brick (stretcher bond)</text><rect x="180" y="60" width="120" height="80" fill="url(#demo-stone)" stroke="#333" stroke-width="1"/><text x="240" y="155" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Stone (ashlar)</text><rect x="320" y="60" width="120" height="80" fill="url(#demo-render)" stroke="#333" stroke-width="1"/><text x="380" y="155" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Render (smooth wash)</text><rect x="460" y="60" width="120" height="80" fill="url(#demo-slate)" stroke="#333" stroke-width="1"/><text x="520" y="155" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Slate (fish-scale)</text><rect x="600" y="60" width="120" height="80" fill="url(#demo-timber)" stroke="#333" stroke-width="1"/><text x="660" y="155" text-anchor="middle" font-family="Arial" font-size="9" fill="#333">Timber (horiz. planks)</text><text x="400" y="190" text-anchor="middle" font-family="Arial" font-size="11" font-weight="bold" fill="#333">Mini Elevation</text><polygon points="80,280 400,200 720,280" fill="url(#demo-slate)" stroke="#333" stroke-width="1.5"/><rect x="100" y="280" width="600" height="250" fill="url(#demo-brick)" stroke="#333" stroke-width="2"/><rect x="160" y="330" width="80" height="100" fill="#D6EAF8" stroke="#333" stroke-width="1.5"/><line x1="200" y1="330" x2="200" y2="430" stroke="#333" stroke-width="1"/><line x1="160" y1="380" x2="240" y2="380" stroke="#333" stroke-width="1"/><rect x="350" y="380" width="80" height="150" fill="url(#demo-timber)" stroke="#333" stroke-width="1.5"/><rect x="520" y="310" width="140" height="100" fill="url(#demo-render)" stroke="#999" stroke-width="0.5"/><text x="590" y="365" text-anchor="middle" font-family="Arial" font-size="8" fill="#999">render panel</text><line x1="60" y1="530" x2="740" y2="530" stroke="#333" stroke-width="2"/><text x="40" y="580" font-family="Arial" font-size="9" fill="#666">Brick: 215×65mm + 10mm mortar, stretcher bond | Stone: 800×600mm ashlar, 3 courses | Slate: 600×300mm fish-scale | Timber: 150mm planks</text></svg>

@@ -18,7 +18,23 @@ import {
   generateSVGStyles,
   SYMBOL_SIZES,
   CONVENTIONS,
+  LINE_WEIGHTS_MM,
+  lineWeightToPx,
 } from "./drawingStyles.js";
+
+// Pre-computed line weights in SVG px (from mm via ISO 128 / BS 8888)
+const LW = Object.freeze({
+  wallCut: lineWeightToPx(LINE_WEIGHTS_MM.wallCut),
+  wallProfile: lineWeightToPx(LINE_WEIGHTS_MM.wallProfile),
+  annotation: lineWeightToPx(LINE_WEIGHTS_MM.annotation),
+  dimension: lineWeightToPx(LINE_WEIGHTS_MM.dimension),
+  hatch: lineWeightToPx(LINE_WEIGHTS_MM.hatch),
+  glazingBar: lineWeightToPx(LINE_WEIGHTS_MM.glazingBar),
+  groundLine: lineWeightToPx(LINE_WEIGHTS_MM.groundLine),
+  roof: lineWeightToPx(LINE_WEIGHTS_MM.roof),
+  furniture: lineWeightToPx(LINE_WEIGHTS_MM.furniture),
+  doorSwing: lineWeightToPx(LINE_WEIGHTS_MM.doorSwing),
+});
 
 // =============================================================================
 // CONSTANTS
@@ -96,9 +112,10 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   // Background fill (prevents transparent SVG appearing as white void in composition)
   svg += `<rect x="0" y="0" width="${finalWidth}" height="${finalHeight}" fill="${style.colors.background}"/>`;
 
-  // Defs for patterns
-  svg += generateHatchPattern("wall-hatch", style, 45, 3);
-  svg += generateHatchPattern("slab-hatch", style, 45, 6);
+  // Defs for fallback patterns (material-specific patterns are generated inline)
+  const extMaterial = resolveExternalWallMaterial(model);
+  svg += generateHatchPattern("wall-hatch", style, 45, 3, extMaterial);
+  svg += generateHatchPattern("slab-hatch", style, 45, 6, "concrete");
 
   // Title
   svg += `<text class="title" x="${finalWidth / 2}" y="30">${escXml(floor.name)}</text>`;
@@ -119,7 +136,7 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   }
 
   // Draw external walls (cut - heavy weight with poché)
-  svg += drawExternalWalls(model, floor, pxPerMM, showWallHatch);
+  svg += drawExternalWalls(model, floor, pxPerMM, showWallHatch, style);
 
   // Draw internal walls (cut - medium weight)
   svg += drawInternalWalls(floor, pxPerMM);
@@ -188,7 +205,7 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
   // Dimensions
   if (showDimensions) {
     svg += '<g id="dimensions">';
-    svg += drawPlanDimensions(model, dims, offsetX, offsetY, scale);
+    svg += drawPlanDimensions(model, dims, offsetX, offsetY, scale, floor);
     svg += "</g>";
   }
 
@@ -228,9 +245,48 @@ export function projectFloorPlan(model, floorIndex = 0, options = {}) {
 }
 
 /**
+ * Resolve the primary external wall material from a BuildingModel.
+ *
+ * Searches `model.style.materials` for the first entry whose application
+ * relates to exterior walls. Falls back to the first material, then 'block'.
+ *
+ * @param {Object} model - BuildingModel instance
+ * @returns {string} Material name (e.g. 'brick', 'concrete', 'timber', 'block', 'render')
+ */
+function resolveExternalWallMaterial(model) {
+  const materials = model.style?.materials || [];
+
+  // Materials may be strings ("brick") or objects ({ name, application, hexColor })
+  for (const mat of materials) {
+    if (!mat) continue;
+    const name = typeof mat === "string" ? mat : mat.name || "";
+    const app =
+      typeof mat === "object" ? (mat.application || "").toLowerCase() : "";
+
+    if (
+      app.includes("wall") ||
+      app.includes("exterior") ||
+      app.includes("facade")
+    ) {
+      return name.toLowerCase();
+    }
+  }
+
+  // Fallback: first material in the list
+  const first = materials[0];
+  if (first) {
+    return (
+      typeof first === "string" ? first : first.name || "block"
+    ).toLowerCase();
+  }
+
+  return "block";
+}
+
+/**
  * Draw external walls with proper cut convention and poché
  */
-function drawExternalWalls(model, floor, pxPerMM, showHatch) {
+function drawExternalWalls(model, floor, pxPerMM, showHatch, style) {
   let svg = '<g id="external-walls">';
 
   const footprint = model.envelope.footprint;
@@ -247,11 +303,18 @@ function drawExternalWalls(model, floor, pxPerMM, showHatch) {
 
   // Inner wall line (stroke only)
   const innerPath = polygonToPath(innerFootprint, pxPerMM);
-  svg += `<path fill="none" stroke="${getStylePreset("technical").colors.stroke}" stroke-width="0.8" d="${innerPath}"/>`;
+  svg += `<path fill="none" stroke="${getStylePreset("technical").colors.stroke}" stroke-width="${LW.wallProfile}" d="${innerPath}"/>`;
 
-  // Add wall hatching (poché) if enabled
+  // Add wall hatching (poché) if enabled — material-aware
   if (showHatch) {
-    svg += drawWallHatch(footprint, innerFootprint, pxPerMM);
+    const wallMaterial = resolveExternalWallMaterial(model);
+    svg += drawWallHatch(
+      footprint,
+      innerFootprint,
+      pxPerMM,
+      wallMaterial,
+      style,
+    );
   }
 
   svg += "</g>";
@@ -424,8 +487,8 @@ function drawDoorSymbol(cx, cy, widthPx, angleDeg, isEntrance, isExternal) {
 
   // Door frame (vertical lines at jambs)
   const frameWidth = SYMBOL_SIZES.door.frameWidth * (widthPx / 900);
-  svg += `<line stroke="#333" stroke-width="1.5" x1="${-hw}" y1="${-openingDepth / 2}" x2="${-hw}" y2="${openingDepth / 2}"/>`;
-  svg += `<line stroke="#333" stroke-width="1.5" x1="${hw}" y1="${-openingDepth / 2}" x2="${hw}" y2="${openingDepth / 2}"/>`;
+  svg += `<line stroke="#333" stroke-width="${LW.wallProfile}" x1="${-hw}" y1="${-openingDepth / 2}" x2="${-hw}" y2="${openingDepth / 2}"/>`;
+  svg += `<line stroke="#333" stroke-width="${LW.wallProfile}" x1="${hw}" y1="${-openingDepth / 2}" x2="${hw}" y2="${openingDepth / 2}"/>`;
 
   // Door leaf (rectangle showing door thickness)
   svg += `<rect class="door" x="${-hw}" y="0" width="${widthPx}" height="${doorThickness}"/>`;
@@ -462,7 +525,7 @@ function drawPlanStairs(model, floor, pxPerMM, style) {
 
   for (let t = 0; t <= numTreads; t++) {
     const treadY = stairY - stairLengthPx / 2 + t * treadDepth;
-    svg += `<line stroke="#666" stroke-width="0.5" x1="${stairX - stairWidthPx / 2}" y1="${treadY}" x2="${stairX + stairWidthPx / 2}" y2="${treadY}"/>`;
+    svg += `<line stroke="#666" stroke-width="${LW.hatch}" x1="${stairX - stairWidthPx / 2}" y1="${treadY}" x2="${stairX + stairWidthPx / 2}" y2="${treadY}"/>`;
   }
 
   // Direction arrow
@@ -476,33 +539,140 @@ function drawPlanStairs(model, floor, pxPerMM, style) {
 }
 
 /**
- * Draw plan dimensions
+ * Collect sorted X-coordinates for a horizontal dimension chain from room boundaries.
+ *
+ * Extracts unique X-boundaries of rooms plus external wall edges, merges
+ * near-duplicate values within 50mm (half internal wall thickness).
+ *
+ * @param {Object} floor - Floor object with rooms[]
+ * @param {Object} envelope - Building envelope with width (mm)
+ * @returns {Array<number>} Sorted unique X-coordinates in mm (building-center origin)
  */
-function drawPlanDimensions(model, dims, offsetX, offsetY, scale) {
-  let svg = "";
+function collectHorizontalChainPoints(floor, envelope) {
+  const xSet = new Set();
+  xSet.add(-envelope.width / 2); // external west face
+  xSet.add(envelope.width / 2); // external east face
+  for (const room of floor.rooms) {
+    if (room.boundingBox) {
+      xSet.add(room.boundingBox.minX);
+      xSet.add(room.boundingBox.maxX);
+    }
+  }
+  const sorted = [...xSet].sort((a, b) => a - b);
+  // Merge points within 50mm (half internal wall thickness)
+  const merged = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - merged[merged.length - 1] < 50) {
+      merged[merged.length - 1] = (merged[merged.length - 1] + sorted[i]) / 2;
+    } else {
+      merged.push(sorted[i]);
+    }
+  }
+  return merged;
+}
 
-  // Overall width dimension (bottom)
-  const dimY = offsetY + (dims.depth * scale) / 2 + 40;
-  svg += drawDimension(
-    offsetX - (dims.width * scale) / 2,
-    dimY,
-    offsetX + (dims.width * scale) / 2,
-    dimY,
-    `${dims.width.toFixed(2)} m`,
+/**
+ * Collect sorted Y-coordinates for a vertical dimension chain from room boundaries.
+ *
+ * @param {Object} floor - Floor object with rooms[]
+ * @param {Object} envelope - Building envelope with depth (mm)
+ * @returns {Array<number>} Sorted unique Y-coordinates in mm (building-center origin)
+ */
+function collectVerticalChainPoints(floor, envelope) {
+  const ySet = new Set();
+  ySet.add(-envelope.depth / 2); // external south face
+  ySet.add(envelope.depth / 2); // external north face
+  for (const room of floor.rooms) {
+    if (room.boundingBox) {
+      ySet.add(room.boundingBox.minY);
+      ySet.add(room.boundingBox.maxY);
+    }
+  }
+  const sorted = [...ySet].sort((a, b) => a - b);
+  const merged = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - merged[merged.length - 1] < 50) {
+      merged[merged.length - 1] = (merged[merged.length - 1] + sorted[i]) / 2;
+    } else {
+      merged.push(sorted[i]);
+    }
+  }
+  return merged;
+}
+
+/**
+ * Draw plan dimensions using architectural dimension chains.
+ *
+ * Draws room-to-room dimension chains (inner string) and overall building
+ * dimensions (outer string) on both horizontal and vertical axes.
+ *
+ * @param {Object} model - BuildingModel instance
+ * @param {Object} dims - { width, depth } in meters
+ * @param {number} offsetX - SVG X center offset (px)
+ * @param {number} offsetY - SVG Y center offset (px)
+ * @param {number} scale - Pixels per meter
+ * @param {Object} floor - Floor object with rooms[]
+ */
+function drawPlanDimensions(model, dims, offsetX, offsetY, scale, floor) {
+  let svg = "";
+  const pxPerMM = scale / MM_PER_M;
+
+  // Building edge positions in SVG pixel space
+  const bldgBottom = offsetY + (dims.depth * scale) / 2;
+  const bldgLeft = offsetX - (dims.width * scale) / 2;
+
+  // --- Horizontal chains (below building) ---
+  const hPoints = collectHorizontalChainPoints(floor, model.envelope);
+  const hPointsPx = hPoints.map((xMM) => offsetX + xMM * pxPerMM);
+
+  // Room-to-room chain (closer, 25px offset from south edge)
+  if (hPointsPx.length > 2) {
+    svg += drawDimensionChain(
+      hPointsPx,
+      25,
+      bldgBottom,
+      false,
+      pxPerMM,
+      "plan-dim-h-rooms",
+    );
+  }
+
+  // Overall width chain (further, 55px offset)
+  svg += drawDimensionChain(
+    [hPointsPx[0], hPointsPx[hPointsPx.length - 1]],
+    55,
+    bldgBottom,
     false,
-    "plan-dim-width",
+    pxPerMM,
+    "plan-dim-h-overall",
   );
 
-  // Overall depth dimension (left side)
-  const dimX = offsetX - (dims.width * scale) / 2 - 40;
-  svg += drawDimension(
-    dimX,
-    offsetY - (dims.depth * scale) / 2,
-    dimX,
-    offsetY + (dims.depth * scale) / 2,
-    `${dims.depth.toFixed(2)} m`,
+  // --- Vertical chains (left of building) ---
+  const vPoints = collectVerticalChainPoints(floor, model.envelope);
+  // Convert to SVG Y (flipped) and sort ascending (top to bottom in SVG)
+  const vPointsPx = vPoints.map((yMM) => offsetY - yMM * pxPerMM);
+  vPointsPx.sort((a, b) => a - b);
+
+  // Room-to-room chain (closer, 25px offset from west edge)
+  if (vPointsPx.length > 2) {
+    svg += drawDimensionChain(
+      vPointsPx,
+      25,
+      bldgLeft,
+      true,
+      pxPerMM,
+      "plan-dim-v-rooms",
+    );
+  }
+
+  // Overall depth chain (further, 55px offset)
+  svg += drawDimensionChain(
+    [vPointsPx[0], vPointsPx[vPointsPx.length - 1]],
+    55,
+    bldgLeft,
     true,
-    "plan-dim-depth",
+    pxPerMM,
+    "plan-dim-v-overall",
   );
 
   return svg;
@@ -524,12 +694,12 @@ function drawSectionCutLines(dims, offsetX, offsetY, scale) {
   const aaY = offsetY;
   const aaX1 = offsetX - halfW - extendPx;
   const aaX2 = offsetX + halfW + extendPx;
-  svg += `<line x1="${aaX1}" y1="${aaY}" x2="${aaX2}" y2="${aaY}" stroke="#555" stroke-width="0.8" stroke-dasharray="${dashPattern}"/>`;
+  svg += `<line x1="${aaX1}" y1="${aaY}" x2="${aaX2}" y2="${aaY}" stroke="#555" stroke-width="${LW.annotation}" stroke-dasharray="${dashPattern}"/>`;
   // Left marker
-  svg += `<circle cx="${aaX1 - markerR - 2}" cy="${aaY}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<circle cx="${aaX1 - markerR - 2}" cy="${aaY}" r="${markerR}" fill="white" stroke="#333" stroke-width="${LW.annotation}"/>`;
   svg += `<text x="${aaX1 - markerR - 2}" y="${aaY + 3.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">A</text>`;
   // Right marker
-  svg += `<circle cx="${aaX2 + markerR + 2}" cy="${aaY}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<circle cx="${aaX2 + markerR + 2}" cy="${aaY}" r="${markerR}" fill="white" stroke="#333" stroke-width="${LW.annotation}"/>`;
   svg += `<text x="${aaX2 + markerR + 2}" y="${aaY + 3.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">A</text>`;
   // Direction arrows (pointing down — looking direction)
   svg += `<polygon fill="#333" points="${aaX1 - markerR - 2},${aaY + markerR + 4} ${aaX1 - markerR - 6},${aaY + markerR + 1} ${aaX1 - markerR + 2},${aaY + markerR + 1}"/>`;
@@ -539,12 +709,12 @@ function drawSectionCutLines(dims, offsetX, offsetY, scale) {
   const bbX = offsetX;
   const bbY1 = offsetY - halfD - extendPx;
   const bbY2 = offsetY + halfD + extendPx;
-  svg += `<line x1="${bbX}" y1="${bbY1}" x2="${bbX}" y2="${bbY2}" stroke="#555" stroke-width="0.8" stroke-dasharray="${dashPattern}"/>`;
+  svg += `<line x1="${bbX}" y1="${bbY1}" x2="${bbX}" y2="${bbY2}" stroke="#555" stroke-width="${LW.annotation}" stroke-dasharray="${dashPattern}"/>`;
   // Top marker
-  svg += `<circle cx="${bbX}" cy="${bbY1 - markerR - 2}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<circle cx="${bbX}" cy="${bbY1 - markerR - 2}" r="${markerR}" fill="white" stroke="#333" stroke-width="${LW.annotation}"/>`;
   svg += `<text x="${bbX}" y="${bbY1 - markerR + 1.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">B</text>`;
   // Bottom marker
-  svg += `<circle cx="${bbX}" cy="${bbY2 + markerR + 2}" r="${markerR}" fill="white" stroke="#333" stroke-width="1"/>`;
+  svg += `<circle cx="${bbX}" cy="${bbY2 + markerR + 2}" r="${markerR}" fill="white" stroke="#333" stroke-width="${LW.annotation}"/>`;
   svg += `<text x="${bbX}" y="${bbY2 + markerR + 5.5}" text-anchor="middle" font-family="Arial" font-size="10" font-weight="bold" fill="#333">B</text>`;
   // Direction arrows (pointing left — looking direction)
   svg += `<polygon fill="#333" points="${bbX - markerR - 4},${bbY1 - markerR - 2} ${bbX - markerR - 1},${bbY1 - markerR - 6} ${bbX - markerR - 1},${bbY1 - markerR + 2}"/>`;
@@ -615,7 +785,7 @@ export function projectElevation(model, orientation = "S", options = {}) {
       const h = 3 + Math.random() * 4;
       svg += `<line stroke="#8BAA84" stroke-width="0.5" x1="${gx}" y1="${groundY}" x2="${gx + 2}" y2="${groundY - h}"/>`;
     }
-    svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}" stroke="#333" stroke-width="1.5"/>`;
+    svg += `<line class="ground-line" x1="0" y1="${groundY}" x2="${finalWidth}" y2="${groundY}" stroke="#333" stroke-width="${LW.groundLine}"/>`;
 
     // Low shrub landscaping at building base
     const shrubLeft = annotationPad + 10;
@@ -650,22 +820,22 @@ export function projectElevation(model, orientation = "S", options = {}) {
   const matName =
     typeof exteriorMat === "string" ? exteriorMat : exteriorMat?.name || "";
   const matHex = exteriorMat?.hexColor || null;
-  const matFill = getMaterialFill(matName, matHex);
+  const matFill = getMaterialFill(matName, matHex, pxPerMM);
 
   if (matFill.defs) {
     svg += `<defs>${matFill.defs}</defs>`;
   }
 
   // Wall rectangle with material fill
-  svg += `<rect fill="${matFill.fill}" stroke="#333" stroke-width="1.5" x="${wallLeft}" y="${wallTop}" width="${elevationWidthMM * pxPerMM}" height="${model.envelope.height * pxPerMM}"/>`;
+  svg += `<rect fill="${matFill.fill}" stroke="#333" stroke-width="${LW.wallProfile}" x="${wallLeft}" y="${wallTop}" width="${elevationWidthMM * pxPerMM}" height="${model.envelope.height * pxPerMM}"/>`;
 
   // Foundation shadow/depth line at base
-  svg += `<line stroke="#555" stroke-width="2.5" x1="${wallLeft}" y1="${groundY}" x2="${wallRight}" y2="${groundY}"/>`;
+  svg += `<line stroke="#555" stroke-width="${LW.wallCut}" x1="${wallLeft}" y1="${groundY}" x2="${wallRight}" y2="${groundY}"/>`;
   svg += `<line stroke="rgba(0,0,0,0.08)" stroke-width="6" x1="${wallLeft + 3}" y1="${groundY + 3}" x2="${wallRight + 3}" y2="${groundY + 3}"/>`;
 
   // DPC (damp-proof course) line at 150mm above ground
   const dpcY = groundY - 150 * pxPerMM;
-  svg += `<line stroke="#666" stroke-width="0.8" stroke-dasharray="6 3" x1="${wallLeft}" y1="${dpcY}" x2="${wallRight}" y2="${dpcY}"/>`;
+  svg += `<line stroke="#666" stroke-width="${LW.annotation}" stroke-dasharray="6 3" x1="${wallLeft}" y1="${dpcY}" x2="${wallRight}" y2="${dpcY}"/>`;
   svg += `<text x="${wallLeft - 5}" y="${dpcY + 3}" text-anchor="end" font-family="Arial" font-size="7" fill="#888">DPC</text>`;
 
   // Roof
@@ -780,10 +950,10 @@ function drawElevationRoof(model, orientation, offsetX, groundY, pxPerMM) {
     offsetX + extendedProfile[extendedProfile.length - 1].x * pxPerMM;
   const fasciaDepthPx = 150 * pxPerMM; // 150mm fascia board
 
-  svg += `<rect fill="#8B7D6B" stroke="#555" stroke-width="0.8" x="${leftEaveX}" y="${eaveY}" width="${rightEaveX - leftEaveX}" height="${fasciaDepthPx}"/>`;
+  svg += `<rect fill="#8B7D6B" stroke="#555" stroke-width="${LW.annotation}" x="${leftEaveX}" y="${eaveY}" width="${rightEaveX - leftEaveX}" height="${fasciaDepthPx}"/>`;
 
   // Soffit line (underside of overhang)
-  svg += `<line stroke="#666" stroke-width="0.5" x1="${leftEaveX}" y1="${eaveY + fasciaDepthPx}" x2="${rightEaveX}" y2="${eaveY + fasciaDepthPx}"/>`;
+  svg += `<line stroke="#666" stroke-width="${LW.hatch}" x1="${leftEaveX}" y1="${eaveY + fasciaDepthPx}" x2="${rightEaveX}" y2="${eaveY + fasciaDepthPx}"/>`;
 
   return svg;
 }
@@ -810,9 +980,7 @@ function drawElevationOpenings(
     logger.debug(
       `[Projections2D] No openings for ${orientation} — generating default windows`,
     );
-    const facadeWidthMM = isNS
-      ? model.envelope.width
-      : model.envelope.depth;
+    const facadeWidthMM = isNS ? model.envelope.width : model.envelope.depth;
     const floorCount = model.floors?.length || 1;
     const windowsPerFloor = Math.max(2, Math.round(facadeWidthMM / 3000));
     const windowWidth = 1200;
@@ -827,7 +995,11 @@ function drawElevationOpenings(
       for (let wi = 0; wi < windowsPerFloor; wi++) {
         const posX = -facadeWidthMM / 2 + spacing * (wi + 1);
         // Ground floor first opening on main facade is a door
-        if (fi === 0 && wi === 0 && (orientation === "S" || orientation === "N")) {
+        if (
+          fi === 0 &&
+          wi === 0 &&
+          (orientation === "S" || orientation === "N")
+        ) {
           facadeOpenings.push({
             type: "door",
             floorIndex: fi,
@@ -963,15 +1135,15 @@ function drawElevationWindow(cx, bottomY, width, height) {
   }
 
   // Window sill
-  svg += `<line stroke="#333" stroke-width="2" x1="${x - 5}" y1="${bottomY}" x2="${x + width + 5}" y2="${bottomY}"/>`;
+  svg += `<line stroke="#333" stroke-width="${LW.wallProfile}" x1="${x - 5}" y1="${bottomY}" x2="${x + width + 5}" y2="${bottomY}"/>`;
 
   // Lintel (head detail above window)
-  svg += `<line stroke="#555" stroke-width="1.5" x1="${x - 3}" y1="${y}" x2="${x + width + 3}" y2="${y}"/>`;
-  svg += `<line stroke="#888" stroke-width="0.5" x1="${x - 3}" y1="${y - 3}" x2="${x + width + 3}" y2="${y - 3}"/>`;
+  svg += `<line stroke="#555" stroke-width="${LW.wallProfile}" x1="${x - 3}" y1="${y}" x2="${x + width + 3}" y2="${y}"/>`;
+  svg += `<line stroke="#888" stroke-width="${LW.hatch}" x1="${x - 3}" y1="${y - 3}" x2="${x + width + 3}" y2="${y - 3}"/>`;
 
   // Reveal shadow (depth indication)
-  svg += `<line stroke="rgba(0,0,0,0.2)" stroke-width="1.5" x1="${x + 2}" y1="${y + height}" x2="${x + width + 2}" y2="${y + height}"/>`;
-  svg += `<line stroke="rgba(0,0,0,0.15)" stroke-width="1" x1="${x + width}" y1="${y + 2}" x2="${x + width}" y2="${y + height + 2}"/>`;
+  svg += `<line stroke="rgba(0,0,0,0.2)" stroke-width="${LW.annotation}" x1="${x + 2}" y1="${y + height}" x2="${x + width + 2}" y2="${y + height}"/>`;
+  svg += `<line stroke="rgba(0,0,0,0.15)" stroke-width="${LW.annotation}" x1="${x + width}" y1="${y + 2}" x2="${x + width}" y2="${y + height + 2}"/>`;
 
   return svg;
 }
@@ -988,11 +1160,11 @@ function drawElevationDoor(cx, bottomY, width, height, isEntrance) {
   // Door handle (small circle)
   const handleX = x + width * 0.85;
   const handleY = y + height * 0.55;
-  svg += `<circle cx="${handleX}" cy="${handleY}" r="4" fill="#C0A060" stroke="#333" stroke-width="0.5"/>`;
+  svg += `<circle cx="${handleX}" cy="${handleY}" r="4" fill="#C0A060" stroke="#333" stroke-width="${LW.hatch}"/>`;
 
   // Door panel detail
-  svg += `<rect fill="none" stroke="#4A2F1A" stroke-width="0.8" x="${x + width * 0.1}" y="${y + height * 0.1}" width="${width * 0.3}" height="${height * 0.35}"/>`;
-  svg += `<rect fill="none" stroke="#4A2F1A" stroke-width="0.8" x="${x + width * 0.1}" y="${y + height * 0.55}" width="${width * 0.3}" height="${height * 0.35}"/>`;
+  svg += `<rect fill="none" stroke="#4A2F1A" stroke-width="${LW.annotation}" x="${x + width * 0.1}" y="${y + height * 0.1}" width="${width * 0.3}" height="${height * 0.35}"/>`;
+  svg += `<rect fill="none" stroke="#4A2F1A" stroke-width="${LW.annotation}" x="${x + width * 0.1}" y="${y + height * 0.55}" width="${width * 0.3}" height="${height * 0.35}"/>`;
 
   return svg;
 }
@@ -1095,8 +1267,9 @@ export function projectSection(
   // Background fill
   svg += `<rect x="0" y="0" width="${finalWidth}" height="${finalHeight}" fill="${style.colors.background}"/>`;
 
-  svg += generateHatchPattern("wall-hatch", style, 45, 3);
-  svg += generateHatchPattern("slab-hatch", style, 45, 6);
+  const sectionMaterial = resolveExternalWallMaterial(model);
+  svg += generateHatchPattern("wall-hatch", style, 45, 3, sectionMaterial);
+  svg += generateHatchPattern("slab-hatch", style, 45, 6, "concrete");
 
   // Ground line and fill
   svg += `<rect class="ground" x="0" y="${groundY}" width="${finalWidth}" height="${groundPx + foundationPx + annotationPad}"/>`;
@@ -1140,7 +1313,7 @@ export function projectSection(
   }
   svg += "</g>";
 
-  // Cut walls (at section line) with poché
+  // Cut walls (at section line) with material-aware poché
   svg += drawSectionCutWalls(
     buildingLeft,
     buildingRight,
@@ -1148,6 +1321,7 @@ export function projectSection(
     model.envelope.height,
     pxPerMM,
     style,
+    resolveExternalWallMaterial(model),
   );
 
   // Stairs
@@ -1313,7 +1487,15 @@ function drawSectionFloor(
 }
 
 /**
- * Draw section cut walls with poché hatching
+ * Draw section cut walls with material-aware poché hatching
+ *
+ * @param {number} buildingLeft - Left edge x (SVG px)
+ * @param {number} buildingRight - Right edge x (SVG px)
+ * @param {number} groundY - Ground line y (SVG px)
+ * @param {number} buildingHeight - Total height (mm)
+ * @param {number} pxPerMM - Scale factor
+ * @param {Object} style - Style preset
+ * @param {string} [material='block'] - External wall material
  */
 function drawSectionCutWalls(
   buildingLeft,
@@ -1322,26 +1504,33 @@ function drawSectionCutWalls(
   buildingHeight,
   pxPerMM,
   style,
+  material = "block",
 ) {
   let svg = '<g id="cut-walls">';
 
   const wallThicknessPx = CONVENTIONS.wallThickness.external * pxPerMM;
   const wallTop = groundY - buildingHeight * pxPerMM;
+  const wallHeightPx = buildingHeight * pxPerMM;
 
   // Left cut wall
-  svg += `<rect class="wall-external-cut" x="${buildingLeft - wallThicknessPx}" y="${wallTop}" width="${wallThicknessPx}" height="${buildingHeight * pxPerMM}"/>`;
+  svg += `<rect class="wall-external-cut" x="${buildingLeft - wallThicknessPx}" y="${wallTop}" width="${wallThicknessPx}" height="${wallHeightPx}"/>`;
 
   // Right cut wall
-  svg += `<rect class="wall-external-cut" x="${buildingRight}" y="${wallTop}" width="${wallThicknessPx}" height="${buildingHeight * pxPerMM}"/>`;
+  svg += `<rect class="wall-external-cut" x="${buildingRight}" y="${wallTop}" width="${wallThicknessPx}" height="${wallHeightPx}"/>`;
 
-  // Poché hatching
-  const hatchSpacing = 4;
-  for (let i = 0; i < buildingHeight * pxPerMM; i += hatchSpacing) {
-    // Left wall
-    svg += `<line class="hatch" x1="${buildingLeft - wallThicknessPx}" y1="${groundY - i}" x2="${buildingLeft}" y2="${groundY - i - 6}"/>`;
-    // Right wall
-    svg += `<line class="hatch" x1="${buildingRight}" y1="${groundY - i}" x2="${buildingRight + wallThicknessPx}" y2="${groundY - i - 6}"/>`;
-  }
+  // Material-aware poché hatching via pattern fill
+  const uid = Math.random().toString(36).slice(2, 8);
+  const leftPatId = `sec-cut-l-${uid}`;
+  const rightPatId = `sec-cut-r-${uid}`;
+
+  svg += generateHatchPattern(leftPatId, style, 45, 3, material);
+  svg += generateHatchPattern(rightPatId, style, 45, 3, material);
+
+  // Left wall hatch fill
+  svg += `<rect x="${buildingLeft - wallThicknessPx}" y="${wallTop}" width="${wallThicknessPx}" height="${wallHeightPx}" fill="url(#${leftPatId})" stroke="none"/>`;
+
+  // Right wall hatch fill
+  svg += `<rect x="${buildingRight}" y="${wallTop}" width="${wallThicknessPx}" height="${wallHeightPx}" fill="url(#${rightPatId})" stroke="none"/>`;
 
   svg += "</g>";
   return svg;
@@ -1359,9 +1548,8 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
 
   const posX = stair.position?.x ?? 0;
   const posY = stair.position?.y ?? 0;
-  const stairX = offsetX +
-    (isLongitudinal ? posX : posY) * pxPerMM -
-    stairWidthPx / 2;
+  const stairX =
+    offsetX + (isLongitudinal ? posX : posY) * pxPerMM - stairWidthPx / 2;
 
   // Draw stair treads connecting floors
   for (let floorIdx = 0; floorIdx < model.floors.length - 1; floorIdx++) {
@@ -1383,17 +1571,17 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
       const treadX2 = stairX + ((t + 1) / numTreads) * stairLengthPx;
 
       // Horizontal tread
-      svg += `<line stroke="#666" stroke-width="1" x1="${treadX1}" y1="${treadY}" x2="${Math.min(treadX2, stairX + stairLengthPx)}" y2="${treadY}"/>`;
+      svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX1}" y1="${treadY}" x2="${Math.min(treadX2, stairX + stairLengthPx)}" y2="${treadY}"/>`;
 
       // Vertical riser
       if (t < numTreads) {
         const nextTreadY = stairBottomY - ((t + 1) / numTreads) * stairRisePx;
-        svg += `<line stroke="#666" stroke-width="1" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
       }
     }
 
     // Stair outline
-    svg += `<path stroke="#333" stroke-width="1.5" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    svg += `<path stroke="#333" stroke-width="${LW.wallProfile}" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
   }
 
   // Stair label
@@ -1412,7 +1600,7 @@ function drawSectionLevelMarkers(model, buildingLeft, groundY, pxPerMM) {
   const markerX = buildingLeft - 80;
 
   // Vertical datum line
-  svg += `<line stroke="#333" stroke-width="1" x1="${markerX}" y1="${groundY + 20}" x2="${markerX}" y2="${groundY - model.envelope.height * pxPerMM - 50}"/>`;
+  svg += `<line stroke="#333" stroke-width="${LW.annotation}" x1="${markerX}" y1="${groundY + 20}" x2="${markerX}" y2="${groundY - model.envelope.height * pxPerMM - 50}"/>`;
 
   // Ground level marker
   svg += drawLevelMarker(
@@ -1463,11 +1651,14 @@ function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
   // If the selected profile is flat (2 points at same Z), synthesise a peaked
   // cross-section using the ridge height from the other facade's profile.
   // Sections should always show the roof pitch, not just the eave line.
-  if (roofProfile && roofProfile.length === 2 &&
-      Math.abs(roofProfile[0].z - roofProfile[1].z) < 1) {
+  if (
+    roofProfile &&
+    roofProfile.length === 2 &&
+    Math.abs(roofProfile[0].z - roofProfile[1].z) < 1
+  ) {
     const otherProfile = model.getRoofProfile(isLongitudinal ? "E" : "N");
     if (otherProfile && otherProfile.length > 2) {
-      const peakZ = Math.max(...otherProfile.map(p => p.z));
+      const peakZ = Math.max(...otherProfile.map((p) => p.z));
       const eaveZ = roofProfile[0].z;
       if (peakZ > eaveZ) {
         roofProfile = [
@@ -1512,7 +1703,7 @@ function drawSectionRoof(model, offsetX, groundY, pxPerMM, isLongitudinal) {
       const isUp = Math.round((ix - roofLeft) / zigzagStep) % 2 === 0;
       const y1 = ceilingY - (isUp ? 0 : zigzagH);
       const y2 = ceilingY - (isUp ? zigzagH : 0);
-      svg += `<line stroke="#C080D0" stroke-width="0.8" x1="${ix}" y1="${y1}" x2="${ix + zigzagStep}" y2="${y2}"/>`;
+      svg += `<line stroke="#C080D0" stroke-width="${LW.hatch}" x1="${ix}" y1="${y1}" x2="${ix + zigzagStep}" y2="${y2}"/>`;
     }
     svg += "</g>";
   }
@@ -1580,15 +1771,31 @@ function getBoundsHeight(polygon) {
 }
 
 /**
- * Draw wall hatch pattern (poché)
+ * Draw wall hatch pattern (poché) using material-specific SVG fill.
+ *
+ * Clips the pattern to the wall thickness zone (between outer and inner polygon)
+ * using an SVG clipPath with evenodd fill-rule.
+ *
+ * @param {Array} outerPolygon - Outer footprint vertices [{x,y}, ...]
+ * @param {Array} innerPolygon - Inner footprint vertices [{x,y}, ...]
+ * @param {number} pxPerMM - Drawing scale factor
+ * @param {string} [material='block'] - Wall material type
+ * @param {Object} [style] - Style preset (passed to generateHatchPattern)
  */
-function drawWallHatch(outerPolygon, innerPolygon, pxPerMM) {
-  // Draw diagonal hatch lines ONLY in the wall thickness zone (between outer and inner polygon)
-  // Uses SVG clipPath with evenodd fill-rule to clip to wall zone only
+function drawWallHatch(
+  outerPolygon,
+  innerPolygon,
+  pxPerMM,
+  material = "block",
+  style,
+) {
+  const uid = Math.random().toString(36).slice(2, 8);
+  const clipId = `wall-clip-${uid}`;
+  const patId = `wall-mat-${uid}`;
 
-  const clipId = `wall-clip-${Math.random().toString(36).slice(2, 8)}`;
+  const hatchStyle = style || getStylePreset("technical");
 
-  // Build clip path: outer polygon CCW + inner polygon CW = wall zone only (evenodd)
+  // Build clip path: outer polygon CW + inner polygon CCW = wall zone only (evenodd)
   const outerPath =
     outerPolygon
       .map(
@@ -1605,33 +1812,94 @@ function drawWallHatch(outerPolygon, innerPolygon, pxPerMM) {
       )
       .join(" ") + " Z";
 
-  let svg = `<defs><clipPath id="${clipId}"><path d="${outerPath} ${innerPath}" fill-rule="evenodd"/></clipPath></defs>`;
-  svg += `<g class="wall-poche" clip-path="url(#${clipId})">`;
+  // Generate material-specific pattern
+  const patternDef = generateHatchPattern(patId, hatchStyle, 45, 3, material);
 
-  // Bounding box for hatch lines
-  const minX = Math.min(...outerPolygon.map((p) => p.x));
-  const maxX = Math.max(...outerPolygon.map((p) => p.x));
-  const minY = Math.min(...outerPolygon.map((p) => p.y));
-  const maxY = Math.max(...outerPolygon.map((p) => p.y));
+  let svg = patternDef;
+  svg += `<defs><clipPath id="${clipId}"><path d="${outerPath} ${innerPath}" fill-rule="evenodd"/></clipPath></defs>`;
 
-  const spacing = (3 / pxPerMM) * MM_PER_M; // 3mm spacing at scale
+  // Bounding box for the fill rect
+  const minX = Math.min(...outerPolygon.map((p) => p.x)) * pxPerMM;
+  const maxX = Math.max(...outerPolygon.map((p) => p.x)) * pxPerMM;
+  const minY = Math.min(...outerPolygon.map((p) => p.y)) * pxPerMM;
+  const maxY = Math.max(...outerPolygon.map((p) => p.y)) * pxPerMM;
 
-  for (let x = minX; x < maxX; x += spacing) {
-    svg += `<line class="hatch" x1="${x * pxPerMM}" y1="${minY * pxPerMM}" x2="${(x + spacing * 2) * pxPerMM}" y2="${maxY * pxPerMM}"/>`;
-  }
+  // Fill the clipped zone with the material pattern
+  svg += `<rect clip-path="url(#${clipId})" x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}" fill="url(#${patId})" stroke="none"/>`;
 
-  svg += "</g>";
   return svg;
 }
 
 /**
- * Generate SVG hatch pattern definition
+ * Generate SVG hatch pattern definition for a given material.
+ *
+ * @param {string} id - Pattern ID for SVG referencing
+ * @param {Object} style - Style preset (colors, lineWeights)
+ * @param {number} angle - Base rotation angle (degrees)
+ * @param {number} spacing - Base line spacing (SVG px)
+ * @param {string} [material='block'] - Wall material type
+ * @returns {string} SVG <defs> block with the pattern
  */
-function generateHatchPattern(id, style, angle, spacing) {
+function generateHatchPattern(id, style, angle, spacing, material = "block") {
+  const c = style.colors.wallHatch;
+  const sw = LW.hatch;
+  const mat = (material || "block").toLowerCase();
+
+  if (mat.includes("brick")) {
+    // Stretcher bond — alternating rows offset by half a brick width
+    const brickW = spacing * 3;
+    const brickH = spacing * 1.2;
+    const courseH = brickH;
+    const patH = courseH * 2; // Two courses for the offset repeat
+    return `
+  <defs>
+    <pattern id="${id}" patternUnits="userSpaceOnUse" width="${brickW}" height="${patH}">
+      <!-- Course 1: full bricks -->
+      <line x1="0" y1="${courseH}" x2="${brickW}" y2="${courseH}" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="0" y1="0" x2="0" y2="${courseH}" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="${brickW / 2}" y1="0" x2="${brickW / 2}" y2="${courseH}" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="${brickW}" y1="0" x2="${brickW}" y2="${courseH}" stroke="${c}" stroke-width="${sw}"/>
+      <!-- Course 2: offset by half brick -->
+      <line x1="0" y1="${patH}" x2="${brickW}" y2="${patH}" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="${brickW / 4}" y1="${courseH}" x2="${brickW / 4}" y2="${patH}" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="${(brickW * 3) / 4}" y1="${courseH}" x2="${(brickW * 3) / 4}" y2="${patH}" stroke="${c}" stroke-width="${sw}"/>
+    </pattern>
+  </defs>
+  `;
+  }
+
+  if (mat.includes("concrete")) {
+    // Dense diagonal cross-hatch at 45° and 135°
+    const s = spacing * 1.5;
+    return `
+  <defs>
+    <pattern id="${id}" patternUnits="userSpaceOnUse" width="${s}" height="${s}">
+      <line x1="0" y1="0" x2="${s}" y2="${s}" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="${s}" y1="0" x2="0" y2="${s}" stroke="${c}" stroke-width="${sw}"/>
+    </pattern>
+  </defs>
+  `;
+  }
+
+  if (mat.includes("timber") || mat.includes("wood")) {
+    // Fine parallel vertical lines with occasional knot circles
+    const s = spacing * 1.2;
+    const patH = s * 8;
+    return `
+  <defs>
+    <pattern id="${id}" patternUnits="userSpaceOnUse" width="${s}" height="${patH}">
+      <line x1="${s / 2}" y1="0" x2="${s / 2}" y2="${patH}" stroke="${c}" stroke-width="${sw}"/>
+      <circle cx="${s / 2}" cy="${patH * 0.4}" r="${s * 0.3}" fill="none" stroke="${c}" stroke-width="${sw}"/>
+    </pattern>
+  </defs>
+  `;
+  }
+
+  // block, render, or default: medium-spaced diagonal lines at 45° only
   return `
   <defs>
     <pattern id="${id}" patternUnits="userSpaceOnUse" width="${spacing * 2}" height="${spacing * 2}" patternTransform="rotate(${angle})">
-      <line x1="0" y1="0" x2="0" y2="${spacing * 2}" stroke="${style.colors.wallHatch}" stroke-width="0.5"/>
+      <line x1="0" y1="0" x2="0" y2="${spacing * 2}" stroke="${c}" stroke-width="${sw}"/>
     </pattern>
   </defs>
   `;
@@ -1648,8 +1916,8 @@ function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
 
   if (vertical) {
     // Extension lines
-    svg += `<line stroke="#999" stroke-width="0.3" x1="${x1 - 12}" y1="${y1}" x2="${x1 - 2}" y2="${y1}"/>`;
-    svg += `<line stroke="#999" stroke-width="0.3" x1="${x1 - 12}" y1="${y2}" x2="${x1 - 2}" y2="${y2}"/>`;
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1 - 12}" y1="${y1}" x2="${x1 - 2}" y2="${y1}"/>`;
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1 - 12}" y1="${y2}" x2="${x1 - 2}" y2="${y2}"/>`;
     // Dimension line
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
     // Arrowheads (pointing up and down)
@@ -1659,8 +1927,8 @@ function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
     svg += `<text class="dimension-text" x="${x1 + 15}" y="${midY}" transform="rotate(-90, ${x1 + 15}, ${midY})">${escXml(text)}</text>`;
   } else {
     // Extension lines
-    svg += `<line stroke="#999" stroke-width="0.3" x1="${x1}" y1="${y1 + 12}" x2="${x1}" y2="${y1 + 2}"/>`;
-    svg += `<line stroke="#999" stroke-width="0.3" x1="${x2}" y1="${y1 + 12}" x2="${x2}" y2="${y1 + 2}"/>`;
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1}" y1="${y1 + 12}" x2="${x1}" y2="${y1 + 2}"/>`;
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x2}" y1="${y1 + 12}" x2="${x2}" y2="${y1 + 2}"/>`;
     // Dimension line
     svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
     // Arrowheads (pointing left and right)
@@ -1668,6 +1936,91 @@ function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
     svg += `<polygon fill="${arrowFill}" points="${x2},${y1} ${x2 - arrowLen},${y1 - arrowHalf} ${x2 - arrowLen},${y1 + arrowHalf}"/>`;
     const midX = (x1 + x2) / 2;
     svg += `<text class="dimension-text" x="${midX}" y="${y1 - 8}">${escXml(text)}</text>`;
+  }
+
+  svg += "</g>";
+  return svg;
+}
+
+/**
+ * Draw a continuous dimension chain with architectural 45° serif tick marks.
+ *
+ * Generates witness lines from geometry to the dimension line, a continuous
+ * dimension line with tick marks at each point, and centered text labels
+ * showing each segment length in millimeters.
+ *
+ * All coordinates are in SVG pixel space — the caller converts from mm.
+ *
+ * @param {Array<number>} points - Sorted positions along the chain axis (SVG px, ≥2)
+ * @param {number} offset - Perpendicular distance from geometry edge to dim line (px)
+ * @param {number} baselinePos - SVG coordinate of the geometry edge (witness lines start here)
+ * @param {boolean} vertical - If true, chain runs vertically (points are Y, offset goes left)
+ * @param {number} pxPerMM - Scale factor for converting px distances back to mm labels
+ * @param {string} [id=''] - Optional SVG group id
+ * @returns {string} SVG markup
+ */
+function drawDimensionChain(
+  points,
+  offset,
+  baselinePos,
+  vertical,
+  pxPerMM,
+  id = "",
+) {
+  if (!points || points.length < 2) return "";
+
+  const tickHalf = SYMBOL_SIZES.dimension.tickLength / 2; // 4px
+  const overshoot = 3; // px past dimension line
+
+  let svg = `<g class="dimension" ${id ? `id="${id}"` : ""}>`;
+
+  if (vertical) {
+    // Dimension line runs vertically; offset goes leftward from baselinePos
+    const dimX = baselinePos - offset;
+
+    // Continuous dimension line
+    svg += `<line x1="${dimX}" y1="${points[0]}" x2="${dimX}" y2="${points[points.length - 1]}" stroke-width="${LW.dimension}"/>`;
+
+    for (let i = 0; i < points.length; i++) {
+      const py = points[i];
+      // Witness line (horizontal, from geometry edge to past dimension line)
+      svg += `<line x1="${baselinePos}" y1="${py}" x2="${dimX - overshoot}" y2="${py}" stroke="#999" stroke-width="${LW.hatch}"/>`;
+      // 45° serif tick mark
+      svg += `<line x1="${dimX - tickHalf}" y1="${py - tickHalf}" x2="${dimX + tickHalf}" y2="${py + tickHalf}" stroke-width="${LW.dimension}"/>`;
+    }
+
+    // Text labels for each segment
+    for (let i = 0; i < points.length - 1; i++) {
+      const segPx = Math.abs(points[i + 1] - points[i]);
+      if (segPx < 30) continue; // too narrow for text
+      const segMM = Math.round(segPx / pxPerMM);
+      const midY = (points[i] + points[i + 1]) / 2;
+      const textX = dimX - 12;
+      svg += `<text class="dimension-text" x="${textX}" y="${midY}" transform="rotate(-90, ${textX}, ${midY})">${segMM}</text>`;
+    }
+  } else {
+    // Dimension line runs horizontally; offset goes downward from baselinePos
+    const dimY = baselinePos + offset;
+
+    // Continuous dimension line
+    svg += `<line x1="${points[0]}" y1="${dimY}" x2="${points[points.length - 1]}" y2="${dimY}" stroke-width="${LW.dimension}"/>`;
+
+    for (let i = 0; i < points.length; i++) {
+      const px = points[i];
+      // Witness line (vertical, from geometry edge down to past dimension line)
+      svg += `<line x1="${px}" y1="${baselinePos}" x2="${px}" y2="${dimY + overshoot}" stroke="#999" stroke-width="${LW.hatch}"/>`;
+      // 45° serif tick mark
+      svg += `<line x1="${px - tickHalf}" y1="${dimY - tickHalf}" x2="${px + tickHalf}" y2="${dimY + tickHalf}" stroke-width="${LW.dimension}"/>`;
+    }
+
+    // Text labels for each segment
+    for (let i = 0; i < points.length - 1; i++) {
+      const segPx = Math.abs(points[i + 1] - points[i]);
+      if (segPx < 30) continue; // too narrow for text
+      const segMM = Math.round(segPx / pxPerMM);
+      const midX = (points[i] + points[i + 1]) / 2;
+      svg += `<text class="dimension-text" x="${midX}" y="${dimY - 4}">${segMM}</text>`;
+    }
   }
 
   svg += "</g>";
@@ -1702,7 +2055,7 @@ function drawNorthArrow(x, y) {
   const { radius, arrowSize } = SYMBOL_SIZES.northArrow;
   return `
     <g transform="translate(${x}, ${y})">
-      <circle cx="0" cy="0" r="${radius}" fill="none" stroke="#333" stroke-width="1"/>
+      <circle cx="0" cy="0" r="${radius}" fill="none" stroke="#333" stroke-width="${LW.annotation}"/>
       <polygon points="0,-${arrowSize} -4,4 0,0 4,4" fill="#333"/>
       <text x="0" y="-${radius + 5}" text-anchor="middle" font-family="Arial" font-size="10" fill="#333">N</text>
     </g>
@@ -1719,8 +2072,8 @@ function drawScaleBar(x, y, scale) {
   return `
     <g transform="translate(${x}, ${y})">
       <rect x="0" y="-${height / 2}" width="${meterPx}" height="${height}" fill="#333"/>
-      <line x1="0" y1="${-tickHeight}" x2="0" y2="${tickHeight}" stroke="#333" stroke-width="1"/>
-      <line x1="${meterPx}" y1="${-tickHeight}" x2="${meterPx}" y2="${tickHeight}" stroke="#333" stroke-width="1"/>
+      <line x1="0" y1="${-tickHeight}" x2="0" y2="${tickHeight}" stroke="#333" stroke-width="${LW.annotation}"/>
+      <line x1="${meterPx}" y1="${-tickHeight}" x2="${meterPx}" y2="${tickHeight}" stroke="#333" stroke-width="${LW.annotation}"/>
       <text x="0" y="${tickHeight + 12}" text-anchor="start" font-family="Arial" font-size="9" fill="#333">0</text>
       <text x="${meterPx}" y="${tickHeight + 12}" text-anchor="end" font-family="Arial" font-size="9" fill="#333">1 m</text>
     </g>
@@ -1744,9 +2097,9 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const bw = Math.min(widthPx * 0.5, 60);
     const bh = Math.min(heightPx * 0.6, 80);
     const pillowH = bh * 0.15;
-    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - bw / 2}" y="${cy - bh / 2}" width="${bw}" height="${bh}" rx="2"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="${LW.furniture}" x="${cx - bw / 2}" y="${cy - bh / 2}" width="${bw}" height="${bh}" rx="2"/>`;
     // Pillow at head
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.5" x="${cx - bw / 2 + 4}" y="${cy - bh / 2 + 3}" width="${bw - 8}" height="${pillowH}" rx="2"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - bw / 2 + 4}" y="${cy - bh / 2 + 3}" width="${bw - 8}" height="${pillowH}" rx="2"/>`;
   } else if (
     type.includes("living") ||
     type.includes("lounge") ||
@@ -1756,60 +2109,60 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const sw = Math.min(widthPx * 0.45, 55);
     const sh = Math.min(heightPx * 0.3, 30);
     // Seat
-    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh}" rx="2"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="${LW.furniture}" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh}" rx="2"/>`;
     // Back
-    svg += `<rect fill="#e8e8e8" stroke="#777" stroke-width="0.5" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh * 0.3}" rx="1"/>`;
+    svg += `<rect fill="#e8e8e8" stroke="#777" stroke-width="${LW.furniture}" x="${cx - sw / 2}" y="${cy - sh / 2}" width="${sw}" height="${sh * 0.3}" rx="1"/>`;
     // Cushion divider lines
     const third = sw / 3;
-    svg += `<line stroke="#aaa" stroke-width="0.4" x1="${cx - sw / 2 + third}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third}" y2="${cy + sh / 2}"/>`;
-    svg += `<line stroke="#aaa" stroke-width="0.4" x1="${cx - sw / 2 + third * 2}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third * 2}" y2="${cy + sh / 2}"/>`;
+    svg += `<line stroke="#aaa" stroke-width="${LW.furniture}" x1="${cx - sw / 2 + third}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third}" y2="${cy + sh / 2}"/>`;
+    svg += `<line stroke="#aaa" stroke-width="${LW.furniture}" x1="${cx - sw / 2 + third * 2}" y1="${cy - sh / 2 + sh * 0.3}" x2="${cx - sw / 2 + third * 2}" y2="${cy + sh / 2}"/>`;
   } else if (type.includes("kitchen") && type.includes("dining")) {
     // Combined kitchen-dining: worktop in upper portion, dining table in lower
     const kw = Math.min(widthPx * 0.6, 70);
     const kh = Math.min(heightPx * 0.12, 14);
     const ky = cy - heightPx * 0.35;
     // Kitchen worktop
-    svg += `<rect fill="#efefef" stroke="#777" stroke-width="0.7" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
+    svg += `<rect fill="#efefef" stroke="#777" stroke-width="${LW.furniture}" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
     // Sink
-    svg += `<circle fill="#e0e8f0" stroke="#777" stroke-width="0.5" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
+    svg += `<circle fill="#e0e8f0" stroke="#777" stroke-width="${LW.furniture}" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
     // Cooker (4 circles)
     const cr = kh * 0.2;
     const cookX = cx + kw * 0.2;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
     // Dining table below
     const tw = Math.min(widthPx * 0.3, 40);
     const th = Math.min(heightPx * 0.2, 25);
     const dy = cy + heightPx * 0.1;
-    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - tw / 2}" y="${dy}" width="${tw}" height="${th}" rx="1"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="${LW.furniture}" x="${cx - tw / 2}" y="${dy}" width="${tw}" height="${th}" rx="1"/>`;
     // 4 chairs
     const chW = tw * 0.2;
     const chH = th * 0.25;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chW / 2}" y="${dy - chH - 2}" width="${chW}" height="${chH}"/>`;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chW / 2}" y="${dy + th + 2}" width="${chW}" height="${chH}"/>`;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - tw / 2 - chH - 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx + tw / 2 + 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - chW / 2}" y="${dy - chH - 2}" width="${chW}" height="${chH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - chW / 2}" y="${dy + th + 2}" width="${chW}" height="${chH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - tw / 2 - chH - 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx + tw / 2 + 2}" y="${dy + th / 2 - chW / 2}" width="${chH}" height="${chW}"/>`;
   } else if (type.includes("kitchen")) {
     // Worktop line with sink circle and cooker (4 circles)
     const kw = Math.min(widthPx * 0.6, 70);
     const kh = Math.min(heightPx * 0.15, 16);
     const ky = cy - heightPx * 0.25;
     // Worktop
-    svg += `<rect fill="#efefef" stroke="#777" stroke-width="0.7" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
+    svg += `<rect fill="#efefef" stroke="#777" stroke-width="${LW.furniture}" x="${cx - kw / 2}" y="${ky}" width="${kw}" height="${kh}" rx="1"/>`;
     // Sink (circle cutout)
-    svg += `<circle fill="#e0e8f0" stroke="#777" stroke-width="0.5" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
+    svg += `<circle fill="#e0e8f0" stroke="#777" stroke-width="${LW.furniture}" cx="${cx - kw * 0.15}" cy="${ky + kh / 2}" r="${kh * 0.35}"/>`;
     // Cooker (4 circles)
     const cr = kh * 0.2;
     const cookX = cx + kw * 0.2;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
-    svg += `<circle fill="none" stroke="#777" stroke-width="0.4" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.35}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX - cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
+    svg += `<circle fill="none" stroke="#777" stroke-width="${LW.furniture}" cx="${cookX + cr * 1.3}" cy="${ky + kh * 0.65}" r="${cr}"/>`;
     // Fridge rectangle
     const fw = kh * 0.8;
-    svg += `<rect fill="none" stroke="#777" stroke-width="0.5" x="${cx + kw / 2 - fw - 2}" y="${ky}" width="${fw}" height="${kh}" rx="1"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="${LW.furniture}" x="${cx + kw / 2 - fw - 2}" y="${ky}" width="${fw}" height="${kh}" rx="1"/>`;
   } else if (
     type.includes("bath") ||
     type.includes("shower") ||
@@ -1822,17 +2175,17 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const bathW = 25 * scale;
     const bathH = 55 * scale;
     // Bath
-    svg += `<rect fill="#e8f0f8" stroke="#777" stroke-width="0.6" x="${cx - widthPx * 0.25}" y="${cy - bathH / 2}" width="${bathW}" height="${bathH}" rx="3"/>`;
+    svg += `<rect fill="#e8f0f8" stroke="#777" stroke-width="${LW.furniture}" x="${cx - widthPx * 0.25}" y="${cy - bathH / 2}" width="${bathW}" height="${bathH}" rx="3"/>`;
     // Taps
     svg += `<circle fill="#777" cx="${cx - widthPx * 0.25 + bathW / 2}" cy="${cy - bathH / 2 + 4 * scale}" r="${2 * scale}"/>`;
     // WC: cistern rectangle + bowl arc
     const wcX = cx + widthPx * 0.1;
     const wcW = 14 * scale;
     const wcH = 10 * scale;
-    svg += `<rect fill="#e8e8e8" stroke="#777" stroke-width="0.5" x="${wcX - wcW / 2}" y="${cy - wcH}" width="${wcW}" height="${wcH}" rx="1"/>`;
-    svg += `<ellipse fill="#e8e8e8" stroke="#777" stroke-width="0.5" cx="${wcX}" cy="${cy + wcH * 0.3}" rx="${wcW * 0.45}" ry="${wcH * 0.7}"/>`;
+    svg += `<rect fill="#e8e8e8" stroke="#777" stroke-width="${LW.furniture}" x="${wcX - wcW / 2}" y="${cy - wcH}" width="${wcW}" height="${wcH}" rx="1"/>`;
+    svg += `<ellipse fill="#e8e8e8" stroke="#777" stroke-width="${LW.furniture}" cx="${wcX}" cy="${cy + wcH * 0.3}" rx="${wcW * 0.45}" ry="${wcH * 0.7}"/>`;
     // Basin circle
-    svg += `<circle fill="#e8f0f8" stroke="#777" stroke-width="0.5" cx="${cx + widthPx * 0.25}" cy="${cy - heightPx * 0.15}" r="${6 * scale}"/>`;
+    svg += `<circle fill="#e8f0f8" stroke="#777" stroke-width="${LW.furniture}" cx="${cx + widthPx * 0.25}" cy="${cy - heightPx * 0.15}" r="${6 * scale}"/>`;
   } else if (type.includes("dining")) {
     // Table rectangle with chair rectangles around it
     const tw = Math.min(widthPx * 0.35, 45);
@@ -1840,12 +2193,12 @@ function drawFurnitureSymbol(roomType, cx, cy, widthPx, heightPx) {
     const chairW = tw * 0.2;
     const chairH = th * 0.25;
     // Table
-    svg += `<rect fill="none" stroke="#777" stroke-width="0.7" x="${cx - tw / 2}" y="${cy - th / 2}" width="${tw}" height="${th}" rx="1"/>`;
+    svg += `<rect fill="none" stroke="#777" stroke-width="${LW.furniture}" x="${cx - tw / 2}" y="${cy - th / 2}" width="${tw}" height="${th}" rx="1"/>`;
     // Chairs (4, one on each side)
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chairW / 2}" y="${cy - th / 2 - chairH - 2}" width="${chairW}" height="${chairH}"/>`;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - chairW / 2}" y="${cy + th / 2 + 2}" width="${chairW}" height="${chairH}"/>`;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx - tw / 2 - chairH - 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
-    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="0.4" x="${cx + tw / 2 + 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - chairW / 2}" y="${cy - th / 2 - chairH - 2}" width="${chairW}" height="${chairH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - chairW / 2}" y="${cy + th / 2 + 2}" width="${chairW}" height="${chairH}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx - tw / 2 - chairH - 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
+    svg += `<rect fill="#e0e0e0" stroke="#777" stroke-width="${LW.furniture}" x="${cx + tw / 2 + 2}" y="${cy - chairW / 2}" width="${chairH}" height="${chairW}"/>`;
   }
 
   return svg;
@@ -1865,8 +2218,8 @@ function drawTitleBlock(svgWidth, svgHeight, title, drawingNumber, scaleValue) {
   const y = svgHeight - blockH - 10;
 
   let svg = `<g id="title-block">`;
-  svg += `<rect x="${x}" y="${y}" width="${blockW}" height="${blockH}" fill="#ffffff" stroke="#333" stroke-width="1"/>`;
-  svg += `<line x1="${x}" y1="${y + 20}" x2="${x + blockW}" y2="${y + 20}" stroke="#333" stroke-width="0.5"/>`;
+  svg += `<rect x="${x}" y="${y}" width="${blockW}" height="${blockH}" fill="#ffffff" stroke="#333" stroke-width="${LW.annotation}"/>`;
+  svg += `<line x1="${x}" y1="${y + 20}" x2="${x + blockW}" y2="${y + 20}" stroke="#333" stroke-width="${LW.hatch}"/>`;
   svg += `<text x="${x + 5}" y="${y + 14}" font-family="Arial, sans-serif" font-size="9" font-weight="700" fill="#333">${escXml(title)}</text>`;
   svg += `<text x="${x + 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666">Dwg: ${escXml(drawingNumber)}</text>`;
   svg += `<text x="${x + blockW - 5}" y="${y + 33}" font-family="Arial, sans-serif" font-size="7" fill="#666" text-anchor="end">Scale 1:${Math.round((1000 / scaleValue) * 10) / 10}</text>`;
@@ -1882,19 +2235,27 @@ function drawTitleBlock(svgWidth, svgHeight, title, drawingNumber, scaleValue) {
  * Get a material fill pattern definition and URL reference for elevations.
  * Returns SVG <defs> content and the fill attribute value.
  */
-function getMaterialFill(materialName, hexColor) {
+function getMaterialFill(materialName, hexColor, pxPerMM = 0.05) {
   const name = (materialName || "").toLowerCase();
+  const mm = (v) => (v * pxPerMM).toFixed(2);
 
   if (name.includes("brick")) {
-    // Brick coursing with stretcher bond pattern — more visible mortar lines
+    // Stretcher bond — 215×65mm bricks, 10mm mortar, half-brick offset
+    const courseH = mm(75),
+      patW = mm(225),
+      patH = mm(150);
+    const halfBrick = mm(112.5);
+    const jw = Math.max(0.3, 10 * pxPerMM * 0.8).toFixed(2);
+    const js = "rgba(255,255,255,0.5)";
+    const c = hexColor || "#C4956A";
     return {
-      defs: `<pattern id="mat-brick" patternUnits="userSpaceOnUse" width="20" height="8">
-        <rect width="20" height="8" fill="${hexColor || "#C4956A"}"/>
-        <line x1="0" y1="4" x2="20" y2="4" stroke="rgba(0,0,0,0.35)" stroke-width="0.8"/>
-        <line x1="0" y1="8" x2="20" y2="8" stroke="rgba(0,0,0,0.35)" stroke-width="0.8"/>
-        <line x1="10" y1="0" x2="10" y2="4" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
-        <line x1="0" y1="4" x2="0" y2="8" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
-        <line x1="20" y1="4" x2="20" y2="8" stroke="rgba(0,0,0,0.25)" stroke-width="0.6"/>
+      defs: `<pattern id="mat-brick" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${c}"/>
+        <line x1="0" y1="0" x2="${patW}" y2="0" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${courseH}" x2="${patW}" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${patH}" x2="${patW}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="0" x2="0" y2="${courseH}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${halfBrick}" y1="${courseH}" x2="${halfBrick}" y2="${patH}" stroke="${js}" stroke-width="${jw}"/>
       </pattern>`,
       fill: "url(#mat-brick)",
     };
@@ -1904,11 +2265,22 @@ function getMaterialFill(materialName, hexColor) {
     name.includes("clad") ||
     name.includes("wood")
   ) {
-    // Vertical line pattern over timber color
+    // Horizontal cladding planks — 150mm height with shadow lines
+    const plankH = mm(150),
+      patW = mm(200);
+    const grainY1 = mm(50),
+      grainY2 = mm(100),
+      shadowY = mm(148);
+    const shadowSW = Math.max(0.4, 3 * pxPerMM).toFixed(2);
+    const edgeSW = Math.max(0.3, 2 * pxPerMM).toFixed(2);
+    const c = hexColor || "#A0785A";
     return {
-      defs: `<pattern id="mat-timber" patternUnits="userSpaceOnUse" width="6" height="10">
-        <rect width="6" height="10" fill="${hexColor || "#A0785A"}"/>
-        <line x1="3" y1="0" x2="3" y2="10" stroke="rgba(0,0,0,0.12)" stroke-width="0.5"/>
+      defs: `<pattern id="mat-timber" patternUnits="userSpaceOnUse" width="${patW}" height="${plankH}">
+        <rect width="${patW}" height="${plankH}" fill="${c}"/>
+        <line x1="0" y1="${grainY1}" x2="${patW}" y2="${grainY1}" stroke="rgba(0,0,0,0.05)" stroke-width="0.3"/>
+        <line x1="0" y1="${grainY2}" x2="${patW}" y2="${grainY2}" stroke="rgba(0,0,0,0.04)" stroke-width="0.3"/>
+        <line x1="0" y1="${shadowY}" x2="${patW}" y2="${shadowY}" stroke="rgba(0,0,0,0.15)" stroke-width="${shadowSW}"/>
+        <line x1="0" y1="${plankH}" x2="${patW}" y2="${plankH}" stroke="rgba(0,0,0,0.25)" stroke-width="${edgeSW}"/>
       </pattern>`,
       fill: "url(#mat-timber)",
     };
@@ -1918,7 +2290,7 @@ function getMaterialFill(materialName, hexColor) {
     name.includes("metal") ||
     name.includes("steel")
   ) {
-    // Standing seam pattern
+    // Standing seam pattern (unchanged — not in scope)
     return {
       defs: `<pattern id="mat-metal" patternUnits="userSpaceOnUse" width="16" height="10">
         <rect width="16" height="10" fill="${hexColor || "#6B7280"}"/>
@@ -1928,20 +2300,57 @@ function getMaterialFill(materialName, hexColor) {
     };
   }
   if (name.includes("stone") || name.includes("ashlar")) {
-    // Coursed stone pattern — irregular horizontal courses with vertical joints
+    // Ashlar — 3 courses at 200mm with varied block widths
+    const patW = mm(800),
+      patH = mm(600),
+      cH = mm(200);
+    const jw = Math.max(0.3, 8 * pxPerMM).toFixed(2);
+    const js = "rgba(0,0,0,0.2)";
+    const y2 = cH,
+      y3 = mm(400),
+      y4 = patH;
+    const c1j1 = mm(350),
+      c1j2 = mm(600);
+    const c2j1 = mm(200),
+      c2j2 = mm(500);
+    const c3j1 = mm(300),
+      c3j2 = mm(550);
+    const c = hexColor || "#D0C8B8";
     return {
-      defs: `<pattern id="mat-stone" patternUnits="userSpaceOnUse" width="25" height="15">
-        <rect width="25" height="15" fill="${hexColor || "#D0C8B8"}"/>
-        <line x1="0" y1="8" x2="25" y2="8" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>
-        <line x1="0" y1="15" x2="25" y2="15" stroke="rgba(0,0,0,0.22)" stroke-width="0.6"/>
-        <line x1="12" y1="0" x2="12" y2="8" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
-        <line x1="6" y1="8" x2="6" y2="15" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
-        <line x1="19" y1="8" x2="19" y2="15" stroke="rgba(0,0,0,0.15)" stroke-width="0.4"/>
+      defs: `<pattern id="mat-stone" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${c}"/>
+        <line x1="0" y1="${y2}" x2="${patW}" y2="${y2}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${y3}" x2="${patW}" y2="${y3}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="0" y1="${y4}" x2="${patW}" y2="${y4}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c1j1}" y1="0" x2="${c1j1}" y2="${y2}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c1j2}" y1="0" x2="${c1j2}" y2="${y2}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c2j1}" y1="${y2}" x2="${c2j1}" y2="${y3}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c2j2}" y1="${y2}" x2="${c2j2}" y2="${y3}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c3j1}" y1="${y3}" x2="${c3j1}" y2="${y4}" stroke="${js}" stroke-width="${jw}"/>
+        <line x1="${c3j2}" y1="${y3}" x2="${c3j2}" y2="${y4}" stroke="${js}" stroke-width="${jw}"/>
       </pattern>`,
       fill: "url(#mat-stone)",
     };
   }
-  // Default: solid fill with material color (render/stucco/plaster)
+  if (
+    name.includes("render") ||
+    name.includes("stucco") ||
+    name.includes("plaster")
+  ) {
+    // Smooth render wash — flat fill with faint texture banding
+    const c = hexColor || "#F5F5F5";
+    const patH = mm(100),
+      patW = mm(100),
+      lineY = mm(50);
+    return {
+      defs: `<pattern id="mat-render" patternUnits="userSpaceOnUse" width="${patW}" height="${patH}">
+        <rect width="${patW}" height="${patH}" fill="${c}"/>
+        <line x1="0" y1="${lineY}" x2="${patW}" y2="${lineY}" stroke="rgba(0,0,0,0.04)" stroke-width="0.5"/>
+      </pattern>`,
+      fill: "url(#mat-render)",
+    };
+  }
+  // Default: solid fill with material color
   return {
     defs: "",
     fill: hexColor || "#E5E7EB",

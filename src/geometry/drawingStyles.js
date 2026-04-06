@@ -29,6 +29,54 @@ export const CONVENTIONS = Object.freeze({
 });
 
 // =============================================================================
+// LINE WEIGHTS (mm) — ISO 128 / BS 8888
+// =============================================================================
+
+/**
+ * Standard architectural pen widths in millimeters.
+ * Based on ISO 128 / BS 8888 line weight conventions.
+ */
+export const LINE_WEIGHTS_MM = Object.freeze({
+  /** Cut-through walls (plans, sections) */
+  wallCut: 0.7,
+  /** Wall outlines visible in elevation */
+  wallProfile: 0.5,
+  /** Ground/datum line */
+  groundLine: 0.5,
+  /** Roof outlines */
+  roof: 0.5,
+  /** Section cut lines, level markers */
+  annotation: 0.25,
+  /** Dimension lines and extension lines */
+  dimension: 0.25,
+  /** Window glazing bars */
+  glazingBar: 0.3,
+  /** Hatch/poché fill lines */
+  hatch: 0.18,
+  /** Furniture symbols */
+  furniture: 0.18,
+  /** Door swing arcs */
+  doorSwing: 0.25,
+});
+
+/**
+ * Convert a millimeter pen width to SVG pixel units.
+ *
+ * Architectural line weights are absolute physical sizes —
+ * they do not vary with drawing scale.
+ *
+ * Formula: px = mm × (dpi / 25.4)
+ *
+ * @param {number} mm - Pen width in millimeters
+ * @param {number} [_scale] - Reserved (drawing scale does not affect line weight)
+ * @param {number} [dpi=150] - Target output resolution
+ * @returns {number} Stroke-width value for SVG
+ */
+export function lineWeightToPx(mm, _scale, dpi = 150) {
+  return +((mm * dpi) / 25.4).toFixed(2);
+}
+
+// =============================================================================
 // SYMBOL SIZES
 // =============================================================================
 
@@ -126,17 +174,18 @@ const STYLE_PRESETS = {
       levelMarker: "#333333",
     },
     lineWeights: {
-      wall: 3.0,
-      wallInternal: 1.8,
-      dimension: 0.5,
-      annotation: 0.8,
-      hatch: 0.3,
-      glazingBar: 0.5,
-      doorSwing: 0.5,
-      groundLine: 1.5,
-      roof: 2.0,
-      levelMarker: 0.8,
-      levelMarkerDashed: 0.5,
+      wall: lineWeightToPx(LINE_WEIGHTS_MM.wallCut),
+      wallInternal: lineWeightToPx(LINE_WEIGHTS_MM.wallProfile),
+      dimension: lineWeightToPx(LINE_WEIGHTS_MM.dimension),
+      annotation: lineWeightToPx(LINE_WEIGHTS_MM.annotation),
+      hatch: lineWeightToPx(LINE_WEIGHTS_MM.hatch),
+      glazingBar: lineWeightToPx(LINE_WEIGHTS_MM.glazingBar),
+      doorSwing: lineWeightToPx(LINE_WEIGHTS_MM.doorSwing),
+      groundLine: lineWeightToPx(LINE_WEIGHTS_MM.groundLine),
+      roof: lineWeightToPx(LINE_WEIGHTS_MM.roof),
+      levelMarker: lineWeightToPx(LINE_WEIGHTS_MM.annotation),
+      levelMarkerDashed: lineWeightToPx(LINE_WEIGHTS_MM.dimension),
+      furniture: lineWeightToPx(LINE_WEIGHTS_MM.furniture),
     },
   },
 
@@ -173,17 +222,18 @@ const STYLE_PRESETS = {
       levelMarker: "#5A5A5A",
     },
     lineWeights: {
-      wall: 1.6,
-      wallInternal: 1.0,
-      dimension: 0.5,
-      annotation: 0.6,
-      hatch: 0.4,
-      glazingBar: 0.5,
-      doorSwing: 0.6,
-      groundLine: 1.2,
-      roof: 1.2,
-      levelMarker: 0.6,
-      levelMarkerDashed: 0.4,
+      wall: lineWeightToPx(LINE_WEIGHTS_MM.wallCut * 0.65),
+      wallInternal: lineWeightToPx(LINE_WEIGHTS_MM.wallProfile * 0.65),
+      dimension: lineWeightToPx(LINE_WEIGHTS_MM.dimension * 0.65),
+      annotation: lineWeightToPx(LINE_WEIGHTS_MM.annotation * 0.65),
+      hatch: lineWeightToPx(LINE_WEIGHTS_MM.hatch * 0.65),
+      glazingBar: lineWeightToPx(LINE_WEIGHTS_MM.glazingBar * 0.65),
+      doorSwing: lineWeightToPx(LINE_WEIGHTS_MM.doorSwing * 0.65),
+      groundLine: lineWeightToPx(LINE_WEIGHTS_MM.groundLine * 0.65),
+      roof: lineWeightToPx(LINE_WEIGHTS_MM.roof * 0.65),
+      levelMarker: lineWeightToPx(LINE_WEIGHTS_MM.annotation * 0.65),
+      levelMarkerDashed: lineWeightToPx(LINE_WEIGHTS_MM.dimension * 0.65),
+      furniture: lineWeightToPx(LINE_WEIGHTS_MM.furniture * 0.65),
     },
   },
 
@@ -220,17 +270,18 @@ const STYLE_PRESETS = {
       levelMarker: "#C0D0FF",
     },
     lineWeights: {
-      wall: 1.8,
-      wallInternal: 1.0,
-      dimension: 0.6,
-      annotation: 0.7,
-      hatch: 0.4,
-      glazingBar: 0.5,
-      doorSwing: 0.7,
-      groundLine: 1.4,
-      roof: 1.4,
-      levelMarker: 0.7,
-      levelMarkerDashed: 0.4,
+      wall: lineWeightToPx(LINE_WEIGHTS_MM.wallCut * 0.75),
+      wallInternal: lineWeightToPx(LINE_WEIGHTS_MM.wallProfile * 0.75),
+      dimension: lineWeightToPx(LINE_WEIGHTS_MM.dimension * 0.75),
+      annotation: lineWeightToPx(LINE_WEIGHTS_MM.annotation * 0.75),
+      hatch: lineWeightToPx(LINE_WEIGHTS_MM.hatch * 0.75),
+      glazingBar: lineWeightToPx(LINE_WEIGHTS_MM.glazingBar * 0.75),
+      doorSwing: lineWeightToPx(LINE_WEIGHTS_MM.doorSwing * 0.75),
+      groundLine: lineWeightToPx(LINE_WEIGHTS_MM.groundLine * 0.75),
+      roof: lineWeightToPx(LINE_WEIGHTS_MM.roof * 0.75),
+      levelMarker: lineWeightToPx(LINE_WEIGHTS_MM.annotation * 0.75),
+      levelMarkerDashed: lineWeightToPx(LINE_WEIGHTS_MM.dimension * 0.75),
+      furniture: lineWeightToPx(LINE_WEIGHTS_MM.furniture * 0.75),
     },
   },
 };
@@ -317,12 +368,12 @@ export function generateSVGStyles(style) {
     .window {
       fill: ${c.windowGlass};
       stroke: ${c.windowFrame};
-      stroke-width: 1.2;
+      stroke-width: ${lw.glazingBar};
     }
     .window-frame {
       fill: ${c.windowFrame};
       stroke: ${c.stroke};
-      stroke-width: 0.8;
+      stroke-width: ${lw.annotation};
     }
     .window-glazing-bar {
       stroke: ${c.windowFrame};
@@ -333,7 +384,7 @@ export function generateSVGStyles(style) {
     .door {
       fill: ${c.doorFill};
       stroke: ${c.stroke};
-      stroke-width: 1;
+      stroke-width: ${lw.annotation};
     }
     .door-opening {
       fill: ${c.doorOpening};
@@ -350,7 +401,7 @@ export function generateSVGStyles(style) {
     .stair-cut {
       fill: ${c.stairCut};
       stroke: ${c.stroke};
-      stroke-width: 1;
+      stroke-width: ${lw.annotation};
     }
 
     /* --- Elevation / Section backgrounds --- */
@@ -376,12 +427,12 @@ export function generateSVGStyles(style) {
     .slab-cut {
       fill: ${c.slabFill};
       stroke: ${c.stroke};
-      stroke-width: 1;
+      stroke-width: ${lw.annotation};
     }
     .foundation {
       fill: ${c.foundationFill};
       stroke: ${c.stroke};
-      stroke-width: 1.2;
+      stroke-width: ${lw.annotation};
     }
 
     /* --- Hatching --- */
@@ -429,4 +480,6 @@ export default {
   generateSVGStyles,
   SYMBOL_SIZES,
   CONVENTIONS,
+  LINE_WEIGHTS_MM,
+  lineWeightToPx,
 };

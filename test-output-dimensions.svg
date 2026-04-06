@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 500" width="700" height="500">
+<style><![CDATA[
+    /* --- Text --- */
+    .title {
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
+      font-size: 16px;
+      font-weight: bold;
+      fill: #000000;
+      text-anchor: middle;
+    }
+    .room-label {
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      font-weight: bold;
+      fill: #000000;
+      text-anchor: middle;
+    }
+    .area-label {
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
+      font-size: 9px;
+      fill: #333333;
+      text-anchor: middle;
+    }
+
+    /* --- Rooms --- */
+    .room-fill {
+      fill: #FFFFFF;
+      stroke: none;
+    }
+    .circulation-fill {
+      fill: #F5F5F5;
+      stroke: none;
+    }
+
+    /* --- Walls --- */
+    .wall-external-cut {
+      fill: #1A1A1A;
+      stroke: #000000;
+      stroke-width: 4.13;
+    }
+    .wall-internal-fill {
+      fill: #1A1A1A;
+      stroke: #000000;
+      stroke-width: 2.95;
+    }
+    .wall-poche line {
+      stroke: #444444;
+      stroke-width: 1.06;
+    }
+
+    /* --- Windows --- */
+    .window {
+      fill: #D6EAF8;
+      stroke: #333333;
+      stroke-width: 1.77;
+    }
+    .window-frame {
+      fill: #333333;
+      stroke: #000000;
+      stroke-width: 1.48;
+    }
+    .window-glazing-bar {
+      stroke: #333333;
+      stroke-width: 1.77;
+    }
+
+    /* --- Doors --- */
+    .door {
+      fill: #6B4226;
+      stroke: #000000;
+      stroke-width: 1.48;
+    }
+    .door-opening {
+      fill: #FFFFFF;
+      stroke: none;
+    }
+    .door-swing {
+      fill: none;
+      stroke: #999999;
+      stroke-width: 1.48;
+      stroke-dasharray: 4 2;
+    }
+
+    /* --- Stairs --- */
+    .stair-cut {
+      fill: #F0F0F0;
+      stroke: #000000;
+      stroke-width: 1.48;
+    }
+
+    /* --- Elevation / Section backgrounds --- */
+    .sky {
+      fill: #E8F4FD;
+    }
+    .ground {
+      fill: #D5E8D4;
+    }
+    .ground-line {
+      stroke: #333333;
+      stroke-width: 2.95;
+    }
+
+    /* --- Roof --- */
+    .roof {
+      fill: #C0C0C0;
+      stroke: #222222;
+      stroke-width: 2.95;
+    }
+
+    /* --- Slabs and Foundation --- */
+    .slab-cut {
+      fill: #D0D0D0;
+      stroke: #000000;
+      stroke-width: 1.48;
+    }
+    .foundation {
+      fill: #C8B8A0;
+      stroke: #000000;
+      stroke-width: 1.48;
+    }
+
+    /* --- Hatching --- */
+    .hatch {
+      stroke: #666666;
+      stroke-width: 1.06;
+    }
+    .hatch-slab {
+      stroke: #666666;
+      stroke-width: 0.8480000000000001;
+    }
+
+    /* --- Dimensions --- */
+    .dimension line {
+      stroke: #333333;
+      stroke-width: 1.48;
+    }
+    .dimension-text {
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      fill: #333333;
+      text-anchor: middle;
+    }
+
+    /* --- Level markers --- */
+    .level-marker {
+      stroke: #333333;
+      stroke-width: 1.48;
+    }
+    .level-marker-dashed {
+      stroke: #333333;
+      stroke-width: 1.48;
+      stroke-dasharray: 6 3;
+    }
+    .level-text {
+      font-family: EmbeddedSans, Arial, Helvetica, sans-serif;
+      font-size: 9px;
+      fill: #000000;
+    }
+  ]]></style>
+<rect width="700" height="500" fill="#FFFFFF"/>
+
+<!-- Title -->
+<text x="350" y="25" text-anchor="middle" font-family="Arial" font-size="14" font-weight="bold" fill="#333">Dimension Chain Verification</text>
+
+<!-- Building outline -->
+<rect x="50" y="0" width="600" height="400" fill="#FFFFFF" stroke="black" stroke-width="4.13"/>
+
+<!-- Internal walls (vertical) -->
+<line x1="310" y1="0" x2="310" y2="400" stroke="black" stroke-width="2.95"/>
+<line x1="490" y1="0" x2="490" y2="400" stroke="black" stroke-width="2.95"/>
+
+<!-- Internal wall (horizontal) -->
+<line x1="50" y1="227.5" x2="650" y2="227.5" stroke="black" stroke-width="2.95"/>
+
+<!-- Room labels -->
+<text x="180" y="150" text-anchor="middle" class="room-label">Living</text>
+<text x="400" y="150" text-anchor="middle" class="room-label">Kitchen</text>
+<text x="570" y="150" text-anchor="middle" class="room-label">Utility</text>
+
+<!-- ═══ HORIZONTAL DIMENSION CHAINS (below building) ═══ -->
+<g class="dimension" id="demo-h-rooms"><line x1="50" y1="425" x2="650" y2="425" stroke-width="1.48"/><line x1="50" y1="400" x2="50" y2="428" stroke="#999" stroke-width="1.06"/><line x1="46" y1="421" x2="54" y2="429" stroke-width="1.48"/><line x1="310" y1="400" x2="310" y2="428" stroke="#999" stroke-width="1.06"/><line x1="306" y1="421" x2="314" y2="429" stroke-width="1.48"/><line x1="490" y1="400" x2="490" y2="428" stroke="#999" stroke-width="1.06"/><line x1="486" y1="421" x2="494" y2="429" stroke-width="1.48"/><line x1="650" y1="400" x2="650" y2="428" stroke="#999" stroke-width="1.06"/><line x1="646" y1="421" x2="654" y2="429" stroke-width="1.48"/><text class="dimension-text" x="180" y="421">5200</text><text class="dimension-text" x="400" y="421">3600</text><text class="dimension-text" x="570" y="421">3200</text></g><g class="dimension" id="demo-h-overall"><line x1="50" y1="455" x2="650" y2="455" stroke-width="1.48"/><line x1="50" y1="400" x2="50" y2="458" stroke="#999" stroke-width="1.06"/><line x1="46" y1="451" x2="54" y2="459" stroke-width="1.48"/><line x1="650" y1="400" x2="650" y2="458" stroke="#999" stroke-width="1.06"/><line x1="646" y1="451" x2="654" y2="459" stroke-width="1.48"/><text class="dimension-text" x="350" y="451">12000</text></g><g class="dimension" id="demo-v-rooms"><line x1="25" y1="0" x2="25" y2="400" stroke-width="1.48"/><line x1="50" y1="0" x2="22" y2="0" stroke="#999" stroke-width="1.06"/><line x1="21" y1="-4" x2="29" y2="4" stroke-width="1.48"/><line x1="50" y1="175" x2="22" y2="175" stroke="#999" stroke-width="1.06"/><line x1="21" y1="171" x2="29" y2="179" stroke-width="1.48"/><line x1="50" y1="227.5" x2="22" y2="227.5" stroke="#999" stroke-width="1.06"/><line x1="21" y1="223.5" x2="29" y2="231.5" stroke-width="1.48"/><line x1="50" y1="400" x2="22" y2="400" stroke="#999" stroke-width="1.06"/><line x1="21" y1="396" x2="29" y2="404" stroke-width="1.48"/><text class="dimension-text" x="13" y="87.5" transform="rotate(-90, 13, 87.5)">3500</text><text class="dimension-text" x="13" y="201.25" transform="rotate(-90, 13, 201.25)">1050</text><text class="dimension-text" x="13" y="313.75" transform="rotate(-90, 13, 313.75)">3450</text></g><g class="dimension" id="demo-v-overall"><line x1="-5" y1="0" x2="-5" y2="400" stroke-width="1.48"/><line x1="50" y1="0" x2="-8" y2="0" stroke="#999" stroke-width="1.06"/><line x1="-9" y1="-4" x2="-1" y2="4" stroke-width="1.48"/><line x1="50" y1="400" x2="-8" y2="400" stroke="#999" stroke-width="1.06"/><line x1="-9" y1="396" x2="-1" y2="404" stroke-width="1.48"/><text class="dimension-text" x="-17" y="200" transform="rotate(-90, -17, 200)">8000</text></g>
+<text x="20" y="460" font-family="Arial" font-size="9" fill="#666">Inner chain: room-to-room (25px offset) | Outer chain: overall (55px offset)</text>
+<text x="20" y="475" font-family="Arial" font-size="9" fill="#666">Tick marks: 45° serif (8px) | Witness lines: 3px overshoot | Text: mm integers</text>
+</svg>
