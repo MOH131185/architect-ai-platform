@@ -15,7 +15,7 @@
 const INTER_REGULAR_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
 const INTER_BOLD_URL =
-  "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
+  "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7.woff2";
 
 const REGULAR_FONT_CANDIDATES = [
   "C:/Windows/Fonts/arial.ttf",
@@ -23,6 +23,7 @@ const REGULAR_FONT_CANDIDATES = [
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
   "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
   "/System/Library/Fonts/Supplemental/Arial.ttf",
+  "/var/task/node_modules/@vercel/fonts/DejaVuSans.ttf",
 ];
 
 const BOLD_FONT_CANDIDATES = [
@@ -35,13 +36,13 @@ const BOLD_FONT_CANDIDATES = [
 
 let cachedRegular = null;
 let cachedBold = null;
-let fetchAttempted = false;
+let fontLoadingPromise = null;
 
 function isNodeRuntime() {
   return Boolean(
     typeof process !== "undefined" &&
-      process?.versions &&
-      process.versions.node,
+    process?.versions &&
+    process.versions.node,
   );
 }
 
@@ -134,26 +135,24 @@ function normalizeTypography(svgString) {
  * Load and cache both font weights. Only resolves once per process/page.
  */
 async function ensureFontsLoaded() {
-  if (fetchAttempted) {
-    return;
-  }
-  fetchAttempted = true;
-
-  try {
-    const [regular, bold] = await Promise.all([
-      loadLocalFontAsBase64(REGULAR_FONT_CANDIDATES, "regular").then(
-        (font) => font || fetchFontAsBase64(INTER_REGULAR_URL, "regular"),
-      ),
-      loadLocalFontAsBase64(BOLD_FONT_CANDIDATES, "bold").then(
-        (font) => font || fetchFontAsBase64(INTER_BOLD_URL, "bold"),
-      ),
-    ]);
-
-    cachedRegular = regular;
-    cachedBold = bold;
-  } catch (err) {
-    console.warn("[svgFontEmbedder] Failed to load fonts:", err.message);
-  }
+  if (fontLoadingPromise) return fontLoadingPromise;
+  fontLoadingPromise = (async () => {
+    try {
+      const [regular, bold] = await Promise.all([
+        loadLocalFontAsBase64(REGULAR_FONT_CANDIDATES, "regular").then(
+          (font) => font || fetchFontAsBase64(INTER_REGULAR_URL, "regular"),
+        ),
+        loadLocalFontAsBase64(BOLD_FONT_CANDIDATES, "bold").then(
+          (font) => font || fetchFontAsBase64(INTER_BOLD_URL, "bold"),
+        ),
+      ]);
+      cachedRegular = regular;
+      cachedBold = bold;
+    } catch (err) {
+      console.warn("[svgFontEmbedder] Failed to load fonts:", err.message);
+    }
+  })();
+  return fontLoadingPromise;
 }
 
 function buildEmbeddedFaceRule(font, weight) {

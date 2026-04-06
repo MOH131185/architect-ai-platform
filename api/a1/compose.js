@@ -499,8 +499,8 @@ async function handleComposeRequest(req, res, trace) {
   const requestStartedMs = Date.now();
   const requestBody = req.body || {};
 
-  // Pre-load embedded font for SVG rendering (non-blocking, cached after first call)
-  ensureFontsLoaded().catch(() => {});
+  // Pre-load embedded font for SVG rendering (awaited to prevent race condition)
+  await ensureFontsLoaded();
 
   // Logging request details
   logComposeEvent(
