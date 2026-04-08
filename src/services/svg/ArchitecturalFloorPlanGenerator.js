@@ -536,6 +536,11 @@ class ArchitecturalFloorPlanGenerator {
     // Transform group to handle margins
     parts.push(`<g transform="translate(${this.margin}, ${this.margin})">`);
 
+    // Draw structural grid references (background layer)
+    if (width > 3 && length > 3 && rooms?.length > 1) {
+      parts.push(this.drawStructuralGrid(width, length, rooms));
+    }
+
     // Check if we have polygon-based geometry data
     const hasPolygons = rooms?.some((r) => r.polygon?.length >= 3);
     const hasWalls = floorData.walls?.length > 0;
@@ -567,6 +572,11 @@ class ArchitecturalFloorPlanGenerator {
       parts.push(this.drawInternalWalls(rooms, width, length));
     }
 
+    // Draw wall junction fills (L-junctions and T-junctions)
+    if (!hasWalls && rooms?.length > 1) {
+      parts.push(this.drawWallJoints(rooms, width, length));
+    }
+
     // Draw doors with swings
     if (this.showDoorSwings) {
       parts.push(this.drawDoors(rooms, width, length));
@@ -589,6 +599,11 @@ class ArchitecturalFloorPlanGenerator {
     // Draw dimensions (outside the floor plan)
     if (this.showDimensions) {
       parts.push(this.drawDimensions(width, length, rooms));
+    }
+
+    // Draw section cut indicators (A-A longitudinal, B-B transverse)
+    if (this.showDimensions && width > 0 && length > 0) {
+      parts.push(this.drawSectionCutLines(width, length, svgWidth, svgHeight));
     }
 
     // Draw north arrow (suppressed in sheetMode - board composer owns this)
@@ -631,12 +646,9 @@ class ArchitecturalFloorPlanGenerator {
         ${WALL_PATTERNS.interior}
         ${WALL_PATTERNS.diagonal}
 
-        <!-- Dimension arrow markers -->
-        <marker id="dim-arrow-start" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto">
-          <path d="M10,0 L0,3 L10,6" fill="none" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
-        </marker>
-        <marker id="dim-arrow-end" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto">
-          <path d="M0,0 L10,3 L0,6" fill="none" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
+        <!-- Dimension tick markers (45-degree oblique — UK BS 1192 convention) -->
+        <marker id="dim-tick" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <line x1="1" y1="7" x2="7" y2="1" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(1)}"/>
         </marker>
 
         <!-- Door swing arc clip -->
@@ -741,6 +753,93 @@ class ArchitecturalFloorPlanGenerator {
         `);
       }
     });
+
+    parts.push("</g>");
+    return parts.join("\n");
+  }
+
+  /**
+   * Draw wall junction fills at L-junctions and T-junctions
+   * Fills the corner gaps/overlaps where internal walls meet each other or exterior walls
+   */
+  drawWallJoints(rooms, buildingWidth, buildingLength) {
+    if (!rooms || rooms.length < 2) return "";
+
+    const s = this.scale;
+    const extT = this.wallThickness * s;
+    const intT = this.internalWallThickness * s;
+    const tol = 0.15 * s;
+    const parts = ['<g class="wall-joints">'];
+
+    // Collect all internal wall edge positions (right edges and bottom edges of rooms)
+    const vEdges = []; // vertical internal walls (at right edge of room)
+    const hEdges = []; // horizontal internal walls (at bottom edge of room)
+
+    rooms.forEach((room) => {
+      const rx = (room.x || 0) * s;
+      const ry = (room.y || 0) * s;
+      const rw = (room.width || 0) * s;
+      const rh = (room.length || room.depth || 0) * s;
+      const bw = buildingWidth * s;
+      const bh = buildingLength * s;
+
+      // Right wall of room (if not at exterior)
+      if (rx + rw < bw - extT + tol) {
+        vEdges.push({ x: rx + rw, y1: ry, y2: ry + rh });
+      }
+      // Bottom wall of room (if not at exterior)
+      if (ry + rh < bh - extT + tol) {
+        hEdges.push({ y: ry + rh, x1: rx, x2: rx + rw });
+      }
+    });
+
+    // Find intersections between vertical and horizontal internal walls
+    for (const ve of vEdges) {
+      for (const he of hEdges) {
+        // Check if they intersect within tolerance
+        if (
+          he.y >= ve.y1 - tol &&
+          he.y <= ve.y2 + tol &&
+          ve.x >= he.x1 - tol &&
+          ve.x <= he.x2 + tol
+        ) {
+          // T-junction or L-junction — fill the corner square
+          parts.push(
+            `<rect x="${ve.x - intT / 2}" y="${he.y - intT / 2}" width="${intT}" height="${intT}" fill="url(#interior-wall-hatch)" stroke="${this.colors.internalWall}" stroke-width="${this.scaleLineWeight(0.5)}"/>`,
+          );
+        }
+      }
+    }
+
+    // Fill corners where internal walls meet exterior walls
+    for (const ve of vEdges) {
+      // Top exterior
+      if (ve.y1 < tol) {
+        parts.push(
+          `<rect x="${ve.x - intT / 2}" y="0" width="${intT}" height="${extT}" fill="url(#exterior-wall-hatch)" stroke="none"/>`,
+        );
+      }
+      // Bottom exterior
+      if (Math.abs(ve.y2 - buildingLength * s) < tol) {
+        parts.push(
+          `<rect x="${ve.x - intT / 2}" y="${buildingLength * s - extT}" width="${intT}" height="${extT}" fill="url(#exterior-wall-hatch)" stroke="none"/>`,
+        );
+      }
+    }
+    for (const he of hEdges) {
+      // Left exterior
+      if (he.x1 < tol) {
+        parts.push(
+          `<rect x="0" y="${he.y - intT / 2}" width="${extT}" height="${intT}" fill="url(#exterior-wall-hatch)" stroke="none"/>`,
+        );
+      }
+      // Right exterior
+      if (Math.abs(he.x2 - buildingWidth * s) < tol) {
+        parts.push(
+          `<rect x="${buildingWidth * s - extT}" y="${he.y - intT / 2}" width="${extT}" height="${intT}" fill="url(#exterior-wall-hatch)" stroke="none"/>`,
+        );
+      }
+    }
 
     parts.push("</g>");
     return parts.join("\n");
@@ -1425,6 +1524,7 @@ class ArchitecturalFloorPlanGenerator {
   drawDimensions(width, length, rooms) {
     const parts = ['<g class="dimensions">'];
     const dimOffset = 25;
+    const chainOffset = 45;
 
     // Overall width dimension (top)
     parts.push(
@@ -1450,9 +1550,78 @@ class ArchitecturalFloorPlanGenerator {
       ),
     );
 
-    // Room dimensions (simplified)
-    rooms.forEach((room) => {
-      if (room.width && room.width > 2) {
+    // Chain dimensions along top edge (individual room widths)
+    if (rooms && rooms.length > 1) {
+      const sortedByX = [...rooms]
+        .filter((r) => r.x != null && r.width > 0)
+        .sort((a, b) => (a.x || 0) - (b.x || 0));
+
+      // Deduplicate X spans to avoid overlapping chain segments
+      const xSpans = [];
+      const xTol = 0.15;
+      for (const room of sortedByX) {
+        const rx = room.x || 0;
+        const rw = room.width || 0;
+        const existing = xSpans.find(
+          (s) => Math.abs(s.x - rx) < xTol && Math.abs(s.w - rw) < xTol,
+        );
+        if (!existing && rw > 0.5) {
+          xSpans.push({ x: rx, w: rw });
+        }
+      }
+
+      for (const span of xSpans) {
+        const x1 = this.margin + span.x * this.scale;
+        const x2 = this.margin + (span.x + span.w) * this.scale;
+        parts.push(
+          this.drawDimensionLine(
+            x1,
+            this.margin - chainOffset,
+            x2,
+            this.margin - chainOffset,
+            `${span.w.toFixed(1)}m`,
+            "horizontal",
+          ),
+        );
+      }
+
+      // Chain dimensions along right edge (individual room depths)
+      const sortedByY = [...rooms]
+        .filter((r) => r.y != null && (r.length || r.depth) > 0)
+        .sort((a, b) => (a.y || 0) - (b.y || 0));
+
+      const ySpans = [];
+      for (const room of sortedByY) {
+        const ry = room.y || 0;
+        const rd = room.length || room.depth || 0;
+        const existing = ySpans.find(
+          (s) => Math.abs(s.y - ry) < xTol && Math.abs(s.d - rd) < xTol,
+        );
+        if (!existing && rd > 0.5) {
+          ySpans.push({ y: ry, d: rd });
+        }
+      }
+
+      for (const span of ySpans) {
+        const y1 = this.margin + span.y * this.scale;
+        const y2 = this.margin + (span.y + span.d) * this.scale;
+        parts.push(
+          this.drawDimensionLine(
+            this.margin + width * this.scale + chainOffset,
+            y1,
+            this.margin + width * this.scale + chainOffset,
+            y2,
+            `${span.d.toFixed(1)}m`,
+            "vertical",
+          ),
+        );
+      }
+    }
+
+    // Room dimensions inside rooms (skip tiny rooms < 6m2)
+    (rooms || []).forEach((room) => {
+      const roomArea = (room.width || 0) * (room.length || 0);
+      if (room.width && room.width > 2 && roomArea >= 6) {
         const rx = this.margin + (room.x || 0) * this.scale;
         const ry = this.margin + (room.y || 0) * this.scale;
         const rw = room.width * this.scale;
@@ -1507,7 +1676,7 @@ class ArchitecturalFloorPlanGenerator {
       <g class="dimension-line">
         <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
               stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"
-              marker-start="url(#dim-arrow-start)" marker-end="url(#dim-arrow-end)"/>
+              marker-start="url(#dim-tick)" marker-end="url(#dim-tick)"/>
         <path d="${tick1}" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"/>
         <path d="${tick2}" stroke="${this.colors.dimension}" stroke-width="${this.scaleLineWeight(0.5)}"/>
         <text x="${orientation === "horizontal" ? midX : midX + 15}" y="${textY}"
@@ -1515,6 +1684,52 @@ class ArchitecturalFloorPlanGenerator {
               fill="${this.colors.dimension}" ${textRotate}>${text}</text>
       </g>
     `;
+  }
+
+  /**
+   * Draw section cut indicator lines (A-A longitudinal, B-B transverse)
+   */
+  drawSectionCutLines(width, length, svgWidth, svgHeight) {
+    const m = this.margin;
+    const planW = width * this.scale;
+    const planH = length * this.scale;
+    const ext = 20; // extension beyond floor plan edges
+    const markerR = 8; // circle radius for section label
+    const dashPattern = "12 4 2 4"; // long dash-dot pattern
+    const lw = this.scaleLineWeight(0.5);
+
+    let svg = '<g class="section-cuts">';
+
+    // Section A-A: longitudinal cut (horizontal line at mid-height)
+    const aY = m + planH / 2;
+    const aX1 = m - ext;
+    const aX2 = m + planW + ext;
+    svg += `<line x1="${aX1}" y1="${aY}" x2="${aX2}" y2="${aY}" stroke="#555" stroke-width="${lw}" stroke-dasharray="${dashPattern}"/>`;
+    // Left marker: triangle pointing right (viewing direction) + circle with "A"
+    svg += `<circle cx="${aX1 - markerR - 2}" cy="${aY}" r="${markerR}" fill="#555"/>`;
+    svg += `<text x="${aX1 - markerR - 2}" y="${aY + 4}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">A</text>`;
+    svg += `<polygon points="${aX1},${aY} ${aX1 - 6},${aY - 5} ${aX1 - 6},${aY + 5}" fill="#555"/>`;
+    // Right marker
+    svg += `<circle cx="${aX2 + markerR + 2}" cy="${aY}" r="${markerR}" fill="#555"/>`;
+    svg += `<text x="${aX2 + markerR + 2}" y="${aY + 4}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">A</text>`;
+    svg += `<polygon points="${aX2},${aY} ${aX2 + 6},${aY - 5} ${aX2 + 6},${aY + 5}" fill="#555"/>`;
+
+    // Section B-B: transverse cut (vertical line at mid-width)
+    const bX = m + planW / 2;
+    const bY1 = m - ext;
+    const bY2 = m + planH + ext;
+    svg += `<line x1="${bX}" y1="${bY1}" x2="${bX}" y2="${bY2}" stroke="#555" stroke-width="${lw}" stroke-dasharray="${dashPattern}"/>`;
+    // Top marker: triangle pointing down + circle with "B"
+    svg += `<circle cx="${bX}" cy="${bY1 - markerR - 2}" r="${markerR}" fill="#555"/>`;
+    svg += `<text x="${bX}" y="${bY1 - markerR + 2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">B</text>`;
+    svg += `<polygon points="${bX},${bY1} ${bX - 5},${bY1 - 6} ${bX + 5},${bY1 - 6}" fill="#555"/>`;
+    // Bottom marker
+    svg += `<circle cx="${bX}" cy="${bY2 + markerR + 2}" r="${markerR}" fill="#555"/>`;
+    svg += `<text x="${bX}" y="${bY2 + markerR + 6}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white">B</text>`;
+    svg += `<polygon points="${bX},${bY2} ${bX - 5},${bY2 + 6} ${bX + 5},${bY2 + 6}" fill="#555"/>`;
+
+    svg += "</g>";
+    return svg;
   }
 
   /**
@@ -1555,6 +1770,84 @@ class ArchitecturalFloorPlanGenerator {
   /**
    * Draw title
    */
+  /**
+   * Draw structural grid with letter/number bubble references
+   * Grid lines derived from room boundary positions for perfect alignment
+   */
+  drawStructuralGrid(buildingWidth, buildingLength, rooms) {
+    const w = buildingWidth * this.scale;
+    const h = buildingLength * this.scale;
+    const bubbleR = 12;
+    const bubbleOffset = 30;
+    const tolerance = 0.15 * this.scale;
+
+    // Collect unique X and Y positions from room boundaries
+    const xSet = new Set([0, w]);
+    const ySet = new Set([0, h]);
+    (rooms || []).forEach((room) => {
+      const rx = (room.x || 0) * this.scale;
+      const ry = (room.y || 0) * this.scale;
+      const rw = (room.width || 0) * this.scale;
+      const rd = (room.length || room.depth || 0) * this.scale;
+      xSet.add(rx);
+      xSet.add(rx + rw);
+      ySet.add(ry);
+      ySet.add(ry + rd);
+    });
+
+    // Deduplicate within tolerance
+    const dedup = (vals) => {
+      const sorted = [...vals].sort((a, b) => a - b);
+      const out = [];
+      for (const v of sorted) {
+        if (out.length === 0 || v - out[out.length - 1] > tolerance) {
+          out.push(v);
+        }
+      }
+      return out;
+    };
+
+    const xLines = dedup(xSet);
+    const yLines = dedup(ySet);
+    const parts = ['<g class="structural-grid" opacity="0.6">'];
+    const gridColor = "#BBBBBB";
+    const bubbleColor = "#666666";
+    const lw = this.scaleLineWeight(0.3);
+
+    // Draw vertical grid lines + letter bubbles at top
+    xLines.forEach((x, i) => {
+      const label = String.fromCharCode(65 + i); // A, B, C...
+      parts.push(
+        `<line x1="${x}" y1="${-bubbleOffset}" x2="${x}" y2="${h}" stroke="${gridColor}" stroke-width="${lw}" stroke-dasharray="8,4"/>`,
+      );
+      // Bubble at top
+      parts.push(
+        `<circle cx="${x}" cy="${-bubbleOffset}" r="${bubbleR}" fill="none" stroke="${bubbleColor}" stroke-width="${this.scaleLineWeight(0.8)}"/>`,
+      );
+      parts.push(
+        `<text x="${x}" y="${-bubbleOffset + 4}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="${bubbleColor}">${label}</text>`,
+      );
+    });
+
+    // Draw horizontal grid lines + number bubbles at left
+    yLines.forEach((y, i) => {
+      const label = String(i + 1); // 1, 2, 3...
+      parts.push(
+        `<line x1="${-bubbleOffset}" y1="${y}" x2="${w}" y2="${y}" stroke="${gridColor}" stroke-width="${lw}" stroke-dasharray="8,4"/>`,
+      );
+      // Bubble at left
+      parts.push(
+        `<circle cx="${-bubbleOffset}" cy="${y}" r="${bubbleR}" fill="none" stroke="${bubbleColor}" stroke-width="${this.scaleLineWeight(0.8)}"/>`,
+      );
+      parts.push(
+        `<text x="${-bubbleOffset}" y="${y + 4}" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="${bubbleColor}">${label}</text>`,
+      );
+    });
+
+    parts.push("</g>");
+    return parts.join("\n");
+  }
+
   drawTitle(x, y, text) {
     return `
       <text x="${x}" y="${y}" text-anchor="middle"
