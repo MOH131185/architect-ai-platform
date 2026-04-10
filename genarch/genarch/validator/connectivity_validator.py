@@ -126,7 +126,7 @@ class ConnectivityValidator:
 
         while queue:
             current = queue.popleft()
-            for neighbor in graph.get(current, []):
+            for neighbor in sorted(graph.get(current, [])):
                 if neighbor not in visited and neighbor != "EXTERIOR":
                     visited.add(neighbor)
                     queue.append(neighbor)
@@ -170,10 +170,10 @@ class ConnectivityValidator:
         return {
             "total_rooms": len(floor_plan.rooms),
             "connected_rooms": len(room_ids) - len(disconnected),
-            "disconnected_rooms": [
+            "disconnected_rooms": sorted([
                 self._get_room_name(floor_plan.rooms, rid)
                 for rid in disconnected
-            ],
+            ]),
             "fully_connected": len(disconnected) == 0,
             "door_counts": door_counts,
             "start_room": start_room.name if start_room else None,

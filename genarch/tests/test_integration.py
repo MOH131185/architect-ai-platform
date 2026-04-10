@@ -5,7 +5,10 @@ Tests the full generation pipeline from constraints to export.
 """
 
 import json
+import shutil
 import tempfile
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -20,6 +23,20 @@ from genarch.generator.floor_plan_generator import generate_floorplan
 from genarch.validator.geometry_validator import GeometryValidator
 from genarch.validator.connectivity_validator import ConnectivityValidator
 from genarch.validator.uk_building_regs import UKBuildingRegsValidator
+
+
+TEST_TMP_ROOT = Path(__file__).parent.parent / "tmp_test_runs"
+TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def repo_temp_dir():
+    tmpdir = TEST_TMP_ROOT / f"tmp_{uuid.uuid4().hex}"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    try:
+        yield tmpdir
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -171,8 +188,8 @@ class TestExport:
 
         floor_plan, metadata = generate_floorplan(simple_constraints, seed=42)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "plan.json"
+        with repo_temp_dir() as tmpdir:
+            output_path = tmpdir / "plan.json"
             export_json(floor_plan, output_path, metadata)
 
             assert output_path.exists()
@@ -193,8 +210,8 @@ class TestExport:
 
         floor_plan, metadata = generate_floorplan(simple_constraints, seed=42)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "plan.dxf"
+        with repo_temp_dir() as tmpdir:
+            output_path = tmpdir / "plan.dxf"
             export_dxf(floor_plan, output_path, metadata)
 
             assert output_path.exists()
@@ -207,8 +224,8 @@ class TestExport:
 
         floor_plan, metadata = generate_floorplan(simple_constraints, seed=42)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "model.glb"
+        with repo_temp_dir() as tmpdir:
+            output_path = tmpdir / "model.glb"
             export_mesh(floor_plan, output_path, format="glb", metadata=metadata)
 
             assert output_path.exists()
@@ -221,8 +238,8 @@ class TestExport:
 
         floor_plan, metadata = generate_floorplan(simple_constraints, seed=42)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "model.obj"
+        with repo_temp_dir() as tmpdir:
+            output_path = tmpdir / "model.obj"
             export_mesh(floor_plan, output_path, format="obj", metadata=metadata)
 
             assert output_path.exists()

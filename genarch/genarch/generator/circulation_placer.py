@@ -42,14 +42,15 @@ class CirculationPlacer:
             List of room names that may have connectivity issues
         """
         # Build adjacency graph from BSP geometry
-        room_names = set()
+        room_names = []
         adjacencies = {}
 
         for node in nodes:
             if node.room_spec:
                 name = node.room_spec.name
-                room_names.add(name)
-                adjacencies[name] = set()
+                if name not in adjacencies:
+                    room_names.append(name)
+                    adjacencies[name] = set()
 
         # Compute geometric adjacencies
         for i, node1 in enumerate(nodes):
@@ -72,7 +73,7 @@ class CirculationPlacer:
                 break
 
         if not start_room and room_names:
-            start_room = next(iter(room_names))
+            start_room = room_names[0]
 
         if not start_room:
             return []
@@ -84,14 +85,14 @@ class CirculationPlacer:
 
         while queue:
             current = queue.popleft()
-            for neighbor in adjacencies.get(current, []):
+            for neighbor in sorted(adjacencies.get(current, [])):
                 if neighbor not in visited:
                     visited.add(neighbor)
                     queue.append(neighbor)
 
         # Find disconnected rooms
-        disconnected = room_names - visited
-        return list(disconnected)
+        disconnected = set(room_names) - visited
+        return sorted(disconnected)
 
     def _are_geometrically_adjacent(
         self,

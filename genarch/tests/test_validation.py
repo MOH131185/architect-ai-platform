@@ -136,7 +136,7 @@ class TestDriftChecker:
         # Should pass (skip) when files don't exist or deps missing
         assert result.passed
         # Either skipped due to missing deps or missing files
-        assert result.error is not None or result.score == 0.0
+        assert result.error is not None or result.f1 == 0.0
 
     def test_check_all_empty_folder(self, tmp_path):
         """Test check_all on empty folder."""
@@ -155,8 +155,9 @@ class TestDriftChecker:
         result = DriftResult(
             view_name="elevation_N",
             passed=True,
-            score=0.05,
+            f1=0.05,
             threshold=0.15,
+            tolerance_px=3,
             phase2_path="/path/to/phase2.png",
             phase3_path="/path/to/phase3.png",
             details={"chamfer_distance": 0.03, "edge_iou": 0.95},
@@ -166,7 +167,7 @@ class TestDriftChecker:
 
         assert data["view_name"] == "elevation_N"
         assert data["passed"] is True
-        assert data["score"] == 0.05
+        assert data["f1"] == 0.05
         assert data["details"]["chamfer_distance"] == 0.03
 
     def test_report_save_json(self, tmp_path):
@@ -177,8 +178,9 @@ class TestDriftChecker:
             DriftResult(
                 view_name="elevation_N",
                 passed=True,
-                score=0.05,
+                f1=0.05,
                 threshold=0.15,
+                tolerance_px=3,
             )
         ]
 
@@ -239,7 +241,7 @@ class TestDriftCheckerWithImages:
         result = checker.check_view(tmp_path, "elevation_N")
 
         assert result.passed
-        assert result.score < 0.5
+        assert result.f1 < 0.5
 
     def test_drift_detection(self, tmp_path):
         """Test that drift is detected when images don't match."""
@@ -273,7 +275,7 @@ class TestDriftCheckerWithImages:
 
         # Should fail due to shape mismatch
         assert not result.passed
-        assert result.score > 0.1
+        assert result.f1 > 0.1
 
 
 class TestPipelineIntegration:

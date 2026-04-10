@@ -189,7 +189,7 @@ class AdjacencyResolver:
 
         for room_name, required in requirements.items():
             actual = adjacencies.get(room_name, set())
-            for req_adj in required:
+            for req_adj in sorted(required):
                 if req_adj not in actual and req_adj in requirements:
                     violations.append((room_name, req_adj))
 
@@ -219,7 +219,7 @@ class AdjacencyResolver:
         # and try swapping it with room2
         current_adj_to_1 = adjacencies.get(room1_name, set())
 
-        for adj_name in current_adj_to_1:
+        for adj_name in sorted(current_adj_to_1):
             if adj_name == room2_name:
                 continue
 
