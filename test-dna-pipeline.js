@@ -11,30 +11,43 @@
  * Run with: node test-dna-pipeline.js
  */
 
-// Mock localStorage for Node.js environment
 import CryptoJS from "crypto-js";
 
-if (typeof localStorage === "undefined") {
-  global.localStorage = {
-    _data: {},
-    setItem: function (key, value) {
-      this._data[key] = value;
-    },
-    getItem: function (key) {
-      return this._data[key] || null;
-    },
-    removeItem: function (key) {
-      delete this._data[key];
-    },
-    clear: function () {
-      this._data = {};
-    },
-  };
+const globalScope = global;
+
+const localStorageMock = {
+  _data: {},
+  setItem: function (key, value) {
+    this._data[key] = value;
+  },
+  getItem: function (key) {
+    return this._data[key] || null;
+  },
+  removeItem: function (key) {
+    delete this._data[key];
+  },
+  clear: function () {
+    this._data = {};
+  },
+};
+
+if (
+  typeof globalScope.localStorage === "undefined" ||
+  typeof globalScope.localStorage?.setItem !== "function" ||
+  typeof globalScope.localStorage?.getItem !== "function"
+) {
+  Object.defineProperty(globalScope, "localStorage", {
+    configurable: true,
+    writable: true,
+    value: localStorageMock,
+  });
+} else {
+  globalScope.localStorage.clear();
 }
 
 // Mock fetch for Node.js
 if (typeof fetch === "undefined") {
-  global.fetch = async function (url, options) {
+  global.fetch = async function () {
     return {
       ok: false,
       status: 404,

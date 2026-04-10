@@ -245,9 +245,9 @@ PROGRAM:
   for (let level = 0; level < levelCount; level += 1) {
     const floorRooms = groupedRooms[level] || [];
     prompt += `\nLEVEL ${level}:\n`;
-    floorRooms.forEach((room) => {
+    for (const room of floorRooms) {
       prompt += `- ${room.label} | id=${room.id} | type=${room.roomType} | area=${room.targetArea.toFixed(1)}m2 | min_width=${room.minWidth}m | min_length=${room.minLength}m\n`;
-    });
+    }
   }
 
   prompt += `

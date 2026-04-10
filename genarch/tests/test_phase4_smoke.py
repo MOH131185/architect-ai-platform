@@ -16,10 +16,8 @@ Prerequisites:
 """
 
 import json
-import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -49,62 +47,61 @@ def points_to_mm(points: float) -> float:
 
 
 @pytest.fixture
-def sample_run_folder():
+def sample_run_folder(tmp_path):
     """Create a minimal sample run folder for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        run_path = Path(tmpdir) / "test_run"
-        run_path.mkdir()
+    run_path = tmp_path / "test_run"
+    run_path.mkdir()
 
-        # Create minimal plan.json
-        plan_data = {
-            "rooms": [
-                {
-                    "id": "room_0",
-                    "name": "Living",
-                    "polygon": [
-                        {"x": 0, "y": 0},
-                        {"x": 5, "y": 0},
-                        {"x": 5, "y": 4},
-                        {"x": 0, "y": 4},
-                    ],
-                    "area_m2": 20,
-                }
-            ],
-            "walls": [],
-            "openings": [],
-            "envelope": [
-                {"x": 0, "y": 0},
-                {"x": 10, "y": 0},
-                {"x": 10, "y": 8},
-                {"x": 0, "y": 8},
-            ],
-            "metadata": {
-                "seed": 42,
-                "units": "meters",
-                "north_direction": 0.0,
-            },
-            "statistics": {
-                "room_count": 1,
-                "total_area_m2": 80,
-            },
-        }
-
-        plan_path = run_path / "plan.json"
-        with open(plan_path, "w") as f:
-            json.dump(plan_data, f)
-
-        # Create minimal run.json
-        run_data = {
+    # Create minimal plan.json
+    plan_data = {
+        "rooms": [
+            {
+                "id": "room_0",
+                "name": "Living",
+                "polygon": [
+                    {"x": 0, "y": 0},
+                    {"x": 5, "y": 0},
+                    {"x": 5, "y": 4},
+                    {"x": 0, "y": 4},
+                ],
+                "area_m2": 20,
+            }
+        ],
+        "walls": [],
+        "openings": [],
+        "envelope": [
+            {"x": 0, "y": 0},
+            {"x": 10, "y": 0},
+            {"x": 10, "y": 8},
+            {"x": 0, "y": 8},
+        ],
+        "metadata": {
             "seed": 42,
-            "project_name": "Test Project",
-            "generated_at": "2025-01-01T00:00:00Z",
-        }
+            "units": "meters",
+            "north_direction": 0.0,
+        },
+        "statistics": {
+            "room_count": 1,
+            "total_area_m2": 80,
+        },
+    }
 
-        run_json_path = run_path / "run.json"
-        with open(run_json_path, "w") as f:
-            json.dump(run_data, f)
+    plan_path = run_path / "plan.json"
+    with open(plan_path, "w") as f:
+        json.dump(plan_data, f)
 
-        yield run_path
+    # Create minimal run.json
+    run_data = {
+        "seed": 42,
+        "project_name": "Test Project",
+        "generated_at": "2025-01-01T00:00:00Z",
+    }
+
+    run_json_path = run_path / "run.json"
+    with open(run_json_path, "w") as f:
+        json.dump(run_data, f)
+
+    yield run_path
 
 
 class TestPhase4Smoke:

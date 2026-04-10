@@ -126,6 +126,7 @@ class BSPSubdivider:
 
         # Collect leaf nodes
         leaves = self._collect_leaves(root)
+        leaves = self._ensure_leaf_capacity(leaves, len(rooms_to_assign))
 
         # Assign rooms to best-matching leaves
         assigned_leaves = self._assign_rooms_to_leaves(leaves, rooms_to_assign)
@@ -328,6 +329,92 @@ class BSPSubdivider:
         if node.right:
             leaves.extend(self._collect_leaves(node.right))
         return leaves
+
+    def _ensure_leaf_capacity(
+        self,
+        leaves: List[BSPNode],
+        target_count: int,
+    ) -> List[BSPNode]:
+        """
+        Ensure there are enough BSP leaves to assign every requested room.
+
+        The recursive builder can stop early when a region becomes too small to
+        subdivide with the current room grouping, which leaves some room specs
+        unassigned. Split the largest remaining rectangular leaves in half until
+        capacity matches the room count or no valid split remains.
+        """
+        if len(leaves) >= target_count:
+            return leaves
+
+        expanded_leaves = list(leaves)
+
+        while len(expanded_leaves) < target_count:
+            candidate_index = self._find_largest_splittable_leaf(expanded_leaves)
+            if candidate_index is None:
+                break
+
+            candidate = expanded_leaves.pop(candidate_index)
+            split_leaves = self._split_leaf(candidate)
+            if not split_leaves:
+                expanded_leaves.append(candidate)
+                break
+
+            expanded_leaves.extend(split_leaves)
+
+        return expanded_leaves
+
+    def _find_largest_splittable_leaf(
+        self,
+        leaves: List[BSPNode],
+    ) -> Optional[int]:
+        """Return the index of the largest leaf that can still be split."""
+        best_index = None
+        best_area = 0.0
+
+        for index, leaf in enumerate(leaves):
+            if leaf.width < self.MIN_ROOM_DIM * 2 and leaf.height < self.MIN_ROOM_DIM * 2:
+                continue
+
+            if leaf.area > best_area:
+                best_area = leaf.area
+                best_index = index
+
+        return best_index
+
+    def _split_leaf(self, leaf: BSPNode) -> Optional[List[BSPNode]]:
+        """Split a leaf in half along its preferred axis."""
+        direction = self._choose_split_direction(leaf)
+        min_x, min_y, max_x, max_y = leaf.bounds
+
+        if direction == "horizontal":
+            if leaf.height < self.MIN_ROOM_DIM * 2:
+                direction = "vertical"
+            split_pos = (min_y + max_y) / 2
+            polygons = split_polygon_horizontal(leaf.polygon, split_pos)
+        else:
+            if leaf.width < self.MIN_ROOM_DIM * 2:
+                direction = "horizontal"
+            split_pos = (min_x + max_x) / 2
+            polygons = split_polygon_vertical(leaf.polygon, split_pos)
+
+        if direction == "horizontal":
+            if leaf.height < self.MIN_ROOM_DIM * 2:
+                return None
+            split_pos = (min_y + max_y) / 2
+            left_poly, right_poly = split_polygon_horizontal(leaf.polygon, split_pos)
+        else:
+            if leaf.width < self.MIN_ROOM_DIM * 2:
+                return None
+            split_pos = (min_x + max_x) / 2
+            left_poly, right_poly = split_polygon_vertical(leaf.polygon, split_pos)
+
+        if not left_poly or not right_poly:
+            return None
+
+        return [
+            BSPNode(polygon=left_poly, depth=leaf.depth + 1),
+            BSPNode(polygon=right_poly, depth=leaf.depth + 1),
+        ]
 
     def _assign_rooms_to_leaves(
         self,
