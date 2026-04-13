@@ -6,14 +6,12 @@
  * via Claude Sonnet with tool_choice.
  */
 
+import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+
 export default async function handler(req, res) {
-  // Handle OPTIONS for CORS preflight
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    return res.status(200).end();
-  }
+  // CORS
+  if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
 
   // Only allow POST requests
   if (req.method !== "POST") {
@@ -78,11 +76,6 @@ export default async function handler(req, res) {
 
     const latencyMs = Date.now() - startTime;
     console.log(`✅ [Anthropic] Messages request successful (${latencyMs}ms)`);
-
-    // Set CORS headers for browser requests
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     res.status(200).json(data);
   } catch (error) {

@@ -5,14 +5,12 @@
  * Uses Qwen 2.5 72B for architectural reasoning (DNA generation).
  */
 
+import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+
 export default async function handler(req, res) {
-  // Handle OPTIONS for CORS preflight
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    return res.status(200).end();
-  }
+  // CORS
+  if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
 
   // Only allow POST requests
   if (req.method !== "POST") {
@@ -129,11 +127,6 @@ export default async function handler(req, res) {
 
     const latencyMs = Date.now() - startTime;
     console.log(`✅ [Together AI] Chat completion successful (${latencyMs}ms)`);
-
-    // Set CORS headers for browser requests
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     // Return raw Together AI response - matches dev proxy (server.cjs) format
     // All client code expects response.choices[0].message.content

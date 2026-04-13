@@ -9,6 +9,7 @@
 
 import sharp from "sharp";
 import pixelmatch from "pixelmatch";
+import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
 
 /**
  * Compute SSIM-like similarity using pixelmatch
@@ -172,14 +173,9 @@ function extractRegion(imageData, fullWidth, x, y, width, height) {
 }
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+  // CORS
+  if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
