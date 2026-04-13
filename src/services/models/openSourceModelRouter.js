@@ -293,13 +293,26 @@ function isEntryEnvReady(entry = {}) {
 }
 
 function getEntryStatus(entry = {}) {
-  const resolved = resolveOpenSourceAdapter(entry.family, entry.adapter_key);
+  const resolved = resolveOpenSourceAdapter(entry.family, entry.adapter_key, {
+    allowFallback: false,
+  });
   return {
     ...entry,
+    integrationStatus: entry.integration_status,
+    localOrRemote: entry.local_or_remote,
+    inputTypes: entry.input_types,
+    outputTypes: entry.output_types,
+    recommendedUse: entry.recommended_use,
+    envRequirements: entry.env_requirements,
+    adapterKey: entry.adapter_key,
     env_ready: isEntryEnvReady(entry),
+    envReady: isEntryEnvReady(entry),
     handler_available: Boolean(resolved.handler),
+    handlerAvailable: Boolean(resolved.handler),
     adapter_configured: Boolean(resolved.adapterConfig),
+    adapterConfigured: Boolean(resolved.adapterConfig),
     adapter_config: resolved.adapterConfig,
+    adapterConfig: resolved.adapterConfig,
   };
 }
 
@@ -363,7 +376,11 @@ export function registerOpenSourceAdapter(family, adapterId, handler) {
   registry.set(adapterId, handler);
 }
 
-export function resolveOpenSourceAdapter(family, requestedAdapterId = null) {
+export function resolveOpenSourceAdapter(
+  family,
+  requestedAdapterId = null,
+  options = {},
+) {
   const familyConfig = getModelFamilyConfig(family);
   if (!familyConfig) {
     throw new Error(`Unknown open-source model family: ${family}`);
@@ -371,12 +388,15 @@ export function resolveOpenSourceAdapter(family, requestedAdapterId = null) {
 
   const preferredAdapterId = getPreferredAdapterId(family, requestedAdapterId);
   const registry = getFamilyRegistry(family);
-  const candidateIds = [
-    preferredAdapterId,
-    ...familyConfig.fallbackAdapters.filter(
-      (adapterId) => adapterId !== preferredAdapterId,
-    ),
-  ].filter(Boolean);
+  const allowFallback = options.allowFallback !== false;
+  const candidateIds = allowFallback
+    ? [
+        preferredAdapterId,
+        ...familyConfig.fallbackAdapters.filter(
+          (adapterId) => adapterId !== preferredAdapterId,
+        ),
+      ].filter(Boolean)
+    : [preferredAdapterId].filter(Boolean);
 
   for (const adapterId of candidateIds) {
     if (registry.has(adapterId)) {
@@ -384,6 +404,8 @@ export function resolveOpenSourceAdapter(family, requestedAdapterId = null) {
         adapterId,
         handler: registry.get(adapterId),
         adapterConfig: getAdapterConfig(family, adapterId),
+        requestedAdapterId: preferredAdapterId,
+        fallbackUsed: adapterId !== preferredAdapterId,
       };
     }
   }
@@ -392,6 +414,8 @@ export function resolveOpenSourceAdapter(family, requestedAdapterId = null) {
     adapterId: preferredAdapterId,
     handler: null,
     adapterConfig: getAdapterConfig(family, preferredAdapterId),
+    requestedAdapterId: preferredAdapterId,
+    fallbackUsed: false,
   };
 }
 
@@ -400,15 +424,26 @@ export async function invokeOpenSourceAdapter(
   payload = {},
   options = {},
 ) {
-  const { adapterId, handler, adapterConfig } = resolveOpenSourceAdapter(
+  const requestedAdapterId = options.adapterId || payload.adapterId || null;
+  const directResolution = resolveOpenSourceAdapter(
     family,
-    options.adapterId || payload.adapterId || null,
+    requestedAdapterId,
+    {
+      allowFallback: false,
+    },
   );
+  const resolved = directResolution.handler
+    ? directResolution
+    : resolveOpenSourceAdapter(family, requestedAdapterId, {
+        allowFallback: options.allowFallback !== false,
+      });
+  const { adapterId, handler, adapterConfig, fallbackUsed } = resolved;
 
   if (!handler) {
     return {
       status: "unavailable",
       adapterId,
+      requestedAdapterId,
       provider: adapterConfig?.provider || "unknown",
       family,
       notes: [
@@ -419,7 +454,26 @@ export async function invokeOpenSourceAdapter(
   }
 
   logger.debug(`[OpenSourceRouter] Invoking ${family}:${adapterId}`);
-  return handler(payload, { ...options, adapterId, adapterConfig, family });
+  const result = await handler(payload, {
+    ...options,
+    adapterId,
+    adapterConfig,
+    family,
+  });
+
+  if (!fallbackUsed) {
+    return result;
+  }
+
+  return {
+    ...result,
+    requestedAdapterId,
+    fallbackUsed: true,
+    notes: [
+      ...(Array.isArray(result?.notes) ? result.notes : []),
+      `Requested adapter "${requestedAdapterId}" was unavailable; using fallback adapter "${adapterId}".`,
+    ],
+  };
 }
 
 export function getAvailableModelsByCategory(category) {
@@ -449,13 +503,16 @@ export function getRecommendedModel(category, context = {}) {
 
 export function resolveModelAdapter(category, providerId = null, context = {}) {
   const entry = resolveCategoryEntry(category, providerId, context);
-  const resolved = resolveOpenSourceAdapter(entry.family, entry.adapter_key);
+  const resolved = resolveOpenSourceAdapter(entry.family, entry.adapter_key, {
+    allowFallback: false,
+  });
 
   return {
     category,
     family: entry.family,
     model: getEntryStatus(entry),
     resolvedAdapterId: resolved.adapterId,
+    resolvedAdapterKey: resolved.adapterId,
     handlerAvailable: Boolean(resolved.handler),
     adapterConfig: resolved.adapterConfig,
     familiesInCategory: getModelCategoryFamilies(category),
@@ -490,7 +547,9 @@ export function getModelStatus() {
       category,
       {
         flag: getCategoryFlag(category),
+        featureFlag: getCategoryFlag(category),
         enabled: Boolean(getFeatureValue(getCategoryFlag(category))),
+        featureEnabled: Boolean(getFeatureValue(getCategoryFlag(category))),
         availableModels: getAvailableModelsByCategory(category),
         recommended: getRecommendedModel(category).selectedModel,
       },

@@ -14,8 +14,14 @@ const FEATURE_FLAG_GROUPS = [
   ["useModelRegistryRouter", "modelRegistry"],
 ];
 
+function resolveFeatureFlagGroup(flagName) {
+  return (
+    FEATURE_FLAG_GROUPS.find((entry) => entry.includes(flagName)) || [flagName]
+  );
+}
+
 function syncFeatureFlagGroup(flagName) {
-  const group = FEATURE_FLAG_GROUPS.find((entry) => entry.includes(flagName));
+  const group = resolveFeatureFlagGroup(flagName);
   if (!group) return;
 
   const resolvedValue = group
@@ -1003,6 +1009,14 @@ export function getFeatureValue(flagName) {
 }
 
 /**
+ * Return the full synchronized flag group for a flag name.
+ * This is useful when a newer Phase 1 name must remain aligned with a legacy alias.
+ */
+export function getSynchronizedFeatureFlagNames(flagName) {
+  return [...resolveFeatureFlagGroup(flagName)];
+}
+
+/**
  * Reset all feature flags to defaults
  */
 export function resetFeatureFlags() {
@@ -1354,6 +1368,7 @@ if (typeof module !== "undefined" && module.exports) {
     setFeatureFlag,
     getAllFeatureFlags,
     getFeatureValue,
+    getSynchronizedFeatureFlagNames,
     resetFeatureFlags,
     loadFeatureFlagsFromStorage,
     logFeatureFlags,

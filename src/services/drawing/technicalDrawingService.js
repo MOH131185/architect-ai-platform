@@ -34,12 +34,10 @@ async function renderLocalTechnicalDrawings(payload = {}) {
   }
 
   if (requestedDrawingTypes.includes("elevation")) {
-    const orientations = payload.orientations || [
-      "north",
-      "south",
-      "east",
-      "west",
-    ];
+    const orientations =
+      Array.isArray(payload.orientations) && payload.orientations.length
+        ? payload.orientations
+        : ["north", "south", "east", "west"];
     outputs.elevations = orientations.map((orientation) =>
       renderElevationSvg(geometry, styleDNA, {
         ...payload.options,
@@ -49,7 +47,10 @@ async function renderLocalTechnicalDrawings(payload = {}) {
   }
 
   if (requestedDrawingTypes.includes("section")) {
-    const sectionTypes = payload.sectionTypes || ["longitudinal", "transverse"];
+    const sectionTypes =
+      Array.isArray(payload.sectionTypes) && payload.sectionTypes.length
+        ? payload.sectionTypes
+        : ["longitudinal", "transverse"];
     outputs.sections = sectionTypes.map((sectionType) =>
       renderSectionSvg(geometry, styleDNA, { ...payload.options, sectionType }),
     );

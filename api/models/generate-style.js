@@ -26,6 +26,7 @@ import {
 import { getRecommendedModel } from "../../src/services/models/openSourceModelRouter.js";
 import {
   config,
+  ensureFeatureEnabled,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -36,8 +37,22 @@ export { config };
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  setCors(res);
+  if (!setCors(req, res)) {
+    return sendError(
+      res,
+      403,
+      "ORIGIN_NOT_ALLOWED",
+      "Origin is not allowed for this endpoint.",
+      null,
+      { endpoint: "generate-style" },
+    );
+  }
   if (rejectInvalidMethod(req, res)) return;
+  if (
+    !ensureFeatureEnabled(res, ["useOpenSourceStyleEngine"], "generate-style")
+  ) {
+    return;
+  }
 
   try {
     const validation = validateGenerateStyleRequest(req.body || {});
@@ -47,6 +62,14 @@ export default async function handler(req, res) {
         400,
         "INVALID_REQUEST",
         validation.errors.join(" "),
+        {
+          errors: validation.errors,
+          warnings: validation.warnings,
+        },
+        {
+          endpoint: "generate-style",
+          featureFlags: ["useOpenSourceStyleEngine"],
+        },
       );
     }
 
@@ -74,9 +97,20 @@ export default async function handler(req, res) {
         styleDNA,
         warnings,
         selectedModelStrategy,
+        featureFlags: ["useOpenSourceStyleEngine"],
       }),
     );
   } catch (error) {
-    return sendError(res, 500, "STYLE_GENERATION_FAILED", error.message);
+    return sendError(
+      res,
+      500,
+      "STYLE_GENERATION_FAILED",
+      error.message,
+      error.details || null,
+      {
+        endpoint: "generate-style",
+        featureFlags: ["useOpenSourceStyleEngine"],
+      },
+    );
   }
 }

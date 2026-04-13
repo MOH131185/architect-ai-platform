@@ -39,12 +39,29 @@ describe("openSourceModelRouter Phase 1", () => {
     expect(resolved.resolvedAdapterId).toBe("svg-vector-engine");
   });
 
+  test("reports unwired hook adapters honestly without claiming local fallback handlers", () => {
+    const resolved = resolveModelAdapter(
+      "floorplan_generation",
+      "house-diffusion-hook",
+    );
+
+    expect(resolved.resolvedAdapterId).toBe("house-diffusion-hook");
+    expect(resolved.handlerAvailable).toBe(false);
+    expect(resolved.adapterConfig.id).toBe("house-diffusion-hook");
+  });
+
   test("reports router status by category", () => {
     const status = getModelStatus();
+    const houseDiffusionHook =
+      status.categories.floorplan_generation.availableModels.find(
+        (entry) => entry.id === "house-diffusion-hook",
+      );
 
     expect(status.categories.floorplan_generation).toBeDefined();
     expect(status.categories.technical_drawings.recommended.adapter_key).toBe(
       "svg-vector-engine",
     );
+    expect(houseDiffusionHook.handlerAvailable).toBe(false);
+    expect(houseDiffusionHook.adapterConfig.id).toBe("house-diffusion-hook");
   });
 });

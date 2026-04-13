@@ -21,6 +21,7 @@ import {
 import { getRecommendedModel } from "../../src/services/models/openSourceModelRouter.js";
 import {
   config,
+  ensureFeatureEnabled,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -31,8 +32,26 @@ export { config };
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  setCors(res);
+  if (!setCors(req, res)) {
+    return sendError(
+      res,
+      403,
+      "ORIGIN_NOT_ALLOWED",
+      "Origin is not allowed for this endpoint.",
+      null,
+      { endpoint: "generate-floorplan" },
+    );
+  }
   if (rejectInvalidMethod(req, res)) return;
+  if (
+    !ensureFeatureEnabled(
+      res,
+      ["useFloorplanEngine", "useFloorplanGenerator"],
+      "generate-floorplan",
+    )
+  ) {
+    return;
+  }
 
   try {
     const validation = validateGenerateFloorplanRequest(req.body || {});
@@ -42,6 +61,14 @@ export default async function handler(req, res) {
         400,
         "INVALID_REQUEST",
         validation.errors.join(" "),
+        {
+          errors: validation.errors,
+          warnings: validation.warnings,
+        },
+        {
+          endpoint: "generate-floorplan",
+          featureFlags: ["useFloorplanEngine", "useFloorplanGenerator"],
+        },
       );
     }
 
@@ -54,11 +81,22 @@ export default async function handler(req, res) {
     return res.status(200).json(
       buildGenerateFloorplanResponse({
         result,
-        warnings: result.warnings || [],
+        warnings: [...validation.warnings, ...(result.warnings || [])],
         selectedModelStrategy,
+        featureFlags: ["useFloorplanEngine", "useFloorplanGenerator"],
       }),
     );
   } catch (error) {
-    return sendError(res, 500, "FLOORPLAN_GENERATION_FAILED", error.message);
+    return sendError(
+      res,
+      500,
+      "FLOORPLAN_GENERATION_FAILED",
+      error.message,
+      error.details || null,
+      {
+        endpoint: "generate-floorplan",
+        featureFlags: ["useFloorplanEngine", "useFloorplanGenerator"],
+      },
+    );
   }
 }

@@ -26,6 +26,7 @@ import {
 } from "../../src/services/retrieval/precedentSearchService.js";
 import {
   config,
+  ensureFeatureEnabled,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -36,8 +37,22 @@ export { config };
 
 export default async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  setCors(res);
+  if (!setCors(req, res)) {
+    return sendError(
+      res,
+      403,
+      "ORIGIN_NOT_ALLOWED",
+      "Origin is not allowed for this endpoint.",
+      null,
+      { endpoint: "search-precedents" },
+    );
+  }
   if (rejectInvalidMethod(req, res)) return;
+  if (
+    !ensureFeatureEnabled(res, ["usePrecedentRetrieval"], "search-precedents")
+  ) {
+    return;
+  }
 
   try {
     const validation = validateSearchPrecedentsRequest(req.body || {});
@@ -47,6 +62,14 @@ export default async function handler(req, res) {
         400,
         "INVALID_REQUEST",
         validation.errors.join(" "),
+        {
+          errors: validation.errors,
+          warnings: validation.warnings,
+        },
+        {
+          endpoint: "search-precedents",
+          featureFlags: ["usePrecedentRetrieval"],
+        },
       );
     }
 
@@ -76,14 +99,25 @@ export default async function handler(req, res) {
       buildSearchPrecedentsResponse({
         result,
         index: indexResult,
-        warnings: result.warnings || [],
+        warnings: [...validation.warnings, ...(result.warnings || [])],
         selectedModelStrategy: getRecommendedModel("precedent_retrieval", {
           preferLocal: true,
           useCase: validation.normalized.query || "precedent retrieval",
         }),
+        featureFlags: ["usePrecedentRetrieval"],
       }),
     );
   } catch (error) {
-    return sendError(res, 500, "PRECEDENT_SEARCH_FAILED", error.message);
+    return sendError(
+      res,
+      500,
+      "PRECEDENT_SEARCH_FAILED",
+      error.message,
+      error.details || null,
+      {
+        endpoint: "search-precedents",
+        featureFlags: ["usePrecedentRetrieval"],
+      },
+    );
   }
 }
