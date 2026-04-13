@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "pipeline": "genarch",
+  "run_id": "phase1_test",
+  "started_at": "2026-04-10T18:35:01.281359",
+  "completed_at": "2026-04-10T18:35:03.422485",
+  "duration_seconds": 2.141126,
+  "config": {
+    "prompt": "simple house 80sqm",
+    "constraints_path": null,
+    "output_path": "C:\\Users\\21366\\OneDrive\\Documents\\GitHub\\architect-ai-platform\\genarch\\tmp_smoke_tests\\tmp_fd5598afeeb040f58a76946a8c178885\\phase1_test",
+    "seed": 99999,
+    "wall_height": 3.0,
+    "skip_phase2": true,
+    "skip_phase3": true,
+    "skip_phase4": true,
+    "force": false,
+    "verbose": false,
+    "strict": false,
+    "validate_assets": true,
+    "drift_check": true,
+    "drift_threshold": 0.65,
+    "drift_tolerance_px": 3
+  },
+  "phases": {
+    "1": {
+      "status": "success",
+      "outputs": ["plan.json", "plan.dxf", "model.glb", "model.obj", "run.json"]
+    }
+  },
+  "validation": {},
+  "errors": [],
+  "warnings": [],
+  "outputs": {
+    "plan_json": "plan.json",
+    "plan_dxf": "plan.dxf",
+    "model_glb": "model.glb",
+    "phase2_manifest": null,
+    "a1_sheet": null
+  }
+}

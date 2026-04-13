@@ -1,37 +1,131 @@
 /**
  * Export Panel Component
- * Provides export functionality for generated designs
+ * Provides export functionality for generated designs including
+ * standard formats (PDF, PNG, DXF) and Blender 3D outputs.
  */
 
 import React from "react";
-import { Download } from "lucide-react";
+import { Download, Box, FileText, Image, Layers } from "lucide-react";
 
-const ExportPanel = ({ designData, onExport }) => {
+/**
+ * Download a base64 data URL as a file.
+ */
+function downloadDataUrl(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
+ * Download multiple Blender renders as individual files.
+ */
+function downloadBlenderRenders(panels) {
+  if (!panels || typeof panels !== "object") return;
+
+  Object.entries(panels).forEach(([panelType, panel]) => {
+    const dataUrl =
+      panel.dataUrl ||
+      (panel.base64 ? `data:image/png;base64,${panel.base64}` : null);
+    if (dataUrl) {
+      downloadDataUrl(dataUrl, `blender_${panelType}.png`);
+    }
+  });
+}
+
+const ExportPanel = ({
+  designData,
+  blenderOutputs,
+  onExport,
+  onExportStart,
+  onExportComplete,
+  onExportError,
+}) => {
   const handleExport = (format) => {
-    if (onExport) {
-      onExport(format, designData);
+    if (onExportStart) onExportStart(format);
+    try {
+      if (onExport) {
+        onExport(format, designData);
+      }
+      if (onExportComplete) onExportComplete(format, `export.${format}`);
+    } catch (err) {
+      if (onExportError) onExportError(format, err);
     }
   };
+
+  const hasBlenderRenders =
+    blenderOutputs?.panels && Object.keys(blenderOutputs.panels).length > 0;
+  const blenderPanelCount = hasBlenderRenders
+    ? Object.keys(blenderOutputs.panels).length
+    : 0;
+  const hasBlendFile = !!blenderOutputs?.manifest?.blendFile;
 
   return (
     <div className="export-panel p-4 bg-white rounded-lg shadow">
       <h3 className="text-lg font-semibold mb-4">Export Options</h3>
-      <div className="flex flex-col gap-2">
+
+      {/* Standard exports */}
+      <div className="flex flex-col gap-2 mb-4">
         <button
           onClick={() => handleExport("pdf")}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
-          <Download className="w-4 h-4" />
+          <FileText className="w-4 h-4" />
           Export as PDF
         </button>
         <button
           onClick={() => handleExport("png")}
           className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
         >
-          <Download className="w-4 h-4" />
+          <Image className="w-4 h-4" />
           Export as PNG
         </button>
+        <button
+          onClick={() => handleExport("dxf")}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          <Download className="w-4 h-4" />
+          Export as DXF (CAD)
+        </button>
       </div>
+
+      {/* Blender 3D exports */}
+      {hasBlenderRenders && (
+        <>
+          <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 mt-4">
+            3D Renders
+          </h4>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => downloadBlenderRenders(blenderOutputs.panels)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              <Layers className="w-4 h-4" />
+              Download All Renders ({blenderPanelCount} views)
+            </button>
+
+            {hasBlendFile && (
+              <button
+                onClick={() => handleExport("blend")}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700"
+              >
+                <Box className="w-4 h-4" />
+                Download .blend File
+              </button>
+            )}
+
+            <button
+              onClick={() => handleExport("glb")}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-700"
+            >
+              <Box className="w-4 h-4" />
+              Export GLB Model
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

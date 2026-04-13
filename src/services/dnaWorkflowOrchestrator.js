@@ -52,6 +52,11 @@ import { createProgressReporter } from "./dnaWorkflow/progressReporter.js";
 // they are imported directly by aiModificationService.js.
 import { getFeatureValue, isFeatureEnabled } from "../config/featureFlags.js";
 import {
+  getCompositeControlImage,
+  getPassPolicy,
+  hasControlNetPasses,
+} from "./controlnet/ControlNetConditioningService.js";
+import {
   validateAndCorrectFootprint,
   polygonToLocalXY,
 } from "../utils/geometry.js";
@@ -117,6 +122,7 @@ import {
 import { fromLegacyDNA } from "../types/CanonicalDesignState.js";
 // AI Floor Plan Layout Engine — generates room coordinates via Qwen2.5-72B
 import { generateFloorPlanLayout } from "./aiFloorPlanLayoutEngine.js";
+import { getClimateData } from "./climateService.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
 const DEFAULT_API_BASE_URL = runtimeEnv.isBrowser
@@ -1215,6 +1221,23 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           22,
         );
         try {
+          const resolvedCoordinates =
+            locationData?.coordinates ||
+            locationData?.location?.coordinates ||
+            projectContext?.location?.coordinates ||
+            null;
+
+          let climateContext = null;
+          if (
+            typeof resolvedCoordinates?.lat === "number" &&
+            typeof resolvedCoordinates?.lng === "number"
+          ) {
+            climateContext = await getClimateData(
+              resolvedCoordinates.lat,
+              resolvedCoordinates.lng,
+            );
+          }
+
           const aiLayout = await generateFloorPlanLayout({
             programSpaces: typesCDS.programRooms,
             buildingEnvelope: {
@@ -1231,6 +1254,12 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               vernacular: masterDNA?.style || "contemporary",
               roofType: typesCDS.massing?.roofType || "gable",
             },
+            climateContext,
+            buildingType:
+              projectContext?.buildingProgram ||
+              projectContext?.buildingType ||
+              masterDNA?.buildingType ||
+              "residential",
           });
 
           // Inject AI coordinates into programRooms using fuzzy matching
@@ -1307,19 +1336,26 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           }
 
           function fuzzyMatchRoom(spaces, aiRoom, levelIndex) {
+            const aiId = normalizeRoomKey(aiRoom.id);
             const aiName = normalizeRoomKey(aiRoom.name);
             const aiCanonical = canonicalizeRoomName(aiRoom.name);
             const levelSpaces = spaces.filter(
               (space) => (space.levelIndex || 0) === levelIndex,
             );
 
-            // 1) Exact normalized name match
+            // 1) Stable ID match from the spatial graph/layout
             let match = levelSpaces.find(
+              (space) => normalizeRoomKey(space.id) === aiId && aiId.length > 0,
+            );
+            if (match) return match;
+
+            // 2) Exact normalized name match
+            match = levelSpaces.find(
               (space) => normalizeRoomKey(space.name) === aiName,
             );
             if (match) return match;
 
-            // 2) Canonical name match across known aliases/synonyms
+            // 3) Canonical name match across known aliases/synonyms
             match = levelSpaces.find((space) => {
               const programCanonical = canonicalizeRoomName(
                 space.program || space.category,
@@ -1332,7 +1368,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             });
             if (match) return match;
 
-            // 3) Partial normalized/canonical substring match
+            // 4) Partial normalized/canonical substring match
             match = levelSpaces.find((space) => {
               const normalizedName = normalizeRoomKey(space.name);
               const canonicalName = canonicalizeRoomName(space.name);
@@ -1373,9 +1409,71 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             }
           }
 
+          masterDNA.spatialGraph = aiLayout.spatialGraph || null;
+          masterDNA.qualityEvaluation = aiLayout.qualityEvaluation || null;
+          masterDNA.qualityScore = aiLayout.qualityEvaluation?.total || null;
+          masterDNA.climateData =
+            climateContext || masterDNA.climateData || null;
+          masterDNA._structured = masterDNA._structured || {};
+          masterDNA._structured.program = masterDNA._structured.program || {};
+          masterDNA._structured.site = masterDNA._structured.site || {};
+          masterDNA._structured.program.spatialGraph =
+            aiLayout.spatialGraph || null;
+          masterDNA._structured.site.climateData =
+            climateContext || masterDNA._structured.site.climateData || null;
+          if (climateContext?.climate) {
+            masterDNA._structured.site.climate_zone =
+              climateContext.climate.zone ||
+              masterDNA._structured.site.climate_zone ||
+              null;
+            masterDNA._structured.site.sun_path =
+              climateContext.sunPath ||
+              masterDNA._structured.site.sun_path ||
+              null;
+            masterDNA.climateDesign = {
+              ...(masterDNA.climateDesign || {}),
+              zone:
+                climateContext.climate.zone || masterDNA.climateDesign?.zone,
+              orientation:
+                climateContext.design_recommendations?.orientation ||
+                masterDNA.climateDesign?.orientation,
+            };
+          }
+
+          typesCDS.site = typesCDS.site || {};
+          typesCDS.site.climateData =
+            climateContext || typesCDS.site.climateData || null;
+          if (climateContext?.climate) {
+            typesCDS.site.climate = {
+              ...(typesCDS.site.climate || {}),
+              zone:
+                climateContext.climate.zone ||
+                typesCDS.site.climate?.zone ||
+                "temperate",
+              prevailingWind:
+                climateContext.climate.prevailing_wind?.direction ||
+                typesCDS.site.climate?.prevailingWind,
+              annualRainfallMm:
+                climateContext.climate.rainfall_mm_annual ||
+                typesCDS.site.climate?.annualRainfallMm,
+            };
+          }
+          if (climateContext?.sunPath) {
+            typesCDS.site.sunPath = {
+              ...(typesCDS.site.sunPath || {}),
+              ...climateContext.sunPath,
+            };
+          }
+
           logger.success(
             `✅ AI layout applied to program spaces (${injected}/${typesCDS.programRooms.length} rooms)`,
           );
+          if (aiLayout.qualityEvaluation) {
+            logger.info("📊 Floor plan quality evaluation", {
+              total: aiLayout.qualityEvaluation.total,
+              grade: aiLayout.qualityEvaluation.grade,
+            });
+          }
         } catch (aiLayoutErr) {
           logger.warn(
             "⚠️ AI layout failed, falling back to strip-packing:",
@@ -1746,6 +1844,115 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         // Continue without geometry masks - AI will generate from prompt alone
       }
 
+      // STEP 2.7: Optional Blender 3D rendering (depth maps for ControlNet)
+      let blenderOutputs = null;
+
+      if (isFeatureEnabled("blenderRendering") && masterDNA.spatialGraph) {
+        logger.info("🎨 STEP 2.7: Requesting Blender 3D renders (optional)...");
+        reportProgress("dna", "Generating 3D renders via Blender...", 31);
+
+        try {
+          // Request all available views dynamically based on floor count
+          const blenderFloors =
+            masterDNA?.dimensions?.floors ||
+            masterDNA?.dimensions?.floorCount ||
+            masterDNA?.program?.floors ||
+            1;
+          const blenderViews = [
+            "hero_3d",
+            "interior_3d",
+            "axonometric",
+            "floor_plan_ground",
+            ...(blenderFloors > 1 ? ["floor_plan_first"] : []),
+            ...(blenderFloors > 2 ? ["floor_plan_level2"] : []),
+            "elevation_north",
+            "elevation_south",
+            "elevation_east",
+            "elevation_west",
+            "section_AA",
+            "section_BB",
+          ];
+
+          const blenderResponse = await fetch("/api/blender-render", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              dna: masterDNA,
+              meshyResult: null,
+              views: blenderViews,
+            }),
+          });
+
+          if (blenderResponse.ok) {
+            blenderOutputs = await blenderResponse.json();
+            logger.success("Blender renders received", {
+              panels: Object.keys(blenderOutputs.panels || {}).length,
+              views: blenderViews.length,
+            });
+          } else {
+            logger.warn(
+              "Blender render returned non-OK status, continuing without",
+            );
+          }
+        } catch (blenderErr) {
+          logger.warn(
+            "Blender rendering unavailable, continuing with SVG pipeline:",
+            blenderErr.message,
+          );
+        }
+
+        // STEP 2.7b: Optional Phase 2 multi-pass renders for ControlNet
+        // Only triggered when controlNetRendering AND blenderRendering are both
+        // enabled. Produces depth/lineart/canny/AO passes per panel type for
+        // composite control images. Failures are non-fatal — Phase 1 panels
+        // remain available as FLUX img2img init_images.
+        if (
+          isFeatureEnabled("controlNetRendering") &&
+          blenderOutputs?.panels &&
+          blenderOutputs?.tempDir
+        ) {
+          try {
+            logger.info(
+              "🎯 STEP 2.7b: Requesting Blender Phase 2 ControlNet passes...",
+            );
+            reportProgress(
+              "dna",
+              "Generating ControlNet conditioning passes...",
+              31,
+            );
+
+            const phase2Response = await fetch("/api/blender-render?phase=2", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                modelPath: blenderOutputs.tempDir,
+              }),
+            });
+
+            if (phase2Response.ok) {
+              const phase2Result = await phase2Response.json();
+              // phase2Result contains { manifest, outputDir, outputFiles }
+              // Manifest maps panel types → pass file names
+              if (phase2Result.manifest?.passes) {
+                blenderOutputs.passes = phase2Result.manifest.passes;
+                logger.success("Blender Phase 2 passes received", {
+                  panels: Object.keys(phase2Result.manifest.passes).length,
+                });
+              }
+            } else {
+              logger.warn(
+                "Blender Phase 2 returned non-OK status, ControlNet will use raw renders",
+              );
+            }
+          } catch (phase2Err) {
+            logger.warn(
+              "Blender Phase 2 unavailable, continuing without composite passes:",
+              phase2Err.message,
+            );
+          }
+        }
+      }
+
       // STEP 3: Derive panel seeds from DNA hash
       logger.info("🔢 STEP 3: Deriving panel seeds from DNA...");
       reportProgress("layout", "Deriving panel seeds...", 32);
@@ -1820,6 +2027,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         programLock, // P0: Hard program constraint
         canonicalDesignState: typesCDS || canonicalDesignState, // Prefer typesCDS (has massing.widthM/depthM)
         projectContext, // Thread floorCountConstraint to prompt builders
+        blenderRenders: blenderOutputs?.panels || null, // Blender 3D renders for init_image
       });
 
       const floorCount =
@@ -2036,6 +2244,79 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               `   🎯 [Geometry Mode] Using procedural geometry mask for ${job.type} (strength: ${effectiveGeometryStrength})`,
             );
           }
+          // PRIORITY 1.5: Use Blender 3D renders (geometrically authoritative depth/clay)
+          // Blender renders are higher quality than procedural geometry but lower
+          // priority than canonical packs. Provides real 3D depth information.
+          //
+          // When controlNetRendering is enabled AND Phase 2 multi-pass renders
+          // are available, build a composite control image (depth+lineart, canny, etc.)
+          // and tag it `blender_controlnet` so multiModelImageService routes through
+          // the Replicate ControlNet client (Canny or Depth model auto-selected).
+          if (
+            !geometryRender &&
+            blenderOutputs?.panels &&
+            blenderOutputs.panels[job.type]
+          ) {
+            const blenderPanel = blenderOutputs.panels[job.type];
+            const blenderUrl = blenderPanel.dataUrl
+              ? blenderPanel.dataUrl
+              : blenderPanel.base64
+                ? `data:image/png;base64,${blenderPanel.base64}`
+                : null;
+
+            // Check whether Phase 2 per-pass renders are present for this panel
+            const blenderPasses =
+              blenderOutputs.passes?.[job.type] || blenderPanel.passes || null;
+            const passAvailability = blenderPasses
+              ? hasControlNetPasses(job.type, blenderPasses)
+              : { available: false };
+
+            if (
+              isFeatureEnabled("controlNetRendering") &&
+              passAvailability.available
+            ) {
+              try {
+                const policy = getPassPolicy(job.type);
+                const compositeUrl = await getCompositeControlImage(
+                  job.type,
+                  blenderPasses,
+                  { width: job.width || 1024, height: job.height || 1024 },
+                );
+                if (compositeUrl && policy) {
+                  geometryRender = {
+                    url: compositeUrl,
+                    type: "blender_controlnet",
+                    model: "blender_eevee",
+                    controlnetModel: policy.controlnetModel,
+                    rawPasses: blenderPasses,
+                  };
+                  effectiveGeometryStrength = policy.strength;
+                  logger.info(
+                    `   🎯 [ControlNet] Composite control image for ${job.type} → ${policy.controlnetModel} (strength: ${effectiveGeometryStrength})`,
+                  );
+                }
+              } catch (compositeErr) {
+                logger.warn(
+                  `   ⚠️ ControlNet composite failed for ${job.type}: ${compositeErr.message}`,
+                );
+                // Fall through to plain Blender PNG below
+              }
+            }
+
+            // Fallback: use the raw Blender render as FLUX img2img init_image
+            if (!geometryRender && blenderUrl) {
+              geometryRender = {
+                url: blenderUrl,
+                type: "blender_3d",
+                model: "blender_eevee",
+              };
+              effectiveGeometryStrength = 0.75;
+              logger.info(
+                `   🎨 [Blender 3D] Using Blender render for ${job.type} (strength: ${effectiveGeometryStrength})`,
+              );
+            }
+          }
+
           // PRIORITY 2: Use geometryRenderMap for elevations and 3D views
           else if (
             !geometryRender &&
@@ -2884,6 +3165,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       reportProgress("finalizing", "A1 sheet composed", 92);
       return await finalizeMultiPanelRun({
         baselineStore,
+        blenderOutputs: blenderOutputs || null,
         canonicalDesignState: canonicalDesignState || null,
         compositionResult,
         consistencyReport,

@@ -336,6 +336,9 @@ const VERSION_METADATA_KEYS = [
   "qaAllPassed",
   "critiqueOverallPass",
   "hashValidation",
+  "qualityScore",
+  "qualityGrade",
+  "qualityEvaluation",
 ];
 
 function sanitizeVersionMetadata(metadata = {}) {

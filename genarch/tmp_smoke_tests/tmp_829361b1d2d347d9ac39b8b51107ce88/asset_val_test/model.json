@@ -1,0 +1,150 @@
+{
+  "metadata": {
+    "seed": 55555,
+    "units": "meters",
+    "north_direction": 0.0,
+    "generation_timestamp": "2026-04-10T17:32:36.253041Z",
+    "version": "0.1.0",
+    "validation_results": {
+      "geometry": false,
+      "connectivity": false,
+      "uk_building_regs": false
+    },
+    "statistics": {
+      "room_count": 8,
+      "wall_count": 15,
+      "opening_count": 6,
+      "total_area_m2": 84.63999999999999,
+      "target_area_m2": 70,
+      "area_accuracy": 1.2091428571428569,
+      "connectivity": {
+        "total_rooms": 8,
+        "connected_rooms": 8,
+        "disconnected_rooms": [],
+        "fully_connected": true
+      }
+    }
+  },
+  "openings": [
+    {
+      "id": "entrance_0_S_0",
+      "type": "entrance",
+      "wall_id": "wall_0_ext_0",
+      "position": {
+        "x": 4.6,
+        "y": 0.0,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 1.0,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "facade": "S"
+    },
+    {
+      "id": "door_0_INT_0",
+      "type": "door",
+      "wall_id": "wall_0_int_3",
+      "position": {
+        "x": 8.049999999999999,
+        "y": 3.6054292903814544,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_1",
+      "type": "door",
+      "wall_id": "wall_0_int_6",
+      "position": {
+        "x": 3.4499999999999997,
+        "y": 3.6054292903814544,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_2",
+      "type": "door",
+      "wall_id": "wall_0_int_7",
+      "position": {
+        "x": 5.75,
+        "y": 3.6054292903814544,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": -1.0,
+        "y": 0.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_3",
+      "type": "door",
+      "wall_id": "wall_0_int_9",
+      "position": {
+        "x": 4.369999999999999,
+        "y": 5.717093277464276,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_4",
+      "type": "door",
+      "wall_id": "wall_0_int_10",
+      "position": {
+        "x": 7.59,
+        "y": 5.717093277464276,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "facade": "INT"
+    }
+  ]
+}

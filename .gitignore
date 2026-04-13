@@ -57,6 +57,15 @@ tmpclaude-*-cwd
 # Generated output directories
 genarch_runs/
 qa_results/
+data/external/
+data/archcad/raw/*
+!data/archcad/raw/.gitkeep
+data/archcad/processed/*
+!data/archcad/processed/.gitkeep
+data/archcad/cache/*
+!data/archcad/cache/.gitkeep
+data/archcad/manifests/*
+!data/archcad/manifests/.gitkeep
 
 # Agent/IDE cache
 .agent/

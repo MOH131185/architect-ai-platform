@@ -1,0 +1,130 @@
+{
+  "metadata": {
+    "seed": 77777,
+    "units": "meters",
+    "north_direction": 0.0,
+    "generation_timestamp": "2026-04-10T17:31:27.102064Z",
+    "version": "0.1.0",
+    "validation_results": {
+      "geometry": false,
+      "connectivity": false,
+      "uk_building_regs": false
+    },
+    "statistics": {
+      "room_count": 8,
+      "wall_count": 14,
+      "opening_count": 5,
+      "total_area_m2": 121.0,
+      "target_area_m2": 100,
+      "area_accuracy": 1.21,
+      "connectivity": {
+        "total_rooms": 8,
+        "connected_rooms": 8,
+        "disconnected_rooms": [],
+        "fully_connected": true
+      }
+    }
+  },
+  "openings": [
+    {
+      "id": "entrance_0_S_0",
+      "type": "entrance",
+      "wall_id": "wall_0_ext_0",
+      "position": {
+        "x": 5.5,
+        "y": 0.0,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 1.0,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "facade": "S"
+    },
+    {
+      "id": "door_0_INT_0",
+      "type": "door",
+      "wall_id": "wall_0_int_1",
+      "position": {
+        "x": 7.988716315916116,
+        "y": 7.972268448210199,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_1",
+      "type": "door",
+      "wall_id": "wall_0_int_2",
+      "position": {
+        "x": 4.455,
+        "y": 5.5,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 1.0,
+        "y": 0.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_2",
+      "type": "door",
+      "wall_id": "wall_0_int_6",
+      "position": {
+        "x": 5.609999999999999,
+        "y": 2.75,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 0.0,
+        "y": 1.0
+      },
+      "facade": "INT"
+    },
+    {
+      "id": "door_0_INT_3",
+      "type": "door",
+      "wall_id": "wall_0_int_7",
+      "position": {
+        "x": 3.3,
+        "y": 2.75,
+        "z": 1.05
+      },
+      "dimensions": {
+        "width": 0.9,
+        "height": 2.1
+      },
+      "sill_height": 0.0,
+      "direction": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "facade": "INT"
+    }
+  ]
+}

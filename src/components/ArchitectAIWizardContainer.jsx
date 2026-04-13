@@ -107,6 +107,18 @@ const StepProgressBar = ({ steps, currentStep }) => {
     </div>
   );
 };
+
+const polygonsEqual = (polygonA = [], polygonB = []) => {
+  if (polygonA === polygonB) return true;
+  if (!Array.isArray(polygonA) || !Array.isArray(polygonB)) return false;
+  if (polygonA.length !== polygonB.length) return false;
+
+  return polygonA.every((pointA, index) => {
+    const pointB = polygonB[index];
+    return pointA?.lat === pointB?.lat && pointA?.lng === pointB?.lng;
+  });
+};
+
 const ArchitectAIWizardContainer = () => {
   // Workflow hook
   const {
@@ -704,12 +716,16 @@ const ArchitectAIWizardContainer = () => {
       if (!boundaryData) return;
 
       const polygon = boundaryData.polygon || [];
+      if (polygonsEqual(sitePolygon, polygon)) {
+        return;
+      }
+
       setSitePolygon(polygon);
       setSiteMetrics(
         polygon && polygon.length >= 3 ? computeSiteMetrics(polygon) : null,
       );
     },
-    [setSiteMetrics, setSitePolygon],
+    [setSiteMetrics, setSitePolygon, sitePolygon],
   );
 
   /**

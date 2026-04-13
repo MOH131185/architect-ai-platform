@@ -13,6 +13,7 @@
 
 import logger from "../../utils/logger.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { buildRoboflowSymbolVocabularyBlock } from "../layoutReferenceService.js";
 import { getRoomListForLevel } from "../validation/programLockSchema.js";
 
 // CAD-standard lineweight specification for technical drawings
@@ -375,26 +376,28 @@ DESIGN SPECIFICATION (All subsequent panels MUST match this):
 - Window pattern: regular fenestration matching ${dims.floors} floor(s)
 
 REQUIREMENTS:
-- Photorealistic architectural rendering
-- Southwest viewing angle (45° from corner)
-- Natural daylight with volumetric shadows
-- ${style} architectural style clearly expressed
-- Material textures visible and accurate with correct colors
-- Contextual environment (sky, ground plane, light landscaping)
+- Photorealistic architectural rendering, 8K quality, award-winning architecture photography
+- Southwest viewing angle (45° from corner), eye-level 1.6m with slight upward tilt
+- Golden hour natural daylight with volumetric shadows and soft ambient occlusion
+- ${style} architectural style clearly expressed through form, materials, and detailing
+- Material textures visible at close range: grain in timber, coursing in brick, texture in render
+- Contextual environment: photorealistic sky with clouds, manicured lawn, gravel driveway, mature trees/hedging
 - Single building only (no variations or alternatives)
-- Professional architecture magazine quality
-- Coherent massing matching floor plans
+- Professional architecture magazine cover quality (Dezeen, ArchDaily standard)
+- Coherent massing matching floor plans with precise proportions
 - ${geomConstraint}
 - FLOOR COUNT: EXACTLY ${dims.floors} floor(s). ${dims.floors === 1 ? "LOW ground-hugging SINGLE STOREY structure. Wall height ~3.2m before roof starts. NO upper windows." : `Show clearly ${dims.floors} rows of windows. Total height ${dims.height}m.`}
-- ROOF: ${roofType} roof ONLY. ${roofType === "flat" ? "Horizontal roofline, NO pitch, NO gable ends." : roofType === "gable" ? "Triangular gable ends clearly visible. NOT flat, NOT hip." : roofType === "hip" ? "Hipped roof, slopes on all sides. NOT flat, NOT gable." : `${roofType} profile clearly visible.`}
-- PROPORTIONS: Building is ${dims.length}m long × ${dims.width}m wide × ${dims.height}m to roof ridge.
+- ROOF: ${roofType} roof ONLY. ${roofType === "flat" ? "Horizontal roofline with parapet detail, NO pitch, NO gable ends." : roofType === "gable" ? "Triangular gable ends clearly visible with fascia and soffit detail. NOT flat, NOT hip." : roofType === "hip" ? "Hipped roof with uniform slope on all four sides, ridge tiles visible. NOT flat, NOT gable." : `${roofType} profile clearly visible.`}
+- PROPORTIONS: Building is ${dims.length}m long × ${dims.width}m wide × ${dims.height}m to roof ridge
+- ARCHITECTURAL DETAILING: visible window reveals (100mm depth), rainwater goods, threshold steps, plinth course, eaves detail
+- DEPTH AND REALISM: depth of field effect, subtle lens flare from sun, reflections in glazing showing sky
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, housing estate, street of houses, neighborhood, multiple roofs, duplex, apartment block, flats, apartments, townhouses, housing development, cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, people, cars, ${dims.floors === 1 ? "two storey, second floor, upper floor, balcony, " : ""}${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, housing estate, street of houses, neighborhood, multiple roofs, duplex, apartment block, flats, apartments, townhouses, housing development, cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, people, cars, toy model, miniature, diorama, tilt-shift, plastic, CGI render, video game, unreal engine UI, blueprint drawing, line art, flat shading, anime, illustration, ${dims.floors === 1 ? "two storey, second floor, upper floor, balcony, " : ""}${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -440,22 +443,26 @@ Materials: ${matDesc}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT (match exterior exactly):\n${fingerprintConstraint}\n` : ""}
 REQUIREMENTS:
-- Photorealistic interior rendering
-- Main entrance lobby or living core space
-- Natural lighting from windows (MUST match window positions from hero exterior)
-- ${style} interior design language
-- Furniture layout matching program
-- Material finishes visible (floors, walls, ceiling) - SAME materials and colors as exterior
-- Spatial depth showing multiple rooms/areas
-- No people, clean professional presentation
-- Openings align with floor plans AND exterior views
+- Photorealistic interior rendering, 8K quality, professional interior photography
+- Main entrance lobby or open-plan living/kitchen space
+- Natural lighting from windows with visible light rays and shadow patterns on floor
+- ${style} interior design language with cohesive material palette
+- Furniture layout matching program: sofa arrangement, dining table, kitchen island where applicable
+- Material finishes visible at close range: timber flooring grain, wall texture, ceiling detail
+- SAME materials and colors as exterior facade (continuity of palette)
+- Spatial depth showing multiple rooms/areas through doorways and open connections
+- No people, clean professional presentation (Dezeen interior photography standard)
+- Openings align with floor plans AND exterior views (window positions MUST match)
 - Interior must be consistent with the SAME building shown in hero 3D
+- CEILING HEIGHT: ${dims.floors === 1 ? "3.0m ceiling with exposed structure or feature lighting" : "2.7m standard ceiling height"}
+- DETAILING: skirting boards, architraves around doors, window sills, visible radiators or underfloor heating grilles
+- LIGHTING: combination of natural daylight through windows and subtle recessed downlights
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
   return {
     prompt,
-    negativePrompt: `cartoon, sketch, fisheye, low detail, people, cluttered, messy, dark, different building, inconsistent materials, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `cartoon, sketch, fisheye, low detail, people, cluttered, messy, dark, different building, inconsistent materials, toy model, miniature, CGI render, video game, flat shading, empty white room, unfurnished, bare walls, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -492,6 +499,9 @@ export function buildGroundFloorPrompt({
     projectContext,
   });
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const symbolVocabulary = isFeatureEnabled("layoutReferenceCorpus")
+    ? buildRoboflowSymbolVocabularyBlock()
+    : "";
 
   const prompt = `${identity}
 
@@ -512,6 +522,7 @@ REQUIREMENTS:
 - Main entrance clearly marked
 ${dims.floors > 1 ? "- Staircase shown (multi-storey building)" : "- NO staircase (single storey building)"}
 - Align with elevations (window/door positions match)
+${symbolVocabulary ? `${symbolVocabulary}\n` : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
@@ -550,6 +561,9 @@ export function buildFirstFloorPrompt({
     masterDNA,
     projectContext,
   });
+  const symbolVocabulary = isFeatureEnabled("layoutReferenceCorpus")
+    ? buildRoboflowSymbolVocabularyBlock()
+    : "";
 
   const prompt = `${identity}
 
@@ -569,6 +583,7 @@ REQUIREMENTS:
 - Dimension lines
 - Vertical circulation (stairs/lifts) in same position as ground floor
 - Window positions align with elevations
+${symbolVocabulary ? `${symbolVocabulary}\n` : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
@@ -605,6 +620,9 @@ export function buildSecondFloorPrompt({
     masterDNA,
     projectContext,
   });
+  const symbolVocabulary = isFeatureEnabled("layoutReferenceCorpus")
+    ? buildRoboflowSymbolVocabularyBlock()
+    : "";
 
   const prompt = `${identity}
 
@@ -623,6 +641,7 @@ REQUIREMENTS:
 - Dimension lines
 - Staircase/lift alignment with lower floors
 - Window positions align with elevations
+${symbolVocabulary ? `${symbolVocabulary}\n` : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 

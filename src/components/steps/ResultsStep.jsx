@@ -35,6 +35,35 @@ const ResultsStep = ({
   onStartNew,
 }) => {
   const [showExportPanel, setShowExportPanel] = useState(false);
+
+  const qualityEvaluation =
+    result?.qualityEvaluation ||
+    result?.metadata?.qualityEvaluation ||
+    result?.masterDNA?.qualityEvaluation ||
+    null;
+
+  const qualityTone =
+    (qualityEvaluation?.total || 0) >= 80
+      ? {
+          border: "border-emerald-500/30",
+          bg: "bg-emerald-900/10",
+          accent: "text-emerald-300",
+          bar: "bg-emerald-400",
+        }
+      : (qualityEvaluation?.total || 0) >= 60
+        ? {
+            border: "border-amber-500/30",
+            bg: "bg-amber-900/10",
+            accent: "text-amber-300",
+            bar: "bg-amber-400",
+          }
+        : {
+            border: "border-rose-500/30",
+            bg: "bg-rose-900/10",
+            accent: "text-rose-300",
+            bar: "bg-rose-400",
+          };
+
   const formatElapsedTime = (seconds) => {
     const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
     const mins = Math.floor(safeSeconds / 60);
@@ -71,6 +100,7 @@ const ResultsStep = ({
     result?.populatedGeometry || result?.masterDNA?.populatedGeometry;
   const masterDNA = result?.masterDNA;
   const meshy3D = result?.masterDNA?.meshy3D || result?.meshy3D;
+  const blenderOutputs = result?.blenderOutputs || null;
   const projectInfo = {
     name: result?.projectName || "Building Design",
     address: result?.locationData?.address || "",
@@ -289,6 +319,80 @@ const ResultsStep = ({
           </Card>
         </motion.div>
 
+        {qualityEvaluation && (
+          <motion.div variants={fadeInUp}>
+            <Card
+              variant="glass"
+              padding="md"
+              className={`${qualityTone.border} ${qualityTone.bg}`}
+            >
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
+                <div className="flex flex-col justify-center rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
+                  <div
+                    className={`text-sm uppercase tracking-[0.2em] ${qualityTone.accent}`}
+                  >
+                    Plan Quality
+                  </div>
+                  <div className="mt-3 text-5xl font-bold text-white">
+                    {qualityEvaluation.total}
+                  </div>
+                  <div
+                    className={`mt-2 text-lg font-semibold ${qualityTone.accent}`}
+                  >
+                    Grade {qualityEvaluation.grade}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {[
+                    ["Adjacency Satisfaction", qualityEvaluation.adjacency, 25],
+                    ["Room Proportions", qualityEvaluation.proportions, 20],
+                    ["Circulation Flow", qualityEvaluation.circulation, 20],
+                    ["Area Compliance", qualityEvaluation.area, 20],
+                    ["Natural Light Access", qualityEvaluation.light, 15],
+                  ].map(([label, score, max]) => (
+                    <div key={label}>
+                      <div className="mb-1 flex items-center justify-between text-sm text-gray-300">
+                        <span>{label}</span>
+                        <span>
+                          {score}/{max}
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/10">
+                        <div
+                          className={`h-2 rounded-full ${qualityTone.bar}`}
+                          style={{
+                            width: `${Math.max(
+                              6,
+                              (Number(score || 0) / Number(max || 1)) * 100,
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {Array.isArray(qualityEvaluation.explanations) &&
+                    qualityEvaluation.explanations.length > 0 && (
+                      <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="mb-2 text-sm font-semibold text-white">
+                          Review Notes
+                        </div>
+                        <div className="space-y-2">
+                          {qualityEvaluation.explanations.map((note) => (
+                            <p key={note} className="text-sm text-gray-300">
+                              {note}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Phase 5: Professional Export Panel */}
         {showExportPanel && (
           <motion.div variants={fadeInUp}>
@@ -298,6 +402,7 @@ const ResultsStep = ({
               masterDNA={masterDNA}
               a1SheetData={a1SheetData}
               meshy3D={meshy3D}
+              blenderOutputs={blenderOutputs}
               projectInfo={projectInfo}
               onExportStart={(format) =>
                 console.log(`Starting ${format} export...`)

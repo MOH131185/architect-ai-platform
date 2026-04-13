@@ -55,6 +55,40 @@ function sendGenarchJson(res, statusCode, payload) {
     ...payload,
   });
 }
+
+const dynamicApiHandlerCache = new Map();
+
+async function loadDynamicApiHandler(relativePath) {
+  const moduleUrl = pathToFileURL(path.resolve(__dirname, relativePath)).href;
+  if (!dynamicApiHandlerCache.has(moduleUrl)) {
+    dynamicApiHandlerCache.set(
+      moduleUrl,
+      import(moduleUrl).then((mod) => {
+        if (typeof mod.default !== 'function') {
+          throw new Error(`${relativePath} does not export a default handler`);
+        }
+        return mod.default;
+      })
+    );
+  }
+  return dynamicApiHandlerCache.get(moduleUrl);
+}
+
+function mountDynamicApiRoute(method, route, relativePath, middlewares = []) {
+  app[method](route, ...middlewares, async (req, res) => {
+    try {
+      const handler = await loadDynamicApiHandler(relativePath);
+      return handler(req, res);
+    } catch (error) {
+      console.error(`[Dynamic API] Failed to load ${relativePath}:`, error);
+      return res.status(500).json({
+        error: 'Dynamic API route failed',
+        message: error.message,
+        route,
+      });
+    }
+  });
+}
 const A1_COMPOSE_MAX_DATAURL_BYTES = parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || '', 10) || 4.5 * 1024 * 1024;
 try {
   fs.mkdirSync(A1_COMPOSE_OUTPUT_DIR, { recursive: true });
@@ -273,6 +307,13 @@ app.get('/api/health', (req, res) => {
     replicate: !!process.env.REACT_APP_REPLICATE_API_KEY,
   });
 });
+
+// Phase 1 architecture backend routes (shared with api/models/* serverless handlers)
+mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-floorplan', 'api/models/generate-floorplan.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-drawings', 'api/models/generate-drawings.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/search-precedents', 'api/models/search-precedents.js', [aiApiLimiter]);
+mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');
 
 // OpenAI proxy handler for chat completions (reasoning)
 const handleOpenAIChat = async (req, res) => {
@@ -998,6 +1039,91 @@ app.post('/api/controlnet/render', imageGenerationLimiter, async (req, res) => {
     throw new Error('ControlNet generation timed out');
   } catch (error) {
     console.error('[ControlNet] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ControlNet Depth rendering endpoint (Replicate)
+app.post('/api/controlnet/depth-render', imageGenerationLimiter, async (req, res) => {
+  const replicateKey = process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_KEY;
+  if (!replicateKey) {
+    return res.status(500).json({ error: 'REPLICATE_API_TOKEN not configured' });
+  }
+
+  try {
+    const {
+      depthImage,
+      prompt,
+      negative_prompt = '',
+      controlnet_strength = 0.65,
+      seed,
+      width = 1024,
+      height = 1024,
+    } = req.body;
+
+    if (!depthImage || !prompt) {
+      return res.status(400).json({ error: 'depthImage and prompt are required' });
+    }
+
+    console.log(`[ControlNet Depth] Generating render (${width}x${height}, strength: ${controlnet_strength})`);
+
+    // fofr/sdxl-controlnet supports depth conditioning
+    const createResponse = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${replicateKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        version: 'd56b4a4b5e26efef27a39c9d3d5d0e6f3e5f5e5f5e5f5e5f5e5f5e5f5e5f5e5f',
+        input: {
+          image: depthImage,
+          prompt,
+          negative_prompt,
+          num_inference_steps: 30,
+          guidance_scale: 7.5,
+          seed: seed || Math.floor(Math.random() * 1000000),
+          condition_scale: controlnet_strength,
+          controlnet_type: 'depth',
+          image_resolution: Math.max(width, height),
+        },
+      }),
+    });
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(`Replicate create failed: ${createResponse.status} - ${errorText}`);
+    }
+
+    const prediction = await createResponse.json();
+    console.log(`[ControlNet Depth] Prediction created: ${prediction.id}`);
+
+    // Poll for completion (max 2 minutes)
+    let result = prediction;
+    for (let i = 0; i < 60; i++) {
+      if (result.status === 'succeeded') {
+        const outputUrl = Array.isArray(result.output)
+          ? result.output[result.output.length - 1]
+          : result.output;
+        return res.json({
+          url: outputUrl,
+          seed,
+          metadata: { model: 'controlnet-depth', provider: 'replicate', prediction_id: result.id },
+        });
+      }
+      if (result.status === 'failed' || result.status === 'canceled') {
+        throw new Error(`ControlNet depth ${result.status}: ${result.error || 'unknown'}`);
+      }
+      await new Promise(r => setTimeout(r, 2000));
+      const statusResp = await fetch(`https://api.replicate.com/v1/predictions/${prediction.id}`, {
+        headers: { 'Authorization': `Token ${replicateKey}` },
+      });
+      result = await statusResp.json();
+    }
+
+    throw new Error('ControlNet depth generation timed out');
+  } catch (error) {
+    console.error('[ControlNet Depth] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2288,6 +2414,16 @@ async function getA1ComposeHandler() {
   }
   return a1ComposeHandlerPromise;
 }
+
+app.post('/api/export/dxf', async (req, res) => {
+  try {
+    const { default: handler } = await import('./api/export/dxf.js');
+    return handler(req, res);
+  } catch (error) {
+    console.error('[DXF Export] Delegation error:', error);
+    return res.status(500).json({ error: error.message || 'DXF export failed' });
+  }
+});
 
 app.post('/api/a1/compose', async (req, res) => {
   try {

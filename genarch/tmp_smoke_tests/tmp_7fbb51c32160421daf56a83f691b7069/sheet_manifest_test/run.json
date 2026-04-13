@@ -1,0 +1,28 @@
+{
+  "seed": 44444,
+  "units": "meters",
+  "north_direction": 0.0,
+  "generation_timestamp": "2026-04-10T17:34:19.068756Z",
+  "version": "0.1.0",
+  "validation_results": {
+    "geometry": false,
+    "connectivity": false,
+    "uk_building_regs": false
+  },
+  "statistics": {
+    "room_count": 8,
+    "wall_count": 16,
+    "opening_count": 5,
+    "total_area_m2": 108.16000000000001,
+    "target_area_m2": 90,
+    "area_accuracy": 1.2017777777777778,
+    "connectivity": {
+      "total_rooms": 8,
+      "connected_rooms": 8,
+      "disconnected_rooms": [],
+      "fully_connected": true
+    },
+    "constraints_file": "C:\\Users\\21366\\OneDrive\\Documents\\GitHub\\architect-ai-platform\\genarch\\tmp_smoke_tests\\tmp_7fbb51c32160421daf56a83f691b7069\\sheet_manifest_test\\constraints.json",
+    "output_directory": "C:\\Users\\21366\\OneDrive\\Documents\\GitHub\\architect-ai-platform\\genarch\\tmp_smoke_tests\\tmp_7fbb51c32160421daf56a83f691b7069\\sheet_manifest_test"
+  }
+}

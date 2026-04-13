@@ -9,6 +9,38 @@ import logger from "../utils/logger.js";
 const HAS_SESSION_STORAGE =
   typeof sessionStorage !== "undefined" && sessionStorage !== null;
 
+const FEATURE_FLAG_GROUPS = [
+  ["useFloorplanEngine", "useFloorplanGenerator"],
+  ["useModelRegistryRouter", "modelRegistry"],
+];
+
+function syncFeatureFlagGroup(flagName) {
+  const group = FEATURE_FLAG_GROUPS.find((entry) => entry.includes(flagName));
+  if (!group) return;
+
+  const resolvedValue = group
+    .map((entry) => FEATURE_FLAGS[entry])
+    .find((value) => typeof value === "boolean");
+
+  if (typeof resolvedValue !== "boolean") return;
+  group.forEach((entry) => {
+    FEATURE_FLAGS[entry] = resolvedValue;
+  });
+}
+
+function syncAllFeatureFlagGroups() {
+  FEATURE_FLAG_GROUPS.forEach((group) => {
+    const resolvedValue = group
+      .map((entry) => FEATURE_FLAGS[entry])
+      .find((value) => typeof value === "boolean");
+
+    if (typeof resolvedValue !== "boolean") return;
+    group.forEach((entry) => {
+      FEATURE_FLAGS[entry] = resolvedValue;
+    });
+  });
+}
+
 export const FEATURE_FLAGS = {
   /**
    * A1-Only Output Mode (DEFAULT)
@@ -64,6 +96,21 @@ export const FEATURE_FLAGS = {
    * @default true
    */
   aiFloorPlanLayout: true,
+
+  /**
+   * Floor-Plan Reference Corpus
+   *
+   * When enabled:
+   * - Injects HouseExpo-derived residential layout priors into spatial-graph
+   *   and layout prompts
+   * - Injects Roboflow-derived symbol vocabulary hints into technical floor-plan
+   *   prompt builders
+   * - Uses compact in-repo summaries only; raw datasets stay under data/external
+   *
+   * @type {boolean}
+   * @default true
+   */
+  layoutReferenceCorpus: true,
 
   /**
    * Hybrid A1 Sheet Mode (EXPERIMENTAL)
@@ -213,19 +260,40 @@ export const FEATURE_FLAGS = {
    * ControlNet Rendering (Geometry-Locked)
    *
    * When enabled:
-   * - Uses ControlNet Canny conditioning for panel rendering via Replicate
-   * - Converts canonical SVG geometry to Canny edge images (white-on-black)
-   * - Calls /api/controlnet-render for ControlNet-conditioned generation
+   * - Routes panel renders through Replicate ControlNet (Canny or Depth)
+   * - Source 1: Canonical SVG → Canny edges (white-on-black)
+   * - Source 2: Blender Phase 2 multi-pass renders → composite control image
+   *   via ControlNetConditioningService (depth+lineart, canny, lineart+ao, etc.)
+   * - Per-panel-type strength + model selection from CONTROLNET_PASS_POLICY
+   *   (hero/interior/axon → depth model, elevations/sections/plans → canny)
+   * - Falls back to FLUX init_image pipeline if Replicate fails or token missing
    * - Requires REPLICATE_API_TOKEN environment variable
-   * - Falls back to FLUX if ControlNet fails
+   * - Synergizes with blenderRendering=true for full multi-pass conditioning
    *
    * When disabled (default):
-   * - Uses FLUX init_image pipeline (existing behavior)
+   * - Uses FLUX init_image pipeline with canonical SVG or raw Blender PNG
    *
    * @type {boolean}
    * @default false
    */
   controlNetRendering: false,
+
+  /**
+   * Blender 3D Rendering (EXPERIMENTAL)
+   *
+   * When enabled:
+   * - After spatial graph generation, calls /api/blender-render
+   *   to produce technical drawings and depth maps from a 3D model
+   * - Requires Blender installed locally (dev) or BLENDER_WORKER_URL (prod)
+   * - Falls back to existing SVG + FLUX pipeline if Blender unavailable
+   *
+   * When disabled (default):
+   * - Uses existing BuildingModel.js + SVG pipeline
+   *
+   * @type {boolean}
+   * @default false
+   */
+  blenderRendering: false,
 
   /**
    * Use Vercel AI Gateway for AI calls
@@ -793,6 +861,27 @@ export const FEATURE_FLAGS = {
   /** Vector panel generation */
   vectorPanelGeneration: false,
 
+  /** Open-source-ready style engine */
+  useOpenSourceStyleEngine: true,
+
+  /** Structured floorplan generator (Phase 1 name) */
+  useFloorplanEngine: true,
+
+  /** Structured floorplan generator */
+  useFloorplanGenerator: true,
+
+  /** Technical drawing engine */
+  useTechnicalDrawingEngine: true,
+
+  /** Local precedent retrieval */
+  usePrecedentRetrieval: true,
+
+  /** CAD understanding normalization layer */
+  useCadUnderstandingLayer: true,
+
+  /** Model registry/category router (Phase 1 name) */
+  useModelRegistryRouter: true,
+
   /** Conditioned image pipeline */
   conditionedImagePipeline: false,
 
@@ -876,10 +965,11 @@ export function setFeatureFlag(flagName, value) {
 
   const oldValue = FEATURE_FLAGS[flagName];
   FEATURE_FLAGS[flagName] = value;
+  syncFeatureFlagGroup(flagName);
 
   logger.debug("Feature flag updated: " + flagName, {
     from: oldValue,
-    to: value,
+    to: FEATURE_FLAGS[flagName],
   });
 
   if (HAS_SESSION_STORAGE) {
@@ -1010,6 +1100,13 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.aiStylization = false;
   FEATURE_FLAGS.openaiStyler = false;
   FEATURE_FLAGS.vectorPanelGeneration = false;
+  FEATURE_FLAGS.useOpenSourceStyleEngine = true;
+  FEATURE_FLAGS.useFloorplanEngine = true;
+  FEATURE_FLAGS.useFloorplanGenerator = true;
+  FEATURE_FLAGS.useTechnicalDrawingEngine = true;
+  FEATURE_FLAGS.usePrecedentRetrieval = true;
+  FEATURE_FLAGS.useCadUnderstandingLayer = true;
+  FEATURE_FLAGS.useModelRegistryRouter = true;
   FEATURE_FLAGS.conditionedImagePipeline = false;
   FEATURE_FLAGS.facadeGenerationLayer = false;
   FEATURE_FLAGS.blockExportOnConsistencyFailure = false;
@@ -1027,6 +1124,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.dualTrackTechnicalDrawings = false;
   FEATURE_FLAGS.useClaudeReasoning = false;
   FEATURE_FLAGS.geometryDNAv2 = false;
+  syncAllFeatureFlagGroups();
 
   logger.info(
     "Feature flags reset to defaults (ModelRouter enabled, fingerprint system enabled, two-pass DNA enabled)",
@@ -1048,9 +1146,15 @@ export function loadFeatureFlagsFromStorage() {
           FEATURE_FLAGS[key] = flags[key];
         }
       });
+      syncAllFeatureFlagGroups();
       // DEFENSIVE: Clear stale FLUX.1-dev from sessionStorage — it's no longer serverless
-      if (FEATURE_FLAGS.fluxImageModel && FEATURE_FLAGS.fluxImageModel.includes("FLUX.1-dev")) {
-        logger.warn("⚠️ Clearing stale FLUX.1-dev from sessionStorage — model is no longer serverless");
+      if (
+        FEATURE_FLAGS.fluxImageModel &&
+        FEATURE_FLAGS.fluxImageModel.includes("FLUX.1-dev")
+      ) {
+        logger.warn(
+          "⚠️ Clearing stale FLUX.1-dev from sessionStorage — model is no longer serverless",
+        );
         FEATURE_FLAGS.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
         flags.fluxImageModel = "black-forest-labs/FLUX.1-schnell";
         sessionStorage.setItem("featureFlags", JSON.stringify(flags));
@@ -1136,6 +1240,34 @@ function loadP0EnvOverrides() {
       flag: "controlNetRendering",
       parse: (v) => v === "true",
     },
+    ARCHIAI_OPEN_SOURCE_STYLE_ENGINE: {
+      flag: "useOpenSourceStyleEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FLOORPLAN_ENGINE: {
+      flag: "useFloorplanEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FLOORPLAN_GENERATOR: {
+      flag: "useFloorplanEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_DRAWING_ENGINE: {
+      flag: "useTechnicalDrawingEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PRECEDENT_RETRIEVAL: {
+      flag: "usePrecedentRetrieval",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CAD_UNDERSTANDING_LAYER: {
+      flag: "useCadUnderstandingLayer",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_MODEL_REGISTRY_ROUTER: {
+      flag: "useModelRegistryRouter",
+      parse: (v) => v === "true",
+    },
   };
 
   // Also support REACT_APP_ prefix for CRA browser builds
@@ -1155,6 +1287,7 @@ function loadP0EnvOverrides() {
       }
     }
   }
+  syncAllFeatureFlagGroups();
 
   if (applied.length > 0) {
     logger.info("P0 env overrides applied: " + applied.join(", "));
@@ -1220,6 +1353,7 @@ if (typeof module !== "undefined" && module.exports) {
     isFeatureEnabled,
     setFeatureFlag,
     getAllFeatureFlags,
+    getFeatureValue,
     resetFeatureFlags,
     loadFeatureFlagsFromStorage,
     logFeatureFlags,

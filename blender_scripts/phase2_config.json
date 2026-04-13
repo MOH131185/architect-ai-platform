@@ -71,6 +71,20 @@
     "mask": {
       "enabled": true,
       "description": "Binary silhouette mask"
+    },
+    "lineart": {
+      "enabled": true,
+      "thickness": 2.0,
+      "crease_angle": 134,
+      "description": "Freestyle architectural line art (black lines on white)"
+    },
+    "ao": {
+      "enabled": false,
+      "description": "Ambient occlusion contact shadows (white surface + AO)"
+    },
+    "textured": {
+      "enabled": false,
+      "description": "Original materials with studio lighting"
     }
   },
   "postprocess": {

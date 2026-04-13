@@ -68,6 +68,66 @@ export function latLngToCoord(point) {
   return [roundCoord(point.lng), roundCoord(point.lat)];
 }
 
+/**
+ * Compare two canonical coordinates for exact equality after rounding.
+ * @param {[number, number]} coordA
+ * @param {[number, number]} coordB
+ * @returns {boolean}
+ */
+export function coordsEqual(coordA, coordB) {
+  if (coordA === coordB) return true;
+  if (!Array.isArray(coordA) || !Array.isArray(coordB)) return false;
+  return (
+    roundCoord(coordA[0]) === roundCoord(coordB[0]) &&
+    roundCoord(coordA[1]) === roundCoord(coordB[1])
+  );
+}
+
+/**
+ * Compare two rings in canonical [lng, lat] format.
+ * @param {Array<[number, number]>} ringA
+ * @param {Array<[number, number]>} ringB
+ * @returns {boolean}
+ */
+export function ringsEqual(ringA = [], ringB = []) {
+  if (ringA === ringB) return true;
+  if (!Array.isArray(ringA) || !Array.isArray(ringB)) return false;
+  if (ringA.length !== ringB.length) return false;
+
+  for (let i = 0; i < ringA.length; i++) {
+    if (!coordsEqual(ringA[i], ringB[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Compare two polygons in Google Maps {lat, lng} format.
+ * @param {Array<{lat: number, lng: number}>} polygonA
+ * @param {Array<{lat: number, lng: number}>} polygonB
+ * @returns {boolean}
+ */
+export function latLngPolygonsEqual(polygonA = [], polygonB = []) {
+  if (polygonA === polygonB) return true;
+  if (!Array.isArray(polygonA) || !Array.isArray(polygonB)) return false;
+  if (polygonA.length !== polygonB.length) return false;
+
+  for (let i = 0; i < polygonA.length; i++) {
+    const pointA = polygonA[i];
+    const pointB = polygonB[i];
+    if (
+      roundCoord(pointA?.lat) !== roundCoord(pointB?.lat) ||
+      roundCoord(pointA?.lng) !== roundCoord(pointB?.lng)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // ============================================================
 // RING VALIDATION & NORMALIZATION
 // ============================================================

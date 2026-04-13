@@ -12,6 +12,7 @@ import {
 import { isFeatureEnabled } from "../config/featureFlags.js";
 import logger from "../utils/logger.js";
 import { validateAILayout } from "./aiLayoutValidator.js";
+import { buildHouseExpoReferenceBlock } from "./layoutReferenceService.js";
 import { getFallbackChain, getModelConfig } from "./modelRegistry.js";
 import { evaluateFloorPlan } from "./qualityEvaluator.js";
 import togetherAIReasoningService from "./togetherAIReasoningService.js";
@@ -200,6 +201,7 @@ function buildSpatialGraphPrompt(
   siteContext,
   styleContext,
   climateContext,
+  buildingType,
 ) {
   const interiorWidth = Number((envelope.widthM || 10) - 0.6).toFixed(1);
   const interiorDepth = Number((envelope.depthM || 8) - 0.6).toFixed(1);
@@ -229,6 +231,10 @@ function buildSpatialGraphPrompt(
     });
   }
 
+  const referenceBlock = isFeatureEnabled("layoutReferenceCorpus")
+    ? buildHouseExpoReferenceBlock({ programSpaces, buildingType })
+    : "";
+
   let prompt = `Generate a spatial graph for a ${levelCount}-storey building.
 
 ENVELOPE:
@@ -252,6 +258,7 @@ PROGRAM:
 
   prompt += `
 ${buildClimatePromptBlock(climateContext)}
+${referenceBlock ? `\n${referenceBlock}\n` : ""}
 
 Output the spatial graph JSON only.`;
 
@@ -266,12 +273,26 @@ function buildLayoutPromptFromGraph(
 ) {
   const floors = spatialGraph?.building?.floors || [];
   const envelope = spatialGraph?.building?.envelope || {};
+  const referenceProgramSpaces = flattenSpatialGraphRooms(spatialGraph).map(
+    (room) => ({
+      name: room.id,
+      type: room.type,
+      program: room.type,
+    }),
+  );
+  const referenceBlock = isFeatureEnabled("layoutReferenceCorpus")
+    ? buildHouseExpoReferenceBlock({
+        programSpaces: referenceProgramSpaces,
+        buildingType: spatialGraph?.building?.type,
+      })
+    : "";
 
   let prompt = `Lay out this validated spatial graph in a ${Number(envelope.width_m || 10).toFixed(1)}m x ${Number(envelope.depth_m || 8).toFixed(1)}m interior envelope.
 - Entrance side: ${siteContext?.entranceSide || "S"}
 - Style: ${styleContext?.vernacular || envelope.style || "contemporary"}
 - Roof type: ${styleContext?.roofType || envelope.roof_type || "gable"}
 ${buildClimatePromptBlock(climateContext)}
+${referenceBlock ? `${referenceBlock}\n` : ""}
 
 SPATIAL GRAPH:
 `;
@@ -385,6 +406,7 @@ async function generateSpatialGraph({
     siteContext,
     styleContext,
     climateContext,
+    buildingType,
   );
 
   let { payload, model } = await callTogetherForJson(
