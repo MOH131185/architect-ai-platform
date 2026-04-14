@@ -23,6 +23,13 @@ import {
   executeWorkflow,
   UnsupportedPipelineModeError,
 } from "../services/workflowRouter.js";
+import {
+  checkGenerationLimit,
+  incrementGenerationCount,
+  recordGeneration,
+  getUserByClerkId,
+  getOrCreateUser,
+} from "../services/database.js";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -129,6 +136,45 @@ export function useArchitectAIWorkflow() {
         });
       };
 
+      // --- Generation limit enforcement ---
+      let dbUser = null;
+      try {
+        // Attempt to get Clerk user ID for limit checking
+        const clerkUserId = window.__clerkUserId;
+        if (clerkUserId) {
+          dbUser = await getOrCreateUser(clerkUserId, window.__clerkUserEmail);
+          const usage = await checkGenerationLimit(dbUser.id);
+
+          // Cache usage for the UI (PlanBadge reads this)
+          try {
+            sessionStorage.setItem(
+              "archiAI_usage",
+              JSON.stringify({
+                plan: usage.plan,
+                remaining: usage.remaining,
+                limit: usage.limit,
+                used: usage.used,
+              }),
+            );
+          } catch {
+            // sessionStorage may be unavailable
+          }
+
+          if (!usage.allowed) {
+            const limitErr = new Error(
+              `Monthly generation limit reached (${usage.used}/${usage.limit}). Upgrade your plan for more generations.`,
+            );
+            limitErr.code = "GENERATION_LIMIT_REACHED";
+            limitErr.usage = usage;
+            throw limitErr;
+          }
+        }
+      } catch (limitErr) {
+        if (limitErr.code === "GENERATION_LIMIT_REACHED") throw limitErr;
+        // If Supabase isn't configured, log and continue without limits
+        logger.warn("Generation limit check skipped", limitErr);
+      }
+
       const workflowLocationData =
         params.designSpec?.location ||
         params.locationData ||
@@ -213,6 +259,36 @@ export function useArchitectAIWorkflow() {
       });
 
       sheetResult.designId = designId;
+
+      // --- Post-generation: increment count and record ---
+      let remaining = null;
+      if (dbUser) {
+        try {
+          await incrementGenerationCount(dbUser.id);
+          await recordGeneration(null, dbUser.id, {
+            a1SheetUrl: sheetResult.composedSheetUrl,
+          });
+          const updatedUsage = await checkGenerationLimit(dbUser.id);
+          remaining = updatedUsage.remaining;
+          try {
+            sessionStorage.setItem(
+              "archiAI_usage",
+              JSON.stringify({
+                plan: updatedUsage.plan,
+                remaining: updatedUsage.remaining,
+                limit: updatedUsage.limit,
+                used: updatedUsage.used,
+              }),
+            );
+          } catch {
+            // ignore
+          }
+        } catch (trackErr) {
+          logger.warn("Generation tracking failed", trackErr);
+        }
+      }
+
+      sheetResult.remaining = remaining;
 
       setResult(sheetResult);
       setProgress({

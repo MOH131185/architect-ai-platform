@@ -274,6 +274,38 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ---- Stripe endpoints (dev proxy) ----
+app.post('/api/stripe/create-checkout', async (req, res) => {
+  try {
+    const Stripe = (await import('stripe')).default;
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const { priceId, userId, email, successUrl, cancelUrl } = req.body || {};
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return res.status(500).json({ error: 'Stripe is not configured' });
+    }
+    if (!priceId) {
+      return res.status(400).json({ error: 'priceId is required' });
+    }
+
+    const sessionParams = {
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: successUrl || 'http://localhost:3000/?checkout=success',
+      cancel_url: cancelUrl || 'http://localhost:3000/pricing?checkout=cancelled',
+      metadata: { userId: userId || '' },
+    };
+    if (email) sessionParams.customer_email = email;
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('[Stripe] Checkout error:', err.message);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
 // OpenAI proxy handler for chat completions (reasoning)
 const handleOpenAIChat = async (req, res) => {
   try {

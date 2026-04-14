@@ -43,10 +43,17 @@ import GenerateStep from "./steps/GenerateStep.jsx";
 // Landing page
 import LandingPage from "./LandingPage.jsx";
 
+// Auth gate (no-op when Clerk is not configured)
+import AuthGate from "./AuthGate.jsx";
+
+// Pricing page
+import PricingPage from "./PricingPage.jsx";
+
 // Import new UI components and layout
 import { Card } from "./ui";
 import { AppShell, PageTransition } from "./layout";
 import "../styles/deepgram.css";
+import { useClerkUser } from "../hooks/useClerkUser.js";
 
 const ResultsStep = lazy(() => import("./steps/ResultsStep.jsx"));
 
@@ -178,6 +185,7 @@ const ArchitectAIWizardContainer = () => {
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [isGenerationTimerRunning, setIsGenerationTimerRunning] =
     useState(false);
+  const [showPricing, setShowPricing] = useState(false);
 
   const hasA1Output = Boolean(
     result?.a1Sheet?.url ||
@@ -245,6 +253,18 @@ const ArchitectAIWizardContainer = () => {
     hasPanelOutput,
     isGenerationTimerRunning,
   ]);
+
+  // Sync Clerk user to global so useArchitectAIWorkflow can access it
+  const clerkUser = useClerkUser();
+  useEffect(() => {
+    if (clerkUser) {
+      window.__clerkUserId = clerkUser.id;
+      window.__clerkUserEmail = clerkUser.email;
+    } else {
+      window.__clerkUserId = null;
+      window.__clerkUserEmail = null;
+    }
+  }, [clerkUser]);
 
   // --- Demo mode: skip straight to results with pre-generated output ---
   useEffect(() => {
@@ -1511,108 +1531,120 @@ const ArchitectAIWizardContainer = () => {
 
       case 1:
         return (
-          <LocationStep
-            address={address}
-            isDetectingLocation={isDetectingLocation}
-            locationData={locationData}
-            sitePolygon={sitePolygon}
-            locationAccuracy={locationAccuracy}
-            onAddressChange={setAddress}
-            onAnalyzeLocation={analyzeLocation}
-            onDetectUserLocation={detectUserLocation}
-            onBoundaryUpdated={handleBoundaryUpdated}
-            onNext={handleNext}
-            error={error}
-          />
+          <AuthGate>
+            <LocationStep
+              address={address}
+              isDetectingLocation={isDetectingLocation}
+              locationData={locationData}
+              sitePolygon={sitePolygon}
+              locationAccuracy={locationAccuracy}
+              onAddressChange={setAddress}
+              onAnalyzeLocation={analyzeLocation}
+              onDetectUserLocation={detectUserLocation}
+              onBoundaryUpdated={handleBoundaryUpdated}
+              onNext={handleNext}
+              error={error}
+            />
+          </AuthGate>
         );
 
       case 2:
         return (
-          <IntelligenceStep
-            locationData={locationData}
-            sitePolygon={sitePolygon}
-            siteMetrics={siteMetrics}
-            onNext={handleNext}
-            onBack={handleBack}
-            MapViewComponent={null}
-            mapRef={mapRef}
-            onSitePolygonChange={handleSitePolygonChange}
-          />
+          <AuthGate>
+            <IntelligenceStep
+              locationData={locationData}
+              sitePolygon={sitePolygon}
+              siteMetrics={siteMetrics}
+              onNext={handleNext}
+              onBack={handleBack}
+              MapViewComponent={null}
+              mapRef={mapRef}
+              onSitePolygonChange={handleSitePolygonChange}
+            />
+          </AuthGate>
         );
 
       case 3:
         return (
-          <PortfolioStep
-            portfolioFiles={portfolioFiles}
-            materialWeight={materialWeight}
-            characteristicWeight={characteristicWeight}
-            locationData={locationData}
-            isUploading={isUploading}
-            onPortfolioUpload={handlePortfolioUpload}
-            onRemoveFile={handleRemovePortfolioFile}
-            onMaterialWeightChange={setMaterialWeight}
-            onCharacteristicWeightChange={setCharacteristicWeight}
-            onNext={handleNext}
-            onBack={handleBack}
-            fileInputRef={fileInputRef}
-          />
+          <AuthGate>
+            <PortfolioStep
+              portfolioFiles={portfolioFiles}
+              materialWeight={materialWeight}
+              characteristicWeight={characteristicWeight}
+              locationData={locationData}
+              isUploading={isUploading}
+              onPortfolioUpload={handlePortfolioUpload}
+              onRemoveFile={handleRemovePortfolioFile}
+              onMaterialWeightChange={setMaterialWeight}
+              onCharacteristicWeightChange={setCharacteristicWeight}
+              onNext={handleNext}
+              onBack={handleBack}
+              fileInputRef={fileInputRef}
+            />
+          </AuthGate>
         );
 
       case 4:
         return (
-          <SpecsStep
-            projectDetails={projectDetails}
-            programSpaces={programSpaces}
-            programWarnings={programWarnings}
-            isGeneratingSpaces={isGeneratingSpaces}
-            isDetectingEntrance={isDetectingEntrance}
-            autoDetectResult={autoDetectResult}
-            validationState={{}}
-            onProjectDetailsChange={setProjectDetails}
-            onProgramSpacesChange={handleProgramSpacesChange}
-            onGenerateProgramSpaces={handleGenerateSpaces}
-            onImportProgram={handleImportProgram}
-            onExportProgram={handleExportProgram}
-            onAutoDetectEntrance={handleAutoDetectEntrance}
-            onNext={handleNext}
-            onBack={handleBack}
-          />
+          <AuthGate>
+            <SpecsStep
+              projectDetails={projectDetails}
+              programSpaces={programSpaces}
+              programWarnings={programWarnings}
+              isGeneratingSpaces={isGeneratingSpaces}
+              isDetectingEntrance={isDetectingEntrance}
+              autoDetectResult={autoDetectResult}
+              validationState={{}}
+              onProjectDetailsChange={setProjectDetails}
+              onProgramSpacesChange={handleProgramSpacesChange}
+              onGenerateProgramSpaces={handleGenerateSpaces}
+              onImportProgram={handleImportProgram}
+              onExportProgram={handleExportProgram}
+              onAutoDetectEntrance={handleAutoDetectEntrance}
+              onNext={handleNext}
+              onBack={handleBack}
+            />
+          </AuthGate>
         );
 
       case 5:
         return (
-          <GenerateStep
-            isGenerating={loading}
-            progress={progress}
-            elapsedSeconds={generationElapsedSeconds}
-            generationComplete={!!result}
-            onGenerate={handleGenerate}
-            onBack={handleBack}
-            onViewResults={() => setCurrentStep(6)}
-          />
+          <AuthGate>
+            <GenerateStep
+              isGenerating={loading}
+              progress={progress}
+              elapsedSeconds={generationElapsedSeconds}
+              generationComplete={!!result}
+              onGenerate={handleGenerate}
+              onBack={handleBack}
+              onViewResults={() => setCurrentStep(6)}
+            />
+          </AuthGate>
         );
 
       case 6:
         return (
-          <Suspense
-            fallback={
-              <Card className="border border-navy-700 bg-navy-950/70 p-8 text-center text-white">
-                Preparing results workspace...
-              </Card>
-            }
-          >
-            <ResultsStep
-              result={result}
-              designId={generatedDesignId}
-              generationElapsedSeconds={generationElapsedSeconds}
-              onModify={handleModify}
-              onExport={handleExport}
-              onExportCAD={handleExportCAD}
-              onExportBIM={handleExportBIM}
-              onBack={handleBack}
-              onStartNew={handleStartNew}
-            />
-          </Suspense>
+          <AuthGate>
+            <Suspense
+              fallback={
+                <Card className="border border-navy-700 bg-navy-950/70 p-8 text-center text-white">
+                  Preparing results workspace...
+                </Card>
+              }
+            >
+              <ResultsStep
+                result={result}
+                designId={generatedDesignId}
+                generationElapsedSeconds={generationElapsedSeconds}
+                onModify={handleModify}
+                onExport={handleExport}
+                onExportCAD={handleExportCAD}
+                onExportBIM={handleExportBIM}
+                onBack={handleBack}
+                onStartNew={handleStartNew}
+              />
+            </Suspense>
+          </AuthGate>
         );
 
       default:
@@ -1622,13 +1654,14 @@ const ArchitectAIWizardContainer = () => {
 
   return (
     <AppShell
-      showNav={currentStep > 0}
-      showFooter={currentStep === 0}
+      showNav={currentStep > 0 || showPricing}
+      showFooter={currentStep === 0 && !showPricing}
       navProps={{
         onNewDesign: handleStartNew,
+        onPricingClick: () => setShowPricing(true),
         showNewDesign: currentStep > 0,
       }}
-      background={currentStep === 0 ? "default" : "gradient"}
+      background={currentStep === 0 && !showPricing ? "default" : "gradient"}
       noise={true}
     >
       <PageTransition
@@ -1636,8 +1669,23 @@ const ArchitectAIWizardContainer = () => {
         background={currentStep === 0 ? "default" : "blueprint"}
       >
         <div className="container mx-auto px-4 py-8">
+          {/* Pricing Page Overlay */}
+          {showPricing && (
+            <PricingPage
+              onBack={() => setShowPricing(false)}
+              currentPlan={(() => {
+                try {
+                  const cached = sessionStorage.getItem("archiAI_usage");
+                  return cached ? JSON.parse(cached).plan : "free";
+                } catch {
+                  return "free";
+                }
+              })()}
+            />
+          )}
+
           {/* Progress Indicator */}
-          {currentStep > 0 && currentStep < 6 && (
+          {!showPricing && currentStep > 0 && currentStep < 6 && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1648,7 +1696,7 @@ const ArchitectAIWizardContainer = () => {
           )}
 
           {/* Current Step */}
-          {renderStep()}
+          {!showPricing && renderStep()}
 
           {/* Global Error Display */}
           <AnimatePresence>
