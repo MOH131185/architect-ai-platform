@@ -14,6 +14,7 @@
  */
 
 import { generateLayoutFromProgram } from "../../src/services/floorplan/floorplanGenerator.js";
+import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import {
   buildGenerateFloorplanResponse,
   validateGenerateFloorplanRequest,
@@ -55,6 +56,14 @@ export default async function handler(req, res) {
 
   try {
     const validation = validateGenerateFloorplanRequest(req.body || {});
+    const featureFlags = [
+      "useFloorplanEngine",
+      "useFloorplanGenerator",
+      "useCanonicalGeometryPhase2",
+      "useAdjacencySolver",
+      "useGeometryValidationEngine",
+      "useFailClosedTechnicalFlow",
+    ];
     if (!validation.ok) {
       return sendError(
         res,
@@ -67,7 +76,7 @@ export default async function handler(req, res) {
         },
         {
           endpoint: "generate-floorplan",
-          featureFlags: ["useFloorplanEngine", "useFloorplanGenerator"],
+          featureFlags,
         },
       );
     }
@@ -77,15 +86,34 @@ export default async function handler(req, res) {
       preferLocal: true,
       useCase: validation.normalized.building_type || "structured floorplan",
     });
+    const responsePayload = buildGenerateFloorplanResponse({
+      result,
+      warnings: [...validation.warnings, ...(result.warnings || [])],
+      selectedModelStrategy,
+      featureFlags,
+    });
 
-    return res.status(200).json(
-      buildGenerateFloorplanResponse({
-        result,
-        warnings: [...validation.warnings, ...(result.warnings || [])],
-        selectedModelStrategy,
-        featureFlags: ["useFloorplanEngine", "useFloorplanGenerator"],
-      }),
-    );
+    if (
+      result.validationReport?.status === "invalid" &&
+      isFeatureEnabled("useFailClosedTechnicalFlow")
+    ) {
+      return sendError(
+        res,
+        422,
+        "PROJECT_VALIDATION_FAILED",
+        "Generated project geometry failed validation.",
+        {
+          validationReport: result.validationReport,
+          output: responsePayload,
+        },
+        {
+          endpoint: "generate-floorplan",
+          featureFlags,
+        },
+      );
+    }
+
+    return res.status(200).json(responsePayload);
   } catch (error) {
     return sendError(
       res,
@@ -95,7 +123,14 @@ export default async function handler(req, res) {
       error.details || null,
       {
         endpoint: "generate-floorplan",
-        featureFlags: ["useFloorplanEngine", "useFloorplanGenerator"],
+        featureFlags: [
+          "useFloorplanEngine",
+          "useFloorplanGenerator",
+          "useCanonicalGeometryPhase2",
+          "useAdjacencySolver",
+          "useGeometryValidationEngine",
+          "useFailClosedTechnicalFlow",
+        ],
       },
     );
   }

@@ -879,6 +879,21 @@ export const FEATURE_FLAGS = {
   /** Technical drawing engine */
   useTechnicalDrawingEngine: true,
 
+  /** Canonical project geometry generation and routing */
+  useCanonicalGeometryPhase2: true,
+
+  /** Deterministic adjacency-first layout scoring/solver */
+  useAdjacencySolver: true,
+
+  /** Geometry-first SVG plan/elevation/section rendering */
+  useDeterministicSvgPlans: true,
+
+  /** Canonical geometry and drawing validation engine */
+  useGeometryValidationEngine: true,
+
+  /** Fail closed when generated geometry or drawings are invalid */
+  useFailClosedTechnicalFlow: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1118,6 +1133,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useFloorplanEngine = true;
   FEATURE_FLAGS.useFloorplanGenerator = true;
   FEATURE_FLAGS.useTechnicalDrawingEngine = true;
+  FEATURE_FLAGS.useCanonicalGeometryPhase2 = true;
+  FEATURE_FLAGS.useAdjacencySolver = true;
+  FEATURE_FLAGS.useDeterministicSvgPlans = true;
+  FEATURE_FLAGS.useGeometryValidationEngine = true;
+  FEATURE_FLAGS.useFailClosedTechnicalFlow = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1268,6 +1288,26 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_TECHNICAL_DRAWING_ENGINE: {
       flag: "useTechnicalDrawingEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CANONICAL_GEOMETRY_PHASE2: {
+      flag: "useCanonicalGeometryPhase2",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ADJACENCY_SOLVER: {
+      flag: "useAdjacencySolver",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DETERMINISTIC_SVG_PLANS: {
+      flag: "useDeterministicSvgPlans",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_GEOMETRY_VALIDATION_ENGINE: {
+      flag: "useGeometryValidationEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FAIL_CLOSED_TECHNICAL_FLOW: {
+      flag: "useFailClosedTechnicalFlow",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

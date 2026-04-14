@@ -1,6 +1,4 @@
-import logger from "../../utils/logger.js";
-import ArchitecturalSectionGenerator from "../svg/ArchitecturalSectionGenerator.js";
-import { normalizeArchitecturalGeometry } from "../cad/archElementNormalizer.js";
+import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
 
 function escapeXml(value) {
   return String(value)
@@ -11,75 +9,12 @@ function escapeXml(value) {
     .replaceAll("'", "&apos;");
 }
 
-function deriveMetrics(geometry) {
-  const levelCount = Math.max(1, geometry.levels.length);
-  const roomWidths = geometry.rooms.map(
-    (room) => (room.bbox?.x || 0) + (room.bbox?.width || room.width_m || 0),
-  );
-  const roomDepths = geometry.rooms.map(
-    (room) => (room.bbox?.y || 0) + (room.bbox?.height || room.depth_m || 0),
-  );
-  return {
-    width_m: Math.max(12, ...roomWidths),
-    depth_m: Math.max(10, ...roomDepths),
-    total_height_m: levelCount * 3.2,
-    level_count: levelCount,
-  };
-}
-
-function buildSectionDNA(geometry, styleDNA = {}) {
-  const metrics = deriveMetrics(geometry);
-  return {
-    dimensions: {
-      length: metrics.width_m,
-      width: metrics.depth_m,
-      floors: metrics.level_count,
-      floorCount: metrics.level_count,
-      totalHeight: metrics.total_height_m,
-    },
-    materials: {
-      exterior: {
-        primary: styleDNA.local_materials?.[0] || "brick",
-      },
-    },
-    roof: {
-      type: String(styleDNA.roof_language || "").includes("flat")
-        ? "flat"
-        : "gable",
-    },
-  };
-}
-
-function buildFallbackSectionSvg(
-  metrics,
-  sectionType = "longitudinal",
-  options = {},
-) {
-  const width = options.width || 1200;
-  const height = options.height || 800;
-  const padding = 80;
-  const scale = Math.min(
-    (width - padding * 2) / Math.max(metrics.width_m, 1),
-    (height - padding * 2) / Math.max(metrics.total_height_m + 1.5, 1),
-  );
-  const buildingWidth = metrics.width_m * scale;
-  const buildingHeight = metrics.total_height_m * scale;
-  const x = (width - buildingWidth) / 2;
-  const y = height - padding - buildingHeight;
-
-  const slabLines = Array.from({ length: metrics.level_count }, (_, index) => {
-    const slabY = y + buildingHeight - index * 3.2 * scale;
-    return `<line x1="${x}" y1="${slabY}" x2="${x + buildingWidth}" y2="${slabY}" stroke="#111" stroke-width="3"/>`;
-  }).join("");
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect width="${width}" height="${height}" fill="#fff"/>
-  <text x="${padding}" y="36" font-size="22" font-family="Arial, sans-serif" font-weight="bold">${escapeXml(`Section - ${sectionType}`)}</text>
-  <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#333" stroke-width="2"/>
-  <rect x="${x}" y="${y}" width="${buildingWidth}" height="${buildingHeight}" fill="none" stroke="#111" stroke-width="3"/>
-  ${slabLines}
-</svg>`;
+function projectRoomForSection(room, sectionType) {
+  const longitudinal =
+    String(sectionType || "longitudinal").toLowerCase() !== "transverse";
+  return longitudinal
+    ? { start: room.bbox.min_x, end: room.bbox.max_x }
+    : { start: room.bbox.min_y, end: room.bbox.max_y };
 }
 
 export function renderSectionSvg(
@@ -87,49 +22,88 @@ export function renderSectionSvg(
   styleDNA = {},
   options = {},
 ) {
-  const geometry =
-    geometryInput?.schema_version === "open-source-geometry-v1"
-      ? geometryInput
-      : normalizeArchitecturalGeometry(geometryInput, {
-          source: "technical-drawing-section",
-        });
-  const sectionType = options.sectionType || "longitudinal";
-  const dna = buildSectionDNA(geometry, styleDNA);
+  const geometry = coerceToCanonicalProjectGeometry(
+    geometryInput?.projectGeometry || geometryInput?.geometry || geometryInput,
+  );
+  const sectionType = String(
+    options.sectionType || "longitudinal",
+  ).toLowerCase();
+  const width = options.width || 1200;
+  const height = options.height || 760;
+  const padding = 80;
+  const buildable = geometry.site?.buildable_bbox ||
+    geometry.site?.boundary_bbox || {
+      width: 12,
+      height: 10,
+    };
+  const horizontalExtent =
+    sectionType === "transverse"
+      ? buildable.height || 10
+      : buildable.width || 12;
+  const totalHeight =
+    (geometry.levels || []).reduce(
+      (sum, level) => sum + Number(level.height_m || 3.2),
+      0,
+    ) || 3.2;
+  const scale = Math.min(
+    (width - padding * 2) / Math.max(horizontalExtent, 1),
+    (height - padding * 2) / Math.max(totalHeight + 1, 1),
+  );
+  const baseX = (width - horizontalExtent * scale) / 2;
+  const baseY = height - padding;
 
-  if (options.tryLegacyGenerator) {
-    try {
-      const svg = ArchitecturalSectionGenerator.generateSection(
-        dna,
-        sectionType,
-        options,
+  const roomMarkup = (geometry.rooms || [])
+    .map((room) => {
+      const level = (geometry.levels || []).find(
+        (entry) => entry.id === room.level_id,
       );
-      return {
-        svg,
-        section_type: sectionType,
-        renderer: "architectural-section-generator",
-      };
-    } catch (error) {
-      logger.warn(
-        "[Drawing] Falling back to simple section SVG renderer",
-        error.message,
+      const offsetHeight = (geometry.levels || [])
+        .filter((entry) => entry.level_number < level.level_number)
+        .reduce((sum, entry) => sum + Number(entry.height_m || 3.2), 0);
+      const projection = projectRoomForSection(room, sectionType);
+      const x = baseX + projection.start * scale;
+      const y = baseY - (offsetHeight + Number(level.height_m || 3.2)) * scale;
+      const rectWidth = Math.max(
+        18,
+        (projection.end - projection.start) * scale,
       );
-      return {
-        svg: buildFallbackSectionSvg(
-          deriveMetrics(geometry),
-          sectionType,
-          options,
-        ),
-        section_type: sectionType,
-        renderer: "fallback-section-svg",
-        warning: error.message,
-      };
-    }
-  }
+      const rectHeight = Math.max(22, Number(level.height_m || 3.2) * scale);
+      return `
+        <rect x="${x}" y="${y}" width="${rectWidth}" height="${rectHeight}" fill="none" stroke="#111" stroke-width="1.8"/>
+        <text x="${x + rectWidth / 2}" y="${y + rectHeight / 2}" font-size="11" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(room.name)}</text>
+      `;
+    })
+    .join("");
+
+  const slabLines = (geometry.levels || [])
+    .map((level) => {
+      const offsetHeight = (geometry.levels || [])
+        .filter((entry) => entry.level_number <= level.level_number)
+        .reduce((sum, entry) => sum + Number(entry.height_m || 3.2), 0);
+      const y = baseY - offsetHeight * scale;
+      return `<line x1="${baseX}" y1="${y}" x2="${baseX + horizontalExtent * scale}" y2="${y}" stroke="#555" stroke-width="1.6"/>`;
+    })
+    .join("");
+
+  const roofType = String(styleDNA.roof_language || "").includes("flat")
+    ? `<rect x="${baseX}" y="${baseY - totalHeight * scale - 12}" width="${horizontalExtent * scale}" height="12" fill="#e8e8e8" stroke="#111" stroke-width="1.5"/>`
+    : `<path d="M ${baseX} ${baseY - totalHeight * scale} L ${baseX + (horizontalExtent * scale) / 2} ${baseY - totalHeight * scale - 46} L ${baseX + horizontalExtent * scale} ${baseY - totalHeight * scale}" fill="none" stroke="#111" stroke-width="1.8"/>`;
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" fill="#fff"/>
+  <text x="${padding}" y="34" font-size="22" font-family="Arial, sans-serif" font-weight="bold">${escapeXml(`Section - ${sectionType}`)}</text>
+  <line x1="${padding}" y1="${baseY}" x2="${width - padding}" y2="${baseY}" stroke="#333" stroke-width="2"/>
+  ${roofType}
+  ${slabLines}
+  ${roomMarkup}
+</svg>`;
 
   return {
-    svg: buildFallbackSectionSvg(deriveMetrics(geometry), sectionType, options),
+    svg,
     section_type: sectionType,
-    renderer: "fallback-section-svg",
+    renderer: "deterministic-section-svg",
+    title: `Section - ${sectionType}`,
   };
 }
 

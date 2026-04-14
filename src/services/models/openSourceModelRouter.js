@@ -561,6 +561,17 @@ export function getModelStatus() {
       enabled: Boolean(getFeatureValue("useModelRegistryRouter")),
       registeredFamilies: [...ADAPTER_REGISTRY.keys()],
     },
+    phase2: {
+      canonicalGeometry: Boolean(getFeatureValue("useCanonicalGeometryPhase2")),
+      adjacencySolver: Boolean(getFeatureValue("useAdjacencySolver")),
+      deterministicSvgPlans: Boolean(
+        getFeatureValue("useDeterministicSvgPlans"),
+      ),
+      validationEngine: Boolean(getFeatureValue("useGeometryValidationEngine")),
+      failClosedTechnicalFlow: Boolean(
+        getFeatureValue("useFailClosedTechnicalFlow"),
+      ),
+    },
     categories,
     validation: validateModelConfig(),
   };

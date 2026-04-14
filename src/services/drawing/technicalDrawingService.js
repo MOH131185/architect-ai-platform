@@ -4,22 +4,28 @@ import {
   invokeOpenSourceAdapter,
   registerOpenSourceAdapter,
 } from "../models/openSourceModelRouter.js";
-import { normalizeArchitecturalGeometry } from "../cad/archElementNormalizer.js";
+import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
 import { renderPlanSvg } from "./svgPlanRenderer.js";
 import { renderElevationSvg } from "./svgElevationRenderer.js";
 import { renderSectionSvg } from "./svgSectionRenderer.js";
+import {
+  buildValidationDisabledReport,
+  validateProject,
+} from "../validation/projectValidationEngine.js";
 
-async function renderLocalTechnicalDrawings(payload = {}) {
-  const geometry = normalizeArchitecturalGeometry(
-    payload.projectGeometry || payload.geometry || payload,
-    {
-      source: "technical-drawing-local-engine",
-    },
-  );
-  const styleDNA = payload.styleDNA || {};
-  const requestedDrawingTypes = Array.isArray(payload.drawingTypes)
+function normalizeDrawingTypes(payload = {}) {
+  return Array.isArray(payload.drawingTypes) && payload.drawingTypes.length
     ? payload.drawingTypes
     : ["plan", "elevation", "section"];
+}
+
+async function renderLocalTechnicalDrawings(payload = {}) {
+  const geometry = coerceToCanonicalProjectGeometry(
+    payload.projectGeometry || payload.geometry || payload,
+  );
+  const styleDNA = payload.styleDNA || {};
+  const requestedDrawingTypes = normalizeDrawingTypes(payload);
+  const deterministicSvgEnabled = isFeatureEnabled("useDeterministicSvgPlans");
 
   const outputs = {
     floor_plans: [],
@@ -29,7 +35,10 @@ async function renderLocalTechnicalDrawings(payload = {}) {
 
   if (requestedDrawingTypes.includes("plan")) {
     outputs.floor_plans = geometry.levels.map((level) =>
-      renderPlanSvg(geometry, { ...payload.options, levelId: level.id }),
+      renderPlanSvg(geometry, {
+        ...payload.options,
+        levelId: level.id,
+      }),
     );
   }
 
@@ -52,30 +61,52 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         ? payload.sectionTypes
         : ["longitudinal", "transverse"];
     outputs.sections = sectionTypes.map((sectionType) =>
-      renderSectionSvg(geometry, styleDNA, { ...payload.options, sectionType }),
+      renderSectionSvg(geometry, styleDNA, {
+        ...payload.options,
+        sectionType,
+      }),
     );
   }
 
+  const drawings = {
+    plan: outputs.floor_plans,
+    elevation: outputs.elevations,
+    section: outputs.sections,
+  };
+  const validationReport = isFeatureEnabled("useGeometryValidationEngine")
+    ? validateProject({
+        projectGeometry: geometry,
+        drawings,
+        drawingTypes: requestedDrawingTypes,
+      })
+    : buildValidationDisabledReport(geometry, requestedDrawingTypes);
+
   return {
-    status: "ready",
+    status: validationReport?.status || "valid",
     adapterId: "svg-vector-engine",
     provider: "local",
-    drawings: {
-      plan: outputs.floor_plans,
-      elevation: outputs.elevations,
-      section: outputs.sections,
-    },
+    projectGeometry: geometry,
+    drawings,
     outputs,
+    validationReport,
     metadata: {
       annotation_ready: true,
       lineart_stylization_ready: true,
+      deterministic: true,
+      deterministic_svg_enabled: deterministicSvgEnabled,
       level_count: geometry.levels.length,
       drawing_types: requestedDrawingTypes,
       notes: [
-        "Deterministic SVG linework generated from structured geometry.",
-        "TODO: optional stylization pass can be inserted after SVG export.",
+        "Deterministic SVG linework generated directly from canonical project geometry.",
+        "Plans, elevations, and sections use the same geometry source of truth.",
+        ...(deterministicSvgEnabled
+          ? []
+          : [
+              "useDeterministicSvgPlans is disabled, but the explicit technical drawing endpoint still uses the local SVG renderer as a safe fallback.",
+            ]),
       ],
     },
+    warnings: validationReport?.warnings || [],
   };
 }
 
@@ -85,9 +116,6 @@ registerOpenSourceAdapter(
   async (payload) => renderLocalTechnicalDrawings(payload),
 );
 
-/**
- * Contract: generateTechnicalDrawings()
- */
 export async function generateTechnicalDrawings(payload = {}, options = {}) {
   const enabled = isFeatureEnabled("useTechnicalDrawingEngine");
 
@@ -104,18 +132,23 @@ export async function generateTechnicalDrawings(payload = {}, options = {}) {
   );
   if (routed?.outputs) {
     return {
-      success: true,
+      success: routed.status !== "invalid",
       ...routed,
-      validation_notes: routed.metadata?.notes || [],
+      validation_notes:
+        routed.validationReport?.warnings || routed.metadata?.notes || [],
     };
   }
 
   const fallback = await renderLocalTechnicalDrawings(payload);
   return {
-    success: true,
+    success: fallback.status !== "invalid",
     ...fallback,
-    validation_notes: fallback.metadata?.notes || [],
-    warnings: Array.isArray(routed?.notes) ? routed.notes : [],
+    validation_notes:
+      fallback.validationReport?.warnings || fallback.metadata?.notes || [],
+    warnings: [
+      ...(fallback.warnings || []),
+      ...(Array.isArray(routed?.notes) ? routed.notes : []),
+    ],
   };
 }
 

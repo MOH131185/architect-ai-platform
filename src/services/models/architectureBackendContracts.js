@@ -36,6 +36,7 @@ function buildResponseMeta(endpoint, featureFlags = []) {
   return {
     endpoint,
     contractVersion: PHASE1_CONTRACT_VERSION,
+    runtimeVersion: PHASE2_RUNTIME_VERSION,
     featureFlags: uniqueStrings(featureFlags),
   };
 }
@@ -71,6 +72,7 @@ const MAX_CONTROL_IMAGES = 8;
 const MAX_PRECEDENT_SEARCH_LIMIT = 25;
 
 export const PHASE1_CONTRACT_VERSION = "phase1-architecture-backend-v1";
+export const PHASE2_RUNTIME_VERSION = "phase2-geometry-validation-v1";
 
 export const PHASE1_API_CONTRACTS = {
   generateStyle: {
@@ -85,16 +87,30 @@ export const PHASE1_API_CONTRACTS = {
   },
   generateFloorplan: {
     request: ["site", "program", "levels", "constraints"],
-    response: ["layoutGraph", "zoningSummary", "warnings", "nextSteps"],
+    response: [
+      "layoutGraph",
+      "zoningSummary",
+      "projectGeometry",
+      "validationReport",
+      "status",
+      "warnings",
+      "nextSteps",
+    ],
   },
   generateDrawings: {
     request: ["projectGeometry", "drawingTypes"],
     response: [
       "drawings",
       "validationNotes",
+      "validationReport",
+      "status",
       "warnings",
       "selectedModelStrategy",
     ],
+  },
+  validateProject: {
+    request: ["projectGeometry", "drawings", "drawingTypes"],
+    response: ["status", "validationReport", "warnings", "errors"],
   },
   searchPrecedents: {
     request: ["query", "filters"],
@@ -226,12 +242,25 @@ export function buildGenerateFloorplanResponse({
   featureFlags = [],
 }) {
   return {
-    success: true,
+    success: result.status !== "invalid",
     layout: result.layout,
     layoutGraph: result.layoutGraph || result.layout?.adjacency_graph || null,
+    adjacencyGraph:
+      result.adjacencyGraph ||
+      result.layoutGraph ||
+      result.layout?.adjacency_graph ||
+      null,
     zoningSummary: result.zoningSummary || result.layout?.zoning || null,
     summary: result.summary || null,
-    validation: result.validation || null,
+    validation: result.validationReport || result.validation || null,
+    validationReport: result.validationReport || result.validation || null,
+    projectGeometry: result.projectGeometry || result.geometry || null,
+    canonicalGeometry: result.projectGeometry || result.geometry || null,
+    status:
+      result.status ||
+      result.validationReport?.status ||
+      result.validation?.status ||
+      "valid",
     warnings,
     nextSteps: result.nextSteps || [],
     selectedModelStrategy,
@@ -297,13 +326,60 @@ export function buildGenerateDrawingsResponse({
   };
 
   return {
-    success: true,
+    success: result.status !== "invalid",
     drawings,
     validationNotes: result.validation_notes || result.metadata?.notes || [],
+    validationReport: result.validationReport || null,
+    projectGeometry: result.projectGeometry || null,
+    status:
+      result.status || result.validationReport?.status || "valid_with_warnings",
     warnings,
     metadata: result.metadata || null,
     selectedModelStrategy,
     meta: buildResponseMeta("generate-drawings", featureFlags),
+  };
+}
+
+export function validateValidateProjectRequest(payload = {}) {
+  const warnings = [];
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    drawings: isPlainObject(payload.drawings) ? payload.drawings : null,
+    drawingTypes: uniqueStrings(
+      toArray(payload.drawingTypes || payload.types),
+    ).map((entry) => entry.toLowerCase()),
+  };
+
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+  if (payload.drawings && !isPlainObject(payload.drawings)) {
+    warnings.push("drawings must be an object; invalid value was ignored.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildValidateProjectResponse({
+  result,
+  warnings = [],
+  featureFlags = [],
+}) {
+  return {
+    success: true,
+    status: result.status || "invalid",
+    valid: result.valid === true,
+    validationReport: result,
+    warnings: uniqueStrings([...(warnings || []), ...(result.warnings || [])]),
+    errors: result.errors || [],
+    repairSuggestions: result.repairSuggestions || [],
+    meta: buildResponseMeta("validate-project", featureFlags),
   };
 }
 
@@ -395,6 +471,8 @@ export default {
   buildGenerateFloorplanResponse,
   validateGenerateDrawingsRequest,
   buildGenerateDrawingsResponse,
+  validateValidateProjectRequest,
+  buildValidateProjectResponse,
   validateSearchPrecedentsRequest,
   buildSearchPrecedentsResponse,
   buildModelStatusResponse,

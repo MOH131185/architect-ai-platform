@@ -161,10 +161,10 @@ export const OPEN_SOURCE_MODEL_REGISTRY = {
       ],
       weaknesses: [
         "Not an optimized architectural planner",
-        "Uses simple allocation heuristics",
+        "Uses deterministic zoning and wall/opening heuristics",
       ],
       recommended_use:
-        "Primary Phase 1 fallback for backend floorplan contracts and structured geometry handoff.",
+        "Primary deterministic Phase 2 backend for canonical geometry generation, validation, and structured technical drawing handoff.",
       env_requirements: [],
       adapter_key: "constraint-solver",
     },
@@ -231,11 +231,11 @@ export const OPEN_SOURCE_MODEL_REGISTRY = {
         "Easy to validate in tests",
       ],
       weaknesses: [
-        "Graphic fidelity is intentionally minimal in Phase 1",
+        "Graphic fidelity is intentionally minimal",
         "Annotation richness is limited",
       ],
       recommended_use:
-        "Primary Phase 1 engine for technical drawing placeholders and geometry contracts.",
+        "Primary deterministic Phase 2 engine for geometry-first SVG technical drawings and validation-safe backend output.",
       env_requirements: [],
       adapter_key: "svg-vector-engine",
     },

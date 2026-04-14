@@ -10,6 +10,7 @@
  */
 
 import { generateTechnicalDrawings } from "../../src/services/drawing/technicalDrawingService.js";
+import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import {
   buildGenerateDrawingsResponse,
   validateGenerateDrawingsRequest,
@@ -51,6 +52,12 @@ export default async function handler(req, res) {
 
   try {
     const validation = validateGenerateDrawingsRequest(req.body || {});
+    const featureFlags = [
+      "useTechnicalDrawingEngine",
+      "useDeterministicSvgPlans",
+      "useGeometryValidationEngine",
+      "useFailClosedTechnicalFlow",
+    ];
     if (!validation.ok) {
       return sendError(
         res,
@@ -63,7 +70,7 @@ export default async function handler(req, res) {
         },
         {
           endpoint: "generate-drawings",
-          featureFlags: ["useTechnicalDrawingEngine"],
+          featureFlags,
         },
       );
     }
@@ -73,15 +80,34 @@ export default async function handler(req, res) {
       preferLocal: true,
       useCase: validation.normalized.drawingTypes.join(" "),
     });
+    const responsePayload = buildGenerateDrawingsResponse({
+      result,
+      warnings: [...validation.warnings, ...(result.warnings || [])],
+      selectedModelStrategy,
+      featureFlags,
+    });
 
-    return res.status(200).json(
-      buildGenerateDrawingsResponse({
-        result,
-        warnings: [...validation.warnings, ...(result.warnings || [])],
-        selectedModelStrategy,
-        featureFlags: ["useTechnicalDrawingEngine"],
-      }),
-    );
+    if (
+      result.validationReport?.status === "invalid" &&
+      isFeatureEnabled("useFailClosedTechnicalFlow")
+    ) {
+      return sendError(
+        res,
+        422,
+        "DRAWING_VALIDATION_FAILED",
+        "Generated drawings failed validation against canonical geometry.",
+        {
+          validationReport: result.validationReport,
+          output: responsePayload,
+        },
+        {
+          endpoint: "generate-drawings",
+          featureFlags,
+        },
+      );
+    }
+
+    return res.status(200).json(responsePayload);
   } catch (error) {
     return sendError(
       res,
@@ -91,7 +117,12 @@ export default async function handler(req, res) {
       error.details || null,
       {
         endpoint: "generate-drawings",
-        featureFlags: ["useTechnicalDrawingEngine"],
+        featureFlags: [
+          "useTechnicalDrawingEngine",
+          "useDeterministicSvgPlans",
+          "useGeometryValidationEngine",
+          "useFailClosedTechnicalFlow",
+        ],
       },
     );
   }
