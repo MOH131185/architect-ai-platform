@@ -112,6 +112,37 @@ export const PHASE1_API_CONTRACTS = {
     request: ["projectGeometry", "drawings", "drawingTypes"],
     response: ["status", "validationReport", "warnings", "errors"],
   },
+  generateProject: {
+    request: ["site", "program", "levels", "styleDNA"],
+    response: [
+      "projectGeometry",
+      "facadeGrammar",
+      "structuralGrid",
+      "drawings",
+      "integrationHooks",
+      "validationReport",
+      "status",
+      "warnings",
+    ],
+  },
+  regenerateLayer: {
+    request: ["projectGeometry", "targetLayer", "locks", "styleDNA"],
+    response: [
+      "projectGeometry",
+      "diff",
+      "locks",
+      "validationReport",
+      "status",
+    ],
+  },
+  generateFacade: {
+    request: ["projectGeometry", "styleDNA"],
+    response: ["facadeGrammar", "warnings", "selectedModelStrategy"],
+  },
+  generateVisualPackage: {
+    request: ["projectGeometry", "styleDNA", "viewType"],
+    response: ["visualPackage", "warnings", "selectedModelStrategy"],
+  },
   searchPrecedents: {
     request: ["query", "filters"],
     response: ["results", "metadata", "warnings", "selectedModelStrategy"],
@@ -292,6 +323,12 @@ export function validateGenerateDrawingsRequest(payload = {}) {
       ? drawingTypes.map((drawingType) => String(drawingType).toLowerCase())
       : ["plan", "elevation", "section"],
     styleDNA: payload.styleDNA || {},
+    facadeGrammar: isPlainObject(payload.facadeGrammar)
+      ? payload.facadeGrammar
+      : null,
+    structuralGrid: isPlainObject(payload.structuralGrid)
+      ? payload.structuralGrid
+      : null,
     orientations: uniqueStrings(toArray(payload.orientations)).map((entry) =>
       entry.toLowerCase(),
     ),
@@ -348,6 +385,17 @@ export function validateValidateProjectRequest(payload = {}) {
     drawingTypes: uniqueStrings(
       toArray(payload.drawingTypes || payload.types),
     ).map((entry) => entry.toLowerCase()),
+    styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
+    facadeGrammar: isPlainObject(payload.facadeGrammar)
+      ? payload.facadeGrammar
+      : null,
+    structuralGrid: isPlainObject(payload.structuralGrid)
+      ? payload.structuralGrid
+      : null,
+    previousProjectGeometry:
+      payload.previousProjectGeometry || payload.previous_geometry || null,
+    locks: isPlainObject(payload.locks) ? payload.locks : {},
+    targetLayer: payload.targetLayer || payload.target_layer || null,
   };
 
   const errors = [];
@@ -366,6 +414,193 @@ export function validateValidateProjectRequest(payload = {}) {
   };
 }
 
+export function validateGenerateProjectRequest(payload = {}) {
+  const warnings = [];
+  const rawDrawingTypes = uniqueStrings(
+    toArray(payload.drawingTypes || payload.types),
+  ).map((entry) => entry.toLowerCase());
+  const drawingTypes = rawDrawingTypes.filter((drawingType) =>
+    SUPPORTED_DRAWING_TYPES.includes(drawingType),
+  );
+  const unsupportedDrawingTypes = rawDrawingTypes.filter(
+    (drawingType) => !SUPPORTED_DRAWING_TYPES.includes(drawingType),
+  );
+  if (unsupportedDrawingTypes.length) {
+    warnings.push(
+      `Unsupported drawingTypes ignored: ${unsupportedDrawingTypes.join(", ")}.`,
+    );
+  }
+  const normalized = {
+    project_id: payload.project_id || payload.projectId || "phase3-project",
+    site: payload.site || payload.site_boundary || payload.boundary || null,
+    room_program: normalizeProgram(
+      payload.room_program || payload.roomProgram || payload.program || [],
+    ),
+    levels: clampInteger(
+      payload.levels || payload.level_count || payload.levelCount,
+      1,
+      1,
+      20,
+    ),
+    constraints: isPlainObject(payload.constraints) ? payload.constraints : {},
+    styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
+    drawingTypes: drawingTypes.length
+      ? drawingTypes
+      : ["plan", "elevation", "section"],
+    footprint: payload.footprint || null,
+    viewType: payload.viewType || payload.view_type || "hero_3d",
+  };
+
+  const errors = [];
+  if (!normalized.room_program.length) {
+    errors.push("program or room_program must contain at least one room.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildGenerateProjectResponse({
+  result,
+  warnings = [],
+  featureFlags = [],
+}) {
+  return {
+    success: result.status !== "invalid",
+    projectGeometry: result.projectGeometry || null,
+    facadeGrammar: result.facadeGrammar || null,
+    structuralGrid: result.structuralGrid || null,
+    drawings: result.drawings?.drawings || null,
+    visualPackage: result.visualPackage || null,
+    integrationHooks: result.integrationHooks || null,
+    validationReport: result.validationReport || null,
+    status: result.status || result.validationReport?.status || "valid",
+    warnings,
+    meta: buildResponseMeta("generate-project", featureFlags),
+  };
+}
+
+export function validateRegenerateLayerRequest(payload = {}) {
+  const warnings = [];
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
+    targetLayer: payload.targetLayer || payload.target_layer || null,
+    locks: isPlainObject(payload.locks) ? payload.locks : {},
+    options: isPlainObject(payload.options) ? payload.options : {},
+  };
+
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+  if (!normalized.targetLayer) {
+    errors.push("targetLayer or target_layer is required.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildRegenerateLayerResponse({
+  result,
+  warnings = [],
+  validationReport = null,
+  featureFlags = [],
+}) {
+  return {
+    success: (validationReport?.status || "valid") !== "invalid",
+    projectGeometry: result.projectGeometry || null,
+    facadeGrammar: result.facadeGrammar || null,
+    drawings: result.drawings?.drawings || null,
+    visualPackage: result.visualPackage || null,
+    diff: result.diff || null,
+    locks: result.locks || null,
+    validationReport,
+    status: validationReport?.status || "valid",
+    warnings,
+    meta: buildResponseMeta("regenerate-layer", featureFlags),
+  };
+}
+
+export function validateGenerateFacadeRequest(payload = {}) {
+  const warnings = [];
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
+  };
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildGenerateFacadeResponse({
+  facadeGrammar,
+  warnings = [],
+  selectedModelStrategy = null,
+  featureFlags = [],
+}) {
+  return {
+    success: true,
+    facadeGrammar,
+    warnings,
+    selectedModelStrategy,
+    meta: buildResponseMeta("generate-facade", featureFlags),
+  };
+}
+
+export function validateGenerateVisualPackageRequest(payload = {}) {
+  const warnings = [];
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
+    viewType: payload.viewType || payload.view_type || "hero_3d",
+    options: isPlainObject(payload.options) ? payload.options : {},
+  };
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildGenerateVisualPackageResponse({
+  visualPackage,
+  warnings = [],
+  selectedModelStrategy = null,
+  featureFlags = [],
+}) {
+  return {
+    success: visualPackage?.validation?.valid !== false,
+    visualPackage,
+    warnings,
+    selectedModelStrategy,
+    meta: buildResponseMeta("generate-visual-package", featureFlags),
+  };
+}
+
 export function buildValidateProjectResponse({
   result,
   warnings = [],
@@ -379,6 +614,7 @@ export function buildValidateProjectResponse({
     warnings: uniqueStrings([...(warnings || []), ...(result.warnings || [])]),
     errors: result.errors || [],
     repairSuggestions: result.repairSuggestions || [],
+    affectedEntities: result.affectedEntities || [],
     meta: buildResponseMeta("validate-project", featureFlags),
   };
 }
@@ -473,6 +709,14 @@ export default {
   buildGenerateDrawingsResponse,
   validateValidateProjectRequest,
   buildValidateProjectResponse,
+  validateGenerateProjectRequest,
+  buildGenerateProjectResponse,
+  validateRegenerateLayerRequest,
+  buildRegenerateLayerResponse,
+  validateGenerateFacadeRequest,
+  buildGenerateFacadeResponse,
+  validateGenerateVisualPackageRequest,
+  buildGenerateVisualPackageResponse,
   validateSearchPrecedentsRequest,
   buildSearchPrecedentsResponse,
   buildModelStatusResponse,

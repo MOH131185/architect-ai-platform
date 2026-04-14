@@ -12,11 +12,51 @@ import {
   buildValidationDisabledReport,
   validateProject,
 } from "../validation/projectValidationEngine.js";
+import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
+import { buildStructuralGrid } from "../structure/structuralGridService.js";
+import { createStableHash } from "../cad/projectGeometrySchema.js";
 
 function normalizeDrawingTypes(payload = {}) {
   return Array.isArray(payload.drawingTypes) && payload.drawingTypes.length
     ? payload.drawingTypes
     : ["plan", "elevation", "section"];
+}
+
+function buildA1IntegrationHooks(
+  geometry = {},
+  drawings = {},
+  requestedDrawingTypes = [],
+) {
+  return {
+    a1: {
+      ready: true,
+      geometry_signature: createStableHash(
+        JSON.stringify({
+          project_id: geometry.project_id,
+          levels: geometry.levels,
+          rooms: geometry.rooms,
+          walls: geometry.walls,
+          windows: geometry.windows,
+          roof: geometry.roof,
+        }),
+      ),
+      panel_candidates: [
+        ...(requestedDrawingTypes.includes("plan") ? ["floor_plans"] : []),
+        ...(requestedDrawingTypes.includes("elevation") ? ["elevations"] : []),
+        ...(requestedDrawingTypes.includes("section") ? ["sections"] : []),
+      ],
+      panel_counts: {
+        floor_plans: drawings.plan?.length || 0,
+        elevations: drawings.elevation?.length || 0,
+        sections: drawings.section?.length || 0,
+      },
+      titles: {
+        floor_plans: (drawings.plan || []).map((entry) => entry.title),
+        elevations: (drawings.elevation || []).map((entry) => entry.title),
+        sections: (drawings.section || []).map((entry) => entry.title),
+      },
+    },
+  };
 }
 
 async function renderLocalTechnicalDrawings(payload = {}) {
@@ -26,6 +66,26 @@ async function renderLocalTechnicalDrawings(payload = {}) {
   const styleDNA = payload.styleDNA || {};
   const requestedDrawingTypes = normalizeDrawingTypes(payload);
   const deterministicSvgEnabled = isFeatureEnabled("useDeterministicSvgPlans");
+  const structuralGrid =
+    payload.structuralGrid ||
+    geometry.metadata?.structural_grid ||
+    (isFeatureEnabled("useStructuralSanityLayer")
+      ? buildStructuralGrid(geometry)
+      : null);
+  const facadeGrammar =
+    payload.facadeGrammar ||
+    geometry.metadata?.facade_grammar ||
+    (isFeatureEnabled("useFacadeGrammarEngine")
+      ? buildFacadeGrammar(geometry, styleDNA)
+      : null);
+
+  if (structuralGrid || facadeGrammar) {
+    geometry.metadata = {
+      ...(geometry.metadata || {}),
+      ...(structuralGrid ? { structural_grid: structuralGrid } : {}),
+      ...(facadeGrammar ? { facade_grammar: facadeGrammar } : {}),
+    };
+  }
 
   const outputs = {
     floor_plans: [],
@@ -38,6 +98,7 @@ async function renderLocalTechnicalDrawings(payload = {}) {
       renderPlanSvg(geometry, {
         ...payload.options,
         levelId: level.id,
+        showStructuralGrid: Boolean(structuralGrid),
       }),
     );
   }
@@ -51,6 +112,7 @@ async function renderLocalTechnicalDrawings(payload = {}) {
       renderElevationSvg(geometry, styleDNA, {
         ...payload.options,
         orientation,
+        facadeGrammar,
       }),
     );
   }
@@ -64,6 +126,7 @@ async function renderLocalTechnicalDrawings(payload = {}) {
       renderSectionSvg(geometry, styleDNA, {
         ...payload.options,
         sectionType,
+        structuralGrid,
       }),
     );
   }
@@ -73,11 +136,18 @@ async function renderLocalTechnicalDrawings(payload = {}) {
     elevation: outputs.elevations,
     section: outputs.sections,
   };
+  const integrationHooks = buildA1IntegrationHooks(
+    geometry,
+    drawings,
+    requestedDrawingTypes,
+  );
   const validationReport = isFeatureEnabled("useGeometryValidationEngine")
     ? validateProject({
         projectGeometry: geometry,
         drawings,
         drawingTypes: requestedDrawingTypes,
+        facadeGrammar,
+        structuralGrid,
       })
     : buildValidationDisabledReport(geometry, requestedDrawingTypes);
 
@@ -89,6 +159,9 @@ async function renderLocalTechnicalDrawings(payload = {}) {
     drawings,
     outputs,
     validationReport,
+    facadeGrammar,
+    structuralGrid,
+    integrationHooks,
     metadata: {
       annotation_ready: true,
       lineart_stylization_ready: true,
@@ -96,9 +169,21 @@ async function renderLocalTechnicalDrawings(payload = {}) {
       deterministic_svg_enabled: deterministicSvgEnabled,
       level_count: geometry.levels.length,
       drawing_types: requestedDrawingTypes,
+      phase3_layers: {
+        facadeGrammar: Boolean(facadeGrammar),
+        structuralGrid: Boolean(structuralGrid),
+      },
+      integration_hooks: integrationHooks,
       notes: [
         "Deterministic SVG linework generated directly from canonical project geometry.",
         "Plans, elevations, and sections use the same geometry source of truth.",
+        "A1 composition hooks are attached so downstream board composition can preserve geometry signatures and panel intent.",
+        ...(facadeGrammar
+          ? ["Facade grammar was applied to the elevation renderer."]
+          : []),
+        ...(structuralGrid
+          ? ["Structural grid markers were included in technical drawings."]
+          : []),
         ...(deterministicSvgEnabled
           ? []
           : [

@@ -55,6 +55,44 @@ function validatePlanCollection(entries = [], levelCount = 1) {
   return { warnings, errors };
 }
 
+function validateElevationCollection(entries = [], projectGeometry = {}) {
+  const base = validateCollection("drawings.elevation", entries, 1);
+  const warnings = [...base.warnings];
+  const errors = [...base.errors];
+  const expectedWindowCount = (projectGeometry.windows || []).length;
+  const reportedWindowCount = entries.reduce(
+    (sum, entry) => sum + Number(entry.window_count || 0),
+    0,
+  );
+
+  if (expectedWindowCount > 0 && reportedWindowCount === 0) {
+    warnings.push(
+      "Elevation outputs do not report any windows despite exterior openings in geometry.",
+    );
+  }
+
+  return { warnings, errors };
+}
+
+function validateSectionCollection(entries = [], projectGeometry = {}) {
+  const base = validateCollection("drawings.section", entries, 1);
+  const warnings = [...base.warnings];
+  const errors = [...base.errors];
+  const expectedStairCount = (projectGeometry.stairs || []).length;
+  const reportedStairCount = entries.reduce(
+    (sum, entry) => sum + Number(entry.stair_count || 0),
+    0,
+  );
+
+  if (expectedStairCount > 0 && reportedStairCount === 0) {
+    warnings.push(
+      "Section outputs do not report stair graphics despite multi-level stair geometry.",
+    );
+  }
+
+  return { warnings, errors };
+}
+
 export function runDrawingConsistencyChecks({
   projectGeometry,
   drawings = {},
@@ -71,20 +109,18 @@ export function runDrawingConsistencyChecks({
   }
 
   if (drawingTypes.includes("elevation")) {
-    const elevationCheck = validateCollection(
-      "drawings.elevation",
+    const elevationCheck = validateElevationCollection(
       drawings.elevation || [],
-      1,
+      projectGeometry,
     );
     warnings.push(...elevationCheck.warnings);
     errors.push(...elevationCheck.errors);
   }
 
   if (drawingTypes.includes("section")) {
-    const sectionCheck = validateCollection(
-      "drawings.section",
+    const sectionCheck = validateSectionCollection(
       drawings.section || [],
-      1,
+      projectGeometry,
     );
     warnings.push(...sectionCheck.warnings);
     errors.push(...sectionCheck.errors);

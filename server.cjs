@@ -312,6 +312,10 @@ app.get('/api/health', (req, res) => {
 mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-floorplan', 'api/models/generate-floorplan.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-drawings', 'api/models/generate-drawings.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-project', 'api/models/generate-project.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/regenerate-layer', 'api/models/regenerate-layer.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-facade', 'api/models/generate-facade.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/generate-visual-package', 'api/models/generate-visual-package.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/validate-project', 'api/models/validate-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/search-precedents', 'api/models/search-precedents.js', [aiApiLimiter]);
 mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');

@@ -17,6 +17,48 @@ function projectRoomForSection(room, sectionType) {
     : { start: room.bbox.min_y, end: room.bbox.max_y };
 }
 
+function renderStairCuts(geometry = {}, sectionType, baseX, baseY, scale) {
+  return (geometry.stairs || [])
+    .map((stair) => {
+      const projection = projectRoomForSection(stair, sectionType);
+      const x = baseX + projection.start * scale;
+      const y =
+        baseY - Number(stair.bbox?.height || stair.depth_m || 4) * scale;
+      const width = Math.max(18, (projection.end - projection.start) * scale);
+      return `
+        <rect x="${x}" y="${y}" width="${width}" height="${Math.max(20, Number(stair.bbox?.height || stair.depth_m || 4) * scale)}" fill="#f2f2f2" stroke="#444" stroke-width="1.4"/>
+        <line x1="${x + 4}" y1="${y + 6}" x2="${x + width - 4}" y2="${y + 6}" stroke="#444" stroke-width="1"/>
+        <text x="${x + width / 2}" y="${y + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">Stair Cut</text>
+        <line x1="${x + width / 2}" y1="${y + 22}" x2="${x + width / 2}" y2="${y + Math.max(20, Number(stair.bbox?.height || stair.depth_m || 4) * scale) - 8}" stroke="#444" stroke-width="1.1"/>
+        <path d="M ${x + width / 2} ${y + 20} L ${x + width / 2 - 4} ${y + 28} L ${x + width / 2 + 4} ${y + 28} Z" fill="#444"/>
+      `;
+    })
+    .join("");
+}
+
+function renderGridMarkers(
+  geometry = {},
+  baseX,
+  baseY,
+  scale,
+  horizontalExtent,
+) {
+  const grid = geometry.metadata?.structural_grid;
+  if (!grid) {
+    return "";
+  }
+
+  return (grid.x_axes || [])
+    .map((axis) => {
+      const x = baseX + Number(axis.position_m || 0) * scale;
+      return `
+        <line x1="${x}" y1="${baseY}" x2="${x}" y2="${baseY - 220}" stroke="#d7c8aa" stroke-width="1" stroke-dasharray="5 3"/>
+        <text x="${x}" y="${baseY - 226}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(axis.label)}</text>
+      `;
+    })
+    .join("");
+}
+
 export function renderSectionSvg(
   geometryInput = {},
   styleDNA = {},
@@ -51,6 +93,16 @@ export function renderSectionSvg(
   );
   const baseX = (width - horizontalExtent * scale) / 2;
   const baseY = height - padding;
+  const levelLabels = (geometry.levels || [])
+    .map((level) => {
+      const offsetHeight = (geometry.levels || [])
+        .filter((entry) => entry.level_number < level.level_number)
+        .reduce((sum, entry) => sum + Number(entry.height_m || 3.2), 0);
+      const y =
+        baseY - (offsetHeight + Number(level.height_m || 3.2) / 2) * scale;
+      return `<text x="${baseX - 12}" y="${y}" font-size="10" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(level.name || `L${level.level_number}`)}</text>`;
+    })
+    .join("");
 
   const roomMarkup = (geometry.rooms || [])
     .map((room) => {
@@ -84,6 +136,20 @@ export function renderSectionSvg(
       return `<line x1="${baseX}" y1="${y}" x2="${baseX + horizontalExtent * scale}" y2="${y}" stroke="#555" stroke-width="1.6"/>`;
     })
     .join("");
+  const stairMarkup = renderStairCuts(
+    geometry,
+    sectionType,
+    baseX,
+    baseY,
+    scale,
+  );
+  const gridMarkup = renderGridMarkers(
+    geometry,
+    baseX,
+    baseY,
+    scale,
+    horizontalExtent,
+  );
 
   const roofType = String(styleDNA.roof_language || "").includes("flat")
     ? `<rect x="${baseX}" y="${baseY - totalHeight * scale - 12}" width="${horizontalExtent * scale}" height="12" fill="#e8e8e8" stroke="#111" stroke-width="1.5"/>`
@@ -95,13 +161,17 @@ export function renderSectionSvg(
   <text x="${padding}" y="34" font-size="22" font-family="Arial, sans-serif" font-weight="bold">${escapeXml(`Section - ${sectionType}`)}</text>
   <line x1="${padding}" y1="${baseY}" x2="${width - padding}" y2="${baseY}" stroke="#333" stroke-width="2"/>
   ${roofType}
+  ${gridMarkup}
   ${slabLines}
+  ${levelLabels}
+  ${stairMarkup}
   ${roomMarkup}
 </svg>`;
 
   return {
     svg,
     section_type: sectionType,
+    stair_count: (geometry.stairs || []).length,
     renderer: "deterministic-section-svg",
     title: `Section - ${sectionType}`,
   };

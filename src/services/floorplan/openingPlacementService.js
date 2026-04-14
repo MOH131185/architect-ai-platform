@@ -21,7 +21,11 @@ function buildAdjacencySet(graph = {}) {
   );
 }
 
-function shouldPlaceDoorOnWall(wall = {}, adjacencySet = new Set()) {
+function shouldPlaceDoorOnWall(
+  wall = {},
+  adjacencySet = new Set(),
+  roomMap = new Map(),
+) {
   if (
     wall.exterior ||
     !Array.isArray(wall.room_ids) ||
@@ -31,6 +35,11 @@ function shouldPlaceDoorOnWall(wall = {}, adjacencySet = new Set()) {
   }
 
   const [leftRoomId, rightRoomId] = wall.room_ids;
+  const leftRoom = roomMap.get(leftRoomId);
+  const rightRoom = roomMap.get(rightRoomId);
+  if (leftRoom?.type === "stair_core" || rightRoom?.type === "stair_core") {
+    return wall.length_m >= 0.9;
+  }
   return (
     wall.length_m >= 0.9 && adjacencySet.has(edgeKey(leftRoomId, rightRoomId))
   );
@@ -72,7 +81,7 @@ export function placeOpenings(level = {}, options = {}) {
   const adjacencySet = buildAdjacencySet(options.adjacencyGraph || {});
 
   const doors = walls
-    .filter((wall) => shouldPlaceDoorOnWall(wall, adjacencySet))
+    .filter((wall) => shouldPlaceDoorOnWall(wall, adjacencySet, roomMap))
     .map((wall, index) =>
       createOpeningGeometry(
         projectId,

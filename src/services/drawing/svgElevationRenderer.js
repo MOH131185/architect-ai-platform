@@ -50,6 +50,15 @@ function projectAlongOrientation(room = {}, orientation = "south") {
   };
 }
 
+function findFacadeOrientation(geometry = {}, options = {}) {
+  const facadeGrammar =
+    options.facadeGrammar || geometry.metadata?.facade_grammar;
+  const side = orientationToSide(options.orientation || "south");
+  return (
+    facadeGrammar?.orientations?.find((entry) => entry.side === side) || null
+  );
+}
+
 export function renderElevationSvg(
   geometryInput = {},
   styleDNA = {},
@@ -74,6 +83,10 @@ export function renderElevationSvg(
 
   const baseX = (width - horizontalExtent * scale) / 2;
   const baseY = height - padding;
+  const facadeOrientation = findFacadeOrientation(geometry, {
+    ...options,
+    orientation,
+  });
   const roofType = String(styleDNA.roof_language || "").includes("flat")
     ? "flat"
     : "pitched";
@@ -88,6 +101,17 @@ export function renderElevationSvg(
     .map((level) => {
       currentLevelBase -= Number(level.height_m || 3.2) * scale;
       return `<line x1="${baseX}" y1="${currentLevelBase}" x2="${baseX + horizontalExtent * scale}" y2="${currentLevelBase}" stroke="#777" stroke-width="1.2"/>`;
+    })
+    .join("");
+  const floorLabels = (geometry.levels || [])
+    .map((level) => {
+      const topOfLevel =
+        baseY -
+        (geometry.levels || [])
+          .filter((entry) => entry.level_number <= level.level_number)
+          .reduce((sum, entry) => sum + Number(entry.height_m || 3.2), 0) *
+          scale;
+      return `<text x="${baseX - 12}" y="${topOfLevel + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(level.name || `L${level.level_number}`)}</text>`;
     })
     .join("");
 
@@ -135,20 +159,58 @@ export function renderElevationSvg(
     })
     .join("");
 
+  const materialZoneMarkup = (facadeOrientation?.material_zones || [])
+    .map((zone, index) => {
+      const zoneHeight =
+        (metrics.total_height_m * scale) /
+        Math.max(facadeOrientation.material_zones.length, 1);
+      const y = baseY - metrics.total_height_m * scale + zoneHeight * index;
+      return `<rect x="${baseX}" y="${y}" width="${horizontalExtent * scale}" height="${zoneHeight}" fill="${index % 2 === 0 ? "#f5f2ea" : "#ece7dc"}" opacity="0.25"/>`;
+    })
+    .join("");
+
+  const shadingMarkup = (facadeOrientation?.shading_elements || [])
+    .map((element, index) => {
+      if (element !== "deep-reveal" && element !== "screen") {
+        return "";
+      }
+      const y = baseY - metrics.total_height_m * scale + 14 + index * 10;
+      return `<line x1="${baseX + 12}" y1="${y}" x2="${baseX + horizontalExtent * scale - 12}" y2="${y}" stroke="#b78c50" stroke-width="1.2" stroke-dasharray="8 4"/>`;
+    })
+    .join("");
+
+  const rhythmMarkup = (
+    facadeOrientation?.opening_rhythm?.grouped_windows || []
+  )
+    .map((group, index) => {
+      const x = baseX + 20 + index * 22;
+      return `<text x="${x}" y="${baseY + 20}" font-size="10" font-family="Arial, sans-serif">${escapeXml(group.group_id)}</text>`;
+    })
+    .join("");
+  const ratioLabel = facadeOrientation
+    ? `<text x="${baseX}" y="${baseY + 38}" font-size="11" font-family="Arial, sans-serif">SVR ${Number(facadeOrientation.solid_void_ratio || 0).toFixed(2)} / target ${Number(facadeOrientation.target_solid_void_ratio || facadeOrientation.solid_void_ratio || 0).toFixed(2)}</text>`
+    : "";
+
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="#fff"/>
   <text x="${padding}" y="34" font-size="22" font-family="Arial, sans-serif" font-weight="bold">${escapeXml(`Elevation - ${orientation}`)}</text>
   <line x1="${padding}" y1="${baseY}" x2="${width - padding}" y2="${baseY}" stroke="#333" stroke-width="2"/>
   ${roof}
+  ${materialZoneMarkup}
   ${facade}
   ${floorLines}
+  ${floorLabels}
   ${windowMarkup}
+  ${shadingMarkup}
+  ${rhythmMarkup}
+  ${ratioLabel}
 </svg>`;
 
   return {
     svg,
     orientation,
+    window_count: matchingWindows.length,
     renderer: "deterministic-elevation-svg",
     title: `Elevation - ${orientation}`,
   };

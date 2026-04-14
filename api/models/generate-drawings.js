@@ -55,7 +55,10 @@ export default async function handler(req, res) {
     const featureFlags = [
       "useTechnicalDrawingEngine",
       "useDeterministicSvgPlans",
+      "useFacadeGrammarEngine",
+      "useStructuralSanityLayer",
       "useGeometryValidationEngine",
+      "usePhase3Validation",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {
@@ -120,7 +123,10 @@ export default async function handler(req, res) {
         featureFlags: [
           "useTechnicalDrawingEngine",
           "useDeterministicSvgPlans",
+          "useFacadeGrammarEngine",
+          "useStructuralSanityLayer",
           "useGeometryValidationEngine",
+          "usePhase3Validation",
           "useFailClosedTechnicalFlow",
         ],
       },

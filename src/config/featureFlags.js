@@ -894,6 +894,27 @@ export const FEATURE_FLAGS = {
   /** Fail closed when generated geometry or drawings are invalid */
   useFailClosedTechnicalFlow: true,
 
+  /** Phase 3 multi-level distribution, stacking, and level explanations */
+  usePhase3MultiLevelEngine: true,
+
+  /** Deterministic stair/core reservation and vertical circulation generation */
+  useStairCoreGenerator: true,
+
+  /** Geometry-aware facade grammar composition */
+  useFacadeGrammarEngine: true,
+
+  /** Concept-level structural grid and support sanity checks */
+  useStructuralSanityLayer: true,
+
+  /** Layer locking, diffs, and partial regeneration routes */
+  usePartialRegeneration: true,
+
+  /** Provider-agnostic geometry-locked visual packaging */
+  useGeometryLockedVisuals: true,
+
+  /** Phase 3 cross-level, facade, structure, and edit integrity validation */
+  usePhase3Validation: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1138,6 +1159,13 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useDeterministicSvgPlans = true;
   FEATURE_FLAGS.useGeometryValidationEngine = true;
   FEATURE_FLAGS.useFailClosedTechnicalFlow = true;
+  FEATURE_FLAGS.usePhase3MultiLevelEngine = true;
+  FEATURE_FLAGS.useStairCoreGenerator = true;
+  FEATURE_FLAGS.useFacadeGrammarEngine = true;
+  FEATURE_FLAGS.useStructuralSanityLayer = true;
+  FEATURE_FLAGS.usePartialRegeneration = true;
+  FEATURE_FLAGS.useGeometryLockedVisuals = true;
+  FEATURE_FLAGS.usePhase3Validation = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1308,6 +1336,34 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_FAIL_CLOSED_TECHNICAL_FLOW: {
       flag: "useFailClosedTechnicalFlow",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PHASE3_MULTILEVEL_ENGINE: {
+      flag: "usePhase3MultiLevelEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_STAIR_CORE_GENERATOR: {
+      flag: "useStairCoreGenerator",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FACADE_GRAMMAR_ENGINE: {
+      flag: "useFacadeGrammarEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_STRUCTURAL_SANITY_LAYER: {
+      flag: "useStructuralSanityLayer",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PARTIAL_REGENERATION: {
+      flag: "usePartialRegeneration",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_GEOMETRY_LOCKED_VISUALS: {
+      flag: "useGeometryLockedVisuals",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PHASE3_VALIDATION: {
+      flag: "usePhase3Validation",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

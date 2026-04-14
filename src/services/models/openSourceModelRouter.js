@@ -572,6 +572,19 @@ export function getModelStatus() {
         getFeatureValue("useFailClosedTechnicalFlow"),
       ),
     },
+    phase3: {
+      multiLevelEngine: Boolean(getFeatureValue("usePhase3MultiLevelEngine")),
+      stairCoreGenerator: Boolean(getFeatureValue("useStairCoreGenerator")),
+      facadeGrammarEngine: Boolean(getFeatureValue("useFacadeGrammarEngine")),
+      structuralSanityLayer: Boolean(
+        getFeatureValue("useStructuralSanityLayer"),
+      ),
+      partialRegeneration: Boolean(getFeatureValue("usePartialRegeneration")),
+      geometryLockedVisuals: Boolean(
+        getFeatureValue("useGeometryLockedVisuals"),
+      ),
+      validation: Boolean(getFeatureValue("usePhase3Validation")),
+    },
     categories,
     validation: validateModelConfig(),
   };

@@ -1,6 +1,10 @@
 import generateDrawingsHandler from "../../../api/models/generate-drawings.js";
+import generateFacadeHandler from "../../../api/models/generate-facade.js";
 import generateFloorplanHandler from "../../../api/models/generate-floorplan.js";
+import generateProjectHandler from "../../../api/models/generate-project.js";
 import generateStyleHandler from "../../../api/models/generate-style.js";
+import generateVisualPackageHandler from "../../../api/models/generate-visual-package.js";
+import regenerateLayerHandler from "../../../api/models/regenerate-layer.js";
 import searchPrecedentsHandler from "../../../api/models/search-precedents.js";
 import statusHandler from "../../../api/models/status.js";
 import validateProjectHandler from "../../../api/models/validate-project.js";
@@ -232,6 +236,193 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.details.validationReport.status).toBe("invalid");
   });
 
+  test("generate-project returns a canonical project package", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase3-project-route",
+        level_count: 2,
+        footprint: { width_m: 16, depth_m: 12 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+          { name: "Bedroom 1", target_area_m2: 15, level: 1 },
+        ],
+        styleDNA: {
+          region: "UK",
+          climate_zone: "marine-temperate",
+          facade_language: "rhythmic-openings-with-solid-masonry",
+          roof_language: "pitched-gable-or-hip",
+        },
+      },
+    };
+    const res = createMockResponse();
+
+    await generateProjectHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.projectGeometry.schema_version).toBe(
+      "canonical-project-geometry-v2",
+    );
+    expect(res.body.facadeGrammar).toBeTruthy();
+    expect(res.body.structuralGrid).toBeTruthy();
+    expect(res.body.drawings.plan.length).toBeGreaterThan(0);
+    expect(res.body.integrationHooks.a1.ready).toBe(true);
+  });
+
+  test("generate-facade returns facade grammar from canonical geometry", async () => {
+    const floorplanReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase3-facade-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+      },
+    };
+    const floorplanRes = createMockResponse();
+    await generateFloorplanHandler(floorplanReq, floorplanRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: floorplanRes.body.projectGeometry,
+        styleDNA: {
+          region: "UK",
+          climate_zone: "marine-temperate",
+          facade_language: "rhythmic-openings-with-solid-masonry",
+        },
+      },
+    };
+    const res = createMockResponse();
+
+    await generateFacadeHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.facadeGrammar.orientations).toHaveLength(4);
+  });
+
+  test("generate-visual-package returns geometry-locked control references", async () => {
+    const floorplanReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase3-visual-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+      },
+    };
+    const floorplanRes = createMockResponse();
+    await generateFloorplanHandler(floorplanReq, floorplanRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: floorplanRes.body.projectGeometry,
+        styleDNA: {
+          facade_language: "rhythmic-openings-with-solid-masonry",
+          roof_language: "pitched-gable-or-hip",
+        },
+        viewType: "hero_3d",
+      },
+    };
+    const res = createMockResponse();
+
+    await generateVisualPackageHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.visualPackage.validation.valid).toBe(true);
+    expect(
+      res.body.visualPackage.controlReferences.references.length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("regenerate-layer preserves room layout during facade-only edits", async () => {
+    const floorplanReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase3-regen-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+      },
+    };
+    const floorplanRes = createMockResponse();
+    await generateFloorplanHandler(floorplanReq, floorplanRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: floorplanRes.body.projectGeometry,
+        targetLayer: "facade",
+        locks: { room_layout: true },
+        styleDNA: {
+          region: "UK",
+          climate_zone: "marine-temperate",
+          facade_language: "rhythmic-openings-with-solid-masonry",
+        },
+      },
+    };
+    const res = createMockResponse();
+
+    await regenerateLayerHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.validationReport.status).toMatch(/valid/);
+    expect(res.body.diff.metadataChanged).toBe(true);
+  });
+
+  test("regenerate-layer rejects facade edits when facade_grammar is locked", async () => {
+    const floorplanReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase3-regen-lock-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+      },
+    };
+    const floorplanRes = createMockResponse();
+    await generateFloorplanHandler(floorplanReq, floorplanRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: floorplanRes.body.projectGeometry,
+        targetLayer: "facade",
+        locks: { facade_grammar: true },
+        styleDNA: {
+          region: "UK",
+          climate_zone: "marine-temperate",
+          facade_language: "rhythmic-openings-with-solid-masonry",
+        },
+      },
+    };
+    const res = createMockResponse();
+
+    await regenerateLayerHandler(req, res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe("LAYER_LOCKED");
+  });
+
   test("generate-drawings fails closed when the supplied geometry is invalid", async () => {
     const req = {
       method: "POST",
@@ -376,6 +567,7 @@ describe("Phase 1 model route handlers", () => {
       "useFloorplanEngine",
     );
     expect(res.body.status.phase2.canonicalGeometry).toBe(true);
+    expect(res.body.status.phase3.multiLevelEngine).toBe(true);
 
     const houseDiffusionHook =
       res.body.status.categories.floorplan_generation.availableModels.find(

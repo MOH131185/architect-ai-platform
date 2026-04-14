@@ -1,9 +1,10 @@
 import { coerceToCanonicalProjectGeometry } from "../../src/services/cad/geometryFactory.js";
-import { validateProject } from "../../src/services/validation/projectValidationEngine.js";
+import { buildFacadeGrammar } from "../../src/services/facade/facadeGrammarEngine.js";
 import {
-  buildValidateProjectResponse,
-  validateValidateProjectRequest,
+  buildGenerateFacadeResponse,
+  validateGenerateFacadeRequest,
 } from "../../src/services/models/architectureBackendContracts.js";
+import { getRecommendedModel } from "../../src/services/models/openSourceModelRouter.js";
 import {
   config,
   ensureFeatureEnabled,
@@ -24,23 +25,19 @@ export default async function handler(req, res) {
       "ORIGIN_NOT_ALLOWED",
       "Origin is not allowed for this endpoint.",
       null,
-      { endpoint: "validate-project" },
+      { endpoint: "generate-facade" },
     );
   }
   if (rejectInvalidMethod(req, res)) return;
   if (
-    !ensureFeatureEnabled(
-      res,
-      ["useGeometryValidationEngine"],
-      "validate-project",
-    )
+    !ensureFeatureEnabled(res, ["useFacadeGrammarEngine"], "generate-facade")
   ) {
     return;
   }
 
   try {
-    const validation = validateValidateProjectRequest(req.body || {});
-    const featureFlags = ["useGeometryValidationEngine", "usePhase3Validation"];
+    const validation = validateGenerateFacadeRequest(req.body || {});
+    const featureFlags = ["useFacadeGrammarEngine"];
     if (!validation.ok) {
       return sendError(
         res,
@@ -52,7 +49,7 @@ export default async function handler(req, res) {
           warnings: validation.warnings,
         },
         {
-          endpoint: "validate-project",
+          endpoint: "generate-facade",
           featureFlags,
         },
       );
@@ -61,25 +58,19 @@ export default async function handler(req, res) {
     const projectGeometry = coerceToCanonicalProjectGeometry(
       validation.normalized.projectGeometry,
     );
-    const result = validateProject({
+    const facadeGrammar = buildFacadeGrammar(
       projectGeometry,
-      drawings: validation.normalized.drawings,
-      drawingTypes: validation.normalized.drawingTypes,
-      facadeGrammar: validation.normalized.facadeGrammar,
-      structuralGrid: validation.normalized.structuralGrid,
-      previousProjectGeometry: validation.normalized.previousProjectGeometry
-        ? coerceToCanonicalProjectGeometry(
-            validation.normalized.previousProjectGeometry,
-          )
-        : null,
-      locks: validation.normalized.locks,
-      targetLayer: validation.normalized.targetLayer,
-    });
+      validation.normalized.styleDNA,
+    );
 
     return res.status(200).json(
-      buildValidateProjectResponse({
-        result,
+      buildGenerateFacadeResponse({
+        facadeGrammar,
         warnings: validation.warnings,
+        selectedModelStrategy: getRecommendedModel("regional_style", {
+          preferLocal: true,
+          useCase: "facade grammar",
+        }),
         featureFlags,
       }),
     );
@@ -87,12 +78,11 @@ export default async function handler(req, res) {
     return sendError(
       res,
       500,
-      "PROJECT_VALIDATION_FAILED",
+      "FACADE_GENERATION_FAILED",
       error.message,
       error.details || null,
       {
-        endpoint: "validate-project",
-        featureFlags: ["useGeometryValidationEngine", "usePhase3Validation"],
+        endpoint: "generate-facade",
       },
     );
   }

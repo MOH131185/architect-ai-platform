@@ -81,6 +81,25 @@ function buildLevelStair(level, levelCount, projectId) {
     return [];
   }
 
+  if (level.core_plan?.core_bbox) {
+    return [
+      createStairGeometry(projectId, level.id, {
+        id: `${level.id}-stair-main`,
+        type: "doglegged",
+        bbox: level.core_plan.core_bbox,
+        polygon: level.rooms.find((room) => room.type === "stair_core")
+          ?.polygon,
+        x: level.core_plan.core_bbox.min_x,
+        y: level.core_plan.core_bbox.min_y,
+        width_m: level.core_plan.core_bbox.width,
+        depth_m: level.core_plan.core_bbox.height,
+        connects_to_level:
+          level.level_number < levelCount - 1 ? level.level_number + 1 : null,
+        source: "floorplan-generator",
+      }),
+    ];
+  }
+
   const bbox = level.buildable_bbox || {
     min_x: 0,
     min_y: 0,
@@ -137,6 +156,11 @@ function buildDeterministicProjectGeometry(request = {}) {
   });
 
   const allWarnings = [];
+  projectGeometry.metadata = {
+    ...projectGeometry.metadata,
+    adjacency_graph: layout.adjacency_graph,
+    vertical_stacking_plan: layout.vertical_stacking_plan || null,
+  };
 
   layout.levels.forEach((levelLayout, levelIndex) => {
     const level = createLevelGeometry(
@@ -291,6 +315,7 @@ function buildDeterministicProjectGeometry(request = {}) {
       "wall-graph-builder",
       "opening-placement-service",
       "circulation-generator",
+      ...(layout.core_plan?.required ? ["stair-core-generator"] : []),
       "project-validation-engine",
     ]),
   };
