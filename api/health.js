@@ -4,21 +4,17 @@
  * Returns the health status of the API and configured services.
  */
 
+import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
 import {
   GENARCH_CONTRACT_VERSION,
   GENARCH_VERSION_HEADER,
 } from "../src/services/genarch/genarchContract.js";
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // CORS
+  if (handlePreflight(req, res, { methods: "GET, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "GET, OPTIONS" });
   res.setHeader(GENARCH_VERSION_HEADER, GENARCH_CONTRACT_VERSION);
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
 
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });

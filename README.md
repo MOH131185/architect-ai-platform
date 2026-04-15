@@ -247,6 +247,38 @@ npm run build:active
 - 🔧 **[FIX_SUMMARY.md](./FIX_SUMMARY.md)** - Recent critical fixes
 - 📐 **[A1_SHEET_ONE_SHOT_IMPLEMENTATION.md](./A1_SHEET_ONE_SHOT_IMPLEMENTATION.md)** - A1 workflow details
 - 🛰️ **[docs/GENARCH_OPERATIONS_RUNBOOK.md](./docs/GENARCH_OPERATIONS_RUNBOOK.md)** - Backend-only genarch API operations and contract checks
+- 🧱 **[docs/BLENDER_3D_STATUS_SUMMARY.md](./docs/BLENDER_3D_STATUS_SUMMARY.md)** - Nuanced Blender and 3D readiness summary
+- 🗂️ **[docs/ARCHCAD_BACKEND.md](./docs/ARCHCAD_BACKEND.md)** - FastAPI backend module for gated ArchCAD ingestion, indexing, and retrieval
+
+---
+
+## 🗂️ ArchCAD Backend
+
+The repo now includes a standalone FastAPI backend module under `app/` for ingesting and serving the gated `jackluoluo/ArchCAD` dataset.
+
+Quick start:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload
+```
+
+Core endpoints:
+
+- `POST /datasets/archcad/download`
+- `GET /datasets/archcad/status`
+- `POST /datasets/archcad/index`
+- `GET /datasets/archcad/samples`
+- `GET /datasets/archcad/samples/{sample_id}`
+- `GET /datasets/archcad/samples/{sample_id}/elements`
+- `GET /datasets/archcad/samples/{sample_id}/qa`
+- `GET /datasets/archcad/search?semantic=single_door`
+- `GET /datasets/archcad/stats/semantics`
+
+See [docs/ARCHCAD_BACKEND.md](./docs/ARCHCAD_BACKEND.md) for setup, curl examples, and integration notes.
 
 ---
 

@@ -30,7 +30,7 @@ import {
   calculateBounds,
   boundsToGoogleBounds,
 } from "./mapUtils.js";
-import { closeRing } from "./boundaryGeometry.js";
+import { closeRing, latLngPolygonsEqual } from "./boundaryGeometry.js";
 import logger from "../../utils/logger.js";
 
 // Editor modes
@@ -144,10 +144,14 @@ export function SiteBoundaryEditorV2({
 
   // Initialize polygon from props
   useEffect(() => {
-    if (initialBoundaryPolygon && initialBoundaryPolygon.length > 0) {
+    if (
+      initialBoundaryPolygon &&
+      initialBoundaryPolygon.length > 0 &&
+      !latLngPolygonsEqual(initialBoundaryPolygon, polygon)
+    ) {
       setPolygon(initialBoundaryPolygon, false);
     }
-  }, [initialBoundaryPolygon, setPolygon]);
+  }, [initialBoundaryPolygon, polygon, setPolygon]);
 
   // Auto-detect boundary when map loads if no polygon exists
   useEffect(() => {

@@ -1,0 +1,53 @@
+{
+  "panels": {
+    "floor_plan": {
+      "rect_mm": [15.0, 63.000000000000014, 460.0, 480.0],
+      "source": "plan.dxf",
+      "source_hash": "sha256:b11271d0ffcc8b4ca46baaf3287baf7be8e80946e30af4063bff4c77db7c3f85",
+      "vector": true,
+      "scale": "1:50"
+    }
+  },
+  "version": "4.0.0",
+  "phase": "a1_assembler",
+  "generated_at": "2026-04-10T18:25:33.702191",
+  "page": {
+    "format": "A1",
+    "orientation": "landscape",
+    "width_mm": 841,
+    "height_mm": 594,
+    "width_pt": 2383.9370078740158,
+    "height_pt": 1683.7795275590552
+  },
+  "scale": {
+    "chosen": "1:50",
+    "auto_selected": true,
+    "available": ["1:50", "1:75", "1:100", "1:150", "1:200"]
+  },
+  "title_block": {
+    "title": "Untitled",
+    "client": "",
+    "project_number": "",
+    "total_area_m2": 144.0,
+    "scale": "1:50",
+    "date": "2026-04-10",
+    "seed": 33333
+  },
+  "warnings": [
+    "Missing asset: Perspective",
+    "Missing asset: North Elevation",
+    "Missing asset: Section"
+  ],
+  "inputs": {
+    "plan_json": {
+      "path": "plan.json",
+      "exists": true,
+      "hash": "sha256:c92c7c20c36f9d6e5c2fa26d9c364659ed4951757de2b6e89dd50336dccab568"
+    },
+    "run_json": {
+      "path": "run.json",
+      "exists": true,
+      "hash": "sha256:28fb686936f28eb219b5f75fe65ce3756fbfb18f0d3461b778c6b70fd175a91a"
+    }
+  }
+}

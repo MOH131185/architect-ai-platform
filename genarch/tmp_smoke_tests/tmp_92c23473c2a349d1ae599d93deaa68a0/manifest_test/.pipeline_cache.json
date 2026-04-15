@@ -1,0 +1,27 @@
+{
+  "phase_1": {
+    "input_hash": "79d66f08977c6cdf97f48c16a457b9b26a9201cfa53560ccfa6d74b8753453a0",
+    "outputs": ["plan.json", "plan.dxf", "model.glb", "model.obj", "run.json"],
+    "output_hashes": {
+      "plan.json": "5d62ad02811560705158152758de8aa9388cba0796e76a795caf5a3a9058031d",
+      "plan.dxf": "f1739d7e778468001424cc1769749e824347789433a76a93e8099155c12cf8c4",
+      "model.glb": "e11c7891fbd34c626c9f3985058d627abdc839a2dd0a36967bc3fa5427c1c374",
+      "model.obj": "257e9719740a7ba2702fe18903d8e9d478cc78713eef6956df5f38ae4c6f1cbf",
+      "run.json": "e496d63b116ae17e5cab4127db323b36486bd2b28b9ae84a54adadd7ada61346"
+    },
+    "completed_at": "2026-04-10T18:27:52.196465",
+    "metadata": {
+      "seed": 33333
+    }
+  },
+  "phase_4": {
+    "input_hash": "044b90512a85211e0ab2655352457179a2259efa775280b95130f302fcc0e826",
+    "outputs": ["phase4/A1_sheet.pdf", "phase4/sheet_manifest.json"],
+    "output_hashes": {
+      "phase4/A1_sheet.pdf": "5d424b6d37bfb473ae1c53b6e7ef63109ffcff1f57a65ec489718f5e86b593e0",
+      "phase4/sheet_manifest.json": "2dd76107846a2f9fe97e08a53076c3533cfc315be807ce92e4e904bb94461a8a"
+    },
+    "completed_at": "2026-04-10T18:27:54.969900",
+    "metadata": {}
+  }
+}

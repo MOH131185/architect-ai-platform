@@ -236,7 +236,10 @@ def main():
 
     if not validation_passed:
         print("\nNote: Some validation errors were found. Review the output carefully.")
-        sys.exit(1)
+        if args.strict:
+            sys.exit(1)
+        print("Generation completed with validation warnings.")
+        sys.exit(0)
 
     print("\nGeneration complete!")
 

@@ -12,6 +12,8 @@
  * - Defaults to high-capability model for architectural reasoning
  */
 
+import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
+
 const AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 
 // Model mapping from Together.ai to AI Gateway equivalents
@@ -26,15 +28,8 @@ const MODEL_MAPPING = {
 
 export default async function handler(req, res) {
   // Handle OPTIONS for CORS preflight
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization",
-    );
-    return res.status(200).end();
-  }
+  if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
 
   // Only allow POST requests
   if (req.method !== "POST") {
@@ -152,14 +147,6 @@ export default async function handler(req, res) {
       },
       raw: data,
     };
-
-    // Set CORS headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization",
-    );
 
     res.status(200).json(normalizedResponse);
   } catch (error) {

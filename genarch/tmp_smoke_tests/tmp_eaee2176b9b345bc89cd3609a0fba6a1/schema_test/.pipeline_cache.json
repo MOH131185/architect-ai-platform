@@ -1,0 +1,17 @@
+{
+  "phase_1": {
+    "input_hash": "93f4c66375e2e8c26bc9182dd695b3a656334a1bbf2fa531a9919a69602f0056",
+    "outputs": ["plan.json", "plan.dxf", "model.glb", "model.obj", "run.json"],
+    "output_hashes": {
+      "plan.json": "00d0ea761863832c3a1a588bb5df7564e029903745b9bcc6d37fbc680652741c",
+      "plan.dxf": "aba8f8743d4ae74177bc70963be0ee802930e70c61091bcdadeb9bdd83a24763",
+      "model.glb": "ae547cbefc284b5492567ee5165acb9bc5fec0f1e94fa6a5860fc4106f4c6e56",
+      "model.obj": "5d9711ebd98abc3fabd698b8910f8276aa9d9035ed1b431fc9b1611217acfdde",
+      "run.json": "d5ae8fb320787f210546694f505a4ccc7ede056a9fd0020db29961ba2ba95f05"
+    },
+    "completed_at": "2026-04-10T18:28:38.707329",
+    "metadata": {
+      "seed": 11111
+    }
+  }
+}

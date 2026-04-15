@@ -17,15 +17,17 @@ import { computeCDSHashSync } from "../validation/cdsHash.js";
 export const MANDATORY_3D_PANELS = ["hero_3d", "interior_3d", "axonometric"];
 export const CANONICAL_3D_VIEWS = ["exterior", "interior", "aerial"];
 export const CANONICAL_3D_STRENGTH_POLICY = {
-  hero_3d: 0.65,
-  interior_3d: 0.65,
-  axonometric: 0.55,
+  hero_3d: 0.22,
+  interior_3d: 0.3,
+  axonometric: 0.18,
 };
 export const CANONICAL_3D_NEGATIVE_PROMPTS = {
-  hero_3d: "blurry, distorted, low quality, watermark",
-  interior_3d: "blurry, distorted, low quality, watermark, empty room",
+  hero_3d:
+    "blurry, distorted, low quality, watermark, cartoon, sketch, toy model, miniature, CGI, video game, flat shading, multiple buildings, terraced, semi-detached",
+  interior_3d:
+    "blurry, distorted, low quality, watermark, empty room, unfurnished, bare walls, cartoon, sketch, CGI, video game, flat shading",
   axonometric:
-    "blurry, distorted, low quality, watermark, perspective distortion",
+    "blurry, distorted, low quality, watermark, perspective distortion, cartoon, sketch, photorealistic, photograph, people, cars",
 };
 
 const PANEL_TO_VIEW = {

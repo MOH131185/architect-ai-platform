@@ -43,6 +43,7 @@ function buildBaselineBundle({
   sheetId,
   siteSnapshot,
 }) {
+  const qualityEvaluation = masterDNA?.qualityEvaluation || null;
   return {
     designId,
     sheetId,
@@ -88,6 +89,9 @@ function buildBaselineBundle({
       pdfUrl: compositionResult.pdfUrl || null,
       qaAllPassed: compositionResult.qa?.allPassed ?? null,
       critiqueOverallPass: compositionResult.critique?.overallPass ?? null,
+      qualityScore: qualityEvaluation?.total ?? null,
+      qualityGrade: qualityEvaluation?.grade ?? null,
+      qualityEvaluation,
     },
     seeds: {
       base: effectiveBaseSeed,
@@ -103,6 +107,7 @@ function buildBaselineBundle({
 
 function buildWorkflowResult({
   baselineBundle,
+  blenderOutputs,
   canonicalDesignState,
   compositionResult,
   consistencyReport,
@@ -119,6 +124,7 @@ function buildWorkflowResult({
   runId,
   sheetId,
 }) {
+  const qualityEvaluation = masterDNA?.qualityEvaluation || null;
   return {
     success: true,
     designId,
@@ -132,6 +138,7 @@ function buildWorkflowResult({
     geometryDNA: geometryDNA || masterDNA.geometry || null,
     geometryRenders,
     geometryScene,
+    blenderOutputs: blenderOutputs || null,
     consistencyReport,
     baselineBundle,
     canonicalDesignState: canonicalDesignState || null,
@@ -143,6 +150,9 @@ function buildWorkflowResult({
     qa: compositionResult.qa || null,
     critique: compositionResult.critique || null,
     trace: compositionResult.trace || null,
+    qualityEvaluation,
+    spatialGraph: masterDNA?.spatialGraph || null,
+    climateData: masterDNA?.climateData || null,
     metadata: {
       workflow: PIPELINE_MODE.MULTI_PANEL,
       panelCount: generatedPanels.length,
@@ -162,6 +172,9 @@ function buildWorkflowResult({
       qaAllPassed: compositionResult.qa?.allPassed ?? null,
       critiqueOverallPass: compositionResult.critique?.overallPass ?? null,
       hashValidation: compositionResult.metadata?.hashValidation || null,
+      qualityScore: qualityEvaluation?.total ?? null,
+      qualityGrade: qualityEvaluation?.grade ?? null,
+      qualityEvaluation,
     },
   };
 }
@@ -172,6 +185,7 @@ function buildWorkflowResult({
  */
 export async function finalizeMultiPanelRun({
   baselineStore,
+  blenderOutputs,
   canonicalDesignState,
   compositionResult,
   consistencyReport,
@@ -273,6 +287,7 @@ export async function finalizeMultiPanelRun({
 
   return buildWorkflowResult({
     baselineBundle,
+    blenderOutputs,
     canonicalDesignState,
     compositionResult,
     consistencyReport,

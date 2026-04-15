@@ -35,6 +35,7 @@ import {
   fromCSV,
   wouldCauseSelfIntersection,
   roundCoord,
+  ringsEqual,
 } from "./boundaryGeometry.js";
 
 // Maximum history entries
@@ -133,6 +134,10 @@ export function useBoundaryState(initialPolygon = []) {
     (newRing, addToHistory = true) => {
       const { ring: normalizedRing } = normalizeRing(newRing);
 
+      if (ringsEqual(normalizedRing, ring)) {
+        return;
+      }
+
       setRingInternal(normalizedRing);
 
       if (addToHistory && !batchUpdateRef.current) {
@@ -150,7 +155,7 @@ export function useBoundaryState(initialPolygon = []) {
         setHistoryIndex((prev) => Math.min(prev + 1, MAX_HISTORY - 1));
       }
     },
-    [historyIndex],
+    [historyIndex, ring],
   );
 
   // ============================================================

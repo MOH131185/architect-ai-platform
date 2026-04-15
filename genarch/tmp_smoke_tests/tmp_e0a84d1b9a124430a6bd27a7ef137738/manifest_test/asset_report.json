@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "errors": [],
+  "warnings": [
+    "No Phase 2 renders found - A1 sheet will have placeholders",
+    "No Phase 3 perspective found - using placeholder"
+  ],
+  "assets": [
+    {
+      "path": "plan.json",
+      "exists": true,
+      "required": true,
+      "category": "phase1",
+      "size_bytes": 14599,
+      "hash": "sha256:6d25cb926696a942"
+    },
+    {
+      "path": "plan.dxf",
+      "exists": true,
+      "required": true,
+      "category": "phase1",
+      "size_bytes": 37041,
+      "hash": "sha256:b51fb13066fa68b8"
+    }
+  ],
+  "summary": {
+    "minimum_met": true,
+    "phase2_available": false,
+    "phase3_available": false,
+    "ready_for_phase4": true
+  }
+}

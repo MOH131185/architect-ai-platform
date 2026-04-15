@@ -45,6 +45,21 @@ PASS_SETTINGS = {
         "samples": 1,
         "film_transparent": True,
     },
+    "lineart": {
+        "use_freestyle": True,
+        "samples": 1,
+        "film_transparent": False,
+    },
+    "ao": {
+        "material": "ao_white",
+        "samples": 4,
+        "film_transparent": False,
+    },
+    "textured": {
+        "use_original_materials": True,
+        "samples": 16,
+        "film_transparent": False,
+    },
 }
 
 
@@ -110,6 +125,105 @@ def create_mask_material():
     mat.node_tree.links.new(emission.outputs['Emission'], output.inputs['Surface'])
 
     return mat
+
+
+def create_ao_material():
+    """Create white emission material for ambient occlusion rendering."""
+    mat = bpy.data.materials.new(name="ControlNet_AO")
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+
+    # AO node provides contact shadow data
+    ao_node = nodes.new('ShaderNodeAmbientOcclusion')
+    ao_node.samples = 8
+    ao_node.inputs['Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+
+    emission = nodes.new('ShaderNodeEmission')
+    emission.inputs['Strength'].default_value = 1.0
+
+    output = nodes.new('ShaderNodeOutputMaterial')
+
+    links.new(ao_node.outputs['Color'], emission.inputs['Color'])
+    links.new(emission.outputs['Emission'], output.inputs['Surface'])
+
+    return mat
+
+
+# ========== FREESTYLE LINE ART SETUP ==========
+
+def setup_freestyle(scene, thickness=2.0, crease_angle=134):
+    """
+    Configure Freestyle for architectural line art rendering.
+
+    Produces clean black lines on white background for ControlNet lineart conditioning.
+    """
+    scene.render.use_freestyle = True
+    scene.render.line_thickness = thickness
+
+    # Configure the default view layer's freestyle settings
+    view_layer = scene.view_layers[0]
+    view_layer.use_freestyle = True
+    freestyle = view_layer.freestyle_settings
+    freestyle.crease_angle = math.radians(crease_angle)
+
+    # Clear existing line sets and create architectural line set
+    for ls in freestyle.linesets:
+        freestyle.linesets.remove(ls)
+
+    lineset = freestyle.linesets.new("ArchitecturalLines")
+    lineset.select_silhouette = True
+    lineset.select_crease = True
+    lineset.select_border = True
+    lineset.select_edge_mark = True
+    lineset.select_material_boundary = True
+    lineset.select_contour = True
+    # Disable less useful edge types for clean architectural output
+    lineset.select_suggestive_contour = False
+    lineset.select_ridge_valley = False
+
+    # Line style: solid black, constant thickness
+    style = lineset.linestyle
+    style.color = (0.0, 0.0, 0.0)
+    style.thickness = thickness
+    style.alpha = 1.0
+
+
+def teardown_freestyle(scene):
+    """Disable Freestyle after lineart rendering."""
+    scene.render.use_freestyle = False
+    for vl in scene.view_layers:
+        vl.use_freestyle = False
+
+
+# ========== TEXTURED RENDER SETUP ==========
+
+def setup_textured_lighting(scene):
+    """Add studio lighting for textured material renders."""
+    # Sun lamp
+    sun_data = bpy.data.lights.new(name="TexturedSun", type='SUN')
+    sun_data.energy = 3.0
+    sun_data.color = (1.0, 0.98, 0.95)
+    sun_obj = bpy.data.objects.new("TexturedSun", sun_data)
+    bpy.context.collection.objects.link(sun_obj)
+    sun_obj.rotation_euler = (math.radians(50), math.radians(15), math.radians(-30))
+
+    # Fill light
+    fill_data = bpy.data.lights.new(name="TexturedFill", type='SUN')
+    fill_data.energy = 1.2
+    fill_data.color = (0.9, 0.92, 1.0)
+    fill_obj = bpy.data.objects.new("TexturedFill", fill_data)
+    bpy.context.collection.objects.link(fill_obj)
+    fill_obj.rotation_euler = (math.radians(40), math.radians(-10), math.radians(150))
+
+    return [sun_obj, fill_obj]
+
+
+def teardown_textured_lighting(light_objects):
+    """Remove studio lighting after textured rendering."""
+    for obj in light_objects:
+        bpy.data.objects.remove(obj, do_unlink=True)
 
 
 # ========== DEPTH COMPOSITOR SETUP ==========
@@ -341,6 +455,14 @@ def setup_deterministic_cameras(bounds, config):
 
 # ========== MAIN RENDER FUNCTION ==========
 
+def get_eevee_engine():
+    """Return correct EEVEE engine name for current Blender version."""
+    version = bpy.app.version
+    if version >= (4, 2, 0):
+        return 'BLENDER_EEVEE_NEXT'
+    return 'BLENDER_EEVEE'
+
+
 def render_controlnet_passes(cameras, output_dir, resolution=(2048, 2048), passes_config=None):
     """Render all ControlNet passes for each camera."""
     scene = bpy.context.scene
@@ -349,7 +471,7 @@ def render_controlnet_passes(cameras, output_dir, resolution=(2048, 2048), passe
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = 'PNG'
     scene.render.image_settings.color_depth = '8'
-    scene.render.engine = 'BLENDER_EEVEE'
+    scene.render.engine = get_eevee_engine()
 
     if passes_config is None:
         passes_config = {}
@@ -360,6 +482,14 @@ def render_controlnet_passes(cameras, output_dir, resolution=(2048, 2048), passe
     )
     normal_mat = create_normal_material()
     mask_mat = create_mask_material()
+    ao_mat = create_ao_material()
+
+    material_map = {
+        'clay': clay_mat,
+        'normal': normal_mat,
+        'mask': mask_mat,
+        'ao': ao_mat,
+    }
 
     # Store original materials
     original_materials = {}
@@ -405,22 +535,68 @@ def render_controlnet_passes(cameras, output_dir, resolution=(2048, 2048), passe
             filepath = os.path.join(output_dir, f"{cam_name}_{pass_name}.png")
 
             if pass_name == 'depth':
+                # Depth pass: compositor-based normalized Z
                 setup_depth_compositor(cam_spec['clip_start'], cam_spec['clip_end'])
                 scene.view_layers["ViewLayer"].use_pass_z = True
                 scene.render.film_transparent = False
                 scene.render.filepath = filepath
                 bpy.ops.render.render(write_still=True)
                 clear_compositor()
-            else:
-                mat = {'clay': clay_mat, 'normal': normal_mat, 'mask': mask_mat}[pass_name]
+
+            elif pass_name == 'lineart':
+                # Line art pass: Freestyle architectural line rendering
+                # White background with black line work
+                white_mat = create_clay_material(color=(1.0, 1.0, 1.0))
+                for obj in bpy.data.objects:
+                    if obj.type == 'MESH':
+                        obj.data.materials.clear()
+                        obj.data.materials.append(white_mat)
+
+                setup_freestyle(scene,
+                    thickness=passes_config.get('lineart', {}).get('thickness', 2.0),
+                    crease_angle=passes_config.get('lineart', {}).get('crease_angle', 134),
+                )
+                scene.render.film_transparent = False
+                scene.render.filepath = filepath
+                bpy.ops.render.render(write_still=True)
+                teardown_freestyle(scene)
+                bpy.data.materials.remove(white_mat)
+
+            elif pass_name == 'textured':
+                # Textured pass: restore original materials with studio lighting
+                for obj_name, mats in original_materials.items():
+                    obj = bpy.data.objects.get(obj_name)
+                    if obj:
+                        obj.data.materials.clear()
+                        for mat in mats:
+                            obj.data.materials.append(mat)
+
+                lights = setup_textured_lighting(scene)
+                scene.render.film_transparent = False
+                scene.render.filepath = filepath
+                bpy.ops.render.render(write_still=True)
+                teardown_textured_lighting(lights)
+
+            elif pass_name in material_map:
+                # Material-override passes: clay, normal, mask, ao
+                mat = material_map[pass_name]
                 for obj in bpy.data.objects:
                     if obj.type == 'MESH':
                         obj.data.materials.clear()
                         obj.data.materials.append(mat)
 
+                # Enable GTAO for AO pass
+                if pass_name == 'ao':
+                    scene.eevee.use_gtao = True
+                    scene.eevee.gtao_distance = 1.0
+                    scene.eevee.gtao_factor = 1.0
+
                 scene.render.film_transparent = pass_config.get('film_transparent', False)
                 scene.render.filepath = filepath
                 bpy.ops.render.render(write_still=True)
+
+                if pass_name == 'ao':
+                    scene.eevee.use_gtao = False
 
             cam_result['passes'][pass_name] = filepath
             print(f"  Rendered: {pass_name}")

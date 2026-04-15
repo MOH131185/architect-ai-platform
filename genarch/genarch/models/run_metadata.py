@@ -8,9 +8,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any
+
+
+def _utc_timestamp() -> str:
+    """Return a stable ISO 8601 UTC timestamp."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -31,7 +36,7 @@ class RunMetadata:
     units: str = "meters"
     north_direction: float = 0.0
     generation_timestamp: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat() + "Z"
+        default_factory=_utc_timestamp
     )
     version: str = "0.1.0"
     validation_results: Dict[str, bool] = field(default_factory=dict)
@@ -45,7 +50,7 @@ class RunMetadata:
             north_direction=data.get("north_direction", 0.0),
             generation_timestamp=data.get(
                 "generation_timestamp",
-                datetime.utcnow().isoformat() + "Z"
+                _utc_timestamp()
             ),
             version=data.get("version", "0.1.0"),
             validation_results=data.get("validation_results", {}),

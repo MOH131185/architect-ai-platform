@@ -36,6 +36,9 @@ import {
   fromCSV,
   latLngArrayToRing,
   ringToLatLngArray,
+  coordsEqual,
+  ringsEqual,
+  latLngPolygonsEqual,
 } from "../boundaryGeometry.js";
 
 // Test data: Simple square polygon
@@ -98,6 +101,11 @@ describe("Coordinate Precision", () => {
     expect(result[0]).toBeCloseTo(-122.4194, 6);
     expect(result[1]).toBeCloseTo(37.7749, 6);
   });
+
+  test("coordsEqual compares canonical coordinates", () => {
+    expect(coordsEqual([-122.4194, 37.7749], [-122.4194, 37.7749])).toBe(true);
+    expect(coordsEqual([-122.4194, 37.7749], [-122.4, 37.7749])).toBe(false);
+  });
 });
 
 // ============================================================
@@ -159,6 +167,25 @@ describe("Ring Operations", () => {
     const result = normalizeRing(squareVertices);
     expect(result.valid).toBe(true);
     expect(isRingClosed(result.ring)).toBe(true);
+  });
+
+  test("ringsEqual compares ring geometry", () => {
+    expect(ringsEqual(squareRingClosed, [...squareRingClosed])).toBe(true);
+    expect(ringsEqual(squareRingClosed, closeRing([...triangleVertices]))).toBe(
+      false,
+    );
+  });
+
+  test("latLngPolygonsEqual compares Google Maps polygons", () => {
+    const polygon = squareVertices.map(([lng, lat]) => ({ lat, lng }));
+    const samePolygon = squareVertices.map(([lng, lat]) => ({ lat, lng }));
+    const differentPolygon = triangleVertices.map(([lng, lat]) => ({
+      lat,
+      lng,
+    }));
+
+    expect(latLngPolygonsEqual(polygon, samePolygon)).toBe(true);
+    expect(latLngPolygonsEqual(polygon, differentPolygon)).toBe(false);
   });
 });
 

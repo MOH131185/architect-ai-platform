@@ -14,7 +14,7 @@ export async function getOpusSheetCritic() {
   if (opusSheetCritic) return opusSheetCritic;
   try {
     const module = await import("../qa/OpusSheetCritic.js");
-    opusSheetCritic = module.default || module.OpusSheetCritic;
+    opusSheetCritic = module.OpusSheetCritic || module.default;
     return opusSheetCritic;
   } catch (error) {
     console.warn("[A1 Compose] OpusSheetCritic not available:", error.message);

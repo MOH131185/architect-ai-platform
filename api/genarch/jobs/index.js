@@ -9,6 +9,8 @@
  * The GENARCH_API_KEY is never exposed to the browser.
  */
 
+import { setCorsHeaders, handlePreflight } from "../../_shared/cors.js";
+
 // Environment variables
 const RUNPOD_GENARCH_URL = process.env.RUNPOD_GENARCH_URL; // e.g., https://genarch.yourdomain.com
 const GENARCH_API_KEY = process.env.GENARCH_API_KEY;
@@ -88,14 +90,8 @@ async function proxyToRunPod(method, path, body = null, res) {
 }
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+  if (handlePreflight(req, res, { methods: "GET, POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "GET, POST, OPTIONS" });
 
   // Route: POST /api/genarch/jobs - Create job
   if (req.method === "POST") {

@@ -1627,11 +1627,19 @@ async function handleComposeRequest(req, res, trace) {
     const runCritique = requestBody.runCritique !== false;
     if (runCritique && sheetUrl) {
       try {
-        const CriticClass = await getOpusSheetCritic();
-        if (CriticClass) {
+        const criticExport = await getOpusSheetCritic();
+        if (criticExport) {
           console.log("[A1 Compose] Running Opus Sheet Critic...");
 
-          const critic = new CriticClass();
+          const critic =
+            typeof criticExport === "function"
+              ? new criticExport()
+              : criticExport;
+          if (typeof critic?.critiqueSheet !== "function") {
+            throw new Error(
+              "Opus Sheet Critic export does not implement critiqueSheet()",
+            );
+          }
           const requiredPanels = Object.keys(panelsByKey);
 
           // Pass design fingerprint if available

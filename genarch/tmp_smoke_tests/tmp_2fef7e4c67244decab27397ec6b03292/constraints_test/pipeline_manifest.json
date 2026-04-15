@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "pipeline": "genarch",
+  "run_id": "constraints_test",
+  "started_at": "2026-04-10T18:32:27.493512",
+  "completed_at": "2026-04-10T18:32:28.709026",
+  "duration_seconds": 1.215514,
+  "config": {
+    "prompt": "modern villa 200sqm",
+    "constraints_path": null,
+    "output_path": "C:\\Users\\21366\\OneDrive\\Documents\\GitHub\\architect-ai-platform\\genarch\\tmp_smoke_tests\\tmp_2fef7e4c67244decab27397ec6b03292\\constraints_test",
+    "seed": 22222,
+    "wall_height": 3.0,
+    "skip_phase2": true,
+    "skip_phase3": true,
+    "skip_phase4": true,
+    "force": false,
+    "verbose": false,
+    "strict": false,
+    "validate_assets": true,
+    "drift_check": true,
+    "drift_threshold": 0.65,
+    "drift_tolerance_px": 3
+  },
+  "phases": {
+    "1": {
+      "status": "success",
+      "outputs": ["plan.json", "plan.dxf", "model.glb", "model.obj", "run.json"]
+    }
+  },
+  "validation": {},
+  "errors": [],
+  "warnings": [],
+  "outputs": {
+    "plan_json": "plan.json",
+    "plan_dxf": "plan.dxf",
+    "model_glb": "model.glb",
+    "phase2_manifest": null,
+    "a1_sheet": null
+  }
+}

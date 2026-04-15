@@ -25,6 +25,8 @@ import {
 import { getActiveModel, isModelReady } from "./modelRegistry.js";
 import { extractCannyEdges } from "./cannyEdgeExtractor.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
+import { generateWithControlNet as generateWithReplicateControlNet } from "./controlnet/replicateControlNetClient.js";
+import { getPassPolicy } from "./controlnet/ControlNetConditioningService.js";
 import logger from "../utils/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -118,44 +120,106 @@ class MultiModelImageService {
     logger.info(`🎯 [ROUTING] ${viewType} → category=${category}`);
 
     // ------------------------------------------------------------------
-    // Try ControlNet first (when enabled and geometry SVG available)
+    // Try ControlNet first (when enabled).
+    //
+    // Two routing paths:
+    //   PATH A: Blender multi-pass composite (preferred when blenderRendering)
+    //           geometryRender.type === "blender_controlnet"
+    //           → uses replicateControlNetClient with auto Canny/Depth selection
+    //   PATH B: Canonical SVG (legacy)
+    //           geometryRender?.svg present
+    //           → extracts Canny edges from SVG, calls Canny endpoint
     // ------------------------------------------------------------------
-    if (
-      isFeatureEnabled("controlNetRendering") &&
-      isModelReady("render", "controlnet-canny") &&
-      geometryRender?.svg
-    ) {
-      const renderModel = getActiveModel("render");
-      if (renderModel?.id === "controlnet-canny") {
+    if (isFeatureEnabled("controlNetRendering")) {
+      // PATH A: Blender composite control image (depth/lineart/AO/canny mix)
+      // Note: we do NOT call isModelReady here because REPLICATE_API_TOKEN is
+      // a server-only env var; the proxy endpoint enforces availability and
+      // replicateControlNetClient returns null on failure for graceful fallback.
+      if (
+        geometryRender?.type === "blender_controlnet" &&
+        geometryRender?.url
+      ) {
+        const policy = getPassPolicy(viewType) || {};
+        const controlModel =
+          geometryRender.controlnetModel ||
+          policy.controlnetModel ||
+          "controlnet-canny";
+
         try {
           logger.info(
-            `🎯 [CONTROLNET] Attempting ControlNet Canny for ${viewType}...`,
+            `🎯 [CONTROLNET] ${viewType} → ${controlModel} (Blender composite)`,
           );
-          const controlnetResult = await this.generateWithControlNet({
-            svgSource: geometryRender.svg,
+          const cnResult = await generateWithReplicateControlNet({
+            controlImage: geometryRender.url,
             prompt,
             negativePrompt,
+            panelType: viewType,
+            strength: geometryStrength ?? policy.strength,
             seed,
             width,
             height,
-            controlnetStrength: renderModel.controlnetStrength || 0.75,
-            viewType,
           });
 
-          logger.success(`✅ ControlNet generation successful for ${viewType}`);
-          return {
-            ...controlnetResult,
-            model: "controlnet",
-            generatorUsed: "controlnet-canny",
-            hadFallback: false,
-            category,
-          };
+          if (cnResult?.url) {
+            logger.success(
+              `✅ ControlNet (${controlModel}) successful for ${viewType}`,
+            );
+            return {
+              ...cnResult,
+              viewType,
+              model: "controlnet",
+              generatorUsed: cnResult.generatorUsed || controlModel,
+              hadFallback: false,
+              category,
+            };
+          }
+          logger.warn(
+            `⚠️ ControlNet (${controlModel}) returned null for ${viewType}, falling back to FLUX`,
+          );
         } catch (controlnetError) {
           logger.warn(
-            `⚠️ ControlNet failed for ${viewType}: ${controlnetError.message}`,
+            `⚠️ ControlNet (${controlModel}) failed for ${viewType}: ${controlnetError.message}`,
           );
           logger.info(`   Falling back to FLUX...`);
-          // Fall through to FLUX
+        }
+      }
+
+      // PATH B: Canonical SVG → Canny edges (legacy SVG-based pipeline)
+      if (geometryRender?.svg && isModelReady("render", "controlnet-canny")) {
+        const renderModel = getActiveModel("render");
+        if (renderModel?.id === "controlnet-canny") {
+          try {
+            logger.info(
+              `🎯 [CONTROLNET] Attempting ControlNet Canny for ${viewType} (SVG path)...`,
+            );
+            const controlnetResult = await this.generateWithControlNet({
+              svgSource: geometryRender.svg,
+              prompt,
+              negativePrompt,
+              seed,
+              width,
+              height,
+              controlnetStrength: renderModel.controlnetStrength || 0.75,
+              viewType,
+            });
+
+            logger.success(
+              `✅ ControlNet generation successful for ${viewType}`,
+            );
+            return {
+              ...controlnetResult,
+              model: "controlnet",
+              generatorUsed: "controlnet-canny",
+              hadFallback: false,
+              category,
+            };
+          } catch (controlnetError) {
+            logger.warn(
+              `⚠️ ControlNet failed for ${viewType}: ${controlnetError.message}`,
+            );
+            logger.info(`   Falling back to FLUX...`);
+            // Fall through to FLUX
+          }
         }
       }
     }

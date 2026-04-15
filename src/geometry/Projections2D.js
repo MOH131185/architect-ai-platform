@@ -57,6 +57,10 @@ function escXml(str) {
     .replace(/'/g, "&apos;");
 }
 
+function isFiniteSvgNumber(value) {
+  return Number.isFinite(value);
+}
+
 // =============================================================================
 // FLOOR PLAN PROJECTION
 // =============================================================================
@@ -1540,6 +1544,10 @@ function drawSectionCutWalls(
  * Draw section stairs
  */
 function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
+  if (!model.stairs || model.stairs.length === 0) {
+    return "";
+  }
+
   let svg = '<g id="section-stairs">';
 
   const stair = model.stairs[0];
@@ -1551,6 +1559,14 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
   const stairX =
     offsetX + (isLongitudinal ? posX : posY) * pxPerMM - stairWidthPx / 2;
 
+  if (
+    ![stairWidthPx, stairLengthPx, stairX, groundY, pxPerMM].every(
+      isFiniteSvgNumber,
+    )
+  ) {
+    return "";
+  }
+
   // Draw stair treads connecting floors
   for (let floorIdx = 0; floorIdx < model.floors.length - 1; floorIdx++) {
     const lowerFloor = model.floors[floorIdx];
@@ -1561,7 +1577,12 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
     const stairBottomY = groundY - (lowerFloor.zBase || 0) * pxPerMM;
     const stairTopY = groundY - (upperFloor.zBase || 0) * pxPerMM;
     const stairRisePx = stairBottomY - stairTopY;
-    if (stairRisePx <= 0) continue; // No rise, skip this flight
+    if (
+      ![stairBottomY, stairTopY, stairRisePx].every(isFiniteSvgNumber) ||
+      stairRisePx <= 0
+    ) {
+      continue;
+    } // No rise, skip this flight
     const numTreads = Math.max(1, Math.round(stairRisePx / (200 * pxPerMM)));
 
     // Draw individual treads
@@ -1571,22 +1592,33 @@ function drawSectionStairs(model, groundY, offsetX, pxPerMM, isLongitudinal) {
       const treadX2 = stairX + ((t + 1) / numTreads) * stairLengthPx;
 
       // Horizontal tread
-      svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX1}" y1="${treadY}" x2="${Math.min(treadX2, stairX + stairLengthPx)}" y2="${treadY}"/>`;
+      const clampedTreadX2 = Math.min(treadX2, stairX + stairLengthPx);
+      if ([treadX1, treadY, clampedTreadX2].every(isFiniteSvgNumber)) {
+        svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX1}" y1="${treadY}" x2="${clampedTreadX2}" y2="${treadY}"/>`;
+      }
 
       // Vertical riser
       if (t < numTreads) {
         const nextTreadY = stairBottomY - ((t + 1) / numTreads) * stairRisePx;
-        svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        if ([treadX2, treadY, nextTreadY].every(isFiniteSvgNumber)) {
+          svg += `<line stroke="#666" stroke-width="${LW.annotation}" x1="${treadX2}" y1="${treadY}" x2="${treadX2}" y2="${nextTreadY}"/>`;
+        }
       }
     }
 
     // Stair outline
-    svg += `<path stroke="#333" stroke-width="${LW.wallProfile}" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    if (
+      [stairX, stairBottomY, stairLengthPx, stairTopY].every(isFiniteSvgNumber)
+    ) {
+      svg += `<path stroke="#333" stroke-width="${LW.wallProfile}" fill="none" d="M ${stairX} ${stairBottomY} L ${stairX + stairLengthPx} ${stairTopY} L ${stairX + stairLengthPx} ${stairBottomY} Z"/>`;
+    }
   }
 
   // Stair label
   const stairLabelY = groundY - (model.floors[0].floorHeight * pxPerMM) / 2;
-  svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
+  if ([stairX, stairLengthPx, stairLabelY].every(isFiniteSvgNumber)) {
+    svg += `<text class="room-label" x="${stairX + stairLengthPx / 2}" y="${stairLabelY}">STAIR</text>`;
+  }
 
   svg += "</g>";
   return svg;
@@ -1909,33 +1941,35 @@ function generateHatchPattern(id, style, angle, spacing, material = "block") {
  * Draw dimension line with text
  */
 function drawDimension(x1, y1, x2, y2, text, vertical = false, id = "") {
-  const arrowLen = 6;
-  const arrowHalf = 3;
-  const arrowFill = "#444";
+  const tickHalf = 4; // half-length of 45-degree tick mark
+  const dimStroke = "#444";
+  const dimStrokeWidth = "0.3";
   let svg = `<g class="dimension" ${id ? `id="${id}"` : ""}>`;
 
   if (vertical) {
-    // Extension lines
-    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1 - 12}" y1="${y1}" x2="${x1 - 2}" y2="${y1}"/>`;
-    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1 - 12}" y1="${y2}" x2="${x1 - 2}" y2="${y2}"/>`;
+    const dimX = x1;
+    // Witness lines: gap of 2px from element, extend 4px beyond dimension line
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${dimX - 14}" y1="${y1}" x2="${dimX + 4}" y2="${y1}"/>`;
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${dimX - 14}" y1="${y2}" x2="${dimX + 4}" y2="${y2}"/>`;
     // Dimension line
-    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
-    // Arrowheads (pointing up and down)
-    svg += `<polygon fill="${arrowFill}" points="${x1},${y1} ${x1 - arrowHalf},${y1 + arrowLen} ${x1 + arrowHalf},${y1 + arrowLen}"/>`;
-    svg += `<polygon fill="${arrowFill}" points="${x1},${y2} ${x1 - arrowHalf},${y2 - arrowLen} ${x1 + arrowHalf},${y2 - arrowLen}"/>`;
+    svg += `<line stroke="${dimStroke}" stroke-width="${dimStrokeWidth}" x1="${dimX}" y1="${y1}" x2="${dimX}" y2="${y2}"/>`;
+    // 45-degree tick marks at each end
+    svg += `<line stroke="${dimStroke}" stroke-width="0.5" x1="${dimX - tickHalf}" y1="${y1 - tickHalf}" x2="${dimX + tickHalf}" y2="${y1 + tickHalf}"/>`;
+    svg += `<line stroke="${dimStroke}" stroke-width="0.5" x1="${dimX - tickHalf}" y1="${y2 - tickHalf}" x2="${dimX + tickHalf}" y2="${y2 + tickHalf}"/>`;
     const midY = (y1 + y2) / 2;
-    svg += `<text class="dimension-text" x="${x1 + 15}" y="${midY}" transform="rotate(-90, ${x1 + 15}, ${midY})">${escXml(text)}</text>`;
+    svg += `<text class="dimension-text" x="${dimX + 15}" y="${midY}" transform="rotate(-90, ${dimX + 15}, ${midY})">${escXml(text)}</text>`;
   } else {
-    // Extension lines
-    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1}" y1="${y1 + 12}" x2="${x1}" y2="${y1 + 2}"/>`;
-    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x2}" y1="${y1 + 12}" x2="${x2}" y2="${y1 + 2}"/>`;
+    const dimY = y1;
+    // Witness lines: gap of 2px from element, extend 4px beyond dimension line
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x1}" y1="${dimY + 14}" x2="${x1}" y2="${dimY - 4}"/>`;
+    svg += `<line stroke="#999" stroke-width="${LW.hatch}" x1="${x2}" y1="${dimY + 14}" x2="${x2}" y2="${dimY - 4}"/>`;
     // Dimension line
-    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
-    // Arrowheads (pointing left and right)
-    svg += `<polygon fill="${arrowFill}" points="${x1},${y1} ${x1 + arrowLen},${y1 - arrowHalf} ${x1 + arrowLen},${y1 + arrowHalf}"/>`;
-    svg += `<polygon fill="${arrowFill}" points="${x2},${y1} ${x2 - arrowLen},${y1 - arrowHalf} ${x2 - arrowLen},${y1 + arrowHalf}"/>`;
+    svg += `<line stroke="${dimStroke}" stroke-width="${dimStrokeWidth}" x1="${x1}" y1="${dimY}" x2="${x2}" y2="${dimY}"/>`;
+    // 45-degree tick marks at each end
+    svg += `<line stroke="${dimStroke}" stroke-width="0.5" x1="${x1 - tickHalf}" y1="${dimY - tickHalf}" x2="${x1 + tickHalf}" y2="${dimY + tickHalf}"/>`;
+    svg += `<line stroke="${dimStroke}" stroke-width="0.5" x1="${x2 - tickHalf}" y1="${dimY - tickHalf}" x2="${x2 + tickHalf}" y2="${dimY + tickHalf}"/>`;
     const midX = (x1 + x2) / 2;
-    svg += `<text class="dimension-text" x="${midX}" y="${y1 - 8}">${escXml(text)}</text>`;
+    svg += `<text class="dimension-text" x="${midX}" y="${dimY - 8}">${escXml(text)}</text>`;
   }
 
   svg += "</g>";
@@ -2452,10 +2486,230 @@ export function projectAll2D(model, options = {}) {
   };
 }
 
+// =============================================================================
+// ISOMETRIC / 3D MASSING PROJECTION
+// =============================================================================
+
+/**
+ * Generate isometric (axonometric) 3D view SVG from BuildingModel.
+ *
+ * Produces a proper 30-degree isometric projection showing the building massing
+ * from a south-west elevated viewpoint. Includes roof, walls with material
+ * colors, window openings, ground plane, and depth shading.
+ *
+ * Used as init_image control for FLUX hero_3d and axonometric panels — replaces
+ * the flat south-elevation proxy that was previously used.
+ *
+ * @param {BuildingModel} model - Building model
+ * @param {Object} options - Rendering options
+ * @param {"SW"|"SE"|"NW"|"NE"} options.viewpoint - Camera quadrant (default: "SW")
+ * @param {number} options.scale - Pixels per meter (default: 40)
+ * @param {string} options.theme - Drawing style preset (default: "technical")
+ * @returns {string} SVG string
+ */
+export function projectIsometric(model, options = {}) {
+  const { viewpoint = "SW", scale = 40, theme = "technical" } = options;
+
+  const style = getStylePreset(theme);
+  const dims = model.getDimensionsMeters();
+  const widthM = dims.width;
+  const depthM = dims.depth;
+  const heightM = dims.ridgeHeight || dims.height || 6;
+
+  // Isometric angles (30°): cos30=0.866, sin30=0.5
+  const COS30 = 0.866;
+  const SIN30 = 0.5;
+
+  // Transform 3D (x, y, z) to 2D isometric screen coordinates
+  // viewpoint determines axis flip
+  const flipX = viewpoint === "SE" || viewpoint === "NE" ? -1 : 1;
+  const flipY = viewpoint === "NW" || viewpoint === "NE" ? -1 : 1;
+
+  function isoProject(x, y, z) {
+    const px = (x * flipX * COS30 - y * flipY * COS30) * scale;
+    const py = (x * flipX * SIN30 + y * flipY * SIN30 - z) * scale;
+    return { px, py };
+  }
+
+  // Compute bounding box for all corners to determine SVG size
+  const corners = [
+    [0, 0, 0],
+    [widthM, 0, 0],
+    [0, depthM, 0],
+    [widthM, depthM, 0],
+    [0, 0, heightM],
+    [widthM, 0, heightM],
+    [0, depthM, heightM],
+    [widthM, depthM, heightM],
+  ];
+  const projected = corners.map(([x, y, z]) => isoProject(x, y, z));
+  const minPx = Math.min(...projected.map((p) => p.px));
+  const maxPx = Math.max(...projected.map((p) => p.px));
+  const minPy = Math.min(...projected.map((p) => p.py));
+  const maxPy = Math.max(...projected.map((p) => p.py));
+
+  const padding = 80;
+  const svgW = maxPx - minPx + padding * 2;
+  const svgH = maxPy - minPy + padding * 2;
+  const ox = -minPx + padding;
+  const oy = -minPy + padding;
+
+  function iso(x, y, z) {
+    const p = isoProject(x, y, z);
+    return `${(p.px + ox).toFixed(1)},${(p.py + oy).toFixed(1)}`;
+  }
+
+  // Material color from DNA
+  const exteriorMat =
+    (model.style?.materials || []).find(
+      (m) =>
+        m &&
+        typeof m === "object" &&
+        ((m.application || "").toLowerCase().includes("wall") ||
+          (m.application || "").toLowerCase().includes("exterior")),
+    ) || (model.style?.materials || [])[0];
+  const wallColor = (exteriorMat && exteriorMat.hexColor) || "#D4C5A9";
+  const roofColor = model.roof?.type === "flat" ? "#8B8B8B" : "#7B4A3A";
+  const shadowColor = "#00000020";
+
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+  svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW.toFixed(0)} ${svgH.toFixed(0)}" width="${svgW.toFixed(0)}" height="${svgH.toFixed(0)}">`;
+  svg += `<style><![CDATA[${generateSVGStyles(style)}]]></style>`;
+
+  // Background
+  svg += `<rect width="${svgW.toFixed(0)}" height="${svgH.toFixed(0)}" fill="#F8F8F5"/>`;
+
+  // Ground plane shadow
+  const gndOffset = 0.3;
+  svg += `<polygon points="${iso(-gndOffset, -gndOffset, 0)} ${iso(widthM + gndOffset, -gndOffset, 0)} ${iso(widthM + gndOffset, depthM + gndOffset, 0)} ${iso(-gndOffset, depthM + gndOffset, 0)}" fill="#E8E4DC" stroke="#CCC" stroke-width="0.5"/>`;
+
+  // Building drop shadow on ground
+  svg += `<polygon points="${iso(0.5, 0.5, 0)} ${iso(widthM + 0.5, 0.5, 0)} ${iso(widthM + 0.5, depthM + 0.5, 0)} ${iso(0.5, depthM + 0.5, 0)}" fill="${shadowColor}" stroke="none"/>`;
+
+  // Draw each floor as extruded box
+  let currentZ = 0;
+  const floorCount = model.floors?.length || 1;
+
+  for (let fi = 0; fi < floorCount; fi++) {
+    const floor = model.floors?.[fi];
+    const floorH = floor ? (floor.floorHeight || 2800) / 1000 : 2.8;
+    const topZ = currentZ + floorH;
+
+    // Darken slightly for upper floors (depth cue)
+    const darken = fi * 8;
+    const faceColorSouth = adjustBrightness(wallColor, -darken);
+    const faceColorWest = adjustBrightness(wallColor, -darken - 15);
+
+    // South face (front-facing in SW view)
+    svg += `<polygon points="${iso(0, 0, currentZ)} ${iso(widthM, 0, currentZ)} ${iso(widthM, 0, topZ)} ${iso(0, 0, topZ)}" fill="${faceColorSouth}" stroke="#333" stroke-width="1.2"/>`;
+
+    // West face (side-facing in SW view)
+    svg += `<polygon points="${iso(0, 0, currentZ)} ${iso(0, depthM, currentZ)} ${iso(0, depthM, topZ)} ${iso(0, 0, topZ)}" fill="${faceColorWest}" stroke="#333" stroke-width="1.2"/>`;
+
+    // Draw windows on visible faces
+    const openings = floor?.openings || [];
+    for (const opening of openings) {
+      if (opening.type !== "window") continue;
+      const ow = (opening.width || 1200) / 1000;
+      const oh = (opening.height || 1200) / 1000;
+      const sill = (opening.sillHeight || 900) / 1000;
+      const facade = opening.facade || "S";
+
+      // Only draw windows on visible faces (S and W for SW viewpoint)
+      const visibleSouth =
+        (viewpoint === "SW" || viewpoint === "SE") && facade === "S";
+      const visibleWest =
+        (viewpoint === "SW" || viewpoint === "NW") && facade === "W";
+      const visibleNorth =
+        (viewpoint === "NW" || viewpoint === "NE") && facade === "N";
+      const visibleEast =
+        (viewpoint === "SE" || viewpoint === "NE") && facade === "E";
+
+      if (visibleSouth || visibleNorth) {
+        const wx = (opening.position?.x || 0) / 1000;
+        const wy = facade === "S" ? 0 : depthM;
+        svg += `<polygon points="${iso(wx, wy, currentZ + sill)} ${iso(wx + ow, wy, currentZ + sill)} ${iso(wx + ow, wy, currentZ + sill + oh)} ${iso(wx, wy, currentZ + sill + oh)}" fill="#87CEEB" fill-opacity="0.6" stroke="#555" stroke-width="0.8"/>`;
+      }
+      if (visibleWest || visibleEast) {
+        const wy = (opening.position?.y || opening.position?.x || 0) / 1000;
+        const wx = facade === "W" ? 0 : widthM;
+        svg += `<polygon points="${iso(wx, wy, currentZ + sill)} ${iso(wx, wy + ow, currentZ + sill)} ${iso(wx, wy + ow, currentZ + sill + oh)} ${iso(wx, wy, currentZ + sill + oh)}" fill="#87CEEB" fill-opacity="0.6" stroke="#555" stroke-width="0.8"/>`;
+      }
+    }
+
+    // Floor slab line
+    if (fi > 0) {
+      svg += `<line x1="${iso(0, 0, currentZ).split(",")[0]}" y1="${iso(0, 0, currentZ).split(",")[1]}" x2="${iso(widthM, 0, currentZ).split(",")[0]}" y2="${iso(widthM, 0, currentZ).split(",")[1]}" stroke="#666" stroke-width="0.6" stroke-dasharray="4,2"/>`;
+    }
+
+    currentZ = topZ;
+  }
+
+  // Roof
+  const roofType = model.roof?.type || "gable";
+  const ridgeH = heightM;
+  const eaveH = currentZ;
+
+  if (roofType === "flat") {
+    // Flat roof - top face
+    svg += `<polygon points="${iso(0, 0, eaveH)} ${iso(widthM, 0, eaveH)} ${iso(widthM, depthM, eaveH)} ${iso(0, depthM, eaveH)}" fill="${roofColor}" stroke="#333" stroke-width="1.5"/>`;
+  } else if (roofType === "hip") {
+    // Hip roof - 4 sloping faces
+    const ridgeInset = widthM * 0.25;
+    const midY = depthM / 2;
+    // South slope
+    svg += `<polygon points="${iso(0, 0, eaveH)} ${iso(widthM, 0, eaveH)} ${iso(widthM - ridgeInset, midY, ridgeH)} ${iso(ridgeInset, midY, ridgeH)}" fill="${roofColor}" stroke="#333" stroke-width="1"/>`;
+    // West slope
+    svg += `<polygon points="${iso(0, 0, eaveH)} ${iso(0, depthM, eaveH)} ${iso(ridgeInset, midY, ridgeH)}" fill="${adjustBrightness(roofColor, -10)}" stroke="#333" stroke-width="1"/>`;
+    // Top (ridge visible)
+    svg += `<line x1="${iso(ridgeInset, midY, ridgeH).split(",")[0]}" y1="${iso(ridgeInset, midY, ridgeH).split(",")[1]}" x2="${iso(widthM - ridgeInset, midY, ridgeH).split(",")[0]}" y2="${iso(widthM - ridgeInset, midY, ridgeH).split(",")[1]}" stroke="#333" stroke-width="1.5"/>`;
+  } else {
+    // Gable roof (default)
+    const midX = widthM / 2;
+    // South slope
+    svg += `<polygon points="${iso(0, 0, eaveH)} ${iso(widthM, 0, eaveH)} ${iso(midX, 0, ridgeH)}" fill="${roofColor}" stroke="#333" stroke-width="1"/>`;
+    // West slope
+    svg += `<polygon points="${iso(0, 0, eaveH)} ${iso(0, depthM, eaveH)} ${iso(midX, depthM, ridgeH)} ${iso(midX, 0, ridgeH)}" fill="${adjustBrightness(roofColor, -10)}" stroke="#333" stroke-width="1"/>`;
+    // Ridge line
+    svg += `<line x1="${iso(midX, 0, ridgeH).split(",")[0]}" y1="${iso(midX, 0, ridgeH).split(",")[1]}" x2="${iso(midX, depthM, ridgeH).split(",")[0]}" y2="${iso(midX, depthM, ridgeH).split(",")[1]}" stroke="#333" stroke-width="1.5"/>`;
+    // Gable end fill (south)
+    svg += `<polygon points="${iso(0, 0, eaveH)} ${iso(widthM, 0, eaveH)} ${iso(midX, 0, ridgeH)}" fill="${adjustBrightness(roofColor, 5)}" stroke="#333" stroke-width="1"/>`;
+  }
+
+  // Entrance door on south face (ground floor)
+  const entranceX = widthM / 2 - 0.5;
+  svg += `<polygon points="${iso(entranceX, 0, 0)} ${iso(entranceX + 1, 0, 0)} ${iso(entranceX + 1, 0, 2.1)} ${iso(entranceX, 0, 2.1)}" fill="#5C3A1E" stroke="#333" stroke-width="0.8"/>`;
+
+  // Ground landscaping dots
+  for (let lx = -1; lx < widthM + 1; lx += 2.5) {
+    const lr = 0.3 + ((lx * 7) % 3) * 0.15;
+    const ly = -0.8 - ((lx * 3) % 2) * 0.3;
+    svg += `<ellipse cx="${iso(lx, ly, 0).split(",")[0]}" cy="${iso(lx, ly, 0).split(",")[1]}" rx="${(lr * scale * 0.6).toFixed(1)}" ry="${(lr * scale * 0.35).toFixed(1)}" fill="#7BA07B" fill-opacity="0.5"/>`;
+  }
+
+  svg += `</svg>`;
+  return svg;
+}
+
+/**
+ * Adjust hex color brightness
+ * @param {string} hex - Hex color (#RRGGBB)
+ * @param {number} amount - Brightness adjustment (-255 to 255)
+ * @returns {string} Adjusted hex color
+ */
+function adjustBrightness(hex, amount) {
+  if (!hex || hex.length < 7) return hex || "#CCCCCC";
+  const r = Math.max(0, Math.min(255, parseInt(hex.slice(1, 3), 16) + amount));
+  const g = Math.max(0, Math.min(255, parseInt(hex.slice(3, 5), 16) + amount));
+  const b = Math.max(0, Math.min(255, parseInt(hex.slice(5, 7), 16) + amount));
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 export default {
   projectFloorPlan,
   projectElevation,
   projectSection,
+  projectIsometric,
   projectAllFloorPlans,
   projectAllElevations,
   projectAllSections,

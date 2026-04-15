@@ -4,14 +4,12 @@
  * (matches server.cjs behavior for dev/prod consistency)
  */
 
+import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+
 export default async function handler(req, res) {
-  // Handle OPTIONS for CORS preflight
-  if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    return res.status(200).end();
-  }
+  // CORS
+  if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
+  setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
 
   // Only allow POST requests
   if (req.method !== "POST") {
@@ -88,11 +86,6 @@ export default async function handler(req, res) {
 
     if (imageUrl) {
       console.log("✅ [FLUX.1] Image generated successfully (via redirect)");
-
-      // Set CORS headers for browser requests
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
       // Transform to match DALL-E 3 response format for compatibility
       res.status(200).json({

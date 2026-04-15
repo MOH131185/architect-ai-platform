@@ -14,6 +14,7 @@ import {
   projectFloorPlan,
   projectElevation,
   projectSection,
+  projectIsometric,
 } from "../../geometry/Projections2D.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 
@@ -166,14 +167,14 @@ const STRENGTH_POLICY = {
   section_BB: 0.15,
   // TIER 2: Geometry-conditioned FLUX for 3D panels
   // Together.ai inverts: imageStrength = 1.0 - strength
-  // Lower strength = more creative freedom for photorealistic output.
-  // SVG geometry guides building MASSING (shape/proportions) while
-  // FLUX adds materials, lighting, landscaping, and photorealism.
-  // Server-side SVG→PNG rasterization in api/together-image.js handles conversion.
-  hero_3d: 0.30, // imageStrength=0.70 → 70% creative freedom for photorealism
-  axonometric: 0.25, // imageStrength=0.75 → 75% creative freedom
+  // Lower strength = more adherence to init_image geometry.
+  // Now using proper isometric SVG projections (not flat elevation proxies),
+  // so we can tighten control for better massing fidelity while FLUX
+  // adds materials, lighting, landscaping, and photorealism.
+  hero_3d: 0.22, // imageStrength=0.78 → tighter massing from isometric control
+  axonometric: 0.18, // imageStrength=0.82 → strict massing for axon diagram
   // TIER 3: Style-guided FLUX (moderate control — creative freedom for interiors)
-  interior_3d: 0.35, // imageStrength=0.65 → 65% creative freedom
+  interior_3d: 0.3, // imageStrength=0.70 → room layout from floor plan
 };
 
 // ---------------------------------------------------------------------------
@@ -339,16 +340,49 @@ export function buildCanonicalPack(
     }
   }
 
-  // --- Massing view (for hero_3d / axonometric) ---
-  // Use south elevation as massing proxy for hero_3d since we need
-  // a 2D representation. The strength policy (0.65) allows FLUX stylization.
-  if (panels.elevation_south) {
-    panels.hero_3d = { ...panels.elevation_south };
-    svgHashes.hero_3d = svgHashes.elevation_south;
+  // --- 3D massing views (hero_3d / axonometric) ---
+  // Generate proper isometric projections from BuildingModel for accurate
+  // 3D control images. Previously used south elevation as proxy which
+  // gave FLUX no 3D depth/massing information.
+  try {
+    const heroSvg = projectIsometric(model, { viewpoint: "SW", scale: 40 });
+    const heroHash = computeCDSHashSync({ svg: heroSvg });
+    const heroUrl = svgToDataUrl(heroSvg);
+    panels.hero_3d = {
+      dataUrl: heroUrl,
+      svgString: heroSvg,
+      svgHash: heroHash,
+    };
+    svgHashes.hero_3d = heroHash;
+  } catch (err) {
+    console.warn(
+      "[CanonicalPack] Failed to project hero_3d isometric, falling back to south elevation:",
+      err.message,
+    );
+    if (panels.elevation_south) {
+      panels.hero_3d = { ...panels.elevation_south };
+      svgHashes.hero_3d = svgHashes.elevation_south;
+    }
   }
-  if (panels.elevation_south) {
-    panels.axonometric = { ...panels.elevation_south };
-    svgHashes.axonometric = svgHashes.elevation_south;
+  try {
+    const axonSvg = projectIsometric(model, { viewpoint: "SE", scale: 35 });
+    const axonHash = computeCDSHashSync({ svg: axonSvg });
+    const axonUrl = svgToDataUrl(axonSvg);
+    panels.axonometric = {
+      dataUrl: axonUrl,
+      svgString: axonSvg,
+      svgHash: axonHash,
+    };
+    svgHashes.axonometric = axonHash;
+  } catch (err) {
+    console.warn(
+      "[CanonicalPack] Failed to project axonometric isometric, falling back to south elevation:",
+      err.message,
+    );
+    if (panels.elevation_south) {
+      panels.axonometric = { ...panels.elevation_south };
+      svgHashes.axonometric = svgHashes.elevation_south;
+    }
   }
   // Interior uses ground floor plan as geometry reference
   if (panels.floor_plan_ground) {
@@ -431,8 +465,8 @@ export function getInitImageParams(pack, panelType) {
   // that was previously causing Together.ai 500 errors on raw SVG data URLs.
   const SKIP_GEOMETRY = new Set([
     "exterior_front_3d", // No canonical projection available
-    "site_diagram",      // Site context, not building geometry
-    "site_plan",         // Site context, not building geometry
+    "site_diagram", // Site context, not building geometry
+    "site_plan", // Site context, not building geometry
   ]);
   if (SKIP_GEOMETRY.has(normalizedType)) {
     return null;

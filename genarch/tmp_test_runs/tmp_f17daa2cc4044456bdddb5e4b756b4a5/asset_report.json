@@ -1,0 +1,225 @@
+{
+  "passed": true,
+  "errors": [],
+  "warnings": [
+    "Missing recommended Phase 2 asset: phase2/manifest.json",
+    "Missing recommended Phase 2 asset: phase2/elevation_N_clay.png",
+    "Missing recommended Phase 2 asset: phase2/elevation_N_canny.png",
+    "Missing recommended Phase 2 asset: phase2/section_AA_clay.png",
+    "Missing recommended Phase 2 asset: phase2/section_AA_canny.png",
+    "Missing recommended Phase 2 asset: phase2/hero_perspective_clay.png"
+  ],
+  "assets": [
+    {
+      "path": "plan.json",
+      "exists": true,
+      "required": true,
+      "category": "phase1",
+      "size_bytes": 2,
+      "hash": "sha256:44136fa355b3678a"
+    },
+    {
+      "path": "plan.dxf",
+      "exists": true,
+      "required": true,
+      "category": "phase1",
+      "size_bytes": 6,
+      "hash": "sha256:7420bef12f0ba79e"
+    },
+    {
+      "path": "run.json",
+      "exists": true,
+      "required": true,
+      "category": "phase1",
+      "size_bytes": 2,
+      "hash": "sha256:44136fa355b3678a"
+    },
+    {
+      "path": "model.glb",
+      "exists": false,
+      "required": false,
+      "category": "phase1",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "model.obj",
+      "exists": false,
+      "required": false,
+      "category": "phase1",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "plan.svg",
+      "exists": false,
+      "required": false,
+      "category": "phase1",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/manifest.json",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_N_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_N_canny.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/section_AA_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/section_AA_canny.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/hero_perspective_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_S_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_S_canny.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_E_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_E_canny.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_W_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/elevation_W_canny.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/section_BB_clay.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase2/section_BB_canny.png",
+      "exists": false,
+      "required": false,
+      "category": "phase2",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase3/manifest.json",
+      "exists": false,
+      "required": false,
+      "category": "phase3",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase3/perspective_render.png",
+      "exists": false,
+      "required": false,
+      "category": "phase3",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase3/elevation_N_render.png",
+      "exists": false,
+      "required": false,
+      "category": "phase3",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase3/elevation_S_render.png",
+      "exists": false,
+      "required": false,
+      "category": "phase3",
+      "size_bytes": null,
+      "hash": null
+    },
+    {
+      "path": "phase3/section_AA_render.png",
+      "exists": false,
+      "required": false,
+      "category": "phase3",
+      "size_bytes": null,
+      "hash": null
+    }
+  ],
+  "summary": {
+    "total_assets": 25,
+    "existing": 3,
+    "missing_required": 0,
+    "missing_optional": 22,
+    "total_size_bytes": 10,
+    "total_size_mb": 0.0,
+    "phase1_complete": true,
+    "phase2_complete": true,
+    "phase3_complete": true
+  }
+}

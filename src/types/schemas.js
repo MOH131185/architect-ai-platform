@@ -445,6 +445,9 @@ export function normalizeSheetMetadata(metadata) {
     qaAllPassed: metadata.qaAllPassed ?? null,
     critiqueOverallPass: metadata.critiqueOverallPass ?? null,
     hashValidation: metadata.hashValidation || null,
+    qualityScore: metadata.qualityScore ?? null,
+    qualityGrade: metadata.qualityGrade ?? null,
+    qualityEvaluation: metadata.qualityEvaluation || null,
   };
 }
 
@@ -570,6 +573,13 @@ export function normalizeMultiPanelResult(raw) {
     qa: raw.qa || raw.a1Sheet?.qa || null,
     critique: raw.critique || raw.a1Sheet?.critique || null,
     trace: raw.trace || raw.a1Sheet?.trace || null,
+    qualityEvaluation:
+      raw.qualityEvaluation ||
+      raw.metadata?.qualityEvaluation ||
+      raw.masterDNA?.qualityEvaluation ||
+      null,
+    spatialGraph: raw.spatialGraph || raw.masterDNA?.spatialGraph || null,
+    climateData: raw.climateData || raw.masterDNA?.climateData || null,
   };
 
   normalized.a1Sheet = {

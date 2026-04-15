@@ -11,8 +11,6 @@
  * @module services/a1/composeCore (CJS)
  */
 
-"use strict";
-
 // ---------------------------------------------------------------------------
 // Grid constants
 // ---------------------------------------------------------------------------
@@ -32,11 +30,13 @@ const FRAME_STROKE_COLOR = "#d1d5db";
 // ---------------------------------------------------------------------------
 
 const GRID_12COL = {
-  // Row 1 – Hero row (data cards moved to Row 4 info rail)
+  // Row 1 – Hero row with stacked data cards on the far right
   site_diagram:      { x: 0.015, y: 0.015, width: 0.22,  height: 0.265 },
   hero_3d:           { x: 0.245, y: 0.015, width: 0.42,  height: 0.265 },
-  interior_3d:       { x: 0.675, y: 0.015, width: 0.31,  height: 0.125 },
-  axonometric:       { x: 0.675, y: 0.15,  width: 0.31,  height: 0.13  },
+  interior_3d:       { x: 0.675, y: 0.015, width: 0.185, height: 0.125 },
+  axonometric:       { x: 0.675, y: 0.15,  width: 0.185, height: 0.13  },
+  material_palette:  { x: 0.87,  y: 0.015, width: 0.115, height: 0.18  },
+  climate_card:      { x: 0.87,  y: 0.205, width: 0.115, height: 0.175 },
   // Row 2 – Floor plans
   floor_plan_ground: { x: 0.015, y: 0.295, width: 0.32,  height: 0.225 },
   floor_plan_first:  { x: 0.345, y: 0.295, width: 0.32,  height: 0.225 },
@@ -46,13 +46,11 @@ const GRID_12COL = {
   elevation_south:   { x: 0.26,  y: 0.535, width: 0.235, height: 0.205 },
   elevation_east:    { x: 0.505, y: 0.535, width: 0.235, height: 0.205 },
   elevation_west:    { x: 0.75,  y: 0.535, width: 0.235, height: 0.205 },
-  // Row 4 – Sections + info rail (material/climate moved from Row 1)
+  // Row 4 – Sections + schedules/title strip
   section_AA:        { x: 0.015, y: 0.755, width: 0.30,  height: 0.23  },
   section_BB:        { x: 0.325, y: 0.755, width: 0.30,  height: 0.23  },
-  material_palette:  { x: 0.635, y: 0.755, width: 0.09,  height: 0.23  },
-  climate_card:      { x: 0.735, y: 0.755, width: 0.09,  height: 0.23  },
-  schedules_notes:   { x: 0.835, y: 0.755, width: 0.08,  height: 0.23  },
-  title_block:       { x: 0.92,  y: 0.755, width: 0.065, height: 0.23  },
+  schedules_notes:   { x: 0.675, y: 0.755, width: 0.155, height: 0.23  },
+  title_block:       { x: 0.84,  y: 0.755, width: 0.145, height: 0.23  },
 };
 
 // Legacy grid

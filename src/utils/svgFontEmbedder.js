@@ -34,9 +34,8 @@ const BOLD_FONT_CANDIDATES = [
   "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 ];
 
-let cachedRegular = null;
-let cachedBold = null;
-let fontLoadingPromise = null;
+let fontLoadPromise = null;
+let resolvedFonts = null; // Set once the promise resolves; used by sync API
 
 function isNodeRuntime() {
   return Boolean(
@@ -106,10 +105,11 @@ async function fetchFontAsBase64(url, descriptor) {
     throw new Error(`Font fetch failed: ${response.status}`);
   }
   const buffer = await response.arrayBuffer();
+  const isTtf = url.endsWith(".ttf");
   return {
     base64: toBase64(new Uint8Array(buffer)),
-    mime: "font/woff2",
-    format: "woff2",
+    mime: isTtf ? "font/ttf" : "font/woff2",
+    format: isTtf ? "truetype" : "woff2",
     source: url,
     descriptor,
   };
@@ -132,27 +132,34 @@ function normalizeTypography(svgString) {
 }
 
 /**
- * Load and cache both font weights. Only resolves once per process/page.
+ * Load both font weights. Uses a promise singleton so the first caller
+ * creates the fetch and all subsequent callers await the same promise.
+ * No race condition: concurrent callers share one in-flight request.
+ *
+ * @returns {Promise<{regular: object|null, bold: object|null}>}
  */
 async function ensureFontsLoaded() {
-  if (fontLoadingPromise) return fontLoadingPromise;
-  fontLoadingPromise = (async () => {
-    try {
-      const [regular, bold] = await Promise.all([
-        loadLocalFontAsBase64(REGULAR_FONT_CANDIDATES, "regular").then(
-          (font) => font || fetchFontAsBase64(INTER_REGULAR_URL, "regular"),
-        ),
-        loadLocalFontAsBase64(BOLD_FONT_CANDIDATES, "bold").then(
-          (font) => font || fetchFontAsBase64(INTER_BOLD_URL, "bold"),
-        ),
-      ]);
-      cachedRegular = regular;
-      cachedBold = bold;
-    } catch (err) {
-      console.warn("[svgFontEmbedder] Failed to load fonts:", err.message);
-    }
-  })();
-  return fontLoadingPromise;
+  if (!fontLoadPromise) {
+    fontLoadPromise = (async () => {
+      try {
+        const [regular, bold] = await Promise.all([
+          loadLocalFontAsBase64(REGULAR_FONT_CANDIDATES, "regular").then(
+            (font) => font || fetchFontAsBase64(INTER_REGULAR_URL, "regular"),
+          ),
+          loadLocalFontAsBase64(BOLD_FONT_CANDIDATES, "bold").then(
+            (font) => font || fetchFontAsBase64(INTER_BOLD_URL, "bold"),
+          ),
+        ]);
+        resolvedFonts = { regular, bold };
+        return resolvedFonts;
+      } catch (err) {
+        console.warn("[svgFontEmbedder] Failed to load fonts:", err.message);
+        resolvedFonts = { regular: null, bold: null };
+        return resolvedFonts;
+      }
+    })();
+  }
+  return fontLoadPromise;
 }
 
 function buildEmbeddedFaceRule(font, weight) {
@@ -171,14 +178,14 @@ function buildEmbeddedFaceRule(font, weight) {
 /**
  * Build the <defs><style> block with embedded @font-face rules.
  */
-function buildFontDefs() {
-  if (!cachedRegular?.base64) {
+function buildFontDefs(regular, bold) {
+  if (!regular?.base64) {
     return "";
   }
 
-  let css = buildEmbeddedFaceRule(cachedRegular, "normal");
-  if (cachedBold?.base64) {
-    css += buildEmbeddedFaceRule(cachedBold, "bold");
+  let css = buildEmbeddedFaceRule(regular, "normal");
+  if (bold?.base64) {
+    css += buildEmbeddedFaceRule(bold, "bold");
   }
   css += `
     text, tspan { font-family: 'EmbeddedSans', 'Segoe UI', Arial, Helvetica, sans-serif !important; }`;
@@ -217,14 +224,14 @@ function replaceFontFamilies(svgString) {
 export async function embedFontInSVG(svgString) {
   if (!svgString || typeof svgString !== "string") return svgString;
 
-  await ensureFontsLoaded();
+  const { regular, bold } = await ensureFontsLoaded();
 
   const normalizedSvg = replaceFontFamilies(svgString);
 
   // If fonts couldn't be loaded, still return typography-normalized SVG.
-  if (!cachedRegular?.base64) return normalizedSvg;
+  if (!regular?.base64) return normalizedSvg;
 
-  const fontDefs = buildFontDefs();
+  const fontDefs = buildFontDefs(regular, bold);
 
   // Insert <defs> after the <svg ...> opening tag
   const result = normalizedSvg.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
@@ -234,14 +241,16 @@ export async function embedFontInSVG(svgString) {
 
 /**
  * Synchronous version for use when fonts are already cached.
- * Call ensureFontsLoaded() once at startup, then use this for speed.
+ * Call ensureFontsLoaded() once at startup and await it, then use this for speed.
+ * If fonts haven't loaded yet, returns typography-normalized SVG without embedded fonts.
  */
 export function embedFontInSVGSync(svgString) {
   if (!svgString || typeof svgString !== "string") return svgString;
   const normalizedSvg = replaceFontFamilies(svgString);
-  if (!cachedRegular?.base64) return normalizedSvg;
 
-  const fontDefs = buildFontDefs();
+  if (!resolvedFonts?.regular?.base64) return normalizedSvg;
+
+  const fontDefs = buildFontDefs(resolvedFonts.regular, resolvedFonts.bold);
   const result = normalizedSvg.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
   return result;
 }

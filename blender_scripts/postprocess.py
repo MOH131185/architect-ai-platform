@@ -194,6 +194,63 @@ def validate_clay_has_content(output_dir):
     return errors
 
 
+def validate_lineart_has_lines(output_dir):
+    """
+    Validate lineart renders contain actual line content.
+
+    Args:
+        output_dir: Directory containing PNG files
+
+    Returns:
+        List of error messages (empty if all valid)
+    """
+    errors = []
+
+    for png_file in Path(output_dir).glob("*_lineart.png"):
+        img = cv2.imread(str(png_file), cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            errors.append(f"Could not read: {png_file.name}")
+            continue
+
+        # Lineart should be mostly white with some dark lines
+        # Check that dark pixels (lines) exist
+        dark_pixels = np.sum(img < 128)
+        total_pixels = img.size
+        dark_ratio = dark_pixels / total_pixels
+
+        if dark_ratio < 0.001:
+            errors.append(f"No lines detected in lineart (dark_ratio={dark_ratio:.4f}): {png_file.name}")
+        elif dark_ratio > 0.5:
+            errors.append(f"Too many dark pixels in lineart (dark_ratio={dark_ratio:.4f}): {png_file.name}")
+
+    return errors
+
+
+def validate_ao_has_occlusion(output_dir):
+    """
+    Validate AO renders show occlusion variation.
+
+    Args:
+        output_dir: Directory containing PNG files
+
+    Returns:
+        List of error messages (empty if all valid)
+    """
+    errors = []
+
+    for png_file in Path(output_dir).glob("*_ao.png"):
+        img = cv2.imread(str(png_file), cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            errors.append(f"Could not read: {png_file.name}")
+            continue
+
+        std_dev = np.std(img)
+        if std_dev < 2.0:
+            errors.append(f"No occlusion variation in AO (std={std_dev:.2f}): {png_file.name}")
+
+    return errors
+
+
 # ========== MAIN ==========
 
 def main():
@@ -270,6 +327,12 @@ def main():
 
     clay_errors = validate_clay_has_content(input_dir)
     all_errors.extend(clay_errors)
+
+    lineart_errors = validate_lineart_has_lines(input_dir)
+    all_errors.extend(lineart_errors)
+
+    ao_errors = validate_ao_has_occlusion(input_dir)
+    all_errors.extend(ao_errors)
 
     if all_errors:
         print("Validation errors:")

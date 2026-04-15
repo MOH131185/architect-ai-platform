@@ -13,9 +13,11 @@ Run with: python -m pytest tests/test_smoke.py -v
 
 import json
 import os
+import shutil
 import subprocess
 import sys
-import tempfile
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -26,19 +28,31 @@ A1_WIDTH_MM = 841
 A1_HEIGHT_MM = 594
 # Tolerance for PDF size validation (±2mm)
 SIZE_TOLERANCE_MM = 2
+SMOKE_TMP_ROOT = Path(__file__).parent.parent / "tmp_smoke_tests"
+SMOKE_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+@pytest.fixture
+def local_tmp_path():
+    tmpdir = SMOKE_TMP_ROOT / f"tmp_{uuid.uuid4().hex}"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    try:
+        yield tmpdir
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 class TestPDFValidation:
     """Tests for A1 PDF validation."""
 
-    def test_validate_a1_size_from_file(self, tmp_path):
+    def test_validate_a1_size_from_file(self, local_tmp_path):
         """Test PDF size validation with a generated PDF."""
         # Skip if pypdf not installed
         pytest.importorskip("pypdf")
         from pypdf import PdfReader
 
         # Run a quick pipeline to generate a PDF
-        run_path = tmp_path / "smoke_run"
+        run_path = local_tmp_path / "smoke_run"
         result = self._run_pipeline(
             prompt="small house 100sqm",
             output_path=run_path,
@@ -104,9 +118,9 @@ class TestPDFValidation:
 class TestOutputValidation:
     """Tests for pipeline output validation."""
 
-    def test_phase1_outputs_exist(self, tmp_path):
+    def test_phase1_outputs_exist(self, local_tmp_path):
         """Test that Phase 1 produces required outputs."""
-        run_path = tmp_path / "phase1_test"
+        run_path = local_tmp_path / "phase1_test"
 
         result = subprocess.run(
             [
@@ -131,9 +145,9 @@ class TestOutputValidation:
             assert file_path.exists(), f"Missing required output: {filename} (exit code: {result.returncode})"
             assert file_path.stat().st_size > 0, f"Empty output file: {filename}"
 
-    def test_plan_json_has_required_fields(self, tmp_path):
+    def test_plan_json_has_required_fields(self, local_tmp_path):
         """Test that plan.json has required schema fields."""
-        run_path = tmp_path / "schema_test"
+        run_path = local_tmp_path / "schema_test"
 
         result = subprocess.run(
             [
@@ -171,9 +185,9 @@ class TestOutputValidation:
             for field in room_fields:
                 assert field in room, f"Room missing field: {field}"
 
-    def test_constraints_json_generated(self, tmp_path):
+    def test_constraints_json_generated(self, local_tmp_path):
         """Test that constraints.json is generated from prompt."""
-        run_path = tmp_path / "constraints_test"
+        run_path = local_tmp_path / "constraints_test"
 
         result = subprocess.run(
             [
@@ -207,9 +221,9 @@ class TestOutputValidation:
 class TestManifestValidation:
     """Tests for pipeline manifest validation."""
 
-    def test_pipeline_manifest_schema(self, tmp_path):
+    def test_pipeline_manifest_schema(self, local_tmp_path):
         """Test that pipeline_manifest.json has valid schema."""
-        run_path = tmp_path / "manifest_test"
+        run_path = local_tmp_path / "manifest_test"
 
         result = subprocess.run(
             [
@@ -255,9 +269,9 @@ class TestManifestValidation:
         assert isinstance(manifest["phases"], dict)
         assert isinstance(manifest["config"], dict)
 
-    def test_phase4_sheet_manifest(self, tmp_path):
+    def test_phase4_sheet_manifest(self, local_tmp_path):
         """Test that sheet_manifest.json has valid schema."""
-        run_path = tmp_path / "sheet_manifest_test"
+        run_path = local_tmp_path / "sheet_manifest_test"
 
         result = subprocess.run(
             [
@@ -297,9 +311,9 @@ class TestManifestValidation:
 class TestValidationIntegration:
     """Tests for validation system integration."""
 
-    def test_asset_validation_runs(self, tmp_path):
+    def test_asset_validation_runs(self, local_tmp_path):
         """Test that asset validation runs and produces report."""
-        run_path = tmp_path / "asset_val_test"
+        run_path = local_tmp_path / "asset_val_test"
 
         result = subprocess.run(
             [
@@ -328,9 +342,9 @@ class TestValidationIntegration:
         assert "assets" in report
         assert "summary" in report
 
-    def test_drift_validation_skipped_without_phase3(self, tmp_path):
+    def test_drift_validation_skipped_without_phase3(self, local_tmp_path):
         """Test that drift check is gracefully skipped without Phase 3."""
-        run_path = tmp_path / "drift_test"
+        run_path = local_tmp_path / "drift_test"
 
         result = subprocess.run(
             [
@@ -354,10 +368,10 @@ class TestValidationIntegration:
 class TestReproducibility:
     """Tests for pipeline reproducibility."""
 
-    def test_same_seed_produces_same_output(self, tmp_path):
+    def test_same_seed_produces_same_output(self, local_tmp_path):
         """Test that same seed produces identical plan.json."""
-        run1_path = tmp_path / "repro_run1"
-        run2_path = tmp_path / "repro_run2"
+        run1_path = local_tmp_path / "repro_run1"
+        run2_path = local_tmp_path / "repro_run2"
 
         prompt = "bungalow 100sqm"
         seed = 77777
@@ -395,6 +409,7 @@ class TestReproducibility:
         for plan in [plan1, plan2]:
             if "metadata" in plan:
                 plan["metadata"].pop("generated_at", None)
+                plan["metadata"].pop("generation_timestamp", None)
 
         assert plan1 == plan2, "Same seed produced different outputs"
 
@@ -402,14 +417,18 @@ class TestReproducibility:
 # Standalone smoke test runner
 def run_quick_smoke_test():
     """Run a quick smoke test without pytest."""
-    import tempfile
-
     print("=" * 60)
     print("GENARCH SMOKE TEST")
     print("=" * 60)
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        run_path = Path(tmp_dir) / "smoke_test"
+    temp_root = Path(__file__).parent.parent / "tmp_smoke"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    tmp_dir = temp_root / f"smoke_run_{int(time.time())}"
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    run_path = tmp_dir / "smoke_test"
+
+    try:
 
         print("\n[1/3] Running pipeline (Phase 1 + 4, skip Blender)...")
         result = subprocess.run(
@@ -480,6 +499,8 @@ def run_quick_smoke_test():
         print("SMOKE TEST PASSED")
         print("=" * 60)
         return True
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
