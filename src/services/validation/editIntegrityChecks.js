@@ -1,7 +1,5 @@
-import {
-  getLayerImpactSet,
-  normalizeProjectLocks,
-} from "../editing/projectLockManager.js";
+import { normalizeProjectLocks } from "../editing/projectLockManager.js";
+import { planRegeneration } from "../editing/regenerationPlanner.js";
 
 function deepEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -91,12 +89,20 @@ export function runEditIntegrityChecks({
 
   if (
     targetLayer &&
-    getLayerImpactSet(targetLayer).some((entry) =>
+    planRegeneration(targetLayer).impactedLayers.some((entry) =>
       normalizedLocks.lockedLayers.includes(entry),
     )
   ) {
     errors.push(
       `Requested target layer "${targetLayer}" conflicts with locked layers.`,
+    );
+  }
+
+  if (
+    projectGeometry.metadata?.artifact_state?.a1_composition?.stale !== false
+  ) {
+    warnings.push(
+      "A1 composition readiness is stale after the requested edit and should be recomputed before composition.",
     );
   }
 

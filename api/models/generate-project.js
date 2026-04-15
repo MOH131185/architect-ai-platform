@@ -8,6 +8,7 @@ import { getRecommendedModel } from "../../src/services/models/openSourceModelRo
 import {
   config,
   ensureFeatureEnabled,
+  enforceSchemaValidation,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -55,6 +56,16 @@ export default async function handler(req, res) {
       "useGeometryLockedVisuals",
       "useGeometryValidationEngine",
       "usePhase3Validation",
+      "usePhase4LayoutSearch",
+      "useBuildableEnvelopeReasoning",
+      "useFormalSchemaValidation",
+      "useFacadeComponentAssembly",
+      "useStructuralSemanticsPhase4",
+      "useA1ProjectReadiness",
+      "useFormalSchemaEngine",
+      "useComposeReadinessPhase5",
+      "useArtifactLifecycleStore",
+      "useIrregularSiteFallbackPhase5",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {
@@ -72,6 +83,17 @@ export default async function handler(req, res) {
           featureFlags,
         },
       );
+    }
+
+    const schemaValidation = enforceSchemaValidation(
+      res,
+      "generateProjectRequest",
+      validation.normalized,
+      "generate-project",
+      featureFlags,
+    );
+    if (!schemaValidation.valid) {
+      return;
     }
 
     const result = await generateProjectPackage(validation.normalized);

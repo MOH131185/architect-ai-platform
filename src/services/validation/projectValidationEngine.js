@@ -4,6 +4,7 @@ import { runCrossLevelConsistencyChecks } from "./crossLevelConsistencyChecks.js
 import { runFacadeAndStructureChecks } from "./facadeAndStructureChecks.js";
 import { runEditIntegrityChecks } from "./editIntegrityChecks.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { summarizeArtifactFreshness } from "../project/artifactFreshnessService.js";
 
 function buildStatus(errors = [], warnings = []) {
   if (errors.length) {
@@ -70,15 +71,18 @@ export function validateProject({
   const crossLevelReport = phase3Enabled
     ? runCrossLevelConsistencyChecks(projectGeometry)
     : null;
-  const facadeStructureReport = phase3Enabled
-    ? runFacadeAndStructureChecks({
-        projectGeometry,
-        facadeGrammar:
-          facadeGrammar || projectGeometry?.metadata?.facade_grammar || null,
-        structuralGrid:
-          structuralGrid || projectGeometry?.metadata?.structural_grid || null,
-      })
-    : null;
+  const facadeStructureReport =
+    phase3Enabled || isFeatureEnabled("useStructuralSemanticsPhase4")
+      ? runFacadeAndStructureChecks({
+          projectGeometry,
+          facadeGrammar:
+            facadeGrammar || projectGeometry?.metadata?.facade_grammar || null,
+          structuralGrid:
+            structuralGrid ||
+            projectGeometry?.metadata?.structural_grid ||
+            null,
+        })
+      : null;
   const editIntegrityReport = phase3Enabled
     ? runEditIntegrityChecks({
         previousProjectGeometry,
@@ -115,6 +119,21 @@ export function validateProject({
   const uniqueErrors = dedupe(errors);
   const uniqueWarnings = dedupe(warnings);
   const status = buildStatus(uniqueErrors, uniqueWarnings);
+  const freshnessSummary = projectGeometry?.metadata?.project_artifact_store
+    ? summarizeArtifactFreshness(
+        projectGeometry.metadata.project_artifact_store,
+      )
+    : null;
+  const staleAssets = freshnessSummary
+    ? freshnessSummary.staleFamilies
+    : Object.entries(projectGeometry?.metadata?.artifact_state || {})
+        .filter(
+          ([key, value]) =>
+            key !== "version" &&
+            key !== "geometry_signature" &&
+            value?.stale === true,
+        )
+        .map(([key]) => key);
   const affectedEntities = [
     ...(crossLevelReport?.affectedEntities || []),
     ...(facadeStructureReport?.affectedEntities || []),
@@ -142,6 +161,7 @@ export function validateProject({
       windowCount: (projectGeometry?.windows || []).length,
       levelCount: (projectGeometry?.levels || []).length,
       drawingTypes,
+      staleAssets,
     },
   };
 }

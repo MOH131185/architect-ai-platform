@@ -1,4 +1,5 @@
 import { safeNumber } from "./architecturalSchema.js";
+import { deriveBuildableEnvelope } from "../site/buildableEnvelopeService.js";
 
 export const CANONICAL_PROJECT_GEOMETRY_VERSION =
   "canonical-project-geometry-v2";
@@ -226,26 +227,7 @@ export function ensureBoundaryPolygon(site = {}) {
 }
 
 export function buildBuildableEnvelope(site = {}) {
-  const boundaryPolygon = ensureBoundaryPolygon(site);
-  const setbacks = normalizeSetbacks(site.setbacks || {});
-  const boundaryBbox = buildBoundingBoxFromPolygon(boundaryPolygon);
-  const minX = boundaryBbox.min_x + setbacks.left;
-  const minY = boundaryBbox.min_y + setbacks.front;
-  const maxX = boundaryBbox.max_x - setbacks.right;
-  const maxY = boundaryBbox.max_y - setbacks.rear;
-  const width = Math.max(4, maxX - minX);
-  const height = Math.max(4, maxY - minY);
-
-  return {
-    boundary_polygon: boundaryPolygon,
-    boundary_bbox: boundaryBbox,
-    buildable_polygon: rectangleToPolygon(minX, minY, width, height),
-    buildable_bbox: buildBoundingBoxFromRect(minX, minY, width, height),
-    setbacks,
-    north_orientation_deg: normalizeNorthOrientation(
-      site.north_orientation_deg || site.northOrientation || site.north || 0,
-    ),
-  };
+  return deriveBuildableEnvelope(site);
 }
 
 export function createProjectGeometrySkeleton(input = {}) {

@@ -7,6 +7,7 @@ import {
 import {
   config,
   ensureFeatureEnabled,
+  enforceSchemaValidation,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -40,7 +41,13 @@ export default async function handler(req, res) {
 
   try {
     const validation = validateValidateProjectRequest(req.body || {});
-    const featureFlags = ["useGeometryValidationEngine", "usePhase3Validation"];
+    const featureFlags = [
+      "useGeometryValidationEngine",
+      "usePhase3Validation",
+      "useFormalSchemaValidation",
+      "useFormalSchemaEngine",
+      "useStructuralSemanticsPhase4",
+    ];
     if (!validation.ok) {
       return sendError(
         res,
@@ -58,9 +65,32 @@ export default async function handler(req, res) {
       );
     }
 
-    const projectGeometry = coerceToCanonicalProjectGeometry(
+    const requestSchemaValidation = enforceSchemaValidation(
+      res,
+      "validateProjectRequest",
+      validation.normalized,
+      "validate-project",
+      featureFlags,
+    );
+    if (!requestSchemaValidation.valid) {
+      return;
+    }
+
+    const canonicalProjectGeometry = coerceToCanonicalProjectGeometry(
       validation.normalized.projectGeometry,
     );
+    const geometrySchemaValidation = enforceSchemaValidation(
+      res,
+      "canonicalProjectGeometry",
+      canonicalProjectGeometry,
+      "validate-project",
+      featureFlags,
+    );
+    if (!geometrySchemaValidation.valid) {
+      return;
+    }
+
+    const projectGeometry = canonicalProjectGeometry;
     const result = validateProject({
       projectGeometry,
       drawings: validation.normalized.drawings,

@@ -1,10 +1,18 @@
-import { generateLayoutFromProgram } from "../floorplan/floorplanGenerator.js";
-import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
-import { buildStructuralGrid } from "../structure/structuralGridService.js";
-import { generateTechnicalDrawings } from "../drawing/technicalDrawingService.js";
-import { buildVisualGenerationPackage } from "../visual/geometryLockedVisualRouter.js";
-import { validateProject } from "../validation/projectValidationEngine.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { assessA1ProjectReadiness } from "../a1/a1ProjectReadinessService.js";
+import { generateTechnicalDrawings } from "../drawing/technicalDrawingService.js";
+import { buildArtifactState } from "../editing/artifactInvalidationService.js";
+import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
+import { generateLayoutFromProgram } from "../floorplan/floorplanGenerator.js";
+import { buildLegacyArtifactStateFromStore } from "./artifactFreshnessService.js";
+import { buildProjectArtifactStore } from "./projectArtifactStore.js";
+import {
+  appendProjectSnapshot,
+  snapshotProjectState,
+} from "./projectStateSnapshotService.js";
+import { buildStructuralGrid } from "../structure/structuralGridService.js";
+import { validateProject } from "../validation/projectValidationEngine.js";
+import { buildVisualGenerationPackage } from "../visual/geometryLockedVisualRouter.js";
 
 function dedupe(values = []) {
   return [...new Set(values.filter(Boolean))];
@@ -78,12 +86,71 @@ export async function generateProjectPackage(request = {}) {
 
   const integrationHooks =
     drawings.integrationHooks || drawings.metadata?.integration_hooks || null;
-  if (integrationHooks) {
-    projectGeometry.metadata = {
-      ...(projectGeometry.metadata || {}),
-      integration_hooks: integrationHooks,
-    };
-  }
+  const baseArtifactStore = buildProjectArtifactStore({
+    projectGeometry,
+    drawings: drawings.drawings,
+    facadeGrammar,
+    visualPackage,
+  });
+  const baseArtifactState = isFeatureEnabled("useArtifactLifecycleStore")
+    ? buildLegacyArtifactStateFromStore(baseArtifactStore)
+    : buildArtifactState({
+        projectGeometry,
+        drawings: drawings.drawings,
+        facadeGrammar,
+        visualPackage,
+      });
+  const a1Readiness = assessA1ProjectReadiness({
+    projectGeometry,
+    drawings: drawings.drawings,
+    visualPackage,
+    facadeGrammar,
+    validationReport,
+    artifactState: baseArtifactState,
+    artifactStore: baseArtifactStore,
+  });
+  const artifactStore =
+    a1Readiness.artifactStore ||
+    buildProjectArtifactStore({
+      projectGeometry,
+      drawings: drawings.drawings,
+      facadeGrammar,
+      visualPackage,
+      readinessMetadata: a1Readiness,
+      composeCandidates: a1Readiness.panelCandidates || [],
+    });
+  const artifactState = isFeatureEnabled("useArtifactLifecycleStore")
+    ? buildLegacyArtifactStateFromStore(artifactStore, a1Readiness)
+    : buildArtifactState({
+        projectGeometry,
+        drawings: drawings.drawings,
+        facadeGrammar,
+        visualPackage,
+        readiness: a1Readiness,
+      });
+  const initialSnapshot = snapshotProjectState({
+    label: "initial-generation",
+    projectGeometry,
+    validationReport,
+    artifactStore,
+    composeReadiness: a1Readiness,
+  });
+
+  projectGeometry.metadata = {
+    ...(projectGeometry.metadata || {}),
+    ...(integrationHooks ? { integration_hooks: integrationHooks } : {}),
+    artifact_state: artifactState,
+    ...(isFeatureEnabled("useArtifactLifecycleStore")
+      ? {
+          project_artifact_store: artifactStore,
+          project_state_snapshots: appendProjectSnapshot(
+            projectGeometry,
+            initialSnapshot,
+          ),
+        }
+      : {}),
+    a1_readiness: a1Readiness,
+  };
 
   return {
     status: validationReport.status,
@@ -94,11 +161,15 @@ export async function generateProjectPackage(request = {}) {
     drawings,
     visualPackage,
     integrationHooks,
+    artifactState,
+    artifactStore,
+    a1Readiness,
     validationReport,
     warnings: dedupe([
       ...(floorplan.warnings || []),
       ...(drawings.warnings || []),
       ...(validationReport.warnings || []),
+      ...(a1Readiness.reasons || []),
     ]),
   };
 }

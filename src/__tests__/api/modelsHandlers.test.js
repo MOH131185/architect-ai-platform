@@ -2,6 +2,9 @@ import generateDrawingsHandler from "../../../api/models/generate-drawings.js";
 import generateFacadeHandler from "../../../api/models/generate-facade.js";
 import generateFloorplanHandler from "../../../api/models/generate-floorplan.js";
 import generateProjectHandler from "../../../api/models/generate-project.js";
+import planA1PanelsHandler from "../../../api/models/plan-a1-panels.js";
+import projectReadinessHandler from "../../../api/models/project-readiness.js";
+import repairProjectHandler from "../../../api/models/repair-project.js";
 import generateStyleHandler from "../../../api/models/generate-style.js";
 import generateVisualPackageHandler from "../../../api/models/generate-visual-package.js";
 import regenerateLayerHandler from "../../../api/models/regenerate-layer.js";
@@ -344,6 +347,170 @@ describe("Phase 1 model route handlers", () => {
     expect(
       res.body.visualPackage.controlReferences.references.length,
     ).toBeGreaterThan(0);
+  });
+
+  test("project-readiness reports ready projects from canonical package state", async () => {
+    const projectReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase4-project-readiness-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+        styleDNA: {
+          facade_language: "rhythmic-openings-with-solid-masonry",
+          roof_language: "pitched-gable-or-hip",
+        },
+      },
+    };
+    const projectRes = createMockResponse();
+    await generateProjectHandler(projectReq, projectRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: projectRes.body.projectGeometry,
+        drawings: projectRes.body.drawings,
+        visualPackage: projectRes.body.visualPackage,
+        facadeGrammar: projectRes.body.facadeGrammar,
+        validationReport: projectRes.body.validationReport,
+      },
+    };
+    const res = createMockResponse();
+
+    await projectReadinessHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ready).toBe(true);
+    expect(res.body.composeReady).toBe(true);
+    expect(res.body.panelCandidates.length).toBeGreaterThan(0);
+    expect(res.body.meta.endpoint).toBe("project-readiness");
+  });
+
+  test("generate-project rejects malformed styleDNA payloads early", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase4-invalid-styledna-route",
+        room_program: [{ name: "Living Room", target_area_m2: 24 }],
+        styleDNA: "not-an-object",
+      },
+    };
+    const res = createMockResponse();
+
+    await generateProjectHandler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe("INVALID_REQUEST");
+    expect(res.body.message).toContain("styleDNA must be an object");
+  });
+
+  test("plan-a1-panels returns filtered panel candidates", async () => {
+    const projectReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase4-panel-plan-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+        styleDNA: {
+          facade_language: "rhythmic-openings-with-solid-masonry",
+        },
+      },
+    };
+    const projectRes = createMockResponse();
+    await generateProjectHandler(projectReq, projectRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: projectRes.body.projectGeometry,
+        drawings: projectRes.body.drawings,
+        visualPackage: projectRes.body.visualPackage,
+        requestedPanels: ["floor_plan", "visual"],
+      },
+    };
+    const res = createMockResponse();
+
+    await planA1PanelsHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.validPanelCount).toBeGreaterThan(0);
+    expect(res.body.freshPanels.length).toBeGreaterThan(0);
+    expect(
+      res.body.panelCandidates.every((candidate) =>
+        ["floor_plan", "visual"].includes(candidate.type),
+      ),
+    ).toBe(true);
+    expect(res.body.meta.endpoint).toBe("plan-a1-panels");
+  });
+
+  test("generate-project exposes deprecated alias metadata for the Phase 4 public contract", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase4-api-contract-meta",
+        room_program: [{ name: "Living Room", target_area_m2: 24 }],
+        styleDNA: {},
+      },
+    };
+    const res = createMockResponse();
+
+    await generateProjectHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.meta.publicApiVersion).toBe(
+      "phase5-repair-dependency-compose-v1",
+    );
+    expect(res.body.meta.deprecatedAliases).toContain("projectId");
+    expect(res.body.meta.deprecatedAliases).toContain("roomProgram");
+  });
+
+  test("repair-project returns deterministic repair candidates from canonical geometry", async () => {
+    const projectReq = {
+      method: "POST",
+      headers: {},
+      body: {
+        project_id: "phase5-repair-project-route",
+        footprint: { width_m: 14, depth_m: 10 },
+        room_program: [
+          { name: "Living Room", target_area_m2: 24, adjacency: ["Kitchen"] },
+          { name: "Kitchen", target_area_m2: 16, adjacency: ["Living Room"] },
+        ],
+        styleDNA: {},
+      },
+    };
+    const projectRes = createMockResponse();
+    await generateProjectHandler(projectReq, projectRes);
+
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: projectRes.body.projectGeometry,
+        validationReport: projectRes.body.validationReport,
+      },
+    };
+    const res = createMockResponse();
+
+    await repairProjectHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.contractVersion).toBe(
+      "phase5-repair-dependency-compose-v1",
+    );
+    expect(res.body.repairCandidates.length).toBeGreaterThan(0);
+    expect(res.body.selectedRepair).toBeTruthy();
   });
 
   test("regenerate-layer preserves room layout during facade-only edits", async () => {

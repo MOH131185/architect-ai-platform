@@ -9,6 +9,7 @@ import {
 import {
   config,
   ensureFeatureEnabled,
+  enforceSchemaValidation,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -44,6 +45,13 @@ export default async function handler(req, res) {
       "useStructuralSanityLayer",
       "useGeometryLockedVisuals",
       "usePhase3Validation",
+      "useFormalSchemaValidation",
+      "useFormalSchemaEngine",
+      "useDependencyGraphRegeneration",
+      "useFragmentDependencyInvalidation",
+      "useA1ProjectReadiness",
+      "useComposeReadinessPhase5",
+      "useArtifactLifecycleStore",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {
@@ -63,14 +71,42 @@ export default async function handler(req, res) {
       );
     }
 
+    const schemaValidation = enforceSchemaValidation(
+      res,
+      "regenerateLayerRequest",
+      validation.normalized,
+      "regenerate-layer",
+      featureFlags,
+    );
+    if (!schemaValidation.valid) {
+      return;
+    }
+
+    const canonicalProjectGeometry = coerceToCanonicalProjectGeometry(
+      validation.normalized.projectGeometry,
+    );
+    const geometrySchemaValidation = enforceSchemaValidation(
+      res,
+      "canonicalProjectGeometry",
+      canonicalProjectGeometry,
+      "regenerate-layer",
+      featureFlags,
+    );
+    if (!geometrySchemaValidation.valid) {
+      return;
+    }
+
     const result = await regenerateProjectLayer({
-      projectGeometry: coerceToCanonicalProjectGeometry(
-        validation.normalized.projectGeometry,
-      ),
+      projectGeometry: canonicalProjectGeometry,
       styleDNA: validation.normalized.styleDNA,
       targetLayer: validation.normalized.targetLayer,
       locks: validation.normalized.locks,
-      options: validation.normalized.options,
+      options: {
+        ...validation.normalized.options,
+        drawings: validation.normalized.drawings || null,
+        facadeGrammar: validation.normalized.facadeGrammar || null,
+        visualPackage: validation.normalized.visualPackage || null,
+      },
     });
 
     const validationReport = validateProject({

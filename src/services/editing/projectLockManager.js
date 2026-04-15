@@ -1,3 +1,8 @@
+import {
+  normalizeDependencyLayer,
+  resolveDependentLayers,
+} from "./projectDependencyGraph.js";
+
 const LOCKABLE_LAYERS = [
   "site",
   "massing",
@@ -19,33 +24,15 @@ const LAYER_ALIASES = {
 };
 
 function normalizeLayerName(layer = "") {
-  const normalized = String(layer || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
+  const normalized = normalizeDependencyLayer(layer);
   return LAYER_ALIASES[normalized] || normalized;
 }
 
 export function getLayerImpactSet(layer = "") {
   const normalized = normalizeLayerName(layer);
-
-  if (normalized === "room_layout" || normalized === "level") {
-    return ["room_layout", "openings"];
-  }
-  if (normalized === "one_level") {
-    return ["room_layout", "openings"];
-  }
-  if (normalized === "facade_grammar") {
-    return ["facade_grammar"];
-  }
-  if (normalized === "visual_style") {
-    return ["visual_style"];
-  }
-  if (LOCKABLE_LAYERS.includes(normalized)) {
-    return [normalized];
-  }
-
-  return [];
+  return resolveDependentLayers(normalized).filter(
+    (entry) => LOCKABLE_LAYERS.includes(entry) || entry === normalized,
+  );
 }
 
 export function normalizeProjectLocks(locks = {}) {

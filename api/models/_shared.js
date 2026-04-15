@@ -2,6 +2,7 @@ import {
   getSynchronizedFeatureFlagNames,
   isFeatureEnabled,
 } from "../../src/config/featureFlags.js";
+import { validateNamedSchema } from "../../src/services/contracts/schemaValidationService.js";
 
 export const config = {
   runtime: "nodejs",
@@ -170,4 +171,40 @@ export function sendError(
   return res
     .status(status)
     .json(buildErrorPayload(status, error, message, details, meta));
+}
+
+export function enforceSchemaValidation(
+  res,
+  schemaName,
+  payload,
+  endpoint,
+  featureFlags = [],
+) {
+  if (
+    !isFeatureEnabled("useFormalSchemaValidation") &&
+    !isFeatureEnabled("useFormalSchemaEngine")
+  ) {
+    return { valid: true, errors: [], warnings: [] };
+  }
+
+  const validation = validateNamedSchema(schemaName, payload);
+  if (validation.valid) {
+    return validation;
+  }
+
+  sendError(
+    res,
+    400,
+    "SCHEMA_VALIDATION_FAILED",
+    validation.errors.join(" "),
+    validation,
+    {
+      endpoint,
+      featureFlags,
+      schemaName,
+      schemaVersion: validation.schemaVersion || null,
+      schemaEngineVersion: validation.schemaEngineVersion || null,
+    },
+  );
+  return validation;
 }

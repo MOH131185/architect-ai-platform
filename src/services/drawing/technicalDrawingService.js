@@ -15,6 +15,7 @@ import {
 import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
 import { buildStructuralGrid } from "../structure/structuralGridService.js";
 import { createStableHash } from "../cad/projectGeometrySchema.js";
+import { planA1Panels } from "../a1/a1PanelPlanningService.js";
 
 function normalizeDrawingTypes(payload = {}) {
   return Array.isArray(payload.drawingTypes) && payload.drawingTypes.length
@@ -27,6 +28,10 @@ function buildA1IntegrationHooks(
   drawings = {},
   requestedDrawingTypes = [],
 ) {
+  const panelPlan = planA1Panels({
+    projectGeometry: geometry,
+    drawings,
+  });
   return {
     a1: {
       ready: true,
@@ -50,6 +55,7 @@ function buildA1IntegrationHooks(
         elevations: drawings.elevation?.length || 0,
         sections: drawings.section?.length || 0,
       },
+      panel_plan: panelPlan,
       titles: {
         floor_plans: (drawings.plan || []).map((entry) => entry.title),
         elevations: (drawings.elevation || []).map((entry) => entry.title),

@@ -1,3 +1,9 @@
+import {
+  PHASE5_PUBLIC_API_VERSION as CONTRACT_PHASE5_PUBLIC_API_VERSION,
+  getPublicApiVersion,
+  getSchemaEngineVersion,
+} from "../contracts/contractVersioningService.js";
+
 function toArray(value) {
   if (Array.isArray(value)) return value;
   if (value === undefined || value === null || value === "") return [];
@@ -6,6 +12,16 @@ function toArray(value) {
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOwn(value, key) {
+  return Boolean(value) && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function noteDeprecatedAlias(warnings, payload, alias, canonical) {
+  if (hasOwn(payload, alias)) {
+    warnings.push(`"${alias}" is deprecated; use "${canonical}" instead.`);
+  }
 }
 
 function toNumber(value, fallback = null) {
@@ -32,12 +48,20 @@ function uniqueStrings(values = []) {
   ];
 }
 
-function buildResponseMeta(endpoint, featureFlags = []) {
+function buildResponseMeta(
+  endpoint,
+  featureFlags = [],
+  deprecatedAliases = [],
+) {
   return {
     endpoint,
     contractVersion: PHASE1_CONTRACT_VERSION,
     runtimeVersion: PHASE2_RUNTIME_VERSION,
+    publicApiVersion: getPublicApiVersion(endpoint),
+    publicContractVersion: getPublicApiVersion(endpoint),
+    schemaEngineVersion: getSchemaEngineVersion(),
     featureFlags: uniqueStrings(featureFlags),
+    deprecatedAliases: uniqueStrings(deprecatedAliases),
   };
 }
 
@@ -73,6 +97,8 @@ const MAX_PRECEDENT_SEARCH_LIMIT = 25;
 
 export const PHASE1_CONTRACT_VERSION = "phase1-architecture-backend-v1";
 export const PHASE2_RUNTIME_VERSION = "phase2-geometry-validation-v1";
+export const PHASE4_PUBLIC_API_VERSION = "phase4-solver-schema-a1-v1";
+export const PHASE5_PUBLIC_API_VERSION = CONTRACT_PHASE5_PUBLIC_API_VERSION;
 
 export const PHASE1_API_CONTRACTS = {
   generateStyle: {
@@ -142,6 +168,19 @@ export const PHASE1_API_CONTRACTS = {
   generateVisualPackage: {
     request: ["projectGeometry", "styleDNA", "viewType"],
     response: ["visualPackage", "warnings", "selectedModelStrategy"],
+  },
+  projectReadiness: {
+    request: ["projectGeometry", "drawings", "visualPackage"],
+    response: ["ready", "status", "panelCandidates", "staleAssets"],
+  },
+  planA1Panels: {
+    request: [
+      "projectGeometry",
+      "drawings",
+      "visualPackage",
+      "requestedPanels",
+    ],
+    response: ["panelCandidates", "validPanelCount", "totalPanelCount"],
   },
   searchPrecedents: {
     request: ["query", "filters"],
@@ -282,6 +321,10 @@ export function buildGenerateFloorplanResponse({
       result.layout?.adjacency_graph ||
       null,
     zoningSummary: result.zoningSummary || result.layout?.zoning || null,
+    candidateEvaluations:
+      result.candidateEvaluations ||
+      result.layout?.candidate_evaluations ||
+      null,
     summary: result.summary || null,
     validation: result.validationReport || result.validation || null,
     validationReport: result.validationReport || result.validation || null,
@@ -295,7 +338,10 @@ export function buildGenerateFloorplanResponse({
     warnings,
     nextSteps: result.nextSteps || [],
     selectedModelStrategy,
-    meta: buildResponseMeta("generate-floorplan", featureFlags),
+    meta: buildResponseMeta("generate-floorplan", featureFlags, [
+      "canonicalGeometry",
+      "validation",
+    ]),
   };
 }
 
@@ -379,6 +425,15 @@ export function buildGenerateDrawingsResponse({
 
 export function validateValidateProjectRequest(payload = {}) {
   const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  noteDeprecatedAlias(warnings, payload, "types", "drawingTypes");
+  noteDeprecatedAlias(
+    warnings,
+    payload,
+    "previous_geometry",
+    "previousProjectGeometry",
+  );
+  noteDeprecatedAlias(warnings, payload, "target_layer", "targetLayer");
   const normalized = {
     projectGeometry: payload.projectGeometry || payload.geometry || null,
     drawings: isPlainObject(payload.drawings) ? payload.drawings : null,
@@ -405,7 +460,44 @@ export function validateValidateProjectRequest(payload = {}) {
   if (payload.drawings && !isPlainObject(payload.drawings)) {
     warnings.push("drawings must be an object; invalid value was ignored.");
   }
+  if (hasOwn(payload, "styleDNA") && !isPlainObject(payload.styleDNA)) {
+    errors.push("styleDNA must be an object when provided.");
+  }
+  if (hasOwn(payload, "locks") && !isPlainObject(payload.locks)) {
+    errors.push("locks must be an object when provided.");
+  }
 
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function validateRepairProjectRequest(payload = {}) {
+  const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    validationReport: isPlainObject(payload.validationReport)
+      ? payload.validationReport
+      : null,
+    options: isPlainObject(payload.options) ? payload.options : {},
+  };
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+  if (
+    hasOwn(payload, "validationReport") &&
+    !isPlainObject(payload.validationReport)
+  ) {
+    errors.push("validationReport must be an object when provided.");
+  }
+  if (hasOwn(payload, "options") && !isPlainObject(payload.options)) {
+    errors.push("options must be an object when provided.");
+  }
   return {
     ok: errors.length === 0,
     errors,
@@ -416,6 +508,15 @@ export function validateValidateProjectRequest(payload = {}) {
 
 export function validateGenerateProjectRequest(payload = {}) {
   const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "projectId", "project_id");
+  noteDeprecatedAlias(warnings, payload, "site_boundary", "site");
+  noteDeprecatedAlias(warnings, payload, "boundary", "site");
+  noteDeprecatedAlias(warnings, payload, "roomProgram", "room_program");
+  noteDeprecatedAlias(warnings, payload, "program", "room_program");
+  noteDeprecatedAlias(warnings, payload, "level_count", "levels");
+  noteDeprecatedAlias(warnings, payload, "levelCount", "levels");
+  noteDeprecatedAlias(warnings, payload, "types", "drawingTypes");
+  noteDeprecatedAlias(warnings, payload, "view_type", "viewType");
   const rawDrawingTypes = uniqueStrings(
     toArray(payload.drawingTypes || payload.types),
   ).map((entry) => entry.toLowerCase());
@@ -455,6 +556,12 @@ export function validateGenerateProjectRequest(payload = {}) {
   if (!normalized.room_program.length) {
     errors.push("program or room_program must contain at least one room.");
   }
+  if (hasOwn(payload, "constraints") && !isPlainObject(payload.constraints)) {
+    errors.push("constraints must be an object when provided.");
+  }
+  if (hasOwn(payload, "styleDNA") && !isPlainObject(payload.styleDNA)) {
+    errors.push("styleDNA must be an object when provided.");
+  }
 
   return {
     ok: errors.length === 0,
@@ -470,6 +577,7 @@ export function buildGenerateProjectResponse({
   featureFlags = [],
 }) {
   return {
+    contractVersion: getPublicApiVersion("generate-project"),
     success: result.status !== "invalid",
     projectGeometry: result.projectGeometry || null,
     facadeGrammar: result.facadeGrammar || null,
@@ -477,15 +585,30 @@ export function buildGenerateProjectResponse({
     drawings: result.drawings?.drawings || null,
     visualPackage: result.visualPackage || null,
     integrationHooks: result.integrationHooks || null,
+    artifactState: result.artifactState || null,
+    artifactStore: result.artifactStore || null,
+    a1Readiness: result.a1Readiness || null,
     validationReport: result.validationReport || null,
     status: result.status || result.validationReport?.status || "valid",
     warnings,
-    meta: buildResponseMeta("generate-project", featureFlags),
+    meta: buildResponseMeta("generate-project", featureFlags, [
+      "projectId",
+      "site_boundary",
+      "boundary",
+      "roomProgram",
+      "program",
+      "level_count",
+      "levelCount",
+      "types",
+      "view_type",
+    ]),
   };
 }
 
 export function validateRegenerateLayerRequest(payload = {}) {
   const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  noteDeprecatedAlias(warnings, payload, "target_layer", "targetLayer");
   const normalized = {
     projectGeometry: payload.projectGeometry || payload.geometry || null,
     styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
@@ -500,6 +623,15 @@ export function validateRegenerateLayerRequest(payload = {}) {
   }
   if (!normalized.targetLayer) {
     errors.push("targetLayer or target_layer is required.");
+  }
+  if (hasOwn(payload, "styleDNA") && !isPlainObject(payload.styleDNA)) {
+    errors.push("styleDNA must be an object when provided.");
+  }
+  if (hasOwn(payload, "locks") && !isPlainObject(payload.locks)) {
+    errors.push("locks must be an object when provided.");
+  }
+  if (hasOwn(payload, "options") && !isPlainObject(payload.options)) {
+    errors.push("options must be an object when provided.");
   }
 
   return {
@@ -517,6 +649,7 @@ export function buildRegenerateLayerResponse({
   featureFlags = [],
 }) {
   return {
+    contractVersion: getPublicApiVersion("regenerate-layer"),
     success: (validationReport?.status || "valid") !== "invalid",
     projectGeometry: result.projectGeometry || null,
     facadeGrammar: result.facadeGrammar || null,
@@ -524,15 +657,24 @@ export function buildRegenerateLayerResponse({
     visualPackage: result.visualPackage || null,
     diff: result.diff || null,
     locks: result.locks || null,
+    artifactState: result.artifactState || null,
+    artifactStore: result.artifactStore || null,
+    a1Readiness: result.a1Readiness || null,
+    regenerationPlan: result.regenerationPlan || null,
+    stateSnapshots: result.stateSnapshots || null,
     validationReport,
     status: validationReport?.status || "valid",
     warnings,
-    meta: buildResponseMeta("regenerate-layer", featureFlags),
+    meta: buildResponseMeta("regenerate-layer", featureFlags, [
+      "geometry",
+      "target_layer",
+    ]),
   };
 }
 
 export function validateGenerateFacadeRequest(payload = {}) {
   const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
   const normalized = {
     projectGeometry: payload.projectGeometry || payload.geometry || null,
     styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
@@ -540,6 +682,9 @@ export function validateGenerateFacadeRequest(payload = {}) {
   const errors = [];
   if (!normalized.projectGeometry) {
     errors.push("projectGeometry or geometry is required.");
+  }
+  if (hasOwn(payload, "styleDNA") && !isPlainObject(payload.styleDNA)) {
+    errors.push("styleDNA must be an object when provided.");
   }
 
   return {
@@ -561,12 +706,14 @@ export function buildGenerateFacadeResponse({
     facadeGrammar,
     warnings,
     selectedModelStrategy,
-    meta: buildResponseMeta("generate-facade", featureFlags),
+    meta: buildResponseMeta("generate-facade", featureFlags, ["geometry"]),
   };
 }
 
 export function validateGenerateVisualPackageRequest(payload = {}) {
   const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  noteDeprecatedAlias(warnings, payload, "view_type", "viewType");
   const normalized = {
     projectGeometry: payload.projectGeometry || payload.geometry || null,
     styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
@@ -576,6 +723,12 @@ export function validateGenerateVisualPackageRequest(payload = {}) {
   const errors = [];
   if (!normalized.projectGeometry) {
     errors.push("projectGeometry or geometry is required.");
+  }
+  if (hasOwn(payload, "styleDNA") && !isPlainObject(payload.styleDNA)) {
+    errors.push("styleDNA must be an object when provided.");
+  }
+  if (hasOwn(payload, "options") && !isPlainObject(payload.options)) {
+    errors.push("options must be an object when provided.");
   }
 
   return {
@@ -597,7 +750,134 @@ export function buildGenerateVisualPackageResponse({
     visualPackage,
     warnings,
     selectedModelStrategy,
-    meta: buildResponseMeta("generate-visual-package", featureFlags),
+    meta: buildResponseMeta("generate-visual-package", featureFlags, [
+      "geometry",
+      "view_type",
+    ]),
+  };
+}
+
+export function validateProjectReadinessRequest(payload = {}) {
+  const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    drawings: isPlainObject(payload.drawings) ? payload.drawings : null,
+    visualPackage: isPlainObject(payload.visualPackage)
+      ? payload.visualPackage
+      : null,
+    facadeGrammar: isPlainObject(payload.facadeGrammar)
+      ? payload.facadeGrammar
+      : null,
+    validationReport: isPlainObject(payload.validationReport)
+      ? payload.validationReport
+      : null,
+  };
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+  if (hasOwn(payload, "drawings") && !isPlainObject(payload.drawings)) {
+    errors.push("drawings must be an object when provided.");
+  }
+  if (
+    hasOwn(payload, "visualPackage") &&
+    !isPlainObject(payload.visualPackage)
+  ) {
+    errors.push("visualPackage must be an object when provided.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildProjectReadinessResponse({
+  result,
+  warnings = [],
+  featureFlags = [],
+}) {
+  return {
+    contractVersion: getPublicApiVersion("project-readiness"),
+    success: true,
+    ready: result.ready === true,
+    composeReady: result.composeReady === true || result.ready === true,
+    composeBlocked: result.composeBlocked === true,
+    status: result.status || "stale",
+    panelCandidates: result.panelCandidates || [],
+    freshPanels: result.freshPanels || [],
+    stalePanels: result.stalePanels || [],
+    missingPanels: result.missingPanels || [],
+    staleAssets: result.staleAssets || [],
+    missingAssets: result.missingAssets || [],
+    reasons: result.reasons || [],
+    blockingReasons: result.blockingReasons || result.reasons || [],
+    artifactState: result.artifactState || null,
+    artifactStore: result.artifactStore || null,
+    artifactFreshness: result.artifactFreshness || null,
+    warnings,
+    meta: buildResponseMeta("project-readiness", featureFlags, ["geometry"]),
+  };
+}
+
+export function validatePlanA1PanelsRequest(payload = {}) {
+  const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    drawings: isPlainObject(payload.drawings) ? payload.drawings : null,
+    visualPackage: isPlainObject(payload.visualPackage)
+      ? payload.visualPackage
+      : null,
+    facadeGrammar: isPlainObject(payload.facadeGrammar)
+      ? payload.facadeGrammar
+      : null,
+    requestedPanels: uniqueStrings(toArray(payload.requestedPanels)),
+  };
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+  if (hasOwn(payload, "drawings") && !isPlainObject(payload.drawings)) {
+    errors.push("drawings must be an object when provided.");
+  }
+  if (
+    hasOwn(payload, "visualPackage") &&
+    !isPlainObject(payload.visualPackage)
+  ) {
+    errors.push("visualPackage must be an object when provided.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildPlanA1PanelsResponse({
+  result,
+  warnings = [],
+  featureFlags = [],
+}) {
+  return {
+    contractVersion: getPublicApiVersion("plan-a1-panels"),
+    success: true,
+    panelCandidates: result.panelCandidates || [],
+    validPanelCount: result.validPanelCount || 0,
+    totalPanelCount: result.totalPanelCount || 0,
+    freshPanels: result.freshPanels || [],
+    stalePanels: result.stalePanels || [],
+    missingPanels: result.missingPanels || [],
+    missingAssets: result.missingAssets || [],
+    staleAssets: result.staleAssets || [],
+    artifactFreshness: result.artifactFreshness || null,
+    warnings,
+    meta: buildResponseMeta("plan-a1-panels", featureFlags, ["geometry"]),
   };
 }
 
@@ -607,6 +887,7 @@ export function buildValidateProjectResponse({
   featureFlags = [],
 }) {
   return {
+    contractVersion: getPublicApiVersion("validate-project"),
     success: true,
     status: result.status || "invalid",
     valid: result.valid === true,
@@ -615,7 +896,48 @@ export function buildValidateProjectResponse({
     errors: result.errors || [],
     repairSuggestions: result.repairSuggestions || [],
     affectedEntities: result.affectedEntities || [],
-    meta: buildResponseMeta("validate-project", featureFlags),
+    meta: buildResponseMeta("validate-project", featureFlags, [
+      "geometry",
+      "types",
+      "previous_geometry",
+      "target_layer",
+    ]),
+  };
+}
+
+export function buildRepairProjectResponse({
+  result,
+  validationReportBefore = null,
+  validationReportAfter = null,
+  warnings = [],
+  featureFlags = [],
+}) {
+  return {
+    contractVersion: getPublicApiVersion("repair-project"),
+    success: true,
+    status:
+      validationReportAfter?.status ||
+      (result.selectedCandidate ? "repaired" : "unchanged"),
+    repairedProjectGeometry: result.repairedProjectGeometry || null,
+    selectedRepair: result.selectedCandidate
+      ? {
+          candidateId: result.selectedCandidate.candidateId,
+          score: result.selectedCandidate.evaluation?.score || 0,
+          explanation: result.selectedCandidate.explanation || [],
+        }
+      : null,
+    repairCandidates: (result.candidates || []).map((candidate) => ({
+      candidateId: candidate.candidateId,
+      score: candidate.evaluation?.score || 0,
+      errorCount: candidate.evaluation?.validation?.errorCount || 0,
+      warningCount: candidate.evaluation?.validation?.warningCount || 0,
+      explanation: candidate.explanation || [],
+    })),
+    explanations: result.explanations || [],
+    validationReportBefore,
+    validationReportAfter,
+    warnings,
+    meta: buildResponseMeta("repair-project", featureFlags, ["geometry"]),
   };
 }
 
@@ -701,6 +1023,8 @@ export function buildModelStatusResponse(status = {}) {
 
 export default {
   PHASE1_API_CONTRACTS,
+  PHASE4_PUBLIC_API_VERSION,
+  PHASE5_PUBLIC_API_VERSION,
   validateGenerateStyleRequest,
   buildGenerateStyleResponse,
   validateGenerateFloorplanRequest,
@@ -708,7 +1032,9 @@ export default {
   validateGenerateDrawingsRequest,
   buildGenerateDrawingsResponse,
   validateValidateProjectRequest,
+  validateRepairProjectRequest,
   buildValidateProjectResponse,
+  buildRepairProjectResponse,
   validateGenerateProjectRequest,
   buildGenerateProjectResponse,
   validateRegenerateLayerRequest,
@@ -717,6 +1043,10 @@ export default {
   buildGenerateFacadeResponse,
   validateGenerateVisualPackageRequest,
   buildGenerateVisualPackageResponse,
+  validateProjectReadinessRequest,
+  buildProjectReadinessResponse,
+  validatePlanA1PanelsRequest,
+  buildPlanA1PanelsResponse,
   validateSearchPrecedentsRequest,
   buildSearchPrecedentsResponse,
   buildModelStatusResponse,

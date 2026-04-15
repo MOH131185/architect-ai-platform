@@ -160,6 +160,11 @@ function buildDeterministicProjectGeometry(request = {}) {
     ...projectGeometry.metadata,
     adjacency_graph: layout.adjacency_graph,
     vertical_stacking_plan: layout.vertical_stacking_plan || null,
+    layout_search: {
+      selected_candidate: layout.selected_candidate || "baseline-horizontal",
+      candidate_evaluations: layout.candidate_evaluations || [],
+    },
+    site_constraints: layout.buildable_envelope?.constraints || null,
   };
 
   layout.levels.forEach((levelLayout, levelIndex) => {
@@ -312,6 +317,7 @@ function buildDeterministicProjectGeometry(request = {}) {
       "program-normalization",
       "adjacency-graph-builder",
       "deterministic-layout-solver",
+      ...(layout.candidate_evaluations?.length ? ["layout-search-engine"] : []),
       "wall-graph-builder",
       "opening-placement-service",
       "circulation-generator",
@@ -338,6 +344,7 @@ function buildDeterministicProjectGeometry(request = {}) {
     layoutGraph: layout.adjacency_graph,
     adjacencyGraph: layout.adjacency_graph,
     zoningSummary: layout.zoning,
+    candidateEvaluations: layout.candidate_evaluations || [],
     validationReport,
     warnings: dedupe([...allWarnings, ...validationReport.warnings]),
     summary: summarizeDeterministicLayout(
@@ -346,8 +353,8 @@ function buildDeterministicProjectGeometry(request = {}) {
       validationReport,
     ),
     nextSteps: [
-      "Replace strip-band allocation with a richer packing/search solver when Phase 3 optimization begins.",
-      "Add richer structural members, stairs, and annotation detail once deterministic geometry validation is stable.",
+      "Refine candidate scoring weights with real project feedback before claiming stronger optimization coverage.",
+      "Deepen structural members, stair geometry, and annotation richness once deterministic geometry validation is stable.",
     ],
   };
 }
@@ -420,6 +427,10 @@ export async function generateLayoutFromProgram(request = {}, options = {}) {
       layoutGraph: routed.layoutGraph || routed.layout?.adjacency_graph || null,
       adjacencyGraph: routed.adjacencyGraph || routed.layoutGraph || null,
       zoningSummary: routed.zoningSummary || routed.layout?.zoning || null,
+      candidateEvaluations:
+        routed.candidateEvaluations ||
+        routed.layout?.candidate_evaluations ||
+        null,
       summary: routed.summary || null,
       validation: routed.validationReport || routed.validation || null,
       validationReport: routed.validationReport || routed.validation || null,
@@ -449,6 +460,10 @@ export async function generateLayoutFromProgram(request = {}, options = {}) {
       fallback.layout?.adjacency_graph ||
       null,
     zoningSummary: fallback.zoningSummary || fallback.layout?.zoning || null,
+    candidateEvaluations:
+      fallback.candidateEvaluations ||
+      fallback.layout?.candidate_evaluations ||
+      null,
     summary: fallback.summary || null,
     validation: fallback.validationReport || fallback.validation || null,
     validationReport: fallback.validationReport || fallback.validation || null,

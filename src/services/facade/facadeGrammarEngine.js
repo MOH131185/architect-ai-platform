@@ -1,4 +1,5 @@
 import { createStableId } from "../cad/projectGeometrySchema.js";
+import { assembleFacadeComponents } from "./facadeAssemblyService.js";
 import {
   buildFacadeCompositionRules,
   mergeGeometryRulesWithStyleDNA,
@@ -74,7 +75,7 @@ export function applyStyleDNAToFacade(
         side: rule.side,
         orientationAxis: sideAxis(rule.side),
       });
-      return {
+      const orientation = {
         side: rule.side,
         opening_rhythm: rhythm,
         solid_void_ratio: solidVoidRatio(projectGeometry, rule.side),
@@ -113,6 +114,14 @@ export function applyStyleDNAToFacade(
               ],
         roofline_language: rule.roofline_language,
         parapet_mode: rule.parapet_mode,
+      };
+      return {
+        ...orientation,
+        components: assembleFacadeComponents(
+          projectGeometry,
+          styleDNA,
+          orientation,
+        ),
       };
     }),
     notes: dedupe([
@@ -154,6 +163,7 @@ export function buildFacadeGrammar(
   return {
     ...grammar,
     opening_overrides: openingOverrides,
+    component_library_version: "phase4-facade-components-v1",
   };
 }
 

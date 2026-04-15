@@ -10,6 +10,7 @@
  */
 
 import { generateTechnicalDrawings } from "../../src/services/drawing/technicalDrawingService.js";
+import { coerceToCanonicalProjectGeometry } from "../../src/services/cad/geometryFactory.js";
 import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import {
   buildGenerateDrawingsResponse,
@@ -19,6 +20,7 @@ import { getRecommendedModel } from "../../src/services/models/openSourceModelRo
 import {
   config,
   ensureFeatureEnabled,
+  enforceSchemaValidation,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -59,6 +61,8 @@ export default async function handler(req, res) {
       "useStructuralSanityLayer",
       "useGeometryValidationEngine",
       "usePhase3Validation",
+      "useFormalSchemaValidation",
+      "useA1ProjectReadiness",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {
@@ -78,7 +82,24 @@ export default async function handler(req, res) {
       );
     }
 
-    const result = await generateTechnicalDrawings(validation.normalized);
+    const canonicalProjectGeometry = coerceToCanonicalProjectGeometry(
+      validation.normalized.projectGeometry,
+    );
+    const geometrySchemaValidation = enforceSchemaValidation(
+      res,
+      "canonicalProjectGeometry",
+      canonicalProjectGeometry,
+      "generate-drawings",
+      featureFlags,
+    );
+    if (!geometrySchemaValidation.valid) {
+      return;
+    }
+
+    const result = await generateTechnicalDrawings({
+      ...validation.normalized,
+      projectGeometry: canonicalProjectGeometry,
+    });
     const selectedModelStrategy = getRecommendedModel("technical_drawings", {
       preferLocal: true,
       useCase: validation.normalized.drawingTypes.join(" "),
@@ -127,6 +148,8 @@ export default async function handler(req, res) {
           "useStructuralSanityLayer",
           "useGeometryValidationEngine",
           "usePhase3Validation",
+          "useFormalSchemaValidation",
+          "useA1ProjectReadiness",
           "useFailClosedTechnicalFlow",
         ],
       },

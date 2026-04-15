@@ -9,6 +9,7 @@ import { getRecommendedModel } from "../../src/services/models/openSourceModelRo
 import {
   config,
   ensureFeatureEnabled,
+  enforceSchemaValidation,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -45,6 +46,7 @@ export default async function handler(req, res) {
     const featureFlags = [
       "useGeometryLockedVisuals",
       "useFacadeGrammarEngine",
+      "useFormalSchemaValidation",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {
@@ -64,8 +66,33 @@ export default async function handler(req, res) {
       );
     }
 
+    const schemaValidation = enforceSchemaValidation(
+      res,
+      "generateVisualPackageRequest",
+      validation.normalized,
+      "generate-visual-package",
+      featureFlags,
+    );
+    if (!schemaValidation.valid) {
+      return;
+    }
+
+    const canonicalProjectGeometry = coerceToCanonicalProjectGeometry(
+      validation.normalized.projectGeometry,
+    );
+    const geometrySchemaValidation = enforceSchemaValidation(
+      res,
+      "canonicalProjectGeometry",
+      canonicalProjectGeometry,
+      "generate-visual-package",
+      featureFlags,
+    );
+    if (!geometrySchemaValidation.valid) {
+      return;
+    }
+
     const visualPackage = await buildVisualGenerationPackage(
-      coerceToCanonicalProjectGeometry(validation.normalized.projectGeometry),
+      canonicalProjectGeometry,
       validation.normalized.styleDNA,
       validation.normalized.viewType,
       validation.normalized.options,

@@ -314,9 +314,12 @@ mountDynamicApiRoute('post', '/api/models/generate-floorplan', 'api/models/gener
 mountDynamicApiRoute('post', '/api/models/generate-drawings', 'api/models/generate-drawings.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-project', 'api/models/generate-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/regenerate-layer', 'api/models/regenerate-layer.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/repair-project', 'api/models/repair-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-facade', 'api/models/generate-facade.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-visual-package', 'api/models/generate-visual-package.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/validate-project', 'api/models/validate-project.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/project-readiness', 'api/models/project-readiness.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/plan-a1-panels', 'api/models/plan-a1-panels.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/search-precedents', 'api/models/search-precedents.js', [aiApiLimiter]);
 mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');
 

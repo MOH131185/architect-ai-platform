@@ -1,29 +1,44 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
-  buildBuildableEnvelope,
   buildBoundingBoxFromRect,
   rectangleToPolygon,
   roundMetric,
 } from "../cad/projectGeometrySchema.js";
-import { isFeatureEnabled } from "../../config/featureFlags.js";
-import { normalizeProgram } from "./programNormalizer.js";
+import {
+  buildEnvelopeFallback,
+  deriveBuildableEnvelope,
+} from "../site/buildableEnvelopeService.js";
 import { buildAdjacencyGraph } from "./adjacencyGraphBuilder.js";
 import {
-  assignRoomZones,
+  DEFAULT_LAYOUT_STRATEGIES,
+  searchDeterministicLayouts,
+} from "./layoutSearchEngine.js";
+import { assignRoomsToLevels as assignRoomsToLevelsPhase3 } from "./multiLevelLayoutEngine.js";
+import { normalizeProgram } from "./programNormalizer.js";
+import { optimizeLinearRoomShapes } from "./roomShapeOptimizer.js";
+import { resolveIrregularSiteFallback } from "../site/siteFallbackStrategies.js";
+import { resolveStairCorePlan } from "./stairCoreGenerator.js";
+import {
   assignRoomsToLevels,
+  assignRoomZones,
   buildZoneBands,
   buildZoningSummary,
 } from "./zoningEngine.js";
-import { assignRoomsToLevels as assignRoomsToLevelsPhase3 } from "./multiLevelLayoutEngine.js";
-import { resolveStairCorePlan } from "./stairCoreGenerator.js";
 
 function resolveBuildableEnvelope(request = {}) {
   if (request.site) {
-    const siteEnvelope = buildBuildableEnvelope(request.site);
+    const siteEnvelope = isFeatureEnabled("useBuildableEnvelopeReasoning")
+      ? deriveBuildableEnvelope(request.site)
+      : buildEnvelopeFallback(request.site, request.footprint || {});
     if (
       siteEnvelope.buildable_bbox?.width &&
       siteEnvelope.buildable_bbox?.height
     ) {
-      return siteEnvelope.buildable_bbox;
+      return {
+        bbox: siteEnvelope.buildable_bbox,
+        envelope: siteEnvelope,
+        warnings: siteEnvelope.warnings || [],
+      };
     }
   }
 
@@ -35,7 +50,20 @@ function resolveBuildableEnvelope(request = {}) {
     request.site?.buildable_envelope?.buildable_bbox;
 
   if (buildableBbox?.width && buildableBbox?.height) {
-    return buildableBbox;
+    return {
+      bbox: buildableBbox,
+      envelope: {
+        buildable_bbox: buildableBbox,
+        buildable_polygon: rectangleToPolygon(
+          buildableBbox.min_x || 0,
+          buildableBbox.min_y || 0,
+          buildableBbox.width || 0,
+          buildableBbox.height || 0,
+        ),
+        warnings: [],
+      },
+      warnings: [],
+    };
   }
 
   const footprint = request.footprint || {};
@@ -47,44 +75,16 @@ function resolveBuildableEnvelope(request = {}) {
     10,
     Number(footprint.depth_m || footprint.depth || 14),
   );
-  return buildBoundingBoxFromRect(0, 0, width, depth);
-}
-
-function allocateRoomsWithinBand(levelNumber, rooms = [], band = {}) {
-  let cursorX = band.x;
-
-  return rooms.map((room, index) => {
-    const scaledArea = roundMetric(room.target_area * band.scale_factor);
-    const proportionalWidth =
-      scaledArea / Math.max(band.depth || 1, 1) || band.width;
-    const remainingWidth = Math.max(2.4, band.x + band.width - cursorX);
-    const width = roundMetric(
-      Math.min(remainingWidth, Math.max(2.4, proportionalWidth)),
-    );
-    const y = band.y;
-    const x = roundMetric(cursorX);
-    const roomDepth = roundMetric(band.depth);
-    cursorX += width;
-
-    return {
-      ...room,
-      level_number: levelNumber,
-      actual_area: roundMetric(width * roomDepth),
-      bbox: buildBoundingBoxFromRect(x, y, width, roomDepth),
-      polygon: rectangleToPolygon(x, y, width, roomDepth),
-      centroid: {
-        x: roundMetric(x + width / 2),
-        y: roundMetric(y + roomDepth / 2),
-      },
-      x,
-      y,
-      width,
-      height: roomDepth,
-      width_m: width,
-      depth_m: roomDepth,
-      layout_order: index,
-    };
-  });
+  const fallbackBbox = buildBoundingBoxFromRect(0, 0, width, depth);
+  return {
+    bbox: fallbackBbox,
+    envelope: {
+      buildable_bbox: fallbackBbox,
+      buildable_polygon: rectangleToPolygon(0, 0, width, depth),
+      warnings: [],
+    },
+    warnings: [],
+  };
 }
 
 function sumSegmentWidth(segments = []) {
@@ -137,7 +137,7 @@ function alignBandsToCore(bands = [], coreBbox = null, buildableBbox = {}) {
   ];
 }
 
-function sortRoomsForPlacement(rooms = []) {
+function sortRoomsForPlacement(rooms = [], strategy = {}) {
   return [...rooms].sort((left, right) => {
     const leftStack = Number.isFinite(Number(left.stack_order))
       ? Number(left.stack_order)
@@ -146,85 +146,256 @@ function sortRoomsForPlacement(rooms = []) {
       ? Number(right.stack_order)
       : Number.MAX_SAFE_INTEGER;
     if (leftStack !== rightStack) return leftStack - rightStack;
+    if (strategy.daylightPriority) {
+      if (Number(right.requires_daylight) !== Number(left.requires_daylight)) {
+        return Number(right.requires_daylight) - Number(left.requires_daylight);
+      }
+    }
+    if (strategy.wetZonePriority) {
+      if (Number(right.wet_zone) !== Number(left.wet_zone)) {
+        return Number(right.wet_zone) - Number(left.wet_zone);
+      }
+    }
     if (Number(right.wet_zone) !== Number(left.wet_zone)) {
       return Number(right.wet_zone) - Number(left.wet_zone);
     }
     if (Number(right.target_area || 0) !== Number(left.target_area || 0)) {
       return Number(right.target_area || 0) - Number(left.target_area || 0);
     }
-    return String(left.id).localeCompare(String(right.id));
+    const leftName = String(left.name || "");
+    const rightName = String(right.name || "");
+    if (leftName !== rightName) {
+      return leftName.localeCompare(rightName);
+    }
+    return String(left.id || "").localeCompare(String(right.id || ""));
   });
 }
 
-function allocateRoomsWithinBandSegments(
+function buildZoneColumns(rooms = [], buildableBbox = {}, levelNumber = 0) {
+  const zoneOrder =
+    levelNumber === 0
+      ? ["public", "core", "service", "private", "outdoor"]
+      : ["private", "core", "service", "public", "outdoor"];
+  const totalArea =
+    rooms.reduce((sum, room) => sum + Number(room.target_area || 0), 0) || 1;
+  const height = buildableBbox.height || 10;
+  const envelopeWidth = buildableBbox.width || 12;
+  const requiredWidth = totalArea / Math.max(height, 1);
+  const widthScale =
+    requiredWidth > envelopeWidth ? envelopeWidth / requiredWidth : 1;
+  const presentZones = zoneOrder.filter((zone) =>
+    rooms.some((room) => room.zone === zone),
+  );
+  let cursorX = buildableBbox.min_x || 0;
+
+  const columns = presentZones.map((zone) => {
+    const zoneArea = rooms
+      .filter((room) => room.zone === zone)
+      .reduce((sum, room) => sum + Number(room.target_area || 0), 0);
+    const width = roundMetric(
+      Math.max(2.6, (zoneArea / Math.max(height, 1)) * widthScale),
+    );
+    const column = {
+      zone,
+      x: roundMetric(cursorX),
+      y: buildableBbox.min_y || 0,
+      width,
+      depth: roundMetric(height),
+      scale_factor: widthScale,
+    };
+    cursorX += width;
+    return column;
+  });
+
+  if (!columns.length) return [];
+
+  const lastColumn = columns[columns.length - 1];
+  const overflow = roundMetric(
+    cursorX - ((buildableBbox.min_x || 0) + (buildableBbox.width || 0)),
+  );
+  if (overflow > 0) {
+    lastColumn.width = roundMetric(Math.max(2.6, lastColumn.width - overflow));
+  }
+
+  return columns;
+}
+
+function allocateRoomsInLinearContainer(
   levelNumber,
   rooms = [],
-  band = {},
-  segments = [],
+  container = {},
+  strategy = {},
+  options = {},
 ) {
-  const placementSegments = segments.length
-    ? segments.map((segment) => ({
-        ...segment,
-        cursor_x: Number(segment.min_x),
-      }))
-    : [
-        {
-          min_x: band.x,
-          max_x: band.x + band.width,
-          width: band.width,
-          cursor_x: band.x,
-        },
-      ];
-
-  let currentSegmentIndex = 0;
-
-  return sortRoomsForPlacement(rooms).map((room, index) => {
-    const scaledArea = roundMetric(room.target_area * band.scale_factor);
-    const proportionalWidth =
-      scaledArea / Math.max(band.depth || 1, 1) || band.width;
-    const minWidth = 2.4;
-    const desiredWidth = Math.max(minWidth, proportionalWidth);
-
-    while (
-      currentSegmentIndex < placementSegments.length - 1 &&
-      placementSegments[currentSegmentIndex].cursor_x + minWidth >
-        placementSegments[currentSegmentIndex].max_x
-    ) {
-      currentSegmentIndex += 1;
-    }
-
-    const segment = placementSegments[currentSegmentIndex];
-    const remainingWidth = Math.max(
-      minWidth,
-      Number(segment.max_x) - Number(segment.cursor_x),
-    );
-    const width = roundMetric(Math.min(remainingWidth, desiredWidth));
-    const x = roundMetric(segment.cursor_x);
-    const y = band.y;
-    const roomDepth = roundMetric(band.depth);
-    segment.cursor_x = roundMetric(
-      Math.min(segment.max_x, Number(segment.cursor_x) + width),
-    );
-
-    return {
+  return optimizeLinearRoomShapes(
+    sortRoomsForPlacement(rooms, strategy).map((room, index) => ({
       ...room,
       level_number: levelNumber,
-      actual_area: roundMetric(width * roomDepth),
-      bbox: buildBoundingBoxFromRect(x, y, width, roomDepth),
-      polygon: rectangleToPolygon(x, y, width, roomDepth),
-      centroid: {
-        x: roundMetric(x + width / 2),
-        y: roundMetric(y + roomDepth / 2),
-      },
-      x,
-      y,
-      width,
-      height: roomDepth,
-      width_m: width,
-      depth_m: roomDepth,
       layout_order: index,
+    })),
+    container,
+    {
+      axis: options.axis || "x",
+      segments: options.segments || [],
+      daylightPriority: strategy.daylightPriority,
+      wetZonePriority: strategy.wetZonePriority,
+    },
+  );
+}
+
+function buildCoreRoom(corePlan = {}, levelNumber = 0) {
+  const coreBbox = corePlan?.core_bbox;
+  if (!coreBbox) return null;
+
+  return {
+    id: `level-${levelNumber}-stair-core`,
+    name: "Stair Core",
+    type: "stair_core",
+    zone: "core",
+    privacy_level: 1,
+    requires_daylight: false,
+    wet_zone: false,
+    access_requirements: ["vertical_circulation"],
+    adjacency_preferences: [],
+    target_area: roundMetric(coreBbox.width * coreBbox.height),
+    min_area: roundMetric(coreBbox.width * coreBbox.height),
+    max_area: roundMetric(coreBbox.width * coreBbox.height),
+    actual_area: roundMetric(coreBbox.width * coreBbox.height),
+    bbox: coreBbox,
+    polygon: rectangleToPolygon(
+      coreBbox.min_x,
+      coreBbox.min_y,
+      coreBbox.width,
+      coreBbox.height,
+    ),
+    centroid: {
+      x: roundMetric(coreBbox.min_x + coreBbox.width / 2),
+      y: roundMetric(coreBbox.min_y + coreBbox.height / 2),
+    },
+    stack_order: -1,
+    metadata: {
+      generated: true,
+      core_variant: corePlan.variant,
+    },
+  };
+}
+
+function buildLayoutCandidate(context = {}, strategy = {}) {
+  if (strategy.orientation === "vertical" && context.corePlan?.required) {
+    return null;
+  }
+
+  const levels = context.levelAssignments.levels.map((level) => {
+    const coreLevel = context.corePlan?.levels?.find(
+      (entry) => entry.level_number === level.level_number,
+    );
+    const nonCoreRooms = level.rooms.filter((room) => room.zone !== "core");
+    const bands = alignBandsToCore(
+      buildZoneBands(
+        nonCoreRooms,
+        context.placementEnvelope,
+        level.level_number,
+      ),
+      coreLevel?.core_bbox || null,
+      context.buildableBbox,
+    );
+    const columns = buildZoneColumns(
+      nonCoreRooms,
+      context.placementEnvelope,
+      level.level_number,
+    );
+    const placedRooms =
+      strategy.orientation === "vertical"
+        ? columns.flatMap((column) =>
+            allocateRoomsInLinearContainer(
+              level.level_number,
+              level.rooms.filter(
+                (room) => room.zone === column.zone && room.zone !== "core",
+              ),
+              {
+                x: column.x,
+                y: column.y,
+                width: column.width,
+                depth: column.depth,
+                min_y: column.y,
+              },
+              strategy,
+              { axis: "y" },
+            ),
+          )
+        : bands.flatMap((band) =>
+            allocateRoomsInLinearContainer(
+              level.level_number,
+              level.rooms.filter(
+                (room) => room.zone === band.zone && room.zone !== "core",
+              ),
+              {
+                x: band.x,
+                y: band.y,
+                width: band.width,
+                depth: band.depth,
+                min_y: band.y,
+              },
+              strategy,
+              {
+                axis: "x",
+                segments: context.placementSegments.map((segment) => ({
+                  ...segment,
+                })),
+              },
+            ),
+          );
+
+    return {
+      level_number: level.level_number,
+      bands: strategy.orientation === "vertical" ? [] : bands,
+      columns: strategy.orientation === "vertical" ? columns : [],
+      rooms: [
+        ...(coreLevel ? [buildCoreRoom(coreLevel, level.level_number)] : []),
+        ...placedRooms,
+      ].filter(Boolean),
+      footprint: rectangleToPolygon(
+        context.buildableBbox.min_x,
+        context.buildableBbox.min_y,
+        context.buildableBbox.width,
+        context.buildableBbox.height,
+      ),
+      buildable_bbox: context.buildableBbox,
+      placement_segments: context.placementSegments,
+      core_plan: coreLevel || null,
+      level_assignment_notes: context.levelAssignments.explanations || [],
     };
   });
+
+  return {
+    project_id: context.normalizedProgram.project_id,
+    normalized_program: context.normalizedProgram,
+    adjacency_graph: context.adjacencyGraph,
+    zoning: buildZoningSummary({
+      levels: levels.map((level) => ({
+        ...level,
+        rooms: level.rooms,
+      })),
+    }),
+    level_count: context.levelAssignments.level_count,
+    buildable_bbox: context.buildableBbox,
+    buildable_envelope: context.buildableEnvelope,
+    vertical_stacking_plan: context.levelAssignments.stackingPlan || null,
+    level_assignment_explanations: context.levelAssignments.explanations || [],
+    core_plan: context.corePlan,
+    levels,
+    deterministic: true,
+    candidate_id: strategy.id,
+    solver_notes: [
+      `Candidate ${strategy.id} used ${strategy.orientation} placement flow.`,
+      ...(strategy.daylightPriority
+        ? ["Daylight-priority ordering biased exterior-touching rooms earlier."]
+        : []),
+      ...(strategy.wetZonePriority
+        ? ["Wet-zone ordering biased stackable service rooms earlier."]
+        : []),
+    ],
+  };
 }
 
 export function solveDeterministicLayout(request = {}) {
@@ -244,7 +415,8 @@ export function solveDeterministicLayout(request = {}) {
       })
     : assignRoomsToLevels(zonedProgram, requestedLevelCount);
   const adjacencyGraph = buildAdjacencyGraph(zonedProgram);
-  const buildableBbox = resolveBuildableEnvelope(request);
+  const resolvedEnvelope = resolveBuildableEnvelope(request);
+  const buildableBbox = resolvedEnvelope.bbox;
   const corePlan = isFeatureEnabled("useStairCoreGenerator")
     ? resolveStairCorePlan({
         buildableBbox,
@@ -261,111 +433,44 @@ export function solveDeterministicLayout(request = {}) {
     ),
     height: buildableBbox.height,
   };
+  const siteFallback = isFeatureEnabled("useIrregularSiteFallbackPhase5")
+    ? resolveIrregularSiteFallback(
+        request.site || {},
+        resolvedEnvelope.envelope,
+      )
+    : null;
 
-  const levels = levelAssignments.levels.map((level) => {
-    const coreLevel = corePlan?.levels?.find(
-      (entry) => entry.level_number === level.level_number,
-    );
-    const coreRoom =
-      coreLevel && corePlan?.required
-        ? {
-            id: `level-${level.level_number}-stair-core`,
-            name: "Stair Core",
-            type: "stair_core",
-            zone: "core",
-            privacy_level: 1,
-            requires_daylight: false,
-            wet_zone: false,
-            access_requirements: ["vertical_circulation"],
-            adjacency_preferences: [],
-            target_area: roundMetric(
-              coreLevel.core_bbox.width * coreLevel.core_bbox.height,
-            ),
-            min_area: roundMetric(
-              coreLevel.core_bbox.width * coreLevel.core_bbox.height,
-            ),
-            max_area: roundMetric(
-              coreLevel.core_bbox.width * coreLevel.core_bbox.height,
-            ),
-            actual_area: roundMetric(
-              coreLevel.core_bbox.width * coreLevel.core_bbox.height,
-            ),
-            bbox: coreLevel.core_bbox,
-            polygon: rectangleToPolygon(
-              coreLevel.core_bbox.min_x,
-              coreLevel.core_bbox.min_y,
-              coreLevel.core_bbox.width,
-              coreLevel.core_bbox.height,
-            ),
-            centroid: {
-              x: roundMetric(
-                coreLevel.core_bbox.min_x + coreLevel.core_bbox.width / 2,
-              ),
-              y: roundMetric(
-                coreLevel.core_bbox.min_y + coreLevel.core_bbox.height / 2,
-              ),
-            },
-            stack_order: -1,
-            metadata: {
-              generated: true,
-              core_variant: corePlan.variant,
-            },
-          }
-        : null;
-    const nonCoreRooms = level.rooms.filter((room) => room.zone !== "core");
-    const bands = alignBandsToCore(
-      buildZoneBands(nonCoreRooms, placementEnvelope, level.level_number),
-      coreLevel?.core_bbox || null,
-      buildableBbox,
-    );
-    const placedRooms = bands.flatMap((band) =>
-      allocateRoomsWithinBandSegments(
-        level.level_number,
-        level.rooms.filter(
-          (room) => room.zone === band.zone && room.zone !== "core",
-        ),
-        band,
-        placementSegments.map((segment) => ({ ...segment })),
-      ),
-    );
-    const allRooms = coreRoom ? [coreRoom, ...placedRooms] : placedRooms;
+  const context = {
+    normalizedProgram,
+    adjacencyGraph,
+    levelAssignments,
+    buildableBbox,
+    buildableEnvelope: resolvedEnvelope.envelope,
+    corePlan,
+    placementSegments,
+    placementEnvelope,
+    siteFallback,
+  };
 
-    return {
-      level_number: level.level_number,
-      bands,
-      rooms: allRooms,
-      footprint: rectangleToPolygon(
-        buildableBbox.min_x,
-        buildableBbox.min_y,
-        buildableBbox.width,
-        buildableBbox.height,
-      ),
-      buildable_bbox: buildableBbox,
-      placement_segments: placementSegments,
-      core_plan: coreLevel || null,
-      level_assignment_notes: levelAssignments.explanations || [],
-    };
-  });
+  const selectedLayout = isFeatureEnabled("usePhase4LayoutSearch")
+    ? searchDeterministicLayouts(context, {
+        candidateBuilder: (strategy) => buildLayoutCandidate(context, strategy),
+        strategies: siteFallback?.searchStrategies?.length
+          ? DEFAULT_LAYOUT_STRATEGIES.filter((strategy) =>
+              siteFallback.searchStrategies.includes(strategy.id),
+            )
+          : undefined,
+      })
+    : buildLayoutCandidate(context, {
+        id: "baseline-horizontal",
+        orientation: "horizontal",
+      });
 
   return {
-    project_id: normalizedProgram.project_id,
-    normalized_program: normalizedProgram,
-    adjacency_graph: adjacencyGraph,
-    zoning: buildZoningSummary({
-      levels: levels.map((level) => ({
-        ...level,
-        rooms: level.rooms,
-      })),
-    }),
-    level_count: levelAssignments.level_count,
-    buildable_bbox: buildableBbox,
-    vertical_stacking_plan: levelAssignments.stackingPlan || null,
-    level_assignment_explanations: levelAssignments.explanations || [],
-    core_plan: corePlan,
-    levels,
-    deterministic: true,
+    ...selectedLayout,
     solver_notes: [
-      "Rooms are packed as deterministic strip bands inside the buildable envelope.",
+      ...(selectedLayout.solver_notes || []),
+      ...(resolvedEnvelope.warnings || []),
       ...(isFeatureEnabled("usePhase3MultiLevelEngine")
         ? [
             "Multi-level rooms are assigned with deterministic vertical stacking heuristics.",
@@ -378,6 +483,7 @@ export function solveDeterministicLayout(request = {}) {
             `A ${corePlan.variant} stair/core strip is reserved across all levels.`,
           ]
         : []),
+      ...(siteFallback?.warnings || []),
     ],
   };
 }

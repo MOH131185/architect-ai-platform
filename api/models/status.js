@@ -1,4 +1,5 @@
 import { buildModelStatusResponse } from "../../src/services/models/architectureBackendContracts.js";
+import { getSchemaValidationStatus } from "../../src/services/contracts/schemaValidationService.js";
 import { getModelStatus } from "../../src/services/models/openSourceModelRouter.js";
 import "../../src/services/cad/archElementNormalizer.js";
 import "../../src/services/drawing/technicalDrawingService.js";
@@ -29,7 +30,10 @@ export default async function handler(req, res) {
   if (rejectInvalidMethod(req, res, "GET")) return;
 
   try {
-    const status = getModelStatus();
+    const status = {
+      ...getModelStatus(),
+      schemas: getSchemaValidationStatus(),
+    };
     return res.status(200).json(buildModelStatusResponse(status));
   } catch (error) {
     return sendError(

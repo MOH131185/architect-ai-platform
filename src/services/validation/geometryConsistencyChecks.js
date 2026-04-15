@@ -1,11 +1,14 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
   validateEntityReferences,
   validateProjectGeometrySchema,
 } from "../cad/geometryValidators.js";
+import { validateNamedSchema } from "../contracts/schemaValidationService.js";
 import {
   explainAdjacencyConflicts,
   scoreAdjacencySolution,
 } from "../floorplan/adjacencyGraphBuilder.js";
+import { validateFootprintAgainstEnvelope } from "../site/buildableEnvelopeService.js";
 
 const EPSILON = 0.01;
 
@@ -260,6 +263,11 @@ export function runGeometryConsistencyChecks({
   projectGeometry,
   adjacencyGraph = null,
 } = {}) {
+  const formalSchemaCheck =
+    isFeatureEnabled("useFormalSchemaValidation") ||
+    isFeatureEnabled("useFormalSchemaEngine")
+      ? validateNamedSchema("canonicalProjectGeometry", projectGeometry)
+      : { valid: true, errors: [], warnings: [] };
   const schemaCheck = validateProjectGeometrySchema(projectGeometry);
   const referenceCheck = validateEntityReferences(projectGeometry);
   const overlaps = detectRoomOverlaps(projectGeometry.rooms || []);
@@ -269,8 +277,16 @@ export function runGeometryConsistencyChecks({
   const stairCheck = checkStairs(projectGeometry);
   const adjacencyCheck = checkAdjacency(projectGeometry, adjacencyGraph);
   const levelMembershipCheck = checkLevelMembershipConsistency(projectGeometry);
+  const footprintCheck = validateFootprintAgainstEnvelope(
+    projectGeometry.footprints?.[0]?.polygon ||
+      projectGeometry.footprints?.[projectGeometry.footprints.length - 1]
+        ?.polygon ||
+      [],
+    projectGeometry.site || {},
+  );
 
   const errors = [
+    ...formalSchemaCheck.errors,
     ...schemaCheck.errors,
     ...referenceCheck.errors,
     ...roomAreaCheck.errors,
@@ -279,12 +295,14 @@ export function runGeometryConsistencyChecks({
     ...stairCheck.errors,
     ...adjacencyCheck.errors,
     ...levelMembershipCheck.errors,
+    ...footprintCheck.errors,
     ...overlaps.map(
       (overlap) =>
         `rooms "${overlap.room_a}" and "${overlap.room_b}" overlap by ${overlap.overlap_area_m2} m2.`,
     ),
   ];
   const warnings = [
+    ...formalSchemaCheck.warnings,
     ...schemaCheck.warnings,
     ...referenceCheck.warnings,
     ...roomAreaCheck.warnings,
@@ -293,6 +311,7 @@ export function runGeometryConsistencyChecks({
     ...stairCheck.warnings,
     ...(adjacencyCheck.warnings || []),
     ...levelMembershipCheck.warnings,
+    ...footprintCheck.warnings,
   ];
   const repairSuggestions = [...(adjacencyCheck.repairSuggestions || [])];
 
@@ -303,6 +322,7 @@ export function runGeometryConsistencyChecks({
     repairSuggestions,
     checks: {
       schema: schemaCheck,
+      formalSchema: formalSchemaCheck,
       references: referenceCheck,
       overlaps,
       area: roomAreaCheck,
@@ -311,6 +331,7 @@ export function runGeometryConsistencyChecks({
       stairs: stairCheck,
       adjacency: adjacencyCheck,
       levelMembership: levelMembershipCheck,
+      footprint: footprintCheck,
     },
   };
 }

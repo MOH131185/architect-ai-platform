@@ -168,6 +168,15 @@ export function renderElevationSvg(
       return `<rect x="${baseX}" y="${y}" width="${horizontalExtent * scale}" height="${zoneHeight}" fill="${index % 2 === 0 ? "#f5f2ea" : "#ece7dc"}" opacity="0.25"/>`;
     })
     .join("");
+  const bayMarkup = (facadeOrientation?.components?.bays || [])
+    .map((bay, index) => {
+      const spacing =
+        (horizontalExtent * scale) /
+        Math.max(facadeOrientation.components.bays.length, 1);
+      const x = baseX + spacing * index;
+      return `<line x1="${x}" y1="${baseY - metrics.total_height_m * scale}" x2="${x}" y2="${baseY}" stroke="#d2c2a4" stroke-width="0.8" stroke-dasharray="4 6"/>`;
+    })
+    .join("");
 
   const shadingMarkup = (facadeOrientation?.shading_elements || [])
     .map((element, index) => {
@@ -187,6 +196,9 @@ export function renderElevationSvg(
       return `<text x="${x}" y="${baseY + 20}" font-size="10" font-family="Arial, sans-serif">${escapeXml(group.group_id)}</text>`;
     })
     .join("");
+  const componentLabel = facadeOrientation?.components?.component_family
+    ? `<text x="${baseX}" y="${baseY + 54}" font-size="10" font-family="Arial, sans-serif">Facade family: ${escapeXml(facadeOrientation.components.component_family.bay_family || "default")}</text>`
+    : "";
   const ratioLabel = facadeOrientation
     ? `<text x="${baseX}" y="${baseY + 38}" font-size="11" font-family="Arial, sans-serif">SVR ${Number(facadeOrientation.solid_void_ratio || 0).toFixed(2)} / target ${Number(facadeOrientation.target_solid_void_ratio || facadeOrientation.solid_void_ratio || 0).toFixed(2)}</text>`
     : "";
@@ -199,12 +211,14 @@ export function renderElevationSvg(
   ${roof}
   ${materialZoneMarkup}
   ${facade}
+  ${bayMarkup}
   ${floorLines}
   ${floorLabels}
   ${windowMarkup}
   ${shadingMarkup}
   ${rhythmMarkup}
   ${ratioLabel}
+  ${componentLabel}
 </svg>`;
 
   return {

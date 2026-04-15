@@ -8,6 +8,7 @@ import { getRecommendedModel } from "../../src/services/models/openSourceModelRo
 import {
   config,
   ensureFeatureEnabled,
+  enforceSchemaValidation,
   handleOptions,
   rejectInvalidMethod,
   sendError,
@@ -37,7 +38,11 @@ export default async function handler(req, res) {
 
   try {
     const validation = validateGenerateFacadeRequest(req.body || {});
-    const featureFlags = ["useFacadeGrammarEngine"];
+    const featureFlags = [
+      "useFacadeGrammarEngine",
+      "useFormalSchemaValidation",
+      "useFacadeComponentAssembly",
+    ];
     if (!validation.ok) {
       return sendError(
         res,
@@ -55,9 +60,30 @@ export default async function handler(req, res) {
       );
     }
 
+    const schemaValidation = enforceSchemaValidation(
+      res,
+      "generateFacadeRequest",
+      validation.normalized,
+      "generate-facade",
+      featureFlags,
+    );
+    if (!schemaValidation.valid) {
+      return;
+    }
+
     const projectGeometry = coerceToCanonicalProjectGeometry(
       validation.normalized.projectGeometry,
     );
+    const geometrySchemaValidation = enforceSchemaValidation(
+      res,
+      "canonicalProjectGeometry",
+      projectGeometry,
+      "generate-facade",
+      featureFlags,
+    );
+    if (!geometrySchemaValidation.valid) {
+      return;
+    }
     const facadeGrammar = buildFacadeGrammar(
       projectGeometry,
       validation.normalized.styleDNA,

@@ -915,6 +915,45 @@ export const FEATURE_FLAGS = {
   /** Phase 3 cross-level, facade, structure, and edit integrity validation */
   usePhase3Validation: true,
 
+  /** Phase 4 candidate search for deterministic layouts */
+  usePhase4LayoutSearch: true,
+
+  /** Phase 4 buildable-envelope interpretation from site constraints */
+  useBuildableEnvelopeReasoning: true,
+
+  /** Phase 4 JSON-schema-like request and geometry enforcement */
+  useFormalSchemaValidation: true,
+
+  /** Phase 4 facade component assembly beyond side-level grammar */
+  useFacadeComponentAssembly: true,
+
+  /** Phase 4 structural continuity and support semantics */
+  useStructuralSemanticsPhase4: true,
+
+  /** Phase 4 dependency-driven regeneration planning */
+  useDependencyGraphRegeneration: true,
+
+  /** Phase 4 A1 readiness and panel planning services */
+  useA1ProjectReadiness: true,
+
+  /** Phase 5 deterministic layout repair search */
+  usePhase5RepairEngine: true,
+
+  /** Phase 5 formal schema registry and Ajv-style enforcement */
+  useFormalSchemaEngine: true,
+
+  /** Phase 5 fragment-level dependency invalidation */
+  useFragmentDependencyInvalidation: true,
+
+  /** Phase 5 compose readiness and blocking orchestration */
+  useComposeReadinessPhase5: true,
+
+  /** Phase 5 artifact lifecycle store and snapshotting */
+  useArtifactLifecycleStore: true,
+
+  /** Phase 5 irregular-site fallback scoring and strategy selection */
+  useIrregularSiteFallbackPhase5: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1166,6 +1205,19 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.usePartialRegeneration = true;
   FEATURE_FLAGS.useGeometryLockedVisuals = true;
   FEATURE_FLAGS.usePhase3Validation = true;
+  FEATURE_FLAGS.usePhase4LayoutSearch = true;
+  FEATURE_FLAGS.useBuildableEnvelopeReasoning = true;
+  FEATURE_FLAGS.useFormalSchemaValidation = true;
+  FEATURE_FLAGS.useFacadeComponentAssembly = true;
+  FEATURE_FLAGS.useStructuralSemanticsPhase4 = true;
+  FEATURE_FLAGS.useDependencyGraphRegeneration = true;
+  FEATURE_FLAGS.useA1ProjectReadiness = true;
+  FEATURE_FLAGS.usePhase5RepairEngine = true;
+  FEATURE_FLAGS.useFormalSchemaEngine = true;
+  FEATURE_FLAGS.useFragmentDependencyInvalidation = true;
+  FEATURE_FLAGS.useComposeReadinessPhase5 = true;
+  FEATURE_FLAGS.useArtifactLifecycleStore = true;
+  FEATURE_FLAGS.useIrregularSiteFallbackPhase5 = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1364,6 +1416,58 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_PHASE3_VALIDATION: {
       flag: "usePhase3Validation",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PHASE4_LAYOUT_SEARCH: {
+      flag: "usePhase4LayoutSearch",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_BUILDABLE_ENVELOPE_REASONING: {
+      flag: "useBuildableEnvelopeReasoning",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FORMAL_SCHEMA_VALIDATION: {
+      flag: "useFormalSchemaValidation",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FACADE_COMPONENT_ASSEMBLY: {
+      flag: "useFacadeComponentAssembly",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_STRUCTURAL_SEMANTICS_PHASE4: {
+      flag: "useStructuralSemanticsPhase4",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DEPENDENCY_GRAPH_REGENERATION: {
+      flag: "useDependencyGraphRegeneration",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_PROJECT_READINESS: {
+      flag: "useA1ProjectReadiness",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PHASE5_REPAIR_ENGINE: {
+      flag: "usePhase5RepairEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FORMAL_SCHEMA_ENGINE: {
+      flag: "useFormalSchemaEngine",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FRAGMENT_DEPENDENCY_INVALIDATION: {
+      flag: "useFragmentDependencyInvalidation",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_COMPOSE_READINESS_PHASE5: {
+      flag: "useComposeReadinessPhase5",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ARTIFACT_LIFECYCLE_STORE: {
+      flag: "useArtifactLifecycleStore",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_IRREGULAR_SITE_FALLBACK_PHASE5: {
+      flag: "useIrregularSiteFallbackPhase5",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

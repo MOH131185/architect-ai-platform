@@ -1,3 +1,5 @@
+import { evaluateSpanSanity } from "../structure/spanSanityService.js";
+import { validateStackedSupports } from "../structure/stackedSupportValidator.js";
 import { validateStructuralAlignment } from "../structure/structuralAlignmentValidator.js";
 
 function exteriorWallLengthBySide(projectGeometry = {}) {
@@ -66,17 +68,31 @@ export function runFacadeAndStructureChecks({
         );
         affectedEntities.push(`facade:${orientation.side}`);
       }
+      if (!orientation.components?.bays?.length) {
+        warnings.push(
+          `facade "${orientation.side}" is missing assembled bay components.`,
+        );
+        affectedEntities.push(`facade:${orientation.side}`);
+      }
     });
   }
 
-  const structural = validateStructuralAlignment(
-    projectGeometry,
-    structuralGrid,
-  );
-  warnings.push(...(structural.warnings || []));
-  errors.push(...(structural.errors || []));
-  repairHints.push(...(structural.repairHints || []));
-  affectedEntities.push(...(structural.affectedEntities || []));
+  if (structuralGrid) {
+    const structural = validateStructuralAlignment(
+      projectGeometry,
+      structuralGrid,
+    );
+    const supportStack = validateStackedSupports(projectGeometry);
+    const spanSanity = evaluateSpanSanity(projectGeometry, structuralGrid);
+    warnings.push(...(structural.warnings || []));
+    warnings.push(...(supportStack.warnings || []));
+    warnings.push(...(spanSanity.warnings || []));
+    errors.push(...(structural.errors || []));
+    errors.push(...(supportStack.errors || []));
+    errors.push(...(spanSanity.errors || []));
+    repairHints.push(...(structural.repairHints || []));
+    affectedEntities.push(...(structural.affectedEntities || []));
+  }
 
   return {
     valid: errors.length === 0,
