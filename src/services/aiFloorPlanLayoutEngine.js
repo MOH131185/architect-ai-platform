@@ -22,6 +22,8 @@ const LEGACY_LAYOUT_MODELS = [
   "Qwen/Qwen2.5-7B-Instruct-Turbo",
 ];
 
+const MIN_ACCEPTABLE_LAYOUT_QUALITY = 60;
+
 function getLayoutModelChain() {
   if (!isFeatureEnabled("modelRegistry")) {
     return LEGACY_LAYOUT_MODELS.map((model) => ({
@@ -515,10 +517,24 @@ export async function generateFloorPlanLayout(params) {
         }
       }
 
+      const allowedMajorAreaMismatches = Math.max(
+        1,
+        Math.floor((programSpaces?.length || 0) * 0.15),
+      );
+      if (
+        validation.severeAreaMismatchCount > 0 ||
+        validation.majorAreaMismatchCount > allowedMajorAreaMismatches
+      ) {
+        throw new Error(
+          `AI layout area fidelity too weak (${validation.majorAreaMismatchCount} major / ${validation.severeAreaMismatchCount} severe mismatches)`,
+        );
+      }
+
       const qualityEvaluation = evaluateFloorPlan(spatialGraph, resolvedLayout);
       const candidate = {
         layout: resolvedLayout,
         layoutModel,
+        validation,
         qualityEvaluation: {
           ...qualityEvaluation,
           attempts: attempt,
@@ -532,7 +548,11 @@ export async function generateFloorPlanLayout(params) {
         bestResult = candidate;
       }
 
-      if (candidate.qualityEvaluation.total >= 50) {
+      if (
+        candidate.qualityEvaluation.total >= MIN_ACCEPTABLE_LAYOUT_QUALITY &&
+        candidate.validation.majorAreaMismatchCount <=
+          allowedMajorAreaMismatches
+      ) {
         break;
       }
 

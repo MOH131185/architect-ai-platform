@@ -122,6 +122,10 @@ import {
 import { fromLegacyDNA } from "../types/CanonicalDesignState.js";
 // AI Floor Plan Layout Engine — generates room coordinates via Qwen2.5-72B
 import { generateFloorPlanLayout } from "./aiFloorPlanLayoutEngine.js";
+import {
+  applyAiLayoutRuntimeEnrichment,
+  ensureMutableWorkingDNA,
+} from "./aiLayoutRuntimeService.js";
 import { getClimateData } from "./climateService.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
@@ -860,6 +864,8 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         masterDNA = dnaResponse.masterDNA || dnaResponse;
       } // end of else (no preSelectedDNA)
 
+      masterDNA = ensureMutableWorkingDNA(masterDNA, logger);
+
       // Log DNA quality
       if (masterDNA.isFallback) {
         logger.warn("⚠️  [DNA Generator] Using high-quality fallback DNA");
@@ -1262,208 +1268,16 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               "residential",
           });
 
-          // Inject AI coordinates into programRooms using fuzzy matching
-          // to handle name differences between AI output and programSpaces
-          // (e.g. "Hall" vs "Hallway", "WC" vs "Toilet")
-          const ROOM_CANONICAL_NAMES = {
-            wc: "wc",
-            toilet: "wc",
-            cloakroom: "wc",
-            "powder room": "wc",
-            lavatory: "wc",
-            "guest wc": "wc",
-            "living room": "living room",
-            living: "living room",
-            lounge: "living room",
-            "sitting room": "living room",
-            reception: "living room",
-            "reception room": "living room",
-            kitchen: "kitchen",
-            "kitchen dining": "kitchen dining",
-            "kitchen-dining": "kitchen dining",
-            "kitchen/dining": "kitchen dining",
-            "kitchen diner": "kitchen dining",
-            "dining kitchen": "kitchen dining",
-            dining: "dining room",
-            "dining area": "dining room",
-            "dining room": "dining room",
-            hall: "circulation",
-            hallway: "circulation",
-            corridor: "circulation",
-            circulation: "circulation",
-            landing: "circulation",
-            stairwell: "circulation",
-            "entrance hall": "circulation",
-            "upper hall": "circulation",
-            "upper landing": "circulation",
-            "first floor landing": "circulation",
-            "staircase circulation": "circulation",
-            "staircase and circulation": "circulation",
-            "staircase & circulation": "circulation",
-            "master bedroom": "master bedroom",
-            "bedroom 1": "master bedroom",
-            "main bedroom": "master bedroom",
-            "principal bedroom": "master bedroom",
-            "en-suite": "ensuite",
-            ensuite: "ensuite",
-            "en suite": "ensuite",
-            "ensuite bathroom": "ensuite",
-            "shower room": "ensuite",
-            utility: "utility",
-            "utility room": "utility",
-            laundry: "utility",
-            "boot room": "utility",
-            study: "study",
-            office: "study",
-            "home office": "study",
-            bathroom: "bathroom",
-            "family bathroom": "bathroom",
-            "main bathroom": "bathroom",
-          };
-
-          function normalizeRoomKey(value) {
-            return String(value || "")
-              .toLowerCase()
-              .replace(/&/g, " and ")
-              .replace(/[/,_-]/g, " ")
-              .replace(/\s+/g, " ")
-              .trim();
-          }
-
-          function canonicalizeRoomName(value) {
-            const normalized = normalizeRoomKey(value);
-            return ROOM_CANONICAL_NAMES[normalized] || normalized;
-          }
-
-          function fuzzyMatchRoom(spaces, aiRoom, levelIndex) {
-            const aiId = normalizeRoomKey(aiRoom.id);
-            const aiName = normalizeRoomKey(aiRoom.name);
-            const aiCanonical = canonicalizeRoomName(aiRoom.name);
-            const levelSpaces = spaces.filter(
-              (space) => (space.levelIndex || 0) === levelIndex,
-            );
-
-            // 1) Stable ID match from the spatial graph/layout
-            let match = levelSpaces.find(
-              (space) => normalizeRoomKey(space.id) === aiId && aiId.length > 0,
-            );
-            if (match) return match;
-
-            // 2) Exact normalized name match
-            match = levelSpaces.find(
-              (space) => normalizeRoomKey(space.name) === aiName,
-            );
-            if (match) return match;
-
-            // 3) Canonical name match across known aliases/synonyms
-            match = levelSpaces.find((space) => {
-              const programCanonical = canonicalizeRoomName(
-                space.program || space.category,
-              );
-              const nameCanonical = canonicalizeRoomName(space.name);
-              return (
-                nameCanonical === aiCanonical ||
-                programCanonical === aiCanonical
-              );
-            });
-            if (match) return match;
-
-            // 4) Partial normalized/canonical substring match
-            match = levelSpaces.find((space) => {
-              const normalizedName = normalizeRoomKey(space.name);
-              const canonicalName = canonicalizeRoomName(space.name);
-              return (
-                (normalizedName.includes(aiName) ||
-                  aiName.includes(normalizedName) ||
-                  canonicalName.includes(aiCanonical) ||
-                  aiCanonical.includes(canonicalName)) &&
-                normalizedName.length > 0 &&
-                aiName.length > 0
-              );
-            });
-            return match || null;
-          }
-
-          let injected = 0;
-          const alreadyMatched = new Set();
-          for (const level of aiLayout.levels || []) {
-            for (const room of level.rooms || []) {
-              const unmatched = typesCDS.programRooms.filter(
-                (r) => !alreadyMatched.has(r),
-              );
-              const match = fuzzyMatchRoom(unmatched, room, level.index);
-              if (match) {
-                match.x = room.x;
-                match.y = room.y;
-                match.width = room.width;
-                match.depth = room.depth;
-                match.hasExternalWall = room.hasExternalWall;
-                match.adjacentTo = room.adjacentTo;
-                alreadyMatched.add(match);
-                injected++;
-              } else {
-                logger.warn(
-                  `⚠️ AI layout room "${room.name}" (level ${level.index}) not matched to any programRoom`,
-                );
-              }
-            }
-          }
-
-          masterDNA.spatialGraph = aiLayout.spatialGraph || null;
-          masterDNA.qualityEvaluation = aiLayout.qualityEvaluation || null;
-          masterDNA.qualityScore = aiLayout.qualityEvaluation?.total || null;
-          masterDNA.climateData =
-            climateContext || masterDNA.climateData || null;
-          masterDNA._structured = masterDNA._structured || {};
-          masterDNA._structured.program = masterDNA._structured.program || {};
-          masterDNA._structured.site = masterDNA._structured.site || {};
-          masterDNA._structured.program.spatialGraph =
-            aiLayout.spatialGraph || null;
-          masterDNA._structured.site.climateData =
-            climateContext || masterDNA._structured.site.climateData || null;
-          if (climateContext?.climate) {
-            masterDNA._structured.site.climate_zone =
-              climateContext.climate.zone ||
-              masterDNA._structured.site.climate_zone ||
-              null;
-            masterDNA._structured.site.sun_path =
-              climateContext.sunPath ||
-              masterDNA._structured.site.sun_path ||
-              null;
-            masterDNA.climateDesign = {
-              ...(masterDNA.climateDesign || {}),
-              zone:
-                climateContext.climate.zone || masterDNA.climateDesign?.zone,
-              orientation:
-                climateContext.design_recommendations?.orientation ||
-                masterDNA.climateDesign?.orientation,
-            };
-          }
-
-          typesCDS.site = typesCDS.site || {};
-          typesCDS.site.climateData =
-            climateContext || typesCDS.site.climateData || null;
-          if (climateContext?.climate) {
-            typesCDS.site.climate = {
-              ...(typesCDS.site.climate || {}),
-              zone:
-                climateContext.climate.zone ||
-                typesCDS.site.climate?.zone ||
-                "temperate",
-              prevailingWind:
-                climateContext.climate.prevailing_wind?.direction ||
-                typesCDS.site.climate?.prevailingWind,
-              annualRainfallMm:
-                climateContext.climate.rainfall_mm_annual ||
-                typesCDS.site.climate?.annualRainfallMm,
-            };
-          }
-          if (climateContext?.sunPath) {
-            typesCDS.site.sunPath = {
-              ...(typesCDS.site.sunPath || {}),
-              ...climateContext.sunPath,
-            };
-          }
+          const runtimeEnrichment = applyAiLayoutRuntimeEnrichment({
+            masterDNA,
+            typesCDS,
+            aiLayout,
+            climateContext,
+            logger,
+          });
+          masterDNA = runtimeEnrichment.masterDNA;
+          typesCDS = runtimeEnrichment.typesCDS;
+          const injected = runtimeEnrichment.injected;
 
           logger.success(
             `✅ AI layout applied to program spaces (${injected}/${typesCDS.programRooms.length} rooms)`,

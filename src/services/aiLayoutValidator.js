@@ -36,6 +36,9 @@ export function validateAILayout(layout, constraints) {
   const warnings = [];
   let critical = false;
   let needsFix = false;
+  let matchedProgramRoomCount = 0;
+  let majorAreaMismatchCount = 0;
+  let severeAreaMismatchCount = 0;
 
   if (!layout || !layout.levels || !Array.isArray(layout.levels)) {
     return {
@@ -170,10 +173,17 @@ export function validateAILayout(layout, constraints) {
       }
 
       if (typeof match.width === "number" && typeof match.depth === "number") {
+        matchedProgramRoomCount += 1;
         const actualArea = match.width * match.depth;
         const targetArea = space.targetAreaM2 || space.area || 15;
         const deviation = Math.abs(actualArea - targetArea) / targetArea;
 
+        if (deviation > 0.25) {
+          majorAreaMismatchCount += 1;
+        }
+        if (deviation > 0.4) {
+          severeAreaMismatchCount += 1;
+        }
         if (deviation > 0.3) {
           warnings.push(
             `"${space.name}": area ${actualArea.toFixed(1)}m² vs target ${targetArea.toFixed(1)}m² (${(deviation * 100).toFixed(0)}% deviation)`,
@@ -217,6 +227,9 @@ export function validateAILayout(layout, constraints) {
     warnings,
     critical,
     fixedLayout: needsFix ? fixedLayout : null,
+    matchedProgramRoomCount,
+    majorAreaMismatchCount,
+    severeAreaMismatchCount,
   };
 }
 
