@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useRef } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { createEnvironmentAdapter } from "../services/environmentAdapter.js";
 // runModifyWorkflow available from '../services/pureOrchestrator.js' if needed
 import { modifySheet } from "../services/pureModificationService.js";
@@ -23,6 +24,12 @@ import {
   executeWorkflow,
   UnsupportedPipelineModeError,
 } from "../services/workflowRouter.js";
+import {
+  startGeneration,
+  completeGeneration,
+  GenerationLimitError,
+} from "../services/generationGate.js";
+import { triggerUsageRefresh } from "../components/UsageChip.jsx";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -49,6 +56,14 @@ export function useArchitectAIWorkflow() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [remainingGenerations, setRemainingGenerations] = useState(null);
+  // `upgradeRequired` is raised when /api/generations/start returns 429. The
+  // wizard container watches this to render an "Upgrade" CTA.
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
+
+  // Clerk session token accessor for the generation gate endpoints.
+  // useAuth is safe to call here — this is a hook.
+  const { isSignedIn, getToken } = useAuth();
   // Progress format includes both step/total AND stage/percentage for component compatibility
   const [progress, setProgress] = useState({
     step: 0,
@@ -79,195 +94,260 @@ export function useArchitectAIWorkflow() {
    * @param {Array} params.overlays - Overlays
    * @returns {Promise<SheetResult>} Sheet result
    */
-  const generateSheet = useCallback(async (params) => {
-    setLoading(true);
-    setError(null);
-    setProgress({
-      step: 0,
-      total: 5,
-      message: "Starting generation...",
-      stage: "analysis",
-      percentage: 0,
-    });
+  const generateSheet = useCallback(
+    async (params) => {
+      setLoading(true);
+      setError(null);
+      setUpgradeRequired(false);
+      setProgress({
+        step: 0,
+        total: 5,
+        message: "Starting generation...",
+        stage: "analysis",
+        percentage: 0,
+      });
 
-    try {
-      // Resolve pipeline mode (fails explicitly on unsupported modes)
-      const { mode: resolvedMode } = resolveWorkflowByMode();
-      logger.info(`Using ${resolvedMode} pipeline workflow`, null, "🎨");
+      // Quota slot reserved at /api/generations/start; finalized in finally.
+      let gateGenerationId = null;
+      let gateSuccess = false;
+      let finalSheetUrl = null;
 
-      const onProgress = (updateOrStep, legacyMessage) => {
-        const total = 5;
+      try {
+        // Reserve a quota slot before doing any paid work. If the user is over
+        // their monthly limit, bail early with a clear upgrade signal.
+        if (isSignedIn) {
+          try {
+            const gate = await startGeneration(getToken);
+            gateGenerationId = gate.generationId;
+            if (gate.remaining !== null && gate.remaining !== undefined) {
+              setRemainingGenerations(gate.remaining);
+            }
+          } catch (gateErr) {
+            if (gateErr instanceof GenerationLimitError) {
+              setError(gateErr.message);
+              setUpgradeRequired(true);
+              setLoading(false);
+              logger.warn(`Generation blocked by quota: ${gateErr.message}`);
+              return null;
+            }
+            throw gateErr;
+          }
+        } else {
+          const msg = "Please sign in to generate A1 sheets.";
+          setError(msg);
+          setLoading(false);
+          return null;
+        }
 
-        if (updateOrStep && typeof updateOrStep === "object") {
-          const rawStage = updateOrStep.stage;
-          const stage = STAGES.includes(rawStage) ? rawStage : "rendering";
-          const rawPercent = updateOrStep.percentage ?? updateOrStep.percent;
-          const percentage =
-            typeof rawPercent === "number" && Number.isFinite(rawPercent)
-              ? Math.max(0, Math.min(100, Math.round(rawPercent)))
-              : Math.round((getStepForStage(stage) / total) * 100);
+        // Resolve pipeline mode (fails explicitly on unsupported modes)
+        const { mode: resolvedMode } = resolveWorkflowByMode();
+        logger.info(`Using ${resolvedMode} pipeline workflow`, null, "🎨");
 
+        const onProgress = (updateOrStep, legacyMessage) => {
+          const total = 5;
+
+          if (updateOrStep && typeof updateOrStep === "object") {
+            const rawStage = updateOrStep.stage;
+            const stage = STAGES.includes(rawStage) ? rawStage : "rendering";
+            const rawPercent = updateOrStep.percentage ?? updateOrStep.percent;
+            const percentage =
+              typeof rawPercent === "number" && Number.isFinite(rawPercent)
+                ? Math.max(0, Math.min(100, Math.round(rawPercent)))
+                : Math.round((getStepForStage(stage) / total) * 100);
+
+            setProgress({
+              step: getStepForStage(stage),
+              total,
+              message: updateOrStep.message || legacyMessage || "",
+              stage,
+              percentage,
+            });
+            return;
+          }
+
+          const step = Number(updateOrStep || 0);
+          const stage = getStageForStep(step);
+          const percentage = Math.round((step / total) * 100);
           setProgress({
-            step: getStepForStage(stage),
+            step,
             total,
-            message: updateOrStep.message || legacyMessage || "",
+            message: legacyMessage || "",
             stage,
             percentage,
           });
-          return;
+        };
+
+        const workflowLocationData =
+          params.designSpec?.location ||
+          params.locationData ||
+          params.siteSnapshot ||
+          null;
+
+        const rawMultiPanelResult = await executeWorkflow(
+          dnaWorkflowOrchestrator,
+          {
+            locationData: workflowLocationData,
+            projectContext: params.designSpec,
+            portfolioFiles:
+              params.designSpec?.portfolioBlend?.portfolioFiles || [],
+            siteSnapshot: params.siteSnapshot,
+            baseSeed: params.seed || Date.now(),
+          },
+          { onProgress },
+        );
+
+        const multiPanelResult = normalizeMultiPanelResult(rawMultiPanelResult);
+
+        if (!multiPanelResult?.success || !multiPanelResult?.composedSheetUrl) {
+          throw new Error(
+            multiPanelResult?.error || "Multi-panel generation failed",
+          );
         }
 
-        const step = Number(updateOrStep || 0);
-        const stage = getStageForStep(step);
-        const percentage = Math.round((step / total) * 100);
-        setProgress({
-          step,
-          total,
-          message: legacyMessage || "",
-          stage,
-          percentage,
-        });
-      };
-
-      const workflowLocationData =
-        params.designSpec?.location ||
-        params.locationData ||
-        params.siteSnapshot ||
-        null;
-
-      const rawMultiPanelResult = await executeWorkflow(
-        dnaWorkflowOrchestrator,
-        {
-          locationData: workflowLocationData,
-          projectContext: params.designSpec,
-          portfolioFiles:
-            params.designSpec?.portfolioBlend?.portfolioFiles || [],
-          siteSnapshot: params.siteSnapshot,
-          baseSeed: params.seed || Date.now(),
-        },
-        { onProgress },
-      );
-
-      const multiPanelResult = normalizeMultiPanelResult(rawMultiPanelResult);
-
-      if (!multiPanelResult?.success || !multiPanelResult?.composedSheetUrl) {
-        throw new Error(
-          multiPanelResult?.error || "Multi-panel generation failed",
-        );
-      }
-
-      const sheetResult = {
-        ...multiPanelResult,
-        url: multiPanelResult.composedSheetUrl,
-        composedSheetUrl: multiPanelResult.composedSheetUrl,
-        workflow: resolvedMode,
-        panelCoordinates:
-          multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
-        metadata: {
-          ...multiPanelResult.metadata,
+        const sheetResult = {
+          ...multiPanelResult,
+          url: multiPanelResult.composedSheetUrl,
+          composedSheetUrl: multiPanelResult.composedSheetUrl,
           workflow: resolvedMode,
-          panelCount:
-            multiPanelResult.metadata?.panelCount ||
-            (multiPanelResult.panelMap
-              ? Object.keys(multiPanelResult.panelMap).length
-              : 0),
-        },
-      };
+          panelCoordinates:
+            multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
+          metadata: {
+            ...multiPanelResult.metadata,
+            workflow: resolvedMode,
+            panelCount:
+              multiPanelResult.metadata?.panelCount ||
+              (multiPanelResult.panelMap
+                ? Object.keys(multiPanelResult.panelMap).length
+                : 0),
+          },
+        };
 
-      // Save to design history
-      const designId = await designHistoryRepository.saveDesign({
-        designId: sheetResult.designId || undefined,
-        sheetId: sheetResult.sheetId || undefined,
-        dna: sheetResult.dna,
-        basePrompt: sheetResult.prompt,
-        seed: sheetResult.seed,
-        sheetType: params.sheetType || "ARCH",
-        sheetMetadata: sheetResult.metadata,
-        overlays: params.overlays || [],
-        projectContext: params.designSpec,
-        locationData: workflowLocationData,
-        siteSnapshot: params.siteSnapshot,
-        resultUrl: sheetResult.composedSheetUrl,
-        composedSheetUrl: sheetResult.composedSheetUrl,
-        pdfUrl: sheetResult.pdfUrl || null,
-        panels: sheetResult.panelMap || sheetResult.panels,
-        panelMap: sheetResult.panelMap || sheetResult.panels,
-        panelCoordinates: sheetResult.panelCoordinates,
-        qa: sheetResult.qa || null,
-        critique: sheetResult.critique || null,
-        trace: sheetResult.trace || null,
-        baselineBundle: sheetResult.baselineBundle || null,
-        a1Sheet: {
+        // Save to design history
+        const designId = await designHistoryRepository.saveDesign({
+          designId: sheetResult.designId || undefined,
           sheetId: sheetResult.sheetId || undefined,
-          url: sheetResult.composedSheetUrl,
+          dna: sheetResult.dna,
+          basePrompt: sheetResult.prompt,
+          seed: sheetResult.seed,
+          sheetType: params.sheetType || "ARCH",
+          sheetMetadata: sheetResult.metadata,
+          overlays: params.overlays || [],
+          projectContext: params.designSpec,
+          locationData: workflowLocationData,
+          siteSnapshot: params.siteSnapshot,
+          resultUrl: sheetResult.composedSheetUrl,
           composedSheetUrl: sheetResult.composedSheetUrl,
           pdfUrl: sheetResult.pdfUrl || null,
-          metadata: sheetResult.metadata,
           panels: sheetResult.panelMap || sheetResult.panels,
           panelMap: sheetResult.panelMap || sheetResult.panels,
-          coordinates: sheetResult.panelCoordinates,
+          panelCoordinates: sheetResult.panelCoordinates,
           qa: sheetResult.qa || null,
           critique: sheetResult.critique || null,
           trace: sheetResult.trace || null,
-        },
-      });
+          baselineBundle: sheetResult.baselineBundle || null,
+          a1Sheet: {
+            sheetId: sheetResult.sheetId || undefined,
+            url: sheetResult.composedSheetUrl,
+            composedSheetUrl: sheetResult.composedSheetUrl,
+            pdfUrl: sheetResult.pdfUrl || null,
+            metadata: sheetResult.metadata,
+            panels: sheetResult.panelMap || sheetResult.panels,
+            panelMap: sheetResult.panelMap || sheetResult.panels,
+            coordinates: sheetResult.panelCoordinates,
+            qa: sheetResult.qa || null,
+            critique: sheetResult.critique || null,
+            trace: sheetResult.trace || null,
+          },
+        });
 
-      sheetResult.designId = designId;
+        sheetResult.designId = designId;
 
-      setResult(sheetResult);
-      setProgress({
-        step: 5,
-        total: 5,
-        message: "Complete!",
-        stage: "finalizing",
-        percentage: 100,
-      });
+        // Mark the gate slot as successfully consumed; the finally block will
+        // POST /api/generations/complete with this URL so the quota increments.
+        gateSuccess = true;
+        finalSheetUrl = sheetResult.composedSheetUrl;
 
-      logger.success("Sheet generation complete", { designId });
+        setResult(sheetResult);
+        setProgress({
+          step: 5,
+          total: 5,
+          message: "Complete!",
+          stage: "finalizing",
+          percentage: 100,
+        });
 
-      return sheetResult;
-    } catch (err) {
-      // Unsupported pipeline mode — fail fast, do not retry
-      if (err instanceof UnsupportedPipelineModeError) {
-        const msg = `Configuration error: ${err.message}. Set PIPELINE_MODE to "multi_panel".`;
-        logger.error(msg);
-        setError(msg);
-        return null;
+        logger.success("Sheet generation complete", { designId });
+
+        return sheetResult;
+      } catch (err) {
+        // Unsupported pipeline mode — fail fast, do not retry
+        if (err instanceof UnsupportedPipelineModeError) {
+          const msg = `Configuration error: ${err.message}. Set PIPELINE_MODE to "multi_panel".`;
+          logger.error(msg);
+          setError(msg);
+          return null;
+        }
+        logger.error(`Sheet generation failed: ${err.message}`);
+        if (err.stack) {
+          logger.error(
+            `   Stack: ${err.stack.split("\n").slice(0, 3).join("\n")}`,
+          );
+        }
+        // User-friendly error messages for common failure modes
+        const msg = err.message || "";
+        if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
+          setError(
+            "API rate limit reached. Please wait 60 seconds and try again.",
+          );
+        } else if (
+          msg.includes("401") ||
+          msg.toLowerCase().includes("unauthorized")
+        ) {
+          setError(
+            "API key invalid or expired. Check your Together.ai configuration.",
+          );
+        } else if (
+          msg.toLowerCase().includes("timeout") ||
+          msg.includes("ETIMEDOUT")
+        ) {
+          setError(
+            "Generation timed out. The AI service may be under heavy load — try again shortly.",
+          );
+        } else {
+          setError(msg);
+        }
+        throw err;
+      } finally {
+        // Finalize the reserved quota slot. On success, /complete increments
+        // the monthly counter; on failure, it cancels the pending row so the
+        // user is not charged for a broken generation.
+        if (gateGenerationId) {
+          try {
+            const completion = await completeGeneration(
+              getToken,
+              gateGenerationId,
+              {
+                success: gateSuccess,
+                a1SheetUrl: gateSuccess ? finalSheetUrl : null,
+              },
+            );
+            if (completion && typeof completion.remaining === "number") {
+              setRemainingGenerations(completion.remaining);
+            }
+          } catch (completeErr) {
+            // Accounting failures must not mask the generation result.
+            logger.warn(
+              `Failed to finalize generation gate: ${completeErr.message}`,
+            );
+          }
+          // Refresh the header usage chip regardless of completion success.
+          triggerUsageRefresh();
+        }
+        setLoading(false);
       }
-      logger.error(`Sheet generation failed: ${err.message}`);
-      if (err.stack) {
-        logger.error(
-          `   Stack: ${err.stack.split("\n").slice(0, 3).join("\n")}`,
-        );
-      }
-      // User-friendly error messages for common failure modes
-      const msg = err.message || "";
-      if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
-        setError(
-          "API rate limit reached. Please wait 60 seconds and try again.",
-        );
-      } else if (
-        msg.includes("401") ||
-        msg.toLowerCase().includes("unauthorized")
-      ) {
-        setError(
-          "API key invalid or expired. Check your Together.ai configuration.",
-        );
-      } else if (
-        msg.toLowerCase().includes("timeout") ||
-        msg.includes("ETIMEDOUT")
-      ) {
-        setError(
-          "Generation timed out. The AI service may be under heavy load — try again shortly.",
-        );
-      } else {
-        setError(msg);
-      }
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [isSignedIn, getToken],
+  );
 
   /**
    * Modify A1 sheet
@@ -487,6 +567,14 @@ export function useArchitectAIWorkflow() {
   }, []);
 
   /**
+   * Dismiss the upgrade-required flag after the user has seen the prompt
+   * (e.g. after they navigate to the pricing page).
+   */
+  const clearUpgradeRequired = useCallback(() => {
+    setUpgradeRequired(false);
+  }, []);
+
+  /**
    * Reset workflow
    */
   const reset = useCallback(() => {
@@ -523,6 +611,8 @@ export function useArchitectAIWorkflow() {
     error,
     result,
     progress,
+    remainingGenerations,
+    upgradeRequired,
 
     // Functions
     generateSheet,
@@ -531,6 +621,7 @@ export function useArchitectAIWorkflow() {
     loadDesign,
     listDesigns,
     clearError,
+    clearUpgradeRequired,
     reset,
     loadDemoResult,
 

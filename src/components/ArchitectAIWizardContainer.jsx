@@ -14,7 +14,8 @@ import React, {
   useState,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, X, Lock } from "lucide-react";
+import { SignInButton, useAuth, useClerk } from "@clerk/clerk-react";
 import { useArchitectAIWorkflow } from "../hooks/useArchitectAIWorkflow.js";
 import { useWizardState } from "../hooks/useWizardState.js";
 import { getDemoProject, buildDemoResult } from "../data/demoProjects.js";
@@ -42,9 +43,11 @@ import GenerateStep from "./steps/GenerateStep.jsx";
 
 // Landing page
 import LandingPage from "./LandingPage.jsx";
+import PricingPage from "./PricingPage.jsx";
 
 // Import new UI components and layout
 import { Card } from "./ui";
+import Button from "./ui/Button.jsx";
 import { AppShell, PageTransition } from "./layout";
 import "../styles/deepgram.css";
 
@@ -120,18 +123,40 @@ const polygonsEqual = (polygonA = [], polygonB = []) => {
 };
 
 const ArchitectAIWizardContainer = () => {
+  // Top-level view state: 'wizard' (default) or 'pricing'.
+  // Pricing is a separate surface so we don't tangle it into the step-based
+  // wizard state (which has a fixed 0–6 lifecycle).
+  const [view, setView] = useState("wizard");
+
+  const { isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
+
+  const handlePricingClick = useCallback(() => setView("pricing"), []);
+  const handleBackToWizard = useCallback(() => setView("wizard"), []);
+
   // Workflow hook
   const {
     loading,
     error,
     result,
     progress,
+    upgradeRequired,
     generateSheet,
     modifySheetWorkflow,
     exportSheetWorkflow,
     clearError,
+    clearUpgradeRequired,
     loadDemoResult,
   } = useArchitectAIWorkflow();
+
+  // When /api/generations/start returns 429, surface the pricing surface.
+  // Clearing the flag prevents a loop on subsequent renders after nav.
+  useEffect(() => {
+    if (upgradeRequired) {
+      setView("pricing");
+      clearUpgradeRequired();
+    }
+  }, [upgradeRequired, clearUpgradeRequired]);
 
   // Use the custom hook for state management
   const {
@@ -1514,11 +1539,65 @@ const ArchitectAIWizardContainer = () => {
    * Render current step
    */
   const renderStep = () => {
+    // Pricing is a top-level view, not a step — it overrides whatever step
+    // we're on so users can browse pricing without losing their wizard state.
+    if (view === "pricing") {
+      return <PricingPage onBack={handleBackToWizard} />;
+    }
+
+    // Auth gate for wizard steps 1–6. Landing page (step 0) is accessible to
+    // signed-out visitors. For signed-out users on a protected step, fall back
+    // to the landing page with a visible sign-in prompt.
+    if (currentStep > 0 && !isSignedIn) {
+      return (
+        <div className="max-w-xl mx-auto">
+          <Card
+            variant="elevated"
+            padding="lg"
+            className="border border-navy-700 bg-navy-950/70 text-center"
+          >
+            <div className="mb-4 flex justify-center">
+              <div className="w-14 h-14 rounded-full bg-royal-900/40 border border-royal-700 flex items-center justify-center">
+                <Lock className="w-6 h-6 text-royal-300" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Sign in to continue
+            </h2>
+            <p className="text-gray-400 mb-6">
+              Create a free account to generate A1 architectural sheets. The
+              free plan includes 2 sheets per month.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <SignInButton mode="modal">
+                <Button variant="gradient" size="md">
+                  Sign in / Sign up
+                </Button>
+              </SignInButton>
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => setCurrentStep(0)}
+              >
+                Back to home
+              </Button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
     switch (currentStep) {
       case 0:
         return (
           <LandingPage
-            onStart={() => setCurrentStep(1)}
+            onStart={() => {
+              if (isSignedIn) {
+                setCurrentStep(1);
+              } else {
+                openSignIn({ afterSignInUrl: window.location.href });
+              }
+            }}
             onDemo={() => {
               window.location.search = "?demo=true";
             }}
@@ -1636,24 +1715,33 @@ const ArchitectAIWizardContainer = () => {
     }
   };
 
+  // Show nav on every screen except the landing hero (step 0 in wizard view).
+  const showNav = view === "pricing" || currentStep > 0;
+  const showFooter = view === "wizard" && currentStep === 0;
+
   return (
     <AppShell
-      showNav={currentStep > 0}
-      showFooter={currentStep === 0}
+      showNav={showNav}
+      showFooter={showFooter}
       navProps={{
         onNewDesign: handleStartNew,
-        showNewDesign: currentStep > 0,
+        onPricingClick: handlePricingClick,
+        showNewDesign: view === "wizard" && currentStep > 0,
       }}
-      background={currentStep === 0 ? "default" : "gradient"}
+      background={
+        view === "wizard" && currentStep === 0 ? "default" : "gradient"
+      }
       noise={true}
     >
       <PageTransition
-        pageKey={currentStep}
-        background={currentStep === 0 ? "default" : "blueprint"}
+        pageKey={`${view}-${currentStep}`}
+        background={
+          view === "wizard" && currentStep === 0 ? "default" : "blueprint"
+        }
       >
         <div className="container mx-auto px-4 py-8">
           {/* Progress Indicator */}
-          {currentStep > 0 && currentStep < 6 && (
+          {view === "wizard" && currentStep > 0 && currentStep < 6 && (
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}

@@ -227,6 +227,26 @@ app.use((req, res, next) => {
 // Apply general rate limiting to all routes
 app.use(generalLimiter);
 
+// Stripe webhook — MUST be registered before express.json() so the raw body
+// is preserved for signature verification. The handler (api/stripe/webhook.js)
+// re-reads the body via the Buffer left on req.body by express.raw().
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json', limit: '2mb' }),
+  async (req, res) => {
+    try {
+      const handler = await loadDynamicApiHandler('api/stripe/webhook.js');
+      return handler(req, res);
+    } catch (error) {
+      console.error('[Stripe webhook] Failed to load handler:', error);
+      return res.status(500).json({
+        error: 'Stripe webhook handler failed to load',
+        message: error.message,
+      });
+    }
+  }
+);
+
 // Body size limits - the A1 compose endpoint sends base64 site snapshots +
 // masterDNA + projectContext + locationData which can exceed 10mb.
 // Rate limiter above already protects against DOS.
@@ -319,6 +339,14 @@ mountDynamicApiRoute('post', '/api/models/generate-visual-package', 'api/models/
 mountDynamicApiRoute('post', '/api/models/validate-project', 'api/models/validate-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/search-precedents', 'api/models/search-precedents.js', [aiApiLimiter]);
 mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');
+
+// Auth / billing / quota routes (Clerk + Supabase + Stripe).
+// These are JSON endpoints — they rely on the express.json() middleware above.
+// The Stripe webhook is registered separately earlier because it needs the raw body.
+mountDynamicApiRoute('get', '/api/me', 'api/me.js');
+mountDynamicApiRoute('post', '/api/generations/start', 'api/generations/start.js');
+mountDynamicApiRoute('post', '/api/generations/complete', 'api/generations/complete.js');
+mountDynamicApiRoute('post', '/api/stripe/create-checkout', 'api/stripe/create-checkout.js');
 
 // OpenAI proxy handler for chat completions (reasoning)
 const handleOpenAIChat = async (req, res) => {

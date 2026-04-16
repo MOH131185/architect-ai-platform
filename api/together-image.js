@@ -7,6 +7,7 @@
  */
 
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+import { requireClerkSession } from "./_shared/clerkAuth.js";
 
 // Simple in-memory rate limiter for serverless
 let lastRequestTime = 0;
@@ -37,6 +38,15 @@ export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed. Use POST." });
+  }
+
+  // Defense-in-depth auth gate. Quota accounting still happens in
+  // /api/generations/{start,complete} — this check just ensures every paid
+  // image call has a valid Clerk session. Skipped when CLERK_SECRET_KEY is
+  // not configured (local dev / integration tests without auth wired up).
+  if (process.env.CLERK_SECRET_KEY) {
+    const session = await requireClerkSession(req, res);
+    if (!session) return; // 401 already written
   }
 
   const togetherApiKey = process.env.TOGETHER_API_KEY;

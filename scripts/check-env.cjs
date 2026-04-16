@@ -43,6 +43,44 @@ const ENV_CONFIG = {
         format: /^[a-f0-9]{32}$/,
         critical: true
       }
+    ],
+    auth: [
+      {
+        name: 'REACT_APP_CLERK_PUBLISHABLE_KEY',
+        description: 'Clerk publishable key (client) — enables sign-in UI',
+        format: /^pk_(test|live)_[A-Za-z0-9]+/,
+        critical: true
+      },
+      {
+        name: 'CLERK_SECRET_KEY',
+        description: 'Clerk secret key (server) — verifies session tokens',
+        format: /^sk_(test|live)_[A-Za-z0-9]+/,
+        critical: true
+      },
+      {
+        name: 'REACT_APP_SUPABASE_URL',
+        description: 'Supabase project URL — used by server data layer',
+        format: /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/,
+        critical: true
+      },
+      {
+        name: 'SUPABASE_SERVICE_ROLE_KEY',
+        description: 'Supabase service role key (server only) — bypasses RLS',
+        format: /^eyJ[A-Za-z0-9_\-.]+$/,
+        critical: true
+      },
+      {
+        name: 'STRIPE_SECRET_KEY',
+        description: 'Stripe secret key (server) — for checkout + customer API',
+        format: /^sk_(test|live)_[A-Za-z0-9]+/,
+        critical: true
+      },
+      {
+        name: 'STRIPE_WEBHOOK_SECRET',
+        description: 'Stripe webhook signing secret — verifies incoming events',
+        format: /^whsec_[A-Za-z0-9]+/,
+        critical: true
+      }
     ]
   },
   optional: [
@@ -180,6 +218,29 @@ async function checkEnvironment() {
     }
   }
 
+  // Check required auth / billing vars
+  console.log('\n🔐 AUTH / BILLING (Clerk, Supabase, Stripe):');
+  console.log('─────────────────────────────────');
+
+  for (const envVar of ENV_CONFIG.required.auth) {
+    const value = process.env[envVar.name];
+
+    if (!value) {
+      console.log(`  ❌ ${envVar.name}`);
+      console.log(`     └─ ${envVar.description}`);
+      results.required.missing.push(envVar.name);
+      hasErrors = true;
+      if (envVar.critical) hasCriticalErrors = true;
+    } else if (envVar.format && !envVar.format.test(value)) {
+      console.log(`  ⚠️  ${envVar.name} - Invalid format`);
+      results.required.invalid.push(envVar.name);
+      hasErrors = true;
+    } else {
+      console.log(`  ✅ ${envVar.name}`);
+      results.required.present.push(envVar.name);
+    }
+  }
+
   // Check optional vars
   console.log('\n⚙️  OPTIONAL SERVICES (Fallbacks):');
   console.log('─────────────────────────────────');
@@ -236,7 +297,9 @@ async function checkEnvironment() {
   console.log('📊 VALIDATION SUMMARY:');
   console.log('─────────────────────────────────');
 
-  const totalRequired = ENV_CONFIG.required.primary.length + ENV_CONFIG.required.client.length;
+  const totalRequired = ENV_CONFIG.required.primary.length
+    + ENV_CONFIG.required.client.length
+    + ENV_CONFIG.required.auth.length;
   const totalPresent = results.required.present.length;
   const totalOptional = ENV_CONFIG.optional.length;
   const optionalPresent = results.optional.present.length;
@@ -253,8 +316,11 @@ async function checkEnvironment() {
     console.log('❌ CRITICAL ERRORS FOUND\n');
     console.log('The following critical variables are missing:');
     results.required.missing.forEach(varName => {
-      const config = [...ENV_CONFIG.required.primary, ...ENV_CONFIG.required.client]
-        .find(c => c.name === varName);
+      const config = [
+        ...ENV_CONFIG.required.primary,
+        ...ENV_CONFIG.required.client,
+        ...ENV_CONFIG.required.auth,
+      ].find(c => c.name === varName);
       if (config?.critical) {
         console.log(`  • ${varName}`);
       }

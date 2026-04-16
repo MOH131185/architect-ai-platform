@@ -93,6 +93,26 @@
     {
       "source": "/api/genarch/runs/:path*",
       "destination": "/api/genarch/runs/[...params].js"
+    },
+    {
+      "source": "/api/me",
+      "destination": "/api/me.js"
+    },
+    {
+      "source": "/api/generations/start",
+      "destination": "/api/generations/start.js"
+    },
+    {
+      "source": "/api/generations/complete",
+      "destination": "/api/generations/complete.js"
+    },
+    {
+      "source": "/api/stripe/create-checkout",
+      "destination": "/api/stripe/create-checkout.js"
+    },
+    {
+      "source": "/api/stripe/webhook",
+      "destination": "/api/stripe/webhook.js"
     }
   ],
   "headers": [
