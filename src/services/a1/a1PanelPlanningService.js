@@ -34,7 +34,10 @@ export function planA1Panels({
       requestedPanels,
       artifactStore,
     });
-    if (!isFeatureEnabled("useA1TechnicalPanelGating")) {
+    if (
+      !isFeatureEnabled("useA1TechnicalPanelGating") ||
+      !isFeatureEnabled("useTechnicalPanelReadabilityChecks")
+    ) {
       return panelPlan;
     }
 

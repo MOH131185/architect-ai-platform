@@ -45,6 +45,13 @@ describe("Phase 6 project health service", () => {
     expect(
       result.recoveryPlan.minimumStepsToComposeReady.length,
     ).toBeGreaterThan(0);
+    expect(
+      result.recoveryPlan.minimumStepsToComposeReady.some(
+        (entry) =>
+          entry.kind === "regenerate_drawing" &&
+          entry.target === "drawing:plan:ground",
+      ),
+    ).toBe(true);
     expect(result.rollbackPlan.hasHealthySnapshot).toBe(true);
   });
 });

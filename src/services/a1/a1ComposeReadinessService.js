@@ -73,22 +73,24 @@ export function assessA1ComposeReadiness({
     panelCandidates: panelPlan.panelCandidates,
     artifactFreshness: summarizeArtifactFreshness(finalStore),
   });
-  const technicalPanelGate = isFeatureEnabled("useA1TechnicalPanelGating")
-    ? evaluateA1TechnicalPanelGate({
-        drawings: drawings || projectGeometry?.metadata?.drawings || {},
-        panelCandidates: panelPlan.panelCandidates,
-        artifactFreshness: summarizeArtifactFreshness(finalStore),
-        technicalPanelQuality:
-          drawings?.technicalPanelQuality ||
-          projectGeometry?.metadata?.technical_panel_quality ||
-          null,
-      })
-    : {
-        technicalReady: true,
-        blockingReasons: [],
-        warnings: [],
-        panelChecks: [],
-      };
+  const technicalPanelGate =
+    isFeatureEnabled("useA1TechnicalPanelGating") &&
+    isFeatureEnabled("useTechnicalPanelReadabilityChecks")
+      ? evaluateA1TechnicalPanelGate({
+          drawings: drawings || projectGeometry?.metadata?.drawings || {},
+          panelCandidates: panelPlan.panelCandidates,
+          artifactFreshness: summarizeArtifactFreshness(finalStore),
+          technicalPanelQuality:
+            drawings?.technicalPanelQuality ||
+            projectGeometry?.metadata?.technical_panel_quality ||
+            null,
+        })
+      : {
+          technicalReady: true,
+          blockingReasons: [],
+          warnings: [],
+          panelChecks: [],
+        };
   const blockingState = buildA1ComposeBlockingState({
     projectGeometry,
     validationReport,

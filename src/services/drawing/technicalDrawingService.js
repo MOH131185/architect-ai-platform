@@ -157,15 +157,22 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         structuralGrid,
       })
     : buildValidationDisabledReport(geometry, requestedDrawingTypes);
-  const technicalPanelQuality = evaluateTechnicalPanels({ drawings });
-  const technicalWarnings = [
-    ...technicalPanelQuality.weakPanels.flatMap(
-      (panel) => panel.warnings || [],
-    ),
-    ...technicalPanelQuality.blockingPanels.flatMap(
-      (panel) => panel.blockers || [],
-    ),
-  ];
+  const technicalReadabilityEnabled = isFeatureEnabled(
+    "useTechnicalPanelReadabilityChecks",
+  );
+  const technicalPanelQuality = technicalReadabilityEnabled
+    ? evaluateTechnicalPanels({ drawings })
+    : null;
+  const technicalWarnings = technicalPanelQuality
+    ? [
+        ...technicalPanelQuality.weakPanels.flatMap(
+          (panel) => panel.warnings || [],
+        ),
+        ...technicalPanelQuality.blockingPanels.flatMap(
+          (panel) => panel.blockers || [],
+        ),
+      ]
+    : [];
 
   return {
     status: validationReport?.status || "valid",
@@ -194,7 +201,11 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         "Deterministic SVG linework generated directly from canonical project geometry.",
         "Plans, elevations, and sections use the same geometry source of truth.",
         "A1 composition hooks are attached so downstream board composition can preserve geometry signatures and panel intent.",
-        "Phase 6 technical panel metadata is attached so compose readiness can block weak or broken technical drawings.",
+        ...(technicalReadabilityEnabled
+          ? [
+              "Phase 6 technical panel metadata is attached so compose readiness can block weak or broken technical drawings.",
+            ]
+          : []),
         ...(facadeGrammar
           ? ["Facade grammar was applied to the elevation renderer."]
           : []),
@@ -207,7 +218,9 @@ async function renderLocalTechnicalDrawings(payload = {}) {
               "useDeterministicSvgPlans is disabled, but the explicit technical drawing endpoint still uses the local SVG renderer as a safe fallback.",
             ]),
       ],
-      technical_panel_quality: technicalPanelQuality,
+      ...(technicalPanelQuality
+        ? { technical_panel_quality: technicalPanelQuality }
+        : {}),
     },
     technicalPanelQuality,
     warnings: [...(validationReport?.warnings || []), ...technicalWarnings],

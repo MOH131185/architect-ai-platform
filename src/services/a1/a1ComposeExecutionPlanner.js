@@ -44,7 +44,15 @@ export function planA1ComposeExecution({
   const candidatePanels = [
     ...(freshness?.stalePanels || []),
     ...(freshness?.missingPanels || []),
-  ];
+    ...(technicalPanelGate?.blockingPanels || [])
+      .map((panelId) =>
+        (panelCandidates || []).find((candidate) => candidate.id === panelId),
+      )
+      .filter(Boolean),
+  ].filter(
+    (panel, index, array) =>
+      array.findIndex((entry) => entry.id === panel.id) === index,
+  );
   const recoveryPlans = candidatePanels.map((panel) => {
     const request = inferRegenerationRequestFromPanel(panel);
     return planTargetedRegeneration({

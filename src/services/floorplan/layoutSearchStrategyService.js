@@ -62,7 +62,10 @@ export function resolveLayoutSearchStrategyPlan(
 
   const fallback = planIrregularEnvelopeFallback(
     projectGeometry.site || {},
-    projectGeometry.site?.buildable_polygon ? projectGeometry.site : null,
+    projectGeometry.site?.buildable_bbox ||
+      projectGeometry.site?.buildable_polygon
+      ? projectGeometry.site
+      : null,
   );
   const passes = [
     {

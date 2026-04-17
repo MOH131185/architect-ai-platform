@@ -2,8 +2,19 @@ import { deriveBuildableEnvelope } from "./buildableEnvelopeService.js";
 import { resolveIrregularSiteFallback } from "./siteFallbackStrategies.js";
 import { partitionIrregularSite } from "./sitePartitioningService.js";
 
+function isEnvelopeLike(value = null) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    (value.buildable_bbox ||
+      value.constraints?.buildable_area_ratio !== undefined),
+  );
+}
+
 export function planIrregularEnvelopeFallback(site = {}, envelope = null) {
-  const resolvedEnvelope = envelope || deriveBuildableEnvelope(site);
+  const resolvedEnvelope = isEnvelopeLike(envelope)
+    ? envelope
+    : deriveBuildableEnvelope(site);
   const fallback = resolveIrregularSiteFallback(site, resolvedEnvelope);
   const partitioning = partitionIrregularSite(site, resolvedEnvelope);
 

@@ -11,16 +11,10 @@ export function evaluateA1TechnicalPanelGate({
     panelCandidates,
     technicalPanelQuality,
   });
-  const freshnessById = new Map(
-    (artifactFreshness?.families || []).flatMap((family) =>
-      (family.fragmentIds || []).map((fragmentId) => [
-        fragmentId
-          .replace("drawing:plan:", "panel:floor-plan:")
-          .replace("drawing:elevation:", "panel:elevation:")
-          .replace("drawing:section:", "panel:section:"),
-        family,
-      ]),
-    ),
+  const staleFragments = new Set(artifactFreshness?.staleFragments || []);
+  const missingFragments = new Set(artifactFreshness?.missingFragments || []);
+  const panelCandidateMap = new Map(
+    (panelCandidates || []).map((candidate) => [candidate.id, candidate]),
   );
 
   const blockingReasons = [];
@@ -28,15 +22,23 @@ export function evaluateA1TechnicalPanelGate({
   const blockingPanels = checks.blockingPanels.map((entry) => entry.panelId);
 
   checks.checks.forEach((entry) => {
-    const freshness = freshnessById.get(entry.panelId);
-    if (freshness?.staleFragmentIds?.length) {
+    const candidate = panelCandidateMap.get(entry.panelId);
+    const sourceArtifacts = candidate?.sourceArtifacts || [];
+    const staleSourceArtifacts = sourceArtifacts.filter((id) =>
+      staleFragments.has(id),
+    );
+    const missingSourceArtifacts = sourceArtifacts.filter((id) =>
+      missingFragments.has(id),
+    );
+
+    if (staleSourceArtifacts.length) {
       blockingReasons.push(
-        `${entry.panelId} is stale relative to current geometry.`,
+        `${entry.panelId} is stale relative to current geometry (${staleSourceArtifacts.join(", ")}).`,
       );
     }
-    if (freshness?.missingFragmentIds?.length) {
+    if (missingSourceArtifacts.length) {
       blockingReasons.push(
-        `${entry.panelId} is missing required drawing fragments.`,
+        `${entry.panelId} is missing required drawing fragments (${missingSourceArtifacts.join(", ")}).`,
       );
     }
   });

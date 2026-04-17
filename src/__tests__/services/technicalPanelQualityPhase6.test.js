@@ -1,4 +1,5 @@
 import { assessA1ComposeReadiness } from "../../services/a1/a1ComposeReadinessService.js";
+import { evaluateA1TechnicalPanelGate } from "../../services/a1/a1TechnicalPanelGateService.js";
 import {
   resetFeatureFlags,
   setFeatureFlag,
@@ -75,7 +76,80 @@ describe("Phase 6 technical panel gating", () => {
       ),
     ).toBe(true);
     expect(
+      result.composeExecutionPlan.minimumRecoveryPlan.some(
+        (entry) =>
+          entry.kind === "regenerate_drawing" &&
+          entry.target === "drawing:plan:ground",
+      ),
+    ).toBe(true);
+    expect(
       result.composeExecutionPlan.minimumRecoveryPlan.length,
     ).toBeGreaterThan(0);
+  });
+
+  test("blocks only the panel whose source fragment is stale", () => {
+    const gate = evaluateA1TechnicalPanelGate({
+      drawings: {
+        plan: [
+          {
+            level_id: "ground",
+            title: "Ground Plan",
+            room_count: 1,
+            svg: "<svg><text>Ground</text><text>10 m2</text></svg>",
+            technical_quality_metadata: {
+              line_hierarchy: { exterior_wall: 6, interior_wall: 4 },
+              room_label_count: 1,
+              window_count: 1,
+              wall_count: 2,
+              stair_count: 0,
+              has_title_block: true,
+              has_north_arrow: true,
+              has_legend: true,
+            },
+          },
+        ],
+        section: [
+          {
+            section_type: "longitudinal",
+            title: "Section",
+            svg: "<svg><text>Section</text><text>L0</text></svg>",
+            technical_quality_metadata: {
+              has_title: true,
+              stair_count: 0,
+              room_label_count: 1,
+              slab_line_count: 1,
+              level_label_count: 1,
+            },
+          },
+        ],
+      },
+      panelCandidates: [
+        {
+          id: "panel:floor-plan:ground",
+          type: "floor_plan",
+          sourceArtifacts: ["drawing:plan:ground"],
+        },
+        {
+          id: "panel:section:longitudinal",
+          type: "section",
+          sourceArtifacts: ["drawing:section:longitudinal"],
+        },
+      ],
+      artifactFreshness: {
+        staleFragments: ["drawing:plan:ground"],
+        missingFragments: [],
+      },
+    });
+
+    expect(
+      gate.blockingReasons.some((entry) =>
+        entry.includes("panel:floor-plan:ground"),
+      ),
+    ).toBe(true);
+    expect(
+      gate.blockingReasons.some((entry) =>
+        entry.includes("panel:section:longitudinal"),
+      ),
+    ).toBe(false);
   });
 });
