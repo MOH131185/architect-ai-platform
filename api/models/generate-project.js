@@ -66,6 +66,13 @@ export default async function handler(req, res) {
       "useComposeReadinessPhase5",
       "useArtifactLifecycleStore",
       "useIrregularSiteFallbackPhase5",
+      "usePhase6RepairSearch",
+      "useTargetedRegenerationPlanning",
+      "useComposeExecutionPlanning",
+      "useIrregularSiteFallbackPhase6",
+      "useProjectRecoveryFlows",
+      "useTechnicalPanelReadabilityChecks",
+      "useA1TechnicalPanelGating",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {

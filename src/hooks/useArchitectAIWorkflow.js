@@ -9,7 +9,9 @@
  */
 
 import { useState, useCallback, useRef } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { createEnvironmentAdapter } from "../services/environmentAdapter.js";
+import * as generationGate from "../services/generationGate.js";
 // runModifyWorkflow available from '../services/pureOrchestrator.js' if needed
 import { modifySheet } from "../services/pureModificationService.js";
 import exportService from "../services/exportService.js";
@@ -46,6 +48,7 @@ const getStepForStage = (stage) => {
  * @returns {Object} Workflow state and functions
  */
 export function useArchitectAIWorkflow() {
+  const { getToken, isSignedIn } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
@@ -135,18 +138,37 @@ export function useArchitectAIWorkflow() {
         params.siteSnapshot ||
         null;
 
-      const rawMultiPanelResult = await executeWorkflow(
-        dnaWorkflowOrchestrator,
-        {
-          locationData: workflowLocationData,
-          projectContext: params.designSpec,
-          portfolioFiles:
-            params.designSpec?.portfolioBlend?.portfolioFiles || [],
-          siteSnapshot: params.siteSnapshot,
-          baseSeed: params.seed || Date.now(),
-        },
-        { onProgress },
-      );
+      // Check generation quota before making any paid API calls
+      let generationId = null;
+      if (isSignedIn) {
+        const gateResult = await generationGate.start(getToken);
+        generationId = gateResult.generationId;
+      }
+
+      let rawMultiPanelResult;
+      try {
+        rawMultiPanelResult = await executeWorkflow(
+          dnaWorkflowOrchestrator,
+          {
+            locationData: workflowLocationData,
+            projectContext: params.designSpec,
+            portfolioFiles:
+              params.designSpec?.portfolioBlend?.portfolioFiles || [],
+            siteSnapshot: params.siteSnapshot,
+            baseSeed: params.seed || Date.now(),
+          },
+          { onProgress },
+        );
+      } catch (workflowErr) {
+        // Release the pending slot on failure so it doesn't count against quota
+        if (generationId) {
+          await generationGate.complete(generationId, {
+            success: false,
+            getToken,
+          });
+        }
+        throw workflowErr;
+      }
 
       const multiPanelResult = normalizeMultiPanelResult(rawMultiPanelResult);
 
@@ -225,8 +247,28 @@ export function useArchitectAIWorkflow() {
 
       logger.success("Sheet generation complete", { designId });
 
+      // Record successful generation for quota tracking
+      if (generationId) {
+        await generationGate.complete(generationId, {
+          success: true,
+          getToken,
+          a1SheetUrl: sheetResult.composedSheetUrl || null,
+        });
+        // Notify UsageChip to refresh
+        window.dispatchEvent(new Event("archiai:generation-complete"));
+      }
+
       return sheetResult;
     } catch (err) {
+      // Quota exceeded — surface upgrade CTA
+      if (err.isQuotaError) {
+        const msg = err.message;
+        logger.error(msg);
+        const quotaErr = new Error(msg);
+        quotaErr.upgradeUrl = err.upgradeUrl;
+        setError(quotaErr);
+        return null;
+      }
       // Unsupported pipeline mode — fail fast, do not retry
       if (err instanceof UnsupportedPipelineModeError) {
         const msg = `Configuration error: ${err.message}. Set PIPELINE_MODE to "multi_panel".`;

@@ -1,5 +1,6 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { planA1PanelArtifacts } from "./a1PanelArtifactPlanner.js";
+import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
 
 const PANEL_TYPE_ALIASES = {
   plan: "floor_plan",
@@ -23,15 +24,37 @@ export function planA1Panels({
   visualPackage = null,
   requestedPanels = [],
   artifactStore = null,
+  facadeGrammar = null,
 } = {}) {
   if (isFeatureEnabled("useComposeReadinessPhase5")) {
-    return planA1PanelArtifacts({
+    const panelPlan = planA1PanelArtifacts({
       projectGeometry,
       drawings,
       visualPackage,
       requestedPanels,
       artifactStore,
     });
+    if (!isFeatureEnabled("useA1TechnicalPanelGating")) {
+      return panelPlan;
+    }
+
+    const technicalPanelGate = evaluateA1TechnicalPanelGate({
+      drawings: drawings || {},
+      panelCandidates: panelPlan.panelCandidates,
+      artifactFreshness: panelPlan.artifactFreshness,
+      technicalPanelQuality:
+        drawings?.technicalPanelQuality ||
+        projectGeometry?.metadata?.technical_panel_quality ||
+        null,
+      facadeGrammar,
+    });
+
+    return {
+      ...panelPlan,
+      technicalPanelGate,
+      technicalQualityBlockers: technicalPanelGate.blockingReasons || [],
+      composeBlockingReasons: technicalPanelGate.blockingReasons || [],
+    };
   }
 
   const requested = new Set(

@@ -954,6 +954,30 @@ export const FEATURE_FLAGS = {
   /** Phase 5 irregular-site fallback scoring and strategy selection */
   useIrregularSiteFallbackPhase5: true,
 
+  /** Phase 6 deeper deterministic repair search and multi-step planning */
+  usePhase6RepairSearch: true,
+
+  /** Phase 6 minimum safe targeted regeneration planning */
+  useTargetedRegenerationPlanning: true,
+
+  /** Phase 6 finer dependency fragment edges */
+  useFragmentEdgesPhase6: true,
+
+  /** Phase 6 compose execution and recovery planning */
+  useComposeExecutionPlanning: true,
+
+  /** Phase 6 irregular-site fallback partitioning and confidence metadata */
+  useIrregularSiteFallbackPhase6: true,
+
+  /** Phase 6 project recovery and health flows */
+  useProjectRecoveryFlows: true,
+
+  /** Phase 6 deterministic technical panel readability checks */
+  useTechnicalPanelReadabilityChecks: true,
+
+  /** Phase 6 honest A1 technical panel gating */
+  useA1TechnicalPanelGating: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1218,6 +1242,14 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useComposeReadinessPhase5 = true;
   FEATURE_FLAGS.useArtifactLifecycleStore = true;
   FEATURE_FLAGS.useIrregularSiteFallbackPhase5 = true;
+  FEATURE_FLAGS.usePhase6RepairSearch = true;
+  FEATURE_FLAGS.useTargetedRegenerationPlanning = true;
+  FEATURE_FLAGS.useFragmentEdgesPhase6 = true;
+  FEATURE_FLAGS.useComposeExecutionPlanning = true;
+  FEATURE_FLAGS.useIrregularSiteFallbackPhase6 = true;
+  FEATURE_FLAGS.useProjectRecoveryFlows = true;
+  FEATURE_FLAGS.useTechnicalPanelReadabilityChecks = true;
+  FEATURE_FLAGS.useA1TechnicalPanelGating = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1468,6 +1500,38 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_IRREGULAR_SITE_FALLBACK_PHASE5: {
       flag: "useIrregularSiteFallbackPhase5",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PHASE6_REPAIR_SEARCH: {
+      flag: "usePhase6RepairSearch",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TARGETED_REGENERATION_PLANNING: {
+      flag: "useTargetedRegenerationPlanning",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FRAGMENT_EDGES_PHASE6: {
+      flag: "useFragmentEdgesPhase6",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_COMPOSE_EXECUTION_PLANNING: {
+      flag: "useComposeExecutionPlanning",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_IRREGULAR_SITE_FALLBACK_PHASE6: {
+      flag: "useIrregularSiteFallbackPhase6",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PROJECT_RECOVERY_FLOWS: {
+      flag: "useProjectRecoveryFlows",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_PANEL_READABILITY_CHECKS: {
+      flag: "useTechnicalPanelReadabilityChecks",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_TECHNICAL_PANEL_GATING: {
+      flag: "useA1TechnicalPanelGating",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

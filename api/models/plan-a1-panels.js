@@ -41,6 +41,8 @@ export default async function handler(req, res) {
       "useFormalSchemaEngine",
       "useComposeReadinessPhase5",
       "useArtifactLifecycleStore",
+      "useTechnicalPanelReadabilityChecks",
+      "useA1TechnicalPanelGating",
     ];
     if (!validation.ok) {
       return sendError(
@@ -88,6 +90,7 @@ export default async function handler(req, res) {
       projectGeometry,
       drawings: validation.normalized.drawings,
       visualPackage: validation.normalized.visualPackage,
+      facadeGrammar: validation.normalized.facadeGrammar,
       requestedPanels: validation.normalized.requestedPanels,
       artifactStore: projectGeometry?.metadata?.project_artifact_store || null,
     });

@@ -16,6 +16,7 @@ import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
 import { buildStructuralGrid } from "../structure/structuralGridService.js";
 import { createStableHash } from "../cad/projectGeometrySchema.js";
 import { planA1Panels } from "../a1/a1PanelPlanningService.js";
+import { evaluateTechnicalPanels } from "./panelTechnicalQualityService.js";
 
 function normalizeDrawingTypes(payload = {}) {
   return Array.isArray(payload.drawingTypes) && payload.drawingTypes.length
@@ -156,6 +157,15 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         structuralGrid,
       })
     : buildValidationDisabledReport(geometry, requestedDrawingTypes);
+  const technicalPanelQuality = evaluateTechnicalPanels({ drawings });
+  const technicalWarnings = [
+    ...technicalPanelQuality.weakPanels.flatMap(
+      (panel) => panel.warnings || [],
+    ),
+    ...technicalPanelQuality.blockingPanels.flatMap(
+      (panel) => panel.blockers || [],
+    ),
+  ];
 
   return {
     status: validationReport?.status || "valid",
@@ -184,6 +194,7 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         "Deterministic SVG linework generated directly from canonical project geometry.",
         "Plans, elevations, and sections use the same geometry source of truth.",
         "A1 composition hooks are attached so downstream board composition can preserve geometry signatures and panel intent.",
+        "Phase 6 technical panel metadata is attached so compose readiness can block weak or broken technical drawings.",
         ...(facadeGrammar
           ? ["Facade grammar was applied to the elevation renderer."]
           : []),
@@ -196,8 +207,10 @@ async function renderLocalTechnicalDrawings(payload = {}) {
               "useDeterministicSvgPlans is disabled, but the explicit technical drawing endpoint still uses the local SVG renderer as a safe fallback.",
             ]),
       ],
+      technical_panel_quality: technicalPanelQuality,
     },
-    warnings: validationReport?.warnings || [],
+    technicalPanelQuality,
+    warnings: [...(validationReport?.warnings || []), ...technicalWarnings],
   };
 }
 

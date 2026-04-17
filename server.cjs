@@ -227,6 +227,22 @@ app.use((req, res, next) => {
 // Apply general rate limiting to all routes
 app.use(generalLimiter);
 
+// Stripe webhook MUST be registered with raw body BEFORE express.json()
+// so that stripe.webhooks.constructEvent() can verify the signature.
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    try {
+      const handler = await loadDynamicApiHandler('api/stripe/webhook.js');
+      return handler(req, res);
+    } catch (error) {
+      console.error('[Stripe Webhook] Failed to load handler:', error);
+      return res.status(500).json({ error: 'Webhook handler failed' });
+    }
+  }
+);
+
 // Body size limits - the A1 compose endpoint sends base64 site snapshots +
 // masterDNA + projectContext + locationData which can exceed 10mb.
 // Rate limiter above already protects against DOS.
@@ -308,6 +324,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Auth & billing routes
+mountDynamicApiRoute('post', '/api/stripe/create-checkout', 'api/stripe/create-checkout.js');
+mountDynamicApiRoute('get',  '/api/me',                     'api/me.js');
+mountDynamicApiRoute('post', '/api/generations/start',      'api/generations/start.js');
+mountDynamicApiRoute('post', '/api/generations/complete',   'api/generations/complete.js');
+
 // Phase 1/2 architecture backend routes (shared with api/models/* serverless handlers)
 mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/generate-floorplan', 'api/models/generate-floorplan.js', [aiApiLimiter]);
@@ -320,6 +342,8 @@ mountDynamicApiRoute('post', '/api/models/generate-visual-package', 'api/models/
 mountDynamicApiRoute('post', '/api/models/validate-project', 'api/models/validate-project.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/project-readiness', 'api/models/project-readiness.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/plan-a1-panels', 'api/models/plan-a1-panels.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/plan-regeneration', 'api/models/plan-regeneration.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/project-health', 'api/models/project-health.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/search-precedents', 'api/models/search-precedents.js', [aiApiLimiter]);
 mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');
 

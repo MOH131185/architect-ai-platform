@@ -1,9 +1,11 @@
 import { CANONICAL_PROJECT_GEOMETRY_VERSION } from "../cad/projectGeometrySchema.js";
 import { JSON_SCHEMAS as LEGACY_JSON_SCHEMAS } from "./jsonSchemas.js";
 import {
-  PHASE5_PUBLIC_API_VERSION,
-  PHASE5_SCHEMA_ENGINE_VERSION,
+  PHASE6_PUBLIC_API_VERSION,
+  PHASE6_SCHEMA_ENGINE_VERSION,
 } from "./contractVersioningService.js";
+import { nullable, objectSchema, arrayOf } from "./schemaCompositionService.js";
+import { buildDeprecationMap } from "./schemaMigrationService.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -117,16 +119,11 @@ const projectReadinessRequestSchema = {
   required: ["projectGeometry"],
   properties: {
     projectGeometry: { type: "object" },
-    drawings: {
-      anyOf: [{ type: "null" }, drawingsSchema],
-    },
-    visualPackage: {
-      anyOf: [{ type: "null" }, visualPackageSchema],
-    },
+    drawings: nullable(drawingsSchema),
+    visualPackage: nullable(visualPackageSchema),
     facadeGrammar: { type: ["object", "null"] },
-    validationReport: {
-      anyOf: [{ type: "null" }, validationReportSchema],
-    },
+    validationReport: nullable(validationReportSchema),
+    includeRecoveryPlan: { type: "boolean" },
   },
   additionalProperties: true,
 };
@@ -136,14 +133,10 @@ const planA1PanelsRequestSchema = {
   required: ["projectGeometry"],
   properties: {
     projectGeometry: { type: "object" },
-    drawings: {
-      anyOf: [{ type: "null" }, drawingsSchema],
-    },
-    visualPackage: {
-      anyOf: [{ type: "null" }, visualPackageSchema],
-    },
+    drawings: nullable(drawingsSchema),
+    visualPackage: nullable(visualPackageSchema),
     facadeGrammar: { type: ["object", "null"] },
-    requestedPanels: { type: "array", items: { type: "string", minLength: 1 } },
+    requestedPanels: arrayOf({ type: "string", minLength: 1 }),
   },
   additionalProperties: true,
 };
@@ -174,9 +167,7 @@ const repairProjectRequestSchema = {
   required: ["projectGeometry"],
   properties: {
     projectGeometry: { type: "object" },
-    validationReport: {
-      anyOf: [{ type: "null" }, validationReportSchema],
-    },
+    validationReport: nullable(validationReportSchema),
     options: {
       type: "object",
       properties: {
@@ -190,13 +181,43 @@ const repairProjectRequestSchema = {
   additionalProperties: true,
 };
 
+const planRegenerationRequestSchema = objectSchema(
+  {
+    projectGeometry: { type: "object" },
+    targetLayer: { type: "string", minLength: 1 },
+    drawings: nullable(drawingsSchema),
+    visualPackage: nullable(visualPackageSchema),
+    facadeGrammar: { type: ["object", "null"] },
+    validationReport: nullable(validationReportSchema),
+    options: { type: "object", additionalProperties: true },
+  },
+  {
+    required: ["projectGeometry", "targetLayer"],
+    additionalProperties: true,
+  },
+);
+
+const projectHealthRequestSchema = objectSchema(
+  {
+    projectGeometry: { type: "object" },
+    drawings: nullable(drawingsSchema),
+    visualPackage: nullable(visualPackageSchema),
+    facadeGrammar: { type: ["object", "null"] },
+    validationReport: nullable(validationReportSchema),
+  },
+  {
+    required: ["projectGeometry"],
+    additionalProperties: true,
+  },
+);
+
 function createRegistration(name, schema, options = {}) {
   return {
     name,
     schemaName: name,
-    schemaVersion: options.schemaVersion || `${name}-phase5-v1`,
-    publicApiVersion: options.publicApiVersion || PHASE5_PUBLIC_API_VERSION,
-    schemaEngineVersion: PHASE5_SCHEMA_ENGINE_VERSION,
+    schemaVersion: options.schemaVersion || `${name}-phase6-v1`,
+    publicApiVersion: options.publicApiVersion || PHASE6_PUBLIC_API_VERSION,
+    schemaEngineVersion: PHASE6_SCHEMA_ENGINE_VERSION,
     deprecatedProperties: options.deprecatedProperties || {},
     schema,
   };
@@ -211,7 +232,7 @@ export const JSON_SCHEMA_REGISTRY = {
     "generateProjectRequest",
     generateProjectRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         projectId: "project_id",
         site_boundary: "site",
         boundary: "site",
@@ -220,75 +241,94 @@ export const JSON_SCHEMA_REGISTRY = {
         level_count: "levels",
         levelCount: "levels",
         view_type: "viewType",
-      },
+      }),
     },
   ),
   regenerateLayerRequest: createRegistration(
     "regenerateLayerRequest",
     regenerateLayerRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
         target_layer: "targetLayer",
-      },
+      }),
     },
   ),
   generateFacadeRequest: createRegistration(
     "generateFacadeRequest",
     generateFacadeRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
-      },
+      }),
     },
   ),
   generateVisualPackageRequest: createRegistration(
     "generateVisualPackageRequest",
     generateVisualPackageRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
         view_type: "viewType",
-      },
+      }),
     },
   ),
   projectReadinessRequest: createRegistration(
     "projectReadinessRequest",
     projectReadinessRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
-      },
+      }),
     },
   ),
   planA1PanelsRequest: createRegistration(
     "planA1PanelsRequest",
     planA1PanelsRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
-      },
+      }),
     },
   ),
   validateProjectRequest: createRegistration(
     "validateProjectRequest",
     validateProjectRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
         types: "drawingTypes",
         previous_geometry: "previousProjectGeometry",
         target_layer: "targetLayer",
-      },
+      }),
     },
   ),
   repairProjectRequest: createRegistration(
     "repairProjectRequest",
     repairProjectRequestSchema,
     {
-      deprecatedProperties: {
+      deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
-      },
+      }),
+    },
+  ),
+  planRegenerationRequest: createRegistration(
+    "planRegenerationRequest",
+    planRegenerationRequestSchema,
+    {
+      deprecatedProperties: buildDeprecationMap({
+        geometry: "projectGeometry",
+        target_layer: "targetLayer",
+      }),
+    },
+  ),
+  projectHealthRequest: createRegistration(
+    "projectHealthRequest",
+    projectHealthRequestSchema,
+    {
+      deprecatedProperties: buildDeprecationMap({
+        geometry: "projectGeometry",
+      }),
     },
   ),
 };

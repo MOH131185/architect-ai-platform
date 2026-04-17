@@ -49,9 +49,13 @@ export default async function handler(req, res) {
       "useFormalSchemaEngine",
       "useDependencyGraphRegeneration",
       "useFragmentDependencyInvalidation",
+      "useTargetedRegenerationPlanning",
+      "useFragmentEdgesPhase6",
       "useA1ProjectReadiness",
       "useComposeReadinessPhase5",
+      "useComposeExecutionPlanning",
       "useArtifactLifecycleStore",
+      "useProjectRecoveryFlows",
       "useFailClosedTechnicalFlow",
     ];
     if (!validation.ok) {

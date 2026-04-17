@@ -45,6 +45,62 @@ const ENV_CONFIG = {
       }
     ]
   },
+  auth: [
+    {
+      name: 'REACT_APP_CLERK_PUBLISHABLE_KEY',
+      description: 'Clerk publishable key (client-side auth)',
+      format: /^pk_(test|live)_/,
+      critical: true
+    },
+    {
+      name: 'CLERK_SECRET_KEY',
+      description: 'Clerk secret key (server-side session verification)',
+      format: /^sk_(test|live)_/,
+      critical: true
+    },
+    {
+      name: 'REACT_APP_SUPABASE_URL',
+      description: 'Supabase project URL',
+      format: /^https:\/\/.+\.supabase\.co$/,
+      critical: true
+    },
+    {
+      name: 'SUPABASE_SERVICE_ROLE_KEY',
+      description: 'Supabase service role key (server-only)',
+      format: /^eyJ/,
+      critical: true
+    },
+    {
+      name: 'STRIPE_SECRET_KEY',
+      description: 'Stripe secret key (server-only)',
+      format: /^sk_(test|live)_/,
+      critical: true
+    },
+    {
+      name: 'STRIPE_WEBHOOK_SECRET',
+      description: 'Stripe webhook signing secret',
+      format: /^whsec_/,
+      critical: true
+    },
+    {
+      name: 'STRIPE_PRICE_STARTER',
+      description: 'Stripe price ID for Starter plan',
+      format: /^price_/,
+      critical: false
+    },
+    {
+      name: 'STRIPE_PRICE_PROFESSIONAL',
+      description: 'Stripe price ID for Professional plan',
+      format: /^price_/,
+      critical: false
+    },
+    {
+      name: 'STRIPE_PRICE_ENTERPRISE',
+      description: 'Stripe price ID for Enterprise plan',
+      format: /^price_/,
+      critical: false
+    }
+  ],
   optional: [
     {
       name: 'REACT_APP_OPENAI_API_KEY',
@@ -157,6 +213,28 @@ async function checkEnvironment() {
     }
   }
 
+  // Check auth & billing vars
+  console.log('\n🔐 AUTH & BILLING (Clerk / Supabase / Stripe):');
+  console.log('─────────────────────────────────');
+
+  for (const envVar of ENV_CONFIG.auth) {
+    const value = process.env[envVar.name];
+
+    if (!value) {
+      console.log(`  ${envVar.critical ? '❌' : '○'} ${envVar.name}`);
+      console.log(`     └─ ${envVar.description}`);
+      results.required.missing.push(envVar.name);
+      if (envVar.critical) { hasErrors = true; hasCriticalErrors = true; }
+    } else if (envVar.format && !envVar.format.test(value)) {
+      console.log(`  ⚠️  ${envVar.name} - Invalid format`);
+      results.required.invalid.push(envVar.name);
+      hasErrors = true;
+    } else {
+      console.log(`  ✅ ${envVar.name}`);
+      results.required.present.push(envVar.name);
+    }
+  }
+
   // Check required client-side vars
   console.log('\n🌐 CLIENT-SIDE SERVICES:');
   console.log('─────────────────────────────────');
@@ -236,7 +314,7 @@ async function checkEnvironment() {
   console.log('📊 VALIDATION SUMMARY:');
   console.log('─────────────────────────────────');
 
-  const totalRequired = ENV_CONFIG.required.primary.length + ENV_CONFIG.required.client.length;
+  const totalRequired = ENV_CONFIG.required.primary.length + ENV_CONFIG.required.client.length + ENV_CONFIG.auth.length;
   const totalPresent = results.required.present.length;
   const totalOptional = ENV_CONFIG.optional.length;
   const optionalPresent = results.optional.present.length;

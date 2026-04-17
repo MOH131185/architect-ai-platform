@@ -1,17 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import PropTypes from 'prop-types';
-import { fadeInDown } from '../../styles/animations.js';
-import Button from '../ui/Button.jsx';
-import { Layers } from 'lucide-react';
-import CompanyLogo from '../ui/CompanyLogo.jsx';
-
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import PropTypes from "prop-types";
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  UserButton,
+} from "@clerk/clerk-react";
+import { fadeInDown } from "../../styles/animations.js";
+import Button from "../ui/Button.jsx";
+import { Layers } from "lucide-react";
+import CompanyLogo from "../ui/CompanyLogo.jsx";
+import UsageChip from "../UsageChip.jsx";
 
 const NavBar = ({
   onNewDesign,
+  onPricing,
   showNewDesign = true,
   transparent = false,
-  className = '',
+  className = "",
 }) => {
   const [scrolled, setScrolled] = useState(false);
 
@@ -20,16 +27,17 @@ const NavBar = ({
       setScrolled(window.scrollY > 20);
     };
 
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const navClasses = `fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled && !transparent
-    ? 'bg-navy-950/90 backdrop-blur-lg border-b border-navy-800 shadow-xl'
-    : transparent
-      ? 'bg-transparent'
-      : 'bg-navy-950/50 backdrop-blur-sm'
-    } ${className}`;
+  const navClasses = `fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+    scrolled && !transparent
+      ? "bg-navy-950/90 backdrop-blur-lg border-b border-navy-800 shadow-xl"
+      : transparent
+        ? "bg-transparent"
+        : "bg-navy-950/50 backdrop-blur-sm"
+  } ${className}`;
 
   return (
     <motion.nav
@@ -46,10 +54,7 @@ const NavBar = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <CompanyLogo
-              size={56}
-              className="mr-2"
-            />
+            <CompanyLogo size={56} className="mr-2" />
             <div>
               <h1 className="text-xl font-bold text-white font-heading">
                 ArchiAI Solution
@@ -65,11 +70,21 @@ const NavBar = ({
             <NavLink href="#features">Features</NavLink>
             <NavLink href="#how-it-works">How It Works</NavLink>
             <NavLink href="#about">About</NavLink>
+            {onPricing && (
+              <motion.button
+                onClick={onPricing}
+                className="text-gray-300 hover:text-white transition-colors duration-200 font-medium"
+                whileHover={{ y: -2 }}
+                whileTap={{ y: 0 }}
+              >
+                Pricing
+              </motion.button>
+            )}
           </div>
 
-          {/* CTA Button */}
-          {showNewDesign && (
-            <div className="flex items-center gap-4">
+          {/* CTA / Auth area */}
+          <div className="flex items-center gap-3">
+            {showNewDesign && (
               <Button
                 variant="gradient"
                 size="md"
@@ -78,8 +93,19 @@ const NavBar = ({
               >
                 New Design
               </Button>
-            </div>
-          )}
+            )}
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button className="px-4 py-2 text-sm font-medium text-white border border-navy-600 rounded-lg hover:bg-navy-800 transition-colors">
+                  Sign In
+                </button>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <UsageChip />
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
+          </div>
         </div>
       </div>
     </motion.nav>
@@ -101,10 +127,10 @@ const NavLink = ({ href, children }) => {
 
 NavBar.propTypes = {
   onNewDesign: PropTypes.func,
+  onPricing: PropTypes.func,
   showNewDesign: PropTypes.bool,
   transparent: PropTypes.bool,
   className: PropTypes.string,
 };
 
 export default NavBar;
-

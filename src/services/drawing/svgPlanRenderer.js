@@ -123,6 +123,20 @@ function renderLegend(width, height, padding) {
   `;
 }
 
+function renderRoomLabel(labelPoint, room = {}) {
+  const name = escapeXml(room.name || "Room");
+  const areaText = escapeXml(`${Number(room.actual_area || 0).toFixed(1)} m2`);
+  const labelWidth = Math.max(64, name.length * 7.2);
+  return `
+    <g class="room-label">
+      <rect x="${labelPoint.x - labelWidth / 2}" y="${labelPoint.y - 18}" width="${labelWidth}" height="16" rx="2" fill="#ffffff" fill-opacity="0.88"/>
+      <rect x="${labelPoint.x - 28}" y="${labelPoint.y - 2}" width="56" height="14" rx="2" fill="#ffffff" fill-opacity="0.75"/>
+      <text x="${labelPoint.x}" y="${labelPoint.y - 6}" font-size="13.5" font-family="Arial, sans-serif" font-weight="600" text-anchor="middle">${name}</text>
+      <text x="${labelPoint.x}" y="${labelPoint.y + 8}" font-size="10.5" font-family="Arial, sans-serif" text-anchor="middle">${areaText}</text>
+    </g>
+  `;
+}
+
 function renderStructuralGridMarkers(geometry = {}, project) {
   const grid = geometry.metadata?.structural_grid;
   if (!grid) {
@@ -263,8 +277,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       );
       return `
         <path d="${polygonPath(room.polygon, project)}" fill="${roomFill(room.zone)}" stroke="#cabfae" stroke-width="1.2"/>
-        <text x="${labelPoint.x}" y="${labelPoint.y - 4}" font-size="13" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(room.name)}</text>
-        <text x="${labelPoint.x}" y="${labelPoint.y + 10}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(`${Number(room.actual_area || 0).toFixed(1)} m2`)}</text>
+        ${renderRoomLabel(labelPoint, room)}
       `;
     })
     .join("");
@@ -318,6 +331,18 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     project,
   );
   const structuralGridMarkup = renderStructuralGridMarkers(geometry, project);
+  const stairCount = (geometry.stairs || []).filter(
+    (stair) => stair.level_id === level.id,
+  ).length;
+  const doorCount = (geometry.doors || []).filter(
+    (door) => door.level_id === level.id,
+  ).length;
+  const windowCount = (geometry.windows || []).filter(
+    (windowElement) => windowElement.level_id === level.id,
+  ).length;
+  const circulationPathCount = (geometry.circulation || []).filter(
+    (path) => path.level_id === level.id,
+  ).length;
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -341,11 +366,31 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     svg,
     level_id: level.id,
     room_count: roomMap.size,
-    stair_count: (geometry.stairs || []).filter(
-      (stair) => stair.level_id === level.id,
-    ).length,
+    stair_count: stairCount,
     renderer: "deterministic-plan-svg",
     title: level.name || "Plan",
+    technical_quality_metadata: {
+      drawing_type: "plan",
+      wall_count: wallMap.size,
+      door_count: doorCount,
+      window_count: windowCount,
+      stair_count: stairCount,
+      circulation_path_count: circulationPathCount,
+      room_count: roomMap.size,
+      room_label_count: roomMap.size,
+      area_label_count: roomMap.size,
+      has_north_arrow: true,
+      has_title_block: true,
+      has_legend: true,
+      structural_grid_visible: Boolean(geometry.metadata?.structural_grid),
+      line_hierarchy: {
+        site_boundary: 1.5,
+        buildable_outline: 1.8,
+        interior_wall: 4,
+        exterior_wall: 6,
+        openings: 2.5,
+      },
+    },
   };
 }
 

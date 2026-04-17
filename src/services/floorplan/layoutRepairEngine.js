@@ -1,4 +1,6 @@
 import { generateRepairCandidates } from "./layoutCandidateSearch.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { planLayoutRepair } from "./layoutRepairPlanner.js";
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -43,6 +45,63 @@ export function repairLayout(
   validationReport = null,
   options = {},
 ) {
+  if (isFeatureEnabled("usePhase6RepairSearch")) {
+    const preserveStableIds = options.preserveStableIds !== false;
+    const repairPlan = planLayoutRepair(
+      projectGeometry,
+      validationReport,
+      options,
+    );
+    const selectedCandidate = repairPlan.selectedCandidate || null;
+    const repairedProjectGeometry = selectedCandidate
+      ? clone(selectedCandidate.repairedProjectGeometry)
+      : clone(projectGeometry);
+
+    if (preserveStableIds && selectedCandidate) {
+      const roomOrder = new Map(
+        (projectGeometry.rooms || []).map((room, index) => [room.id, index]),
+      );
+      repairedProjectGeometry.rooms = (repairedProjectGeometry.rooms || [])
+        .map((room) => ({
+          ...room,
+          id: room.id,
+          level_id: room.level_id,
+        }))
+        .sort(
+          (left, right) =>
+            (roomOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+            (roomOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+        );
+    }
+
+    repairedProjectGeometry.metadata = {
+      ...(repairedProjectGeometry.metadata || {}),
+      repair: {
+        version: "phase6-layout-repair-v1",
+        selected_candidate: selectedCandidate?.candidateId || null,
+        selected_path: repairPlan.chosenPath || [],
+        candidate_scores: (repairPlan.candidates || []).map((candidate) => ({
+          candidate_id: candidate.candidateId,
+          strategy_path: candidate.strategyPath || [],
+          score: candidate.evaluation.score,
+          error_count: candidate.evaluation.validation.errorCount,
+          warning_count: candidate.evaluation.validation.warningCount,
+        })),
+        explanations: repairPlan.rationale || [],
+      },
+    };
+
+    return {
+      version: "phase6-layout-repair-v1",
+      selectedCandidate,
+      repairedProjectGeometry,
+      candidates: repairPlan.candidates || [],
+      explanations: repairPlan.rationale || [],
+      chosenPath: repairPlan.chosenPath || [],
+      searchPlan: repairPlan.searchPlan || null,
+    };
+  }
+
   const preserveStableIds = options.preserveStableIds !== false;
   const candidates = stableSortCandidates(
     generateRepairCandidates(projectGeometry, validationReport, options),

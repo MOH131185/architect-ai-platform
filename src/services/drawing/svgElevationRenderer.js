@@ -227,6 +227,15 @@ export function renderElevationSvg(
     window_count: matchingWindows.length,
     renderer: "deterministic-elevation-svg",
     title: `Elevation - ${orientation}`,
+    technical_quality_metadata: {
+      drawing_type: "elevation",
+      has_title: true,
+      window_count: matchingWindows.length,
+      floor_line_count: (geometry.levels || []).length,
+      level_label_count: (geometry.levels || []).length,
+      bay_count: facadeOrientation?.components?.bays?.length || 0,
+      shading_count: facadeOrientation?.shading_elements?.length || 0,
+    },
   };
 }
 

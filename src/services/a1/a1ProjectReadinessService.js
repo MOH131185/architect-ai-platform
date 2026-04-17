@@ -2,6 +2,7 @@ import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { buildA1ArtifactState } from "./a1ArtifactStateService.js";
 import { assessA1ComposeReadiness } from "./a1ComposeReadinessService.js";
 import { planA1Panels } from "./a1PanelPlanningService.js";
+import { buildProjectRecoveryPlan } from "../project/projectRecoveryService.js";
 
 export function assessA1ProjectReadiness({
   projectGeometry = {},
@@ -21,9 +22,23 @@ export function assessA1ProjectReadiness({
       validationReport,
       artifactStore,
     });
+    const recoveryPlan = isFeatureEnabled("useProjectRecoveryFlows")
+      ? buildProjectRecoveryPlan({
+          projectGeometry,
+          drawings,
+          facadeGrammar,
+          visualPackage,
+          panelCandidates: composeReadiness.panelCandidates,
+          artifactStore: composeReadiness.artifactStore,
+          readiness: composeReadiness,
+          validationReport,
+        })
+      : null;
 
     return {
-      version: "phase5-a1-project-readiness-v1",
+      version: isFeatureEnabled("useProjectRecoveryFlows")
+        ? "phase6-a1-project-readiness-v1"
+        : "phase5-a1-project-readiness-v1",
       ready: composeReadiness.composeReady,
       composeReady: composeReadiness.composeReady,
       composeBlocked: composeReadiness.composeBlocked,
@@ -47,6 +62,9 @@ export function assessA1ProjectReadiness({
       artifactFreshness: composeReadiness.artifactFreshness,
       artifactState: composeReadiness.artifactState,
       artifactStore: composeReadiness.artifactStore,
+      technicalPanelGate: composeReadiness.technicalPanelGate || null,
+      composeExecutionPlan: composeReadiness.composeExecutionPlan || null,
+      recoveryPlan,
       composeReadiness,
     };
   }

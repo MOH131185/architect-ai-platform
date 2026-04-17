@@ -475,7 +475,7 @@ export function formatAjvStyleErrors(validation = {}) {
 
 export function getFormalSchemaValidationStatus() {
   return {
-    version: "phase5-json-schema-validation-v1",
+    version: "phase6-json-schema-validation-v1",
     schemaEngineVersion:
       getJsonSchemaRegistration("canonicalProjectGeometry")
         ?.schemaEngineVersion || null,

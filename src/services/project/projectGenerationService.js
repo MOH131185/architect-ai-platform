@@ -139,6 +139,9 @@ export async function generateProjectPackage(request = {}) {
   projectGeometry.metadata = {
     ...(projectGeometry.metadata || {}),
     ...(integrationHooks ? { integration_hooks: integrationHooks } : {}),
+    ...(drawings.technicalPanelQuality
+      ? { technical_panel_quality: drawings.technicalPanelQuality }
+      : {}),
     artifact_state: artifactState,
     ...(isFeatureEnabled("useArtifactLifecycleStore")
       ? {

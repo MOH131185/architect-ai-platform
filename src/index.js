@@ -1,20 +1,25 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import './index.css';
-import App from './App.js';
-import globalErrorHandler from './utils/globalErrorHandler.js';
-import logger from './utils/logger.js';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { ClerkProvider } from "@clerk/clerk-react";
+import "./index.css";
+import App from "./App.js";
+import globalErrorHandler from "./utils/globalErrorHandler.js";
+import logger from "./utils/logger.js";
 
 // Initialize global error handling
 globalErrorHandler.initialize();
-logger.info('Application starting', {
+logger.info("Application starting", {
   environment: process.env.NODE_ENV,
-  version: process.env.REACT_APP_VERSION || '1.0.0'
+  version: process.env.REACT_APP_VERSION || "1.0.0",
 });
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const CLERK_PUBLISHABLE_KEY = process.env.REACT_APP_CLERK_PUBLISHABLE_KEY;
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
-    <App />
-  </React.StrictMode>
+    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+      <App />
+    </ClerkProvider>
+  </React.StrictMode>,
 );

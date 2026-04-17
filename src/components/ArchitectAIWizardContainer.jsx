@@ -15,6 +15,7 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, X } from "lucide-react";
+import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { useArchitectAIWorkflow } from "../hooks/useArchitectAIWorkflow.js";
 import { useWizardState } from "../hooks/useWizardState.js";
 import { getDemoProject, buildDemoResult } from "../data/demoProjects.js";
@@ -32,6 +33,7 @@ import {
 import buildingFootprintService from "../services/buildingFootprintService.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
 import { captureSnapshotForPersistence } from "../services/siteMapSnapshotService.js";
+import PricingPage from "./PricingPage.jsx";
 
 // Step Components
 import LocationStep from "./steps/LocationStep.jsx";
@@ -120,6 +122,9 @@ const polygonsEqual = (polygonA = [], polygonB = []) => {
 };
 
 const ArchitectAIWizardContainer = () => {
+  // Top-level view: 'wizard' | 'pricing'
+  const [view, setView] = useState("wizard");
+
   // Workflow hook
   const {
     loading,
@@ -1636,12 +1641,32 @@ const ArchitectAIWizardContainer = () => {
     }
   };
 
+  // Pricing view (full-page, no auth gate needed — users can browse plans)
+  if (view === "pricing") {
+    return (
+      <AppShell
+        showNav={true}
+        showFooter={false}
+        navProps={{
+          onNewDesign: () => setView("wizard"),
+          onPricing: () => setView("pricing"),
+          showNewDesign: true,
+        }}
+        background="default"
+        noise={true}
+      >
+        <PricingPage onBack={() => setView("wizard")} />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
       showNav={currentStep > 0}
       showFooter={currentStep === 0}
       navProps={{
         onNewDesign: handleStartNew,
+        onPricing: () => setView("pricing"),
         showNewDesign: currentStep > 0,
       }}
       background={currentStep === 0 ? "default" : "gradient"}
@@ -1663,8 +1688,28 @@ const ArchitectAIWizardContainer = () => {
             </motion.div>
           )}
 
-          {/* Current Step */}
-          {renderStep()}
+          {/* Wizard steps gated behind Clerk auth */}
+          <SignedIn>{renderStep()}</SignedIn>
+          <SignedOut>
+            {currentStep === 0 ? (
+              renderStep()
+            ) : (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
+                <h2 className="text-2xl font-bold text-white">
+                  Sign in to continue
+                </h2>
+                <p className="text-gray-400 max-w-sm">
+                  Create a free account to generate professional architectural
+                  designs with AI.
+                </p>
+                <SignInButton mode="modal">
+                  <button className="px-6 py-3 bg-royal-600 hover:bg-royal-500 text-white font-semibold rounded-xl transition-colors">
+                    Sign In / Sign Up
+                  </button>
+                </SignInButton>
+              </div>
+            )}
+          </SignedOut>
 
           {/* Global Error Display */}
           <AnimatePresence>
@@ -1685,6 +1730,14 @@ const ArchitectAIWizardContainer = () => {
                     <div className="flex-1">
                       <p className="font-semibold mb-1 text-white">Error</p>
                       <p className="text-sm text-gray-200">{error}</p>
+                      {error.upgradeUrl && (
+                        <button
+                          onClick={() => setView("pricing")}
+                          className="mt-2 text-xs underline text-royal-400 hover:text-royal-300"
+                        >
+                          View pricing plans
+                        </button>
+                      )}
                     </div>
                     <button
                       onClick={clearError}

@@ -45,6 +45,7 @@ export default async function handler(req, res) {
     const validation = validateRepairProjectRequest(req.body || {});
     const featureFlags = [
       "usePhase5RepairEngine",
+      "usePhase6RepairSearch",
       "useGeometryValidationEngine",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",

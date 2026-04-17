@@ -2,12 +2,17 @@ import {
   buildLegacyArtifactStateFromStore,
   summarizeArtifactFreshness,
 } from "../project/artifactFreshnessService.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
   buildProjectArtifactStore,
   mergeProjectArtifactStore,
   createArtifactStorePatch,
 } from "../project/projectArtifactStore.js";
 import { planA1PanelArtifacts } from "./a1PanelArtifactPlanner.js";
+import { resolveA1Freshness } from "./a1FreshnessResolver.js";
+import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
+import { buildA1ComposeBlockingState } from "./a1ComposeBlockingService.js";
+import { planA1ComposeExecution } from "./a1ComposeExecutionPlanner.js";
 
 export function assessA1ComposeReadiness({
   projectGeometry = {},
@@ -64,35 +69,52 @@ export function assessA1ComposeReadiness({
       },
     }),
   );
+  const panelFreshness = resolveA1Freshness({
+    panelCandidates: panelPlan.panelCandidates,
+    artifactFreshness: summarizeArtifactFreshness(finalStore),
+  });
+  const technicalPanelGate = isFeatureEnabled("useA1TechnicalPanelGating")
+    ? evaluateA1TechnicalPanelGate({
+        drawings: drawings || projectGeometry?.metadata?.drawings || {},
+        panelCandidates: panelPlan.panelCandidates,
+        artifactFreshness: summarizeArtifactFreshness(finalStore),
+        technicalPanelQuality:
+          drawings?.technicalPanelQuality ||
+          projectGeometry?.metadata?.technical_panel_quality ||
+          null,
+      })
+    : {
+        technicalReady: true,
+        blockingReasons: [],
+        warnings: [],
+        panelChecks: [],
+      };
+  const blockingState = buildA1ComposeBlockingState({
+    projectGeometry,
+    validationReport,
+    freshness: panelFreshness,
+    technicalPanelGate,
+  });
+  const executionPlan = isFeatureEnabled("useComposeExecutionPlanning")
+    ? planA1ComposeExecution({
+        projectGeometry,
+        drawings,
+        facadeGrammar,
+        visualPackage,
+        panelCandidates: panelPlan.panelCandidates,
+        artifactStore: finalStore,
+        freshness: panelFreshness,
+        technicalPanelGate,
+      })
+    : null;
 
-  const blockingReasons = [];
-
-  if (!projectGeometry?.project_id) {
-    blockingReasons.push("Project geometry is missing a project_id.");
-  }
-  if (
-    (validationReport?.status || projectGeometry?.metadata?.status) ===
-    "invalid"
-  ) {
-    blockingReasons.push("Project validation is invalid.");
-  }
+  const blockingReasons = [...(blockingState.blockingReasons || [])];
   if (!panelPlan.panelCandidates.length) {
-    blockingReasons.push("No eligible panel candidates were found.");
-  }
-  if (panelPlan.missingAssets.length) {
-    blockingReasons.push(
-      `Missing compose assets: ${panelPlan.missingAssets.join(", ")}.`,
-    );
-  }
-  if (panelPlan.stalePanels.length) {
-    blockingReasons.push(
-      `Stale compose panels: ${panelPlan.stalePanels
-        .map((entry) => entry.id)
-        .join(", ")}.`,
-    );
+    blockingReasons.unshift("No eligible panel candidates were found.");
   }
 
-  const composeReady = blockingReasons.length === 0;
+  const composeReady =
+    blockingState.composeReady && panelPlan.panelCandidates.length > 0;
   const patchedStore = mergeProjectArtifactStore(
     finalStore,
     createArtifactStorePatch({
@@ -100,6 +122,7 @@ export function assessA1ComposeReadiness({
       readinessMetadata: {
         ready: composeReady,
         status: composeReady ? "ready" : "blocked",
+        composeReady,
       },
       composeCandidates: panelPlan.panelCandidates.map((candidate) => ({
         ...candidate,
@@ -109,28 +132,34 @@ export function assessA1ComposeReadiness({
       })),
     }),
   );
-  const freshness = summarizeArtifactFreshness(patchedStore);
+  const artifactFreshness = summarizeArtifactFreshness(patchedStore);
 
   return {
-    version: "phase5-a1-compose-readiness-v1",
+    version: isFeatureEnabled("useComposeExecutionPlanning")
+      ? "phase6-a1-compose-readiness-v1"
+      : "phase5-a1-compose-readiness-v1",
     composeReady,
     composeBlocked: !composeReady,
     ready: composeReady,
     status: composeReady ? "ready" : "blocked",
     blockingReasons,
+    recoverableIssues: blockingState.recoverableIssues || [],
+    nonRecoverableIssues: blockingState.nonRecoverableIssues || [],
     panelCandidates: panelPlan.panelCandidates,
-    freshPanels: panelPlan.freshPanels,
-    stalePanels: panelPlan.stalePanels,
-    missingPanels: panelPlan.missingPanels,
-    missingAssets: freshness.missingFamilies,
-    staleAssets: freshness.staleFamilies,
-    missingFragments: freshness.missingFragments,
-    staleFragments: freshness.staleFragments,
-    artifactFreshness: freshness,
+    freshPanels: panelFreshness.freshPanels,
+    stalePanels: panelFreshness.stalePanels,
+    missingPanels: panelFreshness.missingPanels,
+    missingAssets: artifactFreshness.missingFamilies,
+    staleAssets: artifactFreshness.staleFamilies,
+    missingFragments: artifactFreshness.missingFragments,
+    staleFragments: artifactFreshness.staleFragments,
+    artifactFreshness,
     artifactStore: patchedStore,
     artifactState: buildLegacyArtifactStateFromStore(patchedStore, {
       ready: composeReady,
     }),
+    technicalPanelGate,
+    composeExecutionPlan: executionPlan,
   };
 }
 

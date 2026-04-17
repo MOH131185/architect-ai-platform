@@ -4,6 +4,7 @@ import {
   normalizeDependencyLayer,
   resolveDependentLayers,
 } from "./projectDependencyGraph.js";
+import { planTargetedRegeneration } from "./targetedRegenerationPlanner.js";
 
 function impactedArtifactsForLayers(layers = []) {
   return {
@@ -23,6 +24,42 @@ function impactedArtifactsForLayers(layers = []) {
 }
 
 export function planRegeneration(targetLayer = "", options = {}) {
+  if (isFeatureEnabled("useTargetedRegenerationPlanning")) {
+    const targetedPlan = planTargetedRegeneration({
+      targetLayer,
+      projectGeometry: options.projectGeometry || {},
+      drawings: options.drawings || {},
+      facadeGrammar: options.facadeGrammar || {},
+      visualPackage: options.visualPackage || null,
+      panelCandidates: options.panelCandidates || [],
+      artifactStore:
+        options.artifactStore ||
+        options.projectGeometry?.metadata?.project_artifact_store ||
+        null,
+      validationReport: options.validationReport || null,
+      options,
+    });
+
+    return {
+      version: targetedPlan.version,
+      targetLayer: targetedPlan.targetLayer,
+      impactedLayers: resolveDependentLayers(
+        normalizeDependencyLayer(targetLayer),
+      ),
+      impactedArtifacts: targetedPlan.impactedArtifacts,
+      impactedFragments: targetedPlan.impactedFragments,
+      fragmentPlan: targetedPlan,
+      minimumSafeScope: targetedPlan.minimumSafeScope,
+      plannedActions: targetedPlan.plannedActions,
+      warnings: targetedPlan.warnings || [],
+      levelScoped:
+        targetLayer === "level" ||
+        targetLayer === "one_level" ||
+        options.levelId ||
+        options.level_id,
+    };
+  }
+
   const normalizedTargetLayer = normalizeDependencyLayer(targetLayer);
   const impactedLayers = resolveDependentLayers(normalizedTargetLayer);
   const fragmentPlan = isFeatureEnabled("useFragmentDependencyInvalidation")

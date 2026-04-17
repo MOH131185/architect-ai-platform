@@ -3,7 +3,9 @@ import generateFacadeHandler from "../../../api/models/generate-facade.js";
 import generateFloorplanHandler from "../../../api/models/generate-floorplan.js";
 import generateProjectHandler from "../../../api/models/generate-project.js";
 import planA1PanelsHandler from "../../../api/models/plan-a1-panels.js";
+import planRegenerationHandler from "../../../api/models/plan-regeneration.js";
 import projectReadinessHandler from "../../../api/models/project-readiness.js";
+import projectHealthHandler from "../../../api/models/project-health.js";
 import repairProjectHandler from "../../../api/models/repair-project.js";
 import generateStyleHandler from "../../../api/models/generate-style.js";
 import generateVisualPackageHandler from "../../../api/models/generate-visual-package.js";
@@ -470,7 +472,7 @@ describe("Phase 1 model route handlers", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.meta.publicApiVersion).toBe(
-      "phase5-repair-dependency-compose-v1",
+      "phase6-recovery-regeneration-orchestration-v1",
     );
     expect(res.body.meta.deprecatedAliases).toContain("projectId");
     expect(res.body.meta.deprecatedAliases).toContain("roomProgram");
@@ -507,7 +509,7 @@ describe("Phase 1 model route handlers", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.contractVersion).toBe(
-      "phase5-repair-dependency-compose-v1",
+      "phase6-recovery-regeneration-orchestration-v1",
     );
     expect(res.body.repairCandidates.length).toBeGreaterThan(0);
     expect(res.body.selectedRepair).toBeTruthy();
@@ -796,5 +798,112 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.errors.some((entry) => entry.includes("overlap"))).toBe(
       true,
     );
+  });
+
+  test("plan-regeneration returns a minimum safe targeted regeneration scope", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: {
+          project_id: "route-phase6-regen",
+          levels: [
+            { id: "ground", level_number: 0, name: "Ground" },
+            { id: "first", level_number: 1, name: "First" },
+          ],
+        },
+        targetLayer: "room_layout",
+        drawings: {
+          plan: [
+            {
+              level_id: "ground",
+              title: "Ground",
+              svg: "<svg><text>Ground</text></svg>",
+            },
+            {
+              level_id: "first",
+              title: "First",
+              svg: "<svg><text>First</text></svg>",
+            },
+          ],
+          section: [
+            {
+              section_type: "longitudinal",
+              title: "Section",
+              svg: "<svg><text>Section</text></svg>",
+            },
+          ],
+        },
+        options: {
+          levelId: "ground",
+        },
+      },
+    };
+    const res = createMockResponse();
+
+    await planRegenerationHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.minimumSafeScope.drawingFragments).toContain(
+      "drawing:plan:ground",
+    );
+    expect(res.body.meta.endpoint).toBe("plan-regeneration");
+  });
+
+  test("project-health returns recovery and technical panel health metadata", async () => {
+    const req = {
+      method: "POST",
+      headers: {},
+      body: {
+        projectGeometry: {
+          project_id: "route-phase6-health",
+          metadata: {
+            project_state_snapshots: [
+              {
+                label: "healthy-snapshot",
+                compose_status: "ready",
+                validation_status: "valid",
+              },
+            ],
+          },
+        },
+        drawings: {
+          plan: [
+            {
+              level_id: "ground",
+              title: "Ground Plan",
+              room_count: 2,
+              svg: '<svg><path d="undefined"/></svg>',
+              technical_quality_metadata: {
+                line_hierarchy: { exterior_wall: 6, interior_wall: 4 },
+                room_label_count: 2,
+                window_count: 1,
+                wall_count: 3,
+                has_title_block: true,
+                has_north_arrow: true,
+                has_legend: true,
+              },
+            },
+          ],
+        },
+        validationReport: {
+          status: "valid_with_warnings",
+          warnings: [],
+          errors: [],
+        },
+      },
+    };
+    const res = createMockResponse();
+
+    await projectHealthHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.healthStatus).toBe("recoverable");
+    expect(
+      res.body.recoveryPlan.minimumStepsToComposeReady.length,
+    ).toBeGreaterThan(0);
+    expect(res.body.meta.endpoint).toBe("project-health");
   });
 });

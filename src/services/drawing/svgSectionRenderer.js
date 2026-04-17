@@ -174,6 +174,16 @@ export function renderSectionSvg(
     stair_count: (geometry.stairs || []).length,
     renderer: "deterministic-section-svg",
     title: `Section - ${sectionType}`,
+    technical_quality_metadata: {
+      drawing_type: "section",
+      has_title: true,
+      stair_count: (geometry.stairs || []).length,
+      room_label_count: (geometry.rooms || []).length,
+      slab_line_count: (geometry.levels || []).length,
+      level_label_count: (geometry.levels || []).length,
+      grid_marker_count: (geometry.metadata?.structural_grid?.x_axes || [])
+        .length,
+    },
   };
 }
 

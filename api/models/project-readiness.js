@@ -42,7 +42,11 @@ export default async function handler(req, res) {
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
       "useComposeReadinessPhase5",
+      "useComposeExecutionPlanning",
       "useArtifactLifecycleStore",
+      "useProjectRecoveryFlows",
+      "useTechnicalPanelReadabilityChecks",
+      "useA1TechnicalPanelGating",
     ];
     if (!validation.ok) {
       return sendError(
