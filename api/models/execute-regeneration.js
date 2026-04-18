@@ -1,8 +1,8 @@
 import { coerceToCanonicalProjectGeometry } from "../../src/services/cad/geometryFactory.js";
-import { assessProjectHealth } from "../../src/services/project/projectHealthService.js";
+import { executeApprovedRegeneration } from "../../src/services/editing/regenerationExecutionService.js";
 import {
-  buildProjectHealthResponse,
-  validateProjectHealthRequest,
+  buildExecuteRegenerationResponse,
+  validateExecuteRegenerationRequest,
 } from "../../src/services/models/architectureBackendContracts.js";
 import {
   config,
@@ -25,29 +25,26 @@ export default async function handler(req, res) {
       "ORIGIN_NOT_ALLOWED",
       "Origin is not allowed for this endpoint.",
       null,
-      { endpoint: "project-health" },
+      { endpoint: "execute-regeneration" },
     );
   }
   if (rejectInvalidMethod(req, res)) return;
   if (
     !ensureFeatureEnabled(
       res,
-      ["useA1ProjectReadiness", "useProjectRecoveryFlows"],
-      "project-health",
+      ["useTargetedRegenerationPlanning", "useTargetedRegenerationExecution"],
+      "execute-regeneration",
     )
   ) {
     return;
   }
 
   try {
-    const validation = validateProjectHealthRequest(req.body || {});
+    const validation = validateExecuteRegenerationRequest(req.body || {});
     const featureFlags = [
-      "useA1ProjectReadiness",
-      "useProjectRecoveryFlows",
-      "useComposeExecutionPlanning",
-      "useA1TechnicalPanelGating",
-      "useA1RecoveryExecutionBridge",
-      "useTechnicalPanelScoringPhase7",
+      "useTargetedRegenerationPlanning",
+      "useTargetedRegenerationExecution",
+      "usePhase7EntityDependencies",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
     ];
@@ -62,7 +59,7 @@ export default async function handler(req, res) {
           warnings: validation.warnings,
         },
         {
-          endpoint: "project-health",
+          endpoint: "execute-regeneration",
           featureFlags,
         },
       );
@@ -70,9 +67,9 @@ export default async function handler(req, res) {
 
     const schemaValidation = enforceSchemaValidation(
       res,
-      "projectHealthRequest",
+      "executeRegenerationRequest",
       validation.normalized,
-      "project-health",
+      "execute-regeneration",
       featureFlags,
     );
     if (!schemaValidation.valid) {
@@ -86,24 +83,28 @@ export default async function handler(req, res) {
       res,
       "canonicalProjectGeometry",
       projectGeometry,
-      "project-health",
+      "execute-regeneration",
       featureFlags,
     );
     if (!geometrySchemaValidation.valid) {
       return;
     }
 
-    const result = assessProjectHealth({
+    const result = await executeApprovedRegeneration({
+      approvedPlan: validation.normalized.approvedPlan,
+      targetLayer: validation.normalized.targetLayer,
       projectGeometry,
       drawings: validation.normalized.drawings,
-      visualPackage: validation.normalized.visualPackage,
       facadeGrammar: validation.normalized.facadeGrammar,
+      visualPackage: validation.normalized.visualPackage,
       validationReport: validation.normalized.validationReport,
+      styleDNA: validation.normalized.styleDNA,
       artifactStore: projectGeometry?.metadata?.project_artifact_store || null,
+      options: validation.normalized.options,
     });
 
     return res.status(200).json(
-      buildProjectHealthResponse({
+      buildExecuteRegenerationResponse({
         result,
         warnings: validation.warnings,
         featureFlags,
@@ -113,11 +114,11 @@ export default async function handler(req, res) {
     return sendError(
       res,
       500,
-      "PROJECT_HEALTH_FAILED",
+      "EXECUTE_REGENERATION_FAILED",
       error.message,
       error.details || null,
       {
-        endpoint: "project-health",
+        endpoint: "execute-regeneration",
       },
     );
   }

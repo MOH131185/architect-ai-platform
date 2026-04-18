@@ -277,7 +277,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       );
       return `
         <path d="${polygonPath(room.polygon, project)}" fill="${roomFill(room.zone)}" stroke="#cabfae" stroke-width="1.2"/>
-        ${renderRoomLabel(labelPoint, room)}
+        ${options.hideRoomLabels ? "" : renderRoomLabel(labelPoint, room)}
       `;
     })
     .join("");
@@ -360,6 +360,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   ${renderNorthArrow(width, padding, geometry.site?.north_orientation_deg || 0)}
   ${renderScaleAndTitle(level, width, height, padding)}
   ${renderLegend(width, height, padding)}
+  ${options.overlayMarkup || ""}
 </svg>`;
 
   return {
@@ -377,8 +378,8 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       stair_count: stairCount,
       circulation_path_count: circulationPathCount,
       room_count: roomMap.size,
-      room_label_count: roomMap.size,
-      area_label_count: roomMap.size,
+      room_label_count: options.hideRoomLabels ? 0 : roomMap.size,
+      area_label_count: options.hideRoomLabels ? 0 : roomMap.size,
       has_north_arrow: true,
       has_title_block: true,
       has_legend: true,

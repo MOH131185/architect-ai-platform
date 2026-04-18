@@ -100,11 +100,16 @@ export function planLayoutRepair(
   const selectedCandidate = rankedCandidates[0] || null;
 
   return {
-    version: "phase6-layout-repair-planner-v1",
+    version: "phase7-layout-repair-planner-v1",
     searchPlan,
     candidates: rankedCandidates,
     selectedCandidate,
     chosenPath: selectedCandidate?.strategyPath || [],
+    candidateSummary: rankedCandidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      strategyPath: candidate.strategyPath || [],
+      score: candidate.evaluation?.score || 0,
+    })),
     rationale: selectedCandidate?.explanation || [
       "No deterministic repair candidate was produced.",
     ],

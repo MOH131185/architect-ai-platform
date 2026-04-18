@@ -1,5 +1,7 @@
 import { normalizeFragmentTargetLayer } from "./dependencyEdgeRegistry.js";
 import { buildDependencyFragmentRegistry } from "./dependencyFragmentRegistry.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { resolveEntityImpact } from "./entityImpactResolver.js";
 
 function unique(values = []) {
   return [...new Set(values.filter(Boolean))].sort();
@@ -49,6 +51,20 @@ export function resolveRegenerationScope({
   const requestedSectionType =
     options.sectionType || options.section_type || null;
   const warnings = [];
+  const entityImpact =
+    isFeatureEnabled("usePhase7EntityDependencies") &&
+    isFeatureEnabled("useFragmentEdgesPhase6")
+      ? resolveEntityImpact({
+          targetLayer: normalizedLayer,
+          projectGeometry,
+          drawings,
+          facadeGrammar,
+          panelCandidates,
+          artifactStore,
+          validationReport,
+          options,
+        })
+      : null;
 
   let drawingFragments = [];
   let facadeFragments = [];
@@ -142,6 +158,31 @@ export function resolveRegenerationScope({
     ]);
   }
 
+  if (entityImpact) {
+    drawingFragments = unique([
+      ...drawingFragments,
+      ...(entityImpact.impactedFragments || []).filter((entry) =>
+        entry.startsWith("drawing:"),
+      ),
+    ]);
+    facadeFragments = unique([
+      ...facadeFragments,
+      ...(entityImpact.impactedFragments || []).filter((entry) =>
+        entry.startsWith("facade:"),
+      ),
+    ]);
+    visualFragments = unique([
+      ...visualFragments,
+      ...(entityImpact.impactedFragments || []).filter((entry) =>
+        entry.startsWith("visual:"),
+      ),
+    ]);
+    panelFragments = unique([
+      ...panelFragments,
+      ...(entityImpact.impactedPanels || []),
+    ]);
+  }
+
   return {
     version: "phase6-regeneration-scope-resolver-v1",
     targetLayer: normalizedLayer,
@@ -154,6 +195,7 @@ export function resolveRegenerationScope({
       panelFragments: unique(panelFragments),
       readinessFragments: ["readiness:default"],
     },
+    impactedEntities: entityImpact?.impactedEntities || [],
     warnings,
   };
 }

@@ -1,9 +1,11 @@
 import {
   PHASE5_PUBLIC_API_VERSION as CONTRACT_PHASE5_PUBLIC_API_VERSION,
   PHASE6_PUBLIC_API_VERSION as CONTRACT_PHASE6_PUBLIC_API_VERSION,
+  PHASE7_PUBLIC_API_VERSION as CONTRACT_PHASE7_PUBLIC_API_VERSION,
   getPublicApiVersion,
   getSchemaEngineVersion,
 } from "../contracts/contractVersioningService.js";
+import { geometrySignature } from "../project/projectArtifactStore.js";
 
 function toArray(value) {
   if (Array.isArray(value)) return value;
@@ -47,6 +49,12 @@ function uniqueStrings(values = []) {
         .filter(Boolean),
     ),
   ];
+}
+
+function isStringArray(value) {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
 }
 
 function buildResponseMeta(
@@ -101,6 +109,7 @@ export const PHASE2_RUNTIME_VERSION = "phase2-geometry-validation-v1";
 export const PHASE4_PUBLIC_API_VERSION = "phase4-solver-schema-a1-v1";
 export const PHASE5_PUBLIC_API_VERSION = CONTRACT_PHASE5_PUBLIC_API_VERSION;
 export const PHASE6_PUBLIC_API_VERSION = CONTRACT_PHASE6_PUBLIC_API_VERSION;
+export const PHASE7_PUBLIC_API_VERSION = CONTRACT_PHASE7_PUBLIC_API_VERSION;
 
 export const PHASE1_API_CONTRACTS = {
   generateStyle: {
@@ -187,6 +196,17 @@ export const PHASE1_API_CONTRACTS = {
   planRegeneration: {
     request: ["projectGeometry", "targetLayer", "options", "validationReport"],
     response: ["minimumSafeScope", "plannedActions", "impactedFragments"],
+  },
+  executeRegeneration: {
+    request: ["projectGeometry", "approvedPlan", "targetLayer", "options"],
+    response: [
+      "artifactFreshness",
+      "snapshotDiff",
+      "freshnessUpdates",
+      "drawings",
+      "facadeGrammar",
+      "visualPackage",
+    ],
   },
   projectHealth: {
     request: ["projectGeometry", "drawings", "visualPackage"],
@@ -833,6 +853,8 @@ export function buildProjectReadinessResponse({
     artifactFreshness: result.artifactFreshness || null,
     technicalPanelGate: result.technicalPanelGate || null,
     composeExecutionPlan: result.composeExecutionPlan || null,
+    recoveryExecutionBridge: result.recoveryExecutionBridge || null,
+    entityBlockers: result.entityBlockers || [],
     recoveryPlan: result.recoveryPlan || null,
     warnings,
     meta: buildResponseMeta("project-readiness", featureFlags, ["geometry"]),
@@ -893,11 +915,13 @@ export function buildPlanA1PanelsResponse({
     staleAssets: result.staleAssets || [],
     artifactFreshness: result.artifactFreshness || null,
     technicalPanelGate: result.technicalPanelGate || null,
+    technicalPanelScores: result.technicalPanelScores || [],
     technicalQualityBlockers: result.technicalQualityBlockers || [],
     composeBlockingReasons:
       result.composeBlockingReasons ||
       result.technicalPanelGate?.blockingReasons ||
       [],
+    recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     warnings,
     meta: buildResponseMeta("plan-a1-panels", featureFlags, ["geometry"]),
   };
@@ -956,7 +980,9 @@ export function buildPlanRegenerationResponse({
     minimumSafeScope: result.minimumSafeScope || null,
     impactedArtifacts: result.impactedArtifacts || null,
     impactedFragments: result.impactedFragments || null,
+    impactedEntities: result.impactedEntities || [],
     plannedActions: result.plannedActions || [],
+    executable: result.executable === true,
     warnings: uniqueStrings([...(warnings || []), ...(result.warnings || [])]),
     meta: buildResponseMeta("plan-regeneration", featureFlags, [
       "geometry",
@@ -1006,6 +1032,9 @@ export function buildProjectHealthResponse({
     recoveryPlan: result.recoveryPlan || null,
     rollbackPlan: result.rollbackPlan || null,
     technicalPanelHealth: result.technicalPanelHealth || null,
+    technicalPackageStrength: result.technicalPackageStrength || null,
+    remainingBlockers: result.remainingBlockers || [],
+    recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     warnings,
     meta: buildResponseMeta("project-health", featureFlags, ["geometry"]),
   };
@@ -1068,10 +1097,139 @@ export function buildRepairProjectResponse({
     explanations: result.explanations || [],
     chosenPath: result.chosenPath || [],
     searchPlan: result.searchPlan || null,
+    executableRepairOptions: result.executableRepairOptions || [],
     validationReportBefore,
     validationReportAfter,
     warnings,
     meta: buildResponseMeta("repair-project", featureFlags, ["geometry"]),
+  };
+}
+
+export function validateExecuteRegenerationRequest(payload = {}) {
+  const warnings = [];
+  noteDeprecatedAlias(warnings, payload, "geometry", "projectGeometry");
+  noteDeprecatedAlias(warnings, payload, "target_layer", "targetLayer");
+  const normalized = {
+    projectGeometry: payload.projectGeometry || payload.geometry || null,
+    approvedPlan: isPlainObject(payload.approvedPlan)
+      ? payload.approvedPlan
+      : null,
+    targetLayer:
+      payload.targetLayer ||
+      payload.target_layer ||
+      payload.approvedPlan?.targetLayer ||
+      null,
+    drawings: isPlainObject(payload.drawings) ? payload.drawings : null,
+    visualPackage: isPlainObject(payload.visualPackage)
+      ? payload.visualPackage
+      : null,
+    facadeGrammar: isPlainObject(payload.facadeGrammar)
+      ? payload.facadeGrammar
+      : null,
+    validationReport: isPlainObject(payload.validationReport)
+      ? payload.validationReport
+      : null,
+    styleDNA: isPlainObject(payload.styleDNA) ? payload.styleDNA : {},
+    options: isPlainObject(payload.options) ? payload.options : {},
+  };
+  const errors = [];
+  if (!normalized.projectGeometry) {
+    errors.push("projectGeometry or geometry is required.");
+  }
+  if (!normalized.approvedPlan && !normalized.targetLayer) {
+    errors.push("approvedPlan or targetLayer is required.");
+  }
+  if (normalized.approvedPlan) {
+    const scope = normalized.approvedPlan.minimumSafeScope;
+    if (!isPlainObject(scope)) {
+      errors.push("approvedPlan.minimumSafeScope must be an object.");
+    } else {
+      [
+        "geometryFragments",
+        "drawingFragments",
+        "facadeFragments",
+        "visualFragments",
+        "panelFragments",
+        "readinessFragments",
+      ].forEach((key) => {
+        if (hasOwn(scope, key) && !isStringArray(scope[key])) {
+          errors.push(
+            `approvedPlan.minimumSafeScope.${key} must be an array of strings.`,
+          );
+        }
+      });
+      const actionableCount = [
+        "geometryFragments",
+        "drawingFragments",
+        "facadeFragments",
+        "visualFragments",
+        "panelFragments",
+        "readinessFragments",
+      ].reduce(
+        (total, key) =>
+          total + (Array.isArray(scope[key]) ? scope[key].length : 0),
+        0,
+      );
+      if (actionableCount === 0) {
+        errors.push(
+          "approvedPlan.minimumSafeScope must contain at least one fragment id.",
+        );
+      }
+    }
+    if (
+      normalized.approvedPlan.geometrySignature &&
+      normalized.projectGeometry &&
+      normalized.approvedPlan.geometrySignature !==
+        geometrySignature(normalized.projectGeometry)
+    ) {
+      errors.push(
+        "approvedPlan.geometrySignature does not match the supplied projectGeometry.",
+      );
+    }
+  }
+  if (hasOwn(payload, "drawings") && !isPlainObject(payload.drawings)) {
+    errors.push("drawings must be an object when provided.");
+  }
+  if (hasOwn(payload, "styleDNA") && !isPlainObject(payload.styleDNA)) {
+    errors.push("styleDNA must be an object when provided.");
+  }
+  if (hasOwn(payload, "options") && !isPlainObject(payload.options)) {
+    errors.push("options must be an object when provided.");
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    normalized,
+  };
+}
+
+export function buildExecuteRegenerationResponse({
+  result,
+  warnings = [],
+  featureFlags = [],
+}) {
+  return {
+    contractVersion: getPublicApiVersion("execute-regeneration"),
+    success: true,
+    approvedPlan: result.approvedPlan || null,
+    executedActions: result.executedActions || [],
+    projectGeometry: result.projectGeometry || null,
+    drawings: result.drawings || null,
+    facadeGrammar: result.facadeGrammar || null,
+    visualPackage: result.visualPackage || null,
+    artifactStore: result.artifactStore || null,
+    artifactFreshness: result.artifactFreshness || null,
+    beforeSnapshot: result.beforeSnapshot || null,
+    afterSnapshot: result.afterSnapshot || null,
+    snapshotDiff: result.snapshotDiff || null,
+    freshnessUpdates: result.freshnessUpdates || null,
+    warnings: [...warnings, ...(result.executionWarnings || [])],
+    meta: buildResponseMeta("execute-regeneration", featureFlags, [
+      "geometry",
+      "target_layer",
+    ]),
   };
 }
 
@@ -1183,6 +1341,8 @@ export default {
   buildPlanA1PanelsResponse,
   validatePlanRegenerationRequest,
   buildPlanRegenerationResponse,
+  validateExecuteRegenerationRequest,
+  buildExecuteRegenerationResponse,
   validateProjectHealthRequest,
   buildProjectHealthResponse,
   validateSearchPrecedentsRequest,

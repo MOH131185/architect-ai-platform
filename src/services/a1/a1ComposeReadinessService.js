@@ -13,6 +13,7 @@ import { resolveA1Freshness } from "./a1FreshnessResolver.js";
 import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
 import { buildA1ComposeBlockingState } from "./a1ComposeBlockingService.js";
 import { planA1ComposeExecution } from "./a1ComposeExecutionPlanner.js";
+import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
 
 export function assessA1ComposeReadiness({
   projectGeometry = {},
@@ -21,6 +22,7 @@ export function assessA1ComposeReadiness({
   facadeGrammar = null,
   validationReport = null,
   artifactStore = null,
+  styleDNA = {},
 } = {}) {
   const baseStore =
     drawings || facadeGrammar || visualPackage
@@ -109,6 +111,21 @@ export function assessA1ComposeReadiness({
         technicalPanelGate,
       })
     : null;
+  const recoveryExecutionBridge = isFeatureEnabled(
+    "useA1RecoveryExecutionBridge",
+  )
+    ? buildA1RecoveryExecutionBridge({
+        projectGeometry,
+        drawings,
+        facadeGrammar,
+        visualPackage,
+        panelCandidates: panelPlan.panelCandidates,
+        artifactStore: finalStore,
+        technicalPanelGate,
+        freshness: panelFreshness,
+        styleDNA,
+      })
+    : null;
 
   const blockingReasons = [...(blockingState.blockingReasons || [])];
   if (!panelPlan.panelCandidates.length) {
@@ -162,6 +179,7 @@ export function assessA1ComposeReadiness({
     }),
     technicalPanelGate,
     composeExecutionPlan: executionPlan,
+    recoveryExecutionBridge,
   };
 }
 

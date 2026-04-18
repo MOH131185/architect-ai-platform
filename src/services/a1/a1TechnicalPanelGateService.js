@@ -19,7 +19,9 @@ export function evaluateA1TechnicalPanelGate({
 
   const blockingReasons = [];
   const warnings = [];
-  const blockingPanels = checks.blockingPanels.map((entry) => entry.panelId);
+  const blockingPanels = new Set(
+    checks.blockingPanels.map((entry) => entry.panelId),
+  );
 
   checks.checks.forEach((entry) => {
     const candidate = panelCandidateMap.get(entry.panelId);
@@ -32,11 +34,13 @@ export function evaluateA1TechnicalPanelGate({
     );
 
     if (staleSourceArtifacts.length) {
+      blockingPanels.add(entry.panelId);
       blockingReasons.push(
         `${entry.panelId} is stale relative to current geometry (${staleSourceArtifacts.join(", ")}).`,
       );
     }
     if (missingSourceArtifacts.length) {
+      blockingPanels.add(entry.panelId);
       blockingReasons.push(
         `${entry.panelId} is missing required drawing fragments (${missingSourceArtifacts.join(", ")}).`,
       );
@@ -59,9 +63,9 @@ export function evaluateA1TechnicalPanelGate({
   });
 
   return {
-    version: "phase6-a1-technical-panel-gate-v1",
+    version: "phase7-a1-technical-panel-gate-v1",
     technicalReady: blockingReasons.length === 0,
-    blockingPanels,
+    blockingPanels: [...blockingPanels].sort(),
     blockingReasons: [...new Set(blockingReasons)],
     warnings: [...new Set(warnings)],
     panelChecks: checks.checks,

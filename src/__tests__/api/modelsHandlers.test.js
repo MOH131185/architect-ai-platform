@@ -472,7 +472,7 @@ describe("Phase 1 model route handlers", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.meta.publicApiVersion).toBe(
-      "phase6-recovery-regeneration-orchestration-v1",
+      "phase7-technical-drawing-execution-v1",
     );
     expect(res.body.meta.deprecatedAliases).toContain("projectId");
     expect(res.body.meta.deprecatedAliases).toContain("roomProgram");
@@ -509,7 +509,7 @@ describe("Phase 1 model route handlers", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.contractVersion).toBe(
-      "phase6-recovery-regeneration-orchestration-v1",
+      "phase7-technical-drawing-execution-v1",
     );
     expect(res.body.repairCandidates.length).toBeGreaterThan(0);
     expect(res.body.selectedRepair).toBeTruthy();

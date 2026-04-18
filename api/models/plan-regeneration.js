@@ -44,6 +44,7 @@ export default async function handler(req, res) {
     const featureFlags = [
       "useTargetedRegenerationPlanning",
       "useFragmentEdgesPhase6",
+      "usePhase7EntityDependencies",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
     ];

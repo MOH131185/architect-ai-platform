@@ -122,7 +122,11 @@ export function renderSectionSvg(
       const rectHeight = Math.max(22, Number(level.height_m || 3.2) * scale);
       return `
         <rect x="${x}" y="${y}" width="${rectWidth}" height="${rectHeight}" fill="none" stroke="#111" stroke-width="1.8"/>
-        <text x="${x + rectWidth / 2}" y="${y + rectHeight / 2}" font-size="11" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(room.name)}</text>
+        ${
+          options.hideRoomLabels
+            ? ""
+            : `<text x="${x + rectWidth / 2}" y="${y + rectHeight / 2}" font-size="11" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(room.name)}</text>`
+        }
       `;
     })
     .join("");
@@ -166,6 +170,7 @@ export function renderSectionSvg(
   ${levelLabels}
   ${stairMarkup}
   ${roomMarkup}
+  ${options.overlayMarkup || ""}
 </svg>`;
 
   return {
@@ -178,7 +183,9 @@ export function renderSectionSvg(
       drawing_type: "section",
       has_title: true,
       stair_count: (geometry.stairs || []).length,
-      room_label_count: (geometry.rooms || []).length,
+      room_label_count: options.hideRoomLabels
+        ? 0
+        : (geometry.rooms || []).length,
       slab_line_count: (geometry.levels || []).length,
       level_label_count: (geometry.levels || []).length,
       grid_marker_count: (geometry.metadata?.structural_grid?.x_axes || [])

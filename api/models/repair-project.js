@@ -1,6 +1,7 @@
 import { coerceToCanonicalProjectGeometry } from "../../src/services/cad/geometryFactory.js";
 import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import { repairLayout } from "../../src/services/floorplan/layoutRepairEngine.js";
+import { planTargetedRegeneration } from "../../src/services/editing/targetedRegenerationPlanner.js";
 import {
   buildRepairProjectResponse,
   validateRepairProjectRequest,
@@ -46,6 +47,7 @@ export default async function handler(req, res) {
     const featureFlags = [
       "usePhase5RepairEngine",
       "usePhase6RepairSearch",
+      "useTargetedRegenerationPlanning",
       "useGeometryValidationEngine",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
@@ -113,6 +115,18 @@ export default async function handler(req, res) {
       warnings: validation.warnings,
       featureFlags,
     });
+    responsePayload.executableRepairOptions =
+      isFeatureEnabled("useTargetedRegenerationPlanning") &&
+      result.selectedCandidate
+        ? [
+            planTargetedRegeneration({
+              targetLayer: "room_layout",
+              projectGeometry: result.repairedProjectGeometry,
+              validationReport: validationReportAfter,
+              options: validation.normalized.options,
+            }),
+          ]
+        : [];
 
     if (
       validationReportAfter.status === "invalid" &&

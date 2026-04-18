@@ -978,6 +978,27 @@ export const FEATURE_FLAGS = {
   /** Phase 6 honest A1 technical panel gating */
   useA1TechnicalPanelGating: true,
 
+  /** Phase 7 entity-aware dependency graph */
+  usePhase7EntityDependencies: true,
+
+  /** Phase 7 minimum-scope regeneration execution */
+  useTargetedRegenerationExecution: true,
+
+  /** Phase 7 deterministic technical drawing upgrade */
+  useTechnicalDrawingUpgradePhase7: true,
+
+  /** Phase 7 annotation placement guarantees and fallback metadata */
+  useAnnotationPlacementGuarantees: true,
+
+  /** Phase 7 richer section-cut specificity */
+  useSectionSpecificityPhase7: true,
+
+  /** Phase 7 technical panel scoring thresholds */
+  useTechnicalPanelScoringPhase7: true,
+
+  /** Phase 7 bridge from blocked panels to executable recovery */
+  useA1RecoveryExecutionBridge: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1250,6 +1271,13 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useProjectRecoveryFlows = true;
   FEATURE_FLAGS.useTechnicalPanelReadabilityChecks = true;
   FEATURE_FLAGS.useA1TechnicalPanelGating = true;
+  FEATURE_FLAGS.usePhase7EntityDependencies = true;
+  FEATURE_FLAGS.useTargetedRegenerationExecution = true;
+  FEATURE_FLAGS.useTechnicalDrawingUpgradePhase7 = true;
+  FEATURE_FLAGS.useAnnotationPlacementGuarantees = true;
+  FEATURE_FLAGS.useSectionSpecificityPhase7 = true;
+  FEATURE_FLAGS.useTechnicalPanelScoringPhase7 = true;
+  FEATURE_FLAGS.useA1RecoveryExecutionBridge = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1532,6 +1560,34 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_A1_TECHNICAL_PANEL_GATING: {
       flag: "useA1TechnicalPanelGating",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PHASE7_ENTITY_DEPENDENCIES: {
+      flag: "usePhase7EntityDependencies",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TARGETED_REGENERATION_EXECUTION: {
+      flag: "useTargetedRegenerationExecution",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_DRAWING_UPGRADE_PHASE7: {
+      flag: "useTechnicalDrawingUpgradePhase7",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ANNOTATION_PLACEMENT_GUARANTEES: {
+      flag: "useAnnotationPlacementGuarantees",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_SPECIFICITY_PHASE7: {
+      flag: "useSectionSpecificityPhase7",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_PANEL_SCORING_PHASE7: {
+      flag: "useTechnicalPanelScoringPhase7",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_RECOVERY_EXECUTION_BRIDGE: {
+      flag: "useA1RecoveryExecutionBridge",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

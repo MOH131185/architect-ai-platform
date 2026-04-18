@@ -64,6 +64,11 @@ export function assessA1ProjectReadiness({
       artifactStore: composeReadiness.artifactStore,
       technicalPanelGate: composeReadiness.technicalPanelGate || null,
       composeExecutionPlan: composeReadiness.composeExecutionPlan || null,
+      recoveryExecutionBridge: composeReadiness.recoveryExecutionBridge || null,
+      entityBlockers:
+        composeReadiness.recoveryExecutionBridge?.repairPlanner?.repairs
+          ?.flatMap((entry) => entry.impactedEntities || [])
+          .filter(Boolean) || [],
       recoveryPlan,
       composeReadiness,
     };

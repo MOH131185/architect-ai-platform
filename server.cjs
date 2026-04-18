@@ -343,6 +343,7 @@ mountDynamicApiRoute('post', '/api/models/validate-project', 'api/models/validat
 mountDynamicApiRoute('post', '/api/models/project-readiness', 'api/models/project-readiness.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/plan-a1-panels', 'api/models/plan-a1-panels.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/plan-regeneration', 'api/models/plan-regeneration.js', [aiApiLimiter]);
+mountDynamicApiRoute('post', '/api/models/execute-regeneration', 'api/models/execute-regeneration.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/project-health', 'api/models/project-health.js', [aiApiLimiter]);
 mountDynamicApiRoute('post', '/api/models/search-precedents', 'api/models/search-precedents.js', [aiApiLimiter]);
 mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');

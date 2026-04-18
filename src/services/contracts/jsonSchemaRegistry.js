@@ -1,8 +1,8 @@
 import { CANONICAL_PROJECT_GEOMETRY_VERSION } from "../cad/projectGeometrySchema.js";
 import { JSON_SCHEMAS as LEGACY_JSON_SCHEMAS } from "./jsonSchemas.js";
 import {
-  PHASE6_PUBLIC_API_VERSION,
-  PHASE6_SCHEMA_ENGINE_VERSION,
+  PHASE7_PUBLIC_API_VERSION,
+  PHASE7_SCHEMA_ENGINE_VERSION,
 } from "./contractVersioningService.js";
 import { nullable, objectSchema, arrayOf } from "./schemaCompositionService.js";
 import { buildDeprecationMap } from "./schemaMigrationService.js";
@@ -82,6 +82,34 @@ const validationReportSchema = {
     warnings: { type: "array", items: { type: "string" } },
     errors: { type: "array", items: { type: "string" } },
     repairSuggestions: { type: "array", items: { type: "string" } },
+  },
+  additionalProperties: true,
+};
+
+const fragmentListSchema = {
+  type: "array",
+  items: { type: "string", minLength: 1 },
+};
+
+const regenerationScopeSchema = {
+  type: "object",
+  properties: {
+    geometryFragments: fragmentListSchema,
+    drawingFragments: fragmentListSchema,
+    facadeFragments: fragmentListSchema,
+    visualFragments: fragmentListSchema,
+    panelFragments: fragmentListSchema,
+    readinessFragments: fragmentListSchema,
+  },
+  additionalProperties: true,
+};
+
+const approvedRegenerationPlanSchema = {
+  type: "object",
+  properties: {
+    targetLayer: { type: "string", minLength: 1 },
+    geometrySignature: { type: "string", minLength: 1 },
+    minimumSafeScope: regenerationScopeSchema,
   },
   additionalProperties: true,
 };
@@ -211,13 +239,31 @@ const projectHealthRequestSchema = objectSchema(
   },
 );
 
+const executeRegenerationRequestSchema = objectSchema(
+  {
+    projectGeometry: { type: "object" },
+    approvedPlan: nullable(approvedRegenerationPlanSchema),
+    targetLayer: { type: ["string", "null"], minLength: 1 },
+    drawings: nullable(drawingsSchema),
+    visualPackage: nullable(visualPackageSchema),
+    facadeGrammar: { type: ["object", "null"] },
+    validationReport: nullable(validationReportSchema),
+    styleDNA: { type: ["object", "null"] },
+    options: { type: "object", additionalProperties: true },
+  },
+  {
+    required: ["projectGeometry"],
+    additionalProperties: true,
+  },
+);
+
 function createRegistration(name, schema, options = {}) {
   return {
     name,
     schemaName: name,
     schemaVersion: options.schemaVersion || `${name}-phase6-v1`,
-    publicApiVersion: options.publicApiVersion || PHASE6_PUBLIC_API_VERSION,
-    schemaEngineVersion: PHASE6_SCHEMA_ENGINE_VERSION,
+    publicApiVersion: options.publicApiVersion || PHASE7_PUBLIC_API_VERSION,
+    schemaEngineVersion: PHASE7_SCHEMA_ENGINE_VERSION,
     deprecatedProperties: options.deprecatedProperties || {},
     schema,
   };
@@ -328,6 +374,16 @@ export const JSON_SCHEMA_REGISTRY = {
     {
       deprecatedProperties: buildDeprecationMap({
         geometry: "projectGeometry",
+      }),
+    },
+  ),
+  executeRegenerationRequest: createRegistration(
+    "executeRegenerationRequest",
+    executeRegenerationRequestSchema,
+    {
+      deprecatedProperties: buildDeprecationMap({
+        geometry: "projectGeometry",
+        target_layer: "targetLayer",
       }),
     },
   ),

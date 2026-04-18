@@ -43,6 +43,8 @@ export default async function handler(req, res) {
       "useArtifactLifecycleStore",
       "useTechnicalPanelReadabilityChecks",
       "useA1TechnicalPanelGating",
+      "useTechnicalPanelScoringPhase7",
+      "useA1RecoveryExecutionBridge",
     ];
     if (!validation.ok) {
       return sendError(

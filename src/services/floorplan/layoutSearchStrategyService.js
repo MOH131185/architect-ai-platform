@@ -1,5 +1,6 @@
 import { LAYOUT_REPAIR_STRATEGIES } from "./layoutRepairStrategies.js";
 import { planIrregularEnvelopeFallback } from "../site/irregularEnvelopeFallbackPlanner.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 
 const STRATEGY_ORDER = LAYOUT_REPAIR_STRATEGIES.map((strategy) => strategy.id);
 
@@ -94,13 +95,36 @@ export function resolveLayoutSearchStrategyPlan(
       ],
     });
   }
+  const tertiaryPasses = isFeatureEnabled("usePhase6RepairSearch")
+    ? ordered
+        .slice(0, Math.max(0, ordered.length - 2))
+        .map((strategyId, index) => ({
+          id: `repair-pass:tertiary:${index + 1}`,
+          strategyPath: [
+            ordered[index],
+            ordered[index + 1],
+            ordered[index + 2],
+          ].filter(Boolean),
+          rationale: [
+            `Tertiary pass chains ${[
+              ordered[index],
+              ordered[index + 1],
+              ordered[index + 2],
+            ]
+              .filter(Boolean)
+              .join(" -> ")} for deterministic multi-step repair.`,
+          ],
+        }))
+    : [];
 
   return {
-    version: "phase6-layout-search-strategy-v1",
+    version: isFeatureEnabled("usePhase6RepairSearch")
+      ? "phase7-layout-search-strategy-v1"
+      : "phase6-layout-search-strategy-v1",
     signals,
     orderedStrategies: ordered,
     fallback,
-    passes: [...passes, ...compoundPasses],
+    passes: [...passes, ...compoundPasses, ...tertiaryPasses],
   };
 }
 

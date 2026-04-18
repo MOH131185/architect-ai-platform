@@ -8,6 +8,9 @@ import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
 import { renderPlanSvg } from "./svgPlanRenderer.js";
 import { renderElevationSvg } from "./svgElevationRenderer.js";
 import { renderSectionSvg } from "./svgSectionRenderer.js";
+import { buildPlanGraphic } from "./planGraphicsService.js";
+import { buildElevationGraphic } from "./elevationGraphicsService.js";
+import { buildSectionGraphic } from "./sectionGraphicsService.js";
 import {
   buildValidationDisabledReport,
   validateProject,
@@ -99,14 +102,23 @@ async function renderLocalTechnicalDrawings(payload = {}) {
     elevations: [],
     sections: [],
   };
+  const usePhase7DrawingUpgrade = isFeatureEnabled(
+    "useTechnicalDrawingUpgradePhase7",
+  );
 
   if (requestedDrawingTypes.includes("plan")) {
     outputs.floor_plans = geometry.levels.map((level) =>
-      renderPlanSvg(geometry, {
-        ...payload.options,
-        levelId: level.id,
-        showStructuralGrid: Boolean(structuralGrid),
-      }),
+      usePhase7DrawingUpgrade
+        ? buildPlanGraphic(geometry, {
+            ...payload.options,
+            levelId: level.id,
+            showStructuralGrid: Boolean(structuralGrid),
+          })
+        : renderPlanSvg(geometry, {
+            ...payload.options,
+            levelId: level.id,
+            showStructuralGrid: Boolean(structuralGrid),
+          }),
     );
   }
 
@@ -116,11 +128,17 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         ? payload.orientations
         : ["north", "south", "east", "west"];
     outputs.elevations = orientations.map((orientation) =>
-      renderElevationSvg(geometry, styleDNA, {
-        ...payload.options,
-        orientation,
-        facadeGrammar,
-      }),
+      usePhase7DrawingUpgrade
+        ? buildElevationGraphic(geometry, styleDNA, {
+            ...payload.options,
+            orientation,
+            facadeGrammar,
+          })
+        : renderElevationSvg(geometry, styleDNA, {
+            ...payload.options,
+            orientation,
+            facadeGrammar,
+          }),
     );
   }
 
@@ -130,11 +148,17 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         ? payload.sectionTypes
         : ["longitudinal", "transverse"];
     outputs.sections = sectionTypes.map((sectionType) =>
-      renderSectionSvg(geometry, styleDNA, {
-        ...payload.options,
-        sectionType,
-        structuralGrid,
-      }),
+      usePhase7DrawingUpgrade
+        ? buildSectionGraphic(geometry, styleDNA, {
+            ...payload.options,
+            sectionType,
+            structuralGrid,
+          })
+        : renderSectionSvg(geometry, styleDNA, {
+            ...payload.options,
+            sectionType,
+            structuralGrid,
+          }),
     );
   }
 
@@ -201,6 +225,11 @@ async function renderLocalTechnicalDrawings(payload = {}) {
         "Deterministic SVG linework generated directly from canonical project geometry.",
         "Plans, elevations, and sections use the same geometry source of truth.",
         "A1 composition hooks are attached so downstream board composition can preserve geometry signatures and panel intent.",
+        ...(usePhase7DrawingUpgrade
+          ? [
+              "Phase 7 technical drawing upgrade added explicit annotation layout, section specificity, and scoring-ready metadata.",
+            ]
+          : []),
         ...(technicalReadabilityEnabled
           ? [
               "Phase 6 technical panel metadata is attached so compose readiness can block weak or broken technical drawings.",

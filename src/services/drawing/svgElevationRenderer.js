@@ -219,6 +219,7 @@ export function renderElevationSvg(
   ${rhythmMarkup}
   ${ratioLabel}
   ${componentLabel}
+  ${options.overlayMarkup || ""}
 </svg>`;
 
   return {

@@ -95,7 +95,7 @@ describe("Phase 6 technical panel gating", () => {
             level_id: "ground",
             title: "Ground Plan",
             room_count: 1,
-            svg: "<svg><text>Ground</text><text>10 m2</text></svg>",
+            svg: '<svg><g id="title-block"></g><text>Ground</text><text>10 m2</text></svg>',
             technical_quality_metadata: {
               line_hierarchy: { exterior_wall: 6, interior_wall: 4 },
               room_label_count: 1,
@@ -119,6 +119,7 @@ describe("Phase 6 technical panel gating", () => {
               room_label_count: 1,
               slab_line_count: 1,
               level_label_count: 1,
+              section_usefulness_score: 0.78,
             },
           },
         ],
@@ -151,5 +152,32 @@ describe("Phase 6 technical panel gating", () => {
         entry.includes("panel:section:longitudinal"),
       ),
     ).toBe(false);
+  });
+
+  test("blocks a technical panel when no quality evaluation can be resolved", () => {
+    const gate = evaluateA1TechnicalPanelGate({
+      drawings: {
+        plan: [],
+      },
+      panelCandidates: [
+        {
+          id: "panel:floor-plan:ground",
+          type: "floor_plan",
+          sourceArtifacts: ["drawing:plan:ground"],
+        },
+      ],
+      artifactFreshness: {
+        staleFragments: [],
+        missingFragments: [],
+      },
+    });
+
+    expect(gate.technicalReady).toBe(false);
+    expect(gate.blockingPanels).toContain("panel:floor-plan:ground");
+    expect(
+      gate.blockingReasons.some((entry) =>
+        entry.includes("No technical drawing quality evaluation"),
+      ),
+    ).toBe(true);
   });
 });

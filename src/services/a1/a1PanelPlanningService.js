@@ -1,6 +1,7 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { planA1PanelArtifacts } from "./a1PanelArtifactPlanner.js";
 import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
+import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
 
 const PANEL_TYPE_ALIASES = {
   plan: "floor_plan",
@@ -51,12 +52,39 @@ export function planA1Panels({
         null,
       facadeGrammar,
     });
+    const recoveryExecutionBridge = isFeatureEnabled(
+      "useA1RecoveryExecutionBridge",
+    )
+      ? buildA1RecoveryExecutionBridge({
+          projectGeometry,
+          drawings,
+          visualPackage,
+          facadeGrammar,
+          panelCandidates: panelPlan.panelCandidates,
+          artifactStore: panelPlan.artifactStore,
+          freshness: {
+            stalePanels: panelPlan.stalePanels,
+            missingPanels: panelPlan.missingPanels,
+          },
+          technicalPanelGate,
+        })
+      : null;
 
     return {
       ...panelPlan,
       technicalPanelGate,
       technicalQualityBlockers: technicalPanelGate.blockingReasons || [],
       composeBlockingReasons: technicalPanelGate.blockingReasons || [],
+      recoveryExecutionBridge,
+      technicalPanelScores: (technicalPanelGate.panelChecks || []).map(
+        (entry) => ({
+          panelId: entry.panelId,
+          score: entry.quality?.score?.score ?? null,
+          thresholds: entry.quality?.score?.thresholds ?? null,
+          blockers: entry.quality?.blockers || [],
+          warnings: entry.quality?.warnings || [],
+        }),
+      ),
     };
   }
 
