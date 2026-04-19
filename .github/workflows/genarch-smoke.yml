@@ -135,7 +135,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd genarch
-          pip install -e ".[all]"
+          pip install -e ".[all,dev]"
 
       - name: Run smoke tests
         run: |
