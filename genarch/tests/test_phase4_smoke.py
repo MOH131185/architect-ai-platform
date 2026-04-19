@@ -22,7 +22,8 @@ from pathlib import Path
 
 import pytest
 
-# Skip if pypdf not installed
+# Skip if phase4 dependencies not installed
+pytest.importorskip("reportlab")  # required by genarch.phase4
 pypdf = pytest.importorskip("pypdf")
 from pypdf import PdfReader
 
