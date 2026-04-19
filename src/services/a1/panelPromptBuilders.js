@@ -15,6 +15,10 @@ import logger from "../../utils/logger.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { buildRoboflowSymbolVocabularyBlock } from "../layoutReferenceService.js";
 import { getRoomListForLevel } from "../validation/programLockSchema.js";
+import {
+  getCanonicalMaterialPalette,
+  paletteToSpecSheet,
+} from "../design/canonicalMaterialPalette.js";
 
 // CAD-standard lineweight specification for technical drawings
 const LINEWEIGHT_SPEC = `
@@ -135,13 +139,77 @@ function normalizeMaterials(masterDNA = {}) {
 }
 
 /**
+ * Build an explicit material spec sheet for the hero 3D prompt. Previously
+ * only `materials[0]` was threaded, which is why FLUX would render a plausible
+ * but DNA-disregarding house (e.g. blue clapboard when DNA said red brick).
+ *
+ * Now delegates to canonicalMaterialPalette — the same SSOT that powers the
+ * material swatch panel and elevation pattern fills, so hero / elevations /
+ * swatches stay in lockstep.
+ * @private
+ */
+function buildMaterialSpecSheet(masterDNA = {}) {
+  const palette = getCanonicalMaterialPalette(masterDNA);
+  const spec = paletteToSpecSheet(palette);
+  return (
+    spec ||
+    "Materials: as specified in DNA (primary cladding, trim, roof, windows)."
+  );
+}
+
+/**
+ * Build numeric facade + geometry spec for the hero 3D prompt. Mirrors the
+ * values the deterministic SVG elevation renderer will draw so the FLUX image
+ * lines up with the 2D technical views.
+ * @private
+ */
+function buildFacadeSpec(masterDNA = {}, dims) {
+  const structured = masterDNA?._structured?.geometry_rules || {};
+  const roofPitch =
+    masterDNA?.roof?.pitch ||
+    structured?.roof_pitch ||
+    structured?.roofPitch ||
+    35;
+  const facade = masterDNA?.facade || masterDNA?.facades || {};
+  const windowCountFor = (orientation) => {
+    const f =
+      facade?.[orientation] ||
+      facade?.[orientation?.toLowerCase?.()] ||
+      facade?.[`${orientation}_facade`];
+    if (!f) return null;
+    return (
+      f.windowCount ??
+      f.window_count ??
+      (Array.isArray(f.windows) ? f.windows.length : null)
+    );
+  };
+  const n = windowCountFor("north");
+  const s = windowCountFor("south");
+  const e = windowCountFor("east");
+  const w = windowCountFor("west");
+  const haveAnyFacade = [n, s, e, w].some((v) => typeof v === "number");
+  const entrance =
+    facade?.entrance_position ||
+    facade?.entrancePosition ||
+    structured?.entrance_position ||
+    "front facade, centred";
+  const lines = [`Roof pitch: ${roofPitch}°`, `Storeys: ${dims.floors}`];
+  if (haveAnyFacade) {
+    lines.push(
+      `Windows per facade — N:${n ?? "?"} S:${s ?? "?"} E:${e ?? "?"} W:${w ?? "?"}`,
+    );
+  }
+  lines.push(`Entrance: ${entrance}`);
+  return lines.join("\n");
+}
+
+/**
  * Build a concise BUILDING IDENTITY block for prompt injection.
  * Placed at the TOP of every panel prompt so FLUX sees it first.
  * @private
  */
 function buildBuildingIdentityBlock(masterDNA = {}, projectContext = {}) {
   const dims = normalizeDimensions(masterDNA);
-  const materials = normalizeMaterials(masterDNA);
   const roofType =
     masterDNA?.roof?.type ||
     masterDNA?._structured?.geometry_rules?.roof_type ||
@@ -157,13 +225,23 @@ function buildBuildingIdentityBlock(masterDNA = {}, projectContext = {}) {
   // Building type specific descriptors to help FLUX understand the form
   const typeDesc = buildBuildingTypeDescriptor(buildingType, dims);
 
+  // Full material spec sheet (primary/trim/roof/windows with hex) and numeric
+  // facade spec (pitch, storeys, windows-per-facade, entrance). These replace
+  // the previous "Primary material: <single name>" line that left FLUX free
+  // to invent the rest of the palette — the main 2D/3D drift driver.
+  const materialSpec = buildMaterialSpecSheet(masterDNA);
+  const facadeSpec = buildFacadeSpec(masterDNA, dims);
+
   return `=== BUILDING IDENTITY (MANDATORY - DO NOT DEVIATE) ===
 SHOW EXACTLY ONE (1) SINGLE FREESTANDING DETACHED ${buildingType.toUpperCase()}.
 Building: ${style} detached ${buildingType}
 Floors: EXACTLY ${dims.floors} — ${storeyDesc}
 Dimensions: ${dims.length}m long × ${dims.width}m wide × ${dims.height}m tall
 Roof: ${roofType}
-Primary material: ${materials[0] || "as specified"}
+--- MATERIALS (match exactly) ---
+${materialSpec}
+--- FACADE (match exactly) ---
+${facadeSpec}
 ${typeDesc}
 CRITICAL: This is ONE SINGLE FREESTANDING BUILDING standing ALONE with open space on ALL four sides.
 It is NOT attached to any other building. NOT a row of houses. NOT terraced. NOT semi-detached.
@@ -305,6 +383,7 @@ export function buildHero3DPrompt({
   projectContext,
   consistencyLock,
   geometryHint,
+  portfolioStyleDescriptor,
 }) {
   const dims = normalizeDimensions(masterDNA);
   const materials = normalizeMaterials(masterDNA);
@@ -392,7 +471,7 @@ REQUIREMENTS:
 - ARCHITECTURAL DETAILING: visible window reveals (100mm depth), rainwater goods, threshold steps, plinth course, eaves detail
 - DEPTH AND REALISM: depth of field effect, subtle lens flare from sun, reflections in glazing showing sky
 
-${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
+${portfolioStyleDescriptor ? `PORTFOLIO ANCHOR: visually resembles portfolio reference "${portfolioStyleDescriptor}", matching its massing, proportion, and material tone. Use this as the visual pole for the composition.\n` : ""}${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {

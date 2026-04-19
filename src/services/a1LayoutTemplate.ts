@@ -316,7 +316,10 @@ export const COLORS = {
 };
 
 /**
- * Font family
+ * Font family. `EmbeddedSans` leads so that when the SVG is post-processed by
+ * svgFontEmbedder (which injects an @font-face rule with a base64-encoded TTF)
+ * the glyphs resolve via the embedded face in headless rasterisers like
+ * Sharp/librsvg on Vercel serverless where no system fonts are installed.
  */
-export const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+export const FONT_FAMILY = "EmbeddedSans, 'Segoe UI', Arial, Helvetica, sans-serif";
 

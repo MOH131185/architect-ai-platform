@@ -1550,6 +1550,31 @@ export async function planA1Panels({
     // Get output mode for prompt style selection
     const promptOutputMode = getOutputMode();
 
+    // B2: Resolve portfolio style descriptor for hero anchoring.
+    // When ControlNet/img2img isn't available, this descriptor gives FLUX a
+    // verbal visual pole so the hero aligns with the user's uploaded portfolio.
+    let portfolioStyleDescriptor = null;
+    if (panelType === "hero_3d" && styleProfile) {
+      const descriptorParts = [];
+      if (styleProfile.dominantStyle) {
+        descriptorParts.push(styleProfile.dominantStyle);
+      }
+      if (styleProfile.styleTokens) {
+        descriptorParts.push(styleProfile.styleTokens);
+      }
+      if (
+        Array.isArray(styleProfile.preferredMaterials) &&
+        styleProfile.preferredMaterials.length > 0
+      ) {
+        descriptorParts.push(
+          `characteristic materials: ${styleProfile.preferredMaterials.slice(0, 3).join(", ")}`,
+        );
+      }
+      portfolioStyleDescriptor = descriptorParts.length
+        ? descriptorParts.join(" — ")
+        : null;
+    }
+
     try {
       const specialized = buildSpecializedPanelPrompt(panelType, {
         masterDNA,
@@ -1565,6 +1590,7 @@ export async function planA1Panels({
         fglRoofProfile,
         outputMode: promptOutputMode,
         programLock, // P0: Level-based program constraint
+        portfolioStyleDescriptor,
       });
       jobPrompt = specialized.prompt;
       jobNegativePrompt = specialized.negativePrompt;

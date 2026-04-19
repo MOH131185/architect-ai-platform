@@ -108,9 +108,14 @@ async function fetchImageBuffer(url) {
     throw new Error("Image URL is required");
   }
 
-  // Handle raw SVG markup (sent as string to avoid base64 overhead in request body)
+  // Handle raw SVG markup (sent as string to avoid base64 overhead in request body).
+  // Any SVG that reaches the Sharp rasteriser must carry embedded @font-face rules
+  // — serverless environments (Vercel librsvg) have no system fonts, so unembedded
+  // text rasterises to tofu boxes. This is the last-chance guard; upstream callers
+  // (unifiedSheetGenerator, a1SheetComposer, composeDataPanels) should also embed.
   if (url.startsWith("<svg") || url.startsWith("<?xml")) {
-    return Buffer.from(url, "utf8");
+    const embedded = await embedFontInSVG(url);
+    return Buffer.from(embedded, "utf8");
   }
 
   // Handle data URLs

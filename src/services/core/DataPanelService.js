@@ -13,6 +13,10 @@
  */
 
 import { buildTitleBlockData } from "../a1/a1LayoutConstants.js";
+import {
+  getCanonicalMaterialPalette,
+  paletteToSwatchList,
+} from "../design/canonicalMaterialPalette.js";
 
 import logger from "./logger.js";
 
@@ -238,58 +242,10 @@ export function generateSiteDiagramSVG(dna, siteSnapshot = null) {
  * @returns {string} SVG string
  */
 export function generateMaterialPaletteSVG(dna) {
-  // Extract materials from various possible DNA structures
-  const materials =
-    dna?.materials || dna?.style?.materials || dna?.envelope?.materials || {};
-
-  // Build material list
-  const materialList = [];
-
-  // Facade/exterior walls
-  if (materials.facade) {
-    materialList.push({
-      name: materials.facade.name || "Facade",
-      color: materials.facade.hexColor || materials.facade.color || "#B8604E",
-      application: materials.facade.application || "Exterior Walls",
-    });
-  } else if (Array.isArray(materials) && materials.length > 0) {
-    // Handle array of materials
-    materials.slice(0, 4).forEach((mat) => {
-      materialList.push({
-        name: mat.name || "Material",
-        color: mat.hexColor || mat.color || "#CCCCCC",
-        application: mat.application || "",
-      });
-    });
-  }
-
-  // Roof
-  if (materials.roof) {
-    materialList.push({
-      name: materials.roof.name || "Roof",
-      color: materials.roof.hexColor || materials.roof.color || "#8B4513",
-      application: "Roof",
-    });
-  }
-
-  // Windows
-  if (materials.windows) {
-    materialList.push({
-      name: materials.windows.frame || "Windows",
-      color: materials.windows.color || "#FFFFFF",
-      application: "Window Frames",
-    });
-  }
-
-  // Add defaults if empty
-  if (materialList.length === 0) {
-    materialList.push(
-      { name: "Red Brick", color: "#B8604E", application: "Exterior Walls" },
-      { name: "Slate Tiles", color: "#4A5568", application: "Roof" },
-      { name: "uPVC White", color: "#F5F5F5", application: "Windows" },
-      { name: "Interior Plaster", color: "#FAFAFA", application: "Interior" },
-    );
-  }
+  // Canonical palette extraction — same SSOT used by the hero prompt and
+  // the elevation renderer so the swatches always show what the hero paints.
+  const palette = getCanonicalMaterialPalette(dna);
+  const materialList = paletteToSwatchList(palette, 4);
 
   // Board v2 sidebar slot is wide and shallow; render swatches horizontally.
   const svgWidth = 420;

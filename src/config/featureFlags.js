@@ -983,6 +983,27 @@ export const FEATURE_FLAGS = {
    * @default false
    */
   opusPanelValidator: false,
+
+  /**
+   * Sheet Consistency Guard (Tier B7)
+   *
+   * When enabled:
+   * - After hero_3d generates, extract its fingerprint and compare against
+   *   the pre-hoc fingerprint built from DNA (buildFingerprintFromDNA).
+   * - If ΔE on primary cladding exceeds threshold, flag in sheet metadata.
+   * - Start as a passive flag (log + annotate); can be upgraded to a gate
+   *   once the ΔE threshold is tuned.
+   *
+   * @type {boolean}
+   * @default false
+   */
+  sheetConsistencyGuard: false,
+
+  /**
+   * ΔE threshold for sheet consistency guard (default 8.0 — CIE76 approx).
+   * Not a boolean; stored here so ops can tune via sessionStorage overrides.
+   */
+  sheetConsistencyDeltaE: 8.0,
 };
 
 /**

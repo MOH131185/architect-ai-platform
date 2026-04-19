@@ -76,6 +76,8 @@ import {
 // Design Fingerprint System - Cross-panel consistency enforcement
 import {
   extractFingerprintFromHero,
+  buildFingerprintFromDNA,
+  validateFingerprintDrift,
   storeFingerprint,
   getFingerprint,
   getFingerprintPromptConstraint,
@@ -2504,6 +2506,51 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                 logger.info(
                   `      Style: ${designFingerprint.styleDescriptor}`,
                 );
+
+                // Tier B7 — Sheet consistency guard. Compare the hero's
+                // extracted fingerprint against a pre-hoc fingerprint built
+                // purely from DNA. If ΔE on primary cladding exceeds the
+                // tuned threshold, flag the drift in sheet metadata so the
+                // UI / downstream QA can decide whether to regenerate.
+                // Passive today (log + annotate); can be upgraded to a
+                // gate once ΔE threshold is validated against real runs.
+                if (isFeatureEnabled("sheetConsistencyGuard")) {
+                  try {
+                    const dnaFingerprint = buildFingerprintFromDNA(
+                      masterDNA,
+                      typesCDS || canonicalDesignState || null,
+                    );
+                    const deltaThreshold =
+                      Number(
+                        (typeof window !== "undefined" &&
+                          window.sessionStorage?.getItem(
+                            "sheetConsistencyDeltaE",
+                          )) ||
+                          8.0,
+                      ) || 8.0;
+                    const drift = validateFingerprintDrift(
+                      dnaFingerprint,
+                      designFingerprint,
+                      { deltaEThreshold: deltaThreshold },
+                    );
+                    designFingerprint.driftCheck = drift;
+                    if (!drift.ok) {
+                      logger.warn(
+                        `   ⚠️ [CONSISTENCY GUARD] Hero drift detected — ΔE ${drift.deltaE.toFixed(2)} > ${deltaThreshold} ` +
+                          `(DNA: ${drift.details.dnaPrimary}, hero: ${drift.details.heroPrimary})`,
+                      );
+                    } else {
+                      logger.info(
+                        `   ✅ [CONSISTENCY GUARD] ΔE ${drift.deltaE.toFixed(2)} within threshold`,
+                      );
+                    }
+                  } catch (guardErr) {
+                    logger.warn(
+                      "   ⚠️ Consistency guard failed (non-fatal):",
+                      guardErr.message,
+                    );
+                  }
+                }
               }
             } catch (fpError) {
               logger.warn(
