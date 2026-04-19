@@ -9,6 +9,154 @@ function round(value, precision = 3) {
   return Math.round(Number(value || 0) * factor) / factor;
 }
 
+function positiveScore(flag, hit = 1, miss = 0) {
+  return flag ? hit : miss;
+}
+
+function computeGeometryCompleteness(
+  drawingType = "unknown",
+  metadata = {},
+  drawing = {},
+) {
+  if (Number.isFinite(Number(metadata.geometry_completeness))) {
+    return clamp(Number(metadata.geometry_completeness), 0, 1);
+  }
+  if (metadata.geometry_complete === true) {
+    return 1;
+  }
+  if (!drawing.svg) {
+    return 0;
+  }
+  if (drawingType === "plan") {
+    return clamp(
+      (Number(metadata.room_count || drawing.room_count || 0) > 0
+        ? 0.55
+        : 0.2) +
+        (Number(metadata.wall_count || 0) > 0 ? 0.2 : 0) +
+        positiveScore(metadata.has_external_dimensions) * 0.15 +
+        positiveScore(metadata.has_north_arrow) * 0.1,
+      0,
+      1,
+    );
+  }
+  if (drawingType === "elevation") {
+    return clamp(
+      (Number(metadata.window_count || drawing.window_count || 0) > 0
+        ? 0.45
+        : 0.18) +
+        (Number(metadata.level_label_count || 0) > 0 ? 0.2 : 0) +
+        (Number(metadata.ffl_marker_count || 0) > 0 ? 0.18 : 0) +
+        (Number(metadata.material_zone_count || 0) > 0 ? 0.17 : 0),
+      0,
+      1,
+    );
+  }
+  if (drawingType === "section") {
+    return clamp(
+      (Number(metadata.cut_room_count || 0) > 0 ? 0.45 : 0.16) +
+        (Number(metadata.level_label_count || 0) > 0 ? 0.2 : 0) +
+        (Number(metadata.foundation_marker_count || 0) > 0 ? 0.18 : 0) +
+        positiveScore(metadata.roof_profile_visible) * 0.17,
+      0,
+      1,
+    );
+  }
+  return drawing.svg ? 0.65 : 0;
+}
+
+function computeLabelPresence(
+  drawingType = "unknown",
+  metadata = {},
+  drawing = {},
+) {
+  const roomCount = Number(metadata.room_count || drawing.room_count || 0);
+  const labelCount = Number(
+    metadata.room_label_count || metadata.level_label_count || 0,
+  );
+
+  if (roomCount > 0) {
+    return clamp(labelCount / roomCount, 0, 1);
+  }
+  return labelCount > 0 ? 1 : 0.3;
+}
+
+function computePlanDensity(metadata = {}) {
+  if (Number.isFinite(Number(metadata.plan_density_score))) {
+    return clamp(Number(metadata.plan_density_score), 0, 1);
+  }
+  return clamp(
+    (Number(metadata.room_count || 0) > 0 ? 0.26 : 0.1) +
+      (Number(metadata.window_count || 0) > 0 ? 0.08 : 0) +
+      (Number(metadata.door_count || 0) > 0 ? 0.08 : 0) +
+      (Number(metadata.door_swing_count || 0) > 0 ? 0.08 : 0) +
+      (Number(metadata.furniture_hint_count || 0) > 0 ? 0.08 : 0) +
+      positiveScore(metadata.has_external_dimensions) * 0.14 +
+      positiveScore(metadata.has_title_block) * 0.1 +
+      positiveScore(metadata.has_north_arrow) * 0.08 +
+      (Number(metadata.grid_bubble_count || 0) > 0 ? 0.1 : 0),
+    0,
+    1,
+  );
+}
+
+function computeElevationRichness(metadata = {}) {
+  if (Number.isFinite(Number(metadata.facade_richness_score))) {
+    return clamp(Number(metadata.facade_richness_score), 0, 1);
+  }
+  return clamp(
+    (Number(metadata.window_count || 0) > 0 ? 0.22 : 0.08) +
+      (Number(metadata.material_zone_count || 0) > 0 ? 0.16 : 0.06) +
+      (Number(metadata.ffl_marker_count || 0) > 0 ? 0.12 : 0.03) +
+      (Number(metadata.bay_count || 0) > 0 ? 0.1 : 0.02) +
+      (Number(metadata.sill_lintel_count || 0) > 0 ? 0.12 : 0.03) +
+      (Number(metadata.feature_count || 0) > 0 ? 0.14 : 0.04) +
+      positiveScore(metadata.has_title_block || metadata.has_title) * 0.08,
+    0,
+    1,
+  );
+}
+
+function computeSectionUsefulness(metadata = {}) {
+  if (Number.isFinite(Number(metadata.section_usefulness_score))) {
+    return clamp(Number(metadata.section_usefulness_score), 0, 1);
+  }
+  return clamp(
+    (Number(metadata.cut_room_count || 0) > 0 ? 0.26 : 0.08) +
+      (Number(metadata.stair_count || 0) > 0 ? 0.18 : 0.04) +
+      (Number(metadata.foundation_marker_count || 0) > 0 ? 0.12 : 0.03) +
+      (Number(metadata.level_label_count || 0) > 0 ? 0.12 : 0.03) +
+      (Number(metadata.stair_tread_count || 0) > 0 ? 0.12 : 0.04) +
+      positiveScore(metadata.roof_profile_visible) * 0.12 +
+      (Number(metadata.focus_entity_count || 0) > 0 ? 0.08 : 0.02),
+    0,
+    1,
+  );
+}
+
+function computeAnnotationCompleteness(
+  annotation = null,
+  annotationPlacement = null,
+  metadata = {},
+) {
+  if (metadata.annotation_guarantee === false) {
+    return 0.25;
+  }
+
+  return clamp(
+    annotation?.errors?.length
+      ? 0.18
+      : 1 -
+          Math.min(
+            0.82,
+            (annotation?.warnings?.length || 0) * 0.16 +
+              (annotationPlacement?.collisionCount || 0) * 0.16 +
+              (annotationPlacement?.fallbackPlacementCount || 0) * 0.08,
+          ),
+    0,
+    1,
+  );
+}
+
 export function scoreTechnicalPanel({
   drawingType = "unknown",
   drawing = {},
@@ -20,58 +168,48 @@ export function scoreTechnicalPanel({
   const thresholds = getDrawingQualityThresholds(drawingType);
   const warnings = [];
   const blockers = [];
+  const geometryExplicitlyIncomplete = metadata.geometry_complete === false;
   const annotationStable = annotationPlacement
     ? annotationPlacement.placementStable !== false
-    : true;
+    : metadata.annotation_guarantee !== false;
 
-  const readabilityScore = Number(readability?.score || 0);
-  const annotationCompleteness = clamp(
-    annotation?.errors?.length
-      ? 0.2
-      : 1 -
-          Math.min(
-            0.8,
-            (annotation?.warnings?.length || 0) * 0.18 +
-              (annotationPlacement?.collisionCount || 0) * 0.14 +
-              (annotationPlacement?.fallbackPlacementCount || 0) * 0.06,
-          ),
-    0,
-    1,
+  const readabilityScore = clamp(Number(readability?.score || 0), 0, 1);
+  const annotationCompleteness = computeAnnotationCompleteness(
+    annotation,
+    annotationPlacement,
+    metadata,
   );
-  const geometryConsistency =
-    drawing.svg && !annotation?.errors?.length ? 1 : 0.25;
-  const labelPresence = clamp(
-    Number(metadata.room_label_count || metadata.level_label_count || 0) > 0
-      ? 1
-      : 0.35,
-    0,
-    1,
+  const geometryCompleteness = computeGeometryCompleteness(
+    drawingType,
+    metadata,
+    drawing,
   );
+  const labelPresence = computeLabelPresence(drawingType, metadata, drawing);
+  const planDensity =
+    drawingType === "plan" ? computePlanDensity(metadata) : null;
+  const elevationRichness =
+    drawingType === "elevation" ? computeElevationRichness(metadata) : null;
   const sectionUsefulness =
-    drawingType === "section"
-      ? Number(metadata.section_usefulness_score || 0.55)
+    drawingType === "section" ? computeSectionUsefulness(metadata) : null;
+  const technicalDepth = clamp(
+    drawingType === "plan"
+      ? (Number(planDensity || 0) + Number(labelPresence || 0)) / 2
       : drawingType === "elevation"
-        ? clamp(
-            (Number(metadata.window_count || 0) > 0 ? 0.55 : 0.35) +
-              (Number(metadata.bay_count || 0) > 0 ? 0.2 : 0),
-            0,
-            1,
-          )
-        : clamp(
-            (Number(metadata.stair_count || 0) > 0 ? 0.62 : 0.45) +
-              (metadata.has_title_block ? 0.12 : 0),
-            0,
-            1,
-          );
-  const scorePenalty = annotationStable ? 0 : 0.1;
-
+        ? (Number(elevationRichness || 0) + Number(labelPresence || 0)) / 2
+        : drawingType === "section"
+          ? (Number(sectionUsefulness || 0) + Number(labelPresence || 0)) / 2
+          : labelPresence,
+    0,
+    1,
+  );
+  const stabilityPenalty = annotationStable ? 0 : 0.08;
   const score = round(
-    readabilityScore * 0.36 +
-      annotationCompleteness * 0.24 +
-      geometryConsistency * 0.14 +
-      sectionUsefulness * 0.16 +
-      labelPresence * 0.1 -
-      scorePenalty,
+    readabilityScore * 0.26 +
+      annotationCompleteness * 0.2 +
+      geometryCompleteness * 0.2 +
+      technicalDepth * 0.22 +
+      labelPresence * 0.12 -
+      stabilityPenalty,
   );
 
   warnings.push(
@@ -84,11 +222,29 @@ export function scoreTechnicalPanel({
     ...(annotationPlacement?.errors || []),
   );
 
+  if (!drawing.svg) {
+    blockers.push(
+      `${drawing.title || drawingType} drawing SVG payload is missing.`,
+    );
+  }
+  if (geometryExplicitlyIncomplete) {
+    blockers.push(
+      `${drawing.title || drawingType} canonical geometry was marked incomplete by the renderer, so the panel cannot be treated as credible technical output.`,
+    );
+  } else if (
+    geometryCompleteness < Number(thresholds.minimumGeometryCompleteness || 0)
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} geometry completeness ${round(
+        geometryCompleteness,
+      )} is below the required threshold ${
+        thresholds.minimumGeometryCompleteness
+      }.`,
+    );
+  }
   if (!annotationStable) {
     blockers.push(
-      `${
-        drawing.title || drawingType
-      } has unresolved annotation placement instability.`,
+      `${drawing.title || drawingType} has unresolved annotation placement instability.`,
     );
   }
   if (
@@ -96,9 +252,9 @@ export function scoreTechnicalPanel({
     Number(thresholds.minimumAnnotationCompleteness || 0)
   ) {
     blockers.push(
-      `${
-        drawing.title || drawingType
-      } annotation completeness ${round(annotationCompleteness)} is below the required threshold ${
+      `${drawing.title || drawingType} annotation completeness ${round(
+        annotationCompleteness,
+      )} is below the required threshold ${
         thresholds.minimumAnnotationCompleteness
       }.`,
     );
@@ -108,10 +264,31 @@ export function scoreTechnicalPanel({
     Number(labelPresence) < Number(thresholds.minimumLabelPresence)
   ) {
     warnings.push(
-      `${
-        drawing.title || drawingType
-      } label presence ${round(labelPresence)} is below the preferred threshold ${
-        thresholds.minimumLabelPresence
+      `${drawing.title || drawingType} label presence ${round(
+        labelPresence,
+      )} is below the preferred threshold ${thresholds.minimumLabelPresence}.`,
+    );
+  }
+
+  if (
+    drawingType === "plan" &&
+    Number(planDensity) < Number(thresholds.minimumPlanDensity || 0)
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} plan density ${round(
+        planDensity,
+      )} is below the required threshold ${thresholds.minimumPlanDensity}.`,
+    );
+  }
+  if (
+    drawingType === "elevation" &&
+    Number(elevationRichness) < Number(thresholds.minimumElevationRichness || 0)
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} elevation richness ${round(
+        elevationRichness,
+      )} is below the required threshold ${
+        thresholds.minimumElevationRichness
       }.`,
     );
   }
@@ -120,49 +297,49 @@ export function scoreTechnicalPanel({
     Number(sectionUsefulness) < Number(thresholds.minimumSectionUsefulness || 0)
   ) {
     blockers.push(
-      `${
-        drawing.title || drawingType
-      } section usefulness ${round(sectionUsefulness)} is below the required threshold ${
+      `${drawing.title || drawingType} section usefulness ${round(
+        sectionUsefulness,
+      )} is below the required threshold ${
         thresholds.minimumSectionUsefulness
       }.`,
     );
   }
-  if (drawingType === "plan" && metadata.has_scale_bar !== true) {
-    warnings.push("Plan scale bar metadata is missing.");
-  }
-  if (drawingType === "plan" && metadata.has_north_arrow !== true) {
-    warnings.push("Plan north arrow metadata is missing.");
-  }
 
   if (score < thresholds.blocking) {
     blockers.push(
-      `${
-        drawing.title || drawingType
-      } technical score ${score} is below the Phase 7 blocking threshold ${
-        thresholds.blocking
-      }.`,
+      `${drawing.title || drawingType} technical score ${score} is below the Phase 8 blocking threshold ${thresholds.blocking}.`,
     );
   } else if (score < thresholds.warning) {
     warnings.push(
-      `${
-        drawing.title || drawingType
-      } technical score ${score} is below the preferred threshold ${
-        thresholds.warning
-      }.`,
+      `${drawing.title || drawingType} technical score ${score} is below the preferred threshold ${thresholds.warning}.`,
     );
   }
 
+  const verdict = blockers.length
+    ? "block"
+    : score < thresholds.warning
+      ? "warning"
+      : "pass";
+
   return {
-    version: "phase7-technical-panel-scoring-v1",
+    version: "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
+    verdict,
     thresholds,
     categoryScores: {
       readability: round(readabilityScore),
       annotationCompleteness: round(annotationCompleteness),
-      geometryConsistency: round(geometryConsistency),
-      sectionUsefulness: round(sectionUsefulness),
+      geometryCompleteness: round(geometryCompleteness),
+      technicalDepth: round(technicalDepth),
       labelPresence: round(labelPresence),
+      ...(drawingType === "plan" ? { planDensity: round(planDensity) } : {}),
+      ...(drawingType === "elevation"
+        ? { elevationRichness: round(elevationRichness) }
+        : {}),
+      ...(drawingType === "section"
+        ? { sectionUsefulness: round(sectionUsefulness) }
+        : {}),
     },
     warnings: [...new Set(warnings)],
     blockers: [...new Set(blockers)],

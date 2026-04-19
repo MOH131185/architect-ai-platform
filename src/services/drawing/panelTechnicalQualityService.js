@@ -38,7 +38,10 @@ export function evaluateTechnicalPanels({ drawings = {} } = {}) {
       drawingType: entry.drawingType,
     });
     const annotationPlacement = entry.drawing.annotation_validation || null;
-    const phase7Scoring = isFeatureEnabled("useTechnicalPanelScoringPhase7")
+    const enhancedScoringEnabled =
+      isFeatureEnabled("useTechnicalPanelScoringPhase8") ||
+      isFeatureEnabled("useTechnicalPanelScoringPhase7");
+    const scoredPanel = enhancedScoringEnabled
       ? scoreTechnicalPanel({
           drawingType: entry.drawingType,
           drawing: entry.drawing,
@@ -47,13 +50,13 @@ export function evaluateTechnicalPanels({ drawings = {} } = {}) {
           annotationPlacement,
         })
       : null;
-    const warnings = phase7Scoring
-      ? [...phase7Scoring.warnings]
+    const warnings = scoredPanel
+      ? [...scoredPanel.warnings]
       : [...readability.warnings, ...annotation.warnings];
-    const blockers = phase7Scoring
-      ? [...phase7Scoring.blockers]
+    const blockers = scoredPanel
+      ? [...scoredPanel.blockers]
       : [...annotation.errors];
-    if (!phase7Scoring) {
+    if (!scoredPanel) {
       if (readability.score < 0.55) {
         blockers.push(
           `${entry.title} readability score ${readability.score} is below the Phase 6 technical threshold.`,
@@ -73,7 +76,7 @@ export function evaluateTechnicalPanels({ drawings = {} } = {}) {
       readability,
       annotation,
       annotationPlacement,
-      score: phase7Scoring,
+      score: scoredPanel,
       warnings: [...new Set(warnings)],
       blockers: [...new Set(blockers)],
       technicalReady: blockers.length === 0,
@@ -81,9 +84,11 @@ export function evaluateTechnicalPanels({ drawings = {} } = {}) {
   });
 
   return {
-    version: isFeatureEnabled("useTechnicalPanelScoringPhase7")
-      ? "phase7-panel-technical-quality-v1"
-      : "phase6-panel-technical-quality-v1",
+    version:
+      isFeatureEnabled("useTechnicalPanelScoringPhase8") ||
+      isFeatureEnabled("useTechnicalPanelScoringPhase7")
+        ? "phase8-panel-technical-quality-v1"
+        : "phase6-panel-technical-quality-v1",
     panels,
     weakPanels: panels.filter((entry) => entry.warnings.length > 0),
     blockingPanels: panels.filter((entry) => entry.blockers.length > 0),

@@ -19,6 +19,10 @@ export function runA1PanelQualityChecks({
       panelId: candidate.id,
       title: candidate.title,
       quality: byPanelId.get(candidate.id) || {
+        score: {
+          verdict: "block",
+          score: 0,
+        },
         warnings: [],
         blockers: [
           "No technical drawing quality evaluation is available for this panel.",
@@ -27,7 +31,7 @@ export function runA1PanelQualityChecks({
     }));
 
   return {
-    version: "phase7-a1-panel-quality-checks-v1",
+    version: "phase8-a1-panel-quality-checks-v1",
     checks,
     blockingPanels: checks.filter((entry) => entry.quality?.blockers?.length),
     warningPanels: checks.filter(

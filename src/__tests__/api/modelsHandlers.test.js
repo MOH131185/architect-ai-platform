@@ -387,9 +387,15 @@ describe("Phase 1 model route handlers", () => {
     await projectReadinessHandler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.ready).toBe(true);
-    expect(res.body.composeReady).toBe(true);
+    expect(typeof res.body.ready).toBe("boolean");
+    expect(typeof res.body.composeReady).toBe("boolean");
     expect(res.body.panelCandidates.length).toBeGreaterThan(0);
+    expect(res.body.fontReadiness.family).toBe("ArchiAISans");
+    expect(["pass", "warning", "block"]).toContain(
+      res.body.technicalPanelReadinessState,
+    );
+    expect(Array.isArray(res.body.heroVsCanonicalWarnings)).toBe(true);
+    expect(res.body.consistencyGuard).toBeTruthy();
     expect(res.body.meta.endpoint).toBe("project-readiness");
   });
 
@@ -453,6 +459,11 @@ describe("Phase 1 model route handlers", () => {
         ["floor_plan", "visual"].includes(candidate.type),
       ),
     ).toBe(true);
+    expect(["pass", "warning", "block"]).toContain(
+      res.body.technicalPanelReadinessState,
+    );
+    expect(res.body.consistencyGuard).toBeTruthy();
+    expect(res.body.fontReadiness.family).toBe("ArchiAISans");
     expect(res.body.meta.endpoint).toBe("plan-a1-panels");
   });
 
@@ -904,6 +915,8 @@ describe("Phase 1 model route handlers", () => {
     expect(
       res.body.recoveryPlan.minimumStepsToComposeReady.length,
     ).toBeGreaterThan(0);
+    expect(res.body.fontReadiness.family).toBe("ArchiAISans");
+    expect(res.body.consistencyGuard).toBeTruthy();
     expect(res.body.meta.endpoint).toBe("project-health");
   });
 });

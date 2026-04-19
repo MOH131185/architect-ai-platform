@@ -48,6 +48,10 @@ export default async function handler(req, res) {
       "useA1TechnicalPanelGating",
       "useA1RecoveryExecutionBridge",
       "useTechnicalPanelScoringPhase7",
+      "useA1FontEmbeddingFix",
+      "useA1ConsistencyGuards",
+      "useTechnicalPanelScoringPhase8",
+      "useTechnicalPanelComposeBlockingPhase8",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
     ];

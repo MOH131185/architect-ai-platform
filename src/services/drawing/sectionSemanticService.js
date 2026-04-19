@@ -11,11 +11,15 @@ export function deriveSectionSemantics(
   const levels = projectGeometry.levels || [];
   const openings = projectGeometry.windows || [];
   const walls = projectGeometry.walls || [];
+  const rooms = projectGeometry.rooms || [];
   const focusEntityIds = sectionProfile.focusEntityIds || [];
   const candidateScore = Number(sectionProfile.score || 0.55);
   const hasFocusedStair = focusEntityIds.some((entry) =>
     String(entry).startsWith("entity:stair:"),
   );
+  const focusedRoomCount = focusEntityIds.filter((entry) =>
+    String(entry).startsWith("entity:room:"),
+  ).length;
 
   const verticalCirculationScore = hasFocusedStair
     ? 1
@@ -31,6 +35,14 @@ export function deriveSectionSemantics(
     walls.length > 0
       ? Math.max(0.58, Math.min(0.92, candidateScore + 0.12))
       : 0.4;
+  const roomCommunicationScore =
+    focusedRoomCount > 1
+      ? 0.88
+      : focusedRoomCount > 0
+        ? 0.72
+        : rooms.length > 0
+          ? 0.52
+          : 0.28;
   const volumetricScore = Math.max(
     levels.length > 1 ? 0.7 : 0.58,
     Math.min(0.96, candidateScore + 0.18),
@@ -39,18 +51,20 @@ export function deriveSectionSemantics(
     verticalCirculationScore * 0.25 +
       floorHeightsScore * 0.2 +
       openingRelationshipScore * 0.2 +
-      wallRelationshipScore * 0.15 +
-      volumetricScore * 0.2,
+      wallRelationshipScore * 0.12 +
+      roomCommunicationScore * 0.08 +
+      volumetricScore * 0.15,
   );
 
   return {
-    version: "phase7-section-semantic-service-v1",
+    version: "phase8-section-semantic-service-v1",
     sectionId: sectionProfile.id || null,
     focusEntityIds,
     communicates: {
       verticalCirculation: hasFocusedStair || stairs.length > 0,
       floorHeights: levels.length > 0,
       wallOpeningRelationships: openings.length > 0 && walls.length > 0,
+      roomHierarchy: focusedRoomCount > 0,
       volumetricLogic: true,
     },
     scores: {
@@ -58,6 +72,7 @@ export function deriveSectionSemantics(
       floorHeights: round(floorHeightsScore),
       openingRelationships: round(openingRelationshipScore),
       wallRelationships: round(wallRelationshipScore),
+      roomHierarchy: round(roomCommunicationScore),
       volumetricLogic: round(volumetricScore),
       usefulness: usefulnessScore,
     },
@@ -70,6 +85,9 @@ export function deriveSectionSemantics(
       openings.length
         ? "Section can communicate key opening-to-wall relationships."
         : "Opening relationships remain limited because no window data was resolved.",
+      focusedRoomCount
+        ? `Section target includes ${focusedRoomCount} named room focus area(s).`
+        : "Section target does not include an explicit room focus area.",
     ],
   };
 }

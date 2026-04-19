@@ -1,6 +1,12 @@
 import { buildControlReferences } from "./controlReferenceBuilder.js";
 import { assembleVisualPrompt } from "./visualPromptAssembler.js";
 import { createStableHash } from "../cad/projectGeometrySchema.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import {
+  buildHeroIdentitySpec,
+  buildFingerprintFromDNA,
+} from "../design/designFingerprintService.js";
+import { buildMaterialSpecSheet } from "../design/canonicalMaterialPalette.js";
 
 export function validateVisualPackageConsistency(pkg = {}) {
   const warnings = [];
@@ -32,6 +38,24 @@ export async function buildVisualGenerationPackage(
   viewType = "hero_3d",
   options = {},
 ) {
+  const identitySpec = buildHeroIdentitySpec(styleDNA, {
+    projectGeometry,
+    facadeGrammar:
+      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    portfolioStyle: options.portfolioStyle || null,
+  });
+  const fingerprint = buildFingerprintFromDNA(styleDNA, {
+    projectGeometry,
+    facadeGrammar:
+      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    portfolioStyle: options.portfolioStyle || null,
+  });
+  const materialSpecSheet = buildMaterialSpecSheet({
+    dna: styleDNA,
+    projectGeometry,
+    facadeGrammar:
+      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+  });
   const controlReferences = buildControlReferences(
     projectGeometry,
     styleDNA,
@@ -44,16 +68,18 @@ export async function buildVisualGenerationPackage(
     viewType,
     facadeGrammar:
       options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    identitySpec,
   });
 
   const visualPackage = {
-    schema_version: "geometry-locked-visual-package-v1",
+    schema_version: "geometry-locked-visual-package-v2",
     package_id: createStableHash(
       JSON.stringify({
         project: projectGeometry.project_id,
         viewType,
         geometry: controlReferences.geometrySignature,
         style: styleDNA,
+        identity: identitySpec,
       }),
     ),
     project_id: projectGeometry.project_id,
@@ -70,6 +96,24 @@ export async function buildVisualGenerationPackage(
       opening_count:
         (projectGeometry.windows || []).length +
         (projectGeometry.doors || []).length,
+    },
+    identitySpec,
+    designFingerprint: fingerprint,
+    materialSpecSheet,
+    generationDependencies: {
+      canonicalGeometryReady: Boolean(projectGeometry?.project_id),
+      facadeGrammarReady: Boolean(
+        options.facadeGrammar || projectGeometry.metadata?.facade_grammar,
+      ),
+      materialPaletteReady: Boolean(identitySpec?.primaryMaterial),
+      heroGeneratedAfterCanonicalInputs: true,
+      enforcedByPhase8Flag: isFeatureEnabled("useHeroGeneratedLast"),
+      pipelineOrder: [
+        "canonical_geometry",
+        "facade_grammar",
+        "material_palette",
+        "hero_visual",
+      ],
     },
     geometrySignature: controlReferences.geometrySignature,
     controlReferences,

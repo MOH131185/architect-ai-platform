@@ -139,13 +139,17 @@ export function renderA1SheetSVG(
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="${widthPx}" height="${heightPx}"
-     viewBox="0 0 ${widthPx} ${heightPx}">
+     viewBox="0 0 ${widthPx} ${heightPx}"
+     font-family="${FONT_FAMILY}"
+     style="font-family: ${FONT_FAMILY};">
   <defs>
     <style>
-      text { font-family: ${FONT_FAMILY}; }
+      svg, text, tspan { font-family: ${FONT_FAMILY}; }
       .section-title { font-size: ${TYPOGRAPHY.title}px; font-weight: bold; fill: ${COLORS.text}; }
       .heading { font-size: ${TYPOGRAPHY.heading}px; font-weight: bold; fill: ${COLORS.text}; }
+      .label { font-size: ${TYPOGRAPHY.small}px; font-weight: 700; fill: ${COLORS.text}; }
       .body { font-size: ${TYPOGRAPHY.body}px; fill: ${COLORS.text}; }
+      .body-strong { font-size: ${TYPOGRAPHY.body}px; font-weight: 700; fill: ${COLORS.text}; }
       .small { font-size: ${TYPOGRAPHY.small}px; fill: ${COLORS.textSecondary}; }
       .tiny { font-size: ${TYPOGRAPHY.tiny}px; fill: ${COLORS.textSecondary}; }
       .grid-line { stroke: ${COLORS.grid}; stroke-width: ${LINE_WEIGHTS.hairline}px; }

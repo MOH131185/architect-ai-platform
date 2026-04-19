@@ -22,6 +22,13 @@ export function assessAnnotationReliability(drawing = {}, options = {}) {
   if (!svg.trim()) {
     errors.push("Drawing SVG payload is missing.");
   }
+  if (drawing.status === "blocked") {
+    errors.push(
+      ...(drawing.blocking_reasons || [
+        "Drawing renderer blocked because canonical geometry was too weak.",
+      ]),
+    );
+  }
   if (undefinedTokenCount > 0 || hasBrokenPath) {
     errors.push(
       "Drawing SVG contains undefined or NaN values, so annotation/rendering reliability is compromised.",
@@ -46,8 +53,20 @@ export function assessAnnotationReliability(drawing = {}, options = {}) {
   if (drawingType === "elevation" && textElementCount < 2) {
     warnings.push("Elevation annotation density is weak.");
   }
+  if (
+    drawingType === "elevation" &&
+    Number(drawing.technical_quality_metadata?.ffl_marker_count || 0) === 0
+  ) {
+    warnings.push("Elevation datum markers are missing.");
+  }
   if (drawingType === "section" && textElementCount < 2) {
     warnings.push("Section annotation density is weak.");
+  }
+  if (
+    drawingType === "section" &&
+    Number(drawing.technical_quality_metadata?.cut_room_count || 0) === 0
+  ) {
+    warnings.push("Section cut does not communicate a named space.");
   }
 
   return {

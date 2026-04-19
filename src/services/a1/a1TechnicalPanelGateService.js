@@ -63,8 +63,14 @@ export function evaluateA1TechnicalPanelGate({
   });
 
   return {
-    version: "phase7-a1-technical-panel-gate-v1",
+    version: "phase8-a1-technical-panel-gate-v1",
     technicalReady: blockingReasons.length === 0,
+    technicalPanelReadinessState:
+      blockingReasons.length > 0
+        ? "block"
+        : warnings.length > 0
+          ? "warning"
+          : "pass",
     blockingPanels: [...blockingPanels].sort(),
     blockingReasons: [...new Set(blockingReasons)],
     warnings: [...new Set(warnings)],

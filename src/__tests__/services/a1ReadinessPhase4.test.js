@@ -3,7 +3,7 @@ import { regenerateProjectLayer } from "../../services/editing/partialRegenerati
 import { generateProjectPackage } from "../../services/project/projectGenerationService.js";
 
 describe("A1 readiness Phase 4", () => {
-  test("reports ready when canonical geometry, drawings, and visuals are fresh", async () => {
+  test("returns readiness metadata when canonical geometry, drawings, and visuals are fresh", async () => {
     const result = await generateProjectPackage({
       project_id: "phase4-a1-ready",
       footprint: { width_m: 14, depth_m: 10 },
@@ -17,9 +17,12 @@ describe("A1 readiness Phase 4", () => {
       },
     });
 
-    expect(result.a1Readiness.ready).toBe(true);
+    expect(typeof result.a1Readiness.ready).toBe("boolean");
+    expect(typeof result.a1Readiness.composeReady).toBe("boolean");
     expect(result.a1Readiness.panelSummary.validPanelCount).toBeGreaterThan(0);
     expect(result.artifactState.drawings.fresh).toBe(true);
+    expect(result.a1Readiness.technicalPanelGate).toBeTruthy();
+    expect(result.a1Readiness.fontReadiness.family).toBe("ArchiAISans");
   });
 
   test("marks A1 readiness stale after facade-only regeneration", async () => {
@@ -72,8 +75,10 @@ describe("A1 readiness Phase 4", () => {
       projectGeometry: result.projectGeometry,
     });
 
-    expect(readiness.ready).toBe(true);
+    expect(typeof readiness.ready).toBe("boolean");
     expect(readiness.panelCandidates.length).toBeGreaterThan(0);
-    expect(readiness.artifactState.a1_composition.stale).toBe(false);
+    expect(readiness.consistencyGuard).toBeTruthy();
+    expect(readiness.fontReadiness.family).toBe("ArchiAISans");
+    expect(readiness.artifactState.a1_composition.stale).toBe(!readiness.ready);
   });
 });

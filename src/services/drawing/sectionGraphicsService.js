@@ -105,8 +105,39 @@ export function buildSectionGraphic(
   const drawing = renderSectionSvg(geometry, styleDNA, {
     ...options,
     sectionType: sectionProfile.sectionType,
+    sectionProfile,
+    sectionSemantics: semantics,
     hideRoomLabels: true,
   });
+  if (!drawing?.svg) {
+    return {
+      ...drawing,
+      section_profile: sectionProfile,
+      section_semantics: semantics,
+      annotation_layout: {
+        placements: [],
+        warnings: [],
+      },
+      annotation_validation: {
+        placementStable: false,
+        collisionCount: 0,
+        collisions: [],
+        fallbackPlacementCount: 0,
+        warnings: [],
+        errors: [
+          "Section SVG payload is unavailable because the renderer blocked.",
+        ],
+      },
+      technical_quality_metadata: {
+        ...(drawing.technical_quality_metadata || {}),
+        room_label_count: 0,
+        section_usefulness_score: semantics.scores?.usefulness || 0,
+        focus_entity_count: (sectionProfile.focusEntityIds || []).length,
+        annotation_count: 0,
+        annotation_guarantee: false,
+      },
+    };
+  }
   const annotationLayout = layoutAnnotations({
     drawingType: "section",
     projectGeometry: geometry,

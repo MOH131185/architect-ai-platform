@@ -12,12 +12,29 @@
  * @module utils/svgFontEmbedder
  */
 
+import { createRequire } from "node:module";
+
 const INTER_REGULAR_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
 const INTER_BOLD_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7.woff2";
 
-const REGULAR_FONT_CANDIDATES = [
+export const EMBEDDED_FONT_FAMILY = "ArchiAISans";
+export const EMBEDDED_FONT_STACK =
+  "'ArchiAISans', 'DejaVu Sans', 'Segoe UI', Arial, Helvetica, sans-serif";
+
+const LOCAL_REGULAR_FONT_FILENAMES = [
+  "public/fonts/DejaVuSans.ttf",
+  "public/fonts/DejaVuSans-Regular.ttf",
+  "public/fonts/NotoSans-Regular.ttf",
+];
+
+const LOCAL_BOLD_FONT_FILENAMES = [
+  "public/fonts/DejaVuSans-Bold.ttf",
+  "public/fonts/NotoSans-Bold.ttf",
+];
+
+const SYSTEM_REGULAR_FONT_CANDIDATES = [
   "C:/Windows/Fonts/arial.ttf",
   "C:/Windows/Fonts/segoeui.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -26,7 +43,7 @@ const REGULAR_FONT_CANDIDATES = [
   "/var/task/node_modules/@vercel/fonts/DejaVuSans.ttf",
 ];
 
-const BOLD_FONT_CANDIDATES = [
+const SYSTEM_BOLD_FONT_CANDIDATES = [
   "C:/Windows/Fonts/arialbd.ttf",
   "C:/Windows/Fonts/segoeuib.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -36,6 +53,13 @@ const BOLD_FONT_CANDIDATES = [
 
 let fontLoadPromise = null;
 let resolvedFonts = null; // Set once the promise resolves; used by sync API
+const nodeRequire = isNodeRuntime()
+  ? createRequire(
+      typeof process?.cwd === "function"
+        ? `${process.cwd().replace(/\\/g, "/")}/package.json`
+        : "/package.json",
+    )
+  : null;
 
 function isNodeRuntime() {
   return Boolean(
@@ -43,6 +67,28 @@ function isNodeRuntime() {
     process?.versions &&
     process.versions.node,
   );
+}
+
+function resolveLocalFontCandidates(fontFilenames = []) {
+  if (!isNodeRuntime()) {
+    return [];
+  }
+
+  const cwd = typeof process?.cwd === "function" ? process.cwd() : "";
+  const lambdaTaskRoot = process?.env?.LAMBDA_TASK_ROOT || "/var/task";
+  const roots = [cwd, lambdaTaskRoot, "/var/task", "."].filter(Boolean);
+
+  const candidates = [];
+  for (const root of roots) {
+    for (const filename of fontFilenames) {
+      const normalizedRoot = String(root).replace(/[\\/]+$/, "");
+      const normalizedFile = String(filename).replace(/^[\\/]+/, "");
+      candidates.push(
+        `${normalizedRoot}/${normalizedFile}`.replace(/\\/g, "/"),
+      );
+    }
+  }
+  return [...new Set(candidates)];
 }
 
 function toBase64(bytes) {
@@ -115,6 +161,28 @@ async function fetchFontAsBase64(url, descriptor) {
   };
 }
 
+async function loadFontDescriptor({
+  descriptor,
+  localCandidates = [],
+  fallbackUrl = null,
+} = {}) {
+  try {
+    const localFont = await loadLocalFontAsBase64(localCandidates, descriptor);
+    if (localFont?.base64) {
+      return localFont;
+    }
+    if (!fallbackUrl) {
+      return null;
+    }
+    return await fetchFontAsBase64(fallbackUrl, descriptor);
+  } catch (error) {
+    console.warn(
+      `[svgFontEmbedder] Failed to load ${descriptor} font: ${error.message}`,
+    );
+    return null;
+  }
+}
+
 function normalizeTypography(svgString) {
   if (!svgString || typeof svgString !== "string") {
     return svgString;
@@ -131,6 +199,29 @@ function normalizeTypography(svgString) {
     .replace(/\u00A0/g, " ");
 }
 
+function ensureRootFontFamily(svgString) {
+  if (!svgString || typeof svgString !== "string") {
+    return svgString;
+  }
+
+  const rootFontFamily = `font-family="${EMBEDDED_FONT_STACK}"`;
+  const rootStyle = `style="font-family: ${EMBEDDED_FONT_STACK};"`;
+
+  return svgString.replace(/<svg([^>]*)>/i, (match, attrs = "") => {
+    if (/font-family\s*=/.test(attrs)) {
+      return match;
+    }
+    if (/style\s*=/.test(attrs)) {
+      return `<svg${attrs.replace(
+        /style=(["'])(.*?)\1/i,
+        (styleMatch, quote, styleValue) =>
+          `style=${quote}font-family: ${EMBEDDED_FONT_STACK}; ${styleValue}${quote}`,
+      )}>`;
+    }
+    return `<svg${attrs} ${rootFontFamily} ${rootStyle}>`;
+  });
+}
+
 /**
  * Load both font weights. Uses a promise singleton so the first caller
  * creates the fetch and all subsequent callers await the same promise.
@@ -141,22 +232,26 @@ function normalizeTypography(svgString) {
 async function ensureFontsLoaded() {
   if (!fontLoadPromise) {
     fontLoadPromise = (async () => {
-      try {
-        const [regular, bold] = await Promise.all([
-          loadLocalFontAsBase64(REGULAR_FONT_CANDIDATES, "regular").then(
-            (font) => font || fetchFontAsBase64(INTER_REGULAR_URL, "regular"),
-          ),
-          loadLocalFontAsBase64(BOLD_FONT_CANDIDATES, "bold").then(
-            (font) => font || fetchFontAsBase64(INTER_BOLD_URL, "bold"),
-          ),
-        ]);
-        resolvedFonts = { regular, bold };
-        return resolvedFonts;
-      } catch (err) {
-        console.warn("[svgFontEmbedder] Failed to load fonts:", err.message);
-        resolvedFonts = { regular: null, bold: null };
-        return resolvedFonts;
-      }
+      const [regular, bold] = await Promise.all([
+        loadFontDescriptor({
+          descriptor: "regular",
+          localCandidates: [
+            ...resolveLocalFontCandidates(LOCAL_REGULAR_FONT_FILENAMES),
+            ...SYSTEM_REGULAR_FONT_CANDIDATES,
+          ],
+          fallbackUrl: INTER_REGULAR_URL,
+        }),
+        loadFontDescriptor({
+          descriptor: "bold",
+          localCandidates: [
+            ...resolveLocalFontCandidates(LOCAL_BOLD_FONT_FILENAMES),
+            ...SYSTEM_BOLD_FONT_CANDIDATES,
+          ],
+          fallbackUrl: INTER_BOLD_URL,
+        }),
+      ]);
+      resolvedFonts = { regular, bold };
+      return resolvedFonts;
     })();
   }
   return fontLoadPromise;
@@ -168,17 +263,18 @@ function buildEmbeddedFaceRule(font, weight) {
   }
   return `
     @font-face {
-      font-family: 'EmbeddedSans';
+      font-family: '${EMBEDDED_FONT_FAMILY}';
       src: url(data:${font.mime};base64,${font.base64}) format('${font.format}');
       font-weight: ${weight};
       font-style: normal;
+      font-display: swap;
     }`;
 }
 
 /**
  * Build the <defs><style> block with embedded @font-face rules.
  */
-function buildFontDefs(regular, bold) {
+function buildFontStyleBlock(regular, bold) {
   if (!regular?.base64) {
     return "";
   }
@@ -188,31 +284,62 @@ function buildFontDefs(regular, bold) {
     css += buildEmbeddedFaceRule(bold, "bold");
   }
   css += `
-    text, tspan { font-family: 'EmbeddedSans', 'Segoe UI', Arial, Helvetica, sans-serif !important; }`;
-  return `<defs><style type="text/css">${css}</style></defs>`;
+    svg, text, tspan {
+      font-family: ${EMBEDDED_FONT_STACK} !important;
+      text-rendering: geometricPrecision;
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-regular { font-weight: 400; }
+    .font-bold { font-weight: 700; }`;
+  return `<style type="text/css">${css}</style>`;
 }
 
 /**
  * Replace all font-family references in an SVG string with EmbeddedSans fallback.
  */
 function replaceFontFamilies(svgString) {
-  let result = normalizeTypography(svgString);
+  let result = ensureRootFontFamily(normalizeTypography(svgString));
 
   result = result.replace(/font-family="([^"]*)"/g, (match, families) => {
-    if (families.includes("EmbeddedSans") || families.includes("monospace")) {
+    if (
+      families.includes(EMBEDDED_FONT_FAMILY) ||
+      families.includes("monospace")
+    ) {
       return match;
     }
-    return 'font-family="EmbeddedSans, Segoe UI, Arial, Helvetica, sans-serif"';
+    return `font-family="${EMBEDDED_FONT_STACK}"`;
   });
 
   result = result.replace(/font-family:\s*([^;}"]+)/g, (match, families) => {
-    if (families.includes("EmbeddedSans") || families.includes("monospace")) {
+    if (
+      families.includes(EMBEDDED_FONT_FAMILY) ||
+      families.includes("monospace")
+    ) {
       return match;
     }
-    return "font-family: EmbeddedSans, 'Segoe UI', Arial, Helvetica, sans-serif";
+    return `font-family: ${EMBEDDED_FONT_STACK}`;
   });
 
   return result;
+}
+
+function injectFontStyle(svgString, styleBlock) {
+  if (!styleBlock) {
+    return svgString;
+  }
+  if (
+    svgString.includes("@font-face") &&
+    svgString.includes(EMBEDDED_FONT_FAMILY)
+  ) {
+    return svgString;
+  }
+  if (/<defs[^>]*>/i.test(svgString)) {
+    return svgString.replace(/<defs([^>]*)>/i, `<defs$1>${styleBlock}`);
+  }
+  return svgString.replace(
+    /<svg([^>]*)>/i,
+    `<svg$1><defs>${styleBlock}</defs>`,
+  );
 }
 
 /**
@@ -231,12 +358,7 @@ export async function embedFontInSVG(svgString) {
   // If fonts couldn't be loaded, still return typography-normalized SVG.
   if (!regular?.base64) return normalizedSvg;
 
-  const fontDefs = buildFontDefs(regular, bold);
-
-  // Insert <defs> after the <svg ...> opening tag
-  const result = normalizedSvg.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
-
-  return result;
+  return injectFontStyle(normalizedSvg, buildFontStyleBlock(regular, bold));
 }
 
 /**
@@ -250,9 +372,63 @@ export function embedFontInSVGSync(svgString) {
 
   if (!resolvedFonts?.regular?.base64) return normalizedSvg;
 
-  const fontDefs = buildFontDefs(resolvedFonts.regular, resolvedFonts.bold);
-  const result = normalizedSvg.replace(/<svg([^>]*)>/, `<svg$1>${fontDefs}`);
-  return result;
+  return injectFontStyle(
+    normalizedSvg,
+    buildFontStyleBlock(resolvedFonts.regular, resolvedFonts.bold),
+  );
+}
+
+export function getFontEmbeddingReadinessSync() {
+  const regularCandidates = resolveLocalFontCandidates(
+    LOCAL_REGULAR_FONT_FILENAMES,
+  );
+  const boldCandidates = resolveLocalFontCandidates(LOCAL_BOLD_FONT_FILENAMES);
+  const fileExists = (candidate) => {
+    if (!candidate || !isNodeRuntime()) {
+      return false;
+    }
+
+    try {
+      const fsModule = nodeRequire ? nodeRequire("node:fs") : null;
+      if (!fsModule?.existsSync) {
+        return false;
+      }
+      return fsModule.existsSync(candidate);
+    } catch {
+      return false;
+    }
+  };
+  const bundledRegularAvailable = regularCandidates.some((candidate) =>
+    fileExists(candidate),
+  );
+  const bundledBoldAvailable = boldCandidates.some((candidate) =>
+    fileExists(candidate),
+  );
+  const regularReadyForEmbedding =
+    bundledRegularAvailable || Boolean(resolvedFonts?.regular?.base64);
+  const boldReadyForEmbedding =
+    bundledBoldAvailable || Boolean(resolvedFonts?.bold?.base64);
+  const fullEmbeddingReady = regularReadyForEmbedding && boldReadyForEmbedding;
+
+  return {
+    version: "phase8-svg-font-readiness-v1",
+    family: EMBEDDED_FONT_FAMILY,
+    stack: EMBEDDED_FONT_STACK,
+    localRegularCandidates: regularCandidates,
+    localBoldCandidates: boldCandidates,
+    bundledRegularPreferred: regularCandidates[0] || null,
+    bundledBoldPreferred: boldCandidates[0] || null,
+    bundledRegularAvailable,
+    bundledBoldAvailable,
+    bundledFontsAvailable: bundledRegularAvailable && bundledBoldAvailable,
+    fontsLoaded: Boolean(resolvedFonts?.regular?.base64),
+    boldLoaded: Boolean(resolvedFonts?.bold?.base64),
+    regularReadyForEmbedding,
+    boldReadyForEmbedding,
+    readyForEmbedding: regularReadyForEmbedding,
+    fullEmbeddingReady,
+    degradedEmbedding: regularReadyForEmbedding && !fullEmbeddingReady,
+  };
 }
 
 /**
@@ -260,4 +436,11 @@ export function embedFontInSVGSync(svgString) {
  */
 export { ensureFontsLoaded };
 
-export default { embedFontInSVG, embedFontInSVGSync, ensureFontsLoaded };
+export default {
+  EMBEDDED_FONT_FAMILY,
+  EMBEDDED_FONT_STACK,
+  embedFontInSVG,
+  embedFontInSVGSync,
+  ensureFontsLoaded,
+  getFontEmbeddingReadinessSync,
+};

@@ -6,7 +6,7 @@
     "api/**/*.js": {
       "maxDuration": 120,
       "memory": 3008,
-      "includeFiles": "server/**/*.{js,cjs},src/services/**/*.js,src/config/*.js,src/utils/*.js"
+      "includeFiles": "server/**/*.{js,cjs},src/services/**/*.js,src/config/*.js,src/utils/*.js,public/fonts/**/*"
     }
   },
   "rewrites": [

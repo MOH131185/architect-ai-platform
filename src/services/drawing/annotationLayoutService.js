@@ -23,6 +23,14 @@ function resolvePlanAnchor(room = {}) {
   };
 }
 
+function uppercaseLabel(value = "", fallback = "ROOM") {
+  const text = String(value || fallback)
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+  return (text || fallback).toUpperCase();
+}
+
 function buildPlacement({
   id,
   text,
@@ -61,6 +69,12 @@ function choosePlacement(candidate = {}, occupied = []) {
     [-24, 0, "offset-left"],
     [24, -18, "offset-right-up"],
     [-24, 18, "offset-left-down"],
+    [-24, -18, "offset-left-up"],
+    [24, 18, "offset-right-down"],
+    [0, -34, "offset-up-deep"],
+    [0, 34, "offset-down-deep"],
+    [36, 0, "offset-right-wide"],
+    [-36, 0, "offset-left-wide"],
   ];
 
   for (const [dx, dy, placementMode] of shifts) {
@@ -95,15 +109,18 @@ function layoutPlanAnnotations(
     const label = resolveRenderableText(room.name, room.id || "Room");
     warnings.push(...label.warnings);
     const anchor = project(resolvePlanAnchor(room));
+    const labelText = uppercaseLabel(label.text, room.id || "ROOM");
+    const areaValue = Number(room.actual_area || room.target_area_m2 || 0);
+    const compactRoom =
+      Number(room.bbox?.width || room.width_m || 0) < 2.2 ||
+      Number(room.bbox?.height || room.depth_m || 0) < 2.2;
     const placement = choosePlacement(
       {
         id: `annotation:room:${room.id}`,
-        text: `${label.text} ${Number(
-          room.actual_area || room.target_area_m2 || 0,
-        ).toFixed(1)} m2`,
+        text: `${labelText} ${areaValue.toFixed(1)} M2`,
         x: anchor.x,
         y: anchor.y,
-        fontSize: 12.5,
+        fontSize: compactRoom ? 11.25 : 12.5,
       },
       occupied,
     );

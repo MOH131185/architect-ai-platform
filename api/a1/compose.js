@@ -38,6 +38,7 @@ import {
 } from "../../src/services/a1/composeCore.js";
 
 import {
+  EMBEDDED_FONT_STACK,
   embedFontInSVG,
   ensureFontsLoaded,
 } from "../../src/utils/svgFontEmbedder.js";
@@ -110,11 +111,21 @@ async function fetchImageBuffer(url) {
 
   // Handle raw SVG markup (sent as string to avoid base64 overhead in request body)
   if (url.startsWith("<svg") || url.startsWith("<?xml")) {
-    return Buffer.from(url, "utf8");
+    const embedded = await embedFontInSVG(url);
+    return Buffer.from(embedded, "utf8");
   }
 
   // Handle data URLs
   if (url.startsWith("data:")) {
+    if (url.startsWith("data:image/svg+xml")) {
+      const [, payload = ""] = url.split(",", 2);
+      const svg = url.includes(";base64,")
+        ? Buffer.from(payload, "base64").toString("utf8")
+        : decodeURIComponent(payload);
+      const embedded = await embedFontInSVG(svg);
+      return Buffer.from(embedded, "utf8");
+    }
+
     const base64Data = url.split(",")[1];
     return Buffer.from(base64Data, "base64");
   }
@@ -146,7 +157,7 @@ function generateOverlaySvg(coordinates, width, height, constants) {
     FRAME_STROKE_COLOR,
     FRAME_RADIUS,
     CAPTION_FONT_SIZE = 12,
-    CAPTION_FONT_FAMILY = "Arial, Helvetica, sans-serif",
+    CAPTION_FONT_FAMILY = EMBEDDED_FONT_STACK,
     getPanelAnnotation,
   } = constants;
   let frames = "";

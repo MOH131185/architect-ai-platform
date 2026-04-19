@@ -25,6 +25,10 @@ import {
   isFeatureEnabled,
   getFeatureValue,
 } from "../../config/featureFlags.js";
+import {
+  buildMaterialSpecSheet,
+  getCanonicalMaterialPalette,
+} from "./canonicalMaterialPalette.js";
 
 /**
  * Design Fingerprint schema
@@ -105,17 +109,22 @@ export async function extractFingerprintFromHero(
   const dnaHash = generateSimpleHash(JSON.stringify(masterDNA || {}));
   const fingerprintId = `fp_${dnaHash}`;
 
-  // Extract visual characteristics from DNA + image analysis
-  const massingType = inferMassingType(masterDNA);
-  const roofProfile = inferRoofProfile(masterDNA);
-  const facadeRhythm = inferFacadeRhythm(masterDNA);
-  const materialsPalette = extractMaterialsPalette(masterDNA);
-  const windowPattern = inferWindowPattern(masterDNA);
-  const entrancePosition = inferEntrancePosition(masterDNA);
-  const styleDescriptor = buildStyleDescriptor(masterDNA);
-
-  // Extract dominant colors from the hero image (simplified - in production would use image analysis)
-  const dominantColors = extractDominantColorsFromDNA(masterDNA);
+  const canonicalFingerprint = buildFingerprintFromDNA(masterDNA, options);
+  const {
+    massingType,
+    roofProfile,
+    facadeRhythm,
+    materialsPalette,
+    windowPattern,
+    entrancePosition,
+    styleDescriptor,
+    dominantColors,
+    buildingBBox,
+    floorCount,
+    canonicalMaterialPalette,
+    heroIdentitySpec,
+    materialSpecSheet,
+  } = canonicalFingerprint;
 
   // Generate the prompt lock string
   const promptLock = buildPromptLock({
@@ -133,15 +142,6 @@ export async function extractFingerprintFromHero(
     heroImageUrl + JSON.stringify(masterDNA),
   );
 
-  // Extract building dimensions for bounding box
-  const dims = masterDNA.dimensions || {};
-  const buildingBBox = {
-    widthMeters: dims.width || dims.length || 15,
-    depthMeters: dims.depth || dims.width || 10,
-    heightMeters: dims.height || dims.totalHeight || 7.5,
-  };
-  const floorCount = dims.floors || dims.floorCount || 2;
-
   // Build enhanced verbatim prompt lock (v2)
   const promptLockVerbatim = buildVerbatimPromptLock({
     massingType,
@@ -154,6 +154,7 @@ export async function extractFingerprintFromHero(
     dominantColors,
     buildingBBox,
     floorCount,
+    heroIdentitySpec,
   });
 
   // Generate hash of verbatim lock for verification
@@ -180,6 +181,9 @@ export async function extractFingerprintFromHero(
     promptLockHash,
     buildingBBox,
     floorCount,
+    canonicalMaterialPalette,
+    heroIdentitySpec,
+    materialSpecSheet,
     timestamp: Date.now(),
   };
 
@@ -277,56 +281,23 @@ function inferFacadeRhythm(dna) {
 /**
  * Extract materials palette from DNA
  */
-function extractMaterialsPalette(dna) {
-  const materials = dna.materials || dna._structured?.style?.materials || [];
-
-  if (Array.isArray(materials) && materials.length > 0) {
-    return materials.slice(0, 4).map((mat, idx) => {
-      if (typeof mat === "string") {
-        return {
-          name: mat,
-          hexColor: getDefaultColorForMaterial(mat),
-          coverage:
-            idx === 0 ? "primary walls" : idx === 1 ? "roof/accent" : "trim",
-        };
-      }
-      return {
-        name: mat.name || mat.type || "material",
-        hexColor: mat.hexColor || mat.color || "#808080",
-        coverage: mat.application || mat.coverage || "general",
-      };
-    });
-  }
-
-  // Default palette
-  return [
-    { name: "brick", hexColor: "#B8604E", coverage: "exterior walls" },
-    { name: "timber", hexColor: "#8B6914", coverage: "accents" },
-    { name: "glass", hexColor: "#87CEEB", coverage: "windows" },
-  ];
-}
-
-/**
- * Get default color for common materials
- */
-function getDefaultColorForMaterial(materialName) {
-  const materialColors = {
-    brick: "#B8604E",
-    "red brick": "#B8604E",
-    stone: "#A9A9A9",
-    concrete: "#C0C0C0",
-    timber: "#8B6914",
-    wood: "#8B6914",
-    glass: "#87CEEB",
-    metal: "#696969",
-    steel: "#71797E",
-    render: "#F5F5F5",
-    stucco: "#F5F5DC",
-    slate: "#708090",
-    tile: "#CD853F",
-    "clay tile": "#CD853F",
-  };
-  return materialColors[materialName.toLowerCase()] || "#808080";
+function extractMaterialsPalette(
+  dna,
+  projectGeometry = {},
+  facadeGrammar = {},
+) {
+  const palette = getCanonicalMaterialPalette({
+    dna,
+    projectGeometry,
+    facadeGrammar,
+  });
+  return palette.entries.map((entry) => ({
+    name: entry.name,
+    hexColor: entry.hexColor,
+    coverage: entry.application,
+    role: entry.role,
+    hatch: entry.hatch,
+  }));
 }
 
 /**
@@ -349,12 +320,23 @@ function inferWindowPattern(dna) {
 /**
  * Infer entrance position from DNA
  */
-function inferEntrancePosition(dna) {
+function inferEntrancePosition(dna, projectGeometry = {}, facadeGrammar = {}) {
   const facades = dna._structured?.geometry?.facades || {};
   const northFacade = facades.north || {};
+  const facadeOrientation =
+    facadeGrammar?.orientations?.find((entry) => entry?.components?.entrance) ||
+    null;
 
   if (northFacade.features?.includes("entrance")) {
     return "north facade, centered";
+  }
+  if (facadeOrientation?.side) {
+    return `${facadeOrientation.side} facade, emphasized entry`;
+  }
+  const entrance =
+    projectGeometry?.entrances?.[0] || projectGeometry?.doors?.[0];
+  if (entrance?.position_m) {
+    return `front facade near ${Math.round(Number(entrance.position_m.x || 0) * 10) / 10}m datum`;
   }
 
   // Default based on typical UK residential
@@ -364,19 +346,20 @@ function inferEntrancePosition(dna) {
 /**
  * Extract dominant colors from DNA materials
  */
-function extractDominantColorsFromDNA(dna) {
-  const materials = dna.materials || [];
-  const colors = [];
+function extractDominantColorsFromDNA(
+  dna,
+  projectGeometry = {},
+  facadeGrammar = {},
+) {
+  const palette = getCanonicalMaterialPalette({
+    dna,
+    projectGeometry,
+    facadeGrammar,
+  });
+  const colors = palette.entries.map((entry) => entry.hexColor).filter(Boolean);
 
-  for (const mat of materials) {
-    if (typeof mat === "object" && mat.hexColor) {
-      colors.push(mat.hexColor);
-    }
-  }
-
-  // Pad with defaults if needed
   while (colors.length < 3) {
-    colors.push(["#B8604E", "#8B6914", "#F5F5F5"][colors.length]);
+    colors.push(["#B55D4C", "#9A6A3A", "#E8E0D2"][colors.length]);
   }
 
   return colors.slice(0, 5);
@@ -396,6 +379,148 @@ function buildStyleDescriptor(dna) {
   const buildingType = dna.buildingType || "residential";
 
   return `${architecture} ${floors}-storey ${buildingType}`;
+}
+
+function inferMassingLanguage(dna = {}, projectGeometry = {}) {
+  return (
+    dna?._structured?.geometry?.massing?.language ||
+    dna?.massing_language ||
+    projectGeometry?.metadata?.massing_language ||
+    `${inferMassingType(dna)} massing`
+  );
+}
+
+function inferOpeningLanguage(dna = {}, facadeGrammar = {}) {
+  return (
+    facadeGrammar?.style_bridge?.opening_language ||
+    dna?._structured?.style?.windows?.pattern ||
+    dna?.style?.windows?.pattern ||
+    "ordered punched openings"
+  );
+}
+
+function inferRoofLanguage(dna = {}, facadeGrammar = {}) {
+  return (
+    facadeGrammar?.style_bridge?.roof_language ||
+    dna?.roof_language ||
+    dna?._structured?.geometry_rules?.roof_type ||
+    dna?.roof?.type ||
+    "pitched roof"
+  );
+}
+
+function resolvePortfolioStyleAnchor(options = {}) {
+  const portfolioStyle = options?.portfolioStyle || options?.portfolioStyleData;
+  if (!portfolioStyle) {
+    return null;
+  }
+  if (typeof portfolioStyle === "string") {
+    return portfolioStyle;
+  }
+  return (
+    portfolioStyle.styleName ||
+    portfolioStyle.description ||
+    portfolioStyle.title ||
+    null
+  );
+}
+
+export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
+  const projectGeometry = options.projectGeometry || {};
+  const facadeGrammar = options.facadeGrammar || {};
+  const canonicalMaterialPalette = getCanonicalMaterialPalette({
+    dna: masterDNA,
+    projectGeometry,
+    facadeGrammar,
+  });
+  const dims = masterDNA.dimensions || {};
+  const floorCount =
+    dims.floors ||
+    dims.floorCount ||
+    dims.floor_count ||
+    Math.max(1, (projectGeometry.levels || []).length) ||
+    2;
+  const roofPitchDegrees =
+    masterDNA?.roof?.pitch ||
+    masterDNA?._structured?.geometry?.roof?.pitch_degrees ||
+    null;
+
+  return {
+    version: "phase8-hero-identity-spec-v1",
+    storeyCount: floorCount,
+    roofLanguage: inferRoofLanguage(masterDNA, facadeGrammar),
+    roofPitchDegrees,
+    roofProfile: inferRoofProfile(masterDNA),
+    windowRhythm: inferFacadeRhythm(masterDNA),
+    openingLanguage: inferOpeningLanguage(masterDNA, facadeGrammar),
+    entrancePosition: inferEntrancePosition(
+      masterDNA,
+      projectGeometry,
+      facadeGrammar,
+    ),
+    massingLanguage: inferMassingLanguage(masterDNA, projectGeometry),
+    styleDescriptor: buildStyleDescriptor(masterDNA),
+    portfolioStyleAnchor: resolvePortfolioStyleAnchor(options),
+    canonicalMaterialPalette,
+    primaryMaterial: canonicalMaterialPalette.primary,
+    secondaryMaterial: canonicalMaterialPalette.secondary,
+    roofMaterial: canonicalMaterialPalette.roof,
+    trimMaterial: canonicalMaterialPalette.trim,
+    glazingMaterial: canonicalMaterialPalette.glazing,
+  };
+}
+
+export function buildFingerprintFromDNA(masterDNA = {}, options = {}) {
+  const projectGeometry = options.projectGeometry || {};
+  const facadeGrammar = options.facadeGrammar || {};
+  const canonicalMaterialPalette = getCanonicalMaterialPalette({
+    dna: masterDNA,
+    projectGeometry,
+    facadeGrammar,
+  });
+  const materialSpecSheet = buildMaterialSpecSheet({
+    dna: masterDNA,
+    projectGeometry,
+    facadeGrammar,
+  });
+  const dims = masterDNA.dimensions || {};
+  const buildingBBox = {
+    widthMeters: dims.width || dims.length || 15,
+    depthMeters: dims.depth || dims.width || 10,
+    heightMeters: dims.height || dims.totalHeight || 7.5,
+  };
+  const floorCount =
+    dims.floors ||
+    dims.floorCount ||
+    dims.floor_count ||
+    Math.max(1, (projectGeometry.levels || []).length) ||
+    2;
+  const heroIdentitySpec = buildHeroIdentitySpec(masterDNA, options);
+
+  return {
+    id: `fp_${generateSimpleHash(JSON.stringify(masterDNA || {}))}`,
+    massingType: inferMassingType(masterDNA),
+    roofProfile: inferRoofProfile(masterDNA),
+    facadeRhythm: inferFacadeRhythm(masterDNA),
+    materialsPalette: extractMaterialsPalette(
+      masterDNA,
+      projectGeometry,
+      facadeGrammar,
+    ),
+    windowPattern: inferWindowPattern(masterDNA),
+    entrancePosition: heroIdentitySpec.entrancePosition,
+    dominantColors: extractDominantColorsFromDNA(
+      masterDNA,
+      projectGeometry,
+      facadeGrammar,
+    ),
+    styleDescriptor: heroIdentitySpec.styleDescriptor,
+    buildingBBox,
+    floorCount,
+    canonicalMaterialPalette,
+    heroIdentitySpec,
+    materialSpecSheet,
+  };
 }
 
 /**
@@ -581,6 +706,13 @@ FACADE:
 
 DOMINANT COLORS FROM HERO (match these tones):
 ${colorsStr}
+
+HERO IDENTITY SPEC:
+- Roof language: ${fingerprint.heroIdentitySpec?.roofLanguage || fingerprint.roofProfile}
+- Window rhythm: ${fingerprint.heroIdentitySpec?.windowRhythm || fingerprint.facadeRhythm}
+- Opening language: ${fingerprint.heroIdentitySpec?.openingLanguage || fingerprint.windowPattern}
+- Entrance: ${fingerprint.heroIdentitySpec?.entrancePosition || fingerprint.entrancePosition}
+- Massing language: ${fingerprint.heroIdentitySpec?.massingLanguage || fingerprint.massingType}
 
 CRITICAL CONSISTENCY RULES:
 1. This panel shows THE SAME building as the hero 3D render
@@ -772,6 +904,8 @@ export function verifyPromptLockIntegrity(fingerprint) {
 
 export default {
   extractFingerprintFromHero,
+  buildFingerprintFromDNA,
+  buildHeroIdentitySpec,
   storeFingerprint,
   getFingerprint,
   hasFingerprint,

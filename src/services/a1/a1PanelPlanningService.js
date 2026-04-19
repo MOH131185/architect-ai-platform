@@ -1,7 +1,9 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { planA1PanelArtifacts } from "./a1PanelArtifactPlanner.js";
 import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
+import { evaluateA1ConsistencyGuards } from "./a1ConsistencyGuardService.js";
 import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
+import { getFontEmbeddingReadinessSync } from "../../utils/svgFontEmbedder.js";
 
 const PANEL_TYPE_ALIASES = {
   plan: "floor_plan",
@@ -17,6 +19,39 @@ function normalizeRequestedPanel(value = "") {
     .trim()
     .toLowerCase();
   return PANEL_TYPE_ALIASES[normalized] || normalized;
+}
+
+function applyPanelPriorityPhase8(panelCandidates = []) {
+  const technicalFirst = isFeatureEnabled("useTechnicalFirstA1LayoutPhase8");
+  return (panelCandidates || [])
+    .map((candidate) => {
+      const isTechnical = ["floor_plan", "elevation", "section"].includes(
+        candidate.type,
+      );
+      const boardWeight = technicalFirst
+        ? isTechnical
+          ? 3
+          : 1
+        : candidate.type === "visual"
+          ? 3
+          : 2;
+      return {
+        ...candidate,
+        boardWeight,
+        compositionRole:
+          technicalFirst && candidate.type === "visual"
+            ? "supporting_visual"
+            : isTechnical
+              ? "technical_truth"
+              : "hero_support",
+      };
+    })
+    .sort((left, right) => {
+      if (right.boardWeight !== left.boardWeight) {
+        return right.boardWeight - left.boardWeight;
+      }
+      return String(left.id).localeCompare(String(right.id));
+    });
 }
 
 export function planA1Panels({
@@ -35,11 +70,15 @@ export function planA1Panels({
       requestedPanels,
       artifactStore,
     });
+    const fontReadiness = getFontEmbeddingReadinessSync();
     if (
       !isFeatureEnabled("useA1TechnicalPanelGating") ||
       !isFeatureEnabled("useTechnicalPanelReadabilityChecks")
     ) {
-      return panelPlan;
+      return {
+        ...panelPlan,
+        fontReadiness,
+      };
     }
 
     const technicalPanelGate = evaluateA1TechnicalPanelGate({
@@ -50,6 +89,11 @@ export function planA1Panels({
         drawings?.technicalPanelQuality ||
         projectGeometry?.metadata?.technical_panel_quality ||
         null,
+      facadeGrammar,
+    });
+    const consistencyGuard = evaluateA1ConsistencyGuards({
+      projectGeometry,
+      visualPackage,
       facadeGrammar,
     });
     const recoveryExecutionBridge = isFeatureEnabled(
@@ -72,9 +116,22 @@ export function planA1Panels({
 
     return {
       ...panelPlan,
+      panelCandidates: applyPanelPriorityPhase8(panelPlan.panelCandidates),
       technicalPanelGate,
+      consistencyGuard,
+      fontReadiness,
       technicalQualityBlockers: technicalPanelGate.blockingReasons || [],
-      composeBlockingReasons: technicalPanelGate.blockingReasons || [],
+      composeBlockingReasons: [
+        ...new Set([
+          ...(technicalPanelGate.blockingReasons || []),
+          ...(consistencyGuard.blockingReasons || []),
+          ...(fontReadiness?.readyForEmbedding === false
+            ? [
+                "Bundled A1 font embedding is unavailable; final sheet text cannot be rasterized safely.",
+              ]
+            : []),
+        ]),
+      ],
       recoveryExecutionBridge,
       technicalPanelScores: (technicalPanelGate.panelChecks || []).map(
         (entry) => ({
@@ -148,10 +205,11 @@ export function planA1Panels({
   return {
     version: "phase4-a1-panel-plan-v1",
     project_id: projectGeometry.project_id || null,
-    panelCandidates: filteredCandidates,
+    panelCandidates: applyPanelPriorityPhase8(filteredCandidates),
     validPanelCount: filteredCandidates.filter((candidate) => candidate.ready)
       .length,
     totalPanelCount: filteredCandidates.length,
+    fontReadiness: getFontEmbeddingReadinessSync(),
   };
 }
 

@@ -44,6 +44,11 @@ export default async function handler(req, res) {
       "useTechnicalPanelReadabilityChecks",
       "useA1TechnicalPanelGating",
       "useTechnicalPanelScoringPhase7",
+      "useA1FontEmbeddingFix",
+      "useA1ConsistencyGuards",
+      "useTechnicalPanelScoringPhase8",
+      "useTechnicalPanelComposeBlockingPhase8",
+      "useTechnicalFirstA1LayoutPhase8",
       "useA1RecoveryExecutionBridge",
     ];
     if (!validation.ok) {

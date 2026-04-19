@@ -109,24 +109,53 @@ export function buildPlanGraphic(geometryInput = {}, options = {}) {
   const padding = 70;
   const bounds = getSourceBounds(geometry, level);
   const project = buildTransform(bounds, width, height - 70, padding);
+  const drawing = renderPlanSvg(geometry, {
+    ...options,
+    levelId: level?.id || null,
+    hideRoomLabels: true,
+  });
+  const sectionPlan = selectSectionCandidates(geometry, {
+    levelId: level?.id || null,
+  });
+
+  if (!drawing?.svg) {
+    return {
+      ...drawing,
+      annotation_layout: {
+        placements: [],
+        warnings: [],
+      },
+      annotation_validation: {
+        placementStable: false,
+        collisionCount: 0,
+        collisions: [],
+        fallbackPlacementCount: 0,
+        warnings: [],
+        errors: [
+          "Plan SVG payload is unavailable because the renderer blocked.",
+        ],
+      },
+      section_candidates: sectionPlan.candidates,
+      technical_quality_metadata: {
+        ...(drawing.technical_quality_metadata || {}),
+        annotation_count: 0,
+        annotation_fallback_count: 0,
+        section_marker_count: Math.min(2, sectionPlan.candidates.length),
+        has_scale_bar: false,
+        annotation_guarantee: false,
+      },
+    };
+  }
+
   const annotationLayout = layoutAnnotations({
     drawingType: "plan",
     projectGeometry: geometry,
     levelId: level?.id || null,
     project,
   });
-  const sectionPlan = selectSectionCandidates(geometry, {
-    levelId: level?.id || null,
-  });
   const annotationValidation = validateAnnotationPlacements(
     annotationLayout.placements,
   );
-
-  const drawing = renderPlanSvg(geometry, {
-    ...options,
-    levelId: level?.id || null,
-    hideRoomLabels: true,
-  });
   const svg = replaceSvgTail(
     drawing.svg,
     [

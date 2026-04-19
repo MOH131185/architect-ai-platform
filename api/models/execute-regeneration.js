@@ -45,6 +45,10 @@ export default async function handler(req, res) {
       "useTargetedRegenerationPlanning",
       "useTargetedRegenerationExecution",
       "usePhase7EntityDependencies",
+      "useA1FontEmbeddingFix",
+      "useA1ConsistencyGuards",
+      "useTechnicalPanelScoringPhase8",
+      "useTechnicalPanelComposeBlockingPhase8",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
     ];

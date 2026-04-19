@@ -852,6 +852,12 @@ export function buildProjectReadinessResponse({
     artifactStore: result.artifactStore || null,
     artifactFreshness: result.artifactFreshness || null,
     technicalPanelGate: result.technicalPanelGate || null,
+    technicalPanelReadinessState:
+      result.technicalPanelGate?.technicalPanelReadinessState || "pass",
+    consistencyGuard: result.consistencyGuard || null,
+    heroVsCanonicalWarnings:
+      result.consistencyGuard?.heroVsCanonicalWarnings || [],
+    fontReadiness: result.fontReadiness || null,
     composeExecutionPlan: result.composeExecutionPlan || null,
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     entityBlockers: result.entityBlockers || [],
@@ -915,8 +921,14 @@ export function buildPlanA1PanelsResponse({
     staleAssets: result.staleAssets || [],
     artifactFreshness: result.artifactFreshness || null,
     technicalPanelGate: result.technicalPanelGate || null,
+    technicalPanelReadinessState:
+      result.technicalPanelGate?.technicalPanelReadinessState || "pass",
     technicalPanelScores: result.technicalPanelScores || [],
     technicalQualityBlockers: result.technicalQualityBlockers || [],
+    consistencyGuard: result.consistencyGuard || null,
+    heroVsCanonicalWarnings:
+      result.consistencyGuard?.heroVsCanonicalWarnings || [],
+    fontReadiness: result.fontReadiness || null,
     composeBlockingReasons:
       result.composeBlockingReasons ||
       result.technicalPanelGate?.blockingReasons ||
@@ -1033,6 +1045,10 @@ export function buildProjectHealthResponse({
     rollbackPlan: result.rollbackPlan || null,
     technicalPanelHealth: result.technicalPanelHealth || null,
     technicalPackageStrength: result.technicalPackageStrength || null,
+    consistencyGuard: result.consistencyGuard || null,
+    heroVsCanonicalWarnings:
+      result.consistencyGuard?.heroVsCanonicalWarnings || [],
+    fontReadiness: result.fontReadiness || null,
     remainingBlockers: result.remainingBlockers || [],
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     warnings,
@@ -1219,6 +1235,7 @@ export function buildExecuteRegenerationResponse({
     drawings: result.drawings || null,
     facadeGrammar: result.facadeGrammar || null,
     visualPackage: result.visualPackage || null,
+    a1Readiness: result.a1Readiness || null,
     artifactStore: result.artifactStore || null,
     artifactFreshness: result.artifactFreshness || null,
     beforeSnapshot: result.beforeSnapshot || null,

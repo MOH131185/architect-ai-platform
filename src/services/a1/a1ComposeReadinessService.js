@@ -11,9 +11,11 @@ import {
 import { planA1PanelArtifacts } from "./a1PanelArtifactPlanner.js";
 import { resolveA1Freshness } from "./a1FreshnessResolver.js";
 import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
+import { evaluateA1ConsistencyGuards } from "./a1ConsistencyGuardService.js";
 import { buildA1ComposeBlockingState } from "./a1ComposeBlockingService.js";
 import { planA1ComposeExecution } from "./a1ComposeExecutionPlanner.js";
 import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
+import { getFontEmbeddingReadinessSync } from "../../utils/svgFontEmbedder.js";
 
 export function assessA1ComposeReadiness({
   projectGeometry = {},
@@ -93,11 +95,19 @@ export function assessA1ComposeReadiness({
           warnings: [],
           panelChecks: [],
         };
+  const consistencyGuard = evaluateA1ConsistencyGuards({
+    projectGeometry,
+    visualPackage,
+    facadeGrammar,
+  });
+  const fontReadiness = getFontEmbeddingReadinessSync();
   const blockingState = buildA1ComposeBlockingState({
     projectGeometry,
     validationReport,
     freshness: panelFreshness,
     technicalPanelGate,
+    consistencyGuard,
+    fontReadiness,
   });
   const executionPlan = isFeatureEnabled("useComposeExecutionPlanning")
     ? planA1ComposeExecution({
@@ -178,6 +188,8 @@ export function assessA1ComposeReadiness({
       ready: composeReady,
     }),
     technicalPanelGate,
+    consistencyGuard,
+    fontReadiness,
     composeExecutionPlan: executionPlan,
     recoveryExecutionBridge,
   };

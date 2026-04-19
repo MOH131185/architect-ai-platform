@@ -15,6 +15,11 @@ import logger from "../../utils/logger.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { buildRoboflowSymbolVocabularyBlock } from "../layoutReferenceService.js";
 import { getRoomListForLevel } from "../validation/programLockSchema.js";
+import {
+  buildFingerprintFromDNA,
+  buildHeroIdentitySpec,
+} from "../design/designFingerprintService.js";
+import { buildMaterialSpecSheet } from "../design/canonicalMaterialPalette.js";
 
 // CAD-standard lineweight specification for technical drawings
 const LINEWEIGHT_SPEC = `
@@ -171,6 +176,33 @@ NOT multiple buildings. NOT a housing estate. JUST ONE BUILDING.
 === END BUILDING IDENTITY ===`;
 }
 
+function buildCanonicalIdentitySpecBlock(masterDNA = {}, projectContext = {}) {
+  if (!isFeatureEnabled("useCanonicalMaterialPaletteSSOT")) {
+    return "";
+  }
+
+  const identitySpec = buildHeroIdentitySpec(masterDNA, {
+    projectGeometry: projectContext?.projectGeometry || null,
+    facadeGrammar: projectContext?.facadeGrammar || null,
+    portfolioStyle: projectContext?.portfolioStyle || null,
+  });
+
+  return `=== CANONICAL HERO IDENTITY SPEC (MATCH EXACTLY) ===
+Primary material: ${identitySpec.primaryMaterial?.name || "Primary"} ${identitySpec.primaryMaterial?.hexColor || ""}
+Secondary material: ${identitySpec.secondaryMaterial?.name || "Secondary"} ${identitySpec.secondaryMaterial?.hexColor || ""}
+Roof material: ${identitySpec.roofMaterial?.name || "Roof"} ${identitySpec.roofMaterial?.hexColor || ""}
+Glazing: ${identitySpec.glazingMaterial?.name || "Glass"} ${identitySpec.glazingMaterial?.hexColor || ""}
+Roof language: ${identitySpec.roofLanguage}
+Roof pitch: ${identitySpec.roofPitchDegrees ?? "context-led"} degrees
+Storey count: ${identitySpec.storeyCount}
+Window rhythm: ${identitySpec.windowRhythm}
+Opening language: ${identitySpec.openingLanguage}
+Entrance position: ${identitySpec.entrancePosition}
+Massing language: ${identitySpec.massingLanguage}
+${identitySpec.portfolioStyleAnchor ? `Portfolio style anchor: ${identitySpec.portfolioStyleAnchor}` : "Portfolio style anchor: none"}
+=== END CANONICAL HERO IDENTITY SPEC ===`;
+}
+
 /**
  * Build building-type-specific descriptors to help FLUX understand the form.
  * @private
@@ -318,6 +350,15 @@ export function buildHero3DPrompt({
     ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
     : "Keep massing consistent with plans and elevations.";
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const canonicalIdentitySpec = buildHeroIdentitySpec(masterDNA, {
+    projectGeometry: projectContext?.projectGeometry || null,
+    facadeGrammar: projectContext?.facadeGrammar || null,
+    portfolioStyle: projectContext?.portfolioStyle || null,
+  });
+  const canonicalIdentityBlock = buildCanonicalIdentitySpecBlock(
+    masterDNA,
+    projectContext,
+  );
 
   const storeyDesc =
     dims.floors === 1
@@ -350,7 +391,16 @@ export function buildHero3DPrompt({
   const materialDesc =
     materialDescParts.length > 0
       ? materialDescParts.join(", ")
-      : materials.join(", ");
+      : [
+          canonicalIdentitySpec.primaryMaterial &&
+            `${canonicalIdentitySpec.primaryMaterial.name} (${canonicalIdentitySpec.primaryMaterial.hexColor})`,
+          canonicalIdentitySpec.secondaryMaterial &&
+            `${canonicalIdentitySpec.secondaryMaterial.name} (${canonicalIdentitySpec.secondaryMaterial.hexColor})`,
+          canonicalIdentitySpec.roofMaterial &&
+            `${canonicalIdentitySpec.roofMaterial.name} (${canonicalIdentitySpec.roofMaterial.hexColor})`,
+        ]
+          .filter(Boolean)
+          .join(", ") || materials.join(", ");
 
   const buildingTypePrefix =
     `${materialDesc}, a single detached ${floorText}, ` +
@@ -368,12 +418,17 @@ Building: ${style} ${projectType}
 Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
 Materials: ${materialDesc}
 Roof: ${roofType} roof
+${canonicalIdentityBlock}
 
 DESIGN SPECIFICATION (All subsequent panels MUST match this):
 - Building massing: ${storeyDesc}
 - Roof type: ${roofType} (EXACT roof shape will be used for all views)
-- Facade materials: ${materials[0] || "primary material"} as dominant
-- Window pattern: regular fenestration matching ${dims.floors} floor(s)
+- Facade materials: ${canonicalIdentitySpec.primaryMaterial?.name || materials[0] || "primary material"} as dominant
+- Secondary materials: ${canonicalIdentitySpec.secondaryMaterial?.name || "matching accent material"}
+- Window pattern: ${canonicalIdentitySpec.windowRhythm}
+- Opening language: ${canonicalIdentitySpec.openingLanguage}
+- Entrance position: ${canonicalIdentitySpec.entrancePosition}
+- Roof pitch: ${canonicalIdentitySpec.roofPitchDegrees ?? "context-led"} degrees
 
 REQUIREMENTS:
 - Photorealistic architectural rendering, 8K quality, award-winning architecture photography
@@ -386,6 +441,7 @@ REQUIREMENTS:
 - Professional architecture magazine cover quality (Dezeen, ArchDaily standard)
 - Coherent massing matching floor plans with precise proportions
 - ${geomConstraint}
+- Canonical facade identity: ${canonicalIdentitySpec.massingLanguage}; ${canonicalIdentitySpec.windowRhythm}; ${canonicalIdentitySpec.entrancePosition}
 - FLOOR COUNT: EXACTLY ${dims.floors} floor(s). ${dims.floors === 1 ? "LOW ground-hugging SINGLE STOREY structure. Wall height ~3.2m before roof starts. NO upper windows." : `Show clearly ${dims.floors} rows of windows. Total height ${dims.height}m.`}
 - ROOF: ${roofType} roof ONLY. ${roofType === "flat" ? "Horizontal roofline with parapet detail, NO pitch, NO gable ends." : roofType === "gable" ? "Triangular gable ends clearly visible with fascia and soffit detail. NOT flat, NOT hip." : roofType === "hip" ? "Hipped roof with uniform slope on all four sides, ridge tiles visible. NOT flat, NOT gable." : `${roofType} profile clearly visible.`}
 - PROPORTIONS: Building is ${dims.length}m long × ${dims.width}m wide × ${dims.height}m to roof ridge
@@ -681,6 +737,15 @@ export function buildElevationPrompt(orientation) {
       ? `FOLLOW PROVIDED GEOMETRY: match the ${geometryHint.type} silhouette exactly (roofline, massing, openings).`
       : "Maintain strict orthographic alignment to plans and roofline.";
     const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+    const canonicalIdentityBlock = buildCanonicalIdentitySpecBlock(
+      masterDNA,
+      projectContext,
+    );
+    const canonicalFingerprint = buildFingerprintFromDNA(masterDNA, {
+      projectGeometry: projectContext?.projectGeometry || null,
+      facadeGrammar: projectContext?.facadeGrammar || null,
+      portfolioStyle: projectContext?.portfolioStyle || null,
+    });
 
     // Extract per-facade details from DNA
     const facades =
@@ -739,12 +804,13 @@ Style: ${style}
 Height: ${dims.height}m (${dims.floors} floor(s))
 Materials: ${materialStr}
 Roof type: ${roofType} (MUST match hero 3D render exactly)
+${canonicalIdentityBlock}
 
 ${fingerprintConstraint ? `DESIGN FINGERPRINT - MATCH HERO 3D EXACTLY:\n${fingerprintConstraint}\n` : ""}
 CRITICAL CONSISTENCY RULES:
 - This elevation MUST show THE SAME building as the hero 3D render
 - Roof profile: ${roofType} - EXACT SAME shape as hero
-- Materials: ${materialsWithHex[0] || materials[0] || "primary"} - EXACT SAME colors as hero
+- Materials: ${canonicalFingerprint.materialsPalette.map((entry) => `${entry.name} ${entry.hexColor}`).join(", ")} - EXACT SAME colors as hero
 - Building height and proportions: MUST match hero
 ${facadeDetails || `- Window count and positions: MUST match hero facade visible from this orientation`}
 
@@ -895,9 +961,21 @@ export function buildMaterialPalettePrompt({
   consistencyLock,
 }) {
   const materials = normalizeMaterials(masterDNA);
+  const materialSpecSheet = buildMaterialSpecSheet({
+    dna: masterDNA,
+    projectGeometry: projectContext?.projectGeometry || null,
+    facadeGrammar: projectContext?.facadeGrammar || null,
+  });
+  const canonicalIdentityBlock = buildCanonicalIdentitySpecBlock(
+    masterDNA,
+    projectContext,
+  );
 
   const prompt = `Material palette board - architectural materials presentation for a ${projectContext?.buildingProgram || "residential"} project
 Materials: ${materials.join(", ")}
+${canonicalIdentityBlock}
+CANONICAL SPEC:
+${materialSpecSheet.lines.join("\n")}
 
 REQUIREMENTS:
 - Display as color swatches in grid layout

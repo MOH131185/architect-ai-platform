@@ -94,6 +94,8 @@ describe("Phase 7 execute-regeneration route", () => {
     expect(res.body.freshnessUpdates.refreshedFragments).toContain(
       `drawing:plan:${levelId}`,
     );
+    expect(res.body.a1Readiness).toBeTruthy();
+    expect(res.body.projectGeometry.metadata.a1_readiness).toBeTruthy();
     expect(res.body.meta.endpoint).toBe("execute-regeneration");
   });
 

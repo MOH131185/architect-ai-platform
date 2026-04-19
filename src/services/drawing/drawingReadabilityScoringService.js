@@ -40,11 +40,17 @@ export function scoreDrawingReadability(drawing = {}, options = {}) {
     score += Number(quality.window_count || 0) > 0 ? 0.05 : 0;
     score += Number(quality.wall_count || 0) > 0 ? 0.08 : 0;
     score += Number(quality.stair_count || 0) > 0 ? 0.05 : 0;
+    score += quality.has_external_dimensions ? 0.08 : 0;
+    score += Number(quality.door_swing_count || 0) > 0 ? 0.07 : 0;
+    score += Number(quality.furniture_hint_count || 0) > 0 ? 0.05 : 0;
     if (labelRatio < 0.8) {
       warnings.push("Plan room labels are incomplete relative to room count.");
     }
     if (!hierarchyStrong) {
       warnings.push("Plan line hierarchy is weak.");
+    }
+    if (!quality.has_external_dimensions) {
+      warnings.push("Plan external dimensions are missing.");
     }
   } else if (drawingType === "elevation") {
     score +=
@@ -53,8 +59,14 @@ export function scoreDrawingReadability(drawing = {}, options = {}) {
     score += Number(quality.floor_line_count || 0) > 0 ? 0.12 : 0;
     score += quality.has_title ? 0.08 : 0;
     score += Number(quality.bay_count || 0) > 0 ? 0.05 : 0;
+    score += Number(quality.material_zone_count || 0) > 0 ? 0.08 : 0;
+    score += Number(quality.ffl_marker_count || 0) > 0 ? 0.07 : 0;
+    score += Number(quality.feature_count || 0) > 0 ? 0.06 : 0;
     if (!quality.has_title) {
       warnings.push("Elevation title annotation is missing.");
+    }
+    if (Number(quality.facade_richness_score || 0) < 0.5) {
+      warnings.push("Elevation facade richness is weak.");
     }
   } else if (drawingType === "section") {
     score +=
@@ -63,6 +75,9 @@ export function scoreDrawingReadability(drawing = {}, options = {}) {
     score += Number(quality.slab_line_count || 0) > 0 ? 0.12 : 0;
     score += Number(quality.level_label_count || 0) > 0 ? 0.1 : 0;
     score += quality.has_title ? 0.08 : 0;
+    score += Number(quality.foundation_marker_count || 0) > 0 ? 0.08 : 0;
+    score += Number(quality.stair_tread_count || 0) > 0 ? 0.06 : 0;
+    score += quality.roof_profile_visible ? 0.06 : 0;
     if (Number(quality.room_label_count || 0) === 0) {
       warnings.push("Section room labels are missing.");
     }

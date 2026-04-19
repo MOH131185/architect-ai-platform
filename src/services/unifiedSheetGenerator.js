@@ -12,9 +12,9 @@
  * All images are embedded directly in the SVG for a true single-file output
  */
 
-import { isFeatureEnabled } from '../config/featureFlags.js';
-import logger from '../utils/logger.js';
-
+import { isFeatureEnabled } from "../config/featureFlags.js";
+import logger from "../utils/logger.js";
+import { embedFontInSVG } from "../utils/svgFontEmbedder.js";
 
 // A1 Portrait dimensions (better for complete architectural sheet)
 const SHEET_WIDTH = 594; // mm
@@ -33,16 +33,19 @@ async function generateSituationPlan({
   x,
   y,
   width,
-  height
+  height,
 }) {
-  logger.info('📍 Generating Situation Plan...');
+  logger.info("📍 Generating Situation Plan...");
 
   const streetContext = siteAnalysis?.streetContext || {};
-  const primaryRoad = streetContext.primaryRoad || 'Local Street';
+  const primaryRoad = streetContext.primaryRoad || "Local Street";
   const adjacentRoads = streetContext.adjacentRoads || 1;
-  const buildingDims = buildingFootprint?.dimensions || { length: 15, width: 10 };
+  const buildingDims = buildingFootprint?.dimensions || {
+    length: 15,
+    width: 10,
+  };
 
-  const scale = '1:500';
+  const scale = "1:500";
   const margin = 15;
   const drawWidth = width - margin * 2;
   const drawHeight = height - margin * 2;
@@ -56,18 +59,24 @@ async function generateSituationPlan({
     <rect width="${width}" height="${height}" fill="#ffffff" stroke="#333" stroke-width="1"/>
     <text x="${width / 2}" y="12" text-anchor="middle" class="section-title" font-weight="bold">SITUATION PLAN</text>
     <line x1="${margin}" y1="18" x2="${width - margin}" y2="18" stroke="#000" stroke-width="0.5"/>
-    ${sitePolygon && sitePolygon.length > 0 ? `
-    <polygon points="${sitePolygon.map((pt, idx) => {
-    const normalizedX = margin + (pt.lng || 0) * drawWidth / 0.01;
-    const normalizedY = margin + (pt.lat || 0) * drawHeight / 0.01;
-    return `${normalizedX},${normalizedY}`;
-  }).join(' ')}"
+    ${
+      sitePolygon && sitePolygon.length > 0
+        ? `
+    <polygon points="${sitePolygon
+      .map((pt, idx) => {
+        const normalizedX = margin + ((pt.lng || 0) * drawWidth) / 0.01;
+        const normalizedY = margin + ((pt.lat || 0) * drawHeight) / 0.01;
+        return `${normalizedX},${normalizedY}`;
+      })
+      .join(" ")}"
              fill="none" stroke="#ff0000" stroke-width="2" stroke-dasharray="5,2"/>
-    ` : `
+    `
+        : `
     <rect x="${margin + drawWidth * 0.2}" y="${margin + drawHeight * 0.2}"
           width="${drawWidth * 0.6}" height="${drawHeight * 0.6}"
           fill="none" stroke="#ff0000" stroke-width="2" stroke-dasharray="5,2"/>
-    `}
+    `
+    }
     <line x1="${margin}" y1="${margin + drawHeight * 0.8}" 
           x2="${width - margin}" y2="${margin + drawHeight * 0.8}"
           stroke="#333" stroke-width="3" opacity="0.6"/>
@@ -87,14 +96,24 @@ async function generateSituationPlan({
       <line x1="0" y1="0" x2="50" y2="0" stroke="#000" stroke-width="2"/>
       <text x="25" y="-8" text-anchor="middle" class="tiny" fill="#666">${scale}</text>
     </g>
-    <text x="${margin + 5}" y="${height - margin - 5}" class="tiny" fill="#666">${location?.address || 'Location TBD'}</text>
+    <text x="${margin + 5}" y="${height - margin - 5}" class="tiny" fill="#666">${location?.address || "Location TBD"}</text>
   </g>`;
 }
 
 /**
  * Generate site map section with SVG fallback
  */
-async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, width, height, siteAnalysis = null, buildingFootprint = null) {
+async function generateSiteMapSection(
+  siteMapURL,
+  location,
+  sitePolygon,
+  x,
+  y,
+  width,
+  height,
+  siteAnalysis = null,
+  buildingFootprint = null,
+) {
   // Try enhanced Situation Plan first if site analysis is available
   if (siteAnalysis || sitePolygon) {
     try {
@@ -107,10 +126,10 @@ async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, w
         x,
         y,
         width,
-        height
+        height,
       });
     } catch (err) {
-      logger.warn('⚠️ Situation Plan generation failed, falling back:', err);
+      logger.warn("⚠️ Situation Plan generation failed, falling back:", err);
     }
   }
   // If we have Google Maps URL, use it
@@ -125,13 +144,13 @@ async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, w
 
   // Otherwise, generate SVG site plan fallback
   try {
-    const siteMapRenderer = await import('./siteMapRenderer.js');
+    const siteMapRenderer = await import("./siteMapRenderer.js");
     const svgSitePlan = siteMapRenderer.generateSVGSitePlan({
       sitePolygon: sitePolygon,
       coordinates: location?.coordinates,
       buildingFootprint: null, // Will use default centered footprint
       width: width,
-      height: height
+      height: height,
     });
 
     // Embed the SVG site plan directly
@@ -139,15 +158,18 @@ async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, w
       ${svgSitePlan}
     </g>`;
   } catch (err) {
-    logger.warn('⚠️ SVG site plan generation failed, using basic placeholder:', err);
+    logger.warn(
+      "⚠️ SVG site plan generation failed, using basic placeholder:",
+      err,
+    );
 
     // Final fallback: simple placeholder with coordinates
     return `<g transform="translate(${x}, ${y})">
       <rect width="${width}" height="${height}" fill="#f5f5f5" stroke="#333" stroke-width="0.5"/>
       <text x="${width / 2}" y="${height / 2 - 10}" text-anchor="middle" class="small" fill="#333" font-weight="bold">SITE LOCATION PLAN</text>
-      <text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="tiny" fill="#666">${location?.address || 'Location TBD'}</text>
+      <text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="tiny" fill="#666">${location?.address || "Location TBD"}</text>
       <text x="${width / 2}" y="${height / 2 + 15}" text-anchor="middle" class="tiny" fill="#666">SCALE 1:1250</text>
-      ${location?.coordinates ? `<text x="${width / 2}" y="${height / 2 + 25}" text-anchor="middle" class="tiny" fill="#999">${location.coordinates.lat.toFixed(4)}°N, ${Math.abs(location.coordinates.lng).toFixed(4)}°${location.coordinates.lng < 0 ? 'W' : 'E'}</text>` : ''}
+      ${location?.coordinates ? `<text x="${width / 2}" y="${height / 2 + 25}" text-anchor="middle" class="tiny" fill="#999">${location.coordinates.lat.toFixed(4)}°N, ${Math.abs(location.coordinates.lng).toFixed(4)}°${location.coordinates.lng < 0 ? "W" : "E"}</text>` : ""}
     </g>`;
   }
 }
@@ -158,23 +180,23 @@ async function generateSiteMapSection(siteMapURL, location, sitePolygon, x, y, w
 function embedSVG(svgContent, x, y, width, height, label, scale, dna = null) {
   if (!svgContent) {
     // Generate better fallback based on drawing type
-    if (label && label.includes('SECTION')) {
+    if (label && label.includes("SECTION")) {
       // Generate schematic section diagram
       return generateFallbackSection(x, y, width, height, label, scale, dna);
     } else {
       // Generic placeholder for other drawings
       return `<g transform="translate(${x}, ${y})">
         <rect width="${width}" height="${height}" fill="#f5f5f5" stroke="#333" stroke-width="0.5"/>
-        <text x="${width / 2}" y="${height / 2 - 10}" text-anchor="middle" class="small" fill="#333" font-weight="bold">${label || 'No Drawing'}</text>
+        <text x="${width / 2}" y="${height / 2 - 10}" text-anchor="middle" class="small" fill="#333" font-weight="bold">${label || "No Drawing"}</text>
         <text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="tiny" fill="#666">Generating...</text>
-        ${scale ? `<text x="${width / 2}" y="${height / 2 + 15}" text-anchor="middle" class="tiny" fill="#666">${scale}</text>` : ''}
+        ${scale ? `<text x="${width / 2}" y="${height / 2 + 15}" text-anchor="middle" class="tiny" fill="#666">${scale}</text>` : ""}
       </g>`;
     }
   }
 
   // Extract SVG content (remove XML declaration if present)
   let svgBody = svgContent;
-  if (svgBody.includes('<svg')) {
+  if (svgBody.includes("<svg")) {
     // Extract content between <svg> tags
     const svgMatch = svgBody.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
     if (svgMatch) {
@@ -189,7 +211,7 @@ function embedSVG(svgContent, x, y, width, height, label, scale, dna = null) {
       ${svgBody}
     </svg>
     <text x="2" y="10" class="tiny" font-weight="bold">${label}</text>
-    ${scale ? `<text x="${width - 50}" y="${height - 5}" class="tiny" text-anchor="end">${scale}</text>` : ''}
+    ${scale ? `<text x="${width - 50}" y="${height - 5}" class="tiny" text-anchor="end">${scale}</text>` : ""}
   </g>`;
 }
 
@@ -199,8 +221,8 @@ function embedSVG(svgContent, x, y, width, height, label, scale, dna = null) {
 function generateFallbackSection(x, y, width, height, label, scale, dna) {
   const dims = dna?.dimensions || {};
   const floorCount = dims.floorHeights?.length || dims.floor_count || 2;
-  const floorHeight = dims.height ? (dims.height / floorCount) : 3;
-  const totalHeight = dims.height || (floorHeight * floorCount);
+  const floorHeight = dims.height ? dims.height / floorCount : 3;
+  const totalHeight = dims.height || floorHeight * floorCount;
 
   // Calculate proportions
   const margin = 10;
@@ -223,8 +245,8 @@ function generateFallbackSection(x, y, width, height, label, scale, dna) {
 
   // Draw floors from bottom to top
   for (let floor = 0; floor < floorCount; floor++) {
-    const floorBottom = height - margin - (floor * floorHeight * pixelsPerMeter);
-    const floorTop = floorBottom - (floorHeight * pixelsPerMeter);
+    const floorBottom = height - margin - floor * floorHeight * pixelsPerMeter;
+    const floorTop = floorBottom - floorHeight * pixelsPerMeter;
 
     // Floor slab
     sectionSVG += `
@@ -244,7 +266,8 @@ function generateFallbackSection(x, y, width, height, label, scale, dna) {
     `;
 
     // Floor level annotation
-    const floorLabel = floor === 0 ? '0.00' : `+${(floor * floorHeight).toFixed(2)}m`;
+    const floorLabel =
+      floor === 0 ? "0.00" : `+${(floor * floorHeight).toFixed(2)}m`;
     sectionSVG += `
       <text x="${margin}" y="${floorTop + 10}" class="tiny" fill="#000">${floorLabel}</text>
     `;
@@ -258,11 +281,12 @@ function generateFallbackSection(x, y, width, height, label, scale, dna) {
   }
 
   // Roof
-  const roofBottom = height - margin - (floorCount * floorHeight * pixelsPerMeter);
-  const roofType = dna?.roof?.type || 'gable';
+  const roofBottom =
+    height - margin - floorCount * floorHeight * pixelsPerMeter;
+  const roofType = dna?.roof?.type || "gable";
   const roofPitch = dna?.roof?.pitch || 35;
 
-  if (roofType === 'flat') {
+  if (roofType === "flat") {
     sectionSVG += `
       <rect x="${margin + buildingWidth * 0.1}" y="${roofBottom - 3}"
             width="${buildingWidth * 0.8}" height="3"
@@ -270,7 +294,8 @@ function generateFallbackSection(x, y, width, height, label, scale, dna) {
     `;
   } else {
     // Gable roof (simplified)
-    const roofPeakHeight = (buildingWidth * 0.4) * Math.tan((roofPitch * Math.PI) / 180);
+    const roofPeakHeight =
+      buildingWidth * 0.4 * Math.tan((roofPitch * Math.PI) / 180);
     sectionSVG += `
       <polygon points="${margin + buildingWidth * 0.1},${roofBottom}
                        ${margin + buildingWidth * 0.5},${roofBottom - roofPeakHeight}
@@ -288,7 +313,7 @@ function generateFallbackSection(x, y, width, height, label, scale, dna) {
   // Label and scale
   sectionSVG += `
     <text x="2" y="10" class="tiny" font-weight="bold">${label}</text>
-    ${scale ? `<text x="${width - 50}" y="${height - 5}" class="tiny" text-anchor="end">${scale}</text>` : ''}
+    ${scale ? `<text x="${width - 50}" y="${height - 5}" class="tiny" text-anchor="end">${scale}</text>` : ""}
     <text x="${width / 2}" y="${height - 5}" text-anchor="middle" class="tiny" fill="#999">(Schematic)</text>
   </g>`;
 
@@ -298,9 +323,17 @@ function generateFallbackSection(x, y, width, height, label, scale, dna) {
 /**
  * Generate project data section
  */
-function generateProjectDataSection(dna, location, context, x, y, width, height) {
+function generateProjectDataSection(
+  dna,
+  location,
+  context,
+  x,
+  y,
+  width,
+  height,
+) {
   const dims = dna?.dimensions || {};
-  const siteArea = location?.siteAnalysis?.area || '450m²';
+  const siteArea = location?.siteAnalysis?.area || "450m²";
   const builtUpArea = (dims.length || 0) * (dims.width || 0);
   const costEstimate = `£${(builtUpArea * 1400).toLocaleString()}`;
 
@@ -314,8 +347,8 @@ function generateProjectDataSection(dna, location, context, x, y, width, height)
     <text x="5" y="65" class="small">Building Height: ${dims.height || 0}m</text>
     <text x="5" y="80" class="small">Floors: ${dims.floorHeights?.length || 2}</text>
     <text x="5" y="95" class="small">Est. Cost: ${costEstimate}</text>
-    <text x="5" y="110" class="small">Climate Zone: ${location?.climate?.type || 'Temperate'}</text>
-    <text x="5" y="125" class="small">Orientation: ${location?.sunPath?.optimalOrientation || 'South-facing'}</text>
+    <text x="5" y="110" class="small">Climate Zone: ${location?.climate?.type || "Temperate"}</text>
+    <text x="5" y="125" class="small">Orientation: ${location?.sunPath?.optimalOrientation || "South-facing"}</text>
     <text x="5" y="140" class="small">Energy: EPC Band B target</text>
     
     <text x="5" y="165" class="section-title">UK BUILDING REGULATIONS</text>
@@ -330,7 +363,8 @@ function generateProjectDataSection(dna, location, context, x, y, width, height)
  * Generate consistency score badge
  */
 function generateConsistencyBadge(score, x, y) {
-  const scoreColor = score >= 98 ? '#4caf50' : score >= 95 ? '#ff9800' : '#f44336';
+  const scoreColor =
+    score >= 98 ? "#4caf50" : score >= 95 ? "#ff9800" : "#f44336";
 
   return `<g transform="translate(${x}, ${y})">
     <rect width="50" height="25" rx="3" fill="${scoreColor}" opacity="0.9"/>
@@ -359,21 +393,25 @@ function generateTechnicalDetailsSection(details, x, y, width, height) {
 
   const renderDetail = (label, callout, offsetY) => {
     const title = callout.title || label;
-    const scale = callout.scale || '1:10';
-    const layers = Array.isArray(callout.layers) ? callout.layers.slice(0, 5) : [];
-    const annotations = Array.isArray(callout.annotations) ? callout.annotations.slice(0, 2) : [];
+    const scale = callout.scale || "1:10";
+    const layers = Array.isArray(callout.layers)
+      ? callout.layers.slice(0, 5)
+      : [];
+    const annotations = Array.isArray(callout.annotations)
+      ? callout.annotations.slice(0, 2)
+      : [];
     return `
       <text x="5" y="${offsetY}" class="small" font-weight="bold">${label} • ${title} (${scale})</text>
-      ${layers.map((l, i) => `<text x="10" y="${offsetY + 12 + i * 10}" class="tiny">- ${l}</text>`).join('')}
-      ${annotations.length > 0 ? `<text x="10" y="${offsetY + 12 + layers.length * 10}" class="tiny" fill="#666">Notes: ${annotations.join(', ')}</text>` : ''}
+      ${layers.map((l, i) => `<text x="10" y="${offsetY + 12 + i * 10}" class="tiny">- ${l}</text>`).join("")}
+      ${annotations.length > 0 ? `<text x="10" y="${offsetY + 12 + layers.length * 10}" class="tiny" fill="#666">Notes: ${annotations.join(", ")}</text>` : ""}
     `;
   };
 
   return `<g transform="translate(${x}, ${y})">
     <rect width="${width}" height="${height}" fill="#ffffff" stroke="#333" stroke-width="0.5"/>
     <text x="5" y="12" class="section-title">TECHNICAL DETAILS</text>
-    ${renderDetail('DETAIL A', a, 26)}
-    ${renderDetail('DETAIL B', b, 70)}
+    ${renderDetail("DETAIL A", a, 26)}
+    ${renderDetail("DETAIL B", b, 70)}
   </g>`;
 }
 
@@ -381,46 +419,60 @@ function generateTechnicalDetailsSection(details, x, y, width, height) {
  * Generate unified A1 sheet with all views embedded
  */
 export async function generateUnifiedSheet(designResult, projectContext) {
-  logger.info('📐 Generating unified A1 sheet with all views...');
-  logger.info('   designResult keys:', Object.keys(designResult));
-  logger.info('   visualizations:', designResult.visualizations);
+  logger.info("📐 Generating unified A1 sheet with all views...");
+  logger.info("   designResult keys:", Object.keys(designResult));
+  logger.info("   visualizations:", designResult.visualizations);
 
   // Check if programmatic composer is enabled
-  if (isFeatureEnabled('a1ProgrammaticComposer')) {
-    logger.info('   🎨 Using programmatic SVG composer (deterministic structure)');
+  if (isFeatureEnabled("a1ProgrammaticComposer")) {
+    logger.info(
+      "   🎨 Using programmatic SVG composer (deterministic structure)",
+    );
     try {
-      const { renderA1SheetSVG } = await import('./a1SheetComposer');
-      const sheetData = mapDesignResultToA1SheetData(designResult, projectContext);
+      const { renderA1SheetSVG } = await import("./a1SheetComposer");
+      const sheetData = mapDesignResultToA1SheetData(
+        designResult,
+        projectContext,
+      );
       const result = renderA1SheetSVG(sheetData);
-      logger.success(' Programmatic A1 sheet generated');
-      logger.info('   📏 SVG length:', result.svg.length, 'characters');
-      return result.svg;
+      const finalSvg = isFeatureEnabled("useA1FontEmbeddingFix")
+        ? await embedFontInSVG(result.svg)
+        : result.svg;
+      logger.success(" Programmatic A1 sheet generated");
+      logger.info("   📏 SVG length:", finalSvg.length, "characters");
+      return finalSvg;
     } catch (error) {
-      logger.error('❌ Programmatic composer failed, falling back to legacy:', error);
+      logger.error(
+        "❌ Programmatic composer failed, falling back to legacy:",
+        error,
+      );
       // Fall through to legacy implementation
     }
   }
 
   // Legacy implementation (kept for fallback)
-  logger.info('   📐 Using legacy sheet generator');
+  logger.info("   📐 Using legacy sheet generator");
 
-  const {
-    designDNA,
-    masterDNA
-  } = designResult;
+  const { designDNA, masterDNA } = designResult;
 
   const dna = designDNA || masterDNA;
 
   // Extract view URLs from the entire design result
   const views = extractViewURLs(designResult);
-  const foundViews = Object.keys(views).filter(k => views[k]);
-  const missingViews = Object.keys(views).filter(k => !views[k]);
+  const foundViews = Object.keys(views).filter((k) => views[k]);
+  const missingViews = Object.keys(views).filter((k) => !views[k]);
 
-  logger.info('   ✅ Found views (' + foundViews.length + '):', foundViews);
+  logger.info("   ✅ Found views (" + foundViews.length + "):", foundViews);
   if (missingViews.length > 0) {
-    logger.warn('   ⚠️  Missing views (' + missingViews.length + '):', missingViews);
+    logger.warn(
+      "   ⚠️  Missing views (" + missingViews.length + "):",
+      missingViews,
+    );
   }
-  logger.info('   📊 Total views with URLs:', Object.values(views).filter(v => v).length + '/11');
+  logger.info(
+    "   📊 Total views with URLs:",
+    Object.values(views).filter((v) => v).length + "/11",
+  );
 
   // Calculate simple hash for traceability
   const designHash = simpleHash(JSON.stringify({ dna, seed: dna?.seed }));
@@ -475,15 +527,15 @@ export async function generateUnifiedSheet(designResult, projectContext) {
 
 </svg>`;
 
-  logger.success(' Unified sheet generated');
-  logger.info('   📏 SVG length:', svg.length, 'characters');
+  logger.success(" Unified sheet generated");
+  logger.info("   📏 SVG length:", svg.length, "characters");
 
   if (!svg || svg.length < 100) {
-    logger.error('❌ Generated SVG is too short or empty!');
+    logger.error("❌ Generated SVG is too short or empty!");
     return null;
   }
 
-  return svg;
+  return isFeatureEnabled("useA1FontEmbeddingFix") ? embedFontInSVG(svg) : svg;
 }
 
 /**
@@ -497,25 +549,28 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
 
   // Extract materials
   const materials = Array.isArray(dna?.materials)
-    ? dna.materials.map(m => ({
-      name: m.name || 'Unknown',
-      description: m.application || m.description || '',
-      swatchHex: m.hexColor || m.color_hex || '#888888'
-    }))
+    ? dna.materials.map((m) => ({
+        name: m.name || "Unknown",
+        description: m.application || m.description || "",
+        swatchHex: m.hexColor || m.color_hex || "#888888",
+      }))
     : [];
 
   // Extract climate summary
   const climate = location?.climate || location?.climateSummary || {};
 
   // Handle weatherService structure or fallback
-  let avgTemp = '10°C';
-  let rainfall = '750 mm/yr';
-  let prevailingWind = 'SW';
-  let climateZone = 'Temperate Oceanic';
+  let avgTemp = "10°C";
+  let rainfall = "750 mm/yr";
+  let prevailingWind = "SW";
+  let climateZone = "Temperate Oceanic";
 
   if (climate.temperature) {
     // New structure from weatherService
-    if (climate.temperature.min !== undefined && climate.temperature.max !== undefined) {
+    if (
+      climate.temperature.min !== undefined &&
+      climate.temperature.max !== undefined
+    ) {
       avgTemp = `${((climate.temperature.min + climate.temperature.max) / 2).toFixed(1)}°C`;
     } else if (climate.temperature.current !== undefined) {
       avgTemp = `${climate.temperature.current}°C`;
@@ -535,22 +590,31 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
   } else {
     // Fallback to existing logic
     const seasonal = climate?.seasonal || {};
-    avgTemp = seasonal?.summer?.avgTemp || seasonal?.winter?.avgTemp || climate?.avgTemp || '10 °C';
-    rainfall = climate?.avgRainfall || climate?.rainfall || '750 mm/yr';
-    prevailingWind = climate?.prevailingWind || 'west–south-west';
-    climateZone = climate?.type || climate?.climateZone || 'Temperate Oceanic';
+    avgTemp =
+      seasonal?.summer?.avgTemp ||
+      seasonal?.winter?.avgTemp ||
+      climate?.avgTemp ||
+      "10 °C";
+    rainfall = climate?.avgRainfall || climate?.rainfall || "750 mm/yr";
+    prevailingWind = climate?.prevailingWind || "west–south-west";
+    climateZone = climate?.type || climate?.climateZone || "Temperate Oceanic";
   }
 
   return {
     project: {
-      title: projectContext?.buildingProgram || dna?.projectName || 'Modern Residential Building',
-      architect: 'ArchiAI Solution Ltd — Mohammed Reggab',
-      drawingTitle: 'Full Architectural Presentation – A1 Sheet',
-      drawingNo: dna?.projectID ? `A1.${dna.projectID.slice(-3)}` : `A1.${Date.now().toString().slice(-3)}`,
-      date: new Date().toLocaleDateString('en-GB'),
-      location: location?.address || 'Location TBD',
-      scale: '1:100 (Plans, Elevations, Section) / NTS (3D Views)',
-      version: 'ArchiAI – v1.4 Climate Reasoning Model'
+      title:
+        projectContext?.buildingProgram ||
+        dna?.projectName ||
+        "Modern Residential Building",
+      architect: "ArchiAI Solution Ltd — Mohammed Reggab",
+      drawingTitle: "Full Architectural Presentation – A1 Sheet",
+      drawingNo: dna?.projectID
+        ? `A1.${dna.projectID.slice(-3)}`
+        : `A1.${Date.now().toString().slice(-3)}`,
+      date: new Date().toLocaleDateString("en-GB"),
+      location: location?.address || "Location TBD",
+      scale: "1:100 (Plans, Elevations, Section) / NTS (3D Views)",
+      version: "ArchiAI – v1.4 Climate Reasoning Model",
     },
     location: {
       mapImageUrl: location?.siteMapUrl || location?.mapImageUrl,
@@ -564,80 +628,89 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
         avgRainfall: rainfall, // Redundant but safe
         strategy: location?.sunPath?.optimalOrientation
           ? `Orient living area toward ${location.sunPath.optimalOrientation.toLowerCase()} for daylight; add roof overhangs for shading.`
-          : 'Orient living area toward south for daylight; add roof overhangs for shading.'
+          : "Orient living area toward south for daylight; add roof overhangs for shading.",
       },
-      sunPathDiagramUrl: location?.sunPathDiagramUrl
+      sunPathDiagramUrl: location?.sunPathDiagramUrl,
     },
     dna: {
-      style: dna?.architecturalStyle || dna?.architectural_style?.name || 'Modern Contemporary with Local Brick Aesthetic',
+      style:
+        dna?.architecturalStyle ||
+        dna?.architectural_style?.name ||
+        "Modern Contemporary with Local Brick Aesthetic",
       materials: materials,
       blend: dna?.portfolioBlendPercent
         ? `${100 - (dna.portfolioBlendPercent || 70)}% local contextual style + ${dna.portfolioBlendPercent || 70}% architect's personal minimalist DNA`
-        : '60% local contextual style + 40% architect\'s personal minimalist DNA'
+        : "60% local contextual style + 40% architect's personal minimalist DNA",
     },
     geometryViews: {
       // Will be populated by geometry renderers if available
       floorPlansSvg: {
         ground: views.ground ? null : undefined, // URLs will be converted to SVG if needed
         first: views.upper ? null : undefined,
-        roof: views.roof ? null : undefined
+        roof: views.roof ? null : undefined,
       },
       elevationsSvg: {
         north: views.elevationN ? null : undefined,
         south: views.elevationS ? null : undefined,
         east: views.elevationE ? null : undefined,
-        west: views.elevationW ? null : undefined
+        west: views.elevationW ? null : undefined,
       },
       sectionSvg: {
-        aA: views.sectionLong ? null : undefined
-      }
+        aA: views.sectionLong ? null : undefined,
+      },
     },
     // Image URLs for geometry views (fallback when SVG not available)
     geometryImageUrls: {
       floorPlans: {
         ground: views.ground,
         first: views.upper,
-        roof: views.roof
+        roof: views.roof,
       },
       elevations: {
         north: views.elevationN,
         south: views.elevationS,
         east: views.elevationE,
-        west: views.elevationW
+        west: views.elevationW,
       },
       section: {
-        aA: views.sectionLong
-      }
+        aA: views.sectionLong,
+      },
     },
     visuals: {
       exteriorUrl: views.exterior || views.persp,
       interiorUrl: views.interior,
       axonometricUrl: views.axon,
-      conceptSketchUrl: views.site
+      conceptSketchUrl: views.site,
     },
     performance: {
-      southGlazing: '28%',
-      crossVent: 'living ↔ courtyard',
-      pv: '6 kW (~25% household energy)',
-      uValues: 'wall 0.25 W/m²K | roof 0.15 W/m²K | window 1.2 W/m²K',
-      rainwater: '3 m³ under garden'
+      southGlazing: "28%",
+      crossVent: "living ↔ courtyard",
+      pv: "6 kW (~25% household energy)",
+      uValues: "wall 0.25 W/m²K | roof 0.15 W/m²K | window 1.2 W/m²K",
+      rainwater: "3 m³ under garden",
     },
     summary: {
-      siteArea: location?.siteAnalysis?.area || '450 m²',
+      siteArea: location?.siteAnalysis?.area || "450 m²",
       builtUp: dna?.dimensions
         ? `${((dna.dimensions.length || 0) * (dna.dimensions.width || 0) * (dna.dimensions.floorHeights?.length || 2)).toFixed(0)} m²`
-        : '230 m²',
+        : "230 m²",
       floors: dna?.dimensions?.floorHeights?.length
         ? `G + ${dna.dimensions.floorHeights.length - 1}`
-        : 'G + 1',
-      bedrooms: dna?.rooms?.filter(r => r.name?.toLowerCase().includes('bedroom')).length || '3',
-      bathrooms: dna?.rooms?.filter(r => r.name?.toLowerCase().includes('bath')).length || '3',
-      height: dna?.dimensions?.height ? `${dna.dimensions.height.toFixed(1)} m` : '6.5 m',
+        : "G + 1",
+      bedrooms:
+        dna?.rooms?.filter((r) => r.name?.toLowerCase().includes("bedroom"))
+          .length || "3",
+      bathrooms:
+        dna?.rooms?.filter((r) => r.name?.toLowerCase().includes("bath"))
+          .length || "3",
+      height: dna?.dimensions?.height
+        ? `${dna.dimensions.height.toFixed(1)} m`
+        : "6.5 m",
       cost: dna?.dimensions
         ? `£${((dna.dimensions.length || 0) * (dna.dimensions.width || 0) * (dna.dimensions.floorHeights?.length || 2) * 1400).toLocaleString()}`
-        : '£320,000',
-      completion: 'Q3 2026'
-    }
+        : "£320,000",
+      completion: "Q3 2026",
+    },
   };
 }
 
@@ -648,15 +721,17 @@ function mapDesignResultToA1SheetData(designResult, projectContext) {
 function extractViewURLs(designResult) {
   const views = {};
 
-  logger.info('   🔍 Extracting URLs from design result...');
+  logger.info("   🔍 Extracting URLs from design result...");
 
   // Helper function to get URL from nested structure
   const getUrl = (obj) => {
     if (!obj) return null;
-    if (typeof obj === 'string') return obj;
+    if (typeof obj === "string") return obj;
     if (obj.url) return obj.url;
     if (obj.images && Array.isArray(obj.images) && obj.images.length > 0) {
-      return typeof obj.images[0] === 'string' ? obj.images[0] : obj.images[0]?.url;
+      return typeof obj.images[0] === "string"
+        ? obj.images[0]
+        : obj.images[0]?.url;
     }
     return null;
   };
@@ -665,7 +740,12 @@ function extractViewURLs(designResult) {
   if (designResult.floorPlans?.floorPlans) {
     views.ground = getUrl(designResult.floorPlans.floorPlans.ground);
     views.upper = getUrl(designResult.floorPlans.floorPlans.upper);
-    logger.info('      Floor Plans: ground=' + (views.ground ? 'found' : 'missing') + ', upper=' + (views.upper ? 'found' : 'missing'));
+    logger.info(
+      "      Floor Plans: ground=" +
+        (views.ground ? "found" : "missing") +
+        ", upper=" +
+        (views.upper ? "found" : "missing"),
+    );
   }
 
   // Technical drawings from technicalDrawings.technicalDrawings
@@ -677,8 +757,18 @@ function extractViewURLs(designResult) {
     views.elevationW = getUrl(td.elevation_west);
     views.sectionLong = getUrl(td.section_longitudinal);
     views.sectionCross = getUrl(td.section_cross);
-    logger.info('      Elevations: N=' + (views.elevationN ? 'found' : 'missing') + ', S=' + (views.elevationS ? 'found' : 'missing'));
-    logger.info('      Sections: Long=' + (views.sectionLong ? 'found' : 'missing') + ', Cross=' + (views.sectionCross ? 'found' : 'missing'));
+    logger.info(
+      "      Elevations: N=" +
+        (views.elevationN ? "found" : "missing") +
+        ", S=" +
+        (views.elevationS ? "found" : "missing"),
+    );
+    logger.info(
+      "      Sections: Long=" +
+        (views.sectionLong ? "found" : "missing") +
+        ", Cross=" +
+        (views.sectionCross ? "found" : "missing"),
+    );
   }
 
   // 3D views from visualizations.views
@@ -689,10 +779,21 @@ function extractViewURLs(designResult) {
     views.interior = getUrl(v.interior);
     views.exterior = getUrl(v.exterior_front || v.exterior_side);
     views.site = getUrl(v.site);
-    logger.info('      3D Views: axon=' + (views.axon ? 'found' : 'missing') + ', persp=' + (views.persp ? 'found' : 'missing') + ', interior=' + (views.interior ? 'found' : 'missing'));
+    logger.info(
+      "      3D Views: axon=" +
+        (views.axon ? "found" : "missing") +
+        ", persp=" +
+        (views.persp ? "found" : "missing") +
+        ", interior=" +
+        (views.interior ? "found" : "missing"),
+    );
   }
 
-  logger.info('   ✅ Extracted ' + Object.values(views).filter(v => v).length + ' image URLs');
+  logger.info(
+    "   ✅ Extracted " +
+      Object.values(views).filter((v) => v).length +
+      " image URLs",
+  );
   return views;
 }
 
@@ -701,10 +802,10 @@ function extractViewURLs(designResult) {
  */
 function generateTitleBlock(dna, context, hash) {
   const y = SHEET_HEIGHT - 60;
-  const projectName = context?.buildingProgram || 'Architectural Project';
-  const location = context?.location?.address || 'Location TBD';
+  const projectName = context?.buildingProgram || "Architectural Project";
+  const location = context?.location?.address || "Location TBD";
   const floors = dna?.dimensions?.floorCount || 2;
-  const style = dna?.architecturalStyle || 'Contemporary';
+  const style = dna?.architecturalStyle || "Contemporary";
 
   return `
   <g id="title-block">
@@ -728,7 +829,7 @@ function generateTitleBlock(dna, context, hash) {
 
     <!-- Right side info -->
     <text x="${SHEET_WIDTH - MARGIN - 10}" y="${y + 14}" class="tiny" fill="#ffffff" text-anchor="end">
-      Design ID: ${dna?.projectID || context?.designId || 'BirminghamApartment'}
+      Design ID: ${dna?.projectID || context?.designId || "BirminghamApartment"}
     </text>
     <text x="${SHEET_WIDTH - MARGIN - 10}" y="${y + 22}" class="tiny" fill="#ffffff" text-anchor="end">
       Seed: ${dna?.seed || 806502} | Hash: ${hash}
@@ -809,14 +910,16 @@ function generateSectionsRow(views) {
  * Embed image in SVG
  */
 function embedImage(url, x, y, width, height, label) {
-  logger.info(`   📊 embedImage called: label="${label}", url=${url ? 'present' : 'MISSING'}`);
+  logger.info(
+    `   📊 embedImage called: label="${label}", url=${url ? "present" : "MISSING"}`,
+  );
 
   if (!url) {
     return `
     <g transform="translate(${x}, ${y})">
       <rect width="${width}" height="${height}" fill="#f5f5f5" stroke="#ccc" stroke-width="0.5"/>
       <text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="small" fill="#999">
-        ${label || 'No Image'}
+        ${label || "No Image"}
       </text>
       <text x="2" y="10" class="tiny">${label}</text>
     </g>`;
@@ -839,18 +942,20 @@ function generateMaterialPalette(dna) {
   const y = MARGIN + 15;
   const materials = dna?.materials || [];
 
-  if (materials.length === 0 || !Array.isArray(materials)) return '';
+  if (materials.length === 0 || !Array.isArray(materials)) return "";
 
   let svg = `<g id="materials">
     <text x="${x}" y="${y}" class="tiny" font-weight="bold">MATERIALS</text>`;
 
   materials.slice(0, 5).forEach((mat, i) => {
-    const matY = y + 10 + (i * 12);
-    svg = svg + `
+    const matY = y + 10 + i * 12;
+    svg =
+      svg +
+      `
       <rect x="${x}" y="${matY}" width="10" height="10"
-            fill="${mat.hexColor || '#ccc'}" stroke="#000" stroke-width="0.3"/>
+            fill="${mat.hexColor || "#ccc"}" stroke="#000" stroke-width="0.3"/>
       <text x="${x + 14}" y="${matY + 8}" class="tiny">
-        ${mat.name || 'Material'} - ${mat.application || ''}
+        ${mat.name || "Material"} - ${mat.application || ""}
       </text>`;
   });
 
@@ -873,7 +978,7 @@ function generateMetrics(dna) {
     <text x="${x}" y="${y + 14}" class="tiny">Floors: ${dim.floorCount || 2}</text>
     <text x="${x}" y="${y + 24}" class="tiny">Size: ${dim.length || 0}m × ${dim.width || 0}m</text>
     <text x="${x}" y="${y + 34}" class="tiny">Height: ${dim.totalHeight || 0}m</text>
-    <text x="${x}" y="${y + 44}" class="tiny">Roof: ${dna?.roof?.type || 'gable'} (${dna?.roof?.pitch || 35}°)</text>
+    <text x="${x}" y="${y + 44}" class="tiny">Roof: ${dna?.roof?.type || "gable"} (${dna?.roof?.pitch || 35}°)</text>
   </g>`;
 }
 
@@ -884,7 +989,7 @@ function simpleHash(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).substring(0, 12);
@@ -895,12 +1000,12 @@ function simpleHash(str) {
  * No AI calls - pure SVG composition
  */
 export async function composeA1({ views, siteMapImage, metadata }) {
-  logger.info('📐 Composing A1 sheet locally...');
+  logger.info("📐 Composing A1 sheet locally...");
 
   const {
     designId = `design_${Date.now()}`,
     seed = 806502,
-    hash = 'unknown'
+    hash = "unknown",
   } = metadata || {};
 
   // Extract view URLs/Images
@@ -916,11 +1021,11 @@ export async function composeA1({ views, siteMapImage, metadata }) {
     v_exterior: views.v_exterior || views.exterior || views.persp,
     v_axon: views.v_axon || views.axon,
     v_site: views.v_site || views.site,
-    v_interior: views.v_interior || views.interior
+    v_interior: views.v_interior || views.interior,
   };
 
   // Build SVG with embedded images
-  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+  const rawSvg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 ${SHEET_WIDTH} ${SHEET_HEIGHT}"
      preserveAspectRatio="xMidYMid meet"
      xmlns="http://www.w3.org/2000/svg"
@@ -965,7 +1070,7 @@ export async function composeA1({ views, siteMapImage, metadata }) {
   ${generateSectionsRow(viewMap)}
 
   <!-- Site Map Section (if provided) -->
-  ${siteMapImage ? generateSiteMapSectionFromImage(siteMapImage, MARGIN, MARGIN + 640, (SHEET_WIDTH - MARGIN * 3) / 2, 120) : ''}
+  ${siteMapImage ? generateSiteMapSectionFromImage(siteMapImage, MARGIN, MARGIN + 640, (SHEET_WIDTH - MARGIN * 3) / 2, 120) : ""}
 
   <!-- Material Palette (Left Side) -->
   ${generateMaterialPalette(metadata?.dna || {})}
@@ -974,6 +1079,9 @@ export async function composeA1({ views, siteMapImage, metadata }) {
   ${generateProgramSchedule(metadata?.dna || {}, metadata?.context || {})}
 
 </svg>`;
+  const svg = isFeatureEnabled("useA1FontEmbeddingFix")
+    ? await embedFontInSVG(rawSvg)
+    : rawSvg;
 
   // Generate PNG from SVG
   const png = await svgToPng(svg);
@@ -1002,14 +1110,15 @@ function generateProgramSchedule(dna, context) {
   const projectType = context?.projectType || dna?.projectType || null;
 
   if (!programSpaces || programSpaces.length === 0) {
-    return '';
+    return "";
   }
 
   const x = MARGIN + 5;
   const y = MARGIN + 200; // Position below material palette
   const width = 180;
-  const programTotal = programSpaces.reduce((sum, space) =>
-    sum + (parseFloat(space.area || 0) * (space.count || 1)), 0
+  const programTotal = programSpaces.reduce(
+    (sum, space) => sum + parseFloat(space.area || 0) * (space.count || 1),
+    0,
   );
 
   let svg = `<g id="program-schedule">
@@ -1021,9 +1130,11 @@ function generateProgramSchedule(dna, context) {
   }
 
   programSpaces.forEach((space, i) => {
-    const spaceTotal = (parseFloat(space.area || 0) * (space.count || 1)).toFixed(0);
+    const spaceTotal = (
+      parseFloat(space.area || 0) * (space.count || 1)
+    ).toFixed(0);
     svg += `<text x="${x + 5}" y="${y + 40 + i * 18}" class="tiny">
-      ${space.name || `Space ${i + 1}`}: ${space.area || 'TBD'}m² × ${space.count || 1} = ${spaceTotal}m²
+      ${space.name || `Space ${i + 1}`}: ${space.area || "TBD"}m² × ${space.count || 1} = ${spaceTotal}m²
     </text>`;
   });
 
@@ -1039,24 +1150,24 @@ function generateProgramSchedule(dna, context) {
 async function svgToPng(svgString) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml" });
     const url = URL.createObjectURL(svgBlob);
 
     img.onload = () => {
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = SHEET_WIDTH * 2; // Higher resolution
       canvas.height = SHEET_HEIGHT * 2;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      const pngDataUrl = canvas.toDataURL('image/png');
+      const pngDataUrl = canvas.toDataURL("image/png");
       URL.revokeObjectURL(url);
       resolve(pngDataUrl);
     };
 
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error('Failed to convert SVG to PNG'));
+      reject(new Error("Failed to convert SVG to PNG"));
     };
 
     img.src = url;
@@ -1065,5 +1176,5 @@ async function svgToPng(svgString) {
 
 export default {
   generateUnifiedSheet,
-  composeA1
+  composeA1,
 };

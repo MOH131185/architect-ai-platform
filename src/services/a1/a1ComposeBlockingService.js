@@ -1,8 +1,12 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+
 export function buildA1ComposeBlockingState({
   projectGeometry = {},
   validationReport = null,
   freshness = null,
   technicalPanelGate = null,
+  consistencyGuard = null,
+  fontReadiness = null,
 } = {}) {
   const blockingReasons = [];
   const recoverableIssues = [];
@@ -33,9 +37,50 @@ export function buildA1ComposeBlockingState({
       "Technical drawing quality must reach the minimum readability and annotation threshold.",
     );
   }
+  if (
+    isFeatureEnabled("useTechnicalPanelComposeBlockingPhase8") &&
+    consistencyGuard &&
+    !consistencyGuard.consistencyReady
+  ) {
+    blockingReasons.push(...(consistencyGuard.blockingReasons || []));
+    recoverableIssues.push(
+      "Hero identity must remain consistent with canonical geometry, roof language, and material palette.",
+    );
+  }
+  if (
+    isFeatureEnabled("useA1FontEmbeddingFix") &&
+    fontReadiness &&
+    fontReadiness.readyForEmbedding === false
+  ) {
+    blockingReasons.push(
+      "Bundled A1 font embedding is unavailable; final sheet text cannot be rasterized safely.",
+    );
+    recoverableIssues.push(
+      "Restore bundled A1 regular font availability before compose.",
+    );
+  }
+  if (
+    isFeatureEnabled("useA1FontEmbeddingFix") &&
+    fontReadiness &&
+    fontReadiness.readyForEmbedding === true &&
+    fontReadiness.fullEmbeddingReady === false
+  ) {
+    recoverableIssues.push(
+      "A1 font embedding is degraded because bold coverage is incomplete; text may lose intended weight hierarchy.",
+    );
+  }
+  if (
+    fontReadiness &&
+    fontReadiness.readyForEmbedding === false &&
+    !isFeatureEnabled("useA1FontEmbeddingFix")
+  ) {
+    recoverableIssues.push(
+      "Bundled A1 font embedding is not ready; text rendering may drift in serverless rasterization.",
+    );
+  }
 
   return {
-    version: "phase6-a1-compose-blocking-v1",
+    version: "phase8-a1-compose-blocking-v1",
     composeReady:
       blockingReasons.length === 0 && nonRecoverableIssues.length === 0,
     composeBlocked:

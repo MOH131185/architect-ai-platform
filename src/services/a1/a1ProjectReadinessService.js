@@ -63,6 +63,8 @@ export function assessA1ProjectReadiness({
       artifactState: composeReadiness.artifactState,
       artifactStore: composeReadiness.artifactStore,
       technicalPanelGate: composeReadiness.technicalPanelGate || null,
+      consistencyGuard: composeReadiness.consistencyGuard || null,
+      fontReadiness: composeReadiness.fontReadiness || null,
       composeExecutionPlan: composeReadiness.composeExecutionPlan || null,
       recoveryExecutionBridge: composeReadiness.recoveryExecutionBridge || null,
       entityBlockers:

@@ -999,6 +999,36 @@ export const FEATURE_FLAGS = {
   /** Phase 7 bridge from blocked panels to executable recovery */
   useA1RecoveryExecutionBridge: true,
 
+  /** Phase 8 bundled font embedding on final A1 sheet SVG output */
+  useA1FontEmbeddingFix: true,
+
+  /** Phase 8 single-source-of-truth material palette derived from canonical inputs */
+  useCanonicalMaterialPaletteSSOT: true,
+
+  /** Phase 8 optional hero-last sequencing override for image workflows */
+  useHeroGeneratedLast: false,
+
+  /** Phase 8 metadata-first consistency guards between hero and canonical spec */
+  useA1ConsistencyGuards: true,
+
+  /** Phase 8 richer deterministic plan renderer */
+  usePlanRendererUpgradePhase8: true,
+
+  /** Phase 8 richer deterministic elevation renderer */
+  useElevationRendererUpgradePhase8: true,
+
+  /** Phase 8 richer deterministic section renderer */
+  useSectionRendererUpgradePhase8: true,
+
+  /** Phase 8 stricter technical panel scoring and verdicts */
+  useTechnicalPanelScoringPhase8: true,
+
+  /** Phase 8 compose-time blocking for weak technical panels */
+  useTechnicalPanelComposeBlockingPhase8: true,
+
+  /** Phase 8 optional technical-first board weighting */
+  useTechnicalFirstA1LayoutPhase8: false,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1278,6 +1308,16 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useSectionSpecificityPhase7 = true;
   FEATURE_FLAGS.useTechnicalPanelScoringPhase7 = true;
   FEATURE_FLAGS.useA1RecoveryExecutionBridge = true;
+  FEATURE_FLAGS.useA1FontEmbeddingFix = true;
+  FEATURE_FLAGS.useCanonicalMaterialPaletteSSOT = true;
+  FEATURE_FLAGS.useHeroGeneratedLast = false;
+  FEATURE_FLAGS.useA1ConsistencyGuards = true;
+  FEATURE_FLAGS.usePlanRendererUpgradePhase8 = true;
+  FEATURE_FLAGS.useElevationRendererUpgradePhase8 = true;
+  FEATURE_FLAGS.useSectionRendererUpgradePhase8 = true;
+  FEATURE_FLAGS.useTechnicalPanelScoringPhase8 = true;
+  FEATURE_FLAGS.useTechnicalPanelComposeBlockingPhase8 = true;
+  FEATURE_FLAGS.useTechnicalFirstA1LayoutPhase8 = false;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1588,6 +1628,46 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_A1_RECOVERY_EXECUTION_BRIDGE: {
       flag: "useA1RecoveryExecutionBridge",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_FONT_EMBEDDING_FIX: {
+      flag: "useA1FontEmbeddingFix",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CANONICAL_MATERIAL_PALETTE_SSOT: {
+      flag: "useCanonicalMaterialPaletteSSOT",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_HERO_GENERATED_LAST: {
+      flag: "useHeroGeneratedLast",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_CONSISTENCY_GUARDS: {
+      flag: "useA1ConsistencyGuards",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_PLAN_RENDERER_UPGRADE_PHASE8: {
+      flag: "usePlanRendererUpgradePhase8",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ELEVATION_RENDERER_UPGRADE_PHASE8: {
+      flag: "useElevationRendererUpgradePhase8",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_RENDERER_UPGRADE_PHASE8: {
+      flag: "useSectionRendererUpgradePhase8",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_PANEL_SCORING_PHASE8: {
+      flag: "useTechnicalPanelScoringPhase8",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_PANEL_COMPOSE_BLOCKING_PHASE8: {
+      flag: "useTechnicalPanelComposeBlockingPhase8",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TECHNICAL_FIRST_A1_LAYOUT_PHASE8: {
+      flag: "useTechnicalFirstA1LayoutPhase8",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

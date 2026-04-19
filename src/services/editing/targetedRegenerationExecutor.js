@@ -1,7 +1,10 @@
 import { planTargetedRegeneration } from "./targetedRegenerationPlanner.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { assessA1ProjectReadiness } from "../a1/a1ProjectReadinessService.js";
 import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
 import { buildVisualGenerationPackage } from "../visual/geometryLockedVisualRouter.js";
 import { generateTechnicalDrawings } from "../drawing/technicalDrawingService.js";
+import { buildLegacyArtifactStateFromStore } from "../project/artifactFreshnessService.js";
 import {
   buildProjectArtifactStore,
   createArtifactStorePatch,
@@ -9,7 +12,10 @@ import {
   mergeProjectArtifactStore,
 } from "../project/projectArtifactStore.js";
 import { summarizeArtifactFreshness } from "../project/artifactFreshnessService.js";
-import { snapshotProjectState } from "../project/projectStateSnapshotService.js";
+import {
+  appendProjectSnapshot,
+  snapshotProjectState,
+} from "../project/projectStateSnapshotService.js";
 import { buildProjectSnapshotDiff } from "../project/projectSnapshotDiffService.js";
 
 function clone(value) {
@@ -394,20 +400,49 @@ export async function executeTargetedRegeneration({
     visual_package: nextVisualPackage,
   };
 
-  const patch = createArtifactStorePatch({
+  let nextStore = mergeProjectArtifactStore(
+    baseStore,
+    createArtifactStorePatch({
+      projectGeometry: nextGeometry,
+      drawings: nextDrawings,
+      facadeGrammar: nextFacadeGrammar,
+      visualPackage: nextVisualPackage,
+      readinessMetadata: {
+        ready: false,
+        status: "stale",
+        composeReady: false,
+      },
+    }),
+  );
+  const baseArtifactState = isFeatureEnabled("useArtifactLifecycleStore")
+    ? buildLegacyArtifactStateFromStore(nextStore)
+    : null;
+  const a1Readiness = assessA1ProjectReadiness({
     projectGeometry: nextGeometry,
     drawings: nextDrawings,
     facadeGrammar: nextFacadeGrammar,
     visualPackage: nextVisualPackage,
-    readinessMetadata: {
-      ready: false,
-      status: "stale",
-      composeReady: false,
+    validationReport: validationReport || {
+      status: nextGeometry?.metadata?.status || "valid_with_warnings",
     },
+    artifactState: baseArtifactState,
+    artifactStore: nextStore,
   });
-  const nextStore = mergeProjectArtifactStore(baseStore, patch);
+  nextStore = mergeProjectArtifactStore(
+    nextStore,
+    createArtifactStorePatch({
+      projectGeometry: nextGeometry,
+      readinessMetadata: a1Readiness,
+      composeCandidates: a1Readiness.panelCandidates || [],
+    }),
+  );
+  const artifactState = isFeatureEnabled("useArtifactLifecycleStore")
+    ? buildLegacyArtifactStateFromStore(nextStore, a1Readiness)
+    : null;
   nextGeometry.metadata = {
     ...(nextGeometry.metadata || {}),
+    ...(artifactState ? { artifact_state: artifactState } : {}),
+    a1_readiness: a1Readiness,
     project_artifact_store: nextStore,
   };
   const afterSnapshot = snapshotProjectState({
@@ -415,7 +450,19 @@ export async function executeTargetedRegeneration({
     projectGeometry: nextGeometry,
     validationReport,
     artifactStore: nextStore,
+    composeReadiness: a1Readiness,
   });
+  nextGeometry.metadata = {
+    ...(nextGeometry.metadata || {}),
+    ...(isFeatureEnabled("useArtifactLifecycleStore")
+      ? {
+          project_state_snapshots: appendProjectSnapshot(
+            nextGeometry,
+            afterSnapshot,
+          ),
+        }
+      : {}),
+  };
 
   return {
     version: "phase7-targeted-regeneration-executor-v1",
@@ -425,6 +472,8 @@ export async function executeTargetedRegeneration({
     drawings: nextDrawings,
     facadeGrammar: nextFacadeGrammar,
     visualPackage: nextVisualPackage,
+    a1Readiness,
+    artifactState,
     artifactStore: nextStore,
     artifactFreshness: summarizeArtifactFreshness(nextStore),
     geometrySignatureBefore: geometrySignature(projectGeometry),

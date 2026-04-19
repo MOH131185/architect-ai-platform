@@ -318,5 +318,6 @@ export const COLORS = {
 /**
  * Font family
  */
-export const FONT_FAMILY = 'Arial, Helvetica, sans-serif';
+export const FONT_FAMILY =
+  "'ArchiAISans', 'DejaVu Sans', 'Segoe UI', Arial, Helvetica, sans-serif";
 
