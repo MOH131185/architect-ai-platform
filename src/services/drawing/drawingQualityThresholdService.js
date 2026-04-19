@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+
 const DRAWING_THRESHOLDS = {
   plan: {
     pass: 0.82,
@@ -34,10 +36,43 @@ const DRAWING_THRESHOLDS = {
 };
 
 export function getDrawingQualityThresholds(drawingType = "unknown") {
-  return (
+  const base =
     DRAWING_THRESHOLDS[String(drawingType || "").toLowerCase()] ||
-    DRAWING_THRESHOLDS.unknown
-  );
+    DRAWING_THRESHOLDS.unknown;
+
+  if (!isFeatureEnabled("useDrawingFragmentScoringPhase9")) {
+    return base;
+  }
+
+  if (drawingType === "plan") {
+    return {
+      ...base,
+      warning: 0.75,
+      blocking: 0.65,
+      minimumPlanDensity: 0.6,
+      minimumGeometryCompleteness: 0.56,
+    };
+  }
+  if (drawingType === "elevation") {
+    return {
+      ...base,
+      warning: 0.73,
+      blocking: 0.63,
+      minimumGeometryCompleteness: 0.56,
+      minimumElevationRichness: 0.62,
+    };
+  }
+  if (drawingType === "section") {
+    return {
+      ...base,
+      warning: 0.77,
+      blocking: 0.67,
+      minimumGeometryCompleteness: 0.56,
+      minimumSectionUsefulness: 0.68,
+    };
+  }
+
+  return base;
 }
 
 export default {

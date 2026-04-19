@@ -1,3 +1,6 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { rankSectionCandidates } from "./sectionCandidateScoringService.js";
+
 function round(value, precision = 3) {
   const factor = 10 ** precision;
   return Math.round(Number(value || 0) * factor) / factor;
@@ -105,6 +108,7 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
     ],
     stairFocus.length ? [...stairFocus, ...primaryRoomFocus] : primaryRoomFocus,
   );
+  longitudinal.semanticGoal = stair ? "vertical_circulation" : "primary_volume";
 
   const transverse = buildCandidate(
     "section:transverse:secondary",
@@ -145,13 +149,93 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
     ],
     stairFocus.length ? stairFocus : secondaryRoomFocus,
   );
+  transverse.semanticGoal = stair ? "stair_depth" : "secondary_space";
+
+  const entrance = (projectGeometry.entrances || [])[0] || null;
+  const entranceLongitudinal = entrance
+    ? buildCandidate(
+        "section:longitudinal:entrance",
+        "longitudinal",
+        {
+          from: {
+            x: Number(
+              entrance.position_m?.x || entrance.position?.x || centerX,
+            ),
+            y: bounds.min_y,
+          },
+          to: {
+            x: Number(
+              entrance.position_m?.x || entrance.position?.x || centerX,
+            ),
+            y: bounds.max_y,
+          },
+        },
+        0.58 + (levels.length > 1 ? 0.08 : 0) + (rooms.length > 2 ? 0.06 : 0),
+        [
+          "Alternate longitudinal section is anchored to the entrance axis for arrival-to-core communication.",
+          entrance
+            ? "Entrance alignment helps communicate how the building is approached and entered."
+            : "No entrance anchor was available.",
+        ],
+        [
+          ...(primaryRoomFocus || []),
+          ...(entrance ? [`entity:entrance:${entrance.id || "main"}`] : []),
+        ],
+      )
+    : null;
+  if (entranceLongitudinal) {
+    entranceLongitudinal.semanticGoal = "entrance_axis";
+  }
+
+  const alternateRoom = rooms[2] || secondaryRoom;
+  const transverseLiving = alternateRoom
+    ? buildCandidate(
+        "section:transverse:room-sequence",
+        "transverse",
+        {
+          from: {
+            x: bounds.min_x,
+            y: roomCenter(alternateRoom).y,
+          },
+          to: {
+            x: bounds.max_x,
+            y: roomCenter(alternateRoom).y,
+          },
+        },
+        0.56 +
+          (levels.length > 1 ? 0.06 : 0) +
+          (openings.length > 2 ? 0.05 : 0),
+        [
+          `Alternate transverse section is centered through ${alternateRoom.name || alternateRoom.id} to communicate room sequence.`,
+          openings.length
+            ? "Opening data can be read against the section cut for facade depth communication."
+            : "Facade opening relationships remain limited for this alternate cut.",
+        ],
+        [`entity:room:${alternateRoom.id}`],
+      )
+    : null;
+  if (transverseLiving) {
+    transverseLiving.semanticGoal = "room_sequence";
+  }
+
+  const baseCandidates = [
+    longitudinal,
+    transverse,
+    ...(entranceLongitudinal ? [entranceLongitudinal] : []),
+    ...(transverseLiving ? [transverseLiving] : []),
+  ];
+  const rankedCandidates = isFeatureEnabled("useSectionSemanticSelectionPhase9")
+    ? rankSectionCandidates(projectGeometry, baseCandidates)
+    : [longitudinal, transverse].sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return String(left.id).localeCompare(String(right.id));
+      });
 
   return {
-    version: "phase8-section-cut-planner-v1",
-    candidates: [longitudinal, transverse].sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score;
-      return String(left.id).localeCompare(String(right.id));
-    }),
+    version: isFeatureEnabled("useSectionSemanticSelectionPhase9")
+      ? "phase9-section-cut-planner-v1"
+      : "phase8-section-cut-planner-v1",
+    candidates: rankedCandidates,
   };
 }
 

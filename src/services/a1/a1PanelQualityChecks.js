@@ -1,4 +1,5 @@
 import { evaluateTechnicalPanels } from "../drawing/panelTechnicalQualityService.js";
+import { runA1TechnicalPanelRegression } from "./a1TechnicalPanelRegressionService.js";
 
 export function runA1PanelQualityChecks({
   drawings = {},
@@ -29,9 +30,13 @@ export function runA1PanelQualityChecks({
         ],
       },
     }));
+  const technicalPanelRegression = runA1TechnicalPanelRegression({
+    drawings,
+    technicalPanelQuality: technicalPanels,
+  });
 
   return {
-    version: "phase8-a1-panel-quality-checks-v1",
+    version: "phase9-a1-panel-quality-checks-v1",
     checks,
     blockingPanels: checks.filter((entry) => entry.quality?.blockers?.length),
     warningPanels: checks.filter(
@@ -39,6 +44,10 @@ export function runA1PanelQualityChecks({
         !entry.quality?.blockers?.length && entry.quality?.warnings?.length,
     ),
     technicalPanels,
+    technicalPanelRegression,
+    technicalFragmentScores: technicalPanelRegression.technicalFragmentScores,
+    perSideElevationStatus: technicalPanelRegression.perSideElevationStatus,
+    sectionCandidateQuality: technicalPanelRegression.sectionCandidateQuality,
   };
 }
 

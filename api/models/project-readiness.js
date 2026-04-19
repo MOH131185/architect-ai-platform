@@ -54,6 +54,13 @@ export default async function handler(req, res) {
       "useTechnicalPanelScoringPhase8",
       "useTechnicalPanelComposeBlockingPhase8",
       "usePhase7EntityDependencies",
+      "useSideFacadeExtractionPhase9",
+      "useElevationRichnessPhase9",
+      "useSectionSemanticSelectionPhase9",
+      "useSectionGraphicsUpgradePhase9",
+      "useDrawingFragmentScoringPhase9",
+      "useA1FinalSheetRegressionChecksPhase9",
+      "useA1PreComposeVerificationPhase9",
     ];
     if (!validation.ok) {
       return sendError(

@@ -16,6 +16,7 @@ import { buildA1ComposeBlockingState } from "./a1ComposeBlockingService.js";
 import { planA1ComposeExecution } from "./a1ComposeExecutionPlanner.js";
 import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
 import { getFontEmbeddingReadinessSync } from "../../utils/svgFontEmbedder.js";
+import { runA1FinalSheetRegression } from "./a1FinalSheetRegressionService.js";
 
 export function assessA1ComposeReadiness({
   projectGeometry = {},
@@ -101,6 +102,36 @@ export function assessA1ComposeReadiness({
     facadeGrammar,
   });
   const fontReadiness = getFontEmbeddingReadinessSync();
+  const finalSheetRegression = runA1FinalSheetRegression({
+    drawings: drawings || projectGeometry?.metadata?.drawings || {},
+    technicalPanelQuality: technicalPanelGate?.panelChecks?.length
+      ? {
+          panels: technicalPanelGate.panelChecks.map((entry) => ({
+            panelId: entry.panelId,
+            sourceArtifact:
+              (panelPlan.panelCandidates.find(
+                (candidate) => candidate.id === entry.panelId,
+              )?.sourceArtifacts || [])[0] || null,
+            drawingType:
+              panelPlan.panelCandidates.find(
+                (candidate) => candidate.id === entry.panelId,
+              )?.type === "floor_plan"
+                ? "plan"
+                : panelPlan.panelCandidates.find(
+                    (candidate) => candidate.id === entry.panelId,
+                  )?.type || "unknown",
+            title: entry.title,
+            score: entry.quality?.score || null,
+            warnings: entry.quality?.warnings || [],
+            blockers: entry.quality?.blockers || [],
+          })),
+        }
+      : drawings?.technicalPanelQuality || null,
+    fontReadiness,
+    expectedLabels: panelPlan.panelCandidates.map(
+      (candidate) => candidate.title,
+    ),
+  });
   const blockingState = buildA1ComposeBlockingState({
     projectGeometry,
     validationReport,
@@ -108,6 +139,7 @@ export function assessA1ComposeReadiness({
     technicalPanelGate,
     consistencyGuard,
     fontReadiness,
+    finalSheetRegression,
   });
   const executionPlan = isFeatureEnabled("useComposeExecutionPlanning")
     ? planA1ComposeExecution({
@@ -119,6 +151,7 @@ export function assessA1ComposeReadiness({
         artifactStore: finalStore,
         freshness: panelFreshness,
         technicalPanelGate,
+        finalSheetRegression,
       })
     : null;
   const recoveryExecutionBridge = isFeatureEnabled(
@@ -164,9 +197,11 @@ export function assessA1ComposeReadiness({
   const artifactFreshness = summarizeArtifactFreshness(patchedStore);
 
   return {
-    version: isFeatureEnabled("useComposeExecutionPlanning")
-      ? "phase6-a1-compose-readiness-v1"
-      : "phase5-a1-compose-readiness-v1",
+    version: finalSheetRegression
+      ? "phase9-a1-compose-readiness-v1"
+      : isFeatureEnabled("useComposeExecutionPlanning")
+        ? "phase6-a1-compose-readiness-v1"
+        : "phase5-a1-compose-readiness-v1",
     composeReady,
     composeBlocked: !composeReady,
     ready: composeReady,
@@ -190,6 +225,7 @@ export function assessA1ComposeReadiness({
     technicalPanelGate,
     consistencyGuard,
     fontReadiness,
+    finalSheetRegression,
     composeExecutionPlan: executionPlan,
     recoveryExecutionBridge,
   };

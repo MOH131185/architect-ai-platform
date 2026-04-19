@@ -182,7 +182,18 @@ export const PHASE1_API_CONTRACTS = {
   },
   projectReadiness: {
     request: ["projectGeometry", "drawings", "visualPackage"],
-    response: ["ready", "status", "panelCandidates", "staleAssets"],
+    response: [
+      "ready",
+      "status",
+      "panelCandidates",
+      "staleAssets",
+      "technicalPanelReadinessState",
+      "fontReadiness",
+      "finalSheetRegression",
+      "perSideElevationStatus",
+      "sectionCandidateQuality",
+      "technicalFragmentScores",
+    ],
   },
   planA1Panels: {
     request: [
@@ -191,7 +202,17 @@ export const PHASE1_API_CONTRACTS = {
       "visualPackage",
       "requestedPanels",
     ],
-    response: ["panelCandidates", "validPanelCount", "totalPanelCount"],
+    response: [
+      "panelCandidates",
+      "validPanelCount",
+      "totalPanelCount",
+      "technicalPanelReadinessState",
+      "fontReadiness",
+      "finalSheetRegression",
+      "perSideElevationStatus",
+      "sectionCandidateQuality",
+      "technicalFragmentScores",
+    ],
   },
   planRegeneration: {
     request: ["projectGeometry", "targetLayer", "options", "validationReport"],
@@ -210,7 +231,16 @@ export const PHASE1_API_CONTRACTS = {
   },
   projectHealth: {
     request: ["projectGeometry", "drawings", "visualPackage"],
-    response: ["healthStatus", "readiness", "recoveryPlan", "rollbackPlan"],
+    response: [
+      "healthStatus",
+      "readiness",
+      "recoveryPlan",
+      "rollbackPlan",
+      "finalSheetRegression",
+      "technicalFragmentScores",
+      "perSideElevationStatus",
+      "sectionCandidateQuality",
+    ],
   },
   searchPrecedents: {
     request: ["query", "filters"],
@@ -858,6 +888,21 @@ export function buildProjectReadinessResponse({
     heroVsCanonicalWarnings:
       result.consistencyGuard?.heroVsCanonicalWarnings || [],
     fontReadiness: result.fontReadiness || null,
+    finalSheetRegression: result.finalSheetRegression || null,
+    finalSheetRegressionReadiness:
+      result.finalSheetRegression?.status || "pass",
+    perSideElevationStatus:
+      result.finalSheetRegression?.perSideElevationStatus ||
+      result.technicalPanelGate?.perSideElevationStatus ||
+      {},
+    sectionCandidateQuality:
+      result.finalSheetRegression?.sectionCandidateQuality ||
+      result.technicalPanelGate?.sectionCandidateQuality ||
+      [],
+    technicalFragmentScores:
+      result.finalSheetRegression?.technicalFragmentScores ||
+      result.technicalPanelGate?.technicalFragmentScores ||
+      [],
     composeExecutionPlan: result.composeExecutionPlan || null,
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     entityBlockers: result.entityBlockers || [],
@@ -929,6 +974,24 @@ export function buildPlanA1PanelsResponse({
     heroVsCanonicalWarnings:
       result.consistencyGuard?.heroVsCanonicalWarnings || [],
     fontReadiness: result.fontReadiness || null,
+    finalSheetRegression: result.finalSheetRegression || null,
+    finalSheetRegressionReadiness:
+      result.finalSheetRegression?.status || "pass",
+    perSideElevationStatus:
+      result.perSideElevationStatus ||
+      result.finalSheetRegression?.perSideElevationStatus ||
+      result.technicalPanelGate?.perSideElevationStatus ||
+      {},
+    sectionCandidateQuality:
+      result.sectionCandidateQuality ||
+      result.finalSheetRegression?.sectionCandidateQuality ||
+      result.technicalPanelGate?.sectionCandidateQuality ||
+      [],
+    technicalFragmentScores:
+      result.technicalFragmentScores ||
+      result.finalSheetRegression?.technicalFragmentScores ||
+      result.technicalPanelGate?.technicalFragmentScores ||
+      [],
     composeBlockingReasons:
       result.composeBlockingReasons ||
       result.technicalPanelGate?.blockingReasons ||
@@ -1049,6 +1112,21 @@ export function buildProjectHealthResponse({
     heroVsCanonicalWarnings:
       result.consistencyGuard?.heroVsCanonicalWarnings || [],
     fontReadiness: result.fontReadiness || null,
+    finalSheetRegression: result.finalSheetRegression || null,
+    finalSheetRegressionReadiness:
+      result.finalSheetRegression?.status || "pass",
+    perSideElevationStatus:
+      result.finalSheetRegression?.perSideElevationStatus ||
+      result.readiness?.finalSheetRegression?.perSideElevationStatus ||
+      {},
+    sectionCandidateQuality:
+      result.finalSheetRegression?.sectionCandidateQuality ||
+      result.readiness?.finalSheetRegression?.sectionCandidateQuality ||
+      [],
+    technicalFragmentScores:
+      result.finalSheetRegression?.technicalFragmentScores ||
+      result.readiness?.finalSheetRegression?.technicalFragmentScores ||
+      [],
     remainingBlockers: result.remainingBlockers || [],
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     warnings,

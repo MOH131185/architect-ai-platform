@@ -52,6 +52,13 @@ export default async function handler(req, res) {
       "useA1ConsistencyGuards",
       "useTechnicalPanelScoringPhase8",
       "useTechnicalPanelComposeBlockingPhase8",
+      "useSideFacadeExtractionPhase9",
+      "useElevationRichnessPhase9",
+      "useSectionSemanticSelectionPhase9",
+      "useSectionGraphicsUpgradePhase9",
+      "useDrawingFragmentScoringPhase9",
+      "useA1FinalSheetRegressionChecksPhase9",
+      "useA1PreComposeVerificationPhase9",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
     ];

@@ -31,7 +31,9 @@ export function assessProjectHealth({
   const rollbackPlan = planProjectRollback(projectGeometry);
 
   return {
-    version: "phase8-project-health-v1",
+    version: readiness.finalSheetRegression
+      ? "phase9-project-health-v1"
+      : "phase8-project-health-v1",
     healthStatus:
       readiness.composeReady === true
         ? "healthy"
@@ -44,10 +46,13 @@ export function assessProjectHealth({
     technicalPanelHealth: readiness.technicalPanelGate || null,
     consistencyGuard: readiness.consistencyGuard || null,
     fontReadiness: readiness.fontReadiness || null,
+    finalSheetRegression: readiness.finalSheetRegression || null,
     technicalPackageStrength: {
       composeReady: readiness.composeReady === true,
       technicalReady: readiness.technicalPanelGate?.technicalReady !== false,
       consistencyReady: readiness.consistencyGuard?.consistencyReady !== false,
+      finalSheetRegressionReady:
+        readiness.finalSheetRegression?.finalSheetRegressionReady !== false,
       freshPanelCount: readiness.freshPanels?.length || 0,
       stalePanelCount: readiness.stalePanels?.length || 0,
       missingPanelCount: readiness.missingPanels?.length || 0,
@@ -56,6 +61,7 @@ export function assessProjectHealth({
       ...(readiness.blockingReasons || []),
       ...(readiness.technicalPanelGate?.blockingReasons || []),
       ...(readiness.consistencyGuard?.blockingReasons || []),
+      ...(readiness.finalSheetRegression?.blockers || []),
     ],
     recoveryExecutionBridge: readiness.recoveryExecutionBridge || null,
   };

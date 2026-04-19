@@ -1029,6 +1029,27 @@ export const FEATURE_FLAGS = {
   /** Phase 8 optional technical-first board weighting */
   useTechnicalFirstA1LayoutPhase8: false,
 
+  /** Phase 9 canonical side-facade extraction for east/west credibility */
+  useSideFacadeExtractionPhase9: true,
+
+  /** Phase 9 richer elevation semantics and side articulation */
+  useElevationRichnessPhase9: true,
+
+  /** Phase 9 semantic section candidate ranking */
+  useSectionSemanticSelectionPhase9: true,
+
+  /** Phase 9 richer section graphics and semantic annotations */
+  useSectionGraphicsUpgradePhase9: true,
+
+  /** Phase 9 fragment-level technical scoring */
+  useDrawingFragmentScoringPhase9: true,
+
+  /** Phase 9 final-sheet regression checks */
+  useA1FinalSheetRegressionChecksPhase9: true,
+
+  /** Phase 9 pre-compose regression verification */
+  useA1PreComposeVerificationPhase9: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1318,6 +1339,13 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useTechnicalPanelScoringPhase8 = true;
   FEATURE_FLAGS.useTechnicalPanelComposeBlockingPhase8 = true;
   FEATURE_FLAGS.useTechnicalFirstA1LayoutPhase8 = false;
+  FEATURE_FLAGS.useSideFacadeExtractionPhase9 = true;
+  FEATURE_FLAGS.useElevationRichnessPhase9 = true;
+  FEATURE_FLAGS.useSectionSemanticSelectionPhase9 = true;
+  FEATURE_FLAGS.useSectionGraphicsUpgradePhase9 = true;
+  FEATURE_FLAGS.useDrawingFragmentScoringPhase9 = true;
+  FEATURE_FLAGS.useA1FinalSheetRegressionChecksPhase9 = true;
+  FEATURE_FLAGS.useA1PreComposeVerificationPhase9 = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1668,6 +1696,34 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_TECHNICAL_FIRST_A1_LAYOUT_PHASE8: {
       flag: "useTechnicalFirstA1LayoutPhase8",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SIDE_FACADE_EXTRACTION_PHASE9: {
+      flag: "useSideFacadeExtractionPhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ELEVATION_RICHNESS_PHASE9: {
+      flag: "useElevationRichnessPhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_SEMANTIC_SELECTION_PHASE9: {
+      flag: "useSectionSemanticSelectionPhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_GRAPHICS_UPGRADE_PHASE9: {
+      flag: "useSectionGraphicsUpgradePhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DRAWING_FRAGMENT_SCORING_PHASE9: {
+      flag: "useDrawingFragmentScoringPhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_FINAL_SHEET_REGRESSION_CHECKS_PHASE9: {
+      flag: "useA1FinalSheetRegressionChecksPhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_PRECOMPOSE_VERIFICATION_PHASE9: {
+      flag: "useA1PreComposeVerificationPhase9",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

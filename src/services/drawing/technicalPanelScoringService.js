@@ -1,4 +1,5 @@
 import { getDrawingQualityThresholds } from "./drawingQualityThresholdService.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -133,6 +134,36 @@ function computeSectionUsefulness(metadata = {}) {
   );
 }
 
+function computeFragmentQuality(drawingType = "unknown", metadata = {}) {
+  if (drawingType === "elevation") {
+    return clamp(
+      Number(
+        metadata.side_facade_score ||
+          metadata.elevation_semantic_score ||
+          metadata.facade_richness_score ||
+          0,
+      ),
+      0,
+      1,
+    );
+  }
+  if (drawingType === "section") {
+    return clamp(
+      Number(
+        metadata.section_candidate_score ||
+          metadata.section_usefulness_score ||
+          0,
+      ),
+      0,
+      1,
+    );
+  }
+  if (drawingType === "plan") {
+    return clamp(Number(metadata.plan_density_score || 0), 0, 1);
+  }
+  return 0;
+}
+
 function computeAnnotationCompleteness(
   annotation = null,
   annotationPlacement = null,
@@ -191,6 +222,9 @@ export function scoreTechnicalPanel({
     drawingType === "elevation" ? computeElevationRichness(metadata) : null;
   const sectionUsefulness =
     drawingType === "section" ? computeSectionUsefulness(metadata) : null;
+  const fragmentQuality = isFeatureEnabled("useDrawingFragmentScoringPhase9")
+    ? computeFragmentQuality(drawingType, metadata)
+    : null;
   const technicalDepth = clamp(
     drawingType === "plan"
       ? (Number(planDensity || 0) + Number(labelPresence || 0)) / 2
@@ -204,11 +238,12 @@ export function scoreTechnicalPanel({
   );
   const stabilityPenalty = annotationStable ? 0 : 0.08;
   const score = round(
-    readabilityScore * 0.26 +
-      annotationCompleteness * 0.2 +
+    readabilityScore * (fragmentQuality !== null ? 0.23 : 0.26) +
+      annotationCompleteness * 0.19 +
       geometryCompleteness * 0.2 +
-      technicalDepth * 0.22 +
-      labelPresence * 0.12 -
+      technicalDepth * 0.2 +
+      labelPresence * 0.1 +
+      Number(fragmentQuality || 0) * (fragmentQuality !== null ? 0.08 : 0) -
       stabilityPenalty,
   );
 
@@ -245,6 +280,28 @@ export function scoreTechnicalPanel({
   if (!annotationStable) {
     blockers.push(
       `${drawing.title || drawingType} has unresolved annotation placement instability.`,
+    );
+  }
+  if (
+    fragmentQuality !== null &&
+    drawingType === "elevation" &&
+    Number(fragmentQuality) < 0.58
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} side-facade fragment quality ${round(
+        fragmentQuality,
+      )} is below the minimum Phase 9 threshold 0.58.`,
+    );
+  }
+  if (
+    fragmentQuality !== null &&
+    drawingType === "section" &&
+    Number(fragmentQuality) < 0.64
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} section candidate quality ${round(
+        fragmentQuality,
+      )} is below the minimum Phase 9 threshold 0.64.`,
     );
   }
   if (
@@ -322,7 +379,10 @@ export function scoreTechnicalPanel({
       : "pass";
 
   return {
-    version: "phase8-technical-panel-scoring-v1",
+    version:
+      fragmentQuality !== null
+        ? "phase9-technical-panel-scoring-v1"
+        : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,
@@ -333,6 +393,9 @@ export function scoreTechnicalPanel({
       geometryCompleteness: round(geometryCompleteness),
       technicalDepth: round(technicalDepth),
       labelPresence: round(labelPresence),
+      ...(fragmentQuality !== null
+        ? { fragmentQuality: round(fragmentQuality) }
+        : {}),
       ...(drawingType === "plan" ? { planDensity: round(planDensity) } : {}),
       ...(drawingType === "elevation"
         ? { elevationRichness: round(elevationRichness) }

@@ -7,6 +7,7 @@ export function buildA1ComposeBlockingState({
   technicalPanelGate = null,
   consistencyGuard = null,
   fontReadiness = null,
+  finalSheetRegression = null,
 } = {}) {
   const blockingReasons = [];
   const recoverableIssues = [];
@@ -78,9 +79,31 @@ export function buildA1ComposeBlockingState({
       "Bundled A1 font embedding is not ready; text rendering may drift in serverless rasterization.",
     );
   }
+  if (
+    isFeatureEnabled("useA1PreComposeVerificationPhase9") &&
+    finalSheetRegression &&
+    finalSheetRegression.finalSheetRegressionReady === false
+  ) {
+    blockingReasons.push(...(finalSheetRegression.blockers || []));
+    recoverableIssues.push(
+      "Phase 9 final-sheet regression checks must pass before technical composition is considered credible.",
+    );
+  } else if (
+    isFeatureEnabled("useA1FinalSheetRegressionChecksPhase9") &&
+    finalSheetRegression &&
+    finalSheetRegression.status === "warning"
+  ) {
+    recoverableIssues.push(
+      "Phase 9 final-sheet regression checks reported warnings; composition may proceed but technical credibility is still weaker than preferred.",
+    );
+  }
 
   return {
-    version: "phase8-a1-compose-blocking-v1",
+    version:
+      isFeatureEnabled("useA1PreComposeVerificationPhase9") ||
+      isFeatureEnabled("useA1FinalSheetRegressionChecksPhase9")
+        ? "phase9-a1-compose-blocking-v1"
+        : "phase8-a1-compose-blocking-v1",
     composeReady:
       blockingReasons.length === 0 && nonRecoverableIssues.length === 0,
     composeBlocked:

@@ -4,6 +4,7 @@ import { evaluateA1TechnicalPanelGate } from "./a1TechnicalPanelGateService.js";
 import { evaluateA1ConsistencyGuards } from "./a1ConsistencyGuardService.js";
 import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
 import { getFontEmbeddingReadinessSync } from "../../utils/svgFontEmbedder.js";
+import { runA1FinalSheetRegression } from "./a1FinalSheetRegressionService.js";
 
 const PANEL_TYPE_ALIASES = {
   plan: "floor_plan",
@@ -96,6 +97,17 @@ export function planA1Panels({
       visualPackage,
       facadeGrammar,
     });
+    const finalSheetRegression = runA1FinalSheetRegression({
+      drawings: drawings || {},
+      technicalPanelQuality:
+        drawings?.technicalPanelQuality ||
+        projectGeometry?.metadata?.technical_panel_quality ||
+        null,
+      fontReadiness,
+      expectedLabels: panelPlan.panelCandidates.map(
+        (candidate) => candidate.title,
+      ),
+    });
     const recoveryExecutionBridge = isFeatureEnabled(
       "useA1RecoveryExecutionBridge",
     )
@@ -120,10 +132,12 @@ export function planA1Panels({
       technicalPanelGate,
       consistencyGuard,
       fontReadiness,
+      finalSheetRegression,
       technicalQualityBlockers: technicalPanelGate.blockingReasons || [],
       composeBlockingReasons: [
         ...new Set([
           ...(technicalPanelGate.blockingReasons || []),
+          ...(finalSheetRegression.blockers || []),
           ...(consistencyGuard.blockingReasons || []),
           ...(fontReadiness?.readyForEmbedding === false
             ? [
@@ -142,6 +156,18 @@ export function planA1Panels({
           warnings: entry.quality?.warnings || [],
         }),
       ),
+      technicalFragmentScores:
+        technicalPanelGate.technicalFragmentScores ||
+        finalSheetRegression.technicalFragmentScores ||
+        [],
+      perSideElevationStatus:
+        technicalPanelGate.perSideElevationStatus ||
+        finalSheetRegression.perSideElevationStatus ||
+        {},
+      sectionCandidateQuality:
+        technicalPanelGate.sectionCandidateQuality ||
+        finalSheetRegression.sectionCandidateQuality ||
+        [],
     };
   }
 

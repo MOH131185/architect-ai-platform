@@ -133,11 +133,13 @@ async function renderLocalTechnicalDrawings(payload = {}) {
             ...payload.options,
             orientation,
             facadeGrammar,
+            allowWeakFacadeFallback: true,
           })
         : renderElevationSvg(geometry, styleDNA, {
             ...payload.options,
             orientation,
             facadeGrammar,
+            allowWeakFacadeFallback: true,
           }),
     );
   }

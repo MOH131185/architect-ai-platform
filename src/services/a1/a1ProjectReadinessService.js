@@ -65,6 +65,7 @@ export function assessA1ProjectReadiness({
       technicalPanelGate: composeReadiness.technicalPanelGate || null,
       consistencyGuard: composeReadiness.consistencyGuard || null,
       fontReadiness: composeReadiness.fontReadiness || null,
+      finalSheetRegression: composeReadiness.finalSheetRegression || null,
       composeExecutionPlan: composeReadiness.composeExecutionPlan || null,
       recoveryExecutionBridge: composeReadiness.recoveryExecutionBridge || null,
       entityBlockers:

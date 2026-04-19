@@ -28,10 +28,13 @@ function buildSectionCandidateMap(
   drawings = null,
   artifactStore = null,
 ) {
-  const plannedCandidates = new Map(
-    (selectSectionCandidates(projectGeometry).candidates || []).map(
-      (candidate) => [candidate.sectionType, candidate],
-    ),
+  const plannedCandidates = new Map();
+  (selectSectionCandidates(projectGeometry).candidates || []).forEach(
+    (candidate) => {
+      if (!plannedCandidates.has(candidate.sectionType)) {
+        plannedCandidates.set(candidate.sectionType, candidate);
+      }
+    },
   );
   return resolveSectionFragmentIds(drawings, artifactStore).map(
     (fragmentId) => {

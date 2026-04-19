@@ -1,6 +1,8 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { getCanonicalMaterialPalette } from "../design/canonicalMaterialPalette.js";
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
+import { extractSideFacade } from "../facade/sideFacadeExtractor.js";
+import { assessElevationSemantics } from "./elevationSemanticService.js";
 
 function escapeXml(value) {
   return String(value)
@@ -363,6 +365,76 @@ function renderOpenings(
   };
 }
 
+function renderProjectedOpenings(
+  sideFacade = {},
+  baseX = 0,
+  baseY = 0,
+  scale = 1,
+) {
+  const windowMarkup = (sideFacade.projectedWindows || [])
+    .map((windowElement) => {
+      const level = (sideFacade.levelProfiles || []).find(
+        (entry) => entry.id === windowElement.levelId,
+      );
+      if (!level) return "";
+      const widthPx = Math.max(
+        22,
+        Number(windowElement.width_m || 1.4) * scale,
+      );
+      const x =
+        baseX + Number(windowElement.center_m || 0) * scale - widthPx / 2;
+      const sillY =
+        baseY -
+        (Number(level.bottom_m || 0) +
+          Number(windowElement.sill_height_m || 0.9)) *
+          scale;
+      const headY =
+        baseY -
+        (Number(level.bottom_m || 0) +
+          Number(windowElement.head_height_m || 2.1)) *
+          scale;
+      const heightPx = Math.max(18, sillY - headY);
+
+      return `
+        <g class="phase8-window">
+          <rect x="${x}" y="${headY}" width="${widthPx}" height="${heightPx}" class="phase8-opening" />
+          <line x1="${x}" y1="${sillY}" x2="${x + widthPx}" y2="${sillY}" class="phase8-lintel" />
+          <line x1="${x}" y1="${headY}" x2="${x + widthPx}" y2="${headY}" class="phase8-lintel" />
+          <line x1="${x + widthPx / 2}" y1="${headY + 2}" x2="${x + widthPx / 2}" y2="${sillY - 2}" stroke="#7db5d8" stroke-width="1.2" />
+        </g>
+      `;
+    })
+    .join("");
+
+  const doorMarkup = (sideFacade.projectedDoors || [])
+    .map((door) => {
+      const level = (sideFacade.levelProfiles || []).find(
+        (entry) => entry.id === door.levelId,
+      );
+      if (!level) return "";
+      const widthPx = Math.max(24, Number(door.width_m || 1.1) * scale);
+      const x = baseX + Number(door.center_m || 0) * scale - widthPx / 2;
+      const headY =
+        baseY -
+        (Number(level.bottom_m || 0) + Number(door.head_height_m || 2.2)) *
+          scale;
+      const heightPx = Math.max(28, baseY - headY);
+      return `
+        <g class="phase8-door">
+          <rect x="${x}" y="${headY}" width="${widthPx}" height="${heightPx}" fill="#f7f7f7" stroke="#222" stroke-width="1.7" />
+          <line x1="${x}" y1="${headY}" x2="${x + widthPx}" y2="${headY}" class="phase8-lintel" />
+        </g>
+      `;
+    })
+    .join("");
+
+  return {
+    markup: `<g id="phase9-elevation-openings">${windowMarkup}${doorMarkup}</g>`,
+    windowCount: (sideFacade.projectedWindows || []).length,
+    doorCount: (sideFacade.projectedDoors || []).length,
+  };
+}
+
 function renderRhythmGuides(
   facadeOrientation = {},
   baseX = 0,
@@ -436,6 +508,9 @@ function renderFacadeFeatures(
   widthPx = 0,
   scale = 1,
 ) {
+  const featureTypes = (features || []).map((entry) =>
+    String(entry?.type || entry).toLowerCase(),
+  );
   const upperLevel = levelProfiles[levelProfiles.length - 1] || null;
   const firstUpperLevel =
     levelProfiles.find((entry) => Number(entry.level_number || 0) >= 1) ||
@@ -443,7 +518,7 @@ function renderFacadeFeatures(
   const markup = [];
 
   if (
-    features.some((entry) => String(entry).includes("balcony")) &&
+    featureTypes.some((entry) => entry.includes("balcony")) &&
     firstUpperLevel
   ) {
     const y = baseY - (firstUpperLevel.bottom_m + 1.1) * scale;
@@ -457,7 +532,7 @@ function renderFacadeFeatures(
     `);
   }
 
-  if (features.some((entry) => String(entry).includes("porch"))) {
+  if (featureTypes.some((entry) => entry.includes("porch"))) {
     markup.push(`
       <g id="phase8-feature-porch">
         <rect x="${baseX + widthPx * 0.12}" y="${baseY - 42}" width="${widthPx * 0.18}" height="42" fill="none" stroke="#444" stroke-width="1.5" />
@@ -466,7 +541,7 @@ function renderFacadeFeatures(
     `);
   }
 
-  if (features.some((entry) => String(entry).includes("chimney"))) {
+  if (featureTypes.some((entry) => entry.includes("chimney"))) {
     markup.push(`
       <g id="phase8-feature-chimney">
         <rect x="${baseX + widthPx * 0.72}" y="${baseY - levelProfiles.reduce((sum, level) => sum + Number(level.height_m || 3.2), 0) * scale - 48}" width="18" height="48" fill="#c2b29b" stroke="#333" stroke-width="1.4" />
@@ -474,7 +549,7 @@ function renderFacadeFeatures(
     `);
   }
 
-  if (features.some((entry) => String(entry).includes("dormer"))) {
+  if (featureTypes.some((entry) => entry.includes("dormer"))) {
     const roofY =
       baseY -
       levelProfiles.reduce(
@@ -514,11 +589,13 @@ export function renderElevationSvg(
     geometryInput?.projectGeometry || geometryInput?.geometry || geometryInput,
   );
   const orientation = orientationToSide(options.orientation || "south");
-  const facadeOrientation = findFacadeOrientation(geometry, {
+  const sideFacade = extractSideFacade(geometry, styleDNA, {
     ...options,
     orientation,
   });
-  const metrics = metricsFromGeometry(geometry, orientation);
+  const facadeOrientation = sideFacade.facadeOrientation;
+  const metrics =
+    sideFacade.metrics || metricsFromGeometry(geometry, orientation);
   const width = options.width || 1200;
   const height = options.height || 760;
   const padding = 84;
@@ -531,12 +608,10 @@ export function renderElevationSvg(
   const heightPx = metrics.total_height_m * scale;
   const widthPx = metrics.width_m * scale;
   const bounds = getBuildableBounds(geometry);
-  const levelProfiles = getLevelProfiles(geometry);
-  const roofLanguage = normalizeRoofLanguage(
-    styleDNA,
-    facadeOrientation,
-    geometry,
-  );
+  const levelProfiles = sideFacade.levelProfiles || getLevelProfiles(geometry);
+  const roofLanguage =
+    sideFacade.roofLanguage ||
+    normalizeRoofLanguage(styleDNA, facadeOrientation, geometry);
   const palette = getCanonicalMaterialPalette({
     dna: styleDNA,
     projectGeometry: geometry,
@@ -552,15 +627,7 @@ export function renderElevationSvg(
     heightPx,
   );
   const datums = renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale);
-  const openings = renderOpenings(
-    geometry,
-    orientation,
-    bounds,
-    baseX,
-    baseY,
-    scale,
-    levelProfiles,
-  );
+  const openings = renderProjectedOpenings(sideFacade, baseX, baseY, scale);
   const rhythm = renderRhythmGuides(
     facadeOrientation || {},
     baseX,
@@ -568,11 +635,9 @@ export function renderElevationSvg(
     widthPx,
     heightPx,
   );
-  const features = collectSideFeatures(
-    geometry,
-    orientation,
-    facadeOrientation || {},
-  );
+  const features =
+    sideFacade.features ||
+    collectSideFeatures(geometry, orientation, facadeOrientation || {});
   const featureMarkup = renderFacadeFeatures(
     features,
     levelProfiles,
@@ -592,9 +657,11 @@ export function renderElevationSvg(
     (wall) => wall.exterior && wall.metadata?.side === orientation,
   );
   const hasEnvelopeGeometry = metrics.width_m > 0 && levelProfiles.length > 0;
-  const geometryComplete = hasEnvelopeGeometry;
+  const geometryComplete =
+    hasEnvelopeGeometry && sideFacade.blockingReasons.length === 0;
   const geometrySource =
-    sideWalls.length > 0 ? "explicit_side_walls" : "envelope_derived";
+    sideFacade.geometrySource ||
+    (sideWalls.length > 0 ? "explicit_side_walls" : "envelope_derived");
   const facadeMaterialSignalCount =
     facadeOrientation?.material_zones?.length || 0;
   const facadeRhythmSignalCount =
@@ -602,24 +669,34 @@ export function renderElevationSvg(
   const elevationReadableInputs =
     openings.windowCount + openings.doorCount + featureMarkup.count > 0 ||
     facadeRhythmSignalCount > 0 ||
-    facadeMaterialSignalCount > 0;
+    facadeMaterialSignalCount > 0 ||
+    (sideFacade.geometrySource === "explicit_side_walls" &&
+      sideFacade.explicitCoverageRatio >= 0.65);
+  const elevationSemantics = assessElevationSemantics(sideFacade, palette);
   const facadeRichnessScore = roundMetric(
     clamp(
-      (openings.windowCount > 0 ? 0.28 : 0.12) +
-        (materialZones.count > 0 ? 0.16 : 0.08) +
-        (rhythm.count > 0 ? 0.12 : 0.04) +
-        (datums.count > 1 ? 0.14 : 0.05) +
-        (featureMarkup.count > 0 ? 0.14 : 0.05) +
-        (String(roofLanguage).length > 0 ? 0.1 : 0.04) +
-        (openings.doorCount > 0 ? 0.06 : 0),
+      Math.max(
+        Number(sideFacade.richnessScore || 0),
+        (openings.windowCount > 0 ? 0.28 : 0.12) +
+          (materialZones.count > 0 ? 0.16 : 0.08) +
+          (rhythm.count > 0 ? 0.12 : 0.04) +
+          (datums.count > 1 ? 0.14 : 0.05) +
+          (featureMarkup.count > 0 ? 0.14 : 0.05) +
+          (String(roofLanguage).length > 0 ? 0.1 : 0.04) +
+          (openings.doorCount > 0 ? 0.06 : 0),
+      ),
       0,
       1,
     ),
   );
+  const allowWeakFacadeFallback = options.allowWeakFacadeFallback === true;
 
   if (
     isFeatureEnabled("useElevationRendererUpgradePhase8") &&
-    (!geometryComplete || !elevationReadableInputs)
+    (!geometryComplete ||
+      !elevationReadableInputs ||
+      elevationSemantics.status === "block") &&
+    !allowWeakFacadeFallback
   ) {
     return {
       svg: null,
@@ -629,9 +706,13 @@ export function renderElevationSvg(
       title: `Elevation - ${orientation}`,
       status: "blocked",
       blocking_reasons: [
-        !geometryComplete
-          ? `Elevation ${orientation} cannot be rendered credibly because canonical side envelope geometry is missing.`
-          : `Elevation ${orientation} lacks enough canonical facade data to support a readable technical panel.`,
+        ...new Set([
+          ...sideFacade.blockingReasons,
+          ...(elevationSemantics.blockers || []),
+          !geometryComplete
+            ? `Elevation ${orientation} cannot be rendered credibly because canonical side envelope geometry is missing.`
+            : `Elevation ${orientation} lacks enough canonical facade data to support a readable technical panel.`,
+        ]),
       ],
       technical_quality_metadata: {
         drawing_type: "elevation",
@@ -644,6 +725,10 @@ export function renderElevationSvg(
         bay_count: rhythm.count,
         feature_count: featureMarkup.count,
         facade_richness_score: facadeRichnessScore,
+        side_facade_score: sideFacade.richnessScore,
+        side_facade_status: sideFacade.status,
+        elevation_semantic_status: elevationSemantics.status,
+        explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
         uses_canonical_material_palette: true,
         roof_language: roofLanguage,
         facade_features: features,
@@ -686,7 +771,9 @@ export function renderElevationSvg(
     technical_quality_metadata: {
       drawing_type: "elevation",
       has_title: true,
-      geometry_complete: geometryComplete,
+      geometry_complete: allowWeakFacadeFallback
+        ? hasEnvelopeGeometry
+        : geometryComplete,
       geometry_source: geometrySource,
       window_count: openings.windowCount,
       door_count: openings.doorCount,
@@ -699,6 +786,11 @@ export function renderElevationSvg(
       sill_lintel_count: openings.windowCount * 2 + openings.doorCount,
       feature_count: featureMarkup.count,
       facade_richness_score: facadeRichnessScore,
+      side_facade_score: sideFacade.richnessScore,
+      side_facade_status: sideFacade.status,
+      elevation_semantic_status: elevationSemantics.status,
+      elevation_semantic_score: elevationSemantics.scores?.readability || null,
+      explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
       uses_canonical_material_palette: true,
       roof_language: roofLanguage,
       facade_features: features,

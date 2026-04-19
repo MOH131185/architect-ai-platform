@@ -339,6 +339,9 @@ export function renderSectionSvg(
         geometry_complete: false,
         cut_room_count: cutRooms.length,
         section_usefulness_score: 0,
+        section_candidate_quality:
+          sectionProfile?.sectionCandidateQuality || null,
+        section_candidate_score: sectionProfile?.score || null,
       },
     };
   }
@@ -421,6 +424,9 @@ export function renderSectionSvg(
       stair_tread_count: stairMarkup.treadCount,
       roof_profile_visible: true,
       section_usefulness_score: usefulnessScore,
+      section_candidate_quality:
+        sectionProfile?.sectionCandidateQuality || null,
+      section_candidate_score: sectionProfile?.score || null,
       focus_entity_count: (sectionProfile?.focusEntityIds || []).length,
       cut_coordinate_m: cutCoordinate,
     },

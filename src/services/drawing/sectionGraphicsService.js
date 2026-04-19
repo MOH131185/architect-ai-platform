@@ -1,9 +1,11 @@
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { renderSectionSvg } from "./svgSectionRenderer.js";
 import { selectSectionCandidates } from "./sectionCutPlanner.js";
 import { deriveSectionSemantics } from "./sectionSemanticService.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
+import { buildSectionAnnotations } from "./sectionAnnotationService.js";
 
 function escapeXml(value) {
   return String(value)
@@ -83,9 +85,11 @@ export function buildSectionGraphic(
   const sectionType = String(
     options.sectionType || "longitudinal",
   ).toLowerCase();
-  const sectionProfile = sectionPlan.candidates.find(
-    (candidate) => candidate.sectionType === sectionType,
-  ) ||
+  const sectionProfile = sectionPlan.candidates
+    .filter((candidate) => candidate.sectionType === sectionType)
+    .sort(
+      (left, right) => Number(right.score || 0) - Number(left.score || 0),
+    )[0] ||
     sectionPlan.candidates[0] || {
       id: `section:${sectionType}`,
       sectionType,
@@ -149,13 +153,22 @@ export function buildSectionGraphic(
     annotationLayout.placements,
     { minimumFontSize: 9 },
   );
+  const sectionAnnotations = isFeatureEnabled("useSectionGraphicsUpgradePhase9")
+    ? buildSectionAnnotations({
+        sectionProfile,
+        sectionSemantics: semantics,
+        technicalQualityMetadata: drawing.technical_quality_metadata,
+        width,
+        height,
+      })
+    : { items: [], markup: "" };
   const svg = replaceSvgTail(
     drawing.svg,
     `${renderPlacements(annotationLayout.placements)}${renderSectionSemanticBlock(
       width,
       height,
       semantics,
-    )}`,
+    )}${sectionAnnotations.markup}`,
   );
 
   return {
@@ -173,8 +186,11 @@ export function buildSectionGraphic(
       ),
       section_usefulness_score: semantics.scores?.usefulness || 0,
       focus_entity_count: (sectionProfile.focusEntityIds || []).length,
-      annotation_count: annotationLayout.placements.length,
+      annotation_count:
+        annotationLayout.placements.length + sectionAnnotations.items.length,
       annotation_guarantee: annotationValidation.placementStable,
+      section_candidate_quality: sectionProfile.sectionCandidateQuality || null,
+      section_candidate_score: sectionProfile.score || null,
     },
   };
 }

@@ -41,7 +41,9 @@ import {
   EMBEDDED_FONT_STACK,
   embedFontInSVG,
   ensureFontsLoaded,
+  getFontEmbeddingReadinessSync,
 } from "../../src/utils/svgFontEmbedder.js";
+import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import {
   buildClimateCardBuffer,
   buildMaterialPaletteBuffer,
@@ -72,6 +74,7 @@ import {
   buildComposeSuccessPayload,
   buildPanelsByKey,
 } from "../../src/services/a1/composeResponse.js";
+import { runA1FinalSheetRegression } from "../../src/services/a1/a1FinalSheetRegressionService.js";
 import {
   buildComposeArtifactManifest,
   buildPublicArtifactUrl,
@@ -573,6 +576,9 @@ async function handleComposeRequest(req, res, trace) {
   } = requestBody;
   const requestedHashes = readRequestHashes(requestBody);
   let panels = Array.isArray(requestBody?.panels) ? requestBody.panels : [];
+  const regressionContextAvailable = Boolean(
+    requestBody.drawings || requestBody.technicalPanelQuality,
+  );
 
   if (!panels || panels.length === 0) {
     return res.status(400).json({
@@ -1581,6 +1587,33 @@ async function handleComposeRequest(req, res, trace) {
   );
 
   const panelsByKey = buildPanelsByKey(panels, coordinates);
+  const finalSheetRegression = regressionContextAvailable
+    ? runA1FinalSheetRegression({
+        drawings: requestBody.drawings || {},
+        technicalPanelQuality: requestBody.technicalPanelQuality || null,
+        sheetSvg:
+          typeof requestBody.finalSheetSvg === "string"
+            ? requestBody.finalSheetSvg
+            : "",
+        fontReadiness: getFontEmbeddingReadinessSync(),
+        expectedLabels: panels.map((panel) => panel.label || panel.type),
+      })
+    : null;
+
+  if (
+    regressionContextAvailable &&
+    requestBody.enforcePreComposeVerification === true &&
+    isFeatureEnabled("useA1PreComposeVerificationPhase9") &&
+    finalSheetRegression?.finalSheetRegressionReady === false
+  ) {
+    return res.status(409).json({
+      success: false,
+      error: "PRECOMPOSE_VERIFICATION_FAILED",
+      message:
+        "Phase 9 final-sheet regression verification blocked composition.",
+      details: finalSheetRegression,
+    });
+  }
 
   // ====================================================================
   // QA GATES: Run automated quality assurance checks
@@ -1763,6 +1796,7 @@ async function handleComposeRequest(req, res, trace) {
     panelKeys: Object.keys(panelsByKey),
     qaAllPassed: qaResults?.allPassed ?? null,
     critiqueOverallPass: critiqueResults?.overall_pass ?? null,
+    finalSheetRegression,
   };
 
   return res.status(200).json(

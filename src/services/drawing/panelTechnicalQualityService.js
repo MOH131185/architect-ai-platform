@@ -90,6 +90,21 @@ export function evaluateTechnicalPanels({ drawings = {} } = {}) {
         ? "phase8-panel-technical-quality-v1"
         : "phase6-panel-technical-quality-v1",
     panels,
+    fragmentScores: panels.map((entry) => ({
+      fragmentId: entry.sourceArtifact,
+      panelId: entry.panelId,
+      drawingType: entry.drawingType,
+      title: entry.title,
+      score: entry.score?.score ?? null,
+      verdict:
+        entry.score?.verdict ||
+        (entry.blockers.length
+          ? "block"
+          : entry.warnings.length
+            ? "warning"
+            : "pass"),
+      categoryScores: entry.score?.categoryScores || null,
+    })),
     weakPanels: panels.filter((entry) => entry.warnings.length > 0),
     blockingPanels: panels.filter((entry) => entry.blockers.length > 0),
   };

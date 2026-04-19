@@ -61,9 +61,11 @@ export function evaluateA1TechnicalPanelGate({
       ),
     );
   });
+  warnings.push(...(checks.technicalPanelRegression?.warnings || []));
+  blockingReasons.push(...(checks.technicalPanelRegression?.blockers || []));
 
   return {
-    version: "phase8-a1-technical-panel-gate-v1",
+    version: "phase9-a1-technical-panel-gate-v1",
     technicalReady: blockingReasons.length === 0,
     technicalPanelReadinessState:
       blockingReasons.length > 0
@@ -75,6 +77,9 @@ export function evaluateA1TechnicalPanelGate({
     blockingReasons: [...new Set(blockingReasons)],
     warnings: [...new Set(warnings)],
     panelChecks: checks.checks,
+    technicalFragmentScores: checks.technicalFragmentScores || [],
+    perSideElevationStatus: checks.perSideElevationStatus || {},
+    sectionCandidateQuality: checks.sectionCandidateQuality || [],
   };
 }
 

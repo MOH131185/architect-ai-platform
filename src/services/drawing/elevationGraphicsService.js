@@ -30,14 +30,20 @@ function renderPlacements(placements = []) {
   `;
 }
 
-function renderTitleBlock(width, height, orientation) {
+function renderTitleBlock(width, height, orientation, drawing = {}) {
   const x = width - 300;
   const y = height - 66;
+  const metadata = drawing.technical_quality_metadata || {};
   return `
     <g id="phase7-elevation-title-block">
       <rect x="${x}" y="${y}" width="240" height="44" fill="#fff" stroke="#333" stroke-width="1.1"/>
       <text x="${x + 12}" y="${y + 18}" font-size="12" font-family="Arial, sans-serif" font-weight="bold">Elevation ${escapeXml(orientation)}</text>
       <text x="${x + 12}" y="${y + 34}" font-size="10" font-family="Arial, sans-serif">Geometry-derived technical linework</text>
+      <text x="${x + 228}" y="${y + 34}" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="#475569">${escapeXml(
+        `${metadata.geometry_source || "geometry"} · ${Number(
+          metadata.facade_richness_score || 0,
+        ).toFixed(2)}`,
+      )}</text>
     </g>
   `;
 }
@@ -65,6 +71,7 @@ export function buildElevationGraphic(
       options.width || 1200,
       options.height || 760,
       drawing.orientation || options.orientation || "south",
+      drawing,
     )}`,
   );
 

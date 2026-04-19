@@ -40,6 +40,7 @@ export function planA1ComposeExecution({
   artifactStore = null,
   freshness = null,
   technicalPanelGate = null,
+  finalSheetRegression = null,
 } = {}) {
   const candidatePanels = [
     ...(freshness?.stalePanels || []),
@@ -79,6 +80,16 @@ export function planA1ComposeExecution({
             title: "Re-run technical panel quality gate",
           },
         ]),
+    ...(finalSheetRegression?.finalSheetRegressionReady === false
+      ? [
+          {
+            id: "quality:final-sheet-regression",
+            kind: "verify_final_sheet_regression",
+            target: "readiness:phase9",
+            title: "Re-run final-sheet regression verification",
+          },
+        ]
+      : []),
     {
       id: "compose:readiness",
       kind: "recompute_compose_readiness",
@@ -96,7 +107,10 @@ export function planA1ComposeExecution({
   });
 
   return {
-    version: "phase6-a1-compose-execution-plan-v1",
+    version:
+      finalSheetRegression?.finalSheetRegressionReady === false
+        ? "phase9-a1-compose-execution-plan-v1"
+        : "phase6-a1-compose-execution-plan-v1",
     recoveryPlans,
     minimumRecoveryPlan: uniqueSteps,
   };

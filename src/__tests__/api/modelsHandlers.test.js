@@ -396,6 +396,10 @@ describe("Phase 1 model route handlers", () => {
     );
     expect(Array.isArray(res.body.heroVsCanonicalWarnings)).toBe(true);
     expect(res.body.consistencyGuard).toBeTruthy();
+    expect(res.body.finalSheetRegression).toBeTruthy();
+    expect(res.body.perSideElevationStatus).toBeTruthy();
+    expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
+    expect(Array.isArray(res.body.technicalFragmentScores)).toBe(true);
     expect(res.body.meta.endpoint).toBe("project-readiness");
   });
 
@@ -464,6 +468,10 @@ describe("Phase 1 model route handlers", () => {
     );
     expect(res.body.consistencyGuard).toBeTruthy();
     expect(res.body.fontReadiness.family).toBe("ArchiAISans");
+    expect(res.body.finalSheetRegression).toBeTruthy();
+    expect(res.body.perSideElevationStatus).toBeTruthy();
+    expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
+    expect(Array.isArray(res.body.technicalFragmentScores)).toBe(true);
     expect(res.body.meta.endpoint).toBe("plan-a1-panels");
   });
 
@@ -917,6 +925,10 @@ describe("Phase 1 model route handlers", () => {
     ).toBeGreaterThan(0);
     expect(res.body.fontReadiness.family).toBe("ArchiAISans");
     expect(res.body.consistencyGuard).toBeTruthy();
+    expect(res.body.finalSheetRegression).toBeTruthy();
+    expect(res.body.perSideElevationStatus).toBeTruthy();
+    expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
+    expect(Array.isArray(res.body.technicalFragmentScores)).toBe(true);
     expect(res.body.meta.endpoint).toBe("project-health");
   });
 });
