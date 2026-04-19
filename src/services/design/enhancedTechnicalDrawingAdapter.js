@@ -833,6 +833,29 @@ export function generateEnhancedFloorPlanSVG(
     // Create geometry adapter from DNA
     const geometry = new GeometryAdapter(masterDNA);
 
+    // Tier C6 — hard-fail on empty geometry when strict canonical geometry is enforced.
+    // Before this guard, an empty rooms array would silently produce a default
+    // 4-room layout via generateDefaultFloorPlan(), masking upstream regressions
+    // in stairCoreGenerator / geometryFactory coercion.
+    const roomsOnFloor = Array.isArray(geometry.rooms?.[floorIndex])
+      ? geometry.rooms[floorIndex]
+      : [];
+    if (roomsOnFloor.length === 0 && floorIndex === 0) {
+      const strictGeometry =
+        projectContext.strict === true ||
+        isFeatureEnabled("strictCanonicalGeometryPack") ||
+        isFeatureEnabled("programGeometryFidelityGate") ||
+        isFeatureEnabled("strictGeometryMaskGate");
+      const msg = `[EnhancedAdapter] Empty rooms on ground floor — canonical geometry contains 0 rooms for floor 0. This usually means stair/core multi-level stacking overwrote the rooms array, or the DNA never populated geometry.floors. Cannot render a meaningful floor plan.`;
+      if (strictGeometry) {
+        logger.error(msg);
+        throw new Error(
+          "Enhanced floor plan requires at least one room on floor 0; strict canonical geometry is enforced.",
+        );
+      }
+      logger.warn(`${msg} (soft mode — default layout will be synthesised)`);
+    }
+
     // Create enhanced generator with professional options
     const generator = new ArchitecturalFloorPlanGenerator({
       scale: projectContext.scale || 50,

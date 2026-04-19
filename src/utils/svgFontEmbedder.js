@@ -17,7 +17,46 @@ const INTER_REGULAR_URL =
 const INTER_BOLD_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7.woff2";
 
+// Lazily resolved so serverless cold starts don't pay the cost until needed.
+// Order matters: bundled project fonts first (reliable on Vercel + local),
+// then @fontsource npm package, then host system fonts, then Vercel layer.
+function resolveBundledFontPaths() {
+  const candidates = {
+    regular: [],
+    bold: [],
+  };
+  try {
+    // @fontsource/inter ships woff/woff2 under files/. Resolve via require path
+    // so it works both locally and inside the Vercel serverless bundle.
+    const fontsourceDir = "node_modules/@fontsource/inter/files";
+    const cwd = typeof process !== "undefined" ? process.cwd() : ".";
+    candidates.regular.push(
+      `${cwd}/${fontsourceDir}/inter-latin-400-normal.woff2`,
+    );
+    candidates.regular.push(
+      `${cwd}/${fontsourceDir}/inter-latin-400-normal.woff`,
+    );
+    candidates.bold.push(
+      `${cwd}/${fontsourceDir}/inter-latin-700-normal.woff2`,
+    );
+    candidates.bold.push(`${cwd}/${fontsourceDir}/inter-latin-700-normal.woff`);
+    // Also try Vercel-style /var/task prefix where function bundles land.
+    candidates.regular.push(
+      `/var/task/${fontsourceDir}/inter-latin-400-normal.woff2`,
+    );
+    candidates.bold.push(
+      `/var/task/${fontsourceDir}/inter-latin-700-normal.woff2`,
+    );
+  } catch {
+    // Ignore; candidates list will fall back to system fonts below.
+  }
+  return candidates;
+}
+
+const BUNDLED = resolveBundledFontPaths();
+
 const REGULAR_FONT_CANDIDATES = [
+  ...BUNDLED.regular,
   "C:/Windows/Fonts/arial.ttf",
   "C:/Windows/Fonts/segoeui.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -27,12 +66,21 @@ const REGULAR_FONT_CANDIDATES = [
 ];
 
 const BOLD_FONT_CANDIDATES = [
+  ...BUNDLED.bold,
   "C:/Windows/Fonts/arialbd.ttf",
   "C:/Windows/Fonts/segoeuib.ttf",
   "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
   "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
   "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 ];
+
+function mimeForFontPath(fontPath) {
+  const lower = fontPath.toLowerCase();
+  if (lower.endsWith(".woff2")) return { mime: "font/woff2", format: "woff2" };
+  if (lower.endsWith(".woff")) return { mime: "font/woff", format: "woff" };
+  if (lower.endsWith(".otf")) return { mime: "font/otf", format: "opentype" };
+  return { mime: "font/ttf", format: "truetype" };
+}
 
 let fontLoadPromise = null;
 let resolvedFonts = null; // Set once the promise resolves; used by sync API
@@ -80,10 +128,11 @@ async function loadLocalFontAsBase64(paths, descriptor) {
       try {
         const fontBuffer = await readFile(fontPath);
         if (fontBuffer?.length) {
+          const { mime, format } = mimeForFontPath(fontPath);
           return {
             base64: fontBuffer.toString("base64"),
-            mime: "font/ttf",
-            format: "truetype",
+            mime,
+            format,
             source: fontPath,
             descriptor,
           };

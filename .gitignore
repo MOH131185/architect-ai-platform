@@ -45,6 +45,7 @@ portfolio_images/
 
 # Python build artifacts (for FastAPI backend scaffolding)
 api/__pycache__/
+__pycache__/
 *.pyc
 
 # Windows system files
@@ -79,3 +80,4 @@ eslint-report.json
 build_active_*/
 build_active_ci/
 build_phase*/
+genarch/tmp_*/

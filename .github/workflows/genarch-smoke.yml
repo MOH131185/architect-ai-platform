@@ -56,6 +56,7 @@ jobs:
 
       - name: Verify imports
         run: |
+          cd genarch
           python -c "import genarch; print(f'genarch {genarch.__version__}')"
           python -c "from genarch.pipeline import PipelineRunner; print('PipelineRunner OK')"
           python -c "from genarch.validation import AssetValidator, DriftChecker, DriftMetrics; print('Validators OK')"
@@ -128,10 +129,13 @@ jobs:
           cache: 'pip'
           cache-dependency-path: genarch/requirements.lock
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y libcairo2-dev pkg-config
+
       - name: Install dependencies
         run: |
           cd genarch
-          pip install -e ".[all]"
+          pip install -e ".[all,dev]"
 
       - name: Run smoke tests
         run: |
@@ -162,6 +166,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: genarch/requirements.lock
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libcairo2-dev pkg-config
 
       - name: Install dependencies
         run: |
@@ -244,6 +251,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: genarch/requirements.lock
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libcairo2-dev pkg-config
 
       - name: Install dependencies
         run: |

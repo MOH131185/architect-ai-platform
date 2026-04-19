@@ -695,6 +695,31 @@ export function coerceToCanonicalProjectGeometry(input = {}) {
     );
   }
 
+  // Tier C1 — QA gate for room retention. The skeletal plans seen on the last
+  // clinic sheet tracked back to rooms being silently dropped during multi-
+  // level stacking (stairCoreGenerator overwrite) and coercion edge cases.
+  // Log-only (non-throwing) so a regression surfaces immediately in the
+  // pipeline logs without hard-breaking downstream consumers.
+  try {
+    const levelRoomCount = (
+      Array.isArray(input.levels) ? input.levels : []
+    ).reduce(
+      (sum, lvl) => sum + (Array.isArray(lvl?.rooms) ? lvl.rooms.length : 0),
+      0,
+    );
+    const expectedRooms = Math.max(topLevelRooms.length, levelRoomCount);
+    const actualRooms = projectGeometry.rooms.length;
+    if (expectedRooms > 0 && actualRooms < expectedRooms) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[geometryFactory] Room count regression in coerce: expected ≥${expectedRooms}, got ${actualRooms}. ` +
+          `Plans may render empty. Check stairCoreGenerator and level stacking.`,
+      );
+    }
+  } catch {
+    /* assertion path must never break the main flow */
+  }
+
   return finalizeProjectGeometry(projectGeometry);
 }
 

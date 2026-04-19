@@ -770,8 +770,219 @@ export function verifyPromptLockIntegrity(fingerprint) {
   return currentHash === fingerprint.promptLockHash;
 }
 
+/**
+ * Build a design fingerprint purely from DNA + canonical geometry (pre-hoc).
+ *
+ * Previously, the fingerprint only existed AFTER hero_3d rendered, which
+ * meant every panel before hero had no constraint — and hero drift could
+ * only be *documented*, never prevented. This pre-hoc variant lets every
+ * panel (including hero itself) read from the same authoritative spec
+ * before any FLUX call fires.
+ *
+ * Shape is identical to extractFingerprintFromHero's return so consumers
+ * work unchanged; `heroImageUrl` and `heroImagePHash` are null until a
+ * hero render is available, at which point a post-hoc drift check can
+ * compare the two.
+ *
+ * @param {Object} masterDNA
+ * @param {Object} [canonicalGeometry] - Optional canonical geometry for BBox refinement
+ * @returns {Object} DesignFingerprint
+ */
+export function buildFingerprintFromDNA(
+  masterDNA = {},
+  canonicalGeometry = null,
+) {
+  const dnaHash = generateSimpleHash(JSON.stringify(masterDNA || {}));
+  const fingerprintId = `fp_${dnaHash}`;
+
+  const massingType = inferMassingType(masterDNA);
+  const roofProfile = inferRoofProfile(masterDNA);
+  const facadeRhythm = inferFacadeRhythm(masterDNA);
+  const materialsPalette = extractMaterialsPalette(masterDNA);
+  const windowPattern = inferWindowPattern(masterDNA);
+  const entrancePosition = inferEntrancePosition(masterDNA);
+  const styleDescriptor = buildStyleDescriptor(masterDNA);
+  const dominantColors = extractDominantColorsFromDNA(masterDNA);
+
+  const dims = masterDNA.dimensions || {};
+  const geomDims =
+    canonicalGeometry?.footprint || canonicalGeometry?.massing || {};
+  const buildingBBox = {
+    widthMeters: geomDims.widthM || dims.width || dims.length || 15,
+    depthMeters: geomDims.depthM || dims.depth || dims.width || 10,
+    heightMeters: geomDims.heightM || dims.height || dims.totalHeight || 7.5,
+  };
+  const floorCount = dims.floors || dims.floorCount || 2;
+
+  const promptLock = buildPromptLock({
+    massingType,
+    roofProfile,
+    facadeRhythm,
+    materialsPalette,
+    windowPattern,
+    entrancePosition,
+    styleDescriptor,
+  });
+  const promptLockVerbatim = buildVerbatimPromptLock({
+    massingType,
+    roofProfile,
+    facadeRhythm,
+    materialsPalette,
+    windowPattern,
+    entrancePosition,
+    styleDescriptor,
+    dominantColors,
+    buildingBBox,
+    floorCount,
+  });
+  const promptLockHash = generateSimpleHash(promptLockVerbatim);
+
+  return {
+    id: fingerprintId,
+    source: "dna_prehoc",
+    heroImageUrl: null,
+    heroImageHash: null,
+    heroImagePHash: null,
+    massingType,
+    roofProfile,
+    facadeRhythm,
+    materialsPalette,
+    windowPattern,
+    entrancePosition,
+    dominantColors,
+    styleDescriptor,
+    promptLock,
+    promptLockVerbatim,
+    promptLockHash,
+    buildingBBox,
+    floorCount,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Parse "#RRGGBB" → {r, g, b} in 0..255.
+ * @private
+ */
+function hexToRgb(hex) {
+  if (!hex || typeof hex !== "string") return null;
+  const clean = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return null;
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  };
+}
+
+/**
+ * sRGB → linear.
+ * @private
+ */
+function srgbToLinear(c) {
+  const n = c / 255;
+  return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+}
+
+/**
+ * Approximate CIE76 ΔE between two sRGB hex colours.
+ * Good enough for "did the hero drift?" gating — no need for full ΔE2000
+ * when we are comparing against a broad threshold (start at 8.0).
+ *
+ * @param {string} hexA
+ * @param {string} hexB
+ * @returns {number} ΔE (0 = identical, ~25 = barely same family)
+ */
+export function deltaEHex(hexA, hexB) {
+  const a = hexToRgb(hexA);
+  const b = hexToRgb(hexB);
+  if (!a || !b) return Number.POSITIVE_INFINITY;
+  // Convert to linear RGB → XYZ(D65) → Lab
+  const toLab = ({ r, g, b: bb }) => {
+    const rl = srgbToLinear(r);
+    const gl = srgbToLinear(g);
+    const bl = srgbToLinear(bb);
+    // sRGB D65 → XYZ
+    const X = rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375;
+    const Y = rl * 0.2126729 + gl * 0.7151522 + bl * 0.072175;
+    const Z = rl * 0.0193339 + gl * 0.119192 + bl * 0.9503041;
+    // Reference white D65
+    const Xn = 0.95047,
+      Yn = 1.0,
+      Zn = 1.08883;
+    const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+    const fx = f(X / Xn);
+    const fy = f(Y / Yn);
+    const fz = f(Z / Zn);
+    return {
+      L: 116 * fy - 16,
+      a: 500 * (fx - fy),
+      b: 200 * (fy - fz),
+    };
+  };
+  const la = toLab(a);
+  const lb = toLab(b);
+  const dL = la.L - lb.L;
+  const dA = la.a - lb.a;
+  const dB = la.b - lb.b;
+  return Math.sqrt(dL * dL + dA * dA + dB * dB);
+}
+
+/**
+ * Compare a pre-hoc DNA fingerprint against a post-hoc hero fingerprint and
+ * report drift. Used by the sheet consistency guard (Tier B7) to decide
+ * whether the hero matches what the sheet actually committed to.
+ *
+ * @param {Object} dnaFingerprint - From buildFingerprintFromDNA
+ * @param {Object} heroFingerprint - From extractFingerprintFromHero
+ * @param {Object} [options]
+ * @param {number} [options.deltaEThreshold=8.0]
+ * @returns {{ok:boolean, deltaE:number, reason?:string, details:Object}}
+ */
+export function validateFingerprintDrift(
+  dnaFingerprint,
+  heroFingerprint,
+  options = {},
+) {
+  const threshold = options.deltaEThreshold ?? 8.0;
+  if (!dnaFingerprint || !heroFingerprint) {
+    return {
+      ok: false,
+      deltaE: Number.POSITIVE_INFINITY,
+      reason: "missing_fingerprint",
+      details: {
+        dnaFingerprint: !!dnaFingerprint,
+        heroFingerprint: !!heroFingerprint,
+      },
+    };
+  }
+  const dnaPrimary =
+    dnaFingerprint.dominantColors?.[0] ||
+    dnaFingerprint.materialsPalette?.primary;
+  const heroPrimary =
+    heroFingerprint.dominantColors?.[0] ||
+    heroFingerprint.materialsPalette?.primary;
+  const deltaE = deltaEHex(dnaPrimary, heroPrimary);
+  const ok = deltaE <= threshold;
+  return {
+    ok,
+    deltaE,
+    reason: ok ? undefined : "primary_color_drift",
+    details: {
+      threshold,
+      dnaPrimary,
+      heroPrimary,
+      dnaStyle: dnaFingerprint.styleDescriptor,
+      heroStyle: heroFingerprint.styleDescriptor,
+    },
+  };
+}
+
 export default {
   extractFingerprintFromHero,
+  buildFingerprintFromDNA,
+  validateFingerprintDrift,
+  deltaEHex,
   storeFingerprint,
   getFingerprint,
   hasFingerprint,
