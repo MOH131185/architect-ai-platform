@@ -235,6 +235,7 @@ class TestExport:
     def test_mesh_export_obj(self, simple_constraints):
         """Test OBJ mesh export."""
         pytest.importorskip("trimesh")
+        pytest.importorskip("scipy")  # trimesh scene.dump uses scipy.sparse internally
         from genarch.exporters.mesh_exporter import export_mesh
 
         floor_plan, metadata = generate_floorplan(simple_constraints, seed=42)
