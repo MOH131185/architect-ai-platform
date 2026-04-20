@@ -26,6 +26,8 @@ function cutCoordinate(candidate = {}) {
 
 function sectionTruthEnabled() {
   return (
+    isFeatureEnabled("useSectionConstructionTruthPhase14") ||
+    isFeatureEnabled("useSectionConstructionScoringPhase14") ||
     isFeatureEnabled("useTrueSectionClippingPhase13") ||
     isFeatureEnabled("useSectionTruthScoringPhase13") ||
     isFeatureEnabled("useTrueSectionEvidencePhase12") ||
@@ -148,6 +150,12 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   const useSectionEvidence = sectionTruthEnabled();
   const sectionEvidence = buildSectionEvidence(projectGeometry, candidate);
   const sectionEvidenceSummary = buildSectionEvidenceSummary(sectionEvidence);
+  const nonConstructionBlockers = (sectionEvidence.blockers || []).filter(
+    (entry) =>
+      !/construction truth|cut wall truth|slab\/floor construction|foundation communication/i.test(
+        String(entry || ""),
+      ),
+  );
   const stairAlignment = scoreStairAlignment(
     projectGeometry,
     candidate,
@@ -190,6 +198,11 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     0,
     1,
   );
+  const constructionTruthScore = clamp(
+    Number(sectionEvidenceSummary.constructionEvidenceScore || 0),
+    0,
+    1,
+  );
   const nearEvidenceScore = clamp(
     Number(sectionEvidenceSummary.nearEvidenceCount || 0) / 6,
     0,
@@ -207,7 +220,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       )
     : 0;
   const evidencePenalty = useSectionEvidence
-    ? Math.min(0.26, Number(sectionEvidence.blockers?.length || 0) * 0.12)
+    ? Math.min(0.26, Number(nonConstructionBlockers.length || 0) * 0.12)
     : 0;
   const inferencePenalty = useSectionEvidence
     ? Math.min(0.22, inferredEvidenceScore * 0.22)
@@ -218,6 +231,18 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     Number(sectionEvidenceSummary.cutStairCount || 0) === 0
       ? 0.14
       : 0;
+  const constructionPenalty =
+    useSectionEvidence &&
+    String(
+      sectionEvidenceSummary.sectionConstructionTruthQuality || "",
+    ).toLowerCase() === "blocked"
+      ? 0.18
+      : useSectionEvidence &&
+          String(
+            sectionEvidenceSummary.sectionConstructionTruthQuality || "",
+          ).toLowerCase() === "weak"
+        ? 0.08
+        : 0;
   const usefulness = clamp(
     stairAlignment * 0.19 +
       roomCoverage * 0.16 +
@@ -226,10 +251,12 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       levelSpan * 0.1 +
       strategyCommunication * 0.08 +
       (useSectionEvidence ? evidenceUsefulness * 0.12 : 0) +
-      (useSectionEvidence ? directEvidenceScore * 0.2 : 0) +
+      (useSectionEvidence ? directEvidenceScore * 0.17 : 0) +
+      (useSectionEvidence ? constructionTruthScore * 0.08 : 0) +
       (useSectionEvidence ? communicationValue * 0.05 : 0) +
       (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
       (useSectionEvidence ? cutSpecificity * 0.05 : 0) -
+      constructionPenalty -
       spatialTruthPenalty -
       inferencePenalty -
       evidencePenalty -
@@ -279,6 +306,22 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   ) {
     sectionCandidateQuality = "block";
   }
+  if (
+    useSectionEvidence &&
+    String(
+      sectionEvidenceSummary.sectionConstructionTruthQuality || "",
+    ).toLowerCase() === "blocked"
+  ) {
+    sectionCandidateQuality = "block";
+  } else if (
+    useSectionEvidence &&
+    String(
+      sectionEvidenceSummary.sectionConstructionTruthQuality || "",
+    ).toLowerCase() === "weak" &&
+    sectionCandidateQuality === "pass"
+  ) {
+    sectionCandidateQuality = "warning";
+  }
 
   const rationale = [
     candidate.strategyName
@@ -296,6 +339,9 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     useSectionEvidence
       ? `Direct evidence ${directEvidenceScore.toFixed(2)}, inferred burden ${inferredEvidenceScore.toFixed(2)}, communication value ${communicationValue.toFixed(2)}.`
       : "Section truth scoring is not active for this candidate.",
+    useSectionEvidence
+      ? `Construction truth ${constructionTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.sectionConstructionTruthQuality || "provisional")}).`
+      : "Construction truth scoring is not active for this candidate.",
     ...sectionEvidence.rationale,
   ];
 
@@ -311,11 +357,13 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       strategyCommunication: round(strategyCommunication),
       sectionEvidenceUsefulness: round(evidenceUsefulness),
       directEvidenceScore: round(directEvidenceScore),
+      constructionTruthScore: round(constructionTruthScore),
       inferredEvidenceScore: round(inferredEvidenceScore),
       communicationValue: round(communicationValue),
       sectionNearEvidence: round(nearEvidenceScore),
       cutSpecificity: round(cutSpecificity),
       inferencePenalty: round(inferencePenalty),
+      constructionPenalty: round(constructionPenalty),
       sectionEvidencePenalty: round(evidencePenalty),
       unsupportedEvidencePenalty: round(unsupportedPenalty),
     },
@@ -374,8 +422,30 @@ export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
       const leftDirect = Number(
         left.sectionEvidenceSummary?.directEvidenceScore || 0,
       );
+      const rightConstruction = Number(
+        right.sectionEvidenceSummary?.constructionEvidenceScore || 0,
+      );
+      const leftConstruction = Number(
+        left.sectionEvidenceSummary?.constructionEvidenceScore || 0,
+      );
+      const rightConstructionSpecificity =
+        Number(right.sectionEvidenceSummary?.cutWallExactClipCount || 0) +
+        Number(right.sectionEvidenceSummary?.cutOpeningExactClipCount || 0) +
+        Number(right.sectionEvidenceSummary?.cutStairCount || 0) +
+        Number(right.sectionEvidenceSummary?.directSlabExactClipCount || 0);
+      const leftConstructionSpecificity =
+        Number(left.sectionEvidenceSummary?.cutWallExactClipCount || 0) +
+        Number(left.sectionEvidenceSummary?.cutOpeningExactClipCount || 0) +
+        Number(left.sectionEvidenceSummary?.cutStairCount || 0) +
+        Number(left.sectionEvidenceSummary?.directSlabExactClipCount || 0);
       if (rightDirect !== leftDirect) {
         return rightDirect - leftDirect;
+      }
+      if (rightConstruction !== leftConstruction) {
+        return rightConstruction - leftConstruction;
+      }
+      if (rightConstructionSpecificity !== leftConstructionSpecificity) {
+        return rightConstructionSpecificity - leftConstructionSpecificity;
       }
       const rightCommunication = Number(
         right.sectionEvidenceSummary?.communicationValue || 0,

@@ -19,11 +19,19 @@ export function placeSectionTextBlocks({
   const margin = 72;
   const lineGap = 6;
   const maxWidth = Math.min(360, Math.round(width * 0.34));
-  const anchorX =
-    anchor === "top-right"
-      ? Math.max(margin, width - margin - maxWidth)
-      : margin;
-  let cursorY = 68;
+  const rightAnchored = anchor === "top-right" || anchor === "bottom-right";
+  const bottomAnchored = anchor === "bottom-left" || anchor === "bottom-right";
+  const anchorX = rightAnchored
+    ? Math.max(margin, width - margin - maxWidth)
+    : margin;
+  const estimatedHeight = (items || []).reduce(
+    (sum, item) =>
+      sum + Math.max(14, Number(item.fontSize || 10) + 6) + lineGap,
+    0,
+  );
+  let cursorY = bottomAnchored
+    ? Math.max(68, height - margin - estimatedHeight + lineGap)
+    : 68;
 
   const placements = (items || []).map((item) => {
     const fontSize = Number(item.fontSize || 10);

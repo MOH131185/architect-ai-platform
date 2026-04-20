@@ -124,8 +124,21 @@ function computeElevationRichness(metadata = {}) {
 function computeSectionUsefulness(metadata = {}) {
   if (Number.isFinite(Number(metadata.section_usefulness_score))) {
     const base = clamp(Number(metadata.section_usefulness_score), 0, 1);
+    const hasEvidenceBreakdown =
+      metadata.section_direct_evidence_score !== undefined ||
+      metadata.section_inferred_evidence_score !== undefined ||
+      metadata.section_communication_value !== undefined ||
+      metadata.section_construction_evidence_score !== undefined;
+    if (!hasEvidenceBreakdown) {
+      return base;
+    }
     const directTruth = clamp(
       Number(metadata.section_direct_evidence_score || 0),
+      0,
+      1,
+    );
+    const constructionTruth = clamp(
+      Number(metadata.section_construction_evidence_score || 0),
       0,
       1,
     );
@@ -141,7 +154,8 @@ function computeSectionUsefulness(metadata = {}) {
     );
     return clamp(
       base * 0.42 +
-        directTruth * 0.34 +
+        directTruth * 0.24 +
+        constructionTruth * 0.18 +
         communicationValue * 0.24 -
         inferencePenalty * 0.18,
       0,
@@ -351,6 +365,76 @@ export function scoreTechnicalPanel({
   }
   if (
     drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase14") &&
+    String(metadata.section_construction_truth_quality || "").toLowerCase() ===
+      "blocked"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} construction truth is blocked, so the section cannot be treated as drafting-grade technical output.`,
+    );
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase14") &&
+    String(metadata.section_construction_truth_quality || "").toLowerCase() ===
+      "weak"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} construction truth is still weaker than preferred for a final board section.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionScoringPhase14") &&
+    String(metadata.cut_wall_truth_quality || "").toLowerCase() === "blocked"
+  ) {
+    const directEvidenceStrong =
+      String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
+        "verified" &&
+      Number(metadata.section_direct_evidence_score || 0) >= 0.72;
+    const constructionBlocked =
+      String(
+        metadata.section_construction_truth_quality || "",
+      ).toLowerCase() === "blocked";
+    if (constructionBlocked || !directEvidenceStrong) {
+      blockers.push(
+        `${drawing.title || drawingType} does not resolve enough cut wall truth for drafting-grade section credibility.`,
+      );
+    } else {
+      warnings.push(
+        `${drawing.title || drawingType} wall construction truth remains partial even though direct cut evidence is otherwise strong.`,
+      );
+    }
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionScoringPhase14") &&
+    String(metadata.slab_truth_quality || "").toLowerCase() === "blocked"
+  ) {
+    const directEvidenceStrong =
+      String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
+        "verified" &&
+      Number(metadata.section_direct_evidence_score || 0) >= 0.72;
+    if (!directEvidenceStrong) {
+      blockers.push(
+        `${drawing.title || drawingType} does not communicate slab/floor construction clearly enough.`,
+      );
+    } else {
+      warnings.push(
+        `${drawing.title || drawingType} slab/floor construction still depends partly on contextual support.`,
+      );
+    }
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionScoringPhase14") &&
+    String(metadata.foundation_truth_quality || "").toLowerCase() === "blocked"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} still relies on contextual foundation truth.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
     isFeatureEnabled("useSectionCredibilityGatePhase13") &&
     String(metadata.section_inferred_evidence_quality || "").toLowerCase() ===
       "blocked"
@@ -465,14 +549,20 @@ export function scoreTechnicalPanel({
   return {
     version:
       drawingType === "section" &&
-      isFeatureEnabled("useSectionCredibilityGatePhase13")
-        ? "phase13-technical-panel-scoring-v1"
-        : fragmentQuality !== null &&
-            (drawingType === "elevation" || drawingType === "section")
-          ? "phase10-technical-panel-scoring-v1"
-          : fragmentQuality !== null
-            ? "phase9-technical-panel-scoring-v1"
-            : "phase8-technical-panel-scoring-v1",
+      (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
+        isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
+        isFeatureEnabled("useSectionConstructionScoringPhase14") ||
+        isFeatureEnabled("useSectionConstructionCredibilityGatePhase14"))
+        ? "phase14-technical-panel-scoring-v1"
+        : drawingType === "section" &&
+            isFeatureEnabled("useSectionCredibilityGatePhase13")
+          ? "phase13-technical-panel-scoring-v1"
+          : fragmentQuality !== null &&
+              (drawingType === "elevation" || drawingType === "section")
+            ? "phase10-technical-panel-scoring-v1"
+            : fragmentQuality !== null
+              ? "phase9-technical-panel-scoring-v1"
+              : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,
@@ -491,7 +581,12 @@ export function scoreTechnicalPanel({
         ? { elevationRichness: round(elevationRichness) }
         : {}),
       ...(drawingType === "section"
-        ? { sectionUsefulness: round(sectionUsefulness) }
+        ? {
+            sectionUsefulness: round(sectionUsefulness),
+            sectionConstructionTruth: round(
+              Number(metadata.section_construction_evidence_score || 0),
+            ),
+          }
         : {}),
     },
     warnings: [...new Set(warnings)],

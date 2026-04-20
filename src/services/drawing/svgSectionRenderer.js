@@ -5,6 +5,11 @@ import {
   resolveSectionCutCoordinate,
   sectionAxis,
 } from "./sectionEvidenceService.js";
+import { buildSectionConstructionGeometry } from "./sectionConstructionGeometryService.js";
+import { getSectionLineweights } from "./sectionLineweightService.js";
+import { buildSectionWallDetailMarkup } from "./sectionWallDetailService.js";
+import { buildSectionOpeningDetailMarkup } from "./sectionOpeningDetailService.js";
+import { buildSectionStairDetailMarkup } from "./sectionStairDetailService.js";
 
 function escapeXml(value) {
   return String(value)
@@ -138,31 +143,65 @@ function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale) {
   };
 }
 
-function renderFoundation(baseX, baseY, widthPx) {
+function renderFoundation(
+  baseX,
+  baseY,
+  widthPx,
+  lineweights = {},
+  foundationTruthQuality = "weak",
+) {
+  const quality = String(foundationTruthQuality || "weak").toLowerCase();
+  const contextual = quality !== "verified";
+  const fillOpacity =
+    quality === "blocked" ? 0.48 : quality === "weak" ? 0.66 : 1;
+  const dasharray = quality === "blocked" ? ' stroke-dasharray="8 5"' : "";
   return `
-    <g id="phase8-section-foundation">
-      <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="#ded8cc" />
-      <rect x="${baseX + widthPx * 0.08}" y="${baseY - 18}" width="${widthPx * 0.12}" height="18" fill="#c8c0b2" stroke="#444" stroke-width="1.2" />
-      <rect x="${baseX + widthPx * 0.8}" y="${baseY - 18}" width="${widthPx * 0.12}" height="18" fill="#c8c0b2" stroke="#444" stroke-width="1.2" />
-      <line x1="${baseX - 14}" y1="${baseY}" x2="${baseX + widthPx + 14}" y2="${baseY}" stroke="#1f2937" stroke-width="2" />
+    <g id="phase8-section-foundation" data-truth="${quality}">
+      <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="#ded8cc" fill-opacity="${fillOpacity}" />
+      <rect x="${baseX + widthPx * 0.08}" y="${baseY - 18}" width="${widthPx * 0.12}" height="18" fill="#c8c0b2" fill-opacity="${fillOpacity}" stroke="#444" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
+      <rect x="${baseX + widthPx * 0.8}" y="${baseY - 18}" width="${widthPx * 0.12}" height="18" fill="#c8c0b2" fill-opacity="${fillOpacity}" stroke="#444" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
+      <line x1="${baseX - 14}" y1="${baseY}" x2="${baseX + widthPx + 14}" y2="${baseY}" stroke="#1f2937" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+      <line x1="${baseX - 14}" y1="${baseY + 12}" x2="${baseX + widthPx + 14}" y2="${baseY + 12}" stroke="#8b8172" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="6 4" />
+      ${
+        contextual
+          ? `<text x="${baseX + widthPx - 6}" y="${baseY + 34}" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="#6b7280">FOUNDATION CONTEXTUAL</text>`
+          : ""
+      }
     </g>
   `;
 }
 
-function renderRoof(baseX, topY, widthPx, roofLanguage = "pitched") {
+function renderRoof(
+  baseX,
+  topY,
+  widthPx,
+  roofLanguage = "pitched",
+  lineweights = {},
+  roofTruthQuality = "weak",
+) {
+  const quality = String(roofTruthQuality || "weak").toLowerCase();
+  const dasharray = quality === "verified" ? "" : ' stroke-dasharray="7 4"';
+  const strokeOpacity =
+    quality === "blocked" ? 0.52 : quality === "weak" ? 0.74 : 1;
   const flat = String(roofLanguage || "")
     .toLowerCase()
     .includes("flat");
   if (flat) {
     return `
-      <rect x="${baseX}" y="${topY - 12}" width="${widthPx}" height="12" fill="#d5dae1" stroke="#111" stroke-width="1.6" />
-      <line x1="${baseX}" y1="${topY - 12}" x2="${baseX + widthPx}" y2="${topY - 12}" stroke="#111" stroke-width="2" />
+      <g id="phase14-section-roof" data-truth="${quality}">
+      <rect x="${baseX}" y="${topY - 12}" width="${widthPx}" height="12" fill="#d5dae1" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
+      <line x1="${baseX}" y1="${topY - 12}" x2="${baseX + widthPx}" y2="${topY - 12}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+      <line x1="${baseX + 8}" y1="${topY - 7}" x2="${baseX + widthPx - 8}" y2="${topY - 7}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+      </g>
     `;
   }
 
   return `
-    <path d="M ${baseX} ${topY} L ${baseX + widthPx / 2} ${topY - 52} L ${baseX + widthPx} ${topY}" fill="none" stroke="#111" stroke-width="2" />
-    <line x1="${baseX + 10}" y1="${topY - 8}" x2="${baseX + widthPx - 10}" y2="${topY - 8}" stroke="#6b7280" stroke-width="0.8" stroke-dasharray="4 4" />
+    <g id="phase14-section-roof" data-truth="${quality}">
+    <path d="M ${baseX} ${topY} L ${baseX + widthPx / 2} ${topY - 52} L ${baseX + widthPx} ${topY}" fill="none" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+    <path d="M ${baseX + 10} ${topY} L ${baseX + widthPx / 2} ${topY - 40} L ${baseX + widthPx - 10} ${topY}" fill="none" stroke="#6b7280" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 0.9}"${dasharray} />
+    <line x1="${baseX + 10}" y1="${topY - 8}" x2="${baseX + widthPx - 10}" y2="${topY - 8}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
+    </g>
   `;
 }
 
@@ -176,16 +215,19 @@ function renderCutRooms(
 ) {
   const markup = cutRooms
     .map((room) => {
-      const level = levelProfiles.find((entry) => entry.id === room.level_id);
+      const level =
+        room.level || levelProfiles.find((entry) => entry.id === room.level_id);
       if (!level) {
         return "";
       }
 
-      const projection = sectionDisplayRange(room, sectionType);
-      const x = baseX + projection.start * scale;
-      const widthPx = Math.max(18, (projection.end - projection.start) * scale);
-      const y = baseY - level.top_m * scale;
-      const heightPx = Math.max(24, Number(level.height_m || 3.2) * scale);
+      const projection = room.range || sectionDisplayRange(room, sectionType);
+      const x = room.x ?? baseX + projection.start * scale;
+      const widthPx =
+        room.width ?? Math.max(18, (projection.end - projection.start) * scale);
+      const y = room.y ?? baseY - level.top_m * scale;
+      const heightPx =
+        room.height ?? Math.max(24, Number(level.height_m || 3.2) * scale);
       const name = escapeXml(
         String(room.name || room.id || "ROOM").toUpperCase(),
       );
@@ -221,21 +263,27 @@ function renderStairCut(
   const markup = (stairs || [])
     .map((stair) => {
       const level =
+        stair.level ||
         levelProfiles.find((entry) => entry.id === stair.level_id) ||
         levelProfiles[0];
       if (!level) {
         return "";
       }
-      const projection = sectionDisplayRange(stair, sectionType);
-      const x = baseX + projection.start * scale;
-      const widthPx = Math.max(20, (projection.end - projection.start) * scale);
+      const projection = stair.range || sectionDisplayRange(stair, sectionType);
+      const x = stair.x ?? baseX + projection.start * scale;
+      const widthPx =
+        stair.width ??
+        Math.max(20, (projection.end - projection.start) * scale);
       const y =
+        stair.y ??
         baseY - (level.bottom_m + Number(level.height_m || 3.2) * 0.95) * scale;
-      const heightPx = Math.max(
-        28,
-        Number(stair.depth_m || stair.bbox?.height || 2.8) * scale,
-      );
-      const treadCount = 7;
+      const heightPx =
+        stair.height ??
+        Math.max(
+          28,
+          Number(stair.depth_m || stair.bbox?.height || 2.8) * scale,
+        );
+      const treadCount = stair.treadCount || 7;
       const treadSpacing = heightPx / treadCount;
       const treads = Array.from({ length: treadCount }, (_, index) => {
         const treadY = y + treadSpacing * (index + 1);
@@ -257,6 +305,28 @@ function renderStairCut(
     markup: `<g id="phase8-section-stair-cuts">${markup}</g>`,
     count: (stairs || []).length,
     treadCount: (stairs || []).length * 7,
+  };
+}
+
+function renderSlabCuts(
+  slabs = [],
+  lineweights = {},
+  slabTruthQuality = "weak",
+) {
+  const quality = String(slabTruthQuality || "weak").toLowerCase();
+  const dasharray = quality === "verified" ? "" : ' stroke-dasharray="6 4"';
+  const markup = (slabs || [])
+    .map(
+      (slab) => `
+        <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" data-truth="${quality}">
+          <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="#111" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
+          <line x1="${slab.x || 0}" y1="${slab.y + 4}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + 4}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+        </g>`,
+    )
+    .join("");
+  return {
+    markup: `<g id="phase14-section-slabs">${markup}</g>`,
+    count: (slabs || []).length,
   };
 }
 
@@ -383,6 +453,16 @@ export function renderSectionSvg(
   const baseY = height - padding;
   const sectionEvidence =
     options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
+  const lineweights = getSectionLineweights({
+    constructionTruthQuality:
+      sectionEvidence.summary?.sectionConstructionTruthQuality ||
+      sectionEvidence.summary?.directEvidenceQuality ||
+      "weak",
+  });
+  const roofTruthQuality = sectionEvidence.summary?.roofTruthQuality || "weak";
+  const slabTruthQuality = sectionEvidence.summary?.slabTruthQuality || "weak";
+  const foundationTruthQuality =
+    sectionEvidence.summary?.foundationTruthQuality || "weak";
   const cutCoordinate = resolveSectionCutCoordinate(
     geometry,
     sectionProfile,
@@ -395,6 +475,18 @@ export function renderSectionSvg(
   const geometryComplete =
     sectionEvidence.summary?.geometryCommunicable !== false &&
     levelProfiles.length > 0;
+  const useDraftingGradeGraphics = isFeatureEnabled(
+    "useDraftingGradeSectionGraphicsPhase14",
+  );
+  const constructionGeometry = buildSectionConstructionGeometry({
+    geometry,
+    sectionType,
+    sectionEvidence,
+    baseX,
+    baseY,
+    scale,
+    levelProfiles,
+  });
 
   if (
     isFeatureEnabled("useSectionRendererUpgradePhase8") &&
@@ -434,44 +526,88 @@ export function renderSectionSvg(
     levelProfiles,
     scale,
   );
-  const foundation = renderFoundation(baseX, baseY, horizontalExtent * scale);
+  const foundation = renderFoundation(
+    baseX,
+    baseY,
+    horizontalExtent * scale,
+    lineweights,
+    foundationTruthQuality,
+  );
   const cutRoomMarkup = renderCutRooms(
-    cutRooms,
+    constructionGeometry.rooms.length ? constructionGeometry.rooms : cutRooms,
     sectionType,
     levelProfiles,
     baseX,
     baseY,
     scale,
   );
-  const stairMarkup = renderStairCut(
-    intersectedStairs,
-    sectionType,
-    baseX,
-    baseY,
-    scale,
-    levelProfiles,
-  );
-  const useClippedGraphics = isFeatureEnabled(
-    "useClippedSectionGraphicsPhase13",
-  );
-  const wallMarkup = useClippedGraphics
-    ? renderCutWalls(cutWalls, sectionType, baseX, baseY, scale, levelProfiles)
-    : { markup: "", count: 0 };
-  const openingMarkup = useClippedGraphics
-    ? renderCutOpenings(
-        cutOpenings,
+  const stairMarkup = useDraftingGradeGraphics
+    ? buildSectionStairDetailMarkup({
+        stairs: constructionGeometry.stairs,
+        lineweights,
+      })
+    : renderStairCut(
+        constructionGeometry.stairs.length
+          ? constructionGeometry.stairs
+          : intersectedStairs,
         sectionType,
         baseX,
         baseY,
         scale,
         levelProfiles,
-      )
+      );
+  const useClippedGraphics = isFeatureEnabled(
+    "useClippedSectionGraphicsPhase13",
+  );
+  const wallMarkup = useClippedGraphics
+    ? useDraftingGradeGraphics
+      ? buildSectionWallDetailMarkup({
+          walls: constructionGeometry.walls,
+          lineweights,
+        })
+      : renderCutWalls(
+          constructionGeometry.walls.length
+            ? constructionGeometry.walls
+            : cutWalls,
+          sectionType,
+          baseX,
+          baseY,
+          scale,
+          levelProfiles,
+        )
     : { markup: "", count: 0 };
+  const openingMarkup = useClippedGraphics
+    ? useDraftingGradeGraphics
+      ? buildSectionOpeningDetailMarkup({
+          openings: constructionGeometry.openings,
+          lineweights,
+        })
+      : renderCutOpenings(
+          constructionGeometry.openings.length
+            ? constructionGeometry.openings
+            : cutOpenings,
+          sectionType,
+          baseX,
+          baseY,
+          scale,
+          levelProfiles,
+        )
+    : { markup: "", count: 0 };
+  const slabMarkup = renderSlabCuts(
+    constructionGeometry.slabs.map((slab) => ({
+      ...slab,
+      x: baseX,
+    })),
+    lineweights,
+    slabTruthQuality,
+  );
   const roof = renderRoof(
     baseX,
     baseY - totalHeight * scale,
     horizontalExtent * scale,
     styleDNA.roof_language || geometry.roof?.type || "pitched gable",
+    lineweights,
+    roofTruthQuality,
   );
   const usefulnessScore = roundMetric(
     clamp(
@@ -488,6 +624,7 @@ export function renderSectionSvg(
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="#fff" />
+  ${stairMarkup.defs || ""}
   <text x="${padding}" y="34" font-size="22" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
     sectionProfile?.strategyName
       ? `${sectionProfile.strategyName} Section`
@@ -499,6 +636,7 @@ export function renderSectionSvg(
   ${foundation}
   ${roof}
   ${datums.markup}
+  ${slabMarkup.markup}
   ${cutRoomMarkup.markup}
   ${wallMarkup.markup}
   ${openingMarkup.markup}
@@ -561,6 +699,29 @@ export function renderSectionSvg(
         sectionEvidence.summary?.inferredEvidenceScore || 0,
       section_communication_value:
         sectionEvidence.summary?.communicationValue || usefulnessScore,
+      section_construction_truth_quality:
+        sectionEvidence.summary?.sectionConstructionTruthQuality || null,
+      section_construction_evidence_score:
+        sectionEvidence.summary?.constructionEvidenceScore || 0,
+      cut_wall_truth_quality:
+        sectionEvidence.summary?.cutWallTruthQuality || null,
+      cut_wall_exact_clip_count:
+        sectionEvidence.summary?.cutWallExactClipCount || 0,
+      cut_opening_truth_quality:
+        sectionEvidence.summary?.cutOpeningTruthQuality || null,
+      cut_opening_exact_clip_count:
+        sectionEvidence.summary?.cutOpeningExactClipCount || 0,
+      stair_truth_quality: sectionEvidence.summary?.stairTruthQuality || null,
+      slab_truth_quality: sectionEvidence.summary?.slabTruthQuality || null,
+      slab_exact_clip_count:
+        sectionEvidence.summary?.directSlabExactClipCount || 0,
+      roof_truth_quality: sectionEvidence.summary?.roofTruthQuality || null,
+      roof_exact_clip_count:
+        sectionEvidence.summary?.directRoofExactClipCount || 0,
+      foundation_truth_quality:
+        sectionEvidence.summary?.foundationTruthQuality || null,
+      section_fallback_dependence:
+        sectionEvidence.summary?.constructionFallbackDependence || 0,
       section_direct_clip_count: sectionEvidence.summary?.directClipCount || 0,
       section_approximate_evidence_count:
         sectionEvidence.summary?.approximateEvidenceCount || 0,

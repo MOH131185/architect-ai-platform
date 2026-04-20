@@ -23,6 +23,9 @@ export function evaluateDrawingFragmentQuality({
     warnings: panel.warnings || [],
     thresholds: panel.score?.thresholds || null,
     categoryScores: panel.score?.categoryScores || null,
+    sectionConstructionTruthQuality:
+      panel.drawing?.technical_quality_metadata
+        ?.section_construction_truth_quality || null,
     emptyGeometryLikely:
       panel.score?.categoryScores?.geometryCompleteness === 0 ||
       (panel.blockers || []).some((entry) =>

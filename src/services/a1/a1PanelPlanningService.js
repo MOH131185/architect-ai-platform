@@ -206,6 +206,10 @@ export function planA1Panels({
         technicalPanelGate.sectionInferredEvidenceQuality ||
         finalSheetRegression.sectionInferredEvidenceQuality ||
         "provisional",
+      sectionConstructionTruthQuality:
+        technicalPanelGate.sectionConstructionTruthQuality ||
+        finalSheetRegression.sectionConstructionTruthQuality ||
+        "provisional",
       renderedTextZone:
         finalSheetRegression.renderedTextZone ||
         finalSheetRegression.textZoneSanity?.renderedTextZone ||

@@ -86,6 +86,15 @@ export function evaluateA1TechnicalCredibility({
       "Section inferred-evidence burden remains higher than preferred for final technical credibility.",
     );
   }
+  if (finalSheetRegression?.sectionConstructionTruthQuality === "blocked") {
+    blockers.push(
+      "Section construction-truth quality is blocked because cut wall/opening/stair/slab/roof/foundation evidence is too weak for drafting-grade section credibility.",
+    );
+  } else if (finalSheetRegression?.sectionConstructionTruthQuality === "weak") {
+    warnings.push(
+      "Section construction truth remains weaker than preferred for drafting-grade final technical credibility.",
+    );
+  }
   if (finalSheetRegression?.sideFacadeEvidenceQuality === "blocked") {
     blockers.push(
       "Side-facade evidence quality is blocked because the available side schemas remain too thin for credible elevations.",
@@ -110,7 +119,11 @@ export function evaluateA1TechnicalCredibility({
       : "pass";
 
   return {
-    version: "phase13-a1-technical-credibility-v1",
+    version:
+      finalSheetRegression?.sectionConstructionTruthQuality &&
+      finalSheetRegression?.sectionConstructionTruthQuality !== "provisional"
+        ? "phase14-a1-technical-credibility-v1"
+        : "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -131,6 +144,8 @@ export function evaluateA1TechnicalCredibility({
         finalSheetRegression?.sectionDirectEvidenceQuality || "provisional",
       sectionInferredEvidenceQuality:
         finalSheetRegression?.sectionInferredEvidenceQuality || "provisional",
+      sectionConstructionTruthQuality:
+        finalSheetRegression?.sectionConstructionTruthQuality || "provisional",
       sideFacadeEvidenceQuality:
         finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
       renderedTextEvidenceQuality:

@@ -49,6 +49,20 @@ export function buildSectionAnnotations({
       fontWeight: 600,
     });
   }
+  if (technicalQualityMetadata.section_construction_truth_quality) {
+    items.push({
+      id: "section-callout-construction",
+      text: `Construction ${String(
+        technicalQualityMetadata.section_construction_truth_quality || "weak",
+      ).toUpperCase()} · wall ${String(
+        technicalQualityMetadata.cut_wall_truth_quality || "weak",
+      ).toUpperCase()} · opening ${String(
+        technicalQualityMetadata.cut_opening_truth_quality || "weak",
+      ).toUpperCase()}`,
+      fontSize: 8.5,
+      fontWeight: 600,
+    });
+  }
   if (sectionProfile.strategyName || sectionProfile.chosenStrategy?.name) {
     items.push({
       id: "section-callout-strategy",
@@ -82,6 +96,14 @@ export function buildSectionAnnotations({
       width,
       height,
       anchor: "top-right",
+    });
+  }
+  if (placement.overflow) {
+    placement = placeSectionTextBlocks({
+      items,
+      width,
+      height,
+      anchor: "bottom-left",
     });
   }
 

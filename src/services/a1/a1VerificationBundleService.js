@@ -186,6 +186,10 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sectionInferredEvidenceQuality ||
     technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
     "provisional";
+  const sectionConstructionTruthQuality =
+    finalSheetRegression?.sectionConstructionTruthQuality ||
+    technicalCredibility?.summary?.sectionConstructionTruthQuality ||
+    "provisional";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -196,7 +200,10 @@ export function buildA1VerificationBundle({
     canonicalDecision(publishability?.status || overall, decisive);
 
   const canonicalVerification = {
-    version: "phase13-a1-verification-v1",
+    version:
+      sectionConstructionTruthQuality !== "provisional"
+        ? "phase14-a1-verification-v1"
+        : "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
@@ -208,6 +215,7 @@ export function buildA1VerificationBundle({
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
+    sectionConstructionTruthQuality,
     sideFacadeEvidenceQuality,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
     components: {

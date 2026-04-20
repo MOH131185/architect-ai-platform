@@ -134,6 +134,7 @@ function alignVerificationBundle(bundle = null, verification = null) {
     sectionEvidenceQuality: canonical.sectionEvidenceQuality,
     sectionDirectEvidenceQuality: canonical.sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality: canonical.sectionInferredEvidenceQuality,
+    sectionConstructionTruthQuality: canonical.sectionConstructionTruthQuality,
     sideFacadeEvidenceQuality: canonical.sideFacadeEvidenceQuality,
     ocrEvidenceQuality: canonical.ocrEvidenceQuality,
     verification: canonical,
@@ -265,6 +266,7 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionConstructionTruthQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -300,6 +302,7 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionConstructionTruthQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -345,6 +348,7 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionConstructionTruthQuality",
       "sectionStrategyRationale",
       "technicalCredibility",
       "technicalCredibilityPhase",
@@ -1066,6 +1070,10 @@ export function buildProjectReadinessResponse({
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionConstructionTruthQuality:
+      verificationBundle?.sectionConstructionTruthQuality ||
+      result.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
@@ -1224,6 +1232,10 @@ export function buildPlanA1PanelsResponse({
     sectionInferredEvidenceQuality:
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
+      "provisional",
+    sectionConstructionTruthQuality:
+      verificationBundle?.sectionConstructionTruthQuality ||
+      result.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
     technicalFragmentScores:
       result.technicalFragmentScores ||
@@ -1458,6 +1470,11 @@ export function buildProjectHealthResponse({
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       result.readiness?.finalSheetRegression?.sectionInferredEvidenceQuality ||
+      "provisional",
+    sectionConstructionTruthQuality:
+      verificationBundle?.sectionConstructionTruthQuality ||
+      result.finalSheetRegression?.sectionConstructionTruthQuality ||
+      result.readiness?.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||

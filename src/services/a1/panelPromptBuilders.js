@@ -162,13 +162,47 @@ function buildBuildingIdentityBlock(masterDNA = {}, projectContext = {}) {
   // Building type specific descriptors to help FLUX understand the form
   const typeDesc = buildBuildingTypeDescriptor(buildingType, dims);
 
+  // A1v3 P4: prefer the pre-computed canonical palette + fingerprint on the
+  // project context. Emits explicit hex values + roof pitch + window rhythm
+  // so every panel (including hero_3d) renders from the same locked SSOT.
+  const sharedPalette =
+    isFeatureEnabled("useSharedCanonicalPaletteA1v3") &&
+    projectContext?.canonicalPalette
+      ? projectContext.canonicalPalette
+      : null;
+  const sharedFingerprint = projectContext?.designFingerprint || null;
+  let paletteLine = `Primary material: ${materials[0] || "as specified"}`;
+  if (sharedPalette?.primary?.hexColor) {
+    const primary = sharedPalette.primary;
+    const secondary = sharedPalette.secondary;
+    const roof = sharedPalette.roof;
+    const trim = sharedPalette.trim;
+    const glazing = sharedPalette.glazing;
+    const roofPitch =
+      sharedFingerprint?.roofPitchDegrees ??
+      masterDNA?._structured?.geometry_rules?.roof_pitch_degrees ??
+      "context-led";
+    const windowRhythm =
+      sharedFingerprint?.windowRhythm ||
+      sharedFingerprint?.facadeRhythm ||
+      "regular fenestration";
+    paletteLine = `Canonical palette (MATCH EXACTLY):
+ • Primary: ${primary.name} ${primary.hexColor} — ${primary.application || "walls"}
+ • Secondary: ${secondary?.name || "n/a"} ${secondary?.hexColor || ""} — ${secondary?.application || "accents"}
+ • Roof: ${roof?.name || "n/a"} ${roof?.hexColor || ""} — ${roof?.application || "roof covering"}
+ • Trim: ${trim?.name || "n/a"} ${trim?.hexColor || ""} — ${trim?.application || "trim"}
+ • Glazing: ${glazing?.name || "n/a"} ${glazing?.hexColor || ""} — ${glazing?.application || "windows"}
+Roof pitch: ${roofPitch} degrees
+Window rhythm: ${windowRhythm}`;
+  }
+
   return `=== BUILDING IDENTITY (MANDATORY - DO NOT DEVIATE) ===
 SHOW EXACTLY ONE (1) SINGLE FREESTANDING DETACHED ${buildingType.toUpperCase()}.
 Building: ${style} detached ${buildingType}
 Floors: EXACTLY ${dims.floors} — ${storeyDesc}
 Dimensions: ${dims.length}m long × ${dims.width}m wide × ${dims.height}m tall
 Roof: ${roofType}
-Primary material: ${materials[0] || "as specified"}
+${paletteLine}
 ${typeDesc}
 CRITICAL: This is ONE SINGLE FREESTANDING BUILDING standing ALONE with open space on ALL four sides.
 It is NOT attached to any other building. NOT a row of houses. NOT terraced. NOT semi-detached.

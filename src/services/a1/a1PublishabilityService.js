@@ -49,6 +49,14 @@ function filterEvidenceOverriddenWarnings(
         return false;
       }
       if (
+        evidenceProfile.sectionConstructionTruthQuality === "verified" &&
+        /Section construction-truth quality is blocked|Section construction truth remains weaker than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
         evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
         /Side-facade evidence remains weaker than preferred|Side elevations remain weaker than preferred|Elevation (east|west) remains weaker than preferred/i.test(
           text,
@@ -91,6 +99,10 @@ export function classifyA1Publishability({
     finalSheetRegression?.sectionInferredEvidenceQuality ||
     technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
     "provisional";
+  const sectionConstructionTruthQuality =
+    finalSheetRegression?.sectionConstructionTruthQuality ||
+    technicalCredibility?.summary?.sectionConstructionTruthQuality ||
+    "provisional";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -100,6 +112,7 @@ export function classifyA1Publishability({
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
+    sectionConstructionTruthQuality,
     sideFacadeEvidenceQuality,
   };
   const warnings = filterEvidenceOverriddenWarnings(
@@ -121,7 +134,10 @@ export function classifyA1Publishability({
   const decisive = resolvedPhase === "post_compose";
 
   return {
-    version: "phase13-a1-publishability-v1",
+    version:
+      sectionConstructionTruthQuality !== "provisional"
+        ? "phase14-a1-publishability-v1"
+        : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,

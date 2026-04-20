@@ -1107,6 +1107,18 @@ export const FEATURE_FLAGS = {
   /** Phase 13 section credibility gate in final A1 readiness/publishability */
   useSectionCredibilityGatePhase13: true,
 
+  /** Phase 14 construction-truth classification for sections */
+  useSectionConstructionTruthPhase14: true,
+
+  /** Phase 14 drafting-grade section graphics from construction truth */
+  useDraftingGradeSectionGraphicsPhase14: true,
+
+  /** Phase 14 section candidate ranking with construction truth */
+  useSectionConstructionScoringPhase14: true,
+
+  /** Phase 14 section construction credibility gate in A1 readiness/publishability */
+  useSectionConstructionCredibilityGatePhase14: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1449,6 +1461,10 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useClippedSectionGraphicsPhase13 = true;
   FEATURE_FLAGS.useSectionTruthScoringPhase13 = true;
   FEATURE_FLAGS.useSectionCredibilityGatePhase13 = true;
+  FEATURE_FLAGS.useSectionConstructionTruthPhase14 = true;
+  FEATURE_FLAGS.useDraftingGradeSectionGraphicsPhase14 = true;
+  FEATURE_FLAGS.useSectionConstructionScoringPhase14 = true;
+  FEATURE_FLAGS.useSectionConstructionCredibilityGatePhase14 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -1910,6 +1926,22 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_SECTION_CREDIBILITY_GATE_PHASE13: {
       flag: "useSectionCredibilityGatePhase13",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CONSTRUCTION_TRUTH_PHASE14: {
+      flag: "useSectionConstructionTruthPhase14",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DRAFTING_GRADE_SECTION_GRAPHICS_PHASE14: {
+      flag: "useDraftingGradeSectionGraphicsPhase14",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CONSTRUCTION_SCORING_PHASE14: {
+      flag: "useSectionConstructionScoringPhase14",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CONSTRUCTION_CREDIBILITY_GATE_PHASE14: {
+      flag: "useSectionConstructionCredibilityGatePhase14",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

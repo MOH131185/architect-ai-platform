@@ -83,7 +83,9 @@ import {
   getHeroControlForPanel,
   HERO_REFERENCE_PANELS,
   HERO_CONTROL_STRENGTH,
+  buildFingerprintFromDNA,
 } from "./design/designFingerprintService.js";
+import { getCanonicalMaterialPalette } from "./design/canonicalMaterialPalette.js";
 import { buildPanelPrompt } from "./a1/panelPromptBuilders.js";
 import {
   runPreCompositionGate,
@@ -1826,12 +1828,44 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       // STEP 4: Generate panel jobs
       logger.info("📋 STEP 4: Planning panel generation jobs...");
       reportProgress("layout", "Planning panel generation...", 35);
+
+      // A1v3 P4: Lock canonical palette + fingerprint BEFORE any panel generates.
+      // All panel prompts (including hero_3d) read from the same hex values,
+      // replacing the legacy post-hero fingerprint-extraction approach.
+      let enrichedProjectContext = projectContext;
+      if (isFeatureEnabled("useSharedCanonicalPaletteA1v3")) {
+        try {
+          const sharedCanonicalPalette = getCanonicalMaterialPalette({
+            dna: masterDNA,
+            projectGeometry: projectContext?.projectGeometry || null,
+            facadeGrammar: projectContext?.facadeGrammar || null,
+          });
+          const sharedFingerprint = buildFingerprintFromDNA(masterDNA, {
+            projectGeometry: projectContext?.projectGeometry || null,
+            facadeGrammar: projectContext?.facadeGrammar || null,
+            portfolioStyle: projectContext?.portfolioStyle || null,
+          });
+          enrichedProjectContext = {
+            ...(projectContext || {}),
+            canonicalPalette: sharedCanonicalPalette,
+            designFingerprint: sharedFingerprint,
+          };
+          logger.info(
+            `   🎨 [A1v3 P4] Canonical palette locked: ${sharedCanonicalPalette.summary}`,
+          );
+        } catch (paletteErr) {
+          logger.warn(
+            `   ⚠️ [A1v3 P4] Palette/fingerprint lock failed: ${paletteErr.message} — continuing with legacy flow`,
+          );
+        }
+      }
+
       const panelJobs = await planPanelsFn({
         masterDNA,
         siteBoundary: siteSnapshot?.sitePolygon || null,
-        buildingType: projectContext?.buildingProgram || "residential",
+        buildingType: enrichedProjectContext?.buildingProgram || "residential",
         entranceOrientation: masterDNA?.entranceDirection || "N",
-        programSpaces: projectContext?.programSpaces || [],
+        programSpaces: enrichedProjectContext?.programSpaces || [],
         baseSeed: effectiveBaseSeed,
         climate: locationData?.climate,
         locationData: locationData,
@@ -1840,7 +1874,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         geometryMasks,
         programLock, // P0: Hard program constraint
         canonicalDesignState: typesCDS || canonicalDesignState, // Prefer typesCDS (has massing.widthM/depthM)
-        projectContext, // Thread floorCountConstraint to prompt builders
+        projectContext: enrichedProjectContext, // Thread floorCountConstraint + A1v3 palette to prompt builders
         blenderRenders: blenderOutputs?.panels || null, // Blender 3D renders for init_image
       });
 
@@ -2353,7 +2387,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
                   const rebuilt = buildPanelPrompt(futureJob.type, {
                     masterDNA,
                     locationData,
-                    projectContext,
+                    projectContext: enrichedProjectContext,
                     consistencyLock: futureJob.meta?.consistencyLock || null,
                     geometryHint: futureJob.meta?.geometryHint || null,
                     designFingerprint,
@@ -2971,7 +3005,7 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         logger,
         masterDNA,
         programLock,
-        projectContext,
+        projectContext: enrichedProjectContext,
         runId,
         siteSnapshot,
         strictCanonicalPack: isFeatureEnabled("requireCanonicalPack"),

@@ -57,12 +57,15 @@ export function runA1FinalSheetRegression({
 
   return {
     version:
+      technicalPanelRegression.sectionConstructionTruthQuality ||
       technicalPanelRegression.sectionDirectEvidenceQuality ||
       technicalPanelRegression.sectionInferredEvidenceQuality ||
       textZoneSanity.renderedTextEvidenceQuality ||
       technicalPanelRegression.sectionEvidenceQuality ||
       technicalPanelRegression.sideFacadeEvidenceQuality
-        ? "phase13-a1-final-sheet-regression-v1"
+        ? technicalPanelRegression.sectionConstructionTruthQuality
+          ? "phase14-a1-final-sheet-regression-v1"
+          : "phase13-a1-final-sheet-regression-v1"
         : textZoneSanity.renderedTextEvidenceQuality ||
             technicalPanelRegression.sectionEvidenceQuality ||
             technicalPanelRegression.sideFacadeEvidenceQuality
@@ -86,6 +89,8 @@ export function runA1FinalSheetRegression({
       technicalPanelRegression.sectionDirectEvidenceQuality || "provisional",
     sectionInferredEvidenceQuality:
       technicalPanelRegression.sectionInferredEvidenceQuality || "provisional",
+    sectionConstructionTruthQuality:
+      technicalPanelRegression.sectionConstructionTruthQuality || "provisional",
     sideFacadeEvidenceQuality:
       technicalPanelRegression.sideFacadeEvidenceQuality || "provisional",
     renderedTextEvidenceQuality:

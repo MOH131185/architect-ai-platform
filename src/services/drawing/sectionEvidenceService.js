@@ -4,6 +4,7 @@ import {
   resolveSectionCutCoordinate,
   sectionAxis,
 } from "./sectionGeometryIntersectionService.js";
+import { assessSectionConstructionSemantics } from "./sectionConstructionSemanticService.js";
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -237,19 +238,32 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       inferredStairCount: 0,
       unsupportedStairCount: 0,
       cutWallCount: 0,
+      cutWallExactClipCount: 0,
       nearWallCount: 0,
       inferredWallCount: 0,
       unsupportedWallCount: 0,
       cutOpeningCount: 0,
+      cutOpeningExactClipCount: 0,
       nearOpeningCount: 0,
       inferredOpeningCount: 0,
       unsupportedOpeningCount: 0,
       cutDoorCount: 0,
       entranceHitCount: 0,
       directSlabCount: 0,
+      directSlabExactClipCount: 0,
       nearSlabCount: 0,
       inferredSlabCount: 0,
       unsupportedSlabCount: 0,
+      directRoofExactClipCount: 0,
+      sectionConstructionTruthQuality: "provisional",
+      constructionEvidenceScore: 0,
+      cutWallTruthQuality: "provisional",
+      cutOpeningTruthQuality: "provisional",
+      stairTruthQuality: "provisional",
+      slabTruthQuality: "provisional",
+      roofTruthQuality: "provisional",
+      foundationTruthQuality: "provisional",
+      constructionFallbackDependence: 1,
       levelCount: 0,
       roofCommunicated: false,
       geometryCommunicable: false,
@@ -299,6 +313,9 @@ export function buildSectionEvidence(
     isFeatureEnabled("useTrueSectionClippingPhase13") ||
     isFeatureEnabled("useTrueSectionEvidencePhase12") ||
     isFeatureEnabled("useTrueSectionEvidencePhase11");
+  const useConstructionTruth = isFeatureEnabled(
+    "useSectionConstructionTruthPhase14",
+  );
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
@@ -533,10 +550,16 @@ export function buildSectionEvidence(
     inferredStairCount: inferredStairs.length,
     unsupportedStairCount: unsupportedStairs.length,
     cutWallCount: directWalls.length,
+    cutWallExactClipCount: directWalls.filter(
+      (entry) => entry.exactClip === true,
+    ).length,
     nearWallCount: nearWalls.length,
     inferredWallCount: inferredWalls.length,
     unsupportedWallCount: unsupportedWalls.length,
     cutOpeningCount: directOpenings.length,
+    cutOpeningExactClipCount: directOpenings.filter(
+      (entry) => entry.exactClip === true,
+    ).length,
     nearOpeningCount: nearOpenings.length,
     inferredOpeningCount: inferredOpenings.length,
     unsupportedOpeningCount: unsupportedOpenings.length,
@@ -544,9 +567,15 @@ export function buildSectionEvidence(
     entranceHitCount: directEntrances.length,
     circulationHitCount,
     directSlabCount: directSlabs.length,
+    directSlabExactClipCount: directSlabs.filter(
+      (entry) => entry.exactClip === true,
+    ).length,
     nearSlabCount: nearSlabs.length,
     inferredSlabCount: inferredSlabs.length,
     unsupportedSlabCount: unsupportedSlabs.length,
+    directRoofExactClipCount: directRoof.filter(
+      (entry) => entry.exactClip === true,
+    ).length,
     levelCount: levelProfiles.length,
     roofCommunicated:
       directRoof.length > 0 || nearRoof.length > 0 || inferredRoof.length > 0,
@@ -573,6 +602,70 @@ export function buildSectionEvidence(
   };
   summary.usefulnessScore = communicationValue;
   summary.evidenceQuality = classifySectionEvidence(summary);
+
+  const constructionSemantics = useConstructionTruth
+    ? assessSectionConstructionSemantics({
+        sectionEvidence: {
+          sectionIntersections: intersectionBundle,
+          intersections: {
+            rooms: directRooms,
+            nearRooms,
+            inferredRooms,
+            unsupportedRooms,
+            stairs: directStairs,
+            nearStairs,
+            inferredStairs,
+            unsupportedStairs,
+            walls: directWalls,
+            nearWalls,
+            inferredWalls,
+            unsupportedWalls,
+            openings: directOpenings,
+            nearOpenings,
+            inferredOpenings,
+            unsupportedOpenings,
+            slabs: directSlabs,
+            nearSlabs,
+            inferredSlabs,
+            unsupportedSlabs,
+            roofElements: directRoof,
+            nearRoofElements: nearRoof,
+            inferredRoofElements: inferredRoof,
+            unsupportedRoofElements: unsupportedRoof,
+          },
+          summary,
+          roofLanguage,
+        },
+        geometry: projectGeometry,
+      })
+    : null;
+  if (constructionSemantics) {
+    summary.sectionConstructionTruthQuality =
+      constructionSemantics.constructionTruthQuality;
+    summary.constructionEvidenceScore =
+      constructionSemantics.constructionEvidenceScore;
+    summary.cutWallTruthQuality = constructionSemantics.cutWallTruth.quality;
+    summary.cutOpeningTruthQuality =
+      constructionSemantics.cutOpeningTruth.quality;
+    summary.stairTruthQuality = constructionSemantics.stairTruth.quality;
+    summary.slabTruthQuality = constructionSemantics.slabTruth.quality;
+    summary.roofTruthQuality = constructionSemantics.roofTruth.quality;
+    summary.foundationTruthQuality =
+      constructionSemantics.foundationTruth.quality;
+    summary.constructionFallbackDependence =
+      constructionSemantics.fallbackDependence;
+    if (
+      constructionSemantics.constructionTruthQuality === "blocked" &&
+      summary.evidenceQuality !== "block"
+    ) {
+      summary.evidenceQuality = "block";
+    } else if (
+      constructionSemantics.constructionTruthQuality === "weak" &&
+      summary.evidenceQuality === "pass"
+    ) {
+      summary.evidenceQuality = "warning";
+    }
+  }
 
   const blockers = [];
   const warnings = [];
@@ -625,10 +718,31 @@ export function buildSectionEvidence(
       `Section ${sectionType} missed the main focused semantic anchors for the chosen strategy.`,
     );
   }
+  if (constructionSemantics) {
+    blockers.push(...(constructionSemantics.blockers || []));
+    warnings.push(...(constructionSemantics.warnings || []));
+    if (summary.cutWallTruthQuality === "weak") {
+      warnings.push(
+        `Section ${sectionType} resolves wall truth, but cut-wall construction depth is still thinner than preferred.`,
+      );
+    }
+    if (summary.slabTruthQuality === "blocked") {
+      blockers.push(
+        `Section ${sectionType} cannot clearly communicate slab/floor construction from canonical cut truth.`,
+      );
+    }
+    if (summary.foundationTruthQuality === "blocked") {
+      warnings.push(
+        `Section ${sectionType} foundation communication still depends on derived or contextual truth.`,
+      );
+    }
+  }
 
   return {
     version: useTrueEvidence
-      ? "phase13-section-evidence-service-v1"
+      ? useConstructionTruth
+        ? "phase14-section-evidence-service-v1"
+        : "phase13-section-evidence-service-v1"
       : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
@@ -676,9 +790,17 @@ export function buildSectionEvidence(
     roofLanguage,
     focusHits,
     circulationHitCount,
+    sectionConstructionSemantics: constructionSemantics,
     blockers: unique(blockers),
     warnings: unique(warnings),
-    rationale: explainSectionEvidence(summary, sectionProfile),
+    rationale: [
+      ...explainSectionEvidence(summary, sectionProfile),
+      ...(constructionSemantics
+        ? [
+            `Construction truth ${summary.sectionConstructionTruthQuality}; wall ${summary.cutWallTruthQuality}, opening ${summary.cutOpeningTruthQuality}, stair ${summary.stairTruthQuality}, slab ${summary.slabTruthQuality}, roof ${summary.roofTruthQuality}, foundation ${summary.foundationTruthQuality}.`,
+          ]
+        : []),
+    ],
     summary,
   };
 }

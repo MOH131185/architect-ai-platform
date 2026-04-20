@@ -68,6 +68,12 @@ function directTruthRank(candidate = {}) {
   return Number(candidate.sectionEvidenceSummary?.directEvidenceScore || 0);
 }
 
+function constructionTruthRank(candidate = {}) {
+  return Number(
+    candidate.sectionEvidenceSummary?.constructionEvidenceScore || 0,
+  );
+}
+
 function renderPlacements(placements = []) {
   return `
     <g id="phase7-section-annotations">
@@ -129,6 +135,11 @@ export function buildSectionGraphic(
       const directTruthDelta = directTruthRank(right) - directTruthRank(left);
       if (directTruthDelta !== 0) {
         return directTruthDelta;
+      }
+      const constructionTruthDelta =
+        constructionTruthRank(right) - constructionTruthRank(left);
+      if (constructionTruthDelta !== 0) {
+        return constructionTruthDelta;
       }
       const evidenceDelta = evidenceRank(right) - evidenceRank(left);
       if (evidenceDelta !== 0) {
@@ -219,6 +230,22 @@ export function buildSectionGraphic(
           sectionEvidence.summary?.inferredEvidenceScore || 0,
         section_communication_value:
           sectionEvidence.summary?.communicationValue || 0,
+        section_construction_truth_quality:
+          sectionEvidence.summary?.sectionConstructionTruthQuality || "blocked",
+        section_construction_evidence_score:
+          sectionEvidence.summary?.constructionEvidenceScore || 0,
+        cut_wall_truth_quality:
+          sectionEvidence.summary?.cutWallTruthQuality || "blocked",
+        cut_opening_truth_quality:
+          sectionEvidence.summary?.cutOpeningTruthQuality || "blocked",
+        stair_truth_quality:
+          sectionEvidence.summary?.stairTruthQuality || "blocked",
+        slab_truth_quality:
+          sectionEvidence.summary?.slabTruthQuality || "blocked",
+        roof_truth_quality:
+          sectionEvidence.summary?.roofTruthQuality || "blocked",
+        foundation_truth_quality:
+          sectionEvidence.summary?.foundationTruthQuality || "blocked",
       },
     };
   }
@@ -297,6 +324,19 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.inferredEvidenceCount || 0,
       section_inferred_evidence_score:
         sectionEvidence.summary?.inferredEvidenceScore || 0,
+      section_construction_truth_quality:
+        sectionEvidence.summary?.sectionConstructionTruthQuality || null,
+      section_construction_evidence_score:
+        sectionEvidence.summary?.constructionEvidenceScore || 0,
+      cut_wall_truth_quality:
+        sectionEvidence.summary?.cutWallTruthQuality || null,
+      cut_opening_truth_quality:
+        sectionEvidence.summary?.cutOpeningTruthQuality || null,
+      stair_truth_quality: sectionEvidence.summary?.stairTruthQuality || null,
+      slab_truth_quality: sectionEvidence.summary?.slabTruthQuality || null,
+      roof_truth_quality: sectionEvidence.summary?.roofTruthQuality || null,
+      foundation_truth_quality:
+        sectionEvidence.summary?.foundationTruthQuality || null,
       section_cut_room_count: sectionEvidence.summary?.cutRoomCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
       section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,

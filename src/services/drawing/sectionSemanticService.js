@@ -41,6 +41,8 @@ export function deriveSectionSemantics(
       sectionEvidenceSummary.evidenceQuality ||
       "warning",
   ).toLowerCase();
+  const constructionSemantics =
+    sectionEvidence.sectionConstructionSemantics || null;
   const categoryScores = sectionProfile.categoryScores || {};
   const hasFocusedStair =
     sectionEvidence.focusHits?.some((entry) =>
@@ -124,6 +126,14 @@ export function deriveSectionSemantics(
       ? 0.56
       : 0.18,
   );
+  const constructionTruthScore = Math.max(
+    Number(sectionEvidenceSummary.constructionEvidenceScore || 0),
+    constructionSemantics?.constructionTruthQuality === "verified"
+      ? 0.72
+      : constructionSemantics?.constructionTruthQuality === "weak"
+        ? 0.46
+        : 0.18,
+  );
   const inferencePenalty = Math.min(
     0.18,
     Number(sectionEvidenceSummary.inferredEvidenceScore || 0) * 0.18,
@@ -137,7 +147,8 @@ export function deriveSectionSemantics(
       volumetricScore * 0.13 +
       entranceScore * 0.05 +
       circulationNarrativeScore * 0.03 +
-      directTruthScore * 0.1 -
+      directTruthScore * 0.07 +
+      constructionTruthScore * 0.08 -
       inferencePenalty,
   );
 
@@ -182,6 +193,7 @@ export function deriveSectionSemantics(
       circulationNarrative: round(circulationNarrativeScore),
       volumetricLogic: round(volumetricScore),
       directTruth: round(directTruthScore),
+      constructionTruth: round(constructionTruthScore),
       inferencePenalty: round(inferencePenalty),
       usefulness: usefulnessScore,
     },
@@ -222,6 +234,11 @@ export function deriveSectionSemantics(
         : sectionEvidenceSummary.directEvidenceQuality === "weak"
           ? "Direct cut truth exists, but it is still thinner than preferred."
           : "Direct cut truth is too weak and the section should not silently pass as exact.",
+      sectionEvidenceSummary.sectionConstructionTruthQuality === "verified"
+        ? "Construction truth is strong enough to support drafting-grade section depiction."
+        : sectionEvidenceSummary.sectionConstructionTruthQuality === "weak"
+          ? "Construction truth exists, but wall/opening/stair/slab/roof/foundation depiction is still thinner than preferred."
+          : "Construction truth is too weak and the section should not silently pass as drafting-grade technical output.",
       sectionEvidenceSummary.inferredEvidenceQuality === "verified"
         ? "Inference burden remains low relative to direct cut truth."
         : "Inference burden still affects section meaning and should be treated honestly.",
