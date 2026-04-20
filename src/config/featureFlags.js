@@ -1131,6 +1131,21 @@ export const FEATURE_FLAGS = {
   /** Phase 15 roof/foundation section credibility gate in A1 readiness/publishability */
   useRoofFoundationSectionCredibilityGatePhase15: true,
 
+  /** Phase 16 richer canonical roof geometry generation */
+  useRicherCanonicalRoofGeometryPhase16: true,
+
+  /** Phase 16 richer canonical foundation/base-condition geometry generation */
+  useRicherCanonicalFoundationGeometryPhase16: true,
+
+  /** Phase 16 upstream construction primitives carried into downstream section truth */
+  useUpstreamConstructionPrimitivesPhase16: true,
+
+  /** Phase 16 richer roof/foundation truth modes for sections */
+  useRoofFoundationTruthPhase16: true,
+
+  /** Phase 16 roof/foundation truth-aware credibility gate */
+  useRoofFoundationCredibilityGatePhase16: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1481,6 +1496,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useCanonicalFoundationPrimitivesPhase15 = true;
   FEATURE_FLAGS.useRoofFoundationSectionTruthPhase15 = true;
   FEATURE_FLAGS.useRoofFoundationSectionCredibilityGatePhase15 = true;
+  FEATURE_FLAGS.useRicherCanonicalRoofGeometryPhase16 = true;
+  FEATURE_FLAGS.useRicherCanonicalFoundationGeometryPhase16 = true;
+  FEATURE_FLAGS.useUpstreamConstructionPrimitivesPhase16 = true;
+  FEATURE_FLAGS.useRoofFoundationTruthPhase16 = true;
+  FEATURE_FLAGS.useRoofFoundationCredibilityGatePhase16 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -1974,6 +1994,26 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_ROOF_FOUNDATION_SECTION_CREDIBILITY_GATE_PHASE15: {
       flag: "useRoofFoundationSectionCredibilityGatePhase15",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_RICHER_CANONICAL_ROOF_GEOMETRY_PHASE16: {
+      flag: "useRicherCanonicalRoofGeometryPhase16",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_RICHER_CANONICAL_FOUNDATION_GEOMETRY_PHASE16: {
+      flag: "useRicherCanonicalFoundationGeometryPhase16",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_UPSTREAM_CONSTRUCTION_PRIMITIVES_PHASE16: {
+      flag: "useUpstreamConstructionPrimitivesPhase16",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ROOF_FOUNDATION_TRUTH_PHASE16: {
+      flag: "useRoofFoundationTruthPhase16",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ROOF_FOUNDATION_CREDIBILITY_GATE_PHASE16: {
+      flag: "useRoofFoundationCredibilityGatePhase16",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

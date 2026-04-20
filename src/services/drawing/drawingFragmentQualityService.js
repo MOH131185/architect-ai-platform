@@ -28,9 +28,13 @@ export function evaluateDrawingFragmentQuality({
         ?.section_construction_truth_quality || null,
     roofTruthQuality:
       panel.drawing?.technical_quality_metadata?.roof_truth_quality || null,
+    roofTruthMode:
+      panel.drawing?.technical_quality_metadata?.roof_truth_mode || null,
     foundationTruthQuality:
       panel.drawing?.technical_quality_metadata?.foundation_truth_quality ||
       null,
+    foundationTruthMode:
+      panel.drawing?.technical_quality_metadata?.foundation_truth_mode || null,
     emptyGeometryLikely:
       panel.score?.categoryScores?.geometryCompleteness === 0 ||
       (panel.blockers || []).some((entry) =>

@@ -152,6 +152,8 @@ function renderFoundation(
   foundationGeometry = null,
 ) {
   const quality = String(foundationTruthQuality || "weak").toLowerCase();
+  const truthMode = String(foundationGeometry?.supportMode || "missing");
+  const truthState = String(foundationGeometry?.truthState || "direct");
   const contextual = quality !== "verified";
   const fillOpacity =
     quality === "blocked" ? 0.48 : quality === "weak" ? 0.66 : 1;
@@ -166,15 +168,49 @@ function renderFoundation(
         },
       ];
   const bandMarkup = bands
+    .map((band) => {
+      const bandDash =
+        band.truthState === "contextual"
+          ? ' stroke-dasharray="6 4"'
+          : dasharray;
+      const bandOpacity =
+        band.truthState === "contextual" ? fillOpacity * 0.82 : fillOpacity;
+      return `
+      <rect x="${band.x}" y="${baseY - 18}" width="${band.width}" height="18" fill="#c8c0b2" fill-opacity="${bandOpacity}" stroke="#444" stroke-width="${lineweights.primary || 1.2}"${bandDash} data-truth-state="${band.truthState || "direct"}" />`;
+    })
+    .join("");
+  const groundLineMarkup = (foundationGeometry?.groundLines || [])
     .map(
-      (band) => `
-      <rect x="${band.x}" y="${baseY - 18}" width="${band.width}" height="18" fill="#c8c0b2" fill-opacity="${fillOpacity}" stroke="#444" stroke-width="${lineweights.primary || 1.2}"${dasharray} />`,
+      (entry) =>
+        `<line x1="${entry.x}" y1="${baseY + 12}" x2="${entry.x + entry.width}" y2="${baseY + 12}" stroke="#6b7280" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.72"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+    )
+    .join("");
+  const plinthMarkup = (foundationGeometry?.plinthLines || [])
+    .map(
+      (entry) =>
+        `<line x1="${entry.x}" y1="${baseY - 2}" x2="${entry.x + entry.width}" y2="${baseY - 2}" stroke="#3f3f46" stroke-width="${lineweights.primary || 1.2}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+    )
+    .join("");
+  const stepMarkup = (foundationGeometry?.stepLines || [])
+    .map(
+      (entry) =>
+        `<path d="M ${entry.x} ${baseY + 8} L ${entry.x + entry.width / 2} ${baseY - 6} L ${entry.x + entry.width} ${baseY - 6}" fill="none" stroke="#7c6f64" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "6 5" : "5 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+    )
+    .join("");
+  const interfaceMarkup = (foundationGeometry?.slabGroundInterfaces || [])
+    .map(
+      (entry) =>
+        `<line x1="${entry.x}" y1="${baseY}" x2="${entry.x + entry.width}" y2="${baseY}" stroke="#111" stroke-width="${lineweights.cutOutline || 2}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   return `
-    <g id="phase8-section-foundation" data-truth="${quality}">
+    <g id="phase8-section-foundation" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
       <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="#ded8cc" fill-opacity="${fillOpacity}" />
       ${bandMarkup}
+      ${groundLineMarkup}
+      ${plinthMarkup}
+      ${stepMarkup}
+      ${interfaceMarkup}
       <line x1="${baseX - 14}" y1="${baseY}" x2="${baseX + widthPx + 14}" y2="${baseY}" stroke="#1f2937" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
       <line x1="${baseX - 14}" y1="${baseY + 12}" x2="${baseX + widthPx + 14}" y2="${baseY + 12}" stroke="#8b8172" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="6 4" />
       ${
@@ -196,6 +232,8 @@ function renderRoof(
   roofGeometry = null,
 ) {
   const quality = String(roofTruthQuality || "weak").toLowerCase();
+  const truthMode = String(roofGeometry?.supportMode || "missing");
+  const truthState = String(roofGeometry?.truthState || "direct");
   const dasharray = quality === "verified" ? "" : ' stroke-dasharray="7 4"';
   const strokeOpacity =
     quality === "blocked" ? 0.52 : quality === "weak" ? 0.74 : 1;
@@ -204,21 +242,44 @@ function renderRoof(
   const flat = String(roofLanguage || "")
     .toLowerCase()
     .includes("flat");
+  const parapetMarkup = (roofGeometry?.parapets || [])
+    .map(
+      (entry) =>
+        `<line x1="${entry.x}" y1="${topY - 15}" x2="${entry.x + entry.width}" y2="${topY - 15}" stroke="#111" stroke-width="${lineweights.primary || 1.4}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : dasharray} data-truth-state="${entry.truthState || "direct"}" />`,
+    )
+    .join("");
+  const roofBreakMarkup = (roofGeometry?.roofBreaks || [])
+    .map(
+      (entry) =>
+        `<line x1="${entry.x}" y1="${topY - 26}" x2="${entry.x}" y2="${topY + 4}" stroke="#4b5563" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "6 5" : "4 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+    )
+    .join("");
+  const attachmentMarkup = (roofGeometry?.attachments || [])
+    .map(
+      (entry) =>
+        `<rect x="${entry.x}" y="${topY - 28}" width="${Math.max(10, entry.width)}" height="12" fill="#f2f4f7"${entry.truthState === "contextual" ? ' fill-opacity="0.72"' : ""} stroke="#374151" stroke-width="0.9"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+    )
+    .join("");
   if (flat) {
     return `
-      <g id="phase14-section-roof" data-truth="${quality}">
+      <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
       <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="#d5dae1" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
       <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
       <line x1="${roofX + 8}" y1="${topY - 7}" x2="${roofX + roofWidth - 8}" y2="${topY - 7}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+      ${parapetMarkup}
+      ${roofBreakMarkup}
+      ${attachmentMarkup}
       </g>
     `;
   }
 
   return `
-    <g id="phase14-section-roof" data-truth="${quality}">
+    <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
     <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${topY - 52} L ${roofX + roofWidth} ${topY}" fill="none" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
     <path d="M ${roofX + 10} ${topY} L ${roofX + roofWidth / 2} ${topY - 40} L ${roofX + roofWidth - 10} ${topY}" fill="none" stroke="#6b7280" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 0.9}"${dasharray} />
     <line x1="${roofX + 10}" y1="${topY - 8}" x2="${roofX + roofWidth - 10}" y2="${topY - 8}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
+    ${roofBreakMarkup}
+    ${attachmentMarkup}
     </g>
   `;
 }
@@ -736,13 +797,21 @@ export function renderSectionSvg(
       slab_exact_clip_count:
         sectionEvidence.summary?.directSlabExactClipCount || 0,
       roof_truth_quality: sectionEvidence.summary?.roofTruthQuality || null,
+      roof_truth_mode: sectionEvidence.summary?.roofTruthMode || null,
       roof_explicit_primitive_count:
         sectionEvidence.summary?.explicitRoofPrimitiveCount || 0,
+      roof_edge_count: sectionEvidence.summary?.explicitRoofEdgeCount || 0,
+      roof_parapet_count: sectionEvidence.summary?.explicitParapetCount || 0,
+      roof_break_count: sectionEvidence.summary?.explicitRoofBreakCount || 0,
+      roof_attachment_count:
+        sectionEvidence.summary?.explicitDormerAttachmentCount || 0,
       roof_direct_clip_count: sectionEvidence.summary?.directRoofCount || 0,
       roof_exact_clip_count:
         sectionEvidence.summary?.directRoofExactClipCount || 0,
       foundation_truth_quality:
         sectionEvidence.summary?.foundationTruthQuality || null,
+      foundation_truth_mode:
+        sectionEvidence.summary?.foundationTruthMode || null,
       foundation_direct_clip_count:
         sectionEvidence.summary?.directFoundationCount || 0,
       base_condition_direct_clip_count:
@@ -751,6 +820,8 @@ export function renderSectionSvg(
         sectionEvidence.summary?.explicitFoundationCount || 0,
       explicit_base_condition_count:
         sectionEvidence.summary?.explicitBaseConditionCount || 0,
+      explicit_ground_relation_count:
+        sectionEvidence.summary?.explicitGroundRelationCount || 0,
       section_fallback_dependence:
         sectionEvidence.summary?.constructionFallbackDependence || 0,
       section_direct_clip_count: sectionEvidence.summary?.directClipCount || 0,

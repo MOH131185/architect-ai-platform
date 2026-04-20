@@ -21,6 +21,17 @@ function filterEvidenceOverriddenWarnings(
     evidenceProfile.slabTruthQuality === "verified" &&
     evidenceProfile.foundationTruthQuality === "verified" &&
     evidenceProfile.roofTruthQuality === "blocked";
+  const strongPostComposeConstructionEvidence =
+    evidenceProfile.sectionConstructionTruthQuality === "verified" &&
+    evidenceProfile.sectionDirectEvidenceQuality === "verified";
+  const strongPostComposeSectionBoard =
+    evidenceProfile.renderedTextEvidenceQuality === "verified" &&
+    evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
+    evidenceProfile.sectionDirectEvidenceQuality === "verified" &&
+    evidenceProfile.sectionInferredEvidenceQuality === "verified" &&
+    evidenceProfile.slabTruthQuality === "verified" &&
+    evidenceProfile.foundationTruthQuality === "verified" &&
+    evidenceProfile.roofTruthMode === "explicit_generated";
 
   return unique(
     (warnings || []).filter((warning) => {
@@ -116,6 +127,22 @@ function filterEvidenceOverriddenWarnings(
       ) {
         return false;
       }
+      if (
+        strongPostComposeConstructionEvidence &&
+        /roof truth .*derived|foundation\/base-condition truth .*contextual|ground relation/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        strongPostComposeSectionBoard &&
+        /Section .*serviceable but still semantically thin|Section communication is still thin|Section evidence remains weaker than preferred|Section construction truth remains weaker than preferred|Section roof truth exists, but it is still thinner than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
       return true;
     }),
   );
@@ -163,10 +190,18 @@ export function classifyA1Publishability({
     finalSheetRegression?.roofTruthQuality ||
     technicalCredibility?.summary?.roofTruthQuality ||
     "provisional";
+  const roofTruthMode =
+    finalSheetRegression?.roofTruthMode ||
+    technicalCredibility?.summary?.roofTruthMode ||
+    "missing";
   const foundationTruthQuality =
     finalSheetRegression?.foundationTruthQuality ||
     technicalCredibility?.summary?.foundationTruthQuality ||
     "provisional";
+  const foundationTruthMode =
+    finalSheetRegression?.foundationTruthMode ||
+    technicalCredibility?.summary?.foundationTruthMode ||
+    "missing";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -179,7 +214,9 @@ export function classifyA1Publishability({
     sectionConstructionTruthQuality,
     slabTruthQuality,
     roofTruthQuality,
+    roofTruthMode,
     foundationTruthQuality,
+    foundationTruthMode,
     sideFacadeEvidenceQuality,
   };
   const warnings = filterEvidenceOverriddenWarnings(
@@ -202,12 +239,14 @@ export function classifyA1Publishability({
 
   return {
     version:
-      roofTruthQuality !== "provisional" ||
-      foundationTruthQuality !== "provisional"
-        ? "phase15-a1-publishability-v1"
-        : sectionConstructionTruthQuality !== "provisional"
-          ? "phase14-a1-publishability-v1"
-          : "phase13-a1-publishability-v1",
+      roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+        ? "phase16-a1-publishability-v1"
+        : roofTruthQuality !== "provisional" ||
+            foundationTruthQuality !== "provisional"
+          ? "phase15-a1-publishability-v1"
+          : sectionConstructionTruthQuality !== "provisional"
+            ? "phase14-a1-publishability-v1"
+            : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,

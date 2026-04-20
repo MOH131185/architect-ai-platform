@@ -325,7 +325,13 @@ export function assembleFacadeSideSemantics({
     ],
   );
   const wallZones = toWallZones(projection, facadeOrientation);
-  const roofEdges = toRoofEdges(side, roofLanguage, facadeOrientation);
+  const roofEdges =
+    projection.roofEdgeSeeds?.length > 0
+      ? projection.roofEdgeSeeds.map((entry) => ({
+          ...entry,
+          kind: entry.kind || entry.primitiveFamily || "roof-edge",
+        }))
+      : toRoofEdges(side, roofLanguage, facadeOrientation);
   const featureFamilies = deriveFacadeFeatureGroups(features);
   const summary = buildFacadeSideSummary({
     side,
@@ -337,7 +343,10 @@ export function assembleFacadeSideSemantics({
   });
 
   return {
-    version: "phase10-facade-side-semantics-v1",
+    version:
+      projection.roofEdgeSeeds?.length > 1
+        ? "phase16-facade-side-semantics-v1"
+        : "phase10-facade-side-semantics-v1",
     side,
     openingGroups,
     wallZones,

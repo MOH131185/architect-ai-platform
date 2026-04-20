@@ -137,7 +137,9 @@ function alignVerificationBundle(bundle = null, verification = null) {
     sectionConstructionTruthQuality: canonical.sectionConstructionTruthQuality,
     slabTruthQuality: canonical.slabTruthQuality,
     roofTruthQuality: canonical.roofTruthQuality,
+    roofTruthMode: canonical.roofTruthMode,
     foundationTruthQuality: canonical.foundationTruthQuality,
+    foundationTruthMode: canonical.foundationTruthMode,
     sideFacadeEvidenceQuality: canonical.sideFacadeEvidenceQuality,
     ocrEvidenceQuality: canonical.ocrEvidenceQuality,
     verification: canonical,
@@ -272,7 +274,9 @@ export const PHASE1_API_CONTRACTS = {
       "sectionConstructionTruthQuality",
       "slabTruthQuality",
       "roofTruthQuality",
+      "roofTruthMode",
       "foundationTruthQuality",
+      "foundationTruthMode",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -311,7 +315,9 @@ export const PHASE1_API_CONTRACTS = {
       "sectionConstructionTruthQuality",
       "slabTruthQuality",
       "roofTruthQuality",
+      "roofTruthMode",
       "foundationTruthQuality",
+      "foundationTruthMode",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -360,7 +366,9 @@ export const PHASE1_API_CONTRACTS = {
       "sectionConstructionTruthQuality",
       "slabTruthQuality",
       "roofTruthQuality",
+      "roofTruthMode",
       "foundationTruthQuality",
+      "foundationTruthMode",
       "sectionStrategyRationale",
       "technicalCredibility",
       "technicalCredibilityPhase",
@@ -1094,10 +1102,18 @@ export function buildProjectReadinessResponse({
       verificationBundle?.roofTruthQuality ||
       result.finalSheetRegression?.roofTruthQuality ||
       "provisional",
+    roofTruthMode:
+      verificationBundle?.roofTruthMode ||
+      result.finalSheetRegression?.roofTruthMode ||
+      "missing",
     foundationTruthQuality:
       verificationBundle?.foundationTruthQuality ||
       result.finalSheetRegression?.foundationTruthQuality ||
       "provisional",
+    foundationTruthMode:
+      verificationBundle?.foundationTruthMode ||
+      result.finalSheetRegression?.foundationTruthMode ||
+      "missing",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
@@ -1269,10 +1285,18 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.roofTruthQuality ||
       result.finalSheetRegression?.roofTruthQuality ||
       "provisional",
+    roofTruthMode:
+      verificationBundle?.roofTruthMode ||
+      result.finalSheetRegression?.roofTruthMode ||
+      "missing",
     foundationTruthQuality:
       verificationBundle?.foundationTruthQuality ||
       result.finalSheetRegression?.foundationTruthQuality ||
       "provisional",
+    foundationTruthMode:
+      verificationBundle?.foundationTruthMode ||
+      result.finalSheetRegression?.foundationTruthMode ||
+      "missing",
     technicalFragmentScores:
       result.technicalFragmentScores ||
       result.finalSheetRegression?.technicalFragmentScores ||
@@ -1522,11 +1546,21 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.roofTruthQuality ||
       result.readiness?.finalSheetRegression?.roofTruthQuality ||
       "provisional",
+    roofTruthMode:
+      verificationBundle?.roofTruthMode ||
+      result.finalSheetRegression?.roofTruthMode ||
+      result.readiness?.finalSheetRegression?.roofTruthMode ||
+      "missing",
     foundationTruthQuality:
       verificationBundle?.foundationTruthQuality ||
       result.finalSheetRegression?.foundationTruthQuality ||
       result.readiness?.finalSheetRegression?.foundationTruthQuality ||
       "provisional",
+    foundationTruthMode:
+      verificationBundle?.foundationTruthMode ||
+      result.finalSheetRegression?.foundationTruthMode ||
+      result.readiness?.finalSheetRegression?.foundationTruthMode ||
+      "missing",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.readiness?.finalSheetRegression?.technicalFragmentScores ||

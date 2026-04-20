@@ -256,6 +256,7 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       unsupportedSlabCount: 0,
       directRoofCount: 0,
       directRoofExactClipCount: 0,
+      directRoofStructuralClipCount: 0,
       nearRoofCount: 0,
       inferredRoofCount: 0,
       unsupportedRoofCount: 0,
@@ -277,6 +278,13 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       slabTruthQuality: "provisional",
       roofTruthQuality: "provisional",
       foundationTruthQuality: "provisional",
+      roofTruthMode: "missing",
+      foundationTruthMode: "missing",
+      explicitRoofEdgeCount: 0,
+      explicitParapetCount: 0,
+      explicitRoofBreakCount: 0,
+      explicitDormerAttachmentCount: 0,
+      explicitGroundRelationCount: 0,
       constructionFallbackDependence: 1,
       explicitRoofPrimitiveCount: 0,
       explicitFoundationCount: 0,
@@ -618,6 +626,13 @@ export function buildSectionEvidence(
     directRoofExactClipCount: directRoof.filter(
       (entry) => entry.exactClip === true,
     ).length,
+    directRoofStructuralClipCount: directRoof.filter(
+      (entry) =>
+        entry.exactClip === true &&
+        ["ridge", "roof_edge", "eave", "parapet", "roof_break"].includes(
+          String(entry.primitive_family || ""),
+        ),
+    ).length,
     nearRoofCount: nearRoof.length,
     inferredRoofCount: inferredRoof.length,
     unsupportedRoofCount: unsupportedRoof.length,
@@ -638,12 +653,27 @@ export function buildSectionEvidence(
     explicitRoofPrimitiveCount: Number(
       intersectionBundle.explicitRoofPrimitiveCount || 0,
     ),
+    explicitRoofEdgeCount: Number(
+      intersectionBundle.explicitRoofEdgeCount || 0,
+    ),
+    explicitParapetCount: Number(intersectionBundle.explicitParapetCount || 0),
+    explicitRoofBreakCount: Number(
+      intersectionBundle.explicitRoofBreakCount || 0,
+    ),
+    explicitDormerAttachmentCount: Number(
+      intersectionBundle.explicitDormerAttachmentCount || 0,
+    ),
     explicitFoundationCount: Number(
       intersectionBundle.explicitFoundationCount || 0,
     ),
     explicitBaseConditionCount: Number(
       intersectionBundle.explicitBaseConditionCount || 0,
     ),
+    explicitGroundRelationCount: Number(
+      intersectionBundle.explicitGroundRelationCount || 0,
+    ),
+    roofTruthMode: intersectionBundle.roofTruthMode || "missing",
+    foundationTruthMode: intersectionBundle.foundationTruthMode || "missing",
     levelCount: levelProfiles.length,
     roofCommunicated:
       directRoof.length > 0 || nearRoof.length > 0 || inferredRoof.length > 0,
@@ -733,8 +763,11 @@ export function buildSectionEvidence(
     summary.stairTruthQuality = constructionSemantics.stairTruth.quality;
     summary.slabTruthQuality = constructionSemantics.slabTruth.quality;
     summary.roofTruthQuality = constructionSemantics.roofTruth.quality;
+    summary.roofTruthMode = constructionSemantics.roofTruth.supportMode;
     summary.foundationTruthQuality =
       constructionSemantics.foundationTruth.quality;
+    summary.foundationTruthMode =
+      constructionSemantics.foundationTruth.supportMode;
     summary.constructionFallbackDependence =
       constructionSemantics.fallbackDependence;
     if (

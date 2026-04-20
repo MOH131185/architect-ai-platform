@@ -111,14 +111,15 @@ function pointInPolygon(point = {}, polygon = []) {
     }
 
     const deltaY = Number(previous.y || 0) - Number(current.y || 0) || 0.000001;
-    const intersects =
+    const crossesScanline =
       Number(current.y || 0) > Number(point.y || 0) !==
-        Number(previous.y || 0) > Number(point.y || 0) &&
-      Number(point.x || 0) <
-        ((Number(previous.x || 0) - Number(current.x || 0)) *
-          (Number(point.y || 0) - Number(current.y || 0))) /
-          deltaY +
-          Number(current.x || 0);
+      Number(previous.y || 0) > Number(point.y || 0);
+    const intersectionX =
+      ((Number(previous.x || 0) - Number(current.x || 0)) *
+        (Number(point.y || 0) - Number(current.y || 0))) /
+        deltaY +
+      Number(current.x || 0);
+    const intersects = crossesScanline && Number(point.x || 0) < intersectionX;
 
     if (intersects) {
       inside = !inside;
@@ -340,8 +341,100 @@ export function buildEnvelopeFallback(site = {}, footprint = {}) {
   });
 }
 
+export function deriveGroundRelationSemantics(site = {}, envelope = {}) {
+  const resolvedEnvelope =
+    envelope && Object.keys(envelope).length
+      ? envelope
+      : deriveBuildableEnvelope(site);
+  const siteArea = Number(
+    resolvedEnvelope.constraints?.boundary_area_m2 ||
+      computePolygonArea(resolvedEnvelope.boundary_polygon || []),
+  );
+  const buildableArea = Number(
+    resolvedEnvelope.constraints?.buildable_area_m2 ||
+      computePolygonArea(resolvedEnvelope.buildable_polygon || []),
+  );
+  const buildableAreaRatio =
+    siteArea > 0 ? roundMetric(buildableArea / Math.max(siteArea, 0.001)) : 1;
+  const gradeDeltaM = roundMetric(
+    site.grade_delta_m ??
+      site.gradeDeltaM ??
+      site.topography?.grade_delta_m ??
+      site.topography?.gradeDeltaM ??
+      site.slope_height_m ??
+      site.slopeHeightM ??
+      0,
+  );
+  const plinthHeightM = roundMetric(
+    site.plinth_height_m ??
+      site.plinthHeightM ??
+      site.base_plinth_height_m ??
+      site.basePlinthHeightM ??
+      (gradeDeltaM >= 0.45 ? 0.28 : 0.15),
+  );
+  const explicitGroundCondition = String(
+    site.base_condition ||
+      site.baseCondition ||
+      site.ground_condition ||
+      site.groundCondition ||
+      site.topography?.condition ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  let supportMode = String(site.support_mode || site.supportMode || "")
+    .trim()
+    .toLowerCase();
+  if (!supportMode) {
+    if (
+      explicitGroundCondition.includes("step") ||
+      explicitGroundCondition.includes("terrace") ||
+      gradeDeltaM >= 1.2
+    ) {
+      supportMode = "stepped_grade";
+    } else if (
+      explicitGroundCondition.includes("slope") ||
+      explicitGroundCondition.includes("grade") ||
+      gradeDeltaM >= 0.5
+    ) {
+      supportMode = "graded";
+    } else if (plinthHeightM >= 0.22) {
+      supportMode = "raised_plinth";
+    } else {
+      supportMode = "ground_bearing";
+    }
+  }
+
+  return {
+    supportMode,
+    groundCondition:
+      explicitGroundCondition ||
+      (supportMode === "stepped_grade"
+        ? "stepped_grade"
+        : supportMode === "graded"
+          ? "graded_ground"
+          : supportMode === "raised_plinth"
+            ? "raised_plinth"
+            : "level_ground"),
+    plinthHeightM,
+    gradeDeltaM,
+    buildableAreaRatio,
+    constrainedSite:
+      Boolean(resolvedEnvelope.constraints?.constrained_site) ||
+      buildableAreaRatio < 0.62,
+    hasStepCondition: supportMode === "stepped_grade",
+    hasRaisedPlinth: supportMode === "raised_plinth",
+    evidenceSource:
+      explicitGroundCondition || site.support_mode || site.supportMode
+        ? "site_conditions"
+        : "envelope_constraints",
+  };
+}
+
 export default {
   deriveBuildableEnvelope,
   validateFootprintAgainstEnvelope,
   buildEnvelopeFallback,
+  deriveGroundRelationSemantics,
 };

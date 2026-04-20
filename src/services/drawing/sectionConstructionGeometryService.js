@@ -109,6 +109,60 @@ function projectRangeToPixels(range = {}, baseX = 0, scale = 1) {
   };
 }
 
+function entryCarriesExplicitConstructionTruth(entry = {}) {
+  const supportMode = String(
+    entry.support_mode || entry.supportMode || "",
+  ).toLowerCase();
+  if (
+    supportMode === "explicit_generated" ||
+    supportMode === "explicit_ground_primitives"
+  ) {
+    return true;
+  }
+  if (supportMode) {
+    return false;
+  }
+
+  const primitiveFamily = String(entry.primitive_family || "").toLowerCase();
+  if (
+    [
+      "roof_plane",
+      "roof_edge",
+      "eave",
+      "ridge",
+      "parapet",
+      "roof_break",
+      "dormer_attachment",
+    ].includes(primitiveFamily)
+  ) {
+    return true;
+  }
+
+  const conditionType = String(entry.condition_type || "").toLowerCase();
+  if (
+    [
+      "ground_line",
+      "plinth_line",
+      "slab_ground_interface",
+      "grade_break",
+      "step_line",
+    ].includes(conditionType)
+  ) {
+    return true;
+  }
+
+  return Boolean(entry.foundation_type);
+}
+
+function resolveEntryTruthState(entry = {}, isDirect = false) {
+  if (!entry) {
+    return "none";
+  }
+  return isDirect && entryCarriesExplicitConstructionTruth(entry)
+    ? "direct"
+    : "contextual";
+}
+
 function resolveConstructionEntryRange(
   entry = {},
   sectionType = "longitudinal",
@@ -252,7 +306,20 @@ export function buildSectionConstructionGeometry({
     directFoundationCount: directFoundations.length,
     directBaseConditionCount: directBaseConditions.length,
     contextual:
-      directFoundations.length === 0 && directBaseConditions.length === 0,
+      ![...directFoundations, ...directBaseConditions].some((entry) =>
+        entryCarriesExplicitConstructionTruth(entry),
+      ) &&
+      (directFoundations.length > 0 ||
+        directBaseConditions.length > 0 ||
+        nearFoundations.length > 0 ||
+        nearBaseConditions.length > 0),
+    truthState: [...directFoundations, ...directBaseConditions].some((entry) =>
+      entryCarriesExplicitConstructionTruth(entry),
+    )
+      ? "direct"
+      : nearFoundations.length > 0 || nearBaseConditions.length > 0
+        ? "contextual"
+        : "none",
     bands: [...directFoundations, ...directBaseConditions]
       .map((entry, index) => {
         const range = resolveConstructionEntryRange(entry, sectionType);
@@ -261,9 +328,79 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `foundation-band:${index}`,
           x: pixels.x,
           width: pixels.width,
+          truthState: resolveEntryTruthState(
+            entry,
+            directFoundations.includes(entry) ||
+              directBaseConditions.includes(entry),
+          ),
         };
       })
       .filter((entry) => Number.isFinite(entry.x) && entry.width > 0),
+    supportMode: sectionEvidence.summary?.foundationTruthMode || "missing",
+    groundLines: [...directBaseConditions, ...nearBaseConditions]
+      .filter((entry) => entry.condition_type === "ground_line")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `ground-line:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(
+            entry,
+            directBaseConditions.includes(entry),
+          ),
+        };
+      }),
+    plinthLines: [...directBaseConditions, ...nearBaseConditions]
+      .filter((entry) => entry.condition_type === "plinth_line")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `plinth-line:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(
+            entry,
+            directBaseConditions.includes(entry),
+          ),
+        };
+      }),
+    stepLines: [...directBaseConditions, ...nearBaseConditions]
+      .filter((entry) =>
+        ["step_line", "grade_break"].includes(
+          String(entry.condition_type || ""),
+        ),
+      )
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `step-line:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(
+            entry,
+            directBaseConditions.includes(entry),
+          ),
+        };
+      }),
+    slabGroundInterfaces: [...directBaseConditions, ...nearBaseConditions]
+      .filter((entry) => entry.condition_type === "slab_ground_interface")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `slab-ground-interface:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(
+            entry,
+            directBaseConditions.includes(entry),
+          ),
+        };
+      }),
   };
 
   const roofSource = directRoof.length ? directRoof : nearRoof;
@@ -279,19 +416,85 @@ export function buildSectionConstructionGeometry({
     : null;
   const roof = {
     directRoofCount: directRoof.length,
-    contextual: directRoof.length === 0,
+    contextual:
+      !directRoof.some((entry) =>
+        entryCarriesExplicitConstructionTruth(entry),
+      ) && roofSource.length > 0,
+    truthState: directRoof.some((entry) =>
+      entryCarriesExplicitConstructionTruth(entry),
+    )
+      ? "direct"
+      : roofSource.length > 0
+        ? "contextual"
+        : "none",
     band: roofBand,
+    supportMode: sectionEvidence.summary?.roofTruthMode || "missing",
+    edges: roofSource
+      .filter((entry) =>
+        ["roof_edge", "eave", "ridge"].includes(
+          String(entry.primitive_family || ""),
+        ),
+      )
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `roof-edge:${index}`,
+          family: entry.primitive_family || null,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
+        };
+      }),
+    parapets: roofSource
+      .filter((entry) => entry.primitive_family === "parapet")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `parapet:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
+        };
+      }),
+    roofBreaks: roofSource
+      .filter((entry) => entry.primitive_family === "roof_break")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `roof-break:${index}`,
+          x: pixels.centerX,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
+        };
+      }),
+    attachments: roofSource
+      .filter((entry) => entry.primitive_family === "dormer_attachment")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `roof-attachment:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
+        };
+      }),
   };
 
   return {
     version:
-      directRoof.length ||
-      directFoundations.length ||
-      directBaseConditions.length ||
-      nearFoundations.length ||
-      nearBaseConditions.length
-        ? "phase15-section-construction-geometry-v1"
-        : "phase14-section-construction-geometry-v1",
+      roof.supportMode !== "missing" || foundation.supportMode !== "missing"
+        ? "phase16-section-construction-geometry-v1"
+        : directRoof.length ||
+            directFoundations.length ||
+            directBaseConditions.length ||
+            nearFoundations.length ||
+            nearBaseConditions.length
+          ? "phase15-section-construction-geometry-v1"
+          : "phase14-section-construction-geometry-v1",
     sectionType,
     baseX: round(baseX),
     baseY: round(baseY),

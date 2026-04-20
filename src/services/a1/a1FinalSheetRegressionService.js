@@ -57,6 +57,8 @@ export function runA1FinalSheetRegression({
 
   return {
     version:
+      technicalPanelRegression.roofTruthMode ||
+      technicalPanelRegression.foundationTruthMode ||
       technicalPanelRegression.roofTruthQuality ||
       technicalPanelRegression.foundationTruthQuality ||
       technicalPanelRegression.sectionConstructionTruthQuality ||
@@ -65,12 +67,15 @@ export function runA1FinalSheetRegression({
       textZoneSanity.renderedTextEvidenceQuality ||
       technicalPanelRegression.sectionEvidenceQuality ||
       technicalPanelRegression.sideFacadeEvidenceQuality
-        ? technicalPanelRegression.roofTruthQuality ||
-          technicalPanelRegression.foundationTruthQuality
-          ? "phase15-a1-final-sheet-regression-v1"
-          : technicalPanelRegression.sectionConstructionTruthQuality
-            ? "phase14-a1-final-sheet-regression-v1"
-            : "phase13-a1-final-sheet-regression-v1"
+        ? technicalPanelRegression.roofTruthMode ||
+          technicalPanelRegression.foundationTruthMode
+          ? "phase16-a1-final-sheet-regression-v1"
+          : technicalPanelRegression.roofTruthQuality ||
+              technicalPanelRegression.foundationTruthQuality
+            ? "phase15-a1-final-sheet-regression-v1"
+            : technicalPanelRegression.sectionConstructionTruthQuality
+              ? "phase14-a1-final-sheet-regression-v1"
+              : "phase13-a1-final-sheet-regression-v1"
         : textZoneSanity.renderedTextEvidenceQuality ||
             technicalPanelRegression.sectionEvidenceQuality ||
             technicalPanelRegression.sideFacadeEvidenceQuality
@@ -100,8 +105,11 @@ export function runA1FinalSheetRegression({
       technicalPanelRegression.slabTruthQuality || "provisional",
     roofTruthQuality:
       technicalPanelRegression.roofTruthQuality || "provisional",
+    roofTruthMode: technicalPanelRegression.roofTruthMode || "missing",
     foundationTruthQuality:
       technicalPanelRegression.foundationTruthQuality || "provisional",
+    foundationTruthMode:
+      technicalPanelRegression.foundationTruthMode || "missing",
     sideFacadeEvidenceQuality:
       technicalPanelRegression.sideFacadeEvidenceQuality || "provisional",
     renderedTextEvidenceQuality:

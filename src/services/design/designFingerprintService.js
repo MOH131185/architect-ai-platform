@@ -428,6 +428,8 @@ function resolvePortfolioStyleAnchor(options = {}) {
 export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
   const projectGeometry = options.projectGeometry || {};
   const facadeGrammar = options.facadeGrammar || {};
+  const roofTruthSummary =
+    projectGeometry?.metadata?.canonical_construction_truth?.roof || null;
   const canonicalMaterialPalette = getCanonicalMaterialPalette({
     dna: masterDNA,
     projectGeometry,
@@ -461,6 +463,9 @@ export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
     massingLanguage: inferMassingLanguage(masterDNA, projectGeometry),
     styleDescriptor: buildStyleDescriptor(masterDNA),
     portfolioStyleAnchor: resolvePortfolioStyleAnchor(options),
+    roofSupportMode: roofTruthSummary?.support_mode || null,
+    roofPrimitiveCount: Number(roofTruthSummary?.primitive_count || 0),
+    roofPrimitiveFamilies: roofTruthSummary?.primitive_families || [],
     canonicalMaterialPalette,
     primaryMaterial: canonicalMaterialPalette.primary,
     secondaryMaterial: canonicalMaterialPalette.secondary,
@@ -473,6 +478,10 @@ export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
 export function buildFingerprintFromDNA(masterDNA = {}, options = {}) {
   const projectGeometry = options.projectGeometry || {};
   const facadeGrammar = options.facadeGrammar || {};
+  const roofTruthSummary =
+    projectGeometry?.metadata?.canonical_construction_truth?.roof || null;
+  const foundationTruthSummary =
+    projectGeometry?.metadata?.canonical_construction_truth?.foundation || null;
   const canonicalMaterialPalette = getCanonicalMaterialPalette({
     dna: masterDNA,
     projectGeometry,
@@ -517,6 +526,10 @@ export function buildFingerprintFromDNA(masterDNA = {}, options = {}) {
     styleDescriptor: heroIdentitySpec.styleDescriptor,
     buildingBBox,
     floorCount,
+    canonicalConstructionTruth: {
+      roof: roofTruthSummary,
+      foundation: foundationTruthSummary,
+    },
     canonicalMaterialPalette,
     heroIdentitySpec,
     materialSpecSheet,

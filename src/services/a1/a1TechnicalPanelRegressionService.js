@@ -17,8 +17,14 @@ function normalizeStatus(entry = {}) {
   const roofTruthQuality = String(
     entry?.technical_quality_metadata?.roof_truth_quality || "",
   ).toLowerCase();
+  const roofTruthMode = String(
+    entry?.technical_quality_metadata?.roof_truth_mode || "",
+  ).toLowerCase();
   const foundationTruthQuality = String(
     entry?.technical_quality_metadata?.foundation_truth_quality || "",
+  ).toLowerCase();
+  const foundationTruthMode = String(
+    entry?.technical_quality_metadata?.foundation_truth_mode || "",
   ).toLowerCase();
   if (
     directEvidenceQuality === "blocked" ||
@@ -36,6 +42,19 @@ function normalizeStatus(entry = {}) {
     slabTruthQuality === "weak" ||
     roofTruthQuality === "weak" ||
     foundationTruthQuality === "weak"
+  ) {
+    return "warning";
+  }
+  if (
+    roofTruthMode === "roof_language_only" ||
+    (foundationTruthMode === "missing" && foundationTruthQuality === "blocked")
+  ) {
+    return "block";
+  }
+  if (
+    roofTruthMode === "derived_profile_only" ||
+    foundationTruthMode === "contextual_ground_relation" ||
+    foundationTruthMode === "missing"
   ) {
     return "warning";
   }
@@ -125,8 +144,11 @@ export function runA1TechnicalPanelRegression({
       entry.technical_quality_metadata?.slab_truth_quality || null,
     roofTruthQuality:
       entry.technical_quality_metadata?.roof_truth_quality || null,
+    roofTruthMode: entry.technical_quality_metadata?.roof_truth_mode || null,
     foundationTruthQuality:
       entry.technical_quality_metadata?.foundation_truth_quality || null,
+    foundationTruthMode:
+      entry.technical_quality_metadata?.foundation_truth_mode || null,
     constructionEvidenceScore: Number(
       entry.technical_quality_metadata?.section_construction_evidence_score ||
         0,
@@ -198,6 +220,12 @@ export function runA1TechnicalPanelRegression({
   const sectionFoundationEntries = sectionCandidateQuality.filter(
     (entry) => entry.foundationTruthQuality != null,
   );
+  const roofTruthModes = sectionCandidateQuality
+    .map((entry) => entry.roofTruthMode)
+    .filter(Boolean);
+  const foundationTruthModes = sectionCandidateQuality
+    .map((entry) => entry.foundationTruthMode)
+    .filter(Boolean);
   const sectionEvidenceQuality = sectionEvidenceEntries.some(
     (entry) => entry.evidenceQuality === "block" || entry.status === "block",
   )
@@ -272,15 +300,31 @@ export function runA1TechnicalPanelRegression({
       : sectionFoundationEntries.length
         ? "verified"
         : "provisional";
+  const roofTruthMode = roofTruthModes.includes("roof_language_only")
+    ? "roof_language_only"
+    : roofTruthModes.includes("derived_profile_only")
+      ? "derived_profile_only"
+      : roofTruthModes.includes("explicit_generated")
+        ? "explicit_generated"
+        : roofTruthModes[0] || "missing";
+  const foundationTruthMode = foundationTruthModes.includes("missing")
+    ? "missing"
+    : foundationTruthModes.includes("contextual_ground_relation")
+      ? "contextual_ground_relation"
+      : foundationTruthModes.includes("explicit_ground_primitives")
+        ? "explicit_ground_primitives"
+        : foundationTruthModes[0] || "missing";
 
   return {
     version:
-      roofTruthQuality !== "provisional" ||
-      foundationTruthQuality !== "provisional"
-        ? "phase15-a1-technical-panel-regression-v1"
-        : sectionConstructionTruthQuality !== "provisional"
-          ? "phase14-a1-technical-panel-regression-v1"
-          : "phase13-a1-technical-panel-regression-v1",
+      roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+        ? "phase16-a1-technical-panel-regression-v1"
+        : roofTruthQuality !== "provisional" ||
+            foundationTruthQuality !== "provisional"
+          ? "phase15-a1-technical-panel-regression-v1"
+          : sectionConstructionTruthQuality !== "provisional"
+            ? "phase14-a1-technical-panel-regression-v1"
+            : "phase13-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: [...new Set(blockers)],
@@ -294,7 +338,9 @@ export function runA1TechnicalPanelRegression({
     sectionConstructionTruthQuality,
     slabTruthQuality,
     roofTruthQuality,
+    roofTruthMode,
     foundationTruthQuality,
+    foundationTruthMode,
     technicalFragmentScores: fragmentQuality.fragmentScores,
   };
 }

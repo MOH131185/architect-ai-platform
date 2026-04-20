@@ -21,6 +21,23 @@ function unique(items = []) {
   return [...new Set((items || []).filter(Boolean))];
 }
 
+function countPrimitiveFamilies(entries = [], families = []) {
+  return (entries || []).filter((entry) =>
+    families.includes(
+      String(entry.primitive_family || entry.condition_type || ""),
+    ),
+  ).length;
+}
+
+function normalizeSupportModes(entries = []) {
+  return unique(
+    (entries || [])
+      .map((entry) => entry.support_mode || entry.supportMode || null)
+      .filter(Boolean)
+      .map((entry) => String(entry).toLowerCase()),
+  );
+}
+
 export function sectionAxis(sectionType = "longitudinal") {
   return String(sectionType || "longitudinal").toLowerCase() === "transverse"
     ? "y"
@@ -144,6 +161,9 @@ function buildRoofIntersections(geometry = {}, sectionCut = {}, options = {}) {
       id: `roof:${geometry.roof.type}`,
       primitive_family: "derived_roof_profile",
       type: geometry.roof.type,
+      support_mode:
+        geometry?.metadata?.canonical_construction_truth?.roof?.support_mode ||
+        "derived_profile_only",
       evidenceType: withinEnvelope ? "near" : "inferred",
       exactClip: false,
       clipPrimitive: "derived_roof_profile",
@@ -330,17 +350,102 @@ export function buildSectionIntersections(
   const explicitBaseConditionCount = Number(
     projectGeometry.base_conditions?.length || 0,
   );
+  const roofSummary =
+    projectGeometry?.metadata?.canonical_construction_truth?.roof || {};
+  const foundationSummary =
+    projectGeometry?.metadata?.canonical_construction_truth?.foundation || {};
+  const roofPrimitiveFamilies = unique(
+    (projectGeometry.roof_primitives || []).map(
+      (entry) => entry.primitive_family || null,
+    ),
+  );
+  const explicitParapetCount = countPrimitiveFamilies(
+    projectGeometry.roof_primitives,
+    ["parapet"],
+  );
+  const explicitRoofBreakCount = countPrimitiveFamilies(
+    projectGeometry.roof_primitives,
+    ["roof_break"],
+  );
+  const explicitRoofEdgeCount = countPrimitiveFamilies(
+    projectGeometry.roof_primitives,
+    ["roof_edge", "eave", "ridge"],
+  );
+  const explicitDormerAttachmentCount = countPrimitiveFamilies(
+    projectGeometry.roof_primitives,
+    ["dormer_attachment"],
+  );
+  const explicitGroundRelationCount = (
+    projectGeometry.base_conditions || []
+  ).filter((entry) => {
+    const supportMode = String(
+      entry.support_mode || entry.supportMode || "",
+    ).toLowerCase();
+    const isExplicitGroundCondition = [
+      "ground_line",
+      "plinth_line",
+      "slab_ground_interface",
+      "grade_break",
+      "step_line",
+    ].includes(String(entry.condition_type || ""));
+    return (
+      supportMode === "explicit_ground_primitives" ||
+      (!supportMode && isExplicitGroundCondition)
+    );
+  }).length;
+  const roofSupportModes = normalizeSupportModes(
+    projectGeometry.roof_primitives,
+  );
+  const foundationSupportModes = normalizeSupportModes([
+    ...(projectGeometry.foundations || []),
+    ...(projectGeometry.base_conditions || []),
+  ]);
+  const roofTruthMode = roofSupportModes.includes("explicit_generated")
+    ? "explicit_generated"
+    : roofSupportModes.length === 0 && explicitRoofPrimitiveCount > 0
+      ? "explicit_generated"
+      : roofSupportModes.includes("derived_profile_only")
+        ? "derived_profile_only"
+        : roofSupportModes.includes("roof_language_only")
+          ? "roof_language_only"
+          : roofSummary.support_mode ||
+            (projectGeometry.roof?.type ? "derived_profile_only" : "missing");
+  const foundationTruthMode =
+    explicitGroundRelationCount > 0 ||
+    foundationSupportModes.includes("explicit_ground_primitives") ||
+    (foundationSupportModes.length === 0 && explicitFoundationCount > 0)
+      ? "explicit_ground_primitives"
+      : foundationSupportModes.some((entry) =>
+            ["contextual_ground_relation", "derived_perimeter"].includes(entry),
+          ) ||
+          (foundationSupportModes.length === 0 &&
+            explicitBaseConditionCount > 0)
+        ? "contextual_ground_relation"
+        : foundationSummary.support_mode || "missing";
   const phase15Enabled =
     explicitRoofPrimitiveCount > 0 ||
     explicitFoundationCount > 0 ||
     explicitBaseConditionCount > 0;
+  const phase16Enabled =
+    explicitRoofPrimitiveCount > 0 ||
+    explicitFoundationCount > 0 ||
+    explicitBaseConditionCount > 0 ||
+    Number(roofSummary.primitive_count || 0) > 0 ||
+    Number(foundationSummary.foundation_count || 0) > 0 ||
+    Number(foundationSummary.base_condition_count || 0) > 0 ||
+    explicitParapetCount > 0 ||
+    explicitRoofBreakCount > 0 ||
+    explicitDormerAttachmentCount > 0 ||
+    explicitGroundRelationCount > 0;
 
   return {
-    version: phase15Enabled
-      ? "phase15-section-geometry-intersection-v1"
-      : clippingEnabled
-        ? "phase13-section-geometry-intersection-v1"
-        : "phase12-section-geometry-intersection-v1",
+    version: phase16Enabled
+      ? "phase16-section-geometry-intersection-v1"
+      : phase15Enabled
+        ? "phase15-section-geometry-intersection-v1"
+        : clippingEnabled
+          ? "phase13-section-geometry-intersection-v1"
+          : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
@@ -370,6 +475,14 @@ export function buildSectionIntersections(
     explicitRoofPrimitiveCount,
     explicitFoundationCount,
     explicitBaseConditionCount,
+    explicitRoofEdgeCount,
+    explicitParapetCount,
+    explicitRoofBreakCount,
+    explicitDormerAttachmentCount,
+    explicitGroundRelationCount,
+    roofPrimitiveFamilies,
+    roofTruthMode,
+    foundationTruthMode,
   };
 }
 

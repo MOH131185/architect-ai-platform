@@ -151,16 +151,16 @@ export function assessSectionConstructionSemantics({
   }
   if (roofTruth.quality === "blocked") {
     warnings.push(
-      "Roof construction truth remains contextual or derived because explicit roof primitives are too thin at the cut.",
+      `Roof construction truth remains ${String(roofTruth.supportMode || "contextual")} because explicit roof primitives are too thin at the cut.`,
     );
   } else if (roofTruth.quality === "weak") {
     warnings.push(
-      "Roof construction truth is present, but it still depends partly on contextual or profile-derived support.",
+      `Roof construction truth is present, but it still depends partly on ${String(roofTruth.supportMode || "contextual")} support.`,
     );
   }
   if (foundationTruth.quality === "blocked") {
     warnings.push(
-      "Foundation/base-condition truth remains contextual because the cut does not resolve enough explicit substructure primitives.",
+      `Foundation/base-condition truth remains ${String(foundationTruth.supportMode || "contextual")} because the cut does not resolve enough explicit substructure primitives.`,
     );
   } else if (foundationTruth.quality === "weak") {
     warnings.push(
@@ -170,11 +170,13 @@ export function assessSectionConstructionSemantics({
 
   return {
     version:
-      roofTruth.explicitRoofPrimitiveCount ||
-      foundationTruth.explicitFoundationEntities ||
-      foundationTruth.explicitBaseConditionEntities
-        ? "phase15-section-construction-semantics-v1"
-        : "phase14-section-construction-semantics-v1",
+      roofTruth.supportMode || foundationTruth.supportMode
+        ? "phase16-section-construction-semantics-v1"
+        : roofTruth.explicitRoofPrimitiveCount ||
+            foundationTruth.explicitFoundationEntities ||
+            foundationTruth.explicitBaseConditionEntities
+          ? "phase15-section-construction-semantics-v1"
+          : "phase14-section-construction-semantics-v1",
     constructionEvidenceScore,
     constructionTruthQuality,
     fallbackDependence,

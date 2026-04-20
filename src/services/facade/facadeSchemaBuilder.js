@@ -200,6 +200,8 @@ export function buildSideFacadeSchema({
         .length,
       materialZoneCount: materialZones.length,
       roofEdgeCount: roofEdges.length,
+      roofPrimitiveCount: Number(projection.roofPrimitiveCount || 0),
+      roofSupportMode: projection.roofSupportMode || "unknown",
       featureFamilyCount: featureFamilies.length,
       projectionCount: projectionsAndRecesses.projections.length,
       recessCount: projectionsAndRecesses.recesses.length,

@@ -426,9 +426,20 @@ describe("Phase 1 model route handlers", () => {
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.roofTruthQuality,
     );
+    expect([
+      "explicit_generated",
+      "derived_profile_only",
+      "roof_language_only",
+      "missing",
+    ]).toContain(res.body.roofTruthMode);
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.foundationTruthQuality,
     );
+    expect([
+      "explicit_ground_primitives",
+      "contextual_ground_relation",
+      "missing",
+    ]).toContain(res.body.foundationTruthMode);
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.slabTruthQuality,
     );
@@ -468,8 +479,12 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.roofTruthQuality).toBe(
       res.body.roofTruthQuality,
     );
+    expect(res.body.verification.roofTruthMode).toBe(res.body.roofTruthMode);
     expect(res.body.verification.foundationTruthQuality).toBe(
       res.body.foundationTruthQuality,
+    );
+    expect(res.body.verification.foundationTruthMode).toBe(
+      res.body.foundationTruthMode,
     );
     expect(res.body.verification.slabTruthQuality).toBe(
       res.body.slabTruthQuality,
@@ -514,7 +529,9 @@ describe("Phase 1 model route handlers", () => {
             sectionConstructionTruthQuality: "verified",
             slabTruthQuality: "verified",
             roofTruthQuality: "verified",
+            roofTruthMode: "explicit_generated",
             foundationTruthQuality: "verified",
+            foundationTruthMode: "explicit_ground_primitives",
             renderedTextEvidenceQuality: "provisional",
             sectionEvidenceQuality: "verified",
             sideFacadeEvidenceQuality: "verified",
@@ -534,7 +551,9 @@ describe("Phase 1 model route handlers", () => {
     expect(response.sectionConstructionTruthQuality).toBe("verified");
     expect(response.slabTruthQuality).toBe("verified");
     expect(response.roofTruthQuality).toBe("verified");
+    expect(response.roofTruthMode).toBe("explicit_generated");
     expect(response.foundationTruthQuality).toBe("verified");
+    expect(response.foundationTruthMode).toBe("explicit_ground_primitives");
     expect(response.verification.sectionDirectEvidenceQuality).toBe(
       response.sectionDirectEvidenceQuality,
     );
@@ -547,8 +566,12 @@ describe("Phase 1 model route handlers", () => {
     expect(response.verification.roofTruthQuality).toBe(
       response.roofTruthQuality,
     );
+    expect(response.verification.roofTruthMode).toBe(response.roofTruthMode);
     expect(response.verification.foundationTruthQuality).toBe(
       response.foundationTruthQuality,
+    );
+    expect(response.verification.foundationTruthMode).toBe(
+      response.foundationTruthMode,
     );
   });
 

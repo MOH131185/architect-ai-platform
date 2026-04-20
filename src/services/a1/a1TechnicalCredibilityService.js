@@ -17,6 +17,9 @@ export function evaluateA1TechnicalCredibility({
     (drawings.section || []).length;
   const perSideElevationStatus =
     finalSheetRegression?.perSideElevationStatus || {};
+  const roofTruthMode = finalSheetRegression?.roofTruthMode || "missing";
+  const foundationTruthMode =
+    finalSheetRegression?.foundationTruthMode || "missing";
   const weakSides = Object.entries(perSideElevationStatus)
     .filter(([, entry]) => entry?.status === "warning")
     .map(([side]) => side);
@@ -111,7 +114,7 @@ export function evaluateA1TechnicalCredibility({
   }
   if (finalSheetRegression?.roofTruthQuality === "blocked") {
     warnings.push(
-      "Section roof truth remains contextual or profile-derived across the available technical sections.",
+      `Section roof truth remains ${roofTruthMode} across the available technical sections.`,
     );
   } else if (finalSheetRegression?.roofTruthQuality === "weak") {
     warnings.push(
@@ -120,7 +123,7 @@ export function evaluateA1TechnicalCredibility({
   }
   if (finalSheetRegression?.foundationTruthQuality === "blocked") {
     blockers.push(
-      "Section foundation/base-condition truth is blocked because explicit substructure evidence is too thin across the available technical sections.",
+      `Section foundation/base-condition truth is blocked because support remains ${foundationTruthMode} and explicit substructure evidence is too thin across the available technical sections.`,
     );
   } else if (finalSheetRegression?.foundationTruthQuality === "weak") {
     warnings.push(
@@ -179,8 +182,10 @@ export function evaluateA1TechnicalCredibility({
         finalSheetRegression?.sectionConstructionTruthQuality || "provisional",
       slabTruthQuality: finalSheetRegression?.slabTruthQuality || "provisional",
       roofTruthQuality: finalSheetRegression?.roofTruthQuality || "provisional",
+      roofTruthMode,
       foundationTruthQuality:
         finalSheetRegression?.foundationTruthQuality || "provisional",
+      foundationTruthMode,
       sideFacadeEvidenceQuality:
         finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
       renderedTextEvidenceQuality:

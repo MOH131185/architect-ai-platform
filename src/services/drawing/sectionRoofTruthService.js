@@ -5,9 +5,22 @@ function round(value, precision = 3) {
 
 function classifyQuality(score = 0) {
   const resolved = Number(score || 0);
-  if (resolved >= 0.7) return "verified";
-  if (resolved >= 0.4) return "weak";
+  if (resolved >= 0.72) return "verified";
+  if (resolved >= 0.42) return "weak";
   return "blocked";
+}
+
+function roofSupportPenalty(mode = "missing") {
+  switch (String(mode || "").toLowerCase()) {
+    case "explicit_generated":
+      return 0;
+    case "derived_profile_only":
+      return 0.12;
+    case "roof_language_only":
+      return 0.2;
+    default:
+      return 0.28;
+  }
 }
 
 export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
@@ -25,11 +38,33 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
   const unsupportedCount = Number(
     (sectionEvidence.intersections?.unsupportedRoofElements || []).length,
   );
+  const supportMode =
+    sectionEvidence.sectionIntersections?.roofTruthMode ||
+    geometry?.metadata?.canonical_construction_truth?.roof?.support_mode ||
+    (geometry?.roof?.type ? "derived_profile_only" : "missing");
   const hasRoofLanguage = Boolean(
     geometry?.roof?.type || sectionEvidence?.roofLanguage,
   );
   const explicitRoofPrimitiveCount = Number(
-    (geometry?.roof_primitives || geometry?.roofElements || []).length || 0,
+    sectionEvidence.sectionIntersections?.explicitRoofPrimitiveCount ||
+      (geometry?.roof_primitives || geometry?.roofElements || []).length ||
+      0,
+  );
+  const explicitGeneratedCount = Number(
+    geometry?.metadata?.canonical_construction_truth?.roof
+      ?.explicit_generated_count || 0,
+  );
+  const parapetCount = Number(
+    sectionEvidence.sectionIntersections?.explicitParapetCount || 0,
+  );
+  const roofBreakCount = Number(
+    sectionEvidence.sectionIntersections?.explicitRoofBreakCount || 0,
+  );
+  const dormerAttachmentCount = Number(
+    sectionEvidence.sectionIntersections?.explicitDormerAttachmentCount || 0,
+  );
+  const edgeCount = Number(
+    sectionEvidence.sectionIntersections?.explicitRoofEdgeCount || 0,
   );
   const directPrimitiveFamilies = [
     ...new Set(
@@ -38,33 +73,44 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
         .filter(Boolean),
     ),
   ];
-  const derivedOnly = (
-    sectionEvidence.sectionIntersections?.geometrySupport?.roofElements || []
-  ).every((entry) =>
-    ["derived_roof_profile", "bbox", "missing_geometry"].includes(
-      String(entry),
-    ),
-  );
+  const derivedOnly =
+    String(supportMode).toLowerCase() === "derived_profile_only" ||
+    (
+      sectionEvidence.sectionIntersections?.geometrySupport?.roofElements || []
+    ).every((entry) =>
+      ["derived_roof_profile", "bbox", "missing_geometry"].includes(
+        String(entry),
+      ),
+    );
 
   const score = round(
-    Math.min(1, exactDirect * 0.36) +
+    Math.min(1, exactDirect * 0.34) +
       Math.min(0.18, directCount * 0.08) +
-      (explicitRoofPrimitiveCount > 0 ? 0.16 : 0) +
-      (directPrimitiveFamilies.some((entry) =>
-        /ridge|eave/i.test(String(entry)),
-      )
-        ? 0.08
+      Math.min(0.14, explicitGeneratedCount * 0.03) +
+      Math.min(0.1, edgeCount * 0.03) +
+      Math.min(0.08, parapetCount * 0.03) +
+      Math.min(0.08, roofBreakCount * 0.03) +
+      Math.min(0.06, dormerAttachmentCount * 0.03) +
+      (String(supportMode).toLowerCase() === "explicit_generated" &&
+      exactDirect > 0
+        ? 0.14
         : 0) +
-      (hasRoofLanguage ? 0.14 : 0) +
+      (String(supportMode).toLowerCase() === "derived_profile_only" &&
+      (nearCount > 0 || hasRoofLanguage)
+        ? 0.12
+        : 0) +
+      (hasRoofLanguage ? 0.08 : 0) +
       Math.min(0.12, nearCount * 0.05) +
       Math.min(0.08, inferredCount * 0.03) -
       Math.min(0.18, unsupportedCount * 0.08) -
-      (derivedOnly ? 0.14 : 0),
+      roofSupportPenalty(supportMode) -
+      (derivedOnly ? 0.04 : 0),
   );
 
   return {
     score,
     quality: classifyQuality(score),
+    supportMode,
     exactDirectCount: exactDirect,
     directCount,
     nearCount,
@@ -73,6 +119,11 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
     derivedOnly,
     hasRoofLanguage,
     explicitRoofPrimitiveCount,
+    explicitGeneratedCount,
+    edgeCount,
+    parapetCount,
+    roofBreakCount,
+    dormerAttachmentCount,
     directPrimitiveFamilies,
   };
 }

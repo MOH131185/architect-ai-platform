@@ -198,10 +198,18 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.roofTruthQuality ||
     technicalCredibility?.summary?.roofTruthQuality ||
     "provisional";
+  const roofTruthMode =
+    finalSheetRegression?.roofTruthMode ||
+    technicalCredibility?.summary?.roofTruthMode ||
+    "missing";
   const foundationTruthQuality =
     finalSheetRegression?.foundationTruthQuality ||
     technicalCredibility?.summary?.foundationTruthQuality ||
     "provisional";
+  const foundationTruthMode =
+    finalSheetRegression?.foundationTruthMode ||
+    technicalCredibility?.summary?.foundationTruthMode ||
+    "missing";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -219,12 +227,14 @@ export function buildA1VerificationBundle({
 
   const canonicalVerification = {
     version:
-      roofTruthQuality !== "provisional" ||
-      foundationTruthQuality !== "provisional"
-        ? "phase15-a1-verification-v1"
-        : sectionConstructionTruthQuality !== "provisional"
-          ? "phase14-a1-verification-v1"
-          : "phase13-a1-verification-v1",
+      roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+        ? "phase16-a1-verification-v1"
+        : roofTruthQuality !== "provisional" ||
+            foundationTruthQuality !== "provisional"
+          ? "phase15-a1-verification-v1"
+          : sectionConstructionTruthQuality !== "provisional"
+            ? "phase14-a1-verification-v1"
+            : "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
@@ -239,7 +249,9 @@ export function buildA1VerificationBundle({
     sectionConstructionTruthQuality,
     slabTruthQuality,
     roofTruthQuality,
+    roofTruthMode,
     foundationTruthQuality,
+    foundationTruthMode,
     sideFacadeEvidenceQuality,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
     components: {

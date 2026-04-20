@@ -58,8 +58,11 @@ export function runA1PanelQualityChecks({
       technicalPanelRegression.slabTruthQuality || "provisional",
     roofTruthQuality:
       technicalPanelRegression.roofTruthQuality || "provisional",
+    roofTruthMode: technicalPanelRegression.roofTruthMode || "missing",
     foundationTruthQuality:
       technicalPanelRegression.foundationTruthQuality || "provisional",
+    foundationTruthMode:
+      technicalPanelRegression.foundationTruthMode || "missing",
     sectionStrategyRationale:
       technicalPanelRegression.sectionCandidateQuality.map((entry) => ({
         sectionType: entry.sectionType,

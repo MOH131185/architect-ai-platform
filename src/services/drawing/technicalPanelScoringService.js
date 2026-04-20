@@ -430,7 +430,7 @@ export function scoreTechnicalPanel({
     String(metadata.foundation_truth_quality || "").toLowerCase() === "blocked"
   ) {
     warnings.push(
-      `${drawing.title || drawingType} still relies on contextual foundation truth.`,
+      `${drawing.title || drawingType} still relies on ${String(metadata.foundation_truth_mode || "contextual_ground_relation")} foundation truth.`,
     );
   }
   if (
@@ -441,6 +441,25 @@ export function scoreTechnicalPanel({
   ) {
     warnings.push(
       `${drawing.title || drawingType} roof construction truth is still contextual or profile-derived.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationCredibilityGatePhase16") &&
+    String(metadata.roof_truth_mode || "").toLowerCase() ===
+      "roof_language_only"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} only communicates roof language without explicit roof geometry, so the roof portion cannot be treated as construction truth.`,
+    );
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationCredibilityGatePhase16") &&
+    String(metadata.roof_truth_mode || "").toLowerCase() ===
+      "derived_profile_only"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} roof truth still depends mainly on a derived roof profile rather than richer explicit roof primitives.`,
     );
   }
   if (
@@ -467,6 +486,33 @@ export function scoreTechnicalPanel({
         `${drawing.title || drawingType} foundation/base-condition truth is still contextual because the section lacks strong direct ground-condition proof.`,
       );
     }
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationCredibilityGatePhase16") &&
+    String(metadata.foundation_truth_mode || "").toLowerCase() === "missing"
+  ) {
+    if (
+      String(metadata.foundation_truth_quality || "").toLowerCase() ===
+      "blocked"
+    ) {
+      blockers.push(
+        `${drawing.title || drawingType} lacks explicit ground-relation primitives, so foundation/base-condition truth remains unsupported.`,
+      );
+    } else {
+      warnings.push(
+        `${drawing.title || drawingType} still lacks explicit ground-relation primitives, so foundation/base-condition truth remains provisional rather than final.`,
+      );
+    }
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationCredibilityGatePhase16") &&
+    String(metadata.foundation_truth_mode || "").toLowerCase() ===
+      "contextual_ground_relation"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} foundation/base-condition truth still depends on contextual ground relation rather than explicit ground primitives.`,
+    );
   } else if (
     drawingType === "section" &&
     isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&

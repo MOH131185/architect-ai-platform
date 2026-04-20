@@ -273,6 +273,17 @@ export function createProjectGeometrySkeleton(input = {}) {
       requested_building_type:
         input.building_type || input.buildingType || "unspecified",
       deterministic: true,
+      canonical_construction_truth: {
+        roof: {
+          support_mode: "missing",
+          primitive_count: 0,
+        },
+        foundation: {
+          support_mode: "missing",
+          foundation_count: 0,
+          base_condition_count: 0,
+        },
+      },
     },
     provenance: {
       source: input.source || "phase2-geometry-pipeline",

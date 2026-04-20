@@ -209,7 +209,47 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       ) +
       (Number(sectionEvidenceSummary.explicitRoofPrimitiveCount || 0) > 0
         ? 0.05
-        : 0),
+        : 0) +
+      (String(sectionEvidenceSummary.roofTruthMode || "").toLowerCase() ===
+      "explicit_generated"
+        ? 0.08
+        : String(sectionEvidenceSummary.roofTruthMode || "").toLowerCase() ===
+            "derived_profile_only"
+          ? -0.05
+          : String(sectionEvidenceSummary.roofTruthMode || "").toLowerCase() ===
+              "roof_language_only"
+            ? -0.12
+            : 0) +
+      Math.min(
+        0.08,
+        Number(sectionEvidenceSummary.explicitRoofEdgeCount || 0) * 0.015,
+      ) +
+      Math.min(
+        0.06,
+        Number(sectionEvidenceSummary.explicitParapetCount || 0) * 0.02,
+      ) +
+      Math.min(
+        0.05,
+        Number(sectionEvidenceSummary.explicitRoofBreakCount || 0) * 0.02,
+      ) +
+      Math.min(
+        0.12,
+        Number(sectionEvidenceSummary.directRoofStructuralClipCount || 0) *
+          0.08,
+      ) -
+      (Number(sectionEvidenceSummary.directRoofExactClipCount || 0) === 0
+        ? String(sectionEvidenceSummary.roofTruthMode || "").toLowerCase() ===
+            "explicit_generated" &&
+          (Number(sectionEvidenceSummary.explicitRoofEdgeCount || 0) +
+            Number(sectionEvidenceSummary.explicitParapetCount || 0) +
+            Number(sectionEvidenceSummary.explicitRoofBreakCount || 0) >=
+            2 ||
+            Number(sectionEvidenceSummary.directRoofStructuralClipCount || 0) >
+              0)
+          ? 0.04
+          : 0.14
+        : 0) -
+      (sectionEvidenceSummary.geometryCommunicable === false ? 0.18 : 0),
     0,
     1,
   );
@@ -228,6 +268,32 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       (Number(sectionEvidenceSummary.explicitFoundationCount || 0) > 0 ||
       Number(sectionEvidenceSummary.explicitBaseConditionCount || 0) > 0
         ? 0.04
+        : 0) +
+      (String(
+        sectionEvidenceSummary.foundationTruthMode || "",
+      ).toLowerCase() === "explicit_ground_primitives"
+        ? 0.08
+        : String(
+              sectionEvidenceSummary.foundationTruthMode || "",
+            ).toLowerCase() === "contextual_ground_relation"
+          ? -0.04
+          : -0.1) +
+      Math.min(
+        0.08,
+        Number(sectionEvidenceSummary.explicitGroundRelationCount || 0) * 0.02,
+      ) -
+      (Number(sectionEvidenceSummary.directFoundationExactClipCount || 0) ===
+        0 &&
+      Number(sectionEvidenceSummary.directBaseConditionExactClipCount || 0) ===
+        0
+        ? String(
+            sectionEvidenceSummary.foundationTruthMode || "",
+          ).toLowerCase() === "explicit_ground_primitives" &&
+          Number(sectionEvidenceSummary.explicitGroundRelationCount || 0) >=
+            2 &&
+          Number(sectionEvidenceSummary.directSlabCount || 0) > 0
+          ? 0.04
+          : 0.12
         : 0),
     0,
     1,
@@ -287,6 +353,26 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     ).toLowerCase() === "blocked"
       ? 0.12
       : 0;
+  const phase16SupportPenalty =
+    useSectionEvidence &&
+    isFeatureEnabled("useRoofFoundationCredibilityGatePhase16")
+      ? (String(sectionEvidenceSummary.roofTruthMode || "").toLowerCase() ===
+        "roof_language_only"
+          ? 0.06
+          : String(sectionEvidenceSummary.roofTruthMode || "").toLowerCase() ===
+              "derived_profile_only"
+            ? 0.03
+            : 0) +
+        (String(
+          sectionEvidenceSummary.foundationTruthMode || "",
+        ).toLowerCase() === "contextual_ground_relation"
+          ? 0.04
+          : String(
+                sectionEvidenceSummary.foundationTruthMode || "",
+              ).toLowerCase() === "missing"
+            ? 0.08
+            : 0)
+      : 0;
   const usefulness = clamp(
     stairAlignment * 0.19 +
       roomCoverage * 0.16 +
@@ -302,6 +388,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       (useSectionEvidence ? communicationValue * 0.05 : 0) +
       (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
       (useSectionEvidence ? cutSpecificity * 0.05 : 0) -
+      phase16SupportPenalty -
       roofFoundationPenalty -
       constructionPenalty -
       spatialTruthPenalty -
@@ -402,7 +489,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       ? `Construction truth ${constructionTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.sectionConstructionTruthQuality || "provisional")}).`
       : "Construction truth scoring is not active for this candidate.",
     useSectionEvidence
-      ? `Roof truth ${roofTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.roofTruthQuality || "provisional")}), foundation truth ${foundationTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.foundationTruthQuality || "provisional")}).`
+      ? `Roof truth ${roofTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.roofTruthQuality || "provisional")} / ${String(sectionEvidenceSummary.roofTruthMode || "missing")}), foundation truth ${foundationTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.foundationTruthQuality || "provisional")} / ${String(sectionEvidenceSummary.foundationTruthMode || "missing")}).`
       : "Roof/foundation truth scoring is not active for this candidate.",
     ...sectionEvidence.rationale,
   ];
@@ -427,6 +514,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       sectionNearEvidence: round(nearEvidenceScore),
       cutSpecificity: round(cutSpecificity),
       inferencePenalty: round(inferencePenalty),
+      phase16SupportPenalty: round(phase16SupportPenalty),
       roofFoundationPenalty: round(roofFoundationPenalty),
       constructionPenalty: round(constructionPenalty),
       sectionEvidencePenalty: round(evidencePenalty),
