@@ -13,6 +13,7 @@ import regenerateLayerHandler from "../../../api/models/regenerate-layer.js";
 import searchPrecedentsHandler from "../../../api/models/search-precedents.js";
 import statusHandler from "../../../api/models/status.js";
 import validateProjectHandler from "../../../api/models/validate-project.js";
+import { buildProjectReadinessResponse } from "../../services/models/architectureBackendContracts.js";
 import {
   resetFeatureFlags,
   setFeatureFlag,
@@ -410,6 +411,12 @@ describe("Phase 1 model route handlers", () => {
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionEvidenceQuality,
     );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionDirectEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionInferredEvidenceQuality,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
     expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
@@ -428,6 +435,12 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification).toBeTruthy();
     expect(res.body.verification.phase).toBe("pre_compose");
     expect(res.body.verification.overallDecision).toBe("provisional");
+    expect(res.body.verification.sectionDirectEvidenceQuality).toBe(
+      res.body.sectionDirectEvidenceQuality,
+    );
+    expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
+      res.body.sectionInferredEvidenceQuality,
+    );
     expect(res.body.verificationBundle).toBeTruthy();
     expect(res.body.verificationBundle.phase).toBe("pre_compose");
     expect(res.body.verificationBundle.verification.phase).toBe(
@@ -442,6 +455,45 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.publishability.provisional).toBe(true);
     expect(res.body.publishability.finalDecision).toBe("provisional");
     expect(res.body.meta.endpoint).toBe("project-readiness");
+  });
+
+  test("project-readiness response prefers canonical verification bundle section truth over stale compatibility fields", () => {
+    const response = buildProjectReadinessResponse({
+      result: {
+        ready: false,
+        composeReady: false,
+        finalSheetRegression: {
+          sectionDirectEvidenceQuality: "weak",
+          sectionInferredEvidenceQuality: "weak",
+        },
+        verificationBundle: {
+          phase: "pre_compose",
+          verification: {
+            phase: "pre_compose",
+            sectionDirectEvidenceQuality: "verified",
+            sectionInferredEvidenceQuality: "verified",
+            renderedTextEvidenceQuality: "provisional",
+            sectionEvidenceQuality: "verified",
+            sideFacadeEvidenceQuality: "verified",
+            publishabilityDecision: "provisional",
+            provisional: true,
+            decisive: false,
+            overallDecision: "provisional",
+            overallStatus: "warning",
+            components: {},
+          },
+        },
+      },
+    });
+
+    expect(response.sectionDirectEvidenceQuality).toBe("verified");
+    expect(response.sectionInferredEvidenceQuality).toBe("verified");
+    expect(response.verification.sectionDirectEvidenceQuality).toBe(
+      response.sectionDirectEvidenceQuality,
+    );
+    expect(response.verification.sectionInferredEvidenceQuality).toBe(
+      response.sectionInferredEvidenceQuality,
+    );
   });
 
   test("generate-project rejects malformed styleDNA payloads early", async () => {
@@ -523,6 +575,12 @@ describe("Phase 1 model route handlers", () => {
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionEvidenceQuality,
     );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionDirectEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionInferredEvidenceQuality,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
     expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
@@ -541,6 +599,12 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification).toBeTruthy();
     expect(res.body.verification.phase).toBe("pre_compose");
     expect(res.body.verification.overallDecision).toBe("provisional");
+    expect(res.body.verification.sectionDirectEvidenceQuality).toBe(
+      res.body.sectionDirectEvidenceQuality,
+    );
+    expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
+      res.body.sectionInferredEvidenceQuality,
+    );
     expect(res.body.verificationBundle).toBeTruthy();
     expect(res.body.verificationBundle.phase).toBe("pre_compose");
     expect(res.body.verificationBundle.verification.phase).toBe(
@@ -1021,6 +1085,12 @@ describe("Phase 1 model route handlers", () => {
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionEvidenceQuality,
     );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionDirectEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionInferredEvidenceQuality,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
     expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
@@ -1039,6 +1109,12 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification).toBeTruthy();
     expect(res.body.verification.phase).toBe("pre_compose");
     expect(res.body.verification.overallDecision).toBe("provisional");
+    expect(res.body.verification.sectionDirectEvidenceQuality).toBe(
+      res.body.sectionDirectEvidenceQuality,
+    );
+    expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
+      res.body.sectionInferredEvidenceQuality,
+    );
     expect(res.body.verificationBundle).toBeTruthy();
     expect(res.body.verificationBundle.phase).toBe("pre_compose");
     expect(res.body.verificationBundle.verification.phase).toBe(

@@ -36,7 +36,7 @@ export function runA1PanelQualityChecks({
   });
 
   return {
-    version: "phase10-a1-panel-quality-checks-v1",
+    version: "phase13-a1-panel-quality-checks-v1",
     checks,
     blockingPanels: checks.filter((entry) => entry.quality?.blockers?.length),
     warningPanels: checks.filter(
@@ -48,6 +48,10 @@ export function runA1PanelQualityChecks({
     technicalFragmentScores: technicalPanelRegression.technicalFragmentScores,
     perSideElevationStatus: technicalPanelRegression.perSideElevationStatus,
     sectionCandidateQuality: technicalPanelRegression.sectionCandidateQuality,
+    sectionDirectEvidenceQuality:
+      technicalPanelRegression.sectionDirectEvidenceQuality || "provisional",
+    sectionInferredEvidenceQuality:
+      technicalPanelRegression.sectionInferredEvidenceQuality || "provisional",
     sectionStrategyRationale:
       technicalPanelRegression.sectionCandidateQuality.map((entry) => ({
         sectionType: entry.sectionType,

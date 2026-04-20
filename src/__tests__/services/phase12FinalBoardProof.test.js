@@ -306,10 +306,12 @@ describe("Phase 12 final board proof", () => {
       publishability,
     });
 
-    expect(bundle.version).toBe("phase12-a1-verification-v1");
-    expect(bundle.verification.version).toBe("phase12-a1-verification-v1");
+    expect(bundle.version).toBe("phase13-a1-verification-v1");
+    expect(bundle.verification.version).toBe("phase13-a1-verification-v1");
     expect(bundle.verification.phase).toBe("post_compose");
     expect(bundle.verification.publishabilityDecision).toBe("publishable");
+    expect(bundle.verification.sectionDirectEvidenceQuality).toBeDefined();
+    expect(bundle.verification.sectionInferredEvidenceQuality).toBeDefined();
   });
 
   test("publishability prefers stronger verified final-board evidence over stale scoring-only warnings", () => {

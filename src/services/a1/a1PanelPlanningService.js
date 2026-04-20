@@ -198,6 +198,14 @@ export function planA1Panels({
         technicalPanelGate.sectionCandidateQuality ||
         finalSheetRegression.sectionCandidateQuality ||
         [],
+      sectionDirectEvidenceQuality:
+        technicalPanelGate.sectionDirectEvidenceQuality ||
+        finalSheetRegression.sectionDirectEvidenceQuality ||
+        "provisional",
+      sectionInferredEvidenceQuality:
+        technicalPanelGate.sectionInferredEvidenceQuality ||
+        finalSheetRegression.sectionInferredEvidenceQuality ||
+        "provisional",
       renderedTextZone:
         finalSheetRegression.renderedTextZone ||
         finalSheetRegression.textZoneSanity?.renderedTextZone ||

@@ -26,7 +26,23 @@ function filterEvidenceOverriddenWarnings(
       }
       if (
         evidenceProfile.sectionEvidenceQuality === "verified" &&
-        /Section evidence remains weaker than preferred|Section communication is still thin/i.test(
+        /Section evidence remains weaker than preferred|Section communication is still thin|Section .*semantically thin/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        evidenceProfile.sectionDirectEvidenceQuality === "verified" &&
+        /Section direct-evidence quality is blocked|Section direct-evidence quality remains weaker than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        evidenceProfile.sectionInferredEvidenceQuality === "verified" &&
+        /Section inferred-evidence quality is blocked|Section inferred-evidence burden remains higher than preferred/i.test(
           text,
         )
       ) {
@@ -34,7 +50,7 @@ function filterEvidenceOverriddenWarnings(
       }
       if (
         evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
-        /Side-facade evidence remains weaker than preferred|Side elevations remain weaker than preferred/i.test(
+        /Side-facade evidence remains weaker than preferred|Side elevations remain weaker than preferred|Elevation (east|west) remains weaker than preferred/i.test(
           text,
         )
       ) {
@@ -67,6 +83,14 @@ export function classifyA1Publishability({
     finalSheetRegression?.sectionEvidenceQuality ||
     technicalCredibility?.summary?.sectionEvidenceQuality ||
     "provisional";
+  const sectionDirectEvidenceQuality =
+    finalSheetRegression?.sectionDirectEvidenceQuality ||
+    technicalCredibility?.summary?.sectionDirectEvidenceQuality ||
+    "provisional";
+  const sectionInferredEvidenceQuality =
+    finalSheetRegression?.sectionInferredEvidenceQuality ||
+    technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
+    "provisional";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -74,6 +98,8 @@ export function classifyA1Publishability({
   const evidenceProfile = {
     renderedTextEvidenceQuality,
     sectionEvidenceQuality,
+    sectionDirectEvidenceQuality,
+    sectionInferredEvidenceQuality,
     sideFacadeEvidenceQuality,
   };
   const warnings = filterEvidenceOverriddenWarnings(
@@ -95,7 +121,7 @@ export function classifyA1Publishability({
   const decisive = resolvedPhase === "post_compose";
 
   return {
-    version: "phase12-a1-publishability-v1",
+    version: "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,

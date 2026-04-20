@@ -54,10 +54,11 @@ function computeGeometryCompleteness(
   }
   if (drawingType === "section") {
     return clamp(
-      (Number(metadata.cut_room_count || 0) > 0 ? 0.45 : 0.16) +
+      (Number(metadata.cut_room_count || 0) > 0 ? 0.38 : 0.12) +
+        (Number(metadata.section_direct_clip_count || 0) > 0 ? 0.16 : 0.02) +
         (Number(metadata.level_label_count || 0) > 0 ? 0.2 : 0) +
         (Number(metadata.foundation_marker_count || 0) > 0 ? 0.18 : 0) +
-        positiveScore(metadata.roof_profile_visible) * 0.17,
+        positiveScore(metadata.roof_profile_visible) * 0.14,
       0,
       1,
     );
@@ -122,7 +123,30 @@ function computeElevationRichness(metadata = {}) {
 
 function computeSectionUsefulness(metadata = {}) {
   if (Number.isFinite(Number(metadata.section_usefulness_score))) {
-    return clamp(Number(metadata.section_usefulness_score), 0, 1);
+    const base = clamp(Number(metadata.section_usefulness_score), 0, 1);
+    const directTruth = clamp(
+      Number(metadata.section_direct_evidence_score || 0),
+      0,
+      1,
+    );
+    const inferencePenalty = clamp(
+      Number(metadata.section_inferred_evidence_score || 0),
+      0,
+      1,
+    );
+    const communicationValue = clamp(
+      Number(metadata.section_communication_value || base),
+      0,
+      1,
+    );
+    return clamp(
+      base * 0.42 +
+        directTruth * 0.34 +
+        communicationValue * 0.24 -
+        inferencePenalty * 0.18,
+      0,
+      1,
+    );
   }
   return clamp(
     (Number(metadata.cut_room_count || 0) > 0 ? 0.26 : 0.08) +
@@ -161,6 +185,7 @@ function computeFragmentQuality(drawingType = "unknown", metadata = {}) {
     return clamp(
       Number(
         metadata.section_candidate_score ||
+          metadata.section_communication_value ||
           metadata.section_usefulness_score ||
           0,
       ),
@@ -306,12 +331,42 @@ export function scoreTechnicalPanel({
   if (
     fragmentQuality !== null &&
     drawingType === "section" &&
-    Number(fragmentQuality) < 0.64
+    Number(fragmentQuality) < 0.68
   ) {
     blockers.push(
       `${drawing.title || drawingType} section candidate quality ${round(
         fragmentQuality,
-      )} is below the minimum Phase 9 threshold 0.64.`,
+      )} is below the minimum Phase 13 threshold 0.68.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionCredibilityGatePhase13") &&
+    String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
+      "blocked"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} direct section evidence is blocked, so the panel cannot be treated as exact technical truth.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionCredibilityGatePhase13") &&
+    String(metadata.section_inferred_evidence_quality || "").toLowerCase() ===
+      "blocked"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} still relies too heavily on inferred section evidence.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionCredibilityGatePhase13") &&
+    String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
+      "weak"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} direct section evidence is still weaker than preferred for a final board.`,
     );
   }
   if (
@@ -409,12 +464,15 @@ export function scoreTechnicalPanel({
 
   return {
     version:
-      fragmentQuality !== null &&
-      (drawingType === "elevation" || drawingType === "section")
-        ? "phase10-technical-panel-scoring-v1"
-        : fragmentQuality !== null
-          ? "phase9-technical-panel-scoring-v1"
-          : "phase8-technical-panel-scoring-v1",
+      drawingType === "section" &&
+      isFeatureEnabled("useSectionCredibilityGatePhase13")
+        ? "phase13-technical-panel-scoring-v1"
+        : fragmentQuality !== null &&
+            (drawingType === "elevation" || drawingType === "section")
+          ? "phase10-technical-panel-scoring-v1"
+          : fragmentQuality !== null
+            ? "phase9-technical-panel-scoring-v1"
+            : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,

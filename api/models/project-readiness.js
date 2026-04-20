@@ -78,6 +78,10 @@ export default async function handler(req, res) {
       "useSideFacadeSchemaPhase12",
       "useCanonicalVerificationBundlePhase12",
       "useEvidenceDrivenPublishabilityPhase12",
+      "useTrueSectionClippingPhase13",
+      "useClippedSectionGraphicsPhase13",
+      "useSectionTruthScoringPhase13",
+      "useSectionCredibilityGatePhase13",
     ];
     if (!validation.ok) {
       return sendError(

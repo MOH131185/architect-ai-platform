@@ -178,6 +178,14 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sectionEvidenceQuality ||
     technicalCredibility?.summary?.sectionEvidenceQuality ||
     "provisional";
+  const sectionDirectEvidenceQuality =
+    finalSheetRegression?.sectionDirectEvidenceQuality ||
+    technicalCredibility?.summary?.sectionDirectEvidenceQuality ||
+    "provisional";
+  const sectionInferredEvidenceQuality =
+    finalSheetRegression?.sectionInferredEvidenceQuality ||
+    technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
+    "provisional";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -188,7 +196,7 @@ export function buildA1VerificationBundle({
     canonicalDecision(publishability?.status || overall, decisive);
 
   const canonicalVerification = {
-    version: "phase12-a1-verification-v1",
+    version: "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
@@ -198,6 +206,8 @@ export function buildA1VerificationBundle({
     publishabilityDecision,
     renderedTextEvidenceQuality,
     sectionEvidenceQuality,
+    sectionDirectEvidenceQuality,
+    sectionInferredEvidenceQuality,
     sideFacadeEvidenceQuality,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
     components: {

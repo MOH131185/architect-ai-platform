@@ -49,12 +49,27 @@ function createGeometry() {
       { id: "ground", level_number: 0, name: "Ground Floor", height_m: 3.2 },
       { id: "first", level_number: 1, name: "First Floor", height_m: 3.1 },
     ],
+    slabs: [
+      {
+        id: "ground-slab",
+        level_id: "ground",
+        polygon: rectangle(0, 0, 12, 10),
+        bbox: { min_x: 0, min_y: 0, max_x: 12, max_y: 10 },
+      },
+      {
+        id: "first-slab",
+        level_id: "first",
+        polygon: rectangle(0, 0, 12, 10),
+        bbox: { min_x: 0, min_y: 0, max_x: 12, max_y: 10 },
+      },
+    ],
     rooms: [
       {
         id: "living",
         name: "Living Room",
         level_id: "ground",
         actual_area: 28,
+        polygon: rectangle(4, 0, 8.4, 5.8),
         bbox: { min_x: 4, min_y: 0, max_x: 8.4, max_y: 5.8 },
       },
       {
@@ -62,6 +77,7 @@ function createGeometry() {
         name: "Gallery",
         level_id: "first",
         actual_area: 14,
+        polygon: rectangle(4.3, 0, 7.8, 5.4),
         bbox: { min_x: 4.3, min_y: 0, max_x: 7.8, max_y: 5.4 },
       },
     ],
@@ -132,6 +148,7 @@ function createGeometry() {
       {
         id: "main-stair",
         level_id: "ground",
+        polygon: rectangle(5.4, 1.8, 6.6, 7.4),
         bbox: { min_x: 5.4, min_y: 1.8, max_x: 6.6, max_y: 7.4 },
       },
     ],
@@ -209,7 +226,7 @@ describe("Phase 11 evidence-driven verification", () => {
     expect(evidence.summary.directSlabCount).toBeGreaterThan(0);
     expect(evidence.intersections.nearOpenings).toHaveLength(1);
     expect(evidence.sectionIntersections.version).toBe(
-      "phase12-section-geometry-intersection-v1",
+      "phase13-section-geometry-intersection-v1",
     );
   });
 
@@ -447,7 +464,7 @@ describe("Phase 11 evidence-driven verification", () => {
     expect(provisionalBundle.provisional).toBe(true);
     expect(provisionalBundle.overallDecision).toBe("provisional");
     expect(provisionalBundle.verification.version).toBe(
-      "phase12-a1-verification-v1",
+      "phase13-a1-verification-v1",
     );
     expect(verifiedBundle.decisive).toBe(true);
     expect(verifiedBundle.renderedTextEvidenceQuality).toBe("verified");

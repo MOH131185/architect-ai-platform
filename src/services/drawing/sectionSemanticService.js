@@ -114,9 +114,19 @@ export function deriveSectionSemantics(
       0.96,
       Math.max(
         candidateScore + 0.18,
-        Number(sectionEvidenceSummary.usefulnessScore || 0),
+        Number(sectionEvidenceSummary.communicationValue || 0),
       ),
     ),
+  );
+  const directTruthScore = Math.max(
+    Number(sectionEvidenceSummary.directEvidenceScore || 0),
+    cutWalls.length > 0 || cutRooms.length > 0 || cutStairs.length > 0
+      ? 0.56
+      : 0.18,
+  );
+  const inferencePenalty = Math.min(
+    0.18,
+    Number(sectionEvidenceSummary.inferredEvidenceScore || 0) * 0.18,
   );
   const usefulnessScore = round(
     verticalCirculationScore * 0.25 +
@@ -126,17 +136,21 @@ export function deriveSectionSemantics(
       roomCommunicationScore * 0.1 +
       volumetricScore * 0.13 +
       entranceScore * 0.05 +
-      circulationNarrativeScore * 0.05,
+      circulationNarrativeScore * 0.03 +
+      directTruthScore * 0.1 -
+      inferencePenalty,
   );
 
   return {
     version: sectionEvidence?.sectionIntersections?.version?.startsWith(
-      "phase12",
+      "phase13",
     )
-      ? "phase12-section-semantic-service-v1"
-      : sectionProfile?.strategyId
-        ? "phase10-section-semantic-service-v1"
-        : "phase9-section-semantic-service-v1",
+      ? "phase13-section-semantic-service-v1"
+      : sectionEvidence?.sectionIntersections?.version?.startsWith("phase12")
+        ? "phase12-section-semantic-service-v1"
+        : sectionProfile?.strategyId
+          ? "phase10-section-semantic-service-v1"
+          : "phase9-section-semantic-service-v1",
     sectionId: sectionProfile.id || null,
     chosenStrategy: sectionProfile?.chosenStrategy || {
       id: sectionProfile?.strategyId || null,
@@ -167,6 +181,8 @@ export function deriveSectionSemantics(
       roomHierarchy: round(roomCommunicationScore),
       circulationNarrative: round(circulationNarrativeScore),
       volumetricLogic: round(volumetricScore),
+      directTruth: round(directTruthScore),
+      inferencePenalty: round(inferencePenalty),
       usefulness: usefulnessScore,
     },
     sectionCandidateQuality: candidateQuality,
@@ -201,6 +217,14 @@ export function deriveSectionSemantics(
       unsupportedStairs.length
         ? `Stair/core geometry remains partially unsupported for ${unsupportedStairs.length} element(s).`
         : "Stair/core geometry support is sufficient for the resolved evidence.",
+      sectionEvidenceSummary.directEvidenceQuality === "verified"
+        ? "Direct cut truth is strong enough to anchor the section."
+        : sectionEvidenceSummary.directEvidenceQuality === "weak"
+          ? "Direct cut truth exists, but it is still thinner than preferred."
+          : "Direct cut truth is too weak and the section should not silently pass as exact.",
+      sectionEvidenceSummary.inferredEvidenceQuality === "verified"
+        ? "Inference burden remains low relative to direct cut truth."
+        : "Inference burden still affects section meaning and should be treated honestly.",
       ...sectionEvidence.rationale,
       candidateQuality === "pass"
         ? "Candidate scoring rated this cut as strong enough for final technical communication."

@@ -68,6 +68,24 @@ export function evaluateA1TechnicalCredibility({
       "Section evidence remains weaker than preferred because direct cut evidence is thin or heavily contextual.",
     );
   }
+  if (finalSheetRegression?.sectionDirectEvidenceQuality === "blocked") {
+    blockers.push(
+      "Section direct-evidence quality is blocked because exact cut proof is too weak across the available technical sections.",
+    );
+  } else if (finalSheetRegression?.sectionDirectEvidenceQuality === "weak") {
+    warnings.push(
+      "Section direct-evidence quality remains weaker than preferred because exact clipped geometry is still thin.",
+    );
+  }
+  if (finalSheetRegression?.sectionInferredEvidenceQuality === "blocked") {
+    blockers.push(
+      "Section inferred-evidence quality is blocked because too much section meaning still depends on inferred or approximate evidence.",
+    );
+  } else if (finalSheetRegression?.sectionInferredEvidenceQuality === "weak") {
+    warnings.push(
+      "Section inferred-evidence burden remains higher than preferred for final technical credibility.",
+    );
+  }
   if (finalSheetRegression?.sideFacadeEvidenceQuality === "blocked") {
     blockers.push(
       "Side-facade evidence quality is blocked because the available side schemas remain too thin for credible elevations.",
@@ -92,7 +110,7 @@ export function evaluateA1TechnicalCredibility({
       : "pass";
 
   return {
-    version: "phase12-a1-technical-credibility-v1",
+    version: "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -109,6 +127,10 @@ export function evaluateA1TechnicalCredibility({
       weakSections: weakSections.map((entry) => entry.sectionType),
       sectionEvidenceQuality:
         finalSheetRegression?.sectionEvidenceQuality || "provisional",
+      sectionDirectEvidenceQuality:
+        finalSheetRegression?.sectionDirectEvidenceQuality || "provisional",
+      sectionInferredEvidenceQuality:
+        finalSheetRegression?.sectionInferredEvidenceQuality || "provisional",
       sideFacadeEvidenceQuality:
         finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
       renderedTextEvidenceQuality:

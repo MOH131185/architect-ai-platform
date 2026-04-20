@@ -132,6 +132,8 @@ function alignVerificationBundle(bundle = null, verification = null) {
     publishabilityDecision: canonical.publishabilityDecision,
     renderedTextEvidenceQuality: canonical.renderedTextEvidenceQuality,
     sectionEvidenceQuality: canonical.sectionEvidenceQuality,
+    sectionDirectEvidenceQuality: canonical.sectionDirectEvidenceQuality,
+    sectionInferredEvidenceQuality: canonical.sectionInferredEvidenceQuality,
     sideFacadeEvidenceQuality: canonical.sideFacadeEvidenceQuality,
     ocrEvidenceQuality: canonical.ocrEvidenceQuality,
     verification: canonical,
@@ -261,6 +263,8 @@ export const PHASE1_API_CONTRACTS = {
       "sideFacadeEvidenceQuality",
       "sectionCandidateQuality",
       "sectionEvidenceQuality",
+      "sectionDirectEvidenceQuality",
+      "sectionInferredEvidenceQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -294,6 +298,8 @@ export const PHASE1_API_CONTRACTS = {
       "sideFacadeEvidenceQuality",
       "sectionCandidateQuality",
       "sectionEvidenceQuality",
+      "sectionDirectEvidenceQuality",
+      "sectionInferredEvidenceQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -337,6 +343,8 @@ export const PHASE1_API_CONTRACTS = {
       "sideFacadeEvidenceQuality",
       "sectionCandidateQuality",
       "sectionEvidenceQuality",
+      "sectionDirectEvidenceQuality",
+      "sectionInferredEvidenceQuality",
       "sectionStrategyRationale",
       "technicalCredibility",
       "technicalCredibilityPhase",
@@ -1047,8 +1055,16 @@ export function buildProjectReadinessResponse({
       result.technicalPanelGate?.sectionCandidateQuality ||
       [],
     sectionEvidenceQuality:
-      result.finalSheetRegression?.sectionEvidenceQuality ||
       verificationBundle?.sectionEvidenceQuality ||
+      result.finalSheetRegression?.sectionEvidenceQuality ||
+      "provisional",
+    sectionDirectEvidenceQuality:
+      verificationBundle?.sectionDirectEvidenceQuality ||
+      result.finalSheetRegression?.sectionDirectEvidenceQuality ||
+      "provisional",
+    sectionInferredEvidenceQuality:
+      verificationBundle?.sectionInferredEvidenceQuality ||
+      result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
@@ -1198,8 +1214,16 @@ export function buildPlanA1PanelsResponse({
       result.technicalPanelGate?.sectionCandidateQuality ||
       [],
     sectionEvidenceQuality:
-      result.finalSheetRegression?.sectionEvidenceQuality ||
       verificationBundle?.sectionEvidenceQuality ||
+      result.finalSheetRegression?.sectionEvidenceQuality ||
+      "provisional",
+    sectionDirectEvidenceQuality:
+      verificationBundle?.sectionDirectEvidenceQuality ||
+      result.finalSheetRegression?.sectionDirectEvidenceQuality ||
+      "provisional",
+    sectionInferredEvidenceQuality:
+      verificationBundle?.sectionInferredEvidenceQuality ||
+      result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
     technicalFragmentScores:
       result.technicalFragmentScores ||
@@ -1421,9 +1445,19 @@ export function buildProjectHealthResponse({
       result.readiness?.finalSheetRegression?.sectionCandidateQuality ||
       [],
     sectionEvidenceQuality:
+      verificationBundle?.sectionEvidenceQuality ||
       result.finalSheetRegression?.sectionEvidenceQuality ||
       result.readiness?.finalSheetRegression?.sectionEvidenceQuality ||
-      verificationBundle?.sectionEvidenceQuality ||
+      "provisional",
+    sectionDirectEvidenceQuality:
+      verificationBundle?.sectionDirectEvidenceQuality ||
+      result.finalSheetRegression?.sectionDirectEvidenceQuality ||
+      result.readiness?.finalSheetRegression?.sectionDirectEvidenceQuality ||
+      "provisional",
+    sectionInferredEvidenceQuality:
+      verificationBundle?.sectionInferredEvidenceQuality ||
+      result.finalSheetRegression?.sectionInferredEvidenceQuality ||
+      result.readiness?.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||

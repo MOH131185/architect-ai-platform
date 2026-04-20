@@ -90,6 +90,12 @@ function createPhase8Geometry() {
         level_id: "ground",
         name: "Living Room",
         zone: "public",
+        polygon: [
+          { x: 0, y: 0 },
+          { x: 6, y: 0 },
+          { x: 6, y: 4 },
+          { x: 0, y: 4 },
+        ],
         bbox: {
           min_x: 0,
           min_y: 0,
@@ -104,6 +110,12 @@ function createPhase8Geometry() {
         level_id: "ground",
         name: "Kitchen",
         zone: "service",
+        polygon: [
+          { x: 6, y: 0 },
+          { x: 12, y: 0 },
+          { x: 12, y: 4 },
+          { x: 6, y: 4 },
+        ],
         bbox: {
           min_x: 6,
           min_y: 0,
@@ -118,6 +130,12 @@ function createPhase8Geometry() {
         level_id: "first",
         name: "Bedroom 1",
         zone: "private",
+        polygon: [
+          { x: 0, y: 0 },
+          { x: 6, y: 0 },
+          { x: 6, y: 4 },
+          { x: 0, y: 4 },
+        ],
         bbox: {
           min_x: 0,
           min_y: 0,
@@ -227,6 +245,12 @@ function createPhase8Geometry() {
       {
         id: "main-stair",
         level_id: "ground",
+        polygon: [
+          { x: 5.2, y: 1.4 },
+          { x: 6.8, y: 1.4 },
+          { x: 6.8, y: 3.4 },
+          { x: 5.2, y: 3.4 },
+        ],
         bbox: {
           min_x: 5.2,
           min_y: 1.4,

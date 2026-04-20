@@ -57,7 +57,15 @@ function qualityRank(candidate = {}) {
 }
 
 function evidenceRank(candidate = {}) {
-  return Number(candidate.sectionEvidenceSummary?.usefulnessScore || 0);
+  return Number(
+    candidate.sectionEvidenceSummary?.communicationValue ||
+      candidate.sectionEvidenceSummary?.usefulnessScore ||
+      0,
+  );
+}
+
+function directTruthRank(candidate = {}) {
+  return Number(candidate.sectionEvidenceSummary?.directEvidenceScore || 0);
 }
 
 function renderPlacements(placements = []) {
@@ -98,9 +106,15 @@ export function buildSectionGraphic(
   styleDNA = {},
   options = {},
 ) {
-  const geometry = coerceToCanonicalProjectGeometry(
-    geometryInput?.projectGeometry || geometryInput?.geometry || geometryInput,
-  );
+  const rawGeometryInput =
+    geometryInput?.projectGeometry ||
+    geometryInput?.geometry ||
+    geometryInput ||
+    {};
+  const geometry = coerceToCanonicalProjectGeometry({
+    ...rawGeometryInput,
+    metadata: rawGeometryInput?.metadata || {},
+  });
   const sectionPlan = selectSectionCandidates(geometry, options);
   const sectionType = String(
     options.sectionType || "longitudinal",
@@ -111,6 +125,10 @@ export function buildSectionGraphic(
       const qualityDelta = qualityRank(right) - qualityRank(left);
       if (qualityDelta !== 0) {
         return qualityDelta;
+      }
+      const directTruthDelta = directTruthRank(right) - directTruthRank(left);
+      if (directTruthDelta !== 0) {
+        return directTruthDelta;
       }
       const evidenceDelta = evidenceRank(right) - evidenceRank(left);
       if (evidenceDelta !== 0) {
@@ -189,8 +207,18 @@ export function buildSectionGraphic(
           sectionEvidence.summary?.evidenceQuality || "block",
         section_direct_evidence_count:
           sectionEvidence.summary?.directEvidenceCount || 0,
+        section_direct_evidence_quality:
+          sectionEvidence.summary?.directEvidenceQuality || "blocked",
+        section_inferred_evidence_quality:
+          sectionEvidence.summary?.inferredEvidenceQuality || "blocked",
+        section_direct_evidence_score:
+          sectionEvidence.summary?.directEvidenceScore || 0,
         section_inferred_evidence_count:
           sectionEvidence.summary?.inferredEvidenceCount || 0,
+        section_inferred_evidence_score:
+          sectionEvidence.summary?.inferredEvidenceScore || 0,
+        section_communication_value:
+          sectionEvidence.summary?.communicationValue || 0,
       },
     };
   }
@@ -255,10 +283,20 @@ export function buildSectionGraphic(
       ),
       section_evidence_quality:
         sectionEvidence.summary?.evidenceQuality || null,
+      section_direct_evidence_quality:
+        sectionEvidence.summary?.directEvidenceQuality || null,
+      section_inferred_evidence_quality:
+        sectionEvidence.summary?.inferredEvidenceQuality || null,
+      section_direct_evidence_score:
+        sectionEvidence.summary?.directEvidenceScore || 0,
       section_direct_evidence_count:
         sectionEvidence.summary?.directEvidenceCount || 0,
+      section_communication_value:
+        sectionEvidence.summary?.communicationValue || 0,
       section_inferred_evidence_count:
         sectionEvidence.summary?.inferredEvidenceCount || 0,
+      section_inferred_evidence_score:
+        sectionEvidence.summary?.inferredEvidenceScore || 0,
       section_cut_room_count: sectionEvidence.summary?.cutRoomCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
       section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,

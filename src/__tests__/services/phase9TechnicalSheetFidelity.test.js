@@ -282,7 +282,7 @@ describe("Phase 9 technical sheet fidelity", () => {
   test("ranks section candidates with semantic quality metadata", () => {
     const candidates = selectSectionCandidates(createGeometry());
 
-    expect(candidates.version).toBe("phase10-section-cut-planner-v1");
+    expect(candidates.version).toBe("phase13-section-cut-planner-v1");
     expect(candidates.candidates.length).toBeGreaterThan(2);
     expect(candidates.candidates[0].sectionCandidateQuality).toBeDefined();
     expect(candidates.candidates[0].categoryScores).toBeTruthy();

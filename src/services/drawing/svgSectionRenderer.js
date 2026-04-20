@@ -65,30 +65,45 @@ function getLevelProfiles(geometry = {}) {
 function projectRoomForSection(room = {}, sectionType = "longitudinal") {
   return sectionAxis(sectionType) === "x"
     ? {
-        start: Number(room.bbox?.min_x || 0),
-        end: Number(room.bbox?.max_x || 0),
-      }
-    : {
         start: Number(room.bbox?.min_y || 0),
         end: Number(room.bbox?.max_y || 0),
+      }
+    : {
+        start: Number(room.bbox?.min_x || 0),
+        end: Number(room.bbox?.max_x || 0),
       };
 }
 
-function roomIntersectsCut(
-  room = {},
-  cutCoordinate = 0,
-  sectionType = "longitudinal",
-) {
-  const axis = sectionAxis(sectionType);
-  const minimum =
-    axis === "x"
-      ? Number(room.bbox?.min_x || 0)
-      : Number(room.bbox?.min_y || 0);
-  const maximum =
-    axis === "x"
-      ? Number(room.bbox?.max_x || 0)
-      : Number(room.bbox?.max_y || 0);
-  return minimum <= cutCoordinate && maximum >= cutCoordinate;
+function sectionDisplayRange(entry = {}, sectionType = "longitudinal") {
+  const sectionRange = entry.clipGeometry?.sectionRange;
+  if (
+    sectionRange &&
+    Number.isFinite(Number(sectionRange.start)) &&
+    Number.isFinite(Number(sectionRange.end))
+  ) {
+    return {
+      start: Number(sectionRange.start),
+      end: Number(sectionRange.end),
+    };
+  }
+  if ((entry.cutSpans || []).length >= 2) {
+    return {
+      start: Number(entry.cutSpans[0]),
+      end: Number(entry.cutSpans[entry.cutSpans.length - 1]),
+    };
+  }
+  const sectionPosition = Number(entry.clipGeometry?.sectionPositionM);
+  if (Number.isFinite(sectionPosition)) {
+    const halfWidth = Math.max(
+      0.2,
+      Number(entry.clipGeometry?.widthM || entry.width_m || 0.8) / 2,
+    );
+    return {
+      start: sectionPosition - halfWidth,
+      end: sectionPosition + halfWidth,
+    };
+  }
+  return projectRoomForSection(entry, sectionType);
 }
 
 function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale) {
@@ -166,7 +181,7 @@ function renderCutRooms(
         return "";
       }
 
-      const projection = projectRoomForSection(room, sectionType);
+      const projection = sectionDisplayRange(room, sectionType);
       const x = baseX + projection.start * scale;
       const widthPx = Math.max(18, (projection.end - projection.start) * scale);
       const y = baseY - level.top_m * scale;
@@ -198,17 +213,12 @@ function renderCutRooms(
 function renderStairCut(
   stairs = [],
   sectionType = "longitudinal",
-  cutCoordinate = 0,
   baseX = 0,
   baseY = 0,
   scale = 1,
   levelProfiles = [],
 ) {
-  const intersected = (stairs || []).filter((stair) =>
-    roomIntersectsCut(stair, cutCoordinate, sectionType),
-  );
-
-  const markup = intersected
+  const markup = (stairs || [])
     .map((stair) => {
       const level =
         levelProfiles.find((entry) => entry.id === stair.level_id) ||
@@ -216,7 +226,7 @@ function renderStairCut(
       if (!level) {
         return "";
       }
-      const projection = projectRoomForSection(stair, sectionType);
+      const projection = sectionDisplayRange(stair, sectionType);
       const x = baseX + projection.start * scale;
       const widthPx = Math.max(20, (projection.end - projection.start) * scale);
       const y =
@@ -245,8 +255,90 @@ function renderStairCut(
 
   return {
     markup: `<g id="phase8-section-stair-cuts">${markup}</g>`,
-    count: intersected.length,
-    treadCount: intersected.length * 7,
+    count: (stairs || []).length,
+    treadCount: (stairs || []).length * 7,
+  };
+}
+
+function renderCutWalls(
+  walls = [],
+  sectionType = "longitudinal",
+  baseX = 0,
+  baseY = 0,
+  scale = 1,
+  levelProfiles = [],
+) {
+  const markup = (walls || [])
+    .map((wall, index) => {
+      const level =
+        levelProfiles.find((entry) => entry.id === wall.level_id) ||
+        levelProfiles[0];
+      if (!level) {
+        return "";
+      }
+      const projection = sectionDisplayRange(wall, sectionType);
+      const center = (Number(projection.start) + Number(projection.end)) / 2;
+      const widthPx = Math.max(
+        8,
+        Number(wall.thickness_m || 0.18) * scale,
+        Math.abs(Number(projection.end) - Number(projection.start)) * scale,
+      );
+      const x = baseX + center * scale - widthPx / 2;
+      const y = baseY - level.top_m * scale;
+      const heightPx = Math.max(24, Number(level.height_m || 3.2) * scale);
+
+      return `
+        <rect id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#151515" fill-opacity="0.82" stroke="#111" stroke-width="1.2" />
+      `;
+    })
+    .join("");
+
+  return {
+    markup: `<g id="phase13-section-cut-walls">${markup}</g>`,
+    count: (walls || []).length,
+  };
+}
+
+function renderCutOpenings(
+  openings = [],
+  sectionType = "longitudinal",
+  baseX = 0,
+  baseY = 0,
+  scale = 1,
+  levelProfiles = [],
+) {
+  const markup = (openings || [])
+    .map((opening, index) => {
+      const level =
+        levelProfiles.find((entry) => entry.id === opening.level_id) ||
+        levelProfiles[0];
+      if (!level) {
+        return "";
+      }
+      const projection = sectionDisplayRange(opening, sectionType);
+      const sillHeight = Number(opening.clipGeometry?.sillHeightM || 0.9);
+      const headHeight = Number(opening.clipGeometry?.headHeightM || 2.1);
+      const widthPx = Math.max(
+        10,
+        Math.abs(Number(projection.end) - Number(projection.start)) * scale,
+      );
+      const x = baseX + Number(projection.start) * scale;
+      const y = baseY - (level.bottom_m + headHeight) * scale;
+      const heightPx = Math.max(10, (headHeight - sillHeight) * scale);
+
+      return `
+        <g id="phase13-section-cut-opening-${escapeXml(opening.id || index)}">
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#ffffff" stroke="#475569" stroke-width="1" />
+          <line x1="${x}" y1="${y}" x2="${x + widthPx}" y2="${y}" stroke="#111" stroke-width="1" />
+          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="#111" stroke-width="1" />
+        </g>
+      `;
+    })
+    .join("");
+
+  return {
+    markup: `<g id="phase13-section-cut-openings">${markup}</g>`,
+    count: (openings || []).length,
   };
 }
 
@@ -255,9 +347,15 @@ export function renderSectionSvg(
   styleDNA = {},
   options = {},
 ) {
-  const geometry = coerceToCanonicalProjectGeometry(
-    geometryInput?.projectGeometry || geometryInput?.geometry || geometryInput,
-  );
+  const rawGeometryInput =
+    geometryInput?.projectGeometry ||
+    geometryInput?.geometry ||
+    geometryInput ||
+    {};
+  const geometry = coerceToCanonicalProjectGeometry({
+    ...rawGeometryInput,
+    metadata: rawGeometryInput?.metadata || {},
+  });
   const sectionType = String(
     options.sectionType || "longitudinal",
   ).toLowerCase();
@@ -270,8 +368,8 @@ export function renderSectionSvg(
   const bounds = getBuildableBounds(geometry);
   const horizontalExtent =
     sectionAxis(sectionType) === "x"
-      ? Number(bounds.width || 12)
-      : Number(bounds.height || 10);
+      ? Number(bounds.height || 10)
+      : Number(bounds.width || 12);
   const totalHeight =
     levelProfiles.reduce(
       (sum, level) => sum + Number(level.height_m || 3.2),
@@ -292,6 +390,8 @@ export function renderSectionSvg(
   );
   const cutRooms = sectionEvidence.intersections?.rooms || [];
   const intersectedStairs = sectionEvidence.intersections?.stairs || [];
+  const cutWalls = sectionEvidence.intersections?.walls || [];
+  const cutOpenings = sectionEvidence.intersections?.openings || [];
   const geometryComplete =
     sectionEvidence.summary?.geometryCommunicable !== false &&
     levelProfiles.length > 0;
@@ -344,14 +444,29 @@ export function renderSectionSvg(
     scale,
   );
   const stairMarkup = renderStairCut(
-    geometry.stairs || [],
+    intersectedStairs,
     sectionType,
-    cutCoordinate,
     baseX,
     baseY,
     scale,
     levelProfiles,
   );
+  const useClippedGraphics = isFeatureEnabled(
+    "useClippedSectionGraphicsPhase13",
+  );
+  const wallMarkup = useClippedGraphics
+    ? renderCutWalls(cutWalls, sectionType, baseX, baseY, scale, levelProfiles)
+    : { markup: "", count: 0 };
+  const openingMarkup = useClippedGraphics
+    ? renderCutOpenings(
+        cutOpenings,
+        sectionType,
+        baseX,
+        baseY,
+        scale,
+        levelProfiles,
+      )
+    : { markup: "", count: 0 };
   const roof = renderRoof(
     baseX,
     baseY - totalHeight * scale,
@@ -385,6 +500,8 @@ export function renderSectionSvg(
   ${roof}
   ${datums.markup}
   ${cutRoomMarkup.markup}
+  ${wallMarkup.markup}
+  ${openingMarkup.markup}
   ${stairMarkup.markup}
   ${options.overlayMarkup || ""}
 </svg>`;
@@ -401,9 +518,11 @@ export function renderSectionSvg(
       geometry_complete: geometryComplete,
       stair_count: intersectedStairs.length,
       room_label_count: options.hideRoomLabels ? 0 : cutRooms.length,
+      wall_cut_count: cutWalls.length,
       slab_line_count: levelProfiles.length,
       level_label_count: levelProfiles.length,
       cut_room_count: cutRooms.length,
+      cut_opening_count: cutOpenings.length,
       foundation_marker_count: 1,
       stair_tread_count: stairMarkup.treadCount,
       roof_profile_visible: true,
@@ -426,12 +545,25 @@ export function renderSectionSvg(
       cut_coordinate_m: cutCoordinate,
       section_evidence_quality:
         sectionEvidence.summary?.evidenceQuality || null,
+      section_direct_evidence_quality:
+        sectionEvidence.summary?.directEvidenceQuality || null,
+      section_inferred_evidence_quality:
+        sectionEvidence.summary?.inferredEvidenceQuality || null,
       section_direct_evidence_count:
         sectionEvidence.summary?.directEvidenceCount || 0,
+      section_direct_evidence_score:
+        sectionEvidence.summary?.directEvidenceScore || 0,
       section_near_evidence_count:
         sectionEvidence.summary?.nearEvidenceCount || 0,
       section_inferred_evidence_count:
         sectionEvidence.summary?.inferredEvidenceCount || 0,
+      section_inferred_evidence_score:
+        sectionEvidence.summary?.inferredEvidenceScore || 0,
+      section_communication_value:
+        sectionEvidence.summary?.communicationValue || usefulnessScore,
+      section_direct_clip_count: sectionEvidence.summary?.directClipCount || 0,
+      section_approximate_evidence_count:
+        sectionEvidence.summary?.approximateEvidenceCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
       section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,
     },

@@ -228,7 +228,9 @@ export function assessA1ComposeReadiness({
 
   return {
     version: finalSheetRegression
-      ? "phase12-a1-compose-readiness-v1"
+      ? finalSheetRegression?.sectionDirectEvidenceQuality
+        ? "phase13-a1-compose-readiness-v1"
+        : "phase12-a1-compose-readiness-v1"
       : isFeatureEnabled("useComposeExecutionPlanning")
         ? "phase6-a1-compose-readiness-v1"
         : "phase5-a1-compose-readiness-v1",

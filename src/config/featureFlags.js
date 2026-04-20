@@ -1095,6 +1095,18 @@ export const FEATURE_FLAGS = {
   /** Phase 12 stronger evidence-driven publishability decisions */
   useEvidenceDrivenPublishabilityPhase12: true,
 
+  /** Phase 13 true geometric section clipping */
+  useTrueSectionClippingPhase13: true,
+
+  /** Phase 13 section graphics driven from clipped geometry */
+  useClippedSectionGraphicsPhase13: true,
+
+  /** Phase 13 section candidate ranking from exact cut truth */
+  useSectionTruthScoringPhase13: true,
+
+  /** Phase 13 section credibility gate in final A1 readiness/publishability */
+  useSectionCredibilityGatePhase13: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1433,6 +1445,10 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useSideFacadeSchemaPhase12 = true;
   FEATURE_FLAGS.useCanonicalVerificationBundlePhase12 = true;
   FEATURE_FLAGS.useEvidenceDrivenPublishabilityPhase12 = true;
+  FEATURE_FLAGS.useTrueSectionClippingPhase13 = true;
+  FEATURE_FLAGS.useClippedSectionGraphicsPhase13 = true;
+  FEATURE_FLAGS.useSectionTruthScoringPhase13 = true;
+  FEATURE_FLAGS.useSectionCredibilityGatePhase13 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -1878,6 +1894,22 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_EVIDENCE_DRIVEN_PUBLISHABILITY_PHASE12: {
       flag: "useEvidenceDrivenPublishabilityPhase12",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TRUE_SECTION_CLIPPING_PHASE13: {
+      flag: "useTrueSectionClippingPhase13",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CLIPPED_SECTION_GRAPHICS_PHASE13: {
+      flag: "useClippedSectionGraphicsPhase13",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_TRUTH_SCORING_PHASE13: {
+      flag: "useSectionTruthScoringPhase13",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CREDIBILITY_GATE_PHASE13: {
+      flag: "useSectionCredibilityGatePhase13",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

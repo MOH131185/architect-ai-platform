@@ -2,6 +2,21 @@ import { evaluateDrawingFragmentQuality } from "../drawing/drawingFragmentQualit
 
 function normalizeStatus(entry = {}) {
   if (entry?.svg === null || entry?.status === "blocked") return "block";
+  const directEvidenceQuality = String(
+    entry?.technical_quality_metadata?.section_direct_evidence_quality || "",
+  ).toLowerCase();
+  const inferredEvidenceQuality = String(
+    entry?.technical_quality_metadata?.section_inferred_evidence_quality || "",
+  ).toLowerCase();
+  if (
+    directEvidenceQuality === "blocked" ||
+    inferredEvidenceQuality === "blocked"
+  ) {
+    return "block";
+  }
+  if (directEvidenceQuality === "weak" || inferredEvidenceQuality === "weak") {
+    return "warning";
+  }
   const richness = Number(
     entry?.technical_quality_metadata?.facade_richness_score || 0,
   );
@@ -44,8 +59,7 @@ export function runA1TechnicalPanelRegression({
   const sectionCandidateQuality = (drawings.section || []).map((entry) => ({
     sectionType: entry.section_type || "unknown",
     status:
-      entry.section_profile?.sectionCandidateQuality ||
-      (entry.status === "blocked" ? "block" : "pass"),
+      entry.section_profile?.sectionCandidateQuality || normalizeStatus(entry),
     score: Number(
       entry.technical_quality_metadata?.section_usefulness_score || 0,
     ),
@@ -68,6 +82,20 @@ export function runA1TechnicalPanelRegression({
       [],
     evidenceQuality:
       entry.technical_quality_metadata?.section_evidence_quality || null,
+    directEvidenceQuality:
+      entry.technical_quality_metadata?.section_direct_evidence_quality || null,
+    inferredEvidenceQuality:
+      entry.technical_quality_metadata?.section_inferred_evidence_quality ||
+      null,
+    directEvidenceScore: Number(
+      entry.technical_quality_metadata?.section_direct_evidence_score || 0,
+    ),
+    inferredEvidenceScore: Number(
+      entry.technical_quality_metadata?.section_inferred_evidence_score || 0,
+    ),
+    communicationValue: Number(
+      entry.technical_quality_metadata?.section_communication_value || 0,
+    ),
   }));
 
   const blockers = [];
@@ -126,9 +154,32 @@ export function runA1TechnicalPanelRegression({
       : sectionCandidateQuality.length
         ? "verified"
         : "provisional";
+  const sectionDirectEvidenceQuality = sectionCandidateQuality.some(
+    (entry) =>
+      entry.directEvidenceQuality === "blocked" || entry.status === "block",
+  )
+    ? "blocked"
+    : sectionCandidateQuality.some(
+          (entry) => entry.directEvidenceQuality === "weak",
+        )
+      ? "weak"
+      : sectionCandidateQuality.length
+        ? "verified"
+        : "provisional";
+  const sectionInferredEvidenceQuality = sectionCandidateQuality.some(
+    (entry) => entry.inferredEvidenceQuality === "blocked",
+  )
+    ? "blocked"
+    : sectionCandidateQuality.some(
+          (entry) => entry.inferredEvidenceQuality === "weak",
+        )
+      ? "weak"
+      : sectionCandidateQuality.length
+        ? "verified"
+        : "provisional";
 
   return {
-    version: "phase10-a1-technical-panel-regression-v1",
+    version: "phase13-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: [...new Set(blockers)],
@@ -137,6 +188,8 @@ export function runA1TechnicalPanelRegression({
     sectionCandidateQuality,
     sideFacadeEvidenceQuality,
     sectionEvidenceQuality,
+    sectionDirectEvidenceQuality,
+    sectionInferredEvidenceQuality,
     technicalFragmentScores: fragmentQuality.fragmentScores,
   };
 }

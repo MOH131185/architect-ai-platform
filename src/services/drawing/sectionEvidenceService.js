@@ -54,54 +54,45 @@ function summarizeFocusHits(
   );
 }
 
-function flattenIntersections(grouped = {}) {
-  return [
-    ...(grouped.direct || []),
-    ...(grouped.near || []),
-    ...(grouped.inferred || []),
-  ];
-}
-
-function countEvidence(grouped = {}, evidenceType = "direct") {
-  return (grouped[evidenceType] || []).length;
-}
-
 function roomArea(room = {}) {
   return Number(room.actual_area || room.target_area_m2 || 0);
 }
 
-export function classifySectionEvidence({
-  usefulnessScore = 0,
-  directEvidenceCount = 0,
-  nearEvidenceCount = 0,
-  unsupportedEvidenceCount = 0,
-  cutRoomCount = 0,
-  cutStairCount = 0,
-  directSlabCount = 0,
-} = {}) {
-  if (unsupportedEvidenceCount >= 3 && directEvidenceCount < 3) {
+function evidenceQualityFromScore(
+  score = 0,
+  { strong = 0.72, weak = 0.42, blockedWhenZero = true } = {},
+) {
+  const resolved = Number(score || 0);
+  if (blockedWhenZero && resolved <= 0.02) {
+    return "blocked";
+  }
+  if (resolved >= strong) {
+    return "verified";
+  }
+  if (resolved >= weak) {
+    return "weak";
+  }
+  return "blocked";
+}
+
+export function classifySectionEvidence(summary = {}) {
+  if (
+    summary.directEvidenceQuality === "blocked" ||
+    summary.inferredEvidenceQuality === "blocked"
+  ) {
     return "block";
   }
-  if (usefulnessScore >= 0.8 && directEvidenceCount >= 4) {
-    return "pass";
-  }
   if (
-    usefulnessScore >= 0.72 &&
-    directEvidenceCount >= 5 &&
-    cutRoomCount > 0 &&
-    cutStairCount > 0 &&
-    directSlabCount > 0
+    Number(summary.communicationValue || 0) >= 0.76 &&
+    summary.directEvidenceQuality === "verified" &&
+    Number(summary.directClipCount || 0) >= 3
   ) {
     return "pass";
   }
   if (
-    usefulnessScore >= 0.58 &&
-    directEvidenceCount >= 1 &&
-    nearEvidenceCount >= 1
+    Number(summary.communicationValue || 0) >= 0.58 &&
+    summary.directEvidenceQuality !== "blocked"
   ) {
-    return "warning";
-  }
-  if (usefulnessScore >= 0.64 && directEvidenceCount >= 2) {
     return "warning";
   }
   return "block";
@@ -112,90 +103,101 @@ export function explainSectionEvidence(summary = {}, sectionProfile = {}) {
 
   if (summary.cutRoomCount > 0) {
     rationale.push(
-      `Cut directly intersects ${summary.cutRoomCount} room volume(s) with ${summary.totalCutRoomAreaM2.toFixed(1)}m2 of program evidence.`,
+      `Cut directly clips ${summary.cutRoomCount} room volume(s) with ${summary.totalCutRoomAreaM2.toFixed(1)}m2 of exact room evidence.`,
     );
   } else if (summary.nearRoomCount > 0) {
     rationale.push(
-      `Section is only context-adjacent to ${summary.nearRoomCount} room volume(s); room evidence is not directly cut.`,
+      `Room evidence is near-cut only (${summary.nearRoomCount} room volume(s)); no room is directly clipped.`,
     );
   } else {
-    rationale.push("Cut does not intersect a named room volume directly.");
+    rationale.push("Cut does not directly clip a named room volume.");
   }
 
   if (summary.cutStairCount > 0) {
     rationale.push(
-      `Cut directly intersects ${summary.cutStairCount} stair/core element(s), strengthening vertical communication.`,
+      `Cut directly clips ${summary.cutStairCount} stair/core element(s), improving vertical circulation truth.`,
     );
   } else if (summary.nearStairCount > 0) {
     rationale.push(
-      `Stair/core evidence is near-cut only (${summary.nearStairCount} element(s)); circulation remains contextual.`,
+      `Stair/core evidence is contextual only (${summary.nearStairCount} near-cut element(s)).`,
     );
   } else {
-    rationale.push("No stair/core geometry is cut directly.");
+    rationale.push("No stair/core geometry is directly clipped by the cut.");
   }
 
   if (summary.cutOpeningCount > 0) {
     rationale.push(
-      `Cut resolves ${summary.cutOpeningCount} direct opening marker(s) against ${summary.cutWallCount} cut wall segment(s).`,
+      `Cut resolves ${summary.cutOpeningCount} direct opening marker(s) against ${summary.cutWallCount} direct wall clip(s).`,
     );
   } else if (summary.nearOpeningCount > 0) {
     rationale.push(
-      `Opening relationships are near-cut/contextual (${summary.nearOpeningCount} marker(s)), not direct cut evidence.`,
+      `Openings are near-cut/contextual only (${summary.nearOpeningCount} marker(s)); they are not clipped directly.`,
     );
   } else if (summary.inferredOpeningCount > 0) {
     rationale.push(
-      `Opening relationships are only inferred from ${summary.inferredOpeningCount} opening marker(s).`,
+      `Opening relationships remain inferred from ${summary.inferredOpeningCount} non-clipped marker(s).`,
     );
   } else {
-    rationale.push("Wall-opening relationships are absent or inferred only.");
+    rationale.push("No opening relationship is directly resolved by the cut.");
   }
 
   if (summary.directSlabCount > 0) {
     rationale.push(
-      `Section includes ${summary.directSlabCount} direct slab/floor datum reference(s).`,
+      `Section includes ${summary.directSlabCount} exact slab/floor clip(s).`,
+    );
+  } else if (summary.nearSlabCount > 0) {
+    rationale.push(
+      `Slab/floor structure is contextual only (${summary.nearSlabCount} near-cut slab reference(s)).`,
     );
   }
 
   if (summary.focusHitCount > 0) {
     rationale.push(
-      `Cut hits ${summary.focusHitCount} focused semantic anchor(s) from the selected section strategy.`,
+      `Cut hits ${summary.focusHitCount} focused semantic anchor(s) from the chosen section strategy.`,
     );
   }
 
-  if (summary.levelCount > 1) {
+  if (summary.directClipCount > 0) {
     rationale.push(
-      "Multiple levels are available, so datums and floor-to-floor communication are explicit.",
+      `${summary.directClipCount} exact clip primitive(s) were derived from canonical geometry.`,
     );
   }
-
-  if (summary.roofCommunicated) {
+  if (summary.approximateEvidenceCount > 0) {
     rationale.push(
-      "Roof profile logic is present and can be communicated in the section.",
-    );
-  }
-
-  if (summary.geometrySupportLimited) {
-    rationale.push(
-      "Some section evidence still relies on bbox/derived geometry because canonical primitives are incomplete.",
+      `${summary.approximateEvidenceCount} evidence fragment(s) still rely on contextual, bbox, or derived support rather than exact clipping.`,
     );
   }
   if (summary.unsupportedEvidenceCount > 0) {
     rationale.push(
-      `${summary.unsupportedEvidenceCount} evidence fragment(s) remain unsupported because canonical cut geometry was missing or too thin to classify directly.`,
+      `${summary.unsupportedEvidenceCount} evidence fragment(s) remain unsupported because canonical cut primitives are incomplete.`,
     );
   }
 
-  if (summary.evidenceQuality === "block") {
+  if (summary.directEvidenceQuality === "blocked") {
     rationale.push(
-      "Direct cut evidence is too weak for a credible final technical section without regeneration or a different cut strategy.",
+      "Direct cut evidence is too weak to treat this section as credible final technical truth.",
     );
-  } else if (summary.evidenceQuality === "warning") {
+  } else if (summary.directEvidenceQuality === "weak") {
     rationale.push(
-      "Section evidence is usable, but still thinner than preferred for a final presentation board.",
+      "Direct cut evidence exists, but it is still thinner than preferred for a final board section.",
     );
   } else {
     rationale.push(
-      "Section evidence is strong enough to communicate the cut as a credible technical panel.",
+      "Direct cut evidence is strong enough to support a credible technical section.",
+    );
+  }
+
+  if (summary.inferredEvidenceQuality === "blocked") {
+    rationale.push(
+      "The section still relies too heavily on inferred/contextual evidence.",
+    );
+  } else if (summary.inferredEvidenceQuality === "weak") {
+    rationale.push(
+      "Some section meaning still depends on inferred/contextual evidence.",
+    );
+  } else {
+    rationale.push(
+      "Inference burden is low enough that exact clipping remains the primary truth source.",
     );
   }
 
@@ -214,18 +216,29 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       evidenceQuality: "block",
       usefulnessScore: 0,
       cutSpecificity: 0,
+      communicationValue: 0,
+      directEvidenceScore: 0,
+      inferredEvidenceScore: 0,
+      directEvidenceQuality: "blocked",
+      inferredEvidenceQuality: "blocked",
       directEvidenceCount: 0,
       nearEvidenceCount: 0,
       inferredEvidenceCount: 0,
       unsupportedEvidenceCount: 0,
+      directClipCount: 0,
+      approximateEvidenceCount: 0,
       focusHitCount: 0,
       cutRoomCount: 0,
       nearRoomCount: 0,
+      inferredRoomCount: 0,
       unsupportedRoomCount: 0,
       cutStairCount: 0,
       nearStairCount: 0,
+      inferredStairCount: 0,
       unsupportedStairCount: 0,
       cutWallCount: 0,
+      nearWallCount: 0,
+      inferredWallCount: 0,
       unsupportedWallCount: 0,
       cutOpeningCount: 0,
       nearOpeningCount: 0,
@@ -234,6 +247,8 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       cutDoorCount: 0,
       entranceHitCount: 0,
       directSlabCount: 0,
+      nearSlabCount: 0,
+      inferredSlabCount: 0,
       unsupportedSlabCount: 0,
       levelCount: 0,
       roofCommunicated: false,
@@ -254,6 +269,9 @@ export function scoreSectionEvidence(summary = {}) {
     evidenceQuality: classifySectionEvidence(resolved),
     usefulnessScore: Number(resolved.usefulnessScore || 0),
     cutSpecificity: Number(resolved.cutSpecificity || 0),
+    directEvidenceScore: Number(resolved.directEvidenceScore || 0),
+    inferredEvidenceScore: Number(resolved.inferredEvidenceScore || 0),
+    communicationValue: Number(resolved.communicationValue || 0),
   };
 }
 
@@ -278,12 +296,14 @@ export function buildSectionEvidence(
       "pitched gable",
   ).toLowerCase();
   const useTrueEvidence =
+    isFeatureEnabled("useTrueSectionClippingPhase13") ||
     isFeatureEnabled("useTrueSectionEvidencePhase12") ||
     isFeatureEnabled("useTrueSectionEvidencePhase11");
+
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
     sectionProfile,
-    useTrueEvidence ? { directBand: 0.16, nearBand: 0.9 } : undefined,
+    useTrueEvidence ? { directBand: 0.14, nearBand: 0.9 } : undefined,
   );
   const rooms = intersectionBundle.intersections.rooms || {};
   const stairs = intersectionBundle.intersections.stairs || {};
@@ -296,9 +316,15 @@ export function buildSectionEvidence(
 
   const directRooms = rooms.direct || [];
   const nearRooms = rooms.near || [];
+  const inferredRooms = rooms.inferred || [];
+  const unsupportedRooms = rooms.unsupported || [];
   const directStairs = stairs.direct || [];
   const nearStairs = stairs.near || [];
+  const inferredStairs = stairs.inferred || [];
+  const unsupportedStairs = stairs.unsupported || [];
   const directWalls = walls.direct || [];
+  const nearWalls = walls.near || [];
+  const inferredWalls = walls.inferred || [];
   const unsupportedWalls = walls.unsupported || [];
   const directWindows = windows.direct || [];
   const nearWindows = windows.near || [];
@@ -317,9 +343,11 @@ export function buildSectionEvidence(
   const unsupportedEntrances = entrances.unsupported || [];
   const directSlabs = slabs.direct || [];
   const nearSlabs = slabs.near || [];
+  const inferredSlabs = slabs.inferred || [];
   const unsupportedSlabs = slabs.unsupported || [];
   const directRoof = roofElements.direct || [];
   const nearRoof = roofElements.near || [];
+  const inferredRoof = roofElements.inferred || [];
   const unsupportedRoof = roofElements.unsupported || [];
   const focusHits = summarizeFocusHits(
     sectionProfile,
@@ -328,170 +356,185 @@ export function buildSectionEvidence(
     directEntrances,
   );
   const circulationHitCount = Number(projectGeometry.circulation?.length || 0);
+
   const directEvidenceCount =
     directRooms.length +
     directStairs.length +
     directWalls.length +
     directOpenings.length +
     directEntrances.length +
-    directSlabs.length;
+    directSlabs.length +
+    directRoof.length;
   const nearEvidenceCount =
     nearRooms.length +
     nearStairs.length +
+    nearWalls.length +
     nearOpenings.length +
     nearEntrances.length +
     nearSlabs.length +
     nearRoof.length;
   const inferredEvidenceCount =
+    inferredRooms.length +
+    inferredStairs.length +
+    inferredWalls.length +
     inferredOpenings.length +
-    (levelProfiles.length > 0 ? 1 : 0) +
-    (roofLanguage ? 1 : 0) +
-    (sectionProfile.focusEntityIds || []).length +
-    directRoof.length;
+    inferredSlabs.length +
+    inferredRoof.length;
   const unsupportedEvidenceCount =
-    (rooms.unsupported || []).length +
-    (stairs.unsupported || []).length +
+    unsupportedRooms.length +
+    unsupportedStairs.length +
     unsupportedWalls.length +
     unsupportedOpenings.length +
     unsupportedEntrances.length +
     unsupportedSlabs.length +
     unsupportedRoof.length;
 
+  const directClipCount = Number(
+    intersectionBundle.clipSummary?.directClipCount || 0,
+  );
+  const approximateEvidenceCount = Number(
+    intersectionBundle.clipSummary?.approximateEvidenceCount || 0,
+  );
+
   const roomCommunicationScore =
     directRooms.length > 1
       ? 1
       : directRooms.length === 1
-        ? 0.78
+        ? 0.82
         : nearRooms.length > 0
-          ? 0.46
-          : 0.16;
+          ? 0.44
+          : inferredRooms.length > 0
+            ? 0.28
+            : 0.12;
   const verticalCirculationScore = directStairs.length
     ? 1
     : nearStairs.length
-      ? 0.58
-      : (projectGeometry.stairs || []).length
-        ? 0.34
-        : 0.12;
+      ? 0.52
+      : inferredStairs.length
+        ? 0.32
+        : (projectGeometry.stairs || []).length
+          ? 0.2
+          : 0.08;
   const wallOpeningScore =
     directWalls.length && directOpenings.length
-      ? clamp(0.56 + directOpenings.length * 0.08, 0, 1)
-      : directWalls.length && nearOpenings.length
-        ? 0.48
-        : directWalls.length
-          ? 0.32
-          : 0.1;
+      ? clamp(0.6 + directOpenings.length * 0.06, 0, 1)
+      : directWalls.length
+        ? 0.42
+        : nearWalls.length || nearOpenings.length
+          ? 0.28
+          : inferredOpenings.length
+            ? 0.18
+            : 0.08;
   const slabDatumScore = directSlabs.length
     ? 0.86
     : nearSlabs.length
-      ? 0.62
-      : levelProfiles.length
-        ? 0.48
-        : 0.15;
+      ? 0.56
+      : inferredSlabs.length || levelProfiles.length
+        ? 0.38
+        : 0.14;
   const focusScore =
     focusHits.length > 0
-      ? clamp(0.56 + focusHits.length * 0.12, 0, 1)
+      ? clamp(0.58 + focusHits.length * 0.1, 0, 1)
       : (sectionProfile.focusEntityIds || []).length
-        ? 0.26
-        : 0.16;
+        ? 0.24
+        : 0.14;
   const roofScore =
     directRoof.length > 0
-      ? 0.82
+      ? 0.74
       : nearRoof.length > 0
-        ? 0.62
-        : roofLanguage
-          ? 0.48
-          : 0.18;
+        ? 0.52
+        : inferredRoof.length > 0 || roofLanguage
+          ? 0.36
+          : 0.16;
   const cutSpecificity =
     directEvidenceCount + nearEvidenceCount + inferredEvidenceCount > 0
       ? directEvidenceCount /
         (directEvidenceCount +
-          nearEvidenceCount * 0.6 +
-          inferredEvidenceCount * 0.35)
+          nearEvidenceCount * 0.75 +
+          inferredEvidenceCount * 0.45)
       : 0;
-  const usefulnessScore = round(
-    roomCommunicationScore * 0.22 +
-      verticalCirculationScore * 0.2 +
-      wallOpeningScore * 0.17 +
-      slabDatumScore * 0.13 +
-      focusScore * 0.1 +
-      roofScore * 0.08 +
-      clamp(cutSpecificity, 0, 1) * 0.1,
-  );
-
-  const evidenceQuality = classifySectionEvidence({
-    usefulnessScore,
-    directEvidenceCount,
-    nearEvidenceCount,
-    unsupportedEvidenceCount,
-    cutRoomCount: directRooms.length,
-    cutStairCount: directStairs.length,
-    directSlabCount: directSlabs.length,
-  });
-  const blockers = [];
-  const warnings = [];
-
-  if (!levelProfiles.length) {
-    blockers.push(
-      `Section ${sectionType} cannot communicate levels because no canonical levels were resolved.`,
-    );
-  }
-  if (!directRooms.length && !directStairs.length) {
-    blockers.push(
-      `Section ${sectionType} does not cut a named room or stair/core element, so it lacks direct spatial evidence.`,
-    );
-  }
-  if (directWalls.length === 0) {
-    warnings.push(
-      `Section ${sectionType} is not resolving cut wall segments directly; wall emphasis is inferred.`,
-    );
-  }
-  if (unsupportedWalls.length > 0 || unsupportedOpenings.length > 0) {
-    warnings.push(
-      `Section ${sectionType} still contains unsupported cut evidence because some walls/openings lack enough canonical geometry for exact clipping.`,
-    );
-  }
-  if (directOpenings.length === 0 && nearOpenings.length > 0) {
-    warnings.push(
-      `Section ${sectionType} only has near-cut opening evidence, so facade-depth communication remains contextual rather than explicit.`,
-    );
-  } else if (directOpenings.length === 0 && inferredOpenings.length > 0) {
-    warnings.push(
-      `Section ${sectionType} only has inferred opening evidence, with no near-cut opening evidence to support explicit facade-depth communication.`,
-    );
-  }
-  if (!focusHits.length && (sectionProfile.focusEntityIds || []).length) {
-    warnings.push(
-      `Section ${sectionType} missed the main focused semantic anchors for the chosen strategy.`,
-    );
-  }
-
-  const geometrySupportLimited = Object.values(
-    intersectionBundle.geometrySupport || {},
-  ).some((supports) =>
-    (supports || []).some((entry) =>
-      ["bbox", "derived_level_profile", "derived_roof_profile"].includes(entry),
+  const directEvidenceScore = round(
+    clamp(
+      (directRooms.length > 0 ? 0.24 : 0) +
+        Math.min(0.16, directWalls.length * 0.04) +
+        Math.min(0.16, directOpenings.length * 0.05) +
+        (directStairs.length > 0 ? 0.22 : 0) +
+        (directSlabs.length > 0 ? 0.1 : 0) +
+        (directRoof.length > 0 ? 0.06 : 0) +
+        Math.min(0.1, directClipCount * 0.02),
+      0,
+      1,
     ),
   );
+  const inferredEvidenceScore = round(
+    clamp(
+      (directEvidenceCount > 0
+        ? 0
+        : nearEvidenceCount > 0
+          ? 0.14
+          : inferredEvidenceCount > 0
+            ? 0.28
+            : 0.42) +
+        Math.min(0.22, inferredEvidenceCount * 0.03) +
+        Math.min(0.28, unsupportedEvidenceCount * 0.045) +
+        Math.min(0.14, approximateEvidenceCount * 0.02) -
+        Math.min(0.12, directClipCount * 0.015),
+      0,
+      1,
+    ),
+  );
+  const communicationValue = round(
+    clamp(
+      roomCommunicationScore * 0.22 +
+        verticalCirculationScore * 0.22 +
+        wallOpeningScore * 0.16 +
+        slabDatumScore * 0.12 +
+        focusScore * 0.1 +
+        roofScore * 0.08 +
+        clamp(cutSpecificity, 0, 1) * 0.1,
+      0,
+      1,
+    ),
+  );
+  const directEvidenceQuality = evidenceQualityFromScore(directEvidenceScore, {
+    strong: 0.72,
+    weak: 0.44,
+  });
+  const inferredEvidenceQuality =
+    inferredEvidenceScore >= 0.66
+      ? "blocked"
+      : inferredEvidenceScore >= 0.4
+        ? "weak"
+        : "verified";
 
   const summary = {
     sectionType,
     cutCoordinate: round(cutCoordinate),
     cutAxis: axis,
-    evidenceQuality,
-    usefulnessScore,
-    cutSpecificity: round(cutSpecificity),
     directEvidenceCount,
     nearEvidenceCount,
     inferredEvidenceCount,
     unsupportedEvidenceCount,
+    directClipCount,
+    approximateEvidenceCount,
+    cutSpecificity: round(cutSpecificity),
+    directEvidenceScore,
+    inferredEvidenceScore,
+    directEvidenceQuality,
+    inferredEvidenceQuality,
+    communicationValue,
     focusHitCount: focusHits.length,
     cutRoomCount: directRooms.length,
     nearRoomCount: nearRooms.length,
-    unsupportedRoomCount: (rooms.unsupported || []).length,
+    inferredRoomCount: inferredRooms.length,
+    unsupportedRoomCount: unsupportedRooms.length,
     cutStairCount: directStairs.length,
     nearStairCount: nearStairs.length,
-    unsupportedStairCount: (stairs.unsupported || []).length,
+    inferredStairCount: inferredStairs.length,
+    unsupportedStairCount: unsupportedStairs.length,
     cutWallCount: directWalls.length,
+    nearWallCount: nearWalls.length,
+    inferredWallCount: inferredWalls.length,
     unsupportedWallCount: unsupportedWalls.length,
     cutOpeningCount: directOpenings.length,
     nearOpeningCount: nearOpenings.length,
@@ -501,19 +544,91 @@ export function buildSectionEvidence(
     entranceHitCount: directEntrances.length,
     circulationHitCount,
     directSlabCount: directSlabs.length,
+    nearSlabCount: nearSlabs.length,
+    inferredSlabCount: inferredSlabs.length,
     unsupportedSlabCount: unsupportedSlabs.length,
     levelCount: levelProfiles.length,
-    roofCommunicated: directRoof.length > 0 || nearRoof.length > 0,
-    geometryCommunicable: blockers.length === 0,
-    geometrySupportLimited,
+    roofCommunicated:
+      directRoof.length > 0 || nearRoof.length > 0 || inferredRoof.length > 0,
+    geometryCommunicable:
+      levelProfiles.length > 0 &&
+      (directRooms.length > 0 ||
+        directStairs.length > 0 ||
+        directWalls.length > 0),
+    geometrySupportLimited: Object.values(
+      intersectionBundle.geometrySupport || {},
+    ).some((supports) =>
+      (supports || []).some((entry) =>
+        [
+          "bbox",
+          "derived_level_profile",
+          "derived_roof_profile",
+          "missing_geometry",
+        ].includes(entry),
+      ),
+    ),
     totalCutRoomAreaM2: round(
       directRooms.reduce((sum, room) => sum + roomArea(room), 0),
     ),
   };
+  summary.usefulnessScore = communicationValue;
+  summary.evidenceQuality = classifySectionEvidence(summary);
+
+  const blockers = [];
+  const warnings = [];
+
+  if (!levelProfiles.length) {
+    blockers.push(
+      `Section ${sectionType} cannot communicate levels because no canonical levels were resolved.`,
+    );
+  }
+  if (summary.directEvidenceQuality === "blocked") {
+    blockers.push(
+      `Section ${sectionType} lacks sufficient direct cut truth; the cut does not clip enough canonical room, stair, wall, or opening geometry.`,
+    );
+  }
+  if (
+    summary.geometryCommunicable === false &&
+    summary.cutRoomCount === 0 &&
+    summary.cutStairCount === 0
+  ) {
+    blockers.push(
+      `Section ${sectionType} does not cut a named room or stair/core element in a meaningful way and should not be treated as credible final technical output.`,
+    );
+  }
+  if (summary.inferredEvidenceQuality === "blocked") {
+    blockers.push(
+      `Section ${sectionType} relies too heavily on inferred or approximate evidence for final technical credibility.`,
+    );
+  } else if (summary.inferredEvidenceQuality === "weak") {
+    warnings.push(
+      `Section ${sectionType} still depends partly on inferred or approximate evidence.`,
+    );
+  }
+  if (summary.cutWallCount === 0) {
+    warnings.push(
+      `Section ${sectionType} does not resolve a direct wall clip; wall emphasis remains contextual.`,
+    );
+  }
+  if (summary.cutOpeningCount === 0 && summary.nearOpeningCount > 0) {
+    warnings.push(
+      `Section ${sectionType} only has near-cut opening evidence, so facade-depth communication remains contextual.`,
+    );
+  }
+  if (summary.approximateEvidenceCount > 0) {
+    warnings.push(
+      `Section ${sectionType} still contains ${summary.approximateEvidenceCount} approximate evidence fragment(s) from bbox or derived geometry.`,
+    );
+  }
+  if (!focusHits.length && (sectionProfile.focusEntityIds || []).length) {
+    warnings.push(
+      `Section ${sectionType} missed the main focused semantic anchors for the chosen strategy.`,
+    );
+  }
 
   return {
     version: useTrueEvidence
-      ? "phase12-section-evidence-service-v1"
+      ? "phase13-section-evidence-service-v1"
       : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
@@ -522,15 +637,15 @@ export function buildSectionEvidence(
     intersections: {
       rooms: directRooms,
       nearRooms,
-      inferredRooms: rooms.inferred || [],
-      unsupportedRooms: rooms.unsupported || [],
+      inferredRooms,
+      unsupportedRooms,
       stairs: directStairs,
       nearStairs,
-      inferredStairs: stairs.inferred || [],
-      unsupportedStairs: stairs.unsupported || [],
+      inferredStairs,
+      unsupportedStairs,
       walls: directWalls,
-      nearWalls: walls.near || [],
-      inferredWalls: walls.inferred || [],
+      nearWalls,
+      inferredWalls,
       unsupportedWalls,
       windows: directWindows,
       nearWindows,
@@ -550,11 +665,11 @@ export function buildSectionEvidence(
       unsupportedEntrances,
       slabs: directSlabs,
       nearSlabs,
-      inferredSlabs: slabs.inferred || [],
+      inferredSlabs,
       unsupportedSlabs,
       roofElements: directRoof,
       nearRoofElements: nearRoof,
-      inferredRoofElements: roofElements.inferred || [],
+      inferredRoofElements: inferredRoof,
       unsupportedRoofElements: unsupportedRoof,
     },
     levelProfiles,

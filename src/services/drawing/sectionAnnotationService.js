@@ -34,6 +34,21 @@ export function buildSectionAnnotations({
     fontSize: 9,
     fontWeight: 600,
   });
+  if (
+    technicalQualityMetadata.section_direct_evidence_score !== undefined ||
+    technicalQualityMetadata.section_inferred_evidence_score !== undefined
+  ) {
+    items.push({
+      id: "section-callout-truth",
+      text: `Direct ${Number(
+        technicalQualityMetadata.section_direct_evidence_score || 0,
+      ).toFixed(2)} · inferred ${Number(
+        technicalQualityMetadata.section_inferred_evidence_score || 0,
+      ).toFixed(2)}`,
+      fontSize: 8.5,
+      fontWeight: 600,
+    });
+  }
   if (sectionProfile.strategyName || sectionProfile.chosenStrategy?.name) {
     items.push({
       id: "section-callout-strategy",

@@ -241,11 +241,15 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
       });
 
   return {
-    version: isFeatureEnabled("useSectionStrategyLibraryPhase10")
-      ? "phase10-section-cut-planner-v1"
-      : isFeatureEnabled("useSectionSemanticSelectionPhase9")
-        ? "phase9-section-cut-planner-v1"
-        : "phase8-section-cut-planner-v1",
+    version:
+      isFeatureEnabled("useTrueSectionClippingPhase13") ||
+      isFeatureEnabled("useSectionTruthScoringPhase13")
+        ? "phase13-section-cut-planner-v1"
+        : isFeatureEnabled("useSectionStrategyLibraryPhase10")
+          ? "phase10-section-cut-planner-v1"
+          : isFeatureEnabled("useSectionSemanticSelectionPhase9")
+            ? "phase9-section-cut-planner-v1"
+            : "phase8-section-cut-planner-v1",
     candidates: rankedCandidates,
     chosenStrategy: rankedCandidates[0]?.chosenStrategy || null,
     rejectedAlternatives: rankedCandidates[0]?.rejectedAlternatives || [],

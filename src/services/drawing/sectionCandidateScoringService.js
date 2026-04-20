@@ -24,6 +24,15 @@ function cutCoordinate(candidate = {}) {
   return Number(candidate.cutLine?.from?.y || candidate.cutLine?.to?.y || 0);
 }
 
+function sectionTruthEnabled() {
+  return (
+    isFeatureEnabled("useTrueSectionClippingPhase13") ||
+    isFeatureEnabled("useSectionTruthScoringPhase13") ||
+    isFeatureEnabled("useTrueSectionEvidencePhase12") ||
+    isFeatureEnabled("useSectionEvidencePhase10")
+  );
+}
+
 function entityDistance(entity = {}, candidate = {}) {
   const coordinate = cutCoordinate(candidate);
   const bbox = entity.bbox || {};
@@ -43,13 +52,32 @@ function entityDistance(entity = {}, candidate = {}) {
   return Math.min(Math.abs(coordinate - min), Math.abs(coordinate - max));
 }
 
-function countFocusedRooms(projectGeometry = {}, candidate = {}) {
+function countFocusedRooms(
+  projectGeometry = {},
+  candidate = {},
+  sectionEvidenceSummary = null,
+) {
+  if (sectionTruthEnabled() && sectionEvidenceSummary) {
+    return (
+      Number(sectionEvidenceSummary.cutRoomCount || 0) +
+      Math.min(1, Number(sectionEvidenceSummary.nearRoomCount || 0))
+    );
+  }
   return (projectGeometry.rooms || []).filter(
     (room) => entityDistance(room, candidate) < 0.65,
   ).length;
 }
 
-function scoreStairAlignment(projectGeometry = {}, candidate = {}) {
+function scoreStairAlignment(
+  projectGeometry = {},
+  candidate = {},
+  sectionEvidenceSummary = null,
+) {
+  if (sectionTruthEnabled() && sectionEvidenceSummary) {
+    if (Number(sectionEvidenceSummary.cutStairCount || 0) > 0) return 1;
+    if (Number(sectionEvidenceSummary.nearStairCount || 0) > 0) return 0.56;
+    if (Number(sectionEvidenceSummary.inferredStairCount || 0) > 0) return 0.28;
+  }
   const stairs = projectGeometry.stairs || [];
   if (!stairs.length) return 0.25;
   const bestDistance = Math.min(
@@ -58,7 +86,21 @@ function scoreStairAlignment(projectGeometry = {}, candidate = {}) {
   return clamp(1 - bestDistance / 3.2, 0, 1);
 }
 
-function scoreRoomCoverage(projectGeometry = {}, candidate = {}) {
+function scoreRoomCoverage(
+  projectGeometry = {},
+  candidate = {},
+  sectionEvidenceSummary = null,
+) {
+  if (sectionTruthEnabled() && sectionEvidenceSummary) {
+    const roomWeight =
+      Number(sectionEvidenceSummary.cutRoomCount || 0) +
+      Number(sectionEvidenceSummary.nearRoomCount || 0) * 0.45 +
+      Number(sectionEvidenceSummary.inferredRoomCount || 0) * 0.18;
+    if (roomWeight <= 0) {
+      return 0.05;
+    }
+    return clamp(roomWeight / 3, 0.18, 1);
+  }
   const roomCount = countFocusedRooms(projectGeometry, candidate);
   if (roomCount <= 0) {
     return 0.05;
@@ -103,13 +145,19 @@ function scoreCirculation(projectGeometry = {}, candidate = {}) {
 }
 
 export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
-  const useSectionEvidence =
-    isFeatureEnabled("useTrueSectionEvidencePhase12") ||
-    isFeatureEnabled("useSectionEvidencePhase10");
+  const useSectionEvidence = sectionTruthEnabled();
   const sectionEvidence = buildSectionEvidence(projectGeometry, candidate);
   const sectionEvidenceSummary = buildSectionEvidenceSummary(sectionEvidence);
-  const stairAlignment = scoreStairAlignment(projectGeometry, candidate);
-  const roomCoverage = scoreRoomCoverage(projectGeometry, candidate);
+  const stairAlignment = scoreStairAlignment(
+    projectGeometry,
+    candidate,
+    sectionEvidenceSummary,
+  );
+  const roomCoverage = scoreRoomCoverage(
+    projectGeometry,
+    candidate,
+    sectionEvidenceSummary,
+  );
   const entranceAlignment = scoreEntranceAlignment(projectGeometry, candidate);
   const circulationScore = scoreCirculation(projectGeometry, candidate);
   const levelSpan = (projectGeometry.levels || []).length > 1 ? 1 : 0.58;
@@ -119,7 +167,26 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     1,
   );
   const evidenceUsefulness = clamp(
-    Number(sectionEvidenceSummary.usefulnessScore || 0),
+    Number(
+      sectionEvidenceSummary.usefulnessScore ||
+        sectionEvidenceSummary.communicationValue ||
+        0,
+    ),
+    0,
+    1,
+  );
+  const directEvidenceScore = clamp(
+    Number(sectionEvidenceSummary.directEvidenceScore || 0),
+    0,
+    1,
+  );
+  const inferredEvidenceScore = clamp(
+    Number(sectionEvidenceSummary.inferredEvidenceScore || 0),
+    0,
+    1,
+  );
+  const communicationValue = clamp(
+    Number(sectionEvidenceSummary.communicationValue || 0),
     0,
     1,
   );
@@ -135,13 +202,22 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   );
   const unsupportedPenalty = useSectionEvidence
     ? Math.min(
-        0.28,
+        0.32,
         Number(sectionEvidenceSummary.unsupportedEvidenceCount || 0) * 0.045,
       )
     : 0;
   const evidencePenalty = useSectionEvidence
-    ? Math.min(0.22, Number(sectionEvidence.blockers?.length || 0) * 0.11)
+    ? Math.min(0.26, Number(sectionEvidence.blockers?.length || 0) * 0.12)
     : 0;
+  const inferencePenalty = useSectionEvidence
+    ? Math.min(0.22, inferredEvidenceScore * 0.22)
+    : 0;
+  const spatialTruthPenalty =
+    useSectionEvidence &&
+    Number(sectionEvidenceSummary.cutRoomCount || 0) === 0 &&
+    Number(sectionEvidenceSummary.cutStairCount || 0) === 0
+      ? 0.14
+      : 0;
   const usefulness = clamp(
     stairAlignment * 0.19 +
       roomCoverage * 0.16 +
@@ -149,32 +225,42 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       entranceAlignment * 0.08 +
       levelSpan * 0.1 +
       strategyCommunication * 0.08 +
-      (useSectionEvidence ? evidenceUsefulness * 0.2 : 0) +
+      (useSectionEvidence ? evidenceUsefulness * 0.12 : 0) +
+      (useSectionEvidence ? directEvidenceScore * 0.2 : 0) +
+      (useSectionEvidence ? communicationValue * 0.05 : 0) +
       (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
-      (useSectionEvidence ? cutSpecificity * 0.07 : 0) -
+      (useSectionEvidence ? cutSpecificity * 0.05 : 0) -
+      spatialTruthPenalty -
+      inferencePenalty -
       evidencePenalty -
       unsupportedPenalty,
     0,
     1,
   );
+
   let sectionCandidateQuality =
     usefulness >= 0.78 ? "pass" : usefulness >= 0.64 ? "warning" : "block";
   if (
     useSectionEvidence &&
     sectionEvidenceSummary.evidenceQuality === "pass" &&
+    sectionEvidenceSummary.directEvidenceQuality === "verified" &&
     usefulness >= 0.74
   ) {
     sectionCandidateQuality = "pass";
   }
   if (
     useSectionEvidence &&
-    sectionEvidenceSummary.evidenceQuality === "block" &&
+    (sectionEvidenceSummary.evidenceQuality === "block" ||
+      sectionEvidenceSummary.directEvidenceQuality === "blocked" ||
+      sectionEvidenceSummary.inferredEvidenceQuality === "blocked") &&
     usefulness < 0.84
   ) {
     sectionCandidateQuality = "block";
   } else if (
     useSectionEvidence &&
-    sectionEvidenceSummary.evidenceQuality === "warning" &&
+    (sectionEvidenceSummary.evidenceQuality === "warning" ||
+      sectionEvidenceSummary.directEvidenceQuality === "weak" ||
+      sectionEvidenceSummary.inferredEvidenceQuality === "weak") &&
     sectionCandidateQuality === "pass"
   ) {
     sectionCandidateQuality = "warning";
@@ -193,6 +279,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   ) {
     sectionCandidateQuality = "block";
   }
+
   const rationale = [
     candidate.strategyName
       ? `${candidate.strategyName} strategy was selected as the deterministic section candidate.`
@@ -206,6 +293,9 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     circulationScore > 0.7
       ? "Cut follows the main circulation narrative."
       : "Cut is not strongly aligned to the main circulation path.",
+    useSectionEvidence
+      ? `Direct evidence ${directEvidenceScore.toFixed(2)}, inferred burden ${inferredEvidenceScore.toFixed(2)}, communication value ${communicationValue.toFixed(2)}.`
+      : "Section truth scoring is not active for this candidate.",
     ...sectionEvidence.rationale,
   ];
 
@@ -220,20 +310,37 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       levelSpan: round(levelSpan),
       strategyCommunication: round(strategyCommunication),
       sectionEvidenceUsefulness: round(evidenceUsefulness),
+      directEvidenceScore: round(directEvidenceScore),
+      inferredEvidenceScore: round(inferredEvidenceScore),
+      communicationValue: round(communicationValue),
       sectionNearEvidence: round(nearEvidenceScore),
       cutSpecificity: round(cutSpecificity),
+      inferencePenalty: round(inferencePenalty),
       sectionEvidencePenalty: round(evidencePenalty),
       unsupportedEvidencePenalty: round(unsupportedPenalty),
     },
     rationale,
-    focusedRoomCount: countFocusedRooms(projectGeometry, candidate),
+    focusedRoomCount: countFocusedRooms(
+      projectGeometry,
+      candidate,
+      sectionEvidenceSummary,
+    ),
     sectionEvidence,
     sectionEvidenceSummary,
   };
 }
 
+function qualityRank(candidate = {}) {
+  const normalized = String(
+    candidate.sectionCandidateQuality || "",
+  ).toLowerCase();
+  if (normalized === "pass") return 2;
+  if (normalized === "warning") return 1;
+  return 0;
+}
+
 export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
-  return (candidates || [])
+  const ranked = (candidates || [])
     .map((candidate) => {
       const evaluation = scoreSectionCandidate(projectGeometry, candidate);
       return {
@@ -257,22 +364,71 @@ export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
       };
     })
     .sort((left, right) => {
+      const qualityDelta = qualityRank(right) - qualityRank(left);
+      if (qualityDelta !== 0) {
+        return qualityDelta;
+      }
+      const rightDirect = Number(
+        right.sectionEvidenceSummary?.directEvidenceScore || 0,
+      );
+      const leftDirect = Number(
+        left.sectionEvidenceSummary?.directEvidenceScore || 0,
+      );
+      if (rightDirect !== leftDirect) {
+        return rightDirect - leftDirect;
+      }
+      const rightCommunication = Number(
+        right.sectionEvidenceSummary?.communicationValue || 0,
+      );
+      const leftCommunication = Number(
+        left.sectionEvidenceSummary?.communicationValue || 0,
+      );
+      if (rightCommunication !== leftCommunication) {
+        return rightCommunication - leftCommunication;
+      }
+      const leftInferred = Number(
+        left.sectionEvidenceSummary?.inferredEvidenceScore || 0,
+      );
+      const rightInferred = Number(
+        right.sectionEvidenceSummary?.inferredEvidenceScore || 0,
+      );
+      if (leftInferred !== rightInferred) {
+        return leftInferred - rightInferred;
+      }
       if (right.score !== left.score) return right.score - left.score;
       return String(left.id).localeCompare(String(right.id));
-    })
-    .map((candidate, index, array) => ({
-      ...candidate,
-      rejectedAlternatives: array
-        .filter((entry) => entry.id !== candidate.id)
-        .slice(0, 3)
-        .map((entry) => ({
-          id: entry.id,
-          title: entry.title,
-          strategyId: entry.strategyId || null,
-          score: entry.score,
-        })),
-      selectedForBoard: index === 0,
-    }));
+    });
+
+  return ranked.map((candidate, index, array) => ({
+    ...candidate,
+    rejectedAlternatives: array
+      .filter((entry) => entry.id !== candidate.id)
+      .slice(0, 3)
+      .map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        strategyId: entry.strategyId || null,
+        score: entry.score,
+        reason:
+          entry.sectionCandidateQuality === "block"
+            ? "Rejected because direct cut evidence was too weak to support credible section truth."
+            : Number(entry.sectionEvidenceSummary?.directEvidenceScore || 0) <
+                Number(
+                  candidate.sectionEvidenceSummary?.directEvidenceScore || 0,
+                )
+              ? "Rejected because it had weaker direct cut evidence."
+              : Number(
+                    entry.sectionEvidenceSummary?.inferredEvidenceScore || 0,
+                  ) >
+                  Number(
+                    candidate.sectionEvidenceSummary?.inferredEvidenceScore ||
+                      0,
+                  )
+                ? "Rejected because it relied more on inferred/contextual evidence."
+                : "Rejected because it communicated the section narrative less clearly.",
+      })),
+    selectedForBoard: index === 0,
+  }));
 }
 
 export default {
