@@ -1,8 +1,11 @@
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { normalizeFacadeFeatures } from "./facadeFeatureNormalizer.js";
+import { assembleFacadeSideSemantics } from "./facadeSemanticAssembler.js";
 import {
   orientationToSide,
   projectFacadeGeometry,
+  resolveEntitySide,
 } from "./facadeProjectionService.js";
 
 function round(value, precision = 3) {
@@ -22,9 +25,71 @@ function findFacadeOrientation(
     {};
   return (
     grammar?.orientations?.find(
-      (entry) => String(entry.side || "").toLowerCase() === side,
+      (entry) => orientationToSide(entry.side || entry.orientation) === side,
     ) || null
   );
+}
+
+function collectGrammarComponentFeatures(
+  facadeOrientation = {},
+  side = "south",
+) {
+  const components = facadeOrientation?.components || {};
+  const featureSeeds = [];
+  const keywordMap = {
+    balconies: "balcony",
+    balcony: "balcony",
+    dormers: "dormer",
+    dormer: "dormer",
+    chimneys: "chimney",
+    chimney: "chimney",
+    porches: "porch",
+    porch: "porch",
+    canopies: "porch",
+    canopy: "porch",
+    parapets: "parapet",
+    parapet: "parapet",
+    feature_frames: "feature-frame",
+    featureFrame: "feature-frame",
+    frames: "feature-frame",
+    sills: "sill",
+    sill: "sill",
+    lintels: "lintel",
+    lintel: "lintel",
+    projections: "projection",
+    projection: "projection",
+    recesses: "recess",
+    recess: "recess",
+  };
+
+  Object.entries(components).forEach(([family, entries]) => {
+    const normalizedFamily = String(family || "")
+      .trim()
+      .toLowerCase();
+    const featureType = keywordMap[family] || keywordMap[normalizedFamily];
+    if (!featureType) {
+      return;
+    }
+
+    const values = Array.isArray(entries)
+      ? entries
+      : entries && typeof entries === "object"
+        ? [entries]
+        : [];
+    values.forEach((entry) => {
+      featureSeeds.push({
+        ...(typeof entry === "object" && entry ? entry : {}),
+        type:
+          (typeof entry === "object" && entry?.type) ||
+          (typeof entry === "object" && entry?.name) ||
+          featureType,
+        componentFamily: family,
+        side,
+      });
+    });
+  });
+
+  return featureSeeds;
 }
 
 function collectFeatureSeeds(
@@ -32,12 +97,31 @@ function collectFeatureSeeds(
   facadeOrientation = {},
   side = "south",
 ) {
+  const collectSideMetadataEntries = (featureCollection = null) => {
+    if (Array.isArray(featureCollection)) {
+      return featureCollection.filter(
+        (entry) =>
+          orientationToSide(entry?.side || entry?.orientation) === side,
+      );
+    }
+
+    if (!featureCollection || typeof featureCollection !== "object") {
+      return [];
+    }
+
+    return Object.entries(featureCollection)
+      .filter(([entrySide]) => orientationToSide(entrySide) === side)
+      .flatMap(([, entries]) =>
+        Array.isArray(entries)
+          ? entries
+          : entries && typeof entries === "object"
+            ? [entries]
+            : [],
+      );
+  };
+
   const sideWallFeatures = (geometry.walls || [])
-    .filter(
-      (wall) =>
-        wall.exterior &&
-        String(wall.metadata?.side || "").toLowerCase() === side,
-    )
+    .filter((wall) => wall.exterior && resolveEntitySide(wall) === side)
     .flatMap((wall) =>
       normalizeFacadeFeatures(wall.metadata?.features || [], {
         side,
@@ -47,8 +131,8 @@ function collectFeatureSeeds(
     );
 
   const geometryFeatureMap = [
-    ...(geometry.metadata?.facade_features?.[side] || []),
-    ...(geometry.metadata?.facadeFeatures?.[side] || []),
+    ...collectSideMetadataEntries(geometry.metadata?.facade_features),
+    ...collectSideMetadataEntries(geometry.metadata?.facadeFeatures),
   ];
   const geometryFeatures = normalizeFacadeFeatures(geometryFeatureMap, {
     side,
@@ -57,14 +141,8 @@ function collectFeatureSeeds(
 
   const grammarFeatures = normalizeFacadeFeatures(
     [
-      ...(facadeOrientation?.components?.balconies || []).map((entry) => ({
-        ...entry,
-        type: "balcony",
-      })),
-      ...(facadeOrientation?.components?.feature_frames || []).map((entry) => ({
-        ...entry,
-        type: "feature-frame",
-      })),
+      ...(facadeOrientation?.features || []),
+      ...collectGrammarComponentFeatures(facadeOrientation, side),
       ...(facadeOrientation &&
       String(facadeOrientation?.parapet_mode || "").toLowerCase() !== "none" &&
       String(facadeOrientation?.parapet_mode || "").trim()
@@ -115,6 +193,19 @@ export function extractSideFacade(
     0,
   );
   const features = collectFeatureSeeds(geometry, facadeOrientation || {}, side);
+  const facadeSemantics = isFeatureEnabled("useSideFacadeSemanticsPhase10")
+    ? assembleFacadeSideSemantics({
+        side,
+        projection,
+        facadeOrientation: facadeOrientation || {},
+        roofLanguage: normalizeRoofLanguage(
+          styleDNA,
+          facadeOrientation || {},
+          geometry,
+        ),
+        features,
+      })
+    : null;
   const explicitGeometrySignal = projection.sideWalls.length > 0 ? 0.34 : 0.12;
   const openingSignal = projection.openingCount > 0 ? 0.24 : 0;
   const rhythmSignal = facadeOrientation?.components?.bays?.length
@@ -126,6 +217,20 @@ export function extractSideFacade(
   const featureSignal = features.length
     ? Math.min(0.18, features.length * 0.05)
     : 0;
+  const semanticSignal = facadeSemantics
+    ? Math.min(
+        0.2,
+        Number(facadeSemantics.summary?.semanticConfidence || 0) * 0.12 +
+          (Number(facadeSemantics.summary?.openingGroupCount || 0) > 0
+            ? 0.03
+            : 0) +
+          (Number(facadeSemantics.summary?.wallZoneCount || 0) > 1 ? 0.03 : 0) +
+          (Number(facadeSemantics.summary?.featureFamilyCount || 0) > 0
+            ? 0.02
+            : 0) +
+          (Number(facadeSemantics.summary?.roofEdgeCount || 0) > 0 ? 0.02 : 0),
+      )
+    : 0;
   const coverageSignal =
     projection.explicitCoverageRatio > 0
       ? Math.min(0.16, projection.explicitCoverageRatio * 0.16)
@@ -136,6 +241,7 @@ export function extractSideFacade(
       rhythmSignal +
       materialSignal +
       featureSignal +
+      semanticSignal +
       coverageSignal,
   );
 
@@ -152,6 +258,11 @@ export function extractSideFacade(
       `Elevation ${side} is envelope-derived because no explicit side-wall fragments were resolved.`,
     );
   }
+  if (facadeSemantics?.summary?.semanticStatus === "warning") {
+    warnings.push(
+      `Elevation ${side} side-facade semantics remain weaker than preferred because canonical articulation evidence is thin.`,
+    );
+  }
   if (
     projection.geometrySource === "envelope_derived" &&
     projection.openingCount === 0 &&
@@ -163,9 +274,20 @@ export function extractSideFacade(
       `Elevation ${side} lacks enough canonical facade data because explicit side geometry and facade articulation are missing, so the panel would be too sparse to present credibly.`,
     );
   }
+  if (
+    facadeSemantics?.summary?.semanticStatus === "block" &&
+    richnessScore < 0.64 &&
+    projection.openingCount === 0
+  ) {
+    blockingReasons.push(
+      `Elevation ${side} side-facade semantics are too weak to support a credible technical elevation without richer canonical facade evidence.`,
+    );
+  }
 
   return {
-    version: "phase9-side-facade-extractor-v1",
+    version: facadeSemantics
+      ? "phase10-side-facade-extractor-v1"
+      : "phase9-side-facade-extractor-v1",
     side,
     metrics: {
       width_m: projection.sideWidthM,
@@ -190,6 +312,12 @@ export function extractSideFacade(
     projectedWindows: projection.projectedWindows,
     projectedDoors: projection.projectedDoors,
     features,
+    openingGroups: facadeSemantics?.openingGroups || [],
+    wallZones: facadeSemantics?.wallZones || [],
+    roofEdges: facadeSemantics?.roofEdges || [],
+    featureFamilies: facadeSemantics?.featureFamilies || [],
+    sideSummary: facadeSemantics?.summary || null,
+    facadeSemantics,
     richnessScore,
     warnings,
     blockingReasons,
@@ -201,6 +329,17 @@ export function extractSideFacade(
   };
 }
 
+export function extractSideFacadeGeometry(geometryInput = {}, options = {}) {
+  const geometry = coerceToCanonicalProjectGeometry(
+    geometryInput?.projectGeometry || geometryInput?.geometry || geometryInput,
+  );
+  return projectFacadeGeometry(
+    geometry,
+    orientationToSide(options.orientation || options.side || "south"),
+  );
+}
+
 export default {
   extractSideFacade,
+  extractSideFacadeGeometry,
 };

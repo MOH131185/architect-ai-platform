@@ -8,6 +8,9 @@ export function buildA1ComposeBlockingState({
   consistencyGuard = null,
   fontReadiness = null,
   finalSheetRegression = null,
+  technicalCredibility = null,
+  publishability = null,
+  verificationState = null,
 } = {}) {
   const blockingReasons = [];
   const recoverableIssues = [];
@@ -80,7 +83,8 @@ export function buildA1ComposeBlockingState({
     );
   }
   if (
-    isFeatureEnabled("useA1PreComposeVerificationPhase9") &&
+    (isFeatureEnabled("useA1PreComposeVerificationPhase9") ||
+      isFeatureEnabled("useFinalSheetRegressionProtectionPhase10")) &&
     finalSheetRegression &&
     finalSheetRegression.finalSheetRegressionReady === false
   ) {
@@ -97,13 +101,56 @@ export function buildA1ComposeBlockingState({
       "Phase 9 final-sheet regression checks reported warnings; composition may proceed but technical credibility is still weaker than preferred.",
     );
   }
+  if (
+    isFeatureEnabled("useFinalTechnicalCredibilityChecksPhase10") &&
+    technicalCredibility &&
+    technicalCredibility.status === "block"
+  ) {
+    blockingReasons.push(...(technicalCredibility.blockers || []));
+    recoverableIssues.push(
+      "Phase 10 technical credibility checks must pass before the board can be treated as publishable.",
+    );
+  } else if (
+    isFeatureEnabled("useFinalTechnicalCredibilityChecksPhase10") &&
+    technicalCredibility &&
+    technicalCredibility.status === "degraded"
+  ) {
+    recoverableIssues.push(
+      "Phase 10 technical credibility checks marked the board as degraded; review or regeneration is recommended before publish.",
+    );
+  }
+  if (
+    (isFeatureEnabled("useA1PublishabilityGatePhase10") ||
+      isFeatureEnabled("useFinalPublishabilityGatePhase10")) &&
+    publishability?.status === "blocked" &&
+    (publishability?.verificationState?.verified === true ||
+      verificationState?.publishability?.verified === true ||
+      publishability?.verificationPhase === "post_compose")
+  ) {
+    blockingReasons.push(...(publishability.blockers || []));
+    recoverableIssues.push(
+      "Phase 10 publishability classification blocked the board based on final-sheet credibility evidence.",
+    );
+  } else if (
+    (isFeatureEnabled("useA1PublishabilityGatePhase10") ||
+      isFeatureEnabled("useFinalPublishabilityGatePhase10")) &&
+    publishability?.status === "blocked"
+  ) {
+    recoverableIssues.push(
+      "Phase 10 publishability is currently provisional because only pre-compose evidence is available.",
+    );
+  }
 
   return {
     version:
-      isFeatureEnabled("useA1PreComposeVerificationPhase9") ||
-      isFeatureEnabled("useA1FinalSheetRegressionChecksPhase9")
-        ? "phase9-a1-compose-blocking-v1"
-        : "phase8-a1-compose-blocking-v1",
+      isFeatureEnabled("useA1PublishabilityGatePhase10") ||
+      isFeatureEnabled("useFinalPublishabilityGatePhase10") ||
+      isFeatureEnabled("useFinalTechnicalCredibilityChecksPhase10")
+        ? "phase10-a1-compose-blocking-v1"
+        : isFeatureEnabled("useA1PreComposeVerificationPhase9") ||
+            isFeatureEnabled("useA1FinalSheetRegressionChecksPhase9")
+          ? "phase9-a1-compose-blocking-v1"
+          : "phase8-a1-compose-blocking-v1",
     composeReady:
       blockingReasons.length === 0 && nonRecoverableIssues.length === 0,
     composeBlocked:

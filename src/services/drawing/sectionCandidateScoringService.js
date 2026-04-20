@@ -1,3 +1,9 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import {
+  buildSectionEvidence,
+  buildSectionEvidenceSummary,
+} from "./sectionEvidenceService.js";
+
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -54,6 +60,9 @@ function scoreStairAlignment(projectGeometry = {}, candidate = {}) {
 
 function scoreRoomCoverage(projectGeometry = {}, candidate = {}) {
   const roomCount = countFocusedRooms(projectGeometry, candidate);
+  if (roomCount <= 0) {
+    return 0.05;
+  }
   return clamp(roomCount / 3, 0.25, 1);
 }
 
@@ -94,21 +103,67 @@ function scoreCirculation(projectGeometry = {}, candidate = {}) {
 }
 
 export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
+  const useSectionEvidence = isFeatureEnabled("useSectionEvidencePhase10");
+  const sectionEvidence = buildSectionEvidence(projectGeometry, candidate);
+  const sectionEvidenceSummary = buildSectionEvidenceSummary(sectionEvidence);
   const stairAlignment = scoreStairAlignment(projectGeometry, candidate);
   const roomCoverage = scoreRoomCoverage(projectGeometry, candidate);
   const entranceAlignment = scoreEntranceAlignment(projectGeometry, candidate);
   const circulationScore = scoreCirculation(projectGeometry, candidate);
   const levelSpan = (projectGeometry.levels || []).length > 1 ? 1 : 0.58;
-  const usefulness = clamp(
-    stairAlignment * 0.28 +
-      roomCoverage * 0.24 +
-      circulationScore * 0.18 +
-      entranceAlignment * 0.1 +
-      levelSpan * 0.2,
+  const strategyCommunication = clamp(
+    Number(candidate.expectedCommunicationValue || 0.58),
     0,
     1,
   );
+  const evidenceUsefulness = clamp(
+    Number(sectionEvidenceSummary.usefulnessScore || 0),
+    0,
+    1,
+  );
+  const cutSpecificity = clamp(
+    Number(sectionEvidenceSummary.cutSpecificity || 0),
+    0,
+    1,
+  );
+  const usefulness = clamp(
+    stairAlignment * 0.19 +
+      roomCoverage * 0.16 +
+      circulationScore * 0.12 +
+      entranceAlignment * 0.08 +
+      levelSpan * 0.1 +
+      strategyCommunication * 0.08 +
+      (useSectionEvidence ? evidenceUsefulness * 0.2 : 0) +
+      (useSectionEvidence ? cutSpecificity * 0.07 : 0),
+    0,
+    1,
+  );
+  let sectionCandidateQuality =
+    usefulness >= 0.78 ? "pass" : usefulness >= 0.64 ? "warning" : "block";
+  if (
+    useSectionEvidence &&
+    sectionEvidenceSummary.evidenceQuality === "pass" &&
+    usefulness >= 0.74
+  ) {
+    sectionCandidateQuality = "pass";
+  }
+  if (
+    useSectionEvidence &&
+    sectionEvidenceSummary.evidenceQuality === "block" &&
+    usefulness < 0.84
+  ) {
+    sectionCandidateQuality = "block";
+  } else if (
+    useSectionEvidence &&
+    sectionEvidenceSummary.evidenceQuality === "warning" &&
+    sectionCandidateQuality === "pass"
+  ) {
+    sectionCandidateQuality = "warning";
+  }
   const rationale = [
+    candidate.strategyName
+      ? `${candidate.strategyName} strategy was selected as the deterministic section candidate.`
+      : "Section candidate uses the default deterministic cut strategy.",
     stairAlignment > 0.72
       ? "Cut aligns strongly with stair/core relationships."
       : "Cut only partially aligns with stair/core relationships.",
@@ -118,21 +173,26 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     circulationScore > 0.7
       ? "Cut follows the main circulation narrative."
       : "Cut is not strongly aligned to the main circulation path.",
+    ...sectionEvidence.rationale,
   ];
 
   return {
     score: round(usefulness),
-    sectionCandidateQuality:
-      usefulness >= 0.78 ? "pass" : usefulness >= 0.64 ? "warning" : "block",
+    sectionCandidateQuality,
     categoryScores: {
       stairAlignment: round(stairAlignment),
       roomCoverage: round(roomCoverage),
       circulation: round(circulationScore),
       entranceAlignment: round(entranceAlignment),
       levelSpan: round(levelSpan),
+      strategyCommunication: round(strategyCommunication),
+      sectionEvidenceUsefulness: round(evidenceUsefulness),
+      cutSpecificity: round(cutSpecificity),
     },
     rationale,
     focusedRoomCount: countFocusedRooms(projectGeometry, candidate),
+    sectionEvidence,
+    sectionEvidenceSummary,
   };
 }
 
@@ -145,16 +205,38 @@ export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
         score: evaluation.score,
         sectionCandidateQuality: evaluation.sectionCandidateQuality,
         categoryScores: evaluation.categoryScores,
+        chosenStrategy: {
+          id: candidate.strategyId || "default-section-strategy",
+          name: candidate.strategyName || "Default Section Strategy",
+          expectedCommunicationValue: Number(
+            candidate.expectedCommunicationValue || 0,
+          ),
+        },
         rationale: [
           ...new Set([...(candidate.rationale || []), ...evaluation.rationale]),
         ],
         focusedRoomCount: evaluation.focusedRoomCount,
+        sectionEvidence: evaluation.sectionEvidence,
+        sectionEvidenceSummary: evaluation.sectionEvidenceSummary,
       };
     })
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
       return String(left.id).localeCompare(String(right.id));
-    });
+    })
+    .map((candidate, index, array) => ({
+      ...candidate,
+      rejectedAlternatives: array
+        .filter((entry) => entry.id !== candidate.id)
+        .slice(0, 3)
+        .map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          strategyId: entry.strategyId || null,
+          score: entry.score,
+        })),
+      selectedForBoard: index === 0,
+    }));
 }
 
 export default {

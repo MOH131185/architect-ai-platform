@@ -106,6 +106,9 @@ function computeElevationRichness(metadata = {}) {
   }
   return clamp(
     (Number(metadata.window_count || 0) > 0 ? 0.22 : 0.08) +
+      (Number(metadata.opening_group_count || 0) > 0 ? 0.08 : 0.02) +
+      (Number(metadata.wall_zone_count || 0) > 0 ? 0.08 : 0.02) +
+      (Number(metadata.feature_family_count || 0) > 0 ? 0.06 : 0.02) +
       (Number(metadata.material_zone_count || 0) > 0 ? 0.16 : 0.06) +
       (Number(metadata.ffl_marker_count || 0) > 0 ? 0.12 : 0.03) +
       (Number(metadata.bay_count || 0) > 0 ? 0.1 : 0.02) +
@@ -127,6 +130,13 @@ function computeSectionUsefulness(metadata = {}) {
       (Number(metadata.foundation_marker_count || 0) > 0 ? 0.12 : 0.03) +
       (Number(metadata.level_label_count || 0) > 0 ? 0.12 : 0.03) +
       (Number(metadata.stair_tread_count || 0) > 0 ? 0.12 : 0.04) +
+      (metadata.section_strategy_id ? 0.08 : 0.02) +
+      (Number(metadata.section_expected_communication_value || 0) > 0
+        ? Math.min(
+            0.1,
+            Number(metadata.section_expected_communication_value || 0) * 0.1,
+          )
+        : 0) +
       positiveScore(metadata.roof_profile_visible) * 0.12 +
       (Number(metadata.focus_entity_count || 0) > 0 ? 0.08 : 0.02),
     0,
@@ -361,6 +371,25 @@ export function scoreTechnicalPanel({
       }.`,
     );
   }
+  if (
+    drawingType === "section" &&
+    metadata.section_strategy_id == null &&
+    isFeatureEnabled("useSectionStrategyLibraryPhase10")
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} did not expose a specialized Phase 10 section strategy identifier.`,
+    );
+  }
+  if (
+    drawingType === "elevation" &&
+    isFeatureEnabled("useSideFacadeSemanticsPhase10") &&
+    Number(metadata.opening_group_count || 0) === 0 &&
+    Number(metadata.wall_zone_count || 0) === 0
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} did not expose richer Phase 10 facade side semantics.`,
+    );
+  }
 
   if (score < thresholds.blocking) {
     blockers.push(
@@ -380,9 +409,12 @@ export function scoreTechnicalPanel({
 
   return {
     version:
-      fragmentQuality !== null
-        ? "phase9-technical-panel-scoring-v1"
-        : "phase8-technical-panel-scoring-v1",
+      fragmentQuality !== null &&
+      (drawingType === "elevation" || drawingType === "section")
+        ? "phase10-technical-panel-scoring-v1"
+        : fragmentQuality !== null
+          ? "phase9-technical-panel-scoring-v1"
+          : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,

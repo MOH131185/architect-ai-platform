@@ -1,5 +1,6 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { rankSectionCandidates } from "./sectionCandidateScoringService.js";
+import { buildSectionStrategyCandidates } from "./sectionStrategyLibrary.js";
 
 function round(value, precision = 3) {
   const factor = 10 ** precision;
@@ -218,12 +219,20 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
     transverseLiving.semanticGoal = "room_sequence";
   }
 
-  const baseCandidates = [
+  const legacyCandidates = [
     longitudinal,
     transverse,
     ...(entranceLongitudinal ? [entranceLongitudinal] : []),
     ...(transverseLiving ? [transverseLiving] : []),
   ];
+  const strategyCandidates = isFeatureEnabled(
+    "useSectionStrategyLibraryPhase10",
+  )
+    ? buildSectionStrategyCandidates(projectGeometry, options).candidates
+    : [];
+  const baseCandidates = strategyCandidates.length
+    ? strategyCandidates
+    : legacyCandidates;
   const rankedCandidates = isFeatureEnabled("useSectionSemanticSelectionPhase9")
     ? rankSectionCandidates(projectGeometry, baseCandidates)
     : [longitudinal, transverse].sort((left, right) => {
@@ -232,10 +241,14 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
       });
 
   return {
-    version: isFeatureEnabled("useSectionSemanticSelectionPhase9")
-      ? "phase9-section-cut-planner-v1"
-      : "phase8-section-cut-planner-v1",
+    version: isFeatureEnabled("useSectionStrategyLibraryPhase10")
+      ? "phase10-section-cut-planner-v1"
+      : isFeatureEnabled("useSectionSemanticSelectionPhase9")
+        ? "phase9-section-cut-planner-v1"
+        : "phase8-section-cut-planner-v1",
     candidates: rankedCandidates,
+    chosenStrategy: rankedCandidates[0]?.chosenStrategy || null,
+    rejectedAlternatives: rankedCandidates[0]?.rejectedAlternatives || [],
   };
 }
 

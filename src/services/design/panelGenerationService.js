@@ -2504,6 +2504,8 @@ export async function generateA1PanelsSequential(
               sitePolygon: job.meta?.sitePolygon,
               scale: 50,
               sheetMode: true, // Board composition: strip internal chrome
+              targetWidth: job.width,
+              targetHeight: job.height,
             },
           );
 
@@ -2623,6 +2625,8 @@ export async function generateA1PanelsSequential(
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
               sheetMode: true, // Board composition: strip internal chrome
+              targetWidth: job.width,
+              targetHeight: job.height,
             },
           );
 
@@ -2746,6 +2750,8 @@ export async function generateA1PanelsSequential(
               programSpaces: job.meta?.programSpaces || [],
               scale: 50,
               sheetMode: true, // Board composition: strip internal chrome
+              targetWidth: job.width,
+              targetHeight: job.height,
             },
             cutPosition,
           );

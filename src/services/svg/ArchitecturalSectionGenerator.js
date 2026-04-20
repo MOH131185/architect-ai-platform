@@ -105,8 +105,26 @@ export function generateFromDNA(dna, options = {}) {
     sectionType === "longitudinal" ? dims.width : dims.length;
 
   // Calculate SVG dimensions
-  const svgWidth = outputWidth;
-  const svgHeight = outputHeight;
+  let svgWidth = outputWidth;
+  let svgHeight = outputHeight;
+
+  // Pad viewBox to match target slot aspect ratio (avoids letterboxing in A1 sheet)
+  const { targetWidth, targetHeight } = options;
+  let viewBoxX = 0;
+  let viewBoxY = 0;
+  if (targetWidth && targetHeight && targetWidth > 0 && targetHeight > 0) {
+    const targetAspect = targetWidth / targetHeight;
+    const currentAspect = svgWidth / svgHeight;
+    if (currentAspect < targetAspect) {
+      const newWidth = svgHeight * targetAspect;
+      viewBoxX = -(newWidth - svgWidth) / 2;
+      svgWidth = newWidth;
+    } else if (currentAspect > targetAspect) {
+      const newHeight = svgWidth / targetAspect;
+      viewBoxY = -(newHeight - svgHeight) / 2;
+      svgHeight = newHeight;
+    }
+  }
 
   // Build SVG content
   const parts = [];
@@ -114,10 +132,10 @@ export function generateFromDNA(dna, options = {}) {
   // SVG header with viewBox
   parts.push(`<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 ${svgWidth} ${svgHeight}"
+     viewBox="${viewBoxX} ${viewBoxY} ${svgWidth} ${svgHeight}"
      width="${svgWidth}"
      height="${svgHeight}"
-     shape-rendering="crispEdges">`);
+     shape-rendering="geometricPrecision">`);
 
   // Defs for patterns and markers
   parts.push(generateDefs(materials));

@@ -32,7 +32,7 @@ export function assessProjectHealth({
 
   return {
     version: readiness.finalSheetRegression
-      ? "phase9-project-health-v1"
+      ? "phase10-project-health-v1"
       : "phase8-project-health-v1",
     healthStatus:
       readiness.composeReady === true
@@ -47,12 +47,17 @@ export function assessProjectHealth({
     consistencyGuard: readiness.consistencyGuard || null,
     fontReadiness: readiness.fontReadiness || null,
     finalSheetRegression: readiness.finalSheetRegression || null,
+    renderedTextZone: readiness.renderedTextZone || null,
+    technicalCredibility: readiness.technicalCredibility || null,
+    publishability: readiness.publishability || null,
+    verificationState: readiness.verificationState || null,
     technicalPackageStrength: {
       composeReady: readiness.composeReady === true,
       technicalReady: readiness.technicalPanelGate?.technicalReady !== false,
       consistencyReady: readiness.consistencyGuard?.consistencyReady !== false,
       finalSheetRegressionReady:
         readiness.finalSheetRegression?.finalSheetRegressionReady !== false,
+      publishable: readiness.publishability?.publishable === true,
       freshPanelCount: readiness.freshPanels?.length || 0,
       stalePanelCount: readiness.stalePanels?.length || 0,
       missingPanelCount: readiness.missingPanels?.length || 0,
@@ -62,6 +67,8 @@ export function assessProjectHealth({
       ...(readiness.technicalPanelGate?.blockingReasons || []),
       ...(readiness.consistencyGuard?.blockingReasons || []),
       ...(readiness.finalSheetRegression?.blockers || []),
+      ...(readiness.technicalCredibility?.blockers || []),
+      ...(readiness.publishability?.blockers || []),
     ],
     recoveryExecutionBridge: readiness.recoveryExecutionBridge || null,
   };

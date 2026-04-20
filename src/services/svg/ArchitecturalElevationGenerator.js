@@ -284,6 +284,8 @@ function generate(elevationData, dna, options = {}) {
     showGroundContext = true,
     showMaterialPatterns = true,
     sheetMode = false, // Board composition mode: strip internal chrome, tighten margins, boost contrast
+    facadeGrammar = null, // A1v3 P3: feature frames + balcony placeholders per orientation
+    canonicalPalette = null, // A1v3 P4: shared hex palette with hero + material swatches
   } = options;
 
   const building = elevationData.building || {};
@@ -332,19 +334,37 @@ function generate(elevationData, dna, options = {}) {
 
   // Calculate SVG dimensions to fit the building with proper margins
   // Ensure minimum size and proper aspect ratio
-  const svgWidth = Math.max(600, marginLeft + buildingWidth + marginRight);
-  const svgHeight = Math.max(
+  let svgWidth = Math.max(600, marginLeft + buildingWidth + marginRight);
+  let svgHeight = Math.max(
     400,
     marginTop + buildingHeight + roofHeightAddition + marginBottom,
   );
+
+  // Pad viewBox to match target slot aspect ratio (avoids letterboxing in A1 sheet)
+  const { targetWidth, targetHeight } = options;
+  let viewBoxX = 0;
+  let viewBoxY = 0;
+  if (targetWidth && targetHeight && targetWidth > 0 && targetHeight > 0) {
+    const targetAspect = targetWidth / targetHeight;
+    const currentAspect = svgWidth / svgHeight;
+    if (currentAspect < targetAspect) {
+      const newWidth = svgHeight * targetAspect;
+      viewBoxX = -(newWidth - svgWidth) / 2;
+      svgWidth = newWidth;
+    } else if (currentAspect > targetAspect) {
+      const newHeight = svgWidth / targetAspect;
+      viewBoxY = -(newHeight - svgHeight) / 2;
+      svgHeight = newHeight;
+    }
+  }
 
   const groundLevel = marginTop + buildingHeight + roofHeightAddition;
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 ${svgWidth} ${svgHeight}"
+     viewBox="${viewBoxX} ${viewBoxY} ${svgWidth} ${svgHeight}"
      width="${svgWidth}" height="${svgHeight}"
-     shape-rendering="crispEdges">
+     shape-rendering="geometricPrecision">
 
   <!-- Definitions -->
   <defs>
@@ -445,6 +465,21 @@ function generate(elevationData, dna, options = {}) {
     );
   }
 
+  // A1v3 P3: draw facade features (porch/dormer/chimney/bay/balcony) from facade grammar
+  if (facadeGrammar) {
+    svg += drawFacadeFeaturesFromGrammar({
+      facadeGrammar,
+      orientation,
+      marginLeft,
+      marginTop,
+      buildingWidth,
+      buildingHeight,
+      groundLevel,
+      scale,
+      canonicalPalette,
+    });
+  }
+
   // Draw orientation indicator (suppressed in sheetMode - board composer owns annotations)
   if (!sheetMode) {
     svg += drawOrientationIndicator(svgWidth - 60, svgHeight - 60, orientation);
@@ -454,6 +489,127 @@ function generate(elevationData, dna, options = {}) {
 </svg>`;
 
   return svg;
+}
+
+/**
+ * A1v3 P3 — draw facade features declared in the facade grammar for a given
+ * orientation.  Features include porches, bay windows, dormers, chimneys and
+ * balcony placeholders.  Positions are derived from building extents so the
+ * drawings remain valid when a real grammar is not available.
+ */
+function drawFacadeFeaturesFromGrammar({
+  facadeGrammar,
+  orientation,
+  marginLeft,
+  marginTop,
+  buildingWidth,
+  buildingHeight,
+  groundLevel,
+  scale,
+  canonicalPalette,
+}) {
+  const normalizedSide = String(orientation || "south").toLowerCase();
+  const orientationEntry = (facadeGrammar.orientations || []).find((entry) => {
+    const entrySide = String(entry.side || "").toLowerCase();
+    return entrySide === normalizedSide;
+  });
+  if (!orientationEntry) {
+    return "";
+  }
+
+  const trimColor = canonicalPalette?.trim?.hexColor || "#333333";
+  const accentColor = canonicalPalette?.secondary?.hexColor || "#6b7280";
+  const roofColor = canonicalPalette?.roof?.hexColor || "#4a4a4a";
+  const glazingColor = canonicalPalette?.glazing?.hexColor || "#a9c3d4";
+
+  const featureFrames = Array.isArray(orientationEntry.feature_frames)
+    ? orientationEntry.feature_frames
+    : [];
+  const balconyPlaceholders = Array.isArray(
+    orientationEntry.balcony_placeholders,
+  )
+    ? orientationEntry.balcony_placeholders
+    : [];
+
+  const frags = [];
+  frags.push(`<g id="facade-grammar-features-${normalizedSide}">`);
+
+  featureFrames.forEach((frame) => {
+    const featureType = String(frame.type || "")
+      .toLowerCase()
+      .trim();
+    if (featureType.includes("porch")) {
+      const porchWidth = Math.max(36, buildingWidth * 0.22);
+      const porchHeight = Math.max(40, scale * 0.8);
+      const porchX = marginLeft + buildingWidth * 0.12;
+      const porchY = groundLevel - porchHeight;
+      frags.push(
+        `<g id="facade-feature-porch">
+          <rect x="${porchX}" y="${porchY}" width="${porchWidth}" height="${porchHeight}" fill="none" stroke="${trimColor}" stroke-width="1.6" />
+          <line x1="${porchX}" y1="${porchY}" x2="${porchX + porchWidth}" y2="${porchY}" stroke="${trimColor}" stroke-width="1.8" />
+          <line x1="${porchX + 4}" y1="${porchY}" x2="${porchX + 4}" y2="${groundLevel}" stroke="${trimColor}" stroke-width="1.3" />
+          <line x1="${porchX + porchWidth - 4}" y1="${porchY}" x2="${porchX + porchWidth - 4}" y2="${groundLevel}" stroke="${trimColor}" stroke-width="1.3" />
+        </g>`,
+      );
+    } else if (featureType.includes("dormer")) {
+      const dormerWidth = Math.max(40, buildingWidth * 0.16);
+      const dormerHeight = Math.max(24, scale * 0.5);
+      const dormerX = marginLeft + buildingWidth * 0.42;
+      const roofCrest = marginTop;
+      const dormerY = roofCrest - dormerHeight;
+      frags.push(
+        `<g id="facade-feature-dormer">
+          <rect x="${dormerX}" y="${dormerY}" width="${dormerWidth}" height="${dormerHeight}" fill="${glazingColor}" stroke="${trimColor}" stroke-width="1.4" />
+          <path d="M ${dormerX} ${dormerY} L ${dormerX + dormerWidth / 2} ${dormerY - 16} L ${dormerX + dormerWidth} ${dormerY}" fill="${roofColor}" stroke="${trimColor}" stroke-width="1.4" />
+        </g>`,
+      );
+    } else if (featureType.includes("chimney")) {
+      const chimneyWidth = Math.max(16, scale * 0.36);
+      const chimneyHeight = Math.max(48, scale * 1.1);
+      const chimneyX = marginLeft + buildingWidth * 0.72;
+      const chimneyY = marginTop - chimneyHeight * 0.6;
+      frags.push(
+        `<g id="facade-feature-chimney">
+          <rect x="${chimneyX}" y="${chimneyY}" width="${chimneyWidth}" height="${chimneyHeight}" fill="${accentColor}" stroke="${trimColor}" stroke-width="1.4" />
+          <rect x="${chimneyX - 2}" y="${chimneyY - 4}" width="${chimneyWidth + 4}" height="6" fill="${trimColor}" />
+        </g>`,
+      );
+    } else if (
+      featureType.includes("bay") ||
+      featureType.includes("projection")
+    ) {
+      const bayWidth = Math.max(60, buildingWidth * 0.22);
+      const bayHeight = Math.max(40, scale * 1.0);
+      const bayX = marginLeft + buildingWidth * 0.34;
+      const bayY = groundLevel - bayHeight;
+      frags.push(
+        `<g id="facade-feature-bay">
+          <rect x="${bayX}" y="${bayY}" width="${bayWidth}" height="${bayHeight}" fill="none" stroke="${trimColor}" stroke-width="1.6" />
+          <rect x="${bayX + bayWidth * 0.08}" y="${bayY + 6}" width="${bayWidth * 0.24}" height="${bayHeight - 14}" fill="${glazingColor}" stroke="${trimColor}" stroke-width="1.0" />
+          <rect x="${bayX + bayWidth * 0.38}" y="${bayY + 6}" width="${bayWidth * 0.24}" height="${bayHeight - 14}" fill="${glazingColor}" stroke="${trimColor}" stroke-width="1.0" />
+          <rect x="${bayX + bayWidth * 0.68}" y="${bayY + 6}" width="${bayWidth * 0.24}" height="${bayHeight - 14}" fill="${glazingColor}" stroke="${trimColor}" stroke-width="1.0" />
+        </g>`,
+      );
+    }
+  });
+
+  balconyPlaceholders.forEach((balcony, index) => {
+    const kind = String(balcony.type || "cantilever").toLowerCase();
+    const balconyWidth = Math.max(48, buildingWidth * 0.28);
+    const balconyX = marginLeft + buildingWidth * (0.56 + index * 0.02);
+    const balconyY = marginTop + buildingHeight * 0.4;
+    frags.push(
+      `<g id="facade-feature-balcony-${kind}-${index}">
+        <line x1="${balconyX}" y1="${balconyY}" x2="${balconyX + balconyWidth}" y2="${balconyY}" stroke="${trimColor}" stroke-width="2" />
+        <line x1="${balconyX + 6}" y1="${balconyY}" x2="${balconyX + 6}" y2="${balconyY + 16}" stroke="${trimColor}" stroke-width="1.1" />
+        <line x1="${balconyX + balconyWidth / 2}" y1="${balconyY}" x2="${balconyX + balconyWidth / 2}" y2="${balconyY + 16}" stroke="${trimColor}" stroke-width="1.1" />
+        <line x1="${balconyX + balconyWidth - 6}" y1="${balconyY}" x2="${balconyX + balconyWidth - 6}" y2="${balconyY + 16}" stroke="${trimColor}" stroke-width="1.1" />
+      </g>`,
+    );
+  });
+
+  frags.push("</g>");
+  return frags.join("\n");
 }
 
 /**

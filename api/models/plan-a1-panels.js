@@ -57,6 +57,18 @@ export default async function handler(req, res) {
       "useDrawingFragmentScoringPhase9",
       "useA1FinalSheetRegressionChecksPhase9",
       "useA1PreComposeVerificationPhase9",
+      "useSectionEvidencePhase10",
+      "useSideFacadeSemanticsPhase10",
+      "useSectionStrategyLibraryPhase10",
+      "useSectionGraphicsMaturityPhase10",
+      "useA1RegressionFixturesPhase10",
+      "useRenderedTextVerificationPhase10",
+      "useFinalTechnicalCredibilityChecksPhase10",
+      "useUnifiedVerificationStatePhase10",
+      "useFinalPublishabilityGatePhase10",
+      "useFinalSheetRegressionProtectionPhase10",
+      "usePostComposeVerificationPhase10",
+      "useA1PublishabilityGatePhase10",
     ];
     if (!validation.ok) {
       return sendError(

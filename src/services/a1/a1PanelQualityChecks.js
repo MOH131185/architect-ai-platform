@@ -36,7 +36,7 @@ export function runA1PanelQualityChecks({
   });
 
   return {
-    version: "phase9-a1-panel-quality-checks-v1",
+    version: "phase10-a1-panel-quality-checks-v1",
     checks,
     blockingPanels: checks.filter((entry) => entry.quality?.blockers?.length),
     warningPanels: checks.filter(
@@ -48,6 +48,13 @@ export function runA1PanelQualityChecks({
     technicalFragmentScores: technicalPanelRegression.technicalFragmentScores,
     perSideElevationStatus: technicalPanelRegression.perSideElevationStatus,
     sectionCandidateQuality: technicalPanelRegression.sectionCandidateQuality,
+    sectionStrategyRationale:
+      technicalPanelRegression.sectionCandidateQuality.map((entry) => ({
+        sectionType: entry.sectionType,
+        strategyId: entry.strategyId || null,
+        strategyName: entry.strategyName || null,
+        rationale: entry.rationale || [],
+      })),
   };
 }
 

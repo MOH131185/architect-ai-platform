@@ -41,6 +41,8 @@ export function planA1ComposeExecution({
   freshness = null,
   technicalPanelGate = null,
   finalSheetRegression = null,
+  publishability = null,
+  verificationState = null,
 } = {}) {
   const candidatePanels = [
     ...(freshness?.stalePanels || []),
@@ -90,6 +92,19 @@ export function planA1ComposeExecution({
           },
         ]
       : []),
+    ...(publishability?.status === "blocked" &&
+    (publishability?.verificationState?.verified === true ||
+      verificationState?.publishability?.verified === true ||
+      publishability?.verificationPhase === "post_compose")
+      ? [
+          {
+            id: "quality:publishability",
+            kind: "recheck_publishability",
+            target: "publishability:phase10",
+            title: "Re-run Phase 10 publishability verification",
+          },
+        ]
+      : []),
     {
       id: "compose:readiness",
       kind: "recompute_compose_readiness",
@@ -108,9 +123,11 @@ export function planA1ComposeExecution({
 
   return {
     version:
-      finalSheetRegression?.finalSheetRegressionReady === false
-        ? "phase9-a1-compose-execution-plan-v1"
-        : "phase6-a1-compose-execution-plan-v1",
+      publishability?.status === "blocked"
+        ? "phase10-a1-compose-execution-plan-v1"
+        : finalSheetRegression?.finalSheetRegressionReady === false
+          ? "phase9-a1-compose-execution-plan-v1"
+          : "phase6-a1-compose-execution-plan-v1",
     recoveryPlans,
     minimumRecoveryPlan: uniqueSteps,
   };

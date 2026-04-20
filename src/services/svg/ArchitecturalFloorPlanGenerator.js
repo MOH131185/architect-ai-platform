@@ -518,14 +518,34 @@ class ArchitecturalFloorPlanGenerator {
     }
 
     // Calculate SVG dimensions with margins
-    const svgWidth = width * this.scale + this.margin * 2;
-    const svgHeight = length * this.scale + this.margin * 2;
+    let svgWidth = width * this.scale + this.margin * 2;
+    let svgHeight = length * this.scale + this.margin * 2;
+
+    // Pad viewBox to match target slot aspect ratio (avoids letterboxing in A1 sheet)
+    const { targetWidth, targetHeight } = options;
+    let viewBoxX = 0;
+    let viewBoxY = 0;
+    if (targetWidth && targetHeight && targetWidth > 0 && targetHeight > 0) {
+      const targetAspect = targetWidth / targetHeight;
+      const currentAspect = svgWidth / svgHeight;
+      if (currentAspect < targetAspect) {
+        // Drawing is taller than slot — widen the SVG
+        const newWidth = svgHeight * targetAspect;
+        viewBoxX = -(newWidth - svgWidth) / 2;
+        svgWidth = newWidth;
+      } else if (currentAspect > targetAspect) {
+        // Drawing is wider than slot — heighten the SVG
+        const newHeight = svgWidth / targetAspect;
+        viewBoxY = -(newHeight - svgHeight) / 2;
+        svgHeight = newHeight;
+      }
+    }
 
     // Start building SVG
     const parts = [];
 
     // SVG header and defs
-    parts.push(this.generateHeader(svgWidth, svgHeight));
+    parts.push(this.generateHeader(svgWidth, svgHeight, viewBoxX, viewBoxY));
     parts.push(this.generateDefs());
 
     // Background
@@ -630,10 +650,10 @@ class ArchitecturalFloorPlanGenerator {
   }
 
   /**
-   * Generate SVG header with crisp orthographic line rendering
+   * Generate SVG header with precise orthographic line rendering
    */
-  generateHeader(width, height) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" shape-rendering="crispEdges">`;
+  generateHeader(width, height, viewBoxX = 0, viewBoxY = 0) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBoxX} ${viewBoxY} ${width} ${height}" width="${width}" height="${height}" shape-rendering="geometricPrecision">`;
   }
 
   /**

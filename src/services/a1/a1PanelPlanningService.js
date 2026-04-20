@@ -5,6 +5,9 @@ import { evaluateA1ConsistencyGuards } from "./a1ConsistencyGuardService.js";
 import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
 import { getFontEmbeddingReadinessSync } from "../../utils/svgFontEmbedder.js";
 import { runA1FinalSheetRegression } from "./a1FinalSheetRegressionService.js";
+import { evaluateA1TechnicalCredibility } from "./a1TechnicalCredibilityService.js";
+import { classifyA1Publishability } from "./a1PublishabilityService.js";
+import { buildA1VerificationStateBundle } from "./a1VerificationStateSerializer.js";
 
 const PANEL_TYPE_ALIASES = {
   plan: "floor_plan",
@@ -108,6 +111,27 @@ export function planA1Panels({
         (candidate) => candidate.title,
       ),
     });
+    const technicalCredibility = evaluateA1TechnicalCredibility({
+      drawings: drawings || {},
+      finalSheetRegression,
+    });
+    const publishability = classifyA1Publishability({
+      finalSheetRegression,
+      technicalCredibility,
+    });
+    const verificationState = isFeatureEnabled(
+      "useUnifiedVerificationStatePhase10",
+    )
+      ? buildA1VerificationStateBundle({
+          renderedTextZone:
+            finalSheetRegression?.renderedTextZone ||
+            finalSheetRegression?.textZoneSanity?.renderedTextZone ||
+            null,
+          finalSheetRegression,
+          technicalCredibility,
+          publishability,
+        })
+      : null;
     const recoveryExecutionBridge = isFeatureEnabled(
       "useA1RecoveryExecutionBridge",
     )
@@ -133,11 +157,16 @@ export function planA1Panels({
       consistencyGuard,
       fontReadiness,
       finalSheetRegression,
+      technicalCredibility,
+      publishability,
+      verificationState,
       technicalQualityBlockers: technicalPanelGate.blockingReasons || [],
       composeBlockingReasons: [
         ...new Set([
           ...(technicalPanelGate.blockingReasons || []),
           ...(finalSheetRegression.blockers || []),
+          ...(technicalCredibility.blockers || []),
+          ...(publishability.blockers || []),
           ...(consistencyGuard.blockingReasons || []),
           ...(fontReadiness?.readyForEmbedding === false
             ? [
@@ -168,6 +197,10 @@ export function planA1Panels({
         technicalPanelGate.sectionCandidateQuality ||
         finalSheetRegression.sectionCandidateQuality ||
         [],
+      renderedTextZone:
+        finalSheetRegression.renderedTextZone ||
+        finalSheetRegression.textZoneSanity?.renderedTextZone ||
+        null,
     };
   }
 

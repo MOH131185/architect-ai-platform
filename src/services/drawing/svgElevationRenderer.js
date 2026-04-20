@@ -107,7 +107,9 @@ function findFacadeOrientation(geometry = {}, options = {}) {
     options.facadeGrammar || geometry.metadata?.facade_grammar || {};
   const side = orientationToSide(options.orientation || "south");
   return (
-    facadeGrammar?.orientations?.find((entry) => entry.side === side) || null
+    facadeGrammar?.orientations?.find(
+      (entry) => orientationToSide(entry.side || entry.orientation) === side,
+    ) || null
   );
 }
 
@@ -187,7 +189,10 @@ function collectSideFeatures(
   facadeOrientation = {},
 ) {
   const sideWalls = (geometry.walls || []).filter(
-    (wall) => wall.exterior && wall.metadata?.side === orientation,
+    (wall) =>
+      wall.exterior &&
+      orientationToSide(wall.metadata?.side || wall.metadata?.orientation) ===
+        orientationToSide(orientation),
   );
   const wallFeatures = sideWalls.flatMap(
     (wall) => wall.metadata?.features || [],
@@ -727,6 +732,11 @@ export function renderElevationSvg(
         facade_richness_score: facadeRichnessScore,
         side_facade_score: sideFacade.richnessScore,
         side_facade_status: sideFacade.status,
+        opening_group_count: sideFacade.openingGroups?.length || 0,
+        wall_zone_count: sideFacade.wallZones?.length || 0,
+        roof_edge_count: sideFacade.roofEdges?.length || 0,
+        feature_family_count: sideFacade.featureFamilies?.length || 0,
+        side_facade_summary: sideFacade.sideSummary || null,
         elevation_semantic_status: elevationSemantics.status,
         explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
         uses_canonical_material_palette: true,
@@ -788,6 +798,11 @@ export function renderElevationSvg(
       facade_richness_score: facadeRichnessScore,
       side_facade_score: sideFacade.richnessScore,
       side_facade_status: sideFacade.status,
+      opening_group_count: sideFacade.openingGroups?.length || 0,
+      wall_zone_count: sideFacade.wallZones?.length || 0,
+      roof_edge_count: sideFacade.roofEdges?.length || 0,
+      feature_family_count: sideFacade.featureFamilies?.length || 0,
+      side_facade_summary: sideFacade.sideSummary || null,
       elevation_semantic_status: elevationSemantics.status,
       elevation_semantic_score: elevationSemantics.scores?.readability || null,
       explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,

@@ -1050,6 +1050,48 @@ export const FEATURE_FLAGS = {
   /** Phase 9 pre-compose regression verification */
   useA1PreComposeVerificationPhase9: true,
 
+  /** Phase 10 cut-specific section evidence extraction */
+  useSectionEvidencePhase10: true,
+
+  /** Phase 10 richer facade-side semantics before rendering */
+  useSideFacadeSemanticsPhase10: true,
+
+  /** Phase 10 specialized deterministic section strategies */
+  useSectionStrategyLibraryPhase10: true,
+
+  /** Phase 10 section graphics and annotation maturity */
+  useSectionGraphicsMaturityPhase10: true,
+
+  /** Phase 10 regression fixture comparisons for final sheets */
+  useA1RegressionFixturesPhase10: true,
+
+  /** Phase 10 rendered text-zone verification */
+  useRenderedTextVerificationPhase10: true,
+
+  /** Phase 10 final technical credibility checks */
+  useFinalTechnicalCredibilityChecksPhase10: true,
+
+  /** Phase 10 shared verification-state model across readiness and post-compose flows */
+  useUnifiedVerificationStatePhase10: true,
+
+  /** Phase 10 post-compose verification of the composed board */
+  usePostComposeVerificationPhase10: true,
+
+  /** Phase 10 final publishability gate */
+  useFinalPublishabilityGatePhase10: true,
+
+  /** Phase 10 publishability classification and blocking */
+  useA1PublishabilityGatePhase10: true,
+
+  /** Phase 10 final-sheet regression protection */
+  useFinalSheetRegressionProtectionPhase10: true,
+
+  /** A1v3 P3 — thread facadeGrammar (porch/dormer/chimney/bay) into active elevation generator */
+  useFacadeGrammarElevation: true,
+
+  /** A1v3 P4 — lock canonical palette pre-hero and share with technical panels */
+  useSharedCanonicalPaletteA1v3: true,
+
   /** Local precedent retrieval */
   usePrecedentRetrieval: true,
 
@@ -1346,6 +1388,18 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useDrawingFragmentScoringPhase9 = true;
   FEATURE_FLAGS.useA1FinalSheetRegressionChecksPhase9 = true;
   FEATURE_FLAGS.useA1PreComposeVerificationPhase9 = true;
+  FEATURE_FLAGS.useSectionEvidencePhase10 = true;
+  FEATURE_FLAGS.useSideFacadeSemanticsPhase10 = true;
+  FEATURE_FLAGS.useSectionStrategyLibraryPhase10 = true;
+  FEATURE_FLAGS.useSectionGraphicsMaturityPhase10 = true;
+  FEATURE_FLAGS.useA1RegressionFixturesPhase10 = true;
+  FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
+  FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
+  FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
+  FEATURE_FLAGS.usePostComposeVerificationPhase10 = true;
+  FEATURE_FLAGS.useFinalPublishabilityGatePhase10 = true;
+  FEATURE_FLAGS.useA1PublishabilityGatePhase10 = true;
+  FEATURE_FLAGS.useFinalSheetRegressionProtectionPhase10 = true;
   FEATURE_FLAGS.usePrecedentRetrieval = true;
   FEATURE_FLAGS.useCadUnderstandingLayer = true;
   FEATURE_FLAGS.useModelRegistryRouter = true;
@@ -1724,6 +1778,54 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_A1_PRECOMPOSE_VERIFICATION_PHASE9: {
       flag: "useA1PreComposeVerificationPhase9",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_EVIDENCE_PHASE10: {
+      flag: "useSectionEvidencePhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SIDE_FACADE_SEMANTICS_PHASE10: {
+      flag: "useSideFacadeSemanticsPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_STRATEGY_LIBRARY_PHASE10: {
+      flag: "useSectionStrategyLibraryPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_GRAPHICS_MATURITY_PHASE10: {
+      flag: "useSectionGraphicsMaturityPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_REGRESSION_FIXTURES_PHASE10: {
+      flag: "useA1RegressionFixturesPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {
+      flag: "useRenderedTextVerificationPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FINAL_TECHNICAL_CREDIBILITY_CHECKS_PHASE10: {
+      flag: "useFinalTechnicalCredibilityChecksPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_UNIFIED_VERIFICATION_STATE_PHASE10: {
+      flag: "useUnifiedVerificationStatePhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_POST_COMPOSE_VERIFICATION_PHASE10: {
+      flag: "usePostComposeVerificationPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FINAL_PUBLISHABILITY_GATE_PHASE10: {
+      flag: "useFinalPublishabilityGatePhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_A1_PUBLISHABILITY_GATE_PHASE10: {
+      flag: "useA1PublishabilityGatePhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_FINAL_SHEET_REGRESSION_PROTECTION_PHASE10: {
+      flag: "useFinalSheetRegressionProtectionPhase10",
       parse: (v) => v === "true",
     },
     ARCHIAI_PRECEDENT_RETRIEVAL: {

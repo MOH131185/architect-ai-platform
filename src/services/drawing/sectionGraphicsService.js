@@ -3,6 +3,7 @@ import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { renderSectionSvg } from "./svgSectionRenderer.js";
 import { selectSectionCandidates } from "./sectionCutPlanner.js";
 import { deriveSectionSemantics } from "./sectionSemanticService.js";
+import { buildSectionEvidence } from "./sectionEvidenceService.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
 import { buildSectionAnnotations } from "./sectionAnnotationService.js";
@@ -45,6 +46,20 @@ function replaceSvgTail(svg = "", markup = "") {
   return String(svg || "").replace("</svg>", `${markup}\n</svg>`);
 }
 
+function qualityRank(candidate = {}) {
+  const normalized = String(candidate.sectionCandidateQuality || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "pass") return 2;
+  if (normalized === "warning") return 1;
+  if (normalized === "block") return 0;
+  return 1;
+}
+
+function evidenceRank(candidate = {}) {
+  return Number(candidate.sectionEvidenceSummary?.usefulnessScore || 0);
+}
+
 function renderPlacements(placements = []) {
   return `
     <g id="phase7-section-annotations">
@@ -68,7 +83,12 @@ function renderSectionSemanticBlock(width, height, semantics = {}) {
       <rect x="${x}" y="${y}" width="260" height="62" fill="#fff" stroke="#333" stroke-width="1"/>
       <text x="${x + 12}" y="${y + 18}" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Section focus</text>
       <text x="${x + 12}" y="${y + 34}" font-size="10" font-family="Arial, sans-serif">Usefulness ${Number(semantics.scores?.usefulness || 0).toFixed(2)}</text>
-      <text x="${x + 12}" y="${y + 50}" font-size="10" font-family="Arial, sans-serif">${escapeXml((semantics.rationale || [])[0] || "Geometry-derived section semantics")}</text>
+      <text x="${x + 12}" y="${y + 50}" font-size="10" font-family="Arial, sans-serif">${escapeXml(
+        semantics.chosenStrategy?.name
+          ? `Strategy ${semantics.chosenStrategy.name}`
+          : (semantics.rationale || [])[0] ||
+              "Geometry-derived section semantics",
+      )}</text>
     </g>
   `;
 }
@@ -87,15 +107,40 @@ export function buildSectionGraphic(
   ).toLowerCase();
   const sectionProfile = sectionPlan.candidates
     .filter((candidate) => candidate.sectionType === sectionType)
-    .sort(
-      (left, right) => Number(right.score || 0) - Number(left.score || 0),
-    )[0] ||
+    .sort((left, right) => {
+      const qualityDelta = qualityRank(right) - qualityRank(left);
+      if (qualityDelta !== 0) {
+        return qualityDelta;
+      }
+      const evidenceDelta = evidenceRank(right) - evidenceRank(left);
+      if (evidenceDelta !== 0) {
+        return evidenceDelta;
+      }
+      const directEvidenceDelta =
+        Number(right.sectionEvidenceSummary?.directEvidenceCount || 0) -
+        Number(left.sectionEvidenceSummary?.directEvidenceCount || 0);
+      if (directEvidenceDelta !== 0) {
+        return directEvidenceDelta;
+      }
+      const leftRoomFocus = Number(left.focusedRoomCount || 0) > 0 ? 1 : 0;
+      const rightRoomFocus = Number(right.focusedRoomCount || 0) > 0 ? 1 : 0;
+      if (rightRoomFocus !== leftRoomFocus) {
+        return rightRoomFocus - leftRoomFocus;
+      }
+      if (Number(right.score || 0) !== Number(left.score || 0)) {
+        return Number(right.score || 0) - Number(left.score || 0);
+      }
+      return String(left.id).localeCompare(String(right.id));
+    })[0] ||
     sectionPlan.candidates[0] || {
       id: `section:${sectionType}`,
       sectionType,
       title: `Section ${sectionType}`,
       focusEntityIds: [],
     };
+  const sectionEvidence =
+    sectionProfile.sectionEvidence ||
+    buildSectionEvidence(geometry, sectionProfile);
   const semantics = deriveSectionSemantics(geometry, sectionProfile);
   const width = options.width || 1200;
   const height = options.height || 760;
@@ -111,6 +156,7 @@ export function buildSectionGraphic(
     sectionType: sectionProfile.sectionType,
     sectionProfile,
     sectionSemantics: semantics,
+    sectionEvidence,
     hideRoomLabels: true,
   });
   if (!drawing?.svg) {
@@ -139,6 +185,12 @@ export function buildSectionGraphic(
         focus_entity_count: (sectionProfile.focusEntityIds || []).length,
         annotation_count: 0,
         annotation_guarantee: false,
+        section_evidence_quality:
+          sectionEvidence.summary?.evidenceQuality || "block",
+        section_direct_evidence_count:
+          sectionEvidence.summary?.directEvidenceCount || 0,
+        section_inferred_evidence_count:
+          sectionEvidence.summary?.inferredEvidenceCount || 0,
       },
     };
   }
@@ -175,6 +227,7 @@ export function buildSectionGraphic(
     ...drawing,
     svg,
     section_profile: sectionProfile,
+    section_evidence: sectionEvidence,
     section_semantics: semantics,
     annotation_layout: annotationLayout,
     annotation_validation: annotationValidation,
@@ -191,6 +244,24 @@ export function buildSectionGraphic(
       annotation_guarantee: annotationValidation.placementStable,
       section_candidate_quality: sectionProfile.sectionCandidateQuality || null,
       section_candidate_score: sectionProfile.score || null,
+      section_strategy_id:
+        sectionProfile.strategyId || sectionProfile.chosenStrategy?.id || null,
+      section_strategy_name:
+        sectionProfile.strategyName ||
+        sectionProfile.chosenStrategy?.name ||
+        null,
+      section_expected_communication_value: Number(
+        sectionProfile.expectedCommunicationValue || 0,
+      ),
+      section_evidence_quality:
+        sectionEvidence.summary?.evidenceQuality || null,
+      section_direct_evidence_count:
+        sectionEvidence.summary?.directEvidenceCount || 0,
+      section_inferred_evidence_count:
+        sectionEvidence.summary?.inferredEvidenceCount || 0,
+      section_cut_room_count: sectionEvidence.summary?.cutRoomCount || 0,
+      section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
+      section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,
     },
   };
 }

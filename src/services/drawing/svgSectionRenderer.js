@@ -1,5 +1,10 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
+import {
+  buildSectionEvidence,
+  resolveSectionCutCoordinate,
+  sectionAxis,
+} from "./sectionEvidenceService.js";
 
 function escapeXml(value) {
   return String(value)
@@ -21,12 +26,6 @@ function roundMetric(value, precision = 3) {
   }
   const factor = 10 ** precision;
   return Math.round(numeric * factor) / factor;
-}
-
-function sectionAxis(sectionType = "longitudinal") {
-  return String(sectionType || "longitudinal").toLowerCase() === "transverse"
-    ? "y"
-    : "x";
 }
 
 function getBuildableBounds(geometry = {}) {
@@ -61,27 +60,6 @@ function getLevelProfiles(geometry = {}) {
       offset += height;
       return profile;
     });
-}
-
-function resolveCutCoordinate(
-  geometry = {},
-  sectionProfile = {},
-  sectionType = "longitudinal",
-) {
-  const bounds = getBuildableBounds(geometry);
-  const axis = sectionAxis(sectionType);
-  const linePoint =
-    axis === "x"
-      ? (sectionProfile?.cutLine?.from?.x ?? sectionProfile?.cutLine?.to?.x)
-      : (sectionProfile?.cutLine?.from?.y ?? sectionProfile?.cutLine?.to?.y);
-
-  if (Number.isFinite(Number(linePoint))) {
-    return Number(linePoint);
-  }
-
-  return axis === "x"
-    ? Number(bounds.min_x || 0) + Number(bounds.width || 12) / 2
-    : Number(bounds.min_y || 0) + Number(bounds.height || 10) / 2;
 }
 
 function projectRoomForSection(room = {}, sectionType = "longitudinal") {
@@ -305,20 +283,18 @@ export function renderSectionSvg(
   );
   const baseX = (width - horizontalExtent * scale) / 2;
   const baseY = height - padding;
-  const cutCoordinate = resolveCutCoordinate(
+  const sectionEvidence =
+    options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
+  const cutCoordinate = resolveSectionCutCoordinate(
     geometry,
     sectionProfile,
     sectionType,
   );
-  const cutRooms = (geometry.rooms || []).filter((room) =>
-    roomIntersectsCut(room, cutCoordinate, sectionType),
-  );
-  const intersectedStairs = (geometry.stairs || []).filter((stair) =>
-    roomIntersectsCut(stair, cutCoordinate, sectionType),
-  );
+  const cutRooms = sectionEvidence.intersections?.rooms || [];
+  const intersectedStairs = sectionEvidence.intersections?.stairs || [];
   const geometryComplete =
-    levelProfiles.length > 0 &&
-    (cutRooms.length > 0 || intersectedStairs.length > 0);
+    sectionEvidence.summary?.geometryCommunicable !== false &&
+    levelProfiles.length > 0;
 
   if (
     isFeatureEnabled("useSectionRendererUpgradePhase8") &&
@@ -332,7 +308,8 @@ export function renderSectionSvg(
       title: `Section - ${sectionType}`,
       status: "blocked",
       blocking_reasons: [
-        `Section ${sectionType} is not credible because the cut does not intersect meaningful rooms or stair geometry.`,
+        ...(sectionEvidence.blockers || []),
+        ...(sectionEvidence.warnings || []),
       ],
       technical_quality_metadata: {
         drawing_type: "section",
@@ -342,6 +319,10 @@ export function renderSectionSvg(
         section_candidate_quality:
           sectionProfile?.sectionCandidateQuality || null,
         section_candidate_score: sectionProfile?.score || null,
+        section_evidence_quality:
+          sectionEvidence.summary?.evidenceQuality || "block",
+        section_direct_evidence_count:
+          sectionEvidence.summary?.directEvidenceCount || 0,
       },
     };
   }
@@ -380,6 +361,7 @@ export function renderSectionSvg(
   const usefulnessScore = roundMetric(
     clamp(
       Number(sectionSemantics?.scores?.usefulness || 0) ||
+        Number(sectionEvidence.summary?.usefulnessScore || 0) ||
         (cutRooms.length > 0 ? 0.62 : 0.2) +
           (intersectedStairs.length > 0 ? 0.18 : 0) +
           (levelProfiles.length > 1 ? 0.12 : 0.04),
@@ -392,10 +374,12 @@ export function renderSectionSvg(
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="#fff" />
   <text x="${padding}" y="34" font-size="22" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
-    `Section - ${sectionType.toUpperCase()}`,
+    sectionProfile?.strategyName
+      ? `${sectionProfile.strategyName} Section`
+      : `Section - ${sectionType.toUpperCase()}`,
   )}</text>
   <text x="${padding}" y="50" font-size="10" font-family="Arial, sans-serif">${escapeXml(
-    `Cut coordinate ${cutCoordinate.toFixed(2)}m / usefulness ${usefulnessScore.toFixed(2)}`,
+    `Cut coordinate ${cutCoordinate.toFixed(2)}m / usefulness ${usefulnessScore.toFixed(2)} / ${String(sectionProfile?.strategyId || "default-cut")}`,
   )}</text>
   ${foundation}
   ${roof}
@@ -427,8 +411,27 @@ export function renderSectionSvg(
       section_candidate_quality:
         sectionProfile?.sectionCandidateQuality || null,
       section_candidate_score: sectionProfile?.score || null,
+      section_strategy_id:
+        sectionProfile?.strategyId ||
+        sectionProfile?.chosenStrategy?.id ||
+        null,
+      section_strategy_name:
+        sectionProfile?.strategyName ||
+        sectionProfile?.chosenStrategy?.name ||
+        null,
+      section_expected_communication_value: Number(
+        sectionProfile?.expectedCommunicationValue || 0,
+      ),
       focus_entity_count: (sectionProfile?.focusEntityIds || []).length,
       cut_coordinate_m: cutCoordinate,
+      section_evidence_quality:
+        sectionEvidence.summary?.evidenceQuality || null,
+      section_direct_evidence_count:
+        sectionEvidence.summary?.directEvidenceCount || 0,
+      section_inferred_evidence_count:
+        sectionEvidence.summary?.inferredEvidenceCount || 0,
+      section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
+      section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,
     },
   };
 }

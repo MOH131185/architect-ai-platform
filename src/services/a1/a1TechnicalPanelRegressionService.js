@@ -33,6 +33,7 @@ export function runA1TechnicalPanelRegression({
           entry.technical_quality_metadata?.geometry_source || null,
         blockers: entry.blocking_reasons || [],
         warnings: entry.annotation_validation?.warnings || [],
+        summary: entry.technical_quality_metadata?.side_facade_summary || null,
       },
     ]),
   );
@@ -43,6 +44,19 @@ export function runA1TechnicalPanelRegression({
       (entry.status === "blocked" ? "block" : "pass"),
     score: Number(
       entry.technical_quality_metadata?.section_usefulness_score || 0,
+    ),
+    strategyId:
+      entry.technical_quality_metadata?.section_strategy_id ||
+      entry.section_profile?.strategyId ||
+      null,
+    strategyName:
+      entry.technical_quality_metadata?.section_strategy_name ||
+      entry.section_profile?.strategyName ||
+      null,
+    expectedCommunicationValue: Number(
+      entry.technical_quality_metadata?.section_expected_communication_value ||
+        entry.section_profile?.expectedCommunicationValue ||
+        0,
     ),
     rationale:
       entry.section_semantics?.rationale ||
@@ -83,7 +97,7 @@ export function runA1TechnicalPanelRegression({
   });
 
   return {
-    version: "phase9-a1-technical-panel-regression-v1",
+    version: "phase10-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: [...new Set(blockers)],

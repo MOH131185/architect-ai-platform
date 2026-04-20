@@ -397,9 +397,30 @@ describe("Phase 1 model route handlers", () => {
     expect(Array.isArray(res.body.heroVsCanonicalWarnings)).toBe(true);
     expect(res.body.consistencyGuard).toBeTruthy();
     expect(res.body.finalSheetRegression).toBeTruthy();
+    expect(res.body.renderedTextZone).toBeTruthy();
+    expect(["pass", "warning", "block"]).toContain(
+      res.body.renderedTextZoneStatus,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
+    expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
     expect(Array.isArray(res.body.technicalFragmentScores)).toBe(true);
+    expect(res.body.technicalCredibility).toBeTruthy();
+    expect(res.body.publishability).toBeTruthy();
+    expect(res.body.finalSheetRegressionPhase).toBe("pre_compose");
+    expect(res.body.technicalCredibilityPhase).toBe("pre_compose");
+    expect(res.body.publishabilityPhase).toBe("pre_compose");
+    expect(res.body.postComposeVerified).toBe(false);
+    expect(res.body.verificationState).toBeTruthy();
+    expect(res.body.verificationState.phase).toBe("pre_compose");
+    expect(res.body.verificationState.decisive).toBe(false);
+    expect(res.body.verificationState.overallDecision).toBe("provisional");
+    expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verificationState.publishability.decisionStatus).toBe(
+      "provisional",
+    );
+    expect(res.body.publishability.provisional).toBe(true);
+    expect(res.body.publishability.finalDecision).toBe("provisional");
     expect(res.body.meta.endpoint).toBe("project-readiness");
   });
 
@@ -469,9 +490,30 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.consistencyGuard).toBeTruthy();
     expect(res.body.fontReadiness.family).toBe("ArchiAISans");
     expect(res.body.finalSheetRegression).toBeTruthy();
+    expect(res.body.renderedTextZone).toBeTruthy();
+    expect(["pass", "warning", "block"]).toContain(
+      res.body.renderedTextZoneStatus,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
+    expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
     expect(Array.isArray(res.body.technicalFragmentScores)).toBe(true);
+    expect(res.body.technicalCredibility).toBeTruthy();
+    expect(res.body.publishability).toBeTruthy();
+    expect(res.body.finalSheetRegressionPhase).toBe("pre_compose");
+    expect(res.body.technicalCredibilityPhase).toBe("pre_compose");
+    expect(res.body.publishabilityPhase).toBe("pre_compose");
+    expect(res.body.postComposeVerified).toBe(false);
+    expect(res.body.verificationState).toBeTruthy();
+    expect(res.body.verificationState.phase).toBe("pre_compose");
+    expect(res.body.verificationState.decisive).toBe(false);
+    expect(res.body.verificationState.overallDecision).toBe("provisional");
+    expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verificationState.publishability.decisionStatus).toBe(
+      "provisional",
+    );
+    expect(res.body.publishability.provisional).toBe(true);
+    expect(res.body.publishability.finalDecision).toBe("provisional");
     expect(res.body.meta.endpoint).toBe("plan-a1-panels");
   });
 
@@ -926,9 +968,30 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.fontReadiness.family).toBe("ArchiAISans");
     expect(res.body.consistencyGuard).toBeTruthy();
     expect(res.body.finalSheetRegression).toBeTruthy();
+    expect(res.body.renderedTextZone).toBeTruthy();
+    expect(["pass", "warning", "block"]).toContain(
+      res.body.renderedTextZoneStatus,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
+    expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
     expect(Array.isArray(res.body.technicalFragmentScores)).toBe(true);
+    expect(res.body.technicalCredibility).toBeTruthy();
+    expect(res.body.publishability).toBeTruthy();
+    expect(res.body.finalSheetRegressionPhase).toBe("pre_compose");
+    expect(res.body.technicalCredibilityPhase).toBe("pre_compose");
+    expect(res.body.publishabilityPhase).toBe("pre_compose");
+    expect(res.body.postComposeVerified).toBe(false);
+    expect(res.body.verificationState).toBeTruthy();
+    expect(res.body.verificationState.phase).toBe("pre_compose");
+    expect(res.body.verificationState.decisive).toBe(false);
+    expect(res.body.verificationState.overallDecision).toBe("provisional");
+    expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verificationState.publishability.decisionStatus).toBe(
+      "provisional",
+    );
+    expect(res.body.publishability.provisional).toBe(true);
+    expect(res.body.publishability.finalDecision).toBe("provisional");
     expect(res.body.meta.endpoint).toBe("project-health");
   });
 });

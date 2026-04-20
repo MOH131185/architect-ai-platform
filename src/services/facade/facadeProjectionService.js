@@ -1,8 +1,44 @@
+function tokenizeOrientation(orientation = "south") {
+  return String(orientation || "south")
+    .trim()
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+}
+
+function resolveEntitySide(entity = {}) {
+  return orientationToSide(
+    entity?.metadata?.side ||
+      entity?.metadata?.orientation ||
+      entity?.side ||
+      entity?.orientation ||
+      "south",
+  );
+}
+
 function orientationToSide(orientation = "south") {
-  const normalized = String(orientation || "south").toLowerCase();
-  return ["north", "south", "east", "west"].includes(normalized)
-    ? normalized
-    : "south";
+  const tokens = tokenizeOrientation(orientation);
+  const tokenSet = new Set(tokens);
+  const aliasMap = {
+    n: "north",
+    s: "south",
+    e: "east",
+    w: "west",
+  };
+
+  for (const [alias, side] of Object.entries(aliasMap)) {
+    if (tokenSet.has(alias)) {
+      return side;
+    }
+  }
+
+  for (const side of ["north", "south", "east", "west"]) {
+    if (tokenSet.has(side)) {
+      return side;
+    }
+  }
+
+  return "south";
 }
 
 function getBounds(geometry = {}) {
@@ -121,13 +157,42 @@ function projectOpening(
   };
 }
 
+function buildWallZoneSeeds(
+  sideWalls = [],
+  bounds = {},
+  orientation = "south",
+) {
+  const side = orientationToSide(orientation);
+  return (sideWalls || []).map((wall, index) => ({
+    id: wall.id || `wall-zone-seed:${side}:${index}`,
+    wallId: wall.id || null,
+    side,
+    levelId: wall.level_id || wall.levelId || null,
+    startM: projectAlongOrientation(wall.start || {}, bounds, side),
+    endM: projectAlongOrientation(wall.end || {}, bounds, side),
+  }));
+}
+
+function buildRoofEdgeSeed(geometry = {}, side = "south") {
+  const roofLanguage = String(geometry?.roof?.type || "").toLowerCase();
+  return {
+    id: `roof-edge-seed:${side}`,
+    side,
+    kind: roofLanguage.includes("flat")
+      ? "parapet-transition"
+      : roofLanguage.includes("gable") || roofLanguage.includes("pitch")
+        ? "ridge-eave-transition"
+        : "roof-edge",
+    roofLanguage: roofLanguage || "unknown",
+  };
+}
+
 export function projectFacadeGeometry(geometry = {}, orientation = "south") {
   const side = orientationToSide(orientation);
   const bounds = getBounds(geometry);
   const levelProfiles = getLevelProfiles(geometry);
   const sideWalls = (geometry.walls || []).filter(
-    (wall) =>
-      wall.exterior && String(wall.metadata?.side || "").toLowerCase() === side,
+    (wall) => wall.exterior && resolveEntitySide(wall) === side,
   );
   const sideWidthM = resolveSideWidth(bounds, side);
   const totalExplicitLength = sideWalls.reduce(
@@ -145,7 +210,7 @@ export function projectFacadeGeometry(geometry = {}, orientation = "south") {
   const projectedWindows = (geometry.windows || [])
     .map((windowElement) => {
       const wall = wallById.get(windowElement.wall_id);
-      if (!wall || String(wall.metadata?.side || "").toLowerCase() !== side) {
+      if (!wall || resolveEntitySide(wall) !== side) {
         return null;
       }
       return projectOpening(
@@ -161,24 +226,44 @@ export function projectFacadeGeometry(geometry = {}, orientation = "south") {
   const projectedDoors = (geometry.doors || [])
     .map((door) => {
       const wall = wallById.get(door.wall_id);
-      if (!wall || String(wall.metadata?.side || "").toLowerCase() !== side) {
+      if (!wall || resolveEntitySide(wall) !== side) {
         return null;
       }
       return projectOpening(door, wall, bounds, side, levelProfiles, "door");
     })
     .filter(Boolean);
+  const projectedOpenings = [...projectedWindows, ...projectedDoors].sort(
+    (left, right) => Number(left.center_m || 0) - Number(right.center_m || 0),
+  );
 
   return {
-    version: "phase9-facade-projection-v1",
+    version: "phase10-facade-projection-v1",
     side,
     bounds,
     sideWidthM,
+    explicitWallCount: sideWalls.length,
     levelProfiles,
     sideWalls,
     explicitCoverageRatio: Number(explicitCoverageRatio.toFixed(3)),
+    openingCoverageRatio: Number(
+      (
+        [...projectedWindows, ...projectedDoors].reduce(
+          (sum, opening) => sum + Number(opening.width_m || 0),
+          0,
+        ) / Math.max(sideWidthM || 1, 1)
+      ).toFixed(3),
+    ),
+    levelSpanM: Number(
+      levelProfiles
+        .reduce((sum, level) => sum + Number(level.height_m || 3.2), 0)
+        .toFixed(3),
+    ),
     projectedWindows,
     projectedDoors,
+    projectedOpenings,
     openingCount: projectedWindows.length + projectedDoors.length,
+    wallZoneSeeds: buildWallZoneSeeds(sideWalls, bounds, side),
+    roofEdgeSeed: buildRoofEdgeSeed(geometry, side),
     geometrySource:
       sideWalls.length > 0 ? "explicit_side_walls" : "envelope_derived",
   };
@@ -189,6 +274,7 @@ export {
   getLevelProfiles as getFacadeLevelProfiles,
   orientationToSide,
   projectAlongOrientation,
+  resolveEntitySide,
   resolveSideWidth,
 };
 
@@ -198,5 +284,6 @@ export default {
   getFacadeLevelProfiles: getLevelProfiles,
   orientationToSide,
   projectAlongOrientation,
+  resolveEntitySide,
   resolveSideWidth,
 };

@@ -23,10 +23,15 @@ export function evaluateDrawingFragmentQuality({
     warnings: panel.warnings || [],
     thresholds: panel.score?.thresholds || null,
     categoryScores: panel.score?.categoryScores || null,
+    emptyGeometryLikely:
+      panel.score?.categoryScores?.geometryCompleteness === 0 ||
+      (panel.blockers || []).some((entry) =>
+        String(entry).toLowerCase().includes("geometry"),
+      ),
   }));
 
   return {
-    version: "phase9-drawing-fragment-quality-v1",
+    version: "phase10-drawing-fragment-quality-v1",
     fragmentScores,
     blockingFragments: fragmentScores.filter(
       (entry) => entry.verdict === "block",

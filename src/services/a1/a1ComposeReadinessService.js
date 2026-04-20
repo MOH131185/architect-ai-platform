@@ -17,6 +17,9 @@ import { planA1ComposeExecution } from "./a1ComposeExecutionPlanner.js";
 import { buildA1RecoveryExecutionBridge } from "./a1RecoveryExecutionBridge.js";
 import { getFontEmbeddingReadinessSync } from "../../utils/svgFontEmbedder.js";
 import { runA1FinalSheetRegression } from "./a1FinalSheetRegressionService.js";
+import { evaluateA1TechnicalCredibility } from "./a1TechnicalCredibilityService.js";
+import { classifyA1Publishability } from "./a1PublishabilityService.js";
+import { buildA1VerificationStateBundle } from "./a1VerificationStateSerializer.js";
 
 export function assessA1ComposeReadiness({
   projectGeometry = {},
@@ -132,6 +135,27 @@ export function assessA1ComposeReadiness({
       (candidate) => candidate.title,
     ),
   });
+  const technicalCredibility = evaluateA1TechnicalCredibility({
+    drawings: drawings || projectGeometry?.metadata?.drawings || {},
+    finalSheetRegression,
+  });
+  const publishability = classifyA1Publishability({
+    finalSheetRegression,
+    technicalCredibility,
+  });
+  const verificationState = isFeatureEnabled(
+    "useUnifiedVerificationStatePhase10",
+  )
+    ? buildA1VerificationStateBundle({
+        renderedTextZone:
+          finalSheetRegression?.renderedTextZone ||
+          finalSheetRegression?.textZoneSanity?.renderedTextZone ||
+          null,
+        finalSheetRegression,
+        technicalCredibility,
+        publishability,
+      })
+    : null;
   const blockingState = buildA1ComposeBlockingState({
     projectGeometry,
     validationReport,
@@ -140,6 +164,9 @@ export function assessA1ComposeReadiness({
     consistencyGuard,
     fontReadiness,
     finalSheetRegression,
+    technicalCredibility,
+    publishability,
+    verificationState,
   });
   const executionPlan = isFeatureEnabled("useComposeExecutionPlanning")
     ? planA1ComposeExecution({
@@ -152,6 +179,8 @@ export function assessA1ComposeReadiness({
         freshness: panelFreshness,
         technicalPanelGate,
         finalSheetRegression,
+        publishability,
+        verificationState,
       })
     : null;
   const recoveryExecutionBridge = isFeatureEnabled(
@@ -198,7 +227,7 @@ export function assessA1ComposeReadiness({
 
   return {
     version: finalSheetRegression
-      ? "phase9-a1-compose-readiness-v1"
+      ? "phase10-a1-compose-readiness-v1"
       : isFeatureEnabled("useComposeExecutionPlanning")
         ? "phase6-a1-compose-readiness-v1"
         : "phase5-a1-compose-readiness-v1",
@@ -226,6 +255,13 @@ export function assessA1ComposeReadiness({
     consistencyGuard,
     fontReadiness,
     finalSheetRegression,
+    renderedTextZone:
+      finalSheetRegression?.renderedTextZone ||
+      finalSheetRegression?.textZoneSanity?.renderedTextZone ||
+      null,
+    technicalCredibility,
+    publishability,
+    verificationState,
     composeExecutionPlan: executionPlan,
     recoveryExecutionBridge,
   };

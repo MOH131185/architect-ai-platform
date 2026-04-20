@@ -6,6 +6,7 @@ import {
   getSchemaEngineVersion,
 } from "../contracts/contractVersioningService.js";
 import { geometrySignature } from "../project/projectArtifactStore.js";
+import { buildA1VerificationStateBundle } from "../a1/a1VerificationStateSerializer.js";
 
 function toArray(value) {
   if (Array.isArray(value)) return value;
@@ -190,9 +191,18 @@ export const PHASE1_API_CONTRACTS = {
       "technicalPanelReadinessState",
       "fontReadiness",
       "finalSheetRegression",
+      "finalSheetRegressionPhase",
+      "renderedTextZone",
       "perSideElevationStatus",
       "sectionCandidateQuality",
+      "sectionStrategyRationale",
       "technicalFragmentScores",
+      "technicalCredibility",
+      "technicalCredibilityPhase",
+      "publishability",
+      "publishabilityPhase",
+      "postComposeVerified",
+      "verificationState",
     ],
   },
   planA1Panels: {
@@ -209,9 +219,18 @@ export const PHASE1_API_CONTRACTS = {
       "technicalPanelReadinessState",
       "fontReadiness",
       "finalSheetRegression",
+      "finalSheetRegressionPhase",
+      "renderedTextZone",
       "perSideElevationStatus",
       "sectionCandidateQuality",
+      "sectionStrategyRationale",
       "technicalFragmentScores",
+      "technicalCredibility",
+      "technicalCredibilityPhase",
+      "publishability",
+      "publishabilityPhase",
+      "postComposeVerified",
+      "verificationState",
     ],
   },
   planRegeneration: {
@@ -237,9 +256,18 @@ export const PHASE1_API_CONTRACTS = {
       "recoveryPlan",
       "rollbackPlan",
       "finalSheetRegression",
+      "finalSheetRegressionPhase",
+      "renderedTextZone",
       "technicalFragmentScores",
       "perSideElevationStatus",
       "sectionCandidateQuality",
+      "sectionStrategyRationale",
+      "technicalCredibility",
+      "technicalCredibilityPhase",
+      "publishability",
+      "publishabilityPhase",
+      "postComposeVerified",
+      "verificationState",
     ],
   },
   searchPrecedents: {
@@ -861,6 +889,24 @@ export function buildProjectReadinessResponse({
   warnings = [],
   featureFlags = [],
 }) {
+  const finalSheetRegressionPhase =
+    result.finalSheetRegression?.verificationPhase || "pre_compose";
+  const technicalCredibilityPhase =
+    result.technicalCredibility?.verificationPhase || finalSheetRegressionPhase;
+  const publishabilityPhase =
+    result.publishability?.verificationPhase || technicalCredibilityPhase;
+  const verificationState =
+    result.verificationState ||
+    buildA1VerificationStateBundle({
+      renderedTextZone:
+        result.renderedTextZone ||
+        result.finalSheetRegression?.renderedTextZone ||
+        null,
+      finalSheetRegression: result.finalSheetRegression || null,
+      technicalCredibility: result.technicalCredibility || null,
+      publishability: result.publishability || null,
+    });
+
   return {
     contractVersion: getPublicApiVersion("project-readiness"),
     success: true,
@@ -891,6 +937,15 @@ export function buildProjectReadinessResponse({
     finalSheetRegression: result.finalSheetRegression || null,
     finalSheetRegressionReadiness:
       result.finalSheetRegression?.status || "pass",
+    finalSheetRegressionPhase,
+    renderedTextZone:
+      result.renderedTextZone ||
+      result.finalSheetRegression?.renderedTextZone ||
+      null,
+    renderedTextZoneStatus:
+      result.renderedTextZone?.status ||
+      result.finalSheetRegression?.renderedTextZoneStatus ||
+      "warning",
     perSideElevationStatus:
       result.finalSheetRegression?.perSideElevationStatus ||
       result.technicalPanelGate?.perSideElevationStatus ||
@@ -903,6 +958,22 @@ export function buildProjectReadinessResponse({
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
       [],
+    sectionStrategyRationale: (
+      result.finalSheetRegression?.sectionCandidateQuality ||
+      result.technicalPanelGate?.sectionCandidateQuality ||
+      []
+    ).map((entry) => ({
+      sectionType: entry.sectionType,
+      strategyId: entry.strategyId || null,
+      strategyName: entry.strategyName || null,
+      rationale: entry.rationale || [],
+    })),
+    technicalCredibility: result.technicalCredibility || null,
+    technicalCredibilityPhase,
+    publishability: result.publishability || null,
+    publishabilityPhase,
+    postComposeVerified: publishabilityPhase === "post_compose",
+    verificationState,
     composeExecutionPlan: result.composeExecutionPlan || null,
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     entityBlockers: result.entityBlockers || [],
@@ -953,6 +1024,24 @@ export function buildPlanA1PanelsResponse({
   warnings = [],
   featureFlags = [],
 }) {
+  const finalSheetRegressionPhase =
+    result.finalSheetRegression?.verificationPhase || "pre_compose";
+  const technicalCredibilityPhase =
+    result.technicalCredibility?.verificationPhase || finalSheetRegressionPhase;
+  const publishabilityPhase =
+    result.publishability?.verificationPhase || technicalCredibilityPhase;
+  const verificationState =
+    result.verificationState ||
+    buildA1VerificationStateBundle({
+      renderedTextZone:
+        result.renderedTextZone ||
+        result.finalSheetRegression?.renderedTextZone ||
+        null,
+      finalSheetRegression: result.finalSheetRegression || null,
+      technicalCredibility: result.technicalCredibility || null,
+      publishability: result.publishability || null,
+    });
+
   return {
     contractVersion: getPublicApiVersion("plan-a1-panels"),
     success: true,
@@ -977,6 +1066,15 @@ export function buildPlanA1PanelsResponse({
     finalSheetRegression: result.finalSheetRegression || null,
     finalSheetRegressionReadiness:
       result.finalSheetRegression?.status || "pass",
+    finalSheetRegressionPhase,
+    renderedTextZone:
+      result.renderedTextZone ||
+      result.finalSheetRegression?.renderedTextZone ||
+      null,
+    renderedTextZoneStatus:
+      result.renderedTextZone?.status ||
+      result.finalSheetRegression?.renderedTextZoneStatus ||
+      "warning",
     perSideElevationStatus:
       result.perSideElevationStatus ||
       result.finalSheetRegression?.perSideElevationStatus ||
@@ -992,6 +1090,23 @@ export function buildPlanA1PanelsResponse({
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
       [],
+    sectionStrategyRationale: (
+      result.sectionCandidateQuality ||
+      result.finalSheetRegression?.sectionCandidateQuality ||
+      result.technicalPanelGate?.sectionCandidateQuality ||
+      []
+    ).map((entry) => ({
+      sectionType: entry.sectionType,
+      strategyId: entry.strategyId || null,
+      strategyName: entry.strategyName || null,
+      rationale: entry.rationale || [],
+    })),
+    technicalCredibility: result.technicalCredibility || null,
+    technicalCredibilityPhase,
+    publishability: result.publishability || null,
+    publishabilityPhase,
+    postComposeVerified: publishabilityPhase === "post_compose",
+    verificationState,
     composeBlockingReasons:
       result.composeBlockingReasons ||
       result.technicalPanelGate?.blockingReasons ||
@@ -1099,6 +1214,39 @@ export function buildProjectHealthResponse({
   warnings = [],
   featureFlags = [],
 }) {
+  const finalSheetRegressionPhase =
+    result.finalSheetRegression?.verificationPhase ||
+    result.readiness?.finalSheetRegression?.verificationPhase ||
+    "pre_compose";
+  const technicalCredibilityPhase =
+    result.technicalCredibility?.verificationPhase ||
+    result.readiness?.technicalCredibility?.verificationPhase ||
+    finalSheetRegressionPhase;
+  const publishabilityPhase =
+    result.publishability?.verificationPhase ||
+    result.readiness?.publishability?.verificationPhase ||
+    technicalCredibilityPhase;
+  const verificationState =
+    result.verificationState ||
+    result.readiness?.verificationState ||
+    buildA1VerificationStateBundle({
+      renderedTextZone:
+        result.renderedTextZone ||
+        result.finalSheetRegression?.renderedTextZone ||
+        result.readiness?.finalSheetRegression?.renderedTextZone ||
+        null,
+      finalSheetRegression:
+        result.finalSheetRegression ||
+        result.readiness?.finalSheetRegression ||
+        null,
+      technicalCredibility:
+        result.technicalCredibility ||
+        result.readiness?.technicalCredibility ||
+        null,
+      publishability:
+        result.publishability || result.readiness?.publishability || null,
+    });
+
   return {
     contractVersion: getPublicApiVersion("project-health"),
     success: true,
@@ -1115,6 +1263,17 @@ export function buildProjectHealthResponse({
     finalSheetRegression: result.finalSheetRegression || null,
     finalSheetRegressionReadiness:
       result.finalSheetRegression?.status || "pass",
+    finalSheetRegressionPhase,
+    renderedTextZone:
+      result.renderedTextZone ||
+      result.finalSheetRegression?.renderedTextZone ||
+      result.readiness?.finalSheetRegression?.renderedTextZone ||
+      null,
+    renderedTextZoneStatus:
+      result.renderedTextZone?.status ||
+      result.finalSheetRegression?.renderedTextZoneStatus ||
+      result.readiness?.finalSheetRegression?.renderedTextZoneStatus ||
+      "warning",
     perSideElevationStatus:
       result.finalSheetRegression?.perSideElevationStatus ||
       result.readiness?.finalSheetRegression?.perSideElevationStatus ||
@@ -1127,6 +1286,26 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.technicalFragmentScores ||
       result.readiness?.finalSheetRegression?.technicalFragmentScores ||
       [],
+    sectionStrategyRationale: (
+      result.finalSheetRegression?.sectionCandidateQuality ||
+      result.readiness?.finalSheetRegression?.sectionCandidateQuality ||
+      []
+    ).map((entry) => ({
+      sectionType: entry.sectionType,
+      strategyId: entry.strategyId || null,
+      strategyName: entry.strategyName || null,
+      rationale: entry.rationale || [],
+    })),
+    technicalCredibility:
+      result.technicalCredibility ||
+      result.readiness?.technicalCredibility ||
+      null,
+    technicalCredibilityPhase,
+    publishability:
+      result.publishability || result.readiness?.publishability || null,
+    publishabilityPhase,
+    postComposeVerified: publishabilityPhase === "post_compose",
+    verificationState,
     remainingBlockers: result.remainingBlockers || [],
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
     warnings,

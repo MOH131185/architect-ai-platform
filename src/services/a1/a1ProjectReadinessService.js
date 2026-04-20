@@ -36,9 +36,12 @@ export function assessA1ProjectReadiness({
       : null;
 
     return {
-      version: isFeatureEnabled("useProjectRecoveryFlows")
-        ? "phase6-a1-project-readiness-v1"
-        : "phase5-a1-project-readiness-v1",
+      version:
+        composeReadiness.publishability || composeReadiness.technicalCredibility
+          ? "phase10-a1-project-readiness-v1"
+          : isFeatureEnabled("useProjectRecoveryFlows")
+            ? "phase6-a1-project-readiness-v1"
+            : "phase5-a1-project-readiness-v1",
       ready: composeReadiness.composeReady,
       composeReady: composeReadiness.composeReady,
       composeBlocked: composeReadiness.composeBlocked,
@@ -66,6 +69,10 @@ export function assessA1ProjectReadiness({
       consistencyGuard: composeReadiness.consistencyGuard || null,
       fontReadiness: composeReadiness.fontReadiness || null,
       finalSheetRegression: composeReadiness.finalSheetRegression || null,
+      renderedTextZone: composeReadiness.renderedTextZone || null,
+      technicalCredibility: composeReadiness.technicalCredibility || null,
+      publishability: composeReadiness.publishability || null,
+      verificationState: composeReadiness.verificationState || null,
       composeExecutionPlan: composeReadiness.composeExecutionPlan || null,
       recoveryExecutionBridge: composeReadiness.recoveryExecutionBridge || null,
       entityBlockers:

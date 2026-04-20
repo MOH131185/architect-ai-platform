@@ -20,6 +20,7 @@
 
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import logger from "../core/logger.js";
+import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
 import {
   generateFromDNA as generateElevationFromDNA,
   MATERIAL_PATTERNS,
@@ -35,6 +36,41 @@ import {
   generateFromDNA as generateSectionFromDNA,
   HATCH_PATTERNS,
 } from "../svg/ArchitecturalSectionGenerator.js";
+
+/**
+ * Derive a facade grammar from masterDNA so the active elevation generator can
+ * consume feature frames, balcony placeholders and material zones.  This is
+ * intentionally defensive: if grammar construction fails we log and return
+ * null so the generator falls back to its previous single-colour-panel path.
+ */
+function deriveFacadeGrammarForElevation(masterDNA) {
+  if (!isFeatureEnabled("useFacadeGrammarElevation")) {
+    return null;
+  }
+  const projectGeometry =
+    masterDNA?.projectGeometry ||
+    masterDNA?.canonicalGeometry ||
+    masterDNA?.geometry ||
+    {};
+  const styleDNA =
+    masterDNA?.styleDNA ||
+    masterDNA?.style_dna ||
+    masterDNA?.style ||
+    masterDNA?.style_blend ||
+    {};
+  try {
+    const grammar = buildFacadeGrammar(projectGeometry, styleDNA, {});
+    if (!grammar || !Array.isArray(grammar.orientations)) {
+      return null;
+    }
+    return grammar;
+  } catch (error) {
+    logger.warn(
+      `[EnhancedAdapter] Facade grammar derivation failed: ${error.message}`,
+    );
+    return null;
+  }
+}
 
 /**
  * Convert SVG string to data URL format
@@ -515,9 +551,21 @@ class GeometryAdapter {
     const walls = this.walls?.[floor] || [];
     const openings = this.getFloorOpenings(floor);
 
-    if (rooms.length === 0 && floor === 0) {
-      // Generate default rooms if none defined
+    if (rooms.length === 0) {
+      // Generate default rooms for any floor that has no explicit rooms.
+      // Upper floors previously fell through silently and produced blank panels —
+      // this ensures the generator has something plausible to draw when the
+      // canonical geometry is incomplete. In strict modes, generateDefaultFloorPlan
+      // returns null which propagates to the caller.
+      if (floor !== 0) {
+        logger.warn(
+          `[GeometryAdapter] Floor ${floor}: no rooms in geometry; synthesising default upper-floor layout`,
+        );
+      }
       const defaultData = this.generateDefaultFloorPlan(floor);
+      if (!defaultData) {
+        return null;
+      }
       return {
         ...defaultData,
         walls: walls,
@@ -845,8 +893,11 @@ export function generateEnhancedFloorPlanSVG(
       sheetMode: projectContext.sheetMode || false,
     });
 
-    // Generate the SVG
-    const svg = generator.generate(geometry, floorIndex);
+    // Generate the SVG (pass target slot dimensions for aspect ratio matching)
+    const svg = generator.generate(geometry, floorIndex, {
+      targetWidth: projectContext.targetWidth,
+      targetHeight: projectContext.targetHeight,
+    });
 
     logger.info(
       `[EnhancedAdapter] Generated enhanced floor plan for floor ${floorIndex}`,
@@ -891,6 +942,7 @@ export function generateEnhancedElevationSVG(
     }
 
     // Use the generateFromDNA function directly (elevation generator is function-based)
+    const facadeGrammar = deriveFacadeGrammarForElevation(masterDNA);
     const svg = generateElevationFromDNA(masterDNA, orientation, {
       scale: projectContext.scale || 50,
       showDimensions: true,
@@ -898,6 +950,10 @@ export function generateEnhancedElevationSVG(
       showGroundContext: true,
       showLevelMarkers: true,
       sheetMode: projectContext.sheetMode || false,
+      targetWidth: projectContext.targetWidth,
+      targetHeight: projectContext.targetHeight,
+      facadeGrammar,
+      canonicalPalette: projectContext.canonicalPalette || null,
     });
 
     logger.info(
@@ -974,6 +1030,8 @@ export function generateEnhancedSectionSVG(
       showRoomLabels: true,
       showFoundation: true,
       sheetMode: projectContext.sheetMode || false,
+      targetWidth: projectContext.targetWidth,
+      targetHeight: projectContext.targetHeight,
     });
 
     logger.info(
