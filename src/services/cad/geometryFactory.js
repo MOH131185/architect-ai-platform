@@ -342,6 +342,535 @@ export function createRoofGeometry(projectId, topFootprint = {}, style = {}) {
   };
 }
 
+function normalizeRoofLanguage(roof = {}, style = {}) {
+  return String(
+    roof.roof_language || roof.type || style.roof_language || "pitched gable",
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function totalBuildingHeight(levels = []) {
+  return roundMetric(
+    (levels || []).reduce(
+      (sum, level) => sum + Number(level.height_m || DEFAULT_LEVEL_HEIGHT_M),
+      0,
+    ),
+  );
+}
+
+function inferRoofRiseM(roof = {}, style = {}) {
+  const explicit =
+    roof.ridge_rise_m ||
+    roof.roof_rise_m ||
+    style.ridge_rise_m ||
+    style.roof_rise_m;
+  if (Number.isFinite(Number(explicit))) {
+    return roundMetric(explicit);
+  }
+  const language = normalizeRoofLanguage(roof, style);
+  if (language.includes("flat")) return 0.28;
+  if (language.includes("mono")) return 1.2;
+  if (language.includes("hip")) return 1.45;
+  return 1.65;
+}
+
+function normalizePrimitiveFamily(type = "", fallback = "roof_plane") {
+  const normalized = String(type || "")
+    .trim()
+    .toLowerCase();
+  return normalized || fallback;
+}
+
+function createRoofPrimitiveGeometry(
+  projectId,
+  primitive = {},
+  index = 0,
+  { fallbackLevelId = null } = {},
+) {
+  const polygon = primitive.polygon || [];
+  const segmentPoints =
+    primitive.start && primitive.end ? [primitive.start, primitive.end] : [];
+  return {
+    ...cloneGeometryData(primitive),
+    id:
+      primitive.id ||
+      createStableId(
+        "roof-primitive",
+        projectId,
+        primitive.type || primitive.primitive_family || index,
+      ),
+    primitive_family: normalizePrimitiveFamily(
+      primitive.primitive_family || primitive.type,
+      "roof_plane",
+    ),
+    type: primitive.type || primitive.primitive_family || "roof_plane",
+    level_id: primitive.level_id || fallbackLevelId,
+    polygon,
+    bbox:
+      primitive.bbox ||
+      (polygon.length
+        ? buildBoundingBoxFromPolygon(polygon)
+        : segmentPoints.length
+          ? buildBoundingBoxFromPolygon(segmentPoints)
+          : null),
+    ridge_height_m: roundMetric(
+      primitive.ridge_height_m ?? primitive.ridgeHeightM ?? 0,
+    ),
+    eave_height_m: roundMetric(
+      primitive.eave_height_m ?? primitive.eaveHeightM ?? 0,
+    ),
+    overhang_m: roundMetric(primitive.overhang_m ?? primitive.overhangM ?? 0),
+    provenance: {
+      ...(primitive.provenance || {}),
+      source:
+        primitive.provenance?.source ||
+        primitive.source ||
+        "canonical-roof-primitives",
+    },
+  };
+}
+
+function buildDerivedRoofPrimitives(projectGeometry = {}, style = {}) {
+  const topFootprint =
+    projectGeometry.footprints[projectGeometry.footprints.length - 1] ||
+    projectGeometry.footprints[0] ||
+    {};
+  const roof =
+    projectGeometry.roof ||
+    createRoofGeometry(projectGeometry.project_id, topFootprint, style);
+  const polygon = roof.polygon?.length
+    ? roof.polygon
+    : topFootprint.polygon || [];
+  const bbox =
+    roof.bbox ||
+    topFootprint.bbox ||
+    buildBoundingBoxFromPolygon(polygon || []);
+  if (!bbox || !Number.isFinite(Number(bbox.width || 0))) {
+    return [];
+  }
+
+  const roofLanguage = normalizeRoofLanguage(roof, style);
+  const buildingHeight = totalBuildingHeight(projectGeometry.levels);
+  const eaveHeight = roundMetric(buildingHeight || DEFAULT_LEVEL_HEIGHT_M);
+  const ridgeHeight = roundMetric(eaveHeight + inferRoofRiseM(roof, style));
+  const horizontalDominant =
+    Number(bbox.width || 0) >= Number(bbox.height || 0);
+  const ridgeStart = horizontalDominant
+    ? {
+        x: roundMetric((bbox.min_x + bbox.max_x) / 2),
+        y: roundMetric(bbox.min_y),
+      }
+    : {
+        x: roundMetric(bbox.min_x),
+        y: roundMetric((bbox.min_y + bbox.max_y) / 2),
+      };
+  const ridgeEnd = horizontalDominant
+    ? {
+        x: roundMetric((bbox.min_x + bbox.max_x) / 2),
+        y: roundMetric(bbox.max_y),
+      }
+    : {
+        x: roundMetric(bbox.max_x),
+        y: roundMetric((bbox.min_y + bbox.max_y) / 2),
+      };
+  const eavePrimaryA = horizontalDominant
+    ? {
+        start: { x: roundMetric(bbox.min_x), y: roundMetric(bbox.min_y) },
+        end: { x: roundMetric(bbox.max_x), y: roundMetric(bbox.min_y) },
+      }
+    : {
+        start: { x: roundMetric(bbox.min_x), y: roundMetric(bbox.min_y) },
+        end: { x: roundMetric(bbox.min_x), y: roundMetric(bbox.max_y) },
+      };
+  const eavePrimaryB = horizontalDominant
+    ? {
+        start: { x: roundMetric(bbox.min_x), y: roundMetric(bbox.max_y) },
+        end: { x: roundMetric(bbox.max_x), y: roundMetric(bbox.max_y) },
+      }
+    : {
+        start: { x: roundMetric(bbox.max_x), y: roundMetric(bbox.min_y) },
+        end: { x: roundMetric(bbox.max_x), y: roundMetric(bbox.max_y) },
+      };
+  const fallbackLevelId =
+    projectGeometry.levels[projectGeometry.levels.length - 1]?.id || null;
+
+  return [
+    createRoofPrimitiveGeometry(
+      projectGeometry.project_id,
+      {
+        primitive_family: "roof_plane",
+        type: roofLanguage.includes("flat")
+          ? "flat_roof_plane"
+          : "pitched_roof_plane",
+        polygon,
+        bbox,
+        roof_language: roofLanguage,
+        ridge_height_m: ridgeHeight,
+        eave_height_m: eaveHeight,
+        overhang_m: roof.overhang_m ?? style.roof_overhang_m ?? 0.45,
+        provenance: {
+          source: "geometry-factory",
+          derivation: "top-footprint",
+        },
+      },
+      0,
+      { fallbackLevelId },
+    ),
+    createRoofPrimitiveGeometry(
+      projectGeometry.project_id,
+      {
+        primitive_family: "ridge",
+        type: "ridge_line",
+        start: ridgeStart,
+        end: ridgeEnd,
+        bbox: buildBoundingBoxFromPolygon([ridgeStart, ridgeEnd]),
+        roof_language: roofLanguage,
+        ridge_height_m: ridgeHeight,
+        eave_height_m: eaveHeight,
+        provenance: {
+          source: "geometry-factory",
+          derivation: horizontalDominant ? "bbox-mid-x" : "bbox-mid-y",
+        },
+      },
+      1,
+      { fallbackLevelId },
+    ),
+    createRoofPrimitiveGeometry(
+      projectGeometry.project_id,
+      {
+        primitive_family: "eave",
+        type: "primary_eave_a",
+        start: eavePrimaryA.start,
+        end: eavePrimaryA.end,
+        bbox: buildBoundingBoxFromPolygon([
+          eavePrimaryA.start,
+          eavePrimaryA.end,
+        ]),
+        roof_language: roofLanguage,
+        ridge_height_m: ridgeHeight,
+        eave_height_m: eaveHeight,
+        provenance: {
+          source: "geometry-factory",
+          derivation: "bbox-edge",
+        },
+      },
+      2,
+      { fallbackLevelId },
+    ),
+    createRoofPrimitiveGeometry(
+      projectGeometry.project_id,
+      {
+        primitive_family: "eave",
+        type: "primary_eave_b",
+        start: eavePrimaryB.start,
+        end: eavePrimaryB.end,
+        bbox: buildBoundingBoxFromPolygon([
+          eavePrimaryB.start,
+          eavePrimaryB.end,
+        ]),
+        roof_language: roofLanguage,
+        ridge_height_m: ridgeHeight,
+        eave_height_m: eaveHeight,
+        provenance: {
+          source: "geometry-factory",
+          derivation: "bbox-edge",
+        },
+      },
+      3,
+      { fallbackLevelId },
+    ),
+  ];
+}
+
+export function buildCanonicalRoofPrimitives(projectGeometry = {}, input = {}) {
+  const explicit =
+    input.roof_primitives || input.roofPrimitives || input.roofElements || [];
+  if (Array.isArray(explicit) && explicit.length) {
+    const fallbackLevelId =
+      projectGeometry.levels[projectGeometry.levels.length - 1]?.id || null;
+    return explicit.map((entry, index) =>
+      createRoofPrimitiveGeometry(projectGeometry.project_id, entry, index, {
+        fallbackLevelId,
+      }),
+    );
+  }
+  return buildDerivedRoofPrimitives(projectGeometry, input.styleDNA || {});
+}
+
+function createFoundationGeometry(
+  projectId,
+  foundation = {},
+  index = 0,
+  { fallbackLevelId = null } = {},
+) {
+  const polygon = foundation.polygon || [];
+  const segmentPoints =
+    foundation.start && foundation.end
+      ? [foundation.start, foundation.end]
+      : [];
+  const bbox =
+    foundation.bbox ||
+    (polygon.length
+      ? buildBoundingBoxFromPolygon(polygon)
+      : segmentPoints.length
+        ? buildBoundingBoxFromPolygon(segmentPoints)
+        : null);
+  const provenanceWallId =
+    foundation.provenance?.wall_id || foundation.wall_id || null;
+  return {
+    ...cloneGeometryData(foundation),
+    id:
+      foundation.id ||
+      createStableId(
+        "foundation",
+        projectId,
+        foundation.level_id || fallbackLevelId,
+        foundation.foundation_type || foundation.condition_type || index,
+        provenanceWallId,
+        foundation.start?.x,
+        foundation.start?.y,
+        foundation.end?.x,
+        foundation.end?.y,
+        bbox?.min_x,
+        bbox?.min_y,
+        bbox?.max_x,
+        bbox?.max_y,
+        index,
+      ),
+    foundation_type:
+      foundation.foundation_type || foundation.type || "continuous_footing",
+    level_id: foundation.level_id || fallbackLevelId,
+    polygon,
+    bbox,
+    depth_m: roundMetric(foundation.depth_m ?? foundation.depthM ?? 0.75),
+    thickness_m: roundMetric(
+      foundation.thickness_m ?? foundation.thicknessM ?? 0.42,
+    ),
+    provenance: {
+      ...(foundation.provenance || {}),
+      source:
+        foundation.provenance?.source ||
+        foundation.source ||
+        "canonical-foundation-primitives",
+    },
+  };
+}
+
+function createBaseConditionGeometry(
+  projectId,
+  baseCondition = {},
+  index = 0,
+  { fallbackLevelId = null } = {},
+) {
+  const polygon = baseCondition.polygon || [];
+  const segmentPoints =
+    baseCondition.start && baseCondition.end
+      ? [baseCondition.start, baseCondition.end]
+      : [];
+  const bbox =
+    baseCondition.bbox ||
+    (polygon.length
+      ? buildBoundingBoxFromPolygon(polygon)
+      : segmentPoints.length
+        ? buildBoundingBoxFromPolygon(segmentPoints)
+        : null);
+  return {
+    ...cloneGeometryData(baseCondition),
+    id:
+      baseCondition.id ||
+      createStableId(
+        "base-condition",
+        projectId,
+        baseCondition.level_id || fallbackLevelId,
+        baseCondition.condition_type || index,
+        baseCondition.start?.x,
+        baseCondition.start?.y,
+        baseCondition.end?.x,
+        baseCondition.end?.y,
+        bbox?.min_x,
+        bbox?.min_y,
+        bbox?.max_x,
+        bbox?.max_y,
+        index,
+      ),
+    condition_type:
+      baseCondition.condition_type || baseCondition.type || "level_ground",
+    level_id: baseCondition.level_id || fallbackLevelId,
+    polygon,
+    bbox,
+    plinth_height_m: roundMetric(
+      baseCondition.plinth_height_m ?? baseCondition.plinthHeightM ?? 0.15,
+    ),
+    ground_line_elevation_m: roundMetric(
+      baseCondition.ground_line_elevation_m ??
+        baseCondition.groundLineElevationM ??
+        0,
+    ),
+    provenance: {
+      ...(baseCondition.provenance || {}),
+      source:
+        baseCondition.provenance?.source ||
+        baseCondition.source ||
+        "canonical-base-conditions",
+    },
+  };
+}
+
+function buildDerivedFoundations(projectGeometry = {}) {
+  const fallbackLevelId = projectGeometry.levels[0]?.id || null;
+  const exteriorWalls = (projectGeometry.walls || []).filter(
+    (wall) => wall.exterior === true || wall.kind === "exterior",
+  );
+  if (exteriorWalls.length) {
+    return exteriorWalls.map((wall, index) =>
+      createFoundationGeometry(
+        projectGeometry.project_id,
+        {
+          foundation_type: "continuous_footing",
+          level_id: wall.level_id || fallbackLevelId,
+          start: wall.start,
+          end: wall.end,
+          bbox: wall.bbox,
+          thickness_m: Math.max(0.38, Number(wall.thickness_m || 0.2) + 0.14),
+          depth_m: 0.8,
+          provenance: {
+            source: "geometry-factory",
+            derivation: "exterior-wall-footing",
+            wall_id: wall.id || null,
+          },
+        },
+        index,
+        { fallbackLevelId },
+      ),
+    );
+  }
+
+  const footprint = projectGeometry.footprints[0] || {};
+  const bbox =
+    footprint.bbox ||
+    buildBoundingBoxFromPolygon(
+      footprint.polygon || projectGeometry.site?.buildable_polygon || [],
+    );
+  if (!bbox || !Number.isFinite(Number(bbox.width || 0))) {
+    return [];
+  }
+  const perimeterSegments = [
+    {
+      start: { x: bbox.min_x, y: bbox.min_y },
+      end: { x: bbox.max_x, y: bbox.min_y },
+    },
+    {
+      start: { x: bbox.max_x, y: bbox.min_y },
+      end: { x: bbox.max_x, y: bbox.max_y },
+    },
+    {
+      start: { x: bbox.max_x, y: bbox.max_y },
+      end: { x: bbox.min_x, y: bbox.max_y },
+    },
+    {
+      start: { x: bbox.min_x, y: bbox.max_y },
+      end: { x: bbox.min_x, y: bbox.min_y },
+    },
+  ];
+  return perimeterSegments.map((segment, index) =>
+    createFoundationGeometry(
+      projectGeometry.project_id,
+      {
+        foundation_type: "perimeter_footing",
+        level_id: fallbackLevelId,
+        start: segment.start,
+        end: segment.end,
+        bbox: buildBoundingBoxFromPolygon([segment.start, segment.end]),
+        depth_m: 0.78,
+        thickness_m: 0.42,
+        provenance: {
+          source: "geometry-factory",
+          derivation: "footprint-perimeter",
+        },
+      },
+      index,
+      { fallbackLevelId },
+    ),
+  );
+}
+
+function buildDerivedBaseConditions(projectGeometry = {}, input = {}) {
+  const fallbackLevelId = projectGeometry.levels[0]?.id || null;
+  const footprint = projectGeometry.footprints[0] || {
+    polygon: projectGeometry.site?.buildable_polygon || [],
+    bbox: projectGeometry.site?.buildable_bbox || null,
+  };
+  const polygon = footprint.polygon || [];
+  const bbox =
+    footprint.bbox ||
+    (polygon.length ? buildBoundingBoxFromPolygon(polygon) : null);
+  if (!bbox) {
+    return [];
+  }
+  const site = input.site || projectGeometry.site || {};
+  const conditionType = String(
+    site.base_condition ||
+      site.baseCondition ||
+      site.ground_condition ||
+      site.groundCondition ||
+      "level_ground",
+  )
+    .trim()
+    .toLowerCase();
+
+  return [
+    createBaseConditionGeometry(
+      projectGeometry.project_id,
+      {
+        condition_type: conditionType,
+        level_id: fallbackLevelId,
+        polygon,
+        bbox,
+        plinth_height_m: site.plinth_height_m ?? site.plinthHeightM ?? 0.15,
+        ground_line_elevation_m:
+          site.ground_line_elevation_m ?? site.groundLineElevationM ?? 0,
+        support_mode: site.support_mode || site.supportMode || "ground_bearing",
+        provenance: {
+          source: "geometry-factory",
+          derivation: "site-envelope",
+        },
+      },
+      0,
+      { fallbackLevelId },
+    ),
+  ];
+}
+
+export function buildCanonicalFoundationPrimitives(
+  projectGeometry = {},
+  input = {},
+) {
+  const explicit = input.foundations || [];
+  const fallbackLevelId = projectGeometry.levels[0]?.id || null;
+  if (Array.isArray(explicit) && explicit.length) {
+    return explicit.map((entry, index) =>
+      createFoundationGeometry(projectGeometry.project_id, entry, index, {
+        fallbackLevelId,
+      }),
+    );
+  }
+  return buildDerivedFoundations(projectGeometry);
+}
+
+export function buildCanonicalBaseConditions(projectGeometry = {}, input = {}) {
+  const explicit = input.base_conditions || input.baseConditions || [];
+  const fallbackLevelId = projectGeometry.levels[0]?.id || null;
+  if (Array.isArray(explicit) && explicit.length) {
+    return explicit.map((entry, index) =>
+      createBaseConditionGeometry(projectGeometry.project_id, entry, index, {
+        fallbackLevelId,
+      }),
+    );
+  }
+  return buildDerivedBaseConditions(projectGeometry, input);
+}
+
 export function appendEntity(geometry, collectionName, entity) {
   geometry[collectionName].push(entity);
   return entity;
@@ -427,7 +956,31 @@ function extractWallSegment(wall = {}) {
 
 export function coerceToCanonicalProjectGeometry(input = {}) {
   if (input?.schema_version === CANONICAL_PROJECT_GEOMETRY_VERSION) {
-    return finalizeProjectGeometry(cloneGeometryData(input));
+    const cloned = finalizeProjectGeometry(cloneGeometryData(input));
+    CANONICAL_GEOMETRY_ENTITY_COLLECTIONS.forEach((collectionName) => {
+      if (!Array.isArray(cloned[collectionName])) {
+        cloned[collectionName] = [];
+      }
+    });
+    if (!cloned.roof && cloned.footprints?.length) {
+      cloned.roof = createRoofGeometry(
+        cloned.project_id,
+        cloned.footprints[cloned.footprints.length - 1],
+        cloned.metadata?.style_dna || {},
+      );
+    }
+    if (!cloned.roof_primitives?.length) {
+      cloned.roof_primitives = buildCanonicalRoofPrimitives(cloned, {
+        styleDNA: cloned.metadata?.style_dna || {},
+      });
+    }
+    if (!cloned.foundations?.length) {
+      cloned.foundations = buildCanonicalFoundationPrimitives(cloned, cloned);
+    }
+    if (!cloned.base_conditions?.length) {
+      cloned.base_conditions = buildCanonicalBaseConditions(cloned, cloned);
+    }
+    return finalizeProjectGeometry(cloned);
   }
 
   const projectGeometry = createProjectGeometry(input);
@@ -691,9 +1244,22 @@ export function coerceToCanonicalProjectGeometry(input = {}) {
     projectGeometry.roof = createRoofGeometry(
       projectGeometry.project_id,
       projectGeometry.footprints[projectGeometry.footprints.length - 1],
-      {},
+      input.styleDNA || {},
     );
   }
+
+  projectGeometry.roof_primitives = buildCanonicalRoofPrimitives(
+    projectGeometry,
+    input,
+  );
+  projectGeometry.foundations = buildCanonicalFoundationPrimitives(
+    projectGeometry,
+    input,
+  );
+  projectGeometry.base_conditions = buildCanonicalBaseConditions(
+    projectGeometry,
+    input,
+  );
 
   return finalizeProjectGeometry(projectGeometry);
 }
@@ -709,6 +1275,9 @@ export default {
   createFootprintGeometry,
   createSlabGeometry,
   createRoofGeometry,
+  buildCanonicalRoofPrimitives,
+  buildCanonicalFoundationPrimitives,
+  buildCanonicalBaseConditions,
   appendEntity,
   appendLevelEntityReference,
   finalizeProjectGeometry,

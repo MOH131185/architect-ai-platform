@@ -37,11 +37,15 @@ export function assessA1ProjectReadiness({
 
     return {
       version:
-        composeReadiness.publishability || composeReadiness.technicalCredibility
-          ? "phase10-a1-project-readiness-v1"
-          : isFeatureEnabled("useProjectRecoveryFlows")
-            ? "phase6-a1-project-readiness-v1"
-            : "phase5-a1-project-readiness-v1",
+        composeReadiness.finalSheetRegression?.roofTruthQuality ||
+        composeReadiness.finalSheetRegression?.foundationTruthQuality
+          ? "phase15-a1-project-readiness-v1"
+          : composeReadiness.publishability ||
+              composeReadiness.technicalCredibility
+            ? "phase10-a1-project-readiness-v1"
+            : isFeatureEnabled("useProjectRecoveryFlows")
+              ? "phase6-a1-project-readiness-v1"
+              : "phase5-a1-project-readiness-v1",
       ready: composeReadiness.composeReady,
       composeReady: composeReadiness.composeReady,
       composeBlocked: composeReadiness.composeBlocked,

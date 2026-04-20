@@ -107,12 +107,12 @@ export function assessSectionConstructionSemantics({
     ),
   );
   const constructionEvidenceScore = round(
-    cutWallTruth.score * 0.28 +
-      cutOpeningTruth.score * 0.22 +
-      stairTruth.score * 0.2 +
-      slabTruth.score * 0.18 +
-      roofTruth.score * 0.05 +
-      foundationTruth.score * 0.07 -
+    cutWallTruth.score * 0.25 +
+      cutOpeningTruth.score * 0.2 +
+      stairTruth.score * 0.18 +
+      slabTruth.score * 0.16 +
+      roofTruth.score * 0.1 +
+      foundationTruth.score * 0.11 -
       fallbackDependence * 0.06,
   );
   const constructionTruthQuality = classifyQuality(constructionEvidenceScore);
@@ -149,9 +149,32 @@ export function assessSectionConstructionSemantics({
       "Stair truth remains thin because the section does not cut through a stair/core transition.",
     );
   }
+  if (roofTruth.quality === "blocked") {
+    warnings.push(
+      "Roof construction truth remains contextual or derived because explicit roof primitives are too thin at the cut.",
+    );
+  } else if (roofTruth.quality === "weak") {
+    warnings.push(
+      "Roof construction truth is present, but it still depends partly on contextual or profile-derived support.",
+    );
+  }
+  if (foundationTruth.quality === "blocked") {
+    warnings.push(
+      "Foundation/base-condition truth remains contextual because the cut does not resolve enough explicit substructure primitives.",
+    );
+  } else if (foundationTruth.quality === "weak") {
+    warnings.push(
+      "Foundation/base-condition truth is present, but it is still thinner than preferred for final section credibility.",
+    );
+  }
 
   return {
-    version: "phase14-section-construction-semantics-v1",
+    version:
+      roofTruth.explicitRoofPrimitiveCount ||
+      foundationTruth.explicitFoundationEntities ||
+      foundationTruth.explicitBaseConditionEntities
+        ? "phase15-section-construction-semantics-v1"
+        : "phase14-section-construction-semantics-v1",
     constructionEvidenceScore,
     constructionTruthQuality,
     fallbackDependence,

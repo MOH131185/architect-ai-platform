@@ -1,6 +1,7 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
   bucketByEvidence,
+  clipFoundationToSection,
   clipOpeningToSection,
   clipRoofElementToSection,
   clipRoomToSection,
@@ -102,11 +103,13 @@ function buildDerivedSlabIntersections(geometry = {}, sectionCut = {}) {
 }
 
 function buildRoofIntersections(geometry = {}, sectionCut = {}, options = {}) {
-  const roofEntities = geometry.roofElements?.length
-    ? geometry.roofElements
-    : geometry.roof?.polygon || geometry.roof?.bbox
-      ? [{ ...geometry.roof, id: geometry.roof.id || "roof:main" }]
-      : [];
+  const roofEntities = geometry.roof_primitives?.length
+    ? geometry.roof_primitives
+    : geometry.roofElements?.length
+      ? geometry.roofElements
+      : geometry.roof?.polygon || geometry.roof?.bbox
+        ? [{ ...geometry.roof, id: geometry.roof.id || "roof:main" }]
+        : [];
 
   if (roofEntities.length) {
     return roofEntities.map((entry) =>
@@ -139,6 +142,7 @@ function buildRoofIntersections(geometry = {}, sectionCut = {}, options = {}) {
   return [
     {
       id: `roof:${geometry.roof.type}`,
+      primitive_family: "derived_roof_profile",
       type: geometry.roof.type,
       evidenceType: withinEnvelope ? "near" : "inferred",
       exactClip: false,
@@ -152,6 +156,34 @@ function buildRoofIntersections(geometry = {}, sectionCut = {}, options = {}) {
       geometrySupport: ["derived_roof_profile"],
     },
   ];
+}
+
+function buildFoundationIntersections(
+  geometry = {},
+  sectionCut = {},
+  options = {},
+) {
+  const foundationEntities = geometry.foundations || [];
+  return foundationEntities.map((entry) =>
+    clipFoundationToSection(entry, sectionCut, {
+      ...options,
+      nearBand: Number(options.nearBand || 1),
+    }),
+  );
+}
+
+function buildBaseConditionIntersections(
+  geometry = {},
+  sectionCut = {},
+  options = {},
+) {
+  const baseConditions = geometry.base_conditions || [];
+  return baseConditions.map((entry) =>
+    clipFoundationToSection(entry, sectionCut, {
+      ...options,
+      nearBand: Number(options.nearBand || 1.2),
+    }),
+  );
 }
 
 function collectUnsupportedCounts(intersections = {}) {
@@ -280,14 +312,35 @@ export function buildSectionIntersections(
     roofElements: bucketByEvidence(
       buildRoofIntersections(projectGeometry, sectionCut, clipOptions),
     ),
+    foundations: bucketByEvidence(
+      buildFoundationIntersections(projectGeometry, sectionCut, clipOptions),
+    ),
+    baseConditions: bucketByEvidence(
+      buildBaseConditionIntersections(projectGeometry, sectionCut, clipOptions),
+    ),
   };
 
   const clipSummary = collectClipSummary(intersections);
+  const explicitRoofPrimitiveCount = Number(
+    projectGeometry.roof_primitives?.length || 0,
+  );
+  const explicitFoundationCount = Number(
+    projectGeometry.foundations?.length || 0,
+  );
+  const explicitBaseConditionCount = Number(
+    projectGeometry.base_conditions?.length || 0,
+  );
+  const phase15Enabled =
+    explicitRoofPrimitiveCount > 0 ||
+    explicitFoundationCount > 0 ||
+    explicitBaseConditionCount > 0;
 
   return {
-    version: clippingEnabled
-      ? "phase13-section-geometry-intersection-v1"
-      : "phase12-section-geometry-intersection-v1",
+    version: phase15Enabled
+      ? "phase15-section-geometry-intersection-v1"
+      : clippingEnabled
+        ? "phase13-section-geometry-intersection-v1"
+        : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
@@ -306,12 +359,17 @@ export function buildSectionIntersections(
       entrances: collectSupportSummary(intersections.entrances),
       slabs: collectSupportSummary(intersections.slabs),
       roofElements: collectSupportSummary(intersections.roofElements),
+      foundations: collectSupportSummary(intersections.foundations),
+      baseConditions: collectSupportSummary(intersections.baseConditions),
       all: unique(
         Object.values(intersections).flatMap((grouped) =>
           collectSupportSummary(grouped),
         ),
       ),
     },
+    explicitRoofPrimitiveCount,
+    explicitFoundationCount,
+    explicitBaseConditionCount,
   };
 }
 

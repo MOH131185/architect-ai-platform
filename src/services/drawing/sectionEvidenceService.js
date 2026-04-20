@@ -254,7 +254,21 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       nearSlabCount: 0,
       inferredSlabCount: 0,
       unsupportedSlabCount: 0,
+      directRoofCount: 0,
       directRoofExactClipCount: 0,
+      nearRoofCount: 0,
+      inferredRoofCount: 0,
+      unsupportedRoofCount: 0,
+      directFoundationCount: 0,
+      directFoundationExactClipCount: 0,
+      nearFoundationCount: 0,
+      inferredFoundationCount: 0,
+      unsupportedFoundationCount: 0,
+      directBaseConditionCount: 0,
+      directBaseConditionExactClipCount: 0,
+      nearBaseConditionCount: 0,
+      inferredBaseConditionCount: 0,
+      unsupportedBaseConditionCount: 0,
       sectionConstructionTruthQuality: "provisional",
       constructionEvidenceScore: 0,
       cutWallTruthQuality: "provisional",
@@ -264,8 +278,12 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       roofTruthQuality: "provisional",
       foundationTruthQuality: "provisional",
       constructionFallbackDependence: 1,
+      explicitRoofPrimitiveCount: 0,
+      explicitFoundationCount: 0,
+      explicitBaseConditionCount: 0,
       levelCount: 0,
       roofCommunicated: false,
+      foundationCommunicated: false,
       geometryCommunicable: false,
       geometrySupportLimited: true,
       totalCutRoomAreaM2: 0,
@@ -316,6 +334,10 @@ export function buildSectionEvidence(
   const useConstructionTruth = isFeatureEnabled(
     "useSectionConstructionTruthPhase14",
   );
+  const usePhase15Truth =
+    isFeatureEnabled("useCanonicalRoofPrimitivesPhase15") ||
+    isFeatureEnabled("useCanonicalFoundationPrimitivesPhase15") ||
+    isFeatureEnabled("useRoofFoundationSectionTruthPhase15");
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
@@ -330,6 +352,8 @@ export function buildSectionEvidence(
   const entrances = intersectionBundle.intersections.entrances || {};
   const slabs = intersectionBundle.intersections.slabs || {};
   const roofElements = intersectionBundle.intersections.roofElements || {};
+  const foundations = intersectionBundle.intersections.foundations || {};
+  const baseConditions = intersectionBundle.intersections.baseConditions || {};
 
   const directRooms = rooms.direct || [];
   const nearRooms = rooms.near || [];
@@ -366,6 +390,14 @@ export function buildSectionEvidence(
   const nearRoof = roofElements.near || [];
   const inferredRoof = roofElements.inferred || [];
   const unsupportedRoof = roofElements.unsupported || [];
+  const directFoundations = foundations.direct || [];
+  const nearFoundations = foundations.near || [];
+  const inferredFoundations = foundations.inferred || [];
+  const unsupportedFoundations = foundations.unsupported || [];
+  const directBaseConditions = baseConditions.direct || [];
+  const nearBaseConditions = baseConditions.near || [];
+  const inferredBaseConditions = baseConditions.inferred || [];
+  const unsupportedBaseConditions = baseConditions.unsupported || [];
   const focusHits = summarizeFocusHits(
     sectionProfile,
     directRooms,
@@ -463,6 +495,14 @@ export function buildSectionEvidence(
         : inferredRoof.length > 0 || roofLanguage
           ? 0.36
           : 0.16;
+  const groundConditionScore =
+    directFoundations.length > 0 || directBaseConditions.length > 0
+      ? 0.72
+      : nearFoundations.length > 0 || nearBaseConditions.length > 0
+        ? 0.48
+        : inferredFoundations.length > 0 || inferredBaseConditions.length > 0
+          ? 0.3
+          : 0.14;
   const cutSpecificity =
     directEvidenceCount + nearEvidenceCount + inferredEvidenceCount > 0
       ? directEvidenceCount /
@@ -508,6 +548,7 @@ export function buildSectionEvidence(
         slabDatumScore * 0.12 +
         focusScore * 0.1 +
         roofScore * 0.08 +
+        groundConditionScore * 0.06 +
         clamp(cutSpecificity, 0, 1) * 0.1,
       0,
       1,
@@ -573,12 +614,46 @@ export function buildSectionEvidence(
     nearSlabCount: nearSlabs.length,
     inferredSlabCount: inferredSlabs.length,
     unsupportedSlabCount: unsupportedSlabs.length,
+    directRoofCount: directRoof.length,
     directRoofExactClipCount: directRoof.filter(
       (entry) => entry.exactClip === true,
     ).length,
+    nearRoofCount: nearRoof.length,
+    inferredRoofCount: inferredRoof.length,
+    unsupportedRoofCount: unsupportedRoof.length,
+    directFoundationCount: directFoundations.length,
+    directFoundationExactClipCount: directFoundations.filter(
+      (entry) => entry.exactClip === true,
+    ).length,
+    nearFoundationCount: nearFoundations.length,
+    inferredFoundationCount: inferredFoundations.length,
+    unsupportedFoundationCount: unsupportedFoundations.length,
+    directBaseConditionCount: directBaseConditions.length,
+    directBaseConditionExactClipCount: directBaseConditions.filter(
+      (entry) => entry.exactClip === true,
+    ).length,
+    nearBaseConditionCount: nearBaseConditions.length,
+    inferredBaseConditionCount: inferredBaseConditions.length,
+    unsupportedBaseConditionCount: unsupportedBaseConditions.length,
+    explicitRoofPrimitiveCount: Number(
+      intersectionBundle.explicitRoofPrimitiveCount || 0,
+    ),
+    explicitFoundationCount: Number(
+      intersectionBundle.explicitFoundationCount || 0,
+    ),
+    explicitBaseConditionCount: Number(
+      intersectionBundle.explicitBaseConditionCount || 0,
+    ),
     levelCount: levelProfiles.length,
     roofCommunicated:
       directRoof.length > 0 || nearRoof.length > 0 || inferredRoof.length > 0,
+    foundationCommunicated:
+      directFoundations.length > 0 ||
+      nearFoundations.length > 0 ||
+      inferredFoundations.length > 0 ||
+      directBaseConditions.length > 0 ||
+      nearBaseConditions.length > 0 ||
+      inferredBaseConditions.length > 0,
     geometryCommunicable:
       levelProfiles.length > 0 &&
       (directRooms.length > 0 ||
@@ -632,6 +707,14 @@ export function buildSectionEvidence(
             nearRoofElements: nearRoof,
             inferredRoofElements: inferredRoof,
             unsupportedRoofElements: unsupportedRoof,
+            foundations: directFoundations,
+            nearFoundations,
+            inferredFoundations,
+            unsupportedFoundations,
+            baseConditions: directBaseConditions,
+            nearBaseConditions,
+            inferredBaseConditions,
+            unsupportedBaseConditions,
           },
           summary,
           roofLanguage,
@@ -735,15 +818,26 @@ export function buildSectionEvidence(
       warnings.push(
         `Section ${sectionType} foundation communication still depends on derived or contextual truth.`,
       );
+    } else if (summary.foundationTruthQuality === "weak") {
+      warnings.push(
+        `Section ${sectionType} resolves some explicit ground condition, but foundation/base-condition truth is still thinner than preferred.`,
+      );
+    }
+    if (summary.roofTruthQuality === "blocked") {
+      warnings.push(
+        `Section ${sectionType} roof communication still depends on profile-derived or contextual truth.`,
+      );
     }
   }
 
   return {
-    version: useTrueEvidence
-      ? useConstructionTruth
-        ? "phase14-section-evidence-service-v1"
-        : "phase13-section-evidence-service-v1"
-      : "phase10-section-evidence-service-v1",
+    version: usePhase15Truth
+      ? "phase15-section-evidence-service-v1"
+      : useTrueEvidence
+        ? useConstructionTruth
+          ? "phase14-section-evidence-service-v1"
+          : "phase13-section-evidence-service-v1"
+        : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
     cutAxis: axis,
@@ -785,6 +879,14 @@ export function buildSectionEvidence(
       nearRoofElements: nearRoof,
       inferredRoofElements: inferredRoof,
       unsupportedRoofElements: unsupportedRoof,
+      foundations: directFoundations,
+      nearFoundations,
+      inferredFoundations,
+      unsupportedFoundations,
+      baseConditions: directBaseConditions,
+      nearBaseConditions,
+      inferredBaseConditions,
+      unsupportedBaseConditions,
     },
     levelProfiles,
     roofLanguage,

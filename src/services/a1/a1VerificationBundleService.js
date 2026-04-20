@@ -190,6 +190,18 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sectionConstructionTruthQuality ||
     technicalCredibility?.summary?.sectionConstructionTruthQuality ||
     "provisional";
+  const slabTruthQuality =
+    finalSheetRegression?.slabTruthQuality ||
+    technicalCredibility?.summary?.slabTruthQuality ||
+    "provisional";
+  const roofTruthQuality =
+    finalSheetRegression?.roofTruthQuality ||
+    technicalCredibility?.summary?.roofTruthQuality ||
+    "provisional";
+  const foundationTruthQuality =
+    finalSheetRegression?.foundationTruthQuality ||
+    technicalCredibility?.summary?.foundationTruthQuality ||
+    "provisional";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -198,24 +210,36 @@ export function buildA1VerificationBundle({
     publishability?.finalDecision ||
     publishability?.decision ||
     canonicalDecision(publishability?.status || overall, decisive);
+  const canonicalOverall =
+    decisive && publishability?.status ? publishability.status : overall;
+  const canonicalOverallDecision =
+    decisive && publishabilityState
+      ? publishabilityDecision
+      : canonicalDecision(overall, decisive);
 
   const canonicalVerification = {
     version:
-      sectionConstructionTruthQuality !== "provisional"
-        ? "phase14-a1-verification-v1"
-        : "phase13-a1-verification-v1",
+      roofTruthQuality !== "provisional" ||
+      foundationTruthQuality !== "provisional"
+        ? "phase15-a1-verification-v1"
+        : sectionConstructionTruthQuality !== "provisional"
+          ? "phase14-a1-verification-v1"
+          : "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
     decisive,
-    overallStatus: overall,
-    overallDecision: canonicalDecision(overall, decisive),
+    overallStatus: canonicalOverall,
+    overallDecision: canonicalOverallDecision,
     publishabilityDecision,
     renderedTextEvidenceQuality,
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
     sectionConstructionTruthQuality,
+    slabTruthQuality,
+    roofTruthQuality,
+    foundationTruthQuality,
     sideFacadeEvidenceQuality,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
     components: {

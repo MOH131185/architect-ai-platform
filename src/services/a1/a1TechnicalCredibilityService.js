@@ -109,6 +109,33 @@ export function evaluateA1TechnicalCredibility({
       "Rendered text verification remains only weakly evidenced; OCR or zone evidence did not fully verify the final board.",
     );
   }
+  if (finalSheetRegression?.roofTruthQuality === "blocked") {
+    warnings.push(
+      "Section roof truth remains contextual or profile-derived across the available technical sections.",
+    );
+  } else if (finalSheetRegression?.roofTruthQuality === "weak") {
+    warnings.push(
+      "Section roof truth exists, but it is still thinner than preferred for final technical credibility.",
+    );
+  }
+  if (finalSheetRegression?.foundationTruthQuality === "blocked") {
+    blockers.push(
+      "Section foundation/base-condition truth is blocked because explicit substructure evidence is too thin across the available technical sections.",
+    );
+  } else if (finalSheetRegression?.foundationTruthQuality === "weak") {
+    warnings.push(
+      "Section foundation/base-condition truth remains weaker than preferred for final technical credibility.",
+    );
+  }
+  if (finalSheetRegression?.slabTruthQuality === "blocked") {
+    blockers.push(
+      "Section slab/floor truth is blocked because explicit floor-construction evidence is too thin across the available technical sections.",
+    );
+  } else if (finalSheetRegression?.slabTruthQuality === "weak") {
+    warnings.push(
+      "Section slab/floor truth remains weaker than preferred for final technical credibility.",
+    );
+  }
   warnings.push(...(finalSheetRegression?.warnings || []));
   blockers.push(...(finalSheetRegression?.blockers || []));
 
@@ -120,10 +147,14 @@ export function evaluateA1TechnicalCredibility({
 
   return {
     version:
-      finalSheetRegression?.sectionConstructionTruthQuality &&
-      finalSheetRegression?.sectionConstructionTruthQuality !== "provisional"
-        ? "phase14-a1-technical-credibility-v1"
-        : "phase13-a1-technical-credibility-v1",
+      finalSheetRegression?.roofTruthQuality &&
+      finalSheetRegression?.roofTruthQuality !== "provisional"
+        ? "phase15-a1-technical-credibility-v1"
+        : finalSheetRegression?.sectionConstructionTruthQuality &&
+            finalSheetRegression?.sectionConstructionTruthQuality !==
+              "provisional"
+          ? "phase14-a1-technical-credibility-v1"
+          : "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -146,6 +177,10 @@ export function evaluateA1TechnicalCredibility({
         finalSheetRegression?.sectionInferredEvidenceQuality || "provisional",
       sectionConstructionTruthQuality:
         finalSheetRegression?.sectionConstructionTruthQuality || "provisional",
+      slabTruthQuality: finalSheetRegression?.slabTruthQuality || "provisional",
+      roofTruthQuality: finalSheetRegression?.roofTruthQuality || "provisional",
+      foundationTruthQuality:
+        finalSheetRegression?.foundationTruthQuality || "provisional",
       sideFacadeEvidenceQuality:
         finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
       renderedTextEvidenceQuality:

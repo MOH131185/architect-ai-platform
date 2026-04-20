@@ -26,6 +26,11 @@ export function evaluateDrawingFragmentQuality({
     sectionConstructionTruthQuality:
       panel.drawing?.technical_quality_metadata
         ?.section_construction_truth_quality || null,
+    roofTruthQuality:
+      panel.drawing?.technical_quality_metadata?.roof_truth_quality || null,
+    foundationTruthQuality:
+      panel.drawing?.technical_quality_metadata?.foundation_truth_quality ||
+      null,
     emptyGeometryLikely:
       panel.score?.categoryScores?.geometryCompleteness === 0 ||
       (panel.blockers || []).some((entry) =>

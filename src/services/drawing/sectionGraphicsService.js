@@ -246,6 +246,16 @@ export function buildSectionGraphic(
           sectionEvidence.summary?.roofTruthQuality || "blocked",
         foundation_truth_quality:
           sectionEvidence.summary?.foundationTruthQuality || "blocked",
+        slab_exact_clip_count:
+          sectionEvidence.summary?.directSlabExactClipCount || 0,
+        roof_exact_clip_count:
+          sectionEvidence.summary?.directRoofExactClipCount || 0,
+        roof_explicit_primitive_count:
+          sectionEvidence.summary?.explicitRoofPrimitiveCount || 0,
+        foundation_direct_clip_count:
+          sectionEvidence.summary?.directFoundationCount || 0,
+        base_condition_direct_clip_count:
+          sectionEvidence.summary?.directBaseConditionCount || 0,
       },
     };
   }
@@ -334,9 +344,19 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.cutOpeningTruthQuality || null,
       stair_truth_quality: sectionEvidence.summary?.stairTruthQuality || null,
       slab_truth_quality: sectionEvidence.summary?.slabTruthQuality || null,
+      slab_exact_clip_count:
+        sectionEvidence.summary?.directSlabExactClipCount || 0,
       roof_truth_quality: sectionEvidence.summary?.roofTruthQuality || null,
+      roof_exact_clip_count:
+        sectionEvidence.summary?.directRoofExactClipCount || 0,
+      roof_explicit_primitive_count:
+        sectionEvidence.summary?.explicitRoofPrimitiveCount || 0,
       foundation_truth_quality:
         sectionEvidence.summary?.foundationTruthQuality || null,
+      foundation_direct_clip_count:
+        sectionEvidence.summary?.directFoundationCount || 0,
+      base_condition_direct_clip_count:
+        sectionEvidence.summary?.directBaseConditionCount || 0,
       section_cut_room_count: sectionEvidence.summary?.cutRoomCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
       section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,

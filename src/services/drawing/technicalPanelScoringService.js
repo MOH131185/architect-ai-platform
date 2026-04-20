@@ -435,6 +435,49 @@ export function scoreTechnicalPanel({
   }
   if (
     drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&
+    String(metadata.roof_truth_quality || "").toLowerCase() === "blocked" &&
+    Number(metadata.roof_exact_clip_count || 0) === 0
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} roof construction truth is still contextual or profile-derived.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&
+    String(metadata.foundation_truth_quality || "").toLowerCase() ===
+      "blocked" &&
+    Number(metadata.foundation_direct_clip_count || 0) === 0 &&
+    Number(metadata.base_condition_direct_clip_count || 0) === 0
+  ) {
+    const explicitGroundModel =
+      Number(metadata.explicit_foundation_count || 0) > 0 ||
+      Number(metadata.explicit_base_condition_count || 0) > 0;
+    const directEvidenceStrong =
+      String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
+        "verified" &&
+      Number(metadata.section_direct_evidence_score || 0) >= 0.72;
+    if (explicitGroundModel && directEvidenceStrong) {
+      blockers.push(
+        `${drawing.title || drawingType} does not expose enough explicit foundation/base-condition truth for final technical credibility.`,
+      );
+    } else {
+      warnings.push(
+        `${drawing.title || drawingType} foundation/base-condition truth is still contextual because the section lacks strong direct ground-condition proof.`,
+      );
+    }
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&
+    String(metadata.foundation_truth_quality || "").toLowerCase() === "weak"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} foundation/base-condition truth is still thinner than preferred.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
     isFeatureEnabled("useSectionCredibilityGatePhase13") &&
     String(metadata.section_inferred_evidence_quality || "").toLowerCase() ===
       "blocked"
@@ -549,20 +592,27 @@ export function scoreTechnicalPanel({
   return {
     version:
       drawingType === "section" &&
-      (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
-        isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
-        isFeatureEnabled("useSectionConstructionScoringPhase14") ||
-        isFeatureEnabled("useSectionConstructionCredibilityGatePhase14"))
-        ? "phase14-technical-panel-scoring-v1"
+      (Number(metadata.roof_explicit_primitive_count || 0) > 0 ||
+        Number(metadata.explicit_foundation_count || 0) > 0 ||
+        Number(metadata.explicit_base_condition_count || 0) > 0 ||
+        Number(metadata.foundation_direct_clip_count || 0) > 0 ||
+        Number(metadata.base_condition_direct_clip_count || 0) > 0)
+        ? "phase15-technical-panel-scoring-v1"
         : drawingType === "section" &&
-            isFeatureEnabled("useSectionCredibilityGatePhase13")
-          ? "phase13-technical-panel-scoring-v1"
-          : fragmentQuality !== null &&
-              (drawingType === "elevation" || drawingType === "section")
-            ? "phase10-technical-panel-scoring-v1"
-            : fragmentQuality !== null
-              ? "phase9-technical-panel-scoring-v1"
-              : "phase8-technical-panel-scoring-v1",
+            (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
+              isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
+              isFeatureEnabled("useSectionConstructionScoringPhase14") ||
+              isFeatureEnabled("useSectionConstructionCredibilityGatePhase14"))
+          ? "phase14-technical-panel-scoring-v1"
+          : drawingType === "section" &&
+              isFeatureEnabled("useSectionCredibilityGatePhase13")
+            ? "phase13-technical-panel-scoring-v1"
+            : fragmentQuality !== null &&
+                (drawingType === "elevation" || drawingType === "section")
+              ? "phase10-technical-panel-scoring-v1"
+              : fragmentQuality !== null
+                ? "phase9-technical-panel-scoring-v1"
+                : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,

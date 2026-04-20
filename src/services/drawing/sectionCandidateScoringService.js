@@ -26,6 +26,7 @@ function cutCoordinate(candidate = {}) {
 
 function sectionTruthEnabled() {
   return (
+    isFeatureEnabled("useRoofFoundationSectionTruthPhase15") ||
     isFeatureEnabled("useSectionConstructionTruthPhase14") ||
     isFeatureEnabled("useSectionConstructionScoringPhase14") ||
     isFeatureEnabled("useTrueSectionClippingPhase13") ||
@@ -198,6 +199,39 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     0,
     1,
   );
+  const roofTruthScore = clamp(
+    Number(
+      sectionEvidence.sectionConstructionSemantics?.roofTruth?.score || 0,
+    ) +
+      Math.min(
+        0.12,
+        Number(sectionEvidenceSummary.directRoofExactClipCount || 0) * 0.05,
+      ) +
+      (Number(sectionEvidenceSummary.explicitRoofPrimitiveCount || 0) > 0
+        ? 0.05
+        : 0),
+    0,
+    1,
+  );
+  const foundationTruthScore = clamp(
+    Number(
+      sectionEvidence.sectionConstructionSemantics?.foundationTruth?.score || 0,
+    ) +
+      Math.min(
+        0.1,
+        (Number(sectionEvidenceSummary.directFoundationExactClipCount || 0) +
+          Number(
+            sectionEvidenceSummary.directBaseConditionExactClipCount || 0,
+          )) *
+          0.05,
+      ) +
+      (Number(sectionEvidenceSummary.explicitFoundationCount || 0) > 0 ||
+      Number(sectionEvidenceSummary.explicitBaseConditionCount || 0) > 0
+        ? 0.04
+        : 0),
+    0,
+    1,
+  );
   const constructionTruthScore = clamp(
     Number(sectionEvidenceSummary.constructionEvidenceScore || 0),
     0,
@@ -243,6 +277,16 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
           ).toLowerCase() === "weak"
         ? 0.08
         : 0;
+  const roofFoundationPenalty =
+    useSectionEvidence &&
+    isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&
+    String(sectionEvidenceSummary.roofTruthQuality || "").toLowerCase() ===
+      "blocked" &&
+    String(
+      sectionEvidenceSummary.foundationTruthQuality || "",
+    ).toLowerCase() === "blocked"
+      ? 0.12
+      : 0;
   const usefulness = clamp(
     stairAlignment * 0.19 +
       roomCoverage * 0.16 +
@@ -253,9 +297,12 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       (useSectionEvidence ? evidenceUsefulness * 0.12 : 0) +
       (useSectionEvidence ? directEvidenceScore * 0.17 : 0) +
       (useSectionEvidence ? constructionTruthScore * 0.08 : 0) +
+      (useSectionEvidence ? roofTruthScore * 0.05 : 0) +
+      (useSectionEvidence ? foundationTruthScore * 0.05 : 0) +
       (useSectionEvidence ? communicationValue * 0.05 : 0) +
       (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
       (useSectionEvidence ? cutSpecificity * 0.05 : 0) -
+      roofFoundationPenalty -
       constructionPenalty -
       spatialTruthPenalty -
       inferencePenalty -
@@ -322,6 +369,18 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   ) {
     sectionCandidateQuality = "warning";
   }
+  if (
+    useSectionEvidence &&
+    isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&
+    String(sectionEvidenceSummary.roofTruthQuality || "").toLowerCase() ===
+      "blocked" &&
+    String(
+      sectionEvidenceSummary.foundationTruthQuality || "",
+    ).toLowerCase() === "blocked" &&
+    usefulness < 0.88
+  ) {
+    sectionCandidateQuality = "block";
+  }
 
   const rationale = [
     candidate.strategyName
@@ -342,6 +401,9 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     useSectionEvidence
       ? `Construction truth ${constructionTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.sectionConstructionTruthQuality || "provisional")}).`
       : "Construction truth scoring is not active for this candidate.",
+    useSectionEvidence
+      ? `Roof truth ${roofTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.roofTruthQuality || "provisional")}), foundation truth ${foundationTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.foundationTruthQuality || "provisional")}).`
+      : "Roof/foundation truth scoring is not active for this candidate.",
     ...sectionEvidence.rationale,
   ];
 
@@ -358,11 +420,14 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       sectionEvidenceUsefulness: round(evidenceUsefulness),
       directEvidenceScore: round(directEvidenceScore),
       constructionTruthScore: round(constructionTruthScore),
+      roofTruthScore: round(roofTruthScore),
+      foundationTruthScore: round(foundationTruthScore),
       inferredEvidenceScore: round(inferredEvidenceScore),
       communicationValue: round(communicationValue),
       sectionNearEvidence: round(nearEvidenceScore),
       cutSpecificity: round(cutSpecificity),
       inferencePenalty: round(inferencePenalty),
+      roofFoundationPenalty: round(roofFoundationPenalty),
       constructionPenalty: round(constructionPenalty),
       sectionEvidencePenalty: round(evidencePenalty),
       unsupportedEvidencePenalty: round(unsupportedPenalty),
@@ -432,12 +497,26 @@ export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
         Number(right.sectionEvidenceSummary?.cutWallExactClipCount || 0) +
         Number(right.sectionEvidenceSummary?.cutOpeningExactClipCount || 0) +
         Number(right.sectionEvidenceSummary?.cutStairCount || 0) +
-        Number(right.sectionEvidenceSummary?.directSlabExactClipCount || 0);
+        Number(right.sectionEvidenceSummary?.directSlabExactClipCount || 0) +
+        Number(right.sectionEvidenceSummary?.directRoofExactClipCount || 0) +
+        Number(
+          right.sectionEvidenceSummary?.directFoundationExactClipCount || 0,
+        ) +
+        Number(
+          right.sectionEvidenceSummary?.directBaseConditionExactClipCount || 0,
+        );
       const leftConstructionSpecificity =
         Number(left.sectionEvidenceSummary?.cutWallExactClipCount || 0) +
         Number(left.sectionEvidenceSummary?.cutOpeningExactClipCount || 0) +
         Number(left.sectionEvidenceSummary?.cutStairCount || 0) +
-        Number(left.sectionEvidenceSummary?.directSlabExactClipCount || 0);
+        Number(left.sectionEvidenceSummary?.directSlabExactClipCount || 0) +
+        Number(left.sectionEvidenceSummary?.directRoofExactClipCount || 0) +
+        Number(
+          left.sectionEvidenceSummary?.directFoundationExactClipCount || 0,
+        ) +
+        Number(
+          left.sectionEvidenceSummary?.directBaseConditionExactClipCount || 0,
+        );
       if (rightDirect !== leftDirect) {
         return rightDirect - leftDirect;
       }

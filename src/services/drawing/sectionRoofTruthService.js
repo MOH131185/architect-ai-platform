@@ -15,6 +15,7 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
   const exactDirect = roofElements.filter(
     (entry) => entry.exactClip === true,
   ).length;
+  const directCount = Number(roofElements.length || 0);
   const nearCount = Number(
     (sectionEvidence.intersections?.nearRoofElements || []).length,
   );
@@ -27,6 +28,16 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
   const hasRoofLanguage = Boolean(
     geometry?.roof?.type || sectionEvidence?.roofLanguage,
   );
+  const explicitRoofPrimitiveCount = Number(
+    (geometry?.roof_primitives || geometry?.roofElements || []).length || 0,
+  );
+  const directPrimitiveFamilies = [
+    ...new Set(
+      roofElements
+        .map((entry) => entry.primitive_family || entry.type || null)
+        .filter(Boolean),
+    ),
+  ];
   const derivedOnly = (
     sectionEvidence.sectionIntersections?.geometrySupport?.roofElements || []
   ).every((entry) =>
@@ -37,22 +48,32 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
 
   const score = round(
     Math.min(1, exactDirect * 0.36) +
+      Math.min(0.18, directCount * 0.08) +
+      (explicitRoofPrimitiveCount > 0 ? 0.16 : 0) +
+      (directPrimitiveFamilies.some((entry) =>
+        /ridge|eave/i.test(String(entry)),
+      )
+        ? 0.08
+        : 0) +
       (hasRoofLanguage ? 0.14 : 0) +
       Math.min(0.12, nearCount * 0.05) +
       Math.min(0.08, inferredCount * 0.03) -
       Math.min(0.18, unsupportedCount * 0.08) -
-      (derivedOnly ? 0.1 : 0),
+      (derivedOnly ? 0.14 : 0),
   );
 
   return {
     score,
     quality: classifyQuality(score),
     exactDirectCount: exactDirect,
+    directCount,
     nearCount,
     inferredCount,
     unsupportedCount,
     derivedOnly,
     hasRoofLanguage,
+    explicitRoofPrimitiveCount,
+    directPrimitiveFamilies,
   };
 }
 

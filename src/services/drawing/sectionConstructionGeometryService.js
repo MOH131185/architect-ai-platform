@@ -109,6 +109,13 @@ function projectRangeToPixels(range = {}, baseX = 0, scale = 1) {
   };
 }
 
+function resolveConstructionEntryRange(
+  entry = {},
+  sectionType = "longitudinal",
+) {
+  return resolveSectionDisplayRange(entry, sectionType);
+}
+
 export function buildSectionConstructionGeometry({
   geometry = {},
   sectionType = "longitudinal",
@@ -134,6 +141,14 @@ export function buildSectionConstructionGeometry({
   const directWalls = sectionEvidence.intersections?.walls || [];
   const directOpenings = sectionEvidence.intersections?.openings || [];
   const directStairs = sectionEvidence.intersections?.stairs || [];
+  const directRoof = sectionEvidence.intersections?.roofElements || [];
+  const nearRoof = sectionEvidence.intersections?.nearRoofElements || [];
+  const directFoundations = sectionEvidence.intersections?.foundations || [];
+  const nearFoundations = sectionEvidence.intersections?.nearFoundations || [];
+  const directBaseConditions =
+    sectionEvidence.intersections?.baseConditions || [];
+  const nearBaseConditions =
+    sectionEvidence.intersections?.nearBaseConditions || [];
 
   const rooms = directRooms
     .map((room) => {
@@ -234,10 +249,49 @@ export function buildSectionConstructionGeometry({
     y: round(baseY),
     width: round(horizontalExtent * scale + 20),
     height: 42,
+    directFoundationCount: directFoundations.length,
+    directBaseConditionCount: directBaseConditions.length,
+    contextual:
+      directFoundations.length === 0 && directBaseConditions.length === 0,
+    bands: [...directFoundations, ...directBaseConditions]
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `foundation-band:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.x) && entry.width > 0),
+  };
+
+  const roofSource = directRoof.length ? directRoof : nearRoof;
+  const roofBand = roofSource[0]
+    ? (() => {
+        const range = resolveConstructionEntryRange(roofSource[0], sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          x: pixels.x,
+          width: pixels.width,
+        };
+      })()
+    : null;
+  const roof = {
+    directRoofCount: directRoof.length,
+    contextual: directRoof.length === 0,
+    band: roofBand,
   };
 
   return {
-    version: "phase14-section-construction-geometry-v1",
+    version:
+      directRoof.length ||
+      directFoundations.length ||
+      directBaseConditions.length ||
+      nearFoundations.length ||
+      nearBaseConditions.length
+        ? "phase15-section-construction-geometry-v1"
+        : "phase14-section-construction-geometry-v1",
     sectionType,
     baseX: round(baseX),
     baseY: round(baseY),
@@ -249,6 +303,7 @@ export function buildSectionConstructionGeometry({
     openings,
     stairs,
     slabs,
+    roof,
     foundation,
   };
 }

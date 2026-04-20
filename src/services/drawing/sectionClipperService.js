@@ -563,6 +563,27 @@ export function clipRoofElementToSection(
       });
 }
 
+export function clipFoundationToSection(
+  entity = {},
+  sectionCut = {},
+  options = {},
+) {
+  return getPolygonPoints(entity)
+    ? clipPolygonEntity(entity, sectionCut, {
+        ...options,
+        nearBand: Number(options.nearBand || 1),
+      })
+    : normalizePoint(entity.start) && normalizePoint(entity.end)
+      ? clipSegmentEntity(entity, sectionCut, {
+          ...options,
+          nearBand: Number(options.nearBand || 1),
+        })
+      : clipBboxApproximation(entity, sectionCut, {
+          ...options,
+          nearBand: Number(options.nearBand || 1),
+        });
+}
+
 export function clipWallToSection(entity = {}, sectionCut = {}, options = {}) {
   if (normalizePoint(entity.start) && normalizePoint(entity.end)) {
     return clipSegmentEntity(entity, sectionCut, options);
@@ -738,6 +759,7 @@ export default {
   clipStairToSection,
   clipSlabToSection,
   clipRoofElementToSection,
+  clipFoundationToSection,
   clipWallToSection,
   clipOpeningToSection,
   bucketByEvidence,

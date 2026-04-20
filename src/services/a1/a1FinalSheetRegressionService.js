@@ -57,15 +57,20 @@ export function runA1FinalSheetRegression({
 
   return {
     version:
+      technicalPanelRegression.roofTruthQuality ||
+      technicalPanelRegression.foundationTruthQuality ||
       technicalPanelRegression.sectionConstructionTruthQuality ||
       technicalPanelRegression.sectionDirectEvidenceQuality ||
       technicalPanelRegression.sectionInferredEvidenceQuality ||
       textZoneSanity.renderedTextEvidenceQuality ||
       technicalPanelRegression.sectionEvidenceQuality ||
       technicalPanelRegression.sideFacadeEvidenceQuality
-        ? technicalPanelRegression.sectionConstructionTruthQuality
-          ? "phase14-a1-final-sheet-regression-v1"
-          : "phase13-a1-final-sheet-regression-v1"
+        ? technicalPanelRegression.roofTruthQuality ||
+          technicalPanelRegression.foundationTruthQuality
+          ? "phase15-a1-final-sheet-regression-v1"
+          : technicalPanelRegression.sectionConstructionTruthQuality
+            ? "phase14-a1-final-sheet-regression-v1"
+            : "phase13-a1-final-sheet-regression-v1"
         : textZoneSanity.renderedTextEvidenceQuality ||
             technicalPanelRegression.sectionEvidenceQuality ||
             technicalPanelRegression.sideFacadeEvidenceQuality
@@ -91,6 +96,12 @@ export function runA1FinalSheetRegression({
       technicalPanelRegression.sectionInferredEvidenceQuality || "provisional",
     sectionConstructionTruthQuality:
       technicalPanelRegression.sectionConstructionTruthQuality || "provisional",
+    slabTruthQuality:
+      technicalPanelRegression.slabTruthQuality || "provisional",
+    roofTruthQuality:
+      technicalPanelRegression.roofTruthQuality || "provisional",
+    foundationTruthQuality:
+      technicalPanelRegression.foundationTruthQuality || "provisional",
     sideFacadeEvidenceQuality:
       technicalPanelRegression.sideFacadeEvidenceQuality || "provisional",
     renderedTextEvidenceQuality:

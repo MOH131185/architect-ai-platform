@@ -135,6 +135,9 @@ function alignVerificationBundle(bundle = null, verification = null) {
     sectionDirectEvidenceQuality: canonical.sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality: canonical.sectionInferredEvidenceQuality,
     sectionConstructionTruthQuality: canonical.sectionConstructionTruthQuality,
+    slabTruthQuality: canonical.slabTruthQuality,
+    roofTruthQuality: canonical.roofTruthQuality,
+    foundationTruthQuality: canonical.foundationTruthQuality,
     sideFacadeEvidenceQuality: canonical.sideFacadeEvidenceQuality,
     ocrEvidenceQuality: canonical.ocrEvidenceQuality,
     verification: canonical,
@@ -267,6 +270,9 @@ export const PHASE1_API_CONTRACTS = {
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "slabTruthQuality",
+      "roofTruthQuality",
+      "foundationTruthQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -303,6 +309,9 @@ export const PHASE1_API_CONTRACTS = {
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "slabTruthQuality",
+      "roofTruthQuality",
+      "foundationTruthQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -349,6 +358,9 @@ export const PHASE1_API_CONTRACTS = {
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "slabTruthQuality",
+      "roofTruthQuality",
+      "foundationTruthQuality",
       "sectionStrategyRationale",
       "technicalCredibility",
       "technicalCredibilityPhase",
@@ -1074,6 +1086,18 @@ export function buildProjectReadinessResponse({
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
+    slabTruthQuality:
+      verificationBundle?.slabTruthQuality ||
+      result.finalSheetRegression?.slabTruthQuality ||
+      "provisional",
+    roofTruthQuality:
+      verificationBundle?.roofTruthQuality ||
+      result.finalSheetRegression?.roofTruthQuality ||
+      "provisional",
+    foundationTruthQuality:
+      verificationBundle?.foundationTruthQuality ||
+      result.finalSheetRegression?.foundationTruthQuality ||
+      "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
@@ -1236,6 +1260,18 @@ export function buildPlanA1PanelsResponse({
     sectionConstructionTruthQuality:
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    slabTruthQuality:
+      verificationBundle?.slabTruthQuality ||
+      result.finalSheetRegression?.slabTruthQuality ||
+      "provisional",
+    roofTruthQuality:
+      verificationBundle?.roofTruthQuality ||
+      result.finalSheetRegression?.roofTruthQuality ||
+      "provisional",
+    foundationTruthQuality:
+      verificationBundle?.foundationTruthQuality ||
+      result.finalSheetRegression?.foundationTruthQuality ||
       "provisional",
     technicalFragmentScores:
       result.technicalFragmentScores ||
@@ -1475,6 +1511,21 @@ export function buildProjectHealthResponse({
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       result.readiness?.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    slabTruthQuality:
+      verificationBundle?.slabTruthQuality ||
+      result.finalSheetRegression?.slabTruthQuality ||
+      result.readiness?.finalSheetRegression?.slabTruthQuality ||
+      "provisional",
+    roofTruthQuality:
+      verificationBundle?.roofTruthQuality ||
+      result.finalSheetRegression?.roofTruthQuality ||
+      result.readiness?.finalSheetRegression?.roofTruthQuality ||
+      "provisional",
+    foundationTruthQuality:
+      verificationBundle?.foundationTruthQuality ||
+      result.finalSheetRegression?.foundationTruthQuality ||
+      result.readiness?.finalSheetRegression?.foundationTruthQuality ||
       "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||

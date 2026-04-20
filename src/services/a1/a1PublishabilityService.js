@@ -13,6 +13,15 @@ function filterEvidenceOverriddenWarnings(
     return unique(warnings);
   }
 
+  const strongPostComposeSectionFallback =
+    evidenceProfile.renderedTextEvidenceQuality === "verified" &&
+    evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
+    evidenceProfile.sectionDirectEvidenceQuality === "verified" &&
+    evidenceProfile.sectionInferredEvidenceQuality === "verified" &&
+    evidenceProfile.slabTruthQuality === "verified" &&
+    evidenceProfile.foundationTruthQuality === "verified" &&
+    evidenceProfile.roofTruthQuality === "blocked";
+
   return unique(
     (warnings || []).filter((warning) => {
       const text = String(warning || "");
@@ -57,8 +66,51 @@ function filterEvidenceOverriddenWarnings(
         return false;
       }
       if (
+        (evidenceProfile.roofTruthQuality === "verified" ||
+          evidenceProfile.sectionConstructionTruthQuality === "verified") &&
+        /Section roof truth remains contextual|Section roof truth exists, but it is still thinner than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        strongPostComposeSectionFallback &&
+        /Section roof truth remains contextual|Section roof truth exists, but it is still thinner than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        (evidenceProfile.foundationTruthQuality === "verified" ||
+          evidenceProfile.sectionConstructionTruthQuality === "verified") &&
+        /Section foundation\/base-condition truth is blocked|Section foundation\/base-condition truth remains weaker than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        (evidenceProfile.slabTruthQuality === "verified" ||
+          evidenceProfile.sectionConstructionTruthQuality === "verified") &&
+        /Section slab\/floor truth is blocked|Section slab\/floor truth remains weaker than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
         evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
         /Side-facade evidence remains weaker than preferred|Side elevations remain weaker than preferred|Elevation (east|west) remains weaker than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        strongPostComposeSectionFallback &&
+        /Section .*serviceable but still semantically thin|Section communication is still thin|Section evidence remains weaker than preferred|Section construction truth remains weaker than preferred/i.test(
           text,
         )
       ) {
@@ -103,6 +155,18 @@ export function classifyA1Publishability({
     finalSheetRegression?.sectionConstructionTruthQuality ||
     technicalCredibility?.summary?.sectionConstructionTruthQuality ||
     "provisional";
+  const slabTruthQuality =
+    finalSheetRegression?.slabTruthQuality ||
+    technicalCredibility?.summary?.slabTruthQuality ||
+    "provisional";
+  const roofTruthQuality =
+    finalSheetRegression?.roofTruthQuality ||
+    technicalCredibility?.summary?.roofTruthQuality ||
+    "provisional";
+  const foundationTruthQuality =
+    finalSheetRegression?.foundationTruthQuality ||
+    technicalCredibility?.summary?.foundationTruthQuality ||
+    "provisional";
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -113,6 +177,9 @@ export function classifyA1Publishability({
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
     sectionConstructionTruthQuality,
+    slabTruthQuality,
+    roofTruthQuality,
+    foundationTruthQuality,
     sideFacadeEvidenceQuality,
   };
   const warnings = filterEvidenceOverriddenWarnings(
@@ -135,9 +202,12 @@ export function classifyA1Publishability({
 
   return {
     version:
-      sectionConstructionTruthQuality !== "provisional"
-        ? "phase14-a1-publishability-v1"
-        : "phase13-a1-publishability-v1",
+      roofTruthQuality !== "provisional" ||
+      foundationTruthQuality !== "provisional"
+        ? "phase15-a1-publishability-v1"
+        : sectionConstructionTruthQuality !== "provisional"
+          ? "phase14-a1-publishability-v1"
+          : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,
