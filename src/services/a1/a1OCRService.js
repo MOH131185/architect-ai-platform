@@ -265,8 +265,9 @@ export async function recognizeA1RenderedZones({
   ).length;
 
   return {
-    version: "phase11-a1-ocr-service-v1",
+    version: "phase12-a1-ocr-service-v1",
     available: availableCount > 0,
+    fallbackUsed: availableCount === 0,
     zoneResults: results,
     summary: {
       availableCount,

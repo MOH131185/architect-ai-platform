@@ -3,6 +3,10 @@ function round(value, precision = 3) {
   return Math.round(Number(value || 0) * factor) / factor;
 }
 
+function unique(items = []) {
+  return [...new Set((items || []).filter(Boolean))];
+}
+
 export function sectionAxis(sectionType = "longitudinal") {
   return String(sectionType || "longitudinal").toLowerCase() === "transverse"
     ? "y"
@@ -44,8 +48,37 @@ export function resolveSectionCutCoordinate(
     : Number(bounds.min_y || 0) + Number(bounds.height || 10) / 2;
 }
 
-function unique(items = []) {
-  return [...new Set((items || []).filter(Boolean))];
+function normalizePoint(point = null) {
+  if (!point || typeof point !== "object") {
+    return null;
+  }
+  const x = Number(point.x);
+  const y = Number(point.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return { x, y };
+}
+
+function getPolygonPoints(entity = {}) {
+  const candidates = [
+    entity.polygon,
+    entity.room_polygon,
+    entity.footprint_polygon,
+    entity.boundary_polygon,
+    entity.outline,
+    entity.perimeter,
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || !candidate.length) {
+      continue;
+    }
+    const points = candidate.map(normalizePoint).filter(Boolean);
+    if (points.length >= 3) {
+      return points;
+    }
+  }
+  return null;
 }
 
 function getBbox(entity = {}) {
@@ -81,27 +114,44 @@ function getBbox(entity = {}) {
   return null;
 }
 
-function axisRangeFromSegment(entity = {}, axis = "x") {
-  const start = entity.start || {};
-  const end = entity.end || {};
-  const startCoordinate =
-    axis === "x"
-      ? (start.x ?? entity.position_m?.x ?? entity.position?.x)
-      : (start.y ?? entity.position_m?.y ?? entity.position?.y);
-  const endCoordinate =
-    axis === "x"
-      ? (end.x ?? entity.position_m?.x ?? entity.position?.x)
-      : (end.y ?? entity.position_m?.y ?? entity.position?.y);
+function rangeFromPoints(points = [], axis = "x") {
+  if (!points.length) {
+    return null;
+  }
+  const values = points
+    .map((point) => Number(axis === "x" ? point.x : point.y))
+    .filter(Number.isFinite);
+  if (!values.length) {
+    return null;
+  }
+  return {
+    minimum: Math.min(...values),
+    maximum: Math.max(...values),
+  };
+}
 
-  if (
-    Number.isFinite(Number(startCoordinate)) &&
-    Number.isFinite(Number(endCoordinate))
-  ) {
+function axisRangeFromSegment(entity = {}, axis = "x") {
+  const start = normalizePoint(entity.start);
+  const end = normalizePoint(entity.end);
+  if (start && end) {
+    const startCoordinate = axis === "x" ? start.x : start.y;
+    const endCoordinate = axis === "x" ? end.x : end.y;
     return {
-      minimum: Math.min(Number(startCoordinate), Number(endCoordinate)),
-      maximum: Math.max(Number(startCoordinate), Number(endCoordinate)),
+      minimum: Math.min(startCoordinate, endCoordinate),
+      maximum: Math.max(startCoordinate, endCoordinate),
       support: "segment",
     };
+  }
+
+  const polygon = getPolygonPoints(entity);
+  if (polygon) {
+    const range = rangeFromPoints(polygon, axis);
+    if (range) {
+      return {
+        ...range,
+        support: "polygon",
+      };
+    }
   }
 
   const bbox = getBbox(entity);
@@ -117,8 +167,73 @@ function axisRangeFromSegment(entity = {}, axis = "x") {
 }
 
 function orthogonalSpan(entity = {}, axis = "x") {
-  const otherAxis = axis === "x" ? "y" : "x";
-  return axisRangeFromSegment(entity, otherAxis);
+  return axisRangeFromSegment(entity, axis === "x" ? "y" : "x");
+}
+
+function pointInPolygon(point = null, polygon = []) {
+  if (!point || !polygon.length) {
+    return false;
+  }
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    const intersects =
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi || 1e-9) + xi;
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function polygonIntersections(polygon = [], axis = "x", coordinate = 0) {
+  const intersections = [];
+  for (let index = 0; index < polygon.length; index += 1) {
+    const start = polygon[index];
+    const end = polygon[(index + 1) % polygon.length];
+    if (!start || !end) {
+      continue;
+    }
+
+    if (axis === "x") {
+      const minX = Math.min(start.x, end.x);
+      const maxX = Math.max(start.x, end.x);
+      if (coordinate < minX || coordinate > maxX) {
+        continue;
+      }
+      if (Math.abs(end.x - start.x) < 1e-6) {
+        intersections.push(start.y, end.y);
+        continue;
+      }
+      const ratio = (coordinate - start.x) / (end.x - start.x);
+      if (ratio >= 0 && ratio <= 1) {
+        intersections.push(start.y + ratio * (end.y - start.y));
+      }
+      continue;
+    }
+
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+    if (coordinate < minY || coordinate > maxY) {
+      continue;
+    }
+    if (Math.abs(end.y - start.y) < 1e-6) {
+      intersections.push(start.x, end.x);
+      continue;
+    }
+    const ratio = (coordinate - start.y) / (end.y - start.y);
+    if (ratio >= 0 && ratio <= 1) {
+      intersections.push(start.x + ratio * (end.x - start.x));
+    }
+  }
+
+  return unique(
+    intersections.filter(Number.isFinite).map((value) => round(value)),
+  ).sort((left, right) => left - right);
 }
 
 function classifyAxisDistance(
@@ -129,7 +244,7 @@ function classifyAxisDistance(
 ) {
   if (!range) {
     return {
-      classification: "inferred",
+      classification: "unsupported",
       distance: null,
       overlap: 0,
       support: "missing_geometry",
@@ -169,11 +284,96 @@ function classifyAxisDistance(
   };
 }
 
+function classifyPolygonIntersection(
+  entity = {},
+  sectionCut = {},
+  options = {},
+) {
+  const polygon = getPolygonPoints(entity);
+  if (!polygon) {
+    return null;
+  }
+
+  const axis = sectionCut.axis || "x";
+  const coordinate = Number(sectionCut.coordinate || 0);
+  const directBand = Number(options.directBand || 0.18);
+  const nearBand = Number(options.nearBand || 0.9);
+  const range = rangeFromPoints(polygon, axis);
+  const classification = classifyAxisDistance(
+    range ? { ...range, support: "polygon" } : null,
+    coordinate,
+    directBand,
+    nearBand,
+  );
+  const intersections = polygonIntersections(polygon, axis, coordinate);
+  const orthAxis = axis === "x" ? "y" : "x";
+  const midpoint =
+    orthAxis === "y"
+      ? {
+          x: coordinate,
+          y:
+            intersections.length >= 2
+              ? (Number(intersections[0]) +
+                  Number(intersections[intersections.length - 1])) /
+                2
+              : polygon.reduce((sum, point) => sum + point.y, 0) /
+                polygon.length,
+        }
+      : {
+          x:
+            intersections.length >= 2
+              ? (Number(intersections[0]) +
+                  Number(intersections[intersections.length - 1])) /
+                2
+              : polygon.reduce((sum, point) => sum + point.x, 0) /
+                polygon.length,
+          y: coordinate,
+        };
+  const directClip =
+    intersections.length >= 2 || pointInPolygon(midpoint, polygon) === true;
+  if (directClip) {
+    return {
+      ...entity,
+      evidenceType: "direct",
+      evidenceDistanceM: 0,
+      overlapDepthM:
+        intersections.length >= 2
+          ? round(
+              Number(intersections[intersections.length - 1]) -
+                Number(intersections[0]),
+            )
+          : null,
+      cutSpans: intersections,
+      clipPrimitive: "polygon_slice",
+      geometrySupport: ["polygon"],
+    };
+  }
+
+  return {
+    ...entity,
+    evidenceType: classification.classification,
+    evidenceDistanceM: classification.distance,
+    overlapDepthM: classification.overlap,
+    cutSpans: intersections,
+    clipPrimitive: "polygon_bounds",
+    geometrySupport: unique(["polygon", classification.support]),
+  };
+}
+
 function classifyEntityIntersection(
   entity = {},
   sectionCut = {},
   options = {},
 ) {
+  const polygonClassification = classifyPolygonIntersection(
+    entity,
+    sectionCut,
+    options,
+  );
+  if (polygonClassification) {
+    return polygonClassification;
+  }
+
   const axis = sectionCut.axis || "x";
   const coordinate = Number(sectionCut.coordinate || 0);
   const directBand = Number(options.directBand || 0.18);
@@ -186,12 +386,36 @@ function classifyEntityIntersection(
     directBand,
     nearBand,
   );
+  const bboxSpan =
+    range && range.support === "bbox"
+      ? Math.abs(Number(range.maximum) - Number(range.minimum))
+      : null;
+  const evidenceType =
+    classification.classification === "direct" &&
+    range?.support === "bbox" &&
+    bboxSpan !== null &&
+    bboxSpan <= 0.5
+      ? "near"
+      : classification.classification;
 
   return {
     ...entity,
-    evidenceType: classification.classification,
-    evidenceDistanceM: classification.distance,
-    overlapDepthM: classification.overlap,
+    evidenceType,
+    evidenceDistanceM:
+      evidenceType === "near" && classification.distance === 0
+        ? round(directBand)
+        : classification.distance,
+    overlapDepthM: evidenceType === "direct" ? classification.overlap : 0,
+    cutSpans:
+      evidenceType === "direct" && otherSpan
+        ? [round(otherSpan.minimum), round(otherSpan.maximum)]
+        : [],
+    clipPrimitive:
+      classification.support === "segment"
+        ? "segment_projection"
+        : classification.support === "bbox"
+          ? "bbox_projection"
+          : "unknown",
     geometrySupport: unique([classification.support, otherSpan?.support]),
   };
 }
@@ -214,13 +438,15 @@ function classifyOpening(
   const explicitOpeningDistance = Number.isFinite(Number(openingCoordinate))
     ? Math.abs(Number(openingCoordinate) - coordinate)
     : null;
-  const wallEvidence = wall?.evidenceType || "inferred";
+  const wallEvidence = wall?.evidenceType || "unsupported";
   const wallHasResolvedGeometry = Boolean(
     wall &&
-    (wall.geometrySupport || []).some((entry) => entry !== "missing_geometry"),
+    (wall.geometrySupport || []).some(
+      (entry) => entry && entry !== "missing_geometry",
+    ),
   );
 
-  let evidenceType = "inferred";
+  let evidenceType = "unsupported";
   if (!wallHasResolvedGeometry) {
     if (
       explicitOpeningDistance !== null &&
@@ -232,6 +458,8 @@ function classifyOpening(
       explicitOpeningDistance <= nearBand
     ) {
       evidenceType = "near";
+    } else if (explicitOpeningDistance !== null) {
+      evidenceType = "inferred";
     }
   } else if (
     wallEvidence === "direct" &&
@@ -245,7 +473,10 @@ function classifyOpening(
         ? "near"
         : "direct";
   } else if (wallEvidence === "near") {
-    evidenceType = "near";
+    evidenceType = explicitOpeningDistance !== null ? "near" : "inferred";
+  } else if (wallEvidence === "inferred") {
+    evidenceType =
+      explicitOpeningDistance !== null ? "inferred" : "unsupported";
   }
 
   return {
@@ -256,6 +487,8 @@ function classifyOpening(
       explicitOpeningDistance === null
         ? (wall?.evidenceDistanceM ?? null)
         : round(explicitOpeningDistance),
+    cutSpans: wall?.cutSpans || [],
+    clipPrimitive: wall?.clipPrimitive || "point_projection",
     geometrySupport: unique([
       Number.isFinite(Number(openingCoordinate)) ? "point" : null,
       ...(wall?.geometrySupport || []),
@@ -276,7 +509,7 @@ function classifyPointEntity(entity = {}, sectionCut = {}, options = {}) {
   if (!Number.isFinite(Number(value))) {
     return {
       ...entity,
-      evidenceType: "inferred",
+      evidenceType: "unsupported",
       evidenceDistanceM: null,
       geometrySupport: ["missing_geometry"],
     };
@@ -315,7 +548,7 @@ function buildDerivedSlabIntersections(geometry = {}, sectionCut = {}) {
               Number(bounds.min_y || 0) + Number(bounds.height || 10),
           );
 
-  if (!withinEnvelope) {
+  if (!(geometry.levels || []).length) {
     return [];
   }
 
@@ -323,8 +556,9 @@ function buildDerivedSlabIntersections(geometry = {}, sectionCut = {}) {
     id: `derived-slab:${level.id || index}`,
     levelId: level.id || null,
     levelName: level.name || `L${level.level_number || index}`,
-    evidenceType: "direct",
+    evidenceType: withinEnvelope ? "direct" : "unsupported",
     geometrySupport: ["derived_level_profile"],
+    clipPrimitive: "derived_level_profile",
   }));
 }
 
@@ -357,6 +591,7 @@ function buildRoofIntersections(geometry = {}, sectionCut = {}) {
       type: geometry.roof.type,
       evidenceType: withinEnvelope ? "near" : "inferred",
       geometrySupport: ["derived_roof_profile"],
+      clipPrimitive: "derived_roof_profile",
     },
   ];
 }
@@ -366,6 +601,9 @@ function bucketByEvidence(entries = []) {
     direct: entries.filter((entry) => entry.evidenceType === "direct"),
     near: entries.filter((entry) => entry.evidenceType === "near"),
     inferred: entries.filter((entry) => entry.evidenceType === "inferred"),
+    unsupported: entries.filter(
+      (entry) => entry.evidenceType === "unsupported",
+    ),
   };
 }
 
@@ -374,8 +612,18 @@ function collectSupportSummary(grouped = {}) {
     ...(grouped.direct || []),
     ...(grouped.near || []),
     ...(grouped.inferred || []),
+    ...(grouped.unsupported || []),
   ];
   return unique(allEntries.flatMap((entry) => entry.geometrySupport || []));
+}
+
+function collectUnsupportedCounts(intersections = {}) {
+  return Object.fromEntries(
+    Object.entries(intersections).map(([key, grouped]) => [
+      key,
+      (grouped?.unsupported || []).length,
+    ]),
+  );
 }
 
 export function buildSectionIntersections(
@@ -430,13 +678,14 @@ export function buildSectionIntersections(
   };
 
   return {
-    version: "phase11-section-geometry-intersection-v1",
+    version: "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
     directBandM: Number(options.directBand || 0.18),
     nearBandM: Number(options.nearBand || 0.9),
     intersections,
+    unsupportedCounts: collectUnsupportedCounts(intersections),
     geometrySupport: {
       rooms: collectSupportSummary(intersections.rooms),
       stairs: collectSupportSummary(intersections.stairs),

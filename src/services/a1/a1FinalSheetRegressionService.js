@@ -60,7 +60,7 @@ export function runA1FinalSheetRegression({
       textZoneSanity.renderedTextEvidenceQuality ||
       technicalPanelRegression.sectionEvidenceQuality ||
       technicalPanelRegression.sideFacadeEvidenceQuality
-        ? "phase11-a1-final-sheet-regression-v1"
+        ? "phase12-a1-final-sheet-regression-v1"
         : "phase10-a1-final-sheet-regression-v1",
     verificationPhase,
     finalSheetRegressionReady: blockers.length === 0,

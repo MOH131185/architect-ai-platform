@@ -6,6 +6,10 @@ function tokenizeOrientation(orientation = "south") {
     .filter(Boolean);
 }
 
+export function normalizeFacadeOrientation(orientation = "south") {
+  return orientationToSide(orientation);
+}
+
 function resolveEntitySide(entity = {}) {
   return orientationToSide(
     entity?.metadata?.side ||
@@ -282,6 +286,7 @@ export default {
   projectFacadeGeometry,
   getFacadeBounds: getBounds,
   getFacadeLevelProfiles: getLevelProfiles,
+  normalizeFacadeOrientation,
   orientationToSide,
   projectAlongOrientation,
   resolveEntitySide,

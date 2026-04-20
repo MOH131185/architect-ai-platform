@@ -32,7 +32,7 @@ export function assessProjectHealth({
 
   return {
     version: readiness.finalSheetRegression
-      ? "phase10-project-health-v1"
+      ? "phase12-project-health-v1"
       : "phase8-project-health-v1",
     healthStatus:
       readiness.composeReady === true
@@ -50,6 +50,7 @@ export function assessProjectHealth({
     renderedTextZone: readiness.renderedTextZone || null,
     technicalCredibility: readiness.technicalCredibility || null,
     publishability: readiness.publishability || null,
+    verification: readiness.verification || null,
     verificationState: readiness.verificationState || null,
     technicalPackageStrength: {
       composeReady: readiness.composeReady === true,

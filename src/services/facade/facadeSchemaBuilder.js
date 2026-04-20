@@ -37,6 +37,20 @@ function buildOrientationAliases(
   ]);
 }
 
+function summarizeEvidenceSources(
+  features = [],
+  wallZones = [],
+  materialZones = [],
+) {
+  return unique([
+    ...(features || []).map((feature) => feature.source),
+    ...(wallZones || []).map((zone) =>
+      zone.explicit ? "explicit_side_walls" : "derived_zone",
+    ),
+    ...(materialZones || []).map(() => "material_zone"),
+  ]);
+}
+
 function groupFeaturesByFamily(features = []) {
   const buckets = new Map();
 
@@ -143,6 +157,7 @@ export function buildSideFacadeSchema({
   const openingGroups = facadeSemantics?.openingGroups || [];
   const wallZones = facadeSemantics?.wallZones || [];
   const roofEdges = facadeSemantics?.roofEdges || [];
+  const materialZones = normalizeMaterialZones(facadeOrientation);
   const credibility = classifySchemaCredibility({
     explicitCoverageRatio: projection.explicitCoverageRatio,
     openingGroups,
@@ -153,7 +168,7 @@ export function buildSideFacadeSchema({
   });
 
   return {
-    version: "phase11-side-facade-schema-builder-v1",
+    version: "phase12-side-facade-schema-builder-v1",
     side: normalizedSide,
     orientationAliases: buildOrientationAliases(
       normalizedSide,
@@ -165,7 +180,7 @@ export function buildSideFacadeSchema({
     wallZones,
     roofEdges,
     roofLanguage,
-    materialZones: normalizeMaterialZones(facadeOrientation),
+    materialZones,
     featureFamilies,
     featureGroupings: {
       projections: projectionsAndRecesses.projections,
@@ -181,10 +196,18 @@ export function buildSideFacadeSchema({
     evidenceSummary: {
       openingGroupCount: openingGroups.length,
       wallZoneCount: wallZones.length,
+      explicitWallZoneCount: (wallZones || []).filter((zone) => zone.explicit)
+        .length,
+      materialZoneCount: materialZones.length,
       roofEdgeCount: roofEdges.length,
       featureFamilyCount: featureFamilies.length,
       projectionCount: projectionsAndRecesses.projections.length,
       recessCount: projectionsAndRecesses.recesses.length,
+      evidenceSources: summarizeEvidenceSources(
+        features,
+        wallZones,
+        materialZones,
+      ),
       schemaCredibilityScore: credibility.score,
       schemaCredibilityQuality: credibility.quality,
     },

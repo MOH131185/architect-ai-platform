@@ -92,7 +92,7 @@ export function evaluateA1TechnicalCredibility({
       : "pass";
 
   return {
-    version: "phase10-a1-technical-credibility-v1",
+    version: "phase12-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||

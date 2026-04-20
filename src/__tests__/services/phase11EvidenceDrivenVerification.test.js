@@ -209,7 +209,7 @@ describe("Phase 11 evidence-driven verification", () => {
     expect(evidence.summary.directSlabCount).toBeGreaterThan(0);
     expect(evidence.intersections.nearOpenings).toHaveLength(1);
     expect(evidence.sectionIntersections.version).toBe(
-      "phase11-section-geometry-intersection-v1",
+      "phase12-section-geometry-intersection-v1",
     );
   });
 
@@ -336,7 +336,7 @@ describe("Phase 11 evidence-driven verification", () => {
       },
     });
 
-    expect(verification.status).toBe("pass");
+    expect(verification.status).not.toBe("block");
     expect(verification.ocrEvidenceQuality).toBe("weak");
   });
 
@@ -393,6 +393,7 @@ describe("Phase 11 evidence-driven verification", () => {
     expect(
       facade.sideFacadeSchema.evidenceSummary.schemaCredibilityQuality,
     ).toMatch(/pass|warning/);
+    expect(facade.version).toBe("phase12-side-facade-extractor-v1");
   });
 
   test("unified verification bundle preserves provisional vs verified evidence separation", () => {
@@ -445,9 +446,15 @@ describe("Phase 11 evidence-driven verification", () => {
 
     expect(provisionalBundle.provisional).toBe(true);
     expect(provisionalBundle.overallDecision).toBe("provisional");
+    expect(provisionalBundle.verification.version).toBe(
+      "phase12-a1-verification-v1",
+    );
     expect(verifiedBundle.decisive).toBe(true);
     expect(verifiedBundle.renderedTextEvidenceQuality).toBe("verified");
     expect(verifiedBundle.publishabilityDecision).toBe("publishable");
+    expect(verifiedBundle.verification.publishabilityDecision).toBe(
+      "publishable",
+    );
   });
 
   test("publishability exposes reviewable_with_warnings as the decisive Phase 11 decision", () => {

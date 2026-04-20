@@ -56,15 +56,17 @@ export async function runA1PostComposeVerification({
     technicalCredibility,
     publishability,
   });
+  const verification = verificationState.verification || verificationState;
 
   return {
-    version: "phase11-a1-post-compose-verification-v1",
+    version: "phase12-a1-post-compose-verification-v1",
     status: publishability.status,
     postComposeVerified: true,
     renderedTextZone,
     finalSheetRegression,
     technicalCredibility,
     publishability,
+    verification,
     verificationBundle: verificationState,
     verificationState,
     blockers: [

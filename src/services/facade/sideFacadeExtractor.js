@@ -4,6 +4,7 @@ import { normalizeFacadeFeatures } from "./facadeFeatureNormalizer.js";
 import { assembleFacadeSideSemantics } from "./facadeSemanticAssembler.js";
 import { buildSideFacadeSchema } from "./facadeSchemaBuilder.js";
 import {
+  normalizeFacadeOrientation,
   orientationToSide,
   projectFacadeGeometry,
   resolveEntitySide,
@@ -24,10 +25,62 @@ function findFacadeOrientation(
     geometry.metadata?.facade_grammar ||
     geometry.metadata?.facadeGrammar ||
     {};
-  return (
-    grammar?.orientations?.find(
-      (entry) => orientationToSide(entry.side || entry.orientation) === side,
-    ) || null
+  const orientationEntries = Array.isArray(grammar?.orientations)
+    ? grammar.orientations
+    : grammar?.orientations && typeof grammar.orientations === "object"
+      ? Object.values(grammar.orientations)
+      : [];
+  const matches = orientationEntries.filter(
+    (entry) =>
+      normalizeFacadeOrientation(entry?.side || entry?.orientation) === side,
+  );
+  if (!matches.length) {
+    return null;
+  }
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  const mergedComponents = matches.reduce((components, entry) => {
+    Object.entries(entry?.components || {}).forEach(([family, values]) => {
+      const existing = components[family] || [];
+      const normalizedValues = Array.isArray(values)
+        ? values
+        : values && typeof values === "object"
+          ? [values]
+          : [];
+      components[family] = [...existing, ...normalizedValues];
+    });
+    return components;
+  }, {});
+
+  return matches.reduce(
+    (merged, entry) => ({
+      ...merged,
+      ...entry,
+      side: merged.side || entry.side || null,
+      orientation: merged.orientation || entry.orientation || null,
+      orientationAliases: [
+        ...(merged.orientationAliases || []),
+        ...(entry.orientation || entry.side
+          ? [entry.orientation || entry.side]
+          : []),
+      ],
+      features: [...(merged.features || []), ...(entry.features || [])],
+      material_zones: [
+        ...(merged.material_zones || []),
+        ...(entry.material_zones || []),
+      ],
+      components: mergedComponents,
+    }),
+    {
+      side,
+      orientation: null,
+      orientationAliases: [],
+      features: [],
+      material_zones: [],
+      components: {},
+    },
   );
 }
 
@@ -159,6 +212,28 @@ function collectFeatureSeeds(
   return [...sideWallFeatures, ...geometryFeatures, ...grammarFeatures];
 }
 
+function collectOrientationAliases(
+  side = "south",
+  facadeOrientation = {},
+  projection = {},
+) {
+  return [
+    side,
+    side.toUpperCase(),
+    side.slice(0, 1).toUpperCase(),
+    `${side}_elevation`,
+    `${side.toUpperCase()}_ELEVATION`,
+    facadeOrientation?.orientation || null,
+    facadeOrientation?.side || null,
+    ...(facadeOrientation?.orientationAliases || []),
+    projection?.side || null,
+  ]
+    .filter(Boolean)
+    .map((entry) => String(entry).trim())
+    .filter(Boolean)
+    .filter((entry, index, array) => array.indexOf(entry) === index);
+}
+
 function normalizeRoofLanguage(
   styleDNA = {},
   facadeOrientation = {},
@@ -207,7 +282,10 @@ export function extractSideFacade(
         features,
       })
     : null;
-  const sideFacadeSchema = isFeatureEnabled("useSideFacadeSchemaPhase11")
+  const useSideFacadeSchema =
+    isFeatureEnabled("useSideFacadeSchemaPhase12") ||
+    isFeatureEnabled("useSideFacadeSchemaPhase11");
+  const sideFacadeSchema = useSideFacadeSchema
     ? buildSideFacadeSchema({
         side,
         projection,
@@ -318,11 +396,16 @@ export function extractSideFacade(
 
   return {
     version: sideFacadeSchema
-      ? "phase11-side-facade-extractor-v1"
+      ? "phase12-side-facade-extractor-v1"
       : facadeSemantics
         ? "phase10-side-facade-extractor-v1"
         : "phase9-side-facade-extractor-v1",
     side,
+    orientationAliases: collectOrientationAliases(
+      side,
+      facadeOrientation || {},
+      projection,
+    ),
     metrics: {
       width_m: projection.sideWidthM,
       total_height_m: totalHeightM || 3.2,

@@ -244,12 +244,23 @@ function buildFinalSheetSvg(
       <text x="780" y="620" font-family="ArchiAISans" font-size="18">PROJECT ARCHITECT AI</text>
       <text x="780" y="642" font-family="ArchiAISans" font-size="15">SCALE 1:100</text>
       <text x="780" y="664" font-family="ArchiAISans" font-size="15">DATE 2026-04-19</text>
+      <text x="930" y="620" font-family="ArchiAISans" font-size="15">A1</text>
+      <text x="760" y="380" font-family="ArchiAISans" font-size="15">MATERIAL PALETTE</text>
+      <text x="760" y="410" font-family="ArchiAISans" font-size="13">PRIMARY FACADE</text>
+      <text x="760" y="492" font-family="ArchiAISans" font-size="15">SPEC NOTES</text>
+      <text x="760" y="520" font-family="ArchiAISans" font-size="13">CHECKED</text>
+      <text x="40" y="520" font-family="ArchiAISans" font-size="15">LEGEND</text>
+      <text x="40" y="548" font-family="ArchiAISans" font-size="13">NORTH</text>
     `
         : ""
     }
     <text x="86" y="84" font-family="ArchiAISans" font-size="14">PLAN</text>
     <text x="86" y="108" font-family="ArchiAISans" font-size="14">ELEVATION</text>
     <text x="86" y="132" font-family="ArchiAISans" font-size="14">SECTION</text>
+    <text x="120" y="110" font-family="ArchiAISans" font-size="13">LEVEL</text>
+    <text x="420" y="110" font-family="ArchiAISans" font-size="13">MATERIAL</text>
+    <text x="120" y="390" font-family="ArchiAISans" font-size="13">FFL</text>
+    <text x="160" y="390" font-family="ArchiAISans" font-size="13">ROOM</text>
   </svg>`;
 }
 
@@ -393,7 +404,7 @@ describe("Phase 10 final sheet credibility", () => {
     ).toBe(true);
   });
 
-  test("final sheet regression passes known-good fixture expectations", () => {
+  test("final sheet regression stays provisional before rendered proof is available", () => {
     const geometry = createGeometry();
     const facadeGrammar = createFacadeGrammar();
     const east = renderElevationSvg(geometry, createStyleDNA(), {
@@ -436,9 +447,9 @@ describe("Phase 10 final sheet credibility", () => {
       height: 700,
     });
 
-    expect(regression.finalSheetRegressionReady).toBe(true);
-    expect(regression.renderedTextZoneStatus).toBe("pass");
-    expect(regression.fixtureComparison.status).toBe("pass");
+    expect(regression.finalSheetRegressionReady).toBe(false);
+    expect(regression.renderedTextZoneStatus).not.toBe("block");
+    expect(regression.fixtureComparison.status).toBe("block");
   });
 
   test("final sheet regression blocks weak title-block and header evidence", () => {

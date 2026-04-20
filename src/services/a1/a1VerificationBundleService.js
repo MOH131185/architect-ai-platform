@@ -40,6 +40,23 @@ function deriveEvidenceQualityFromState(state = null) {
   return "weak";
 }
 
+function hasStrongRequiredRenderedProof(renderedTextZone = null) {
+  const zones = renderedTextZone?.zones || [];
+  const requiredZones = zones.filter((zone) => zone.required === true);
+  if (!requiredZones.length) {
+    return false;
+  }
+  return (
+    requiredZones.every(
+      (zone) => zone.status === "pass" && zone.evidenceState !== "blocked",
+    ) &&
+    requiredZones.every((zone) =>
+      ["verified", "weak"].includes(zone.evidenceState),
+    ) &&
+    Number(renderedTextZone?.confidence || 0) >= 0.48
+  );
+}
+
 function resolveRenderedTextEvidenceQuality(
   renderedTextZone = null,
   state = null,
@@ -51,7 +68,24 @@ function resolveRenderedTextEvidenceQuality(
   ) {
     return renderedTextZone.ocrEvidenceQuality;
   }
+  if (
+    renderedTextZone?.verificationPhase === "post_compose" &&
+    hasStrongRequiredRenderedProof(renderedTextZone)
+  ) {
+    return "verified";
+  }
+  if (
+    renderedTextZone?.verificationPhase === "post_compose" &&
+    Number(renderedTextZone?.confidence || 0) >= 0.64 &&
+    (renderedTextZone?.methodsUsed || []).includes("raster_variance")
+  ) {
+    return "verified";
+  }
   return deriveEvidenceQualityFromState(state);
+}
+
+function canonicalDecision(overall = "reviewable", decisive = false) {
+  return decisive ? overall : "provisional";
 }
 
 export function buildA1VerificationBundle({
@@ -136,35 +170,51 @@ export function buildA1VerificationBundle({
   ].filter(Boolean);
   const overall = overallStatus(states);
   const decisive = phase === "post_compose";
+  const renderedTextEvidenceQuality = resolveRenderedTextEvidenceQuality(
+    renderedTextZone,
+    renderedTextState,
+  );
+  const sectionEvidenceQuality =
+    finalSheetRegression?.sectionEvidenceQuality ||
+    technicalCredibility?.summary?.sectionEvidenceQuality ||
+    "provisional";
+  const sideFacadeEvidenceQuality =
+    finalSheetRegression?.sideFacadeEvidenceQuality ||
+    technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
+    "provisional";
+  const publishabilityDecision =
+    publishability?.finalDecision ||
+    publishability?.decision ||
+    canonicalDecision(publishability?.status || overall, decisive);
 
-  return {
-    version: "phase11-a1-verification-bundle-v1",
+  const canonicalVerification = {
+    version: "phase12-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
     decisive,
     overallStatus: overall,
-    overallDecision: decisive ? overall : "provisional",
-    publishabilityDecision:
-      publishability?.finalDecision ||
-      (decisive ? publishability?.status || overall : "provisional"),
-    renderedTextEvidenceQuality: resolveRenderedTextEvidenceQuality(
-      renderedTextZone,
-      renderedTextState,
-    ),
-    sectionEvidenceQuality:
-      finalSheetRegression?.sectionEvidenceQuality ||
-      technicalCredibility?.summary?.sectionEvidenceQuality ||
-      "provisional",
-    sideFacadeEvidenceQuality:
-      finalSheetRegression?.sideFacadeEvidenceQuality ||
-      technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
-      "provisional",
+    overallDecision: canonicalDecision(overall, decisive),
+    publishabilityDecision,
+    renderedTextEvidenceQuality,
+    sectionEvidenceQuality,
+    sideFacadeEvidenceQuality,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
+    components: {
+      renderedTextZone: renderedTextState,
+      finalSheetRegression: regressionState,
+      technicalCredibility: credibilityState,
+      publishability: publishabilityState,
+    },
+  };
+
+  return {
+    ...canonicalVerification,
     renderedTextZone: renderedTextState,
     finalSheetRegression: regressionState,
     technicalCredibility: credibilityState,
     publishability: publishabilityState,
+    verification: canonicalVerification,
   };
 }
 

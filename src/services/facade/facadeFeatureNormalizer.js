@@ -107,7 +107,15 @@ export function normalizeFacadeFeature(feature = null, fallback = {}) {
 
 export function normalizeFacadeFeatures(features = [], fallback = {}) {
   const normalized = toArray(features)
-    .map((feature) => normalizeFacadeFeature(feature, fallback))
+    .map((feature, index) =>
+      normalizeFacadeFeature(feature, {
+        ...fallback,
+        metadata: {
+          ...(fallback.metadata || {}),
+          sourceIndex: index,
+        },
+      }),
+    )
     .filter(Boolean);
 
   const seen = new Set();
@@ -117,6 +125,11 @@ export function normalizeFacadeFeatures(features = [], fallback = {}) {
       feature.side || "any",
       feature.levelId || "all-levels",
       feature.source || "unknown",
+      feature.componentFamily || "any-family",
+      feature.componentId ||
+        feature.label ||
+        feature.metadata?.sourceIndex ||
+        "no-id",
     ].join(":");
     if (seen.has(key)) {
       return false;

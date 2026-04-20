@@ -119,19 +119,19 @@ export function planA1Panels({
       finalSheetRegression,
       technicalCredibility,
     });
-    const verificationState = isFeatureEnabled(
-      "useUnifiedVerificationStatePhase10",
-    )
-      ? buildA1VerificationStateBundle({
-          renderedTextZone:
-            finalSheetRegression?.renderedTextZone ||
-            finalSheetRegression?.textZoneSanity?.renderedTextZone ||
-            null,
-          finalSheetRegression,
-          technicalCredibility,
-          publishability,
-        })
-      : null;
+    const verificationState =
+      isFeatureEnabled("useCanonicalVerificationBundlePhase12") ||
+      isFeatureEnabled("useUnifiedVerificationStatePhase10")
+        ? buildA1VerificationStateBundle({
+            renderedTextZone:
+              finalSheetRegression?.renderedTextZone ||
+              finalSheetRegression?.textZoneSanity?.renderedTextZone ||
+              null,
+            finalSheetRegression,
+            technicalCredibility,
+            publishability,
+          })
+        : null;
     const recoveryExecutionBridge = isFeatureEnabled(
       "useA1RecoveryExecutionBridge",
     )
@@ -159,6 +159,7 @@ export function planA1Panels({
       finalSheetRegression,
       technicalCredibility,
       publishability,
+      verification: verificationState?.verification || verificationState,
       verificationState,
       technicalQualityBlockers: technicalPanelGate.blockingReasons || [],
       composeBlockingReasons: [

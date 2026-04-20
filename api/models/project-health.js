@@ -71,6 +71,11 @@ export default async function handler(req, res) {
       "useFinalSheetRegressionProtectionPhase10",
       "usePostComposeVerificationPhase10",
       "useA1PublishabilityGatePhase10",
+      "useTrueSectionEvidencePhase12",
+      "useOCRTextVerificationPhase12",
+      "useSideFacadeSchemaPhase12",
+      "useCanonicalVerificationBundlePhase12",
+      "useEvidenceDrivenPublishabilityPhase12",
       "useFormalSchemaValidation",
       "useFormalSchemaEngine",
     ];

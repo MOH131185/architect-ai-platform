@@ -143,19 +143,20 @@ export function assessA1ComposeReadiness({
     finalSheetRegression,
     technicalCredibility,
   });
-  const verificationState = isFeatureEnabled(
-    "useUnifiedVerificationStatePhase10",
-  )
-    ? buildA1VerificationStateBundle({
-        renderedTextZone:
-          finalSheetRegression?.renderedTextZone ||
-          finalSheetRegression?.textZoneSanity?.renderedTextZone ||
-          null,
-        finalSheetRegression,
-        technicalCredibility,
-        publishability,
-      })
-    : null;
+  const verificationState =
+    isFeatureEnabled("useCanonicalVerificationBundlePhase12") ||
+    isFeatureEnabled("useUnifiedVerificationStatePhase10")
+      ? buildA1VerificationStateBundle({
+          renderedTextZone:
+            finalSheetRegression?.renderedTextZone ||
+            finalSheetRegression?.textZoneSanity?.renderedTextZone ||
+            null,
+          finalSheetRegression,
+          technicalCredibility,
+          publishability,
+        })
+      : null;
+  const verification = verificationState?.verification || verificationState;
   const blockingState = buildA1ComposeBlockingState({
     projectGeometry,
     validationReport,
@@ -227,7 +228,7 @@ export function assessA1ComposeReadiness({
 
   return {
     version: finalSheetRegression
-      ? "phase10-a1-compose-readiness-v1"
+      ? "phase12-a1-compose-readiness-v1"
       : isFeatureEnabled("useComposeExecutionPlanning")
         ? "phase6-a1-compose-readiness-v1"
         : "phase5-a1-compose-readiness-v1",
@@ -261,6 +262,7 @@ export function assessA1ComposeReadiness({
       null,
     technicalCredibility,
     publishability,
+    verification,
     verificationState,
     composeExecutionPlan: executionPlan,
     recoveryExecutionBridge,

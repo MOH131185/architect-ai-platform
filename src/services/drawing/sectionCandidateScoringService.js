@@ -103,7 +103,9 @@ function scoreCirculation(projectGeometry = {}, candidate = {}) {
 }
 
 export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
-  const useSectionEvidence = isFeatureEnabled("useSectionEvidencePhase10");
+  const useSectionEvidence =
+    isFeatureEnabled("useTrueSectionEvidencePhase12") ||
+    isFeatureEnabled("useSectionEvidencePhase10");
   const sectionEvidence = buildSectionEvidence(projectGeometry, candidate);
   const sectionEvidenceSummary = buildSectionEvidenceSummary(sectionEvidence);
   const stairAlignment = scoreStairAlignment(projectGeometry, candidate);
@@ -131,6 +133,12 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     0,
     1,
   );
+  const unsupportedPenalty = useSectionEvidence
+    ? Math.min(
+        0.28,
+        Number(sectionEvidenceSummary.unsupportedEvidenceCount || 0) * 0.045,
+      )
+    : 0;
   const evidencePenalty = useSectionEvidence
     ? Math.min(0.22, Number(sectionEvidence.blockers?.length || 0) * 0.11)
     : 0;
@@ -144,7 +152,8 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       (useSectionEvidence ? evidenceUsefulness * 0.2 : 0) +
       (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
       (useSectionEvidence ? cutSpecificity * 0.07 : 0) -
-      evidencePenalty,
+      evidencePenalty -
+      unsupportedPenalty,
     0,
     1,
   );
@@ -174,6 +183,13 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     useSectionEvidence &&
     sectionEvidenceSummary.geometryCommunicable === false &&
     sectionEvidenceSummary.directEvidenceCount < 4
+  ) {
+    sectionCandidateQuality = "block";
+  }
+  if (
+    useSectionEvidence &&
+    Number(sectionEvidenceSummary.unsupportedEvidenceCount || 0) > 3 &&
+    Number(sectionEvidenceSummary.directEvidenceCount || 0) < 3
   ) {
     sectionCandidateQuality = "block";
   }
@@ -207,6 +223,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       sectionNearEvidence: round(nearEvidenceScore),
       cutSpecificity: round(cutSpecificity),
       sectionEvidencePenalty: round(evidencePenalty),
+      unsupportedEvidencePenalty: round(unsupportedPenalty),
     },
     rationale,
     focusedRoomCount: countFocusedRooms(projectGeometry, candidate),

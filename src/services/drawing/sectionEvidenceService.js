@@ -18,20 +18,6 @@ function unique(items = []) {
   return [...new Set((items || []).filter(Boolean))];
 }
 
-function getBuildableBounds(geometry = {}) {
-  return (
-    geometry.site?.buildable_bbox ||
-    geometry.site?.boundary_bbox || {
-      min_x: 0,
-      min_y: 0,
-      max_x: 12,
-      max_y: 10,
-      width: 12,
-      height: 10,
-    }
-  );
-}
-
 function getLevelProfiles(geometry = {}) {
   let offset = 0;
   return (geometry.levels || [])
@@ -84,14 +70,18 @@ function roomArea(room = {}) {
   return Number(room.actual_area || room.target_area_m2 || 0);
 }
 
-function classifyEvidenceQuality({
+export function classifySectionEvidence({
   usefulnessScore = 0,
   directEvidenceCount = 0,
   nearEvidenceCount = 0,
+  unsupportedEvidenceCount = 0,
   cutRoomCount = 0,
   cutStairCount = 0,
   directSlabCount = 0,
 } = {}) {
+  if (unsupportedEvidenceCount >= 3 && directEvidenceCount < 3) {
+    return "block";
+  }
   if (usefulnessScore >= 0.8 && directEvidenceCount >= 4) {
     return "pass";
   }
@@ -117,7 +107,7 @@ function classifyEvidenceQuality({
   return "block";
 }
 
-function deriveEvidenceRationale(summary = {}, sectionProfile = {}) {
+export function explainSectionEvidence(summary = {}, sectionProfile = {}) {
   const rationale = [];
 
   if (summary.cutRoomCount > 0) {
@@ -189,6 +179,11 @@ function deriveEvidenceRationale(summary = {}, sectionProfile = {}) {
       "Some section evidence still relies on bbox/derived geometry because canonical primitives are incomplete.",
     );
   }
+  if (summary.unsupportedEvidenceCount > 0) {
+    rationale.push(
+      `${summary.unsupportedEvidenceCount} evidence fragment(s) remain unsupported because canonical cut geometry was missing or too thin to classify directly.`,
+    );
+  }
 
   if (summary.evidenceQuality === "block") {
     rationale.push(
@@ -222,18 +217,24 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       directEvidenceCount: 0,
       nearEvidenceCount: 0,
       inferredEvidenceCount: 0,
+      unsupportedEvidenceCount: 0,
       focusHitCount: 0,
       cutRoomCount: 0,
       nearRoomCount: 0,
+      unsupportedRoomCount: 0,
       cutStairCount: 0,
       nearStairCount: 0,
+      unsupportedStairCount: 0,
       cutWallCount: 0,
+      unsupportedWallCount: 0,
       cutOpeningCount: 0,
       nearOpeningCount: 0,
       inferredOpeningCount: 0,
+      unsupportedOpeningCount: 0,
       cutDoorCount: 0,
       entranceHitCount: 0,
       directSlabCount: 0,
+      unsupportedSlabCount: 0,
       levelCount: 0,
       roofCommunicated: false,
       geometryCommunicable: false,
@@ -241,6 +242,19 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       totalCutRoomAreaM2: 0,
     }
   );
+}
+
+export function summarizeSectionEvidence(summary = {}) {
+  return buildSectionEvidenceSummary({ summary });
+}
+
+export function scoreSectionEvidence(summary = {}) {
+  const resolved = summarizeSectionEvidence(summary);
+  return {
+    evidenceQuality: classifySectionEvidence(resolved),
+    usefulnessScore: Number(resolved.usefulnessScore || 0),
+    cutSpecificity: Number(resolved.cutSpecificity || 0),
+  };
 }
 
 export function buildSectionEvidence(
@@ -263,7 +277,9 @@ export function buildSectionEvidence(
       projectGeometry?.metadata?.style_dna?.roof_language ||
       "pitched gable",
   ).toLowerCase();
-  const useTrueEvidence = isFeatureEnabled("useTrueSectionEvidencePhase11");
+  const useTrueEvidence =
+    isFeatureEnabled("useTrueSectionEvidencePhase12") ||
+    isFeatureEnabled("useTrueSectionEvidencePhase11");
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
     sectionProfile,
@@ -283,21 +299,28 @@ export function buildSectionEvidence(
   const directStairs = stairs.direct || [];
   const nearStairs = stairs.near || [];
   const directWalls = walls.direct || [];
+  const unsupportedWalls = walls.unsupported || [];
   const directWindows = windows.direct || [];
   const nearWindows = windows.near || [];
   const inferredWindows = windows.inferred || [];
+  const unsupportedWindows = windows.unsupported || [];
   const directDoors = doors.direct || [];
   const nearDoors = doors.near || [];
   const inferredDoors = doors.inferred || [];
+  const unsupportedDoors = doors.unsupported || [];
   const directOpenings = [...directWindows, ...directDoors];
   const nearOpenings = [...nearWindows, ...nearDoors];
   const inferredOpenings = [...inferredWindows, ...inferredDoors];
+  const unsupportedOpenings = [...unsupportedWindows, ...unsupportedDoors];
   const directEntrances = entrances.direct || [];
   const nearEntrances = entrances.near || [];
+  const unsupportedEntrances = entrances.unsupported || [];
   const directSlabs = slabs.direct || [];
   const nearSlabs = slabs.near || [];
+  const unsupportedSlabs = slabs.unsupported || [];
   const directRoof = roofElements.direct || [];
   const nearRoof = roofElements.near || [];
+  const unsupportedRoof = roofElements.unsupported || [];
   const focusHits = summarizeFocusHits(
     sectionProfile,
     directRooms,
@@ -325,6 +348,14 @@ export function buildSectionEvidence(
     (roofLanguage ? 1 : 0) +
     (sectionProfile.focusEntityIds || []).length +
     directRoof.length;
+  const unsupportedEvidenceCount =
+    (rooms.unsupported || []).length +
+    (stairs.unsupported || []).length +
+    unsupportedWalls.length +
+    unsupportedOpenings.length +
+    unsupportedEntrances.length +
+    unsupportedSlabs.length +
+    unsupportedRoof.length;
 
   const roomCommunicationScore =
     directRooms.length > 1
@@ -387,10 +418,11 @@ export function buildSectionEvidence(
       clamp(cutSpecificity, 0, 1) * 0.1,
   );
 
-  const evidenceQuality = classifyEvidenceQuality({
+  const evidenceQuality = classifySectionEvidence({
     usefulnessScore,
     directEvidenceCount,
     nearEvidenceCount,
+    unsupportedEvidenceCount,
     cutRoomCount: directRooms.length,
     cutStairCount: directStairs.length,
     directSlabCount: directSlabs.length,
@@ -411,6 +443,11 @@ export function buildSectionEvidence(
   if (directWalls.length === 0) {
     warnings.push(
       `Section ${sectionType} is not resolving cut wall segments directly; wall emphasis is inferred.`,
+    );
+  }
+  if (unsupportedWalls.length > 0 || unsupportedOpenings.length > 0) {
+    warnings.push(
+      `Section ${sectionType} still contains unsupported cut evidence because some walls/openings lack enough canonical geometry for exact clipping.`,
     );
   }
   if (directOpenings.length === 0 && nearOpenings.length > 0) {
@@ -446,19 +483,25 @@ export function buildSectionEvidence(
     directEvidenceCount,
     nearEvidenceCount,
     inferredEvidenceCount,
+    unsupportedEvidenceCount,
     focusHitCount: focusHits.length,
     cutRoomCount: directRooms.length,
     nearRoomCount: nearRooms.length,
+    unsupportedRoomCount: (rooms.unsupported || []).length,
     cutStairCount: directStairs.length,
     nearStairCount: nearStairs.length,
+    unsupportedStairCount: (stairs.unsupported || []).length,
     cutWallCount: directWalls.length,
+    unsupportedWallCount: unsupportedWalls.length,
     cutOpeningCount: directOpenings.length,
     nearOpeningCount: nearOpenings.length,
     inferredOpeningCount: inferredOpenings.length,
+    unsupportedOpeningCount: unsupportedOpenings.length,
     cutDoorCount: directDoors.length,
     entranceHitCount: directEntrances.length,
     circulationHitCount,
     directSlabCount: directSlabs.length,
+    unsupportedSlabCount: unsupportedSlabs.length,
     levelCount: levelProfiles.length,
     roofCommunicated: directRoof.length > 0 || nearRoof.length > 0,
     geometryCommunicable: blockers.length === 0,
@@ -470,7 +513,7 @@ export function buildSectionEvidence(
 
   return {
     version: useTrueEvidence
-      ? "phase11-section-evidence-service-v1"
+      ? "phase12-section-evidence-service-v1"
       : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
@@ -480,30 +523,39 @@ export function buildSectionEvidence(
       rooms: directRooms,
       nearRooms,
       inferredRooms: rooms.inferred || [],
+      unsupportedRooms: rooms.unsupported || [],
       stairs: directStairs,
       nearStairs,
       inferredStairs: stairs.inferred || [],
+      unsupportedStairs: stairs.unsupported || [],
       walls: directWalls,
       nearWalls: walls.near || [],
       inferredWalls: walls.inferred || [],
+      unsupportedWalls,
       windows: directWindows,
       nearWindows,
       inferredWindows,
+      unsupportedWindows,
       doors: directDoors,
       nearDoors,
       inferredDoors,
+      unsupportedDoors,
       openings: directOpenings,
       nearOpenings,
       inferredOpenings,
+      unsupportedOpenings,
       entrances: directEntrances,
       nearEntrances,
       inferredEntrances: entrances.inferred || [],
+      unsupportedEntrances,
       slabs: directSlabs,
       nearSlabs,
       inferredSlabs: slabs.inferred || [],
+      unsupportedSlabs,
       roofElements: directRoof,
       nearRoofElements: nearRoof,
       inferredRoofElements: roofElements.inferred || [],
+      unsupportedRoofElements: unsupportedRoof,
     },
     levelProfiles,
     roofLanguage,
@@ -511,7 +563,7 @@ export function buildSectionEvidence(
     circulationHitCount,
     blockers: unique(blockers),
     warnings: unique(warnings),
-    rationale: deriveEvidenceRationale(summary, sectionProfile),
+    rationale: explainSectionEvidence(summary, sectionProfile),
     summary,
   };
 }
@@ -521,6 +573,10 @@ export { resolveSectionCutCoordinate, sectionAxis };
 export default {
   buildSectionEvidence,
   buildSectionEvidenceSummary,
+  summarizeSectionEvidence,
+  scoreSectionEvidence,
+  classifySectionEvidence,
+  explainSectionEvidence,
   resolveSectionCutCoordinate,
   sectionAxis,
 };

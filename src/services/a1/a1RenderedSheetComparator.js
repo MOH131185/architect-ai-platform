@@ -63,7 +63,7 @@ export function compareRenderedSheetAgainstFixture({
 } = {}) {
   if (!fixture) {
     return {
-      version: "phase10-a1-rendered-sheet-comparator-v1",
+      version: "phase12-a1-rendered-sheet-comparator-v1",
       status: "pass",
       blockers: [],
       warnings: [
@@ -75,7 +75,7 @@ export function compareRenderedSheetAgainstFixture({
   }
   if (!sheetSvg && !(renderedTextZone?.zones || []).length) {
     return {
-      version: "phase10-a1-rendered-sheet-comparator-v1",
+      version: "phase12-a1-rendered-sheet-comparator-v1",
       fixtureId: fixture.id,
       status: "warning",
       blockers: [],
@@ -95,7 +95,10 @@ export function compareRenderedSheetAgainstFixture({
       0,
   );
   const panelHeaderPassCount = (renderedTextZone?.zones || []).filter(
-    (zone) => zone.type === "panel_header" && zone.status === "pass",
+    (zone) =>
+      zone.type === "panel_header" &&
+      zone.status === "pass" &&
+      ["verified", "weak"].includes(zone.evidenceState),
   ).length;
   const titleBlockZone = (renderedTextZone?.zones || []).find(
     (zone) => zone.id === "title-block",
@@ -158,8 +161,11 @@ export function compareRenderedSheetAgainstFixture({
   );
   const labelPassCount = requiredLabelPatterns.filter(
     (pattern) =>
-      (renderedTextZone?.zones || []).some((zone) =>
-        (zone.matchedLabels || []).some((label) => pattern.test(label)),
+      (renderedTextZone?.zones || []).some(
+        (zone) =>
+          zone.status !== "block" &&
+          zone.evidenceState !== "blocked" &&
+          (zone.matchedLabels || []).some((label) => pattern.test(label)),
       ) ||
       (verificationPhase !== "post_compose" &&
         pattern.test(String(sheetSvg || ""))),
@@ -171,7 +177,7 @@ export function compareRenderedSheetAgainstFixture({
   }
 
   return {
-    version: "phase10-a1-rendered-sheet-comparator-v1",
+    version: "phase12-a1-rendered-sheet-comparator-v1",
     fixtureId: fixture.id,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: unique(blockers),

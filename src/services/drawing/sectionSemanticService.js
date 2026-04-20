@@ -20,11 +20,19 @@ export function deriveSectionSemantics(
     buildSectionEvidenceSummary(sectionEvidence);
   const cutRooms = sectionEvidence.intersections?.rooms || [];
   const nearRooms = sectionEvidence.intersections?.nearRooms || [];
+  const unsupportedRooms =
+    sectionEvidence.intersections?.unsupportedRooms || [];
   const cutStairs = sectionEvidence.intersections?.stairs || [];
   const nearStairs = sectionEvidence.intersections?.nearStairs || [];
+  const unsupportedStairs =
+    sectionEvidence.intersections?.unsupportedStairs || [];
   const cutWalls = sectionEvidence.intersections?.walls || [];
+  const unsupportedWalls =
+    sectionEvidence.intersections?.unsupportedWalls || [];
   const cutOpenings = sectionEvidence.intersections?.openings || [];
   const nearOpenings = sectionEvidence.intersections?.nearOpenings || [];
+  const unsupportedOpenings =
+    sectionEvidence.intersections?.unsupportedOpenings || [];
   const levels = sectionEvidence.levelProfiles || [];
   const focusEntityIds = sectionProfile.focusEntityIds || [];
   const candidateScore = Number(sectionProfile.score || 0.55);
@@ -79,7 +87,9 @@ export function deriveSectionSemantics(
   const wallRelationshipScore =
     cutWalls.length > 0
       ? Math.max(0.58, Math.min(0.92, candidateScore + 0.12))
-      : 0.4;
+      : unsupportedWalls.length > 0
+        ? 0.28
+        : 0.4;
   const roomCommunicationScore =
     cutRooms.length > 1 || focusedRoomCount > 1
       ? 0.88
@@ -87,9 +97,11 @@ export function deriveSectionSemantics(
         ? 0.72
         : nearRooms.length > 0
           ? 0.58
-          : (projectGeometry.rooms || []).length > 0
-            ? 0.52
-            : 0.28;
+          : unsupportedRooms.length > 0
+            ? 0.34
+            : (projectGeometry.rooms || []).length > 0
+              ? 0.52
+              : 0.28;
   const circulationNarrativeScore = Math.max(
     Number(categoryScores.circulation || 0.42),
     cutStairs.length > 0 || Number(sectionEvidence.circulationHitCount || 0) > 0
@@ -118,9 +130,13 @@ export function deriveSectionSemantics(
   );
 
   return {
-    version: sectionProfile?.strategyId
-      ? "phase10-section-semantic-service-v1"
-      : "phase9-section-semantic-service-v1",
+    version: sectionEvidence?.sectionIntersections?.version?.startsWith(
+      "phase12",
+    )
+      ? "phase12-section-semantic-service-v1"
+      : sectionProfile?.strategyId
+        ? "phase10-section-semantic-service-v1"
+        : "phase9-section-semantic-service-v1",
     sectionId: sectionProfile.id || null,
     chosenStrategy: sectionProfile?.chosenStrategy || {
       id: sectionProfile?.strategyId || null,
@@ -170,14 +186,21 @@ export function deriveSectionSemantics(
         ? "Section can communicate key opening-to-wall relationships."
         : nearOpenings.length
           ? "Section can only communicate opening relationships contextually because no opening is directly cut."
-          : "Opening relationships remain limited because no window data was resolved.",
+          : unsupportedOpenings.length
+            ? "Section cannot fully prove opening relationships because some opening geometry is unsupported."
+            : "Opening relationships remain limited because no window data was resolved.",
       cutRooms.length
         ? `Section cuts through ${cutRooms.length} named room volume(s).`
         : nearRooms.length
           ? `Section runs close to ${nearRooms.length} named room volume(s), but does not cut them directly.`
-          : focusedRoomCount
-            ? `Section target includes ${focusedRoomCount} named room focus area(s).`
-            : "Section target does not include an explicit room focus area.",
+          : unsupportedRooms.length
+            ? `Section cannot fully classify ${unsupportedRooms.length} room volume(s) because cut geometry support is incomplete.`
+            : focusedRoomCount
+              ? `Section target includes ${focusedRoomCount} named room focus area(s).`
+              : "Section target does not include an explicit room focus area.",
+      unsupportedStairs.length
+        ? `Stair/core geometry remains partially unsupported for ${unsupportedStairs.length} element(s).`
+        : "Stair/core geometry support is sufficient for the resolved evidence.",
       ...sectionEvidence.rationale,
       candidateQuality === "pass"
         ? "Candidate scoring rated this cut as strong enough for final technical communication."

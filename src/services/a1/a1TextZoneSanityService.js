@@ -5,9 +5,35 @@ function unique(items = []) {
   return [...new Set(items.filter(Boolean))];
 }
 
+function hasStrongRequiredRenderedProof(renderedZone = null) {
+  const zones = renderedZone?.zones || [];
+  const requiredZones = zones.filter((zone) => zone.required === true);
+  if (!requiredZones.length) {
+    return false;
+  }
+  const allRequiredResolved = requiredZones.every(
+    (zone) => zone.status === "pass" && zone.evidenceState !== "blocked",
+  );
+  const verifiedRequiredCount = requiredZones.filter((zone) =>
+    ["verified", "weak"].includes(zone.evidenceState),
+  ).length;
+  return (
+    allRequiredResolved &&
+    verifiedRequiredCount === requiredZones.length &&
+    Number(renderedZone?.confidence || 0) >= 0.48
+  );
+}
+
 function resolveRenderedTextEvidenceQuality(renderedZone = null) {
   if (!renderedZone) {
     return "provisional";
+  }
+  if (
+    renderedZone?.verificationPhase === "post_compose" &&
+    (renderedZone?.methodsUsed || []).includes("ocr") &&
+    renderedZone?.ocrEvidenceQuality === "verified"
+  ) {
+    return "verified";
   }
   if (
     renderedZone?.ocr?.available &&
@@ -15,6 +41,12 @@ function resolveRenderedTextEvidenceQuality(renderedZone = null) {
     renderedZone.ocrEvidenceQuality !== "provisional"
   ) {
     return renderedZone.ocrEvidenceQuality;
+  }
+  if (
+    renderedZone?.verificationPhase === "post_compose" &&
+    hasStrongRequiredRenderedProof(renderedZone)
+  ) {
+    return "verified";
   }
   if (renderedZone?.verificationState?.blocked) {
     return "weak";
@@ -119,7 +151,7 @@ export function runA1TextZoneSanity({
   return {
     version:
       renderedZone?.ocr || renderedZone?.ocrEvidenceQuality
-        ? "phase11-a1-text-zone-sanity-v1"
+        ? "phase12-a1-text-zone-sanity-v1"
         : renderedZone
           ? "phase10-a1-text-zone-sanity-v1"
           : "phase9-a1-text-zone-sanity-v1",
@@ -133,6 +165,7 @@ export function runA1TextZoneSanity({
     renderedTextEvidenceQuality:
       resolveRenderedTextEvidenceQuality(renderedZone),
     renderedTextZone: renderedZone,
+    methodsUsed: renderedZone?.methodsUsed || [],
     verificationState: buildVerificationState({
       phase: renderedZone?.verificationPhase || "pre_compose",
       status: blockers.length ? "block" : warnings.length ? "warning" : "pass",

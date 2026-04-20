@@ -425,8 +425,14 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verificationState.decisive).toBe(false);
     expect(res.body.verificationState.overallDecision).toBe("provisional");
     expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verification).toBeTruthy();
+    expect(res.body.verification.phase).toBe("pre_compose");
+    expect(res.body.verification.overallDecision).toBe("provisional");
     expect(res.body.verificationBundle).toBeTruthy();
     expect(res.body.verificationBundle.phase).toBe("pre_compose");
+    expect(res.body.verificationBundle.verification.phase).toBe(
+      res.body.verification.phase,
+    );
     expect(res.body.verificationBundle.publishabilityDecision).toBe(
       "provisional",
     );
@@ -532,8 +538,14 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verificationState.decisive).toBe(false);
     expect(res.body.verificationState.overallDecision).toBe("provisional");
     expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verification).toBeTruthy();
+    expect(res.body.verification.phase).toBe("pre_compose");
+    expect(res.body.verification.overallDecision).toBe("provisional");
     expect(res.body.verificationBundle).toBeTruthy();
     expect(res.body.verificationBundle.phase).toBe("pre_compose");
+    expect(res.body.verificationBundle.verification.phase).toBe(
+      res.body.verification.phase,
+    );
     expect(res.body.verificationBundle.publishabilityDecision).toBe(
       "provisional",
     );
@@ -1024,8 +1036,14 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verificationState.decisive).toBe(false);
     expect(res.body.verificationState.overallDecision).toBe("provisional");
     expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verification).toBeTruthy();
+    expect(res.body.verification.phase).toBe("pre_compose");
+    expect(res.body.verification.overallDecision).toBe("provisional");
     expect(res.body.verificationBundle).toBeTruthy();
     expect(res.body.verificationBundle.phase).toBe("pre_compose");
+    expect(res.body.verificationBundle.verification.phase).toBe(
+      res.body.verification.phase,
+    );
     expect(res.body.verificationBundle.publishabilityDecision).toBe(
       "provisional",
     );

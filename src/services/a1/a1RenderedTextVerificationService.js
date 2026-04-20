@@ -105,6 +105,9 @@ function deriveZoneEvidenceState({
   status = "warning",
   matchedLabels = [],
   ocrEvidenceState = "provisional",
+  evidenceScore = 0,
+  varianceScore = null,
+  textNodeCount = 0,
 } = {}) {
   if (status === "block") {
     return "blocked";
@@ -112,7 +115,15 @@ function deriveZoneEvidenceState({
   if (
     verificationPhase === "post_compose" &&
     matchedLabels.length > 0 &&
-    (ocrEvidenceState === "verified" || ocrEvidenceState === "weak")
+    ocrEvidenceState === "verified"
+  ) {
+    return "verified";
+  }
+  if (
+    verificationPhase === "post_compose" &&
+    matchedLabels.length > 0 &&
+    Number(evidenceScore || 0) >= 0.64 &&
+    (Number(varianceScore || 0) >= 0.18 || Number(textNodeCount || 0) > 0)
   ) {
     return "verified";
   }
@@ -120,6 +131,23 @@ function deriveZoneEvidenceState({
     return verificationPhase === "post_compose" ? "weak" : "provisional";
   }
   return "weak";
+}
+
+function resolveZoneMethods({
+  expectedLabels = [],
+  matchedLabels = [],
+  matchedNodes = [],
+  varianceScore = null,
+  ocrMatchedLabels = [],
+  ocrText = "",
+} = {}) {
+  return unique([
+    expectedLabels.length ? "metadata" : null,
+    matchedLabels.length ? "svg_text" : null,
+    matchedNodes.length ? "zone_text_nodes" : null,
+    Number(varianceScore || 0) > 0 ? "raster_variance" : null,
+    ocrMatchedLabels.length || String(ocrText || "").trim() ? "ocr" : null,
+  ]);
 }
 
 function buildZoneResult({
@@ -157,6 +185,14 @@ function buildZoneResult({
     evidenceScore,
     minimumEvidenceScore: minimum,
   });
+  const methodsUsed = resolveZoneMethods({
+    expectedLabels: zone.expectedLabels || [],
+    matchedLabels: combinedMatchedLabels,
+    matchedNodes,
+    varianceScore,
+    ocrMatchedLabels,
+    ocrText,
+  });
 
   return {
     id: zone.id,
@@ -176,6 +212,7 @@ function buildZoneResult({
         : round(ocrConfidence),
     ocrMatchedLabels,
     ocrEvidenceState,
+    methodsUsed,
     evidenceScore,
     status,
     evidenceState: deriveZoneEvidenceState({
@@ -183,6 +220,9 @@ function buildZoneResult({
       status,
       matchedLabels: combinedMatchedLabels,
       ocrEvidenceState,
+      evidenceScore,
+      varianceScore,
+      textNodeCount: matchedNodes.length,
     }),
   };
 }
@@ -249,7 +289,7 @@ export function verifyRenderedTextZonesSync({
     );
 
   return {
-    version: "phase10-a1-rendered-text-verification-v1",
+    version: "phase12-a1-rendered-text-verification-v1",
     verificationPhase,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers,
@@ -286,16 +326,21 @@ async function computeZoneVariance(renderedBuffer, zone = {}, width, height) {
   if (!bounds || !renderedBuffer) {
     return null;
   }
+  const left = Math.max(0, Math.floor(bounds.x));
+  const top = Math.max(0, Math.floor(bounds.y));
+  if (left >= width || top >= height) {
+    return null;
+  }
   const extractRegion = {
-    left: Math.max(0, Math.floor(bounds.x)),
-    top: Math.max(0, Math.floor(bounds.y)),
+    left,
+    top,
     width: Math.max(
       1,
-      Math.min(width - Math.floor(bounds.x), Math.floor(bounds.width)),
+      Math.min(width - left, Math.max(0, Math.floor(bounds.width))),
     ),
     height: Math.max(
       1,
-      Math.min(height - Math.floor(bounds.y), Math.floor(bounds.height)),
+      Math.min(height - top, Math.max(0, Math.floor(bounds.height))),
     ),
   };
   if (extractRegion.width <= 0 || extractRegion.height <= 0) {
@@ -341,7 +386,9 @@ export async function verifyRenderedTextZones({
   const metadata = await sharp(renderedBuffer).metadata();
   const renderedWidth = width || Number(metadata.width || 0);
   const renderedHeight = height || Number(metadata.height || 0);
-  const useOCR = isFeatureEnabled("useOCRTextVerificationPhase11");
+  const useOCR =
+    isFeatureEnabled("useOCRTextVerificationPhase12") ||
+    isFeatureEnabled("useOCRTextVerificationPhase11");
   const ocrResults = useOCR
     ? await recognizeA1RenderedZones({
         renderedBuffer,
@@ -414,6 +461,20 @@ export async function verifyRenderedTextZones({
           ...ocrMatchedLabels,
         ]),
         ocrEvidenceState: ocrZone?.evidenceState || "provisional",
+        evidenceScore: upgradedScore,
+        varianceScore,
+        textNodeCount: Number(zone.textNodeCount || 0),
+      }),
+      methodsUsed: resolveZoneMethods({
+        expectedLabels: zone.expectedLabels || [],
+        matchedLabels: unique([
+          ...(zone.matchedLabels || []),
+          ...ocrMatchedLabels,
+        ]),
+        matchedNodes: new Array(Number(zone.textNodeCount || 0)).fill(null),
+        varianceScore,
+        ocrMatchedLabels,
+        ocrText: ocrZone?.text || "",
       }),
     });
   }
@@ -433,7 +494,7 @@ export async function verifyRenderedTextZones({
 
   return {
     ...base,
-    version: useOCR ? "phase11-a1-rendered-text-verification-v1" : base.version,
+    version: "phase12-a1-rendered-text-verification-v1",
     verificationPhase,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: unique(blockers),
@@ -448,8 +509,10 @@ export async function verifyRenderedTextZones({
     ),
     zones: upgradedZones,
     ocr: ocrResults || {
-      version: "phase11-a1-ocr-service-v1",
+      version: "phase12-a1-ocr-service-v1",
       available: false,
+      source: "unavailable",
+      fallbackUsed: true,
       summary: {
         availableCount: 0,
         verifiedCount: 0,
@@ -477,6 +540,9 @@ export async function verifyRenderedTextZones({
       label: "renderedTextZone",
       evidenceSource: renderedBuffer ? "rendered_output" : "svg_text",
     }),
+    methodsUsed: unique(
+      upgradedZones.flatMap((zone) => zone.methodsUsed || []),
+    ),
   };
 }
 
