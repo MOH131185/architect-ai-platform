@@ -34,6 +34,10 @@ export function runA1TechnicalPanelRegression({
         blockers: entry.blocking_reasons || [],
         warnings: entry.annotation_validation?.warnings || [],
         summary: entry.technical_quality_metadata?.side_facade_summary || null,
+        evidenceQuality:
+          entry.technical_quality_metadata?.side_facade_schema_quality ||
+          entry.technical_quality_metadata?.side_facade_status ||
+          null,
       },
     ]),
   );
@@ -62,6 +66,8 @@ export function runA1TechnicalPanelRegression({
       entry.section_semantics?.rationale ||
       entry.section_profile?.rationale ||
       [],
+    evidenceQuality:
+      entry.technical_quality_metadata?.section_evidence_quality || null,
   }));
 
   const blockers = [];
@@ -96,6 +102,31 @@ export function runA1TechnicalPanelRegression({
     }
   });
 
+  const sideFacadeEvidenceQuality = Object.values(perSideElevationStatus).some(
+    (entry) => entry.evidenceQuality === "block" || entry.status === "block",
+  )
+    ? "blocked"
+    : Object.values(perSideElevationStatus).some(
+          (entry) =>
+            entry.evidenceQuality === "warning" || entry.status === "warning",
+        )
+      ? "weak"
+      : Object.keys(perSideElevationStatus).length
+        ? "verified"
+        : "provisional";
+  const sectionEvidenceQuality = sectionCandidateQuality.some(
+    (entry) => entry.evidenceQuality === "block" || entry.status === "block",
+  )
+    ? "blocked"
+    : sectionCandidateQuality.some(
+          (entry) =>
+            entry.evidenceQuality === "warning" || entry.status === "warning",
+        )
+      ? "weak"
+      : sectionCandidateQuality.length
+        ? "verified"
+        : "provisional";
+
   return {
     version: "phase10-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
@@ -104,6 +135,8 @@ export function runA1TechnicalPanelRegression({
     warnings: [...new Set(warnings)],
     perSideElevationStatus,
     sectionCandidateQuality,
+    sideFacadeEvidenceQuality,
+    sectionEvidenceQuality,
     technicalFragmentScores: fragmentQuality.fragmentScores,
   };
 }

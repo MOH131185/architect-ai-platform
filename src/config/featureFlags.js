@@ -1065,6 +1065,21 @@ export const FEATURE_FLAGS = {
   /** Phase 10 regression fixture comparisons for final sheets */
   useA1RegressionFixturesPhase10: true,
 
+  /** Phase 11 true cut-geometry section evidence */
+  useTrueSectionEvidencePhase11: true,
+
+  /** Phase 11 OCR-backed rendered text verification */
+  useOCRTextVerificationPhase11: true,
+
+  /** Phase 11 richer side-facade schema extraction */
+  useSideFacadeSchemaPhase11: true,
+
+  /** Phase 11 unified verification bundle model */
+  useUnifiedVerificationBundlePhase11: true,
+
+  /** Phase 11 evidence-driven publishability decisions */
+  useEvidenceDrivenPublishabilityPhase11: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1393,6 +1408,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useSectionStrategyLibraryPhase10 = true;
   FEATURE_FLAGS.useSectionGraphicsMaturityPhase10 = true;
   FEATURE_FLAGS.useA1RegressionFixturesPhase10 = true;
+  FEATURE_FLAGS.useTrueSectionEvidencePhase11 = true;
+  FEATURE_FLAGS.useOCRTextVerificationPhase11 = true;
+  FEATURE_FLAGS.useSideFacadeSchemaPhase11 = true;
+  FEATURE_FLAGS.useUnifiedVerificationBundlePhase11 = true;
+  FEATURE_FLAGS.useEvidenceDrivenPublishabilityPhase11 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -1798,6 +1818,26 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_A1_REGRESSION_FIXTURES_PHASE10: {
       flag: "useA1RegressionFixturesPhase10",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TRUE_SECTION_EVIDENCE_PHASE11: {
+      flag: "useTrueSectionEvidencePhase11",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_OCR_TEXT_VERIFICATION_PHASE11: {
+      flag: "useOCRTextVerificationPhase11",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SIDE_FACADE_SCHEMA_PHASE11: {
+      flag: "useSideFacadeSchemaPhase11",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_UNIFIED_VERIFICATION_BUNDLE_PHASE11: {
+      flag: "useUnifiedVerificationBundlePhase11",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_EVIDENCE_DRIVEN_PUBLISHABILITY_PHASE11: {
+      flag: "useEvidenceDrivenPublishabilityPhase11",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

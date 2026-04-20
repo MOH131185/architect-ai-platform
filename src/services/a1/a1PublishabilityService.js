@@ -30,14 +30,17 @@ export function classifyA1Publishability({
     : warnings.length
       ? "reviewable"
       : "publishable";
+  const decision =
+    status === "reviewable" ? "reviewable_with_warnings" : status;
   const decisive = resolvedPhase === "post_compose";
 
   return {
-    version: "phase10-a1-publishability-v1",
+    version: "phase11-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,
-    finalDecision: decisive ? status : "provisional",
+    finalDecision: decisive ? decision : "provisional",
+    decision,
     status,
     publishable: status === "publishable",
     reviewable: status === "reviewable",

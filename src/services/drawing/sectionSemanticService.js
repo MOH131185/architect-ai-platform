@@ -19,9 +19,12 @@ export function deriveSectionSemantics(
     sectionProfile.sectionEvidenceSummary ||
     buildSectionEvidenceSummary(sectionEvidence);
   const cutRooms = sectionEvidence.intersections?.rooms || [];
+  const nearRooms = sectionEvidence.intersections?.nearRooms || [];
   const cutStairs = sectionEvidence.intersections?.stairs || [];
+  const nearStairs = sectionEvidence.intersections?.nearStairs || [];
   const cutWalls = sectionEvidence.intersections?.walls || [];
   const cutOpenings = sectionEvidence.intersections?.openings || [];
+  const nearOpenings = sectionEvidence.intersections?.nearOpenings || [];
   const levels = sectionEvidence.levelProfiles || [];
   const focusEntityIds = sectionProfile.focusEntityIds || [];
   const candidateScore = Number(sectionProfile.score || 0.55);
@@ -51,7 +54,9 @@ export function deriveSectionSemantics(
     ? 1
     : cutStairs.length > 0
       ? 0.7
-      : 0.35;
+      : nearStairs.length > 0
+        ? 0.48
+        : 0.35;
   const floorHeightsScore = levels.length > 1 ? 1 : 0.6;
   const entranceScore = hasEntranceFocus
     ? 0.86
@@ -68,7 +73,9 @@ export function deriveSectionSemantics(
             ),
           ),
         )
-      : 0.45;
+      : nearOpenings.length > 0 && cutWalls.length > 0
+        ? 0.52
+        : 0.45;
   const wallRelationshipScore =
     cutWalls.length > 0
       ? Math.max(0.58, Math.min(0.92, candidateScore + 0.12))
@@ -78,9 +85,11 @@ export function deriveSectionSemantics(
       ? 0.88
       : cutRooms.length > 0 || focusedRoomCount > 0
         ? 0.72
-        : (projectGeometry.rooms || []).length > 0
-          ? 0.52
-          : 0.28;
+        : nearRooms.length > 0
+          ? 0.58
+          : (projectGeometry.rooms || []).length > 0
+            ? 0.52
+            : 0.28;
   const circulationNarrativeScore = Math.max(
     Number(categoryScores.circulation || 0.42),
     cutStairs.length > 0 || Number(sectionEvidence.circulationHitCount || 0) > 0
@@ -159,12 +168,16 @@ export function deriveSectionSemantics(
         : "Section is not explicitly aligned to the entry sequence.",
       cutOpenings.length
         ? "Section can communicate key opening-to-wall relationships."
-        : "Opening relationships remain limited because no window data was resolved.",
+        : nearOpenings.length
+          ? "Section can only communicate opening relationships contextually because no opening is directly cut."
+          : "Opening relationships remain limited because no window data was resolved.",
       cutRooms.length
         ? `Section cuts through ${cutRooms.length} named room volume(s).`
-        : focusedRoomCount
-          ? `Section target includes ${focusedRoomCount} named room focus area(s).`
-          : "Section target does not include an explicit room focus area.",
+        : nearRooms.length
+          ? `Section runs close to ${nearRooms.length} named room volume(s), but does not cut them directly.`
+          : focusedRoomCount
+            ? `Section target includes ${focusedRoomCount} named room focus area(s).`
+            : "Section target does not include an explicit room focus area.",
       ...sectionEvidence.rationale,
       candidateQuality === "pass"
         ? "Candidate scoring rated this cut as strong enough for final technical communication."

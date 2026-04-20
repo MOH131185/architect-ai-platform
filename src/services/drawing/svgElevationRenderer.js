@@ -737,6 +737,9 @@ export function renderElevationSvg(
         roof_edge_count: sideFacade.roofEdges?.length || 0,
         feature_family_count: sideFacade.featureFamilies?.length || 0,
         side_facade_summary: sideFacade.sideSummary || null,
+        side_facade_schema_quality:
+          sideFacade.sideFacadeSchema?.evidenceSummary
+            ?.schemaCredibilityQuality || "provisional",
         elevation_semantic_status: elevationSemantics.status,
         explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,
         uses_canonical_material_palette: true,
@@ -803,6 +806,9 @@ export function renderElevationSvg(
       roof_edge_count: sideFacade.roofEdges?.length || 0,
       feature_family_count: sideFacade.featureFamilies?.length || 0,
       side_facade_summary: sideFacade.sideSummary || null,
+      side_facade_schema_quality:
+        sideFacade.sideFacadeSchema?.evidenceSummary
+          ?.schemaCredibilityQuality || "provisional",
       elevation_semantic_status: elevationSemantics.status,
       elevation_semantic_score: elevationSemantics.scores?.readability || null,
       explicit_side_coverage_ratio: sideFacade.explicitCoverageRatio,

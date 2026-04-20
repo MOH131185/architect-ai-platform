@@ -193,8 +193,11 @@ export const PHASE1_API_CONTRACTS = {
       "finalSheetRegression",
       "finalSheetRegressionPhase",
       "renderedTextZone",
+      "renderedTextEvidenceQuality",
       "perSideElevationStatus",
+      "sideFacadeEvidenceQuality",
       "sectionCandidateQuality",
+      "sectionEvidenceQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -202,6 +205,7 @@ export const PHASE1_API_CONTRACTS = {
       "publishability",
       "publishabilityPhase",
       "postComposeVerified",
+      "verificationBundle",
       "verificationState",
     ],
   },
@@ -221,8 +225,11 @@ export const PHASE1_API_CONTRACTS = {
       "finalSheetRegression",
       "finalSheetRegressionPhase",
       "renderedTextZone",
+      "renderedTextEvidenceQuality",
       "perSideElevationStatus",
+      "sideFacadeEvidenceQuality",
       "sectionCandidateQuality",
+      "sectionEvidenceQuality",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -230,6 +237,7 @@ export const PHASE1_API_CONTRACTS = {
       "publishability",
       "publishabilityPhase",
       "postComposeVerified",
+      "verificationBundle",
       "verificationState",
     ],
   },
@@ -258,15 +266,19 @@ export const PHASE1_API_CONTRACTS = {
       "finalSheetRegression",
       "finalSheetRegressionPhase",
       "renderedTextZone",
+      "renderedTextEvidenceQuality",
       "technicalFragmentScores",
       "perSideElevationStatus",
+      "sideFacadeEvidenceQuality",
       "sectionCandidateQuality",
+      "sectionEvidenceQuality",
       "sectionStrategyRationale",
       "technicalCredibility",
       "technicalCredibilityPhase",
       "publishability",
       "publishabilityPhase",
       "postComposeVerified",
+      "verificationBundle",
       "verificationState",
     ],
   },
@@ -946,14 +958,26 @@ export function buildProjectReadinessResponse({
       result.renderedTextZone?.status ||
       result.finalSheetRegression?.renderedTextZoneStatus ||
       "warning",
+    renderedTextEvidenceQuality:
+      result.finalSheetRegression?.renderedTextEvidenceQuality ||
+      verificationState?.renderedTextEvidenceQuality ||
+      "provisional",
     perSideElevationStatus:
       result.finalSheetRegression?.perSideElevationStatus ||
       result.technicalPanelGate?.perSideElevationStatus ||
       {},
+    sideFacadeEvidenceQuality:
+      result.finalSheetRegression?.sideFacadeEvidenceQuality ||
+      verificationState?.sideFacadeEvidenceQuality ||
+      "provisional",
     sectionCandidateQuality:
       result.finalSheetRegression?.sectionCandidateQuality ||
       result.technicalPanelGate?.sectionCandidateQuality ||
       [],
+    sectionEvidenceQuality:
+      result.finalSheetRegression?.sectionEvidenceQuality ||
+      verificationState?.sectionEvidenceQuality ||
+      "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
@@ -973,6 +997,7 @@ export function buildProjectReadinessResponse({
     publishability: result.publishability || null,
     publishabilityPhase,
     postComposeVerified: publishabilityPhase === "post_compose",
+    verificationBundle: verificationState,
     verificationState,
     composeExecutionPlan: result.composeExecutionPlan || null,
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,
@@ -1075,16 +1100,28 @@ export function buildPlanA1PanelsResponse({
       result.renderedTextZone?.status ||
       result.finalSheetRegression?.renderedTextZoneStatus ||
       "warning",
+    renderedTextEvidenceQuality:
+      result.finalSheetRegression?.renderedTextEvidenceQuality ||
+      verificationState?.renderedTextEvidenceQuality ||
+      "provisional",
     perSideElevationStatus:
       result.perSideElevationStatus ||
       result.finalSheetRegression?.perSideElevationStatus ||
       result.technicalPanelGate?.perSideElevationStatus ||
       {},
+    sideFacadeEvidenceQuality:
+      result.finalSheetRegression?.sideFacadeEvidenceQuality ||
+      verificationState?.sideFacadeEvidenceQuality ||
+      "provisional",
     sectionCandidateQuality:
       result.sectionCandidateQuality ||
       result.finalSheetRegression?.sectionCandidateQuality ||
       result.technicalPanelGate?.sectionCandidateQuality ||
       [],
+    sectionEvidenceQuality:
+      result.finalSheetRegression?.sectionEvidenceQuality ||
+      verificationState?.sectionEvidenceQuality ||
+      "provisional",
     technicalFragmentScores:
       result.technicalFragmentScores ||
       result.finalSheetRegression?.technicalFragmentScores ||
@@ -1106,6 +1143,7 @@ export function buildPlanA1PanelsResponse({
     publishability: result.publishability || null,
     publishabilityPhase,
     postComposeVerified: publishabilityPhase === "post_compose",
+    verificationBundle: verificationState,
     verificationState,
     composeBlockingReasons:
       result.composeBlockingReasons ||
@@ -1274,14 +1312,29 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.renderedTextZoneStatus ||
       result.readiness?.finalSheetRegression?.renderedTextZoneStatus ||
       "warning",
+    renderedTextEvidenceQuality:
+      result.finalSheetRegression?.renderedTextEvidenceQuality ||
+      result.readiness?.finalSheetRegression?.renderedTextEvidenceQuality ||
+      verificationState?.renderedTextEvidenceQuality ||
+      "provisional",
     perSideElevationStatus:
       result.finalSheetRegression?.perSideElevationStatus ||
       result.readiness?.finalSheetRegression?.perSideElevationStatus ||
       {},
+    sideFacadeEvidenceQuality:
+      result.finalSheetRegression?.sideFacadeEvidenceQuality ||
+      result.readiness?.finalSheetRegression?.sideFacadeEvidenceQuality ||
+      verificationState?.sideFacadeEvidenceQuality ||
+      "provisional",
     sectionCandidateQuality:
       result.finalSheetRegression?.sectionCandidateQuality ||
       result.readiness?.finalSheetRegression?.sectionCandidateQuality ||
       [],
+    sectionEvidenceQuality:
+      result.finalSheetRegression?.sectionEvidenceQuality ||
+      result.readiness?.finalSheetRegression?.sectionEvidenceQuality ||
+      verificationState?.sectionEvidenceQuality ||
+      "provisional",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.readiness?.finalSheetRegression?.technicalFragmentScores ||
@@ -1305,6 +1358,7 @@ export function buildProjectHealthResponse({
       result.publishability || result.readiness?.publishability || null,
     publishabilityPhase,
     postComposeVerified: publishabilityPhase === "post_compose",
+    verificationBundle: verificationState,
     verificationState,
     remainingBlockers: result.remainingBlockers || [],
     recoveryExecutionBridge: result.recoveryExecutionBridge || null,

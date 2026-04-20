@@ -121,11 +121,19 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     0,
     1,
   );
+  const nearEvidenceScore = clamp(
+    Number(sectionEvidenceSummary.nearEvidenceCount || 0) / 6,
+    0,
+    1,
+  );
   const cutSpecificity = clamp(
     Number(sectionEvidenceSummary.cutSpecificity || 0),
     0,
     1,
   );
+  const evidencePenalty = useSectionEvidence
+    ? Math.min(0.22, Number(sectionEvidence.blockers?.length || 0) * 0.11)
+    : 0;
   const usefulness = clamp(
     stairAlignment * 0.19 +
       roomCoverage * 0.16 +
@@ -134,7 +142,9 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       levelSpan * 0.1 +
       strategyCommunication * 0.08 +
       (useSectionEvidence ? evidenceUsefulness * 0.2 : 0) +
-      (useSectionEvidence ? cutSpecificity * 0.07 : 0),
+      (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
+      (useSectionEvidence ? cutSpecificity * 0.07 : 0) -
+      evidencePenalty,
     0,
     1,
   );
@@ -159,6 +169,13 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     sectionCandidateQuality === "pass"
   ) {
     sectionCandidateQuality = "warning";
+  }
+  if (
+    useSectionEvidence &&
+    sectionEvidenceSummary.geometryCommunicable === false &&
+    sectionEvidenceSummary.directEvidenceCount < 4
+  ) {
+    sectionCandidateQuality = "block";
   }
   const rationale = [
     candidate.strategyName
@@ -187,7 +204,9 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       levelSpan: round(levelSpan),
       strategyCommunication: round(strategyCommunication),
       sectionEvidenceUsefulness: round(evidenceUsefulness),
+      sectionNearEvidence: round(nearEvidenceScore),
       cutSpecificity: round(cutSpecificity),
+      sectionEvidencePenalty: round(evidencePenalty),
     },
     rationale,
     focusedRoomCount: countFocusedRooms(projectGeometry, candidate),

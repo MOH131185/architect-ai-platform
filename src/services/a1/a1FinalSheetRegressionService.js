@@ -56,7 +56,12 @@ export function runA1FinalSheetRegression({
   ];
 
   return {
-    version: "phase10-a1-final-sheet-regression-v1",
+    version:
+      textZoneSanity.renderedTextEvidenceQuality ||
+      technicalPanelRegression.sectionEvidenceQuality ||
+      technicalPanelRegression.sideFacadeEvidenceQuality
+        ? "phase11-a1-final-sheet-regression-v1"
+        : "phase10-a1-final-sheet-regression-v1",
     verificationPhase,
     finalSheetRegressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
@@ -69,6 +74,12 @@ export function runA1FinalSheetRegression({
     fixtureComparison,
     perSideElevationStatus: technicalPanelRegression.perSideElevationStatus,
     sectionCandidateQuality: technicalPanelRegression.sectionCandidateQuality,
+    sectionEvidenceQuality:
+      technicalPanelRegression.sectionEvidenceQuality || "provisional",
+    sideFacadeEvidenceQuality:
+      technicalPanelRegression.sideFacadeEvidenceQuality || "provisional",
+    renderedTextEvidenceQuality:
+      textZoneSanity.renderedTextEvidenceQuality || "provisional",
     technicalFragmentScores: technicalPanelRegression.technicalFragmentScores,
     verificationState: buildVerificationState({
       phase: verificationPhase,

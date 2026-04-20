@@ -59,6 +59,29 @@ export function evaluateA1TechnicalCredibility({
         .join(", ")}.`,
     );
   }
+  if (finalSheetRegression?.sectionEvidenceQuality === "blocked") {
+    blockers.push(
+      "Section evidence quality is blocked because direct cut evidence is too weak across the available technical sections.",
+    );
+  } else if (finalSheetRegression?.sectionEvidenceQuality === "weak") {
+    warnings.push(
+      "Section evidence remains weaker than preferred because direct cut evidence is thin or heavily contextual.",
+    );
+  }
+  if (finalSheetRegression?.sideFacadeEvidenceQuality === "blocked") {
+    blockers.push(
+      "Side-facade evidence quality is blocked because the available side schemas remain too thin for credible elevations.",
+    );
+  } else if (finalSheetRegression?.sideFacadeEvidenceQuality === "weak") {
+    warnings.push(
+      "Side-facade evidence remains weaker than preferred because side schema support is still thin or envelope-derived.",
+    );
+  }
+  if (finalSheetRegression?.renderedTextEvidenceQuality === "weak") {
+    warnings.push(
+      "Rendered text verification remains only weakly evidenced; OCR or zone evidence did not fully verify the final board.",
+    );
+  }
   warnings.push(...(finalSheetRegression?.warnings || []));
   blockers.push(...(finalSheetRegression?.blockers || []));
 
@@ -84,6 +107,12 @@ export function evaluateA1TechnicalCredibility({
       weakSides,
       blockedSections: blockedSections.map((entry) => entry.sectionType),
       weakSections: weakSections.map((entry) => entry.sectionType),
+      sectionEvidenceQuality:
+        finalSheetRegression?.sectionEvidenceQuality || "provisional",
+      sideFacadeEvidenceQuality:
+        finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
+      renderedTextEvidenceQuality:
+        finalSheetRegression?.renderedTextEvidenceQuality || "provisional",
     },
     verificationState: buildVerificationState({
       phase:

@@ -1,5 +1,7 @@
 import sharp from "sharp";
 
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { recognizeA1RenderedZones } from "./a1OCRService.js";
 import { buildA1LabelZoneRegistry } from "./a1LabelZoneRegistry.js";
 import { buildVerificationState } from "./a1VerificationStateModel.js";
 
@@ -98,26 +100,60 @@ function resolveZoneStatus({
   return required ? "block" : "warning";
 }
 
+function deriveZoneEvidenceState({
+  verificationPhase = "pre_compose",
+  status = "warning",
+  matchedLabels = [],
+  ocrEvidenceState = "provisional",
+} = {}) {
+  if (status === "block") {
+    return "blocked";
+  }
+  if (
+    verificationPhase === "post_compose" &&
+    matchedLabels.length > 0 &&
+    (ocrEvidenceState === "verified" || ocrEvidenceState === "weak")
+  ) {
+    return "verified";
+  }
+  if (status === "pass") {
+    return verificationPhase === "post_compose" ? "weak" : "provisional";
+  }
+  return "weak";
+}
+
 function buildZoneResult({
   zone = {},
   matchedLabels = [],
   matchedNodes = [],
   varianceScore = null,
+  ocrText = "",
+  ocrConfidence = null,
+  ocrMatchedLabels = [],
+  ocrEvidenceState = "provisional",
   verificationPhase = "pre_compose",
 } = {}) {
+  const combinedMatchedLabels = unique([...matchedLabels, ...ocrMatchedLabels]);
   const evidenceScore = round(
     Math.min(
       1,
-      matchedLabels.length * 0.45 +
+      combinedMatchedLabels.length * 0.45 +
         Math.min(0.55, matchedNodes.length * 0.18) +
-        Number(varianceScore || 0) * 0.25,
+        Number(varianceScore || 0) * 0.18 +
+        (Number(ocrConfidence || 0) > 0
+          ? Math.min(
+              0.22,
+              Number(ocrConfidence || 0) *
+                (ocrMatchedLabels.length ? 0.22 : 0.1),
+            )
+          : 0),
     ),
   );
   const minimum = Number(zone.minimumEvidenceScore || 0.2);
   const status = resolveZoneStatus({
     required: zone.required === true,
     expectedLabels: zone.expectedLabels || [],
-    matchedLabels,
+    matchedLabels: combinedMatchedLabels,
     evidenceScore,
     minimumEvidenceScore: minimum,
   });
@@ -130,13 +166,24 @@ function buildZoneResult({
     bounds: zone.bounds || null,
     boundsNormalized: zone.boundsNormalized || null,
     minimumEvidenceScore: minimum,
-    matchedLabels,
+    matchedLabels: combinedMatchedLabels,
     textNodeCount: matchedNodes.length,
     varianceScore: varianceScore === null ? null : round(varianceScore),
+    ocrText,
+    ocrConfidence:
+      ocrConfidence === null || ocrConfidence === undefined
+        ? null
+        : round(ocrConfidence),
+    ocrMatchedLabels,
+    ocrEvidenceState,
     evidenceScore,
     status,
-    evidenceState:
-      verificationPhase === "post_compose" ? "verified" : "provisional",
+    evidenceState: deriveZoneEvidenceState({
+      verificationPhase,
+      status,
+      matchedLabels: combinedMatchedLabels,
+      ocrEvidenceState,
+    }),
   };
 }
 
@@ -274,6 +321,7 @@ export async function verifyRenderedTextZones({
   panelLabelMap = {},
   width = null,
   height = null,
+  ocrAdapter = null,
   verificationPhase = renderedBuffer ? "post_compose" : "pre_compose",
 } = {}) {
   const base = verifyRenderedTextZonesSync({
@@ -293,31 +341,79 @@ export async function verifyRenderedTextZones({
   const metadata = await sharp(renderedBuffer).metadata();
   const renderedWidth = width || Number(metadata.width || 0);
   const renderedHeight = height || Number(metadata.height || 0);
+  const useOCR = isFeatureEnabled("useOCRTextVerificationPhase11");
+  const ocrResults = useOCR
+    ? await recognizeA1RenderedZones({
+        renderedBuffer,
+        zones: base.zones || [],
+        width: renderedWidth,
+        height: renderedHeight,
+        ocrAdapter,
+      })
+    : null;
   const upgradedZones = [];
 
-  for (const zone of base.zones || []) {
+  for (const [index, zone] of (base.zones || []).entries()) {
     const varianceScore = await computeZoneVariance(
       renderedBuffer,
       zone,
       renderedWidth,
       renderedHeight,
     );
+    const ocrZone = ocrResults?.zoneResults?.[index] || null;
+    const ocrMatchedLabels = ocrZone?.matchedLabels || [];
+    const upgradedScore =
+      Number(zone.evidenceScore || 0) +
+      Number(varianceScore || 0) * 0.18 +
+      (Number(ocrZone?.confidence || 0) > 0
+        ? Math.min(
+            0.22,
+            Number(ocrZone?.confidence || 0) *
+              (ocrMatchedLabels.length ? 0.22 : 0.1),
+          )
+        : 0);
     upgradedZones.push({
       ...zone,
       varianceScore: varianceScore === null ? null : round(varianceScore),
-      evidenceScore: round(
-        Math.min(
-          1,
-          Number(zone.evidenceScore || 0) + Number(varianceScore || 0) * 0.18,
-        ),
-      ),
+      ocrText: ocrZone?.text || "",
+      ocrConfidence:
+        ocrZone?.confidence === null || ocrZone?.confidence === undefined
+          ? null
+          : round(ocrZone.confidence),
+      ocrMatchedLabels,
+      ocrEvidenceState: ocrZone?.evidenceState || "provisional",
+      matchedLabels: unique([
+        ...(zone.matchedLabels || []),
+        ...ocrMatchedLabels,
+      ]),
+      evidenceScore: round(Math.min(1, upgradedScore)),
       status: resolveZoneStatus({
         required: zone.required === true,
         expectedLabels: zone.expectedLabels || [],
-        matchedLabels: zone.matchedLabels || [],
-        evidenceScore:
-          Number(zone.evidenceScore || 0) + Number(varianceScore || 0) * 0.18,
+        matchedLabels: unique([
+          ...(zone.matchedLabels || []),
+          ...ocrMatchedLabels,
+        ]),
+        evidenceScore: upgradedScore,
         minimumEvidenceScore: Number(zone.minimumEvidenceScore || 0.2),
+      }),
+      evidenceState: deriveZoneEvidenceState({
+        verificationPhase,
+        status: resolveZoneStatus({
+          required: zone.required === true,
+          expectedLabels: zone.expectedLabels || [],
+          matchedLabels: unique([
+            ...(zone.matchedLabels || []),
+            ...ocrMatchedLabels,
+          ]),
+          evidenceScore: upgradedScore,
+          minimumEvidenceScore: Number(zone.minimumEvidenceScore || 0.2),
+        }),
+        matchedLabels: unique([
+          ...(zone.matchedLabels || []),
+          ...ocrMatchedLabels,
+        ]),
+        ocrEvidenceState: ocrZone?.evidenceState || "provisional",
       }),
     });
   }
@@ -337,6 +433,7 @@ export async function verifyRenderedTextZones({
 
   return {
     ...base,
+    version: useOCR ? "phase11-a1-rendered-text-verification-v1" : base.version,
     verificationPhase,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: unique(blockers),
@@ -350,6 +447,22 @@ export async function verifyRenderedTextZones({
         : 0,
     ),
     zones: upgradedZones,
+    ocr: ocrResults || {
+      version: "phase11-a1-ocr-service-v1",
+      available: false,
+      summary: {
+        availableCount: 0,
+        verifiedCount: 0,
+        weakCount: 0,
+        provisionalCount: upgradedZones.length,
+      },
+    },
+    ocrEvidenceQuality:
+      ocrResults?.summary?.verifiedCount > 0
+        ? "verified"
+        : ocrResults?.summary?.availableCount > 0
+          ? "weak"
+          : "provisional",
     verificationState: buildVerificationState({
       phase: verificationPhase,
       status: blockers.length ? "block" : warnings.length ? "warning" : "pass",

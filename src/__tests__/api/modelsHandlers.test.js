@@ -401,6 +401,15 @@ describe("Phase 1 model route handlers", () => {
     expect(["pass", "warning", "block"]).toContain(
       res.body.renderedTextZoneStatus,
     );
+    expect(["verified", "weak", "provisional"]).toContain(
+      res.body.renderedTextEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sideFacadeEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionEvidenceQuality,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
     expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
@@ -416,6 +425,11 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verificationState.decisive).toBe(false);
     expect(res.body.verificationState.overallDecision).toBe("provisional");
     expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verificationBundle).toBeTruthy();
+    expect(res.body.verificationBundle.phase).toBe("pre_compose");
+    expect(res.body.verificationBundle.publishabilityDecision).toBe(
+      "provisional",
+    );
     expect(res.body.verificationState.publishability.decisionStatus).toBe(
       "provisional",
     );
@@ -494,6 +508,15 @@ describe("Phase 1 model route handlers", () => {
     expect(["pass", "warning", "block"]).toContain(
       res.body.renderedTextZoneStatus,
     );
+    expect(["verified", "weak", "provisional"]).toContain(
+      res.body.renderedTextEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sideFacadeEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionEvidenceQuality,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
     expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
@@ -509,6 +532,11 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verificationState.decisive).toBe(false);
     expect(res.body.verificationState.overallDecision).toBe("provisional");
     expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verificationBundle).toBeTruthy();
+    expect(res.body.verificationBundle.phase).toBe("pre_compose");
+    expect(res.body.verificationBundle.publishabilityDecision).toBe(
+      "provisional",
+    );
     expect(res.body.verificationState.publishability.decisionStatus).toBe(
       "provisional",
     );
@@ -972,6 +1000,15 @@ describe("Phase 1 model route handlers", () => {
     expect(["pass", "warning", "block"]).toContain(
       res.body.renderedTextZoneStatus,
     );
+    expect(["verified", "weak", "provisional"]).toContain(
+      res.body.renderedTextEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sideFacadeEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionEvidenceQuality,
+    );
     expect(res.body.perSideElevationStatus).toBeTruthy();
     expect(Array.isArray(res.body.sectionCandidateQuality)).toBe(true);
     expect(Array.isArray(res.body.sectionStrategyRationale)).toBe(true);
@@ -987,6 +1024,11 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verificationState.decisive).toBe(false);
     expect(res.body.verificationState.overallDecision).toBe("provisional");
     expect(res.body.verificationState.publishability).toBeTruthy();
+    expect(res.body.verificationBundle).toBeTruthy();
+    expect(res.body.verificationBundle.phase).toBe("pre_compose");
+    expect(res.body.verificationBundle.publishabilityDecision).toBe(
+      "provisional",
+    );
     expect(res.body.verificationState.publishability.decisionStatus).toBe(
       "provisional",
     );

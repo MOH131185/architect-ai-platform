@@ -15,6 +15,7 @@ export async function runA1PostComposeVerification({
   panelLabelMap = {},
   width = null,
   height = null,
+  ocrAdapter = null,
 } = {}) {
   const renderedTextZone = await verifyRenderedTextZones({
     sheetSvg,
@@ -24,6 +25,7 @@ export async function runA1PostComposeVerification({
     panelLabelMap,
     width,
     height,
+    ocrAdapter,
   });
   const finalSheetRegression = runA1FinalSheetRegression({
     drawings,
@@ -56,13 +58,14 @@ export async function runA1PostComposeVerification({
   });
 
   return {
-    version: "phase10-a1-post-compose-verification-v1",
+    version: "phase11-a1-post-compose-verification-v1",
     status: publishability.status,
     postComposeVerified: true,
     renderedTextZone,
     finalSheetRegression,
     technicalCredibility,
     publishability,
+    verificationBundle: verificationState,
     verificationState,
     blockers: [
       ...new Set([

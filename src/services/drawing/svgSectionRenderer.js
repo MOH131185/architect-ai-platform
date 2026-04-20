@@ -428,6 +428,8 @@ export function renderSectionSvg(
         sectionEvidence.summary?.evidenceQuality || null,
       section_direct_evidence_count:
         sectionEvidence.summary?.directEvidenceCount || 0,
+      section_near_evidence_count:
+        sectionEvidence.summary?.nearEvidenceCount || 0,
       section_inferred_evidence_count:
         sectionEvidence.summary?.inferredEvidenceCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,

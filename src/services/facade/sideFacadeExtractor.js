@@ -2,6 +2,7 @@ import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { normalizeFacadeFeatures } from "./facadeFeatureNormalizer.js";
 import { assembleFacadeSideSemantics } from "./facadeSemanticAssembler.js";
+import { buildSideFacadeSchema } from "./facadeSchemaBuilder.js";
 import {
   orientationToSide,
   projectFacadeGeometry,
@@ -206,6 +207,20 @@ export function extractSideFacade(
         features,
       })
     : null;
+  const sideFacadeSchema = isFeatureEnabled("useSideFacadeSchemaPhase11")
+    ? buildSideFacadeSchema({
+        side,
+        projection,
+        facadeOrientation: facadeOrientation || {},
+        facadeSemantics,
+        features,
+        roofLanguage: normalizeRoofLanguage(
+          styleDNA,
+          facadeOrientation || {},
+          geometry,
+        ),
+      })
+    : null;
   const explicitGeometrySignal = projection.sideWalls.length > 0 ? 0.34 : 0.12;
   const openingSignal = projection.openingCount > 0 ? 0.24 : 0;
   const rhythmSignal = facadeOrientation?.components?.bays?.length
@@ -231,6 +246,13 @@ export function extractSideFacade(
           (Number(facadeSemantics.summary?.roofEdgeCount || 0) > 0 ? 0.02 : 0),
       )
     : 0;
+  const schemaSignal = sideFacadeSchema
+    ? Math.min(
+        0.18,
+        Number(sideFacadeSchema.evidenceSummary?.schemaCredibilityScore || 0) *
+          0.16,
+      )
+    : 0;
   const coverageSignal =
     projection.explicitCoverageRatio > 0
       ? Math.min(0.16, projection.explicitCoverageRatio * 0.16)
@@ -242,6 +264,7 @@ export function extractSideFacade(
       materialSignal +
       featureSignal +
       semanticSignal +
+      schemaSignal +
       coverageSignal,
   );
 
@@ -264,6 +287,13 @@ export function extractSideFacade(
     );
   }
   if (
+    sideFacadeSchema?.evidenceSummary?.schemaCredibilityQuality === "warning"
+  ) {
+    warnings.push(
+      `Elevation ${side} side-facade schema remains usable but still thinner than preferred for a final technical board.`,
+    );
+  }
+  if (
     projection.geometrySource === "envelope_derived" &&
     projection.openingCount === 0 &&
     !facadeOrientation?.components?.bays?.length &&
@@ -275,7 +305,9 @@ export function extractSideFacade(
     );
   }
   if (
-    facadeSemantics?.summary?.semanticStatus === "block" &&
+    (facadeSemantics?.summary?.semanticStatus === "block" ||
+      sideFacadeSchema?.evidenceSummary?.schemaCredibilityQuality ===
+        "block") &&
     richnessScore < 0.64 &&
     projection.openingCount === 0
   ) {
@@ -285,9 +317,11 @@ export function extractSideFacade(
   }
 
   return {
-    version: facadeSemantics
-      ? "phase10-side-facade-extractor-v1"
-      : "phase9-side-facade-extractor-v1",
+    version: sideFacadeSchema
+      ? "phase11-side-facade-extractor-v1"
+      : facadeSemantics
+        ? "phase10-side-facade-extractor-v1"
+        : "phase9-side-facade-extractor-v1",
     side,
     metrics: {
       width_m: projection.sideWidthM,
@@ -318,6 +352,8 @@ export function extractSideFacade(
     featureFamilies: facadeSemantics?.featureFamilies || [],
     sideSummary: facadeSemantics?.summary || null,
     facadeSemantics,
+    sideFacadeSchema,
+    sideFacadeEvidence: sideFacadeSchema?.evidenceSummary || null,
     richnessScore,
     warnings,
     blockingReasons,

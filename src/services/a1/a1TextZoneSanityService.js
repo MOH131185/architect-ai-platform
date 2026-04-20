@@ -5,6 +5,32 @@ function unique(items = []) {
   return [...new Set(items.filter(Boolean))];
 }
 
+function resolveRenderedTextEvidenceQuality(renderedZone = null) {
+  if (!renderedZone) {
+    return "provisional";
+  }
+  if (
+    renderedZone?.ocr?.available &&
+    renderedZone?.ocrEvidenceQuality &&
+    renderedZone.ocrEvidenceQuality !== "provisional"
+  ) {
+    return renderedZone.ocrEvidenceQuality;
+  }
+  if (renderedZone?.verificationState?.blocked) {
+    return "weak";
+  }
+  if (
+    renderedZone?.verificationState?.verified &&
+    renderedZone?.status === "pass"
+  ) {
+    return "verified";
+  }
+  if (renderedZone?.status === "pass" || renderedZone?.status === "warning") {
+    return "weak";
+  }
+  return "provisional";
+}
+
 export function runA1TextZoneSanity({
   sheetSvg = "",
   expectedLabels = [],
@@ -91,9 +117,12 @@ export function runA1TextZoneSanity({
   warnings.push(...(renderedZone.warnings || []));
 
   return {
-    version: renderedZone
-      ? "phase10-a1-text-zone-sanity-v1"
-      : "phase9-a1-text-zone-sanity-v1",
+    version:
+      renderedZone?.ocr || renderedZone?.ocrEvidenceQuality
+        ? "phase11-a1-text-zone-sanity-v1"
+        : renderedZone
+          ? "phase10-a1-text-zone-sanity-v1"
+          : "phase9-a1-text-zone-sanity-v1",
     verificationPhase: renderedZone?.verificationPhase || "pre_compose",
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: unique(blockers),
@@ -101,6 +130,8 @@ export function runA1TextZoneSanity({
     textElementCount: svg ? (svg.match(/<text\b/g) || []).length : 0,
     labelChecks,
     renderedTextZoneStatus: renderedZone.status,
+    renderedTextEvidenceQuality:
+      resolveRenderedTextEvidenceQuality(renderedZone),
     renderedTextZone: renderedZone,
     verificationState: buildVerificationState({
       phase: renderedZone?.verificationPhase || "pre_compose",
