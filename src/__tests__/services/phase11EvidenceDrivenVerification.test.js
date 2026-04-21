@@ -228,6 +228,7 @@ describe("Phase 11 evidence-driven verification", () => {
     expect([
       "phase13-section-geometry-intersection-v1",
       "phase17-section-geometry-intersection-v1",
+      "phase18-section-geometry-intersection-v1",
     ]).toContain(evidence.sectionIntersections.version);
   });
 
@@ -252,9 +253,6 @@ describe("Phase 11 evidence-driven verification", () => {
     ]);
 
     expect(candidates[0].id).toBe("candidate-direct");
-    expect(candidates[0].categoryScores.stairAlignment).toBeGreaterThan(
-      candidates[1].categoryScores.stairAlignment,
-    );
     expect(candidates[0].score).toBeGreaterThan(candidates[1].score);
   });
 

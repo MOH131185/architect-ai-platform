@@ -19,6 +19,9 @@ function wallTruth(summary = {}) {
   const exactWallClipCount = Number(
     summary.cutWallExactClipCount || summary.cutWallCount || 0,
   );
+  const directTruthCount = Number(summary.cutWallDirectTruthCount || 0);
+  const contextualTruthCount = Number(summary.cutWallContextualTruthCount || 0);
+  const derivedTruthCount = Number(summary.cutWallDerivedTruthCount || 0);
   const unsupportedWallCount = Number(summary.unsupportedWallCount || 0);
   const inferredWallCount = Number(summary.inferredWallCount || 0);
   const exactWallBonus =
@@ -32,6 +35,9 @@ function wallTruth(summary = {}) {
   const score = round(
     Math.min(1, cutWallCount * 0.34) +
       Math.min(0.36, exactWallClipCount * 0.16) +
+      Math.min(0.22, directTruthCount * 0.08) +
+      Math.min(0.06, contextualTruthCount * 0.03) -
+      Math.min(0.12, derivedTruthCount * 0.03) +
       exactWallBonus -
       inexactDirectPenalty -
       Math.min(0.12, inferredWallCount * 0.025) -
@@ -49,6 +55,11 @@ function openingTruth(summary = {}, cutWallQuality = "blocked") {
   const exactOpeningClipCount = Number(
     summary.cutOpeningExactClipCount || summary.cutOpeningCount || 0,
   );
+  const directTruthCount = Number(summary.cutOpeningDirectTruthCount || 0);
+  const contextualTruthCount = Number(
+    summary.cutOpeningContextualTruthCount || 0,
+  );
+  const derivedTruthCount = Number(summary.cutOpeningDerivedTruthCount || 0);
   const nearOpeningCount = Number(summary.nearOpeningCount || 0);
   const inferredOpeningCount = Number(summary.inferredOpeningCount || 0);
   const wallSupportBonus =
@@ -58,8 +69,11 @@ function openingTruth(summary = {}, cutWallQuality = "blocked") {
   const score = round(
     Math.min(1, cutOpeningCount * 0.16) +
       Math.min(0.36, exactOpeningClipCount * 0.18) +
+      Math.min(0.18, directTruthCount * 0.08) +
       Math.min(0.12, nearOpeningCount * 0.04) +
+      Math.min(0.08, contextualTruthCount * 0.03) +
       wallSupportBonus -
+      Math.min(0.08, derivedTruthCount * 0.025) -
       inexactOpeningPenalty -
       Math.min(0.12, inferredOpeningCount * 0.03),
   );
@@ -74,9 +88,15 @@ function stairConstructionTruth(summary = {}) {
   const cutStairCount = Number(summary.cutStairCount || 0);
   const nearStairCount = Number(summary.nearStairCount || 0);
   const inferredStairCount = Number(summary.inferredStairCount || 0);
+  const directTruthCount = Number(summary.stairDirectTruthCount || 0);
+  const contextualTruthCount = Number(summary.stairContextualTruthCount || 0);
+  const derivedTruthCount = Number(summary.stairDerivedTruthCount || 0);
   const score = round(
     Math.min(1, cutStairCount * 0.76) +
+      Math.min(0.18, directTruthCount * 0.08) +
+      Math.min(0.08, contextualTruthCount * 0.03) +
       Math.min(0.14, nearStairCount * 0.06) -
+      Math.min(0.08, derivedTruthCount * 0.03) -
       Math.min(0.18, inferredStairCount * 0.08),
   );
   return {
@@ -107,7 +127,8 @@ export function assessSectionConstructionSemantics({
     ),
   );
   const constructionEvidenceScore = round(
-    cutWallTruth.score * 0.25 +
+    Math.max(Number(summary.sectionConstructionEvidenceScore || 0), 0) * 0.22 +
+      cutWallTruth.score * 0.21 +
       cutOpeningTruth.score * 0.2 +
       stairTruth.score * 0.18 +
       slabTruth.score * 0.16 +

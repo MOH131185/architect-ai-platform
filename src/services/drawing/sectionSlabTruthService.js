@@ -19,6 +19,9 @@ export function assessSectionSlabTruth(sectionEvidence = {}, geometry = {}) {
   const nearCount = Number(summary.nearSlabCount || 0);
   const inferredCount = Number(summary.inferredSlabCount || 0);
   const unsupportedCount = Number(summary.unsupportedSlabCount || 0);
+  const directTruthCount = Number(summary.directSlabCount || 0);
+  const contextualTruthCount = Number(summary.nearSlabCount || 0);
+  const derivedTruthCount = Number(summary.inferredSlabCount || 0);
   const derivedOnly = (
     sectionEvidence.sectionIntersections?.geometrySupport?.slabs || []
   ).every((entry) =>
@@ -33,8 +36,11 @@ export function assessSectionSlabTruth(sectionEvidence = {}, geometry = {}) {
   const score = round(
     Math.min(1, exactDirect * 0.34) +
       Math.min(0.3, directCount * 0.12) +
+      Math.min(0.18, directTruthCount * 0.06) +
       Math.min(0.14, nearCount * 0.05) +
+      Math.min(0.08, contextualTruthCount * 0.03) +
       (levelCount > 1 ? 0.08 : 0.03) -
+      Math.min(0.08, derivedTruthCount * 0.025) -
       Math.min(0.22, inferredCount * 0.06) -
       Math.min(0.18, unsupportedCount * 0.07) -
       (derivedOnly ? 0.12 : 0),
@@ -47,6 +53,9 @@ export function assessSectionSlabTruth(sectionEvidence = {}, geometry = {}) {
     directCount,
     nearCount,
     inferredCount,
+    directTruthCount,
+    contextualTruthCount,
+    derivedTruthCount,
     unsupportedCount,
     derivedOnly,
   };

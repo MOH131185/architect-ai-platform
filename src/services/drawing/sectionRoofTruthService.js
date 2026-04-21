@@ -29,6 +29,7 @@ function roofSupportPenalty(mode = "missing") {
 }
 
 export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
+  const summary = sectionEvidence.summary || {};
   const roofElements = sectionEvidence.intersections?.roofElements || [];
   const exactDirect = roofElements.filter(
     (entry) => entry.exactClip === true,
@@ -56,6 +57,9 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
       (geometry?.roof_primitives || geometry?.roofElements || []).length ||
       0,
   );
+  const directTruthCount = Number(summary?.roofDirectTruthCount || 0);
+  const contextualTruthCount = Number(summary?.roofContextualTruthCount || 0);
+  const derivedTruthCount = Number(summary?.roofDerivedTruthCount || 0);
   const explicitGeneratedCount = Number(
     geometry?.metadata?.canonical_construction_truth?.roof
       ?.explicit_generated_count || 0,
@@ -98,6 +102,8 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
   const score = round(
     Math.min(1, exactDirect * 0.34) +
       Math.min(0.18, directCount * 0.08) +
+      Math.min(0.18, directTruthCount * 0.08) +
+      Math.min(0.08, contextualTruthCount * 0.03) +
       Math.min(0.14, explicitGeneratedCount * 0.03) +
       Math.min(0.1, edgeCount * 0.03) +
       Math.min(0.08, parapetCount * 0.03) +
@@ -116,6 +122,7 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
       (hasRoofLanguage ? 0.08 : 0) +
       Math.min(0.12, nearCount * 0.05) +
       Math.min(0.08, inferredCount * 0.03) -
+      Math.min(0.08, derivedTruthCount * 0.025) -
       Math.min(0.18, unsupportedCount * 0.08) -
       roofSupportPenalty(supportMode) -
       (derivedOnly ? 0.04 : 0),
@@ -130,6 +137,9 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
     directCount,
     nearCount,
     inferredCount,
+    directTruthCount,
+    contextualTruthCount,
+    derivedTruthCount,
     unsupportedCount,
     derivedOnly,
     hasRoofLanguage,

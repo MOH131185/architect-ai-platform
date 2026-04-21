@@ -369,6 +369,7 @@ describe("Phase 10 final sheet credibility", () => {
     expect([
       "phase13-section-cut-planner-v1",
       "phase17-section-cut-planner-v1",
+      "phase18-section-cut-planner-v1",
     ]).toContain(result.version);
     expect(result.chosenStrategy).toBeTruthy();
     expect(result.candidates[0].chosenStrategy.name).toBeTruthy();

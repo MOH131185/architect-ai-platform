@@ -210,6 +210,18 @@ function renderFoundation(
         `<rect x="${entry.x}" y="${baseY + 6}" width="${entry.width}" height="12" fill="#bfa98d"${entry.truthState === "contextual" ? ' fill-opacity="0.72"' : ""} stroke="#6b5d4f" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
+  const directClipMarkup = (foundationGeometry?.directClips || [])
+    .map((entry) => {
+      const width = Math.max(
+        8,
+        Number(entry.width || 0),
+        Math.min(22, Number(entry.clipDepthM || 0) * 22),
+      );
+      const x = Number(entry.x || 0) + (Number(entry.width || 0) - width) / 2;
+      const truthState = String(entry.truthState || "direct").toLowerCase();
+      return `<rect x="${x}" y="${baseY - 16}" width="${width}" height="34" fill="#8b7357" fill-opacity="${truthState === "direct" ? 0.92 : 0.68}" stroke="#4b3f34" stroke-width="${lineweights.primary || 1.2}"${truthState === "direct" ? "" : ' stroke-dasharray="6 4"'} data-truth-state="${truthState}" />`;
+    })
+    .join("");
   const baseWallConditionMarkup = (foundationGeometry?.baseWallConditions || [])
     .map(
       (entry) =>
@@ -220,6 +232,7 @@ function renderFoundation(
     <g id="phase8-section-foundation" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
       <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="#ded8cc" fill-opacity="${fillOpacity}" />
       ${bandMarkup}
+      ${directClipMarkup}
       ${zoneMarkup}
       ${groundLineMarkup}
       ${plinthMarkup}
@@ -287,12 +300,25 @@ function renderRoof(
         `<line x1="${entry.x}" y1="${topY - 30}" x2="${entry.x}" y2="${topY - 2}" stroke="#64748b" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "7 5" : "4 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
+  const cutPlaneMarkup = (roofGeometry?.cutPlanes || [])
+    .map((entry) => {
+      const width = Math.max(
+        10,
+        Number(entry.width || 0),
+        Math.min(26, Number(entry.clipDepthM || 0) * 20),
+      );
+      const x = Number(entry.x || 0) + (Number(entry.width || 0) - width) / 2;
+      const truthState = String(entry.truthState || "direct").toLowerCase();
+      return `<rect x="${x}" y="${topY - 30}" width="${width}" height="22" fill="#b9c4d4" fill-opacity="${truthState === "direct" ? 0.9 : 0.66}" stroke="#334155" stroke-width="${lineweights.primary || 1.1}"${truthState === "direct" ? "" : ' stroke-dasharray="6 4"'} data-truth-state="${truthState}" />`;
+    })
+    .join("");
   if (flat) {
     return `
       <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
       <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="#d5dae1" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
       <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
       <line x1="${roofX + 8}" y1="${topY - 7}" x2="${roofX + roofWidth - 8}" y2="${topY - 7}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+      ${cutPlaneMarkup}
       ${parapetMarkup}
       ${roofBreakMarkup}
       ${hipMarkup}
@@ -307,6 +333,7 @@ function renderRoof(
     <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${topY - 52} L ${roofX + roofWidth} ${topY}" fill="none" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
     <path d="M ${roofX + 10} ${topY} L ${roofX + roofWidth / 2} ${topY - 40} L ${roofX + roofWidth - 10} ${topY}" fill="none" stroke="#6b7280" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 0.9}"${dasharray} />
     <line x1="${roofX + 10}" y1="${topY - 8}" x2="${roofX + roofWidth - 10}" y2="${topY - 8}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
+    ${cutPlaneMarkup}
     ${roofBreakMarkup}
     ${hipMarkup}
     ${valleyMarkup}
@@ -424,15 +451,32 @@ function renderSlabCuts(
   slabTruthQuality = "weak",
 ) {
   const quality = String(slabTruthQuality || "weak").toLowerCase();
-  const dasharray = quality === "verified" ? "" : ' stroke-dasharray="6 4"';
   const markup = (slabs || [])
-    .map(
-      (slab) => `
-        <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" data-truth="${quality}">
-          <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="#111" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
-          <line x1="${slab.x || 0}" y1="${slab.y + 4}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + 4}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
-        </g>`,
-    )
+    .map((slab) => {
+      const truthState = String(slab.truthState || quality).toLowerCase();
+      const dasharray =
+        truthState === "direct"
+          ? ""
+          : truthState === "contextual"
+            ? ' stroke-dasharray="6 4"'
+            : ' stroke-dasharray="8 5"';
+      const fillOpacity =
+        truthState === "direct"
+          ? 0.88
+          : truthState === "contextual"
+            ? 0.62
+            : 0.42;
+      const buildUpDepth = Math.max(
+        5,
+        Math.min(12, Number(slab.clipDepthM || 0) * 18),
+      );
+      return `
+        <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" data-truth="${quality}" data-truth-state="${truthState}">
+          <rect x="${slab.x || 0}" y="${slab.y}" width="${slab.width}" height="${buildUpDepth}" fill="#dfe4ea" fill-opacity="${fillOpacity}" stroke="#111" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
+          <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="#111" stroke-width="${lineweights.cutOutline || 1.8}"${dasharray} />
+          <line x1="${slab.x || 0}" y1="${slab.y + buildUpDepth}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + buildUpDepth}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+        </g>`;
+    })
     .join("");
   return {
     markup: `<g id="phase14-section-slabs">${markup}</g>`,
@@ -466,9 +510,18 @@ function renderCutWalls(
       const x = baseX + center * scale - widthPx / 2;
       const y = baseY - level.top_m * scale;
       const heightPx = Math.max(24, Number(level.height_m || 3.2) * scale);
+      const truthState = String(wall.truthState || "direct").toLowerCase();
+      const fillOpacity =
+        truthState === "direct"
+          ? 0.88
+          : truthState === "contextual"
+            ? 0.56
+            : 0.34;
+      const strokeDash =
+        truthState === "direct" ? "" : ' stroke-dasharray="7 4"';
 
       return `
-        <rect id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#151515" fill-opacity="0.82" stroke="#111" stroke-width="1.2" />
+        <rect id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#151515" fill-opacity="${fillOpacity}" stroke="#111" stroke-width="1.2"${strokeDash} data-truth-state="${truthState}" />
       `;
     })
     .join("");
@@ -505,12 +558,17 @@ function renderCutOpenings(
       const x = baseX + Number(projection.start) * scale;
       const y = baseY - (level.bottom_m + headHeight) * scale;
       const heightPx = Math.max(10, (headHeight - sillHeight) * scale);
+      const truthState = String(opening.truthState || "direct").toLowerCase();
+      const strokeDash =
+        truthState === "direct" ? "" : ' stroke-dasharray="6 4"';
+      const fillOpacity =
+        truthState === "direct" ? 1 : truthState === "contextual" ? 0.82 : 0.66;
 
       return `
-        <g id="phase13-section-cut-opening-${escapeXml(opening.id || index)}">
-          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#ffffff" stroke="#475569" stroke-width="1" />
-          <line x1="${x}" y1="${y}" x2="${x + widthPx}" y2="${y}" stroke="#111" stroke-width="1" />
-          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="#111" stroke-width="1" />
+        <g id="phase13-section-cut-opening-${escapeXml(opening.id || index)}" data-truth-state="${truthState}">
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#ffffff" fill-opacity="${fillOpacity}" stroke="#475569" stroke-width="1"${strokeDash} />
+          <line x1="${x}" y1="${y}" x2="${x + widthPx}" y2="${y}" stroke="#111" stroke-width="1"${strokeDash} />
+          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="#111" stroke-width="1"${strokeDash} />
         </g>
       `;
     })
@@ -594,9 +652,9 @@ export function renderSectionSvg(
   const geometryComplete =
     sectionEvidence.summary?.geometryCommunicable !== false &&
     levelProfiles.length > 0;
-  const useDraftingGradeGraphics = isFeatureEnabled(
-    "useDraftingGradeSectionGraphicsPhase14",
-  );
+  const useDraftingGradeGraphics =
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18");
   const constructionGeometry = buildSectionConstructionGeometry({
     geometry,
     sectionType,
@@ -822,17 +880,47 @@ export function renderSectionSvg(
         sectionEvidence.summary?.communicationValue || usefulnessScore,
       section_construction_truth_quality:
         sectionEvidence.summary?.sectionConstructionTruthQuality || null,
+      section_construction_evidence_quality:
+        sectionEvidence.summary?.sectionConstructionEvidenceQuality || null,
       section_construction_evidence_score:
         sectionEvidence.summary?.constructionEvidenceScore || 0,
+      section_direct_construction_truth_count:
+        sectionEvidence.summary?.directConstructionTruthCount || 0,
+      section_contextual_construction_truth_count:
+        sectionEvidence.summary?.contextualConstructionTruthCount || 0,
+      section_derived_construction_truth_count:
+        sectionEvidence.summary?.derivedConstructionTruthCount || 0,
+      section_unsupported_construction_truth_count:
+        sectionEvidence.summary?.unsupportedConstructionTruthCount || 0,
+      section_exact_construction_clip_count:
+        sectionEvidence.summary?.exactConstructionClipCount || 0,
       cut_wall_truth_quality:
         sectionEvidence.summary?.cutWallTruthQuality || null,
+      cut_wall_direct_truth_count:
+        sectionEvidence.summary?.cutWallDirectTruthCount || 0,
+      cut_wall_contextual_truth_count:
+        sectionEvidence.summary?.cutWallContextualTruthCount || 0,
+      cut_wall_derived_truth_count:
+        sectionEvidence.summary?.cutWallDerivedTruthCount || 0,
       cut_wall_exact_clip_count:
         sectionEvidence.summary?.cutWallExactClipCount || 0,
       cut_opening_truth_quality:
         sectionEvidence.summary?.cutOpeningTruthQuality || null,
+      cut_opening_direct_truth_count:
+        sectionEvidence.summary?.cutOpeningDirectTruthCount || 0,
+      cut_opening_contextual_truth_count:
+        sectionEvidence.summary?.cutOpeningContextualTruthCount || 0,
+      cut_opening_derived_truth_count:
+        sectionEvidence.summary?.cutOpeningDerivedTruthCount || 0,
       cut_opening_exact_clip_count:
         sectionEvidence.summary?.cutOpeningExactClipCount || 0,
       stair_truth_quality: sectionEvidence.summary?.stairTruthQuality || null,
+      stair_direct_truth_count:
+        sectionEvidence.summary?.stairDirectTruthCount || 0,
+      stair_contextual_truth_count:
+        sectionEvidence.summary?.stairContextualTruthCount || 0,
+      stair_derived_truth_count:
+        sectionEvidence.summary?.stairDerivedTruthCount || 0,
       slab_truth_quality: sectionEvidence.summary?.slabTruthQuality || null,
       slab_exact_clip_count:
         sectionEvidence.summary?.directSlabExactClipCount || 0,
@@ -849,6 +937,12 @@ export function renderSectionSvg(
       roof_attachment_count:
         sectionEvidence.summary?.explicitDormerAttachmentCount || 0,
       roof_direct_clip_count: sectionEvidence.summary?.directRoofCount || 0,
+      roof_direct_truth_count:
+        sectionEvidence.summary?.roofDirectTruthCount || 0,
+      roof_contextual_truth_count:
+        sectionEvidence.summary?.roofContextualTruthCount || 0,
+      roof_derived_truth_count:
+        sectionEvidence.summary?.roofDerivedTruthCount || 0,
       roof_exact_clip_count:
         sectionEvidence.summary?.directRoofExactClipCount || 0,
       foundation_truth_quality:
@@ -857,8 +951,20 @@ export function renderSectionSvg(
       foundation_truth_state: foundationTruthState,
       foundation_direct_clip_count:
         sectionEvidence.summary?.directFoundationCount || 0,
+      foundation_direct_truth_count:
+        sectionEvidence.summary?.foundationDirectTruthCount || 0,
+      foundation_contextual_truth_count:
+        sectionEvidence.summary?.foundationContextualTruthCount || 0,
+      foundation_derived_truth_count:
+        sectionEvidence.summary?.foundationDerivedTruthCount || 0,
       base_condition_direct_clip_count:
         sectionEvidence.summary?.directBaseConditionCount || 0,
+      base_condition_direct_truth_count:
+        sectionEvidence.summary?.baseConditionDirectTruthCount || 0,
+      base_condition_contextual_truth_count:
+        sectionEvidence.summary?.baseConditionContextualTruthCount || 0,
+      base_condition_derived_truth_count:
+        sectionEvidence.summary?.baseConditionDerivedTruthCount || 0,
       explicit_foundation_count:
         sectionEvidence.summary?.explicitFoundationCount || 0,
       explicit_base_condition_count:
@@ -875,6 +981,10 @@ export function renderSectionSvg(
         sectionEvidence.summary?.approximateEvidenceCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
       section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,
+      chosen_section_rationale:
+        sectionEvidence.summary?.chosenSectionRationale ||
+        sectionProfile?.rationale?.[0] ||
+        null,
     },
   };
 }

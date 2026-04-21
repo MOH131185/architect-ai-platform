@@ -227,8 +227,13 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       nearEvidenceCount: 0,
       inferredEvidenceCount: 0,
       unsupportedEvidenceCount: 0,
+      directConstructionTruthCount: 0,
+      contextualConstructionTruthCount: 0,
+      derivedConstructionTruthCount: 0,
+      unsupportedConstructionTruthCount: 0,
       directClipCount: 0,
       approximateEvidenceCount: 0,
+      exactConstructionClipCount: 0,
       focusHitCount: 0,
       cutRoomCount: 0,
       nearRoomCount: 0,
@@ -271,6 +276,28 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       nearBaseConditionCount: 0,
       inferredBaseConditionCount: 0,
       unsupportedBaseConditionCount: 0,
+      cutWallDirectTruthCount: 0,
+      cutWallContextualTruthCount: 0,
+      cutWallDerivedTruthCount: 0,
+      cutWallUnsupportedTruthCount: 0,
+      cutOpeningDirectTruthCount: 0,
+      cutOpeningContextualTruthCount: 0,
+      cutOpeningDerivedTruthCount: 0,
+      cutOpeningUnsupportedTruthCount: 0,
+      stairDirectTruthCount: 0,
+      stairContextualTruthCount: 0,
+      stairDerivedTruthCount: 0,
+      roofDirectTruthCount: 0,
+      roofContextualTruthCount: 0,
+      roofDerivedTruthCount: 0,
+      foundationDirectTruthCount: 0,
+      foundationContextualTruthCount: 0,
+      foundationDerivedTruthCount: 0,
+      baseConditionDirectTruthCount: 0,
+      baseConditionContextualTruthCount: 0,
+      baseConditionDerivedTruthCount: 0,
+      sectionConstructionEvidenceScore: 0,
+      sectionConstructionEvidenceQuality: "provisional",
       sectionConstructionTruthQuality: "provisional",
       constructionEvidenceScore: 0,
       cutWallTruthQuality: "provisional",
@@ -302,6 +329,7 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       geometryCommunicable: false,
       geometrySupportLimited: true,
       totalCutRoomAreaM2: 0,
+      chosenSectionRationale: null,
     }
   );
 }
@@ -357,6 +385,11 @@ export function buildSectionEvidence(
     isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
     isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
     isFeatureEnabled("useExplicitFoundationPrimitiveSynthesisPhase17");
+  const usePhase18Truth =
+    isFeatureEnabled("useDeeperSectionClippingPhase18") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase18") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase18");
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
@@ -423,6 +456,86 @@ export function buildSectionEvidence(
     directStairs,
     directEntrances,
   );
+  const constructionTruthSummary =
+    intersectionBundle.constructionTruthSummary || {};
+  const wallConstructionTruth = constructionTruthSummary.walls || {};
+  const openingConstructionTruth = {
+    totalCount:
+      Number(constructionTruthSummary.windows?.totalCount || 0) +
+      Number(constructionTruthSummary.doors?.totalCount || 0),
+    directCount:
+      Number(constructionTruthSummary.windows?.directCount || 0) +
+      Number(constructionTruthSummary.doors?.directCount || 0),
+    contextualCount:
+      Number(constructionTruthSummary.windows?.contextualCount || 0) +
+      Number(constructionTruthSummary.doors?.contextualCount || 0),
+    derivedCount:
+      Number(constructionTruthSummary.windows?.derivedCount || 0) +
+      Number(constructionTruthSummary.doors?.derivedCount || 0),
+    unsupportedCount:
+      Number(constructionTruthSummary.windows?.unsupportedCount || 0) +
+      Number(constructionTruthSummary.doors?.unsupportedCount || 0),
+    exactClipCount:
+      Number(constructionTruthSummary.windows?.exactClipCount || 0) +
+      Number(constructionTruthSummary.doors?.exactClipCount || 0),
+  };
+  const stairConstructionTruth = constructionTruthSummary.stairs || {};
+  const slabConstructionTruth = constructionTruthSummary.slabs || {};
+  const roofConstructionTruth = constructionTruthSummary.roofElements || {};
+  const foundationConstructionTruth =
+    constructionTruthSummary.foundations || {};
+  const baseConditionConstructionTruth =
+    constructionTruthSummary.baseConditions || {};
+  const overallConstructionTruth = {
+    totalCount:
+      Number(wallConstructionTruth.totalCount || 0) +
+      Number(openingConstructionTruth.totalCount || 0) +
+      Number(stairConstructionTruth.totalCount || 0) +
+      Number(slabConstructionTruth.totalCount || 0) +
+      Number(roofConstructionTruth.totalCount || 0) +
+      Number(foundationConstructionTruth.totalCount || 0) +
+      Number(baseConditionConstructionTruth.totalCount || 0),
+    directCount:
+      Number(wallConstructionTruth.directCount || 0) +
+      Number(openingConstructionTruth.directCount || 0) +
+      Number(stairConstructionTruth.directCount || 0) +
+      Number(slabConstructionTruth.directCount || 0) +
+      Number(roofConstructionTruth.directCount || 0) +
+      Number(foundationConstructionTruth.directCount || 0) +
+      Number(baseConditionConstructionTruth.directCount || 0),
+    contextualCount:
+      Number(wallConstructionTruth.contextualCount || 0) +
+      Number(openingConstructionTruth.contextualCount || 0) +
+      Number(stairConstructionTruth.contextualCount || 0) +
+      Number(slabConstructionTruth.contextualCount || 0) +
+      Number(roofConstructionTruth.contextualCount || 0) +
+      Number(foundationConstructionTruth.contextualCount || 0) +
+      Number(baseConditionConstructionTruth.contextualCount || 0),
+    derivedCount:
+      Number(wallConstructionTruth.derivedCount || 0) +
+      Number(openingConstructionTruth.derivedCount || 0) +
+      Number(stairConstructionTruth.derivedCount || 0) +
+      Number(slabConstructionTruth.derivedCount || 0) +
+      Number(roofConstructionTruth.derivedCount || 0) +
+      Number(foundationConstructionTruth.derivedCount || 0) +
+      Number(baseConditionConstructionTruth.derivedCount || 0),
+    unsupportedCount:
+      Number(wallConstructionTruth.unsupportedCount || 0) +
+      Number(openingConstructionTruth.unsupportedCount || 0) +
+      Number(stairConstructionTruth.unsupportedCount || 0) +
+      Number(slabConstructionTruth.unsupportedCount || 0) +
+      Number(roofConstructionTruth.unsupportedCount || 0) +
+      Number(foundationConstructionTruth.unsupportedCount || 0) +
+      Number(baseConditionConstructionTruth.unsupportedCount || 0),
+    exactClipCount:
+      Number(wallConstructionTruth.exactClipCount || 0) +
+      Number(openingConstructionTruth.exactClipCount || 0) +
+      Number(stairConstructionTruth.exactClipCount || 0) +
+      Number(slabConstructionTruth.exactClipCount || 0) +
+      Number(roofConstructionTruth.exactClipCount || 0) +
+      Number(foundationConstructionTruth.exactClipCount || 0) +
+      Number(baseConditionConstructionTruth.exactClipCount || 0),
+  };
   const circulationHitCount = Number(projectGeometry.circulation?.length || 0);
 
   const directEvidenceCount =
@@ -462,6 +575,21 @@ export function buildSectionEvidence(
   );
   const approximateEvidenceCount = Number(
     intersectionBundle.clipSummary?.approximateEvidenceCount || 0,
+  );
+  const directConstructionTruthCount = Number(
+    overallConstructionTruth.directCount || 0,
+  );
+  const contextualConstructionTruthCount = Number(
+    overallConstructionTruth.contextualCount || 0,
+  );
+  const derivedConstructionTruthCount = Number(
+    overallConstructionTruth.derivedCount || 0,
+  );
+  const unsupportedConstructionTruthCount = Number(
+    overallConstructionTruth.unsupportedCount || 0,
+  );
+  const exactConstructionClipCount = Number(
+    overallConstructionTruth.exactClipCount || 0,
   );
 
   const roomCommunicationScore =
@@ -583,6 +711,26 @@ export function buildSectionEvidence(
       : inferredEvidenceScore >= 0.4
         ? "weak"
         : "verified";
+  const sectionConstructionEvidenceScore = round(
+    clamp(
+      directConstructionTruthCount * 0.08 +
+        exactConstructionClipCount * 0.05 +
+        Number(roofConstructionTruth.directCount || 0) * 0.04 +
+        Number(foundationConstructionTruth.directCount || 0) * 0.04 +
+        Number(baseConditionConstructionTruth.directCount || 0) * 0.03 -
+        contextualConstructionTruthCount * 0.03 -
+        derivedConstructionTruthCount * 0.045 -
+        unsupportedConstructionTruthCount * 0.06,
+      0,
+      1,
+    ),
+  );
+  const sectionConstructionEvidenceQuality =
+    sectionConstructionEvidenceScore >= 0.72
+      ? "verified"
+      : sectionConstructionEvidenceScore >= 0.42
+        ? "weak"
+        : "blocked";
 
   const summary = {
     sectionType,
@@ -592,8 +740,13 @@ export function buildSectionEvidence(
     nearEvidenceCount,
     inferredEvidenceCount,
     unsupportedEvidenceCount,
+    directConstructionTruthCount,
+    contextualConstructionTruthCount,
+    derivedConstructionTruthCount,
+    unsupportedConstructionTruthCount,
     directClipCount,
     approximateEvidenceCount,
+    exactConstructionClipCount,
     cutSpecificity: round(cutSpecificity),
     directEvidenceScore,
     inferredEvidenceScore,
@@ -662,6 +815,48 @@ export function buildSectionEvidence(
     nearBaseConditionCount: nearBaseConditions.length,
     inferredBaseConditionCount: inferredBaseConditions.length,
     unsupportedBaseConditionCount: unsupportedBaseConditions.length,
+    cutWallDirectTruthCount: Number(wallConstructionTruth.directCount || 0),
+    cutWallContextualTruthCount: Number(
+      wallConstructionTruth.contextualCount || 0,
+    ),
+    cutWallDerivedTruthCount: Number(wallConstructionTruth.derivedCount || 0),
+    cutWallUnsupportedTruthCount: Number(
+      wallConstructionTruth.unsupportedCount || 0,
+    ),
+    cutOpeningDirectTruthCount: openingConstructionTruth.directCount,
+    cutOpeningContextualTruthCount: openingConstructionTruth.contextualCount,
+    cutOpeningDerivedTruthCount: openingConstructionTruth.derivedCount,
+    cutOpeningUnsupportedTruthCount: openingConstructionTruth.unsupportedCount,
+    stairDirectTruthCount: Number(stairConstructionTruth.directCount || 0),
+    stairContextualTruthCount: Number(
+      stairConstructionTruth.contextualCount || 0,
+    ),
+    stairDerivedTruthCount: Number(stairConstructionTruth.derivedCount || 0),
+    roofDirectTruthCount: Number(roofConstructionTruth.directCount || 0),
+    roofContextualTruthCount: Number(
+      roofConstructionTruth.contextualCount || 0,
+    ),
+    roofDerivedTruthCount: Number(roofConstructionTruth.derivedCount || 0),
+    foundationDirectTruthCount: Number(
+      foundationConstructionTruth.directCount || 0,
+    ),
+    foundationContextualTruthCount: Number(
+      foundationConstructionTruth.contextualCount || 0,
+    ),
+    foundationDerivedTruthCount: Number(
+      foundationConstructionTruth.derivedCount || 0,
+    ),
+    baseConditionDirectTruthCount: Number(
+      baseConditionConstructionTruth.directCount || 0,
+    ),
+    baseConditionContextualTruthCount: Number(
+      baseConditionConstructionTruth.contextualCount || 0,
+    ),
+    baseConditionDerivedTruthCount: Number(
+      baseConditionConstructionTruth.derivedCount || 0,
+    ),
+    sectionConstructionEvidenceScore,
+    sectionConstructionEvidenceQuality,
     explicitRoofPrimitiveCount: Number(
       intersectionBundle.explicitRoofPrimitiveCount || 0,
     ),
@@ -728,6 +923,11 @@ export function buildSectionEvidence(
     totalCutRoomAreaM2: round(
       directRooms.reduce((sum, room) => sum + roomArea(room), 0),
     ),
+    chosenSectionRationale:
+      sectionProfile.rationale?.[0] ||
+      sectionProfile.strategyName ||
+      sectionProfile.semanticGoal ||
+      null,
   };
   summary.usefulnessScore = communicationValue;
   summary.evidenceQuality = classifySectionEvidence(summary);
@@ -894,15 +1094,17 @@ export function buildSectionEvidence(
   }
 
   return {
-    version: usePhase17Truth
-      ? "phase17-section-evidence-service-v1"
-      : usePhase15Truth
-        ? "phase15-section-evidence-service-v1"
-        : useTrueEvidence
-          ? useConstructionTruth
-            ? "phase14-section-evidence-service-v1"
-            : "phase13-section-evidence-service-v1"
-          : "phase10-section-evidence-service-v1",
+    version: usePhase18Truth
+      ? "phase18-section-evidence-service-v1"
+      : usePhase17Truth
+        ? "phase17-section-evidence-service-v1"
+        : usePhase15Truth
+          ? "phase15-section-evidence-service-v1"
+          : useTrueEvidence
+            ? useConstructionTruth
+              ? "phase14-section-evidence-service-v1"
+              : "phase13-section-evidence-service-v1"
+            : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
     cutAxis: axis,

@@ -1161,6 +1161,18 @@ export const FEATURE_FLAGS = {
   /** Phase 17 roof/foundation-aware section credibility gate */
   useRoofFoundationCredibilityGatePhase17: true,
 
+  /** Phase 18 deeper geometric section clipping from richer upstream primitives */
+  useDeeperSectionClippingPhase18: true,
+
+  /** Phase 18 more drafting-grade section graphics from clipped construction truth */
+  useDraftingGradeSectionGraphicsPhase18: true,
+
+  /** Phase 18 section ranking from clipped construction value */
+  useConstructionTruthDrivenSectionRankingPhase18: true,
+
+  /** Phase 18 section construction credibility gate in A1 readiness/publishability */
+  useSectionConstructionCredibilityGatePhase18: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1521,6 +1533,10 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useCanonicalConstructionTruthModelPhase17 = true;
   FEATURE_FLAGS.useDeeperRoofFoundationClippingPhase17 = true;
   FEATURE_FLAGS.useRoofFoundationCredibilityGatePhase17 = true;
+  FEATURE_FLAGS.useDeeperSectionClippingPhase18 = true;
+  FEATURE_FLAGS.useDraftingGradeSectionGraphicsPhase18 = true;
+  FEATURE_FLAGS.useConstructionTruthDrivenSectionRankingPhase18 = true;
+  FEATURE_FLAGS.useSectionConstructionCredibilityGatePhase18 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -2054,6 +2070,22 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_ROOF_FOUNDATION_CREDIBILITY_GATE_PHASE17: {
       flag: "useRoofFoundationCredibilityGatePhase17",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DEEPER_SECTION_CLIPPING_PHASE18: {
+      flag: "useDeeperSectionClippingPhase18",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DRAFTING_GRADE_SECTION_GRAPHICS_PHASE18: {
+      flag: "useDraftingGradeSectionGraphicsPhase18",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CONSTRUCTION_TRUTH_DRIVEN_SECTION_RANKING_PHASE18: {
+      flag: "useConstructionTruthDrivenSectionRankingPhase18",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CONSTRUCTION_CREDIBILITY_GATE_PHASE18: {
+      flag: "useSectionConstructionCredibilityGatePhase18",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

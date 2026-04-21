@@ -231,16 +231,33 @@ export function buildSectionGraphic(
           sectionEvidence.summary?.inferredEvidenceScore || 0,
         section_communication_value:
           sectionEvidence.summary?.communicationValue || 0,
+        section_construction_evidence_quality:
+          sectionEvidence.summary?.sectionConstructionEvidenceQuality ||
+          "blocked",
         section_construction_truth_quality:
           sectionEvidence.summary?.sectionConstructionTruthQuality || "blocked",
         section_construction_evidence_score:
           sectionEvidence.summary?.constructionEvidenceScore || 0,
+        section_direct_construction_truth_count:
+          sectionEvidence.summary?.directConstructionTruthCount || 0,
+        section_contextual_construction_truth_count:
+          sectionEvidence.summary?.contextualConstructionTruthCount || 0,
+        section_derived_construction_truth_count:
+          sectionEvidence.summary?.derivedConstructionTruthCount || 0,
+        section_exact_construction_clip_count:
+          sectionEvidence.summary?.exactConstructionClipCount || 0,
         cut_wall_truth_quality:
           sectionEvidence.summary?.cutWallTruthQuality || "blocked",
+        cut_wall_direct_truth_count:
+          sectionEvidence.summary?.cutWallDirectTruthCount || 0,
         cut_opening_truth_quality:
           sectionEvidence.summary?.cutOpeningTruthQuality || "blocked",
+        cut_opening_direct_truth_count:
+          sectionEvidence.summary?.cutOpeningDirectTruthCount || 0,
         stair_truth_quality:
           sectionEvidence.summary?.stairTruthQuality || "blocked",
+        stair_direct_truth_count:
+          sectionEvidence.summary?.stairDirectTruthCount || 0,
         slab_truth_quality:
           sectionEvidence.summary?.slabTruthQuality || "blocked",
         roof_truth_quality:
@@ -271,6 +288,8 @@ export function buildSectionGraphic(
           sectionEvidence.summary?.directBaseConditionCount || 0,
         explicit_ground_relation_count:
           sectionEvidence.summary?.explicitGroundRelationCount || 0,
+        chosen_section_rationale:
+          sectionEvidence.summary?.chosenSectionRationale || null,
       },
     };
   }
@@ -349,15 +368,31 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.inferredEvidenceCount || 0,
       section_inferred_evidence_score:
         sectionEvidence.summary?.inferredEvidenceScore || 0,
+      section_construction_evidence_quality:
+        sectionEvidence.summary?.sectionConstructionEvidenceQuality || null,
       section_construction_truth_quality:
         sectionEvidence.summary?.sectionConstructionTruthQuality || null,
       section_construction_evidence_score:
         sectionEvidence.summary?.constructionEvidenceScore || 0,
+      section_direct_construction_truth_count:
+        sectionEvidence.summary?.directConstructionTruthCount || 0,
+      section_contextual_construction_truth_count:
+        sectionEvidence.summary?.contextualConstructionTruthCount || 0,
+      section_derived_construction_truth_count:
+        sectionEvidence.summary?.derivedConstructionTruthCount || 0,
+      section_exact_construction_clip_count:
+        sectionEvidence.summary?.exactConstructionClipCount || 0,
       cut_wall_truth_quality:
         sectionEvidence.summary?.cutWallTruthQuality || null,
+      cut_wall_direct_truth_count:
+        sectionEvidence.summary?.cutWallDirectTruthCount || 0,
       cut_opening_truth_quality:
         sectionEvidence.summary?.cutOpeningTruthQuality || null,
+      cut_opening_direct_truth_count:
+        sectionEvidence.summary?.cutOpeningDirectTruthCount || 0,
       stair_truth_quality: sectionEvidence.summary?.stairTruthQuality || null,
+      stair_direct_truth_count:
+        sectionEvidence.summary?.stairDirectTruthCount || 0,
       slab_truth_quality: sectionEvidence.summary?.slabTruthQuality || null,
       slab_exact_clip_count:
         sectionEvidence.summary?.directSlabExactClipCount || 0,
@@ -386,6 +421,8 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.directBaseConditionCount || 0,
       explicit_ground_relation_count:
         sectionEvidence.summary?.explicitGroundRelationCount || 0,
+      chosen_section_rationale:
+        sectionEvidence.summary?.chosenSectionRationale || null,
       section_cut_room_count: sectionEvidence.summary?.cutRoomCount || 0,
       section_cut_opening_count: sectionEvidence.summary?.cutOpeningCount || 0,
       section_focus_hit_count: sectionEvidence.summary?.focusHitCount || 0,

@@ -80,6 +80,15 @@ export function assessSectionFoundationTruth(
   const exactBaseConditionDirect = directBaseConditions.filter(
     (entry) => entry.exactClip === true,
   ).length;
+  const directTruthCount =
+    Number(summary.foundationDirectTruthCount || 0) +
+    Number(summary.baseConditionDirectTruthCount || 0);
+  const contextualTruthCount =
+    Number(summary.foundationContextualTruthCount || 0) +
+    Number(summary.baseConditionContextualTruthCount || 0);
+  const derivedTruthCount =
+    Number(summary.foundationDerivedTruthCount || 0) +
+    Number(summary.baseConditionDerivedTruthCount || 0);
   const supportMode = resolveFoundationTruthMode({
     foundations: geometry?.foundations || [],
     baseConditions: geometry?.base_conditions || [],
@@ -137,6 +146,8 @@ export function assessSectionFoundationTruth(
       Math.min(0.16, directFoundations.length * 0.08) +
       Math.min(0.16, exactBaseConditionDirect * 0.1) +
       Math.min(0.12, directBaseConditions.length * 0.06) +
+      Math.min(0.18, directTruthCount * 0.05) +
+      Math.min(0.08, contextualTruthCount * 0.025) +
       Math.min(0.12, groundRelationPrimitiveCount * 0.03) +
       Math.min(0.08, groundLineCount * 0.03) +
       Math.min(0.08, plinthCount * 0.03) +
@@ -158,6 +169,7 @@ export function assessSectionFoundationTruth(
       (nearFoundations.length > 0 ? 0.05 : 0) +
       (nearBaseConditions.length > 0 ? 0.05 : 0) +
       (levelCount > 0 ? 0.05 : 0) -
+      Math.min(0.12, derivedTruthCount * 0.025) -
       Math.min(
         0.18,
         inferredWallCount * 0.03 +
@@ -189,6 +201,9 @@ export function assessSectionFoundationTruth(
     nearBaseConditionCount: nearBaseConditions.length,
     inferredFoundationCount: inferredFoundations.length,
     inferredBaseConditionCount: inferredBaseConditions.length,
+    directTruthCount,
+    contextualTruthCount,
+    derivedTruthCount,
     unsupportedFoundationCount: unsupportedFoundations.length,
     unsupportedBaseConditionCount: unsupportedBaseConditions.length,
     directWallCount,

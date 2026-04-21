@@ -418,7 +418,19 @@ describe("Phase 1 model route handlers", () => {
       res.body.sectionInferredEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionConstructionEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.cutWallTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.cutOpeningTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.stairTruthQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.slabTruthQuality,
@@ -479,8 +491,20 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
       res.body.sectionInferredEvidenceQuality,
     );
+    expect(res.body.verification.sectionConstructionEvidenceQuality).toBe(
+      res.body.sectionConstructionEvidenceQuality,
+    );
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(res.body.verification.cutWallTruthQuality).toBe(
+      res.body.cutWallTruthQuality,
+    );
+    expect(res.body.verification.cutOpeningTruthQuality).toBe(
+      res.body.cutOpeningTruthQuality,
+    );
+    expect(res.body.verification.stairTruthQuality).toBe(
+      res.body.stairTruthQuality,
     );
     expect(res.body.verification.roofTruthQuality).toBe(
       res.body.roofTruthQuality,
@@ -536,7 +560,11 @@ describe("Phase 1 model route handlers", () => {
             phase: "pre_compose",
             sectionDirectEvidenceQuality: "verified",
             sectionInferredEvidenceQuality: "verified",
+            sectionConstructionEvidenceQuality: "verified",
             sectionConstructionTruthQuality: "verified",
+            cutWallTruthQuality: "verified",
+            cutOpeningTruthQuality: "verified",
+            stairTruthQuality: "verified",
             slabTruthQuality: "verified",
             roofTruthQuality: "verified",
             roofTruthMode: "explicit_generated",
@@ -560,7 +588,11 @@ describe("Phase 1 model route handlers", () => {
 
     expect(response.sectionDirectEvidenceQuality).toBe("verified");
     expect(response.sectionInferredEvidenceQuality).toBe("verified");
+    expect(response.sectionConstructionEvidenceQuality).toBe("verified");
     expect(response.sectionConstructionTruthQuality).toBe("verified");
+    expect(response.cutWallTruthQuality).toBe("verified");
+    expect(response.cutOpeningTruthQuality).toBe("verified");
+    expect(response.stairTruthQuality).toBe("verified");
     expect(response.slabTruthQuality).toBe("verified");
     expect(response.roofTruthQuality).toBe("verified");
     expect(response.roofTruthMode).toBe("explicit_generated");
@@ -574,8 +606,20 @@ describe("Phase 1 model route handlers", () => {
     expect(response.verification.sectionInferredEvidenceQuality).toBe(
       response.sectionInferredEvidenceQuality,
     );
+    expect(response.verification.sectionConstructionEvidenceQuality).toBe(
+      response.sectionConstructionEvidenceQuality,
+    );
     expect(response.verification.sectionConstructionTruthQuality).toBe(
       response.sectionConstructionTruthQuality,
+    );
+    expect(response.verification.cutWallTruthQuality).toBe(
+      response.cutWallTruthQuality,
+    );
+    expect(response.verification.cutOpeningTruthQuality).toBe(
+      response.cutOpeningTruthQuality,
+    );
+    expect(response.verification.stairTruthQuality).toBe(
+      response.stairTruthQuality,
     );
     expect(response.verification.roofTruthQuality).toBe(
       response.roofTruthQuality,
@@ -679,7 +723,19 @@ describe("Phase 1 model route handlers", () => {
       res.body.sectionInferredEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionConstructionEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.cutWallTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.cutOpeningTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.stairTruthQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.slabTruthQuality,
@@ -720,8 +776,20 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
       res.body.sectionInferredEvidenceQuality,
     );
+    expect(res.body.verification.sectionConstructionEvidenceQuality).toBe(
+      res.body.sectionConstructionEvidenceQuality,
+    );
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(res.body.verification.cutWallTruthQuality).toBe(
+      res.body.cutWallTruthQuality,
+    );
+    expect(res.body.verification.cutOpeningTruthQuality).toBe(
+      res.body.cutOpeningTruthQuality,
+    );
+    expect(res.body.verification.stairTruthQuality).toBe(
+      res.body.stairTruthQuality,
     );
     expect(res.body.verification.roofTruthQuality).toBe(
       res.body.roofTruthQuality,
@@ -1220,7 +1288,19 @@ describe("Phase 1 model route handlers", () => {
       res.body.sectionInferredEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionConstructionEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.cutWallTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.cutOpeningTruthQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.stairTruthQuality,
     );
     expect(["direct", "contextual", "derived", "unsupported"]).toContain(
       res.body.roofTruthState,
@@ -1252,8 +1332,20 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
       res.body.sectionInferredEvidenceQuality,
     );
+    expect(res.body.verification.sectionConstructionEvidenceQuality).toBe(
+      res.body.sectionConstructionEvidenceQuality,
+    );
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(res.body.verification.cutWallTruthQuality).toBe(
+      res.body.cutWallTruthQuality,
+    );
+    expect(res.body.verification.cutOpeningTruthQuality).toBe(
+      res.body.cutOpeningTruthQuality,
+    );
+    expect(res.body.verification.stairTruthQuality).toBe(
+      res.body.stairTruthQuality,
     );
     expect(res.body.verification.roofTruthState).toBe(res.body.roofTruthState);
     expect(res.body.verification.foundationTruthState).toBe(

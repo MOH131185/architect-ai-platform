@@ -1,6 +1,7 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
   bucketByEvidence,
+  clipConstructionPrimitivesToSection,
   clipFoundationToSection,
   clipOpeningToSection,
   clipRoofElementToSection,
@@ -245,6 +246,36 @@ function collectClipSummary(intersections = {}) {
   };
 }
 
+function summarizeConstructionTruthByGroup(intersections = {}) {
+  const summary = Object.fromEntries(
+    Object.entries(intersections).map(([key, grouped]) => [
+      key,
+      clipConstructionPrimitivesToSection(
+        [
+          ...(grouped.direct || []),
+          ...(grouped.near || []),
+          ...(grouped.inferred || []),
+          ...(grouped.unsupported || []),
+        ],
+        (entry) => entry,
+      ).summary,
+    ]),
+  );
+  const overallEntries = Object.values(intersections).flatMap((grouped) => [
+    ...(grouped.direct || []),
+    ...(grouped.near || []),
+    ...(grouped.inferred || []),
+    ...(grouped.unsupported || []),
+  ]);
+  return {
+    ...summary,
+    overall: clipConstructionPrimitivesToSection(
+      overallEntries,
+      (entry) => entry,
+    ).summary,
+  };
+}
+
 export function buildSectionIntersections(
   projectGeometry = {},
   sectionProfile = {},
@@ -330,6 +361,11 @@ export function buildSectionIntersections(
   };
 
   const clipSummary = collectClipSummary(intersections);
+  const constructionTruthSummary =
+    summarizeConstructionTruthByGroup(intersections);
+  const deeperSectionClippingPhase18 = isFeatureEnabled(
+    "useDeeperSectionClippingPhase18",
+  );
   const explicitRoofPrimitiveCount = Number(
     projectGeometry.roof_primitives?.length || 0,
   );
@@ -421,15 +457,17 @@ export function buildSectionIntersections(
     explicitGroundRelationCount > 0;
 
   return {
-    version: phase17Enabled
-      ? "phase17-section-geometry-intersection-v1"
-      : phase16Enabled
-        ? "phase16-section-geometry-intersection-v1"
-        : phase15Enabled
-          ? "phase15-section-geometry-intersection-v1"
-          : clippingEnabled
-            ? "phase13-section-geometry-intersection-v1"
-            : "phase12-section-geometry-intersection-v1",
+    version: deeperSectionClippingPhase18
+      ? "phase18-section-geometry-intersection-v1"
+      : phase17Enabled
+        ? "phase17-section-geometry-intersection-v1"
+        : phase16Enabled
+          ? "phase16-section-geometry-intersection-v1"
+          : phase15Enabled
+            ? "phase15-section-geometry-intersection-v1"
+            : clippingEnabled
+              ? "phase13-section-geometry-intersection-v1"
+              : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
@@ -439,6 +477,7 @@ export function buildSectionIntersections(
     intersections,
     unsupportedCounts: collectUnsupportedCounts(intersections),
     clipSummary,
+    constructionTruthSummary,
     geometrySupport: {
       rooms: collectSupportSummary(intersections.rooms),
       stairs: collectSupportSummary(intersections.stairs),

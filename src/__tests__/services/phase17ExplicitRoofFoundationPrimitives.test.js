@@ -316,7 +316,9 @@ describe("Phase 17 explicit roof and foundation primitives", () => {
       },
     );
 
-    expect(evidence.version).toBe("phase17-section-evidence-service-v1");
+    expect(evidence.version).toMatch(
+      /^phase(17|18)-section-evidence-service-v1$/,
+    );
     expect(evidence.summary.roofTruthState).toBe("direct");
     expect(evidence.summary.foundationTruthState).toBe("direct");
     expect(drawing.technical_quality_metadata.roof_truth_state).toBe("direct");

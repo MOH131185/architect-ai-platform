@@ -134,7 +134,12 @@ function alignVerificationBundle(bundle = null, verification = null) {
     sectionEvidenceQuality: canonical.sectionEvidenceQuality,
     sectionDirectEvidenceQuality: canonical.sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality: canonical.sectionInferredEvidenceQuality,
+    sectionConstructionEvidenceQuality:
+      canonical.sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality: canonical.sectionConstructionTruthQuality,
+    cutWallTruthQuality: canonical.cutWallTruthQuality,
+    cutOpeningTruthQuality: canonical.cutOpeningTruthQuality,
+    stairTruthQuality: canonical.stairTruthQuality,
     slabTruthQuality: canonical.slabTruthQuality,
     roofTruthQuality: canonical.roofTruthQuality,
     roofTruthMode: canonical.roofTruthMode,
@@ -143,6 +148,7 @@ function alignVerificationBundle(bundle = null, verification = null) {
     foundationTruthMode: canonical.foundationTruthMode,
     foundationTruthState: canonical.foundationTruthState,
     sideFacadeEvidenceQuality: canonical.sideFacadeEvidenceQuality,
+    sectionChosenRationale: canonical.sectionChosenRationale,
     ocrEvidenceQuality: canonical.ocrEvidenceQuality,
     verification: canonical,
   };
@@ -273,12 +279,17 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "cutWallTruthQuality",
+      "cutOpeningTruthQuality",
+      "stairTruthQuality",
       "slabTruthQuality",
       "roofTruthQuality",
       "roofTruthMode",
       "foundationTruthQuality",
       "foundationTruthMode",
+      "sectionChosenRationale",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -314,12 +325,17 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "cutWallTruthQuality",
+      "cutOpeningTruthQuality",
+      "stairTruthQuality",
       "slabTruthQuality",
       "roofTruthQuality",
       "roofTruthMode",
       "foundationTruthQuality",
       "foundationTruthMode",
+      "sectionChosenRationale",
       "sectionStrategyRationale",
       "technicalFragmentScores",
       "technicalCredibility",
@@ -365,12 +381,17 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "cutWallTruthQuality",
+      "cutOpeningTruthQuality",
+      "stairTruthQuality",
       "slabTruthQuality",
       "roofTruthQuality",
       "roofTruthMode",
       "foundationTruthQuality",
       "foundationTruthMode",
+      "sectionChosenRationale",
       "sectionStrategyRationale",
       "technicalCredibility",
       "technicalCredibilityPhase",
@@ -1092,9 +1113,25 @@ export function buildProjectReadinessResponse({
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionConstructionEvidenceQuality:
+      verificationBundle?.sectionConstructionEvidenceQuality ||
+      result.finalSheetRegression?.sectionConstructionEvidenceQuality ||
+      "provisional",
     sectionConstructionTruthQuality:
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    cutWallTruthQuality:
+      verificationBundle?.cutWallTruthQuality ||
+      result.finalSheetRegression?.cutWallTruthQuality ||
+      "provisional",
+    cutOpeningTruthQuality:
+      verificationBundle?.cutOpeningTruthQuality ||
+      result.finalSheetRegression?.cutOpeningTruthQuality ||
+      "provisional",
+    stairTruthQuality:
+      verificationBundle?.stairTruthQuality ||
+      result.finalSheetRegression?.stairTruthQuality ||
       "provisional",
     slabTruthQuality:
       verificationBundle?.slabTruthQuality ||
@@ -1124,6 +1161,10 @@ export function buildProjectReadinessResponse({
       verificationBundle?.foundationTruthState ||
       result.finalSheetRegression?.foundationTruthState ||
       "unsupported",
+    sectionChosenRationale:
+      verificationBundle?.sectionChosenRationale ||
+      result.finalSheetRegression?.chosenSectionRationale ||
+      null,
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
@@ -1283,9 +1324,25 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionConstructionEvidenceQuality:
+      verificationBundle?.sectionConstructionEvidenceQuality ||
+      result.finalSheetRegression?.sectionConstructionEvidenceQuality ||
+      "provisional",
     sectionConstructionTruthQuality:
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    cutWallTruthQuality:
+      verificationBundle?.cutWallTruthQuality ||
+      result.finalSheetRegression?.cutWallTruthQuality ||
+      "provisional",
+    cutOpeningTruthQuality:
+      verificationBundle?.cutOpeningTruthQuality ||
+      result.finalSheetRegression?.cutOpeningTruthQuality ||
+      "provisional",
+    stairTruthQuality:
+      verificationBundle?.stairTruthQuality ||
+      result.finalSheetRegression?.stairTruthQuality ||
       "provisional",
     slabTruthQuality:
       verificationBundle?.slabTruthQuality ||
@@ -1315,6 +1372,10 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.foundationTruthState ||
       result.finalSheetRegression?.foundationTruthState ||
       "unsupported",
+    sectionChosenRationale:
+      verificationBundle?.sectionChosenRationale ||
+      result.finalSheetRegression?.chosenSectionRationale ||
+      null,
     technicalFragmentScores:
       result.technicalFragmentScores ||
       result.finalSheetRegression?.technicalFragmentScores ||
@@ -1549,10 +1610,31 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       result.readiness?.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionConstructionEvidenceQuality:
+      verificationBundle?.sectionConstructionEvidenceQuality ||
+      result.finalSheetRegression?.sectionConstructionEvidenceQuality ||
+      result.readiness?.finalSheetRegression
+        ?.sectionConstructionEvidenceQuality ||
+      "provisional",
     sectionConstructionTruthQuality:
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       result.readiness?.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    cutWallTruthQuality:
+      verificationBundle?.cutWallTruthQuality ||
+      result.finalSheetRegression?.cutWallTruthQuality ||
+      result.readiness?.finalSheetRegression?.cutWallTruthQuality ||
+      "provisional",
+    cutOpeningTruthQuality:
+      verificationBundle?.cutOpeningTruthQuality ||
+      result.finalSheetRegression?.cutOpeningTruthQuality ||
+      result.readiness?.finalSheetRegression?.cutOpeningTruthQuality ||
+      "provisional",
+    stairTruthQuality:
+      verificationBundle?.stairTruthQuality ||
+      result.finalSheetRegression?.stairTruthQuality ||
+      result.readiness?.finalSheetRegression?.stairTruthQuality ||
       "provisional",
     slabTruthQuality:
       verificationBundle?.slabTruthQuality ||
@@ -1589,6 +1671,11 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.foundationTruthState ||
       result.readiness?.finalSheetRegression?.foundationTruthState ||
       "unsupported",
+    sectionChosenRationale:
+      verificationBundle?.sectionChosenRationale ||
+      result.finalSheetRegression?.chosenSectionRationale ||
+      result.readiness?.finalSheetRegression?.chosenSectionRationale ||
+      null,
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.readiness?.finalSheetRegression?.technicalFragmentScores ||

@@ -89,6 +89,17 @@ export function evaluateA1TechnicalCredibility({
       "Section inferred-evidence burden remains higher than preferred for final technical credibility.",
     );
   }
+  if (finalSheetRegression?.sectionConstructionEvidenceQuality === "blocked") {
+    blockers.push(
+      "Section construction-evidence quality is blocked because exact cut-construction proof remains too thin across the available technical sections.",
+    );
+  } else if (
+    finalSheetRegression?.sectionConstructionEvidenceQuality === "weak"
+  ) {
+    warnings.push(
+      "Section construction-evidence quality remains weaker than preferred because exact cut-construction proof is still limited or too contextual.",
+    );
+  }
   if (finalSheetRegression?.sectionConstructionTruthQuality === "blocked") {
     blockers.push(
       "Section construction-truth quality is blocked because cut wall/opening/stair/slab/roof/foundation evidence is too weak for drafting-grade section credibility.",
@@ -150,17 +161,20 @@ export function evaluateA1TechnicalCredibility({
 
   return {
     version:
-      finalSheetRegression?.roofTruthState ||
-      finalSheetRegression?.foundationTruthState
-        ? "phase17-a1-technical-credibility-v1"
-        : finalSheetRegression?.roofTruthQuality &&
-            finalSheetRegression?.roofTruthQuality !== "provisional"
-          ? "phase15-a1-technical-credibility-v1"
-          : finalSheetRegression?.sectionConstructionTruthQuality &&
-              finalSheetRegression?.sectionConstructionTruthQuality !==
-                "provisional"
-            ? "phase14-a1-technical-credibility-v1"
-            : "phase13-a1-technical-credibility-v1",
+      finalSheetRegression?.sectionConstructionEvidenceQuality &&
+      finalSheetRegression?.sectionConstructionEvidenceQuality !== "provisional"
+        ? "phase18-a1-technical-credibility-v1"
+        : finalSheetRegression?.roofTruthState ||
+            finalSheetRegression?.foundationTruthState
+          ? "phase17-a1-technical-credibility-v1"
+          : finalSheetRegression?.roofTruthQuality &&
+              finalSheetRegression?.roofTruthQuality !== "provisional"
+            ? "phase15-a1-technical-credibility-v1"
+            : finalSheetRegression?.sectionConstructionTruthQuality &&
+                finalSheetRegression?.sectionConstructionTruthQuality !==
+                  "provisional"
+              ? "phase14-a1-technical-credibility-v1"
+              : "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -181,8 +195,17 @@ export function evaluateA1TechnicalCredibility({
         finalSheetRegression?.sectionDirectEvidenceQuality || "provisional",
       sectionInferredEvidenceQuality:
         finalSheetRegression?.sectionInferredEvidenceQuality || "provisional",
+      sectionConstructionEvidenceQuality:
+        finalSheetRegression?.sectionConstructionEvidenceQuality ||
+        "provisional",
       sectionConstructionTruthQuality:
         finalSheetRegression?.sectionConstructionTruthQuality || "provisional",
+      cutWallTruthQuality:
+        finalSheetRegression?.cutWallTruthQuality || "provisional",
+      cutOpeningTruthQuality:
+        finalSheetRegression?.cutOpeningTruthQuality || "provisional",
+      stairTruthQuality:
+        finalSheetRegression?.stairTruthQuality || "provisional",
       slabTruthQuality: finalSheetRegression?.slabTruthQuality || "provisional",
       roofTruthQuality: finalSheetRegression?.roofTruthQuality || "provisional",
       roofTruthMode,

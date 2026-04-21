@@ -365,6 +365,27 @@ export function scoreTechnicalPanel({
   }
   if (
     drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase18") &&
+    String(
+      metadata.section_construction_evidence_quality || "",
+    ).toLowerCase() === "blocked"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} exact construction evidence is blocked, so the section cannot be treated as a credible cut-construction drawing.`,
+    );
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase18") &&
+    String(
+      metadata.section_construction_evidence_quality || "",
+    ).toLowerCase() === "weak"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} exact construction evidence remains thinner than preferred for final A1 credibility.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase14") &&
     String(metadata.section_construction_truth_quality || "").toLowerCase() ===
       "blocked"
@@ -380,6 +401,29 @@ export function scoreTechnicalPanel({
   ) {
     warnings.push(
       `${drawing.title || drawingType} construction truth is still weaker than preferred for a final board section.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase18") &&
+    String(metadata.cut_opening_truth_quality || "").toLowerCase() ===
+      "blocked" &&
+    Number(metadata.cut_opening_direct_truth_count || 0) === 0 &&
+    Number(metadata.cut_opening_exact_clip_count || 0) === 0
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} does not resolve enough direct cut-opening truth for drafting-grade section communication.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase18") &&
+    String(metadata.stair_truth_quality || "").toLowerCase() === "blocked" &&
+    Number(metadata.stair_direct_truth_count || 0) === 0 &&
+    Number(metadata.stair_count || 0) > 0
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} includes stair geometry, but the cut does not communicate stair truth strongly enough.`,
     );
   }
   if (

@@ -25,6 +25,15 @@ function filterEvidenceOverriddenWarnings(
   const strongPostComposeConstructionEvidence =
     evidenceProfile.sectionConstructionTruthQuality === "verified" &&
     evidenceProfile.sectionDirectEvidenceQuality === "verified";
+  const strongPostComposeDirectConstructionBoard =
+    evidenceProfile.renderedTextEvidenceQuality === "verified" &&
+    evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
+    evidenceProfile.sectionDirectEvidenceQuality === "verified" &&
+    evidenceProfile.sectionInferredEvidenceQuality === "verified" &&
+    evidenceProfile.sectionConstructionTruthQuality === "verified" &&
+    evidenceProfile.slabTruthQuality === "verified" &&
+    evidenceProfile.foundationTruthQuality === "verified" &&
+    evidenceProfile.roofTruthState === "direct";
   const strongPostComposeSectionBoard =
     evidenceProfile.renderedTextEvidenceQuality === "verified" &&
     evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
@@ -64,6 +73,14 @@ function filterEvidenceOverriddenWarnings(
       if (
         evidenceProfile.sectionInferredEvidenceQuality === "verified" &&
         /Section inferred-evidence quality is blocked|Section inferred-evidence burden remains higher than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        evidenceProfile.sectionConstructionEvidenceQuality === "verified" &&
+        /Section construction-evidence quality is blocked|Section construction-evidence quality remains weaker than preferred/i.test(
           text,
         )
       ) {
@@ -137,6 +154,14 @@ function filterEvidenceOverriddenWarnings(
         return false;
       }
       if (
+        strongPostComposeDirectConstructionBoard &&
+        /Section communication is still thin|Section .*serviceable but still semantically thin|Section evidence remains weaker than preferred|Section roof truth remains explicit_generated/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
         strongPostComposeSectionBoard &&
         /Section .*serviceable but still semantically thin|Section communication is still thin|Section evidence remains weaker than preferred|Section construction truth remains weaker than preferred|Section roof truth exists, but it is still thinner than preferred/i.test(
           text,
@@ -179,9 +204,25 @@ export function classifyA1Publishability({
     finalSheetRegression?.sectionInferredEvidenceQuality ||
     technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
     "provisional";
+  const sectionConstructionEvidenceQuality =
+    finalSheetRegression?.sectionConstructionEvidenceQuality ||
+    technicalCredibility?.summary?.sectionConstructionEvidenceQuality ||
+    "provisional";
   const sectionConstructionTruthQuality =
     finalSheetRegression?.sectionConstructionTruthQuality ||
     technicalCredibility?.summary?.sectionConstructionTruthQuality ||
+    "provisional";
+  const cutWallTruthQuality =
+    finalSheetRegression?.cutWallTruthQuality ||
+    technicalCredibility?.summary?.cutWallTruthQuality ||
+    "provisional";
+  const cutOpeningTruthQuality =
+    finalSheetRegression?.cutOpeningTruthQuality ||
+    technicalCredibility?.summary?.cutOpeningTruthQuality ||
+    "provisional";
+  const stairTruthQuality =
+    finalSheetRegression?.stairTruthQuality ||
+    technicalCredibility?.summary?.stairTruthQuality ||
     "provisional";
   const slabTruthQuality =
     finalSheetRegression?.slabTruthQuality ||
@@ -220,7 +261,11 @@ export function classifyA1Publishability({
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
+    sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
+    cutWallTruthQuality,
+    cutOpeningTruthQuality,
+    stairTruthQuality,
     slabTruthQuality,
     roofTruthQuality,
     roofTruthMode,
@@ -250,16 +295,22 @@ export function classifyA1Publishability({
 
   return {
     version:
-      roofTruthState !== "unsupported" || foundationTruthState !== "unsupported"
-        ? "phase17-a1-publishability-v1"
-        : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-          ? "phase16-a1-publishability-v1"
-          : roofTruthQuality !== "provisional" ||
-              foundationTruthQuality !== "provisional"
-            ? "phase15-a1-publishability-v1"
-            : sectionConstructionTruthQuality !== "provisional"
-              ? "phase14-a1-publishability-v1"
-              : "phase13-a1-publishability-v1",
+      sectionConstructionEvidenceQuality !== "provisional" ||
+      cutWallTruthQuality !== "provisional" ||
+      cutOpeningTruthQuality !== "provisional" ||
+      stairTruthQuality !== "provisional"
+        ? "phase18-a1-publishability-v1"
+        : roofTruthState !== "unsupported" ||
+            foundationTruthState !== "unsupported"
+          ? "phase17-a1-publishability-v1"
+          : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+            ? "phase16-a1-publishability-v1"
+            : roofTruthQuality !== "provisional" ||
+                foundationTruthQuality !== "provisional"
+              ? "phase15-a1-publishability-v1"
+              : sectionConstructionTruthQuality !== "provisional"
+                ? "phase14-a1-publishability-v1"
+                : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,

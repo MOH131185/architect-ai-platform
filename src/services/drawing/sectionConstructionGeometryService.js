@@ -158,6 +158,9 @@ export function buildSectionConstructionGeometry({
   const enablePhase17Truth = isFeatureEnabled(
     "useCanonicalConstructionTruthModelPhase17",
   );
+  const enablePhase18Truth =
+    isFeatureEnabled("useDeeperSectionClippingPhase18") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18");
 
   const rooms = directRooms
     .map((room) => {
@@ -169,6 +172,8 @@ export function buildSectionConstructionGeometry({
         ...room,
         level,
         range,
+        truthState: room.constructionTruthState || "direct",
+        clipDepthM: Number(room.clipGeometry?.clipDepthM || 0),
         x: pixels.x,
         width: pixels.width,
         y: round(baseY - level.top_m * scale),
@@ -192,6 +197,8 @@ export function buildSectionConstructionGeometry({
         ...wall,
         level,
         range,
+        truthState: wall.constructionTruthState || "direct",
+        clipDepthM: Number(wall.clipGeometry?.clipDepthM || 0),
         x: round(pixels.centerX - thicknessPx / 2),
         width: round(thicknessPx),
         y: round(baseY - level.top_m * scale),
@@ -212,6 +219,8 @@ export function buildSectionConstructionGeometry({
         ...opening,
         level,
         range,
+        truthState: opening.constructionTruthState || "direct",
+        clipDepthM: Number(opening.clipGeometry?.clipDepthM || 0),
         x: pixels.x,
         width: Math.max(10, pixels.width),
         y: round(baseY - (level.bottom_m + headHeight) * scale),
@@ -234,6 +243,8 @@ export function buildSectionConstructionGeometry({
         ...stair,
         level,
         range,
+        truthState: stair.constructionTruthState || "direct",
+        clipDepthM: Number(stair.clipGeometry?.clipDepthM || 0),
         x: pixels.x,
         width: Math.max(20, pixels.width),
         y: round(
@@ -246,12 +257,35 @@ export function buildSectionConstructionGeometry({
     })
     .filter(Boolean);
 
-  const slabs = levelProfiles.map((level, index) => ({
-    id: `section-slab:${level.id || index}`,
-    level,
-    y: round(baseY - level.top_m * scale),
-    width: round(horizontalExtent * scale),
-  }));
+  const slabs = (sectionEvidence.intersections?.slabs || []).length
+    ? (sectionEvidence.intersections?.slabs || []).map((slab, index) => ({
+        ...slab,
+        id: slab.id || `section-slab:${slab.level_id || index}`,
+        level:
+          resolveLevelProfileForEntry(slab, levelProfiles) ||
+          levelProfiles[index] ||
+          levelProfiles[0],
+        y: round(
+          baseY -
+            Number(
+              resolveLevelProfileForEntry(slab, levelProfiles)?.top_m ||
+                levelProfiles[index]?.top_m ||
+                0,
+            ) *
+              scale,
+        ),
+        width: round(horizontalExtent * scale),
+        truthState: slab.constructionTruthState || "direct",
+        clipDepthM: Number(slab.clipGeometry?.clipDepthM || 0),
+      }))
+    : levelProfiles.map((level, index) => ({
+        id: `section-slab:${level.id || index}`,
+        level,
+        y: round(baseY - level.top_m * scale),
+        width: round(horizontalExtent * scale),
+        truthState: "derived",
+        clipDepthM: 0,
+      }));
 
   const foundation = {
     x: round(baseX - 10),
@@ -283,6 +317,7 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `foundation-band:${index}`,
           x: pixels.x,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(
             entry,
             directFoundations.includes(entry) ||
@@ -384,12 +419,30 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `foundation-zone:${index}`,
           x: pixels.x,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(
             entry,
             directFoundations.includes(entry),
           ),
         };
       }),
+    directClips: [...directFoundations, ...directBaseConditions].map(
+      (entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `foundation-direct:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
+          truthState: resolveEntryTruthState(
+            entry,
+            directFoundations.includes(entry) ||
+              directBaseConditions.includes(entry),
+          ),
+        };
+      },
+    ),
   };
 
   const roofSource = directRoof.length ? directRoof : nearRoof;
@@ -431,6 +484,7 @@ export function buildSectionConstructionGeometry({
           family: entry.primitive_family || null,
           x: pixels.x,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
         };
       }),
@@ -443,6 +497,7 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `parapet:${index}`,
           x: pixels.x,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
         };
       }),
@@ -455,6 +510,7 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `roof-break:${index}`,
           x: pixels.centerX,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
         };
       }),
@@ -467,6 +523,7 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `roof-hip:${index}`,
           x: pixels.centerX,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
         };
       }),
@@ -479,6 +536,7 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `roof-valley:${index}`,
           x: pixels.centerX,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
         };
       }),
@@ -491,18 +549,33 @@ export function buildSectionConstructionGeometry({
           id: entry.id || `roof-attachment:${index}`,
           x: pixels.x,
           width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
+          truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
+        };
+      }),
+    cutPlanes: roofSource
+      .filter((entry) => entry.primitive_family === "roof_plane")
+      .map((entry, index) => {
+        const range = resolveConstructionEntryRange(entry, sectionType);
+        const pixels = projectRangeToPixels(range, baseX, scale);
+        return {
+          id: entry.id || `roof-plane:${index}`,
+          x: pixels.x,
+          width: pixels.width,
+          clipDepthM: Number(entry.clipGeometry?.clipDepthM || 0),
           truthState: resolveEntryTruthState(entry, directRoof.includes(entry)),
         };
       }),
   };
 
   return {
-    version:
-      enablePhase17Truth &&
-      (roof.hips.length ||
-        roof.valleys.length ||
-        foundation.zones.length ||
-        foundation.baseWallConditions.length)
+    version: enablePhase18Truth
+      ? "phase18-section-construction-geometry-v1"
+      : enablePhase17Truth &&
+          (roof.hips.length ||
+            roof.valleys.length ||
+            foundation.zones.length ||
+            foundation.baseWallConditions.length)
         ? "phase17-section-construction-geometry-v1"
         : roof.supportMode !== "missing" || foundation.supportMode !== "missing"
           ? "phase16-section-construction-geometry-v1"
