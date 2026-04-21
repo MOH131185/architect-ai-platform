@@ -4,6 +4,7 @@ import {
   resolveSectionCutCoordinate,
   sectionAxis,
 } from "./sectionGeometryIntersectionService.js";
+import { truthBucketFromMode } from "./constructionTruthModel.js";
 import { assessSectionConstructionSemantics } from "./sectionConstructionSemanticService.js";
 
 function clamp(value, minimum, maximum) {
@@ -279,12 +280,18 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       roofTruthQuality: "provisional",
       foundationTruthQuality: "provisional",
       roofTruthMode: "missing",
+      roofTruthState: "unsupported",
       foundationTruthMode: "missing",
+      foundationTruthState: "unsupported",
       explicitRoofEdgeCount: 0,
       explicitParapetCount: 0,
       explicitRoofBreakCount: 0,
+      explicitHipCount: 0,
+      explicitValleyCount: 0,
       explicitDormerAttachmentCount: 0,
       explicitGroundRelationCount: 0,
+      foundationZoneCount: 0,
+      baseWallConditionCount: 0,
       constructionFallbackDependence: 1,
       explicitRoofPrimitiveCount: 0,
       explicitFoundationCount: 0,
@@ -346,6 +353,10 @@ export function buildSectionEvidence(
     isFeatureEnabled("useCanonicalRoofPrimitivesPhase15") ||
     isFeatureEnabled("useCanonicalFoundationPrimitivesPhase15") ||
     isFeatureEnabled("useRoofFoundationSectionTruthPhase15");
+  const usePhase17Truth =
+    isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
+    isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
+    isFeatureEnabled("useExplicitFoundationPrimitiveSynthesisPhase17");
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
@@ -628,10 +639,11 @@ export function buildSectionEvidence(
     ).length,
     directRoofStructuralClipCount: directRoof.filter(
       (entry) =>
-        entry.exactClip === true &&
-        ["ridge", "roof_edge", "eave", "parapet", "roof_break"].includes(
-          String(entry.primitive_family || ""),
-        ),
+        (entry.exactClip === true &&
+          ["ridge", "roof_edge", "eave", "parapet", "roof_break"].includes(
+            String(entry.primitive_family || ""),
+          )) ||
+        ["hip", "valley"].includes(String(entry.primitive_family || "")),
     ).length,
     nearRoofCount: nearRoof.length,
     inferredRoofCount: inferredRoof.length,
@@ -660,6 +672,8 @@ export function buildSectionEvidence(
     explicitRoofBreakCount: Number(
       intersectionBundle.explicitRoofBreakCount || 0,
     ),
+    explicitHipCount: Number(intersectionBundle.explicitHipCount || 0),
+    explicitValleyCount: Number(intersectionBundle.explicitValleyCount || 0),
     explicitDormerAttachmentCount: Number(
       intersectionBundle.explicitDormerAttachmentCount || 0,
     ),
@@ -672,8 +686,18 @@ export function buildSectionEvidence(
     explicitGroundRelationCount: Number(
       intersectionBundle.explicitGroundRelationCount || 0,
     ),
+    foundationZoneCount: Number(intersectionBundle.foundationZoneCount || 0),
+    baseWallConditionCount: Number(
+      intersectionBundle.baseWallConditionCount || 0,
+    ),
     roofTruthMode: intersectionBundle.roofTruthMode || "missing",
+    roofTruthState: truthBucketFromMode(
+      intersectionBundle.roofTruthMode || "missing",
+    ),
     foundationTruthMode: intersectionBundle.foundationTruthMode || "missing",
+    foundationTruthState: truthBucketFromMode(
+      intersectionBundle.foundationTruthMode || "missing",
+    ),
     levelCount: levelProfiles.length,
     roofCommunicated:
       directRoof.length > 0 || nearRoof.length > 0 || inferredRoof.length > 0,
@@ -764,10 +788,16 @@ export function buildSectionEvidence(
     summary.slabTruthQuality = constructionSemantics.slabTruth.quality;
     summary.roofTruthQuality = constructionSemantics.roofTruth.quality;
     summary.roofTruthMode = constructionSemantics.roofTruth.supportMode;
+    summary.roofTruthState =
+      constructionSemantics.roofTruth.truthState ||
+      truthBucketFromMode(constructionSemantics.roofTruth.supportMode);
     summary.foundationTruthQuality =
       constructionSemantics.foundationTruth.quality;
     summary.foundationTruthMode =
       constructionSemantics.foundationTruth.supportMode;
+    summary.foundationTruthState =
+      constructionSemantics.foundationTruth.truthState ||
+      truthBucketFromMode(constructionSemantics.foundationTruth.supportMode);
     summary.constructionFallbackDependence =
       constructionSemantics.fallbackDependence;
     if (
@@ -864,13 +894,15 @@ export function buildSectionEvidence(
   }
 
   return {
-    version: usePhase15Truth
-      ? "phase15-section-evidence-service-v1"
-      : useTrueEvidence
-        ? useConstructionTruth
-          ? "phase14-section-evidence-service-v1"
-          : "phase13-section-evidence-service-v1"
-        : "phase10-section-evidence-service-v1",
+    version: usePhase17Truth
+      ? "phase17-section-evidence-service-v1"
+      : usePhase15Truth
+        ? "phase15-section-evidence-service-v1"
+        : useTrueEvidence
+          ? useConstructionTruth
+            ? "phase14-section-evidence-service-v1"
+            : "phase13-section-evidence-service-v1"
+          : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
     cutAxis: axis,

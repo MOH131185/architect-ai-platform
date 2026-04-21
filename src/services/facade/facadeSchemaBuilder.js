@@ -140,6 +140,13 @@ function classifySchemaCredibility({
   };
 }
 
+function countRoofEdgeKinds(roofEdges = [], kind = "") {
+  const normalizedKind = String(kind || "").toLowerCase();
+  return (roofEdges || []).filter(
+    (entry) => String(entry.kind || "").toLowerCase() === normalizedKind,
+  ).length;
+}
+
 export function buildSideFacadeSchema({
   side = "south",
   projection = {},
@@ -166,9 +173,14 @@ export function buildSideFacadeSchema({
     roofEdges,
     geometrySource: projection.geometrySource,
   });
+  const hipCount = countRoofEdgeKinds(roofEdges, "hip");
+  const valleyCount = countRoofEdgeKinds(roofEdges, "valley");
 
   return {
-    version: "phase12-side-facade-schema-builder-v1",
+    version:
+      hipCount > 0 || valleyCount > 0
+        ? "phase17-side-facade-schema-builder-v1"
+        : "phase12-side-facade-schema-builder-v1",
     side: normalizedSide,
     orientationAliases: buildOrientationAliases(
       normalizedSide,
@@ -201,6 +213,10 @@ export function buildSideFacadeSchema({
       materialZoneCount: materialZones.length,
       roofEdgeCount: roofEdges.length,
       roofPrimitiveCount: Number(projection.roofPrimitiveCount || 0),
+      roofHipCount:
+        Number(projection.roofHipCount || 0) || Number(hipCount || 0),
+      roofValleyCount:
+        Number(projection.roofValleyCount || 0) || Number(valleyCount || 0),
       roofSupportMode: projection.roofSupportMode || "unknown",
       featureFamilyCount: featureFamilies.length,
       projectionCount: projectionsAndRecesses.projections.length,

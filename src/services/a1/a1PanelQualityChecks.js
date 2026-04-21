@@ -36,7 +36,11 @@ export function runA1PanelQualityChecks({
   });
 
   return {
-    version: "phase13-a1-panel-quality-checks-v1",
+    version:
+      technicalPanelRegression.roofTruthState ||
+      technicalPanelRegression.foundationTruthState
+        ? "phase17-a1-panel-quality-checks-v1"
+        : "phase13-a1-panel-quality-checks-v1",
     checks,
     blockingPanels: checks.filter((entry) => entry.quality?.blockers?.length),
     warningPanels: checks.filter(
@@ -59,10 +63,13 @@ export function runA1PanelQualityChecks({
     roofTruthQuality:
       technicalPanelRegression.roofTruthQuality || "provisional",
     roofTruthMode: technicalPanelRegression.roofTruthMode || "missing",
+    roofTruthState: technicalPanelRegression.roofTruthState || "unsupported",
     foundationTruthQuality:
       technicalPanelRegression.foundationTruthQuality || "provisional",
     foundationTruthMode:
       technicalPanelRegression.foundationTruthMode || "missing",
+    foundationTruthState:
+      technicalPanelRegression.foundationTruthState || "unsupported",
     sectionStrategyRationale:
       technicalPanelRegression.sectionCandidateQuality.map((entry) => ({
         sectionType: entry.sectionType,

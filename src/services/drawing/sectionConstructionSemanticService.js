@@ -170,13 +170,18 @@ export function assessSectionConstructionSemantics({
 
   return {
     version:
-      roofTruth.supportMode || foundationTruth.supportMode
-        ? "phase16-section-construction-semantics-v1"
-        : roofTruth.explicitRoofPrimitiveCount ||
-            foundationTruth.explicitFoundationEntities ||
-            foundationTruth.explicitBaseConditionEntities
-          ? "phase15-section-construction-semantics-v1"
-          : "phase14-section-construction-semantics-v1",
+      roofTruth.hipCount ||
+      roofTruth.valleyCount ||
+      foundationTruth.foundationZoneCount ||
+      foundationTruth.baseWallConditionCount
+        ? "phase17-section-construction-semantics-v1"
+        : roofTruth.supportMode || foundationTruth.supportMode
+          ? "phase16-section-construction-semantics-v1"
+          : roofTruth.explicitRoofPrimitiveCount ||
+              foundationTruth.explicitFoundationEntities ||
+              foundationTruth.explicitBaseConditionEntities
+            ? "phase15-section-construction-semantics-v1"
+            : "phase14-section-construction-semantics-v1",
     constructionEvidenceScore,
     constructionTruthQuality,
     fallbackDependence,

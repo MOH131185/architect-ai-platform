@@ -1,4 +1,5 @@
 import { evaluateDrawingFragmentQuality } from "../drawing/drawingFragmentQualityService.js";
+import { truthBucketFromMode } from "../drawing/constructionTruthModel.js";
 
 function normalizeStatus(entry = {}) {
   if (entry?.svg === null || entry?.status === "blocked") return "block";
@@ -314,17 +315,21 @@ export function runA1TechnicalPanelRegression({
       : foundationTruthModes.includes("explicit_ground_primitives")
         ? "explicit_ground_primitives"
         : foundationTruthModes[0] || "missing";
+  const roofTruthState = truthBucketFromMode(roofTruthMode);
+  const foundationTruthState = truthBucketFromMode(foundationTruthMode);
 
   return {
     version:
-      roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-        ? "phase16-a1-technical-panel-regression-v1"
-        : roofTruthQuality !== "provisional" ||
-            foundationTruthQuality !== "provisional"
-          ? "phase15-a1-technical-panel-regression-v1"
-          : sectionConstructionTruthQuality !== "provisional"
-            ? "phase14-a1-technical-panel-regression-v1"
-            : "phase13-a1-technical-panel-regression-v1",
+      roofTruthState !== "unsupported" || foundationTruthState !== "unsupported"
+        ? "phase17-a1-technical-panel-regression-v1"
+        : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+          ? "phase16-a1-technical-panel-regression-v1"
+          : roofTruthQuality !== "provisional" ||
+              foundationTruthQuality !== "provisional"
+            ? "phase15-a1-technical-panel-regression-v1"
+            : sectionConstructionTruthQuality !== "provisional"
+              ? "phase14-a1-technical-panel-regression-v1"
+              : "phase13-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: [...new Set(blockers)],
@@ -339,8 +344,10 @@ export function runA1TechnicalPanelRegression({
     slabTruthQuality,
     roofTruthQuality,
     roofTruthMode,
+    roofTruthState,
     foundationTruthQuality,
     foundationTruthMode,
+    foundationTruthState,
     technicalFragmentScores: fragmentQuality.fragmentScores,
   };
 }

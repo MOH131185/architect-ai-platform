@@ -344,9 +344,12 @@ export function assembleFacadeSideSemantics({
 
   return {
     version:
-      projection.roofEdgeSeeds?.length > 1
-        ? "phase16-facade-side-semantics-v1"
-        : "phase10-facade-side-semantics-v1",
+      (projection.roofHipCount || 0) > 0 ||
+      (projection.roofValleyCount || 0) > 0
+        ? "phase17-facade-side-semantics-v1"
+        : projection.roofEdgeSeeds?.length > 1
+          ? "phase16-facade-side-semantics-v1"
+          : "phase10-facade-side-semantics-v1",
     side,
     openingGroups,
     wallZones,

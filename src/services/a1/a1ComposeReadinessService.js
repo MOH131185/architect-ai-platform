@@ -228,12 +228,15 @@ export function assessA1ComposeReadiness({
 
   return {
     version: finalSheetRegression
-      ? finalSheetRegression?.roofTruthQuality ||
-        finalSheetRegression?.foundationTruthQuality
-        ? "phase15-a1-compose-readiness-v1"
-        : finalSheetRegression?.sectionDirectEvidenceQuality
-          ? "phase13-a1-compose-readiness-v1"
-          : "phase12-a1-compose-readiness-v1"
+      ? finalSheetRegression?.roofTruthState ||
+        finalSheetRegression?.foundationTruthState
+        ? "phase17-a1-compose-readiness-v1"
+        : finalSheetRegression?.roofTruthQuality ||
+            finalSheetRegression?.foundationTruthQuality
+          ? "phase15-a1-compose-readiness-v1"
+          : finalSheetRegression?.sectionDirectEvidenceQuality
+            ? "phase13-a1-compose-readiness-v1"
+            : "phase12-a1-compose-readiness-v1"
       : isFeatureEnabled("useComposeExecutionPlanning")
         ? "phase6-a1-compose-readiness-v1"
         : "phase5-a1-compose-readiness-v1",

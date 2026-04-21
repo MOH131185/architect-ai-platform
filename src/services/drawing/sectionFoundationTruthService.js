@@ -1,3 +1,8 @@
+import {
+  resolveFoundationTruthMode,
+  truthBucketFromMode,
+} from "./constructionTruthModel.js";
+
 function round(value, precision = 3) {
   const factor = 10 ** precision;
   return Math.round(Number(value || 0) * factor) / factor;
@@ -75,15 +80,12 @@ export function assessSectionFoundationTruth(
   const exactBaseConditionDirect = directBaseConditions.filter(
     (entry) => entry.exactClip === true,
   ).length;
-  const supportMode =
-    sectionEvidence.sectionIntersections?.foundationTruthMode ||
-    geometry?.metadata?.canonical_construction_truth?.foundation
-      ?.support_mode ||
-    (explicitFoundationEntities > 0 || groundRelationPrimitiveCount > 0
-      ? "explicit_ground_primitives"
-      : explicitBaseConditionEntities > 0
-        ? "contextual_ground_relation"
-        : "missing");
+  const supportMode = resolveFoundationTruthMode({
+    foundations: geometry?.foundations || [],
+    baseConditions: geometry?.base_conditions || [],
+    foundationSummary:
+      geometry?.metadata?.canonical_construction_truth?.foundation || {},
+  });
   const groundLineCount = Number(
     geometry?.metadata?.canonical_construction_truth?.foundation?.condition_types?.filter(
       (entry) => entry === "ground_line",
@@ -98,6 +100,18 @@ export function assessSectionFoundationTruth(
     geometry?.metadata?.canonical_construction_truth?.foundation?.condition_types?.filter(
       (entry) => entry === "slab_ground_interface",
     ).length || 0,
+  );
+  const foundationZoneCount = Number(
+    sectionEvidence.sectionIntersections?.foundationZoneCount ||
+      geometry?.metadata?.canonical_construction_truth?.foundation
+        ?.foundation_zone_count ||
+      0,
+  );
+  const baseWallConditionCount = Number(
+    sectionEvidence.sectionIntersections?.baseWallConditionCount ||
+      geometry?.metadata?.canonical_construction_truth?.foundation
+        ?.base_wall_condition_count ||
+      0,
   );
   const derivedOnly =
     String(supportMode).toLowerCase() !== "explicit_ground_primitives" &&
@@ -127,6 +141,8 @@ export function assessSectionFoundationTruth(
       Math.min(0.08, groundLineCount * 0.03) +
       Math.min(0.08, plinthCount * 0.03) +
       Math.min(0.08, slabGroundInterfaceCount * 0.03) +
+      Math.min(0.1, foundationZoneCount * 0.03) +
+      Math.min(0.08, baseWallConditionCount * 0.025) +
       (String(supportMode).toLowerCase() === "explicit_ground_primitives" &&
       exactFoundationDirect + exactBaseConditionDirect > 0
         ? 0.18
@@ -164,6 +180,7 @@ export function assessSectionFoundationTruth(
     score,
     quality: classifyQuality(score),
     supportMode,
+    truthState: truthBucketFromMode(supportMode),
     exactFoundationDirect,
     exactBaseConditionDirect,
     directFoundationCount: directFoundations.length,
@@ -185,6 +202,8 @@ export function assessSectionFoundationTruth(
     explicitFoundationEntities,
     explicitBaseConditionEntities,
     groundRelationPrimitiveCount,
+    foundationZoneCount,
+    baseWallConditionCount,
     groundLineCount,
     plinthCount,
     slabGroundInterfaceCount,

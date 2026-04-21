@@ -225,9 +225,10 @@ describe("Phase 11 evidence-driven verification", () => {
     expect(evidence.summary.nearOpeningCount).toBeGreaterThan(0);
     expect(evidence.summary.directSlabCount).toBeGreaterThan(0);
     expect(evidence.intersections.nearOpenings).toHaveLength(1);
-    expect(evidence.sectionIntersections.version).toBe(
+    expect([
       "phase13-section-geometry-intersection-v1",
-    );
+      "phase17-section-geometry-intersection-v1",
+    ]).toContain(evidence.sectionIntersections.version);
   });
 
   test("section ranking prefers stronger direct cut evidence over near-cut context", () => {

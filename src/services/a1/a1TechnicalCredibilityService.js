@@ -150,14 +150,17 @@ export function evaluateA1TechnicalCredibility({
 
   return {
     version:
-      finalSheetRegression?.roofTruthQuality &&
-      finalSheetRegression?.roofTruthQuality !== "provisional"
-        ? "phase15-a1-technical-credibility-v1"
-        : finalSheetRegression?.sectionConstructionTruthQuality &&
-            finalSheetRegression?.sectionConstructionTruthQuality !==
-              "provisional"
-          ? "phase14-a1-technical-credibility-v1"
-          : "phase13-a1-technical-credibility-v1",
+      finalSheetRegression?.roofTruthState ||
+      finalSheetRegression?.foundationTruthState
+        ? "phase17-a1-technical-credibility-v1"
+        : finalSheetRegression?.roofTruthQuality &&
+            finalSheetRegression?.roofTruthQuality !== "provisional"
+          ? "phase15-a1-technical-credibility-v1"
+          : finalSheetRegression?.sectionConstructionTruthQuality &&
+              finalSheetRegression?.sectionConstructionTruthQuality !==
+                "provisional"
+            ? "phase14-a1-technical-credibility-v1"
+            : "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -183,9 +186,12 @@ export function evaluateA1TechnicalCredibility({
       slabTruthQuality: finalSheetRegression?.slabTruthQuality || "provisional",
       roofTruthQuality: finalSheetRegression?.roofTruthQuality || "provisional",
       roofTruthMode,
+      roofTruthState: finalSheetRegression?.roofTruthState || "unsupported",
       foundationTruthQuality:
         finalSheetRegression?.foundationTruthQuality || "provisional",
       foundationTruthMode,
+      foundationTruthState:
+        finalSheetRegression?.foundationTruthState || "unsupported",
       sideFacadeEvidenceQuality:
         finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
       renderedTextEvidenceQuality:

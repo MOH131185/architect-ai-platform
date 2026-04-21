@@ -1,3 +1,8 @@
+import {
+  resolveRoofTruthMode,
+  truthBucketFromMode,
+} from "./constructionTruthModel.js";
+
 function round(value, precision = 3) {
   const factor = 10 ** precision;
   return Math.round(Number(value || 0) * factor) / factor;
@@ -38,10 +43,11 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
   const unsupportedCount = Number(
     (sectionEvidence.intersections?.unsupportedRoofElements || []).length,
   );
-  const supportMode =
-    sectionEvidence.sectionIntersections?.roofTruthMode ||
-    geometry?.metadata?.canonical_construction_truth?.roof?.support_mode ||
-    (geometry?.roof?.type ? "derived_profile_only" : "missing");
+  const supportMode = resolveRoofTruthMode({
+    roofPrimitives: geometry?.roof_primitives || geometry?.roofElements || [],
+    roofSummary: geometry?.metadata?.canonical_construction_truth?.roof || {},
+    roof: geometry?.roof || {},
+  });
   const hasRoofLanguage = Boolean(
     geometry?.roof?.type || sectionEvidence?.roofLanguage,
   );
@@ -59,6 +65,12 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
   );
   const roofBreakCount = Number(
     sectionEvidence.sectionIntersections?.explicitRoofBreakCount || 0,
+  );
+  const hipCount = Number(
+    sectionEvidence.sectionIntersections?.explicitHipCount || 0,
+  );
+  const valleyCount = Number(
+    sectionEvidence.sectionIntersections?.explicitValleyCount || 0,
   );
   const dormerAttachmentCount = Number(
     sectionEvidence.sectionIntersections?.explicitDormerAttachmentCount || 0,
@@ -90,6 +102,8 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
       Math.min(0.1, edgeCount * 0.03) +
       Math.min(0.08, parapetCount * 0.03) +
       Math.min(0.08, roofBreakCount * 0.03) +
+      Math.min(0.08, hipCount * 0.03) +
+      Math.min(0.08, valleyCount * 0.03) +
       Math.min(0.06, dormerAttachmentCount * 0.03) +
       (String(supportMode).toLowerCase() === "explicit_generated" &&
       exactDirect > 0
@@ -111,6 +125,7 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
     score,
     quality: classifyQuality(score),
     supportMode,
+    truthState: truthBucketFromMode(supportMode),
     exactDirectCount: exactDirect,
     directCount,
     nearCount,
@@ -123,6 +138,8 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
     edgeCount,
     parapetCount,
     roofBreakCount,
+    hipCount,
+    valleyCount,
     dormerAttachmentCount,
     directPrimitiveFamilies,
   };

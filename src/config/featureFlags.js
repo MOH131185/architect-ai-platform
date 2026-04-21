@@ -1146,6 +1146,21 @@ export const FEATURE_FLAGS = {
   /** Phase 16 roof/foundation truth-aware credibility gate */
   useRoofFoundationCredibilityGatePhase16: true,
 
+  /** Phase 17 richer explicit upstream roof primitive synthesis */
+  useExplicitRoofPrimitiveSynthesisPhase17: true,
+
+  /** Phase 17 richer explicit upstream foundation/base-condition primitive synthesis */
+  useExplicitFoundationPrimitiveSynthesisPhase17: true,
+
+  /** Phase 17 shared canonical roof/foundation construction truth model */
+  useCanonicalConstructionTruthModelPhase17: true,
+
+  /** Phase 17 deeper roof/foundation clipping using explicit segment and zone primitives */
+  useDeeperRoofFoundationClippingPhase17: true,
+
+  /** Phase 17 roof/foundation-aware section credibility gate */
+  useRoofFoundationCredibilityGatePhase17: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1501,6 +1516,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useUpstreamConstructionPrimitivesPhase16 = true;
   FEATURE_FLAGS.useRoofFoundationTruthPhase16 = true;
   FEATURE_FLAGS.useRoofFoundationCredibilityGatePhase16 = true;
+  FEATURE_FLAGS.useExplicitRoofPrimitiveSynthesisPhase17 = true;
+  FEATURE_FLAGS.useExplicitFoundationPrimitiveSynthesisPhase17 = true;
+  FEATURE_FLAGS.useCanonicalConstructionTruthModelPhase17 = true;
+  FEATURE_FLAGS.useDeeperRoofFoundationClippingPhase17 = true;
+  FEATURE_FLAGS.useRoofFoundationCredibilityGatePhase17 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -2014,6 +2034,26 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_ROOF_FOUNDATION_CREDIBILITY_GATE_PHASE16: {
       flag: "useRoofFoundationCredibilityGatePhase16",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_EXPLICIT_ROOF_PRIMITIVE_SYNTHESIS_PHASE17: {
+      flag: "useExplicitRoofPrimitiveSynthesisPhase17",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_EXPLICIT_FOUNDATION_PRIMITIVE_SYNTHESIS_PHASE17: {
+      flag: "useExplicitFoundationPrimitiveSynthesisPhase17",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CANONICAL_CONSTRUCTION_TRUTH_MODEL_PHASE17: {
+      flag: "useCanonicalConstructionTruthModelPhase17",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DEEPER_ROOF_FOUNDATION_CLIPPING_PHASE17: {
+      flag: "useDeeperRoofFoundationClippingPhase17",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_ROOF_FOUNDATION_CREDIBILITY_GATE_PHASE17: {
+      flag: "useRoofFoundationCredibilityGatePhase17",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

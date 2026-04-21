@@ -239,17 +239,35 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
         if (right.score !== left.score) return right.score - left.score;
         return String(left.id).localeCompare(String(right.id));
       });
+  const hasPhase17ConstructionPrimitives =
+    (projectGeometry.roof_primitives || []).some((entry) =>
+      ["hip", "valley"].includes(String(entry.primitive_family || "")),
+    ) ||
+    (projectGeometry.foundations || []).some((entry) =>
+      ["foundation_zone", "strip_footing_zone"].includes(
+        String(entry.foundation_type || ""),
+      ),
+    ) ||
+    (projectGeometry.base_conditions || []).some(
+      (entry) => String(entry.condition_type || "") === "base_wall_condition",
+    );
 
   return {
     version:
-      isFeatureEnabled("useTrueSectionClippingPhase13") ||
-      isFeatureEnabled("useSectionTruthScoringPhase13")
-        ? "phase13-section-cut-planner-v1"
-        : isFeatureEnabled("useSectionStrategyLibraryPhase10")
-          ? "phase10-section-cut-planner-v1"
-          : isFeatureEnabled("useSectionSemanticSelectionPhase9")
-            ? "phase9-section-cut-planner-v1"
-            : "phase8-section-cut-planner-v1",
+      hasPhase17ConstructionPrimitives &&
+      (isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
+        isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
+        isFeatureEnabled("useExplicitFoundationPrimitiveSynthesisPhase17") ||
+        isFeatureEnabled("useDeeperRoofFoundationClippingPhase17"))
+        ? "phase17-section-cut-planner-v1"
+        : isFeatureEnabled("useTrueSectionClippingPhase13") ||
+            isFeatureEnabled("useSectionTruthScoringPhase13")
+          ? "phase13-section-cut-planner-v1"
+          : isFeatureEnabled("useSectionStrategyLibraryPhase10")
+            ? "phase10-section-cut-planner-v1"
+            : isFeatureEnabled("useSectionSemanticSelectionPhase9")
+              ? "phase9-section-cut-planner-v1"
+              : "phase8-section-cut-planner-v1",
     candidates: rankedCandidates,
     chosenStrategy: rankedCandidates[0]?.chosenStrategy || null,
     rejectedAlternatives: rankedCandidates[0]?.rejectedAlternatives || [],

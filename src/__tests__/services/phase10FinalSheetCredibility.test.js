@@ -366,7 +366,10 @@ describe("Phase 10 final sheet credibility", () => {
   test("section planner uses specialized strategies and exposes rejected alternatives", () => {
     const result = selectSectionCandidates(createGeometry());
 
-    expect(result.version).toBe("phase13-section-cut-planner-v1");
+    expect([
+      "phase13-section-cut-planner-v1",
+      "phase17-section-cut-planner-v1",
+    ]).toContain(result.version);
     expect(result.chosenStrategy).toBeTruthy();
     expect(result.candidates[0].chosenStrategy.name).toBeTruthy();
     expect(result.candidates[0].rejectedAlternatives.length).toBeGreaterThan(0);

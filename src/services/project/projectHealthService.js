@@ -32,12 +32,15 @@ export function assessProjectHealth({
 
   return {
     version: readiness.finalSheetRegression
-      ? readiness.finalSheetRegression?.roofTruthQuality ||
-        readiness.finalSheetRegression?.foundationTruthQuality
-        ? "phase15-project-health-v1"
-        : readiness.finalSheetRegression?.sectionDirectEvidenceQuality
-          ? "phase13-project-health-v1"
-          : "phase12-project-health-v1"
+      ? readiness.finalSheetRegression?.roofTruthState ||
+        readiness.finalSheetRegression?.foundationTruthState
+        ? "phase17-project-health-v1"
+        : readiness.finalSheetRegression?.roofTruthQuality ||
+            readiness.finalSheetRegression?.foundationTruthQuality
+          ? "phase15-project-health-v1"
+          : readiness.finalSheetRegression?.sectionDirectEvidenceQuality
+            ? "phase13-project-health-v1"
+            : "phase12-project-health-v1"
       : "phase8-project-health-v1",
     healthStatus:
       readiness.composeReady === true

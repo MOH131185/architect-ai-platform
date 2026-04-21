@@ -1,4 +1,5 @@
 import { buildVerificationState } from "./a1VerificationStateModel.js";
+import { truthBucketFromMode } from "../drawing/constructionTruthModel.js";
 
 function unique(items = []) {
   return [...new Set((items || []).filter(Boolean))];
@@ -194,6 +195,10 @@ export function classifyA1Publishability({
     finalSheetRegression?.roofTruthMode ||
     technicalCredibility?.summary?.roofTruthMode ||
     "missing";
+  const roofTruthState =
+    finalSheetRegression?.roofTruthState ||
+    technicalCredibility?.summary?.roofTruthState ||
+    truthBucketFromMode(roofTruthMode);
   const foundationTruthQuality =
     finalSheetRegression?.foundationTruthQuality ||
     technicalCredibility?.summary?.foundationTruthQuality ||
@@ -202,6 +207,10 @@ export function classifyA1Publishability({
     finalSheetRegression?.foundationTruthMode ||
     technicalCredibility?.summary?.foundationTruthMode ||
     "missing";
+  const foundationTruthState =
+    finalSheetRegression?.foundationTruthState ||
+    technicalCredibility?.summary?.foundationTruthState ||
+    truthBucketFromMode(foundationTruthMode);
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -215,8 +224,10 @@ export function classifyA1Publishability({
     slabTruthQuality,
     roofTruthQuality,
     roofTruthMode,
+    roofTruthState,
     foundationTruthQuality,
     foundationTruthMode,
+    foundationTruthState,
     sideFacadeEvidenceQuality,
   };
   const warnings = filterEvidenceOverriddenWarnings(
@@ -239,14 +250,16 @@ export function classifyA1Publishability({
 
   return {
     version:
-      roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-        ? "phase16-a1-publishability-v1"
-        : roofTruthQuality !== "provisional" ||
-            foundationTruthQuality !== "provisional"
-          ? "phase15-a1-publishability-v1"
-          : sectionConstructionTruthQuality !== "provisional"
-            ? "phase14-a1-publishability-v1"
-            : "phase13-a1-publishability-v1",
+      roofTruthState !== "unsupported" || foundationTruthState !== "unsupported"
+        ? "phase17-a1-publishability-v1"
+        : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+          ? "phase16-a1-publishability-v1"
+          : roofTruthQuality !== "provisional" ||
+              foundationTruthQuality !== "provisional"
+            ? "phase15-a1-publishability-v1"
+            : sectionConstructionTruthQuality !== "provisional"
+              ? "phase14-a1-publishability-v1"
+              : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,
@@ -259,6 +272,8 @@ export function classifyA1Publishability({
     blockers,
     warnings,
     evidenceProfile,
+    roofTruthState,
+    foundationTruthState,
     verificationState: buildVerificationState({
       phase: resolvedPhase,
       status:

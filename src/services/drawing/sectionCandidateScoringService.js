@@ -26,6 +26,11 @@ function cutCoordinate(candidate = {}) {
 
 function sectionTruthEnabled() {
   return (
+    isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
+    isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
+    isFeatureEnabled("useExplicitFoundationPrimitiveSynthesisPhase17") ||
+    isFeatureEnabled("useDeeperRoofFoundationClippingPhase17") ||
+    isFeatureEnabled("useRoofFoundationCredibilityGatePhase17") ||
     isFeatureEnabled("useRoofFoundationSectionTruthPhase15") ||
     isFeatureEnabled("useSectionConstructionTruthPhase14") ||
     isFeatureEnabled("useSectionConstructionScoringPhase14") ||
@@ -233,6 +238,14 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
         Number(sectionEvidenceSummary.explicitRoofBreakCount || 0) * 0.02,
       ) +
       Math.min(
+        0.05,
+        Number(sectionEvidenceSummary.explicitHipCount || 0) * 0.02,
+      ) +
+      Math.min(
+        0.05,
+        Number(sectionEvidenceSummary.explicitValleyCount || 0) * 0.02,
+      ) +
+      Math.min(
         0.12,
         Number(sectionEvidenceSummary.directRoofStructuralClipCount || 0) *
           0.08,
@@ -281,6 +294,14 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       Math.min(
         0.08,
         Number(sectionEvidenceSummary.explicitGroundRelationCount || 0) * 0.02,
+      ) +
+      Math.min(
+        0.06,
+        Number(sectionEvidenceSummary.foundationZoneCount || 0) * 0.02,
+      ) +
+      Math.min(
+        0.05,
+        Number(sectionEvidenceSummary.baseWallConditionCount || 0) * 0.02,
       ) -
       (Number(sectionEvidenceSummary.directFoundationExactClipCount || 0) ===
         0 &&

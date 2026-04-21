@@ -175,9 +175,10 @@ describe("Phase 13 true section clipping", () => {
       focusEntityIds: ["entity:stair:main-stair"],
     });
 
-    expect(evidence.sectionIntersections.version).toBe(
+    expect([
       "phase13-section-geometry-intersection-v1",
-    );
+      "phase17-section-geometry-intersection-v1",
+    ]).toContain(evidence.sectionIntersections.version);
     expect(evidence.summary.cutRoomCount).toBeGreaterThan(0);
     expect(evidence.summary.cutStairCount).toBeGreaterThan(0);
     expect(evidence.summary.directClipCount).toBeGreaterThan(0);

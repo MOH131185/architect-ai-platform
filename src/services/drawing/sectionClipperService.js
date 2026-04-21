@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+
 function round(value, precision = 3) {
   const factor = 10 ** precision;
   return Math.round(Number(value || 0) * factor) / factor;
@@ -552,15 +554,25 @@ export function clipRoofElementToSection(
   sectionCut = {},
   options = {},
 ) {
+  const enableDeeperClipping = isFeatureEnabled(
+    "useDeeperRoofFoundationClippingPhase17",
+  );
   return getPolygonPoints(entity)
     ? clipPolygonEntity(entity, sectionCut, {
         ...options,
         nearBand: Number(options.nearBand || 1.1),
       })
-    : clipBboxApproximation(entity, sectionCut, {
-        ...options,
-        nearBand: Number(options.nearBand || 1.1),
-      });
+    : enableDeeperClipping &&
+        normalizePoint(entity.start) &&
+        normalizePoint(entity.end)
+      ? clipSegmentEntity(entity, sectionCut, {
+          ...options,
+          nearBand: Number(options.nearBand || 1.1),
+        })
+      : clipBboxApproximation(entity, sectionCut, {
+          ...options,
+          nearBand: Number(options.nearBand || 1.1),
+        });
 }
 
 export function clipFoundationToSection(

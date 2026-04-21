@@ -2,6 +2,7 @@ import {
   buildVerificationState,
   normalizeVerificationPhase,
 } from "./a1VerificationStateModel.js";
+import { truthBucketFromMode } from "../drawing/constructionTruthModel.js";
 
 function resolvedState(existing = null, fallback = {}) {
   if (existing && existing.phase) {
@@ -210,6 +211,8 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.foundationTruthMode ||
     technicalCredibility?.summary?.foundationTruthMode ||
     "missing";
+  const roofTruthState = truthBucketFromMode(roofTruthMode);
+  const foundationTruthState = truthBucketFromMode(foundationTruthMode);
   const sideFacadeEvidenceQuality =
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
@@ -227,14 +230,16 @@ export function buildA1VerificationBundle({
 
   const canonicalVerification = {
     version:
-      roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-        ? "phase16-a1-verification-v1"
-        : roofTruthQuality !== "provisional" ||
-            foundationTruthQuality !== "provisional"
-          ? "phase15-a1-verification-v1"
-          : sectionConstructionTruthQuality !== "provisional"
-            ? "phase14-a1-verification-v1"
-            : "phase13-a1-verification-v1",
+      roofTruthState !== "unsupported" || foundationTruthState !== "unsupported"
+        ? "phase17-a1-verification-v1"
+        : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+          ? "phase16-a1-verification-v1"
+          : roofTruthQuality !== "provisional" ||
+              foundationTruthQuality !== "provisional"
+            ? "phase15-a1-verification-v1"
+            : sectionConstructionTruthQuality !== "provisional"
+              ? "phase14-a1-verification-v1"
+              : "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
@@ -250,8 +255,10 @@ export function buildA1VerificationBundle({
     slabTruthQuality,
     roofTruthQuality,
     roofTruthMode,
+    roofTruthState,
     foundationTruthQuality,
     foundationTruthMode,
+    foundationTruthState,
     sideFacadeEvidenceQuality,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
     components: {

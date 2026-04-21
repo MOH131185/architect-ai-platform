@@ -138,8 +138,10 @@ function alignVerificationBundle(bundle = null, verification = null) {
     slabTruthQuality: canonical.slabTruthQuality,
     roofTruthQuality: canonical.roofTruthQuality,
     roofTruthMode: canonical.roofTruthMode,
+    roofTruthState: canonical.roofTruthState,
     foundationTruthQuality: canonical.foundationTruthQuality,
     foundationTruthMode: canonical.foundationTruthMode,
+    foundationTruthState: canonical.foundationTruthState,
     sideFacadeEvidenceQuality: canonical.sideFacadeEvidenceQuality,
     ocrEvidenceQuality: canonical.ocrEvidenceQuality,
     verification: canonical,
@@ -1106,6 +1108,10 @@ export function buildProjectReadinessResponse({
       verificationBundle?.roofTruthMode ||
       result.finalSheetRegression?.roofTruthMode ||
       "missing",
+    roofTruthState:
+      verificationBundle?.roofTruthState ||
+      result.finalSheetRegression?.roofTruthState ||
+      "unsupported",
     foundationTruthQuality:
       verificationBundle?.foundationTruthQuality ||
       result.finalSheetRegression?.foundationTruthQuality ||
@@ -1114,6 +1120,10 @@ export function buildProjectReadinessResponse({
       verificationBundle?.foundationTruthMode ||
       result.finalSheetRegression?.foundationTruthMode ||
       "missing",
+    foundationTruthState:
+      verificationBundle?.foundationTruthState ||
+      result.finalSheetRegression?.foundationTruthState ||
+      "unsupported",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.technicalPanelGate?.technicalFragmentScores ||
@@ -1289,6 +1299,10 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.roofTruthMode ||
       result.finalSheetRegression?.roofTruthMode ||
       "missing",
+    roofTruthState:
+      verificationBundle?.roofTruthState ||
+      result.finalSheetRegression?.roofTruthState ||
+      "unsupported",
     foundationTruthQuality:
       verificationBundle?.foundationTruthQuality ||
       result.finalSheetRegression?.foundationTruthQuality ||
@@ -1297,6 +1311,10 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.foundationTruthMode ||
       result.finalSheetRegression?.foundationTruthMode ||
       "missing",
+    foundationTruthState:
+      verificationBundle?.foundationTruthState ||
+      result.finalSheetRegression?.foundationTruthState ||
+      "unsupported",
     technicalFragmentScores:
       result.technicalFragmentScores ||
       result.finalSheetRegression?.technicalFragmentScores ||
@@ -1551,6 +1569,11 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.roofTruthMode ||
       result.readiness?.finalSheetRegression?.roofTruthMode ||
       "missing",
+    roofTruthState:
+      verificationBundle?.roofTruthState ||
+      result.finalSheetRegression?.roofTruthState ||
+      result.readiness?.finalSheetRegression?.roofTruthState ||
+      "unsupported",
     foundationTruthQuality:
       verificationBundle?.foundationTruthQuality ||
       result.finalSheetRegression?.foundationTruthQuality ||
@@ -1561,6 +1584,11 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.foundationTruthMode ||
       result.readiness?.finalSheetRegression?.foundationTruthMode ||
       "missing",
+    foundationTruthState:
+      verificationBundle?.foundationTruthState ||
+      result.finalSheetRegression?.foundationTruthState ||
+      result.readiness?.finalSheetRegression?.foundationTruthState ||
+      "unsupported",
     technicalFragmentScores:
       result.finalSheetRegression?.technicalFragmentScores ||
       result.readiness?.finalSheetRegression?.technicalFragmentScores ||

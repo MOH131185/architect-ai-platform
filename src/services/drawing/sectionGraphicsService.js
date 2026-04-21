@@ -4,6 +4,7 @@ import { renderSectionSvg } from "./svgSectionRenderer.js";
 import { selectSectionCandidates } from "./sectionCutPlanner.js";
 import { deriveSectionSemantics } from "./sectionSemanticService.js";
 import { buildSectionEvidence } from "./sectionEvidenceService.js";
+import { truthBucketFromMode } from "./constructionTruthModel.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
 import { buildSectionAnnotations } from "./sectionAnnotationService.js";
@@ -245,10 +246,16 @@ export function buildSectionGraphic(
         roof_truth_quality:
           sectionEvidence.summary?.roofTruthQuality || "blocked",
         roof_truth_mode: sectionEvidence.summary?.roofTruthMode || "missing",
+        roof_truth_state:
+          sectionEvidence.summary?.roofTruthState ||
+          truthBucketFromMode(sectionEvidence.summary?.roofTruthMode),
         foundation_truth_quality:
           sectionEvidence.summary?.foundationTruthQuality || "blocked",
         foundation_truth_mode:
           sectionEvidence.summary?.foundationTruthMode || "missing",
+        foundation_truth_state:
+          sectionEvidence.summary?.foundationTruthState ||
+          truthBucketFromMode(sectionEvidence.summary?.foundationTruthMode),
         slab_exact_clip_count:
           sectionEvidence.summary?.directSlabExactClipCount || 0,
         roof_exact_clip_count:
@@ -356,6 +363,9 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.directSlabExactClipCount || 0,
       roof_truth_quality: sectionEvidence.summary?.roofTruthQuality || null,
       roof_truth_mode: sectionEvidence.summary?.roofTruthMode || null,
+      roof_truth_state:
+        sectionEvidence.summary?.roofTruthState ||
+        truthBucketFromMode(sectionEvidence.summary?.roofTruthMode),
       roof_exact_clip_count:
         sectionEvidence.summary?.directRoofExactClipCount || 0,
       roof_explicit_primitive_count:
@@ -367,6 +377,9 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.foundationTruthQuality || null,
       foundation_truth_mode:
         sectionEvidence.summary?.foundationTruthMode || null,
+      foundation_truth_state:
+        sectionEvidence.summary?.foundationTruthState ||
+        truthBucketFromMode(sectionEvidence.summary?.foundationTruthMode),
       foundation_direct_clip_count:
         sectionEvidence.summary?.directFoundationCount || 0,
       base_condition_direct_clip_count:

@@ -191,6 +191,19 @@ function buildRoofEdgeSeed(geometry = {}, side = "south") {
   };
 }
 
+function roofPrimitiveFamiliesForFacadeSeeds() {
+  return [
+    "roof_edge",
+    "eave",
+    "ridge",
+    "parapet",
+    "roof_break",
+    "dormer_attachment",
+    "hip",
+    "valley",
+  ];
+}
+
 function matchesRoofPrimitiveSide(entry = {}, side = "south") {
   const entrySide = orientationToSide(
     entry.side ||
@@ -205,17 +218,17 @@ function matchesRoofPrimitiveSide(entry = {}, side = "south") {
 function buildRoofEdgeSeeds(geometry = {}, side = "south") {
   const explicitSeeds = (geometry.roof_primitives || [])
     .filter((entry) =>
-      [
-        "roof_edge",
-        "eave",
-        "ridge",
-        "parapet",
-        "roof_break",
-        "dormer_attachment",
-      ].includes(String(entry.primitive_family || "")),
+      roofPrimitiveFamiliesForFacadeSeeds().includes(
+        String(entry.primitive_family || ""),
+      ),
     )
     .filter((entry) => {
-      if (!entry.side && String(entry.primitive_family || "") === "ridge") {
+      if (
+        !entry.side &&
+        ["ridge", "hip", "valley"].includes(
+          String(entry.primitive_family || ""),
+        )
+      ) {
         return true;
       }
       return matchesRoofPrimitiveSide(entry, side);
@@ -287,11 +300,24 @@ export function projectFacadeGeometry(geometry = {}, orientation = "south") {
   const projectedOpenings = [...projectedWindows, ...projectedDoors].sort(
     (left, right) => Number(left.center_m || 0) - Number(right.center_m || 0),
   );
+  const roofEdgeSeeds = buildRoofEdgeSeeds(geometry, side);
+  const roofSeedFamilies = roofEdgeSeeds.map(
+    (entry) => entry.primitiveFamily || entry.kind || "roof-edge",
+  );
+  const roofHipCount = roofSeedFamilies.filter(
+    (family) => family === "hip",
+  ).length;
+  const roofValleyCount = roofSeedFamilies.filter(
+    (family) => family === "valley",
+  ).length;
 
   return {
-    version: (geometry.roof_primitives || []).length
-      ? "phase16-facade-projection-v1"
-      : "phase10-facade-projection-v1",
+    version:
+      roofHipCount > 0 || roofValleyCount > 0
+        ? "phase17-facade-projection-v1"
+        : (geometry.roof_primitives || []).length
+          ? "phase16-facade-projection-v1"
+          : "phase10-facade-projection-v1",
     side,
     bounds,
     sideWidthM,
@@ -318,8 +344,10 @@ export function projectFacadeGeometry(geometry = {}, orientation = "south") {
     openingCount: projectedWindows.length + projectedDoors.length,
     wallZoneSeeds: buildWallZoneSeeds(sideWalls, bounds, side),
     roofEdgeSeed: buildRoofEdgeSeed(geometry, side),
-    roofEdgeSeeds: buildRoofEdgeSeeds(geometry, side),
+    roofEdgeSeeds,
     roofPrimitiveCount: Number((geometry.roof_primitives || []).length || 0),
+    roofHipCount,
+    roofValleyCount,
     roofSupportMode:
       geometry?.metadata?.canonical_construction_truth?.roof?.support_mode ||
       (geometry?.roof_primitives?.length

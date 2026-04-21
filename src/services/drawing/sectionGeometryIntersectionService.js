@@ -11,6 +11,12 @@ import {
   collectSupportSummary,
   countExactClips,
 } from "./sectionClipperService.js";
+import {
+  countExplicitGroundRelationPrimitives,
+  countPrimitiveFamilies,
+  resolveFoundationTruthMode,
+  resolveRoofTruthMode,
+} from "./constructionTruthModel.js";
 
 function round(value, precision = 3) {
   const factor = 10 ** precision;
@@ -19,23 +25,6 @@ function round(value, precision = 3) {
 
 function unique(items = []) {
   return [...new Set((items || []).filter(Boolean))];
-}
-
-function countPrimitiveFamilies(entries = [], families = []) {
-  return (entries || []).filter((entry) =>
-    families.includes(
-      String(entry.primitive_family || entry.condition_type || ""),
-    ),
-  ).length;
-}
-
-function normalizeSupportModes(entries = []) {
-  return unique(
-    (entries || [])
-      .map((entry) => entry.support_mode || entry.supportMode || null)
-      .filter(Boolean)
-      .map((entry) => String(entry).toLowerCase()),
-  );
 }
 
 export function sectionAxis(sectionType = "longitudinal") {
@@ -371,57 +360,50 @@ export function buildSectionIntersections(
     projectGeometry.roof_primitives,
     ["roof_edge", "eave", "ridge"],
   );
+  const explicitHipCount = countPrimitiveFamilies(
+    projectGeometry.roof_primitives,
+    ["hip"],
+  );
+  const explicitValleyCount = countPrimitiveFamilies(
+    projectGeometry.roof_primitives,
+    ["valley"],
+  );
   const explicitDormerAttachmentCount = countPrimitiveFamilies(
     projectGeometry.roof_primitives,
     ["dormer_attachment"],
   );
-  const explicitGroundRelationCount = (
-    projectGeometry.base_conditions || []
-  ).filter((entry) => {
-    const supportMode = String(
-      entry.support_mode || entry.supportMode || "",
-    ).toLowerCase();
-    const isExplicitGroundCondition = [
-      "ground_line",
-      "plinth_line",
-      "slab_ground_interface",
-      "grade_break",
-      "step_line",
-    ].includes(String(entry.condition_type || ""));
-    return (
-      supportMode === "explicit_ground_primitives" ||
-      (!supportMode && isExplicitGroundCondition)
-    );
-  }).length;
-  const roofSupportModes = normalizeSupportModes(
-    projectGeometry.roof_primitives,
+  const explicitGroundRelationCount = countExplicitGroundRelationPrimitives(
+    projectGeometry.base_conditions || [],
   );
-  const foundationSupportModes = normalizeSupportModes([
-    ...(projectGeometry.foundations || []),
-    ...(projectGeometry.base_conditions || []),
-  ]);
-  const roofTruthMode = roofSupportModes.includes("explicit_generated")
-    ? "explicit_generated"
-    : roofSupportModes.length === 0 && explicitRoofPrimitiveCount > 0
-      ? "explicit_generated"
-      : roofSupportModes.includes("derived_profile_only")
-        ? "derived_profile_only"
-        : roofSupportModes.includes("roof_language_only")
-          ? "roof_language_only"
-          : roofSummary.support_mode ||
-            (projectGeometry.roof?.type ? "derived_profile_only" : "missing");
-  const foundationTruthMode =
-    explicitGroundRelationCount > 0 ||
-    foundationSupportModes.includes("explicit_ground_primitives") ||
-    (foundationSupportModes.length === 0 && explicitFoundationCount > 0)
-      ? "explicit_ground_primitives"
-      : foundationSupportModes.some((entry) =>
-            ["contextual_ground_relation", "derived_perimeter"].includes(entry),
-          ) ||
-          (foundationSupportModes.length === 0 &&
-            explicitBaseConditionCount > 0)
-        ? "contextual_ground_relation"
-        : foundationSummary.support_mode || "missing";
+  const foundationZoneCount = countPrimitiveFamilies(
+    projectGeometry.foundations,
+    ["foundation_zone", "strip_footing_zone"],
+  );
+  const baseWallConditionCount = countPrimitiveFamilies(
+    projectGeometry.base_conditions,
+    ["base_wall_condition"],
+  );
+  const roofTruthMode = resolveRoofTruthMode({
+    roofPrimitives: projectGeometry.roof_primitives,
+    roofSummary,
+    roof: projectGeometry.roof,
+  });
+  const foundationTruthMode = resolveFoundationTruthMode({
+    foundations: projectGeometry.foundations,
+    baseConditions: projectGeometry.base_conditions,
+    foundationSummary,
+  });
+  const richerPhase17FeaturesPresent =
+    explicitHipCount > 0 ||
+    explicitValleyCount > 0 ||
+    foundationZoneCount > 0 ||
+    baseWallConditionCount > 0;
+  const phase17Enabled =
+    richerPhase17FeaturesPresent &&
+    (isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
+      isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
+      isFeatureEnabled("useExplicitFoundationPrimitiveSynthesisPhase17") ||
+      isFeatureEnabled("useDeeperRoofFoundationClippingPhase17"));
   const phase15Enabled =
     explicitRoofPrimitiveCount > 0 ||
     explicitFoundationCount > 0 ||
@@ -439,13 +421,15 @@ export function buildSectionIntersections(
     explicitGroundRelationCount > 0;
 
   return {
-    version: phase16Enabled
-      ? "phase16-section-geometry-intersection-v1"
-      : phase15Enabled
-        ? "phase15-section-geometry-intersection-v1"
-        : clippingEnabled
-          ? "phase13-section-geometry-intersection-v1"
-          : "phase12-section-geometry-intersection-v1",
+    version: phase17Enabled
+      ? "phase17-section-geometry-intersection-v1"
+      : phase16Enabled
+        ? "phase16-section-geometry-intersection-v1"
+        : phase15Enabled
+          ? "phase15-section-geometry-intersection-v1"
+          : clippingEnabled
+            ? "phase13-section-geometry-intersection-v1"
+            : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
@@ -478,8 +462,12 @@ export function buildSectionIntersections(
     explicitRoofEdgeCount,
     explicitParapetCount,
     explicitRoofBreakCount,
+    explicitHipCount,
+    explicitValleyCount,
     explicitDormerAttachmentCount,
     explicitGroundRelationCount,
+    foundationZoneCount,
+    baseWallConditionCount,
     roofPrimitiveFamilies,
     roofTruthMode,
     foundationTruthMode,
