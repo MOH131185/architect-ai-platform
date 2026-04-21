@@ -9,6 +9,13 @@ function normalizeStatus(entry = {}) {
   const inferredEvidenceQuality = String(
     entry?.technical_quality_metadata?.section_inferred_evidence_quality || "",
   ).toLowerCase();
+  const contextualEvidenceQuality = String(
+    entry?.technical_quality_metadata?.section_contextual_evidence_quality ||
+      "",
+  ).toLowerCase();
+  const derivedEvidenceQuality = String(
+    entry?.technical_quality_metadata?.section_derived_evidence_quality || "",
+  ).toLowerCase();
   const constructionTruthQuality = String(
     entry?.technical_quality_metadata?.section_construction_truth_quality || "",
   ).toLowerCase();
@@ -61,6 +68,8 @@ function normalizeStatus(entry = {}) {
   if (
     directEvidenceQuality === "blocked" ||
     inferredEvidenceQuality === "blocked" ||
+    contextualEvidenceQuality === "blocked" ||
+    derivedEvidenceQuality === "blocked" ||
     constructionEvidenceQuality === "blocked" ||
     constructionTruthQuality === "blocked" ||
     wallSectionClipQuality === "blocked" ||
@@ -73,6 +82,8 @@ function normalizeStatus(entry = {}) {
   if (
     directEvidenceQuality === "weak" ||
     inferredEvidenceQuality === "weak" ||
+    contextualEvidenceQuality === "weak" ||
+    derivedEvidenceQuality === "weak" ||
     constructionEvidenceQuality === "weak" ||
     constructionTruthQuality === "weak" ||
     wallSectionClipQuality === "weak" ||
@@ -173,15 +184,29 @@ export function runA1TechnicalPanelRegression({
     inferredEvidenceQuality:
       entry.technical_quality_metadata?.section_inferred_evidence_quality ||
       null,
+    contextualEvidenceQuality:
+      entry.technical_quality_metadata?.section_contextual_evidence_quality ||
+      null,
+    derivedEvidenceQuality:
+      entry.technical_quality_metadata?.section_derived_evidence_quality ||
+      null,
     directEvidenceScore: Number(
       entry.technical_quality_metadata?.section_direct_evidence_score || 0,
     ),
     inferredEvidenceScore: Number(
       entry.technical_quality_metadata?.section_inferred_evidence_score || 0,
     ),
+    contextualEvidenceScore: Number(
+      entry.technical_quality_metadata?.section_contextual_evidence_score || 0,
+    ),
+    derivedEvidenceScore: Number(
+      entry.technical_quality_metadata?.section_derived_evidence_score || 0,
+    ),
     communicationValue: Number(
       entry.technical_quality_metadata?.section_communication_value || 0,
     ),
+    sectionTruthModelVersion:
+      entry.technical_quality_metadata?.section_truth_model_version || null,
     constructionEvidenceQuality:
       entry.technical_quality_metadata?.section_construction_evidence_quality ||
       null,
@@ -229,6 +254,12 @@ export function runA1TechnicalPanelRegression({
     ),
     exactProfileClipCount: Number(
       entry.technical_quality_metadata?.section_exact_profile_clip_count || 0,
+    ),
+    nearBooleanClipCount: Number(
+      entry.technical_quality_metadata?.section_near_boolean_clip_count || 0,
+    ),
+    bandCoverageRatio: Number(
+      entry.technical_quality_metadata?.section_band_coverage_ratio || 0,
     ),
     profileSegmentCount: Number(
       entry.technical_quality_metadata?.section_profile_segment_count || 0,
@@ -293,6 +324,12 @@ export function runA1TechnicalPanelRegression({
   );
   const sectionInferredEntries = sectionCandidateQuality.filter(
     (entry) => entry.inferredEvidenceQuality != null,
+  );
+  const sectionContextualEntries = sectionCandidateQuality.filter(
+    (entry) => entry.contextualEvidenceQuality != null,
+  );
+  const sectionDerivedEntries = sectionCandidateQuality.filter(
+    (entry) => entry.derivedEvidenceQuality != null,
   );
   const sectionConstructionEntries = sectionCandidateQuality.filter(
     (entry) => entry.constructionTruthQuality != null,
@@ -385,6 +422,28 @@ export function runA1TechnicalPanelRegression({
         )
       ? "weak"
       : sectionConstructionEntries.length
+        ? "verified"
+        : "provisional";
+  const sectionContextualEvidenceQuality = sectionContextualEntries.some(
+    (entry) => entry.contextualEvidenceQuality === "blocked",
+  )
+    ? "blocked"
+    : sectionContextualEntries.some(
+          (entry) => entry.contextualEvidenceQuality === "weak",
+        )
+      ? "weak"
+      : sectionContextualEntries.length
+        ? "verified"
+        : "provisional";
+  const sectionDerivedEvidenceQuality = sectionDerivedEntries.some(
+    (entry) => entry.derivedEvidenceQuality === "blocked",
+  )
+    ? "blocked"
+    : sectionDerivedEntries.some(
+          (entry) => entry.derivedEvidenceQuality === "weak",
+        )
+      ? "weak"
+      : sectionDerivedEntries.length
         ? "verified"
         : "provisional";
   const sectionConstructionEvidenceQuality =
@@ -548,15 +607,22 @@ export function runA1TechnicalPanelRegression({
       ?.rationale?.[0] ||
     sectionCandidateQuality[0]?.rationale?.[0] ||
     null;
+  const sectionTruthModelVersion =
+    sectionCandidateQuality.find((entry) => entry.selectedForBoard)
+      ?.sectionTruthModelVersion ||
+    sectionCandidateQuality.find((entry) => entry.sectionTruthModelVersion)
+      ?.sectionTruthModelVersion ||
+    null;
 
   return {
-    version:
-      wallSectionClipQuality !== "provisional" ||
-      openingSectionClipQuality !== "provisional" ||
-      stairSectionClipQuality !== "provisional" ||
-      slabSectionClipQuality !== "provisional" ||
-      roofSectionClipQuality !== "provisional" ||
-      foundationSectionClipQuality !== "provisional"
+    version: sectionTruthModelVersion
+      ? "phase20-a1-technical-panel-regression-v1"
+      : wallSectionClipQuality !== "provisional" ||
+          openingSectionClipQuality !== "provisional" ||
+          stairSectionClipQuality !== "provisional" ||
+          slabSectionClipQuality !== "provisional" ||
+          roofSectionClipQuality !== "provisional" ||
+          foundationSectionClipQuality !== "provisional"
         ? "phase19-a1-technical-panel-regression-v1"
         : sectionConstructionEvidenceQuality !== "provisional" ||
             cutWallTruthQuality !== "provisional" ||
@@ -584,8 +650,11 @@ export function runA1TechnicalPanelRegression({
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
+    sectionContextualEvidenceQuality,
+    sectionDerivedEvidenceQuality,
     sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
+    sectionTruthModelVersion,
     wallSectionClipQuality,
     openingSectionClipQuality,
     stairSectionClipQuality,

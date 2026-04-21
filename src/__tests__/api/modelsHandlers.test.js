@@ -418,6 +418,12 @@ describe("Phase 1 model route handlers", () => {
       res.body.sectionInferredEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionContextualEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionDerivedEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionConstructionEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
@@ -509,11 +515,20 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
       res.body.sectionInferredEvidenceQuality,
     );
+    expect(res.body.verification.sectionContextualEvidenceQuality).toBe(
+      res.body.sectionContextualEvidenceQuality,
+    );
+    expect(res.body.verification.sectionDerivedEvidenceQuality).toBe(
+      res.body.sectionDerivedEvidenceQuality,
+    );
     expect(res.body.verification.sectionConstructionEvidenceQuality).toBe(
       res.body.sectionConstructionEvidenceQuality,
     );
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(res.body.verification.sectionTruthModelVersion).toBe(
+      res.body.sectionTruthModelVersion,
     );
     expect(res.body.verification.wallSectionClipQuality).toBe(
       res.body.wallSectionClipQuality,
@@ -596,8 +611,11 @@ describe("Phase 1 model route handlers", () => {
             phase: "pre_compose",
             sectionDirectEvidenceQuality: "verified",
             sectionInferredEvidenceQuality: "verified",
+            sectionContextualEvidenceQuality: "weak",
+            sectionDerivedEvidenceQuality: "verified",
             sectionConstructionEvidenceQuality: "verified",
             sectionConstructionTruthQuality: "verified",
+            sectionTruthModelVersion: "phase20-section-truth-model-v1",
             wallSectionClipQuality: "verified",
             openingSectionClipQuality: "verified",
             stairSectionClipQuality: "verified",
@@ -630,8 +648,13 @@ describe("Phase 1 model route handlers", () => {
 
     expect(response.sectionDirectEvidenceQuality).toBe("verified");
     expect(response.sectionInferredEvidenceQuality).toBe("verified");
+    expect(response.sectionContextualEvidenceQuality).toBe("weak");
+    expect(response.sectionDerivedEvidenceQuality).toBe("verified");
     expect(response.sectionConstructionEvidenceQuality).toBe("verified");
     expect(response.sectionConstructionTruthQuality).toBe("verified");
+    expect(response.sectionTruthModelVersion).toBe(
+      "phase20-section-truth-model-v1",
+    );
     expect(response.wallSectionClipQuality).toBe("verified");
     expect(response.openingSectionClipQuality).toBe("verified");
     expect(response.stairSectionClipQuality).toBe("verified");
@@ -654,11 +677,20 @@ describe("Phase 1 model route handlers", () => {
     expect(response.verification.sectionInferredEvidenceQuality).toBe(
       response.sectionInferredEvidenceQuality,
     );
+    expect(response.verification.sectionContextualEvidenceQuality).toBe(
+      response.sectionContextualEvidenceQuality,
+    );
+    expect(response.verification.sectionDerivedEvidenceQuality).toBe(
+      response.sectionDerivedEvidenceQuality,
+    );
     expect(response.verification.sectionConstructionEvidenceQuality).toBe(
       response.sectionConstructionEvidenceQuality,
     );
     expect(response.verification.sectionConstructionTruthQuality).toBe(
       response.sectionConstructionTruthQuality,
+    );
+    expect(response.verification.sectionTruthModelVersion).toBe(
+      response.sectionTruthModelVersion,
     );
     expect(response.verification.wallSectionClipQuality).toBe(
       response.wallSectionClipQuality,
@@ -789,6 +821,12 @@ describe("Phase 1 model route handlers", () => {
       res.body.sectionInferredEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionContextualEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.sectionDerivedEvidenceQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.sectionConstructionEvidenceQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
@@ -842,11 +880,20 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
       res.body.sectionInferredEvidenceQuality,
     );
+    expect(res.body.verification.sectionContextualEvidenceQuality).toBe(
+      res.body.sectionContextualEvidenceQuality,
+    );
+    expect(res.body.verification.sectionDerivedEvidenceQuality).toBe(
+      res.body.sectionDerivedEvidenceQuality,
+    );
     expect(res.body.verification.sectionConstructionEvidenceQuality).toBe(
       res.body.sectionConstructionEvidenceQuality,
     );
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(res.body.verification.sectionTruthModelVersion).toBe(
+      res.body.sectionTruthModelVersion,
     );
     expect(res.body.verification.cutWallTruthQuality).toBe(
       res.body.cutWallTruthQuality,
@@ -1398,11 +1445,20 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionInferredEvidenceQuality).toBe(
       res.body.sectionInferredEvidenceQuality,
     );
+    expect(res.body.verification.sectionContextualEvidenceQuality).toBe(
+      res.body.sectionContextualEvidenceQuality,
+    );
+    expect(res.body.verification.sectionDerivedEvidenceQuality).toBe(
+      res.body.sectionDerivedEvidenceQuality,
+    );
     expect(res.body.verification.sectionConstructionEvidenceQuality).toBe(
       res.body.sectionConstructionEvidenceQuality,
     );
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
+    );
+    expect(res.body.verification.sectionTruthModelVersion).toBe(
+      res.body.sectionTruthModelVersion,
     );
     expect(res.body.verification.cutWallTruthQuality).toBe(
       res.body.cutWallTruthQuality,

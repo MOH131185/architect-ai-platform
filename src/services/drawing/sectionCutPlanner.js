@@ -254,26 +254,32 @@ export function selectSectionCandidates(projectGeometry = {}, options = {}) {
 
   return {
     version:
-      isFeatureEnabled("useDeeperSectionClippingPhase18") ||
-      isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18") ||
-      isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase18")
-        ? "phase18-section-cut-planner-v1"
-        : hasPhase17ConstructionPrimitives &&
-            (isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
-              isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
-              isFeatureEnabled(
-                "useExplicitFoundationPrimitiveSynthesisPhase17",
-              ) ||
-              isFeatureEnabled("useDeeperRoofFoundationClippingPhase17"))
-          ? "phase17-section-cut-planner-v1"
-          : isFeatureEnabled("useTrueSectionClippingPhase13") ||
-              isFeatureEnabled("useSectionTruthScoringPhase13")
-            ? "phase13-section-cut-planner-v1"
-            : isFeatureEnabled("useSectionStrategyLibraryPhase10")
-              ? "phase10-section-cut-planner-v1"
-              : isFeatureEnabled("useSectionSemanticSelectionPhase9")
-                ? "phase9-section-cut-planner-v1"
-                : "phase8-section-cut-planner-v1",
+      isFeatureEnabled("useNearBooleanSectioningPhase20") ||
+      isFeatureEnabled("useCentralizedSectionTruthModelPhase20") ||
+      isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
+      isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
+      isFeatureEnabled("useSectionConstructionCredibilityGatePhase20")
+        ? "phase20-section-cut-planner-v1"
+        : isFeatureEnabled("useDeeperSectionClippingPhase18") ||
+            isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18") ||
+            isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase18")
+          ? "phase18-section-cut-planner-v1"
+          : hasPhase17ConstructionPrimitives &&
+              (isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
+                isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
+                isFeatureEnabled(
+                  "useExplicitFoundationPrimitiveSynthesisPhase17",
+                ) ||
+                isFeatureEnabled("useDeeperRoofFoundationClippingPhase17"))
+            ? "phase17-section-cut-planner-v1"
+            : isFeatureEnabled("useTrueSectionClippingPhase13") ||
+                isFeatureEnabled("useSectionTruthScoringPhase13")
+              ? "phase13-section-cut-planner-v1"
+              : isFeatureEnabled("useSectionStrategyLibraryPhase10")
+                ? "phase10-section-cut-planner-v1"
+                : isFeatureEnabled("useSectionSemanticSelectionPhase9")
+                  ? "phase9-section-cut-planner-v1"
+                  : "phase8-section-cut-planner-v1",
     candidates: rankedCandidates,
     chosenStrategy: rankedCandidates[0]?.chosenStrategy || null,
     rejectedAlternatives: rankedCandidates[0]?.rejectedAlternatives || [],

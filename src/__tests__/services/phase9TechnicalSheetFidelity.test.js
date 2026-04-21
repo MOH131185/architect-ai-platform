@@ -286,6 +286,7 @@ describe("Phase 9 technical sheet fidelity", () => {
       "phase13-section-cut-planner-v1",
       "phase17-section-cut-planner-v1",
       "phase18-section-cut-planner-v1",
+      "phase20-section-cut-planner-v1",
     ]).toContain(candidates.version);
     expect(candidates.candidates.length).toBeGreaterThan(2);
     expect(candidates.candidates[0].sectionCandidateQuality).toBeDefined();

@@ -1185,6 +1185,21 @@ export const FEATURE_FLAGS = {
   /** Phase 19 section-construction credibility gate from richer clipped truth */
   useSectionConstructionCredibilityGatePhase19: true,
 
+  /** Phase 20 near-boolean / deeper geometric sectioning */
+  useNearBooleanSectioningPhase20: true,
+
+  /** Phase 20 centralized section-truth model from actual cut geometry */
+  useCentralizedSectionTruthModelPhase20: true,
+
+  /** Phase 20 more drafting-grade section graphics from exact cut truth */
+  useDraftingGradeSectionGraphicsPhase20: true,
+
+  /** Phase 20 section ranking from actual cut-construction value */
+  useConstructionTruthDrivenSectionRankingPhase20: true,
+
+  /** Phase 20 section construction credibility gate from centralized cut truth */
+  useSectionConstructionCredibilityGatePhase20: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1553,6 +1568,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useDraftingGradeSectionGraphicsPhase19 = true;
   FEATURE_FLAGS.useConstructionTruthDrivenSectionRankingPhase19 = true;
   FEATURE_FLAGS.useSectionConstructionCredibilityGatePhase19 = true;
+  FEATURE_FLAGS.useNearBooleanSectioningPhase20 = true;
+  FEATURE_FLAGS.useCentralizedSectionTruthModelPhase20 = true;
+  FEATURE_FLAGS.useDraftingGradeSectionGraphicsPhase20 = true;
+  FEATURE_FLAGS.useConstructionTruthDrivenSectionRankingPhase20 = true;
+  FEATURE_FLAGS.useSectionConstructionCredibilityGatePhase20 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -2118,6 +2138,26 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_SECTION_CONSTRUCTION_CREDIBILITY_GATE_PHASE19: {
       flag: "useSectionConstructionCredibilityGatePhase19",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_NEAR_BOOLEAN_SECTIONING_PHASE20: {
+      flag: "useNearBooleanSectioningPhase20",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CENTRALIZED_SECTION_TRUTH_MODEL_PHASE20: {
+      flag: "useCentralizedSectionTruthModelPhase20",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DRAFTING_GRADE_SECTION_GRAPHICS_PHASE20: {
+      flag: "useDraftingGradeSectionGraphicsPhase20",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CONSTRUCTION_TRUTH_DRIVEN_SECTION_RANKING_PHASE20: {
+      flag: "useConstructionTruthDrivenSectionRankingPhase20",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CONSTRUCTION_CREDIBILITY_GATE_PHASE20: {
+      flag: "useSectionConstructionCredibilityGatePhase20",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

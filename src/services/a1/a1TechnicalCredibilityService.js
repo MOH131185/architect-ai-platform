@@ -228,11 +228,17 @@ export function evaluateA1TechnicalCredibility({
         finalSheetRegression?.sectionDirectEvidenceQuality || "provisional",
       sectionInferredEvidenceQuality:
         finalSheetRegression?.sectionInferredEvidenceQuality || "provisional",
+      sectionContextualEvidenceQuality:
+        finalSheetRegression?.sectionContextualEvidenceQuality || "provisional",
+      sectionDerivedEvidenceQuality:
+        finalSheetRegression?.sectionDerivedEvidenceQuality || "provisional",
       sectionConstructionEvidenceQuality:
         finalSheetRegression?.sectionConstructionEvidenceQuality ||
         "provisional",
       sectionConstructionTruthQuality:
         finalSheetRegression?.sectionConstructionTruthQuality || "provisional",
+      sectionTruthModelVersion:
+        finalSheetRegression?.sectionTruthModelVersion || null,
       wallSectionClipQuality:
         finalSheetRegression?.wallSectionClipQuality || "provisional",
       openingSectionClipQuality:

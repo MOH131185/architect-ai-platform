@@ -621,8 +621,10 @@ export function renderSectionSvg(
   const baseY = height - padding;
   const sectionEvidence =
     options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
+  const sectionTruthModel = sectionEvidence.sectionTruthModel || null;
   const lineweights = getSectionLineweights({
     constructionTruthQuality:
+      sectionTruthModel?.overall?.quality ||
       sectionEvidence.summary?.sectionConstructionTruthQuality ||
       sectionEvidence.summary?.directEvidenceQuality ||
       "weak",
@@ -656,6 +658,7 @@ export function renderSectionSvg(
   const geometryComplete =
     sectionEvidence.summary?.geometryCommunicable !== false &&
     levelProfiles.length > 0;
+  const allowWeakSectionFallback = options.allowWeakSectionFallback === true;
   const useDraftingGradeGraphics =
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18");
@@ -671,7 +674,8 @@ export function renderSectionSvg(
 
   if (
     isFeatureEnabled("useSectionRendererUpgradePhase8") &&
-    !geometryComplete
+    !geometryComplete &&
+    !allowWeakSectionFallback
   ) {
     return {
       svg: null,
@@ -886,20 +890,44 @@ export function renderSectionSvg(
         sectionEvidence.summary?.sectionConstructionTruthQuality || null,
       section_construction_evidence_quality:
         sectionEvidence.summary?.sectionConstructionEvidenceQuality || null,
+      section_truth_model_version:
+        sectionTruthModel?.version ||
+        sectionEvidence.summary?.sectionTruthModelVersion ||
+        null,
       section_construction_evidence_score:
         sectionEvidence.summary?.constructionEvidenceScore || 0,
       section_direct_construction_truth_count:
-        sectionEvidence.summary?.directConstructionTruthCount || 0,
+        sectionTruthModel?.overall?.directCount ||
+        sectionEvidence.summary?.directConstructionTruthCount ||
+        0,
       section_contextual_construction_truth_count:
-        sectionEvidence.summary?.contextualConstructionTruthCount || 0,
+        sectionTruthModel?.overall?.contextualCount ||
+        sectionEvidence.summary?.contextualConstructionTruthCount ||
+        0,
       section_derived_construction_truth_count:
-        sectionEvidence.summary?.derivedConstructionTruthCount || 0,
+        sectionTruthModel?.overall?.derivedCount ||
+        sectionEvidence.summary?.derivedConstructionTruthCount ||
+        0,
       section_unsupported_construction_truth_count:
-        sectionEvidence.summary?.unsupportedConstructionTruthCount || 0,
+        sectionTruthModel?.overall?.unsupportedCount ||
+        sectionEvidence.summary?.unsupportedConstructionTruthCount ||
+        0,
+      section_contextual_evidence_score:
+        sectionEvidence.summary?.sectionContextualEvidenceScore || 0,
+      section_contextual_evidence_quality:
+        sectionEvidence.summary?.sectionContextualEvidenceQuality || null,
+      section_derived_evidence_score:
+        sectionEvidence.summary?.sectionDerivedEvidenceScore || 0,
+      section_derived_evidence_quality:
+        sectionEvidence.summary?.sectionDerivedEvidenceQuality || null,
       section_exact_construction_clip_count:
         sectionEvidence.summary?.exactConstructionClipCount || 0,
       section_exact_profile_clip_count:
         sectionEvidence.summary?.exactConstructionProfileClipCount || 0,
+      section_near_boolean_clip_count:
+        sectionEvidence.summary?.nearBooleanConstructionClipCount || 0,
+      section_band_coverage_ratio:
+        sectionEvidence.summary?.averageConstructionBandCoverageRatio || 0,
       section_profile_segment_count:
         sectionEvidence.summary?.constructionProfileSegmentCount || 0,
       section_direct_profile_hit_count:

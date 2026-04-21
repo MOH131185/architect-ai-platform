@@ -155,11 +155,13 @@ async function renderLocalTechnicalDrawings(payload = {}) {
             ...payload.options,
             sectionType,
             structuralGrid,
+            allowWeakSectionFallback: true,
           })
         : renderSectionSvg(geometry, styleDNA, {
             ...payload.options,
             sectionType,
             structuralGrid,
+            allowWeakSectionFallback: true,
           }),
     );
   }

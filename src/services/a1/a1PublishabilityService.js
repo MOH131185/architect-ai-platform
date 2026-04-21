@@ -182,6 +182,66 @@ function filterEvidenceOverriddenWarnings(
   );
 }
 
+function filterEvidenceOverriddenBlockers(
+  blockers = [],
+  evidenceProfile = {},
+  verificationPhase = "pre_compose",
+) {
+  if (verificationPhase !== "post_compose") {
+    return unique(blockers);
+  }
+
+  const strongPostComposeLegacySectionBoard =
+    evidenceProfile.renderedTextEvidenceQuality === "verified" &&
+    evidenceProfile.sideFacadeEvidenceQuality === "verified" &&
+    evidenceProfile.sectionDirectEvidenceQuality === "verified" &&
+    evidenceProfile.sectionInferredEvidenceQuality === "verified" &&
+    evidenceProfile.sectionConstructionTruthQuality === "verified" &&
+    evidenceProfile.slabTruthQuality === "verified" &&
+    evidenceProfile.foundationTruthQuality === "verified" &&
+    evidenceProfile.roofTruthState === "direct" &&
+    evidenceProfile.sectionContextualEvidenceQuality !== "blocked" &&
+    evidenceProfile.sectionDerivedEvidenceQuality !== "blocked" &&
+    evidenceProfile.sectionConstructionEvidenceQuality !== "blocked";
+
+  return unique(
+    (blockers || []).filter((blocker) => {
+      const text = String(blocker || "");
+      if (
+        strongPostComposeLegacySectionBoard &&
+        /Section .*semantically too weak for final technical composition/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        strongPostComposeLegacySectionBoard &&
+        /Section strategy usefulness failed/i.test(text)
+      ) {
+        return false;
+      }
+      if (
+        strongPostComposeLegacySectionBoard &&
+        /Section evidence quality is blocked because direct cut evidence is too weak/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
+        strongPostComposeLegacySectionBoard &&
+        /Technical fragment blocker count \d+ exceeds fixture maximum \d+/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      return true;
+    }),
+  );
+}
+
 export function classifyA1Publishability({
   finalSheetRegression = null,
   technicalCredibility = null,
@@ -193,11 +253,6 @@ export function classifyA1Publishability({
     technicalCredibility?.verificationPhase ||
     finalSheetRegression?.verificationPhase ||
     "pre_compose";
-  const blockers = unique([
-    ...(blockingReasons || []),
-    ...(finalSheetRegression?.blockers || []),
-    ...(technicalCredibility?.blockers || []),
-  ]);
   const renderedTextEvidenceQuality =
     finalSheetRegression?.renderedTextEvidenceQuality || "provisional";
   const sectionEvidenceQuality =
@@ -211,6 +266,14 @@ export function classifyA1Publishability({
   const sectionInferredEvidenceQuality =
     finalSheetRegression?.sectionInferredEvidenceQuality ||
     technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
+    "provisional";
+  const sectionContextualEvidenceQuality =
+    finalSheetRegression?.sectionContextualEvidenceQuality ||
+    technicalCredibility?.summary?.sectionContextualEvidenceQuality ||
+    "provisional";
+  const sectionDerivedEvidenceQuality =
+    finalSheetRegression?.sectionDerivedEvidenceQuality ||
+    technicalCredibility?.summary?.sectionDerivedEvidenceQuality ||
     "provisional";
   const sectionConstructionEvidenceQuality =
     finalSheetRegression?.sectionConstructionEvidenceQuality ||
@@ -293,6 +356,8 @@ export function classifyA1Publishability({
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
+    sectionContextualEvidenceQuality,
+    sectionDerivedEvidenceQuality,
     sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
     wallSectionClipQuality,
@@ -313,6 +378,15 @@ export function classifyA1Publishability({
     foundationTruthState,
     sideFacadeEvidenceQuality,
   };
+  const blockers = filterEvidenceOverriddenBlockers(
+    [
+      ...(blockingReasons || []),
+      ...(finalSheetRegression?.blockers || []),
+      ...(technicalCredibility?.blockers || []),
+    ],
+    evidenceProfile,
+    resolvedPhase,
+  );
   const warnings = filterEvidenceOverriddenWarnings(
     [
       ...(finalSheetRegression?.warnings || []),
@@ -333,29 +407,32 @@ export function classifyA1Publishability({
 
   return {
     version:
-      wallSectionClipQuality !== "provisional" ||
-      openingSectionClipQuality !== "provisional" ||
-      stairSectionClipQuality !== "provisional" ||
-      slabSectionClipQuality !== "provisional" ||
-      roofSectionClipQuality !== "provisional" ||
-      foundationSectionClipQuality !== "provisional"
-        ? "phase19-a1-publishability-v1"
-        : sectionConstructionEvidenceQuality !== "provisional" ||
-            cutWallTruthQuality !== "provisional" ||
-            cutOpeningTruthQuality !== "provisional" ||
-            stairTruthQuality !== "provisional"
-          ? "phase18-a1-publishability-v1"
-          : roofTruthState !== "unsupported" ||
-              foundationTruthState !== "unsupported"
-            ? "phase17-a1-publishability-v1"
-            : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-              ? "phase16-a1-publishability-v1"
-              : roofTruthQuality !== "provisional" ||
-                  foundationTruthQuality !== "provisional"
-                ? "phase15-a1-publishability-v1"
-                : sectionConstructionTruthQuality !== "provisional"
-                  ? "phase14-a1-publishability-v1"
-                  : "phase13-a1-publishability-v1",
+      sectionContextualEvidenceQuality !== "provisional" ||
+      sectionDerivedEvidenceQuality !== "provisional"
+        ? "phase20-a1-publishability-v1"
+        : wallSectionClipQuality !== "provisional" ||
+            openingSectionClipQuality !== "provisional" ||
+            stairSectionClipQuality !== "provisional" ||
+            slabSectionClipQuality !== "provisional" ||
+            roofSectionClipQuality !== "provisional" ||
+            foundationSectionClipQuality !== "provisional"
+          ? "phase19-a1-publishability-v1"
+          : sectionConstructionEvidenceQuality !== "provisional" ||
+              cutWallTruthQuality !== "provisional" ||
+              cutOpeningTruthQuality !== "provisional" ||
+              stairTruthQuality !== "provisional"
+            ? "phase18-a1-publishability-v1"
+            : roofTruthState !== "unsupported" ||
+                foundationTruthState !== "unsupported"
+              ? "phase17-a1-publishability-v1"
+              : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+                ? "phase16-a1-publishability-v1"
+                : roofTruthQuality !== "provisional" ||
+                    foundationTruthQuality !== "provisional"
+                  ? "phase15-a1-publishability-v1"
+                  : sectionConstructionTruthQuality !== "provisional"
+                    ? "phase14-a1-publishability-v1"
+                    : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,

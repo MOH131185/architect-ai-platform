@@ -134,9 +134,13 @@ function alignVerificationBundle(bundle = null, verification = null) {
     sectionEvidenceQuality: canonical.sectionEvidenceQuality,
     sectionDirectEvidenceQuality: canonical.sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality: canonical.sectionInferredEvidenceQuality,
+    sectionContextualEvidenceQuality:
+      canonical.sectionContextualEvidenceQuality,
+    sectionDerivedEvidenceQuality: canonical.sectionDerivedEvidenceQuality,
     sectionConstructionEvidenceQuality:
       canonical.sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality: canonical.sectionConstructionTruthQuality,
+    sectionTruthModelVersion: canonical.sectionTruthModelVersion,
     wallSectionClipQuality: canonical.wallSectionClipQuality,
     openingSectionClipQuality: canonical.openingSectionClipQuality,
     stairSectionClipQuality: canonical.stairSectionClipQuality,
@@ -285,8 +289,11 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionContextualEvidenceQuality",
+      "sectionDerivedEvidenceQuality",
       "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "sectionTruthModelVersion",
       "wallSectionClipQuality",
       "openingSectionClipQuality",
       "stairSectionClipQuality",
@@ -337,8 +344,11 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionContextualEvidenceQuality",
+      "sectionDerivedEvidenceQuality",
       "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "sectionTruthModelVersion",
       "wallSectionClipQuality",
       "openingSectionClipQuality",
       "stairSectionClipQuality",
@@ -399,8 +409,11 @@ export const PHASE1_API_CONTRACTS = {
       "sectionEvidenceQuality",
       "sectionDirectEvidenceQuality",
       "sectionInferredEvidenceQuality",
+      "sectionContextualEvidenceQuality",
+      "sectionDerivedEvidenceQuality",
       "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "sectionTruthModelVersion",
       "wallSectionClipQuality",
       "openingSectionClipQuality",
       "stairSectionClipQuality",
@@ -1137,6 +1150,14 @@ export function buildProjectReadinessResponse({
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionContextualEvidenceQuality:
+      verificationBundle?.sectionContextualEvidenceQuality ||
+      result.finalSheetRegression?.sectionContextualEvidenceQuality ||
+      "provisional",
+    sectionDerivedEvidenceQuality:
+      verificationBundle?.sectionDerivedEvidenceQuality ||
+      result.finalSheetRegression?.sectionDerivedEvidenceQuality ||
+      "provisional",
     sectionConstructionEvidenceQuality:
       verificationBundle?.sectionConstructionEvidenceQuality ||
       result.finalSheetRegression?.sectionConstructionEvidenceQuality ||
@@ -1145,6 +1166,10 @@ export function buildProjectReadinessResponse({
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
+    sectionTruthModelVersion:
+      verificationBundle?.sectionTruthModelVersion ||
+      result.finalSheetRegression?.sectionTruthModelVersion ||
+      null,
     wallSectionClipQuality:
       verificationBundle?.wallSectionClipQuality ||
       result.finalSheetRegression?.wallSectionClipQuality ||
@@ -1372,6 +1397,14 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.sectionInferredEvidenceQuality ||
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionContextualEvidenceQuality:
+      verificationBundle?.sectionContextualEvidenceQuality ||
+      result.finalSheetRegression?.sectionContextualEvidenceQuality ||
+      "provisional",
+    sectionDerivedEvidenceQuality:
+      verificationBundle?.sectionDerivedEvidenceQuality ||
+      result.finalSheetRegression?.sectionDerivedEvidenceQuality ||
+      "provisional",
     sectionConstructionEvidenceQuality:
       verificationBundle?.sectionConstructionEvidenceQuality ||
       result.finalSheetRegression?.sectionConstructionEvidenceQuality ||
@@ -1380,6 +1413,10 @@ export function buildPlanA1PanelsResponse({
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
+    sectionTruthModelVersion:
+      verificationBundle?.sectionTruthModelVersion ||
+      result.finalSheetRegression?.sectionTruthModelVersion ||
+      null,
     wallSectionClipQuality:
       verificationBundle?.wallSectionClipQuality ||
       result.finalSheetRegression?.wallSectionClipQuality ||
@@ -1682,6 +1719,17 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.sectionInferredEvidenceQuality ||
       result.readiness?.finalSheetRegression?.sectionInferredEvidenceQuality ||
       "provisional",
+    sectionContextualEvidenceQuality:
+      verificationBundle?.sectionContextualEvidenceQuality ||
+      result.finalSheetRegression?.sectionContextualEvidenceQuality ||
+      result.readiness?.finalSheetRegression
+        ?.sectionContextualEvidenceQuality ||
+      "provisional",
+    sectionDerivedEvidenceQuality:
+      verificationBundle?.sectionDerivedEvidenceQuality ||
+      result.finalSheetRegression?.sectionDerivedEvidenceQuality ||
+      result.readiness?.finalSheetRegression?.sectionDerivedEvidenceQuality ||
+      "provisional",
     sectionConstructionEvidenceQuality:
       verificationBundle?.sectionConstructionEvidenceQuality ||
       result.finalSheetRegression?.sectionConstructionEvidenceQuality ||
@@ -1693,6 +1741,11 @@ export function buildProjectHealthResponse({
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       result.readiness?.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
+    sectionTruthModelVersion:
+      verificationBundle?.sectionTruthModelVersion ||
+      result.finalSheetRegression?.sectionTruthModelVersion ||
+      result.readiness?.finalSheetRegression?.sectionTruthModelVersion ||
+      null,
     wallSectionClipQuality:
       verificationBundle?.wallSectionClipQuality ||
       result.finalSheetRegression?.wallSectionClipQuality ||

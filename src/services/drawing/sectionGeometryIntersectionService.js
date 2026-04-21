@@ -12,6 +12,7 @@ import {
   collectSupportSummary,
   countExactClips,
 } from "./sectionClipperService.js";
+import { buildSectionCutBandGeometry } from "./sectionCutBandGeometryService.js";
 import {
   countExplicitGroundRelationPrimitives,
   countPrimitiveFamilies,
@@ -291,6 +292,12 @@ export function buildSectionIntersections(
     sectionType,
   );
   const clippingEnabled = isFeatureEnabled("useTrueSectionClippingPhase13");
+  const phase20Sectioning =
+    isFeatureEnabled("useNearBooleanSectioningPhase20") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase20") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase20");
   const sectionCut = {
     sectionType,
     axis,
@@ -300,6 +307,7 @@ export function buildSectionIntersections(
     directBand: Number(options.directBand || (clippingEnabled ? 0.14 : 0.16)),
     nearBand: Number(options.nearBand || 0.9),
   };
+  const cutBandGeometry = buildSectionCutBandGeometry(sectionCut, clipOptions);
 
   const wallEntries = (projectGeometry.walls || []).map((entry) =>
     clipWallToSection(entry, sectionCut, clipOptions),
@@ -462,24 +470,27 @@ export function buildSectionIntersections(
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase19");
 
   return {
-    version: deeperSectionClippingPhase19
-      ? "phase19-section-geometry-intersection-v1"
-      : deeperSectionClippingPhase18
-        ? "phase18-section-geometry-intersection-v1"
-        : phase17Enabled
-          ? "phase17-section-geometry-intersection-v1"
-          : phase16Enabled
-            ? "phase16-section-geometry-intersection-v1"
-            : phase15Enabled
-              ? "phase15-section-geometry-intersection-v1"
-              : clippingEnabled
-                ? "phase13-section-geometry-intersection-v1"
-                : "phase12-section-geometry-intersection-v1",
+    version: phase20Sectioning
+      ? "phase20-section-geometry-intersection-v1"
+      : deeperSectionClippingPhase19
+        ? "phase19-section-geometry-intersection-v1"
+        : deeperSectionClippingPhase18
+          ? "phase18-section-geometry-intersection-v1"
+          : phase17Enabled
+            ? "phase17-section-geometry-intersection-v1"
+            : phase16Enabled
+              ? "phase16-section-geometry-intersection-v1"
+              : phase15Enabled
+                ? "phase15-section-geometry-intersection-v1"
+                : clippingEnabled
+                  ? "phase13-section-geometry-intersection-v1"
+                  : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
     directBandM: clipOptions.directBand,
     nearBandM: clipOptions.nearBand,
+    cutBandGeometry,
     clippingEnabled,
     intersections,
     unsupportedCounts: collectUnsupportedCounts(intersections),

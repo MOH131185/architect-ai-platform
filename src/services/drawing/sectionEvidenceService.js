@@ -6,6 +6,7 @@ import {
 } from "./sectionGeometryIntersectionService.js";
 import { truthBucketFromMode } from "./constructionTruthModel.js";
 import { assessSectionConstructionSemantics } from "./sectionConstructionSemanticService.js";
+import { buildSectionTruthModel } from "./sectionTruthModel.js";
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -406,11 +407,22 @@ export function buildSectionEvidence(
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase19");
+  const usePhase20Truth =
+    isFeatureEnabled("useNearBooleanSectioningPhase20") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase20") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase20");
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
     sectionProfile,
-    useTrueEvidence ? { directBand: 0.14, nearBand: 0.9 } : undefined,
+    useTrueEvidence
+      ? {
+          directBand: usePhase20Truth ? 0.12 : 0.14,
+          nearBand: usePhase20Truth ? 0.82 : 0.9,
+        }
+      : undefined,
   );
   const rooms = intersectionBundle.intersections.rooms || {};
   const stairs = intersectionBundle.intersections.stairs || {};
@@ -593,6 +605,25 @@ export function buildSectionEvidence(
       Number(roofConstructionTruth.directProfileHitCount || 0) +
       Number(foundationConstructionTruth.directProfileHitCount || 0) +
       Number(baseConditionConstructionTruth.directProfileHitCount || 0),
+    nearBooleanClipCount:
+      Number(wallConstructionTruth.nearBooleanClipCount || 0) +
+      Number(openingConstructionTruth.nearBooleanClipCount || 0) +
+      Number(stairConstructionTruth.nearBooleanClipCount || 0) +
+      Number(slabConstructionTruth.nearBooleanClipCount || 0) +
+      Number(roofConstructionTruth.nearBooleanClipCount || 0) +
+      Number(foundationConstructionTruth.nearBooleanClipCount || 0) +
+      Number(baseConditionConstructionTruth.nearBooleanClipCount || 0),
+    averageBandCoverageRatio: round(
+      [
+        Number(wallConstructionTruth.averageBandCoverageRatio || 0),
+        Number(openingConstructionTruth.averageBandCoverageRatio || 0),
+        Number(stairConstructionTruth.averageBandCoverageRatio || 0),
+        Number(slabConstructionTruth.averageBandCoverageRatio || 0),
+        Number(roofConstructionTruth.averageBandCoverageRatio || 0),
+        Number(foundationConstructionTruth.averageBandCoverageRatio || 0),
+        Number(baseConditionConstructionTruth.averageBandCoverageRatio || 0),
+      ].reduce((sum, value) => sum + value, 0) / 7,
+    ),
     profileComplexityScore: round(
       clamp(
         (Number(wallConstructionTruth.profileComplexityScore || 0) +
@@ -759,7 +790,18 @@ export function buildSectionEvidence(
     clamp(
       Number(overallConstructionTruth.profileComplexityScore || 0) * 0.62 +
         Math.min(0.24, constructionProfileSegmentCount * 0.018) +
-        Math.min(0.14, directConstructionProfileHitCount * 0.032),
+        Math.min(0.14, directConstructionProfileHitCount * 0.032) +
+        (usePhase20Truth
+          ? Math.min(
+              0.18,
+              Number(overallConstructionTruth.nearBooleanClipCount || 0) * 0.03,
+            ) +
+            Math.min(
+              0.12,
+              Number(overallConstructionTruth.averageBandCoverageRatio || 0) *
+                0.12,
+            )
+          : 0),
       0,
       1,
     ),
@@ -771,7 +813,19 @@ export function buildSectionEvidence(
         stairClipQuality.score * 0.12 +
         slabClipQuality.score * 0.14 +
         roofClipQuality.score * 0.16 +
-        foundationClipQuality.score * 0.2,
+        foundationClipQuality.score * 0.2 +
+        (usePhase20Truth
+          ? Math.min(
+              0.12,
+              Number(overallConstructionTruth.nearBooleanClipCount || 0) *
+                0.018,
+            ) +
+            Math.min(
+              0.08,
+              Number(overallConstructionTruth.averageBandCoverageRatio || 0) *
+                0.08,
+            )
+          : 0),
       0,
       1,
     ),
@@ -906,6 +960,17 @@ export function buildSectionEvidence(
             sectionProfileComplexityScore * 0.12 +
             sectionDraftingEvidenceScore * 0.14
           : 0) +
+        (usePhase20Truth
+          ? Math.min(
+              0.1,
+              Number(overallConstructionTruth.nearBooleanClipCount || 0) * 0.02,
+            ) +
+            Math.min(
+              0.08,
+              Number(overallConstructionTruth.averageBandCoverageRatio || 0) *
+                0.08,
+            )
+          : 0) +
         Number(roofConstructionTruth.directCount || 0) * 0.04 +
         Number(foundationConstructionTruth.directCount || 0) * 0.04 +
         Number(baseConditionConstructionTruth.directCount || 0) * 0.03 -
@@ -941,6 +1006,12 @@ export function buildSectionEvidence(
     exactConstructionProfileClipCount,
     constructionProfileSegmentCount,
     directConstructionProfileHitCount,
+    nearBooleanConstructionClipCount: Number(
+      overallConstructionTruth.nearBooleanClipCount || 0,
+    ),
+    averageConstructionBandCoverageRatio: Number(
+      overallConstructionTruth.averageBandCoverageRatio || 0,
+    ),
     cutSpecificity: round(cutSpecificity),
     directEvidenceScore,
     inferredEvidenceScore,
@@ -1059,6 +1130,9 @@ export function buildSectionEvidence(
     foundationSectionClipQuality: foundationClipQuality.quality,
     sectionConstructionEvidenceScore,
     sectionConstructionEvidenceQuality,
+    sectionTruthModelVersion: usePhase20Truth
+      ? "phase20-section-truth-model-v1"
+      : "phase19-section-truth-model-v1",
     explicitRoofPrimitiveCount: Number(
       intersectionBundle.explicitRoofPrimitiveCount || 0,
     ),
@@ -1215,6 +1289,31 @@ export function buildSectionEvidence(
     }
   }
 
+  const sectionTruthModel = buildSectionTruthModel({
+    sectionEvidence: {
+      summary,
+      sectionProfile,
+      sectionIntersections: intersectionBundle,
+    },
+    constructionSemantics,
+  });
+  summary.sectionTruthModelVersion = sectionTruthModel.version;
+  summary.sectionContextualEvidenceScore =
+    sectionTruthModel.contextualEvidenceScore;
+  summary.sectionContextualEvidenceQuality =
+    sectionTruthModel.contextualEvidenceQuality;
+  summary.sectionDerivedEvidenceScore = sectionTruthModel.derivedEvidenceScore;
+  summary.sectionDerivedEvidenceQuality =
+    sectionTruthModel.derivedEvidenceQuality;
+  summary.sectionDirectConstructionTruthCount =
+    sectionTruthModel.overall.directCount;
+  summary.sectionContextualConstructionTruthCount =
+    sectionTruthModel.overall.contextualCount;
+  summary.sectionDerivedConstructionTruthCount =
+    sectionTruthModel.overall.derivedCount;
+  summary.sectionUnsupportedConstructionTruthCount =
+    sectionTruthModel.overall.unsupportedCount;
+
   if (usePhase19Truth) {
     const criticalConstructionClipQualities = [
       summary.wallSectionClipQuality,
@@ -1239,6 +1338,19 @@ export function buildSectionEvidence(
         supportingConstructionClipQualities.some(
           (quality) => quality === "blocked",
         ))
+    ) {
+      summary.sectionConstructionEvidenceQuality = "weak";
+    }
+  }
+
+  if (usePhase20Truth) {
+    if (sectionTruthModel.overall.directQuality === "blocked") {
+      summary.sectionConstructionEvidenceQuality = "blocked";
+      summary.sectionConstructionTruthQuality = "blocked";
+    } else if (
+      summary.sectionConstructionEvidenceQuality === "verified" &&
+      (sectionTruthModel.contextualEvidenceQuality === "blocked" ||
+        sectionTruthModel.derivedEvidenceQuality === "blocked")
     ) {
       summary.sectionConstructionEvidenceQuality = "weak";
     }
@@ -1325,19 +1437,21 @@ export function buildSectionEvidence(
   }
 
   return {
-    version: usePhase19Truth
-      ? "phase19-section-evidence-service-v1"
-      : usePhase18Truth
-        ? "phase18-section-evidence-service-v1"
-        : usePhase17Truth
-          ? "phase17-section-evidence-service-v1"
-          : usePhase15Truth
-            ? "phase15-section-evidence-service-v1"
-            : useTrueEvidence
-              ? useConstructionTruth
-                ? "phase14-section-evidence-service-v1"
-                : "phase13-section-evidence-service-v1"
-              : "phase10-section-evidence-service-v1",
+    version: usePhase20Truth
+      ? "phase20-section-evidence-service-v1"
+      : usePhase19Truth
+        ? "phase19-section-evidence-service-v1"
+        : usePhase18Truth
+          ? "phase18-section-evidence-service-v1"
+          : usePhase17Truth
+            ? "phase17-section-evidence-service-v1"
+            : usePhase15Truth
+              ? "phase15-section-evidence-service-v1"
+              : useTrueEvidence
+                ? useConstructionTruth
+                  ? "phase14-section-evidence-service-v1"
+                  : "phase13-section-evidence-service-v1"
+                : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
     cutAxis: axis,
@@ -1393,6 +1507,7 @@ export function buildSectionEvidence(
     focusHits,
     circulationHitCount,
     sectionConstructionSemantics: constructionSemantics,
+    sectionTruthModel,
     blockers: unique(blockers),
     warnings: unique(warnings),
     rationale: [

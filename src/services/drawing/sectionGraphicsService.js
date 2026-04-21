@@ -75,6 +75,12 @@ function constructionTruthRank(candidate = {}) {
   );
 }
 
+function sectionTruthRank(candidate = {}) {
+  return Number(
+    candidate.sectionEvidence?.sectionTruthModel?.overall?.directScore || 0,
+  );
+}
+
 function renderPlacements(placements = []) {
   return `
     <g id="phase7-section-annotations">
@@ -132,6 +138,11 @@ export function buildSectionGraphic(
       const qualityDelta = qualityRank(right) - qualityRank(left);
       if (qualityDelta !== 0) {
         return qualityDelta;
+      }
+      const sectionTruthDelta =
+        sectionTruthRank(right) - sectionTruthRank(left);
+      if (sectionTruthDelta !== 0) {
+        return sectionTruthDelta;
       }
       const directTruthDelta = directTruthRank(right) - directTruthRank(left);
       if (directTruthDelta !== 0) {
@@ -234,20 +245,43 @@ export function buildSectionGraphic(
         section_construction_evidence_quality:
           sectionEvidence.summary?.sectionConstructionEvidenceQuality ||
           "blocked",
+        section_truth_model_version:
+          sectionEvidence.sectionTruthModel?.version ||
+          sectionEvidence.summary?.sectionTruthModelVersion ||
+          null,
         section_construction_truth_quality:
           sectionEvidence.summary?.sectionConstructionTruthQuality || "blocked",
         section_construction_evidence_score:
           sectionEvidence.summary?.constructionEvidenceScore || 0,
         section_direct_construction_truth_count:
-          sectionEvidence.summary?.directConstructionTruthCount || 0,
+          sectionEvidence.sectionTruthModel?.overall?.directCount ||
+          sectionEvidence.summary?.directConstructionTruthCount ||
+          0,
         section_contextual_construction_truth_count:
-          sectionEvidence.summary?.contextualConstructionTruthCount || 0,
+          sectionEvidence.sectionTruthModel?.overall?.contextualCount ||
+          sectionEvidence.summary?.contextualConstructionTruthCount ||
+          0,
         section_derived_construction_truth_count:
-          sectionEvidence.summary?.derivedConstructionTruthCount || 0,
+          sectionEvidence.sectionTruthModel?.overall?.derivedCount ||
+          sectionEvidence.summary?.derivedConstructionTruthCount ||
+          0,
+        section_contextual_evidence_score:
+          sectionEvidence.summary?.sectionContextualEvidenceScore || 0,
+        section_contextual_evidence_quality:
+          sectionEvidence.summary?.sectionContextualEvidenceQuality ||
+          "blocked",
+        section_derived_evidence_score:
+          sectionEvidence.summary?.sectionDerivedEvidenceScore || 0,
+        section_derived_evidence_quality:
+          sectionEvidence.summary?.sectionDerivedEvidenceQuality || "blocked",
         section_exact_construction_clip_count:
           sectionEvidence.summary?.exactConstructionClipCount || 0,
         section_exact_profile_clip_count:
           sectionEvidence.summary?.exactConstructionProfileClipCount || 0,
+        section_near_boolean_clip_count:
+          sectionEvidence.summary?.nearBooleanConstructionClipCount || 0,
+        section_band_coverage_ratio:
+          sectionEvidence.summary?.averageConstructionBandCoverageRatio || 0,
         section_profile_segment_count:
           sectionEvidence.summary?.constructionProfileSegmentCount || 0,
         section_direct_profile_hit_count:
@@ -394,18 +428,40 @@ export function buildSectionGraphic(
         sectionEvidence.summary?.sectionConstructionEvidenceQuality || null,
       section_construction_truth_quality:
         sectionEvidence.summary?.sectionConstructionTruthQuality || null,
+      section_truth_model_version:
+        sectionEvidence.sectionTruthModel?.version ||
+        sectionEvidence.summary?.sectionTruthModelVersion ||
+        null,
       section_construction_evidence_score:
         sectionEvidence.summary?.constructionEvidenceScore || 0,
       section_direct_construction_truth_count:
-        sectionEvidence.summary?.directConstructionTruthCount || 0,
+        sectionEvidence.sectionTruthModel?.overall?.directCount ||
+        sectionEvidence.summary?.directConstructionTruthCount ||
+        0,
       section_contextual_construction_truth_count:
-        sectionEvidence.summary?.contextualConstructionTruthCount || 0,
+        sectionEvidence.sectionTruthModel?.overall?.contextualCount ||
+        sectionEvidence.summary?.contextualConstructionTruthCount ||
+        0,
       section_derived_construction_truth_count:
-        sectionEvidence.summary?.derivedConstructionTruthCount || 0,
+        sectionEvidence.sectionTruthModel?.overall?.derivedCount ||
+        sectionEvidence.summary?.derivedConstructionTruthCount ||
+        0,
+      section_contextual_evidence_score:
+        sectionEvidence.summary?.sectionContextualEvidenceScore || 0,
+      section_contextual_evidence_quality:
+        sectionEvidence.summary?.sectionContextualEvidenceQuality || null,
+      section_derived_evidence_score:
+        sectionEvidence.summary?.sectionDerivedEvidenceScore || 0,
+      section_derived_evidence_quality:
+        sectionEvidence.summary?.sectionDerivedEvidenceQuality || null,
       section_exact_construction_clip_count:
         sectionEvidence.summary?.exactConstructionClipCount || 0,
       section_exact_profile_clip_count:
         sectionEvidence.summary?.exactConstructionProfileClipCount || 0,
+      section_near_boolean_clip_count:
+        sectionEvidence.summary?.nearBooleanConstructionClipCount || 0,
+      section_band_coverage_ratio:
+        sectionEvidence.summary?.averageConstructionBandCoverageRatio || 0,
       section_profile_segment_count:
         sectionEvidence.summary?.constructionProfileSegmentCount || 0,
       section_direct_profile_hit_count:

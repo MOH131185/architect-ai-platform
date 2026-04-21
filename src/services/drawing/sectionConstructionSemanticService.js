@@ -1,3 +1,4 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { assessSectionFoundationTruth } from "./sectionFoundationTruthService.js";
 import { assessSectionRoofTruth } from "./sectionRoofTruthService.js";
 import { assessSectionSlabTruth } from "./sectionSlabTruthService.js";
@@ -47,6 +48,12 @@ function wallTruth(summary = {}) {
     score,
     quality: classifyQuality(score),
     exactClipCount: exactWallClipCount,
+    truthState:
+      classifyQuality(score) === "verified"
+        ? "direct"
+        : classifyQuality(score) === "weak"
+          ? "contextual"
+          : "derived",
   };
 }
 
@@ -81,6 +88,12 @@ function openingTruth(summary = {}, cutWallQuality = "blocked") {
     score,
     quality: classifyQuality(score),
     exactClipCount: exactOpeningClipCount,
+    truthState:
+      classifyQuality(score) === "verified"
+        ? "direct"
+        : classifyQuality(score) === "weak"
+          ? "contextual"
+          : "derived",
   };
 }
 
@@ -102,6 +115,12 @@ function stairConstructionTruth(summary = {}) {
   return {
     score,
     quality: classifyQuality(score),
+    truthState:
+      classifyQuality(score) === "verified"
+        ? "direct"
+        : classifyQuality(score) === "weak"
+          ? "contextual"
+          : "derived",
   };
 }
 
@@ -109,6 +128,12 @@ export function assessSectionConstructionSemantics({
   sectionEvidence = {},
   geometry = {},
 } = {}) {
+  const phase20TruthModel =
+    isFeatureEnabled("useNearBooleanSectioningPhase20") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase20") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase20");
   const summary = sectionEvidence.summary || {};
   const cutWallTruth = wallTruth(summary);
   const cutOpeningTruth = openingTruth(summary, cutWallTruth.quality);
@@ -190,11 +215,12 @@ export function assessSectionConstructionSemantics({
   }
 
   return {
-    version:
-      roofTruth.hipCount ||
-      roofTruth.valleyCount ||
-      foundationTruth.foundationZoneCount ||
-      foundationTruth.baseWallConditionCount
+    version: phase20TruthModel
+      ? "phase20-section-construction-semantics-v1"
+      : roofTruth.hipCount ||
+          roofTruth.valleyCount ||
+          foundationTruth.foundationZoneCount ||
+          foundationTruth.baseWallConditionCount
         ? "phase17-section-construction-semantics-v1"
         : roofTruth.supportMode || foundationTruth.supportMode
           ? "phase16-section-construction-semantics-v1"

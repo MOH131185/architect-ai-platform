@@ -187,6 +187,14 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sectionInferredEvidenceQuality ||
     technicalCredibility?.summary?.sectionInferredEvidenceQuality ||
     "provisional";
+  const sectionContextualEvidenceQuality =
+    finalSheetRegression?.sectionContextualEvidenceQuality ||
+    technicalCredibility?.summary?.sectionContextualEvidenceQuality ||
+    "provisional";
+  const sectionDerivedEvidenceQuality =
+    finalSheetRegression?.sectionDerivedEvidenceQuality ||
+    technicalCredibility?.summary?.sectionDerivedEvidenceQuality ||
+    "provisional";
   const sectionConstructionEvidenceQuality =
     finalSheetRegression?.sectionConstructionEvidenceQuality ||
     technicalCredibility?.summary?.sectionConstructionEvidenceQuality ||
@@ -257,6 +265,10 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sideFacadeEvidenceQuality ||
     technicalCredibility?.summary?.sideFacadeEvidenceQuality ||
     "provisional";
+  const sectionTruthModelVersion =
+    finalSheetRegression?.sectionTruthModelVersion ||
+    technicalCredibility?.summary?.sectionTruthModelVersion ||
+    null;
   const sectionChosenRationale =
     finalSheetRegression?.chosenSectionRationale ||
     finalSheetRegression?.sectionCandidateQuality?.find(
@@ -276,13 +288,14 @@ export function buildA1VerificationBundle({
       : canonicalDecision(overall, decisive);
 
   const canonicalVerification = {
-    version:
-      wallSectionClipQuality !== "provisional" ||
-      openingSectionClipQuality !== "provisional" ||
-      stairSectionClipQuality !== "provisional" ||
-      slabSectionClipQuality !== "provisional" ||
-      roofSectionClipQuality !== "provisional" ||
-      foundationSectionClipQuality !== "provisional"
+    version: sectionTruthModelVersion
+      ? "phase20-a1-verification-v1"
+      : wallSectionClipQuality !== "provisional" ||
+          openingSectionClipQuality !== "provisional" ||
+          stairSectionClipQuality !== "provisional" ||
+          slabSectionClipQuality !== "provisional" ||
+          roofSectionClipQuality !== "provisional" ||
+          foundationSectionClipQuality !== "provisional"
         ? "phase19-a1-verification-v1"
         : sectionConstructionEvidenceQuality !== "provisional" ||
             cutWallTruthQuality !== "provisional" ||
@@ -311,8 +324,11 @@ export function buildA1VerificationBundle({
     sectionEvidenceQuality,
     sectionDirectEvidenceQuality,
     sectionInferredEvidenceQuality,
+    sectionContextualEvidenceQuality,
+    sectionDerivedEvidenceQuality,
     sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
+    sectionTruthModelVersion,
     wallSectionClipQuality,
     openingSectionClipQuality,
     stairSectionClipQuality,
