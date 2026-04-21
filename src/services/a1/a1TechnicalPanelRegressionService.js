@@ -31,6 +31,24 @@ function normalizeStatus(entry = {}) {
   const roofTruthQuality = String(
     entry?.technical_quality_metadata?.roof_truth_quality || "",
   ).toLowerCase();
+  const wallSectionClipQuality = String(
+    entry?.technical_quality_metadata?.wall_section_clip_quality || "",
+  ).toLowerCase();
+  const openingSectionClipQuality = String(
+    entry?.technical_quality_metadata?.opening_section_clip_quality || "",
+  ).toLowerCase();
+  const stairSectionClipQuality = String(
+    entry?.technical_quality_metadata?.stair_section_clip_quality || "",
+  ).toLowerCase();
+  const slabSectionClipQuality = String(
+    entry?.technical_quality_metadata?.slab_section_clip_quality || "",
+  ).toLowerCase();
+  const roofSectionClipQuality = String(
+    entry?.technical_quality_metadata?.roof_section_clip_quality || "",
+  ).toLowerCase();
+  const foundationSectionClipQuality = String(
+    entry?.technical_quality_metadata?.foundation_section_clip_quality || "",
+  ).toLowerCase();
   const roofTruthMode = String(
     entry?.technical_quality_metadata?.roof_truth_mode || "",
   ).toLowerCase();
@@ -45,6 +63,7 @@ function normalizeStatus(entry = {}) {
     inferredEvidenceQuality === "blocked" ||
     constructionEvidenceQuality === "blocked" ||
     constructionTruthQuality === "blocked" ||
+    wallSectionClipQuality === "blocked" ||
     cutWallTruthQuality === "blocked" ||
     slabTruthQuality === "blocked" ||
     foundationTruthQuality === "blocked"
@@ -56,6 +75,12 @@ function normalizeStatus(entry = {}) {
     inferredEvidenceQuality === "weak" ||
     constructionEvidenceQuality === "weak" ||
     constructionTruthQuality === "weak" ||
+    wallSectionClipQuality === "weak" ||
+    openingSectionClipQuality === "weak" ||
+    stairSectionClipQuality === "weak" ||
+    slabSectionClipQuality === "weak" ||
+    roofSectionClipQuality === "weak" ||
+    foundationSectionClipQuality === "weak" ||
     cutWallTruthQuality === "weak" ||
     cutOpeningTruthQuality === "weak" ||
     stairTruthQuality === "weak" ||
@@ -163,6 +188,18 @@ export function runA1TechnicalPanelRegression({
     constructionTruthQuality:
       entry.technical_quality_metadata?.section_construction_truth_quality ||
       null,
+    wallSectionClipQuality:
+      entry.technical_quality_metadata?.wall_section_clip_quality || null,
+    openingSectionClipQuality:
+      entry.technical_quality_metadata?.opening_section_clip_quality || null,
+    stairSectionClipQuality:
+      entry.technical_quality_metadata?.stair_section_clip_quality || null,
+    slabSectionClipQuality:
+      entry.technical_quality_metadata?.slab_section_clip_quality || null,
+    roofSectionClipQuality:
+      entry.technical_quality_metadata?.roof_section_clip_quality || null,
+    foundationSectionClipQuality:
+      entry.technical_quality_metadata?.foundation_section_clip_quality || null,
     cutWallTruthQuality:
       entry.technical_quality_metadata?.cut_wall_truth_quality || null,
     cutOpeningTruthQuality:
@@ -189,6 +226,18 @@ export function runA1TechnicalPanelRegression({
     exactConstructionClipCount: Number(
       entry.technical_quality_metadata?.section_exact_construction_clip_count ||
         0,
+    ),
+    exactProfileClipCount: Number(
+      entry.technical_quality_metadata?.section_exact_profile_clip_count || 0,
+    ),
+    profileSegmentCount: Number(
+      entry.technical_quality_metadata?.section_profile_segment_count || 0,
+    ),
+    sectionProfileComplexityScore: Number(
+      entry.technical_quality_metadata?.section_profile_complexity_score || 0,
+    ),
+    sectionDraftingEvidenceScore: Number(
+      entry.technical_quality_metadata?.section_drafting_evidence_score || 0,
     ),
   }));
 
@@ -250,6 +299,24 @@ export function runA1TechnicalPanelRegression({
   );
   const sectionConstructionEvidenceEntries = sectionCandidateQuality.filter(
     (entry) => entry.constructionEvidenceQuality != null,
+  );
+  const wallSectionClipEntries = sectionCandidateQuality.filter(
+    (entry) => entry.wallSectionClipQuality != null,
+  );
+  const openingSectionClipEntries = sectionCandidateQuality.filter(
+    (entry) => entry.openingSectionClipQuality != null,
+  );
+  const stairSectionClipEntries = sectionCandidateQuality.filter(
+    (entry) => entry.stairSectionClipQuality != null,
+  );
+  const slabSectionClipEntries = sectionCandidateQuality.filter(
+    (entry) => entry.slabSectionClipQuality != null,
+  );
+  const roofSectionClipEntries = sectionCandidateQuality.filter(
+    (entry) => entry.roofSectionClipQuality != null,
+  );
+  const foundationSectionClipEntries = sectionCandidateQuality.filter(
+    (entry) => entry.foundationSectionClipQuality != null,
   );
   const sectionWallTruthEntries = sectionCandidateQuality.filter(
     (entry) => entry.cutWallTruthQuality != null,
@@ -332,6 +399,72 @@ export function runA1TechnicalPanelRegression({
         : sectionConstructionEvidenceEntries.length
           ? "verified"
           : "provisional";
+  const wallSectionClipQuality = wallSectionClipEntries.some(
+    (entry) => entry.wallSectionClipQuality === "blocked",
+  )
+    ? "blocked"
+    : wallSectionClipEntries.some(
+          (entry) => entry.wallSectionClipQuality === "weak",
+        )
+      ? "weak"
+      : wallSectionClipEntries.length
+        ? "verified"
+        : "provisional";
+  const openingSectionClipQuality = openingSectionClipEntries.some(
+    (entry) => entry.openingSectionClipQuality === "blocked",
+  )
+    ? "blocked"
+    : openingSectionClipEntries.some(
+          (entry) => entry.openingSectionClipQuality === "weak",
+        )
+      ? "weak"
+      : openingSectionClipEntries.length
+        ? "verified"
+        : "provisional";
+  const stairSectionClipQuality = stairSectionClipEntries.some(
+    (entry) => entry.stairSectionClipQuality === "blocked",
+  )
+    ? "blocked"
+    : stairSectionClipEntries.some(
+          (entry) => entry.stairSectionClipQuality === "weak",
+        )
+      ? "weak"
+      : stairSectionClipEntries.length
+        ? "verified"
+        : "provisional";
+  const slabSectionClipQuality = slabSectionClipEntries.some(
+    (entry) => entry.slabSectionClipQuality === "blocked",
+  )
+    ? "blocked"
+    : slabSectionClipEntries.some(
+          (entry) => entry.slabSectionClipQuality === "weak",
+        )
+      ? "weak"
+      : slabSectionClipEntries.length
+        ? "verified"
+        : "provisional";
+  const roofSectionClipQuality = roofSectionClipEntries.some(
+    (entry) => entry.roofSectionClipQuality === "blocked",
+  )
+    ? "blocked"
+    : roofSectionClipEntries.some(
+          (entry) => entry.roofSectionClipQuality === "weak",
+        )
+      ? "weak"
+      : roofSectionClipEntries.length
+        ? "verified"
+        : "provisional";
+  const foundationSectionClipQuality = foundationSectionClipEntries.some(
+    (entry) => entry.foundationSectionClipQuality === "blocked",
+  )
+    ? "blocked"
+    : foundationSectionClipEntries.some(
+          (entry) => entry.foundationSectionClipQuality === "weak",
+        )
+      ? "weak"
+      : foundationSectionClipEntries.length
+        ? "verified"
+        : "provisional";
   const cutWallTruthQuality = sectionWallTruthEntries.some(
     (entry) => entry.cutWallTruthQuality === "blocked",
   )
@@ -418,22 +551,29 @@ export function runA1TechnicalPanelRegression({
 
   return {
     version:
-      sectionConstructionEvidenceQuality !== "provisional" ||
-      cutWallTruthQuality !== "provisional" ||
-      cutOpeningTruthQuality !== "provisional" ||
-      stairTruthQuality !== "provisional"
-        ? "phase18-a1-technical-panel-regression-v1"
-        : roofTruthState !== "unsupported" ||
-            foundationTruthState !== "unsupported"
-          ? "phase17-a1-technical-panel-regression-v1"
-          : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-            ? "phase16-a1-technical-panel-regression-v1"
-            : roofTruthQuality !== "provisional" ||
-                foundationTruthQuality !== "provisional"
-              ? "phase15-a1-technical-panel-regression-v1"
-              : sectionConstructionTruthQuality !== "provisional"
-                ? "phase14-a1-technical-panel-regression-v1"
-                : "phase13-a1-technical-panel-regression-v1",
+      wallSectionClipQuality !== "provisional" ||
+      openingSectionClipQuality !== "provisional" ||
+      stairSectionClipQuality !== "provisional" ||
+      slabSectionClipQuality !== "provisional" ||
+      roofSectionClipQuality !== "provisional" ||
+      foundationSectionClipQuality !== "provisional"
+        ? "phase19-a1-technical-panel-regression-v1"
+        : sectionConstructionEvidenceQuality !== "provisional" ||
+            cutWallTruthQuality !== "provisional" ||
+            cutOpeningTruthQuality !== "provisional" ||
+            stairTruthQuality !== "provisional"
+          ? "phase18-a1-technical-panel-regression-v1"
+          : roofTruthState !== "unsupported" ||
+              foundationTruthState !== "unsupported"
+            ? "phase17-a1-technical-panel-regression-v1"
+            : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+              ? "phase16-a1-technical-panel-regression-v1"
+              : roofTruthQuality !== "provisional" ||
+                  foundationTruthQuality !== "provisional"
+                ? "phase15-a1-technical-panel-regression-v1"
+                : sectionConstructionTruthQuality !== "provisional"
+                  ? "phase14-a1-technical-panel-regression-v1"
+                  : "phase13-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: [...new Set(blockers)],
@@ -446,6 +586,12 @@ export function runA1TechnicalPanelRegression({
     sectionInferredEvidenceQuality,
     sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
+    wallSectionClipQuality,
+    openingSectionClipQuality,
+    stairSectionClipQuality,
+    slabSectionClipQuality,
+    roofSectionClipQuality,
+    foundationSectionClipQuality,
     cutWallTruthQuality,
     cutOpeningTruthQuality,
     stairTruthQuality,

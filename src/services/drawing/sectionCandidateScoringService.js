@@ -26,6 +26,10 @@ function cutCoordinate(candidate = {}) {
 
 function sectionTruthEnabled() {
   return (
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") ||
     isFeatureEnabled("useCanonicalConstructionTruthModelPhase17") ||
     isFeatureEnabled("useExplicitRoofPrimitiveSynthesisPhase17") ||
     isFeatureEnabled("useExplicitFoundationPrimitiveSynthesisPhase17") ||
@@ -46,6 +50,14 @@ function phase18SectionRankingEnabled() {
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase18") ||
     isFeatureEnabled("useDeeperSectionClippingPhase18") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase18")
+  );
+}
+
+function phase19SectionRankingEnabled() {
+  return (
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19")
   );
 }
 
@@ -163,6 +175,7 @@ function scoreCirculation(projectGeometry = {}, candidate = {}) {
 export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   const useSectionEvidence = sectionTruthEnabled();
   const usePhase18SectionRanking = phase18SectionRankingEnabled();
+  const usePhase19SectionRanking = phase19SectionRankingEnabled();
   const sectionEvidence = buildSectionEvidence(projectGeometry, candidate);
   const sectionEvidenceSummary = buildSectionEvidenceSummary(sectionEvidence);
   const nonConstructionBlockers = (sectionEvidence.blockers || []).filter(
@@ -379,6 +392,53 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   const constructionEvidenceQuality = String(
     sectionEvidenceSummary.sectionConstructionEvidenceQuality || "provisional",
   ).toLowerCase();
+  const qualityScore = (value, fallback = 0.35) => {
+    const normalized = String(value || "").toLowerCase();
+    if (normalized === "verified") return 1;
+    if (normalized === "weak") return 0.55;
+    if (normalized === "blocked") return 0;
+    return fallback;
+  };
+  const wallClipQualityScore = clamp(
+    qualityScore(sectionEvidenceSummary.wallSectionClipQuality),
+    0,
+    1,
+  );
+  const openingClipQualityScore = clamp(
+    qualityScore(sectionEvidenceSummary.openingSectionClipQuality),
+    0,
+    1,
+  );
+  const stairClipQualityScore = clamp(
+    qualityScore(sectionEvidenceSummary.stairSectionClipQuality),
+    0,
+    1,
+  );
+  const slabClipQualityScore = clamp(
+    qualityScore(sectionEvidenceSummary.slabSectionClipQuality),
+    0,
+    1,
+  );
+  const roofClipQualityScore = clamp(
+    qualityScore(sectionEvidenceSummary.roofSectionClipQuality),
+    0,
+    1,
+  );
+  const foundationClipQualityScore = clamp(
+    qualityScore(sectionEvidenceSummary.foundationSectionClipQuality),
+    0,
+    1,
+  );
+  const sectionProfileComplexityScore = clamp(
+    Number(sectionEvidenceSummary.sectionProfileComplexityScore || 0),
+    0,
+    1,
+  );
+  const sectionDraftingEvidenceScore = clamp(
+    Number(sectionEvidenceSummary.sectionDraftingEvidenceScore || 0),
+    0,
+    1,
+  );
   const nearEvidenceScore = clamp(
     Number(sectionEvidenceSummary.nearEvidenceCount || 0) / 6,
     0,
@@ -427,6 +487,22 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
           ? 0.06
           : 0
       : 0;
+  const phase19ConstructionPenalty =
+    useSectionEvidence && usePhase19SectionRanking
+      ? [
+          sectionEvidenceSummary.wallSectionClipQuality,
+          sectionEvidenceSummary.openingSectionClipQuality,
+          sectionEvidenceSummary.stairSectionClipQuality,
+          sectionEvidenceSummary.slabSectionClipQuality,
+          sectionEvidenceSummary.roofSectionClipQuality,
+          sectionEvidenceSummary.foundationSectionClipQuality,
+        ].reduce(
+          (sum, quality) =>
+            sum +
+            (quality === "blocked" ? 0.028 : quality === "weak" ? 0.012 : 0),
+          0,
+        )
+      : 0;
   const roofFoundationPenalty =
     useSectionEvidence &&
     isFeatureEnabled("useRoofFoundationSectionCredibilityGatePhase15") &&
@@ -467,12 +543,23 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       (useSectionEvidence ? evidenceUsefulness * 0.12 : 0) +
       (useSectionEvidence ? directEvidenceScore * 0.16 : 0) +
       (useSectionEvidence ? constructionTruthScore * 0.12 : 0) +
+      (useSectionEvidence && usePhase19SectionRanking
+        ? sectionDraftingEvidenceScore * 0.12 +
+          sectionProfileComplexityScore * 0.08 +
+          wallClipQualityScore * 0.05 +
+          openingClipQualityScore * 0.04 +
+          stairClipQualityScore * 0.04 +
+          slabClipQualityScore * 0.04 +
+          roofClipQualityScore * 0.03 +
+          foundationClipQualityScore * 0.04
+        : 0) +
       (useSectionEvidence ? roofTruthScore * 0.05 : 0) +
       (useSectionEvidence ? foundationTruthScore * 0.05 : 0) +
       (useSectionEvidence ? communicationValue * 0.05 : 0) +
       (useSectionEvidence ? nearEvidenceScore * 0.05 : 0) +
       (useSectionEvidence ? cutSpecificity * 0.05 : 0) -
       phase18ConstructionPenalty -
+      phase19ConstructionPenalty -
       phase16SupportPenalty -
       roofFoundationPenalty -
       constructionPenalty -
@@ -541,6 +628,28 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
   }
   if (
     useSectionEvidence &&
+    usePhase19SectionRanking &&
+    [
+      sectionEvidenceSummary.wallSectionClipQuality,
+      sectionEvidenceSummary.slabSectionClipQuality,
+    ].includes("blocked")
+  ) {
+    sectionCandidateQuality = "block";
+  } else if (
+    useSectionEvidence &&
+    usePhase19SectionRanking &&
+    [
+      sectionEvidenceSummary.openingSectionClipQuality,
+      sectionEvidenceSummary.stairSectionClipQuality,
+      sectionEvidenceSummary.roofSectionClipQuality,
+      sectionEvidenceSummary.foundationSectionClipQuality,
+    ].includes("blocked") &&
+    sectionCandidateQuality === "pass"
+  ) {
+    sectionCandidateQuality = "warning";
+  }
+  if (
+    useSectionEvidence &&
     String(
       sectionEvidenceSummary.sectionConstructionTruthQuality || "",
     ).toLowerCase() === "blocked"
@@ -590,6 +699,9 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
     useSectionEvidence
       ? `Construction evidence ${String(sectionEvidenceSummary.sectionConstructionEvidenceQuality || "provisional")} with ${Number(sectionEvidenceSummary.directConstructionTruthCount || 0)} direct construction truth hit(s) and ${Number(sectionEvidenceSummary.exactConstructionClipCount || 0)} exact construction clip(s).`
       : "Construction evidence propagation is not active for this candidate.",
+    useSectionEvidence && usePhase19SectionRanking
+      ? `Clip-quality wall ${String(sectionEvidenceSummary.wallSectionClipQuality || "provisional")}, opening ${String(sectionEvidenceSummary.openingSectionClipQuality || "provisional")}, stair ${String(sectionEvidenceSummary.stairSectionClipQuality || "provisional")}, slab ${String(sectionEvidenceSummary.slabSectionClipQuality || "provisional")}, roof ${String(sectionEvidenceSummary.roofSectionClipQuality || "provisional")}, foundation ${String(sectionEvidenceSummary.foundationSectionClipQuality || "provisional")} with profile complexity ${Number(sectionEvidenceSummary.sectionProfileComplexityScore || 0).toFixed(2)} and drafting evidence ${Number(sectionEvidenceSummary.sectionDraftingEvidenceScore || 0).toFixed(2)}.`
+      : "Phase 19 clip-quality ranking is not active for this candidate.",
     useSectionEvidence
       ? `Roof truth ${roofTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.roofTruthQuality || "provisional")} / ${String(sectionEvidenceSummary.roofTruthMode || "missing")}), foundation truth ${foundationTruthScore.toFixed(2)} (${String(sectionEvidenceSummary.foundationTruthQuality || "provisional")} / ${String(sectionEvidenceSummary.foundationTruthMode || "missing")}).`
       : "Roof/foundation truth scoring is not active for this candidate.",
@@ -610,6 +722,14 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       directEvidenceScore: round(directEvidenceScore),
       constructionTruthScore: round(constructionTruthScore),
       sectionConstructionEvidenceQuality: constructionEvidenceQuality,
+      sectionDraftingEvidenceScore: round(sectionDraftingEvidenceScore),
+      sectionProfileComplexityScore: round(sectionProfileComplexityScore),
+      wallClipQualityScore: round(wallClipQualityScore),
+      openingClipQualityScore: round(openingClipQualityScore),
+      stairClipQualityScore: round(stairClipQualityScore),
+      slabClipQualityScore: round(slabClipQualityScore),
+      roofClipQualityScore: round(roofClipQualityScore),
+      foundationClipQualityScore: round(foundationClipQualityScore),
       roofTruthScore: round(roofTruthScore),
       foundationTruthScore: round(foundationTruthScore),
       inferredEvidenceScore: round(inferredEvidenceScore),
@@ -619,6 +739,7 @@ export function scoreSectionCandidate(projectGeometry = {}, candidate = {}) {
       inferencePenalty: round(inferencePenalty),
       phase16SupportPenalty: round(phase16SupportPenalty),
       phase18ConstructionPenalty: round(phase18ConstructionPenalty),
+      phase19ConstructionPenalty: round(phase19ConstructionPenalty),
       roofFoundationPenalty: round(roofFoundationPenalty),
       constructionPenalty: round(constructionPenalty),
       sectionEvidencePenalty: round(evidencePenalty),
@@ -646,6 +767,7 @@ function qualityRank(candidate = {}) {
 
 export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
   const usePhase18SectionRanking = phase18SectionRankingEnabled();
+  const usePhase19SectionRanking = phase19SectionRankingEnabled();
   const ranked = (candidates || [])
     .map((candidate) => {
       const evaluation = scoreSectionCandidate(projectGeometry, candidate);
@@ -728,8 +850,27 @@ export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
       const leftDerivedConstructionTruth = Number(
         left.sectionEvidenceSummary?.derivedConstructionTruthCount || 0,
       );
+      const rightPhase19ClipValue = usePhase19SectionRanking
+        ? Number(
+            right.sectionEvidenceSummary?.sectionDraftingEvidenceScore || 0,
+          ) +
+          Number(
+            right.sectionEvidenceSummary?.sectionProfileComplexityScore || 0,
+          )
+        : 0;
+      const leftPhase19ClipValue = usePhase19SectionRanking
+        ? Number(
+            left.sectionEvidenceSummary?.sectionDraftingEvidenceScore || 0,
+          ) +
+          Number(
+            left.sectionEvidenceSummary?.sectionProfileComplexityScore || 0,
+          )
+        : 0;
       if (rightDirect !== leftDirect) {
         return rightDirect - leftDirect;
+      }
+      if (rightPhase19ClipValue !== leftPhase19ClipValue) {
+        return rightPhase19ClipValue - leftPhase19ClipValue;
       }
       if (
         usePhase18SectionRanking &&
@@ -792,30 +933,44 @@ export function rankSectionCandidates(projectGeometry = {}, candidates = []) {
         reason:
           entry.sectionCandidateQuality === "block"
             ? "Rejected because direct cut evidence was too weak to support credible section truth."
-            : usePhase18SectionRanking &&
+            : usePhase19SectionRanking &&
                 Number(
-                  entry.sectionEvidenceSummary?.directConstructionTruthCount ||
+                  entry.sectionEvidenceSummary?.sectionDraftingEvidenceScore ||
                     0,
                 ) <
                   Number(
                     candidate.sectionEvidenceSummary
-                      ?.directConstructionTruthCount || 0,
+                      ?.sectionDraftingEvidenceScore || 0,
                   )
-              ? "Rejected because it carried weaker direct construction truth across walls/openings/slabs/roof/foundation."
-              : Number(entry.sectionEvidenceSummary?.directEvidenceScore || 0) <
+              ? "Rejected because its clipped construction profile and drafting evidence were weaker."
+              : usePhase18SectionRanking &&
                   Number(
-                    candidate.sectionEvidenceSummary?.directEvidenceScore || 0,
-                  )
-                ? "Rejected because it had weaker direct cut evidence."
-                : Number(
-                      entry.sectionEvidenceSummary?.inferredEvidenceScore || 0,
-                    ) >
+                    entry.sectionEvidenceSummary
+                      ?.directConstructionTruthCount || 0,
+                  ) <
                     Number(
-                      candidate.sectionEvidenceSummary?.inferredEvidenceScore ||
+                      candidate.sectionEvidenceSummary
+                        ?.directConstructionTruthCount || 0,
+                    )
+                ? "Rejected because it carried weaker direct construction truth across walls/openings/slabs/roof/foundation."
+                : Number(
+                      entry.sectionEvidenceSummary?.directEvidenceScore || 0,
+                    ) <
+                    Number(
+                      candidate.sectionEvidenceSummary?.directEvidenceScore ||
                         0,
                     )
-                  ? "Rejected because it relied more on inferred/contextual evidence."
-                  : "Rejected because it communicated the section narrative less clearly.",
+                  ? "Rejected because it had weaker direct cut evidence."
+                  : Number(
+                        entry.sectionEvidenceSummary?.inferredEvidenceScore ||
+                          0,
+                      ) >
+                      Number(
+                        candidate.sectionEvidenceSummary
+                          ?.inferredEvidenceScore || 0,
+                      )
+                    ? "Rejected because it relied more on inferred/contextual evidence."
+                    : "Rejected because it communicated the section narrative less clearly.",
       })),
     selectedForBoard: index === 0,
   }));

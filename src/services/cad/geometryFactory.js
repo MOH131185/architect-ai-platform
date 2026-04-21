@@ -847,6 +847,24 @@ function extractWallSegment(wall = {}) {
   return start && end ? { start, end } : null;
 }
 
+function matchesLevelAssignment(entry = {}, level = {}, levelCount = 1) {
+  if (!entry || !level) {
+    return false;
+  }
+  if (
+    entry.level_id === level.id ||
+    entry.level === level.level_number ||
+    entry.level_number === level.level_number
+  ) {
+    return true;
+  }
+  const hasExplicitLevel =
+    entry.level_id !== undefined ||
+    entry.level !== undefined ||
+    entry.level_number !== undefined;
+  return !hasExplicitLevel && levelCount === 1;
+}
+
 export function coerceToCanonicalProjectGeometry(input = {}) {
   if (input?.schema_version === CANONICAL_PROJECT_GEOMETRY_VERSION) {
     const cloned = finalizeProjectGeometry(cloneGeometryData(input));
@@ -955,7 +973,12 @@ export function coerceToCanonicalProjectGeometry(input = {}) {
     appendEntity(projectGeometry, "slabs", slab);
     appendLevelEntityReference(level, "slab", slab.id);
 
-    const wallInputs = Array.isArray(rawLevel.walls) ? rawLevel.walls : [];
+    const wallInputs =
+      Array.isArray(rawLevel.walls) && rawLevel.walls.length
+        ? rawLevel.walls
+        : topLevelWalls.filter((wall) =>
+            matchesLevelAssignment(wall, level, rawLevels.length),
+          );
     wallInputs.forEach((rawWall, wallIndex) => {
       const segment = extractWallSegment(rawWall);
       if (!segment) {
@@ -975,7 +998,12 @@ export function coerceToCanonicalProjectGeometry(input = {}) {
       appendLevelEntityReference(level, "wall", wall.id);
     });
 
-    const doorInputs = Array.isArray(rawLevel.doors) ? rawLevel.doors : [];
+    const doorInputs =
+      Array.isArray(rawLevel.doors) && rawLevel.doors.length
+        ? rawLevel.doors
+        : topLevelDoors.filter((door) =>
+            matchesLevelAssignment(door, level, rawLevels.length),
+          );
     doorInputs.forEach((rawDoor, doorIndex) => {
       const door = createOpeningGeometry(
         projectGeometry.project_id,
@@ -991,9 +1019,12 @@ export function coerceToCanonicalProjectGeometry(input = {}) {
       appendLevelEntityReference(level, "door", door.id);
     });
 
-    const windowInputs = Array.isArray(rawLevel.windows)
-      ? rawLevel.windows
-      : [];
+    const windowInputs =
+      Array.isArray(rawLevel.windows) && rawLevel.windows.length
+        ? rawLevel.windows
+        : topLevelWindows.filter((window) =>
+            matchesLevelAssignment(window, level, rawLevels.length),
+          );
     windowInputs.forEach((rawWindow, windowIndex) => {
       const windowElement = createOpeningGeometry(
         projectGeometry.project_id,

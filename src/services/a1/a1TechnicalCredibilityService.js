@@ -109,6 +109,35 @@ export function evaluateA1TechnicalCredibility({
       "Section construction truth remains weaker than preferred for drafting-grade final technical credibility.",
     );
   }
+  if (finalSheetRegression?.wallSectionClipQuality === "blocked") {
+    blockers.push(
+      "Wall section-clip quality is blocked because the chosen sections do not expose enough exact clipped wall profile truth.",
+    );
+  } else if (finalSheetRegression?.wallSectionClipQuality === "weak") {
+    warnings.push(
+      "Wall section-clip quality remains weaker than preferred for drafting-grade section communication.",
+    );
+  }
+  if (finalSheetRegression?.openingSectionClipQuality === "blocked") {
+    warnings.push(
+      "Opening section-clip quality remains too thin to communicate cut opening depth cleanly.",
+    );
+  }
+  if (finalSheetRegression?.stairSectionClipQuality === "blocked") {
+    warnings.push(
+      "Stair section-clip quality remains too thin for a strong circulation communication section.",
+    );
+  }
+  if (finalSheetRegression?.roofSectionClipQuality === "weak") {
+    warnings.push(
+      "Roof section-clip quality remains more contextual than preferred for final technical credibility.",
+    );
+  }
+  if (finalSheetRegression?.foundationSectionClipQuality === "blocked") {
+    warnings.push(
+      "Foundation/base-condition section-clip quality remains too thin for strong substructure communication.",
+    );
+  }
   if (finalSheetRegression?.sideFacadeEvidenceQuality === "blocked") {
     blockers.push(
       "Side-facade evidence quality is blocked because the available side schemas remain too thin for credible elevations.",
@@ -161,20 +190,24 @@ export function evaluateA1TechnicalCredibility({
 
   return {
     version:
-      finalSheetRegression?.sectionConstructionEvidenceQuality &&
-      finalSheetRegression?.sectionConstructionEvidenceQuality !== "provisional"
-        ? "phase18-a1-technical-credibility-v1"
-        : finalSheetRegression?.roofTruthState ||
-            finalSheetRegression?.foundationTruthState
-          ? "phase17-a1-technical-credibility-v1"
-          : finalSheetRegression?.roofTruthQuality &&
-              finalSheetRegression?.roofTruthQuality !== "provisional"
-            ? "phase15-a1-technical-credibility-v1"
-            : finalSheetRegression?.sectionConstructionTruthQuality &&
-                finalSheetRegression?.sectionConstructionTruthQuality !==
-                  "provisional"
-              ? "phase14-a1-technical-credibility-v1"
-              : "phase13-a1-technical-credibility-v1",
+      finalSheetRegression?.wallSectionClipQuality &&
+      finalSheetRegression?.wallSectionClipQuality !== "provisional"
+        ? "phase19-a1-technical-credibility-v1"
+        : finalSheetRegression?.sectionConstructionEvidenceQuality &&
+            finalSheetRegression?.sectionConstructionEvidenceQuality !==
+              "provisional"
+          ? "phase18-a1-technical-credibility-v1"
+          : finalSheetRegression?.roofTruthState ||
+              finalSheetRegression?.foundationTruthState
+            ? "phase17-a1-technical-credibility-v1"
+            : finalSheetRegression?.roofTruthQuality &&
+                finalSheetRegression?.roofTruthQuality !== "provisional"
+              ? "phase15-a1-technical-credibility-v1"
+              : finalSheetRegression?.sectionConstructionTruthQuality &&
+                  finalSheetRegression?.sectionConstructionTruthQuality !==
+                    "provisional"
+                ? "phase14-a1-technical-credibility-v1"
+                : "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -200,6 +233,18 @@ export function evaluateA1TechnicalCredibility({
         "provisional",
       sectionConstructionTruthQuality:
         finalSheetRegression?.sectionConstructionTruthQuality || "provisional",
+      wallSectionClipQuality:
+        finalSheetRegression?.wallSectionClipQuality || "provisional",
+      openingSectionClipQuality:
+        finalSheetRegression?.openingSectionClipQuality || "provisional",
+      stairSectionClipQuality:
+        finalSheetRegression?.stairSectionClipQuality || "provisional",
+      slabSectionClipQuality:
+        finalSheetRegression?.slabSectionClipQuality || "provisional",
+      roofSectionClipQuality:
+        finalSheetRegression?.roofSectionClipQuality || "provisional",
+      foundationSectionClipQuality:
+        finalSheetRegression?.foundationSectionClipQuality || "provisional",
       cutWallTruthQuality:
         finalSheetRegression?.cutWallTruthQuality || "provisional",
       cutOpeningTruthQuality:

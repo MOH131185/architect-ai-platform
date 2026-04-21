@@ -137,6 +137,12 @@ function alignVerificationBundle(bundle = null, verification = null) {
     sectionConstructionEvidenceQuality:
       canonical.sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality: canonical.sectionConstructionTruthQuality,
+    wallSectionClipQuality: canonical.wallSectionClipQuality,
+    openingSectionClipQuality: canonical.openingSectionClipQuality,
+    stairSectionClipQuality: canonical.stairSectionClipQuality,
+    slabSectionClipQuality: canonical.slabSectionClipQuality,
+    roofSectionClipQuality: canonical.roofSectionClipQuality,
+    foundationSectionClipQuality: canonical.foundationSectionClipQuality,
     cutWallTruthQuality: canonical.cutWallTruthQuality,
     cutOpeningTruthQuality: canonical.cutOpeningTruthQuality,
     stairTruthQuality: canonical.stairTruthQuality,
@@ -281,6 +287,12 @@ export const PHASE1_API_CONTRACTS = {
       "sectionInferredEvidenceQuality",
       "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "wallSectionClipQuality",
+      "openingSectionClipQuality",
+      "stairSectionClipQuality",
+      "slabSectionClipQuality",
+      "roofSectionClipQuality",
+      "foundationSectionClipQuality",
       "cutWallTruthQuality",
       "cutOpeningTruthQuality",
       "stairTruthQuality",
@@ -327,6 +339,12 @@ export const PHASE1_API_CONTRACTS = {
       "sectionInferredEvidenceQuality",
       "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "wallSectionClipQuality",
+      "openingSectionClipQuality",
+      "stairSectionClipQuality",
+      "slabSectionClipQuality",
+      "roofSectionClipQuality",
+      "foundationSectionClipQuality",
       "cutWallTruthQuality",
       "cutOpeningTruthQuality",
       "stairTruthQuality",
@@ -383,6 +401,12 @@ export const PHASE1_API_CONTRACTS = {
       "sectionInferredEvidenceQuality",
       "sectionConstructionEvidenceQuality",
       "sectionConstructionTruthQuality",
+      "wallSectionClipQuality",
+      "openingSectionClipQuality",
+      "stairSectionClipQuality",
+      "slabSectionClipQuality",
+      "roofSectionClipQuality",
+      "foundationSectionClipQuality",
       "cutWallTruthQuality",
       "cutOpeningTruthQuality",
       "stairTruthQuality",
@@ -1121,6 +1145,30 @@ export function buildProjectReadinessResponse({
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       "provisional",
+    wallSectionClipQuality:
+      verificationBundle?.wallSectionClipQuality ||
+      result.finalSheetRegression?.wallSectionClipQuality ||
+      "provisional",
+    openingSectionClipQuality:
+      verificationBundle?.openingSectionClipQuality ||
+      result.finalSheetRegression?.openingSectionClipQuality ||
+      "provisional",
+    stairSectionClipQuality:
+      verificationBundle?.stairSectionClipQuality ||
+      result.finalSheetRegression?.stairSectionClipQuality ||
+      "provisional",
+    slabSectionClipQuality:
+      verificationBundle?.slabSectionClipQuality ||
+      result.finalSheetRegression?.slabSectionClipQuality ||
+      "provisional",
+    roofSectionClipQuality:
+      verificationBundle?.roofSectionClipQuality ||
+      result.finalSheetRegression?.roofSectionClipQuality ||
+      "provisional",
+    foundationSectionClipQuality:
+      verificationBundle?.foundationSectionClipQuality ||
+      result.finalSheetRegression?.foundationSectionClipQuality ||
+      "provisional",
     cutWallTruthQuality:
       verificationBundle?.cutWallTruthQuality ||
       result.finalSheetRegression?.cutWallTruthQuality ||
@@ -1331,6 +1379,30 @@ export function buildPlanA1PanelsResponse({
     sectionConstructionTruthQuality:
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    wallSectionClipQuality:
+      verificationBundle?.wallSectionClipQuality ||
+      result.finalSheetRegression?.wallSectionClipQuality ||
+      "provisional",
+    openingSectionClipQuality:
+      verificationBundle?.openingSectionClipQuality ||
+      result.finalSheetRegression?.openingSectionClipQuality ||
+      "provisional",
+    stairSectionClipQuality:
+      verificationBundle?.stairSectionClipQuality ||
+      result.finalSheetRegression?.stairSectionClipQuality ||
+      "provisional",
+    slabSectionClipQuality:
+      verificationBundle?.slabSectionClipQuality ||
+      result.finalSheetRegression?.slabSectionClipQuality ||
+      "provisional",
+    roofSectionClipQuality:
+      verificationBundle?.roofSectionClipQuality ||
+      result.finalSheetRegression?.roofSectionClipQuality ||
+      "provisional",
+    foundationSectionClipQuality:
+      verificationBundle?.foundationSectionClipQuality ||
+      result.finalSheetRegression?.foundationSectionClipQuality ||
       "provisional",
     cutWallTruthQuality:
       verificationBundle?.cutWallTruthQuality ||
@@ -1620,6 +1692,36 @@ export function buildProjectHealthResponse({
       verificationBundle?.sectionConstructionTruthQuality ||
       result.finalSheetRegression?.sectionConstructionTruthQuality ||
       result.readiness?.finalSheetRegression?.sectionConstructionTruthQuality ||
+      "provisional",
+    wallSectionClipQuality:
+      verificationBundle?.wallSectionClipQuality ||
+      result.finalSheetRegression?.wallSectionClipQuality ||
+      result.readiness?.finalSheetRegression?.wallSectionClipQuality ||
+      "provisional",
+    openingSectionClipQuality:
+      verificationBundle?.openingSectionClipQuality ||
+      result.finalSheetRegression?.openingSectionClipQuality ||
+      result.readiness?.finalSheetRegression?.openingSectionClipQuality ||
+      "provisional",
+    stairSectionClipQuality:
+      verificationBundle?.stairSectionClipQuality ||
+      result.finalSheetRegression?.stairSectionClipQuality ||
+      result.readiness?.finalSheetRegression?.stairSectionClipQuality ||
+      "provisional",
+    slabSectionClipQuality:
+      verificationBundle?.slabSectionClipQuality ||
+      result.finalSheetRegression?.slabSectionClipQuality ||
+      result.readiness?.finalSheetRegression?.slabSectionClipQuality ||
+      "provisional",
+    roofSectionClipQuality:
+      verificationBundle?.roofSectionClipQuality ||
+      result.finalSheetRegression?.roofSectionClipQuality ||
+      result.readiness?.finalSheetRegression?.roofSectionClipQuality ||
+      "provisional",
+    foundationSectionClipQuality:
+      verificationBundle?.foundationSectionClipQuality ||
+      result.finalSheetRegression?.foundationSectionClipQuality ||
+      result.readiness?.finalSheetRegression?.foundationSectionClipQuality ||
       "provisional",
     cutWallTruthQuality:
       verificationBundle?.cutWallTruthQuality ||

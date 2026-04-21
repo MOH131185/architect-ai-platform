@@ -95,6 +95,14 @@ function filterEvidenceOverriddenWarnings(
         return false;
       }
       if (
+        evidenceProfile.wallSectionClipQuality === "verified" &&
+        /Wall section-clip quality is blocked|Wall section-clip quality remains weaker than preferred/i.test(
+          text,
+        )
+      ) {
+        return false;
+      }
+      if (
         (evidenceProfile.roofTruthQuality === "verified" ||
           evidenceProfile.sectionConstructionTruthQuality === "verified") &&
         /Section roof truth remains contextual|Section roof truth exists, but it is still thinner than preferred/i.test(
@@ -212,6 +220,30 @@ export function classifyA1Publishability({
     finalSheetRegression?.sectionConstructionTruthQuality ||
     technicalCredibility?.summary?.sectionConstructionTruthQuality ||
     "provisional";
+  const wallSectionClipQuality =
+    finalSheetRegression?.wallSectionClipQuality ||
+    technicalCredibility?.summary?.wallSectionClipQuality ||
+    "provisional";
+  const openingSectionClipQuality =
+    finalSheetRegression?.openingSectionClipQuality ||
+    technicalCredibility?.summary?.openingSectionClipQuality ||
+    "provisional";
+  const stairSectionClipQuality =
+    finalSheetRegression?.stairSectionClipQuality ||
+    technicalCredibility?.summary?.stairSectionClipQuality ||
+    "provisional";
+  const slabSectionClipQuality =
+    finalSheetRegression?.slabSectionClipQuality ||
+    technicalCredibility?.summary?.slabSectionClipQuality ||
+    "provisional";
+  const roofSectionClipQuality =
+    finalSheetRegression?.roofSectionClipQuality ||
+    technicalCredibility?.summary?.roofSectionClipQuality ||
+    "provisional";
+  const foundationSectionClipQuality =
+    finalSheetRegression?.foundationSectionClipQuality ||
+    technicalCredibility?.summary?.foundationSectionClipQuality ||
+    "provisional";
   const cutWallTruthQuality =
     finalSheetRegression?.cutWallTruthQuality ||
     technicalCredibility?.summary?.cutWallTruthQuality ||
@@ -263,6 +295,12 @@ export function classifyA1Publishability({
     sectionInferredEvidenceQuality,
     sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
+    wallSectionClipQuality,
+    openingSectionClipQuality,
+    stairSectionClipQuality,
+    slabSectionClipQuality,
+    roofSectionClipQuality,
+    foundationSectionClipQuality,
     cutWallTruthQuality,
     cutOpeningTruthQuality,
     stairTruthQuality,
@@ -295,22 +333,29 @@ export function classifyA1Publishability({
 
   return {
     version:
-      sectionConstructionEvidenceQuality !== "provisional" ||
-      cutWallTruthQuality !== "provisional" ||
-      cutOpeningTruthQuality !== "provisional" ||
-      stairTruthQuality !== "provisional"
-        ? "phase18-a1-publishability-v1"
-        : roofTruthState !== "unsupported" ||
-            foundationTruthState !== "unsupported"
-          ? "phase17-a1-publishability-v1"
-          : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-            ? "phase16-a1-publishability-v1"
-            : roofTruthQuality !== "provisional" ||
-                foundationTruthQuality !== "provisional"
-              ? "phase15-a1-publishability-v1"
-              : sectionConstructionTruthQuality !== "provisional"
-                ? "phase14-a1-publishability-v1"
-                : "phase13-a1-publishability-v1",
+      wallSectionClipQuality !== "provisional" ||
+      openingSectionClipQuality !== "provisional" ||
+      stairSectionClipQuality !== "provisional" ||
+      slabSectionClipQuality !== "provisional" ||
+      roofSectionClipQuality !== "provisional" ||
+      foundationSectionClipQuality !== "provisional"
+        ? "phase19-a1-publishability-v1"
+        : sectionConstructionEvidenceQuality !== "provisional" ||
+            cutWallTruthQuality !== "provisional" ||
+            cutOpeningTruthQuality !== "provisional" ||
+            stairTruthQuality !== "provisional"
+          ? "phase18-a1-publishability-v1"
+          : roofTruthState !== "unsupported" ||
+              foundationTruthState !== "unsupported"
+            ? "phase17-a1-publishability-v1"
+            : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+              ? "phase16-a1-publishability-v1"
+              : roofTruthQuality !== "provisional" ||
+                  foundationTruthQuality !== "provisional"
+                ? "phase15-a1-publishability-v1"
+                : sectionConstructionTruthQuality !== "provisional"
+                  ? "phase14-a1-publishability-v1"
+                  : "phase13-a1-publishability-v1",
     verificationPhase: resolvedPhase,
     decisive,
     provisional: !decisive,

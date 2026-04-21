@@ -13,17 +13,19 @@ export function buildSectionStairDetailMarkup({
 } = {}) {
   const markup = (stairs || [])
     .map((stair) => {
+      const truthState = String(stair.truthState || "direct").toLowerCase();
+      const contextual = truthState !== "direct";
       const treadSpacing = stair.height / Math.max(1, stair.treadCount);
       const treads = Array.from({ length: stair.treadCount }, (_, index) => {
         const treadY = stair.y + treadSpacing * (index + 1);
-        return `<line x1="${stair.x + 4}" y1="${treadY}" x2="${stair.x + stair.width - 4}" y2="${treadY}" stroke="#444" stroke-width="${lineweights.tertiary || 0.8}" />`;
+        return `<line x1="${stair.x + 4}" y1="${treadY}" x2="${stair.x + stair.width - 4}" y2="${treadY}" stroke="#444" stroke-width="${lineweights.tertiary || 0.8}"${contextual ? ' stroke-dasharray="4 4" stroke-opacity="0.68"' : ""} />`;
       }).join("");
       return `
         <g id="phase14-section-stair-${escapeXml(stair.id || "stair")}">
-          <rect x="${stair.x}" y="${stair.y}" width="${stair.width}" height="${stair.height}" fill="#efefef" stroke="#333" stroke-width="${lineweights.primary || 1.2}" />
+          <rect x="${stair.x}" y="${stair.y}" width="${stair.width}" height="${stair.height}" fill="#efefef" stroke="#333" stroke-width="${lineweights.primary || 1.2}"${contextual ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} />
           ${treads}
-          <line x1="${stair.x + 8}" y1="${stair.y + stair.height - 10}" x2="${stair.x + stair.width - 16}" y2="${stair.y + 12}" stroke="#111" stroke-width="${lineweights.secondary || 1}" marker-end="url(#phase14-stair-arrow)" />
-          <text x="${stair.x + stair.width / 2}" y="${stair.y + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">STAIR</text>
+          <line x1="${stair.x + 8}" y1="${stair.y + stair.height - 10}" x2="${stair.x + stair.width - 16}" y2="${stair.y + 12}" stroke="#111" stroke-width="${lineweights.secondary || 1}"${contextual ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} marker-end="url(#phase14-stair-arrow)" />
+          <text x="${stair.x + stair.width / 2}" y="${stair.y + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" fill="${contextual ? "#4b5563" : "#111"}">STAIR</text>
         </g>`;
     })
     .join("");

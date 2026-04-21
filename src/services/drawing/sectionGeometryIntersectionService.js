@@ -455,19 +455,26 @@ export function buildSectionIntersections(
     explicitRoofBreakCount > 0 ||
     explicitDormerAttachmentCount > 0 ||
     explicitGroundRelationCount > 0;
+  const deeperSectionClippingPhase19 =
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19");
 
   return {
-    version: deeperSectionClippingPhase18
-      ? "phase18-section-geometry-intersection-v1"
-      : phase17Enabled
-        ? "phase17-section-geometry-intersection-v1"
-        : phase16Enabled
-          ? "phase16-section-geometry-intersection-v1"
-          : phase15Enabled
-            ? "phase15-section-geometry-intersection-v1"
-            : clippingEnabled
-              ? "phase13-section-geometry-intersection-v1"
-              : "phase12-section-geometry-intersection-v1",
+    version: deeperSectionClippingPhase19
+      ? "phase19-section-geometry-intersection-v1"
+      : deeperSectionClippingPhase18
+        ? "phase18-section-geometry-intersection-v1"
+        : phase17Enabled
+          ? "phase17-section-geometry-intersection-v1"
+          : phase16Enabled
+            ? "phase16-section-geometry-intersection-v1"
+            : phase15Enabled
+              ? "phase15-section-geometry-intersection-v1"
+              : clippingEnabled
+                ? "phase13-section-geometry-intersection-v1"
+                : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),

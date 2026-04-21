@@ -229,6 +229,7 @@ describe("Phase 11 evidence-driven verification", () => {
       "phase13-section-geometry-intersection-v1",
       "phase17-section-geometry-intersection-v1",
       "phase18-section-geometry-intersection-v1",
+      "phase19-section-geometry-intersection-v1",
     ]).toContain(evidence.sectionIntersections.version);
   });
 

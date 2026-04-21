@@ -15,6 +15,15 @@ function unique(items = []) {
   return [...new Set((items || []).filter(Boolean))];
 }
 
+function phase19SectionClippingEnabled() {
+  return (
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19")
+  );
+}
+
 export function normalizePoint(point = null) {
   if (!point || typeof point !== "object") {
     return null;
@@ -380,6 +389,8 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
       slicePoints: [],
       sectionRange: null,
       directBandHit: false,
+      profileSegments: [],
+      profileComplexityScore: 0,
     };
   }
 
@@ -393,6 +404,22 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
       polygonIntersections(polygon, cutBand.axis, coordinate),
     ),
   ).sort((left, right) => left - right);
+  const profileSegments = sampleCoordinates.flatMap((sampleCoordinate) => {
+    const intersections = polygonIntersections(
+      polygon,
+      cutBand.axis,
+      sampleCoordinate,
+    );
+    const segments = [];
+    for (let index = 0; index + 1 < intersections.length; index += 2) {
+      segments.push({
+        coordinate: round(sampleCoordinate),
+        start: round(intersections[index]),
+        end: round(intersections[index + 1]),
+      });
+    }
+    return segments;
+  });
   const orthRange = axisRangeFromPoints(polygon, cutBand.orthAxis, "polygon");
   const midpoint =
     orthRange &&
@@ -427,6 +454,15 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
     slicePoints,
     sectionRange,
     directBandHit,
+    profileSegments,
+    profileComplexityScore: round(
+      Math.min(
+        1,
+        profileSegments.length * 0.24 +
+          sampleCoordinates.length * 0.06 +
+          (directBandHit ? 0.18 : 0),
+      ),
+    ),
   };
 }
 
@@ -544,6 +580,18 @@ function createEntry(
   );
 }
 
+function clipProfileSegments(entry = {}) {
+  const segments = entry?.clipGeometry?.profileSegments;
+  if (!Array.isArray(segments)) {
+    return [];
+  }
+  return segments.filter(
+    (segment) =>
+      Number.isFinite(Number(segment?.start)) &&
+      Number.isFinite(Number(segment?.end)),
+  );
+}
+
 function midpoint(range = null) {
   if (!range) {
     return null;
@@ -627,6 +675,15 @@ function clipSegmentEntity(
             start: round(orthRange.minimum),
             end: round(orthRange.maximum),
           },
+          profileSegments: [
+            {
+              coordinate: round(coordinate),
+              start: round(orthRange.minimum),
+              end: round(orthRange.maximum),
+            },
+          ],
+          sectionSpanCount: 1,
+          profileComplexityScore: phase19SectionClippingEnabled() ? 0.82 : 0.58,
         },
         geometrySupport: ["segment"],
       },
@@ -658,6 +715,15 @@ function clipSegmentEntity(
             start: crossingPoint,
             end: crossingPoint,
           },
+          profileSegments: [
+            {
+              coordinate: round(coordinate),
+              start: crossingPoint,
+              end: crossingPoint,
+            },
+          ],
+          sectionSpanCount: 1,
+          profileComplexityScore: phase19SectionClippingEnabled() ? 0.68 : 0.44,
         },
         geometrySupport: ["segment"],
       },
@@ -746,6 +812,9 @@ function clipPolygonEntity(
               }
             : null,
           slicePoints: slice.slicePoints,
+          profileSegments: slice.profileSegments,
+          sectionSpanCount: slice.profileSegments.length,
+          profileComplexityScore: slice.profileComplexityScore,
         },
         geometrySupport: ["polygon"],
       },
@@ -785,6 +854,9 @@ function clipPolygonEntity(
             }
           : null,
         slicePoints: slice.slicePoints,
+        profileSegments: slice.profileSegments,
+        sectionSpanCount: slice.profileSegments.length,
+        profileComplexityScore: slice.profileComplexityScore,
       },
       geometrySupport: ["polygon"],
     },
@@ -1032,6 +1104,16 @@ export function clipOpeningToSection(
           widthM: round(width),
           sillHeightM: round(opening.sill_height_m || 0),
           headHeightM: round(opening.head_height_m || 2.1),
+          profileSegments: wallClip?.clipGeometry?.profileSegments || [],
+          sectionSpanCount: Number(
+            wallClip?.clipGeometry?.sectionSpanCount ||
+              (wallClip?.clipGeometry?.profileSegments || []).length ||
+              (wallClip?.clipGeometry?.sectionRange ? 1 : 0),
+          ),
+          profileComplexityScore: Number(
+            wallClip?.clipGeometry?.profileComplexityScore ||
+              (phase19SectionClippingEnabled() ? 0.72 : 0.46),
+          ),
         },
         geometrySupport: unique([
           "point",
@@ -1063,6 +1145,16 @@ export function clipOpeningToSection(
           widthM: round(width),
           sillHeightM: round(opening.sill_height_m || 0),
           headHeightM: round(opening.head_height_m || 2.1),
+          profileSegments: wallClip?.clipGeometry?.profileSegments || [],
+          sectionSpanCount: Number(
+            wallClip?.clipGeometry?.sectionSpanCount ||
+              (wallClip?.clipGeometry?.profileSegments || []).length ||
+              (wallClip?.clipGeometry?.sectionRange ? 1 : 0),
+          ),
+          profileComplexityScore: Number(
+            wallClip?.clipGeometry?.profileComplexityScore ||
+              (phase19SectionClippingEnabled() ? 0.48 : 0.32),
+          ),
         },
         geometrySupport: unique([
           "point",
@@ -1157,6 +1249,13 @@ export function summarizeSectionConstructionTruth(entries = []) {
   const unsupported = (entries || []).filter(
     (entry) => entry.constructionTruthState === "unsupported",
   );
+  const profileSegments = (entries || []).flatMap((entry) =>
+    clipProfileSegments(entry),
+  );
+  const exactProfileEntries = (entries || []).filter(
+    (entry) =>
+      entry.exactClip === true && clipProfileSegments(entry).length > 0,
+  );
   return {
     totalCount: (entries || []).length,
     directCount: direct.length,
@@ -1165,6 +1264,25 @@ export function summarizeSectionConstructionTruth(entries = []) {
     unsupportedCount: unsupported.length,
     exactClipCount: (entries || []).filter((entry) => entry.exactClip === true)
       .length,
+    exactProfileClipCount: exactProfileEntries.length,
+    profileSegmentCount: profileSegments.length,
+    sectionSpanCount: (entries || []).reduce(
+      (sum, entry) => sum + Number(entry?.clipGeometry?.sectionSpanCount || 0),
+      0,
+    ),
+    directProfileHitCount: direct.filter(
+      (entry) => clipProfileSegments(entry).length > 0,
+    ).length,
+    profileComplexityScore: round(
+      Math.min(
+        1,
+        (entries || []).reduce(
+          (sum, entry) =>
+            sum + Number(entry?.clipGeometry?.profileComplexityScore || 0),
+          0,
+        ) / Math.max(1, (entries || []).length),
+      ),
+    ),
     supportModes: unique(
       (entries || []).map((entry) => entry.truthSupportMode),
     ),

@@ -424,6 +424,24 @@ describe("Phase 1 model route handlers", () => {
       res.body.sectionConstructionTruthQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.wallSectionClipQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.openingSectionClipQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.stairSectionClipQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.slabSectionClipQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.roofSectionClipQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
+      res.body.foundationSectionClipQuality,
+    );
+    expect(["verified", "weak", "blocked", "provisional"]).toContain(
       res.body.cutWallTruthQuality,
     );
     expect(["verified", "weak", "blocked", "provisional"]).toContain(
@@ -497,6 +515,24 @@ describe("Phase 1 model route handlers", () => {
     expect(res.body.verification.sectionConstructionTruthQuality).toBe(
       res.body.sectionConstructionTruthQuality,
     );
+    expect(res.body.verification.wallSectionClipQuality).toBe(
+      res.body.wallSectionClipQuality,
+    );
+    expect(res.body.verification.openingSectionClipQuality).toBe(
+      res.body.openingSectionClipQuality,
+    );
+    expect(res.body.verification.stairSectionClipQuality).toBe(
+      res.body.stairSectionClipQuality,
+    );
+    expect(res.body.verification.slabSectionClipQuality).toBe(
+      res.body.slabSectionClipQuality,
+    );
+    expect(res.body.verification.roofSectionClipQuality).toBe(
+      res.body.roofSectionClipQuality,
+    );
+    expect(res.body.verification.foundationSectionClipQuality).toBe(
+      res.body.foundationSectionClipQuality,
+    );
     expect(res.body.verification.cutWallTruthQuality).toBe(
       res.body.cutWallTruthQuality,
     );
@@ -562,6 +598,12 @@ describe("Phase 1 model route handlers", () => {
             sectionInferredEvidenceQuality: "verified",
             sectionConstructionEvidenceQuality: "verified",
             sectionConstructionTruthQuality: "verified",
+            wallSectionClipQuality: "verified",
+            openingSectionClipQuality: "verified",
+            stairSectionClipQuality: "verified",
+            slabSectionClipQuality: "verified",
+            roofSectionClipQuality: "verified",
+            foundationSectionClipQuality: "verified",
             cutWallTruthQuality: "verified",
             cutOpeningTruthQuality: "verified",
             stairTruthQuality: "verified",
@@ -590,6 +632,12 @@ describe("Phase 1 model route handlers", () => {
     expect(response.sectionInferredEvidenceQuality).toBe("verified");
     expect(response.sectionConstructionEvidenceQuality).toBe("verified");
     expect(response.sectionConstructionTruthQuality).toBe("verified");
+    expect(response.wallSectionClipQuality).toBe("verified");
+    expect(response.openingSectionClipQuality).toBe("verified");
+    expect(response.stairSectionClipQuality).toBe("verified");
+    expect(response.slabSectionClipQuality).toBe("verified");
+    expect(response.roofSectionClipQuality).toBe("verified");
+    expect(response.foundationSectionClipQuality).toBe("verified");
     expect(response.cutWallTruthQuality).toBe("verified");
     expect(response.cutOpeningTruthQuality).toBe("verified");
     expect(response.stairTruthQuality).toBe("verified");
@@ -611,6 +659,24 @@ describe("Phase 1 model route handlers", () => {
     );
     expect(response.verification.sectionConstructionTruthQuality).toBe(
       response.sectionConstructionTruthQuality,
+    );
+    expect(response.verification.wallSectionClipQuality).toBe(
+      response.wallSectionClipQuality,
+    );
+    expect(response.verification.openingSectionClipQuality).toBe(
+      response.openingSectionClipQuality,
+    );
+    expect(response.verification.stairSectionClipQuality).toBe(
+      response.stairSectionClipQuality,
+    );
+    expect(response.verification.slabSectionClipQuality).toBe(
+      response.slabSectionClipQuality,
+    );
+    expect(response.verification.roofSectionClipQuality).toBe(
+      response.roofSectionClipQuality,
+    );
+    expect(response.verification.foundationSectionClipQuality).toBe(
+      response.foundationSectionClipQuality,
     );
     expect(response.verification.cutWallTruthQuality).toBe(
       response.cutWallTruthQuality,

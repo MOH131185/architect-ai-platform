@@ -234,6 +234,9 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       directClipCount: 0,
       approximateEvidenceCount: 0,
       exactConstructionClipCount: 0,
+      exactConstructionProfileClipCount: 0,
+      constructionProfileSegmentCount: 0,
+      directConstructionProfileHitCount: 0,
       focusHitCount: 0,
       cutRoomCount: 0,
       nearRoomCount: 0,
@@ -300,6 +303,14 @@ export function buildSectionEvidenceSummary(evidence = {}) {
       sectionConstructionEvidenceQuality: "provisional",
       sectionConstructionTruthQuality: "provisional",
       constructionEvidenceScore: 0,
+      sectionProfileComplexityScore: 0,
+      sectionDraftingEvidenceScore: 0,
+      wallSectionClipQuality: "provisional",
+      openingSectionClipQuality: "provisional",
+      stairSectionClipQuality: "provisional",
+      slabSectionClipQuality: "provisional",
+      roofSectionClipQuality: "provisional",
+      foundationSectionClipQuality: "provisional",
       cutWallTruthQuality: "provisional",
       cutOpeningTruthQuality: "provisional",
       stairTruthQuality: "provisional",
@@ -390,6 +401,11 @@ export function buildSectionEvidence(
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18") ||
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase18") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase18");
+  const usePhase19Truth =
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19");
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
@@ -478,6 +494,24 @@ export function buildSectionEvidence(
     exactClipCount:
       Number(constructionTruthSummary.windows?.exactClipCount || 0) +
       Number(constructionTruthSummary.doors?.exactClipCount || 0),
+    exactProfileClipCount:
+      Number(constructionTruthSummary.windows?.exactProfileClipCount || 0) +
+      Number(constructionTruthSummary.doors?.exactProfileClipCount || 0),
+    profileSegmentCount:
+      Number(constructionTruthSummary.windows?.profileSegmentCount || 0) +
+      Number(constructionTruthSummary.doors?.profileSegmentCount || 0),
+    directProfileHitCount:
+      Number(constructionTruthSummary.windows?.directProfileHitCount || 0) +
+      Number(constructionTruthSummary.doors?.directProfileHitCount || 0),
+    profileComplexityScore: round(
+      clamp(
+        (Number(constructionTruthSummary.windows?.profileComplexityScore || 0) +
+          Number(constructionTruthSummary.doors?.profileComplexityScore || 0)) /
+          2,
+        0,
+        1,
+      ),
+    ),
   };
   const stairConstructionTruth = constructionTruthSummary.stairs || {};
   const slabConstructionTruth = constructionTruthSummary.slabs || {};
@@ -535,6 +569,44 @@ export function buildSectionEvidence(
       Number(roofConstructionTruth.exactClipCount || 0) +
       Number(foundationConstructionTruth.exactClipCount || 0) +
       Number(baseConditionConstructionTruth.exactClipCount || 0),
+    exactProfileClipCount:
+      Number(wallConstructionTruth.exactProfileClipCount || 0) +
+      Number(openingConstructionTruth.exactProfileClipCount || 0) +
+      Number(stairConstructionTruth.exactProfileClipCount || 0) +
+      Number(slabConstructionTruth.exactProfileClipCount || 0) +
+      Number(roofConstructionTruth.exactProfileClipCount || 0) +
+      Number(foundationConstructionTruth.exactProfileClipCount || 0) +
+      Number(baseConditionConstructionTruth.exactProfileClipCount || 0),
+    profileSegmentCount:
+      Number(wallConstructionTruth.profileSegmentCount || 0) +
+      Number(openingConstructionTruth.profileSegmentCount || 0) +
+      Number(stairConstructionTruth.profileSegmentCount || 0) +
+      Number(slabConstructionTruth.profileSegmentCount || 0) +
+      Number(roofConstructionTruth.profileSegmentCount || 0) +
+      Number(foundationConstructionTruth.profileSegmentCount || 0) +
+      Number(baseConditionConstructionTruth.profileSegmentCount || 0),
+    directProfileHitCount:
+      Number(wallConstructionTruth.directProfileHitCount || 0) +
+      Number(openingConstructionTruth.directProfileHitCount || 0) +
+      Number(stairConstructionTruth.directProfileHitCount || 0) +
+      Number(slabConstructionTruth.directProfileHitCount || 0) +
+      Number(roofConstructionTruth.directProfileHitCount || 0) +
+      Number(foundationConstructionTruth.directProfileHitCount || 0) +
+      Number(baseConditionConstructionTruth.directProfileHitCount || 0),
+    profileComplexityScore: round(
+      clamp(
+        (Number(wallConstructionTruth.profileComplexityScore || 0) +
+          Number(openingConstructionTruth.profileComplexityScore || 0) +
+          Number(stairConstructionTruth.profileComplexityScore || 0) +
+          Number(slabConstructionTruth.profileComplexityScore || 0) +
+          Number(roofConstructionTruth.profileComplexityScore || 0) +
+          Number(foundationConstructionTruth.profileComplexityScore || 0) +
+          Number(baseConditionConstructionTruth.profileComplexityScore || 0)) /
+          7,
+        0,
+        1,
+      ),
+    ),
   };
   const circulationHitCount = Number(projectGeometry.circulation?.length || 0);
 
@@ -590,6 +662,119 @@ export function buildSectionEvidence(
   );
   const exactConstructionClipCount = Number(
     overallConstructionTruth.exactClipCount || 0,
+  );
+  const exactConstructionProfileClipCount = Number(
+    overallConstructionTruth.exactProfileClipCount || 0,
+  );
+  const constructionProfileSegmentCount = Number(
+    overallConstructionTruth.profileSegmentCount || 0,
+  );
+  const directConstructionProfileHitCount = Number(
+    overallConstructionTruth.directProfileHitCount || 0,
+  );
+
+  const clipQualityFromGroup = (group = {}) => {
+    const totalCount = Number(group.totalCount || 0);
+    if (totalCount <= 0) {
+      return {
+        score: 0,
+        quality: "provisional",
+      };
+    }
+    const score = round(
+      clamp(
+        Number(group.directCount || 0) * 0.16 +
+          Number(group.exactClipCount || 0) * 0.14 +
+          Number(group.exactProfileClipCount || 0) * 0.12 +
+          Number(group.directProfileHitCount || 0) * 0.1 +
+          Number(group.profileSegmentCount || 0) * 0.03 +
+          Number(group.profileComplexityScore || 0) * 0.28 -
+          Number(group.contextualCount || 0) * 0.06 -
+          Number(group.derivedCount || 0) * 0.08 -
+          Number(group.unsupportedCount || 0) * 0.1,
+        0,
+        1,
+      ),
+    );
+    return {
+      score,
+      quality: score >= 0.72 ? "verified" : score >= 0.42 ? "weak" : "blocked",
+    };
+  };
+
+  const wallClipQuality = clipQualityFromGroup(wallConstructionTruth);
+  const normalizedWallClipQuality =
+    wallClipQuality.quality === "blocked" &&
+    Number(wallConstructionTruth.directCount || 0) > 0 &&
+    Number(wallConstructionTruth.exactClipCount || 0) > 0 &&
+    Number(wallConstructionTruth.exactProfileClipCount || 0) > 0
+      ? {
+          score: Math.max(Number(wallClipQuality.score || 0), 0.42),
+          quality: "weak",
+        }
+      : wallClipQuality;
+  const openingClipQuality = clipQualityFromGroup(openingConstructionTruth);
+  const stairClipQuality = clipQualityFromGroup(stairConstructionTruth);
+  const slabClipQuality = clipQualityFromGroup(slabConstructionTruth);
+  const roofClipQuality = clipQualityFromGroup(roofConstructionTruth);
+  const foundationClipQuality = clipQualityFromGroup({
+    totalCount:
+      Number(foundationConstructionTruth.totalCount || 0) +
+      Number(baseConditionConstructionTruth.totalCount || 0),
+    directCount:
+      Number(foundationConstructionTruth.directCount || 0) +
+      Number(baseConditionConstructionTruth.directCount || 0),
+    contextualCount:
+      Number(foundationConstructionTruth.contextualCount || 0) +
+      Number(baseConditionConstructionTruth.contextualCount || 0),
+    derivedCount:
+      Number(foundationConstructionTruth.derivedCount || 0) +
+      Number(baseConditionConstructionTruth.derivedCount || 0),
+    unsupportedCount:
+      Number(foundationConstructionTruth.unsupportedCount || 0) +
+      Number(baseConditionConstructionTruth.unsupportedCount || 0),
+    exactClipCount:
+      Number(foundationConstructionTruth.exactClipCount || 0) +
+      Number(baseConditionConstructionTruth.exactClipCount || 0),
+    exactProfileClipCount:
+      Number(foundationConstructionTruth.exactProfileClipCount || 0) +
+      Number(baseConditionConstructionTruth.exactProfileClipCount || 0),
+    directProfileHitCount:
+      Number(foundationConstructionTruth.directProfileHitCount || 0) +
+      Number(baseConditionConstructionTruth.directProfileHitCount || 0),
+    profileSegmentCount:
+      Number(foundationConstructionTruth.profileSegmentCount || 0) +
+      Number(baseConditionConstructionTruth.profileSegmentCount || 0),
+    profileComplexityScore: round(
+      clamp(
+        (Number(foundationConstructionTruth.profileComplexityScore || 0) +
+          Number(baseConditionConstructionTruth.profileComplexityScore || 0)) /
+          2,
+        0,
+        1,
+      ),
+    ),
+  });
+  const sectionProfileComplexityScore = round(
+    clamp(
+      Number(overallConstructionTruth.profileComplexityScore || 0) * 0.62 +
+        Math.min(0.24, constructionProfileSegmentCount * 0.018) +
+        Math.min(0.14, directConstructionProfileHitCount * 0.032),
+      0,
+      1,
+    ),
+  );
+  const sectionDraftingEvidenceScore = round(
+    clamp(
+      normalizedWallClipQuality.score * 0.22 +
+        openingClipQuality.score * 0.16 +
+        stairClipQuality.score * 0.12 +
+        slabClipQuality.score * 0.14 +
+        roofClipQuality.score * 0.16 +
+        foundationClipQuality.score * 0.2,
+      0,
+      1,
+    ),
   );
 
   const roomCommunicationScore =
@@ -715,6 +900,12 @@ export function buildSectionEvidence(
     clamp(
       directConstructionTruthCount * 0.08 +
         exactConstructionClipCount * 0.05 +
+        (usePhase19Truth
+          ? exactConstructionProfileClipCount * 0.04 +
+            constructionProfileSegmentCount * 0.012 +
+            sectionProfileComplexityScore * 0.12 +
+            sectionDraftingEvidenceScore * 0.14
+          : 0) +
         Number(roofConstructionTruth.directCount || 0) * 0.04 +
         Number(foundationConstructionTruth.directCount || 0) * 0.04 +
         Number(baseConditionConstructionTruth.directCount || 0) * 0.03 -
@@ -747,6 +938,9 @@ export function buildSectionEvidence(
     directClipCount,
     approximateEvidenceCount,
     exactConstructionClipCount,
+    exactConstructionProfileClipCount,
+    constructionProfileSegmentCount,
+    directConstructionProfileHitCount,
     cutSpecificity: round(cutSpecificity),
     directEvidenceScore,
     inferredEvidenceScore,
@@ -855,6 +1049,14 @@ export function buildSectionEvidence(
     baseConditionDerivedTruthCount: Number(
       baseConditionConstructionTruth.derivedCount || 0,
     ),
+    sectionProfileComplexityScore,
+    sectionDraftingEvidenceScore,
+    wallSectionClipQuality: normalizedWallClipQuality.quality,
+    openingSectionClipQuality: openingClipQuality.quality,
+    stairSectionClipQuality: stairClipQuality.quality,
+    slabSectionClipQuality: slabClipQuality.quality,
+    roofSectionClipQuality: roofClipQuality.quality,
+    foundationSectionClipQuality: foundationClipQuality.quality,
     sectionConstructionEvidenceScore,
     sectionConstructionEvidenceQuality,
     explicitRoofPrimitiveCount: Number(
@@ -1013,6 +1215,35 @@ export function buildSectionEvidence(
     }
   }
 
+  if (usePhase19Truth) {
+    const criticalConstructionClipQualities = [
+      summary.wallSectionClipQuality,
+      summary.slabSectionClipQuality,
+    ].map((value) => String(value || "").toLowerCase());
+    const supportingConstructionClipQualities = [
+      summary.openingSectionClipQuality,
+      summary.stairSectionClipQuality,
+      summary.roofSectionClipQuality,
+      summary.foundationSectionClipQuality,
+    ].map((value) => String(value || "").toLowerCase());
+
+    if (
+      criticalConstructionClipQualities.some((quality) => quality === "blocked")
+    ) {
+      summary.sectionConstructionEvidenceQuality = "blocked";
+    } else if (
+      summary.sectionConstructionEvidenceQuality === "verified" &&
+      (criticalConstructionClipQualities.some((quality) =>
+        ["weak", "provisional"].includes(quality),
+      ) ||
+        supportingConstructionClipQualities.some(
+          (quality) => quality === "blocked",
+        ))
+    ) {
+      summary.sectionConstructionEvidenceQuality = "weak";
+    }
+  }
+
   const blockers = [];
   const warnings = [];
 
@@ -1094,17 +1325,19 @@ export function buildSectionEvidence(
   }
 
   return {
-    version: usePhase18Truth
-      ? "phase18-section-evidence-service-v1"
-      : usePhase17Truth
-        ? "phase17-section-evidence-service-v1"
-        : usePhase15Truth
-          ? "phase15-section-evidence-service-v1"
-          : useTrueEvidence
-            ? useConstructionTruth
-              ? "phase14-section-evidence-service-v1"
-              : "phase13-section-evidence-service-v1"
-            : "phase10-section-evidence-service-v1",
+    version: usePhase19Truth
+      ? "phase19-section-evidence-service-v1"
+      : usePhase18Truth
+        ? "phase18-section-evidence-service-v1"
+        : usePhase17Truth
+          ? "phase17-section-evidence-service-v1"
+          : usePhase15Truth
+            ? "phase15-section-evidence-service-v1"
+            : useTrueEvidence
+              ? useConstructionTruth
+                ? "phase14-section-evidence-service-v1"
+                : "phase13-section-evidence-service-v1"
+              : "phase10-section-evidence-service-v1",
     sectionType,
     cutCoordinate: round(cutCoordinate),
     cutAxis: axis,

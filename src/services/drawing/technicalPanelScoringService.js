@@ -386,6 +386,73 @@ export function scoreTechnicalPanel({
   }
   if (
     drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    String(metadata.wall_section_clip_quality || "").toLowerCase() === "blocked"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} does not resolve enough exact clipped wall profile truth for drafting-grade section credibility.`,
+    );
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    String(metadata.wall_section_clip_quality || "").toLowerCase() === "weak"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} wall clip truth remains weaker than preferred for drafting-grade section communication.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    String(metadata.opening_section_clip_quality || "").toLowerCase() ===
+      "blocked"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} opening clip truth is still too thin to communicate cut opening depth cleanly.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    String(metadata.stair_section_clip_quality || "").toLowerCase() ===
+      "blocked" &&
+    Number(metadata.stair_count || 0) > 0
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} stair clip truth remains too thin for a strong section communication narrative.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    String(metadata.roof_section_clip_quality || "").toLowerCase() === "weak"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} roof clip truth is still more contextual than preferred for final technical credibility.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    String(metadata.foundation_section_clip_quality || "").toLowerCase() ===
+      "blocked"
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} foundation/base-condition clip truth remains too thin for strong substructure communication.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") &&
+    Number(metadata.section_profile_complexity_score || 0) < 0.28 &&
+    Number(metadata.section_direct_evidence_score || 0) < 0.82
+  ) {
+    warnings.push(
+      `${drawing.title || drawingType} clipped section profile remains simpler than preferred, so the drawing still risks reading as overly schematic.`,
+    );
+  }
+  if (
+    drawingType === "section" &&
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase14") &&
     String(metadata.section_construction_truth_quality || "").toLowerCase() ===
       "blocked"
@@ -715,35 +782,40 @@ export function scoreTechnicalPanel({
   return {
     version:
       drawingType === "section" &&
-      (Number(metadata.roof_hip_count || 0) > 0 ||
-        Number(metadata.roof_valley_count || 0) > 0 ||
-        Number(metadata.foundation_zone_count || 0) > 0 ||
-        Number(metadata.base_wall_condition_count || 0) > 0)
-        ? "phase17-technical-panel-scoring-v1"
+      (metadata.wall_section_clip_quality != null ||
+        metadata.section_profile_complexity_score != null ||
+        metadata.section_drafting_evidence_score != null)
+        ? "phase19-technical-panel-scoring-v1"
         : drawingType === "section" &&
-            (Number(metadata.roof_explicit_primitive_count || 0) > 0 ||
-              Number(metadata.explicit_foundation_count || 0) > 0 ||
-              Number(metadata.explicit_base_condition_count || 0) > 0 ||
-              Number(metadata.foundation_direct_clip_count || 0) > 0 ||
-              Number(metadata.base_condition_direct_clip_count || 0) > 0)
-          ? "phase15-technical-panel-scoring-v1"
+            (Number(metadata.roof_hip_count || 0) > 0 ||
+              Number(metadata.roof_valley_count || 0) > 0 ||
+              Number(metadata.foundation_zone_count || 0) > 0 ||
+              Number(metadata.base_wall_condition_count || 0) > 0)
+          ? "phase17-technical-panel-scoring-v1"
           : drawingType === "section" &&
-              (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
-                isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
-                isFeatureEnabled("useSectionConstructionScoringPhase14") ||
-                isFeatureEnabled(
-                  "useSectionConstructionCredibilityGatePhase14",
-                ))
-            ? "phase14-technical-panel-scoring-v1"
+              (Number(metadata.roof_explicit_primitive_count || 0) > 0 ||
+                Number(metadata.explicit_foundation_count || 0) > 0 ||
+                Number(metadata.explicit_base_condition_count || 0) > 0 ||
+                Number(metadata.foundation_direct_clip_count || 0) > 0 ||
+                Number(metadata.base_condition_direct_clip_count || 0) > 0)
+            ? "phase15-technical-panel-scoring-v1"
             : drawingType === "section" &&
-                isFeatureEnabled("useSectionCredibilityGatePhase13")
-              ? "phase13-technical-panel-scoring-v1"
-              : fragmentQuality !== null &&
-                  (drawingType === "elevation" || drawingType === "section")
-                ? "phase10-technical-panel-scoring-v1"
-                : fragmentQuality !== null
-                  ? "phase9-technical-panel-scoring-v1"
-                  : "phase8-technical-panel-scoring-v1",
+                (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
+                  isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
+                  isFeatureEnabled("useSectionConstructionScoringPhase14") ||
+                  isFeatureEnabled(
+                    "useSectionConstructionCredibilityGatePhase14",
+                  ))
+              ? "phase14-technical-panel-scoring-v1"
+              : drawingType === "section" &&
+                  isFeatureEnabled("useSectionCredibilityGatePhase13")
+                ? "phase13-technical-panel-scoring-v1"
+                : fragmentQuality !== null &&
+                    (drawingType === "elevation" || drawingType === "section")
+                  ? "phase10-technical-panel-scoring-v1"
+                  : fragmentQuality !== null
+                    ? "phase9-technical-panel-scoring-v1"
+                    : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,

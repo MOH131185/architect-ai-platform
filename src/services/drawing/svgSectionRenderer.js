@@ -626,6 +626,10 @@ export function renderSectionSvg(
       sectionEvidence.summary?.sectionConstructionTruthQuality ||
       sectionEvidence.summary?.directEvidenceQuality ||
       "weak",
+    draftingEvidenceScore:
+      sectionEvidence.summary?.sectionDraftingEvidenceScore || 0,
+    profileComplexityScore:
+      sectionEvidence.summary?.sectionProfileComplexityScore || 0,
   });
   const roofTruthQuality = sectionEvidence.summary?.roofTruthQuality || "weak";
   const roofTruthMode = sectionEvidence.summary?.roofTruthMode || "missing";
@@ -894,6 +898,28 @@ export function renderSectionSvg(
         sectionEvidence.summary?.unsupportedConstructionTruthCount || 0,
       section_exact_construction_clip_count:
         sectionEvidence.summary?.exactConstructionClipCount || 0,
+      section_exact_profile_clip_count:
+        sectionEvidence.summary?.exactConstructionProfileClipCount || 0,
+      section_profile_segment_count:
+        sectionEvidence.summary?.constructionProfileSegmentCount || 0,
+      section_direct_profile_hit_count:
+        sectionEvidence.summary?.directConstructionProfileHitCount || 0,
+      section_profile_complexity_score:
+        sectionEvidence.summary?.sectionProfileComplexityScore || 0,
+      section_drafting_evidence_score:
+        sectionEvidence.summary?.sectionDraftingEvidenceScore || 0,
+      wall_section_clip_quality:
+        sectionEvidence.summary?.wallSectionClipQuality || null,
+      opening_section_clip_quality:
+        sectionEvidence.summary?.openingSectionClipQuality || null,
+      stair_section_clip_quality:
+        sectionEvidence.summary?.stairSectionClipQuality || null,
+      slab_section_clip_quality:
+        sectionEvidence.summary?.slabSectionClipQuality || null,
+      roof_section_clip_quality:
+        sectionEvidence.summary?.roofSectionClipQuality || null,
+      foundation_section_clip_quality:
+        sectionEvidence.summary?.foundationSectionClipQuality || null,
       cut_wall_truth_quality:
         sectionEvidence.summary?.cutWallTruthQuality || null,
       cut_wall_direct_truth_count:

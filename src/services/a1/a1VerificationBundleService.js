@@ -195,6 +195,30 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sectionConstructionTruthQuality ||
     technicalCredibility?.summary?.sectionConstructionTruthQuality ||
     "provisional";
+  const wallSectionClipQuality =
+    finalSheetRegression?.wallSectionClipQuality ||
+    technicalCredibility?.summary?.wallSectionClipQuality ||
+    "provisional";
+  const openingSectionClipQuality =
+    finalSheetRegression?.openingSectionClipQuality ||
+    technicalCredibility?.summary?.openingSectionClipQuality ||
+    "provisional";
+  const stairSectionClipQuality =
+    finalSheetRegression?.stairSectionClipQuality ||
+    technicalCredibility?.summary?.stairSectionClipQuality ||
+    "provisional";
+  const slabSectionClipQuality =
+    finalSheetRegression?.slabSectionClipQuality ||
+    technicalCredibility?.summary?.slabSectionClipQuality ||
+    "provisional";
+  const roofSectionClipQuality =
+    finalSheetRegression?.roofSectionClipQuality ||
+    technicalCredibility?.summary?.roofSectionClipQuality ||
+    "provisional";
+  const foundationSectionClipQuality =
+    finalSheetRegression?.foundationSectionClipQuality ||
+    technicalCredibility?.summary?.foundationSectionClipQuality ||
+    "provisional";
   const cutWallTruthQuality =
     finalSheetRegression?.cutWallTruthQuality ||
     technicalCredibility?.summary?.cutWallTruthQuality ||
@@ -253,22 +277,29 @@ export function buildA1VerificationBundle({
 
   const canonicalVerification = {
     version:
-      sectionConstructionEvidenceQuality !== "provisional" ||
-      cutWallTruthQuality !== "provisional" ||
-      cutOpeningTruthQuality !== "provisional" ||
-      stairTruthQuality !== "provisional"
-        ? "phase18-a1-verification-v1"
-        : roofTruthState !== "unsupported" ||
-            foundationTruthState !== "unsupported"
-          ? "phase17-a1-verification-v1"
-          : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-            ? "phase16-a1-verification-v1"
-            : roofTruthQuality !== "provisional" ||
-                foundationTruthQuality !== "provisional"
-              ? "phase15-a1-verification-v1"
-              : sectionConstructionTruthQuality !== "provisional"
-                ? "phase14-a1-verification-v1"
-                : "phase13-a1-verification-v1",
+      wallSectionClipQuality !== "provisional" ||
+      openingSectionClipQuality !== "provisional" ||
+      stairSectionClipQuality !== "provisional" ||
+      slabSectionClipQuality !== "provisional" ||
+      roofSectionClipQuality !== "provisional" ||
+      foundationSectionClipQuality !== "provisional"
+        ? "phase19-a1-verification-v1"
+        : sectionConstructionEvidenceQuality !== "provisional" ||
+            cutWallTruthQuality !== "provisional" ||
+            cutOpeningTruthQuality !== "provisional" ||
+            stairTruthQuality !== "provisional"
+          ? "phase18-a1-verification-v1"
+          : roofTruthState !== "unsupported" ||
+              foundationTruthState !== "unsupported"
+            ? "phase17-a1-verification-v1"
+            : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
+              ? "phase16-a1-verification-v1"
+              : roofTruthQuality !== "provisional" ||
+                  foundationTruthQuality !== "provisional"
+                ? "phase15-a1-verification-v1"
+                : sectionConstructionTruthQuality !== "provisional"
+                  ? "phase14-a1-verification-v1"
+                  : "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
@@ -282,6 +313,12 @@ export function buildA1VerificationBundle({
     sectionInferredEvidenceQuality,
     sectionConstructionEvidenceQuality,
     sectionConstructionTruthQuality,
+    wallSectionClipQuality,
+    openingSectionClipQuality,
+    stairSectionClipQuality,
+    slabSectionClipQuality,
+    roofSectionClipQuality,
+    foundationSectionClipQuality,
     cutWallTruthQuality,
     cutOpeningTruthQuality,
     stairTruthQuality,

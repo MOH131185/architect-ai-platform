@@ -159,8 +159,17 @@ export function buildSectionConstructionGeometry({
     "useCanonicalConstructionTruthModelPhase17",
   );
   const enablePhase18Truth =
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19") ||
     isFeatureEnabled("useDeeperSectionClippingPhase18") ||
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18");
+  const enablePhase19Truth =
+    isFeatureEnabled("useDeeperSectionClippingPhase19") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase19") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase19");
 
   const rooms = directRooms
     .map((room) => {
@@ -569,23 +578,26 @@ export function buildSectionConstructionGeometry({
   };
 
   return {
-    version: enablePhase18Truth
-      ? "phase18-section-construction-geometry-v1"
-      : enablePhase17Truth &&
-          (roof.hips.length ||
-            roof.valleys.length ||
-            foundation.zones.length ||
-            foundation.baseWallConditions.length)
-        ? "phase17-section-construction-geometry-v1"
-        : roof.supportMode !== "missing" || foundation.supportMode !== "missing"
-          ? "phase16-section-construction-geometry-v1"
-          : directRoof.length ||
-              directFoundations.length ||
-              directBaseConditions.length ||
-              nearFoundations.length ||
-              nearBaseConditions.length
-            ? "phase15-section-construction-geometry-v1"
-            : "phase14-section-construction-geometry-v1",
+    version: enablePhase19Truth
+      ? "phase19-section-construction-geometry-v1"
+      : enablePhase18Truth
+        ? "phase18-section-construction-geometry-v1"
+        : enablePhase17Truth &&
+            (roof.hips.length ||
+              roof.valleys.length ||
+              foundation.zones.length ||
+              foundation.baseWallConditions.length)
+          ? "phase17-section-construction-geometry-v1"
+          : roof.supportMode !== "missing" ||
+              foundation.supportMode !== "missing"
+            ? "phase16-section-construction-geometry-v1"
+            : directRoof.length ||
+                directFoundations.length ||
+                directBaseConditions.length ||
+                nearFoundations.length ||
+                nearBaseConditions.length
+              ? "phase15-section-construction-geometry-v1"
+              : "phase14-section-construction-geometry-v1",
     sectionType,
     baseX: round(baseX),
     baseY: round(baseY),
