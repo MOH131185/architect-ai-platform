@@ -39,8 +39,16 @@
       "destination": "/api/openai-chat.js"
     },
     {
+      "source": "/api/openai/chat",
+      "destination": "/api/openai/chat.js"
+    },
+    {
       "source": "/api/openai-images",
       "destination": "/api/openai-images.js"
+    },
+    {
+      "source": "/api/openai/images",
+      "destination": "/api/openai/images.js"
     },
     {
       "source": "/api/sheet",

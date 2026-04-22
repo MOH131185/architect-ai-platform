@@ -114,7 +114,8 @@ function pointInPolygon(point = {}, polygon = []) {
     const previousY = Number(previous.y ?? 0);
     const pointY = Number(point.y ?? 0);
     const deltaY = previousY - currentY || 0.000001;
-    const crossesScanline = currentY > pointY !== previousY > pointY;
+    const crossesScanline =
+      currentY > pointY ? !(previousY > pointY) : previousY > pointY;
     const intersectionX =
       ((Number(previous.x || 0) - Number(current.x || 0)) *
         (pointY - currentY)) /
