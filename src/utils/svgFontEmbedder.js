@@ -20,6 +20,9 @@ const INTER_BOLD_URL =
 export const EMBEDDED_FONT_FAMILY = "ArchiAISans";
 export const EMBEDDED_FONT_STACK =
   "'ArchiAISans', 'DejaVu Sans', 'Segoe UI', Arial, Helvetica, sans-serif";
+export const FINAL_SHEET_MIN_FONT_SIZE_PX = 8;
+export const FINAL_SHEET_AUX_FONT_SIZE_PX = 7;
+const LEGACY_EMBEDDED_FONT_FAMILY = "EmbeddedSans";
 
 const LOCAL_REGULAR_FONT_FILENAMES = [
   "public/fonts/DejaVuSans.ttf",
@@ -51,6 +54,8 @@ const SYSTEM_BOLD_FONT_CANDIDATES = [
 
 let fontLoadPromise = null;
 let resolvedFonts = null; // Set once the promise resolves; used by sync API
+let bundledFontLoadPromise = null;
+let resolvedBundledFonts = null;
 
 function getNodeBuiltinModule(moduleName) {
   if (!isNodeRuntime()) {
@@ -171,14 +176,19 @@ async function fetchFontAsBase64(url, descriptor) {
 async function loadFontDescriptor({
   descriptor,
   localCandidates = [],
+  systemCandidates = [],
   fallbackUrl = null,
+  allowRemoteFallback = true,
 } = {}) {
   try {
-    const localFont = await loadLocalFontAsBase64(localCandidates, descriptor);
+    const localFont = await loadLocalFontAsBase64(
+      [...localCandidates, ...systemCandidates],
+      descriptor,
+    );
     if (localFont?.base64) {
       return localFont;
     }
-    if (!fallbackUrl) {
+    if (!fallbackUrl || !allowRemoteFallback) {
       return null;
     }
     return await fetchFontAsBase64(fallbackUrl, descriptor);
@@ -242,18 +252,18 @@ async function ensureFontsLoaded() {
       const [regular, bold] = await Promise.all([
         loadFontDescriptor({
           descriptor: "regular",
-          localCandidates: [
-            ...resolveLocalFontCandidates(LOCAL_REGULAR_FONT_FILENAMES),
-            ...SYSTEM_REGULAR_FONT_CANDIDATES,
-          ],
+          localCandidates: resolveLocalFontCandidates(
+            LOCAL_REGULAR_FONT_FILENAMES,
+          ),
+          systemCandidates: SYSTEM_REGULAR_FONT_CANDIDATES,
           fallbackUrl: INTER_REGULAR_URL,
         }),
         loadFontDescriptor({
           descriptor: "bold",
-          localCandidates: [
-            ...resolveLocalFontCandidates(LOCAL_BOLD_FONT_FILENAMES),
-            ...SYSTEM_BOLD_FONT_CANDIDATES,
-          ],
+          localCandidates: resolveLocalFontCandidates(
+            LOCAL_BOLD_FONT_FILENAMES,
+          ),
+          systemCandidates: SYSTEM_BOLD_FONT_CANDIDATES,
           fallbackUrl: INTER_BOLD_URL,
         }),
       ]);
@@ -264,13 +274,41 @@ async function ensureFontsLoaded() {
   return fontLoadPromise;
 }
 
-function buildEmbeddedFaceRule(font, weight) {
+async function ensureBundledFontsLoaded() {
+  if (!bundledFontLoadPromise) {
+    bundledFontLoadPromise = (async () => {
+      const [regular, bold] = await Promise.all([
+        loadFontDescriptor({
+          descriptor: "regular",
+          localCandidates: resolveLocalFontCandidates(
+            LOCAL_REGULAR_FONT_FILENAMES,
+          ),
+          fallbackUrl: null,
+          allowRemoteFallback: false,
+        }),
+        loadFontDescriptor({
+          descriptor: "bold",
+          localCandidates: resolveLocalFontCandidates(
+            LOCAL_BOLD_FONT_FILENAMES,
+          ),
+          fallbackUrl: null,
+          allowRemoteFallback: false,
+        }),
+      ]);
+      resolvedBundledFonts = { regular, bold };
+      return resolvedBundledFonts;
+    })();
+  }
+  return bundledFontLoadPromise;
+}
+
+function buildEmbeddedFaceRule(font, weight, family = EMBEDDED_FONT_FAMILY) {
   if (!font?.base64) {
     return "";
   }
   return `
     @font-face {
-      font-family: '${EMBEDDED_FONT_FAMILY}';
+      font-family: '${family}';
       src: url(data:${font.mime};base64,${font.base64}) format('${font.format}');
       font-weight: ${weight};
       font-style: normal;
@@ -287,8 +325,10 @@ function buildFontStyleBlock(regular, bold) {
   }
 
   let css = buildEmbeddedFaceRule(regular, "normal");
+  css += buildEmbeddedFaceRule(regular, "normal", LEGACY_EMBEDDED_FONT_FAMILY);
   if (bold?.base64) {
     css += buildEmbeddedFaceRule(bold, "bold");
+    css += buildEmbeddedFaceRule(bold, "bold", LEGACY_EMBEDDED_FONT_FAMILY);
   }
   css += `
     svg, text, tspan {
@@ -308,26 +348,146 @@ function replaceFontFamilies(svgString) {
   let result = ensureRootFontFamily(normalizeTypography(svgString));
 
   result = result.replace(/font-family="([^"]*)"/g, (match, families) => {
-    if (
-      families.includes(EMBEDDED_FONT_FAMILY) ||
-      families.includes("monospace")
-    ) {
+    if (families.includes("monospace")) {
       return match;
     }
     return `font-family="${EMBEDDED_FONT_STACK}"`;
   });
 
   result = result.replace(/font-family:\s*([^;}"]+)/g, (match, families) => {
-    if (
-      families.includes(EMBEDDED_FONT_FAMILY) ||
-      families.includes("monospace")
-    ) {
+    if (families.includes("monospace")) {
       return match;
     }
     return `font-family: ${EMBEDDED_FONT_STACK}`;
   });
 
   return result;
+}
+
+function parseComparableFontSize(fontSizeValue) {
+  const trimmed = String(fontSizeValue || "").trim();
+  const match = trimmed.match(/^(-?\d*\.?\d+)(px)?$/i);
+  if (!match) {
+    return null;
+  }
+  const numeric = Number(match[1]);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function clampFontSizeValue(fontSizeValue, minimumFontSizePx) {
+  if (!Number.isFinite(minimumFontSizePx) || minimumFontSizePx <= 0) {
+    return String(fontSizeValue || "");
+  }
+
+  const trimmed = String(fontSizeValue || "").trim();
+  const match = trimmed.match(/^(-?\d*\.?\d+)(px)?$/i);
+  if (!match) {
+    return trimmed;
+  }
+
+  const numeric = Number(match[1]);
+  if (!Number.isFinite(numeric) || numeric >= minimumFontSizePx) {
+    return trimmed;
+  }
+
+  const suffix = match[2] || "";
+  return `${minimumFontSizePx}${suffix}`;
+}
+
+function enforceMinimumFontSize(svgString, minimumFontSizePx = 0) {
+  if (
+    !svgString ||
+    typeof svgString !== "string" ||
+    !Number.isFinite(minimumFontSizePx) ||
+    minimumFontSizePx <= 0
+  ) {
+    return svgString;
+  }
+
+  let result = svgString.replace(
+    /font-size=(["'])([^"']+)\1/gi,
+    (match, quote, value) =>
+      `font-size=${quote}${clampFontSizeValue(value, minimumFontSizePx)}${quote}`,
+  );
+
+  result = result.replace(/font-size:\s*([^;"}]+)/gi, (match, value) => {
+    return `font-size: ${clampFontSizeValue(value, minimumFontSizePx)}`;
+  });
+
+  return result;
+}
+
+function addOrReplaceTextAttribute(attrs, attributeName, value) {
+  const attributeRegex = new RegExp(
+    `\\b${attributeName}=(["'])([^"']*)\\1`,
+    "i",
+  );
+  if (attributeRegex.test(attrs)) {
+    return attrs.replace(attributeRegex, `${attributeName}="${String(value)}"`);
+  }
+  return `${attrs} ${attributeName}="${String(value)}"`;
+}
+
+function hasCriticalTextMarker(attrs) {
+  return (
+    /\bdata-text-role=(["'])critical\1/i.test(attrs) ||
+    /\bclass=(["'])[^"']*\bsheet-critical-label\b[^"']*\1/i.test(attrs)
+  );
+}
+
+function extractFontSizeFromTextAttributes(attrs) {
+  const fontSizeMatch = attrs.match(/\bfont-size=(["'])([^"']+)\1/i);
+  if (fontSizeMatch) {
+    return parseComparableFontSize(fontSizeMatch[2]);
+  }
+
+  const styleMatch = attrs.match(/\bstyle=(["'])([^"']*)\1/i);
+  const styledFontSize = styleMatch?.[2]?.match(/font-size:\s*([^;]+)/i);
+  return styledFontSize ? parseComparableFontSize(styledFontSize[1]) : null;
+}
+
+function applyCriticalTextOutline(svgString) {
+  if (!svgString || typeof svgString !== "string") {
+    return svgString;
+  }
+
+  return svgString.replace(/<text\b([^>]*)>/gi, (match, attrs = "") => {
+    if (!hasCriticalTextMarker(attrs)) {
+      return match;
+    }
+
+    const fontSize =
+      extractFontSizeFromTextAttributes(attrs) || FINAL_SHEET_MIN_FONT_SIZE_PX;
+    const strokeWidth = Math.max(
+      0.75,
+      Math.min(1.8, Number((fontSize * 0.12).toFixed(2))),
+    );
+
+    let updatedAttrs = attrs;
+    updatedAttrs = addOrReplaceTextAttribute(
+      updatedAttrs,
+      "paint-order",
+      "stroke fill",
+    );
+    updatedAttrs = addOrReplaceTextAttribute(updatedAttrs, "stroke", "#ffffff");
+    updatedAttrs = addOrReplaceTextAttribute(
+      updatedAttrs,
+      "stroke-width",
+      strokeWidth.toFixed(2),
+    );
+    updatedAttrs = addOrReplaceTextAttribute(
+      updatedAttrs,
+      "stroke-linejoin",
+      "round",
+    );
+    updatedAttrs = addOrReplaceTextAttribute(
+      updatedAttrs,
+      "vector-effect",
+      "non-scaling-stroke",
+    );
+
+    return `<text${updatedAttrs}>`;
+  });
 }
 
 function injectFontStyle(svgString, styleBlock) {
@@ -355,12 +515,25 @@ function injectFontStyle(svgString, styleBlock) {
  * @param {string} svgString - Raw SVG markup
  * @returns {Promise<string>} SVG with embedded @font-face and updated font-family references
  */
-export async function embedFontInSVG(svgString) {
+export async function embedFontInSVG(svgString, options = {}) {
   if (!svgString || typeof svgString !== "string") return svgString;
 
-  const { regular, bold } = await ensureFontsLoaded();
+  const {
+    bundledOnly = false,
+    minimumFontSizePx = 0,
+    outlineCriticalText = false,
+  } = options;
+  const { regular, bold } = bundledOnly
+    ? await ensureBundledFontsLoaded()
+    : await ensureFontsLoaded();
 
-  const normalizedSvg = replaceFontFamilies(svgString);
+  let normalizedSvg = enforceMinimumFontSize(
+    replaceFontFamilies(svgString),
+    minimumFontSizePx,
+  );
+  if (outlineCriticalText) {
+    normalizedSvg = applyCriticalTextOutline(normalizedSvg);
+  }
 
   // If fonts couldn't be loaded, still return typography-normalized SVG.
   if (!regular?.base64) return normalizedSvg;
@@ -373,16 +546,52 @@ export async function embedFontInSVG(svgString) {
  * Call ensureFontsLoaded() once at startup and await it, then use this for speed.
  * If fonts haven't loaded yet, returns typography-normalized SVG without embedded fonts.
  */
-export function embedFontInSVGSync(svgString) {
+export function embedFontInSVGSync(svgString, options = {}) {
   if (!svgString || typeof svgString !== "string") return svgString;
-  const normalizedSvg = replaceFontFamilies(svgString);
+  const {
+    bundledOnly = false,
+    minimumFontSizePx = 0,
+    outlineCriticalText = false,
+  } = options;
+  const loadedFonts = bundledOnly ? resolvedBundledFonts : resolvedFonts;
+  let normalizedSvg = enforceMinimumFontSize(
+    replaceFontFamilies(svgString),
+    minimumFontSizePx,
+  );
+  if (outlineCriticalText) {
+    normalizedSvg = applyCriticalTextOutline(normalizedSvg);
+  }
 
-  if (!resolvedFonts?.regular?.base64) return normalizedSvg;
+  if (!loadedFonts?.regular?.base64) return normalizedSvg;
 
   return injectFontStyle(
     normalizedSvg,
-    buildFontStyleBlock(resolvedFonts.regular, resolvedFonts.bold),
+    buildFontStyleBlock(loadedFonts.regular, loadedFonts.bold),
   );
+}
+
+export async function prepareFinalSheetSvgForRasterization(
+  svgString,
+  options = {},
+) {
+  return embedFontInSVG(svgString, {
+    bundledOnly: true,
+    minimumFontSizePx:
+      options.minimumFontSizePx ?? FINAL_SHEET_MIN_FONT_SIZE_PX,
+    outlineCriticalText: options.outlineCriticalText ?? true,
+  });
+}
+
+export function prepareFinalSheetSvgForRasterizationSync(
+  svgString,
+  options = {},
+) {
+  return embedFontInSVGSync(svgString, {
+    bundledOnly: true,
+    minimumFontSizePx:
+      options.minimumFontSizePx ?? FINAL_SHEET_MIN_FONT_SIZE_PX,
+    outlineCriticalText: options.outlineCriticalText ?? true,
+  });
 }
 
 export function getFontEmbeddingReadinessSync() {
@@ -441,13 +650,18 @@ export function getFontEmbeddingReadinessSync() {
 /**
  * Pre-load fonts. Call once at app/server startup.
  */
-export { ensureFontsLoaded };
+export { ensureFontsLoaded, ensureBundledFontsLoaded };
 
 export default {
   EMBEDDED_FONT_FAMILY,
   EMBEDDED_FONT_STACK,
+  FINAL_SHEET_MIN_FONT_SIZE_PX,
+  FINAL_SHEET_AUX_FONT_SIZE_PX,
   embedFontInSVG,
   embedFontInSVGSync,
+  prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationSync,
   ensureFontsLoaded,
+  ensureBundledFontsLoaded,
   getFontEmbeddingReadinessSync,
 };

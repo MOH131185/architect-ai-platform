@@ -11,7 +11,15 @@ import { getSectionLineweights } from "./sectionLineweightService.js";
 import { buildSectionWallDetailMarkup } from "./sectionWallDetailService.js";
 import { buildSectionOpeningDetailMarkup } from "./sectionOpeningDetailService.js";
 import { buildSectionStairDetailMarkup } from "./sectionStairDetailService.js";
-import { getEnvelopeDrawingBounds } from "./drawingBounds.js";
+import {
+  getBlueprintTheme,
+  getEnvelopeDrawingBounds,
+  getEnvelopeDrawingBoundsWithSource,
+  resolveCompiledProjectGeometryInput,
+  resolveCompiledProjectStyleDNA,
+} from "./drawingBounds.js";
+
+const SECTION_THEME = getBlueprintTheme();
 
 function escapeXml(value) {
   return String(value)
@@ -33,6 +41,26 @@ function roundMetric(value, precision = 3) {
   }
   const factor = 10 ** precision;
   return Math.round(numeric * factor) / factor;
+}
+
+function formatNumber(value, precision = 2) {
+  return roundMetric(value, precision).toFixed(precision);
+}
+
+function formatMeters(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "0.0 m";
+  }
+  return `${numeric.toFixed(1)} m`;
+}
+
+function chooseScaleBarMeters(scalePxPerMeter = 1) {
+  const candidates = [0.5, 1, 2, 5, 10];
+  const eligible = candidates.filter(
+    (entry) => entry * Math.max(scalePxPerMeter, 1) <= 160,
+  );
+  return eligible[eligible.length - 1] || 1;
 }
 
 function getLevelProfiles(geometry = {}) {
@@ -99,6 +127,162 @@ function sectionDisplayRange(entry = {}, sectionType = "longitudinal") {
   return projectRoomForSection(entry, sectionType);
 }
 
+function buildFallbackSectionProfile(
+  geometry = {},
+  sectionType = "longitudinal",
+  bounds = getEnvelopeDrawingBounds(geometry),
+) {
+  const axis = sectionAxis(sectionType);
+  const cutCoordinate =
+    axis === "x"
+      ? (Number(bounds.min_x || 0) + Number(bounds.max_x || 0)) / 2
+      : (Number(bounds.min_y || 0) + Number(bounds.max_y || 0)) / 2;
+
+  return axis === "x"
+    ? {
+        id: `section:${sectionType}:fallback`,
+        sectionType,
+        strategyId: "fallback-midline",
+        strategyName: "Fallback Midline",
+        focusEntityIds: [],
+        cutLine: {
+          from: { x: cutCoordinate, y: Number(bounds.min_y || 0) },
+          to: { x: cutCoordinate, y: Number(bounds.max_y || 0) },
+        },
+      }
+    : {
+        id: `section:${sectionType}:fallback`,
+        sectionType,
+        strategyId: "fallback-midline",
+        strategyName: "Fallback Midline",
+        focusEntityIds: [],
+        cutLine: {
+          from: { x: Number(bounds.min_x || 0), y: cutCoordinate },
+          to: { x: Number(bounds.max_x || 0), y: cutCoordinate },
+        },
+      };
+}
+
+function renderScaleBar(scalePxPerMeter, width, height, padding) {
+  const barMeters = chooseScaleBarMeters(scalePxPerMeter);
+  const barWidthPx = barMeters * scalePxPerMeter;
+  const x = width - padding - barWidthPx - 8;
+  const y = height - padding + 38;
+  return {
+    barMeters,
+    markup: `
+      <g id="blueprint-scale-bar">
+        <line x1="${formatNumber(x)}" y1="${formatNumber(
+          y,
+        )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
+          y,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        <line x1="${formatNumber(x)}" y1="${formatNumber(
+          y - 4,
+        )}" x2="${formatNumber(x)}" y2="${formatNumber(
+          y + 4,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        <line x1="${formatNumber(x + barWidthPx / 2)}" y1="${formatNumber(
+          y - 4,
+        )}" x2="${formatNumber(x + barWidthPx / 2)}" y2="${formatNumber(
+          y + 4,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        <line x1="${formatNumber(x + barWidthPx)}" y1="${formatNumber(
+          y - 4,
+        )}" x2="${formatNumber(x + barWidthPx)}" y2="${formatNumber(
+          y + 4,
+        )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
+        <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
+          y + 16,
+        )}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+          `${barMeters} m`,
+        )}</text>
+      </g>
+    `,
+  };
+}
+
+function renderOverallSectionDimensions(
+  baseX,
+  baseY,
+  widthPx,
+  heightPx,
+  totalHeightM,
+  horizontalExtentM,
+  width,
+  padding,
+) {
+  const topY = padding - 18;
+  const rightX = width - padding + 18;
+  return `
+    <g id="phase8-section-dimensions">
+      <line x1="${formatNumber(baseX)}" y1="${formatNumber(
+        baseY - heightPx,
+      )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
+        topY,
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
+        baseY - heightPx,
+      )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+        topY,
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      <line x1="${formatNumber(baseX)}" y1="${formatNumber(
+        topY,
+      )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+        topY,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      <line x1="${formatNumber(baseX)}" y1="${formatNumber(
+        topY - 3,
+      )}" x2="${formatNumber(baseX)}" y2="${formatNumber(
+        topY + 3,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
+        topY - 3,
+      )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+        topY + 3,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      <text x="${formatNumber(baseX + widthPx / 2)}" y="${formatNumber(
+        topY - 6,
+      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${escapeXml(
+        formatMeters(horizontalExtentM),
+      )}</text>
+
+      <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
+        baseY - heightPx,
+      )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
+        baseY - heightPx,
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      <line x1="${formatNumber(baseX + widthPx)}" y1="${formatNumber(
+        baseY,
+      )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
+        baseY,
+      )}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"/>
+      <line x1="${formatNumber(rightX)}" y1="${formatNumber(
+        baseY - heightPx,
+      )}" x2="${formatNumber(rightX)}" y2="${formatNumber(
+        baseY,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
+        baseY - heightPx,
+      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
+        baseY - heightPx,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      <line x1="${formatNumber(rightX - 3)}" y1="${formatNumber(
+        baseY,
+      )}" x2="${formatNumber(rightX + 3)}" y2="${formatNumber(
+        baseY,
+      )}" stroke="${SECTION_THEME.line}" stroke-width="1"/>
+      <text x="${formatNumber(rightX + 14)}" y="${formatNumber(
+        baseY - heightPx / 2,
+      )}" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 ${formatNumber(
+        rightX + 14,
+      )} ${formatNumber(baseY - heightPx / 2)})" text-anchor="middle">${escapeXml(
+        formatMeters(totalHeightM),
+      )}</text>
+    </g>
+  `;
+}
+
 function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale) {
   const lines = [];
   const labels = [];
@@ -107,10 +291,10 @@ function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale) {
     const midY =
       baseY - (level.bottom_m + Number(level.height_m || 3.2) / 2) * scale;
     lines.push(
-      `<line x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="#5b6470" stroke-width="1.2" />`,
+      `<line x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="1" />`,
     );
     labels.push(`
-      <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="#374151" stroke-width="1" />
+      <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9" />
       <text x="${baseX - 58}" y="${topY + 4}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
         `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
       )}</text>
@@ -121,7 +305,7 @@ function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale) {
   });
 
   labels.push(`
-    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="#111" stroke-width="1.2" />
+    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="1" />
     <text x="${baseX - 58}" y="${baseY + 4}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
   `);
 
@@ -164,37 +348,37 @@ function renderFoundation(
       const bandOpacity =
         band.truthState === "contextual" ? fillOpacity * 0.82 : fillOpacity;
       return `
-      <rect x="${band.x}" y="${baseY - 18}" width="${band.width}" height="18" fill="#c8c0b2" fill-opacity="${bandOpacity}" stroke="#444" stroke-width="${lineweights.primary || 1.2}"${bandDash} data-truth-state="${band.truthState || "direct"}" />`;
+      <rect x="${band.x}" y="${baseY - 18}" width="${band.width}" height="18" fill="${SECTION_THEME.fillSoft}" fill-opacity="${bandOpacity}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.primary || 1.2}"${bandDash} data-truth-state="${band.truthState || "direct"}" />`;
     })
     .join("");
   const groundLineMarkup = (foundationGeometry?.groundLines || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${baseY + 12}" x2="${entry.x + entry.width}" y2="${baseY + 12}" stroke="#6b7280" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.72"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${baseY + 12}" x2="${entry.x + entry.width}" y2="${baseY + 12}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.72"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const plinthMarkup = (foundationGeometry?.plinthLines || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${baseY - 2}" x2="${entry.x + entry.width}" y2="${baseY - 2}" stroke="#3f3f46" stroke-width="${lineweights.primary || 1.2}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${baseY - 2}" x2="${entry.x + entry.width}" y2="${baseY - 2}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.primary || 1.2}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const stepMarkup = (foundationGeometry?.stepLines || [])
     .map(
       (entry) =>
-        `<path d="M ${entry.x} ${baseY + 8} L ${entry.x + entry.width / 2} ${baseY - 6} L ${entry.x + entry.width} ${baseY - 6}" fill="none" stroke="#7c6f64" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "6 5" : "5 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<path d="M ${entry.x} ${baseY + 8} L ${entry.x + entry.width / 2} ${baseY - 6} L ${entry.x + entry.width} ${baseY - 6}" fill="none" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "6 5" : "5 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const interfaceMarkup = (foundationGeometry?.slabGroundInterfaces || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${baseY}" x2="${entry.x + entry.width}" y2="${baseY}" stroke="#111" stroke-width="${lineweights.cutOutline || 2}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${baseY}" x2="${entry.x + entry.width}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 2}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const zoneMarkup = (foundationGeometry?.zones || [])
     .map(
       (entry) =>
-        `<rect x="${entry.x}" y="${baseY + 6}" width="${entry.width}" height="12" fill="#bfa98d"${entry.truthState === "contextual" ? ' fill-opacity="0.72"' : ""} stroke="#6b5d4f" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<rect x="${entry.x}" y="${baseY + 6}" width="${entry.width}" height="12" fill="${SECTION_THEME.fillSoft}"${entry.truthState === "contextual" ? ' fill-opacity="0.72"' : ""} stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const directClipMarkup = (foundationGeometry?.directClips || [])
@@ -206,18 +390,18 @@ function renderFoundation(
       );
       const x = Number(entry.x || 0) + (Number(entry.width || 0) - width) / 2;
       const truthState = String(entry.truthState || "direct").toLowerCase();
-      return `<rect x="${x}" y="${baseY - 16}" width="${width}" height="34" fill="#8b7357" fill-opacity="${truthState === "direct" ? 0.92 : 0.68}" stroke="#4b3f34" stroke-width="${lineweights.primary || 1.2}"${truthState === "direct" ? "" : ' stroke-dasharray="6 4"'} data-truth-state="${truthState}" />`;
+      return `<rect x="${x}" y="${baseY - 16}" width="${width}" height="34" fill="${SECTION_THEME.pocheSoft}" fill-opacity="${truthState === "direct" ? 0.92 : 0.68}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${truthState === "direct" ? "" : ' stroke-dasharray="6 4"'} data-truth-state="${truthState}" />`;
     })
     .join("");
   const baseWallConditionMarkup = (foundationGeometry?.baseWallConditions || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${baseY - 10}" x2="${entry.x + entry.width}" y2="${baseY - 10}" stroke="#5f5146" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${baseY - 10}" x2="${entry.x + entry.width}" y2="${baseY - 10}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   return `
     <g id="phase8-section-foundation" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
-      <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="#ded8cc" fill-opacity="${fillOpacity}" />
+      <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="${SECTION_THEME.paper}" fill-opacity="${fillOpacity}" />
       ${bandMarkup}
       ${directClipMarkup}
       ${zoneMarkup}
@@ -226,11 +410,11 @@ function renderFoundation(
       ${baseWallConditionMarkup}
       ${stepMarkup}
       ${interfaceMarkup}
-      <line x1="${baseX - 14}" y1="${baseY}" x2="${baseX + widthPx + 14}" y2="${baseY}" stroke="#1f2937" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
-      <line x1="${baseX - 14}" y1="${baseY + 12}" x2="${baseX + widthPx + 14}" y2="${baseY + 12}" stroke="#8b8172" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="6 4" />
+      <line x1="${baseX - 14}" y1="${baseY}" x2="${baseX + widthPx + 14}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+      <line x1="${baseX - 14}" y1="${baseY + 12}" x2="${baseX + widthPx + 14}" y2="${baseY + 12}" stroke="${SECTION_THEME.guide}" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="6 4" />
       ${
         contextual
-          ? `<text x="${baseX + widthPx - 6}" y="${baseY + 34}" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="#6b7280">FOUNDATION CONTEXTUAL</text>`
+          ? `<text x="${baseX + widthPx - 6}" y="${baseY + 34}" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="${SECTION_THEME.lineLight}">FOUNDATION CONTEXTUAL</text>`
           : ""
       }
     </g>
@@ -260,31 +444,31 @@ function renderRoof(
   const parapetMarkup = (roofGeometry?.parapets || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${topY - 15}" x2="${entry.x + entry.width}" y2="${topY - 15}" stroke="#111" stroke-width="${lineweights.primary || 1.4}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : dasharray} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${topY - 15}" x2="${entry.x + entry.width}" y2="${topY - 15}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.4}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : dasharray} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const roofBreakMarkup = (roofGeometry?.roofBreaks || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${topY - 26}" x2="${entry.x}" y2="${topY + 4}" stroke="#4b5563" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "6 5" : "4 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${topY - 26}" x2="${entry.x}" y2="${topY + 4}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "6 5" : "4 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const attachmentMarkup = (roofGeometry?.attachments || [])
     .map(
       (entry) =>
-        `<rect x="${entry.x}" y="${topY - 28}" width="${Math.max(10, entry.width)}" height="12" fill="#f2f4f7"${entry.truthState === "contextual" ? ' fill-opacity="0.72"' : ""} stroke="#374151" stroke-width="0.9"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<rect x="${entry.x}" y="${topY - 28}" width="${Math.max(10, entry.width)}" height="12" fill="${SECTION_THEME.paper}"${entry.truthState === "contextual" ? ' fill-opacity="0.72"' : ""} stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9"${entry.truthState === "contextual" ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const hipMarkup = (roofGeometry?.hips || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${topY - 34}" x2="${entry.x}" y2="${topY}" stroke="#3f4b59" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${topY - 34}" x2="${entry.x}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const valleyMarkup = (roofGeometry?.valleys || [])
     .map(
       (entry) =>
-        `<line x1="${entry.x}" y1="${topY - 30}" x2="${entry.x}" y2="${topY - 2}" stroke="#64748b" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "7 5" : "4 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
+        `<line x1="${entry.x}" y1="${topY - 30}" x2="${entry.x}" y2="${topY - 2}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="${entry.truthState === "contextual" ? "7 5" : "4 4"}"${entry.truthState === "contextual" ? ' stroke-opacity="0.76"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
   const cutPlaneMarkup = (roofGeometry?.cutPlanes || [])
@@ -296,15 +480,15 @@ function renderRoof(
       );
       const x = Number(entry.x || 0) + (Number(entry.width || 0) - width) / 2;
       const truthState = String(entry.truthState || "direct").toLowerCase();
-      return `<rect x="${x}" y="${topY - 30}" width="${width}" height="22" fill="#b9c4d4" fill-opacity="${truthState === "direct" ? 0.9 : 0.66}" stroke="#334155" stroke-width="${lineweights.primary || 1.1}"${truthState === "direct" ? "" : ' stroke-dasharray="6 4"'} data-truth-state="${truthState}" />`;
+      return `<rect x="${x}" y="${topY - 30}" width="${width}" height="22" fill="${SECTION_THEME.fillSoft}" fill-opacity="${truthState === "direct" ? 0.9 : 0.66}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.primary || 1.1}"${truthState === "direct" ? "" : ' stroke-dasharray="6 4"'} data-truth-state="${truthState}" />`;
     })
     .join("");
   if (flat) {
     return `
       <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
-      <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="#d5dae1" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
-      <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
-      <line x1="${roofX + 8}" y1="${topY - 7}" x2="${roofX + roofWidth - 8}" y2="${topY - 7}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+      <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
+      <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+      <line x1="${roofX + 8}" y1="${topY - 7}" x2="${roofX + roofWidth - 8}" y2="${topY - 7}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" />
       ${cutPlaneMarkup}
       ${parapetMarkup}
       ${roofBreakMarkup}
@@ -317,9 +501,9 @@ function renderRoof(
 
   return `
     <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
-    <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${topY - 52} L ${roofX + roofWidth} ${topY}" fill="none" stroke="#111" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
-    <path d="M ${roofX + 10} ${topY} L ${roofX + roofWidth / 2} ${topY - 40} L ${roofX + roofWidth - 10} ${topY}" fill="none" stroke="#6b7280" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 0.9}"${dasharray} />
-    <line x1="${roofX + 10}" y1="${topY - 8}" x2="${roofX + roofWidth - 10}" y2="${topY - 8}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
+    <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${topY - 52} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+    <path d="M ${roofX + 10} ${topY} L ${roofX + roofWidth / 2} ${topY - 40} L ${roofX + roofWidth - 10} ${topY}" fill="none" stroke="${SECTION_THEME.lineLight}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 0.9}"${dasharray} />
+    <line x1="${roofX + 10}" y1="${topY - 8}" x2="${roofX + roofWidth - 10}" y2="${topY - 8}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
     ${cutPlaneMarkup}
     ${roofBreakMarkup}
     ${hipMarkup}
@@ -358,11 +542,11 @@ function renderCutRooms(
 
       return `
         <g class="phase8-cut-room">
-          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#f9f7f2" stroke="#222" stroke-width="2.2" />
-          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="#111" stroke-width="2.6" />
-          <line x1="${x}" y1="${y}" x2="${x}" y2="${y + heightPx}" stroke="#111" stroke-width="2.6" />
-          <text x="${x + widthPx / 2}" y="${y + heightPx / 2 - 3}" font-size="10.5" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">${name}</text>
-          <text x="${x + widthPx / 2}" y="${y + heightPx / 2 + 10}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.6" />
+          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="2.1" />
+          <line x1="${x}" y1="${y}" x2="${x}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="2.1" />
+          <text x="${x + widthPx / 2}" y="${y + heightPx / 2 - 4}" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${name}</text>
+          <text x="${x + widthPx / 2}" y="${y + heightPx / 2 + 11}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
             `${Number(room.actual_area || room.target_area_m2 || 0).toFixed(1)} M2`,
           )}</text>
         </g>
@@ -411,15 +595,15 @@ function renderStairCut(
       const treadSpacing = heightPx / treadCount;
       const treads = Array.from({ length: treadCount }, (_, index) => {
         const treadY = y + treadSpacing * (index + 1);
-        return `<line x1="${x + 4}" y1="${treadY}" x2="${x + widthPx - 4}" y2="${treadY}" stroke="#444" stroke-width="0.9" />`;
+        return `<line x1="${x + 4}" y1="${treadY}" x2="${x + widthPx - 4}" y2="${treadY}" stroke="${SECTION_THEME.lineLight}" stroke-width="0.9" />`;
       }).join("");
 
       return `
         <g id="phase8-section-stair-${escapeXml(stair.id || "stair")}">
-          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#efefef" stroke="#333" stroke-width="1.4" />
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.3" />
           ${treads}
-          <text x="${x + widthPx / 2}" y="${y + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">STAIR</text>
-          <text x="${x + widthPx / 2}" y="${y + heightPx - 6}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">UP</text>
+          <text x="${x + widthPx / 2}" y="${y + 17}" font-size="11" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">STAIR</text>
+          <text x="${x + widthPx / 2}" y="${y + heightPx - 7}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">UP</text>
         </g>
       `;
     })
@@ -459,9 +643,9 @@ function renderSlabCuts(
       );
       return `
         <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" data-truth="${quality}" data-truth-state="${truthState}">
-          <rect x="${slab.x || 0}" y="${slab.y}" width="${slab.width}" height="${buildUpDepth}" fill="#dfe4ea" fill-opacity="${fillOpacity}" stroke="#111" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
-          <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="#111" stroke-width="${lineweights.cutOutline || 1.8}"${dasharray} />
-          <line x1="${slab.x || 0}" y1="${slab.y + buildUpDepth}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + buildUpDepth}" stroke="#6b7280" stroke-width="${lineweights.tertiary || 0.8}" />
+          <rect x="${slab.x || 0}" y="${slab.y}" width="${slab.width}" height="${buildUpDepth}" fill="${SECTION_THEME.fillSoft}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
+          <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 1.8}"${dasharray} />
+          <line x1="${slab.x || 0}" y1="${slab.y + buildUpDepth}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + buildUpDepth}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" />
         </g>`;
     })
     .join("");
@@ -508,7 +692,7 @@ function renderCutWalls(
         truthState === "direct" ? "" : ' stroke-dasharray="7 4"';
 
       return `
-        <rect id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#151515" fill-opacity="${fillOpacity}" stroke="#111" stroke-width="1.2"${strokeDash} data-truth-state="${truthState}" />
+        <rect id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.poche}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="1.2"${strokeDash} data-truth-state="${truthState}" />
       `;
     })
     .join("");
@@ -553,9 +737,9 @@ function renderCutOpenings(
 
       return `
         <g id="phase13-section-cut-opening-${escapeXml(opening.id || index)}" data-truth-state="${truthState}">
-          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="#ffffff" fill-opacity="${fillOpacity}" stroke="#475569" stroke-width="1"${strokeDash} />
-          <line x1="${x}" y1="${y}" x2="${x + widthPx}" y2="${y}" stroke="#111" stroke-width="1"${strokeDash} />
-          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="#111" stroke-width="1"${strokeDash} />
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.lineMuted}" stroke-width="1"${strokeDash} />
+          <line x1="${x}" y1="${y}" x2="${x + widthPx}" y2="${y}" stroke="${SECTION_THEME.line}" stroke-width="1"${strokeDash} />
+          <line x1="${x}" y1="${y + heightPx}" x2="${x + widthPx}" y2="${y + heightPx}" stroke="${SECTION_THEME.line}" stroke-width="1"${strokeDash} />
         </g>
       `;
     })
@@ -572,25 +756,29 @@ export function renderSectionSvg(
   styleDNA = {},
   options = {},
 ) {
-  const rawGeometryInput =
-    geometryInput?.projectGeometry ||
-    geometryInput?.geometry ||
-    geometryInput ||
-    {};
+  const rawGeometryInput = resolveCompiledProjectGeometryInput(geometryInput);
+  const resolvedStyleDNA =
+    styleDNA && Object.keys(styleDNA).length
+      ? styleDNA
+      : resolveCompiledProjectStyleDNA(geometryInput, styleDNA);
   const geometry = coerceToCanonicalProjectGeometry({
-    ...rawGeometryInput,
+    ...(rawGeometryInput || {}),
     metadata: rawGeometryInput?.metadata || {},
   });
   const sectionType = String(
     options.sectionType || "longitudinal",
   ).toLowerCase();
-  const sectionProfile = options.sectionProfile || null;
+  const envelopeBounds = getEnvelopeDrawingBoundsWithSource(geometry);
+  const sectionProfile =
+    options.sectionProfile ||
+    buildFallbackSectionProfile(geometry, sectionType, envelopeBounds.bounds);
   const sectionSemantics = options.sectionSemantics || null;
   const levelProfiles = getLevelProfiles(geometry);
   const width = options.width || 1200;
   const height = options.height || 760;
-  const padding = options.sheetMode === true ? 60 : 86;
-  const bounds = getEnvelopeDrawingBounds(geometry);
+  const sheetMode = options.sheetMode === true;
+  const padding = sheetMode ? 40 : 86;
+  const bounds = envelopeBounds.bounds || getEnvelopeDrawingBounds(geometry);
   const horizontalExtent =
     sectionAxis(sectionType) === "x"
       ? Number(bounds.height || 10)
@@ -602,7 +790,8 @@ export function renderSectionSvg(
     ) || 3.2;
   const scale = Math.min(
     (width - padding * 2) / Math.max(horizontalExtent, 1),
-    (height - padding * 2) / Math.max(totalHeight + 1.4, 1),
+    (height - padding * 2) /
+      Math.max(totalHeight + (sheetMode ? 0.82 : 1.4), 1),
   );
   const baseX = (width - horizontalExtent * scale) / 2;
   const baseY = height - padding;
@@ -664,6 +853,9 @@ export function renderSectionSvg(
     sectionEvidence.summary?.geometryCommunicable !== false &&
     levelProfiles.length > 0;
   const allowWeakSectionFallback = options.allowWeakSectionFallback === true;
+  const minimalSectionFallback =
+    levelProfiles.length > 0 &&
+    ((geometry.rooms || []).length > 0 || (geometry.walls || []).length > 0);
   const useDraftingGradeGraphics =
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase14") ||
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase18");
@@ -680,7 +872,8 @@ export function renderSectionSvg(
   if (
     isFeatureEnabled("useSectionRendererUpgradePhase8") &&
     !geometryComplete &&
-    !allowWeakSectionFallback
+    !allowWeakSectionFallback &&
+    !minimalSectionFallback
   ) {
     return {
       svg: null,
@@ -796,7 +989,7 @@ export function renderSectionSvg(
     baseX,
     baseY - totalHeight * scale,
     horizontalExtent * scale,
-    styleDNA.roof_language || geometry.roof?.type || "pitched gable",
+    resolvedStyleDNA.roof_language || geometry.roof?.type || "pitched gable",
     lineweights,
     roofTruthQuality,
     constructionGeometry.roof,
@@ -812,19 +1005,53 @@ export function renderSectionSvg(
       1,
     ),
   );
+  const slotOccupancyRatio = Number(
+    clamp(
+      (horizontalExtent * scale * (totalHeight * scale)) /
+        Math.max((width - padding * 2) * (height - padding * 2), 1),
+      0,
+      1,
+    ).toFixed(3),
+  );
+  const scaleBar = renderScaleBar(scale, width, height, padding);
+  const titleBlockMarkup = `
+    <g id="phase8-section-title-block">
+      <rect x="${formatNumber(padding)}" y="${formatNumber(
+        height - padding + 10,
+      )}" width="338" height="46" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.1"/>
+      <text x="${formatNumber(padding + 12)}" y="${formatNumber(
+        height - padding + 27,
+      )}" font-size="14" font-family="Arial, sans-serif" font-weight="700" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        sectionProfile?.strategyName
+          ? `${sectionProfile.strategyName} Section`
+          : `Section - ${sectionType.toUpperCase()}`,
+      )}</text>
+      <text x="${formatNumber(padding + 12)}" y="${formatNumber(
+        height - padding + 43,
+      )}" font-size="10" font-family="Arial, sans-serif" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+        `Bounds ${envelopeBounds.source} · ${Math.round(
+          slotOccupancyRatio * 100,
+        )}% slot occupancy`,
+      )}</text>
+    </g>
+  `;
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect width="${width}" height="${height}" fill="#fff" />
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}">
+  <rect width="${width}" height="${height}" fill="${SECTION_THEME.paper}" />
   ${stairMarkup.defs || ""}
-  <text x="${padding}" y="34" font-size="22" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
-    sectionProfile?.strategyName
-      ? `${sectionProfile.strategyName} Section`
-      : `Section - ${sectionType.toUpperCase()}`,
-  )}</text>
-  <text x="${padding}" y="50" font-size="10" font-family="Arial, sans-serif">${escapeXml(
+  ${
+    sheetMode
+      ? ""
+      : `<text x="${padding}" y="34" font-size="19" font-family="Arial, sans-serif" font-weight="700">${escapeXml(
+          sectionProfile?.strategyName
+            ? `${sectionProfile.strategyName} Section`
+            : `Section - ${sectionType.toUpperCase()}`,
+        )}</text>
+  <text x="${padding}" y="50" font-size="11" font-family="Arial, sans-serif">${escapeXml(
     `Cut coordinate ${cutCoordinate.toFixed(2)}m / usefulness ${usefulnessScore.toFixed(2)} / ${String(sectionProfile?.strategyId || "default-cut")}`,
-  )}</text>
+  )}</text>`
+  }
   ${foundation}
   ${roof}
   ${datums.markup}
@@ -833,6 +1060,18 @@ export function renderSectionSvg(
   ${wallMarkup.markup}
   ${openingMarkup.markup}
   ${stairMarkup.markup}
+  ${renderOverallSectionDimensions(
+    baseX,
+    baseY,
+    horizontalExtent * scale,
+    totalHeight * scale,
+    totalHeight,
+    horizontalExtent,
+    width,
+    padding,
+  )}
+  ${titleBlockMarkup}
+  ${scaleBar.markup}
   ${options.overlayMarkup || ""}
 </svg>`;
 
@@ -845,6 +1084,9 @@ export function renderSectionSvg(
     technical_quality_metadata: {
       drawing_type: "section",
       has_title: true,
+      has_title_block: true,
+      has_scale_bar: true,
+      has_overall_dimensions: true,
       geometry_complete: geometryComplete,
       stair_count: intersectedStairs.length,
       room_label_count: options.hideRoomLabels ? 0 : cutRooms.length,
@@ -873,6 +1115,10 @@ export function renderSectionSvg(
       ),
       focus_entity_count: (sectionProfile?.focusEntityIds || []).length,
       cut_coordinate_m: cutCoordinate,
+      bounds_source: envelopeBounds.source,
+      blueprint_theme: SECTION_THEME.name,
+      slot_occupancy_ratio: slotOccupancyRatio,
+      scale_bar_meters: scaleBar.barMeters,
       section_evidence_quality:
         sectionEvidence.summary?.evidenceQuality || null,
       section_direct_evidence_quality:

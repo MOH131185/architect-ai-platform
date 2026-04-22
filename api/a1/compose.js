@@ -38,10 +38,13 @@ import {
 } from "../../src/services/a1/composeCore.js";
 
 import {
+  FINAL_SHEET_AUX_FONT_SIZE_PX,
+  FINAL_SHEET_MIN_FONT_SIZE_PX,
   EMBEDDED_FONT_STACK,
   embedFontInSVG,
-  ensureFontsLoaded,
+  ensureBundledFontsLoaded,
   getFontEmbeddingReadinessSync,
+  prepareFinalSheetSvgForRasterization,
 } from "../../src/utils/svgFontEmbedder.js";
 import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import {
@@ -115,7 +118,7 @@ async function fetchImageBuffer(url) {
 
   // Handle raw SVG markup (sent as string to avoid base64 overhead in request body)
   if (url.startsWith("<svg") || url.startsWith("<?xml")) {
-    const embedded = await embedFontInSVG(url);
+    const embedded = await embedFontInSVG(url, { bundledOnly: true });
     return Buffer.from(embedded, "utf8");
   }
 
@@ -126,7 +129,7 @@ async function fetchImageBuffer(url) {
       const svg = url.includes(";base64,")
         ? Buffer.from(payload, "base64").toString("utf8")
         : decodeURIComponent(payload);
-      const embedded = await embedFontInSVG(svg);
+      const embedded = await embedFontInSVG(svg, { bundledOnly: true });
       return Buffer.from(embedded, "utf8");
     }
 
@@ -152,6 +155,14 @@ async function fetchImageBuffer(url) {
   }
 
   return buf;
+}
+
+async function buildPreparedFinalSheetSvgBuffer(svgString, options = {}) {
+  const preparedSvg = await prepareFinalSheetSvgForRasterization(
+    svgString,
+    options,
+  );
+  return Buffer.from(preparedSvg, "utf8");
 }
 
 function generateOverlaySvg(coordinates, width, height, constants) {
@@ -190,7 +201,7 @@ function generateOverlaySvg(coordinates, width, height, constants) {
     // Panel label (centered)
     labels += `<text x="${coord.x + coord.width / 2}" y="${labelY}"
       font-family="${CAPTION_FONT_FAMILY}" font-size="${CAPTION_FONT_SIZE}" font-weight="700" fill="#0f172a"
-      dominant-baseline="middle" text-anchor="middle">${escapeXml(annotation.label)}</text>`;
+      dominant-baseline="middle" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(annotation.label)}</text>`;
 
     // Scale (right-aligned) - only for scaled drawings
     if (annotation.scale && annotation.scale !== "N/A") {
@@ -211,7 +222,7 @@ function generateOverlaySvg(coordinates, width, height, constants) {
       northArrows += `<g transform="translate(${arrowX},${arrowY})">
         <circle cx="${arrowSize / 2}" cy="${arrowSize / 2}" r="${arrowSize / 2 + 4}" fill="white" fill-opacity="0.85" stroke="#475569" stroke-width="0.5"/>
         <polygon points="${arrowSize / 2},2 ${arrowSize - 4},${arrowSize - 4} ${arrowSize / 2},${arrowSize - 8} 4,${arrowSize - 4}" fill="#1e293b" stroke="#475569" stroke-width="0.5"/>
-        <text x="${arrowSize / 2}" y="${arrowSize + 8}" font-family="${CAPTION_FONT_FAMILY}" font-size="8" font-weight="700" fill="#1e293b" text-anchor="middle">N</text>
+        <text x="${arrowSize / 2}" y="${arrowSize + 8}" font-family="${CAPTION_FONT_FAMILY}" font-size="8" font-weight="700" fill="#1e293b" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">N</text>
       </g>`;
     }
   }
@@ -418,8 +429,7 @@ function generateBuildStampSvg({
   // Truncate model name for display
   const displayModel = truncateModelName(openaiModel, 18);
 
-  const fontStack =
-    "'EmbeddedSans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const fontStack = EMBEDDED_FONT_STACK;
 
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
     <!-- Build Stamp Background -->
@@ -479,8 +489,7 @@ function generateBoardSpecStampSvg({
   layoutTemplateUsed,
   boardSpecVersion,
 }) {
-  const fontStack =
-    "'EmbeddedSans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+  const fontStack = EMBEDDED_FONT_STACK;
   const text = `${layoutTemplateUsed || "unknown"} | spec ${boardSpecVersion || "unknown"}`;
   const x = 10;
   const y = Math.max(12, height - 10);
@@ -514,8 +523,25 @@ async function handleComposeRequest(req, res, trace) {
   const requestStartedMs = Date.now();
   const requestBody = req.body || {};
 
-  // Pre-load embedded font for SVG rendering (awaited to prevent race condition)
-  await ensureFontsLoaded();
+  // Pre-load bundled fonts for final-sheet SVG rendering (awaited to prevent
+  // race conditions and avoid system-font drift during Sharp rasterization).
+  await ensureBundledFontsLoaded();
+
+  const fontReadiness = getFontEmbeddingReadinessSync();
+  if (
+    isFeatureEnabled("useA1FontEmbeddingFix") &&
+    !fontReadiness.bundledFontsAvailable
+  ) {
+    return res.status(500).json({
+      success: false,
+      error: "BUNDLED_FONTS_UNAVAILABLE",
+      message:
+        "Bundled final-sheet fonts are unavailable; compose refuses to rasterize text with system-font assumptions.",
+      details: {
+        fontReadiness,
+      },
+    });
+  }
 
   // Logging request details
   logComposeEvent(
@@ -1418,8 +1444,11 @@ async function handleComposeRequest(req, res, trace) {
 
   // Draw panel borders and labels
   const borderSvg = generateOverlaySvg(coordinates, width, height, constants);
+  const borderBuffer = await buildPreparedFinalSheetSvgBuffer(borderSvg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
   composites.push({
-    input: Buffer.from(borderSvg),
+    input: borderBuffer,
     left: 0,
     top: 0,
   });
@@ -1431,8 +1460,12 @@ async function handleComposeRequest(req, res, trace) {
     layoutTemplateUsed: layoutTemplate,
     boardSpecVersion,
   });
+  const specStampBuffer = await buildPreparedFinalSheetSvgBuffer(specStampSvg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+    outlineCriticalText: false,
+  });
   composites.push({
-    input: Buffer.from(specStampSvg),
+    input: specStampBuffer,
     left: 0,
     top: 0,
   });
@@ -1467,13 +1500,20 @@ async function handleComposeRequest(req, res, trace) {
       flags: flagsFromRequest,
       proof: proofFromRequest,
     });
+    const buildStampBuffer = await buildPreparedFinalSheetSvgBuffer(
+      buildStampSvg,
+      {
+        minimumFontSizePx: FINAL_SHEET_AUX_FONT_SIZE_PX,
+        outlineCriticalText: false,
+      },
+    );
 
     const resolvedMode = getPipelineModeForStamp(proofFromRequest);
     console.log(
       `[A1 Compose] Build stamp: pipeline=${resolvedMode}, openaiModel=${proofFromRequest.openaiModelUsed || "gpt-image-1"}, meshyUsed=${proofFromRequest.meshyUsed || false}, commit=${getCommitHashForStamp()}, runId=${runIdFromRequest || shortHash}`,
     );
     composites.push({
-      input: Buffer.from(buildStampSvg),
+      input: buildStampBuffer,
       left: 0,
       top: 0,
     });
@@ -2500,6 +2540,49 @@ async function rewriteSvgViewBoxToContent({
   };
 }
 
+function computeAdaptiveSvgDensity(
+  svgText,
+  targetWidth,
+  targetHeight,
+  { isTechnicalDrawing = false, useHighRes = false } = {},
+) {
+  const parsed = parseSvgViewBox(svgText);
+  const baseWidth =
+    Number.isFinite(parsed?.width) && parsed.width > 0
+      ? parsed.width
+      : targetWidth;
+  const baseHeight =
+    Number.isFinite(parsed?.height) && parsed.height > 0
+      ? parsed.height
+      : targetHeight;
+  const oversample = isTechnicalDrawing
+    ? useHighRes
+      ? 1.24
+      : 1.08
+    : useHighRes
+      ? 1.14
+      : 1;
+  const targetDensity = Math.min(
+    (Math.max(targetWidth, 1) * oversample * 72) / Math.max(baseWidth, 1),
+    (Math.max(targetHeight, 1) * oversample * 72) / Math.max(baseHeight, 1),
+  );
+  const maxDensity = useHighRes
+    ? isTechnicalDrawing
+      ? 320
+      : 240
+    : isTechnicalDrawing
+      ? 192
+      : 144;
+
+  return Math.max(
+    72,
+    Math.min(
+      maxDensity,
+      Math.round(Number.isFinite(targetDensity) ? targetDensity : 72),
+    ),
+  );
+}
+
 /**
  * Place panel image into slot with aspect-ratio-preserving resize
  *
@@ -2559,18 +2642,25 @@ async function placePanelImage({
     "site_diagram",
   ].includes(panelType);
 
-  // SVG rasterization density: 200 DPI for technical drawings, 144 default, 300 high-res
-  const svgDensity = qa?.useHighRes
-    ? 300
-    : isSvgInput && isTechnicalDrawing
-      ? 200
-      : 144;
+  const svgText = isSvgInput ? imageBuffer.toString("utf8") : "";
+  const svgDensity = isSvgInput
+    ? computeAdaptiveSvgDensity(svgText, targetWidth, targetHeight, {
+        isTechnicalDrawing,
+        useHighRes: qa?.useHighRes === true,
+      })
+    : 144;
 
   // Embed web font into SVG so Sharp/librsvg can render text correctly
   if (isSvgInput) {
     try {
-      const svgStr = imageBuffer.toString("utf8");
-      const fontedSvg = await embedFontInSVG(svgStr);
+      const fontedSvg = isTechnicalDrawing
+        ? await prepareFinalSheetSvgForRasterization(svgText, {
+            minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+            outlineCriticalText: true,
+          })
+        : await embedFontInSVG(svgText, {
+            bundledOnly: true,
+          });
       imageBuffer = Buffer.from(fontedSvg, "utf8");
     } catch (fontErr) {
       // Non-fatal: proceed with original SVG
@@ -2627,19 +2717,19 @@ async function placePanelImage({
 
   // Panel-specific padding after trim
   const TRIM_PADDING = {
-    floor_plan_ground: 12,
-    floor_plan_first: 12,
-    floor_plan_level2: 12,
-    floor_plan_upper: 12,
-    elevation_north: 10,
-    elevation_south: 10,
-    elevation_east: 10,
-    elevation_west: 10,
-    section_AA: 10,
-    section_BB: 10,
+    floor_plan_ground: 4,
+    floor_plan_first: 4,
+    floor_plan_level2: 4,
+    floor_plan_upper: 4,
+    elevation_north: 4,
+    elevation_south: 4,
+    elevation_east: 4,
+    elevation_west: 4,
+    section_AA: 4,
+    section_BB: 4,
     axonometric: 8,
-    site_plan: 12,
-    site_diagram: 12,
+    site_plan: 8,
+    site_diagram: 8,
     hero_3d: 4,
     interior_3d: 4,
     material_palette: 6,
@@ -2821,12 +2911,9 @@ async function placePanelImage({
   const minSlotOccupancy = Number.isFinite(qa?.minSlotOccupancy)
     ? qa.minSlotOccupancy
     : getDefaultMinSlotOccupancy();
-  // Skip occupancy check for SVG inputs — they are deterministic and correct by construction.
-  // The check is designed to catch blank/tiny AI-generated images, not vector drawings.
   const shouldEnforceOccupancy =
     qa?.enabled &&
     mode !== "cover" &&
-    !isSvgInput &&
     (panelType.startsWith("floor_plan_") ||
       panelType.startsWith("elevation_") ||
       panelType.startsWith("section_"));
@@ -2905,10 +2992,17 @@ async function placePanelImage({
       .toBuffer();
   }
 
-  const finalBuffer = await canvas
+  let finalBuffer = await canvas
     .composite([{ input: resizedImage, left: 0, top: 0 }])
     .png()
     .toBuffer();
+
+  if (isTechnicalDrawing) {
+    finalBuffer = await sharp(finalBuffer, { failOnError: false })
+      .sharpen({ sigma: 1.15, m1: 1.2, m2: 2.1, x1: 2, x2: 3, x3: 4 })
+      .png()
+      .toBuffer();
+  }
 
   // HARD QA GATE: Render sanity for drawings (detect thin strips / near-empty content).
   if (shouldEnforceOccupancy && qa?.enabled) {
@@ -2951,14 +3045,16 @@ async function buildPlaceholder(sharp, width, height, type, constants) {
   const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#f5f5f5" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
-      <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="${EMBEDDED_FONT_STACK}" font-weight="700"
+      <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" class="sheet-critical-label" data-text-role="critical"
         text-anchor="middle" fill="#9ca3af">PANEL MISSING - REGENERATE</text>
-      <text x="${width / 2}" y="${height / 2 + 18}" font-size="14" font-family="${EMBEDDED_FONT_STACK}"
+      <text x="${width / 2}" y="${height / 2 + 18}" font-size="14" font-family="${EMBEDDED_FONT_STACK}" class="sheet-critical-label" data-text-role="critical"
         text-anchor="middle" fill="#b91c1c">${(type || "").toUpperCase()}</text>
     </svg>
   `;
-  const fontedSvg = await embedFontInSVG(svg);
-  return sharp(Buffer.from(fontedSvg))
+  const preparedSvg = await buildPreparedFinalSheetSvgBuffer(svg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
+  return sharp(preparedSvg)
     .png()
     .resize(width, height, {
       fit: "contain",
@@ -3014,11 +3110,11 @@ async function buildTitleBlockBuffer(
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
       <rect x="8" y="8" width="${width - 16}" height="30" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="28" font-family="${EMBEDDED_FONT_STACK}" font-size="12" font-weight="700" fill="#0f172a" text-anchor="middle">${esc(titleData.practiceName)}</text>
+      <text x="${width / 2}" y="28" font-family="${EMBEDDED_FONT_STACK}" font-size="12" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${esc(titleData.practiceName)}</text>
 
       <line x1="8" y1="46" x2="${width - 8}" y2="46" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="62" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">PROJECT</text>
-      <text x="${leftMargin}" y="78" font-family="${EMBEDDED_FONT_STACK}" font-size="11" font-weight="700" fill="#0f172a">${esc(titleData.projectName)}</text>
+      <text x="${leftMargin}" y="78" font-family="${EMBEDDED_FONT_STACK}" font-size="11" font-weight="700" fill="#0f172a" class="sheet-critical-label" data-text-role="critical">${esc(titleData.projectName)}</text>
       <text x="${leftMargin}" y="92" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#475569">${esc(titleData.projectNumber)}</text>
 
       <line x1="8" y1="102" x2="${width - 8}" y2="102" stroke="#e2e8f0" stroke-width="1" />
@@ -3027,11 +3123,11 @@ async function buildTitleBlockBuffer(
 
       <line x1="8" y1="142" x2="${width - 8}" y2="142" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="158" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">DRAWING</text>
-      <text x="${leftMargin}" y="172" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.drawingTitle)}</text>
+      <text x="${leftMargin}" y="172" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a" class="sheet-critical-label" data-text-role="critical">${esc(titleData.drawingTitle)}</text>
 
       <rect x="8" y="182" width="${(width - 24) / 2}" height="26" fill="#f8fafc" rx="2" />
       <text x="${leftMargin + 4}" y="194" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SHEET</text>
-      <text x="${leftMargin + 4}" y="204" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="600" fill="#0f172a">${esc(titleData.sheetNumber)}</text>
+      <text x="${leftMargin + 4}" y="204" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="600" fill="#0f172a" class="sheet-critical-label" data-text-role="critical">${esc(titleData.sheetNumber)}</text>
 
       <rect x="${width / 2 + 4}" y="182" width="${(width - 24) / 2}" height="26" fill="#f8fafc" rx="2" />
       <text x="${width / 2 + 8}" y="194" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">REV</text>
@@ -3061,13 +3157,13 @@ async function buildTitleBlockBuffer(
 
       <!-- Practice Logo Area -->
       <rect x="8" y="8" width="${width - 16}" height="40" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="34" font-family="${EMBEDDED_FONT_STACK}" font-size="14" font-weight="700" fill="#0f172a"
+      <text x="${width / 2}" y="34" font-family="${EMBEDDED_FONT_STACK}" font-size="14" font-weight="700" fill="#0f172a" class="sheet-critical-label" data-text-role="critical"
         text-anchor="middle">${esc(titleData.practiceName)}</text>
 
       <!-- Project Information Section -->
       <line x1="8" y1="56" x2="${width - 8}" y2="56" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="74" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">PROJECT</text>
-      <text x="${leftMargin}" y="90" font-family="${EMBEDDED_FONT_STACK}" font-size="12" font-weight="700" fill="#0f172a">${esc(titleData.projectName)}</text>
+      <text x="${leftMargin}" y="90" font-family="${EMBEDDED_FONT_STACK}" font-size="12" font-weight="700" fill="#0f172a" class="sheet-critical-label" data-text-role="critical">${esc(titleData.projectName)}</text>
       <text x="${leftMargin}" y="106" font-family="${EMBEDDED_FONT_STACK}" font-size="9" fill="#475569">${esc(titleData.projectNumber)}</text>
 
       <!-- Site Address -->
@@ -3078,12 +3174,12 @@ async function buildTitleBlockBuffer(
       <!-- Drawing Information -->
       <line x1="8" y1="158" x2="${width - 8}" y2="158" stroke="#e2e8f0" stroke-width="1" />
       <text x="${leftMargin}" y="174" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">DRAWING TITLE</text>
-      <text x="${leftMargin}" y="190" font-family="${EMBEDDED_FONT_STACK}" font-size="11" font-weight="600" fill="#0f172a">${esc(titleData.drawingTitle)}</text>
+      <text x="${leftMargin}" y="190" font-family="${EMBEDDED_FONT_STACK}" font-size="11" font-weight="600" fill="#0f172a" class="sheet-critical-label" data-text-role="critical">${esc(titleData.drawingTitle)}</text>
 
       <!-- Sheet / Revision Row -->
       <rect x="8" y="200" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${leftMargin + 4}" y="214" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SHEET NO.</text>
-      <text x="${leftMargin + 4}" y="226" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.sheetNumber)}</text>        
+      <text x="${leftMargin + 4}" y="226" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a" class="sheet-critical-label" data-text-role="critical">${esc(titleData.sheetNumber)}</text>        
 
       <rect x="${width / 2 + 4}" y="200" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
       <text x="${width / 2 + 8}" y="214" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">REVISION</text>
@@ -3124,8 +3220,10 @@ async function buildTitleBlockBuffer(
     </svg>
   `;
 
-  const fontedSvg = await embedFontInSVG(svg);
-  return sharp(Buffer.from(fontedSvg))
+  const preparedSvg = await buildPreparedFinalSheetSvgBuffer(svg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
+  return sharp(preparedSvg)
     .png()
     .resize(width, height, {
       fit: "contain",

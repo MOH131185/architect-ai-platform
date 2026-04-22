@@ -284,9 +284,16 @@ test('16. resolveLayout widens both floor plans for 2-floor board-v2', () => {
   const r = composeCore.resolveLayout({ layoutTemplate: 'board-v2', floorCount: 2 });
   assert(!r.layout.floor_plan_level2, 'floor_plan_level2 should be removed for 2-floor');
   assertEqual(r.layout.floor_plan_ground.x, 0.015);
+  assertEqual(r.layout.floor_plan_ground.y, 0.29);
   assertEqual(r.layout.floor_plan_ground.width, 0.475);
+  assertEqual(r.layout.floor_plan_ground.height, 0.25);
   assertEqual(r.layout.floor_plan_first.x, 0.5);
   assertEqual(r.layout.floor_plan_first.width, 0.485);
+  assertEqual(r.layout.floor_plan_first.height, 0.25);
+  assert(
+    r.layout.floor_plan_ground.height > r.layout.elevation_north.height,
+    'middle-row plans should remain taller than elevation slots',
+  );
 });
 
 test('17. hero_3d keeps geometry init_image while still activating style lock', async () => {
@@ -385,6 +392,18 @@ test('18. deterministic compose SVGs use the embedded font stack', async () => {
   assert(
     !composeApiSource.includes('font-family="Arial, sans-serif"'),
     'compose.js should not hard-code Arial in compose SVG text nodes',
+  );
+  assert(
+    composeApiSource.includes('prepareFinalSheetSvgForRasterization'),
+    'compose.js should preprocess final-sheet SVG overlays before rasterization',
+  );
+  assert(
+    !composeApiSource.includes('input: Buffer.from(borderSvg)'),
+    'compose.js should not composite raw overlay SVGs without final-sheet preprocessing',
+  );
+  assert(
+    !composeApiSource.includes('input: Buffer.from(specStampSvg)'),
+    'compose.js should not composite raw spec-stamp SVGs without final-sheet preprocessing',
   );
 });
 

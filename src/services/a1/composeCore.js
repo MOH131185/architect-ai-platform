@@ -47,16 +47,16 @@ export const GRID_12COL = {
   material_palette: { x: 0.87, y: 0.015, width: 0.115, height: 0.18 },
   climate_card: { x: 0.87, y: 0.205, width: 0.115, height: 0.175 },
 
-  // Row 2 – Floor plans
-  floor_plan_ground: { x: 0.015, y: 0.295, width: 0.32, height: 0.225 },
-  floor_plan_first: { x: 0.345, y: 0.295, width: 0.32, height: 0.225 },
-  floor_plan_level2: { x: 0.675, y: 0.295, width: 0.31, height: 0.225 },
+  // Row 2 – Floor plans (visually dominant middle row)
+  floor_plan_ground: { x: 0.015, y: 0.29, width: 0.32, height: 0.25 },
+  floor_plan_first: { x: 0.345, y: 0.29, width: 0.32, height: 0.25 },
+  floor_plan_level2: { x: 0.675, y: 0.29, width: 0.31, height: 0.25 },
 
   // Row 3 – Elevations
-  elevation_north: { x: 0.015, y: 0.535, width: 0.235, height: 0.205 },
-  elevation_south: { x: 0.26, y: 0.535, width: 0.235, height: 0.205 },
-  elevation_east: { x: 0.505, y: 0.535, width: 0.235, height: 0.205 },
-  elevation_west: { x: 0.75, y: 0.535, width: 0.235, height: 0.205 },
+  elevation_north: { x: 0.015, y: 0.555, width: 0.235, height: 0.185 },
+  elevation_south: { x: 0.26, y: 0.555, width: 0.235, height: 0.185 },
+  elevation_east: { x: 0.505, y: 0.555, width: 0.235, height: 0.185 },
+  elevation_west: { x: 0.75, y: 0.555, width: 0.235, height: 0.185 },
 
   // Row 4 – Sections + schedules/title strip
   section_AA: { x: 0.015, y: 0.755, width: 0.3, height: 0.23 },
@@ -357,7 +357,7 @@ export function resolveLayout(opts = {}) {
 
   // Expand remaining floor plan(s) to fill the row
   if (floorCount === 1 && base.floor_plan_ground) {
-    base.floor_plan_ground = { x: 0.015, y: 0.295, width: 0.97, height: 0.225 };
+    base.floor_plan_ground = { x: 0.015, y: 0.29, width: 0.97, height: 0.25 };
   } else if (
     floorCount === 2 &&
     base.floor_plan_ground &&
@@ -365,11 +365,11 @@ export function resolveLayout(opts = {}) {
   ) {
     base.floor_plan_ground = {
       x: 0.015,
-      y: 0.295,
+      y: 0.29,
       width: 0.475,
-      height: 0.225,
+      height: 0.25,
     };
-    base.floor_plan_first = { x: 0.5, y: 0.295, width: 0.485, height: 0.225 };
+    base.floor_plan_first = { x: 0.5, y: 0.29, width: 0.485, height: 0.25 };
   }
 
   return {
@@ -417,13 +417,13 @@ export function getDefaultMinSlotOccupancy(panelType, slotAspect = 1) {
       : 1;
 
   if (panelType.startsWith("floor_plan_")) {
-    return Math.max(0.18, Math.min(0.52, 1.2 / normalizedAspect));
+    return Math.max(0.22, Math.min(0.58, 1.32 / normalizedAspect));
   }
   if (panelType.startsWith("section_")) {
-    return 0.48;
+    return 0.5;
   }
   if (panelType.startsWith("elevation_")) {
-    return 0.42;
+    return 0.46;
   }
   return 0.4;
 }
