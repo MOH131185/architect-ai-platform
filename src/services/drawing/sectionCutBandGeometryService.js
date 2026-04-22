@@ -1,3 +1,5 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+
 function round(value, precision = 3) {
   const factor = 10 ** precision;
   return Math.round(Number(value || 0) * factor) / factor;
@@ -14,14 +16,28 @@ function uniqueNumbers(values = []) {
   ].sort((left, right) => left - right);
 }
 
+function phase21TrueSectioningEnabled() {
+  return (
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase21")
+  );
+}
+
 export function buildSectionCutBandGeometry(sectionCut = {}, options = {}) {
   const axis = sectionCut.axis || "x";
   const coordinate = Number(sectionCut.coordinate || 0);
-  const directBandWidth = Math.max(0.04, Number(options.directBand || 0.14));
+  const phase21 = phase21TrueSectioningEnabled();
+  const directBandWidth = Math.max(
+    0.04,
+    Number(options.directBand || (phase21 ? 0.12 : 0.14)),
+  );
   const directHalfBand = directBandWidth / 2;
   const contextualHalfBand = Math.max(
     directHalfBand,
-    Number(options.nearBand || 0.9),
+    Number(options.nearBand || (phase21 ? 0.8 : 0.9)),
   );
   return {
     axis,
@@ -37,6 +53,7 @@ export function buildSectionCutBandGeometry(sectionCut = {}, options = {}) {
       maximum: round(coordinate + contextualHalfBand),
       width: round(contextualHalfBand * 2),
     },
+    phase21,
   };
 }
 
@@ -47,7 +64,11 @@ export function resolveCutBandSampleCoordinates(
   if (!cutBand) {
     return [];
   }
-  const resolvedSampleCount = Math.max(3, Math.trunc(Number(sampleCount || 3)));
+  const phase21 = cutBand.phase21 || phase21TrueSectioningEnabled();
+  const baseSampleCount = Math.max(3, Math.trunc(Number(sampleCount || 3)));
+  const resolvedSampleCount = phase21
+    ? Math.max(baseSampleCount, 9)
+    : baseSampleCount;
   const directValues = [];
   if (resolvedSampleCount <= 1) {
     directValues.push(cutBand.coordinate);
@@ -100,8 +121,61 @@ export function measureBandCoverage(
   };
 }
 
+export function computeProfileContinuityMetric(profileSegments = []) {
+  if (!Array.isArray(profileSegments) || profileSegments.length < 2) {
+    return 0;
+  }
+  const sorted = [...profileSegments].sort(
+    (left, right) => Number(left.coordinate) - Number(right.coordinate),
+  );
+  let matched = 0;
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const current = sorted[index];
+    const next = sorted[index + 1];
+    if (!current || !next) {
+      continue;
+    }
+    const orthOverlap =
+      Math.min(Number(current.end), Number(next.end)) -
+      Math.max(Number(current.start), Number(next.start));
+    if (Number.isFinite(orthOverlap) && orthOverlap > 0) {
+      matched += 1;
+    }
+  }
+  const denominator = Math.max(1, sorted.length - 1);
+  return round(matched / denominator);
+}
+
+export function classifyCutTruthKind({
+  bandCoverageRatio = 0,
+  exactProfileClipCount = 0,
+  profileContinuity = 0,
+  nearBoolean = false,
+  directBandHit = false,
+  midpointInsidePolygon = false,
+}) {
+  if (!directBandHit && !midpointInsidePolygon) {
+    return "unsupported";
+  }
+  const coverage = Number(bandCoverageRatio || 0);
+  const exactCount = Number(exactProfileClipCount || 0);
+  const continuity = Number(profileContinuity || 0);
+  if (nearBoolean && coverage >= 0.6 && exactCount >= 2 && continuity >= 0.34) {
+    return "cut_face";
+  }
+  if (nearBoolean || (coverage >= 0.34 && exactCount >= 1)) {
+    return "cut_profile";
+  }
+  if (midpointInsidePolygon || coverage >= 0.18) {
+    return "contextual_profile";
+  }
+  return "derived_profile";
+}
+
 export default {
   buildSectionCutBandGeometry,
   resolveCutBandSampleCoordinates,
   measureBandCoverage,
+  computeProfileContinuityMetric,
+  classifyCutTruthKind,
 };

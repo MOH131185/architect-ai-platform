@@ -7,6 +7,8 @@ import {
 } from "./constructionTruthModel.js";
 import {
   buildSectionCutBandGeometry,
+  classifyCutTruthKind,
+  computeProfileContinuityMetric,
   measureBandCoverage,
   resolveCutBandSampleCoordinates,
 } from "./sectionCutBandGeometryService.js";
@@ -36,6 +38,16 @@ function phase20SectioningEnabled() {
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase20")
+  );
+}
+
+function phase21SectioningEnabled() {
+  return (
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase21")
   );
 }
 
@@ -389,11 +401,14 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
       sampleCount: 0,
       hitSampleCount: 0,
       nearBoolean: false,
+      truthKind: "unsupported",
+      profileContinuity: 0,
     };
   }
 
+  const phase21 = phase21SectioningEnabled();
   const sampleCoordinates = resolveCutBandSampleCoordinates(cutBand, {
-    sampleCount: phase20SectioningEnabled() ? 7 : 3,
+    sampleCount: phase21 ? 9 : phase20SectioningEnabled() ? 7 : 3,
   });
   const slicePoints = unique(
     sampleCoordinates.flatMap((coordinate) =>
@@ -459,6 +474,23 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
         ? Number(sectionRange.end || 0) > Number(sectionRange.start || 0)
         : false)
     : false;
+  const profileContinuity = phase21
+    ? computeProfileContinuityMetric(profileSegments)
+    : 0;
+  const truthKind = phase21
+    ? classifyCutTruthKind({
+        bandCoverageRatio: bandCoverage.coverageRatio,
+        exactProfileClipCount,
+        profileContinuity,
+        nearBoolean,
+        directBandHit,
+        midpointInsidePolygon,
+      })
+    : nearBoolean
+      ? "cut_profile"
+      : directBandHit
+        ? "contextual_profile"
+        : "unsupported";
 
   return {
     slicePoints,
@@ -472,7 +504,8 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
         profileSegments.length * 0.24 +
           sampleCoordinates.length * 0.06 +
           (directBandHit ? 0.18 : 0) +
-          bandCoverage.coverageRatio * (phase20SectioningEnabled() ? 0.22 : 0),
+          bandCoverage.coverageRatio * (phase20SectioningEnabled() ? 0.22 : 0) +
+          (phase21 ? profileContinuity * 0.22 : 0),
       ),
     ),
     bandCoverageRatio: bandCoverage.coverageRatio,
@@ -480,6 +513,8 @@ function collectPolygonBandSlice(polygon = [], cutBand = null) {
     sampleCount: bandCoverage.sampleCount,
     hitSampleCount: bandCoverage.hitSampleCount,
     nearBoolean,
+    truthKind,
+    profileContinuity,
   };
 }
 
@@ -706,6 +741,8 @@ function clipSegmentEntity(
           sampleCount: 1,
           hitSampleCount: 1,
           nearBoolean: phase20SectioningEnabled(),
+          truthKind: phase21SectioningEnabled() ? "cut_face" : "cut_profile",
+          profileContinuity: phase21SectioningEnabled() ? 1 : 0,
         },
         geometrySupport: ["segment"],
       },
@@ -751,6 +788,8 @@ function clipSegmentEntity(
           sampleCount: 1,
           hitSampleCount: 1,
           nearBoolean: phase20SectioningEnabled(),
+          truthKind: phase21SectioningEnabled() ? "cut_face" : "cut_profile",
+          profileContinuity: phase21SectioningEnabled() ? 1 : 0,
         },
         geometrySupport: ["segment"],
       },
@@ -870,6 +909,9 @@ function clipPolygonEntity(
           hitSampleCount: slice.hitSampleCount,
           nearBoolean: slice.nearBoolean,
           midpointInsidePolygon: slice.midpointInsidePolygon,
+          truthKind:
+            slice.truthKind || (slice.nearBoolean ? "cut_face" : "cut_profile"),
+          profileContinuity: slice.profileContinuity || 0,
         },
         geometrySupport: ["polygon"],
       },
@@ -917,6 +959,13 @@ function clipPolygonEntity(
         sampleCount: slice.sampleCount,
         hitSampleCount: slice.hitSampleCount,
         nearBoolean: false,
+        truthKind:
+          slice.truthKind && slice.truthKind !== "cut_face"
+            ? slice.truthKind
+            : bandRelationship.touchesContextual
+              ? "contextual_profile"
+              : "derived_profile",
+        profileContinuity: slice.profileContinuity || 0,
       },
       geometrySupport: ["polygon"],
     },
@@ -1327,6 +1376,27 @@ export function summarizeSectionConstructionTruth(entries = []) {
   const nearBooleanClipCount = (entries || []).filter(
     (entry) => entry?.clipGeometry?.nearBoolean === true,
   ).length;
+  const cutFaceClipCount = (entries || []).filter(
+    (entry) => entry?.clipGeometry?.truthKind === "cut_face",
+  ).length;
+  const cutProfileClipCount = (entries || []).filter(
+    (entry) => entry?.clipGeometry?.truthKind === "cut_profile",
+  ).length;
+  const contextualProfileClipCount = (entries || []).filter(
+    (entry) => entry?.clipGeometry?.truthKind === "contextual_profile",
+  ).length;
+  const derivedProfileClipCount = (entries || []).filter(
+    (entry) => entry?.clipGeometry?.truthKind === "derived_profile",
+  ).length;
+  const profileContinuityValues = (entries || [])
+    .map((entry) => Number(entry?.clipGeometry?.profileContinuity))
+    .filter(Number.isFinite);
+  const averageProfileContinuity = round(
+    profileContinuityValues.reduce(
+      (sum, value) => sum + Number(value || 0),
+      0,
+    ) / Math.max(1, profileContinuityValues.length),
+  );
   return {
     totalCount: (entries || []).length,
     directCount: direct.length,
@@ -1345,6 +1415,11 @@ export function summarizeSectionConstructionTruth(entries = []) {
       (entry) => clipProfileSegments(entry).length > 0,
     ).length,
     nearBooleanClipCount,
+    cutFaceClipCount,
+    cutProfileClipCount,
+    contextualProfileClipCount,
+    derivedProfileClipCount,
+    averageProfileContinuity,
     averageBandCoverageRatio: round(
       bandCoverageValues.reduce((sum, value) => sum + Number(value || 0), 0) /
         Math.max(1, bandCoverageValues.length),

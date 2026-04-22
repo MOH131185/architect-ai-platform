@@ -1,3 +1,4 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
   resolveRoofTruthMode,
   truthBucketFromMode,
@@ -13,6 +14,14 @@ function classifyQuality(score = 0) {
   if (resolved >= 0.72) return "verified";
   if (resolved >= 0.42) return "weak";
   return "blocked";
+}
+
+function phase21TruthEnabled() {
+  return (
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21")
+  );
 }
 
 function roofSupportPenalty(mode = "missing") {
@@ -98,6 +107,15 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
         String(entry),
       ),
     );
+  const phase21 = phase21TruthEnabled();
+  const faceBundle = sectionEvidence.sectionFaceBundle || null;
+  const roofFaces = faceBundle?.perKind?.roofs || null;
+  const cutFaceCount = phase21 ? Number(roofFaces?.cutFaceCount || 0) : 0;
+  const cutProfileCount = phase21 ? Number(roofFaces?.cutProfileCount || 0) : 0;
+  const contextualFaceCount = phase21
+    ? Number(roofFaces?.contextualCount || 0)
+    : 0;
+  const derivedFaceCount = phase21 ? Number(roofFaces?.derivedCount || 0) : 0;
 
   const score = round(
     Math.min(1, exactDirect * 0.34) +
@@ -121,9 +139,12 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
         : 0) +
       (hasRoofLanguage ? 0.08 : 0) +
       Math.min(0.12, nearCount * 0.05) +
-      Math.min(0.08, inferredCount * 0.03) -
+      Math.min(0.08, inferredCount * 0.03) +
+      (phase21 ? Math.min(0.18, cutFaceCount * 0.08) : 0) +
+      (phase21 ? Math.min(0.1, cutProfileCount * 0.04) : 0) -
       Math.min(0.08, derivedTruthCount * 0.025) -
       Math.min(0.18, unsupportedCount * 0.08) -
+      (phase21 ? Math.min(0.06, derivedFaceCount * 0.02) : 0) -
       roofSupportPenalty(supportMode) -
       (derivedOnly ? 0.04 : 0),
   );
@@ -152,6 +173,11 @@ export function assessSectionRoofTruth(sectionEvidence = {}, geometry = {}) {
     valleyCount,
     dormerAttachmentCount,
     directPrimitiveFamilies,
+    cutFaceCount,
+    cutProfileCount,
+    contextualFaceCount,
+    derivedFaceCount,
+    phase21,
   };
 }
 

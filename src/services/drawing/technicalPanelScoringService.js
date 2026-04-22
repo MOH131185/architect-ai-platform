@@ -172,16 +172,58 @@ function computeSectionUsefulness(metadata = {}) {
       0,
       1,
     );
+    const cutFaceCount = clamp(
+      Number(
+        metadata.section_cut_face_construction_truth_count ||
+          metadata.section_face_cut_face_count ||
+          0,
+      ),
+      0,
+      20,
+    );
+    const cutProfileCount = clamp(
+      Number(
+        metadata.section_cut_profile_construction_truth_count ||
+          metadata.section_face_cut_profile_count ||
+          0,
+      ),
+      0,
+      20,
+    );
+    const derivedProfileCount = clamp(
+      Number(
+        metadata.section_derived_profile_construction_truth_count ||
+          metadata.section_face_derived_count ||
+          0,
+      ),
+      0,
+      20,
+    );
+    const profileContinuity = clamp(
+      Number(metadata.section_average_construction_profile_continuity || 0),
+      0,
+      1,
+    );
+    const faceCredibilityScore = clamp(
+      Number(metadata.section_face_credibility_score || 0),
+      0,
+      1,
+    );
     return clamp(
-      base * 0.42 +
-        directTruth * 0.24 +
-        constructionTruth * 0.18 +
-        communicationValue * 0.24 -
+      base * 0.4 +
+        directTruth * 0.22 +
+        constructionTruth * 0.16 +
+        communicationValue * 0.22 -
         inferencePenalty * 0.18 -
         contextualEvidenceScore * 0.08 -
         derivedEvidenceScore * 0.1 +
         Math.min(0.08, nearBooleanClipCount * 0.01) +
-        bandCoverageRatio * 0.06,
+        bandCoverageRatio * 0.06 +
+        Math.min(0.12, cutFaceCount * 0.025) +
+        Math.min(0.06, cutProfileCount * 0.012) +
+        profileContinuity * 0.06 +
+        faceCredibilityScore * 0.08 -
+        Math.min(0.08, derivedProfileCount * 0.012),
       0,
       1,
     );
@@ -485,6 +527,67 @@ export function scoreTechnicalPanel({
     ) {
       warnings.push(
         `${drawing.title || drawingType} lacks stronger near-boolean cut support, so the section still reads thinner than preferred for Phase 20.`,
+      );
+    }
+  }
+  if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase21")
+  ) {
+    const faceQuality = String(
+      metadata.section_face_credibility_quality || "",
+    ).toLowerCase();
+    const cutFaceCount = Number(
+      metadata.section_cut_face_construction_truth_count ||
+        metadata.section_face_cut_face_count ||
+        0,
+    );
+    const cutProfileCount = Number(
+      metadata.section_cut_profile_construction_truth_count ||
+        metadata.section_face_cut_profile_count ||
+        0,
+    );
+    const derivedFaceCount = Number(
+      metadata.section_derived_profile_construction_truth_count ||
+        metadata.section_face_derived_count ||
+        0,
+    );
+    const profileContinuity = Number(
+      metadata.section_average_construction_profile_continuity || 0,
+    );
+    if (faceQuality === "blocked") {
+      blockers.push(
+        `${drawing.title || drawingType} true cut-face credibility is blocked, so the section cannot be treated as drafting-grade geometric truth.`,
+      );
+    } else if (faceQuality === "weak") {
+      warnings.push(
+        `${drawing.title || drawingType} true cut-face credibility is still weaker than preferred for final Phase 21 drafting-grade credibility.`,
+      );
+    }
+    if (
+      cutFaceCount === 0 &&
+      cutProfileCount === 0 &&
+      Number(metadata.section_exact_construction_clip_count || 0) < 2
+    ) {
+      blockers.push(
+        `${drawing.title || drawingType} does not expose any true cut-face or cut-profile construction truth, so the section reads as interpretation rather than geometry.`,
+      );
+    } else if (cutFaceCount === 0) {
+      warnings.push(
+        `${drawing.title || drawingType} has no exact cut-face construction truth; section still relies on cut-profile interpretation rather than true geometric cut-faces.`,
+      );
+    }
+    if (
+      derivedFaceCount > 0 &&
+      cutFaceCount + cutProfileCount < derivedFaceCount
+    ) {
+      warnings.push(
+        `${drawing.title || drawingType} still leans more on derived profile truth than on exact cut-face or cut-profile truth for Phase 21 credibility.`,
+      );
+    }
+    if (profileContinuity > 0 && profileContinuity < 0.32) {
+      warnings.push(
+        `${drawing.title || drawingType} cut-profile continuity ${round(profileContinuity)} is weaker than preferred for a coherent drafting-grade section profile.`,
       );
     }
   }
@@ -829,49 +932,61 @@ export function scoreTechnicalPanel({
   return {
     version:
       drawingType === "section" &&
-      (metadata.section_truth_model_version != null ||
-        metadata.section_contextual_evidence_quality != null ||
-        metadata.section_derived_evidence_quality != null ||
-        metadata.section_near_boolean_clip_count != null ||
-        metadata.section_band_coverage_ratio != null)
-        ? "phase20-technical-panel-scoring-v1"
+      (metadata.section_cut_face_truth_available === true ||
+        metadata.section_face_bundle_version != null ||
+        metadata.section_face_credibility_quality != null ||
+        metadata.section_face_cut_face_count != null ||
+        metadata.section_face_cut_profile_count != null ||
+        metadata.section_cut_face_construction_truth_count != null ||
+        metadata.section_average_construction_profile_continuity != null)
+        ? "phase21-technical-panel-scoring-v1"
         : drawingType === "section" &&
-            (metadata.wall_section_clip_quality != null ||
-              metadata.section_profile_complexity_score != null ||
-              metadata.section_drafting_evidence_score != null)
-          ? "phase19-technical-panel-scoring-v1"
+            (metadata.section_truth_model_version != null ||
+              metadata.section_contextual_evidence_quality != null ||
+              metadata.section_derived_evidence_quality != null ||
+              metadata.section_near_boolean_clip_count != null ||
+              metadata.section_band_coverage_ratio != null)
+          ? "phase20-technical-panel-scoring-v1"
           : drawingType === "section" &&
-              (Number(metadata.roof_hip_count || 0) > 0 ||
-                Number(metadata.roof_valley_count || 0) > 0 ||
-                Number(metadata.foundation_zone_count || 0) > 0 ||
-                Number(metadata.base_wall_condition_count || 0) > 0)
-            ? "phase17-technical-panel-scoring-v1"
+              (metadata.wall_section_clip_quality != null ||
+                metadata.section_profile_complexity_score != null ||
+                metadata.section_drafting_evidence_score != null)
+            ? "phase19-technical-panel-scoring-v1"
             : drawingType === "section" &&
-                (Number(metadata.roof_explicit_primitive_count || 0) > 0 ||
-                  Number(metadata.explicit_foundation_count || 0) > 0 ||
-                  Number(metadata.explicit_base_condition_count || 0) > 0 ||
-                  Number(metadata.foundation_direct_clip_count || 0) > 0 ||
-                  Number(metadata.base_condition_direct_clip_count || 0) > 0)
-              ? "phase15-technical-panel-scoring-v1"
+                (Number(metadata.roof_hip_count || 0) > 0 ||
+                  Number(metadata.roof_valley_count || 0) > 0 ||
+                  Number(metadata.foundation_zone_count || 0) > 0 ||
+                  Number(metadata.base_wall_condition_count || 0) > 0)
+              ? "phase17-technical-panel-scoring-v1"
               : drawingType === "section" &&
-                  (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
-                    isFeatureEnabled(
-                      "useDraftingGradeSectionGraphicsPhase14",
-                    ) ||
-                    isFeatureEnabled("useSectionConstructionScoringPhase14") ||
-                    isFeatureEnabled(
-                      "useSectionConstructionCredibilityGatePhase14",
-                    ))
-                ? "phase14-technical-panel-scoring-v1"
+                  (Number(metadata.roof_explicit_primitive_count || 0) > 0 ||
+                    Number(metadata.explicit_foundation_count || 0) > 0 ||
+                    Number(metadata.explicit_base_condition_count || 0) > 0 ||
+                    Number(metadata.foundation_direct_clip_count || 0) > 0 ||
+                    Number(metadata.base_condition_direct_clip_count || 0) > 0)
+                ? "phase15-technical-panel-scoring-v1"
                 : drawingType === "section" &&
-                    isFeatureEnabled("useSectionCredibilityGatePhase13")
-                  ? "phase13-technical-panel-scoring-v1"
-                  : fragmentQuality !== null &&
-                      (drawingType === "elevation" || drawingType === "section")
-                    ? "phase10-technical-panel-scoring-v1"
-                    : fragmentQuality !== null
-                      ? "phase9-technical-panel-scoring-v1"
-                      : "phase8-technical-panel-scoring-v1",
+                    (isFeatureEnabled("useSectionConstructionTruthPhase14") ||
+                      isFeatureEnabled(
+                        "useDraftingGradeSectionGraphicsPhase14",
+                      ) ||
+                      isFeatureEnabled(
+                        "useSectionConstructionScoringPhase14",
+                      ) ||
+                      isFeatureEnabled(
+                        "useSectionConstructionCredibilityGatePhase14",
+                      ))
+                  ? "phase14-technical-panel-scoring-v1"
+                  : drawingType === "section" &&
+                      isFeatureEnabled("useSectionCredibilityGatePhase13")
+                    ? "phase13-technical-panel-scoring-v1"
+                    : fragmentQuality !== null &&
+                        (drawingType === "elevation" ||
+                          drawingType === "section")
+                      ? "phase10-technical-panel-scoring-v1"
+                      : fragmentQuality !== null
+                        ? "phase9-technical-panel-scoring-v1"
+                        : "phase8-technical-panel-scoring-v1",
     drawingType,
     score,
     verdict,

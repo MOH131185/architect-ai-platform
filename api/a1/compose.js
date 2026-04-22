@@ -2951,9 +2951,9 @@ async function buildPlaceholder(sharp, width, height, type, constants) {
   const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="${width}" height="${height}" fill="#f5f5f5" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
-      <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="Arial, sans-serif" font-weight="700"
+      <text x="${width / 2}" y="${height / 2 - 4}" font-size="18" font-family="${EMBEDDED_FONT_STACK}" font-weight="700"
         text-anchor="middle" fill="#9ca3af">PANEL MISSING - REGENERATE</text>
-      <text x="${width / 2}" y="${height / 2 + 18}" font-size="14" font-family="Arial, sans-serif"
+      <text x="${width / 2}" y="${height / 2 + 18}" font-size="14" font-family="${EMBEDDED_FONT_STACK}"
         text-anchor="middle" fill="#b91c1c">${(type || "").toUpperCase()}</text>
     </svg>
   `;
@@ -2987,74 +2987,140 @@ async function buildTitleBlockBuffer(
       .replace(/'/g, "&#39;");
   const leftMargin = 12;
   const rightMargin = width - 12;
+  const compactMode = width < 320 || height < 360;
+  const truncate = (value, maxChars) => {
+    const normalized = String(value ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized.length <= maxChars) {
+      return normalized;
+    }
+    return `${normalized.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+  };
+  const titleData = {
+    ...tb,
+    practiceName: truncate(tb.practiceName, compactMode ? 24 : 42),
+    projectName: truncate(tb.projectName, compactMode ? 28 : 44),
+    projectNumber: truncate(tb.projectNumber, compactMode ? 18 : 24),
+    siteAddress: truncate(tb.siteAddress || "TBD", compactMode ? 34 : 72),
+    drawingTitle: truncate(tb.drawingTitle, compactMode ? 28 : 40),
+    ribaStage: truncate(tb.ribaStage, compactMode ? 12 : 18),
+    status: truncate(tb.status, compactMode ? 14 : 20),
+    copyrightNote: truncate(tb.copyrightNote, compactMode ? 36 : 60),
+  };
 
-  const svg = `
+  const svg = compactMode
+    ? `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
+      <rect x="8" y="8" width="${width - 16}" height="30" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="28" font-family="${EMBEDDED_FONT_STACK}" font-size="12" font-weight="700" fill="#0f172a" text-anchor="middle">${esc(titleData.practiceName)}</text>
+
+      <line x1="8" y1="46" x2="${width - 8}" y2="46" stroke="#e2e8f0" stroke-width="1" />
+      <text x="${leftMargin}" y="62" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">PROJECT</text>
+      <text x="${leftMargin}" y="78" font-family="${EMBEDDED_FONT_STACK}" font-size="11" font-weight="700" fill="#0f172a">${esc(titleData.projectName)}</text>
+      <text x="${leftMargin}" y="92" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#475569">${esc(titleData.projectNumber)}</text>
+
+      <line x1="8" y1="102" x2="${width - 8}" y2="102" stroke="#e2e8f0" stroke-width="1" />
+      <text x="${leftMargin}" y="118" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SITE</text>
+      <text x="${leftMargin}" y="132" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#1f2937">${esc(titleData.siteAddress)}</text>
+
+      <line x1="8" y1="142" x2="${width - 8}" y2="142" stroke="#e2e8f0" stroke-width="1" />
+      <text x="${leftMargin}" y="158" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">DRAWING</text>
+      <text x="${leftMargin}" y="172" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.drawingTitle)}</text>
+
+      <rect x="8" y="182" width="${(width - 24) / 2}" height="26" fill="#f8fafc" rx="2" />
+      <text x="${leftMargin + 4}" y="194" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SHEET</text>
+      <text x="${leftMargin + 4}" y="204" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="600" fill="#0f172a">${esc(titleData.sheetNumber)}</text>
+
+      <rect x="${width / 2 + 4}" y="182" width="${(width - 24) / 2}" height="26" fill="#f8fafc" rx="2" />
+      <text x="${width / 2 + 8}" y="194" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">REV</text>
+      <text x="${width / 2 + 8}" y="204" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="600" fill="#0f172a">${esc(titleData.revision)}</text>
+
+      <rect x="8" y="214" width="${(width - 24) / 2}" height="26" fill="#f8fafc" rx="2" />
+      <text x="${leftMargin + 4}" y="226" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SCALE</text>
+      <text x="${leftMargin + 4}" y="236" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="600" fill="#0f172a">${esc(titleData.scale)}</text>
+
+      <rect x="${width / 2 + 4}" y="214" width="${(width - 24) / 2}" height="26" fill="#f8fafc" rx="2" />
+      <text x="${width / 2 + 8}" y="226" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">DATE</text>
+      <text x="${width / 2 + 8}" y="236" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="600" fill="#0f172a">${esc(titleData.date || "-")}</text>
+
+      <line x1="8" y1="248" x2="${width - 8}" y2="248" stroke="#e2e8f0" stroke-width="1" />
+      <text x="${leftMargin}" y="262" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">RIBA</text>
+      <text x="${rightMargin}" y="262" font-family="${EMBEDDED_FONT_STACK}" font-size="8" font-weight="500" fill="#0f172a" text-anchor="end">${esc(titleData.ribaStage)}</text>
+      <text x="${leftMargin}" y="276" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">STATUS</text>
+      <text x="${rightMargin}" y="276" font-family="${EMBEDDED_FONT_STACK}" font-size="8" font-weight="500" fill="#0891b2" text-anchor="end">${esc(titleData.status)}</text>
+
+      <text x="${width / 2}" y="${height - 8}" font-family="${EMBEDDED_FONT_STACK}" font-size="6" fill="#94a3b8" text-anchor="middle">${esc(titleData.copyrightNote)}</text>
+    </svg>
+  `
+    : `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <!-- Background -->
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR}" stroke-width="2" rx="${FRAME_RADIUS}" ry="${FRAME_RADIUS}" />
 
       <!-- Practice Logo Area -->
       <rect x="8" y="8" width="${width - 16}" height="40" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="34" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#0f172a"
-        text-anchor="middle">${esc(tb.practiceName)}</text>
+      <text x="${width / 2}" y="34" font-family="${EMBEDDED_FONT_STACK}" font-size="14" font-weight="700" fill="#0f172a"
+        text-anchor="middle">${esc(titleData.practiceName)}</text>
 
       <!-- Project Information Section -->
       <line x1="8" y1="56" x2="${width - 8}" y2="56" stroke="#e2e8f0" stroke-width="1" />
-      <text x="${leftMargin}" y="74" font-family="Arial, sans-serif" font-size="8" fill="#64748b">PROJECT</text>
-      <text x="${leftMargin}" y="90" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#0f172a">${esc(tb.projectName)}</text>
-      <text x="${leftMargin}" y="106" font-family="Arial, sans-serif" font-size="9" fill="#475569">${esc(tb.projectNumber)}</text>
+      <text x="${leftMargin}" y="74" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">PROJECT</text>
+      <text x="${leftMargin}" y="90" font-family="${EMBEDDED_FONT_STACK}" font-size="12" font-weight="700" fill="#0f172a">${esc(titleData.projectName)}</text>
+      <text x="${leftMargin}" y="106" font-family="${EMBEDDED_FONT_STACK}" font-size="9" fill="#475569">${esc(titleData.projectNumber)}</text>
 
       <!-- Site Address -->
       <line x1="8" y1="114" x2="${width - 8}" y2="114" stroke="#e2e8f0" stroke-width="1" />
-      <text x="${leftMargin}" y="130" font-family="Arial, sans-serif" font-size="8" fill="#64748b">SITE ADDRESS</text>
-      <text x="${leftMargin}" y="146" font-family="Arial, sans-serif" font-size="9" fill="#1f2937">${esc(tb.siteAddress || "TBD")}</text>
+      <text x="${leftMargin}" y="130" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">SITE ADDRESS</text>
+      <text x="${leftMargin}" y="146" font-family="${EMBEDDED_FONT_STACK}" font-size="9" fill="#1f2937">${esc(titleData.siteAddress)}</text>
 
       <!-- Drawing Information -->
       <line x1="8" y1="158" x2="${width - 8}" y2="158" stroke="#e2e8f0" stroke-width="1" />
-      <text x="${leftMargin}" y="174" font-family="Arial, sans-serif" font-size="8" fill="#64748b">DRAWING TITLE</text>
-      <text x="${leftMargin}" y="190" font-family="Arial, sans-serif" font-size="11" font-weight="600" fill="#0f172a">${esc(tb.drawingTitle)}</text>
+      <text x="${leftMargin}" y="174" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">DRAWING TITLE</text>
+      <text x="${leftMargin}" y="190" font-family="${EMBEDDED_FONT_STACK}" font-size="11" font-weight="600" fill="#0f172a">${esc(titleData.drawingTitle)}</text>
 
       <!-- Sheet / Revision Row -->
       <rect x="8" y="200" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
-      <text x="${leftMargin + 4}" y="214" font-family="Arial, sans-serif" font-size="7" fill="#64748b">SHEET NO.</text>
-      <text x="${leftMargin + 4}" y="226" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.sheetNumber)}</text>        
+      <text x="${leftMargin + 4}" y="214" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SHEET NO.</text>
+      <text x="${leftMargin + 4}" y="226" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.sheetNumber)}</text>        
 
       <rect x="${width / 2 + 4}" y="200" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
-      <text x="${width / 2 + 8}" y="214" font-family="Arial, sans-serif" font-size="7" fill="#64748b">REVISION</text>
-      <text x="${width / 2 + 8}" y="226" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.revision)}</text>
+      <text x="${width / 2 + 8}" y="214" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">REVISION</text>
+      <text x="${width / 2 + 8}" y="226" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.revision)}</text>
 
       <!-- Scale / Date Row -->
       <rect x="8" y="236" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
-      <text x="${leftMargin + 4}" y="250" font-family="Arial, sans-serif" font-size="7" fill="#64748b">SCALE</text>
-      <text x="${leftMargin + 4}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.scale)}</text>
+      <text x="${leftMargin + 4}" y="250" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">SCALE</text>
+      <text x="${leftMargin + 4}" y="262" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.scale)}</text>
 
       <rect x="${width / 2 + 4}" y="236" width="${(width - 24) / 2}" height="32" fill="#f8fafc" rx="2" />
-      <text x="${width / 2 + 8}" y="250" font-family="Arial, sans-serif" font-size="7" fill="#64748b">DATE</text>
-      <text x="${width / 2 + 8}" y="262" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="#0f172a">${esc(tb.date || "-")}</text>
+      <text x="${width / 2 + 8}" y="250" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#64748b">DATE</text>
+      <text x="${width / 2 + 8}" y="262" font-family="${EMBEDDED_FONT_STACK}" font-size="10" font-weight="600" fill="#0f172a">${esc(titleData.date || "-")}</text>
 
       <!-- RIBA Stage / Status -->
       <line x1="8" y1="276" x2="${width - 8}" y2="276" stroke="#e2e8f0" stroke-width="1" />
-      <text x="${leftMargin}" y="292" font-family="Arial, sans-serif" font-size="8" fill="#64748b">RIBA STAGE</text>
-      <text x="${rightMargin}" y="292" font-family="Arial, sans-serif" font-size="9" font-weight="500" fill="#0f172a"
-        text-anchor="end">${esc(tb.ribaStage)}</text>
-      <text x="${leftMargin}" y="306" font-family="Arial, sans-serif" font-size="8" fill="#64748b">STATUS</text>
-      <text x="${rightMargin}" y="306" font-family="Arial, sans-serif" font-size="9" font-weight="500" fill="#0891b2"
-        text-anchor="end">${esc(tb.status)}</text>
+      <text x="${leftMargin}" y="292" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">RIBA STAGE</text>
+      <text x="${rightMargin}" y="292" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="500" fill="#0f172a"
+        text-anchor="end">${esc(titleData.ribaStage)}</text>
+      <text x="${leftMargin}" y="306" font-family="${EMBEDDED_FONT_STACK}" font-size="8" fill="#64748b">STATUS</text>
+      <text x="${rightMargin}" y="306" font-family="${EMBEDDED_FONT_STACK}" font-size="9" font-weight="500" fill="#0891b2"
+        text-anchor="end">${esc(titleData.status)}</text>
 
       <!-- AI Generation Metadata -->
       ${
-        tb.designId
+        titleData.designId
           ? `
       <line x1="8" y1="${height - 44}" x2="${width - 8}" y2="${height - 44}" stroke="#e2e8f0" stroke-width="1" />
-      <text x="${leftMargin}" y="${height - 28}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">DESIGN ID: ${esc(tb.designId)}</text>
-      <text x="${leftMargin}" y="${height - 16}" font-family="Arial, sans-serif" font-size="7" fill="#94a3b8">SEED: ${esc(tb.seedValue || "N/A")}</text>       
+      <text x="${leftMargin}" y="${height - 28}" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#94a3b8">DESIGN ID: ${esc(titleData.designId)}</text>
+      <text x="${leftMargin}" y="${height - 16}" font-family="${EMBEDDED_FONT_STACK}" font-size="7" fill="#94a3b8">SEED: ${esc(titleData.seedValue || "N/A")}</text>       
       `
           : ""
       }
 
       <!-- Copyright -->
-      <text x="${width / 2}" y="${height - 6}" font-family="Arial, sans-serif" font-size="6" fill="#94a3b8"
-        text-anchor="middle">${esc(tb.copyrightNote)}</text>
+      <text x="${width / 2}" y="${height - 6}" font-family="${EMBEDDED_FONT_STACK}" font-size="6" fill="#94a3b8"
+        text-anchor="middle">${esc(titleData.copyrightNote)}</text>
     </svg>
   `;
 

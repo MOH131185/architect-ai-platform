@@ -363,6 +363,15 @@ export async function generateArchitecturalImage(params) {
           `⚠️ FLUX.1-dev is no longer serverless — using FLUX.1.1-pro for ${viewType}`,
         );
         model = "black-forest-labs/FLUX.1.1-pro";
+      } else if (
+        flagModel &&
+        flagModel.includes("FLUX.1-schnell") &&
+        needsInitImage
+      ) {
+        logger.info(
+          `🔒 [${viewType}] Overriding FLUX.1-schnell flag with FLUX.1.1-pro because init_image conditioning is required`,
+        );
+        model = "black-forest-labs/FLUX.1.1-pro";
       } else if (flagModel && !flagModel.includes("FLUX.1-dev")) {
         model = flagModel; // Honor explicit flag if not dev
       }

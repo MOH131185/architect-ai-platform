@@ -97,8 +97,9 @@ class MultiModelImageService {
     } = params;
 
     const category = getPanelCategory(viewType);
-    // Widen style lock to include axonometric and interior_3d (not just elevations/sections)
-    const STYLE_LOCK_PANELS = ["axonometric", "interior_3d"];
+    // Hero, axonometric, and interior views need the same material/style
+    // anchor as the technical drawings, not just elevations and sections.
+    const STYLE_LOCK_PANELS = ["hero_3d", "axonometric", "interior_3d"];
     const canonical = normalizeToCanonical(viewType) || viewType;
     const needsStyleLock =
       (isElevationOrSection(viewType) ||

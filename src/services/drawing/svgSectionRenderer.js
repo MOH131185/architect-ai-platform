@@ -622,6 +622,8 @@ export function renderSectionSvg(
   const sectionEvidence =
     options.sectionEvidence || buildSectionEvidence(geometry, sectionProfile);
   const sectionTruthModel = sectionEvidence.sectionTruthModel || null;
+  const sectionFaceBundle = sectionEvidence.sectionFaceBundle || null;
+  const sectionFaceSummary = sectionEvidence.sectionFaceSummary || null;
   const lineweights = getSectionLineweights({
     constructionTruthQuality:
       sectionTruthModel?.overall?.quality ||
@@ -632,6 +634,22 @@ export function renderSectionSvg(
       sectionEvidence.summary?.sectionDraftingEvidenceScore || 0,
     profileComplexityScore:
       sectionEvidence.summary?.sectionProfileComplexityScore || 0,
+    faceCredibilityScore:
+      sectionFaceBundle?.credibility?.score ||
+      sectionFaceSummary?.credibilityScore ||
+      0,
+    faceCredibilityQuality:
+      sectionFaceBundle?.credibility?.quality ||
+      sectionFaceSummary?.credibilityQuality ||
+      "blocked",
+    cutFaceCount:
+      sectionFaceBundle?.summary?.cutFaceCount ||
+      sectionFaceSummary?.cutFaceCount ||
+      0,
+    cutProfileCount:
+      sectionFaceBundle?.summary?.cutProfileCount ||
+      sectionFaceSummary?.cutProfileCount ||
+      0,
   });
   const roofTruthQuality = sectionEvidence.summary?.roofTruthQuality || "weak";
   const roofTruthMode = sectionEvidence.summary?.roofTruthMode || "missing";
@@ -936,6 +954,53 @@ export function renderSectionSvg(
         sectionEvidence.summary?.sectionProfileComplexityScore || 0,
       section_drafting_evidence_score:
         sectionEvidence.summary?.sectionDraftingEvidenceScore || 0,
+      section_cut_face_truth_available: Boolean(
+        sectionEvidence.summary?.sectionCutFaceTruthAvailable ||
+        (sectionFaceBundle?.summary?.cutFaceCount || 0) > 0,
+      ),
+      section_face_bundle_version: sectionFaceBundle?.version || null,
+      section_face_total_count:
+        sectionFaceBundle?.summary?.totalCount ||
+        sectionFaceSummary?.totalCount ||
+        0,
+      section_face_cut_face_count:
+        sectionFaceBundle?.summary?.cutFaceCount ||
+        sectionFaceSummary?.cutFaceCount ||
+        0,
+      section_face_cut_profile_count:
+        sectionFaceBundle?.summary?.cutProfileCount ||
+        sectionFaceSummary?.cutProfileCount ||
+        0,
+      section_face_contextual_count:
+        sectionFaceBundle?.summary?.contextualCount ||
+        sectionFaceSummary?.contextualCount ||
+        0,
+      section_face_derived_count:
+        sectionFaceBundle?.summary?.derivedCount ||
+        sectionFaceSummary?.derivedCount ||
+        0,
+      section_face_total_area_m2:
+        sectionFaceBundle?.summary?.totalAreaM2 ||
+        sectionFaceSummary?.totalAreaM2 ||
+        0,
+      section_face_credibility_score:
+        sectionFaceBundle?.credibility?.score ||
+        sectionFaceSummary?.credibilityScore ||
+        0,
+      section_face_credibility_quality:
+        sectionFaceBundle?.credibility?.quality ||
+        sectionFaceSummary?.credibilityQuality ||
+        null,
+      section_cut_face_construction_truth_count:
+        sectionEvidence.summary?.cutFaceConstructionTruthCount || 0,
+      section_cut_profile_construction_truth_count:
+        sectionEvidence.summary?.cutProfileConstructionTruthCount || 0,
+      section_contextual_profile_construction_truth_count:
+        sectionEvidence.summary?.contextualProfileConstructionTruthCount || 0,
+      section_derived_profile_construction_truth_count:
+        sectionEvidence.summary?.derivedProfileConstructionTruthCount || 0,
+      section_average_construction_profile_continuity:
+        sectionEvidence.summary?.averageConstructionProfileContinuity || 0,
       wall_section_clip_quality:
         sectionEvidence.summary?.wallSectionClipQuality || null,
       opening_section_clip_quality:

@@ -19,6 +19,11 @@ import {
   resolveFoundationTruthMode,
   resolveRoofTruthMode,
 } from "./constructionTruthModel.js";
+import {
+  extractSectionFaces,
+  phase21TrueSectioningEnabled,
+  summarizeFaceTruthForRenderer,
+} from "./sectionFaceExtractionService.js";
 
 function round(value, precision = 3) {
   const factor = 10 ** precision;
@@ -33,6 +38,53 @@ export function sectionAxis(sectionType = "longitudinal") {
   return String(sectionType || "longitudinal").toLowerCase() === "transverse"
     ? "y"
     : "x";
+}
+
+function buildLevelProfiles(geometry = {}) {
+  let offset = 0;
+  return (geometry.levels || [])
+    .slice()
+    .sort(
+      (left, right) =>
+        Number(left.level_number || 0) - Number(right.level_number || 0),
+    )
+    .map((level, index) => {
+      const height = Number(level.height_m || 3.2) || 3.2;
+      const profile = {
+        id: level.id || `level-${index}`,
+        name: level.name || `L${level.level_number || index}`,
+        bottom_m: round(offset),
+        top_m: round(offset + height),
+        height_m: round(height),
+        level_number: Number(level.level_number || index),
+      };
+      offset += height;
+      return profile;
+    });
+}
+
+function buildEnvelopeSpan(geometry = {}, sectionCut = {}) {
+  const bounds = getBuildableBounds(geometry);
+  const axis = sectionCut.axis || "x";
+  if (axis === "x") {
+    return {
+      start: round(Number(bounds.min_y ?? 0)),
+      end: round(
+        Number(
+          bounds.max_y ??
+            Number(bounds.min_y ?? 0) + Number(bounds.height ?? 10),
+        ),
+      ),
+    };
+  }
+  return {
+    start: round(Number(bounds.min_x ?? 0)),
+    end: round(
+      Number(
+        bounds.max_x ?? Number(bounds.min_x ?? 0) + Number(bounds.width ?? 12),
+      ),
+    ),
+  };
 }
 
 function getBuildableBounds(geometry = {}) {
@@ -298,14 +350,18 @@ export function buildSectionIntersections(
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase20");
+  const phase21Sectioning = phase21TrueSectioningEnabled();
   const sectionCut = {
     sectionType,
     axis,
     coordinate,
   };
   const clipOptions = {
-    directBand: Number(options.directBand || (clippingEnabled ? 0.14 : 0.16)),
-    nearBand: Number(options.nearBand || 0.9),
+    directBand: Number(
+      options.directBand ||
+        (phase21Sectioning ? 0.12 : clippingEnabled ? 0.14 : 0.16),
+    ),
+    nearBand: Number(options.nearBand || (phase21Sectioning ? 0.8 : 0.9)),
   };
   const cutBandGeometry = buildSectionCutBandGeometry(sectionCut, clipOptions);
 
@@ -469,22 +525,44 @@ export function buildSectionIntersections(
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase19") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase19");
 
+  const levelProfiles = buildLevelProfiles(projectGeometry);
+  const envelopeSpan = buildEnvelopeSpan(projectGeometry, sectionCut);
+  const topOfEnvelopeM = levelProfiles.reduce(
+    (maximum, level) => Math.max(maximum, Number(level.top_m || 0)),
+    0,
+  );
+  const faceBundle = phase21Sectioning
+    ? extractSectionFaces({
+        geometry: projectGeometry,
+        intersections,
+        axis,
+        levelProfiles,
+        envelopeSpan,
+        topOfEnvelopeM,
+      })
+    : null;
+  const faceSummary = phase21Sectioning
+    ? summarizeFaceTruthForRenderer(faceBundle)
+    : null;
+
   return {
-    version: phase20Sectioning
-      ? "phase20-section-geometry-intersection-v1"
-      : deeperSectionClippingPhase19
-        ? "phase19-section-geometry-intersection-v1"
-        : deeperSectionClippingPhase18
-          ? "phase18-section-geometry-intersection-v1"
-          : phase17Enabled
-            ? "phase17-section-geometry-intersection-v1"
-            : phase16Enabled
-              ? "phase16-section-geometry-intersection-v1"
-              : phase15Enabled
-                ? "phase15-section-geometry-intersection-v1"
-                : clippingEnabled
-                  ? "phase13-section-geometry-intersection-v1"
-                  : "phase12-section-geometry-intersection-v1",
+    version: phase21Sectioning
+      ? "phase21-section-geometry-intersection-v1"
+      : phase20Sectioning
+        ? "phase20-section-geometry-intersection-v1"
+        : deeperSectionClippingPhase19
+          ? "phase19-section-geometry-intersection-v1"
+          : deeperSectionClippingPhase18
+            ? "phase18-section-geometry-intersection-v1"
+            : phase17Enabled
+              ? "phase17-section-geometry-intersection-v1"
+              : phase16Enabled
+                ? "phase16-section-geometry-intersection-v1"
+                : phase15Enabled
+                  ? "phase15-section-geometry-intersection-v1"
+                  : clippingEnabled
+                    ? "phase13-section-geometry-intersection-v1"
+                    : "phase12-section-geometry-intersection-v1",
     sectionType,
     cutAxis: axis,
     cutCoordinate: round(coordinate),
@@ -492,10 +570,13 @@ export function buildSectionIntersections(
     nearBandM: clipOptions.nearBand,
     cutBandGeometry,
     clippingEnabled,
+    phase21Sectioning,
     intersections,
     unsupportedCounts: collectUnsupportedCounts(intersections),
     clipSummary,
     constructionTruthSummary,
+    sectionFaceBundle: faceBundle,
+    sectionFaceSummary: faceSummary,
     geometrySupport: {
       rooms: collectSupportSummary(intersections.rooms),
       stairs: collectSupportSummary(intersections.stairs),

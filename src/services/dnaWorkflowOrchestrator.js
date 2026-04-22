@@ -2034,18 +2034,13 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           let geometryRender = null;
           let effectiveGeometryStrength = job.meta?.geometryStrength || 0.6;
 
-          // PRIORITY 0: Canonical Geometry Pack (highest priority — geometry authority)
-          // When canonical pack is available, it supersedes procedural masks and
-          // geometry volume renders for all panel types.
-          // EXCEPTION: hero_3d with portfolio style — skip geometry to let portfolio
-          // style reference be used as init_image for color/material transfer.
-          const skipGeometryForPortfolioStyle =
-            job.type === "hero_3d" && !!portfolioStyleDataUrl;
-          if (
-            canonicalPack &&
-            hasCanonicalPack(canonicalPack) &&
-            !skipGeometryForPortfolioStyle
-          ) {
+          // PRIORITY 0: Canonical Geometry Pack (highest priority — geometry
+          // authority). When canonical pack is available, it supersedes
+          // procedural masks and geometry volume renders for all panel types.
+          // Hero renders must keep this geometry anchor even when portfolio
+          // style is present, otherwise the 3D panel drifts away from the 2D
+          // drawings and no longer depicts the same building.
+          if (canonicalPack && hasCanonicalPack(canonicalPack)) {
             const canonicalParams = getCanonicalInitImageParams(
               canonicalPack,
               job.type,

@@ -47,6 +47,10 @@ function buildNode({
   derivedFallbackField = null,
   unsupportedFallbackField = null,
   exactClipFallbackField = null,
+  cutFaceCount = 0,
+  cutProfileCount = 0,
+  contextualFaceCount = 0,
+  derivedFaceCount = 0,
 } = {}) {
   const directCount = directField
     ? count(summary, directField)
@@ -106,6 +110,10 @@ function buildNode({
     exactProfileClipCount,
     profileSegmentCount,
     directProfileHitCount,
+    cutFaceCount: Number(cutFaceCount || 0),
+    cutProfileCount: Number(cutProfileCount || 0),
+    contextualFaceCount: Number(contextualFaceCount || 0),
+    derivedFaceCount: Number(derivedFaceCount || 0),
     directScore: round(directScore),
     directQuality: truthQuality(directScore),
     contextualRelianceScore: round(contextualRelianceScore),
@@ -116,7 +124,15 @@ function buildNode({
   };
 }
 
-function buildOverallNode(summary = {}, constructionSemantics = null) {
+function perKindFace(faceBundle = null, kind = null) {
+  return (faceBundle?.perKind || {})[kind] || null;
+}
+
+function buildOverallNode(
+  summary = {},
+  constructionSemantics = null,
+  faceBundle = null,
+) {
   const evidenceScore = Number(
     constructionSemantics?.constructionEvidenceScore ||
       summary.sectionConstructionEvidenceScore ||
@@ -130,6 +146,7 @@ function buildOverallNode(summary = {}, constructionSemantics = null) {
       : summary.foundationTruthMode !== "missing"
         ? summary.foundationTruthMode
         : summary.roofTruthMode || "missing";
+  const faceSummary = faceBundle?.summary || null;
   const overallNode = buildNode({
     summary,
     quality:
@@ -147,6 +164,10 @@ function buildOverallNode(summary = {}, constructionSemantics = null) {
     exactProfileField: "exactConstructionProfileClipCount",
     profileSegmentField: "constructionProfileSegmentCount",
     directProfileHitField: "directConstructionProfileHitCount",
+    cutFaceCount: Number(faceSummary?.cutFaceCount || 0),
+    cutProfileCount: Number(faceSummary?.cutProfileCount || 0),
+    contextualFaceCount: Number(faceSummary?.contextualCount || 0),
+    derivedFaceCount: Number(faceSummary?.derivedCount || 0),
   });
   const phase20TruthEnabled =
     isFeatureEnabled("useNearBooleanSectioningPhase20") ||
@@ -154,7 +175,13 @@ function buildOverallNode(summary = {}, constructionSemantics = null) {
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase20");
-  if (!phase20TruthEnabled) {
+  const phase21TruthEnabled =
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase21");
+  if (!phase20TruthEnabled && !phase21TruthEnabled) {
     return overallNode;
   }
 
@@ -171,11 +198,15 @@ function buildOverallNode(summary = {}, constructionSemantics = null) {
     summary,
     "exactConstructionProfileClipCount",
   );
+  const cutFaceCount = Number(faceSummary?.cutFaceCount || 0);
+  const cutProfileCount = Number(faceSummary?.cutProfileCount || 0);
   const directScore = clamp(
-    Number(overallNode.directScore || 0) * 0.55 +
-      bandCoverageRatio * 0.2 +
+    Number(overallNode.directScore || 0) * 0.5 +
+      bandCoverageRatio * 0.18 +
       Math.min(0.16, nearBooleanClipCount * 0.08) +
-      Math.min(0.12, exactProfileClipCount * 0.02),
+      Math.min(0.12, exactProfileClipCount * 0.02) +
+      (phase21TruthEnabled ? Math.min(0.2, cutFaceCount * 0.08) : 0) +
+      (phase21TruthEnabled ? Math.min(0.1, cutProfileCount * 0.03) : 0),
     0,
     1,
   );
@@ -190,7 +221,14 @@ function buildOverallNode(summary = {}, constructionSemantics = null) {
 function buildConstructionTruthNodes(
   summary = {},
   constructionSemantics = null,
+  faceBundle = null,
 ) {
+  const wallFaces = perKindFace(faceBundle, "walls");
+  const openingFaces = perKindFace(faceBundle, "openings");
+  const stairFaces = perKindFace(faceBundle, "stairs");
+  const slabFaces = perKindFace(faceBundle, "slabs");
+  const roofFaces = perKindFace(faceBundle, "roofs");
+  const foundationFaces = perKindFace(faceBundle, "foundations");
   return {
     wall: buildNode({
       summary,
@@ -203,6 +241,10 @@ function buildConstructionTruthNodes(
       derivedField: "cutWallDerivedTruthCount",
       unsupportedField: "cutWallUnsupportedTruthCount",
       exactClipField: "cutWallExactClipCount",
+      cutFaceCount: Number(wallFaces?.cutFaceCount || 0),
+      cutProfileCount: Number(wallFaces?.cutProfileCount || 0),
+      contextualFaceCount: Number(wallFaces?.contextualCount || 0),
+      derivedFaceCount: Number(wallFaces?.derivedCount || 0),
     }),
     opening: buildNode({
       summary,
@@ -216,6 +258,10 @@ function buildConstructionTruthNodes(
       derivedField: "cutOpeningDerivedTruthCount",
       unsupportedField: "cutOpeningUnsupportedTruthCount",
       exactClipField: "cutOpeningExactClipCount",
+      cutFaceCount: Number(openingFaces?.cutFaceCount || 0),
+      cutProfileCount: Number(openingFaces?.cutProfileCount || 0),
+      contextualFaceCount: Number(openingFaces?.contextualCount || 0),
+      derivedFaceCount: Number(openingFaces?.derivedCount || 0),
     }),
     stair: buildNode({
       summary,
@@ -227,6 +273,10 @@ function buildConstructionTruthNodes(
       contextualField: "stairContextualTruthCount",
       derivedField: "stairDerivedTruthCount",
       exactClipFallbackField: "cutStairCount",
+      cutFaceCount: Number(stairFaces?.cutFaceCount || 0),
+      cutProfileCount: Number(stairFaces?.cutProfileCount || 0),
+      contextualFaceCount: Number(stairFaces?.contextualCount || 0),
+      derivedFaceCount: Number(stairFaces?.derivedCount || 0),
     }),
     slab: buildNode({
       summary,
@@ -239,6 +289,10 @@ function buildConstructionTruthNodes(
       derivedFallbackField: "inferredSlabCount",
       unsupportedFallbackField: "unsupportedSlabCount",
       exactClipFallbackField: "directSlabExactClipCount",
+      cutFaceCount: Number(slabFaces?.cutFaceCount || 0),
+      cutProfileCount: Number(slabFaces?.cutProfileCount || 0),
+      contextualFaceCount: Number(slabFaces?.contextualCount || 0),
+      derivedFaceCount: Number(slabFaces?.derivedCount || 0),
     }),
     roof: buildNode({
       summary,
@@ -256,6 +310,10 @@ function buildConstructionTruthNodes(
       derivedFallbackField: "roofDerivedTruthCount",
       unsupportedFallbackField: "unsupportedRoofCount",
       exactClipFallbackField: "directRoofExactClipCount",
+      cutFaceCount: Number(roofFaces?.cutFaceCount || 0),
+      cutProfileCount: Number(roofFaces?.cutProfileCount || 0),
+      contextualFaceCount: Number(roofFaces?.contextualCount || 0),
+      derivedFaceCount: Number(roofFaces?.derivedCount || 0),
     }),
     foundation: buildNode({
       summary,
@@ -273,6 +331,10 @@ function buildConstructionTruthNodes(
       derivedFallbackField: "foundationDerivedTruthCount",
       unsupportedFallbackField: "unsupportedFoundationCount",
       exactClipFallbackField: "directFoundationExactClipCount",
+      cutFaceCount: Number(foundationFaces?.cutFaceCount || 0),
+      cutProfileCount: Number(foundationFaces?.cutProfileCount || 0),
+      contextualFaceCount: Number(foundationFaces?.contextualCount || 0),
+      derivedFaceCount: Number(foundationFaces?.derivedCount || 0),
     }),
     baseCondition: buildNode({
       summary,
@@ -301,8 +363,13 @@ export function buildSectionTruthModel({
   constructionSemantics = null,
 } = {}) {
   const summary = sectionEvidence?.summary || {};
-  const nodes = buildConstructionTruthNodes(summary, constructionSemantics);
-  const overall = buildOverallNode(summary, constructionSemantics);
+  const faceBundle = sectionEvidence?.sectionFaceBundle || null;
+  const nodes = buildConstructionTruthNodes(
+    summary,
+    constructionSemantics,
+    faceBundle,
+  );
+  const overall = buildOverallNode(summary, constructionSemantics, faceBundle);
   const contextualEvidenceScore = clamp(
     overall.contextualCount * 0.16 +
       overall.derivedCount * 0.18 +
@@ -316,15 +383,24 @@ export function buildSectionTruthModel({
     0,
     1,
   );
-  const version =
-    isFeatureEnabled("useNearBooleanSectioningPhase20") ||
-    isFeatureEnabled("useCentralizedSectionTruthModelPhase20") ||
-    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
-    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
-    isFeatureEnabled("useSectionConstructionCredibilityGatePhase20")
+  const phase21TruthEnabled =
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase21");
+  const version = phase21TruthEnabled
+    ? "phase21-section-truth-model-v1"
+    : isFeatureEnabled("useNearBooleanSectioningPhase20") ||
+        isFeatureEnabled("useCentralizedSectionTruthModelPhase20") ||
+        isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
+        isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
+        isFeatureEnabled("useSectionConstructionCredibilityGatePhase20")
       ? "phase20-section-truth-model-v1"
       : "phase19-section-truth-model-v1";
 
+  const faceSummary = faceBundle?.summary || null;
+  const faceCredibility = faceBundle?.credibility || null;
   return {
     version,
     overall,
@@ -334,6 +410,24 @@ export function buildSectionTruthModel({
     contextualEvidenceQuality: burdenQuality(contextualEvidenceScore),
     derivedEvidenceScore: round(derivedEvidenceScore),
     derivedEvidenceQuality: burdenQuality(derivedEvidenceScore),
+    sectionFaceBundleVersion: faceBundle?.version || null,
+    sectionFaceTotals: faceSummary
+      ? {
+          totalCount: Number(faceSummary.totalCount || 0),
+          cutFaceCount: Number(faceSummary.cutFaceCount || 0),
+          cutProfileCount: Number(faceSummary.cutProfileCount || 0),
+          contextualCount: Number(faceSummary.contextualCount || 0),
+          derivedCount: Number(faceSummary.derivedCount || 0),
+          unsupportedCount: Number(faceSummary.unsupportedCount || 0),
+          totalAreaM2: round(Number(faceSummary.totalAreaM2 || 0)),
+        }
+      : null,
+    sectionFaceCredibility: faceCredibility
+      ? {
+          score: Number(faceCredibility.score || 0),
+          quality: faceCredibility.quality || "blocked",
+        }
+      : null,
     chosenSectionRationale:
       summary.chosenSectionRationale ||
       sectionEvidence?.sectionProfile?.rationale?.[0] ||

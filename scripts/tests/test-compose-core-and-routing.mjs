@@ -27,19 +27,23 @@
 // ---------------------------------------------------------------------------
 
 const results = { passed: 0, failed: 0, tests: [] };
+let testChain = Promise.resolve();
 
 function test(name, fn) {
-  try {
-    fn();
-    results.passed++;
-    results.tests.push({ name, status: 'PASS' });
-    console.log(`  ✅ ${name}`);
-  } catch (error) {
-    results.failed++;
-    results.tests.push({ name, status: 'FAIL', error: error.message });
-    console.log(`  ❌ ${name}`);
-    console.log(`     Error: ${error.message}`);
-  }
+  testChain = testChain.then(async () => {
+    try {
+      await fn();
+      results.passed++;
+      results.tests.push({ name, status: 'PASS' });
+      console.log(`  ✅ ${name}`);
+    } catch (error) {
+      results.failed++;
+      results.tests.push({ name, status: 'FAIL', error: error.message });
+      console.log(`  ❌ ${name}`);
+      console.log(`     Error: ${error.message}`);
+    }
+  });
+  return testChain;
 }
 
 function assert(condition, message) {
@@ -276,7 +280,115 @@ test('15. getPanelFitMode routes cover for 3D, contain for technical', () => {
   assertEqual(composeCore.getPanelFitMode('material_palette'), 'contain');
 });
 
-test('16. CJS composeCore.cjs matches ESM exports', async () => {
+test('16. resolveLayout widens both floor plans for 2-floor board-v2', () => {
+  const r = composeCore.resolveLayout({ layoutTemplate: 'board-v2', floorCount: 2 });
+  assert(!r.layout.floor_plan_level2, 'floor_plan_level2 should be removed for 2-floor');
+  assertEqual(r.layout.floor_plan_ground.x, 0.015);
+  assertEqual(r.layout.floor_plan_ground.width, 0.475);
+  assertEqual(r.layout.floor_plan_first.x, 0.5);
+  assertEqual(r.layout.floor_plan_first.width, 0.485);
+});
+
+test('17. hero_3d keeps geometry init_image while still activating style lock', async () => {
+  const originalFetch = global.fetch;
+  let capturedPayload = null;
+  const geometryDataUrl = `data:image/png;base64,${'a'.repeat(320)}`;
+
+  global.fetch = async (_url, options = {}) => {
+    capturedPayload = JSON.parse(options.body || '{}');
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        get(name) {
+          return String(name).toLowerCase() === 'content-type'
+            ? 'application/json'
+            : null;
+        },
+      },
+      async json() {
+        return { url: 'https://example.com/generated.png' };
+      },
+      async text() {
+        return '';
+      },
+    };
+  };
+
+  try {
+    const { default: multiModelImageService } = await import('../../src/services/multiModelImageService.js');
+    const result = await multiModelImageService.generateImage({
+      viewType: 'hero_3d',
+      prompt: 'Detached contemporary house, front perspective',
+      negativePrompt: 'row houses, terraced housing',
+      seed: 42,
+      width: 768,
+      height: 512,
+      designDNA: {
+        materials: [
+          { name: 'Brick', hexColor: '#B55D4C' },
+          { name: 'Glass', hexColor: '#9BC7D8' },
+        ],
+        style: { name: 'Contemporary Vernacular' },
+        roof: { type: 'gable' },
+      },
+      geometryRender: {
+        url: geometryDataUrl,
+        type: 'canonical_geometry',
+        model: 'buildingmodel_projections2d',
+      },
+      geometryStrength: 0.6,
+      styleReferenceUrl: 'https://example.com/portfolio-style.png',
+      styleReferenceStrength: 0.25,
+    });
+
+    assert(capturedPayload, 'FLUX request payload was not captured');
+    assertEqual(
+      capturedPayload.initImage,
+      geometryDataUrl,
+      'hero_3d should keep canonical geometry as initImage',
+    );
+    assert(
+      String(capturedPayload.prompt || '').startsWith('[STYLE LOCK:'),
+      'style lock should still augment the prompt when geometry occupies initImage',
+    );
+    assertEqual(
+      capturedPayload.model,
+      'black-forest-labs/FLUX.1.1-pro',
+      'conditioned hero panels should use FLUX.1.1-pro',
+    );
+    assertEqual(result.category, '3d');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('18. deterministic compose SVGs use the embedded font stack', async () => {
+  const { readFileSync } = await import('node:fs');
+  const composeDataPanelsSource = readFileSync(
+    new URL('../../src/services/a1/composeDataPanels.js', import.meta.url),
+    'utf8',
+  );
+  const composeApiSource = readFileSync(
+    new URL('../../api/a1/compose.js', import.meta.url),
+    'utf8',
+  );
+
+  assert(
+    composeDataPanelsSource.includes('EMBEDDED_FONT_STACK'),
+    'composeDataPanels should reference EMBEDDED_FONT_STACK',
+  );
+  assert(
+    !composeDataPanelsSource.includes('font-family="Arial, sans-serif"'),
+    'composeDataPanels should not hard-code Arial in SVG text nodes',
+  );
+  assert(
+    !composeApiSource.includes('font-family="Arial, sans-serif"'),
+    'compose.js should not hard-code Arial in compose SVG text nodes',
+  );
+});
+
+test('19. CJS composeCore.cjs matches ESM exports', async () => {
   // This test verifies the CJS wrapper has the same key functions
   // We can't require() from ESM, but we can dynamically import and compare signatures
   const cjsPath = new URL('../../src/services/a1/composeCore.cjs', import.meta.url);
@@ -310,6 +422,8 @@ test('16. CJS composeCore.cjs matches ESM exports', async () => {
 // ===========================================================================
 // Summary
 // ===========================================================================
+
+await testChain;
 
 console.log('\n' + '═'.repeat(60));
 console.log(`  Results: ${results.passed} passed, ${results.failed} failed (${results.passed + results.failed} total)`);

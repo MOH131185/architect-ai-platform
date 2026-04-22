@@ -35,6 +35,34 @@ export function evaluateDrawingFragmentQuality({
       null,
     foundationTruthMode:
       panel.drawing?.technical_quality_metadata?.foundation_truth_mode || null,
+    sectionFaceCredibilityQuality:
+      panel.drawing?.technical_quality_metadata
+        ?.section_face_credibility_quality || null,
+    sectionFaceCredibilityScore: Number(
+      panel.drawing?.technical_quality_metadata
+        ?.section_face_credibility_score || 0,
+    ),
+    sectionCutFaceTruthCount: Number(
+      panel.drawing?.technical_quality_metadata
+        ?.section_cut_face_construction_truth_count ||
+        panel.drawing?.technical_quality_metadata
+          ?.section_face_cut_face_count ||
+        0,
+    ),
+    sectionCutProfileTruthCount: Number(
+      panel.drawing?.technical_quality_metadata
+        ?.section_cut_profile_construction_truth_count ||
+        panel.drawing?.technical_quality_metadata
+          ?.section_face_cut_profile_count ||
+        0,
+    ),
+    sectionAverageProfileContinuity: Number(
+      panel.drawing?.technical_quality_metadata
+        ?.section_average_construction_profile_continuity || 0,
+    ),
+    sectionFaceBundleVersion:
+      panel.drawing?.technical_quality_metadata?.section_face_bundle_version ||
+      null,
     emptyGeometryLikely:
       panel.score?.categoryScores?.geometryCompleteness === 0 ||
       (panel.blockers || []).some((entry) =>
@@ -42,8 +70,18 @@ export function evaluateDrawingFragmentQuality({
       ),
   }));
 
+  const hasPhase21Signal = fragmentScores.some(
+    (entry) =>
+      entry.sectionFaceCredibilityQuality != null ||
+      entry.sectionFaceBundleVersion != null ||
+      entry.sectionCutFaceTruthCount > 0 ||
+      entry.sectionCutProfileTruthCount > 0,
+  );
+
   return {
-    version: "phase10-drawing-fragment-quality-v1",
+    version: hasPhase21Signal
+      ? "phase21-drawing-fragment-quality-v1"
+      : "phase10-drawing-fragment-quality-v1",
     fragmentScores,
     blockingFragments: fragmentScores.filter(
       (entry) => entry.verdict === "block",

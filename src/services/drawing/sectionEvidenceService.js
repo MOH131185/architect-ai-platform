@@ -413,14 +413,20 @@ export function buildSectionEvidence(
     isFeatureEnabled("useDraftingGradeSectionGraphicsPhase20") ||
     isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase20") ||
     isFeatureEnabled("useSectionConstructionCredibilityGatePhase20");
+  const usePhase21Truth =
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useDraftingGradeSectionGraphicsPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21") ||
+    isFeatureEnabled("useSectionConstructionCredibilityGatePhase21");
 
   const intersectionBundle = buildSectionIntersections(
     projectGeometry,
     sectionProfile,
     useTrueEvidence
       ? {
-          directBand: usePhase20Truth ? 0.12 : 0.14,
-          nearBand: usePhase20Truth ? 0.82 : 0.9,
+          directBand: usePhase21Truth ? 0.1 : usePhase20Truth ? 0.12 : 0.14,
+          nearBand: usePhase21Truth ? 0.8 : usePhase20Truth ? 0.82 : 0.9,
         }
       : undefined,
   );
@@ -1130,9 +1136,50 @@ export function buildSectionEvidence(
     foundationSectionClipQuality: foundationClipQuality.quality,
     sectionConstructionEvidenceScore,
     sectionConstructionEvidenceQuality,
-    sectionTruthModelVersion: usePhase20Truth
-      ? "phase20-section-truth-model-v1"
-      : "phase19-section-truth-model-v1",
+    sectionTruthModelVersion: usePhase21Truth
+      ? "phase21-section-truth-model-v1"
+      : usePhase20Truth
+        ? "phase20-section-truth-model-v1"
+        : "phase19-section-truth-model-v1",
+    cutFaceConstructionTruthCount: Number(
+      overallConstructionTruth.cutFaceClipCount || 0,
+    ),
+    cutProfileConstructionTruthCount: Number(
+      overallConstructionTruth.cutProfileClipCount || 0,
+    ),
+    contextualProfileConstructionTruthCount: Number(
+      overallConstructionTruth.contextualProfileClipCount || 0,
+    ),
+    derivedProfileConstructionTruthCount: Number(
+      overallConstructionTruth.derivedProfileClipCount || 0,
+    ),
+    averageConstructionProfileContinuity: Number(
+      overallConstructionTruth.averageProfileContinuity || 0,
+    ),
+    sectionFaceTotalCount: Number(
+      intersectionBundle.sectionFaceSummary?.totalCount || 0,
+    ),
+    sectionFaceCutFaceCount: Number(
+      intersectionBundle.sectionFaceSummary?.cutFaceCount || 0,
+    ),
+    sectionFaceCutProfileCount: Number(
+      intersectionBundle.sectionFaceSummary?.cutProfileCount || 0,
+    ),
+    sectionFaceContextualCount: Number(
+      intersectionBundle.sectionFaceSummary?.contextualCount || 0,
+    ),
+    sectionFaceDerivedCount: Number(
+      intersectionBundle.sectionFaceSummary?.derivedCount || 0,
+    ),
+    sectionFaceTotalAreaM2: Number(
+      intersectionBundle.sectionFaceSummary?.totalAreaM2 || 0,
+    ),
+    sectionFaceCredibilityScore: Number(
+      intersectionBundle.sectionFaceSummary?.credibilityScore || 0,
+    ),
+    sectionFaceCredibilityQuality: String(
+      intersectionBundle.sectionFaceSummary?.credibilityQuality || "blocked",
+    ),
     explicitRoofPrimitiveCount: Number(
       intersectionBundle.explicitRoofPrimitiveCount || 0,
     ),
@@ -1354,6 +1401,26 @@ export function buildSectionEvidence(
     ) {
       summary.sectionConstructionEvidenceQuality = "weak";
     }
+  }
+  if (usePhase21Truth) {
+    const faceCredibility =
+      intersectionBundle.sectionFaceSummary?.credibilityQuality || "blocked";
+    const hasCutFaceEvidence =
+      Number(summary.cutFaceConstructionTruthCount || 0) > 0 ||
+      Number(summary.sectionFaceCutFaceCount || 0) > 0;
+    if (faceCredibility === "blocked" && !hasCutFaceEvidence) {
+      if (summary.sectionConstructionEvidenceQuality === "verified") {
+        summary.sectionConstructionEvidenceQuality = "weak";
+      }
+    }
+    if (
+      summary.sectionConstructionEvidenceQuality === "verified" &&
+      faceCredibility === "weak" &&
+      !hasCutFaceEvidence
+    ) {
+      summary.sectionConstructionEvidenceQuality = "weak";
+    }
+    summary.sectionCutFaceTruthAvailable = hasCutFaceEvidence;
   }
 
   const blockers = [];

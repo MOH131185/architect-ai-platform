@@ -1200,6 +1200,21 @@ export const FEATURE_FLAGS = {
   /** Phase 20 section construction credibility gate from centralized cut truth */
   useSectionConstructionCredibilityGatePhase20: true,
 
+  /** Phase 21 true geometric sectioning for supported primitives */
+  useTrueGeometricSectioningPhase21: true,
+
+  /** Phase 21 centralized section-truth model driven by exact cut-face / cut-profile geometry */
+  useCentralizedSectionTruthModelPhase21: true,
+
+  /** Phase 21 drafting-grade section graphics driven by exact cut truth */
+  useDraftingGradeSectionGraphicsPhase21: true,
+
+  /** Phase 21 section ranking prioritising exact cut-face construction evidence */
+  useConstructionTruthDrivenSectionRankingPhase21: true,
+
+  /** Phase 21 section construction credibility gate using exact cut truth */
+  useSectionConstructionCredibilityGatePhase21: true,
+
   /** Phase 10 rendered text-zone verification */
   useRenderedTextVerificationPhase10: true,
 
@@ -1573,6 +1588,11 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useDraftingGradeSectionGraphicsPhase20 = true;
   FEATURE_FLAGS.useConstructionTruthDrivenSectionRankingPhase20 = true;
   FEATURE_FLAGS.useSectionConstructionCredibilityGatePhase20 = true;
+  FEATURE_FLAGS.useTrueGeometricSectioningPhase21 = true;
+  FEATURE_FLAGS.useCentralizedSectionTruthModelPhase21 = true;
+  FEATURE_FLAGS.useDraftingGradeSectionGraphicsPhase21 = true;
+  FEATURE_FLAGS.useConstructionTruthDrivenSectionRankingPhase21 = true;
+  FEATURE_FLAGS.useSectionConstructionCredibilityGatePhase21 = true;
   FEATURE_FLAGS.useRenderedTextVerificationPhase10 = true;
   FEATURE_FLAGS.useFinalTechnicalCredibilityChecksPhase10 = true;
   FEATURE_FLAGS.useUnifiedVerificationStatePhase10 = true;
@@ -2158,6 +2178,26 @@ function loadP0EnvOverrides() {
     },
     ARCHIAI_SECTION_CONSTRUCTION_CREDIBILITY_GATE_PHASE20: {
       flag: "useSectionConstructionCredibilityGatePhase20",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_TRUE_GEOMETRIC_SECTIONING_PHASE21: {
+      flag: "useTrueGeometricSectioningPhase21",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CENTRALIZED_SECTION_TRUTH_MODEL_PHASE21: {
+      flag: "useCentralizedSectionTruthModelPhase21",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_DRAFTING_GRADE_SECTION_GRAPHICS_PHASE21: {
+      flag: "useDraftingGradeSectionGraphicsPhase21",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_CONSTRUCTION_TRUTH_DRIVEN_SECTION_RANKING_PHASE21: {
+      flag: "useConstructionTruthDrivenSectionRankingPhase21",
+      parse: (v) => v === "true",
+    },
+    ARCHIAI_SECTION_CONSTRUCTION_CREDIBILITY_GATE_PHASE21: {
+      flag: "useSectionConstructionCredibilityGatePhase21",
       parse: (v) => v === "true",
     },
     ARCHIAI_RENDERED_TEXT_VERIFICATION_PHASE10: {

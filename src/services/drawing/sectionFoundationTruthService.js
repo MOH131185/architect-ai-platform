@@ -1,3 +1,4 @@
+import { isFeatureEnabled } from "../../config/featureFlags.js";
 import {
   resolveFoundationTruthMode,
   truthBucketFromMode,
@@ -13,6 +14,14 @@ function classifyQuality(score = 0) {
   if (resolved >= 0.7) return "verified";
   if (resolved >= 0.4) return "weak";
   return "blocked";
+}
+
+function phase21TruthEnabled() {
+  return (
+    isFeatureEnabled("useTrueGeometricSectioningPhase21") ||
+    isFeatureEnabled("useCentralizedSectionTruthModelPhase21") ||
+    isFeatureEnabled("useConstructionTruthDrivenSectionRankingPhase21")
+  );
 }
 
 function foundationSupportPenalty(mode = "missing") {
@@ -141,6 +150,20 @@ export function assessSectionFoundationTruth(
       ? 0.12
       : 0;
 
+  const phase21 = phase21TruthEnabled();
+  const faceBundle = sectionEvidence.sectionFaceBundle || null;
+  const foundationFaces = faceBundle?.perKind?.foundations || null;
+  const cutFaceCount = phase21 ? Number(foundationFaces?.cutFaceCount || 0) : 0;
+  const cutProfileCount = phase21
+    ? Number(foundationFaces?.cutProfileCount || 0)
+    : 0;
+  const contextualFaceCount = phase21
+    ? Number(foundationFaces?.contextualCount || 0)
+    : 0;
+  const derivedFaceCount = phase21
+    ? Number(foundationFaces?.derivedCount || 0)
+    : 0;
+
   const score = round(
     Math.min(0.3, exactFoundationDirect * 0.16) +
       Math.min(0.16, directFoundations.length * 0.08) +
@@ -168,7 +191,9 @@ export function assessSectionFoundationTruth(
       (nearSlabCount > 0 ? 0.05 : 0) +
       (nearFoundations.length > 0 ? 0.05 : 0) +
       (nearBaseConditions.length > 0 ? 0.05 : 0) +
-      (levelCount > 0 ? 0.05 : 0) -
+      (levelCount > 0 ? 0.05 : 0) +
+      (phase21 ? Math.min(0.16, cutFaceCount * 0.08) : 0) +
+      (phase21 ? Math.min(0.08, cutProfileCount * 0.03) : 0) -
       Math.min(0.12, derivedTruthCount * 0.025) -
       Math.min(
         0.18,
@@ -184,6 +209,7 @@ export function assessSectionFoundationTruth(
           unsupportedFoundations.length * 0.04 +
           unsupportedBaseConditions.length * 0.03,
       ) -
+      (phase21 ? Math.min(0.06, derivedFaceCount * 0.02) : 0) -
       foundationSupportPenalty(supportMode) -
       (derivedOnly ? 0.05 : 0),
   );
@@ -225,6 +251,11 @@ export function assessSectionFoundationTruth(
     derivedOnly,
     siteGroundContext,
     legacyContextualSupport,
+    cutFaceCount,
+    cutProfileCount,
+    contextualFaceCount,
+    derivedFaceCount,
+    phase21,
   };
 }
 
