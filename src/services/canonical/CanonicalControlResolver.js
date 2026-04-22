@@ -24,6 +24,10 @@ import {
   HERO_REFERENCE_PANELS,
   HERO_CONTROL_STRENGTH,
 } from "../design/designFingerprintService.js";
+import {
+  getCanonicalPackSource,
+  isCompiledProjectCanonicalPack,
+} from "../design/panelAuthorityRouter.js";
 
 // =============================================================================
 // CONSTANTS
@@ -39,25 +43,66 @@ export const MANDATORY_CANONICAL_CONTROL_PANELS = ["hero_3d", "interior_3d"];
  * Mapping from AI panel type to canonical pack panel type
  */
 export const PANEL_TO_CANONICAL_MAP = {
-  // 3D views use massing/axonometric from canonical pack
-  hero_3d: "canonical_massing_3d",
-  interior_3d: "canonical_massing_3d", // Interior uses massing as base (no interior in pack)
+  // 3D views must use compiled-project render inputs, never 2D aliases.
+  hero_3d: "hero_3d",
+  interior_3d: "interior_3d",
+  axonometric: "axonometric",
 
-  // Floor plans map directly
-  floor_plan_ground: "canonical_floor_plan_ground",
-  floor_plan_first: "canonical_floor_plan_first",
-  floor_plan_second: "canonical_floor_plan_second",
+  // Technical panels use direct compiled-project keys.
+  floor_plan_ground: "floor_plan_ground",
+  floor_plan_first: "floor_plan_first",
+  floor_plan_level2: "floor_plan_level2",
+  floor_plan_level3: "floor_plan_level3",
+  floor_plan_second: "floor_plan_level2",
 
-  // Elevations map directly
-  elevation_north: "canonical_elevation_north",
-  elevation_south: "canonical_elevation_south",
-  elevation_east: "canonical_elevation_east",
-  elevation_west: "canonical_elevation_west",
+  elevation_north: "elevation_north",
+  elevation_south: "elevation_south",
+  elevation_east: "elevation_east",
+  elevation_west: "elevation_west",
 
-  // Sections map directly
-  section_AA: "canonical_section_aa",
-  section_BB: "canonical_section_bb",
+  section_AA: "section_AA",
+  section_BB: "section_BB",
 };
+
+const PANEL_TO_CANONICAL_CANDIDATES = {
+  hero_3d: ["hero_3d"],
+  interior_3d: ["interior_3d"],
+  axonometric: ["axonometric"],
+  floor_plan_ground: ["floor_plan_ground", "canonical_floor_plan_ground"],
+  floor_plan_first: ["floor_plan_first", "canonical_floor_plan_first"],
+  floor_plan_level2: [
+    "floor_plan_level2",
+    "floor_plan_second",
+    "canonical_floor_plan_second",
+  ],
+  floor_plan_level3: ["floor_plan_level3"],
+  floor_plan_second: [
+    "floor_plan_level2",
+    "floor_plan_second",
+    "canonical_floor_plan_second",
+  ],
+  elevation_north: ["elevation_north", "canonical_elevation_north"],
+  elevation_south: ["elevation_south", "canonical_elevation_south"],
+  elevation_east: ["elevation_east", "canonical_elevation_east"],
+  elevation_west: ["elevation_west", "canonical_elevation_west"],
+  section_AA: [
+    "section_AA",
+    "section_a_a",
+    "section_aa",
+    "canonical_section_aa",
+  ],
+  section_BB: [
+    "section_BB",
+    "section_b_b",
+    "section_bb",
+    "canonical_section_bb",
+  ],
+};
+
+function getCanonicalPanelCandidates(panelType) {
+  const canonical = normalizeToCanonical(panelType) || panelType;
+  return PANEL_TO_CANONICAL_CANDIDATES[canonical] || [];
+}
 
 /**
  * Error codes for canonical control resolution
@@ -168,11 +213,20 @@ export function resolveControlImage(
   }
 
   // Get canonical panel type mapping
+  const canonicalPanelCandidates = getCanonicalPanelCandidates(canonical);
   const canonicalPanelType = PANEL_TO_CANONICAL_MAP[canonical];
-  if (!canonicalPanelType) {
+  if (!canonicalPanelType || canonicalPanelCandidates.length === 0) {
     // Panel type doesn't require canonical control
     logger.debug(
       `[CanonicalControlResolver] ${canonical} has no canonical mapping - skipping`,
+    );
+    return null;
+  }
+
+  const packSource = getCanonicalPackSource(canonicalPack);
+  if (!isCompiledProjectCanonicalPack(canonicalPack)) {
+    logger.warn(
+      `[CanonicalControlResolver] Ignoring ${packSource || "unknown"} canonical pack for ${canonical}; compiled_project authority is required`,
     );
     return null;
   }
@@ -189,11 +243,19 @@ export function resolveControlImage(
 
   // Get control image from pack
   const panels = canonicalPack.panels || canonicalPack;
-  const controlData = panels[canonicalPanelType];
+  let matchedPanelType = null;
+  let controlData = null;
+  for (const candidate of canonicalPanelCandidates) {
+    if (panels[candidate]) {
+      matchedPanelType = candidate;
+      controlData = panels[candidate];
+      break;
+    }
+  }
 
   if (!controlData) {
     logger.warn(
-      `[CanonicalControlResolver] No ${canonicalPanelType} in canonical pack for ${canonical}`,
+      `[CanonicalControlResolver] No canonical control candidates [${canonicalPanelCandidates.join(", ")}] in canonical pack for ${canonical}`,
     );
     return null;
   }
@@ -211,7 +273,7 @@ export function resolveControlImage(
   const contentHash = computeControlImageHash(controlUrl);
   const canonicalFingerprint = computeCanonicalFingerprint(
     designFingerprint,
-    canonicalPanelType,
+    matchedPanelType,
     contentHash,
   );
 
@@ -223,7 +285,8 @@ export function resolveControlImage(
 
     // Metadata for verification
     panelType: canonical,
-    canonicalPanelType,
+    canonicalPanelType: matchedPanelType,
+    requestedCanonicalPanelType: canonicalPanelType,
     controlSource: "canonical",
 
     // Fingerprint verification (CRITICAL for hero_3d/interior_3d)
@@ -233,7 +296,7 @@ export function resolveControlImage(
 
     // Hash for DEBUG_REPORT
     controlImageSha256: contentHash,
-    controlImagePath: controlData.path || `canonical://${canonicalPanelType}`,
+    controlImagePath: controlData.path || `canonical://${matchedPanelType}`,
 
     // Original control data for reference
     svgHash: controlData.svgHash,
@@ -249,7 +312,7 @@ export function resolveControlImage(
   };
 
   logger.info(
-    `[CanonicalControlResolver] Resolved ${canonical} → ${canonicalPanelType} ` +
+    `[CanonicalControlResolver] Resolved ${canonical} → ${matchedPanelType} ` +
       `(fingerprint: ${designFingerprint.substring(0, 12)}..., hash: ${contentHash})`,
   );
 
