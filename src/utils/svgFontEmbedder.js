@@ -12,8 +12,6 @@
  * @module utils/svgFontEmbedder
  */
 
-import { createRequire } from "node:module";
-
 const INTER_REGULAR_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
 const INTER_BOLD_URL =
@@ -53,13 +51,22 @@ const SYSTEM_BOLD_FONT_CANDIDATES = [
 
 let fontLoadPromise = null;
 let resolvedFonts = null; // Set once the promise resolves; used by sync API
-const nodeRequire = isNodeRuntime()
-  ? createRequire(
-      typeof process?.cwd === "function"
-        ? `${process.cwd().replace(/\\/g, "/")}/package.json`
-        : "/package.json",
-    )
-  : null;
+
+function getNodeBuiltinModule(moduleName) {
+  if (!isNodeRuntime()) {
+    return null;
+  }
+
+  try {
+    if (typeof process?.getBuiltinModule === "function") {
+      return process.getBuiltinModule(moduleName);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
 
 function isNodeRuntime() {
   return Boolean(
@@ -389,7 +396,7 @@ export function getFontEmbeddingReadinessSync() {
     }
 
     try {
-      const fsModule = nodeRequire ? nodeRequire("node:fs") : null;
+      const fsModule = getNodeBuiltinModule("fs");
       if (!fsModule?.existsSync) {
         return false;
       }

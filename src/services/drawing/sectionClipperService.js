@@ -229,8 +229,9 @@ export function pointInPolygon(point = null, polygon = []) {
     const yi = polygon[i].y;
     const xj = polygon[j].x;
     const yj = polygon[j].y;
+    const crossesPointY = yi > point.y ? !(yj > point.y) : yj > point.y;
     const intersects =
-      yi > point.y !== yj > point.y &&
+      crossesPointY &&
       point.x < ((xj - xi) * (point.y - yi)) / (yj - yi || 1e-9) + xi;
     if (intersects) {
       inside = !inside;
