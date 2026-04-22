@@ -8,6 +8,7 @@ import { truthBucketFromMode } from "./constructionTruthModel.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
 import { buildSectionAnnotations } from "./sectionAnnotationService.js";
+import { getEnvelopeDrawingBounds } from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -16,18 +17,6 @@ function escapeXml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
-}
-
-function getSourceBounds(geometry = {}) {
-  return (
-    geometry.site?.buildable_bbox ||
-    geometry.site?.boundary_bbox || {
-      min_x: 0,
-      min_y: 0,
-      width: 12,
-      height: 10,
-    }
-  );
 }
 
 function buildTransform(bounds, width, height, padding) {
@@ -185,9 +174,9 @@ export function buildSectionGraphic(
   const semantics = deriveSectionSemantics(geometry, sectionProfile);
   const width = options.width || 1200;
   const height = options.height || 760;
-  const padding = 80;
+  const padding = options.sheetMode === true ? 60 : 80;
   const project = buildTransform(
-    getSourceBounds(geometry),
+    getEnvelopeDrawingBounds(geometry),
     width,
     height,
     padding,

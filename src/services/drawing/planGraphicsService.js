@@ -3,6 +3,7 @@ import { renderPlanSvg } from "./svgPlanRenderer.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
 import { selectSectionCandidates } from "./sectionCutPlanner.js";
+import { getLevelDrawingBounds } from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -16,22 +17,6 @@ function escapeXml(value) {
 function findLevel(geometry, levelId = null) {
   return (
     geometry.levels.find((level) => level.id === levelId) || geometry.levels[0]
-  );
-}
-
-function getSourceBounds(geometry, level = null) {
-  return (
-    geometry.site?.boundary_bbox ||
-    geometry.site?.buildable_bbox ||
-    level?.buildable_bbox ||
-    geometry.footprints?.[0]?.bbox || {
-      min_x: 0,
-      min_y: 0,
-      max_x: 12,
-      max_y: 10,
-      width: 12,
-      height: 10,
-    }
   );
 }
 
@@ -106,8 +91,8 @@ export function buildPlanGraphic(geometryInput = {}, options = {}) {
   const level = findLevel(geometry, options.levelId || null);
   const width = options.width || 1200;
   const height = options.height || 900;
-  const padding = 70;
-  const bounds = getSourceBounds(geometry, level);
+  const padding = options.sheetMode === true ? 48 : 70;
+  const bounds = getLevelDrawingBounds(geometry, level?.id || null);
   const project = buildTransform(bounds, width, height - 70, padding);
   const drawing = renderPlanSvg(geometry, {
     ...options,

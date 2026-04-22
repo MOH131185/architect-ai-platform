@@ -19,6 +19,7 @@ import {
 } from "../svg/ArchitecturalFloorPlanGenerator.js";
 import { generateFromDNA as generateElevationFromDNA } from "../svg/ArchitecturalElevationGenerator.js";
 import { generateFromDNA as generateSectionFromDNA } from "../svg/ArchitecturalSectionGenerator.js";
+import { embedFontInSVGSync } from "../../utils/svgFontEmbedder.js";
 import { validateSVG } from "../../utils/svgPathValidator.js";
 import logger from "../../utils/logger.js";
 
@@ -48,11 +49,13 @@ export function generateFloorPlanSVG(dna, options = {}) {
 
   try {
     // Use the full ArchitecturalFloorPlanGenerator via generateFromDNA
-    const svg = generateFloorPlanFromDNA(dna, floor, {
-      showFurniture,
-      showDimensions,
-      scale,
-    });
+    const svg = embedFontInSVGSync(
+      generateFloorPlanFromDNA(dna, floor, {
+        showFurniture,
+        showDimensions,
+        scale,
+      }),
+    );
 
     // Validate the generated SVG
     const validation = validateSVG(svg, {
@@ -127,11 +130,13 @@ export function generateElevationSVG(dna, options = {}) {
   logger.info(`[TechnicalDrawing] Generating elevation SVG for ${orientation}`);
 
   try {
-    const svg = generateElevationFromDNA(dna, orientation, {
-      showDimensions,
-      showMaterialPatterns,
-      scale,
-    });
+    const svg = embedFontInSVGSync(
+      generateElevationFromDNA(dna, orientation, {
+        showDimensions,
+        showMaterialPatterns,
+        scale,
+      }),
+    );
 
     // Validate the generated SVG
     const validation = validateSVG(svg, {
@@ -144,7 +149,7 @@ export function generateElevationSVG(dna, options = {}) {
       logger.warn(
         `[TechnicalDrawing] Elevation SVG has ${validation.invalidPathCount} invalid paths, using sanitized version`,
       );
-      return validation.sanitizedSVG;
+      return embedFontInSVGSync(validation.sanitizedSVG);
     }
 
     logger.info(
@@ -209,12 +214,14 @@ export function generateSectionSVG(dna, options = {}) {
   logger.info(`[TechnicalDrawing] Generating section SVG for ${sectionType}`);
 
   try {
-    const svg = generateSectionFromDNA(dna, {
-      sectionType,
-      showDimensions,
-      showHatching,
-      scale,
-    });
+    const svg = embedFontInSVGSync(
+      generateSectionFromDNA(dna, {
+        sectionType,
+        showDimensions,
+        showHatching,
+        scale,
+      }),
+    );
 
     // Validate the generated SVG
     const validation = validateSVG(svg, {
@@ -227,7 +234,7 @@ export function generateSectionSVG(dna, options = {}) {
       logger.warn(
         `[TechnicalDrawing] Section SVG has ${validation.invalidPathCount} invalid paths, using sanitized version`,
       );
-      return validation.sanitizedSVG;
+      return embedFontInSVGSync(validation.sanitizedSVG);
     }
 
     logger.info(
@@ -455,7 +462,7 @@ export function generateSchedulesSVG(dna, options = {}) {
   logger.info(
     `[TechnicalDrawing] Schedules SVG generated successfully (${svg.length} chars)`,
   );
-  return svg;
+  return embedFontInSVGSync(svg);
 }
 
 /**
@@ -580,7 +587,7 @@ export function generateClimateCardSVG(dna, locationData = {}, options = {}) {
   logger.info(
     `[TechnicalDrawing] Climate card SVG generated successfully (${svg.length} chars)`,
   );
-  return svg;
+  return embedFontInSVGSync(svg);
 }
 
 /**
@@ -664,7 +671,7 @@ export function generateMaterialPaletteSVG(dna, options = {}) {
   logger.info(
     `[TechnicalDrawing] Material palette SVG generated successfully (${svg.length} chars)`,
   );
-  return svg;
+  return embedFontInSVGSync(svg);
 }
 
 /**

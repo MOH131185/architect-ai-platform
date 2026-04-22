@@ -3,6 +3,7 @@ import { getCanonicalMaterialPalette } from "../design/canonicalMaterialPalette.
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
 import { extractSideFacade } from "../facade/sideFacadeExtractor.js";
 import { assessElevationSemantics } from "./elevationSemanticService.js";
+import { getEnvelopeDrawingBounds } from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -34,22 +35,11 @@ function roundMetric(value, precision = 3) {
   return Math.round(numeric * factor) / factor;
 }
 
-function getBuildableBounds(geometry = {}) {
-  return (
-    geometry.site?.buildable_bbox ||
-    geometry.site?.boundary_bbox || {
-      min_x: 0,
-      min_y: 0,
-      max_x: 12,
-      max_y: 10,
-      width: 12,
-      height: 10,
-    }
-  );
-}
-
-function metricsFromGeometry(geometry = {}, orientation = "south") {
-  const buildable = getBuildableBounds(geometry);
+function metricsFromGeometry(
+  geometry = {},
+  orientation = "south",
+  envelopeBounds = getEnvelopeDrawingBounds(geometry),
+) {
   const levels = geometry.levels || [];
   const totalHeight =
     levels.reduce((sum, level) => sum + Number(level.height_m || 3.2), 0) ||
@@ -58,8 +48,8 @@ function metricsFromGeometry(geometry = {}, orientation = "south") {
   return {
     width_m:
       orientation === "east" || orientation === "west"
-        ? Number(buildable.height || 10)
-        : Number(buildable.width || 12),
+        ? Number(envelopeBounds.height || 10)
+        : Number(envelopeBounds.width || 12),
     total_height_m: totalHeight,
     level_count: Math.max(1, levels.length),
   };
@@ -126,47 +116,60 @@ function normalizeRoofLanguage(
   ).toLowerCase();
 }
 
-function buildMaterialPatternDefs(palette = {}) {
-  const primary = palette.primary?.hexColor || "#f0ece4";
-  const secondary = palette.secondary?.hexColor || "#d8c4ae";
-  const roof = palette.roof?.hexColor || "#6a717c";
-  const trim = palette.trim?.hexColor || "#838891";
+function buildMaterialPatternDefs(palette = {}, { monochrome = false } = {}) {
+  const primary = monochrome
+    ? "#f7f7f7"
+    : palette.primary?.hexColor || "#f0ece4";
+  const secondary = monochrome
+    ? "#ededed"
+    : palette.secondary?.hexColor || "#d8c4ae";
+  const roof = monochrome ? "#d7d7d7" : palette.roof?.hexColor || "#6a717c";
+  const trim = monochrome ? "#4b5563" : palette.trim?.hexColor || "#838891";
+  const brickStroke = monochrome ? "#7c7c7c" : "#9a6356";
+  const clapboardStroke = monochrome ? "#8b8b8b" : "#b89b7e";
+  const renderDot = monochrome ? "#b3b3b3" : "#c7baa9";
+  const timberStroke = monochrome ? "#6b7280" : "#815938";
+  const roofStroke = monochrome ? "#4b5563" : "#4e545d";
+  const groundStroke = monochrome ? "#9ca3af" : "#b4aa95";
+  const openingStroke = monochrome ? "#334155" : "#275b94";
+  const glazingStroke = monochrome ? "#6b7280" : "#7db5d8";
 
   return `
     <defs>
       <pattern id="phase8-elev-brick" width="18" height="12" patternUnits="userSpaceOnUse">
         <rect width="18" height="12" fill="${primary}" />
-        <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="#9a6356" stroke-width="0.7" />
+        <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="${brickStroke}" stroke-width="0.7" />
       </pattern>
       <pattern id="phase8-elev-clapboard" width="16" height="10" patternUnits="userSpaceOnUse">
         <rect width="16" height="10" fill="${secondary}" />
-        <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="#b89b7e" stroke-width="0.8" />
+        <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="${clapboardStroke}" stroke-width="0.8" />
       </pattern>
       <pattern id="phase8-elev-render" width="10" height="10" patternUnits="userSpaceOnUse">
         <rect width="10" height="10" fill="${secondary}" />
-        <circle cx="2.5" cy="2.5" r="0.8" fill="#c7baa9" />
-        <circle cx="7.5" cy="5" r="0.8" fill="#c7baa9" />
-        <circle cx="4" cy="8" r="0.8" fill="#c7baa9" />
+        <circle cx="2.5" cy="2.5" r="0.8" fill="${renderDot}" />
+        <circle cx="7.5" cy="5" r="0.8" fill="${renderDot}" />
+        <circle cx="4" cy="8" r="0.8" fill="${renderDot}" />
       </pattern>
       <pattern id="phase8-elev-timber" width="12" height="16" patternUnits="userSpaceOnUse">
         <rect width="12" height="16" fill="${secondary}" />
-        <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="#815938" stroke-width="0.8" />
+        <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="${timberStroke}" stroke-width="0.8" />
       </pattern>
       <pattern id="phase8-elev-roof" width="12" height="12" patternUnits="userSpaceOnUse">
         <rect width="12" height="12" fill="${roof}" />
-        <path d="M 0 12 L 6 0 L 12 12" stroke="#4e545d" stroke-width="0.7" fill="none" />
+        <path d="M 0 12 L 6 0 L 12 12" stroke="${roofStroke}" stroke-width="0.7" fill="none" />
       </pattern>
       <pattern id="phase8-elev-ground" width="16" height="8" patternUnits="userSpaceOnUse">
-        <rect width="16" height="8" fill="#e3ddcf" />
-        <path d="M 0 8 L 4 4 L 8 8 L 12 4 L 16 8" stroke="#b4aa95" stroke-width="0.8" fill="none" />
+        <rect width="16" height="8" fill="${monochrome ? "#efefef" : "#e3ddcf"}" />
+        <path d="M 0 8 L 4 4 L 8 8 L 12 4 L 16 8" stroke="${groundStroke}" stroke-width="0.8" fill="none" />
       </pattern>
       <style>
         .phase8-title { font-size: 22px; font-weight: 700; }
         .phase8-label { font-size: 10px; font-weight: 600; }
         .phase8-small { font-size: 9px; }
         .phase8-datum { font-size: 10px; font-weight: 700; fill: #374151; }
-        .phase8-opening { fill: #fcfdff; stroke: #275b94; stroke-width: 1.8; }
+        .phase8-opening { fill: #fcfdff; stroke: ${openingStroke}; stroke-width: 1.8; }
         .phase8-lintel { stroke: ${trim}; stroke-width: 1.2; }
+        .phase8-glazing { stroke: ${glazingStroke}; stroke-width: 1.2; }
       </style>
     </defs>
   `;
@@ -324,7 +327,7 @@ function renderOpenings(
           <rect x="${x}" y="${headY}" width="${widthPx}" height="${heightPx}" class="phase8-opening" />
           <line x1="${x}" y1="${sillY}" x2="${x + widthPx}" y2="${sillY}" class="phase8-lintel" />
           <line x1="${x}" y1="${headY}" x2="${x + widthPx}" y2="${headY}" class="phase8-lintel" />
-          <line x1="${x + widthPx / 2}" y1="${headY + 2}" x2="${x + widthPx / 2}" y2="${sillY - 2}" stroke="#7db5d8" stroke-width="1.2" />
+          <line x1="${x + widthPx / 2}" y1="${headY + 2}" x2="${x + widthPx / 2}" y2="${sillY - 2}" class="phase8-glazing" />
         </g>
       `;
     })
@@ -405,7 +408,7 @@ function renderProjectedOpenings(
           <rect x="${x}" y="${headY}" width="${widthPx}" height="${heightPx}" class="phase8-opening" />
           <line x1="${x}" y1="${sillY}" x2="${x + widthPx}" y2="${sillY}" class="phase8-lintel" />
           <line x1="${x}" y1="${headY}" x2="${x + widthPx}" y2="${headY}" class="phase8-lintel" />
-          <line x1="${x + widthPx / 2}" y1="${headY + 2}" x2="${x + widthPx / 2}" y2="${sillY - 2}" stroke="#7db5d8" stroke-width="1.2" />
+          <line x1="${x + widthPx / 2}" y1="${headY + 2}" x2="${x + widthPx / 2}" y2="${sillY - 2}" class="phase8-glazing" />
         </g>
       `;
     })
@@ -599,11 +602,13 @@ export function renderElevationSvg(
     orientation,
   });
   const facadeOrientation = sideFacade.facadeOrientation;
+  const envelopeBounds = getEnvelopeDrawingBounds(geometry);
   const metrics =
-    sideFacade.metrics || metricsFromGeometry(geometry, orientation);
+    sideFacade.metrics ||
+    metricsFromGeometry(geometry, orientation, envelopeBounds);
   const width = options.width || 1200;
   const height = options.height || 760;
-  const padding = 84;
+  const padding = options.sheetMode === true ? 56 : 84;
   const scale = Math.min(
     (width - padding * 2) / Math.max(metrics.width_m, 1),
     (height - padding * 2) / Math.max(metrics.total_height_m + 1.2, 1),
@@ -612,7 +617,6 @@ export function renderElevationSvg(
   const baseY = height - padding;
   const heightPx = metrics.total_height_m * scale;
   const widthPx = metrics.width_m * scale;
-  const bounds = getBuildableBounds(geometry);
   const levelProfiles = sideFacade.levelProfiles || getLevelProfiles(geometry);
   const roofLanguage =
     sideFacade.roofLanguage ||
@@ -751,7 +755,7 @@ export function renderElevationSvg(
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  ${buildMaterialPatternDefs(palette)}
+  ${buildMaterialPatternDefs(palette, { monochrome: options.sheetMode === true })}
   <rect width="${width}" height="${height}" fill="#fff" />
   <text x="${padding}" y="36" class="phase8-title">${escapeXml(`Elevation - ${orientation.toUpperCase()}`)}</text>
   <text x="${padding}" y="52" class="phase8-small">${escapeXml(

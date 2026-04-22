@@ -1,5 +1,6 @@
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
+import { getLevelDrawingBounds } from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -31,22 +32,6 @@ function findLevel(geometry, options = {}) {
   }
 
   return geometry.levels[0];
-}
-
-function getSourceBounds(geometry, level = null) {
-  return (
-    geometry.site?.boundary_bbox ||
-    geometry.site?.buildable_bbox ||
-    level?.buildable_bbox ||
-    geometry.footprints?.[0]?.bbox || {
-      min_x: 0,
-      min_y: 0,
-      max_x: 12,
-      max_y: 10,
-      width: 12,
-      height: 10,
-    }
-  );
 }
 
 function roomFill(zone = "public") {
@@ -241,7 +226,11 @@ function renderRoomLabel(labelPoint, room = {}) {
   `;
 }
 
-function renderStructuralGridMarkers(geometry = {}, project) {
+function renderStructuralGridMarkers(
+  geometry = {},
+  project,
+  referenceBounds = {},
+) {
   const grid = geometry.metadata?.structural_grid;
   if (!grid) {
     return "";
@@ -251,11 +240,11 @@ function renderStructuralGridMarkers(geometry = {}, project) {
     .map((axis) => {
       const top = project({
         x: axis.position_m,
-        y: geometry.site?.boundary_bbox?.min_y || 0,
+        y: referenceBounds.min_y || 0,
       });
       const bottom = project({
         x: axis.position_m,
-        y: geometry.site?.boundary_bbox?.max_y || 0,
+        y: referenceBounds.max_y || 0,
       });
       const bubbleY = Math.max(16, top.y - 10);
       return `
@@ -269,11 +258,11 @@ function renderStructuralGridMarkers(geometry = {}, project) {
   const yMarkup = (grid.y_axes || [])
     .map((axis) => {
       const left = project({
-        x: geometry.site?.boundary_bbox?.min_x || 0,
+        x: referenceBounds.min_x || 0,
         y: axis.position_m,
       });
       const right = project({
-        x: geometry.site?.boundary_bbox?.max_x || 0,
+        x: referenceBounds.max_x || 0,
         y: axis.position_m,
       });
       const bubbleX = Math.max(12, left.x - 12);
@@ -435,8 +424,10 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
 
   const width = options.width || 1200;
   const height = options.height || 900;
-  const padding = 70;
-  const bounds = getSourceBounds(geometry, level);
+  const sheetMode = options.sheetMode === true;
+  const includeSiteContext = options.includeSiteContext === true && !sheetMode;
+  const padding = sheetMode ? 48 : 70;
+  const bounds = getLevelDrawingBounds(geometry, level?.id || null);
   const project = buildTransform(bounds, width, height - 70, padding);
   const levelRooms = (geometry.rooms || []).filter(
     (room) => room.level_id === level.id,
@@ -475,14 +466,12 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     };
   }
 
-  const siteOutline = polygonPath(
-    geometry.site?.boundary_polygon || [],
-    project,
-  );
-  const buildableOutline = polygonPath(
-    geometry.site?.buildable_polygon || [],
-    project,
-  );
+  const siteOutline = includeSiteContext
+    ? polygonPath(geometry.site?.boundary_polygon || [], project)
+    : "";
+  const buildableOutline = includeSiteContext
+    ? polygonPath(geometry.site?.buildable_polygon || [], project)
+    : "";
   const footprintPath = polygonPath(
     geometry.footprints.find((footprint) => footprint.id === level.footprint_id)
       ?.polygon || [],
@@ -499,7 +488,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
         },
       );
       return `
-        <path d="${polygonPath(roomPolygon(room), project)}" fill="${roomFill(room.zone)}" stroke="#c2b29b" stroke-width="1.2"/>
+        <path d="${polygonPath(roomPolygon(room), project)}" fill="${sheetMode ? "#ffffff" : roomFill(room.zone)}" stroke="${sheetMode ? "#808080" : "#c2b29b"}" stroke-width="1.2"/>
         ${options.hideRoomLabels ? "" : renderRoomLabel(labelPoint, room)}
       `;
     })
@@ -534,13 +523,13 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       const halfWidth = 8;
       if (wall?.orientation === "vertical") {
         return `
-          <line x1="${position.x - halfWidth}" y1="${position.y}" x2="${position.x + halfWidth}" y2="${position.y}" stroke="#7a3d16" stroke-width="2.5"/>
-          <path d="M ${position.x} ${position.y} A 18 18 0 0 1 ${position.x + 18} ${position.y + 18}" fill="none" stroke="#7a3d16" stroke-width="1.3"/>
+          <line x1="${position.x - halfWidth}" y1="${position.y}" x2="${position.x + halfWidth}" y2="${position.y}" stroke="${sheetMode ? "#111" : "#7a3d16"}" stroke-width="2.5"/>
+          <path d="M ${position.x} ${position.y} A 18 18 0 0 1 ${position.x + 18} ${position.y + 18}" fill="none" stroke="${sheetMode ? "#111" : "#7a3d16"}" stroke-width="1.3"/>
         `;
       }
       return `
-        <line x1="${position.x}" y1="${position.y - halfWidth}" x2="${position.x}" y2="${position.y + halfWidth}" stroke="#7a3d16" stroke-width="2.5"/>
-        <path d="M ${position.x} ${position.y} A 18 18 0 0 1 ${position.x + 18} ${position.y - 18}" fill="none" stroke="#7a3d16" stroke-width="1.3"/>
+        <line x1="${position.x}" y1="${position.y - halfWidth}" x2="${position.x}" y2="${position.y + halfWidth}" stroke="${sheetMode ? "#111" : "#7a3d16"}" stroke-width="2.5"/>
+        <path d="M ${position.x} ${position.y} A 18 18 0 0 1 ${position.x + 18} ${position.y - 18}" fill="none" stroke="${sheetMode ? "#111" : "#7a3d16"}" stroke-width="1.3"/>
       `;
     })
     .join("");
@@ -553,13 +542,13 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       const halfWidth = 10;
       if (wall?.orientation === "vertical") {
         return `
-          <line x1="${position.x - halfWidth}" y1="${position.y}" x2="${position.x + halfWidth}" y2="${position.y}" stroke="#2c78c4" stroke-width="3"/>
-          <line x1="${position.x - halfWidth}" y1="${position.y - 3}" x2="${position.x + halfWidth}" y2="${position.y - 3}" stroke="#9fd0ef" stroke-width="1.2"/>
+          <line x1="${position.x - halfWidth}" y1="${position.y}" x2="${position.x + halfWidth}" y2="${position.y}" stroke="${sheetMode ? "#111" : "#2c78c4"}" stroke-width="3"/>
+          <line x1="${position.x - halfWidth}" y1="${position.y - 3}" x2="${position.x + halfWidth}" y2="${position.y - 3}" stroke="${sheetMode ? "#666" : "#9fd0ef"}" stroke-width="1.2"/>
         `;
       }
       return `
-        <line x1="${position.x}" y1="${position.y - halfWidth}" x2="${position.x}" y2="${position.y + halfWidth}" stroke="#2c78c4" stroke-width="3"/>
-        <line x1="${position.x + 3}" y1="${position.y - halfWidth}" x2="${position.x + 3}" y2="${position.y + halfWidth}" stroke="#9fd0ef" stroke-width="1.2"/>
+        <line x1="${position.x}" y1="${position.y - halfWidth}" x2="${position.x}" y2="${position.y + halfWidth}" stroke="${sheetMode ? "#111" : "#2c78c4"}" stroke-width="3"/>
+        <line x1="${position.x + 3}" y1="${position.y - halfWidth}" x2="${position.x + 3}" y2="${position.y + halfWidth}" stroke="${sheetMode ? "#666" : "#9fd0ef"}" stroke-width="1.2"/>
       `;
     })
     .join("");
@@ -572,7 +561,11 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     (geometry.circulation || []).filter((path) => path.level_id === level.id),
     project,
   );
-  const structuralGridMarkup = renderStructuralGridMarkers(geometry, project);
+  const structuralGridMarkup = renderStructuralGridMarkers(
+    geometry,
+    project,
+    bounds,
+  );
   const dimensionMarkup = renderExternalDimensions(bounds, project);
   const furnitureMarkup = renderFurnitureHints([...roomMap.values()], project);
   const gridAxisCount =
@@ -591,8 +584,8 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="#fff"/>
-  <path d="${siteOutline}" fill="none" stroke="#9ea3aa" stroke-width="1.5" stroke-dasharray="8 6"/>
-  <path d="${buildableOutline}" fill="none" stroke="#d88f2d" stroke-width="1.8" stroke-dasharray="6 4"/>
+  ${siteOutline ? `<path d="${siteOutline}" fill="none" stroke="#9ea3aa" stroke-width="1.5" stroke-dasharray="8 6"/>` : ""}
+  ${buildableOutline ? `<path d="${buildableOutline}" fill="none" stroke="#d88f2d" stroke-width="1.8" stroke-dasharray="6 4"/>` : ""}
   ${structuralGridMarkup}
   ${dimensionMarkup}
   <path d="${footprintPath}" fill="#fafafa" stroke="#555" stroke-width="1.5"/>
@@ -605,7 +598,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   ${windowMarkup}
   ${renderNorthArrow(width, padding, geometry.site?.north_orientation_deg || 0)}
   ${renderScaleAndTitle(level, width, height, padding)}
-  ${renderLegend(width, height, padding)}
+  ${includeSiteContext ? renderLegend(width, height, padding) : ""}
   ${options.overlayMarkup || ""}
 </svg>`;
 

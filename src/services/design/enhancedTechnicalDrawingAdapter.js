@@ -19,8 +19,13 @@
  */
 
 import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { embedFontInSVGSync } from "../../utils/svgFontEmbedder.js";
 import logger from "../core/logger.js";
+import { coerceToCanonicalProjectGeometry } from "../cad/geometryFactory.js";
 import { buildFacadeGrammar } from "../facade/facadeGrammarEngine.js";
+import { buildPlanGraphic } from "../drawing/planGraphicsService.js";
+import { buildElevationGraphic } from "../drawing/elevationGraphicsService.js";
+import { buildSectionGraphic } from "../drawing/sectionGraphicsService.js";
 import {
   generateFromDNA as generateElevationFromDNA,
   MATERIAL_PATTERNS,
@@ -98,19 +103,495 @@ function wrapSVGResult(svg, metadata = {}) {
   if (!svg) {
     return null;
   }
-  const dataUrl = svgToDataUrl(svg);
+  const normalizedSvg = embedFontInSVGSync(svg);
+  const dataUrl = svgToDataUrl(normalizedSvg);
   if (!dataUrl) {
     return null;
   }
   return {
     dataUrl,
-    svg,
+    svg: normalizedSvg,
     metadata: {
       ...metadata,
       generator: "enhanced",
       timestamp: Date.now(),
     },
   };
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizePoint(point = {}, fallback = {}) {
+  return {
+    x: toFiniteNumber(point?.x, toFiniteNumber(fallback?.x, 0)),
+    y: toFiniteNumber(point?.y, toFiniteNumber(fallback?.y, 0)),
+  };
+}
+
+function normalizePolygon(points = []) {
+  if (!Array.isArray(points) || points.length < 3) {
+    return [];
+  }
+  return points.map((point) => normalizePoint(point));
+}
+
+function polygonFromBounds(bounds = {}, fallbackWidth = 1, fallbackHeight = 1) {
+  const minX = toFiniteNumber(
+    bounds.min_x ?? bounds.minX ?? bounds.x,
+    toFiniteNumber(bounds.x, 0),
+  );
+  const minY = toFiniteNumber(
+    bounds.min_y ?? bounds.minY ?? bounds.y,
+    toFiniteNumber(bounds.y, 0),
+  );
+  const maxX = toFiniteNumber(
+    bounds.max_x ?? bounds.maxX,
+    minX + toFiniteNumber(bounds.width, fallbackWidth),
+  );
+  const maxY = toFiniteNumber(
+    bounds.max_y ?? bounds.maxY,
+    minY + toFiniteNumber(bounds.height, fallbackHeight),
+  );
+  const width = Math.max(
+    maxX - minX,
+    toFiniteNumber(bounds.width, fallbackWidth),
+  );
+  const height = Math.max(
+    maxY - minY,
+    toFiniteNumber(bounds.height, fallbackHeight),
+  );
+  return [
+    { x: minX, y: minY },
+    { x: minX + Math.max(width, 1), y: minY },
+    { x: minX + Math.max(width, 1), y: minY + Math.max(height, 1) },
+    { x: minX, y: minY + Math.max(height, 1) },
+  ];
+}
+
+function computeBBoxFromPoints(points = []) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return null;
+  }
+  const xs = points.map((point) => Number(point.x)).filter(Number.isFinite);
+  const ys = points.map((point) => Number(point.y)).filter(Number.isFinite);
+  if (!xs.length || !ys.length) {
+    return null;
+  }
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  return {
+    min_x: minX,
+    min_y: minY,
+    max_x: maxX,
+    max_y: maxY,
+    width: Math.max(0, maxX - minX),
+    height: Math.max(0, maxY - minY),
+  };
+}
+
+function normalizeRoomPolygon(room = {}) {
+  const polygon = normalizePolygon(room.polygon);
+  if (polygon.length >= 3) {
+    return polygon;
+  }
+  if (room.boundingBox || room.bbox) {
+    return polygonFromBounds(
+      room.boundingBox || room.bbox,
+      room.width ?? room.length ?? 4,
+      room.length ?? room.height ?? 3,
+    );
+  }
+  return polygonFromBounds(
+    {
+      x: room.x ?? 0,
+      y: room.y ?? 0,
+      width: room.width ?? 4,
+      height: room.length ?? room.height ?? 3,
+    },
+    room.width ?? 4,
+    room.length ?? room.height ?? 3,
+  );
+}
+
+function inferFootprintPolygon(floor = {}, dimensions = {}) {
+  const explicitPolygon = [
+    normalizePolygon(floor.polygon),
+    normalizePolygon(floor.footprint?.polygon),
+    normalizePolygon(floor.footprint?.vertices),
+  ].find((polygon) => polygon.length >= 3);
+  if (Array.isArray(explicitPolygon) && explicitPolygon.length >= 3) {
+    return explicitPolygon;
+  }
+
+  const roomPoints = (floor.rooms || []).flatMap((room) =>
+    normalizeRoomPolygon(room),
+  );
+  const wallPoints = (floor.walls || []).flatMap((wall) => {
+    const points = [];
+    if (wall.start) points.push(normalizePoint(wall.start));
+    if (wall.end) points.push(normalizePoint(wall.end));
+    return points;
+  });
+  const bbox = computeBBoxFromPoints([...roomPoints, ...wallPoints]);
+  if (bbox) {
+    return polygonFromBounds(bbox, bbox.width || 1, bbox.height || 1);
+  }
+  return polygonFromBounds(
+    {
+      x: 0,
+      y: 0,
+      width: dimensions.width || dimensions.length || 12,
+      height: dimensions.depth || dimensions.width || 10,
+    },
+    dimensions.width || dimensions.length || 12,
+    dimensions.depth || dimensions.width || 10,
+  );
+}
+
+function inferWallSide(wall = {}, footprintPolygon = []) {
+  const bbox = computeBBoxFromPoints(footprintPolygon);
+  if (!bbox || !wall.start || !wall.end) {
+    return null;
+  }
+  const start = normalizePoint(wall.start);
+  const end = normalizePoint(wall.end);
+  const midX = (start.x + end.x) / 2;
+  const midY = (start.y + end.y) / 2;
+  const horizontal = Math.abs(start.y - end.y) <= Math.abs(start.x - end.x);
+  const epsilon = 0.25;
+  if (horizontal) {
+    if (Math.abs(midY - bbox.min_y) <= epsilon) return "north";
+    if (Math.abs(midY - bbox.max_y) <= epsilon) return "south";
+  } else {
+    if (Math.abs(midX - bbox.max_x) <= epsilon) return "east";
+    if (Math.abs(midX - bbox.min_x) <= epsilon) return "west";
+  }
+  return null;
+}
+
+function midpoint(start = {}, end = {}) {
+  const startPoint = normalizePoint(start);
+  const endPoint = normalizePoint(end);
+  return {
+    x: Number(((startPoint.x + endPoint.x) / 2).toFixed(3)),
+    y: Number(((startPoint.y + endPoint.y) / 2).toFixed(3)),
+  };
+}
+
+function normalizeLevelName(levelIndex = 0) {
+  if (levelIndex === 0) return "Ground Floor";
+  if (levelIndex === 1) return "First Floor";
+  if (levelIndex === 2) return "Second Floor";
+  return `Level ${levelIndex}`;
+}
+
+function extractStyleDNA(masterDNA = {}) {
+  return (
+    masterDNA?.styleDNA ||
+    masterDNA?.style_dna ||
+    masterDNA?.style ||
+    masterDNA?.style_blend ||
+    masterDNA ||
+    {}
+  );
+}
+
+function buildCanonicalTechnicalGeometry(masterDNA = {}, projectContext = {}) {
+  const explicitGeometry =
+    masterDNA?.projectGeometry ||
+    masterDNA?.canonicalGeometry ||
+    (masterDNA?.geometry?.levels?.length ? masterDNA.geometry : null);
+  if (
+    explicitGeometry &&
+    (explicitGeometry.schema_version ||
+      explicitGeometry.levels?.length ||
+      explicitGeometry.rooms?.length)
+  ) {
+    return coerceToCanonicalProjectGeometry(explicitGeometry);
+  }
+
+  const adapter = new GeometryAdapter(masterDNA);
+  const populatedFloors = Array.isArray(adapter.populatedGeometry?.floors)
+    ? adapter.populatedGeometry.floors
+    : Array.isArray(masterDNA?.floors)
+      ? masterDNA.floors
+      : [];
+  if (!populatedFloors.length) {
+    return null;
+  }
+
+  const styleDNA = extractStyleDNA(masterDNA);
+  const facadeGrammar = deriveFacadeGrammarForElevation({
+    ...masterDNA,
+    styleDNA,
+  });
+  const floorIndices = Array.from(
+    new Set([
+      ...populatedFloors.map((floor) => Number(floor?.level ?? 0)),
+      ...Object.keys(adapter.rooms || {}).map((floor) => Number(floor)),
+      ...Object.keys(adapter.walls || {}).map((floor) => Number(floor)),
+    ]),
+  )
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  const resolvedFloorCount = Math.max(
+    floorIndices.length,
+    toFiniteNumber(adapter.dimensions?.floors, floorIndices.length || 1),
+    1,
+  );
+  const floorHeights = Array.from({ length: resolvedFloorCount }, (_, index) =>
+    toFiniteNumber(adapter.dimensions?.floorHeights?.[index], 3),
+  );
+
+  const levels = Array.from({ length: resolvedFloorCount }, (_, levelIndex) => {
+    const floor =
+      populatedFloors.find(
+        (entry) => Number(entry?.level ?? 0) === Number(levelIndex),
+      ) || {};
+    const footprintPolygon = inferFootprintPolygon(floor, adapter.dimensions);
+    const footprintBBox = computeBBoxFromPoints(footprintPolygon);
+    const wallRecords = (adapter.walls?.[levelIndex] || []).map((wall) => {
+      const side = inferWallSide(wall, footprintPolygon);
+      const start = normalizePoint(wall.start);
+      const end = normalizePoint(wall.end);
+      const exterior =
+        wall.exterior === true ||
+        String(wall.type || wall.kind || "").toLowerCase() !== "interior";
+      return {
+        id: wall.id || `wall-${levelIndex}-${start.x}-${start.y}`,
+        start,
+        end,
+        thickness_m: toFiniteNumber(wall.thickness ?? wall.thickness_m, 0.3),
+        exterior,
+        kind: exterior ? "exterior" : "interior",
+        side,
+        room_ids: Array.isArray(wall.room_ids)
+          ? wall.room_ids
+          : Array.isArray(wall.adjacentRooms)
+            ? wall.adjacentRooms
+            : [],
+        source: "enhanced-technical-adapter",
+      };
+    });
+    const roomRecords = (adapter.rooms?.[levelIndex] || []).map(
+      (room, index) => {
+        const polygon = normalizeRoomPolygon(room);
+        const roomBBox = computeBBoxFromPoints(polygon);
+        return {
+          id: room.id || `room-${levelIndex}-${index}`,
+          name: room.name || `Room ${index + 1}`,
+          type: room.type || room.program_type || "room",
+          x: toFiniteNumber(room.x, roomBBox?.min_x ?? 0),
+          y: toFiniteNumber(room.y, roomBBox?.min_y ?? 0),
+          width:
+            toFiniteNumber(room.width, roomBBox?.width ?? 0) ||
+            toFiniteNumber(room.length, 4),
+          height:
+            toFiniteNumber(room.height, roomBBox?.height ?? 0) ||
+            toFiniteNumber(room.length, 3),
+          polygon,
+          actual_area: toFiniteNumber(
+            room.area ?? room.actual_area ?? room.actual_area_m2,
+            (roomBBox?.width || 0) * (roomBBox?.height || 0),
+          ),
+          source: "enhanced-technical-adapter",
+        };
+      },
+    );
+    const openings = adapter.getFloorOpenings(levelIndex);
+    const doorRecords = [];
+    const windowRecords = [];
+    openings.forEach((opening, index) => {
+      const wallId = opening.wall_id || opening.wallId || null;
+      const wall = wallRecords.find((entry) => entry.id === wallId) || null;
+      const openingType = String(
+        opening.type || opening.kind || opening.category || "window",
+      ).toLowerCase();
+      const normalizedOpening = {
+        id:
+          opening.id ||
+          `${openingType}-${levelIndex}-${wallId || "free"}-${index}`,
+        wall_id: wallId,
+        position:
+          opening.position_m ||
+          opening.position ||
+          opening.center ||
+          opening.centroid ||
+          (opening.wallStart && opening.wallEnd
+            ? midpoint(opening.wallStart, opening.wallEnd)
+            : wall
+              ? midpoint(wall.start, wall.end)
+              : { x: footprintBBox?.min_x ?? 0, y: footprintBBox?.min_y ?? 0 }),
+        width_m: toFiniteNumber(
+          opening.width_m ?? opening.width,
+          openingType === "door" ? 1 : 1.2,
+        ),
+        height_m: toFiniteNumber(
+          opening.height_m ?? opening.height,
+          openingType === "door" ? 2.1 : 1.4,
+        ),
+        sill_height_m: toFiniteNumber(
+          opening.sill_height_m ?? opening.sillHeight,
+          openingType === "door" ? 0 : 0.9,
+        ),
+        room_ids: Array.isArray(opening.room_ids) ? opening.room_ids : [],
+        source: "enhanced-technical-adapter",
+      };
+      if (openingType === "door") {
+        doorRecords.push(normalizedOpening);
+      } else {
+        windowRecords.push(normalizedOpening);
+      }
+    });
+    const stairRecords = (floor.stairs || []).map((stair, index) => {
+      const polygon = normalizePolygon(stair.polygon);
+      return {
+        id: stair.id || `stair-${levelIndex}-${index}`,
+        type: stair.type || "straight_run",
+        polygon:
+          polygon.length >= 3
+            ? polygon
+            : polygonFromBounds(
+                stair.boundingBox || stair.bbox || stair,
+                stair.width ?? stair.width_m ?? 2.4,
+                stair.depth ?? stair.height ?? stair.depth_m ?? 4.2,
+              ),
+        width_m: toFiniteNumber(stair.width_m ?? stair.width, 2.4),
+        depth_m: toFiniteNumber(
+          stair.depth_m ?? stair.depth ?? stair.height,
+          4.2,
+        ),
+        connects_to_level:
+          stair.connects_to_level ??
+          stair.connectsToLevel ??
+          stair.toLevel ??
+          levelIndex + 1,
+        source: "enhanced-technical-adapter",
+      };
+    });
+
+    return {
+      id: floor.id || `level-${levelIndex}`,
+      name: floor.name || normalizeLevelName(levelIndex),
+      level_number: levelIndex,
+      height_m: floorHeights[levelIndex] || 3,
+      polygon: footprintPolygon,
+      footprint: footprintPolygon,
+      rooms: roomRecords,
+      walls: wallRecords,
+      doors: doorRecords,
+      windows: windowRecords,
+      stairs: stairRecords,
+    };
+  });
+
+  const sitePolygon = normalizePolygon(
+    projectContext?.sitePolygon ||
+      masterDNA?.sitePolygon ||
+      masterDNA?.site?.boundary_polygon ||
+      [],
+  );
+  const boundaryPolygon =
+    sitePolygon.length >= 3
+      ? sitePolygon
+      : inferFootprintPolygon(
+          { polygon: levels[0]?.footprint || [] },
+          {
+            width: adapter.dimensions.width || adapter.dimensions.length || 12,
+            depth: adapter.dimensions.depth || adapter.dimensions.width || 10,
+          },
+        );
+  const roofType =
+    masterDNA?.roof?.type ||
+    masterDNA?.roof?.roof_language ||
+    masterDNA?.geometry?.roofType ||
+    masterDNA?.geometry?.roof?.type ||
+    "gable";
+
+  return coerceToCanonicalProjectGeometry({
+    project_id:
+      masterDNA?.designId ||
+      masterDNA?.projectId ||
+      masterDNA?.id ||
+      "enhanced-technical-drawing",
+    site: {
+      boundary_polygon: boundaryPolygon,
+      buildable_polygon: boundaryPolygon,
+    },
+    levels,
+    roof: {
+      type: roofType,
+      roof_language: masterDNA?.roof?.roof_language || roofType,
+    },
+    metadata: {
+      style_dna: styleDNA,
+      facade_grammar: facadeGrammar,
+      source: "enhanced-technical-adapter",
+    },
+  });
+}
+
+function tryBuildCanonicalPlanGraphic(
+  masterDNA = {},
+  floorIndex = 0,
+  context = {},
+) {
+  const canonicalGeometry = buildCanonicalTechnicalGeometry(masterDNA, context);
+  if (!canonicalGeometry?.levels?.length) {
+    return null;
+  }
+  const level =
+    canonicalGeometry.levels.find(
+      (entry) => Number(entry.level_number) === Number(floorIndex),
+    ) || canonicalGeometry.levels[floorIndex];
+  if (!level) {
+    return null;
+  }
+  return buildPlanGraphic(canonicalGeometry, {
+    levelId: level.id,
+    width: context.targetWidth,
+    height: context.targetHeight,
+  });
+}
+
+function tryBuildCanonicalElevationGraphic(
+  masterDNA = {},
+  orientation = "south",
+  context = {},
+) {
+  const canonicalGeometry = buildCanonicalTechnicalGeometry(masterDNA, context);
+  if (!canonicalGeometry?.levels?.length) {
+    return null;
+  }
+  return buildElevationGraphic(canonicalGeometry, extractStyleDNA(masterDNA), {
+    orientation,
+    width: context.targetWidth,
+    height: context.targetHeight,
+    facadeGrammar:
+      canonicalGeometry.metadata?.facade_grammar ||
+      deriveFacadeGrammarForElevation(masterDNA),
+  });
+}
+
+function tryBuildCanonicalSectionGraphic(
+  masterDNA = {},
+  sectionType = "longitudinal",
+  context = {},
+) {
+  const canonicalGeometry = buildCanonicalTechnicalGeometry(masterDNA, context);
+  if (!canonicalGeometry?.levels?.length) {
+    return null;
+  }
+  return buildSectionGraphic(canonicalGeometry, extractStyleDNA(masterDNA), {
+    sectionType,
+    width: context.targetWidth,
+    height: context.targetHeight,
+  });
 }
 
 /**
@@ -860,14 +1341,6 @@ export function generateEnhancedFloorPlanSVG(
   projectContext = {},
 ) {
   try {
-    // Check feature flag
-    if (!isFeatureEnabled("enhancedSVGGenerators")) {
-      logger.debug(
-        "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",
-      );
-      return null; // Signal to use fallback
-    }
-
     // Convert floor string to number
     const floorIndex =
       typeof floor === "string"
@@ -877,6 +1350,31 @@ export function generateEnhancedFloorPlanSVG(
             ? 1
             : parseInt(floor.replace(/\D/g, "")) || 0
         : floor;
+
+    const canonicalPlan = tryBuildCanonicalPlanGraphic(
+      masterDNA,
+      floorIndex,
+      projectContext,
+    );
+    if (canonicalPlan?.svg) {
+      logger.info(
+        `[EnhancedAdapter] Generated canonical geometry floor plan for floor ${floorIndex}`,
+      );
+      return wrapSVGResult(canonicalPlan.svg, {
+        type: "floor_plan",
+        floor: floorIndex,
+        renderer: canonicalPlan.renderer || "canonical-plan-graphic",
+        technical_quality_metadata:
+          canonicalPlan.technical_quality_metadata || null,
+      });
+    }
+
+    if (!isFeatureEnabled("enhancedSVGGenerators")) {
+      logger.debug(
+        "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",
+      );
+      return null; // Signal to use fallback
+    }
 
     // Create geometry adapter from DNA
     const geometry = new GeometryAdapter(masterDNA);
@@ -934,6 +1432,24 @@ export function generateEnhancedElevationSVG(
   projectContext = {},
 ) {
   try {
+    const canonicalElevation = tryBuildCanonicalElevationGraphic(
+      masterDNA,
+      orientation,
+      projectContext,
+    );
+    if (canonicalElevation?.svg) {
+      logger.info(
+        `[EnhancedAdapter] Generated canonical geometry ${orientation} elevation`,
+      );
+      return wrapSVGResult(canonicalElevation.svg, {
+        type: "elevation",
+        orientation,
+        renderer: canonicalElevation.renderer || "canonical-elevation-graphic",
+        technical_quality_metadata:
+          canonicalElevation.technical_quality_metadata || null,
+      });
+    }
+
     if (!isFeatureEnabled("enhancedSVGGenerators")) {
       logger.debug(
         "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",
@@ -993,6 +1509,24 @@ export function generateEnhancedSectionSVG(
   cutPosition = 0.5,
 ) {
   try {
+    const canonicalSection = tryBuildCanonicalSectionGraphic(
+      masterDNA,
+      sectionType,
+      projectContext,
+    );
+    if (canonicalSection?.svg) {
+      logger.info(
+        `[EnhancedAdapter] Generated canonical geometry ${sectionType} section`,
+      );
+      return wrapSVGResult(canonicalSection.svg, {
+        type: "section",
+        sectionType,
+        renderer: canonicalSection.renderer || "canonical-section-graphic",
+        technical_quality_metadata:
+          canonicalSection.technical_quality_metadata || null,
+      });
+    }
+
     if (!isFeatureEnabled("enhancedSVGGenerators")) {
       logger.debug(
         "[EnhancedAdapter] Feature flag disabled, falling back to basic generator",

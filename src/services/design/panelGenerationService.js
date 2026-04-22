@@ -2510,23 +2510,25 @@ export async function generateA1PanelsSequential(
           );
 
           if (!floorPlanResult) {
+            if (strictGeometryRequired) {
+              throw new Error(
+                `Deterministic geometry floor plan renderer could not produce ${job.type} without fallback.`,
+              );
+            }
             // Fallback to basic generator
             logger.debug(
               `   ↩️ Enhanced generator returned null, using basic generator`,
             );
-            floorPlanResult = generateFloorPlanSVG(
-              dnaWithGeometry,
-              floorLevel,
-              {
-                buildingType: job.meta?.buildingType || "residential",
-                programSpaces: job.meta?.programSpaces || [],
-                locationData: job.meta?.locationData,
-                sitePolygon: job.meta?.sitePolygon,
-                enhanced: true,
-                showDimensions: true,
-                showRoomLabels: true,
-              },
-            );
+            floorPlanResult = generateFloorPlanSVG(dnaWithGeometry, {
+              floor: floorIndex,
+              buildingType: job.meta?.buildingType || "residential",
+              programSpaces: job.meta?.programSpaces || [],
+              locationData: job.meta?.locationData,
+              sitePolygon: job.meta?.sitePolygon,
+              enhanced: true,
+              showDimensions: true,
+              showRoomLabels: true,
+            });
           } else {
             logger.info(
               `   🪑 Enhanced floor plan with furniture symbols generated`,
@@ -2631,22 +2633,24 @@ export async function generateA1PanelsSequential(
           );
 
           if (!elevationResult) {
+            if (strictGeometryRequired) {
+              throw new Error(
+                `Deterministic geometry elevation renderer could not produce ${job.type} without fallback.`,
+              );
+            }
             // Fallback to basic generator
             logger.debug(
               `   ↩️ Enhanced generator returned null, using basic generator`,
             );
-            elevationResult = generateElevationSVG(
-              dnaWithGeometry,
+            elevationResult = generateElevationSVG(dnaWithGeometry, {
               orientation,
-              {
-                buildingType: job.meta?.buildingType || "residential",
-                programSpaces: job.meta?.programSpaces || [],
-                enhanced: true,
-                showHatching: true,
-                showDimensions: true,
-                showMaterials: true,
-              },
-            );
+              buildingType: job.meta?.buildingType || "residential",
+              programSpaces: job.meta?.programSpaces || [],
+              enhanced: true,
+              showHatching: true,
+              showDimensions: true,
+              showMaterials: true,
+            });
           } else {
             logger.info(
               `   🧱 Enhanced elevation with material patterns generated`,
@@ -2757,20 +2761,22 @@ export async function generateA1PanelsSequential(
           );
 
           if (!sectionResult) {
+            if (strictGeometryRequired) {
+              throw new Error(
+                `Deterministic geometry section renderer could not produce ${job.type} without fallback.`,
+              );
+            }
             // Fallback to basic generator
             logger.debug(
               `   ↩️ Enhanced generator returned null, using basic generator`,
             );
-            sectionResult = generateSectionSVG(
-              dnaWithGeometry,
+            sectionResult = generateSectionSVG(dnaWithGeometry, {
               sectionType,
-              {
-                buildingType: job.meta?.buildingType || "residential",
-                programSpaces: job.meta?.programSpaces || [],
-                enhanced: true,
-              },
-              cutPosition,
-            );
+              buildingType: job.meta?.buildingType || "residential",
+              programSpaces: job.meta?.programSpaces || [],
+              enhanced: true,
+              scale: 50,
+            });
           } else {
             logger.info(
               `   🏗️ Enhanced section with structural details generated`,

@@ -11,6 +11,7 @@ import { getSectionLineweights } from "./sectionLineweightService.js";
 import { buildSectionWallDetailMarkup } from "./sectionWallDetailService.js";
 import { buildSectionOpeningDetailMarkup } from "./sectionOpeningDetailService.js";
 import { buildSectionStairDetailMarkup } from "./sectionStairDetailService.js";
+import { getEnvelopeDrawingBounds } from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -32,20 +33,6 @@ function roundMetric(value, precision = 3) {
   }
   const factor = 10 ** precision;
   return Math.round(numeric * factor) / factor;
-}
-
-function getBuildableBounds(geometry = {}) {
-  return (
-    geometry.site?.buildable_bbox ||
-    geometry.site?.boundary_bbox || {
-      min_x: 0,
-      min_y: 0,
-      max_x: 12,
-      max_y: 10,
-      width: 12,
-      height: 10,
-    }
-  );
 }
 
 function getLevelProfiles(geometry = {}) {
@@ -602,8 +589,8 @@ export function renderSectionSvg(
   const levelProfiles = getLevelProfiles(geometry);
   const width = options.width || 1200;
   const height = options.height || 760;
-  const padding = 86;
-  const bounds = getBuildableBounds(geometry);
+  const padding = options.sheetMode === true ? 60 : 86;
+  const bounds = getEnvelopeDrawingBounds(geometry);
   const horizontalExtent =
     sectionAxis(sectionType) === "x"
       ? Number(bounds.height || 10)
