@@ -15,7 +15,6 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, X } from "lucide-react";
-import { SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { useArchitectAIWorkflow } from "../hooks/useArchitectAIWorkflow.js";
 import { useWizardState } from "../hooks/useWizardState.js";
 import { getDemoProject, buildDemoResult } from "../data/demoProjects.js";
@@ -49,6 +48,12 @@ import LandingPage from "./LandingPage.jsx";
 import { Card } from "./ui";
 import { AppShell, PageTransition } from "./layout";
 import "../styles/deepgram.css";
+import {
+  AuthSignInButton,
+  AuthSignedIn,
+  AuthSignedOut,
+  clerkAuthConfigured,
+} from "../services/auth/clerkFacade.js";
 
 const ResultsStep = lazy(() => import("./steps/ResultsStep.jsx"));
 
@@ -1688,28 +1693,34 @@ const ArchitectAIWizardContainer = () => {
             </motion.div>
           )}
 
-          {/* Wizard steps gated behind Clerk auth */}
-          <SignedIn>{renderStep()}</SignedIn>
-          <SignedOut>
-            {currentStep === 0 ? (
-              renderStep()
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
-                <h2 className="text-2xl font-bold text-white">
-                  Sign in to continue
-                </h2>
-                <p className="text-gray-400 max-w-sm">
-                  Create a free account to generate professional architectural
-                  designs with AI.
-                </p>
-                <SignInButton mode="modal">
-                  <button className="px-6 py-3 bg-royal-600 hover:bg-royal-500 text-white font-semibold rounded-xl transition-colors">
-                    Sign In / Sign Up
-                  </button>
-                </SignInButton>
-              </div>
-            )}
-          </SignedOut>
+          {/* Wizard steps gated behind Clerk auth when configured */}
+          {!clerkAuthConfigured ? (
+            renderStep()
+          ) : (
+            <>
+              <AuthSignedIn>{renderStep()}</AuthSignedIn>
+              <AuthSignedOut>
+                {currentStep === 0 ? (
+                  renderStep()
+                ) : (
+                  <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
+                    <h2 className="text-2xl font-bold text-white">
+                      Sign in to continue
+                    </h2>
+                    <p className="text-gray-400 max-w-sm">
+                      Create a free account to generate professional
+                      architectural designs with AI.
+                    </p>
+                    <AuthSignInButton mode="modal">
+                      <button className="px-6 py-3 bg-royal-600 hover:bg-royal-500 text-white font-semibold rounded-xl transition-colors">
+                        Sign In / Sign Up
+                      </button>
+                    </AuthSignInButton>
+                  </div>
+                )}
+              </AuthSignedOut>
+            </>
+          )}
 
           {/* Global Error Display */}
           <AnimatePresence>

@@ -6,9 +6,15 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
 import { Check, Zap, ArrowLeft } from "lucide-react";
 import { PLANS } from "../config/plans.js";
+import {
+  AuthSignInButton,
+  AuthSignedIn,
+  AuthSignedOut,
+  clerkAuthConfigured,
+  useOptionalAuth,
+} from "../services/auth/clerkFacade.js";
 
 const PLAN_ORDER = ["free", "starter", "professional", "enterprise"];
 
@@ -90,8 +96,15 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
         ))}
       </ul>
 
-      <SignedIn>
-        {isFree ? (
+      <AuthSignedIn>
+        {!clerkAuthConfigured && !isFree ? (
+          <a
+            href="mailto:hello@archiaisolution.pro?subject=Subscription Access"
+            className="block w-full text-center py-2 rounded-lg text-sm font-medium bg-navy-800 text-gray-300 hover:bg-navy-700 border border-navy-700 transition-colors"
+          >
+            Contact us
+          </a>
+        ) : isFree ? (
           <button
             disabled
             className="w-full py-2 rounded-lg text-sm font-medium bg-navy-800 text-gray-500 cursor-default border border-navy-700"
@@ -125,21 +138,21 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
             )}
           </button>
         )}
-      </SignedIn>
+      </AuthSignedIn>
 
-      <SignedOut>
-        <SignInButton mode="modal">
+      <AuthSignedOut>
+        <AuthSignInButton mode="modal">
           <button className="w-full py-2 rounded-lg text-sm font-medium bg-royal-600 hover:bg-royal-500 text-white transition-colors">
             Sign in to subscribe
           </button>
-        </SignInButton>
-      </SignedOut>
+        </AuthSignInButton>
+      </AuthSignedOut>
     </motion.div>
   );
 };
 
 const PricingPage = ({ onBack }) => {
-  const { getToken } = useAuth();
+  const { getToken } = useOptionalAuth();
   const [loading, setLoading] = useState(null);
   const [error, setError] = useState(null);
 
@@ -150,6 +163,11 @@ const PricingPage = ({ onBack }) => {
     setError(null);
 
     try {
+      if (!clerkAuthConfigured) {
+        throw new Error(
+          "Authentication is not configured for this deployment. Contact support to subscribe.",
+        );
+      }
       const token = await getToken();
       const res = await fetch("/api/stripe/create-checkout", {
         method: "POST",

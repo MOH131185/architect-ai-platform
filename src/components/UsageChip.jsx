@@ -4,10 +4,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useOptionalAuth } from "../services/auth/clerkFacade.js";
 
 const UsageChip = () => {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn } = useOptionalAuth();
   const [usage, setUsage] = useState(null);
 
   const fetchUsage = useCallback(async () => {

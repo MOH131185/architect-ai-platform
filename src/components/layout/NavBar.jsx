@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import PropTypes from "prop-types";
-import {
-  SignedIn,
-  SignedOut,
-  SignInButton,
-  UserButton,
-} from "@clerk/clerk-react";
 import { fadeInDown } from "../../styles/animations.js";
 import Button from "../ui/Button.jsx";
 import { Layers } from "lucide-react";
 import CompanyLogo from "../ui/CompanyLogo.jsx";
 import UsageChip from "../UsageChip.jsx";
+import {
+  AuthSignInButton,
+  AuthSignedIn,
+  AuthSignedOut,
+  AuthUserButton,
+} from "../../services/auth/clerkFacade.js";
 
 const NavBar = ({
   onNewDesign,
@@ -94,17 +94,17 @@ const NavBar = ({
                 New Design
               </Button>
             )}
-            <SignedOut>
-              <SignInButton mode="modal">
+            <AuthSignedOut>
+              <AuthSignInButton mode="modal">
                 <button className="px-4 py-2 text-sm font-medium text-white border border-navy-600 rounded-lg hover:bg-navy-800 transition-colors">
                   Sign In
                 </button>
-              </SignInButton>
-            </SignedOut>
-            <SignedIn>
+              </AuthSignInButton>
+            </AuthSignedOut>
+            <AuthSignedIn>
               <UsageChip />
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
+              <AuthUserButton afterSignOutUrl="/" />
+            </AuthSignedIn>
           </div>
         </div>
       </div>

@@ -110,13 +110,14 @@ function pointInPolygon(point = {}, polygon = []) {
       return true;
     }
 
-    const deltaY = Number(previous.y || 0) - Number(current.y || 0) || 0.000001;
-    const crossesScanline =
-      Number(current.y || 0) > Number(point.y || 0) !==
-      Number(previous.y || 0) > Number(point.y || 0);
+    const currentY = Number(current.y ?? 0);
+    const previousY = Number(previous.y ?? 0);
+    const pointY = Number(point.y ?? 0);
+    const deltaY = previousY - currentY || 0.000001;
+    const crossesScanline = currentY > pointY !== previousY > pointY;
     const intersectionX =
       ((Number(previous.x || 0) - Number(current.x || 0)) *
-        (Number(point.y || 0) - Number(current.y || 0))) /
+        (pointY - currentY)) /
         deltaY +
       Number(current.x || 0);
     const intersects = crossesScanline && Number(point.x || 0) < intersectionX;
