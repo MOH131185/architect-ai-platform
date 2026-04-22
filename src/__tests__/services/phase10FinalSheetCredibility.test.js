@@ -529,7 +529,7 @@ describe("Phase 10 final sheet credibility", () => {
     expect(regression.renderedTextZoneStatus).toBe("block");
   });
 
-  test("post-compose verification classifies a strong board as publishable", async () => {
+  test("post-compose verification keeps a board with blocked section evidence reviewable", async () => {
     const geometry = createGeometry();
     const facadeGrammar = createFacadeGrammar();
     const east = renderElevationSvg(geometry, createStyleDNA(), {
@@ -575,14 +575,18 @@ describe("Phase 10 final sheet credibility", () => {
     });
 
     expect(verification.renderedTextZone.status).toBe("pass");
-    expect(verification.publishability.status).toBe("publishable");
+    expect(verification.publishability.status).toBe("reviewable");
     expect(verification.publishability.verificationPhase).toBe("post_compose");
     expect(verification.publishability.decisive).toBe(true);
-    expect(verification.publishability.finalDecision).toBe("publishable");
+    expect(verification.publishability.finalDecision).toBe(
+      "reviewable_with_warnings",
+    );
     expect(verification.verificationState.postComposeVerified).toBe(true);
     expect(verification.verificationState.decisive).toBe(true);
-    expect(verification.verificationState.overallDecision).toBe("publishable");
-    expect(verification.verificationState.publishability.verified).toBe(true);
+    expect(verification.verificationState.overallDecision).toBe(
+      "reviewable_with_warnings",
+    );
+    expect(verification.verificationState.publishability.reviewable).toBe(true);
   });
 
   test("compose blocking consumes phase 10 publishability blockers", () => {

@@ -14,6 +14,30 @@ function positiveScore(flag, hit = 1, miss = 0) {
   return flag ? hit : miss;
 }
 
+function normalizeQualityBucket(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function countPositiveSignals(values = []) {
+  return values.filter((entry) => Number(entry || 0) > 0).length;
+}
+
+function computeExpectedRoomLabelCount(
+  drawingType = "unknown",
+  metadata = {},
+  drawing = {},
+) {
+  if (drawingType === "section") {
+    const cutRoomCount = Number(metadata.cut_room_count || 0);
+    if (cutRoomCount > 0) {
+      return cutRoomCount;
+    }
+  }
+  return Number(metadata.room_count || drawing.room_count || 0);
+}
+
 function computeGeometryCompleteness(
   drawingType = "unknown",
   metadata = {},
@@ -71,13 +95,18 @@ function computeLabelPresence(
   metadata = {},
   drawing = {},
 ) {
-  const roomCount = Number(metadata.room_count || drawing.room_count || 0);
-  const labelCount = Number(
-    metadata.room_label_count || metadata.level_label_count || 0,
+  const expectedLabelCount = computeExpectedRoomLabelCount(
+    drawingType,
+    metadata,
+    drawing,
   );
+  const labelCount =
+    drawingType === "elevation"
+      ? Number(metadata.level_label_count || 0)
+      : Number(metadata.room_label_count || metadata.level_label_count || 0);
 
-  if (roomCount > 0) {
-    return clamp(labelCount / roomCount, 0, 1);
+  if (expectedLabelCount > 0) {
+    return clamp(labelCount / expectedLabelCount, 0, 1);
   }
   return labelCount > 0 ? 1 : 0.3;
 }
@@ -337,6 +366,41 @@ export function scoreTechnicalPanel({
     drawingType === "elevation" ? computeElevationRichness(metadata) : null;
   const sectionUsefulness =
     drawingType === "section" ? computeSectionUsefulness(metadata) : null;
+  const expectedRoomLabelCount = computeExpectedRoomLabelCount(
+    drawingType,
+    metadata,
+    drawing,
+  );
+  const roomLabelCount = Number(metadata.room_label_count || 0);
+  const planSignalCount =
+    drawingType === "plan"
+      ? countPositiveSignals([
+          metadata.room_count || drawing.room_count,
+          metadata.wall_count,
+          metadata.window_count || drawing.window_count,
+          metadata.door_count,
+          metadata.door_swing_count,
+          metadata.stair_count || drawing.stair_count,
+          metadata.circulation_path_count,
+        ])
+      : 0;
+  const elevationSignalCount =
+    drawingType === "elevation"
+      ? countPositiveSignals([
+          metadata.window_count || drawing.window_count,
+          metadata.level_label_count,
+          metadata.ffl_marker_count,
+          metadata.material_zone_count,
+          metadata.bay_count,
+          metadata.feature_count,
+          metadata.opening_group_count,
+          metadata.wall_zone_count,
+          metadata.feature_family_count,
+        ])
+      : 0;
+  const directEvidenceQuality = normalizeQualityBucket(
+    metadata.section_direct_evidence_quality,
+  );
   const fragmentQuality = isFeatureEnabled("useDrawingFragmentScoringPhase9")
     ? computeFragmentQuality(drawingType, metadata)
     : null;
@@ -375,6 +439,16 @@ export function scoreTechnicalPanel({
   if (!drawing.svg) {
     blockers.push(
       `${drawing.title || drawingType} drawing SVG payload is missing.`,
+    );
+  }
+  if (
+    drawingType === "plan" &&
+    Number(planDensity) < 0.24 &&
+    Number(geometryCompleteness) < 0.46 &&
+    planSignalCount <= 2
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} plan panel appears blank or nearly empty, so composition is blocked.`,
     );
   }
   if (geometryExplicitlyIncomplete) {
@@ -422,11 +496,18 @@ export function scoreTechnicalPanel({
   if (
     drawingType === "section" &&
     isFeatureEnabled("useSectionCredibilityGatePhase13") &&
-    String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
-      "blocked"
+    directEvidenceQuality === "blocked"
   ) {
     blockers.push(
       `${drawing.title || drawingType} direct section evidence is blocked, so the panel cannot be treated as exact technical truth.`,
+    );
+  } else if (
+    drawingType === "section" &&
+    isFeatureEnabled("useSectionCredibilityGatePhase13") &&
+    directEvidenceQuality === "weak"
+  ) {
+    blockers.push(
+      `${drawing.title || drawingType} direct section evidence remains weak, so the section cannot publish as a final technical panel.`,
     );
   }
   if (
@@ -527,6 +608,53 @@ export function scoreTechnicalPanel({
     ) {
       warnings.push(
         `${drawing.title || drawingType} lacks stronger near-boolean cut support, so the section still reads thinner than preferred for Phase 20.`,
+      );
+    }
+  }
+  if (drawingType === "plan" && expectedRoomLabelCount > 0) {
+    if (roomLabelCount === 0) {
+      blockers.push(
+        `${drawing.title || drawingType} room labels are missing, so the plan cannot publish as a technical panel.`,
+      );
+    } else if (
+      Number(thresholds.minimumLabelPresence || 0) > 0 &&
+      Number(labelPresence) < Number(thresholds.minimumLabelPresence)
+    ) {
+      warnings.push(
+        `${drawing.title || drawingType} room label coverage ${round(
+          labelPresence,
+        )} is below the preferred threshold ${
+          thresholds.minimumLabelPresence
+        }.`,
+      );
+    }
+  }
+  if (drawingType === "section" && expectedRoomLabelCount > 0) {
+    if (roomLabelCount === 0) {
+      warnings.push(
+        `${drawing.title || drawingType} room labels are missing from the section panel, so the board should not publish it without clearer room annotation.`,
+      );
+    } else if (Number(labelPresence) < 0.6) {
+      warnings.push(
+        `${drawing.title || drawingType} room label coverage ${round(
+          labelPresence,
+        )} is thin for a final technical section.`,
+      );
+    }
+  }
+  if (drawingType === "elevation") {
+    if (Number(elevationRichness) < 0.46 && elevationSignalCount <= 2) {
+      blockers.push(
+        `${drawing.title || drawingType} elevation panel is nearly empty, so composition is blocked.`,
+      );
+    } else if (
+      Number(elevationRichness) <
+      Number(thresholds.minimumElevationRichness || 0) + 0.08
+    ) {
+      warnings.push(
+        `${drawing.title || drawingType} elevation richness ${round(
+          elevationRichness,
+        )} remains marginal for final board readability.`,
       );
     }
   }
@@ -827,16 +955,6 @@ export function scoreTechnicalPanel({
     );
   }
   if (
-    drawingType === "section" &&
-    isFeatureEnabled("useSectionCredibilityGatePhase13") &&
-    String(metadata.section_direct_evidence_quality || "").toLowerCase() ===
-      "weak"
-  ) {
-    warnings.push(
-      `${drawing.title || drawingType} direct section evidence is still weaker than preferred for a final board.`,
-    );
-  }
-  if (
     Number(annotationCompleteness) <
     Number(thresholds.minimumAnnotationCompleteness || 0)
   ) {
@@ -852,11 +970,18 @@ export function scoreTechnicalPanel({
     Number(thresholds.minimumLabelPresence || 0) > 0 &&
     Number(labelPresence) < Number(thresholds.minimumLabelPresence)
   ) {
-    warnings.push(
-      `${drawing.title || drawingType} label presence ${round(
-        labelPresence,
-      )} is below the preferred threshold ${thresholds.minimumLabelPresence}.`,
-    );
+    if (
+      drawingType !== "plan" &&
+      !(drawingType === "section" && expectedRoomLabelCount > 0)
+    ) {
+      warnings.push(
+        `${drawing.title || drawingType} label presence ${round(
+          labelPresence,
+        )} is below the preferred threshold ${
+          thresholds.minimumLabelPresence
+        }.`,
+      );
+    }
   }
 
   if (
