@@ -131,7 +131,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd genarch
-          pip install -e ".[all]"
+          pip install -e ".[dev,all]"
 
       - name: Run smoke tests
         run: |
@@ -166,7 +166,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd genarch
-          pip install -e ".[all]"
+          pip install -e ".[dev,all]"
 
       - name: Run full pipeline test
         run: |
@@ -248,7 +248,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd genarch
-          pip install -e ".[all]"
+          pip install -e ".[dev,all]"
 
       - name: Run reproducibility test
         run: |
