@@ -16,12 +16,9 @@
 import pixelmatch from "pixelmatch";
 import logger from "../core/logger.js";
 
-const EXTERIOR_GROUP = [
-  "hero_3d",
-  "interior_3d",
-  "axonometric",
-  "site_diagram",
-];
+const VISUAL_COMPARISON_GROUP = ["hero_3d", "interior_3d", "axonometric"];
+
+const GEOMETRY_AUTHORITY_PANELS = new Set(["site_diagram", "site_plan"]);
 
 const DEFAULT_THRESHOLDS = {
   // Balanced thresholds for real cross-view consistency.
@@ -135,6 +132,18 @@ function combinedSimilarity(hashDistance, pixelSimilarity) {
   return hashSimilarity * 0.7 + px * 0.3;
 }
 
+function shouldSkipHeroImageComparison(panelType, entry) {
+  if (!panelType) {
+    return false;
+  }
+
+  if (entry?.validationMode === "geometry_only") {
+    return true;
+  }
+
+  return GEOMETRY_AUTHORITY_PANELS.has(panelType);
+}
+
 /**
  * Validate all panels for cross-view consistency.
  *
@@ -197,10 +206,25 @@ export async function validateAllPanels(panelMap, options = {}) {
   const comparisons = [];
   const failures = [];
 
-  for (const panelType of EXTERIOR_GROUP) {
+  for (const panelType of [
+    ...VISUAL_COMPARISON_GROUP,
+    ...GEOMETRY_AUTHORITY_PANELS,
+  ]) {
     if (panelType === "hero_3d") continue;
     const entry = panelMap[panelType];
     if (!entry?.buffer && !entry?.url) {
+      continue;
+    }
+
+    if (shouldSkipHeroImageComparison(panelType, entry)) {
+      comparisons.push({
+        panelType,
+        skipped: true,
+        pass: true,
+        reasons: [
+          "Skipped hero-image comparison because this panel is validated by deterministic geometry authority metadata.",
+        ],
+      });
       continue;
     }
 
@@ -250,10 +274,18 @@ export async function validateAllPanels(panelMap, options = {}) {
     }
   }
 
+  const scoredComparisons = comparisons.filter(
+    (comparison) =>
+      !comparison?.skipped &&
+      typeof comparison?.combinedSimilarity === "number",
+  );
+
   const overallScore =
-    comparisons.length > 0
-      ? comparisons.reduce((sum, c) => sum + (c.combinedSimilarity || 0), 0) /
-        comparisons.length
+    scoredComparisons.length > 0
+      ? scoredComparisons.reduce(
+          (sum, comparison) => sum + comparison.combinedSimilarity,
+          0,
+        ) / scoredComparisons.length
       : 1;
 
   return {
