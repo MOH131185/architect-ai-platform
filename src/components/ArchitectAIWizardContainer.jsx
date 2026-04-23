@@ -25,6 +25,7 @@ import siteAnalysisService from "../services/siteAnalysisService.js";
 import autoLevelAssignmentService from "../services/autoLevelAssignmentService.js";
 import logger from "../utils/logger.js";
 import { convertPdfFileToImageFile } from "../utils/pdfToImages.js";
+import { isFeatureEnabled } from "../config/featureFlags.js";
 import {
   sanitizePromptInput,
   sanitizeDimensionInput,
@@ -32,6 +33,15 @@ import {
 import buildingFootprintService from "../services/buildingFootprintService.js";
 import { buildSiteContext } from "../rings/ring1-site/siteContextBuilder.js";
 import { captureSnapshotForPersistence } from "../services/siteMapSnapshotService.js";
+import { buildProjectPipelineV2Bundle } from "../services/project/projectPipelineV2Service.js";
+import {
+  generateResidentialProgramBrief,
+  normalizeResidentialProgramSpaces,
+} from "../services/project/residentialProgramEngine.js";
+import {
+  isSupportedResidentialV2SubType,
+  UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+} from "../services/project/v2ProjectContracts.js";
 import PricingPage from "./PricingPage.jsx";
 
 // Step Components
@@ -200,6 +210,10 @@ const ArchitectAIWizardContainer = () => {
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [isGenerationTimerRunning, setIsGenerationTimerRunning] =
     useState(false);
+  const residentialV2Enabled = isFeatureEnabled("ukResidentialV2");
+  const restrictToResidentialV2 = isFeatureEnabled(
+    "hideExperimentalBuildingTypes",
+  );
 
   const hasA1Output = Boolean(
     result?.a1Sheet?.url ||
@@ -857,6 +871,11 @@ const ArchitectAIWizardContainer = () => {
     setProgramWarnings([]);
 
     try {
+      const subType = projectDetails.subType || projectDetails.program;
+      const isSupportedResidentialV2 =
+        residentialV2Enabled &&
+        projectDetails.category === "residential" &&
+        isSupportedResidentialV2SubType(subType);
       const sanitizedProgram = sanitizePromptInput(
         projectDetails.program ||
           projectDetails.subType ||
@@ -864,6 +883,12 @@ const ArchitectAIWizardContainer = () => {
         { maxLength: 120, allowNewlines: false },
       );
       const sanitizedArea = sanitizeDimensionInput(projectDetails.area);
+      const isFloorCountLocked = !!projectDetails.floorCountLocked;
+      const desiredFloorCount = Math.max(
+        1,
+        parseInt(projectDetails.floorCount, 10) || 1,
+      );
+      const siteArea = siteMetrics?.areaM2 || 0;
 
       if (!sanitizedProgram || !sanitizedArea) {
         setProgramWarnings([
@@ -872,15 +897,108 @@ const ArchitectAIWizardContainer = () => {
         return;
       }
 
+      if (restrictToResidentialV2 && !isSupportedResidentialV2) {
+        setProgramWarnings([
+          "UK Residential V2 currently supports low-rise residential types only.",
+        ]);
+        setProgramSpaces([]);
+        return [];
+      }
+
+      if (isSupportedResidentialV2) {
+        const programBrief = generateResidentialProgramBrief({
+          subType,
+          totalAreaM2: parseFloat(sanitizedArea),
+          siteAreaM2: siteArea,
+          entranceDirection: projectDetails.entranceDirection || "S",
+          qualityTier: "mid",
+          customNotes: projectDetails.customNotes || "",
+        });
+
+        let spaces = normalizeResidentialProgramSpaces(programBrief.spaces).map(
+          (space, index) => ({
+            ...space,
+            id: space.id || `space_${Date.now()}_${index}`,
+            spaceType: space.spaceType || space.type || space.name,
+            name: String(space.name || space.label || `Space ${index + 1}`),
+            label: String(space.label || space.name || `Space ${index + 1}`),
+            area: Math.max(0, parseFloat(space.area) || 0),
+            count: Math.max(1, parseInt(space.count, 10) || 1),
+            level: space.level || "Ground",
+            notes: space.notes || "",
+          }),
+        );
+
+        const recommendedFloorCount = Math.max(1, programBrief.levelCount || 1);
+        const floorCountToUse = isFloorCountLocked
+          ? desiredFloorCount
+          : recommendedFloorCount;
+        const totalProgramArea = spaces.reduce(
+          (sum, space) =>
+            sum + Number(space.area || 0) * Number(space.count || 1),
+          0,
+        );
+        const floorMetrics =
+          siteArea > 0
+            ? autoLevelAssignmentService.calculateOptimalLevels(
+                totalProgramArea,
+                siteArea,
+                {
+                  buildingType: sanitizedProgram,
+                  subType,
+                  maxFloors: 4,
+                  circulationFactor: programBrief.circulationRatio
+                    ? 1 + Number(programBrief.circulationRatio)
+                    : 1.12,
+                },
+              )
+            : null;
+
+        if (floorCountToUse !== recommendedFloorCount && spaces.length > 0) {
+          const reassigned =
+            autoLevelAssignmentService.autoAssignSpacesToLevels(
+              spaces,
+              floorCountToUse,
+              subType,
+            );
+          reassigned._calculatedFloorCount = floorCountToUse;
+          reassigned._floorMetrics = floorMetrics;
+          spaces = reassigned;
+        } else {
+          spaces._calculatedFloorCount = floorCountToUse;
+          spaces._floorMetrics = floorMetrics;
+        }
+
+        setProjectDetails((prev) => ({
+          ...prev,
+          autoDetectedFloorCount: recommendedFloorCount,
+          floorCount: prev.floorCountLocked
+            ? prev.floorCount || floorCountToUse
+            : floorCountToUse,
+          floorMetrics,
+          qualityTier: prev.qualityTier || "mid",
+          program: subType,
+          pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+        }));
+        setProgramSpaces(spaces);
+        setProgramWarnings([
+          `Compiled deterministic UK residential program with ${programBrief.spaces.length} spaces.`,
+          floorCountToUse === recommendedFloorCount
+            ? `Recommended ${recommendedFloorCount} levels from program and site-fit rules.`
+            : `Program recommended ${recommendedFloorCount} levels, locked to ${floorCountToUse}.`,
+        ]);
+
+        logger.success("Residential V2 program compiled", {
+          subtype: subType,
+          spaces: spaces.length,
+          floors: floorCountToUse,
+        });
+        return spaces;
+      }
+
       const togetherAIReasoningService = (
         await import("../services/togetherAIReasoningService")
       ).default;
-
-      const isFloorCountLocked = !!projectDetails.floorCountLocked;
-      const desiredFloorCount = Math.max(
-        1,
-        parseInt(projectDetails.floorCount, 10) || 1,
-      );
       const suggestedFloorCount =
         projectDetails.autoDetectedFloorCount || desiredFloorCount || 2;
       const floorCountForPrompt = isFloorCountLocked
@@ -960,7 +1078,6 @@ const ArchitectAIWizardContainer = () => {
       }));
 
       // Auto level assignment with site area
-      const siteArea = siteMetrics?.areaM2 || 0;
       const fallbackFloorCount = Math.max(
         1,
         parseInt(projectDetails.floorCount, 10) || 1,
@@ -1050,6 +1167,8 @@ const ArchitectAIWizardContainer = () => {
     setProgramWarnings,
     setProjectDetails,
     siteMetrics,
+    residentialV2Enabled,
+    restrictToResidentialV2,
   ]);
 
   const handleProgramSpacesChange = useCallback(
@@ -1301,18 +1420,65 @@ const ArchitectAIWizardContainer = () => {
         },
       });
 
+      let v2Bundle = null;
+      const selectedSubType = projectDetails.subType || projectDetails.program;
+      const canUseResidentialV2 =
+        residentialV2Enabled &&
+        projectDetails.category === "residential" &&
+        isSupportedResidentialV2SubType(selectedSubType);
+
+      if (restrictToResidentialV2 && !canUseResidentialV2) {
+        throw new Error(
+          "UK Residential V2 currently supports detached, semi-detached, terraced, villa, cottage, duplex, and small apartment residential projects only.",
+        );
+      }
+
+      if (canUseResidentialV2) {
+        v2Bundle = await buildProjectPipelineV2Bundle({
+          projectDetails: {
+            ...projectDetails,
+            program: selectedSubType,
+          },
+          programSpaces: effectiveProgramSpaces,
+          locationData,
+          sitePolygon,
+          siteMetrics,
+          materialWeight,
+          characteristicWeight,
+          portfolioFiles,
+        });
+
+        if (!v2Bundle?.supported) {
+          throw new Error(
+            v2Bundle?.blockers?.[0] ||
+              "Project is outside the supported UK Residential V2 scope.",
+          );
+        }
+
+        if (v2Bundle?.validation?.valid === false) {
+          throw new Error(
+            v2Bundle.validation.blockers?.[0] ||
+              "Compiled project validation failed before sheet generation.",
+          );
+        }
+
+        effectiveProgramSpaces =
+          normalizeResidentialProgramSpaces(
+            v2Bundle.programBrief?.spaces || [],
+          ) || effectiveProgramSpaces;
+      }
+
       const designSpec = {
-        buildingProgram:
-          projectDetails.program ||
-          projectDetails.subType ||
-          projectDetails.category,
+        buildingProgram: selectedSubType || projectDetails.category,
         buildingCategory: projectDetails.category,
         buildingSubType: projectDetails.subType,
         buildingNotes: projectDetails.customNotes,
         floorArea: parseFloat(projectDetails.area),
         area: parseFloat(projectDetails.area), // Alias for services expecting `area`
-        floorCount: projectDetails.floorCount || 2,
-        floors: projectDetails.floorCount || 2, // Alias for services expecting `floors`
+        floorCount:
+          v2Bundle?.programBrief?.levelCount || projectDetails.floorCount || 2,
+        floors:
+          v2Bundle?.programBrief?.levelCount || projectDetails.floorCount || 2, // Alias for services expecting `floors`
         entranceOrientation: projectDetails.entranceDirection,
         entranceDirection: projectDetails.entranceDirection, // Maintain backward compatibility
         programSpaces: effectiveProgramSpaces,
@@ -1320,10 +1486,14 @@ const ArchitectAIWizardContainer = () => {
           autoDetected: projectDetails.entranceAutoDetected,
           confidence: projectDetails.entranceConfidence,
           warnings: programWarnings,
+          pipelineVersion:
+            v2Bundle?.pipelineVersion || UK_RESIDENTIAL_V2_PIPELINE_VERSION,
         },
         sitePolygon,
         siteMetrics, // Alias for downstream generators expecting `siteMetrics`
         sitePolygonMetrics: siteMetrics,
+        pipelineVersion:
+          v2Bundle?.pipelineVersion || UK_RESIDENTIAL_V2_PIPELINE_VERSION,
         portfolioBlend: {
           materialWeight,
           characteristicWeight,
@@ -1342,6 +1512,19 @@ const ArchitectAIWizardContainer = () => {
         siteAnalysis: locationData?.siteAnalysis,
         siteDNA: locationData?.siteDNA,
         localMaterials: locationData?.localMaterials,
+        siteEvidence: v2Bundle?.siteEvidence || null,
+        localStyleEvidence: v2Bundle?.localStyleEvidence || null,
+        portfolioStyleEvidence: v2Bundle?.portfolioStyleEvidence || null,
+        styleBlendSpec: v2Bundle?.styleBlendSpec || null,
+        programBrief: v2Bundle?.programBrief || null,
+        projectGeometry: v2Bundle?.projectGeometry || null,
+        populatedGeometry: v2Bundle?.populatedGeometry || null,
+        compiledProject: v2Bundle?.compiledProject || null,
+        projectQuantityTakeoff: v2Bundle?.projectQuantityTakeoff || null,
+        blendedStyle: v2Bundle?.blendedStyle || null,
+        confidence: v2Bundle?.confidence || null,
+        validation: v2Bundle?.validation || null,
+        v2Bundle,
         location: {
           ...locationData,
           climate: locationData?.climate,
@@ -1388,6 +1571,8 @@ const ArchitectAIWizardContainer = () => {
     programSpaces,
     programWarnings,
     projectDetails,
+    residentialV2Enabled,
+    restrictToResidentialV2,
     setCurrentStep,
     setGeneratedDesignId,
     siteMetrics,
@@ -1492,11 +1677,16 @@ const ArchitectAIWizardContainer = () => {
       customNotes: "",
       area: "",
       floorCount: 2,
+      floorCountLocked: false,
+      autoDetectedFloorCount: null,
+      floorMetrics: null,
       footprintArea: "",
       entranceDirection: "N",
       entranceAutoDetected: false,
       entranceConfidence: 0,
       program: "",
+      qualityTier: "mid",
+      pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
     });
     setProgramSpaces([]);
     setProgramWarnings([]);

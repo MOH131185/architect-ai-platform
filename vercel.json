@@ -87,6 +87,30 @@
       "destination": "/api/a1/compose.js"
     },
     {
+      "source": "/api/program/compile",
+      "destination": "/api/program/compile.js"
+    },
+    {
+      "source": "/api/project/compile",
+      "destination": "/api/project/compile.js"
+    },
+    {
+      "source": "/api/project/generate-sheet",
+      "destination": "/api/project/generate-sheet.js"
+    },
+    {
+      "source": "/api/project/export/dxf",
+      "destination": "/api/project/export/dxf.js"
+    },
+    {
+      "source": "/api/project/export/ifc",
+      "destination": "/api/project/export/ifc.js"
+    },
+    {
+      "source": "/api/project/export/xlsx",
+      "destination": "/api/project/export/xlsx.js"
+    },
+    {
       "source": "/api/health",
       "destination": "/api/health.js"
     },

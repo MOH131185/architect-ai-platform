@@ -20,6 +20,44 @@ class ExportService {
     this.env = env;
   }
 
+  resolveCompiledProject(sheet = {}) {
+    return (
+      sheet?.compiledProject ||
+      sheet?.a1Sheet?.compiledProject ||
+      sheet?.metadata?.compiledProject ||
+      null
+    );
+  }
+
+  resolveProjectQuantityTakeoff(sheet = {}) {
+    return (
+      sheet?.projectQuantityTakeoff ||
+      sheet?.a1Sheet?.projectQuantityTakeoff ||
+      sheet?.metadata?.projectQuantityTakeoff ||
+      null
+    );
+  }
+
+  resolveProjectName(sheet = {}) {
+    return (
+      sheet?.projectName ||
+      sheet?.metadata?.projectName ||
+      sheet?.dna?.projectType ||
+      "ArchiAI_Project"
+    );
+  }
+
+  async downloadResponseBlob(response, filename) {
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    return url;
+  }
+
   /**
    * Export sheet
    * @param {Object} params - Export parameters
@@ -41,6 +79,18 @@ class ExportService {
     // Route DXF to CAD export path
     if (fmt === "DXF") {
       return this.exportCAD({ sheet, format: "DXF", env: effectiveEnv });
+    }
+
+    if (fmt === "IFC" || fmt === "RVT") {
+      return this.exportBIM({ sheet, format: fmt, env: effectiveEnv });
+    }
+
+    if (fmt === "XLSX" || fmt === "EXCEL") {
+      return this.exportWorkbook({ sheet, env: effectiveEnv });
+    }
+
+    if (fmt === "GLB") {
+      return this.exportGLB({ sheet });
     }
 
     // Determine export method based on environment
@@ -285,6 +335,28 @@ class ExportService {
    * @private
    */
   async exportDXF(sheet) {
+    const compiledProject = this.resolveCompiledProject(sheet);
+    if (compiledProject?.geometryHash) {
+      const filename = this.generateFilename(sheet, "dxf");
+      const response = await fetch("/api/project/export/dxf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          compiledProject,
+          projectName: this.resolveProjectName(sheet),
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `DXF export failed: ${response.status}`);
+      }
+
+      const url = await this.downloadResponseBlob(response, filename);
+      logger.success("Compiled-project DXF export complete", { filename });
+      return { success: true, url, filename, format: "DXF" };
+    }
+
     const dna = sheet.dna || {};
     const spatialGraph =
       dna.spatialGraph || dna._structured?.program?.spatialGraph || null;
@@ -330,11 +402,46 @@ class ExportService {
    * @returns {Promise<Object>} Export result
    */
   async exportBIM({ sheet, format = "IFC", env = null }) {
-    const effectiveEnv = env || this.env;
+    void env;
 
     logger.info(`Exporting BIM as ${format}`, null, "🏗️");
 
-    // Generate BIM content
+    if (String(format).toUpperCase() === "RVT") {
+      throw new Error(
+        "RVT export is experimental/off in UK Residential V2. Use IFC for BIM export.",
+      );
+    }
+
+    const compiledProject = this.resolveCompiledProject(sheet);
+    if (compiledProject?.geometryHash) {
+      const filename = this.generateFilename(sheet, "ifc");
+      const response = await fetch("/api/project/export/ifc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          compiledProject,
+          projectName: this.resolveProjectName(sheet),
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `IFC export failed: ${response.status}`);
+      }
+
+      const url = await this.downloadResponseBlob(response, filename);
+      logger.success("Compiled-project BIM export complete", {
+        filename,
+        format: "IFC",
+      });
+      return {
+        success: true,
+        url,
+        filename,
+        format: "IFC",
+      };
+    }
+
     const content = this.generateBIMContent(sheet, format);
 
     // Trigger download
@@ -357,6 +464,65 @@ class ExportService {
       filename,
       format,
     };
+  }
+
+  async exportWorkbook({ sheet }) {
+    const compiledProject = this.resolveCompiledProject(sheet);
+    const projectQuantityTakeoff = this.resolveProjectQuantityTakeoff(sheet);
+    if (
+      !compiledProject?.geometryHash ||
+      !projectQuantityTakeoff?.items?.length
+    ) {
+      throw new Error(
+        "A compiled project and quantity takeoff are required for Excel export.",
+      );
+    }
+
+    const filename = this.generateFilename(sheet, "xlsx");
+    const response = await fetch("/api/project/export/xlsx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        compiledProject,
+        projectQuantityTakeoff,
+        projectName: this.resolveProjectName(sheet),
+        qualityTier: sheet?.programBrief?.qualityTier || "mid",
+        region: "uk-average",
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Excel export failed: ${response.status}`);
+    }
+
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("Cost workbook export complete", { filename });
+    return { success: true, url, filename, format: "XLSX" };
+  }
+
+  async exportGLB({ sheet }) {
+    const modelUrl =
+      sheet?.compiledProject?.artifacts?.glbUrl ||
+      sheet?.compiledProject?.artifacts?.modelUrl ||
+      sheet?.meshy3D?.modelUrl ||
+      sheet?.masterDNA?.meshy3D?.modelUrl ||
+      null;
+
+    if (!modelUrl) {
+      throw new Error(
+        "No GLB model is available for this result. Generate a compiled-project 3D artifact first.",
+      );
+    }
+
+    const filename = this.generateFilename(sheet, "glb");
+    const link = document.createElement("a");
+    link.href = modelUrl;
+    link.download = filename;
+    link.click();
+
+    logger.success("GLB export complete", { filename });
+    return { success: true, url: modelUrl, filename, format: "GLB" };
   }
 
   /**

@@ -25,6 +25,7 @@ import {
   executeWorkflow,
   UnsupportedPipelineModeError,
 } from "../services/workflowRouter.js";
+import { createSheetArtifactManifest } from "../services/project/v2ProjectContracts.js";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -42,6 +43,32 @@ const getStepForStage = (stage) => {
   const index = STAGES.indexOf(stage);
   return index >= 0 ? index + 1 : 0;
 };
+
+function buildManifestPanels(multiPanelResult = {}) {
+  const entries = {};
+  const panelMap =
+    multiPanelResult?.panelMap || multiPanelResult?.panelsByKey || {};
+  Object.entries(panelMap).forEach(([panelType, panel]) => {
+    entries[panelType] = {
+      panelType,
+      sourceType:
+        panel?.sourceType ||
+        panel?.metadata?.sourceType ||
+        panel?.metadata?.authorityType ||
+        "generated_panel",
+      geometryHash:
+        panel?.geometryHash ||
+        panel?.metadata?.geometryHash ||
+        multiPanelResult?.metadata?.geometryHash ||
+        null,
+      svgHash: panel?.svgHash || panel?.metadata?.svgHash || null,
+      occupancyScore:
+        panel?.occupancyScore ?? panel?.metadata?.occupancyScore ?? null,
+      validation: panel?.validation || panel?.metadata?.validation || null,
+    };
+  });
+  return entries;
+}
 
 /**
  * useArchitectAIWorkflow Hook
@@ -179,16 +206,90 @@ export function useArchitectAIWorkflow() {
           );
         }
 
+        const compiledProject =
+          params.designSpec?.compiledProject ||
+          params.designSpec?.v2Bundle?.compiledProject ||
+          null;
+        const projectQuantityTakeoff =
+          params.designSpec?.projectQuantityTakeoff ||
+          params.designSpec?.v2Bundle?.projectQuantityTakeoff ||
+          null;
+        const geometryHash =
+          compiledProject?.geometryHash ||
+          multiPanelResult?.metadata?.geometryHash ||
+          null;
+        const pipelineVersion =
+          params.designSpec?.pipelineVersion ||
+          params.designSpec?.v2Bundle?.pipelineVersion ||
+          multiPanelResult?.metadata?.pipelineVersion ||
+          null;
+        const confidence =
+          params.designSpec?.confidence ||
+          params.designSpec?.v2Bundle?.confidence ||
+          null;
+        const validation =
+          params.designSpec?.validation ||
+          params.designSpec?.v2Bundle?.validation ||
+          compiledProject?.validation ||
+          null;
+        const sheetArtifactManifest = createSheetArtifactManifest({
+          geometryHash,
+          pipelineVersion,
+          panels: buildManifestPanels(multiPanelResult),
+          confidence: confidence || {},
+          validation: validation || {},
+        });
+
         const sheetResult = {
           ...multiPanelResult,
           url: multiPanelResult.composedSheetUrl,
           composedSheetUrl: multiPanelResult.composedSheetUrl,
           workflow: resolvedMode,
+          pipelineVersion,
+          geometryHash,
+          compiledProject,
+          projectGeometry:
+            params.designSpec?.projectGeometry ||
+            params.designSpec?.v2Bundle?.projectGeometry ||
+            null,
+          populatedGeometry:
+            params.designSpec?.populatedGeometry ||
+            params.designSpec?.v2Bundle?.populatedGeometry ||
+            null,
+          projectQuantityTakeoff,
+          siteEvidence:
+            params.designSpec?.siteEvidence ||
+            params.designSpec?.v2Bundle?.siteEvidence ||
+            null,
+          localStyleEvidence:
+            params.designSpec?.localStyleEvidence ||
+            params.designSpec?.v2Bundle?.localStyleEvidence ||
+            null,
+          portfolioStyleEvidence:
+            params.designSpec?.portfolioStyleEvidence ||
+            params.designSpec?.v2Bundle?.portfolioStyleEvidence ||
+            null,
+          styleBlendSpec:
+            params.designSpec?.styleBlendSpec ||
+            params.designSpec?.v2Bundle?.styleBlendSpec ||
+            null,
+          programBrief:
+            params.designSpec?.programBrief ||
+            params.designSpec?.v2Bundle?.programBrief ||
+            null,
+          confidence,
+          validation,
+          sheetArtifactManifest,
           panelCoordinates:
             multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
           metadata: {
             ...multiPanelResult.metadata,
             workflow: resolvedMode,
+            pipelineVersion,
+            geometryHash,
+            confidence,
+            validation,
+            sheetArtifactManifest,
             panelCount:
               multiPanelResult.metadata?.panelCount ||
               (multiPanelResult.panelMap
@@ -213,6 +314,8 @@ export function useArchitectAIWorkflow() {
           resultUrl: sheetResult.composedSheetUrl,
           composedSheetUrl: sheetResult.composedSheetUrl,
           pdfUrl: sheetResult.pdfUrl || null,
+          compiledProject,
+          projectQuantityTakeoff,
           panels: sheetResult.panelMap || sheetResult.panels,
           panelMap: sheetResult.panelMap || sheetResult.panels,
           panelCoordinates: sheetResult.panelCoordinates,
@@ -229,6 +332,8 @@ export function useArchitectAIWorkflow() {
             panels: sheetResult.panelMap || sheetResult.panels,
             panelMap: sheetResult.panelMap || sheetResult.panels,
             coordinates: sheetResult.panelCoordinates,
+            compiledProject,
+            projectQuantityTakeoff,
             qa: sheetResult.qa || null,
             critique: sheetResult.critique || null,
             trace: sheetResult.trace || null,

@@ -1,25 +1,44 @@
 /**
  * Building Type Selector Component
- * 
+ *
  * Grid-based selector for building category and sub-type with icons
  */
 
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import * as LucideIcons from 'lucide-react';
-import { getAllCategories, getCategoryById } from '../../data/buildingTypes.js';
-import Card from '../ui/Card.jsx';
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import * as LucideIcons from "lucide-react";
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import { getAllCategories, getCategoryById } from "../../data/buildingTypes.js";
+import { isSupportedResidentialV2SubType } from "../../services/project/v2ProjectContracts.js";
+import Card from "../ui/Card.jsx";
 
 const BuildingTypeSelector = ({
   selectedCategory,
   selectedSubType,
   onSelectionChange,
-  validationErrors = []
+  validationErrors = [],
 }) => {
-  const [expandedCategory, setExpandedCategory] = useState(selectedCategory || null);
+  const [expandedCategory, setExpandedCategory] = useState(
+    selectedCategory || null,
+  );
   const categories = getAllCategories();
+  const restrictToResidentialV2 =
+    isFeatureEnabled("ukResidentialV2") &&
+    isFeatureEnabled("hideExperimentalBuildingTypes");
+
+  const isCategoryEnabled = (category) =>
+    !restrictToResidentialV2 || category?.id === "residential";
+
+  const isSubTypeEnabled = (categoryId, subType) =>
+    !restrictToResidentialV2 ||
+    (categoryId === "residential" &&
+      isSupportedResidentialV2SubType(subType?.id));
 
   const handleCategoryClick = (categoryId) => {
+    const category = getCategoryById(categoryId);
+    if (!isCategoryEnabled(category)) {
+      return;
+    }
     if (expandedCategory === categoryId) {
       setExpandedCategory(null);
     } else {
@@ -32,12 +51,21 @@ const BuildingTypeSelector = ({
   };
 
   const handleSubTypeClick = (categoryId, subTypeId) => {
+    const category = getCategoryById(categoryId);
+    const subType = category?.subTypes?.find((entry) => entry.id === subTypeId);
+    if (!isSubTypeEnabled(categoryId, subType)) {
+      return;
+    }
     onSelectionChange({ category: categoryId, subType: subTypeId });
   };
 
   const getIcon = (iconName) => {
     const Icon = LucideIcons[iconName];
-    return Icon ? <Icon className="w-8 h-8" /> : <LucideIcons.Building2 className="w-8 h-8" />;
+    return Icon ? (
+      <Icon className="w-8 h-8" />
+    ) : (
+      <LucideIcons.Building2 className="w-8 h-8" />
+    );
   };
 
   return (
@@ -47,27 +75,39 @@ const BuildingTypeSelector = ({
         {categories.map((category) => {
           const isSelected = selectedCategory === category.id;
           const isExpanded = expandedCategory === category.id;
+          const isEnabled = isCategoryEnabled(category);
 
           return (
             <motion.button
               key={category.id}
               onClick={() => handleCategoryClick(category.id)}
-              className={`p-4 rounded-2xl border-2 transition-all duration-300 text-left ${isSelected
-                  ? 'border-royal-500 bg-royal-600/20'
-                  : 'border-navy-700 bg-navy-800/60 hover:border-royal-500/50'
-                } focus:ring-2 focus:ring-royal-400 focus:outline-none`}
+              disabled={!isEnabled}
+              className={`p-4 rounded-2xl border-2 transition-all duration-300 text-left ${
+                isSelected
+                  ? "border-royal-500 bg-royal-600/20"
+                  : "border-navy-700 bg-navy-800/60 hover:border-royal-500/50"
+              } focus:ring-2 focus:ring-royal-400 focus:outline-none ${!isEnabled ? "opacity-50 cursor-not-allowed hover:border-navy-700" : ""}`}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
               <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${isSelected ? 'bg-royal-500/30' : 'bg-navy-700/50'}`}>
+                <div
+                  className={`p-2 rounded-lg ${isSelected ? "bg-royal-500/30" : "bg-navy-700/50"}`}
+                >
                   {getIcon(category.icon)}
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-white leading-tight">{category.label}</h3>
+                  <h3 className="text-2xl font-bold text-white leading-tight">
+                    {category.label}
+                  </h3>
                   <p className="text-sm text-gray-400 mt-1">
                     {category.subTypes.length} types
                   </p>
+                  {!isEnabled && (
+                    <p className="text-xs text-amber-300 mt-2">
+                      Experimental/off in UK Residential V2
+                    </p>
+                  )}
                 </div>
                 <motion.div
                   animate={{ rotate: isExpanded ? 180 : 0 }}
@@ -80,7 +120,11 @@ const BuildingTypeSelector = ({
               {selectedSubType && isSelected && (
                 <div className="mt-2 pt-2 border-t border-royal-500/30">
                   <span className="text-xs px-2 py-1 rounded bg-royal-500/20 text-royal-200">
-                    {getCategoryById(category.id)?.subTypes.find(st => st.id === selectedSubType)?.label}
+                    {
+                      getCategoryById(category.id)?.subTypes.find(
+                        (st) => st.id === selectedSubType,
+                      )?.label
+                    }
                   </span>
                 </div>
               )}
@@ -93,7 +137,7 @@ const BuildingTypeSelector = ({
       {expandedCategory && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
+          animate={{ opacity: 1, height: "auto" }}
           exit={{ opacity: 0, height: 0 }}
           transition={{ duration: 0.3 }}
         >
@@ -103,24 +147,44 @@ const BuildingTypeSelector = ({
             </h4>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {getCategoryById(expandedCategory)?.subTypes.map((subType) => {
-                const isSelected = selectedSubType === subType.id && selectedCategory === expandedCategory;
+                const isSelected =
+                  selectedSubType === subType.id &&
+                  selectedCategory === expandedCategory;
+                const isEnabled = isSubTypeEnabled(expandedCategory, subType);
 
                 return (
                   <motion.button
                     key={subType.id}
-                    onClick={() => handleSubTypeClick(expandedCategory, subType.id)}
-                    className={`p-3 rounded-xl border transition-all duration-200 text-left ${isSelected
-                        ? 'border-royal-400 bg-royal-500/20'
-                        : 'border-navy-600 bg-navy-800/40 hover:border-royal-400/50'
-                      } focus:ring-2 focus:ring-royal-300 focus:outline-none`}
+                    onClick={() =>
+                      handleSubTypeClick(expandedCategory, subType.id)
+                    }
+                    disabled={!isEnabled}
+                    className={`p-3 rounded-xl border transition-all duration-200 text-left ${
+                      isSelected
+                        ? "border-royal-400 bg-royal-500/20"
+                        : "border-navy-600 bg-navy-800/40 hover:border-royal-400/50"
+                    } focus:ring-2 focus:ring-royal-300 focus:outline-none ${!isEnabled ? "opacity-50 cursor-not-allowed hover:border-navy-600" : ""}`}
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                   >
-                    <div className="flex items-center gap-2">
-                      <div className={`p-1.5 rounded ${isSelected ? 'bg-royal-400/30' : 'bg-navy-700/50'}`}>
-                        {getIcon(subType.icon)}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`p-1.5 rounded ${isSelected ? "bg-royal-400/30" : "bg-navy-700/50"}`}
+                        >
+                          {getIcon(subType.icon)}
+                        </div>
+                        <span className="text-sm font-medium text-white">
+                          {subType.label}
+                        </span>
                       </div>
-                      <span className="text-sm font-medium text-white">{subType.label}</span>
+                      <span
+                        className={`text-[10px] uppercase tracking-wide ${
+                          isEnabled ? "text-emerald-300" : "text-amber-300"
+                        }`}
+                      >
+                        {isEnabled ? "Supported" : "Experimental/Off"}
+                      </span>
                     </div>
                   </motion.button>
                 );
@@ -138,7 +202,10 @@ const BuildingTypeSelector = ({
           className="p-3 rounded-lg bg-red-900/20 border border-red-500/50"
         >
           {validationErrors.map((error, index) => (
-            <p key={index} className="text-sm text-red-300 flex items-center gap-2">
+            <p
+              key={index}
+              className="text-sm text-red-300 flex items-center gap-2"
+            >
               <LucideIcons.AlertCircle className="w-4 h-4" />
               {error}
             </p>
@@ -150,4 +217,3 @@ const BuildingTypeSelector = ({
 };
 
 export default BuildingTypeSelector;
-

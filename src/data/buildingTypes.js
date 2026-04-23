@@ -1,201 +1,211 @@
 /**
  * Building Types Taxonomy
- * 
+ *
  * Single source of truth for building categories, sub-types, icons, validation constraints,
  * and default program templates.
  */
 
 export const BUILDING_CATEGORIES = {
   RESIDENTIAL: {
-    id: 'residential',
-    label: 'Residential',
-    icon: 'Home',
+    id: "residential",
+    label: "Residential",
+    icon: "Home",
     subTypes: [
       // UK house types with specific coverage ratios and floor limits
-      { id: 'detached-house', label: 'Detached House', icon: 'Home' },
-      { id: 'semi-detached-house', label: 'Semi-Detached House', icon: 'Building' },
-      { id: 'terraced-house', label: 'Terraced House', icon: 'Building2' },
+      { id: "detached-house", label: "Detached House", icon: "Home" },
+      {
+        id: "semi-detached-house",
+        label: "Semi-Detached House",
+        icon: "Building",
+      },
+      { id: "terraced-house", label: "Terraced House", icon: "Building2" },
       // Other residential types
-      { id: 'multi-family', label: 'Multi-Family', icon: 'Building2' },
-      { id: 'villa', label: 'Villa', icon: 'Castle' },
-      { id: 'cottage', label: 'Cottage', icon: 'TreePine' },
-      { id: 'mansion', label: 'Mansion', icon: 'Crown' },
-      { id: 'duplex', label: 'Duplex', icon: 'CopyPlus' }
+      { id: "multi-family", label: "Multi-Family", icon: "Building2" },
+      {
+        id: "apartment-building",
+        label: "Apartment Building",
+        icon: "Building2",
+      },
+      { id: "villa", label: "Villa", icon: "Castle" },
+      { id: "cottage", label: "Cottage", icon: "TreePine" },
+      { id: "mansion", label: "Mansion", icon: "Crown" },
+      { id: "duplex", label: "Duplex", icon: "CopyPlus" },
     ],
     constraints: {
       minArea: 50,
       maxArea: 2000,
       minFloors: 1,
       maxFloors: 4,
-      requiresNotes: false
+      requiresNotes: false,
     },
     // Sub-type specific constraints for floor and coverage calculations
     subTypeConstraints: {
-      'detached-house': { minFloors: 1, maxFloors: 3, coverageRatio: 0.35 },
-      'semi-detached-house': { minFloors: 1, maxFloors: 3, coverageRatio: 0.40 },
-      'terraced-house': { minFloors: 2, maxFloors: 4, coverageRatio: 0.50 },
-      'villa': { minFloors: 1, maxFloors: 3, coverageRatio: 0.30 },
-      'cottage': { minFloors: 1, maxFloors: 2, coverageRatio: 0.25 },
-      'mansion': { minFloors: 1, maxFloors: 3, coverageRatio: 0.30 },
-      'multi-family': { minFloors: 2, maxFloors: 6, coverageRatio: 0.55 },
-      'duplex': { minFloors: 2, maxFloors: 3, coverageRatio: 0.45 }
-    }
+      "detached-house": { minFloors: 1, maxFloors: 3, coverageRatio: 0.35 },
+      "semi-detached-house": { minFloors: 1, maxFloors: 3, coverageRatio: 0.4 },
+      "terraced-house": { minFloors: 2, maxFloors: 4, coverageRatio: 0.5 },
+      villa: { minFloors: 1, maxFloors: 3, coverageRatio: 0.3 },
+      cottage: { minFloors: 1, maxFloors: 2, coverageRatio: 0.25 },
+      mansion: { minFloors: 1, maxFloors: 3, coverageRatio: 0.3 },
+      "apartment-building": { minFloors: 2, maxFloors: 4, coverageRatio: 0.55 },
+      "multi-family": { minFloors: 2, maxFloors: 6, coverageRatio: 0.55 },
+      duplex: { minFloors: 2, maxFloors: 3, coverageRatio: 0.45 },
+    },
   },
   COMMERCIAL: {
-    id: 'commercial',
-    label: 'Commercial',
-    icon: 'Briefcase',
+    id: "commercial",
+    label: "Commercial",
+    icon: "Briefcase",
     subTypes: [
-      { id: 'office', label: 'Office Building', icon: 'Building' },
-      { id: 'retail', label: 'Retail Store', icon: 'Store' },
-      { id: 'mixed-use', label: 'Mixed-Use', icon: 'Layers' },
-      { id: 'shopping-mall', label: 'Shopping Mall', icon: 'ShoppingBag' }
+      { id: "office", label: "Office Building", icon: "Building" },
+      { id: "retail", label: "Retail Store", icon: "Store" },
+      { id: "mixed-use", label: "Mixed-Use", icon: "Layers" },
+      { id: "shopping-mall", label: "Shopping Mall", icon: "ShoppingBag" },
     ],
     constraints: {
       minArea: 100,
       maxArea: 10000,
       minFloors: 1,
       maxFloors: 40,
-      requiresNotes: false
-    }
+      requiresNotes: false,
+    },
   },
   HEALTHCARE: {
-    id: 'healthcare',
-    label: 'Healthcare',
-    icon: 'Heart',
+    id: "healthcare",
+    label: "Healthcare",
+    icon: "Heart",
     subTypes: [
-      { id: 'clinic', label: 'Medical Clinic', icon: 'Stethoscope' },
-      { id: 'hospital', label: 'Hospital', icon: 'Hospital' },
-      { id: 'dental', label: 'Dental Clinic', icon: 'Smile' },
-      { id: 'lab', label: 'Laboratory', icon: 'FlaskConical' }
+      { id: "clinic", label: "Medical Clinic", icon: "Stethoscope" },
+      { id: "hospital", label: "Hospital", icon: "Hospital" },
+      { id: "dental", label: "Dental Clinic", icon: "Smile" },
+      { id: "lab", label: "Laboratory", icon: "FlaskConical" },
     ],
     constraints: {
       minArea: 200,
       maxArea: 50000,
       minFloors: 1,
       maxFloors: 12,
-      requiresNotes: true
-    }
+      requiresNotes: true,
+    },
   },
   EDUCATION: {
-    id: 'education',
-    label: 'Education',
-    icon: 'GraduationCap',
+    id: "education",
+    label: "Education",
+    icon: "GraduationCap",
     subTypes: [
-      { id: 'school', label: 'School', icon: 'School' },
-      { id: 'university', label: 'University', icon: 'Library' },
-      { id: 'kindergarten', label: 'Kindergarten', icon: 'Baby' }
+      { id: "school", label: "School", icon: "School" },
+      { id: "university", label: "University", icon: "Library" },
+      { id: "kindergarten", label: "Kindergarten", icon: "Baby" },
     ],
     constraints: {
       minArea: 500,
       maxArea: 20000,
       minFloors: 1,
       maxFloors: 6,
-      requiresNotes: true
-    }
+      requiresNotes: true,
+    },
   },
   HOSPITALITY: {
-    id: 'hospitality',
-    label: 'Hospitality',
-    icon: 'Hotel',
+    id: "hospitality",
+    label: "Hospitality",
+    icon: "Hotel",
     subTypes: [
-      { id: 'hotel', label: 'Hotel', icon: 'Hotel' },
-      { id: 'resort', label: 'Resort', icon: 'Palmtree' },
-      { id: 'guest-house', label: 'Guest House', icon: 'Home' }
+      { id: "hotel", label: "Hotel", icon: "Hotel" },
+      { id: "resort", label: "Resort", icon: "Palmtree" },
+      { id: "guest-house", label: "Guest House", icon: "Home" },
     ],
     constraints: {
       minArea: 500,
       maxArea: 30000,
       minFloors: 2,
       maxFloors: 40,
-      requiresNotes: false
-    }
+      requiresNotes: false,
+    },
   },
   INDUSTRIAL: {
-    id: 'industrial',
-    label: 'Industrial',
-    icon: 'Factory',
+    id: "industrial",
+    label: "Industrial",
+    icon: "Factory",
     subTypes: [
-      { id: 'warehouse', label: 'Warehouse', icon: 'Warehouse' },
-      { id: 'manufacturing', label: 'Manufacturing', icon: 'Cog' },
-      { id: 'workshop', label: 'Workshop', icon: 'Wrench' }
+      { id: "warehouse", label: "Warehouse", icon: "Warehouse" },
+      { id: "manufacturing", label: "Manufacturing", icon: "Cog" },
+      { id: "workshop", label: "Workshop", icon: "Wrench" },
     ],
     constraints: {
       minArea: 500,
       maxArea: 50000,
       minFloors: 1,
       maxFloors: 3,
-      requiresNotes: true
-    }
+      requiresNotes: true,
+    },
   },
   CULTURAL: {
-    id: 'cultural',
-    label: 'Cultural',
-    icon: 'Landmark',
+    id: "cultural",
+    label: "Cultural",
+    icon: "Landmark",
     subTypes: [
-      { id: 'museum', label: 'Museum', icon: 'Museum' },
-      { id: 'library', label: 'Library', icon: 'Library' },
-      { id: 'theatre', label: 'Theatre', icon: 'Drama' }
+      { id: "museum", label: "Museum", icon: "Museum" },
+      { id: "library", label: "Library", icon: "Library" },
+      { id: "theatre", label: "Theatre", icon: "Drama" },
     ],
     constraints: {
       minArea: 500,
       maxArea: 20000,
       minFloors: 1,
       maxFloors: 5,
-      requiresNotes: false
-    }
+      requiresNotes: false,
+    },
   },
   GOVERNMENT: {
-    id: 'government',
-    label: 'Government',
-    icon: 'Building2',
+    id: "government",
+    label: "Government",
+    icon: "Building2",
     subTypes: [
-      { id: 'town-hall', label: 'Town Hall', icon: 'Building2' },
-      { id: 'police', label: 'Police Station', icon: 'Shield' },
-      { id: 'fire-station', label: 'Fire Station', icon: 'Flame' }
+      { id: "town-hall", label: "Town Hall", icon: "Building2" },
+      { id: "police", label: "Police Station", icon: "Shield" },
+      { id: "fire-station", label: "Fire Station", icon: "Flame" },
     ],
     constraints: {
       minArea: 500,
       maxArea: 10000,
       minFloors: 1,
       maxFloors: 4,
-      requiresNotes: true
-    }
+      requiresNotes: true,
+    },
   },
   RELIGIOUS: {
-    id: 'religious',
-    label: 'Religious',
-    icon: 'Church',
+    id: "religious",
+    label: "Religious",
+    icon: "Church",
     subTypes: [
-      { id: 'mosque', label: 'Mosque', icon: 'Moon' },
-      { id: 'church', label: 'Church', icon: 'Church' },
-      { id: 'temple', label: 'Temple', icon: 'TentTree' }
+      { id: "mosque", label: "Mosque", icon: "Moon" },
+      { id: "church", label: "Church", icon: "Church" },
+      { id: "temple", label: "Temple", icon: "TentTree" },
     ],
     constraints: {
       minArea: 200,
       maxArea: 5000,
       minFloors: 1,
       maxFloors: 2,
-      requiresNotes: false
-    }
+      requiresNotes: false,
+    },
   },
   RECREATION: {
-    id: 'recreation',
-    label: 'Recreation',
-    icon: 'Dumbbell',
+    id: "recreation",
+    label: "Recreation",
+    icon: "Dumbbell",
     subTypes: [
-      { id: 'sports-center', label: 'Sports Center', icon: 'Bike' },
-      { id: 'gym', label: 'Gym', icon: 'Dumbbell' },
-      { id: 'pool', label: 'Swimming Pool', icon: 'Waves' }
+      { id: "sports-center", label: "Sports Center", icon: "Bike" },
+      { id: "gym", label: "Gym", icon: "Dumbbell" },
+      { id: "pool", label: "Swimming Pool", icon: "Waves" },
     ],
     constraints: {
       minArea: 300,
       maxArea: 10000,
       minFloors: 1,
       maxFloors: 3,
-      requiresNotes: false
-    }
-  }
+      requiresNotes: false,
+    },
+  },
 };
 
 /**
@@ -212,7 +222,10 @@ export function getAllCategories() {
  * @returns {Object|null} Category object or null
  */
 export function getCategoryById(categoryId) {
-  return Object.values(BUILDING_CATEGORIES).find(cat => cat.id === categoryId) || null;
+  return (
+    Object.values(BUILDING_CATEGORIES).find((cat) => cat.id === categoryId) ||
+    null
+  );
 }
 
 /**
@@ -224,7 +237,7 @@ export function getCategoryById(categoryId) {
 export function getSubTypeById(categoryId, subTypeId) {
   const category = getCategoryById(categoryId);
   if (!category) return null;
-  return category.subTypes.find(st => st.id === subTypeId) || null;
+  return category.subTypes.find((st) => st.id === subTypeId) || null;
 }
 
 /**
@@ -241,8 +254,8 @@ export function validateBuildingSpecs(categoryId, specs) {
   if (!category) {
     return {
       isValid: false,
-      errors: ['Invalid building category'],
-      warnings: []
+      errors: ["Invalid building category"],
+      warnings: [],
     };
   }
 
@@ -252,29 +265,42 @@ export function validateBuildingSpecs(categoryId, specs) {
 
   // Area validation
   if (specs.area < constraints.minArea) {
-    errors.push(`Area ${specs.area}m² is below minimum ${constraints.minArea}m² for ${category.label}`);
+    errors.push(
+      `Area ${specs.area}m² is below minimum ${constraints.minArea}m² for ${category.label}`,
+    );
   }
   if (specs.area > constraints.maxArea) {
-    warnings.push(`Area ${specs.area}m² exceeds typical maximum ${constraints.maxArea}m² for ${category.label}`);
+    warnings.push(
+      `Area ${specs.area}m² exceeds typical maximum ${constraints.maxArea}m² for ${category.label}`,
+    );
   }
 
   // Floor count validation
   if (specs.floors < constraints.minFloors) {
-    errors.push(`Floor count ${specs.floors} is below minimum ${constraints.minFloors} for ${category.label}`);
+    errors.push(
+      `Floor count ${specs.floors} is below minimum ${constraints.minFloors} for ${category.label}`,
+    );
   }
   if (specs.floors > constraints.maxFloors) {
-    warnings.push(`Floor count ${specs.floors} exceeds typical maximum ${constraints.maxFloors} for ${category.label}`);
+    warnings.push(
+      `Floor count ${specs.floors} exceeds typical maximum ${constraints.maxFloors} for ${category.label}`,
+    );
   }
 
   // Notes requirement
-  if (constraints.requiresNotes && (!specs.notes || specs.notes.trim() === '')) {
-    warnings.push(`${category.label} typically requires additional notes or specifications`);
+  if (
+    constraints.requiresNotes &&
+    (!specs.notes || specs.notes.trim() === "")
+  ) {
+    warnings.push(
+      `${category.label} typically requires additional notes or specifications`,
+    );
   }
 
   return {
     isValid: errors.length === 0,
     errors,
-    warnings
+    warnings,
   };
 }
 
@@ -286,7 +312,7 @@ export function validateBuildingSpecs(categoryId, specs) {
  */
 export function getBuildingTypeDisplayName(categoryId, subTypeId) {
   const category = getCategoryById(categoryId);
-  if (!category) return 'Unknown';
+  if (!category) return "Unknown";
 
   if (!subTypeId) return category.label;
 
@@ -313,8 +339,7 @@ const buildingTypesExports = {
   getSubTypeById,
   validateBuildingSpecs,
   getBuildingTypeDisplayName,
-  getSubTypeConstraints
+  getSubTypeConstraints,
 };
 
 export default buildingTypesExports;
-

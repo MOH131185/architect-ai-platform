@@ -289,7 +289,9 @@ const ResultsStep = ({
                   onClick={() => setShowExportPanel(!showExportPanel)}
                   icon={<FileCode className="w-5 h-5" />}
                 >
-                  {showExportPanel ? "Hide Export Panel" : "CAD/BIM Export"}
+                  {showExportPanel
+                    ? "Hide Export Panel"
+                    : "DXF / BIM / Cost Export"}
                 </Button>
                 {/* Debug Report Download - shows when report is available */}
                 {debugRecorder.getCurrentReport() && (
@@ -397,6 +399,7 @@ const ResultsStep = ({
         {showExportPanel && (
           <motion.div variants={fadeInUp}>
             <ExportPanel
+              designData={result}
               geometryDNA={geometryDNA}
               populatedGeometry={populatedGeometry}
               masterDNA={masterDNA}
@@ -404,6 +407,7 @@ const ResultsStep = ({
               meshy3D={meshy3D}
               blenderOutputs={blenderOutputs}
               projectInfo={projectInfo}
+              onExport={onExport}
               onExportStart={(format) =>
                 console.log(`Starting ${format} export...`)
               }

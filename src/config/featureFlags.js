@@ -64,6 +64,43 @@ export const FEATURE_FLAGS = {
   a1Only: true,
 
   /**
+   * UK Residential V2 Compiled-Project Pipeline
+   *
+   * When enabled:
+   * - Restricts live production generation to supported UK low-rise residential
+   * - Compiles structured site/style/program evidence before A1 generation
+   * - Attaches compiledProject, quantity takeoff, and export metadata to results
+   *
+   * @type {boolean}
+   * @default true
+   */
+  ukResidentialV2: true,
+
+  /**
+   * Hide Experimental Building Types In Live UI
+   *
+   * When enabled:
+   * - Unsupported categories and sub-types are marked experimental/off
+   * - Generation is blocked outside the supported UK Residential V2 scope
+   *
+   * @type {boolean}
+   * @default true
+   */
+  hideExperimentalBuildingTypes: true,
+
+  /**
+   * Strict Compiled-Project Export Contracts
+   *
+   * When enabled:
+   * - DXF, IFC, and workbook exports require compiledProject authority
+   * - Prevents placeholder export artifacts from being presented as production outputs
+   *
+   * @type {boolean}
+   * @default true
+   */
+  strictCompiledProjectExports: true,
+
+  /**
    * Geometry-First Pipeline (OPTIONAL)
    *
    * When enabled:

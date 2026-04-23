@@ -5,7 +5,14 @@
  */
 
 import React from "react";
-import { Download, Box, FileText, Image, Layers } from "lucide-react";
+import {
+  Download,
+  Box,
+  FileSpreadsheet,
+  FileText,
+  Image,
+  Layers,
+} from "lucide-react";
 
 /**
  * Download a base64 data URL as a file.
@@ -61,10 +68,17 @@ const ExportPanel = ({
     ? Object.keys(blenderOutputs.panels).length
     : 0;
   const hasBlendFile = !!blenderOutputs?.manifest?.blendFile;
+  const geometryHash = designData?.compiledProject?.geometryHash || null;
 
   return (
     <div className="export-panel p-4 bg-white rounded-lg shadow">
       <h3 className="text-lg font-semibold mb-4">Export Options</h3>
+      {geometryHash && (
+        <p className="mb-4 text-xs text-gray-500 break-all">
+          Compiled project authority:{" "}
+          <span className="font-mono">{geometryHash}</span>
+        </p>
+      )}
 
       {/* Standard exports */}
       <div className="flex flex-col gap-2 mb-4">
@@ -88,6 +102,20 @@ const ExportPanel = ({
         >
           <Download className="w-4 h-4" />
           Export as DXF (CAD)
+        </button>
+        <button
+          onClick={() => handleExport("ifc")}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+        >
+          <Box className="w-4 h-4" />
+          Export as IFC (BIM)
+        </button>
+        <button
+          onClick={() => handleExport("xlsx")}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white rounded hover:bg-emerald-800"
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          Export Excel Estimate
         </button>
       </div>
 
