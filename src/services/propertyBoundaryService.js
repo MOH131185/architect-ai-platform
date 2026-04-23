@@ -5,9 +5,33 @@
  */
 
 const API_ENDPOINTS = {
-  OVERPASS: 'https://overpass-api.de/api/interpreter',
-  NOMINATIM: 'https://nominatim.openstreetmap.org/search'
+  OVERPASS: "https://overpass-api.de/api/interpreter",
+  NOMINATIM: "https://nominatim.openstreetmap.org/search",
 };
+
+function isBrowserRuntime() {
+  return (
+    typeof window !== "undefined" && typeof window.document !== "undefined"
+  );
+}
+
+function createSeededRandom(seedInput) {
+  let seed = 2166136261;
+  const input = String(seedInput || "");
+
+  for (let i = 0; i < input.length; i++) {
+    seed ^= input.charCodeAt(i);
+    seed = Math.imul(seed, 16777619);
+  }
+
+  return function seededRandom() {
+    seed += 0x6d2b79f5;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /**
  * Detect property boundary shape from coordinates
@@ -16,27 +40,46 @@ const API_ENDPOINTS = {
  * @returns {Promise<Object>} Boundary data with shape type
  */
 export async function detectPropertyBoundary(coordinates, address) {
-  console.log('🔍 Detecting property boundary for:', address);
+  console.log("🔍 Detecting property boundary for:", address);
 
   try {
+    const browserRuntime = isBrowserRuntime();
+
     // Try multiple detection methods in order of accuracy
-    const methods = [
-      () => detectFromOSMParcel(coordinates),
-      () => detectFromOSMBuilding(coordinates),
-      () => detectFromGoogleMaps(coordinates, address),
-      () => detectFromNearbyFeatures(coordinates),
-      () => generateIntelligentFallback(coordinates, address)
-    ];
+    const methods = browserRuntime
+      ? [
+          () => detectFromGoogleMaps(coordinates, address),
+          () => generateIntelligentFallback(coordinates, address),
+        ]
+      : [
+          () => detectFromOSMParcel(coordinates),
+          () => detectFromOSMBuilding(coordinates),
+          () => detectFromGoogleMaps(coordinates, address),
+          () => detectFromNearbyFeatures(coordinates),
+          () => generateIntelligentFallback(coordinates, address),
+        ];
+
+    if (browserRuntime) {
+      console.info(
+        "Skipping direct Overpass boundary detection in browser runtime; using CORS-safe fallbacks.",
+      );
+    }
 
     for (const method of methods) {
       try {
         const result = await method();
         if (result && result.polygon && result.polygon.length >= 3) {
-          console.log('✅ Boundary detected:', result.shapeType, 'with', result.polygon.length, 'points');
+          console.log(
+            "✅ Boundary detected:",
+            result.shapeType,
+            "with",
+            result.polygon.length,
+            "points",
+          );
           return result;
         }
       } catch (error) {
-        console.warn('Detection method failed:', error.message);
+        console.warn("Detection method failed:", error.message);
         continue;
       }
     }
@@ -44,7 +87,7 @@ export async function detectPropertyBoundary(coordinates, address) {
     // If all methods fail, return intelligent fallback
     return generateIntelligentFallback(coordinates, address);
   } catch (error) {
-    console.error('❌ Property boundary detection failed:', error);
+    console.error("❌ Property boundary detection failed:", error);
     return generateIntelligentFallback(coordinates, address);
   }
 }
@@ -53,6 +96,8 @@ export async function detectPropertyBoundary(coordinates, address) {
  * Detect boundary from OpenStreetMap land parcel data
  */
 async function detectFromOSMParcel(coordinates) {
+  if (isBrowserRuntime()) return null;
+
   const { lat, lng } = coordinates;
   const radius = 50; // meters
 
@@ -68,12 +113,12 @@ async function detectFromOSMParcel(coordinates) {
   `;
 
   const response = await fetch(API_ENDPOINTS.OVERPASS, {
-    method: 'POST',
+    method: "POST",
     body: query,
-    headers: { 'Content-Type': 'text/plain' }
+    headers: { "Content-Type": "text/plain" },
   });
 
-  if (!response.ok) throw new Error('OSM Overpass API failed');
+  if (!response.ok) throw new Error("OSM Overpass API failed");
 
   const data = await response.json();
 
@@ -88,13 +133,13 @@ async function detectFromOSMParcel(coordinates) {
       return {
         polygon,
         shapeType,
-        source: 'OSM Parcel',
+        source: "OSM Parcel",
         confidence: 0.95,
         area: calculatePolygonArea(polygon),
         metadata: {
           landuse: closestParcel.tags?.landuse,
-          osmId: closestParcel.id
-        }
+          osmId: closestParcel.id,
+        },
       };
     }
   }
@@ -106,6 +151,8 @@ async function detectFromOSMParcel(coordinates) {
  * Detect boundary from OpenStreetMap building footprint
  */
 async function detectFromOSMBuilding(coordinates) {
+  if (isBrowserRuntime()) return null;
+
   const { lat, lng } = coordinates;
   const radius = 30; // meters
 
@@ -119,12 +166,12 @@ async function detectFromOSMBuilding(coordinates) {
   `;
 
   const response = await fetch(API_ENDPOINTS.OVERPASS, {
-    method: 'POST',
+    method: "POST",
     body: query,
-    headers: { 'Content-Type': 'text/plain' }
+    headers: { "Content-Type": "text/plain" },
   });
 
-  if (!response.ok) throw new Error('OSM building query failed');
+  if (!response.ok) throw new Error("OSM building query failed");
 
   const data = await response.json();
 
@@ -141,13 +188,13 @@ async function detectFromOSMBuilding(coordinates) {
       return {
         polygon: expandedPolygon,
         shapeType,
-        source: 'OSM Building (expanded)',
+        source: "OSM Building (expanded)",
         confidence: 0.75,
         area: calculatePolygonArea(expandedPolygon),
         metadata: {
           buildingType: closestBuilding.tags?.building,
-          osmId: closestBuilding.id
-        }
+          osmId: closestBuilding.id,
+        },
       };
     }
   }
@@ -169,6 +216,8 @@ async function detectFromGoogleMaps(coordinates, address) {
  * Detect boundary from nearby features (roads, paths, etc.)
  */
 async function detectFromNearbyFeatures(coordinates) {
+  if (isBrowserRuntime()) return null;
+
   const { lat, lng } = coordinates;
   const radius = 40;
 
@@ -183,12 +232,12 @@ async function detectFromNearbyFeatures(coordinates) {
   `;
 
   const response = await fetch(API_ENDPOINTS.OVERPASS, {
-    method: 'POST',
+    method: "POST",
     body: query,
-    headers: { 'Content-Type': 'text/plain' }
+    headers: { "Content-Type": "text/plain" },
   });
 
-  if (!response.ok) throw new Error('Nearby features query failed');
+  if (!response.ok) throw new Error("Nearby features query failed");
 
   const data = await response.json();
 
@@ -202,9 +251,9 @@ async function detectFromNearbyFeatures(coordinates) {
       return {
         polygon,
         shapeType,
-        source: 'Nearby Features',
-        confidence: 0.60,
-        area: calculatePolygonArea(polygon)
+        source: "Nearby Features",
+        confidence: 0.6,
+        area: calculatePolygonArea(polygon),
       };
     }
   }
@@ -217,58 +266,62 @@ async function detectFromNearbyFeatures(coordinates) {
  */
 function generateIntelligentFallback(coordinates, address) {
   const { lat, lng } = coordinates;
+  const addressLower = String(address || "").toLowerCase();
+  const rng = createSeededRandom(
+    `${lat.toFixed(6)}:${lng.toFixed(6)}:${addressLower}`,
+  );
 
   // Analyze address to determine likely lot type
-  const addressLower = address.toLowerCase();
-  const isUrban = addressLower.includes('street') ||
-                  addressLower.includes('avenue') ||
-                  addressLower.includes('road');
-  const isCorner = addressLower.includes('corner') ||
-                   addressLower.includes('junction');
+  const isUrban =
+    addressLower.includes("street") ||
+    addressLower.includes("avenue") ||
+    addressLower.includes("road");
+  const isCorner =
+    addressLower.includes("corner") || addressLower.includes("junction");
 
   let polygon, shapeType;
 
   if (isCorner) {
     // Corner lots are often L-shaped or pentagonal
     polygon = generateLShapedLot(coordinates, 25, 20);
-    shapeType = 'L-shaped';
+    shapeType = "L-shaped";
   } else if (isUrban) {
     // Urban lots can be rectangular or irregular
-    const isNarrow = Math.random() > 0.5; // Could be enhanced with street analysis
+    const isNarrow = rng() > 0.5; // Could be enhanced with street analysis
     if (isNarrow) {
       polygon = generateRectangularLot(coordinates, 12, 30); // Narrow urban lot
-      shapeType = 'rectangular';
+      shapeType = "rectangular";
     } else {
-      polygon = generateIrregularQuad(coordinates, 20, 25);
-      shapeType = 'irregular quadrilateral';
+      polygon = generateIrregularQuad(coordinates, 20, 25, rng);
+      shapeType = "irregular quadrilateral";
     }
   } else {
     // Suburban/rural lots can be larger and more varied
-    const shapes = ['rectangular', 'pentagon', 'irregular'];
-    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+    const shapes = ["rectangular", "pentagon", "irregular"];
+    const randomShape = shapes[Math.floor(rng() * shapes.length)];
 
-    if (randomShape === 'pentagon') {
+    if (randomShape === "pentagon") {
       polygon = generatePentagonLot(coordinates, 30);
-      shapeType = 'pentagon';
-    } else if (randomShape === 'irregular') {
-      polygon = generateIrregularPolygon(coordinates, 6, 25, 35);
-      shapeType = 'irregular polygon';
+      shapeType = "pentagon";
+    } else if (randomShape === "irregular") {
+      polygon = generateIrregularPolygon(coordinates, 6, 25, 35, rng);
+      shapeType = "irregular polygon";
     } else {
       polygon = generateRectangularLot(coordinates, 25, 30);
-      shapeType = 'rectangular';
+      shapeType = "rectangular";
     }
   }
 
   return {
     polygon,
     shapeType,
-    source: 'Intelligent Fallback',
-    confidence: 0.40,
+    source: "Intelligent Fallback",
+    confidence: 0.4,
     area: calculatePolygonArea(polygon),
     metadata: {
-      reason: 'No real boundary data available',
-      addressAnalysis: { isUrban, isCorner }
-    }
+      reason: "No real boundary data available",
+      addressAnalysis: { isUrban, isCorner },
+    },
   };
 }
 
@@ -298,14 +351,14 @@ function findClosestElement(elements, coordinates) {
 function extractPolygonFromElement(element) {
   const polygon = [];
 
-  if (element.type === 'way' && element.geometry) {
+  if (element.type === "way" && element.geometry) {
     for (const node of element.geometry) {
       polygon.push({ lat: node.lat, lng: node.lon });
     }
-  } else if (element.type === 'relation' && element.members) {
+  } else if (element.type === "relation" && element.members) {
     // Handle relations (more complex geometries)
     for (const member of element.members) {
-      if (member.role === 'outer' && member.geometry) {
+      if (member.role === "outer" && member.geometry) {
         for (const node of member.geometry) {
           polygon.push({ lat: node.lat, lng: node.lon });
         }
@@ -320,21 +373,21 @@ function extractPolygonFromElement(element) {
  * Analyze polygon shape type
  */
 export function analyzeShapeType(polygon) {
-  if (!polygon || polygon.length < 3) return 'invalid';
+  if (!polygon || polygon.length < 3) return "invalid";
 
   const vertices = polygon.length;
 
-  if (vertices === 3) return 'triangle';
+  if (vertices === 3) return "triangle";
   if (vertices === 4) {
     // Check if rectangle or irregular quad
-    if (isRectangle(polygon)) return 'rectangle';
-    return 'irregular quadrilateral';
+    if (isRectangle(polygon)) return "rectangle";
+    return "irregular quadrilateral";
   }
-  if (vertices === 5) return 'pentagon';
-  if (vertices === 6) return 'hexagon';
-  if (vertices > 6 && vertices <= 8) return 'polygon';
+  if (vertices === 5) return "pentagon";
+  if (vertices === 6) return "hexagon";
+  if (vertices > 6 && vertices <= 8) return "polygon";
 
-  return 'complex polygon';
+  return "complex polygon";
 }
 
 /**
@@ -356,7 +409,7 @@ function isRectangle(polygon) {
 
   // Check if all angles are approximately 90 degrees
   const tolerance = 10; // degrees
-  return angles.every(angle => Math.abs(angle - 90) < tolerance);
+  return angles.every((angle) => Math.abs(angle - 90) < tolerance);
 }
 
 /**
@@ -384,14 +437,17 @@ function calculateElementCentroid(element) {
 
   if (polygon.length === 0) return { lat: 0, lng: 0 };
 
-  const sum = polygon.reduce((acc, point) => ({
-    lat: acc.lat + point.lat,
-    lng: acc.lng + point.lng
-  }), { lat: 0, lng: 0 });
+  const sum = polygon.reduce(
+    (acc, point) => ({
+      lat: acc.lat + point.lat,
+      lng: acc.lng + point.lng,
+    }),
+    { lat: 0, lng: 0 },
+  );
 
   return {
     lat: sum.lat / polygon.length,
-    lng: sum.lng / polygon.length
+    lng: sum.lng / polygon.length,
   };
 }
 
@@ -400,14 +456,17 @@ function calculateElementCentroid(element) {
  */
 function calculateDistance(coord1, coord2) {
   const R = 6371e3; // Earth radius in meters
-  const lat1 = coord1.lat * Math.PI / 180;
-  const lat2 = coord2.lat * Math.PI / 180;
-  const deltaLat = (coord2.lat - coord1.lat) * Math.PI / 180;
-  const deltaLng = (coord2.lng - coord1.lng) * Math.PI / 180;
+  const lat1 = (coord1.lat * Math.PI) / 180;
+  const lat2 = (coord2.lat * Math.PI) / 180;
+  const deltaLat = ((coord2.lat - coord1.lat) * Math.PI) / 180;
+  const deltaLng = ((coord2.lng - coord1.lng) * Math.PI) / 180;
 
-  const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-            Math.cos(lat1) * Math.cos(lat2) *
-            Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(deltaLng / 2) *
+      Math.sin(deltaLng / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
@@ -427,10 +486,14 @@ export function calculatePolygonArea(polygon) {
     const p1 = polygon[i];
     const p2 = polygon[(i + 1) % polygon.length];
 
-    area += (p2.lng - p1.lng) * (2 + Math.sin(p1.lat * Math.PI / 180) + Math.sin(p2.lat * Math.PI / 180));
+    area +=
+      (p2.lng - p1.lng) *
+      (2 +
+        Math.sin((p1.lat * Math.PI) / 180) +
+        Math.sin((p2.lat * Math.PI) / 180));
   }
 
-  area = Math.abs(area * R * R / 2);
+  area = Math.abs((area * R * R) / 2);
 
   return area;
 }
@@ -439,14 +502,17 @@ export function calculatePolygonArea(polygon) {
  * Expand polygon by a scale factor
  */
 function expandPolygon(polygon, scale) {
-  const centroid = polygon.reduce((acc, point) => ({
-    lat: acc.lat + point.lat / polygon.length,
-    lng: acc.lng + point.lng / polygon.length
-  }), { lat: 0, lng: 0 });
+  const centroid = polygon.reduce(
+    (acc, point) => ({
+      lat: acc.lat + point.lat / polygon.length,
+      lng: acc.lng + point.lng / polygon.length,
+    }),
+    { lat: 0, lng: 0 },
+  );
 
-  return polygon.map(point => ({
+  return polygon.map((point) => ({
     lat: centroid.lat + (point.lat - centroid.lat) * scale,
-    lng: centroid.lng + (point.lng - centroid.lng) * scale
+    lng: centroid.lng + (point.lng - centroid.lng) * scale,
   }));
 }
 
@@ -464,10 +530,16 @@ function constructBoundaryFromFeatures(features, centerCoords) {
     if (feature.geometry && feature.geometry.length > 0) {
       // Find the closest point on this feature to the center
       let closestPoint = feature.geometry[0];
-      let minDist = calculateDistance(centerCoords, { lat: closestPoint.lat, lng: closestPoint.lon });
+      let minDist = calculateDistance(centerCoords, {
+        lat: closestPoint.lat,
+        lng: closestPoint.lon,
+      });
 
       for (const node of feature.geometry) {
-        const dist = calculateDistance(centerCoords, { lat: node.lat, lng: node.lon });
+        const dist = calculateDistance(centerCoords, {
+          lat: node.lat,
+          lng: node.lon,
+        });
         if (dist < minDist) {
           minDist = dist;
           closestPoint = node;
@@ -502,14 +574,15 @@ function generateRectangularLot(center, widthMeters, depthMeters) {
   const { lat, lng } = center;
 
   // Convert meters to approximate degrees
-  const latOffset = (depthMeters / 2) / 111320;
-  const lngOffset = (widthMeters / 2) / (111320 * Math.cos(lat * Math.PI / 180));
+  const latOffset = depthMeters / 2 / 111320;
+  const lngOffset =
+    widthMeters / 2 / (111320 * Math.cos((lat * Math.PI) / 180));
 
   return [
     { lat: lat + latOffset, lng: lng - lngOffset }, // Top-left
     { lat: lat + latOffset, lng: lng + lngOffset }, // Top-right
     { lat: lat - latOffset, lng: lng + lngOffset }, // Bottom-right
-    { lat: lat - latOffset, lng: lng - lngOffset }  // Bottom-left
+    { lat: lat - latOffset, lng: lng - lngOffset }, // Bottom-left
   ];
 }
 
@@ -520,7 +593,7 @@ function generateLShapedLot(center, widthMeters, depthMeters) {
   const { lat, lng } = center;
 
   const latOffset = depthMeters / 111320;
-  const lngOffset = widthMeters / (111320 * Math.cos(lat * Math.PI / 180));
+  const lngOffset = widthMeters / (111320 * Math.cos((lat * Math.PI) / 180));
 
   return [
     { lat: lat + latOffset, lng: lng - lngOffset },
@@ -528,7 +601,7 @@ function generateLShapedLot(center, widthMeters, depthMeters) {
     { lat: lat + latOffset * 0.4, lng: lng + lngOffset * 0.6 },
     { lat: lat + latOffset * 0.4, lng: lng + lngOffset },
     { lat: lat - latOffset, lng: lng + lngOffset },
-    { lat: lat - latOffset, lng: lng - lngOffset }
+    { lat: lat - latOffset, lng: lng - lngOffset },
   ];
 }
 
@@ -540,13 +613,15 @@ function generatePentagonLot(center, radiusMeters) {
   const polygon = [];
 
   for (let i = 0; i < 5; i++) {
-    const angle = (i * 2 * Math.PI / 5) - (Math.PI / 2); // Start from top
+    const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2; // Start from top
     const latOffset = (radiusMeters * Math.sin(angle)) / 111320;
-    const lngOffset = (radiusMeters * Math.cos(angle)) / (111320 * Math.cos(lat * Math.PI / 180));
+    const lngOffset =
+      (radiusMeters * Math.cos(angle)) /
+      (111320 * Math.cos((lat * Math.PI) / 180));
 
     polygon.push({
       lat: lat + latOffset,
-      lng: lng + lngOffset
+      lng: lng + lngOffset,
     });
   }
 
@@ -556,52 +631,65 @@ function generatePentagonLot(center, radiusMeters) {
 /**
  * Generate irregular quadrilateral
  */
-function generateIrregularQuad(center, widthMeters, depthMeters) {
+function generateIrregularQuad(
+  center,
+  widthMeters,
+  depthMeters,
+  rng = Math.random,
+) {
   const { lat, lng } = center;
 
   const latOffset = depthMeters / 111320;
-  const lngOffset = widthMeters / (111320 * Math.cos(lat * Math.PI / 180));
+  const lngOffset = widthMeters / (111320 * Math.cos((lat * Math.PI) / 180));
 
   // Add some randomness to make it irregular
   const variance = 0.15;
 
   return [
     {
-      lat: lat + latOffset * (1 + (Math.random() - 0.5) * variance),
-      lng: lng - lngOffset * (1 + (Math.random() - 0.5) * variance)
+      lat: lat + latOffset * (1 + (rng() - 0.5) * variance),
+      lng: lng - lngOffset * (1 + (rng() - 0.5) * variance),
     },
     {
-      lat: lat + latOffset * (1 + (Math.random() - 0.5) * variance),
-      lng: lng + lngOffset * (1 + (Math.random() - 0.5) * variance)
+      lat: lat + latOffset * (1 + (rng() - 0.5) * variance),
+      lng: lng + lngOffset * (1 + (rng() - 0.5) * variance),
     },
     {
-      lat: lat - latOffset * (1 + (Math.random() - 0.5) * variance),
-      lng: lng + lngOffset * (1 + (Math.random() - 0.5) * variance)
+      lat: lat - latOffset * (1 + (rng() - 0.5) * variance),
+      lng: lng + lngOffset * (1 + (rng() - 0.5) * variance),
     },
     {
-      lat: lat - latOffset * (1 + (Math.random() - 0.5) * variance),
-      lng: lng - lngOffset * (1 + (Math.random() - 0.5) * variance)
-    }
+      lat: lat - latOffset * (1 + (rng() - 0.5) * variance),
+      lng: lng - lngOffset * (1 + (rng() - 0.5) * variance),
+    },
   ];
 }
 
 /**
  * Generate irregular polygon
  */
-function generateIrregularPolygon(center, sides, minRadiusMeters, maxRadiusMeters) {
+function generateIrregularPolygon(
+  center,
+  sides,
+  minRadiusMeters,
+  maxRadiusMeters,
+  rng = Math.random,
+) {
   const { lat, lng } = center;
   const polygon = [];
 
   for (let i = 0; i < sides; i++) {
-    const angle = (i * 2 * Math.PI / sides) - (Math.PI / 2);
-    const radius = minRadiusMeters + Math.random() * (maxRadiusMeters - minRadiusMeters);
+    const angle = (i * 2 * Math.PI) / sides - Math.PI / 2;
+    const radius =
+      minRadiusMeters + rng() * (maxRadiusMeters - minRadiusMeters);
 
     const latOffset = (radius * Math.sin(angle)) / 111320;
-    const lngOffset = (radius * Math.cos(angle)) / (111320 * Math.cos(lat * Math.PI / 180));
+    const lngOffset =
+      (radius * Math.cos(angle)) / (111320 * Math.cos((lat * Math.PI) / 180));
 
     polygon.push({
       lat: lat + latOffset,
-      lng: lng + lngOffset
+      lng: lng + lngOffset,
     });
   }
 
@@ -673,7 +761,7 @@ function pointToLineDistance(point, lineStart, lineEnd) {
  */
 export function validatePolygon(polygon) {
   if (!polygon || polygon.length < 3) {
-    return { valid: false, error: 'Polygon must have at least 3 vertices' };
+    return { valid: false, error: "Polygon must have at least 3 vertices" };
   }
 
   // Check for self-intersections
@@ -688,7 +776,7 @@ export function validatePolygon(polygon) {
       const p4 = polygon[(j + 1) % polygon.length];
 
       if (linesIntersect(p1, p2, p3, p4)) {
-        return { valid: false, error: 'Polygon has self-intersections' };
+        return { valid: false, error: "Polygon has self-intersections" };
       }
     }
   }
@@ -700,18 +788,23 @@ export function validatePolygon(polygon) {
  * Check if two line segments intersect
  */
 function linesIntersect(p1, p2, p3, p4) {
-  const denominator = ((p4.lng - p3.lng) * (p2.lat - p1.lat)) -
-                     ((p4.lat - p3.lat) * (p2.lng - p1.lng));
+  const denominator =
+    (p4.lng - p3.lng) * (p2.lat - p1.lat) -
+    (p4.lat - p3.lat) * (p2.lng - p1.lng);
 
   if (denominator === 0) return false; // Parallel lines
 
-  const ua = (((p4.lat - p3.lat) * (p1.lng - p3.lng)) -
-              ((p4.lng - p3.lng) * (p1.lat - p3.lat))) / denominator;
+  const ua =
+    ((p4.lat - p3.lat) * (p1.lng - p3.lng) -
+      (p4.lng - p3.lng) * (p1.lat - p3.lat)) /
+    denominator;
 
-  const ub = (((p2.lat - p1.lat) * (p1.lng - p3.lng)) -
-              ((p2.lng - p1.lng) * (p1.lat - p3.lat))) / denominator;
+  const ub =
+    ((p2.lat - p1.lat) * (p1.lng - p3.lng) -
+      (p2.lng - p1.lng) * (p1.lat - p3.lat)) /
+    denominator;
 
-  return (ua > 0 && ua < 1 && ub > 0 && ub < 1);
+  return ua > 0 && ua < 1 && ub > 0 && ub < 1;
 }
 
 export default {
@@ -719,5 +812,5 @@ export default {
   simplifyPolygon,
   validatePolygon,
   calculatePolygonArea,
-  analyzeShapeType
+  analyzeShapeType,
 };

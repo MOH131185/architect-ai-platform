@@ -614,12 +614,15 @@ export function getFontEmbeddingReadinessSync() {
       return false;
     }
   };
-  const bundledRegularAvailable = regularCandidates.some((candidate) =>
-    fileExists(candidate),
-  );
-  const bundledBoldAvailable = boldCandidates.some((candidate) =>
-    fileExists(candidate),
-  );
+  const bundledRegularLoaded = Boolean(resolvedBundledFonts?.regular?.base64);
+  const bundledBoldLoaded = Boolean(resolvedBundledFonts?.bold?.base64);
+  const bundledRegularAvailable =
+    bundledRegularLoaded ||
+    regularCandidates.some((candidate) => fileExists(candidate));
+  const bundledBoldAvailable =
+    bundledBoldLoaded ||
+    boldCandidates.some((candidate) => fileExists(candidate));
+  const bundledFontsLoaded = bundledRegularLoaded && bundledBoldLoaded;
   const regularReadyForEmbedding =
     bundledRegularAvailable || Boolean(resolvedFonts?.regular?.base64);
   const boldReadyForEmbedding =
@@ -634,6 +637,9 @@ export function getFontEmbeddingReadinessSync() {
     localBoldCandidates: boldCandidates,
     bundledRegularPreferred: regularCandidates[0] || null,
     bundledBoldPreferred: boldCandidates[0] || null,
+    bundledRegularLoaded,
+    bundledBoldLoaded,
+    bundledFontsLoaded,
     bundledRegularAvailable,
     bundledBoldAvailable,
     bundledFontsAvailable: bundledRegularAvailable && bundledBoldAvailable,

@@ -24,15 +24,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    // In Vercel, use OPENAI_API_KEY (without REACT_APP_ prefix)
+    // Keep serverless env resolution aligned with server.cjs.
     const apiKey =
-      process.env.OPENAI_API_KEY || process.env.REACT_APP_OPENAI_API_KEY;
+      process.env.OPENAI_REASONING_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.REACT_APP_OPENAI_API_KEY;
 
     if (!apiKey) {
       console.error("OpenAI API key not found in environment variables");
       return res.status(500).json({
         error: "OpenAI API key not configured",
-        details: "Please set OPENAI_API_KEY in Vercel environment variables",
+        details:
+          "Please set OPENAI_REASONING_API_KEY or OPENAI_API_KEY in Vercel environment variables",
       });
     }
 
