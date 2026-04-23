@@ -29,13 +29,19 @@ function applyPanelPriorityPhase8(panelCandidates = []) {
   const technicalFirst = isFeatureEnabled("useTechnicalFirstA1LayoutPhase8");
   return (panelCandidates || [])
     .map((candidate) => {
-      const isTechnical = ["floor_plan", "elevation", "section"].includes(
+      const isPlan = candidate.type === "floor_plan";
+      const isElevationOrSection = ["elevation", "section"].includes(
         candidate.type,
       );
+      const isTechnical = isPlan || isElevationOrSection;
       const boardWeight = technicalFirst
-        ? isTechnical
-          ? 3
-          : 1
+        ? isPlan
+          ? 4
+          : isElevationOrSection
+            ? 3
+            : candidate.type === "visual"
+              ? 1
+              : 2
         : candidate.type === "visual"
           ? 3
           : 2;
@@ -43,11 +49,15 @@ function applyPanelPriorityPhase8(panelCandidates = []) {
         ...candidate,
         boardWeight,
         compositionRole:
-          technicalFirst && candidate.type === "visual"
-            ? "supporting_visual"
-            : isTechnical
-              ? "technical_truth"
-              : "hero_support",
+          technicalFirst && isPlan
+            ? "primary_technical_truth"
+            : technicalFirst && isElevationOrSection
+              ? "secondary_technical_truth"
+              : technicalFirst && candidate.type === "visual"
+                ? "supporting_visual"
+                : isTechnical
+                  ? "technical_truth"
+                  : "hero_support",
       };
     })
     .sort((left, right) => {

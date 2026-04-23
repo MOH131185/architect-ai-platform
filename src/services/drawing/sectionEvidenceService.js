@@ -1259,6 +1259,8 @@ export function buildSectionEvidence(
     ? assessSectionConstructionSemantics({
         sectionEvidence: {
           sectionIntersections: intersectionBundle,
+          sectionFaceBundle: intersectionBundle?.sectionFaceBundle || null,
+          sectionFaceSummary: intersectionBundle?.sectionFaceSummary || null,
           intersections: {
             rooms: directRooms,
             nearRooms,
@@ -1341,6 +1343,8 @@ export function buildSectionEvidence(
       summary,
       sectionProfile,
       sectionIntersections: intersectionBundle,
+      sectionFaceBundle: intersectionBundle?.sectionFaceBundle || null,
+      sectionFaceSummary: intersectionBundle?.sectionFaceSummary || null,
     },
     constructionSemantics,
   });
@@ -1575,6 +1579,8 @@ export function buildSectionEvidence(
     circulationHitCount,
     sectionConstructionSemantics: constructionSemantics,
     sectionTruthModel,
+    sectionFaceBundle: intersectionBundle?.sectionFaceBundle || null,
+    sectionFaceSummary: intersectionBundle?.sectionFaceSummary || null,
     blockers: unique(blockers),
     warnings: unique(warnings),
     rationale: [

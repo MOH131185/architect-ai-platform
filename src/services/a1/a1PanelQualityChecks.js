@@ -35,10 +35,19 @@ export function runA1PanelQualityChecks({
     technicalPanelQuality: technicalPanels,
   });
 
+  const phase21Active =
+    technicalPanelRegression.sectionFaceBundleVersion ||
+    (technicalPanelRegression.sectionFaceCredibilityQuality &&
+      technicalPanelRegression.sectionFaceCredibilityQuality !==
+        "provisional") ||
+    Number(technicalPanelRegression.sectionCutFaceTruthCount || 0) > 0 ||
+    Number(technicalPanelRegression.sectionCutProfileTruthCount || 0) > 0;
+
   return {
-    version:
-      technicalPanelRegression.roofTruthState ||
-      technicalPanelRegression.foundationTruthState
+    version: phase21Active
+      ? "phase21-a1-panel-quality-checks-v1"
+      : technicalPanelRegression.roofTruthState ||
+          technicalPanelRegression.foundationTruthState
         ? "phase17-a1-panel-quality-checks-v1"
         : "phase13-a1-panel-quality-checks-v1",
     checks,
@@ -70,6 +79,22 @@ export function runA1PanelQualityChecks({
       technicalPanelRegression.foundationTruthMode || "missing",
     foundationTruthState:
       technicalPanelRegression.foundationTruthState || "unsupported",
+    sectionFaceCredibilityQuality:
+      technicalPanelRegression.sectionFaceCredibilityQuality || "provisional",
+    sectionFaceCredibilityScore: Number(
+      technicalPanelRegression.sectionFaceCredibilityScore || 0,
+    ),
+    sectionCutFaceTruthCount: Number(
+      technicalPanelRegression.sectionCutFaceTruthCount || 0,
+    ),
+    sectionCutProfileTruthCount: Number(
+      technicalPanelRegression.sectionCutProfileTruthCount || 0,
+    ),
+    sectionAverageProfileContinuity: Number(
+      technicalPanelRegression.sectionAverageProfileContinuity || 0,
+    ),
+    sectionFaceBundleVersion:
+      technicalPanelRegression.sectionFaceBundleVersion || null,
     sectionStrategyRationale:
       technicalPanelRegression.sectionCandidateQuality.map((entry) => ({
         sectionType: entry.sectionType,

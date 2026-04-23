@@ -65,6 +65,9 @@ function normalizeStatus(entry = {}) {
   const foundationTruthMode = String(
     entry?.technical_quality_metadata?.foundation_truth_mode || "",
   ).toLowerCase();
+  const sectionFaceCredibilityQuality = String(
+    entry?.technical_quality_metadata?.section_face_credibility_quality || "",
+  ).toLowerCase();
   if (
     directEvidenceQuality === "blocked" ||
     inferredEvidenceQuality === "blocked" ||
@@ -75,7 +78,8 @@ function normalizeStatus(entry = {}) {
     wallSectionClipQuality === "blocked" ||
     cutWallTruthQuality === "blocked" ||
     slabTruthQuality === "blocked" ||
-    foundationTruthQuality === "blocked"
+    foundationTruthQuality === "blocked" ||
+    sectionFaceCredibilityQuality === "blocked"
   ) {
     return "block";
   }
@@ -97,7 +101,8 @@ function normalizeStatus(entry = {}) {
     stairTruthQuality === "weak" ||
     slabTruthQuality === "weak" ||
     roofTruthQuality === "weak" ||
-    foundationTruthQuality === "weak"
+    foundationTruthQuality === "weak" ||
+    sectionFaceCredibilityQuality === "weak"
   ) {
     return "warning";
   }
@@ -270,6 +275,42 @@ export function runA1TechnicalPanelRegression({
     sectionDraftingEvidenceScore: Number(
       entry.technical_quality_metadata?.section_drafting_evidence_score || 0,
     ),
+    sectionFaceCredibilityQuality:
+      entry.technical_quality_metadata?.section_face_credibility_quality ||
+      null,
+    sectionFaceCredibilityScore: Number(
+      entry.technical_quality_metadata?.section_face_credibility_score || 0,
+    ),
+    sectionCutFaceTruthCount: Number(
+      entry.technical_quality_metadata
+        ?.section_cut_face_construction_truth_count ||
+        entry.technical_quality_metadata?.section_face_cut_face_count ||
+        0,
+    ),
+    sectionCutProfileTruthCount: Number(
+      entry.technical_quality_metadata
+        ?.section_cut_profile_construction_truth_count ||
+        entry.technical_quality_metadata?.section_face_cut_profile_count ||
+        0,
+    ),
+    sectionContextualProfileTruthCount: Number(
+      entry.technical_quality_metadata
+        ?.section_contextual_profile_construction_truth_count ||
+        entry.technical_quality_metadata?.section_face_contextual_count ||
+        0,
+    ),
+    sectionDerivedProfileTruthCount: Number(
+      entry.technical_quality_metadata
+        ?.section_derived_profile_construction_truth_count ||
+        entry.technical_quality_metadata?.section_face_derived_count ||
+        0,
+    ),
+    sectionAverageProfileContinuity: Number(
+      entry.technical_quality_metadata
+        ?.section_average_construction_profile_continuity || 0,
+    ),
+    sectionFaceBundleVersion:
+      entry.technical_quality_metadata?.section_face_bundle_version || null,
   }));
 
   const blockers = [];
@@ -613,33 +654,104 @@ export function runA1TechnicalPanelRegression({
     sectionCandidateQuality.find((entry) => entry.sectionTruthModelVersion)
       ?.sectionTruthModelVersion ||
     null;
+  const sectionFaceEntries = sectionCandidateQuality.filter(
+    (entry) => entry.sectionFaceCredibilityQuality != null,
+  );
+  const sectionFaceCredibilityQuality = sectionFaceEntries.some(
+    (entry) => entry.sectionFaceCredibilityQuality === "blocked",
+  )
+    ? "blocked"
+    : sectionFaceEntries.some(
+          (entry) => entry.sectionFaceCredibilityQuality === "weak",
+        )
+      ? "weak"
+      : sectionFaceEntries.length
+        ? "verified"
+        : "provisional";
+  const sectionFaceCredibilityScore = sectionFaceEntries.length
+    ? Math.max(
+        0,
+        Math.min(
+          1,
+          sectionFaceEntries.reduce(
+            (total, entry) =>
+              total + Number(entry.sectionFaceCredibilityScore || 0),
+            0,
+          ) / Math.max(1, sectionFaceEntries.length),
+        ),
+      )
+    : 0;
+  const sectionCutFaceTruthCount = sectionCandidateQuality.reduce(
+    (total, entry) => total + Number(entry.sectionCutFaceTruthCount || 0),
+    0,
+  );
+  const sectionCutProfileTruthCount = sectionCandidateQuality.reduce(
+    (total, entry) => total + Number(entry.sectionCutProfileTruthCount || 0),
+    0,
+  );
+  const sectionContextualProfileTruthCount = sectionCandidateQuality.reduce(
+    (total, entry) =>
+      total + Number(entry.sectionContextualProfileTruthCount || 0),
+    0,
+  );
+  const sectionDerivedProfileTruthCount = sectionCandidateQuality.reduce(
+    (total, entry) =>
+      total + Number(entry.sectionDerivedProfileTruthCount || 0),
+    0,
+  );
+  const sectionAverageProfileContinuity = sectionCandidateQuality.length
+    ? Math.max(
+        0,
+        Math.min(
+          1,
+          sectionCandidateQuality.reduce(
+            (total, entry) =>
+              total + Number(entry.sectionAverageProfileContinuity || 0),
+            0,
+          ) / Math.max(1, sectionCandidateQuality.length),
+        ),
+      )
+    : 0;
+  const sectionFaceBundleVersion =
+    sectionCandidateQuality.find((entry) => entry.selectedForBoard)
+      ?.sectionFaceBundleVersion ||
+    sectionCandidateQuality.find((entry) => entry.sectionFaceBundleVersion)
+      ?.sectionFaceBundleVersion ||
+    null;
 
   return {
-    version: sectionTruthModelVersion
-      ? "phase20-a1-technical-panel-regression-v1"
-      : wallSectionClipQuality !== "provisional" ||
-          openingSectionClipQuality !== "provisional" ||
-          stairSectionClipQuality !== "provisional" ||
-          slabSectionClipQuality !== "provisional" ||
-          roofSectionClipQuality !== "provisional" ||
-          foundationSectionClipQuality !== "provisional"
-        ? "phase19-a1-technical-panel-regression-v1"
-        : sectionConstructionEvidenceQuality !== "provisional" ||
-            cutWallTruthQuality !== "provisional" ||
-            cutOpeningTruthQuality !== "provisional" ||
-            stairTruthQuality !== "provisional"
-          ? "phase18-a1-technical-panel-regression-v1"
-          : roofTruthState !== "unsupported" ||
-              foundationTruthState !== "unsupported"
-            ? "phase17-a1-technical-panel-regression-v1"
-            : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-              ? "phase16-a1-technical-panel-regression-v1"
-              : roofTruthQuality !== "provisional" ||
-                  foundationTruthQuality !== "provisional"
-                ? "phase15-a1-technical-panel-regression-v1"
-                : sectionConstructionTruthQuality !== "provisional"
-                  ? "phase14-a1-technical-panel-regression-v1"
-                  : "phase13-a1-technical-panel-regression-v1",
+    version:
+      sectionFaceBundleVersion ||
+      sectionFaceCredibilityQuality !== "provisional" ||
+      sectionCutFaceTruthCount > 0 ||
+      sectionCutProfileTruthCount > 0
+        ? "phase21-a1-technical-panel-regression-v1"
+        : sectionTruthModelVersion
+          ? "phase20-a1-technical-panel-regression-v1"
+          : wallSectionClipQuality !== "provisional" ||
+              openingSectionClipQuality !== "provisional" ||
+              stairSectionClipQuality !== "provisional" ||
+              slabSectionClipQuality !== "provisional" ||
+              roofSectionClipQuality !== "provisional" ||
+              foundationSectionClipQuality !== "provisional"
+            ? "phase19-a1-technical-panel-regression-v1"
+            : sectionConstructionEvidenceQuality !== "provisional" ||
+                cutWallTruthQuality !== "provisional" ||
+                cutOpeningTruthQuality !== "provisional" ||
+                stairTruthQuality !== "provisional"
+              ? "phase18-a1-technical-panel-regression-v1"
+              : roofTruthState !== "unsupported" ||
+                  foundationTruthState !== "unsupported"
+                ? "phase17-a1-technical-panel-regression-v1"
+                : roofTruthMode !== "missing" ||
+                    foundationTruthMode !== "missing"
+                  ? "phase16-a1-technical-panel-regression-v1"
+                  : roofTruthQuality !== "provisional" ||
+                      foundationTruthQuality !== "provisional"
+                    ? "phase15-a1-technical-panel-regression-v1"
+                    : sectionConstructionTruthQuality !== "provisional"
+                      ? "phase14-a1-technical-panel-regression-v1"
+                      : "phase13-a1-technical-panel-regression-v1",
     regressionReady: blockers.length === 0,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: [...new Set(blockers)],
@@ -672,6 +784,14 @@ export function runA1TechnicalPanelRegression({
     foundationTruthMode,
     foundationTruthState,
     chosenSectionRationale,
+    sectionFaceCredibilityQuality,
+    sectionFaceCredibilityScore,
+    sectionCutFaceTruthCount,
+    sectionCutProfileTruthCount,
+    sectionContextualProfileTruthCount,
+    sectionDerivedProfileTruthCount,
+    sectionAverageProfileContinuity,
+    sectionFaceBundleVersion,
     technicalFragmentScores: fragmentQuality.fragmentScores,
   };
 }

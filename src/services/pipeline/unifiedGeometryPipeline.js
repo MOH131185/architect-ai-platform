@@ -1,90 +1,80 @@
 /**
  * Unified Geometry Pipeline
  *
- * Single source of truth for all architectural visualizations.
- * Uses Meshy 3D as the canonical geometry, then derives all views from it.
+ * Geometry authority is resolved from a compiled project, canonical pack,
+ * deterministic GLB render, or equivalent compiled render inputs.
+ * Meshy may supply optional reference assets, but it is never the canonical
+ * geometry source for blueprint consistency.
  *
- * PIPELINE ARCHITECTURE:
- * =====================
- *
- *   DNA → Meshy 3D Model (canonical geometry)
- *           ↓
- *     ┌─────┴─────┬─────────────┬──────────────┐
- *     ↓           ↓             ↓              ↓
- *   Ortho N    Ortho S       Ortho E        Ortho W
- *     ↓           ↓             ↓              ↓
- *   FLUX      FLUX          FLUX           FLUX
- *   (tech)    (tech)        (tech)         (tech)
- *     ↓           ↓             ↓              ↓
- *   Elev N    Elev S        Elev E         Elev W
- *
- *     ┌─────┴─────┬─────────────┐
- *     ↓           ↓             ↓
- *   Persp     Interior      Axonometric
- *     ↓           ↓             ↓
- *   FLUX      FLUX          FLUX
- *   (photo)   (photo)       (photo)
- *     ↓           ↓             ↓
- *   Hero 3D   Interior 3D   Axono 3D
- *
- * KEY BENEFITS:
- * - ALL views derive from SAME Meshy model (100% consistency)
- * - Elevations match 3D hero exactly
- * - FLUX stylization applied consistently with same style DNA
- * - No drift between panels
+ * Technical drawings remain deterministic and must never route through image
+ * models. AI stylization is limited to image-edit passes on top of fixed
+ * geometry renders for 3D panels.
  *
  * @module services/pipeline/unifiedGeometryPipeline
  */
 
-import { isFeatureEnabled } from '../../config/featureFlags.js';
-import logger from '../core/logger.js';
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import logger from "../../utils/logger.js";
+import { computeCDSHashSync } from "../validation/cdsHash.js";
+import {
+  buildHeroGenerationBlockMessage,
+  resolveHeroGenerationDependencies,
+} from "../design/heroDesignAuthorityService.js";
 
-// =====================================================
-// CONFIGURATION
-// =====================================================
+const DEFAULT_VIEWS = [
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "hero_3d",
+  "axonometric",
+];
+
+const TECHNICAL_DRAWING_VIEWS = new Set([
+  "floor_plan_ground",
+  "floor_plan_first",
+  "floor_plan_level2",
+  "floor_plan_level3",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+]);
+
+const COMPILED_3D_VIEWS = new Set(["hero_3d", "interior_3d", "axonometric"]);
 
 const PIPELINE_CONFIG = {
-  // Meshy generation settings
   meshy: {
-    mode: 'refine', // 'preview' for fast, 'refine' for high quality
-    artStyle: 'realistic',
-    textureRichness: 'high',
-    timeout: 300000, // 5 minutes
+    mode: "refine",
+    artStyle: "realistic",
+    textureRichness: "high",
+    timeout: 300000,
   },
-
-  // FLUX stylization settings per view type
   flux: {
-    elevation: {
-      model: 'black-forest-labs/FLUX.1-schnell',
-      steps: 35,
-      guidance: 7.5,
-      strength: 0.7, // Keep 70% of Meshy geometry, 30% stylization
-      style: 'technical_drawing',
-    },
     hero3d: {
-      model: 'black-forest-labs/FLUX.1-kontext-max',
+      model: "black-forest-labs/FLUX.1-kontext-max",
       steps: 45,
       guidance: 7.8,
-      strength: 0.5, // 50% Meshy geometry, 50% stylization for beauty
-      style: 'photorealistic',
+      strength: 0.3,
+      style: "photorealistic",
     },
     interior: {
-      model: 'black-forest-labs/FLUX.1-kontext-max',
+      model: "black-forest-labs/FLUX.1-kontext-max",
       steps: 45,
       guidance: 7.5,
-      strength: 0.4, // More AI freedom for interior beauty
-      style: 'photorealistic_interior',
+      strength: 0.25,
+      style: "photorealistic_interior",
     },
     axonometric: {
-      model: 'black-forest-labs/FLUX.1-schnell',
+      model: "black-forest-labs/FLUX.1-schnell",
       steps: 40,
-      guidance: 7.5,
-      strength: 0.6, // Balance geometry and style
-      style: 'architectural_render',
+      guidance: 7.2,
+      strength: 0.22,
+      style: "architectural_render",
     },
   },
-
-  // View camera configurations for Meshy
   cameras: {
     elevation_north: { azimuth: 0, elevation: 0, ortho: true },
     elevation_south: { azimuth: 180, elevation: 0, ortho: true },
@@ -96,22 +86,583 @@ const PIPELINE_CONFIG = {
   },
 };
 
-// =====================================================
-// MESHY RENDER SERVICE
-// =====================================================
+let canonicalPackModulePromise = null;
 
-/**
- * Request multiple camera renders from Meshy model
- * Uses the GLB model URL to generate orthographic and perspective views
- *
- * @param {string} modelUrl - Meshy GLB model URL
- * @param {Array<string>} views - View types to render
- * @returns {Promise<Object>} Rendered views with dataUrls
- */
-async function requestMeshyRenders(modelUrl, views) {
+async function getCanonicalPackModule() {
+  if (!canonicalPackModulePromise) {
+    canonicalPackModulePromise =
+      import("../canonical/CanonicalGeometryPackService.js");
+  }
+  return canonicalPackModulePromise;
+}
+
+function normalizeHashValue(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeOptionalString(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function isDataUrl(value) {
+  return typeof value === "string" && value.startsWith("data:");
+}
+
+function normalizeRenderInput(
+  entry,
+  panelType,
+  defaultSourceType = "compiled_render_input",
+) {
+  if (!entry) return null;
+
+  if (typeof entry === "string") {
+    return {
+      panelType,
+      viewType: panelType,
+      dataUrl: isDataUrl(entry) ? entry : null,
+      url: isDataUrl(entry) ? null : entry,
+      sourceType: defaultSourceType,
+    };
+  }
+
+  if (typeof entry !== "object") return null;
+
+  const imageValue =
+    entry.dataUrl ||
+    entry.url ||
+    entry.imageUrl ||
+    entry.init_image ||
+    entry.controlImage ||
+    entry.renderInput ||
+    null;
+
+  return {
+    ...entry,
+    panelType: entry.panelType || entry.viewType || panelType,
+    viewType: entry.viewType || panelType,
+    dataUrl: entry.dataUrl || (isDataUrl(imageValue) ? imageValue : null),
+    url:
+      entry.url ||
+      entry.imageUrl ||
+      (isDataUrl(imageValue) ? null : imageValue),
+    width: entry.width || null,
+    height: entry.height || null,
+    svgString: entry.svgString || entry.svg || null,
+    sourceType: entry.sourceType || entry.source || defaultSourceType,
+  };
+}
+
+function extractCompiledRenderInputs(compiledProject = {}) {
+  const renderMaps = [
+    compiledProject.renderInputs,
+    compiledProject.renderedViews,
+    compiledProject.controlImages,
+    compiledProject.views,
+    compiledProject.panels,
+    compiledProject.renders,
+  ].filter(Boolean);
+
+  const inputs = {};
+  renderMaps.forEach((renderMap) => {
+    Object.entries(renderMap).forEach(([panelType, entry]) => {
+      const normalized = normalizeRenderInput(
+        entry,
+        panelType,
+        "compiled_render_input",
+      );
+      if (normalized) {
+        inputs[panelType] = normalized;
+      }
+    });
+  });
+
+  return inputs;
+}
+
+function computeRenderInputGeometryHash(renderInputs = {}) {
+  const serialized = Object.entries(renderInputs)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .reduce((acc, [panelType, entry]) => {
+      const payload = entry?.svgString || entry?.dataUrl || entry?.url || null;
+      if (!payload) return acc;
+      acc[panelType] = computeCDSHashSync({
+        panelType,
+        payload,
+      });
+      return acc;
+    }, {});
+
+  return Object.keys(serialized).length > 0
+    ? computeCDSHashSync(serialized)
+    : null;
+}
+
+function resolveCompiledModelUrl(compiledProject = {}) {
+  return (
+    compiledProject.modelUrl ||
+    compiledProject.glbUrl ||
+    compiledProject.modelGlb ||
+    compiledProject?.artifacts?.modelGlb?.url ||
+    compiledProject?.artifacts?.model_glb?.url ||
+    null
+  );
+}
+
+function buildSourceMetadata(authority, panelType, sourceType, overrides = {}) {
+  return {
+    authority: "compiled_geometry",
+    authorityType:
+      overrides.authorityType || authority?.authorityType || "compiled_project",
+    sourceType: sourceType || overrides.sourceType || "compiled_render_input",
+    panelType,
+    geometryHash:
+      overrides.geometryHash ||
+      authority?.geometryHash ||
+      authority?.sourceMetadata?.geometryHash ||
+      null,
+    cdsHash: overrides.cdsHash || authority?.cdsHash || null,
+    designFingerprint:
+      overrides.designFingerprint ||
+      authority?.designFingerprint ||
+      authority?.sourceMetadata?.designFingerprint ||
+      null,
+    projectId: overrides.projectId || authority?.projectId || null,
+    compiledProjectId:
+      overrides.compiledProjectId ||
+      authority?.compiledProjectId ||
+      authority?.projectId ||
+      null,
+    canonicalGeometry:
+      overrides.canonicalGeometry ?? Boolean(authority?.canonicalPack),
+    deterministic: overrides.deterministic ?? true,
+    technicalDrawing: isTechnicalDrawingView(panelType),
+    heroDesignFinalized:
+      overrides.heroDesignFinalized ??
+      authority?.heroFinalization?.heroReady ??
+      null,
+    stylizationMode: overrides.stylizationMode || null,
+    meshyRole: overrides.meshyRole || null,
+  };
+}
+
+export function attachGeometryAuthority(
+  entry = {},
+  authority = {},
+  panelType,
+  overrides = {},
+) {
+  const normalizedPanelType =
+    panelType || entry.panelType || entry.viewType || "unknown";
+  const geometryHash =
+    normalizeHashValue(
+      overrides.geometryHash ||
+        entry.geometryHash ||
+        entry.meta?.geometryHash ||
+        authority?.geometryHash,
+    ) || null;
+  const cdsHash =
+    normalizeHashValue(
+      overrides.cdsHash ||
+        entry.cdsHash ||
+        entry.meta?.cdsHash ||
+        authority?.cdsHash,
+    ) || null;
+  const sourceType =
+    overrides.sourceType ||
+    entry.sourceMetadata?.sourceType ||
+    entry.sourceType ||
+    entry.source ||
+    authority?.defaultSourceType ||
+    "compiled_render_input";
+  const sourceMetadata = buildSourceMetadata(
+    authority,
+    normalizedPanelType,
+    sourceType,
+    {
+      ...overrides,
+      geometryHash,
+      cdsHash,
+    },
+  );
+
+  return {
+    ...entry,
+    panelType: entry.panelType || entry.viewType || normalizedPanelType,
+    viewType: entry.viewType || normalizedPanelType,
+    source: entry.source || sourceType,
+    sourceType,
+    geometryHash,
+    cdsHash,
+    sourceMetadata,
+    meta: {
+      ...(entry.meta || {}),
+      geometryHash,
+      ...(cdsHash ? { cdsHash } : {}),
+      controlSource: sourceType,
+      sourceMetadata,
+    },
+  };
+}
+
+export function isTechnicalDrawingView(viewType) {
+  return TECHNICAL_DRAWING_VIEWS.has(viewType);
+}
+
+export function assertSourceMetadata(entry, panelType = null) {
+  const resolvedPanelType =
+    panelType || entry?.panelType || entry?.viewType || "unknown";
+  const sourceMetadata =
+    entry?.sourceMetadata || entry?.meta?.sourceMetadata || null;
+
+  if (!sourceMetadata) {
+    throw new Error(`Missing source metadata for ${resolvedPanelType}`);
+  }
+  if (!sourceMetadata.authorityType) {
+    throw new Error(
+      `Missing authorityType in source metadata for ${resolvedPanelType}`,
+    );
+  }
+  if (!sourceMetadata.sourceType) {
+    throw new Error(
+      `Missing sourceType in source metadata for ${resolvedPanelType}`,
+    );
+  }
+
+  const geometryHash =
+    normalizeHashValue(
+      entry?.geometryHash ||
+        entry?.meta?.geometryHash ||
+        sourceMetadata.geometryHash,
+    ) || null;
+  if (!geometryHash) {
+    throw new Error(
+      `Missing geometryHash in source metadata for ${resolvedPanelType}`,
+    );
+  }
+
+  return true;
+}
+
+export function assertGeometryHashContinuity(
+  entries,
+  expectedGeometryHash,
+  context = "geometry continuity",
+) {
+  const normalizedExpected = normalizeHashValue(expectedGeometryHash);
+  if (!normalizedExpected) {
+    throw new Error(`Missing expected geometryHash for ${context}`);
+  }
+
+  const values = Array.isArray(entries)
+    ? entries
+    : entries && typeof entries === "object"
+      ? Object.values(entries)
+      : [];
+
+  const mismatches = values
+    .filter(Boolean)
+    .map((entry) => ({
+      panelType: entry.panelType || entry.viewType || "unknown",
+      geometryHash: normalizeHashValue(
+        entry.geometryHash || entry.meta?.geometryHash || null,
+      ),
+    }))
+    .filter(
+      (entry) =>
+        entry.geometryHash && entry.geometryHash !== normalizedExpected,
+    );
+
+  if (mismatches.length > 0) {
+    throw new Error(
+      `${context} failed: ${mismatches
+        .map((entry) => `${entry.panelType}=${entry.geometryHash}`)
+        .join(", ")}`,
+    );
+  }
+
+  return true;
+}
+
+async function resolveCanonicalPackCandidate(
+  dna,
+  options = {},
+  compiledProject = null,
+) {
+  const projectContext = options.projectContext || {};
+  const directPack =
+    options.canonicalPack ||
+    projectContext.canonicalPack ||
+    dna?.canonicalPack ||
+    compiledProject?.canonicalPack ||
+    null;
+
+  if (directPack?.geometryHash && directPack?.panels) {
+    return directPack;
+  }
+
+  let canonicalPackModule = null;
+  try {
+    canonicalPackModule = await getCanonicalPackModule();
+  } catch (error) {
+    logger.warn(
+      `[UnifiedPipeline] Canonical pack module unavailable: ${error.message}`,
+    );
+    return null;
+  }
+
+  const lookupKey =
+    options.designFingerprint ||
+    projectContext.designFingerprint ||
+    dna?.designFingerprint ||
+    dna?.designId ||
+    compiledProject?.designFingerprint ||
+    compiledProject?.designId ||
+    null;
+
+  if (lookupKey) {
+    const cachedPack = canonicalPackModule.getCanonicalPack(lookupKey);
+    if (cachedPack?.geometryHash && cachedPack?.panels) {
+      return cachedPack;
+    }
+  }
+
+  const cdsSource =
+    options.canonicalDesignState ||
+    projectContext.canonicalDesignState ||
+    dna?.canonicalDesignState ||
+    dna?.cds ||
+    compiledProject?.canonicalDesignState ||
+    null;
+
+  if (!cdsSource) {
+    return null;
+  }
+
+  try {
+    return canonicalPackModule.buildCanonicalPack(cdsSource, {
+      designFingerprint:
+        lookupKey || cdsSource.designFingerprint || cdsSource.designId || null,
+    });
+  } catch (error) {
+    logger.warn(
+      `[UnifiedPipeline] Failed to build canonical pack: ${error.message}`,
+    );
+    return null;
+  }
+}
+
+function buildAuthorityFromCanonicalPack(pack, compiledProject = null) {
+  if (!pack?.geometryHash || !pack?.panels) return null;
+
+  const compiledInputs = extractCompiledRenderInputs(compiledProject || {});
+  const compiledGeometryHash = normalizeHashValue(
+    compiledProject?.geometryHash,
+  );
+
+  if (compiledGeometryHash && compiledGeometryHash !== pack.geometryHash) {
+    throw new Error(
+      `Compiled project geometryHash (${compiledGeometryHash}) does not match canonical pack geometryHash (${pack.geometryHash})`,
+    );
+  }
+
+  const renderInputs = {};
+  Object.entries(pack.panels).forEach(([panelType, entry]) => {
+    if (compiledProject && COMPILED_3D_VIEWS.has(panelType)) {
+      return;
+    }
+    renderInputs[panelType] = normalizeRenderInput(
+      {
+        dataUrl: entry?.dataUrl || null,
+        svgString: entry?.svgString || null,
+        width: entry?.width || null,
+        height: entry?.height || null,
+        svgHash: entry?.svgHash || null,
+      },
+      panelType,
+      "canonical_pack",
+    );
+  });
+
+  Object.entries(compiledInputs).forEach(([panelType, entry]) => {
+    renderInputs[panelType] = entry;
+  });
+
+  const heroFinalization = resolveHeroGenerationDependencies({
+    compiledProject: compiledProject || {},
+  });
+
+  return {
+    authorityType: compiledProject ? "compiled_project" : "canonical_pack",
+    defaultSourceType: compiledProject
+      ? "compiled_render_input"
+      : "canonical_pack",
+    geometryHash: pack.geometryHash,
+    cdsHash: pack.cdsHash || null,
+    designFingerprint:
+      compiledProject?.designFingerprint ||
+      pack.designFingerprint ||
+      compiledProject?.designId ||
+      null,
+    projectId:
+      compiledProject?.projectId ||
+      compiledProject?.designId ||
+      pack.designId ||
+      null,
+    compiledProjectId:
+      compiledProject?.compiledProjectId ||
+      compiledProject?.projectId ||
+      compiledProject?.designId ||
+      pack.designId ||
+      null,
+    modelUrl: resolveCompiledModelUrl(compiledProject || {}),
+    renderInputs,
+    canonicalPack: pack,
+    compiledProject: compiledProject || null,
+    heroFinalization,
+    sourceMetadata: {
+      geometryHash: pack.geometryHash,
+      cdsHash: pack.cdsHash || null,
+      designFingerprint:
+        compiledProject?.designFingerprint ||
+        pack.designFingerprint ||
+        compiledProject?.designId ||
+        null,
+    },
+  };
+}
+
+function buildAuthorityFromCompiledProject(
+  compiledProject = null,
+  fallback = {},
+) {
+  if (!compiledProject) return null;
+
+  const renderInputs = extractCompiledRenderInputs(compiledProject);
+  const modelUrl = resolveCompiledModelUrl(compiledProject);
+  if (!modelUrl && Object.keys(renderInputs).length === 0) {
+    return null;
+  }
+
+  const geometryHash =
+    normalizeHashValue(compiledProject.geometryHash) ||
+    normalizeHashValue(compiledProject.meta?.geometryHash) ||
+    normalizeHashValue(fallback.geometryHash) ||
+    computeRenderInputGeometryHash(renderInputs);
+
+  const heroFinalization = resolveHeroGenerationDependencies({
+    compiledProject,
+  });
+
+  return {
+    authorityType: "compiled_project",
+    defaultSourceType: "compiled_render_input",
+    geometryHash,
+    cdsHash:
+      normalizeHashValue(compiledProject.cdsHash) ||
+      normalizeHashValue(compiledProject.meta?.cdsHash) ||
+      normalizeHashValue(fallback.cdsHash) ||
+      null,
+    designFingerprint:
+      compiledProject.designFingerprint ||
+      compiledProject.designId ||
+      fallback.designFingerprint ||
+      null,
+    projectId:
+      compiledProject.projectId ||
+      compiledProject.designId ||
+      fallback.projectId ||
+      null,
+    compiledProjectId:
+      compiledProject.compiledProjectId ||
+      compiledProject.projectId ||
+      compiledProject.designId ||
+      fallback.projectId ||
+      null,
+    modelUrl,
+    renderInputs,
+    canonicalPack: null,
+    compiledProject,
+    heroFinalization,
+    sourceMetadata: {
+      geometryHash,
+      cdsHash:
+        normalizeHashValue(compiledProject.cdsHash) ||
+        normalizeHashValue(compiledProject.meta?.cdsHash) ||
+        normalizeHashValue(fallback.cdsHash) ||
+        null,
+      designFingerprint:
+        compiledProject.designFingerprint ||
+        compiledProject.designId ||
+        fallback.designFingerprint ||
+        null,
+    },
+  };
+}
+
+export async function resolveCompiledGeometryAuthority(dna, options = {}) {
+  const projectContext = options.projectContext || {};
+  const compiledProject =
+    options.compiledProject ||
+    projectContext.compiledProject ||
+    dna?.compiledProject ||
+    null;
+  const fallbackGeometryHash =
+    normalizeHashValue(options.geometryHash) ||
+    normalizeHashValue(projectContext.geometryHash) ||
+    normalizeHashValue(dna?.geometryHash) ||
+    null;
+  const fallbackCdsHash =
+    normalizeHashValue(options.cdsHash) ||
+    normalizeHashValue(projectContext.cdsHash) ||
+    normalizeHashValue(dna?.cdsHash) ||
+    null;
+  const fallbackDesignFingerprint =
+    options.designFingerprint ||
+    projectContext.designFingerprint ||
+    dna?.designFingerprint ||
+    null;
+
+  const canonicalPack = await resolveCanonicalPackCandidate(
+    dna,
+    options,
+    compiledProject,
+  );
+  if (canonicalPack) {
+    const authority = buildAuthorityFromCanonicalPack(
+      canonicalPack,
+      compiledProject,
+    );
+    if (authority?.geometryHash) {
+      return authority;
+    }
+  }
+
+  const compiledAuthority = buildAuthorityFromCompiledProject(compiledProject, {
+    geometryHash: fallbackGeometryHash,
+    cdsHash: fallbackCdsHash,
+    designFingerprint: fallbackDesignFingerprint,
+    projectId: projectContext.projectId || dna?.designId || null,
+  });
+  if (compiledAuthority?.geometryHash) {
+    return compiledAuthority;
+  }
+
+  throw new Error(
+    "Compiled geometry authority is required. Provide a CompiledProject, canonical pack, or deterministic compiled render input with geometryHash.",
+  );
+}
+
+export async function requestCompiledModelRenders(
+  modelUrl,
+  views,
+  authority = null,
+) {
   const renders = {};
 
-  // For each view, request a render from the model
   for (const viewType of views) {
     const camera = PIPELINE_CONFIG.cameras[viewType];
     if (!camera) {
@@ -120,13 +671,20 @@ async function requestMeshyRenders(modelUrl, views) {
     }
 
     try {
-      // Call Meshy render endpoint (or use Three.js to render GLB locally)
-      const render = await renderMeshyView(modelUrl, camera, viewType);
-      renders[viewType] = render;
-
-      logger.info(`   Rendered ${viewType}: ${camera.ortho ? 'orthographic' : 'perspective'}`);
-    } catch (err) {
-      logger.warn(`   Failed to render ${viewType}: ${err.message}`);
+      const render = await renderCompiledModelView(modelUrl, camera, viewType);
+      renders[viewType] = attachGeometryAuthority(render, authority, viewType, {
+        sourceType: "compiled_model_render",
+        stylizationMode: isTechnicalDrawingView(viewType)
+          ? "deterministic_passthrough"
+          : null,
+      });
+      logger.info(
+        `[UnifiedPipeline] Rendered ${viewType} from compiled model (${camera.ortho ? "orthographic" : "perspective"})`,
+      );
+    } catch (error) {
+      logger.warn(
+        `[UnifiedPipeline] Failed to render ${viewType}: ${error.message}`,
+      );
       renders[viewType] = null;
     }
   }
@@ -134,38 +692,26 @@ async function requestMeshyRenders(modelUrl, views) {
   return renders;
 }
 
-/**
- * Render a single view from Meshy GLB model
- * Uses Three.js for local rendering or Meshy API for remote
- *
- * @param {string} modelUrl - GLB model URL
- * @param {Object} camera - Camera configuration
- * @param {string} viewType - View type name
- * @returns {Promise<Object>} Rendered view
- */
-async function renderMeshyView(modelUrl, camera, viewType) {
-  // Option 1: Use Three.js locally (faster, no API cost)
-  if (typeof window !== 'undefined') {
+export async function requestMeshyRenders(modelUrl, views, authority = null) {
+  return requestCompiledModelRenders(modelUrl, views, authority);
+}
+
+async function renderCompiledModelView(modelUrl, camera, viewType) {
+  if (typeof window !== "undefined") {
     return renderWithThreeJS(modelUrl, camera, viewType);
   }
-
-  // Option 2: Use server-side rendering
   return renderServerSide(modelUrl, camera, viewType);
 }
 
-/**
- * Render using Three.js in browser
- */
 async function renderWithThreeJS(modelUrl, camera, viewType) {
-  // Dynamic import Three.js
-  const THREE = await import('three');
-  const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+  const THREE = await import("three");
+  const { GLTFLoader } =
+    await import("three/examples/jsm/loaders/GLTFLoader.js");
 
   return new Promise((resolve, reject) => {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xffffff);
 
-    // Setup camera based on config
     let cam;
     if (camera.ortho) {
       cam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 1000);
@@ -173,7 +719,6 @@ async function renderWithThreeJS(modelUrl, camera, viewType) {
       cam = new THREE.PerspectiveCamera(45, 4 / 3, 0.1, 1000);
     }
 
-    // Position camera based on azimuth/elevation
     const distance = 30;
     const azimuthRad = (camera.azimuth * Math.PI) / 180;
     const elevationRad = (camera.elevation * Math.PI) / 180;
@@ -181,66 +726,48 @@ async function renderWithThreeJS(modelUrl, camera, viewType) {
     cam.position.x = distance * Math.cos(elevationRad) * Math.sin(azimuthRad);
     cam.position.y = distance * Math.sin(elevationRad);
     cam.position.z = distance * Math.cos(elevationRad) * Math.cos(azimuthRad);
-    cam.lookAt(0, 3, 0); // Look at building center
+    cam.lookAt(0, 3, 0);
 
-    // Setup renderer
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(2048, 1536);
     renderer.setClearColor(0xffffff, 1);
 
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(10, 20, 10);
     scene.add(directionalLight);
 
-    // Load GLB model
     const loader = new GLTFLoader();
     loader.load(
       modelUrl,
       (gltf) => {
         scene.add(gltf.scene);
-
-        // Center model
         const box = new THREE.Box3().setFromObject(gltf.scene);
         const center = box.getCenter(new THREE.Vector3());
         gltf.scene.position.sub(center);
 
-        // Render
         renderer.render(scene, cam);
-
-        // Get data URL
-        const dataUrl = renderer.domElement.toDataURL('image/png');
-
-        // Cleanup
+        const dataUrl = renderer.domElement.toDataURL("image/png");
         renderer.dispose();
 
         resolve({
           dataUrl,
-          viewType,
-          camera,
           width: 2048,
           height: 1536,
+          viewType,
+          camera,
         });
       },
       undefined,
-      (error) => {
-        reject(new Error(`Failed to load GLB: ${error.message}`));
-      }
+      (error) => reject(new Error(`Failed to load GLB: ${error.message}`)),
     );
   });
 }
 
-/**
- * Server-side rendering fallback
- */
 async function renderServerSide(modelUrl, camera, viewType) {
-  // Call server endpoint for rendering
-  const response = await fetch('/api/render-glb', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const response = await fetch("/api/render-glb", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       modelUrl,
       camera,
@@ -257,40 +784,161 @@ async function renderServerSide(modelUrl, camera, viewType) {
   return response.json();
 }
 
-// =====================================================
-// FLUX STYLIZATION SERVICE
-// =====================================================
+function getFluxConfigForView(viewType) {
+  if (viewType === "hero_3d") {
+    return PIPELINE_CONFIG.flux.hero3d;
+  }
+  if (viewType === "interior_3d") {
+    return PIPELINE_CONFIG.flux.interior;
+  }
+  if (viewType === "axonometric") {
+    return PIPELINE_CONFIG.flux.axonometric;
+  }
+  return PIPELINE_CONFIG.flux.hero3d;
+}
 
-/**
- * Stylize a Meshy render using FLUX img2img
- *
- * @param {Object} meshyRender - Meshy render with dataUrl
- * @param {Object} dna - Design DNA for style information
- * @param {string} viewType - Type of view (elevation, hero3d, etc.)
- * @returns {Promise<Object>} Stylized image
- */
-async function stylizeWithFlux(meshyRender, dna, viewType) {
+function buildStylizationPrompt(dna, viewType, styleType) {
+  const style = dna?.style || {};
+  const materials = style.materials || [];
+  const architecture =
+    style.architecture || style.primaryStyle || "contemporary";
+  const materialList =
+    materials
+      .slice(0, 3)
+      .map((material) => material.name || material.material)
+      .filter(Boolean)
+      .join(", ") || "brick, glass, zinc";
+
+  const geometryLock = [
+    "image edit only on the provided geometry render",
+    "preserve exact silhouette",
+    "preserve roof lines",
+    "preserve all openings",
+    "preserve massing",
+    "preserve camera framing",
+    "do not add or remove floors",
+  ].join(", ");
+
+  if (styleType === "photorealistic") {
+    return [
+      "photorealistic architectural exterior visualization",
+      `${architecture} architecture`,
+      `materials: ${materialList}`,
+      "high-end real estate rendering",
+      "natural lighting",
+      geometryLock,
+    ].join(", ");
+  }
+
+  if (styleType === "photorealistic_interior") {
+    return [
+      "photorealistic architectural interior visualization",
+      `${architecture} interior`,
+      `materials: ${materialList}`,
+      "editorial architectural photography",
+      geometryLock,
+    ].join(", ");
+  }
+
+  return [
+    "architectural axonometric render",
+    `${architecture} building`,
+    `materials: ${materialList}`,
+    "clean presentation background",
+    geometryLock,
+  ].join(", ");
+}
+
+function buildNegativePrompt(viewType) {
+  const common = [
+    "low quality",
+    "blurry",
+    "distorted",
+    "watermark",
+    "text overlay",
+    "changed silhouette",
+    "altered roof line",
+    "extra openings",
+    "missing openings",
+    "changed massing",
+    "extra floor",
+    "different proportions",
+  ];
+
+  if (viewType === "hero_3d") {
+    common.push("partial building", "cropped facade");
+  }
+  if (viewType === "interior_3d") {
+    common.push("exterior view", "facade only");
+  }
+  if (viewType === "axonometric") {
+    common.push("perspective distortion", "people", "cars");
+  }
+
+  return common.join(", ");
+}
+
+export async function stylizeWithFlux(
+  baseRender,
+  dna,
+  viewType,
+  authority = null,
+) {
+  const authoritativeBase = attachGeometryAuthority(
+    baseRender,
+    authority,
+    viewType,
+    {
+      sourceType:
+        baseRender?.sourceType || baseRender?.source || "compiled_render_input",
+    },
+  );
+
+  if (isTechnicalDrawingView(viewType)) {
+    return attachGeometryAuthority(authoritativeBase, authority, viewType, {
+      sourceType: authoritativeBase.sourceType || "compiled_render_input",
+      stylizationMode: "deterministic_passthrough",
+    });
+  }
+
+  const initImage = authoritativeBase.dataUrl || authoritativeBase.url || null;
+  if (!initImage) {
+    throw new Error(
+      `Cannot stylize ${viewType}: missing compiled geometry render input`,
+    );
+  }
+  if (viewType === "hero_3d") {
+    const heroFinalization =
+      authority?.heroFinalization ||
+      resolveHeroGenerationDependencies({
+        compiledProject: authority?.compiledProject || {},
+      });
+    if (heroFinalization.heroReady !== true) {
+      throw new Error(buildHeroGenerationBlockMessage(heroFinalization));
+    }
+  }
+
   const config = getFluxConfigForView(viewType);
   const prompt = buildStylizationPrompt(dna, viewType, config.style);
   const negativePrompt = buildNegativePrompt(viewType);
 
-  logger.info(`   Stylizing ${viewType} with FLUX (strength: ${config.strength})`);
+  logger.info(
+    `[UnifiedPipeline] Stylizing ${viewType} via image-edit on compiled geometry (strength=${config.strength})`,
+  );
 
   try {
-    // Call FLUX img2img endpoint
-    const response = await fetch('/api/together/image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const response = await fetch("/api/together/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: config.model,
         prompt,
         negative_prompt: negativePrompt,
-        width: meshyRender.width || 2048,
-        height: meshyRender.height || 1536,
+        width: authoritativeBase.width || 2048,
+        height: authoritativeBase.height || 1536,
         steps: config.steps,
         guidance_scale: config.guidance,
-        // img2img parameters
-        init_image: meshyRender.dataUrl,
+        init_image: initImage,
         strength: config.strength,
       }),
     });
@@ -300,367 +948,294 @@ async function stylizeWithFlux(meshyRender, dna, viewType) {
     }
 
     const result = await response.json();
-
-    return {
+    return attachGeometryAuthority(
+      {
+        ...authoritativeBase,
+        dataUrl:
+          result.data?.[0]?.url ||
+          result.url ||
+          authoritativeBase.dataUrl ||
+          null,
+        prompt,
+        config,
+        baseImage:
+          authoritativeBase.sourceMetadata?.sourceType ||
+          authoritativeBase.source,
+      },
+      authority,
       viewType,
-      dataUrl: result.data?.[0]?.url || result.url,
-      prompt,
-      config,
-      source: 'flux_stylized',
-      baseImage: 'meshy',
-    };
-  } catch (err) {
-    logger.warn(`   FLUX stylization failed: ${err.message}`);
-    // Return original Meshy render as fallback
-    return {
-      ...meshyRender,
-      source: 'meshy_original',
-      stylizationError: err.message,
-    };
+      {
+        sourceType: "flux_image_edit",
+        stylizationMode: "image_edit_locked",
+      },
+    );
+  } catch (error) {
+    logger.warn(
+      `[UnifiedPipeline] Stylization failed for ${viewType}: ${error.message}`,
+    );
+    return attachGeometryAuthority(
+      {
+        ...authoritativeBase,
+        stylizationError: error.message,
+      },
+      authority,
+      viewType,
+      {
+        sourceType:
+          authoritativeBase.sourceType ||
+          authoritativeBase.source ||
+          "compiled_render_input",
+        stylizationMode: "image_edit_failed_passthrough",
+      },
+    );
   }
 }
 
-/**
- * Get FLUX config for view type
- */
-function getFluxConfigForView(viewType) {
-  if (viewType.startsWith('elevation_')) {
-    return PIPELINE_CONFIG.flux.elevation;
-  }
-  if (viewType === 'hero_3d') {
-    return PIPELINE_CONFIG.flux.hero3d;
-  }
-  if (viewType === 'interior_3d') {
-    return PIPELINE_CONFIG.flux.interior;
-  }
-  if (viewType === 'axonometric') {
-    return PIPELINE_CONFIG.flux.axonometric;
-  }
-  return PIPELINE_CONFIG.flux.hero3d; // Default
-}
-
-/**
- * Build FLUX prompt for stylization
- */
-function buildStylizationPrompt(dna, viewType, styleType) {
-  const style = dna?.style || {};
-  const materials = style.materials || [];
-  const archStyle = style.architecture || 'contemporary British';
-
-  // Base style elements
-  const materialList =
-    materials
-      .slice(0, 3)
-      .map((m) => m.name)
-      .join(', ') || 'red brick, clay tiles, white trim';
-
-  // View-specific prompts
-  if (styleType === 'technical_drawing') {
-    return [
-      'professional architectural elevation drawing',
-      'clean technical illustration',
-      `${archStyle} building`,
-      `materials: ${materialList}`,
-      'crisp linework',
-      'accurate proportions',
-      'subtle shadows for depth',
-      'white background',
-      'RIBA compliant technical drawing',
-      'dimension lines and annotations',
-      'high detail facade',
-      'window mullions visible',
-      'brick coursing pattern',
-    ].join(', ');
-  }
-
-  if (styleType === 'photorealistic') {
-    return [
-      'stunning photorealistic architectural visualization',
-      `${archStyle} residential building`,
-      `high-end materials: ${materialList}`,
-      'golden hour lighting',
-      'soft shadows',
-      'landscaped garden setting',
-      'blue sky with clouds',
-      'professional real estate photography',
-      'sharp focus',
-      '8K quality',
-      'HDR lighting',
-    ].join(', ');
-  }
-
-  if (styleType === 'photorealistic_interior') {
-    return [
-      'beautiful interior design photograph',
-      `${archStyle} living space`,
-      'natural daylight streaming in',
-      'high-end furniture and decor',
-      'warm and inviting atmosphere',
-      'professional interior photography',
-      'depth of field',
-      'architectural details visible',
-    ].join(', ');
-  }
-
-  if (styleType === 'architectural_render') {
-    return [
-      'professional architectural axonometric render',
-      `${archStyle} building`,
-      `materials: ${materialList}`,
-      'isometric view',
-      'clean white background',
-      'subtle ambient occlusion',
-      'technical illustration quality',
-      'all four facades visible',
-    ].join(', ');
-  }
-
-  return `professional architectural visualization, ${archStyle} building, ${materialList}`;
-}
-
-/**
- * Build negative prompt for view type
- */
-function buildNegativePrompt(viewType) {
-  const common = 'low quality, blurry, distorted, text, watermark, logo, signature, ugly, deformed';
-
-  if (viewType.startsWith('elevation_')) {
-    return `${common}, perspective view, 3D rendering, angled, shadows on ground, people, cars, trees in front`;
-  }
-
-  if (viewType === 'hero_3d') {
-    return `${common}, interior view, close up, partial building, construction site`;
-  }
-
-  if (viewType === 'interior_3d') {
-    return `${common}, exterior view, facade, outside`;
-  }
-
-  return common;
-}
-
-// =====================================================
-// MAIN PIPELINE ORCHESTRATOR
-// =====================================================
-
-/**
- * Run the complete unified geometry pipeline
- *
- * @param {Object} dna - Design DNA with style, program, geometry
- * @param {Object} options - Pipeline options
- * @returns {Promise<Object>} All generated views
- */
-export async function runUnifiedPipeline(dna, options = {}) {
-  const {
-    views = [
-      'elevation_north',
-      'elevation_south',
-      'elevation_east',
-      'elevation_west',
-      'hero_3d',
-      'axonometric',
-    ],
-    skipStylization = false,
-    meshyTaskId = null, // Reuse existing Meshy model
-  } = options;
-
-  logger.group('UNIFIED GEOMETRY PIPELINE');
-  logger.info('Starting unified pipeline with Meshy as source of truth...');
-
-  const results = {
-    meshyModel: null,
-    meshyRenders: {},
-    stylizedViews: {},
-    controlImages: {},
-    metadata: {
-      timestamp: new Date().toISOString(),
-      pipeline: 'unified_meshy_first',
-      views,
-    },
-  };
-
-  try {
-    // Step 1: Generate or retrieve Meshy 3D model
-    logger.info('STEP 1: Generating Meshy 3D model...');
-    const meshyResult = await generateMeshyModel(dna, meshyTaskId);
-
-    if (!meshyResult.success) {
-      logger.error('Meshy model generation failed');
-      return { success: false, error: meshyResult.error, results };
-    }
-
-    results.meshyModel = meshyResult;
-    logger.success(`   Model generated: ${meshyResult.modelUrl}`);
-
-    // Step 2: Render all views from Meshy model
-    logger.info('STEP 2: Rendering views from Meshy model...');
-    results.meshyRenders = await requestMeshyRenders(meshyResult.modelUrl, views);
-
-    const renderedCount = Object.values(results.meshyRenders).filter(Boolean).length;
-    logger.info(`   Rendered ${renderedCount}/${views.length} views`);
-
-    // Step 3: Stylize each view with FLUX
-    if (!skipStylization) {
-      logger.info('STEP 3: Stylizing views with FLUX...');
-
-      for (const viewType of views) {
-        const meshyRender = results.meshyRenders[viewType];
-        if (!meshyRender) {
-          logger.warn(`   Skipping ${viewType} - no Meshy render available`);
-          continue;
-        }
-
-        const stylized = await stylizeWithFlux(meshyRender, dna, viewType);
-        results.stylizedViews[viewType] = stylized;
-
-        // Control images are the Meshy renders (for consistency validation)
-        results.controlImages[viewType] = {
-          dataUrl: meshyRender.dataUrl,
-          source: 'meshy',
-          viewType,
-        };
-      }
-
-      logger.success(`   Stylized ${Object.keys(results.stylizedViews).length} views`);
-    } else {
-      // Use Meshy renders directly
-      results.stylizedViews = results.meshyRenders;
-    }
-
-    logger.success('UNIFIED PIPELINE COMPLETE');
-    logger.groupEnd();
-
-    return {
-      success: true,
-      results,
-    };
-  } catch (err) {
-    logger.error(`Pipeline failed: ${err.message}`);
-    logger.groupEnd();
-    return {
-      success: false,
-      error: err.message,
-      results,
-    };
-  }
-}
-
-/**
- * Generate Meshy 3D model from DNA
- */
 async function generateMeshyModel(dna, existingTaskId = null) {
-  // Try to use existing Meshy service
   try {
-    const meshy3DService = (await import('../geometry/meshy3DService.js')).default;
-
-    if (!meshy3DService.isAvailable()) {
-      logger.warn('Meshy service not available, using geometry fallback');
-      return await generateGeometryFallback(dna);
+    const meshy3DService = (await import("../geometry/meshy3DService.js"))
+      .default;
+    if (!meshy3DService?.isAvailable || !meshy3DService.isAvailable()) {
+      return { success: false, error: "Meshy service not available" };
     }
 
-    // Use existing task if provided
     if (existingTaskId) {
       const status = await meshy3DService.getTaskStatus(existingTaskId);
-      if (status.status === 'SUCCEEDED') {
+      if (status?.status === "SUCCEEDED") {
         return {
           success: true,
           taskId: existingTaskId,
-          modelUrl: status.model_urls?.glb,
-          thumbnailUrl: status.thumbnail_url,
+          modelUrl: status.model_urls?.glb || null,
+          thumbnailUrl: status.thumbnail_url || null,
+          isCanonical: false,
         };
       }
     }
 
-    // Generate new model
-    const volumeSpec = extractVolumeSpec(dna);
-    const result = await meshy3DService.generate3DFromDNA(dna, volumeSpec);
+    const geometry = dna?.geometry_rules || {};
+    const program = dna?.program || {};
+    const volumeSpec = {
+      dimensions: {
+        length: geometry.footprint_length || 12,
+        width: geometry.footprint_width || 10,
+        height: (program.floors || 2) * 3,
+      },
+      floors: program.floors || 2,
+      roof: {
+        type: geometry.roof_type || "gable",
+        pitch: geometry.roof_pitch || 35,
+      },
+    };
 
-    return result;
-  } catch (err) {
-    logger.warn(`Meshy service error: ${err.message}`);
-    return await generateGeometryFallback(dna);
+    const result = await meshy3DService.generate3DFromDNA(dna, volumeSpec);
+    return {
+      ...result,
+      isCanonical: false,
+    };
+  } catch (error) {
+    logger.warn(`[UnifiedPipeline] Meshy service error: ${error.message}`);
+    return { success: false, error: error.message };
   }
 }
 
-/**
- * Extract volume specification from DNA
- */
-function extractVolumeSpec(dna) {
-  const geometry = dna?.geometry_rules || {};
-  const program = dna?.program || {};
+export async function runUnifiedPipeline(dna, options = {}) {
+  const {
+    views = DEFAULT_VIEWS,
+    skipStylization = false,
+    meshyTaskId = null,
+    compiledProject = null,
+    projectContext = {},
+    useMeshy = isFeatureEnabled("meshy3DMode"),
+  } = options;
 
-  return {
-    dimensions: {
-      length: geometry.footprint_length || 12,
-      width: geometry.footprint_width || 10,
-      height: (program.floors || 2) * 3,
-    },
-    floors: program.floors || 2,
-    roof: {
-      type: geometry.roof_type || 'gable',
-      pitch: geometry.roof_pitch || 35,
+  logger.group("UNIFIED GEOMETRY PIPELINE");
+
+  const results = {
+    geometryAuthority: null,
+    compiledRenders: {},
+    stylizedViews: {},
+    controlImages: {},
+    meshyModel: null,
+    meshyRenders: {},
+    metadata: {
+      timestamp: new Date().toISOString(),
+      pipeline: "unified_compiled_geometry_first",
+      views,
+      steps: [],
+      geometryHash: null,
+      missingViews: [],
     },
   };
-}
-
-/**
- * Geometry fallback when Meshy unavailable
- */
-async function generateGeometryFallback(dna) {
-  // [Migration] Skip legacy geometryRenderService when conditionedImagePipeline is active
-  // The new pipeline uses GeometryPipeline + Projections2D + GeometryConditioner instead
-  if (isFeatureEnabled('conditionedImagePipeline')) {
-    logger.info(
-      '[UnifiedPipeline] [Migration] Skipping legacy geometryRenderService fallback (conditionedImagePipeline=true)'
-    );
-    logger.info('   → Elevations will be generated via Projections2D in the main pipeline');
-    return {
-      success: false,
-      error: 'Legacy geometry fallback disabled - using conditionedImagePipeline',
-      source: 'conditioned_pipeline_migration',
-    };
-  }
-
-  logger.info('Using geometry render fallback...');
 
   try {
-    const geometryRenderService = (await import('../design/geometryRenderService.js')).default;
+    const authority = await resolveCompiledGeometryAuthority(dna, {
+      ...options,
+      compiledProject,
+      projectContext,
+      views,
+    });
+    results.geometryAuthority = {
+      authorityType: authority.authorityType,
+      geometryHash: authority.geometryHash,
+      cdsHash: authority.cdsHash || null,
+      designFingerprint: authority.designFingerprint || null,
+      projectId: authority.projectId || null,
+      compiledProjectId: authority.compiledProjectId || null,
+    };
+    results.metadata.geometryHash = authority.geometryHash;
+    results.metadata.steps.push("compiled-geometry-authority");
 
-    const renders = {};
-    const directions = ['north', 'south', 'east', 'west'];
+    Object.entries(authority.renderInputs || {}).forEach(
+      ([panelType, entry]) => {
+        if (!views.includes(panelType)) return;
+        results.compiledRenders[panelType] = attachGeometryAuthority(
+          entry,
+          authority,
+          panelType,
+          {
+            sourceType: entry.sourceType || authority.defaultSourceType,
+            stylizationMode: isTechnicalDrawingView(panelType)
+              ? "deterministic_passthrough"
+              : null,
+          },
+        );
+      },
+    );
 
-    for (const dir of directions) {
-      const render = await geometryRenderService.renderElevation(dna, dir);
-      renders[`elevation_${dir}`] = render;
+    const missingViews = views.filter(
+      (viewType) => !results.compiledRenders[viewType],
+    );
+    if (missingViews.length > 0 && authority.modelUrl) {
+      const modelRenders = await requestCompiledModelRenders(
+        authority.modelUrl,
+        missingViews,
+        authority,
+      );
+      Object.entries(modelRenders).forEach(([panelType, entry]) => {
+        if (entry) {
+          results.compiledRenders[panelType] = entry;
+        }
+      });
     }
 
+    results.metadata.missingViews = views.filter(
+      (viewType) => !results.compiledRenders[viewType],
+    );
+    results.metadata.steps.push("compiled-geometry-renders");
+
+    Object.entries(results.compiledRenders).forEach(([panelType, entry]) => {
+      results.controlImages[panelType] = attachGeometryAuthority(
+        entry,
+        authority,
+        panelType,
+        {
+          sourceType: entry.sourceType || authority.defaultSourceType,
+          stylizationMode: isTechnicalDrawingView(panelType)
+            ? "deterministic_passthrough"
+            : null,
+        },
+      );
+      assertSourceMetadata(results.controlImages[panelType], panelType);
+    });
+    assertGeometryHashContinuity(
+      results.controlImages,
+      authority.geometryHash,
+      "unified control image continuity",
+    );
+
+    if (useMeshy) {
+      const meshyResult = await generateMeshyModel(dna, meshyTaskId);
+      if (meshyResult?.success) {
+        results.meshyModel = {
+          ...meshyResult,
+          sourceMetadata: buildSourceMetadata(
+            authority,
+            "meshy_reference",
+            "meshy_reference",
+            {
+              stylizationMode: "reference_only",
+              meshyRole: "optional_reference",
+            },
+          ),
+        };
+        results.metadata.steps.push("meshy-reference");
+      }
+    }
+
+    if (skipStylization) {
+      views.forEach((viewType) => {
+        const baseRender = results.controlImages[viewType];
+        if (!baseRender) return;
+        results.stylizedViews[viewType] = attachGeometryAuthority(
+          baseRender,
+          authority,
+          viewType,
+          {
+            sourceType: baseRender.sourceType || authority.defaultSourceType,
+            stylizationMode: isTechnicalDrawingView(viewType)
+              ? "deterministic_passthrough"
+              : "stylization_skipped",
+          },
+        );
+      });
+    } else {
+      for (const viewType of views) {
+        const baseRender = results.controlImages[viewType];
+        if (!baseRender) {
+          logger.warn(
+            `[UnifiedPipeline] Missing compiled render input for ${viewType}`,
+          );
+          continue;
+        }
+        results.stylizedViews[viewType] = await stylizeWithFlux(
+          baseRender,
+          dna,
+          viewType,
+          authority,
+        );
+      }
+    }
+
+    Object.entries(results.stylizedViews).forEach(([panelType, entry]) => {
+      assertSourceMetadata(entry, panelType);
+    });
+    assertGeometryHashContinuity(
+      results.stylizedViews,
+      authority.geometryHash,
+      "unified stylized view continuity",
+    );
+    results.metadata.steps.push("view-output");
+
+    logger.success("[UnifiedPipeline] Complete");
+    logger.groupEnd();
     return {
       success: true,
-      modelUrl: null,
-      renders,
-      source: 'geometry_fallback',
+      results,
     };
-  } catch (err) {
-    logger.error(`Geometry fallback failed: ${err.message}`);
+  } catch (error) {
+    logger.error(`[UnifiedPipeline] Failed: ${error.message}`);
+    logger.groupEnd();
     return {
       success: false,
-      error: err.message,
+      error: error.message,
+      results,
     };
   }
 }
-
-// =====================================================
-// EXPORTS
-// =====================================================
 
 const unifiedGeometryPipeline = {
   runUnifiedPipeline,
+  requestCompiledModelRenders,
   requestMeshyRenders,
   stylizeWithFlux,
+  resolveCompiledGeometryAuthority,
+  attachGeometryAuthority,
+  assertGeometryHashContinuity,
+  assertSourceMetadata,
+  isTechnicalDrawingView,
   PIPELINE_CONFIG,
 };
 
 export default unifiedGeometryPipeline;
 
-// Named exports for easier imports
-export { requestMeshyRenders, stylizeWithFlux, PIPELINE_CONFIG };
+export { PIPELINE_CONFIG };

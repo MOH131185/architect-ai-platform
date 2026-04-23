@@ -1,46 +1,40 @@
 /**
  * Hybrid 3D Pipeline
  *
- * Orchestrates the complete 3D visualization pipeline:
- * 1. GeometryDNA → Claude constraints + NLE coordinates
- * 2. FGL (Facade Generation Layer) → Room-accurate elevation control images
- * 3. Geometry renders → Base SVG technical drawings
- * 4. FLUX → Final surface rendering with geometry control
+ * Orchestrates geometry-conditioned 3D visualization while keeping compiled
+ * geometry as the single authority for all view consistency.
  *
- * ENHANCED: FGL integration provides 100% accurate window/door positions
- * derived from floor plan room graph. FGL control images take priority
- * over generic geometry renders for elevations.
- *
- * Control Image Priority:
- * - Elevations: FGL > Geometry > None
- * - 3D Views: Geometry > None
- *
- * This hybrid approach ensures:
- * - Perfect architectural accuracy from geometry engine
- * - 100% window/door position accuracy from FGL
- * - Beautiful photorealistic quality from AI
- * - Consistent views across all panels
- *
- * NOTE: Meshy 3D integration REMOVED - fail-fast architecture
+ * Control hierarchy:
+ * - Elevations: FGL > compiled geometry render > deterministic geometry render
+ * - 3D views: compiled geometry render > deterministic geometry render
+ * - Meshy: optional reference only, never canonical control
  */
 
-import { isFeatureEnabled, FEATURE_FLAGS } from '../../config/featureFlags.js';
-import logger from '../core/logger.js';
+import { isFeatureEnabled } from "../../config/featureFlags.js";
+import logger from "../../utils/logger.js";
+import {
+  attachGeometryAuthority,
+  assertGeometryHashContinuity,
+  assertSourceMetadata,
+  isTechnicalDrawingView,
+  requestCompiledModelRenders,
+  resolveCompiledGeometryAuthority,
+} from "./unifiedGeometryPipeline.js";
 
-// Dynamic imports to avoid circular dependencies
 let claudeReasoningService = null;
-let meshy3DService = null; // RE-ENABLED: Meshy 3D integration for unified geometry pipeline
+let meshy3DService = null;
 let geometryRenderService = null;
 let facadeGenerationLayer = null;
-let unifiedPipeline = null;
 
 async function getFGLService() {
   if (!facadeGenerationLayer) {
     try {
-      const module = await import('../facade/index.js');
+      const module = await import("../facade/facadeGenerationLayer.js");
       facadeGenerationLayer = module;
-    } catch (err) {
-      logger.warn('Facade Generation Layer not available:', err.message);
+    } catch (error) {
+      logger.warn(
+        `[Hybrid3D] Facade Generation Layer not available: ${error.message}`,
+      );
     }
   }
   return facadeGenerationLayer;
@@ -49,272 +43,292 @@ async function getFGLService() {
 async function getClaudeService() {
   if (!claudeReasoningService) {
     try {
-      const module = await import('../ai/claudeReasoningService.js');
+      const module = await import("../ai/claudeReasoningService.js");
       claudeReasoningService = module.default;
-    } catch (err) {
-      logger.warn('Claude reasoning service not available');
+    } catch (error) {
+      logger.warn(
+        `[Hybrid3D] Claude reasoning service not available: ${error.message}`,
+      );
     }
   }
   return claudeReasoningService;
 }
 
-// RE-ENABLED: Meshy 3D integration for unified geometry pipeline
 async function getMeshyService() {
   if (!meshy3DService) {
     try {
-      const module = await import('../geometry/meshy3DService.js');
+      const module = await import("../geometry/meshy3DService.js");
       meshy3DService = module.default;
-    } catch (err) {
-      logger.warn('Meshy 3D service not available:', err.message);
+    } catch (error) {
+      logger.warn(
+        `[Hybrid3D] Meshy 3D service not available: ${error.message}`,
+      );
     }
   }
   return meshy3DService;
 }
 
-async function getUnifiedPipeline() {
-  if (!unifiedPipeline) {
-    try {
-      const module = await import('./unifiedGeometryPipeline.js');
-      unifiedPipeline = module;
-    } catch (err) {
-      logger.warn('Unified geometry pipeline not available:', err.message);
-    }
-  }
-  return unifiedPipeline;
-}
-
 async function getGeometryRenderer() {
-  // [Migration] Skip legacy geometryRenderService when conditionedImagePipeline is active
-  // The new pipeline uses GeometryPipeline + Projections2D + GeometryConditioner instead
-  if (isFeatureEnabled('conditionedImagePipeline')) {
-    logger.info(
-      '[Hybrid3D] [Migration] Skipping legacy geometryRenderService (conditionedImagePipeline=true)'
-    );
-    return null;
-  }
-
   if (!geometryRenderService) {
     try {
-      const module = await import('../design/geometryRenderService.js');
+      const module = await import("../geometryRenderService.js");
       geometryRenderService = module.default;
-    } catch (err) {
-      logger.warn('Geometry render service not available');
+    } catch (error) {
+      logger.warn(
+        `[Hybrid3D] Geometry render service not available: ${error.message}`,
+      );
     }
   }
   return geometryRenderService;
 }
 
-/**
- * Pipeline Configuration
- */
 const PIPELINE_CONFIG = {
-  // Control image strengths for FLUX img2img
   controlStrength: {
-    fgl: 0.85, // FGL control images (highest - room-accurate positions)
-    geometry: 0.6, // Geometry renders as base control
-    meshy: 0.8, // Meshy 3D renders as stronger control
-    stylization: 0.4, // AI stylization overlay
+    fgl: 0.85,
+    geometry: 0.7,
   },
-
-  // Quality levels
   quality: {
     preview: { steps: 20, size: 1024 },
     standard: { steps: 35, size: 1536 },
     high: { steps: 50, size: 2048 },
   },
-
-  // Timeouts
-  timeout: {
-    claude: 30000, // 30s for Claude reasoning
-    fgl: 5000, // 5s for FGL generation (fast SVG)
-    geometry: 10000, // 10s for geometry render
-    meshy: 300000, // 5m for Meshy 3D
-    flux: 60000, // 60s per FLUX render
-  },
 };
 
-/**
- * Panel types that use 3D visualization
- */
-const PANEL_3D_TYPES = ['hero_3d', 'interior_3d', 'axonometric', 'site_context', 'aerial_view'];
-
-/**
- * Panel types that use geometry-controlled elevation
- */
+const PANEL_3D_TYPES = [
+  "hero_3d",
+  "interior_3d",
+  "axonometric",
+  "site_context",
+  "aerial_view",
+];
 const PANEL_ELEVATION_TYPES = [
-  'elevation_north',
-  'elevation_south',
-  'elevation_east',
-  'elevation_west',
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
 ];
 
-class Hybrid3DPipeline {
+function createNoneControl(authority, panelType, meshyReference = null) {
+  return attachGeometryAuthority(
+    {
+      panelType,
+      viewType: panelType,
+      controlStrength: 0,
+      source: "none",
+      dataUrl: null,
+      url: null,
+      styleReference: meshyReference || null,
+    },
+    authority,
+    panelType,
+    {
+      sourceType: "none",
+      stylizationMode: isTechnicalDrawingView(panelType)
+        ? "deterministic_missing_control"
+        : "geometry_control_missing",
+      meshyRole: meshyReference ? "optional_reference" : null,
+    },
+  );
+}
+
+export class Hybrid3DPipeline {
   constructor() {
     this.config = PIPELINE_CONFIG;
     this.cache = new Map();
   }
 
-  /**
-   * Generate all 3D and elevation panels using hybrid pipeline
-   *
-   * @param {Object} geometryDNA - GeometryDNA v2 object with constraints + geometry
-   * @param {Object} projectContext - Project context
-   * @param {Object} options - Generation options
-   * @returns {Promise<Object>} Generated panels with control images
-   */
   async generateAll(geometryDNA, projectContext = {}, options = {}) {
     const {
-      quality = 'standard',
-      useClaude = isFeatureEnabled('useClaudeReasoning'),
-      useMeshy = isFeatureEnabled('meshy3DMode'),
-      useGeometry = isFeatureEnabled('geometryDNAv2'),
-      useFGL = isFeatureEnabled('facadeGenerationLayer'),
-      blendedStyle = null, // Style DNA for FGL
+      quality = "standard",
+      useClaude = isFeatureEnabled("useClaudeReasoning"),
+      useMeshy = isFeatureEnabled("meshy3DMode"),
+      useGeometry = isFeatureEnabled("geometryDNAv2") !== false,
+      useFGL = isFeatureEnabled("facadeGenerationLayer"),
+      blendedStyle = null,
+      compiledProject = projectContext.compiledProject || null,
       panels = [...PANEL_3D_TYPES, ...PANEL_ELEVATION_TYPES],
     } = options;
 
-    logger.info('🏗️  [Hybrid3D] Starting pipeline...');
-    logger.info(`   Quality: ${quality}`);
-    logger.info(`   Claude: ${useClaude ? 'enabled' : 'disabled'}`);
-    logger.info(`   FGL: ${useFGL ? 'enabled' : 'disabled'}`);
-    logger.info(`   Meshy: ${useMeshy ? 'enabled' : 'disabled'}`);
-    logger.info(`   Geometry: ${useGeometry ? 'enabled' : 'disabled'}`);
+    logger.info("[Hybrid3D] Starting compiled-geometry-first pipeline");
+
+    const geometryAuthority = await resolveCompiledGeometryAuthority(
+      geometryDNA,
+      {
+        ...options,
+        compiledProject,
+        projectContext,
+        views: panels,
+      },
+    );
 
     const results = {
       panels: {},
       controlImages: {},
+      geometryAuthority: {
+        authorityType: geometryAuthority.authorityType,
+        geometryHash: geometryAuthority.geometryHash,
+        cdsHash: geometryAuthority.cdsHash || null,
+        designFingerprint: geometryAuthority.designFingerprint || null,
+        projectId: geometryAuthority.projectId || null,
+      },
       meshyBaseline: null,
-      fglResults: null, // NEW: FGL generation results
+      fglResults: null,
       geometryRenders: {},
       constraints: null,
       metadata: {
         timestamp: new Date().toISOString(),
-        pipeline: 'hybrid3D',
+        pipeline: "hybrid3D-compiled-geometry-first",
         quality,
-        steps: [],
+        geometryHash: geometryAuthority.geometryHash,
+        steps: ["compiled-geometry-authority"],
       },
     };
 
-    // Step 1: Generate/validate Claude constraints
     if (useClaude && geometryDNA?.constraints) {
-      logger.info('📋 Step 1: Validating Claude constraints...');
-      results.constraints = await this.validateConstraints(geometryDNA.constraints);
-      results.metadata.steps.push('constraints');
+      results.constraints = await this.validateConstraints(
+        geometryDNA.constraints,
+      );
+      results.metadata.steps.push("constraints");
     }
 
-    // Step 2: Generate FGL elevation control images (NEW - PRIORITY for elevations)
-    // FGL provides 100% accurate window/door positions from room graph
-    if (useFGL && geometryDNA?.version === '2.0') {
-      logger.info('🏛️ Step 2: Generating FGL elevation control images...');
-      results.fglResults = await this.generateFGLControlImages(geometryDNA, blendedStyle);
+    if (useFGL && geometryDNA?.version === "2.0") {
+      results.fglResults = await this.generateFGLControlImages(
+        geometryDNA,
+        blendedStyle,
+        geometryAuthority,
+      );
       if (results.fglResults?.success) {
-        logger.success('   FGL generated control images for all 4 facades');
-        results.metadata.steps.push('fgl');
-      } else {
-        logger.warn('   FGL generation failed, will fall back to geometry/Meshy');
+        results.metadata.steps.push("fgl");
       }
     }
 
-    // Step 3: Generate geometry renders (base control images)
-    if (useGeometry) {
-      logger.info('📐 Step 3: Generating geometry renders...');
-      results.geometryRenders = await this.generateGeometryRenders(geometryDNA, panels);
-      results.metadata.steps.push('geometry');
+    if (
+      useGeometry ||
+      Object.keys(geometryAuthority.renderInputs || {}).length > 0
+    ) {
+      results.geometryRenders = await this.generateGeometryRenders(
+        geometryDNA,
+        panels,
+        geometryAuthority,
+      );
+      results.metadata.steps.push("geometry");
     }
 
-    // Step 4: Generate Meshy 3D model (optional)
     if (useMeshy) {
-      logger.info('🎨 Step 4: Generating Meshy 3D model...');
-      const meshyResult = await this.generateMeshyModel(geometryDNA, projectContext);
-      if (meshyResult.success) {
+      const meshyResult = await this.generateMeshyModel(
+        geometryDNA,
+        projectContext,
+        geometryAuthority,
+      );
+      if (meshyResult?.success) {
         results.meshyBaseline = meshyResult;
-        results.controlImages = { ...results.controlImages, ...meshyResult.mappedRenders };
-        results.metadata.steps.push('meshy');
-      } else {
-        logger.warn('   Meshy generation failed, using geometry fallback');
+        results.metadata.steps.push("meshy-reference");
       }
     }
 
-    // Step 5: Build control image hierarchy
-    // Priority: FGL > Meshy > Geometry > None (for elevations)
-    // Priority: Meshy > Geometry > None (for 3D views)
-    logger.info('🔗 Step 5: Building control image hierarchy...');
     results.controlImages = this.buildControlHierarchy(
       results.geometryRenders,
-      results.meshyBaseline?.mappedRenders,
-      results.fglResults?.controlImages, // NEW: FGL control images
-      panels
+      results.meshyBaseline?.mappedRenders || null,
+      results.fglResults?.controlImages || null,
+      panels,
+      geometryAuthority,
     );
-    results.metadata.steps.push('control-hierarchy');
+    results.metadata.steps.push("control-hierarchy");
 
-    // Step 6: Generate FLUX renders with control
-    logger.info('🖼️  Step 6: Preparing FLUX generation...');
     results.panels = this.prepareFluxGeneration(
       geometryDNA,
       results.controlImages,
       panels,
       quality,
-      results.fglResults // Pass FGL results for prompt enhancement
+      results.fglResults,
+      geometryAuthority,
     );
-    results.metadata.steps.push('flux-prep');
+    results.metadata.steps.push("flux-prep");
 
-    logger.success('✅ [Hybrid3D] Pipeline complete');
-    logger.info(`   Control images: ${Object.keys(results.controlImages).length}`);
-    logger.info(`   FGL elevations: ${results.fglResults?.success ? '4/4' : '0/4'}`);
-    logger.info(`   Panels ready: ${Object.keys(results.panels).length}`);
-    logger.info(`   Steps: ${results.metadata.steps.join(' → ')}`);
+    assertGeometryHashContinuity(
+      results.controlImages,
+      geometryAuthority.geometryHash,
+      "hybrid pipeline control continuity",
+    );
+    assertGeometryHashContinuity(
+      results.panels,
+      geometryAuthority.geometryHash,
+      "hybrid pipeline prepared panel continuity",
+    );
+    Object.entries(results.controlImages).forEach(([panelType, entry]) => {
+      assertSourceMetadata(entry, panelType);
+    });
+    Object.entries(results.panels).forEach(([panelType, entry]) => {
+      assertSourceMetadata(entry, panelType);
+    });
 
+    logger.info(
+      `[Hybrid3D] Complete with geometryHash=${geometryAuthority.geometryHash?.slice(0, 12) || "missing"}`,
+    );
     return results;
   }
 
-  /**
-   * Generate FGL control images for elevations
-   * FGL derives window/door positions from room graph - 100% accurate
-   *
-   * @param {Object} geometryDNA - GeometryDNA v2 object
-   * @param {Object} blendedStyle - Style DNA for facade styling
-   * @returns {Promise<Object>} FGL generation results
-   */
-  async generateFGLControlImages(geometryDNA, blendedStyle = {}) {
+  async validateConstraints(constraints) {
+    try {
+      const claude = await getClaudeService();
+      return claude ? constraints : constraints;
+    } catch (error) {
+      logger.warn(`[Hybrid3D] Constraint validation failed: ${error.message}`);
+      return constraints;
+    }
+  }
+
+  async generateFGLControlImages(geometryDNA, blendedStyle = {}, authority) {
     try {
       const fglModule = await getFGLService();
-      if (!fglModule || !fglModule.createFacadeGenerationLayer) {
-        return { success: false, error: 'FGL module not available' };
+      if (!fglModule?.createFacadeGenerationLayer) {
+        return { success: false, error: "FGL module not available" };
       }
 
-      const { createFacadeGenerationLayer, extractOpeningEnumeration } = fglModule;
-
-      // Create FGL instance with geometryDNA and style
+      const { createFacadeGenerationLayer, extractOpeningEnumeration } =
+        fglModule;
       const fgl = createFacadeGenerationLayer(geometryDNA, blendedStyle || {});
-
-      // Generate all facades
       const fglResults = await fgl.generate();
 
-      // Build mapped control images for panel types
       const controlImages = {};
       const openingEnumerations = {};
 
-      ['N', 'S', 'E', 'W'].forEach((dir) => {
-        const panelKey = `elevation_${dir === 'N' ? 'north' : dir === 'S' ? 'south' : dir === 'E' ? 'east' : 'west'}`;
+      ["N", "S", "E", "W"].forEach((direction) => {
+        const panelType =
+          direction === "N"
+            ? "elevation_north"
+            : direction === "S"
+              ? "elevation_south"
+              : direction === "E"
+                ? "elevation_east"
+                : "elevation_west";
 
-        if (fglResults.controlImages && fglResults.controlImages[dir]) {
-          controlImages[panelKey] = {
-            dataUrl: fglResults.controlImages[dir].dataUrl,
-            svg: fglResults.elevationSVGs[dir],
-            source: 'fgl',
+        if (!fglResults?.controlImages?.[direction]) return;
+
+        controlImages[panelType] = attachGeometryAuthority(
+          {
+            dataUrl: fglResults.controlImages[direction].dataUrl,
+            svg: fglResults.elevationSVGs?.[direction] || null,
             controlStrength: this.config.controlStrength.fgl,
-            direction: dir,
-            openingCount: fglResults.controlImages[dir].openingCount,
-            roofType: fglResults.roofProfile?.type,
-          };
+            direction,
+            openingCount: fglResults.controlImages[direction].openingCount || 0,
+          },
+          authority,
+          panelType,
+          {
+            sourceType: "fgl_control",
+            stylizationMode: "deterministic_passthrough",
+          },
+        );
 
-          // Extract opening enumeration for prompt injection
-          if (fglResults.windowPlacements) {
-            openingEnumerations[panelKey] = extractOpeningEnumeration(
-              fglResults.windowPlacements,
-              dir
-            );
-          }
+        if (
+          fglResults.windowPlacements &&
+          typeof extractOpeningEnumeration === "function"
+        ) {
+          openingEnumerations[panelType] = extractOpeningEnumeration(
+            fglResults.windowPlacements,
+            direction,
+          );
         }
       });
 
@@ -328,314 +342,313 @@ class Hybrid3DPipeline {
         buildingDimensions: fglResults.buildingDimensions,
         metadata: fglResults.metadata,
       };
-    } catch (err) {
-      logger.error(`FGL control image generation failed: ${err.message}`);
-      return { success: false, error: err.message };
+    } catch (error) {
+      logger.warn(
+        `[Hybrid3D] FGL control image generation failed: ${error.message}`,
+      );
+      return { success: false, error: error.message };
     }
   }
 
-  /**
-   * Validate Claude constraints (optional enhancement)
-   */
-  async validateConstraints(constraints) {
-    try {
-      const claude = await getClaudeService();
-      if (!claude) {
-        return constraints;
-      }
-
-      // Claude can validate and enhance constraints
-      // For now, just pass through
-      return constraints;
-    } catch (err) {
-      logger.warn(`Constraint validation failed: ${err.message}`);
-      return constraints;
-    }
-  }
-
-  /**
-   * Generate geometry renders for control images
-   */
-  async generateGeometryRenders(geometryDNA, panels) {
+  async generateGeometryRenders(geometryDNA, panels, authority) {
     const renders = {};
+
+    Object.entries(authority.renderInputs || {}).forEach(
+      ([panelType, entry]) => {
+        if (!panels.includes(panelType)) return;
+        renders[panelType] = attachGeometryAuthority(
+          entry,
+          authority,
+          panelType,
+          {
+            sourceType:
+              entry.sourceType ||
+              authority.defaultSourceType ||
+              "compiled_render_input",
+            stylizationMode: isTechnicalDrawingView(panelType)
+              ? "deterministic_passthrough"
+              : null,
+          },
+        );
+      },
+    );
+
+    const missingViews = panels.filter((panelType) => !renders[panelType]);
+    if (missingViews.length > 0 && authority.modelUrl) {
+      const compiledModelRenders = await requestCompiledModelRenders(
+        authority.modelUrl,
+        missingViews,
+        authority,
+      );
+      Object.entries(compiledModelRenders).forEach(([panelType, entry]) => {
+        if (entry) {
+          renders[panelType] = entry;
+        }
+      });
+    }
+
+    const stillMissing = panels.filter((panelType) => !renders[panelType]);
+    if (stillMissing.length === 0) {
+      return renders;
+    }
 
     try {
       const renderer = await getGeometryRenderer();
       if (!renderer) {
-        // Use simple geometry generation
-        return this.generateSimpleGeometryRenders(geometryDNA, panels);
+        return renders;
       }
 
-      // Generate renders for each panel type
-      for (const panelType of panels) {
-        if (PANEL_ELEVATION_TYPES.includes(panelType)) {
-          const orientation = panelType.replace('elevation_', '');
-          renders[panelType] = await renderer.renderElevation(geometryDNA, orientation);
-        } else if (panelType === 'axonometric') {
-          renders[panelType] = await renderer.renderAxonometric(geometryDNA);
+      for (const panelType of stillMissing) {
+        try {
+          if (
+            PANEL_ELEVATION_TYPES.includes(panelType) &&
+            typeof renderer.renderElevation === "function"
+          ) {
+            const orientation = panelType.replace("elevation_", "");
+            const render = await renderer.renderElevation(
+              geometryDNA,
+              orientation,
+            );
+            if (render) {
+              renders[panelType] = attachGeometryAuthority(
+                render,
+                authority,
+                panelType,
+                {
+                  sourceType: "deterministic_geometry_render",
+                  stylizationMode: "deterministic_passthrough",
+                },
+              );
+            }
+          } else if (
+            panelType === "axonometric" &&
+            typeof renderer.renderAxonometric === "function"
+          ) {
+            const render = await renderer.renderAxonometric(geometryDNA);
+            if (render) {
+              renders[panelType] = attachGeometryAuthority(
+                render,
+                authority,
+                panelType,
+                {
+                  sourceType: "deterministic_geometry_render",
+                },
+              );
+            }
+          }
+        } catch (error) {
+          logger.warn(
+            `[Hybrid3D] Deterministic render failed for ${panelType}: ${error.message}`,
+          );
         }
       }
-
-      return renders;
-    } catch (err) {
-      logger.warn(`Geometry rendering failed: ${err.message}`);
-      return this.generateSimpleGeometryRenders(geometryDNA, panels);
-    }
-  }
-
-  /**
-   * Generate simple geometry renders (fallback)
-   */
-  generateSimpleGeometryRenders(geometryDNA, panels) {
-    const renders = {};
-    const dims = geometryDNA?.geometry || {};
-
-    // Create placeholder renders with dimension data
-    for (const panelType of panels) {
-      if (PANEL_ELEVATION_TYPES.includes(panelType)) {
-        const orientation = panelType.replace('elevation_', '');
-        renders[panelType] = {
-          type: 'placeholder',
-          orientation,
-          dimensions: dims,
-          svg: null,
-          dataUrl: null,
-        };
-      }
+    } catch (error) {
+      logger.warn(`[Hybrid3D] Geometry rendering failed: ${error.message}`);
     }
 
     return renders;
   }
 
-  /**
-   * Generate Meshy 3D model
-   * RE-ENABLED: Meshy 3D is now the canonical source for unified geometry pipeline
-   *
-   * This ensures ALL views (elevations, 3D hero, axonometric) derive from the
-   * SAME 3D model, guaranteeing 100% cross-view consistency.
-   *
-   * @param {Object} geometryDNA - GeometryDNA v2 object
-   * @param {Object} projectContext - Project context
-   * @returns {Promise<Object>} Meshy generation result
-   */
-  async generateMeshyModel(geometryDNA, projectContext) {
+  async generateMeshyModel(geometryDNA, projectContext, authority) {
     const meshyService = await getMeshyService();
-
-    if (!meshyService || !meshyService.isAvailable()) {
-      logger.warn('[Hybrid3D] Meshy service not available, using geometry fallback');
-      return { success: false, error: 'Meshy service not available' };
+    if (!meshyService?.isAvailable || !meshyService.isAvailable()) {
+      return { success: false, error: "Meshy service not available" };
     }
 
     try {
-      logger.info('[Hybrid3D] Generating Meshy 3D model...');
+      const geometry = geometryDNA?.geometry || {};
+      const volumeSpec = {
+        dimensions: {
+          length: (geometryDNA?.facades?.north?.width || 12000) / 1000,
+          width: (geometryDNA?.facades?.east?.width || 10000) / 1000,
+          height: (geometryDNA?.facades?.north?.height || 7000) / 1000,
+        },
+        floors: geometry.floors?.length || 2,
+        roof: {
+          type: geometry.roof?.type || "gable",
+          pitch: geometry.roof?.pitch || 35,
+          ridgeDirection: geometry.roof?.ridgeDirection || "east-west",
+        },
+      };
 
-      // Extract volume specification from GeometryDNA
-      const volumeSpec = this.extractVolumeSpec(geometryDNA);
+      const result = await meshyService.generate3DFromDNA(
+        geometryDNA,
+        volumeSpec,
+        {
+          artStyle: "realistic",
+          seed: geometryDNA.seed || null,
+        },
+      );
 
-      // Generate 3D model via Meshy
-      const result = await meshyService.generate3DFromDNA(geometryDNA, volumeSpec, {
-        artStyle: 'realistic',
-        seed: geometryDNA.seed || null,
-      });
-
-      if (result.success) {
-        logger.success('[Hybrid3D] Meshy model generated successfully');
-        logger.info(`   Model URL: ${result.modelUrl}`);
-        logger.info(`   Task ID: ${result.taskId}`);
-
-        // Store as baseline for consistency checking
-        return {
-          ...result,
-          volumeSpec,
-          isCanonical: true, // Mark as canonical geometry source
-        };
+      if (!result?.success) {
+        return result || { success: false, error: "Meshy generation failed" };
       }
 
-      logger.warn('[Hybrid3D] Meshy generation failed:', result.error);
-      return result;
-    } catch (err) {
-      logger.error('[Hybrid3D] Meshy error:', err.message);
-      return { success: false, error: err.message };
+      const mappedRenders = Object.fromEntries(
+        Object.entries(result.mappedRenders || {}).map(([panelType, entry]) => [
+          panelType,
+          attachGeometryAuthority(entry, authority, panelType, {
+            sourceType: "meshy_reference",
+            stylizationMode: "reference_only",
+            meshyRole: "optional_reference",
+          }),
+        ]),
+      );
+
+      return {
+        ...result,
+        mappedRenders,
+        isCanonical: false,
+        styleReferenceOnly: true,
+        projectContext,
+      };
+    } catch (error) {
+      logger.warn(`[Hybrid3D] Meshy generation failed: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
 
-  /**
-   * Extract volume specification from GeometryDNA
-   */
-  extractVolumeSpec(geometryDNA) {
-    const geometry = geometryDNA?.geometry || {};
-    const constraints = geometryDNA?.constraints || {};
-    const roof = geometry.roof || {};
-
-    return {
-      dimensions: {
-        length: (geometryDNA?.facades?.north?.width || 12000) / 1000,
-        width: (geometryDNA?.facades?.east?.width || 10000) / 1000,
-        height: (geometryDNA?.facades?.north?.height || 7000) / 1000,
-      },
-      floors: geometry.floors?.length || 2,
-      roof: {
-        type: roof.type || 'gable',
-        pitch: roof.pitch || 35,
-        ridgeDirection: roof.ridgeDirection || 'east-west',
-      },
-      facades: {
-        primary: constraints.circulationIntent?.entryPosition || 'south',
-        secondary: 'east',
-      },
-      style: geometryDNA?.style?.primaryStyle || 'Contemporary',
-    };
-  }
-
-  /**
-   * Build control image hierarchy
-   *
-   * Priority for ELEVATIONS: FGL > Meshy > Geometry > None
-   * Priority for 3D VIEWS: Meshy > Geometry > None
-   *
-   * FGL provides 100% room-accurate window/door positions and is highest priority
-   * for elevation panels since it derives openings from actual floor plan geometry.
-   *
-   * @param {Object} geometryRenders - Geometry render outputs
-   * @param {Object} meshyRenders - Meshy 3D render outputs
-   * @param {Object} fglRenders - FGL control images (NEW)
-   * @param {Array} panels - Panel types to process
-   */
-  buildControlHierarchy(geometryRenders, meshyRenders, fglRenders, panels) {
+  buildControlHierarchy(
+    geometryRenders,
+    meshyRenders,
+    fglRenders,
+    panels,
+    authority,
+  ) {
     const hierarchy = {};
 
     for (const panelType of panels) {
       const isElevation = PANEL_ELEVATION_TYPES.includes(panelType);
 
-      // For ELEVATIONS: FGL has highest priority (100% room-accurate openings)
-      if (isElevation && fglRenders && fglRenders[panelType]) {
-        hierarchy[panelType] = {
-          ...fglRenders[panelType],
-          source: 'fgl',
-          controlStrength: this.config.controlStrength.fgl,
-        };
-        logger.info(`   ${panelType}: FGL control (strength: ${this.config.controlStrength.fgl})`);
+      if (isElevation && fglRenders?.[panelType]) {
+        hierarchy[panelType] = attachGeometryAuthority(
+          fglRenders[panelType],
+          authority,
+          panelType,
+          {
+            sourceType: "fgl_control",
+            stylizationMode: "deterministic_passthrough",
+          },
+        );
         continue;
       }
 
-      // Check for Meshy render (high quality 3D)
-      if (meshyRenders && meshyRenders[panelType]) {
-        hierarchy[panelType] = {
-          ...meshyRenders[panelType],
-          source: 'meshy',
-          controlStrength: this.config.controlStrength.meshy,
-        };
+      if (geometryRenders?.[panelType]) {
+        hierarchy[panelType] = attachGeometryAuthority(
+          geometryRenders[panelType],
+          authority,
+          panelType,
+          {
+            sourceType:
+              geometryRenders[panelType].sourceType ||
+              geometryRenders[panelType].sourceMetadata?.sourceType ||
+              authority.defaultSourceType,
+          },
+        );
         continue;
       }
 
-      // Fall back to geometry render
-      if (geometryRenders && geometryRenders[panelType]) {
-        hierarchy[panelType] = {
-          ...geometryRenders[panelType],
-          source: 'geometry',
-          controlStrength: this.config.controlStrength.geometry,
-        };
-        continue;
-      }
-
-      // No control image available
-      hierarchy[panelType] = {
-        source: 'none',
-        controlStrength: 0,
-      };
+      hierarchy[panelType] = createNoneControl(
+        authority,
+        panelType,
+        meshyRenders?.[panelType] || null,
+      );
     }
-
-    // Log hierarchy summary
-    const fglCount = Object.values(hierarchy).filter((h) => h.source === 'fgl').length;
-    const meshyCount = Object.values(hierarchy).filter((h) => h.source === 'meshy').length;
-    const geoCount = Object.values(hierarchy).filter((h) => h.source === 'geometry').length;
-    const noneCount = Object.values(hierarchy).filter((h) => h.source === 'none').length;
-
-    logger.info(
-      `   Hierarchy: FGL=${fglCount}, Meshy=${meshyCount}, Geometry=${geoCount}, None=${noneCount}`
-    );
 
     return hierarchy;
   }
 
-  /**
-   * Prepare FLUX generation parameters
-   * ENHANCED: Includes FGL opening enumeration for prompt injection
-   *
-   * @param {Object} geometryDNA - GeometryDNA v2 object
-   * @param {Object} controlImages - Control image hierarchy
-   * @param {Array} panels - Panel types
-   * @param {string} quality - Quality level
-   * @param {Object} fglResults - FGL generation results (optional)
-   */
-  prepareFluxGeneration(geometryDNA, controlImages, panels, quality, fglResults = null) {
-    const qualityConfig = this.config.quality[quality] || this.config.quality.standard;
+  prepareFluxGeneration(
+    geometryDNA,
+    controlImages,
+    panels,
+    quality,
+    fglResults = null,
+    authority,
+  ) {
+    const qualityConfig =
+      this.config.quality[quality] || this.config.quality.standard;
     const prepared = {};
 
     for (const panelType of panels) {
-      const control = controlImages[panelType] || {};
-      const isElevation = PANEL_ELEVATION_TYPES.includes(panelType);
-      const is3D = PANEL_3D_TYPES.includes(panelType);
-
-      prepared[panelType] = {
-        panelType,
-        // FLUX generation parameters
-        flux: {
-          steps: is3D ? qualityConfig.steps : Math.floor(qualityConfig.steps * 0.7),
-          size: isElevation ? 1536 : qualityConfig.size,
-          guidanceScale: 7.5,
-        },
-        // Control image if available
-        controlImage: control.url || control.dataUrl || null,
-        controlStrength: control.controlStrength || 0,
-        controlSource: control.source || 'none',
-        // Panel-specific settings
-        category: is3D ? '3d' : 'technical',
-        orientation: isElevation ? panelType.replace('elevation_', '') : null,
-        // DNA reference for prompt building
-        dnaRef: {
-          style: geometryDNA?.style,
-          materials: geometryDNA?.style?.materials,
-          facades: geometryDNA?.facades,
-          roof: geometryDNA?.geometry?.roof,
-        },
-        // FGL data for prompt enhancement (elevations only)
-        fglData:
-          isElevation && fglResults?.success
-            ? {
-                openings: fglResults.openingEnumerations?.[panelType],
-                roofProfile: fglResults.roofProfile,
-                windowPlacements: fglResults.windowPlacements,
-                source: 'fgl',
-              }
-            : null,
-      };
-
-      // Log FGL data availability
-      if (isElevation && prepared[panelType].fglData) {
-        const openings = prepared[panelType].fglData.openings;
-        logger.info(
-          `   ${panelType}: FGL data (${openings?.totalWindows || 0} windows, ${openings?.totalDoors || 0} doors)`
+      if (
+        panelType === "hero_3d" &&
+        authority?.heroFinalization?.heroReady !== true
+      ) {
+        throw new Error(
+          authority?.heroFinalization?.blockingReasons?.length
+            ? `Hero generation is blocked until finalized design authority is present: ${authority.heroFinalization.blockingReasons.join(", ")}.`
+            : "Hero generation is blocked until finalized design authority is present.",
         );
       }
+
+      const control =
+        controlImages[panelType] || createNoneControl(authority, panelType);
+      const isElevation = PANEL_ELEVATION_TYPES.includes(panelType);
+      const is3D = PANEL_3D_TYPES.includes(panelType);
+      const controlImage = control.url || control.dataUrl || null;
+
+      prepared[panelType] = attachGeometryAuthority(
+        {
+          panelType,
+          viewType: panelType,
+          flux: {
+            steps: is3D
+              ? qualityConfig.steps
+              : Math.floor(qualityConfig.steps * 0.7),
+            size: isElevation ? 1536 : qualityConfig.size,
+            guidanceScale: 7.5,
+            imageModelAllowed: !isTechnicalDrawingView(panelType),
+          },
+          controlImage,
+          controlStrength: control.controlStrength || 0,
+          controlSource:
+            control.sourceMetadata?.sourceType || control.source || "none",
+          category: is3D ? "3d" : "technical",
+          orientation: isElevation ? panelType.replace("elevation_", "") : null,
+          dnaRef: {
+            style: geometryDNA?.style,
+            materials: geometryDNA?.style?.materials,
+            facades: geometryDNA?.facades,
+            roof: geometryDNA?.geometry?.roof,
+          },
+          styleReference: control.styleReference || null,
+          fglData:
+            isElevation && fglResults?.success
+              ? {
+                  openings: fglResults.openingEnumerations?.[panelType] || null,
+                  roofProfile: fglResults.roofProfile || null,
+                  windowPlacements: fglResults.windowPlacements || null,
+                  source: "fgl",
+                }
+              : null,
+        },
+        authority,
+        panelType,
+        {
+          sourceType:
+            control.sourceMetadata?.sourceType || control.source || "none",
+          stylizationMode: isTechnicalDrawingView(panelType)
+            ? "deterministic_passthrough"
+            : controlImage
+              ? "image_edit_locked"
+              : "geometry_control_missing",
+        },
+      );
     }
 
     return prepared;
   }
 
-  /**
-   * Generate a single panel with control image
-   *
-   * @param {string} panelType - Panel type
-   * @param {Object} geometryDNA - GeometryDNA v2 object
-   * @param {Object} options - Generation options
-   * @returns {Promise<Object>} Generated panel
-   */
   async generateSinglePanel(panelType, geometryDNA, options = {}) {
-    const fullResult = await this.generateAll(geometryDNA, options.projectContext, {
-      ...options,
-      panels: [panelType],
-    });
+    const fullResult = await this.generateAll(
+      geometryDNA,
+      options.projectContext || {},
+      {
+        ...options,
+        panels: [panelType],
+      },
+    );
 
     return {
       panel: fullResult.panels[panelType],
@@ -643,70 +656,40 @@ class Hybrid3DPipeline {
     };
   }
 
-  /**
-   * Get control image for a panel
-   * Useful when only control images are needed (FLUX handles actual generation)
-   *
-   * @param {string} panelType - Panel type
-   * @param {Object} geometryDNA - GeometryDNA v2 object
-   * @returns {Promise<Object>} Control image data
-   */
   async getControlImage(panelType, geometryDNA) {
-    // Check cache first
-    const cacheKey = `${geometryDNA.designId || 'default'}_${panelType}`;
+    const cacheKey = `${geometryDNA.designId || geometryDNA.projectId || "default"}_${panelType}`;
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey);
     }
 
-    // Generate just the control image
-    const isElevation = PANEL_ELEVATION_TYPES.includes(panelType);
-
-    if (isElevation) {
-      const orientation = panelType.replace('elevation_', '');
-      const render = await this.generateGeometryRenders(geometryDNA, [panelType]);
-      const control = render[panelType];
-
-      if (control) {
-        this.cache.set(cacheKey, control);
-        return control;
-      }
-    }
-
-    // For 3D panels, try Meshy first
-    if (PANEL_3D_TYPES.includes(panelType) && isFeatureEnabled('meshy3DMode')) {
-      const meshyResult = await this.generateMeshyModel(geometryDNA, {});
-      if (meshyResult.success && meshyResult.mappedRenders?.[panelType]) {
-        const control = meshyResult.mappedRenders[panelType];
-        this.cache.set(cacheKey, control);
-        return control;
-      }
-    }
-
-    return null;
+    const authority = await resolveCompiledGeometryAuthority(geometryDNA, {
+      views: [panelType],
+    });
+    const renders = await this.generateGeometryRenders(
+      geometryDNA,
+      [panelType],
+      authority,
+    );
+    const control =
+      renders[panelType] || createNoneControl(authority, panelType);
+    this.cache.set(cacheKey, control);
+    return control;
   }
 
-  /**
-   * Clear cache
-   */
   clearCache() {
     this.cache.clear();
-    logger.info('[Hybrid3D] Cache cleared');
+    logger.info("[Hybrid3D] Cache cleared");
   }
 }
 
-// Singleton instance
 const hybrid3DPipeline = new Hybrid3DPipeline();
 
-// Named exports
 export const generateAll = (geometryDNA, projectContext, options) =>
   hybrid3DPipeline.generateAll(geometryDNA, projectContext, options);
-
 export const generateSinglePanel = (panelType, geometryDNA, options) =>
   hybrid3DPipeline.generateSinglePanel(panelType, geometryDNA, options);
-
 export const getControlImage = (panelType, geometryDNA) =>
   hybrid3DPipeline.getControlImage(panelType, geometryDNA);
-
 export const clearCache = () => hybrid3DPipeline.clearCache();
 
 export const PANEL_3D_TYPES_LIST = PANEL_3D_TYPES;

@@ -18,6 +18,7 @@ import {
   FRAME_STROKE_COLOR,
   FRAME_RADIUS,
   GRID_SPEC,
+  TARGET_BOARD_GRID_SPEC,
   REQUIRED_PANELS,
   PANEL_LABELS,
   toPixelRect,
@@ -84,7 +85,7 @@ export async function composeA1Sheet({
     );
   }
 
-  const layout = layoutConfig || GRID_SPEC;
+  const layout = layoutConfig || TARGET_BOARD_GRID_SPEC || GRID_SPEC;
   const width = WORKING_WIDTH;
   const height = WORKING_HEIGHT;
 

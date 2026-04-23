@@ -174,11 +174,17 @@ function buildFallbackSectionProfile(
       };
 }
 
-function renderScaleBar(scalePxPerMeter, width, height, padding) {
+function renderScaleBar(scalePxPerMeter, width, height, padding, options = {}) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
   const x = width - padding - barWidthPx - 8;
-  const y = height - padding + 38;
+  const y = Number.isFinite(options.y) ? options.y : height - padding + 38;
+  const labelYOffset = Number.isFinite(options.labelYOffset)
+    ? options.labelYOffset
+    : 16;
+  const labelFontSize = Number.isFinite(options.fontSize)
+    ? options.fontSize
+    : 9;
   return {
     barMeters,
     markup: `
@@ -204,8 +210,8 @@ function renderScaleBar(scalePxPerMeter, width, height, padding) {
           y + 4,
         )}" stroke="${SECTION_THEME.line}" stroke-width="1.6"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
-          y + 16,
-        )}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+          y + labelYOffset,
+        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -874,7 +880,9 @@ export function renderSectionSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
-  const padding = sheetMode ? 40 : 86;
+  const showInternalTitleBlock =
+    !sheetMode || options.showInternalTitleBlock === true;
+  const padding = sheetMode ? 34 : 86;
   const bounds = envelopeBounds.bounds || getEnvelopeDrawingBounds(geometry);
   const horizontalExtent =
     sectionAxis(sectionType) === "x"
@@ -1112,8 +1120,17 @@ export function renderSectionSvg(
       1,
     ).toFixed(3),
   );
-  const scaleBar = renderScaleBar(scale, width, height, padding);
-  const titleBlockMarkup = `
+  const scaleBar = renderScaleBar(
+    scale,
+    width,
+    height,
+    padding,
+    showInternalTitleBlock
+      ? {}
+      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+  );
+  const titleBlockMarkup = showInternalTitleBlock
+    ? `
     <g id="phase8-section-title-block">
       <rect x="${formatNumber(padding)}" y="${formatNumber(
         height - padding + 10,
@@ -1133,7 +1150,8 @@ export function renderSectionSvg(
         )}% slot occupancy`,
       )}</text>
     </g>
-  `;
+  `
+    : "";
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${SECTION_THEME.name}" data-bounds-source="${envelopeBounds.source}">
@@ -1182,8 +1200,9 @@ export function renderSectionSvg(
     title: `Section - ${sectionType}`,
     technical_quality_metadata: {
       drawing_type: "section",
-      has_title: true,
-      has_title_block: true,
+      sheet_mode: sheetMode,
+      has_title: !sheetMode,
+      has_title_block: showInternalTitleBlock,
       has_scale_bar: true,
       has_overall_dimensions: true,
       geometry_complete: geometryComplete,

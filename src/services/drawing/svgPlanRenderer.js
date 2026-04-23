@@ -860,12 +860,27 @@ function renderExternalDimensions(bounds, project, layout, width, theme) {
   `;
 }
 
-function renderScaleBar(scalePxPerMeter, width, height, layout, theme) {
+function renderScaleBar(
+  scalePxPerMeter,
+  width,
+  height,
+  layout,
+  theme,
+  options = {},
+) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
   const x = width - layout.right - barWidthPx - 8;
-  const y = height - layout.bottom + 44;
+  const y = Number.isFinite(options.y)
+    ? options.y
+    : height - layout.bottom + 44;
   const midX = x + barWidthPx / 2;
+  const labelYOffset = Number.isFinite(options.labelYOffset)
+    ? options.labelYOffset
+    : 16;
+  const labelFontSize = Number.isFinite(options.fontSize)
+    ? options.fontSize
+    : 10;
 
   return {
     markup: `
@@ -891,8 +906,8 @@ function renderScaleBar(scalePxPerMeter, width, height, layout, theme) {
           y + 4,
         )}" stroke="${theme.line}" stroke-width="1.6"/>
         <text x="${formatNumber(midX)}" y="${formatNumber(
-          y + 16,
-        )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+          y + labelYOffset,
+        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -940,9 +955,11 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
   const width = options.width || 1200;
   const height = options.height || 900;
   const sheetMode = options.sheetMode === true;
+  const showInternalTitleBlock =
+    !sheetMode || options.showInternalTitleBlock === true;
   const includeSiteContext = options.includeSiteContext === true && !sheetMode;
   const layout = sheetMode
-    ? { left: 20, top: 22, right: 28, bottom: 78 }
+    ? { left: 20, top: 22, right: 28, bottom: 62 }
     : { left: 46, top: 56, right: 88, bottom: 118 };
   const { bounds, source: boundsSource } = getLevelDrawingBoundsWithSource(
     geometry,
@@ -1072,11 +1089,16 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     height,
     layout,
     theme,
+    showInternalTitleBlock
+      ? {}
+      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
   );
-  const titleBlock = renderTitleBlock(level, width, height, layout, theme, {
-    slotOccupancyRatio,
-    boundsSource,
-  });
+  const titleBlock = showInternalTitleBlock
+    ? renderTitleBlock(level, width, height, layout, theme, {
+        slotOccupancyRatio,
+        boundsSource,
+      })
+    : "";
   const furnitureHints = renderFurnitureHints(levelRooms, project, theme);
   const doorCount = doorEntries.length;
   const windowCount = windowEntries.length;
@@ -1129,6 +1151,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     title: level.name || "Plan",
     technical_quality_metadata: {
       drawing_type: "plan",
+      sheet_mode: sheetMode,
       wall_count: levelWalls.length,
       door_count: doorCount,
       window_count: windowCount,
@@ -1140,7 +1163,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       room_label_count: options.hideRoomLabels ? 0 : levelRooms.length,
       area_label_count: options.hideRoomLabels ? 0 : levelRooms.length,
       has_north_arrow: !sheetMode,
-      has_title_block: true,
+      has_title_block: showInternalTitleBlock,
       has_legend: false,
       has_external_dimensions: true,
       has_scale_bar: true,

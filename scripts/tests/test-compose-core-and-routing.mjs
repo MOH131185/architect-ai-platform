@@ -106,12 +106,16 @@ test('2b. board-v2 keeps data cards readable by widening top-right and bottom-ri
   assert(r.layout.schedules_notes.y > 0.7, 'schedules_notes should stay in the bottom info rail');
   assert(r.layout.title_block.y > 0.7, 'title_block should stay in the bottom info rail');
   assert(
-    r.layout.schedules_notes.width > r.layout.material_palette.width,
-    'schedules_notes should be wider than material_palette for legibility',
+    r.layout.material_palette.width >= 0.2 && r.layout.climate_card.width >= 0.2,
+    'top-right data cards should remain materially wider than legacy cramped cards',
   );
   assert(
-    r.layout.title_block.width > r.layout.climate_card.width,
-    'title_block should be wider than climate_card for legibility',
+    r.layout.schedules_notes.width >= 0.14 && r.layout.title_block.width >= 0.14,
+    'bottom-right info cards should keep enough width for wrapped text',
+  );
+  assert(
+    r.layout.schedules_notes.width + r.layout.title_block.width >= 0.29,
+    'bottom-right info rail should retain broad combined width for readability',
   );
 });
 
@@ -174,6 +178,7 @@ test('8. isStrictPanel tiered failure policy', () => {
   assert(composeCore.isStrictPanel('hero_3d'), 'hero_3d should be strict');
   assert(composeCore.isStrictPanel('floor_plan_ground'), 'floor_plan_ground should be strict');
   assert(composeCore.isStrictPanel('elevation_north'), 'elevation_north should be strict');
+  assert(composeCore.isStrictPanel('section_AA'), 'section_AA should be strict');
   // Also works with short keys via normalizeKey
   assert(composeCore.isStrictPanel('plan_ground'), 'plan_ground should normalise to strict');
 
@@ -181,7 +186,6 @@ test('8. isStrictPanel tiered failure policy', () => {
   assert(!composeCore.isStrictPanel('material_palette'), 'material_palette should be lenient');
   assert(!composeCore.isStrictPanel('climate_card'), 'climate_card should be lenient');
   assert(!composeCore.isStrictPanel('schedules_notes'), 'schedules_notes should be lenient');
-  assert(!composeCore.isStrictPanel('section_AA'), 'section_AA should be lenient');
   assert(!composeCore.isStrictPanel('title_block'), 'title_block should be lenient');
 });
 
@@ -284,12 +288,12 @@ test('16. resolveLayout widens both floor plans for 2-floor board-v2', () => {
   const r = composeCore.resolveLayout({ layoutTemplate: 'board-v2', floorCount: 2 });
   assert(!r.layout.floor_plan_level2, 'floor_plan_level2 should be removed for 2-floor');
   assertEqual(r.layout.floor_plan_ground.x, 0.015);
-  assertEqual(r.layout.floor_plan_ground.y, 0.29);
+  assertEqual(r.layout.floor_plan_ground.y, 0.235);
   assertEqual(r.layout.floor_plan_ground.width, 0.475);
-  assertEqual(r.layout.floor_plan_ground.height, 0.25);
+  assertEqual(r.layout.floor_plan_ground.height, 0.29);
   assertEqual(r.layout.floor_plan_first.x, 0.5);
   assertEqual(r.layout.floor_plan_first.width, 0.485);
-  assertEqual(r.layout.floor_plan_first.height, 0.25);
+  assertEqual(r.layout.floor_plan_first.height, 0.29);
   assert(
     r.layout.floor_plan_ground.height > r.layout.elevation_north.height,
     'middle-row plans should remain taller than elevation slots',

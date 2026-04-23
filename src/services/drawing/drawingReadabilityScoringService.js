@@ -19,6 +19,7 @@ function inferDrawingType(drawing = {}) {
 export function scoreDrawingReadability(drawing = {}, options = {}) {
   const drawingType = options.drawingType || inferDrawingType(drawing);
   const quality = drawing.technical_quality_metadata || {};
+  const isSheetMode = quality.sheet_mode === true || options.sheetMode === true;
   const warnings = [];
   let score = 0.45;
 
@@ -34,7 +35,7 @@ export function scoreDrawingReadability(drawing = {}, options = {}) {
       Number(lineHierarchy.interior_wall || 0);
     score += hierarchyStrong ? 0.12 : 0;
     score += clamp(labelRatio, 0, 1) * 0.18;
-    score += quality.has_title_block ? 0.07 : 0;
+    score += quality.has_title_block || isSheetMode ? 0.07 : 0;
     score += quality.has_north_arrow ? 0.04 : 0;
     score += quality.has_legend ? 0.04 : 0;
     score += Number(quality.window_count || 0) > 0 ? 0.05 : 0;
@@ -57,12 +58,12 @@ export function scoreDrawingReadability(drawing = {}, options = {}) {
       Number(drawing.window_count || quality.window_count || 0) > 0 ? 0.15 : 0;
     score += Number(quality.level_label_count || 0) > 0 ? 0.12 : 0;
     score += Number(quality.floor_line_count || 0) > 0 ? 0.12 : 0;
-    score += quality.has_title ? 0.08 : 0;
+    score += quality.has_title || isSheetMode ? 0.08 : 0;
     score += Number(quality.bay_count || 0) > 0 ? 0.05 : 0;
     score += Number(quality.material_zone_count || 0) > 0 ? 0.08 : 0;
     score += Number(quality.ffl_marker_count || 0) > 0 ? 0.07 : 0;
     score += Number(quality.feature_count || 0) > 0 ? 0.06 : 0;
-    if (!quality.has_title) {
+    if (!quality.has_title && !isSheetMode) {
       warnings.push("Elevation title annotation is missing.");
     }
     if (Number(quality.facade_richness_score || 0) < 0.5) {
@@ -74,7 +75,7 @@ export function scoreDrawingReadability(drawing = {}, options = {}) {
     score += Number(quality.room_label_count || 0) > 0 ? 0.15 : 0;
     score += Number(quality.slab_line_count || 0) > 0 ? 0.12 : 0;
     score += Number(quality.level_label_count || 0) > 0 ? 0.1 : 0;
-    score += quality.has_title ? 0.08 : 0;
+    score += quality.has_title || isSheetMode ? 0.08 : 0;
     score += Number(quality.foundation_marker_count || 0) > 0 ? 0.08 : 0;
     score += Number(quality.stair_tread_count || 0) > 0 ? 0.06 : 0;
     score += quality.roof_profile_visible ? 0.06 : 0;

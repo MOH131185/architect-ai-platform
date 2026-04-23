@@ -1,4 +1,5 @@
 import { getCanonicalMaterialPalette } from "../design/canonicalMaterialPalette.js";
+import { resolveHeroGenerationDependencies } from "../design/heroDesignAuthorityService.js";
 
 function normalizeText(value = "") {
   return String(value || "")
@@ -90,24 +91,16 @@ function deriveExpectedEntrance(projectGeometry = {}) {
   return `front facade near ${Math.round(Number(entrance.position_m.x || 0) * 10) / 10}m datum`;
 }
 
-function deriveExpectedWindowRhythm(facadeGrammar = {}) {
-  const firstOrientation = (facadeGrammar.orientations || [])[0];
-  const componentFamily =
-    firstOrientation?.components?.component_family?.bay_family || null;
-  const openingCount = Number(
-    firstOrientation?.opening_rhythm?.opening_count || 0,
+function deriveExpectedWindowRhythm(
+  projectGeometry = {},
+  facadeGrammar = null,
+) {
+  return (
+    resolveHeroGenerationDependencies({
+      projectGeometry,
+      facadeGrammar,
+    }).windowRhythm || null
   );
-
-  if (componentFamily) {
-    return componentFamily.replace(/[_-]+/g, " ");
-  }
-  if (openingCount > 4) {
-    return "repetitive opening rhythm";
-  }
-  if (openingCount > 0) {
-    return "ordered openings";
-  }
-  return null;
 }
 
 export function runHeroIdentityChecks({
@@ -130,7 +123,7 @@ export function runHeroIdentityChecks({
       facadeGrammar?.style_bridge?.roof_language ||
       projectGeometry?.roof?.type ||
       null,
-    windowRhythm: deriveExpectedWindowRhythm(facadeGrammar || {}),
+    windowRhythm: deriveExpectedWindowRhythm(projectGeometry, facadeGrammar),
     entrancePosition: deriveExpectedEntrance(projectGeometry),
     primaryMaterial: canonicalPalette.primary?.name || null,
     roofMaterial: canonicalPalette.roof?.name || null,

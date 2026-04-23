@@ -29,6 +29,7 @@ import {
   buildMaterialSpecSheet,
   getCanonicalMaterialPalette,
 } from "./canonicalMaterialPalette.js";
+import { resolveHeroGenerationDependencies } from "./heroDesignAuthorityService.js";
 
 /**
  * Design Fingerprint schema
@@ -427,7 +428,16 @@ function resolvePortfolioStyleAnchor(options = {}) {
 
 export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
   const projectGeometry = options.projectGeometry || {};
-  const facadeGrammar = options.facadeGrammar || {};
+  const heroDesignAuthority =
+    options.heroDesignAuthority ||
+    resolveHeroGenerationDependencies({
+      projectGeometry,
+      styleDNA: masterDNA,
+      facadeGrammar: options.facadeGrammar || null,
+      compiledProject: options.compiledProject || null,
+    });
+  const facadeGrammar =
+    heroDesignAuthority.resolvedFacadeGrammar || options.facadeGrammar || {};
   const roofTruthSummary =
     projectGeometry?.metadata?.canonical_construction_truth?.roof || null;
   const canonicalMaterialPalette = getCanonicalMaterialPalette({
@@ -453,7 +463,8 @@ export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
     roofLanguage: inferRoofLanguage(masterDNA, facadeGrammar),
     roofPitchDegrees,
     roofProfile: inferRoofProfile(masterDNA),
-    windowRhythm: inferFacadeRhythm(masterDNA),
+    windowRhythm:
+      heroDesignAuthority.windowRhythm || inferFacadeRhythm(masterDNA),
     openingLanguage: inferOpeningLanguage(masterDNA, facadeGrammar),
     entrancePosition: inferEntrancePosition(
       masterDNA,
@@ -477,7 +488,16 @@ export function buildHeroIdentitySpec(masterDNA = {}, options = {}) {
 
 export function buildFingerprintFromDNA(masterDNA = {}, options = {}) {
   const projectGeometry = options.projectGeometry || {};
-  const facadeGrammar = options.facadeGrammar || {};
+  const heroDesignAuthority =
+    options.heroDesignAuthority ||
+    resolveHeroGenerationDependencies({
+      projectGeometry,
+      styleDNA: masterDNA,
+      facadeGrammar: options.facadeGrammar || null,
+      compiledProject: options.compiledProject || null,
+    });
+  const facadeGrammar =
+    heroDesignAuthority.resolvedFacadeGrammar || options.facadeGrammar || {};
   const roofTruthSummary =
     projectGeometry?.metadata?.canonical_construction_truth?.roof || null;
   const foundationTruthSummary =
@@ -504,19 +524,25 @@ export function buildFingerprintFromDNA(masterDNA = {}, options = {}) {
     dims.floor_count ||
     Math.max(1, (projectGeometry.levels || []).length) ||
     2;
-  const heroIdentitySpec = buildHeroIdentitySpec(masterDNA, options);
+  const heroIdentitySpec = buildHeroIdentitySpec(masterDNA, {
+    ...options,
+    facadeGrammar,
+    heroDesignAuthority,
+  });
+  const resolvedFacadeRhythm =
+    heroDesignAuthority.windowRhythm || inferFacadeRhythm(masterDNA);
 
   return {
     id: `fp_${generateSimpleHash(JSON.stringify(masterDNA || {}))}`,
     massingType: inferMassingType(masterDNA),
     roofProfile: inferRoofProfile(masterDNA),
-    facadeRhythm: inferFacadeRhythm(masterDNA),
+    facadeRhythm: resolvedFacadeRhythm,
     materialsPalette: extractMaterialsPalette(
       masterDNA,
       projectGeometry,
       facadeGrammar,
     ),
-    windowPattern: inferWindowPattern(masterDNA),
+    windowPattern: resolvedFacadeRhythm || inferWindowPattern(masterDNA),
     entrancePosition: heroIdentitySpec.entrancePosition,
     dominantColors: extractDominantColorsFromDNA(
       masterDNA,

@@ -65,14 +65,19 @@ export function buildElevationGraphic(
     annotationLayout.placements,
     { minimumFontSize: 9 },
   );
+  const showSheetTitleBlock = options.sheetMode !== true;
   const svg = replaceSvgTail(
     drawing.svg,
-    `${renderPlacements(annotationLayout.placements)}${renderTitleBlock(
-      options.width || 1200,
-      options.height || 760,
-      drawing.orientation || options.orientation || "south",
-      drawing,
-    )}`,
+    `${renderPlacements(annotationLayout.placements)}${
+      showSheetTitleBlock
+        ? renderTitleBlock(
+            options.width || 1200,
+            options.height || 760,
+            drawing.orientation || options.orientation || "south",
+            drawing,
+          )
+        : ""
+    }`,
   );
 
   return {
@@ -83,7 +88,8 @@ export function buildElevationGraphic(
     technical_quality_metadata: {
       ...(drawing.technical_quality_metadata || {}),
       annotation_count: annotationLayout.placements.length,
-      has_title_block: true,
+      sheet_mode: options.sheetMode === true,
+      has_title_block: showSheetTitleBlock,
       annotation_guarantee: annotationValidation.placementStable,
     },
   };

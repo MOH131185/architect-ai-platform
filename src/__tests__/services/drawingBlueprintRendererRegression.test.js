@@ -355,6 +355,12 @@ describe("Blueprint renderer regressions", () => {
       expect(drawing.svg).not.toContain("#f6ede3");
     });
     expect(plan.svg).not.toContain('id="north-arrow"');
+    expect(plan.svg).not.toContain('id="title-block"');
+    expect(elevation.svg).not.toContain('id="phase7-elevation-title-block"');
+    expect(section.svg).not.toContain('id="phase8-section-title-block"');
+    expect(plan.technical_quality_metadata.has_title_block).toBe(false);
+    expect(elevation.technical_quality_metadata.has_title_block).toBe(false);
+    expect(section.technical_quality_metadata.has_title_block).toBe(false);
     expect(plan.technical_quality_metadata.bounds_source).toBe(
       "building_derived",
     );

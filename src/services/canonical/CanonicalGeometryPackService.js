@@ -1,22 +1,17 @@
 /**
  * Canonical Geometry Pack Service
  *
- * Bridges BuildingModel + Projections2D into a frozen canonical pack
- * that provides geometry-authority init_images for every panel type.
+ * Builds the canonical technical pack directly from compiled project geometry.
+ * Technical SVGs must come from deterministic compiled-project renderers only.
  *
  * The canonical pack is the single source of truth for building geometry.
  * No panel may generate without receiving its canonical SVG as init_image
  * when the `requireCanonicalPack` feature flag is enabled.
  */
 
-import { createBuildingModel } from "../../geometry/BuildingModel.js";
-import {
-  projectFloorPlan,
-  projectElevation,
-  projectSection,
-  projectIsometric,
-} from "../../geometry/Projections2D.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import { buildCompiledProjectTechnicalPanels } from "./compiledProjectTechnicalPackBuilder.js";
+import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 
 // ---------------------------------------------------------------------------
 // Error class
@@ -194,20 +189,137 @@ function svgToDataUrl(svgString) {
   }
 }
 
+function evaluateTechnicalAuthorityReadiness(
+  technicalBuild = {},
+  technicalPanels = {},
+) {
+  const validation =
+    technicalBuild.compiledProjectSource?.validation ||
+    technicalBuild.compiledProject?.validation ||
+    {};
+  const counts = validation.counts || {};
+  const reasons = [];
+
+  const planPanels = Object.entries(technicalPanels).filter(([panelType]) =>
+    panelType.startsWith("floor_plan_"),
+  );
+  const elevationPanels = Object.entries(technicalPanels).filter(
+    ([panelType]) => panelType.startsWith("elevation_"),
+  );
+  const sectionPanels = Object.entries(technicalPanels).filter(([panelType]) =>
+    panelType.startsWith("section_"),
+  );
+
+  const strongPlanCount = planPanels.filter(([, panel]) => {
+    const quality = panel.technicalQualityMetadata || {};
+    return (
+      quality.geometry_complete === true &&
+      Number(quality.room_count || 0) >= 1 &&
+      Number(quality.wall_count || 0) >= 4 &&
+      Number(quality.slot_occupancy_ratio || 0) >= 0.38
+    );
+  }).length;
+
+  const strongElevationCount = elevationPanels.filter(([, panel]) => {
+    const quality = panel.technicalQualityMetadata || {};
+    return (
+      quality.geometry_complete === true &&
+      String(quality.side_facade_status || "").toLowerCase() !== "block" &&
+      Number(quality.window_count || 0) + Number(quality.door_count || 0) >=
+        1 &&
+      Number(quality.facade_richness_score || 0) >= 0.26
+    );
+  }).length;
+
+  const strongSectionCount = sectionPanels.filter(([, panel]) => {
+    const quality = panel.technicalQualityMetadata || {};
+    return (
+      quality.geometry_complete === true &&
+      (Number(quality.cut_room_count || 0) >= 1 ||
+        Number(quality.section_direct_evidence_count || 0) >= 1) &&
+      Number(quality.section_usefulness_score || 0) >= 0.22
+    );
+  }).length;
+
+  if (Number(counts.room_count || 0) < 3) {
+    reasons.push(
+      "compiled project resolved too few rooms for technical authority",
+    );
+  }
+  if (Number(counts.wall_count || 0) < 6) {
+    reasons.push(
+      "compiled project resolved too few wall segments for technical authority",
+    );
+  }
+  if (Number(counts.opening_count || 0) < 3) {
+    reasons.push(
+      "compiled project resolved too few openings for facade authority",
+    );
+  }
+  if (strongPlanCount === 0) {
+    reasons.push("no floor plan panel met geometry-complete readiness");
+  }
+  if (strongElevationCount === 0) {
+    reasons.push("no elevation met facade-readiness thresholds");
+  }
+  if (strongSectionCount === 0) {
+    reasons.push("no section panel met section-usefulness readiness");
+  }
+  if (validation.valid === false) {
+    reasons.push("compiled project validation reported blockers");
+  }
+
+  const ready = reasons.length === 0;
+  const score = Number(
+    Math.max(
+      0,
+      Math.min(
+        1,
+        (validation.valid === false ? 0 : 0.18) +
+          Math.min(0.18, Number(counts.room_count || 0) * 0.0225) +
+          Math.min(0.18, Number(counts.wall_count || 0) * 0.0125) +
+          Math.min(0.14, Number(counts.opening_count || 0) * 0.0175) +
+          Math.min(0.16, strongPlanCount * 0.16) +
+          Math.min(0.1, strongElevationCount * 0.05) +
+          Math.min(0.06, strongSectionCount * 0.06),
+      ),
+    ).toFixed(3),
+  );
+
+  return {
+    ready,
+    score,
+    reasons,
+    counts: {
+      ...counts,
+      rendered_plan_count: planPanels.length,
+      rendered_elevation_count: elevationPanels.length,
+      rendered_section_count: sectionPanels.length,
+      strong_plan_count: strongPlanCount,
+      strong_elevation_count: strongElevationCount,
+      strong_section_count: strongSectionCount,
+    },
+    geometrySourcePath:
+      technicalBuild.compiledProjectSource?.metadata?.geometry_source_path ||
+      technicalBuild.compiledProject?.metadata?.geometry_source_path ||
+      null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Build Canonical Pack
 // ---------------------------------------------------------------------------
 
 /**
- * Build a canonical geometry pack from a CanonicalDesignState (CDS).
+ * Build a canonical geometry pack from a real compiled-project input or wrapper.
  *
- * 1. Creates a BuildingModel from CDS
- * 2. Generates SVG projections (floor plans, elevations, sections)
+ * 1. Resolves a compiled project from CDS/input
+ * 2. Generates deterministic compiled-project SVGs (plans/elevations/sections)
  * 3. Converts SVGs to data URLs for use as init_image
  * 4. Computes a geometryHash over all SVG hashes
  * 5. Returns a frozen pack
  *
- * @param {Object} cds - CanonicalDesignState object (from types/ or validation/ builder)
+ * @param {Object} cds - Source wrapper that must resolve to a real compiled project
  * @param {Object} [options]
  * @param {number} [options.scale] - SVG scale (default 80 px/m)
  * @param {number} [options.width] - SVG width (default 1200)
@@ -221,7 +333,7 @@ export function buildCanonicalPack(
 ) {
   if (!cds) {
     throw new CanonicalPackError(
-      "CDS is required to build canonical pack",
+      "A compiled-project source object is required to build canonical pack",
       ERROR_CODES.MISSING_GEOMETRY,
     );
   }
@@ -234,170 +346,121 @@ export function buildCanonicalPack(
     normalizeLookupKey(cds.designId) ||
     normalizeLookupKey(cds.meta?.designFingerprint) ||
     null;
+  const technicalBuild = buildCompiledProjectTechnicalPanels(cds, {
+    scale,
+    width,
+    height,
+  });
 
-  const svgOptions = {
-    scale: Math.max(scale, 100),
-    width: Math.max(width, 1400),
-    height: Math.max(height, 1000),
-    showDimensions: true,
-    showRoomLabels: true,
-    theme: "artistic",
-  };
-
-  let model;
-  try {
-    model = createBuildingModel(cds);
-  } catch (err) {
+  if (!technicalBuild.ok) {
+    const reason = technicalBuild.failures
+      .map((failure) => `${failure.panelType}: ${failure.message}`)
+      .join("; ");
+    const code =
+      technicalBuild.failures[0]?.panelType === "compiled_project"
+        ? ERROR_CODES.MISSING_GEOMETRY
+        : ERROR_CODES.INCOMPLETE_PACK;
     throw new CanonicalPackError(
-      `Failed to create BuildingModel: ${err.message}`,
-      ERROR_CODES.BUILD_FAILED,
+      `Failed to build canonical technical pack from compiled project: ${reason}`,
+      code,
     );
   }
 
-  // Validate model
-  const validation = model.validate();
-  if (!validation.valid && validation.errors.length > 0) {
-    // Log but don't throw — allow partial packs
-    console.warn(
-      "[CanonicalPack] BuildingModel validation warnings:",
-      validation.errors,
-    );
-  }
-
-  const panels = {};
-  const svgHashes = {};
-
-  // --- Floor Plans ---
-  const floorCount = model.floors?.length || 1;
-  const FLOOR_TYPE_MAP = [
-    "floor_plan_ground",
-    "floor_plan_first",
-    "floor_plan_level2",
-    "floor_plan_level3",
-  ];
-
-  for (let i = 0; i < floorCount && i < FLOOR_TYPE_MAP.length; i++) {
-    const panelType = FLOOR_TYPE_MAP[i];
-    try {
-      const svg = projectFloorPlan(model, i, { ...svgOptions, height: 600 });
-      const svgHash = computeCDSHashSync({ svg });
-      const dataUrl = svgToDataUrl(svg);
-      panels[panelType] = { dataUrl, svgString: svg, svgHash };
-      svgHashes[panelType] = svgHash;
-    } catch (err) {
-      console.warn(
-        `[CanonicalPack] Failed to project ${panelType}:`,
-        err.message,
-      );
-    }
-  }
-
-  // --- Elevations ---
-  const ELEVATION_MAP = {
-    N: "elevation_north",
-    S: "elevation_south",
-    E: "elevation_east",
-    W: "elevation_west",
-  };
-  for (const [orientation, panelType] of Object.entries(ELEVATION_MAP)) {
-    try {
-      const svg = projectElevation(model, orientation, {
-        ...svgOptions,
-        height: 500,
-      });
-      const svgHash = computeCDSHashSync({ svg });
-      const dataUrl = svgToDataUrl(svg);
-      panels[panelType] = { dataUrl, svgString: svg, svgHash };
-      svgHashes[panelType] = svgHash;
-    } catch (err) {
-      console.warn(
-        `[CanonicalPack] Failed to project ${panelType}:`,
-        err.message,
-      );
-    }
-  }
-
-  // --- Sections ---
-  const SECTION_MAP = {
-    longitudinal: "section_AA",
-    transverse: "section_BB",
-  };
-  for (const [sectionType, panelType] of Object.entries(SECTION_MAP)) {
-    try {
-      const svg = projectSection(model, sectionType, {
-        ...svgOptions,
-        height: 500,
-      });
-      const svgHash = computeCDSHashSync({ svg });
-      const dataUrl = svgToDataUrl(svg);
-      panels[panelType] = { dataUrl, svgString: svg, svgHash };
-      svgHashes[panelType] = svgHash;
-    } catch (err) {
-      console.warn(
-        `[CanonicalPack] Failed to project ${panelType}:`,
-        err.message,
-      );
-    }
-  }
-
-  // --- 3D massing views (hero_3d / axonometric) ---
-  // Generate proper isometric projections from BuildingModel for accurate
-  // 3D control images. Previously used south elevation as proxy which
-  // gave FLUX no 3D depth/massing information.
-  try {
-    const heroSvg = projectIsometric(model, { viewpoint: "SW", scale: 40 });
-    const heroHash = computeCDSHashSync({ svg: heroSvg });
-    const heroUrl = svgToDataUrl(heroSvg);
-    panels.hero_3d = {
-      dataUrl: heroUrl,
-      svgString: heroSvg,
-      svgHash: heroHash,
-    };
-    svgHashes.hero_3d = heroHash;
-  } catch (err) {
-    console.warn(
-      "[CanonicalPack] Failed to project hero_3d isometric, falling back to south elevation:",
-      err.message,
-    );
-    if (panels.elevation_south) {
-      panels.hero_3d = { ...panels.elevation_south };
-      svgHashes.hero_3d = svgHashes.elevation_south;
-    }
-  }
-  try {
-    const axonSvg = projectIsometric(model, { viewpoint: "SE", scale: 35 });
-    const axonHash = computeCDSHashSync({ svg: axonSvg });
-    const axonUrl = svgToDataUrl(axonSvg);
-    panels.axonometric = {
-      dataUrl: axonUrl,
-      svgString: axonSvg,
-      svgHash: axonHash,
-    };
-    svgHashes.axonometric = axonHash;
-  } catch (err) {
-    console.warn(
-      "[CanonicalPack] Failed to project axonometric isometric, falling back to south elevation:",
-      err.message,
-    );
-    if (panels.elevation_south) {
-      panels.axonometric = { ...panels.elevation_south };
-      svgHashes.axonometric = svgHashes.elevation_south;
-    }
-  }
-  // Interior uses ground floor plan as geometry reference
-  if (panels.floor_plan_ground) {
-    panels.interior_3d = { ...panels.floor_plan_ground };
-    svgHashes.interior_3d = svgHashes.floor_plan_ground;
-  }
-
-  // Compute overall geometry hash from all SVG hashes
-  const geometryHash = computeCDSHashSync(svgHashes);
+  const createdAt = new Date().toISOString();
+  const technicalPanels = technicalBuild.technicalPanels || {};
+  const technicalSvgHashes = Object.fromEntries(
+    Object.entries(technicalPanels).map(([panelType, panel]) => [
+      panelType,
+      panel.svgHash,
+    ]),
+  );
+  const technicalSvgBundleHash = computeCDSHashSync(technicalSvgHashes);
+  const geometryHash =
+    technicalBuild.compiledProjectSource?.geometryHash ||
+    technicalBuild.compiledProject?.geometryHash ||
+    technicalSvgBundleHash;
+  const compiledProjectSchemaVersion =
+    technicalBuild.compiledProjectSchemaVersion ||
+    technicalBuild.compiledProjectSource?.schema_version ||
+    null;
+  const technicalAuthority = evaluateTechnicalAuthorityReadiness(
+    technicalBuild,
+    technicalPanels,
+  );
   const cdsHash = cds.hash || computeCDSHashSync(cds);
+  const panels = {};
 
-  // Dispose model to prevent memory leaks
-  if (typeof model.dispose === "function") {
-    model.dispose();
+  for (const [panelType, panel] of Object.entries(technicalPanels)) {
+    panels[panelType] = {
+      ...panel,
+      dataUrl: svgToDataUrl(panel.svgString),
+      geometryHash,
+      generatedAt: createdAt,
+      metadata: {
+        source: "compiled_project",
+        authoritySource: "compiled_project",
+        compiledProjectSchemaVersion,
+        panelType,
+        geometryHash,
+        svgHash: panel.svgHash,
+        drawingType: panel.drawingType || null,
+        technical: true,
+      },
+    };
   }
+
+  const compiledRenderInputs = ensureCompiledProjectRenderInputs(
+    technicalBuild.compiledProjectSource ||
+      technicalBuild.compiledProject ||
+      {},
+    { geometryHash },
+  );
+
+  function buildCompiledRenderPanel(panelType) {
+    const renderInput = compiledRenderInputs?.[panelType];
+    if (!renderInput?.dataUrl && !renderInput?.svgString && !renderInput?.url) {
+      throw new CanonicalPackError(
+        `Missing compiled-project render input for ${panelType}`,
+        ERROR_CODES.INCOMPLETE_PACK,
+      );
+    }
+
+    const svgHash =
+      renderInput.svgHash ||
+      (renderInput.svgString
+        ? computeCDSHashSync({ panelType, svg: renderInput.svgString })
+        : computeCDSHashSync({
+            panelType,
+            payload: renderInput.dataUrl || renderInput.url,
+          }));
+
+    return {
+      dataUrl: renderInput.dataUrl || renderInput.url || null,
+      svgString: renderInput.svgString || null,
+      svgHash,
+      width: renderInput.width || null,
+      height: renderInput.height || null,
+      title: renderInput.title || panelType,
+      status: "ready",
+      geometryHash,
+      generatedAt: createdAt,
+      metadata: {
+        source: "compiled_project",
+        authoritySource: "compiled_project",
+        compiledProjectSchemaVersion,
+        panelType,
+        geometryHash,
+        svgHash,
+        technical: false,
+        sourceType: renderInput.sourceType || "compiled_render_input",
+        renderKind: renderInput.metadata?.renderKind || null,
+      },
+    };
+  }
+
+  panels.hero_3d = buildCompiledRenderPanel("hero_3d");
+  panels.axonometric = buildCompiledRenderPanel("axonometric");
+  panels.interior_3d = buildCompiledRenderPanel("interior_3d");
 
   const pack = {
     panels,
@@ -405,15 +468,32 @@ export function buildCanonicalPack(
     cdsHash,
     designFingerprint,
     designId: normalizeLookupKey(cds.designId) || null,
-    status: Object.keys(panels).length > 0 ? "COMPLETE" : "EMPTY",
+    status: Object.keys(technicalPanels).length > 0 ? "COMPLETE" : "EMPTY",
     panelCount: Object.keys(panels).length,
-    createdAt: new Date().toISOString(),
+    createdAt,
+    metadata: {
+      source: "compiled_project",
+      authoritySource: "compiled_project",
+      compiledProjectSchemaVersion,
+      authoritativeGeometryHash: geometryHash,
+      technicalSvgBundleHash,
+      technicalAuthorityReady: technicalAuthority.ready,
+      technicalAuthoritySummary: technicalAuthority,
+      compiledProjectValidation:
+        technicalBuild.compiledProjectSource?.validation ||
+        technicalBuild.compiledProject?.validation ||
+        null,
+    },
   };
 
   // Freeze the pack — it should never be mutated after construction
+  Object.freeze(pack.metadata);
   Object.freeze(pack);
   Object.freeze(pack.panels);
   for (const p of Object.values(pack.panels)) {
+    if (p.metadata) {
+      Object.freeze(p.metadata);
+    }
     Object.freeze(p);
   }
 

@@ -25,6 +25,39 @@ export function isCompiledProjectCanonicalPack(canonicalPack) {
   return !schemaVersion || schemaVersion.startsWith("compiled-project");
 }
 
+export function getCompiledCanonicalPackReadiness(canonicalPack) {
+  if (!isCompiledProjectCanonicalPack(canonicalPack)) {
+    return {
+      ready: false,
+      reason: "canonical pack is not a compiled-project authority pack",
+      summary: null,
+    };
+  }
+
+  const summary = canonicalPack?.metadata?.technicalAuthoritySummary || null;
+  const explicitReady = canonicalPack?.metadata?.technicalAuthorityReady;
+
+  if (explicitReady === false) {
+    return {
+      ready: false,
+      reason:
+        summary?.reasons?.[0] ||
+        "compiled-project canonical pack did not pass technical authority readiness",
+      summary,
+    };
+  }
+
+  if (explicitReady === true) {
+    return { ready: true, reason: null, summary };
+  }
+
+  return {
+    ready: true,
+    reason: null,
+    summary,
+  };
+}
+
 export function isTechnicalPanel(panelType) {
   if (typeof panelType !== "string" || panelType.length === 0) {
     return false;
@@ -65,7 +98,7 @@ export function resolveDirectPanelRoute(
 
   if (
     isTechnicalPanel(panelType) &&
-    isCompiledProjectCanonicalPack(canonicalPack) &&
+    getCompiledCanonicalPackReadiness(canonicalPack).ready &&
     hasCompiledCanonicalAsset
   ) {
     return {
@@ -80,15 +113,18 @@ export function resolveDirectPanelRoute(
   }
 
   if (isTechnicalPanel(panelType)) {
+    const readiness = getCompiledCanonicalPackReadiness(canonicalPack);
     return {
       direct: true,
       useFlux: false,
       authority: "deterministic_svg",
       useCompiledCanonicalAsset: false,
       packSource,
-      reason: packSource
-        ? `technical panel ignores non-compiled canonical pack source "${packSource}"`
-        : "technical panel has no canonical pack authority",
+      reason: readiness.summary?.reasons?.length
+        ? `technical panel bypasses canonical pack: ${readiness.summary.reasons[0]}`
+        : packSource
+          ? `technical panel ignores non-compiled canonical pack source "${packSource}"`
+          : "technical panel has no canonical pack authority",
     };
   }
 
@@ -107,6 +143,7 @@ export function resolveVisualPanelAuthority(
   { canonicalPack = null, geometryRender = null } = {},
 ) {
   const packSource = getCanonicalPackSource(canonicalPack);
+  const readiness = getCompiledCanonicalPackReadiness(canonicalPack);
 
   if (isDirectDeterministicPanel(panelType)) {
     return {
@@ -119,7 +156,7 @@ export function resolveVisualPanelAuthority(
 
   if (
     geometryRender?.type === "compiled_project_canonical_pack" &&
-    isCompiledProjectCanonicalPack(canonicalPack)
+    readiness.ready
   ) {
     return {
       route: "flux",
@@ -138,12 +175,17 @@ export function resolveVisualPanelAuthority(
     };
   }
 
-  if (packSource && !isCompiledProjectCanonicalPack(canonicalPack)) {
+  if (
+    packSource &&
+    (!isCompiledProjectCanonicalPack(canonicalPack) || !readiness.ready)
+  ) {
     return {
       route: "flux",
       authority: "prompt_only",
       packSource,
-      reason: `legacy canonical pack source "${packSource}" is ignored for visual control authority`,
+      reason: readiness.summary?.reasons?.length
+        ? `compiled-project canonical pack is ignored for visual control authority: ${readiness.summary.reasons[0]}`
+        : `legacy canonical pack source "${packSource}" is ignored for visual control authority`,
     };
   }
 
@@ -158,6 +200,7 @@ export function resolveVisualPanelAuthority(
 export default {
   getCanonicalPackSource,
   isCompiledProjectCanonicalPack,
+  getCompiledCanonicalPackReadiness,
   isTechnicalPanel,
   isBlueprintLikePanel,
   isDirectDeterministicPanel,

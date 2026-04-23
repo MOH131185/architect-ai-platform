@@ -34,35 +34,35 @@ export const FRAME_STROKE_WIDTH = 3;
 export const FRAME_STROKE_COLOR = "#d1d5db";
 
 // ---------------------------------------------------------------------------
-// 12-Column Board Grid (competition aesthetic – SSOT for board-v2)
+// 12-Column Board Grid (technical-first SSOT for board-v2)
 // Normalised 0-1 coordinates on an A1 landscape sheet.
 // ---------------------------------------------------------------------------
 
 export const GRID_12COL = {
-  // Row 1 – Hero row with stacked data cards on the far right
-  site_diagram: { x: 0.015, y: 0.015, width: 0.22, height: 0.265 },
-  hero_3d: { x: 0.245, y: 0.015, width: 0.42, height: 0.265 },
-  interior_3d: { x: 0.675, y: 0.015, width: 0.185, height: 0.125 },
-  axonometric: { x: 0.675, y: 0.15, width: 0.185, height: 0.13 },
-  material_palette: { x: 0.87, y: 0.015, width: 0.115, height: 0.18 },
-  climate_card: { x: 0.87, y: 0.205, width: 0.115, height: 0.175 },
+  // Row 1 – Supporting visuals and data; hero is evidence, not the board anchor
+  site_diagram: { x: 0.015, y: 0.015, width: 0.16, height: 0.205 },
+  hero_3d: { x: 0.185, y: 0.015, width: 0.22, height: 0.205 },
+  interior_3d: { x: 0.415, y: 0.015, width: 0.14, height: 0.097 },
+  axonometric: { x: 0.415, y: 0.123, width: 0.14, height: 0.097 },
+  material_palette: { x: 0.565, y: 0.015, width: 0.205, height: 0.205 },
+  climate_card: { x: 0.78, y: 0.015, width: 0.205, height: 0.205 },
 
-  // Row 2 – Floor plans (visually dominant middle row)
-  floor_plan_ground: { x: 0.015, y: 0.29, width: 0.32, height: 0.25 },
-  floor_plan_first: { x: 0.345, y: 0.29, width: 0.32, height: 0.25 },
-  floor_plan_level2: { x: 0.675, y: 0.29, width: 0.31, height: 0.25 },
+  // Row 2 – Floor plans (primary board evidence)
+  floor_plan_ground: { x: 0.015, y: 0.235, width: 0.32, height: 0.29 },
+  floor_plan_first: { x: 0.345, y: 0.235, width: 0.32, height: 0.29 },
+  floor_plan_level2: { x: 0.675, y: 0.235, width: 0.31, height: 0.29 },
 
-  // Row 3 – Elevations
-  elevation_north: { x: 0.015, y: 0.555, width: 0.235, height: 0.185 },
-  elevation_south: { x: 0.26, y: 0.555, width: 0.235, height: 0.185 },
-  elevation_east: { x: 0.505, y: 0.555, width: 0.235, height: 0.185 },
-  elevation_west: { x: 0.75, y: 0.555, width: 0.235, height: 0.185 },
+  // Row 3 – Elevations (secondary evidence band)
+  elevation_north: { x: 0.015, y: 0.54, width: 0.235, height: 0.205 },
+  elevation_south: { x: 0.26, y: 0.54, width: 0.235, height: 0.205 },
+  elevation_east: { x: 0.505, y: 0.54, width: 0.235, height: 0.205 },
+  elevation_west: { x: 0.75, y: 0.54, width: 0.235, height: 0.205 },
 
   // Row 4 – Sections + schedules/title strip
-  section_AA: { x: 0.015, y: 0.755, width: 0.3, height: 0.23 },
-  section_BB: { x: 0.325, y: 0.755, width: 0.3, height: 0.23 },
-  schedules_notes: { x: 0.675, y: 0.755, width: 0.155, height: 0.23 },
-  title_block: { x: 0.84, y: 0.755, width: 0.145, height: 0.23 },
+  section_AA: { x: 0.015, y: 0.76, width: 0.305, height: 0.225 },
+  section_BB: { x: 0.33, y: 0.76, width: 0.305, height: 0.225 },
+  schedules_notes: { x: 0.675, y: 0.76, width: 0.155, height: 0.225 },
+  title_block: { x: 0.84, y: 0.76, width: 0.145, height: 0.225 },
 };
 
 // Legacy 4-row grid (kept for backward-compat via layoutTemplate="legacy")
@@ -357,7 +357,7 @@ export function resolveLayout(opts = {}) {
 
   // Expand remaining floor plan(s) to fill the row
   if (floorCount === 1 && base.floor_plan_ground) {
-    base.floor_plan_ground = { x: 0.015, y: 0.29, width: 0.97, height: 0.25 };
+    base.floor_plan_ground = { x: 0.015, y: 0.235, width: 0.97, height: 0.29 };
   } else if (
     floorCount === 2 &&
     base.floor_plan_ground &&
@@ -365,11 +365,11 @@ export function resolveLayout(opts = {}) {
   ) {
     base.floor_plan_ground = {
       x: 0.015,
-      y: 0.29,
+      y: 0.235,
       width: 0.475,
-      height: 0.25,
+      height: 0.29,
     };
-    base.floor_plan_first = { x: 0.5, y: 0.29, width: 0.485, height: 0.25 };
+    base.floor_plan_first = { x: 0.5, y: 0.235, width: 0.485, height: 0.29 };
   }
 
   return {
@@ -460,6 +460,8 @@ export const STRICT_PANELS = new Set([
   "elevation_south",
   "elevation_east",
   "elevation_west",
+  "section_AA",
+  "section_BB",
 ]);
 
 /** Panels that may be replaced with placeholders. */
@@ -467,8 +469,6 @@ export const LENIENT_PANELS = new Set([
   "interior_3d",
   "axonometric",
   "site_diagram",
-  "section_AA",
-  "section_BB",
   "schedules_notes",
   "material_palette",
   "climate_card",

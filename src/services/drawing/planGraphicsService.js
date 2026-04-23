@@ -3,7 +3,10 @@ import { renderPlanSvg } from "./svgPlanRenderer.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
 import { selectSectionCandidates } from "./sectionCutPlanner.js";
-import { getLevelDrawingBounds } from "./drawingBounds.js";
+import {
+  getLevelDrawingBounds,
+  resolveCompiledProjectGeometryInput,
+} from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -42,7 +45,7 @@ function renderPlacements(placements = []) {
       ${(placements || [])
         .map(
           (placement) => `
-        <rect x="${placement.box.x}" y="${placement.box.y}" width="${placement.box.width}" height="${placement.box.height}" rx="3" fill="#ffffff" fill-opacity="0.9" stroke="#444" stroke-width="0.6"/>
+        <rect x="${placement.box.x}" y="${placement.box.y}" width="${placement.box.width}" height="${placement.box.height}" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#6b7280" stroke-width="0.6"/>
         <text x="${placement.x}" y="${placement.y + 4}" font-size="${placement.fontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(placement.text)}</text>
       `,
         )
@@ -61,8 +64,8 @@ function renderSectionMarkers(sectionPlan = {}, project = (point) => point) {
           const to = project(candidate.cutLine.to);
           const label = index === 0 ? "A-A" : "B-B";
           return `
-            <line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="#b21f1f" stroke-width="2" stroke-dasharray="10 6"/>
-            <text x="${from.x + 8}" y="${from.y - 8}" font-size="11" font-family="Arial, sans-serif" fill="#b21f1f">${label}</text>
+            <line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="#111" stroke-width="1.4" stroke-dasharray="10 6"/>
+            <text x="${from.x + 8}" y="${from.y - 8}" font-size="11" font-family="Arial, sans-serif" fill="#111">${label}</text>
           `;
         })
         .join("")}
@@ -70,23 +73,9 @@ function renderSectionMarkers(sectionPlan = {}, project = (point) => point) {
   `;
 }
 
-function renderScaleBar(width, height, padding) {
-  const x = width - padding - 140;
-  const y = height - padding - 18;
-  return `
-    <g id="phase7-scale-bar">
-      <line x1="${x}" y1="${y}" x2="${x + 100}" y2="${y}" stroke="#111" stroke-width="2"/>
-      <line x1="${x}" y1="${y - 5}" x2="${x}" y2="${y + 5}" stroke="#111" stroke-width="2"/>
-      <line x1="${x + 50}" y1="${y - 5}" x2="${x + 50}" y2="${y + 5}" stroke="#111" stroke-width="2"/>
-      <line x1="${x + 100}" y1="${y - 5}" x2="${x + 100}" y2="${y + 5}" stroke="#111" stroke-width="2"/>
-      <text x="${x + 50}" y="${y + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">Scale reference</text>
-    </g>
-  `;
-}
-
 export function buildPlanGraphic(geometryInput = {}, options = {}) {
   const geometry = coerceToCanonicalProjectGeometry(
-    geometryInput?.projectGeometry || geometryInput?.geometry || geometryInput,
+    resolveCompiledProjectGeometryInput(geometryInput),
   );
   const level = findLevel(geometry, options.levelId || null);
   const width = options.width || 1200;
@@ -146,7 +135,6 @@ export function buildPlanGraphic(geometryInput = {}, options = {}) {
     [
       renderPlacements(annotationLayout.placements),
       renderSectionMarkers(sectionPlan, project),
-      renderScaleBar(width, height, padding),
     ].join(""),
   );
 
@@ -163,7 +151,7 @@ export function buildPlanGraphic(geometryInput = {}, options = {}) {
       annotation_count: annotationLayout.placements.length,
       annotation_fallback_count: annotationValidation.fallbackPlacementCount,
       section_marker_count: Math.min(2, sectionPlan.candidates.length),
-      has_scale_bar: true,
+      has_scale_bar: drawing.technical_quality_metadata?.has_scale_bar === true,
       annotation_guarantee: annotationValidation.placementStable,
     },
   };

@@ -3,8 +3,10 @@ import {
   setFeatureFlag,
 } from "../../config/featureFlags.js";
 import {
+  FINAL_SHEET_MIN_FONT_SIZE_PX,
   embedFontInSVG,
   getFontEmbeddingReadinessSync,
+  prepareFinalSheetSvgForRasterization,
 } from "../../utils/svgFontEmbedder.js";
 import { generateUnifiedSheet } from "../../services/unifiedSheetGenerator.js";
 import { buildVisualGenerationPackage } from "../../services/visual/geometryLockedVisualRouter.js";
@@ -347,6 +349,23 @@ describe("Phase 8 A1 technical recovery", () => {
     expect(readiness.degradedEmbedding).toBe(false);
   });
 
+  test("final sheet raster prep enforces bundled ttf fonts, outlines critical labels, and clamps tiny text", async () => {
+    const prepared = await prepareFinalSheetSvgForRasterization(
+      `<svg xmlns="http://www.w3.org/2000/svg">
+        <text x="10" y="20" font-family="EmbeddedSans" font-size="6" data-text-role="critical">BOARD TITLE</text>
+        <text x="10" y="42" font-family="Arial, sans-serif" font-size="7">Scale note</text>
+      </svg>`,
+    );
+
+    expect(prepared).toContain("@font-face");
+    expect(prepared).toContain("data:font/ttf;base64,");
+    expect(prepared).not.toContain("data:font/woff2;base64,");
+    expect(prepared).toContain(`font-size="${FINAL_SHEET_MIN_FONT_SIZE_PX}"`);
+    expect(prepared).toContain('paint-order="stroke fill"');
+    expect(prepared).toContain('stroke="#ffffff"');
+    expect(prepared).toContain("ArchiAISans");
+  });
+
   test("main unified sheet output is font-embedded before export", async () => {
     const svg = await generateUnifiedSheet(
       {
@@ -420,13 +439,24 @@ describe("Phase 8 A1 technical recovery", () => {
     expect(
       visualPackage.generationDependencies.heroGeneratedAfterCanonicalInputs,
     ).toBe(true);
+    expect(visualPackage.generationDependencies.heroDesignReady).toBe(true);
+    expect(visualPackage.generationDependencies.facadeSchemaFinalized).toBe(
+      true,
+    );
+    expect(visualPackage.generationDependencies.materialPaletteFinalized).toBe(
+      true,
+    );
+    expect(visualPackage.generationDependencies.openingRhythmFinalized).toBe(
+      true,
+    );
     expect(visualPackage.generationDependencies.enforcedByPhase8Flag).toBe(
       true,
     );
     expect(visualPackage.generationDependencies.pipelineOrder).toEqual([
       "canonical_geometry",
-      "facade_grammar",
+      "facade_schema",
       "material_palette",
+      "opening_rhythm",
       "hero_visual",
     ]);
     expect(visualPackage.identitySpec.primaryMaterial.name).toBe("Brick");

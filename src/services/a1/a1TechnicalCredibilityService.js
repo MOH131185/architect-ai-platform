@@ -179,6 +179,31 @@ export function evaluateA1TechnicalCredibility({
       "Section slab/floor truth remains weaker than preferred for final technical credibility.",
     );
   }
+  if (finalSheetRegression?.sectionFaceCredibilityQuality === "blocked") {
+    blockers.push(
+      "Section cut-face credibility is blocked because true geometric cut-face evidence is too thin across the available technical sections for Phase 21 drafting-grade credibility.",
+    );
+  } else if (finalSheetRegression?.sectionFaceCredibilityQuality === "weak") {
+    warnings.push(
+      "Section cut-face credibility remains weaker than preferred because true geometric cut-face truth is still thinner than exact cut-profile interpretation for Phase 21 credibility.",
+    );
+  }
+  if (
+    Number(finalSheetRegression?.sectionCutFaceTruthCount || 0) === 0 &&
+    Number(finalSheetRegression?.sectionCutProfileTruthCount || 0) === 0 &&
+    technicalDrawingCount > 0
+  ) {
+    warnings.push(
+      "Section cut-face and cut-profile construction truth are both absent across the available technical sections, so Phase 21 true geometric cut truth has not been proven.",
+    );
+  } else if (
+    Number(finalSheetRegression?.sectionCutFaceTruthCount || 0) === 0 &&
+    Number(finalSheetRegression?.sectionCutProfileTruthCount || 0) > 0
+  ) {
+    warnings.push(
+      "Section panels expose cut-profile truth but no true cut-face truth, so Phase 21 drafting-grade cut-face geometry is still thinner than preferred.",
+    );
+  }
   warnings.push(...(finalSheetRegression?.warnings || []));
   blockers.push(...(finalSheetRegression?.blockers || []));
 
@@ -190,24 +215,27 @@ export function evaluateA1TechnicalCredibility({
 
   return {
     version:
-      finalSheetRegression?.wallSectionClipQuality &&
-      finalSheetRegression?.wallSectionClipQuality !== "provisional"
-        ? "phase19-a1-technical-credibility-v1"
-        : finalSheetRegression?.sectionConstructionEvidenceQuality &&
-            finalSheetRegression?.sectionConstructionEvidenceQuality !==
-              "provisional"
-          ? "phase18-a1-technical-credibility-v1"
-          : finalSheetRegression?.roofTruthState ||
-              finalSheetRegression?.foundationTruthState
-            ? "phase17-a1-technical-credibility-v1"
-            : finalSheetRegression?.roofTruthQuality &&
-                finalSheetRegression?.roofTruthQuality !== "provisional"
-              ? "phase15-a1-technical-credibility-v1"
-              : finalSheetRegression?.sectionConstructionTruthQuality &&
-                  finalSheetRegression?.sectionConstructionTruthQuality !==
-                    "provisional"
-                ? "phase14-a1-technical-credibility-v1"
-                : "phase13-a1-technical-credibility-v1",
+      finalSheetRegression?.sectionFaceCredibilityQuality &&
+      finalSheetRegression?.sectionFaceCredibilityQuality !== "provisional"
+        ? "phase21-a1-technical-credibility-v1"
+        : finalSheetRegression?.wallSectionClipQuality &&
+            finalSheetRegression?.wallSectionClipQuality !== "provisional"
+          ? "phase19-a1-technical-credibility-v1"
+          : finalSheetRegression?.sectionConstructionEvidenceQuality &&
+              finalSheetRegression?.sectionConstructionEvidenceQuality !==
+                "provisional"
+            ? "phase18-a1-technical-credibility-v1"
+            : finalSheetRegression?.roofTruthState ||
+                finalSheetRegression?.foundationTruthState
+              ? "phase17-a1-technical-credibility-v1"
+              : finalSheetRegression?.roofTruthQuality &&
+                  finalSheetRegression?.roofTruthQuality !== "provisional"
+                ? "phase15-a1-technical-credibility-v1"
+                : finalSheetRegression?.sectionConstructionTruthQuality &&
+                    finalSheetRegression?.sectionConstructionTruthQuality !==
+                      "provisional"
+                  ? "phase14-a1-technical-credibility-v1"
+                  : "phase13-a1-technical-credibility-v1",
     verificationPhase:
       verificationPhase ||
       finalSheetRegression?.verificationPhase ||
@@ -270,6 +298,22 @@ export function evaluateA1TechnicalCredibility({
         finalSheetRegression?.sideFacadeEvidenceQuality || "provisional",
       renderedTextEvidenceQuality:
         finalSheetRegression?.renderedTextEvidenceQuality || "provisional",
+      sectionFaceCredibilityQuality:
+        finalSheetRegression?.sectionFaceCredibilityQuality || "provisional",
+      sectionFaceCredibilityScore: Number(
+        finalSheetRegression?.sectionFaceCredibilityScore || 0,
+      ),
+      sectionCutFaceTruthCount: Number(
+        finalSheetRegression?.sectionCutFaceTruthCount || 0,
+      ),
+      sectionCutProfileTruthCount: Number(
+        finalSheetRegression?.sectionCutProfileTruthCount || 0,
+      ),
+      sectionAverageProfileContinuity: Number(
+        finalSheetRegression?.sectionAverageProfileContinuity || 0,
+      ),
+      sectionFaceBundleVersion:
+        finalSheetRegression?.sectionFaceBundleVersion || null,
     },
     verificationState: buildVerificationState({
       phase:

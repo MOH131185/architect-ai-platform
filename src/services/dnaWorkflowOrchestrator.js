@@ -116,10 +116,13 @@ import {
   getInitImageParams as getCanonicalInitImageParams,
   hasCanonicalPack,
 } from "./canonical/CanonicalGeometryPackService.js";
+import { resolveCompiledProjectSource } from "./canonical/compiledProjectTechnicalPackBuilder.js";
 import {
   isCanonicalPackGateEnabled,
   validateBeforeGeneration as validateCanonicalPackGate,
 } from "./canonical/CanonicalPackGate.js";
+import { compileProject } from "./compiler/index.js";
+import { buildRuntimeProjectGeometryFromLayout } from "./compiler/runtimeProjectGeometryFromLayout.js";
 // Types CDS adapter — produces massing.widthM/depthM that BuildingModel requires
 import { fromLegacyDNA } from "../types/CanonicalDesignState.js";
 // AI Floor Plan Layout Engine — generates room coordinates via Qwen2.5-72B
@@ -129,6 +132,23 @@ import {
   ensureMutableWorkingDNA,
 } from "./aiLayoutRuntimeService.js";
 import { getClimateData } from "./climateService.js";
+import { generateSiteDiagramSVG } from "./core/DataPanelService.js";
+import {
+  generateEnhancedFloorPlanSVG,
+  generateEnhancedElevationSVG,
+  generateEnhancedSectionSVG,
+} from "./design/enhancedTechnicalDrawingAdapter.js";
+import {
+  generateFloorPlanSVG,
+  generateElevationSVG,
+  generateSectionSVG,
+} from "./design/technicalDrawingGenerator.js";
+import {
+  getCanonicalPackSource,
+  isCompiledProjectCanonicalPack,
+  resolveDirectPanelRoute,
+  resolveVisualPanelAuthority,
+} from "./design/panelAuthorityRouter.js";
 
 // API proxy server URL (runs on port 3001 in dev; browser defaults to same-origin)
 const DEFAULT_API_BASE_URL = runtimeEnv.isBrowser
@@ -155,6 +175,360 @@ const getOverlayEndpoint = () => {
   }
   return `${API_BASE_URL}/api/overlay-site-map`;
 };
+
+function svgToDataUrl(svgString) {
+  if (!svgString || typeof svgString !== "string") {
+    return null;
+  }
+
+  try {
+    const encoded =
+      typeof btoa === "function"
+        ? btoa(unescape(encodeURIComponent(svgString)))
+        : Buffer.from(svgString, "utf-8").toString("base64");
+    return `data:image/svg+xml;base64,${encoded}`;
+  } catch (error) {
+    logger.warn(`⚠️ Failed to encode SVG to data URL: ${error.message}`);
+    return null;
+  }
+}
+
+function normalizeDeterministicSvgOutput(output) {
+  if (!output) {
+    return null;
+  }
+
+  if (typeof output === "string") {
+    if (output.startsWith("data:")) {
+      return { imageUrl: output, svg: null, metadata: {} };
+    }
+
+    const dataUrl = svgToDataUrl(output);
+    if (!dataUrl) {
+      return null;
+    }
+
+    return { imageUrl: dataUrl, svg: output, metadata: {} };
+  }
+
+  if (output.dataUrl) {
+    return {
+      imageUrl: output.dataUrl,
+      svg: output.svg || null,
+      metadata: output.metadata || {},
+    };
+  }
+
+  if (output.svg) {
+    const dataUrl = svgToDataUrl(output.svg);
+    if (!dataUrl) {
+      return null;
+    }
+
+    return {
+      imageUrl: dataUrl,
+      svg: output.svg,
+      metadata: output.metadata || {},
+    };
+  }
+
+  return null;
+}
+
+function logPanelAuthority(panelType, resolution, extras = {}) {
+  const detail = extras.detail ? `, detail=${extras.detail}` : "";
+  const packSource = resolution?.packSource
+    ? `, packSource=${resolution.packSource}`
+    : "";
+  logger.info(
+    `📋 [Authority] ${panelType}: route=${resolution?.route || (resolution?.useFlux ? "flux" : "direct_svg")}, authority=${resolution?.authority || "unknown"}${packSource}${detail} — ${resolution?.reason || "no reason supplied"}`,
+  );
+}
+
+function buildDeterministicPanelAsset(
+  job,
+  { siteSnapshot = null, strictGeometryRequired = false } = {},
+) {
+  if (!job?.type) {
+    throw new Error("Panel job type is required for deterministic rendering");
+  }
+
+  if (job.type === "site_diagram" || job.type === "site_plan") {
+    const svg = generateSiteDiagramSVG(job.dnaSnapshot || {}, siteSnapshot);
+    const normalized = normalizeDeterministicSvgOutput(svg);
+    if (!normalized?.imageUrl) {
+      throw new Error(
+        "Deterministic site diagram SVG generation returned no image",
+      );
+    }
+    return {
+      ...normalized,
+      generatorUsed: "deterministic_site_diagram_svg",
+    };
+  }
+
+  if (job.type.startsWith("floor_plan_")) {
+    const floorLevel = job.type.replace("floor_plan_", "");
+    const floorIndex =
+      floorLevel === "ground"
+        ? 0
+        : floorLevel === "first"
+          ? 1
+          : parseInt(floorLevel.replace(/\D/g, ""), 10) || 0;
+    const populatedGeometry =
+      job.meta?.geometryDNA?.populatedGeometry ||
+      job.meta?.geometryDNA?.floors ||
+      job.dnaSnapshot?.populatedGeometry ||
+      null;
+    const floors =
+      populatedGeometry?.floors ||
+      (Array.isArray(populatedGeometry) ? populatedGeometry : null);
+    const floor = Array.isArray(floors)
+      ? floors[floorIndex]
+      : floors?.[floorIndex];
+    const hasRooms = floor?.rooms?.length > 0;
+    const hasWalls = floor?.walls?.length > 0;
+
+    if (
+      strictGeometryRequired &&
+      (!floors || floors.length === 0 || !hasRooms || !hasWalls)
+    ) {
+      throw new Error(
+        `Missing populatedGeometry for ${job.type}. Strict geometry mode requires rooms and walls.`,
+      );
+    }
+
+    const dnaWithGeometry = {
+      ...job.dnaSnapshot,
+      populatedGeometry:
+        populatedGeometry || job.dnaSnapshot?.populatedGeometry,
+    };
+
+    const enhancedResult = generateEnhancedFloorPlanSVG(
+      dnaWithGeometry,
+      floorLevel,
+      {
+        buildingType: job.meta?.buildingType || "residential",
+        programSpaces: job.meta?.programSpaces || [],
+        locationData: job.meta?.locationData,
+        sitePolygon: job.meta?.sitePolygon,
+        scale: 50,
+        sheetMode: true,
+        targetWidth: job.width,
+        targetHeight: job.height,
+      },
+    );
+
+    const basicResult =
+      enhancedResult ||
+      generateFloorPlanSVG(dnaWithGeometry, {
+        floor: floorIndex,
+        buildingType: job.meta?.buildingType || "residential",
+        programSpaces: job.meta?.programSpaces || [],
+        locationData: job.meta?.locationData,
+        sitePolygon: job.meta?.sitePolygon,
+        enhanced: true,
+        showDimensions: true,
+        showRoomLabels: true,
+      });
+
+    const normalized = normalizeDeterministicSvgOutput(basicResult);
+    if (!normalized?.imageUrl) {
+      throw new Error(
+        `Deterministic floor plan renderer returned no SVG for ${job.type}`,
+      );
+    }
+
+    return {
+      ...normalized,
+      generatorUsed: enhancedResult
+        ? "enhanced_floor_plan_svg"
+        : "deterministic_floor_plan_svg",
+    };
+  }
+
+  if (job.type.startsWith("elevation_")) {
+    const orientation = job.type.replace("elevation_", "");
+    const facades =
+      job.meta?.geometryDNA?.facades || job.dnaSnapshot?.facades || null;
+    const roofProfiles =
+      job.meta?.geometryDNA?.roofProfiles ||
+      job.dnaSnapshot?.roofProfiles ||
+      null;
+    const populatedGeometry =
+      job.meta?.geometryDNA?.populatedGeometry ||
+      job.dnaSnapshot?.populatedGeometry ||
+      null;
+    const facadeKey = orientation.charAt(0).toUpperCase();
+    const hasFacade = Boolean(facades?.[facadeKey]);
+    const hasWallLines = (facades?.[facadeKey]?.wallLines || []).length > 0;
+    const hasOpenings = (facades?.[facadeKey]?.openingRects || []).length > 0;
+
+    if (
+      strictGeometryRequired &&
+      (!hasFacade || !hasWallLines || !hasOpenings)
+    ) {
+      throw new Error(
+        `Missing facade geometry for elevation ${orientation}. Strict geometry mode requires wall lines and openings.`,
+      );
+    }
+
+    const dnaWithGeometry = {
+      ...job.dnaSnapshot,
+      facades,
+      roofProfiles,
+      populatedGeometry,
+    };
+
+    const enhancedResult = generateEnhancedElevationSVG(
+      dnaWithGeometry,
+      orientation,
+      {
+        buildingType: job.meta?.buildingType || "residential",
+        programSpaces: job.meta?.programSpaces || [],
+        scale: 50,
+        sheetMode: true,
+        targetWidth: job.width,
+        targetHeight: job.height,
+      },
+    );
+
+    const basicResult =
+      enhancedResult ||
+      generateElevationSVG(dnaWithGeometry, {
+        orientation,
+        buildingType: job.meta?.buildingType || "residential",
+        programSpaces: job.meta?.programSpaces || [],
+        enhanced: true,
+        showHatching: true,
+        showDimensions: true,
+        showMaterials: true,
+      });
+
+    const normalized = normalizeDeterministicSvgOutput(basicResult);
+    if (!normalized?.imageUrl) {
+      throw new Error(
+        `Deterministic elevation renderer returned no SVG for ${job.type}`,
+      );
+    }
+
+    return {
+      ...normalized,
+      generatorUsed: enhancedResult
+        ? "enhanced_elevation_svg"
+        : "deterministic_elevation_svg",
+    };
+  }
+
+  if (job.type === "section_AA" || job.type === "section_BB") {
+    const sectionType =
+      job.type === "section_AA" ? "longitudinal" : "transverse";
+    const sections =
+      job.meta?.geometryDNA?.sections || job.dnaSnapshot?.sections || null;
+    const roofProfiles =
+      job.meta?.geometryDNA?.roofProfiles ||
+      job.dnaSnapshot?.roofProfiles ||
+      null;
+    const populatedGeometry =
+      job.meta?.geometryDNA?.populatedGeometry ||
+      job.dnaSnapshot?.populatedGeometry ||
+      null;
+    const sectionKey = job.type === "section_AA" ? "A-A" : "B-B";
+    const hasSection = Boolean(sections?.[sectionKey]);
+    const hasWallCuts = (sections?.[sectionKey]?.wallCuts || []).length > 0;
+    const hasSlabs = (sections?.[sectionKey]?.slabLines || []).length > 0;
+
+    if (strictGeometryRequired && (!hasSection || !hasWallCuts || !hasSlabs)) {
+      throw new Error(
+        `Missing section geometry for ${sectionKey}. Strict geometry mode requires wall cuts and slab lines.`,
+      );
+    }
+
+    const dnaWithGeometry = {
+      ...job.dnaSnapshot,
+      sections,
+      roofProfiles,
+      populatedGeometry,
+    };
+
+    const enhancedResult = generateEnhancedSectionSVG(
+      dnaWithGeometry,
+      sectionType,
+      {
+        buildingType: job.meta?.buildingType || "residential",
+        programSpaces: job.meta?.programSpaces || [],
+        scale: 50,
+        sheetMode: true,
+        targetWidth: job.width,
+        targetHeight: job.height,
+      },
+      0.5,
+    );
+
+    const basicResult =
+      enhancedResult ||
+      generateSectionSVG(dnaWithGeometry, {
+        sectionType,
+        buildingType: job.meta?.buildingType || "residential",
+        programSpaces: job.meta?.programSpaces || [],
+        enhanced: true,
+        scale: 50,
+      });
+
+    const normalized = normalizeDeterministicSvgOutput(basicResult);
+    if (!normalized?.imageUrl) {
+      throw new Error(
+        `Deterministic section renderer returned no SVG for ${job.type}`,
+      );
+    }
+
+    return {
+      ...normalized,
+      generatorUsed: enhancedResult
+        ? "enhanced_section_svg"
+        : "deterministic_section_svg",
+    };
+  }
+
+  return null;
+}
+
+function scoreCompiledProjectAuthority(compiledProject = null) {
+  const counts = compiledProject?.validation?.counts || {};
+  const warnings = Array.isArray(compiledProject?.validation?.warnings)
+    ? compiledProject.validation.warnings.length
+    : 0;
+  const blockers = Array.isArray(compiledProject?.validation?.blockers)
+    ? compiledProject.validation.blockers.length
+    : 0;
+
+  return (
+    Number(counts.room_count || 0) * 3 +
+    Number(counts.wall_count || 0) * 1.5 +
+    Number(counts.opening_count || 0) * 2 +
+    Number(counts.section_candidate_count || 0) * 2 +
+    Number(counts.roof_plane_count || 0) * 1.5 -
+    warnings * 4 -
+    blockers * 18
+  );
+}
+
+function shouldPreferCompiledProjectAuthority(
+  current = null,
+  candidate = null,
+) {
+  if (!candidate) {
+    return false;
+  }
+  if (!current) {
+    return true;
+  }
+
+  return (
+    scoreCompiledProjectAuthority(candidate) >=
+    scoreCompiledProjectAuthority(current)
+  );
+}
 
 class DNAWorkflowOrchestrator {
   constructor() {
@@ -1402,6 +1776,20 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       //      guesses and producing a broken/empty geometry pack.
       let canonicalPack = null;
       let cdsForPack = typesCDS || canonicalDesignState;
+      const packDesignFingerprint =
+        typesCDS?.designFingerprint ||
+        canonicalDesignState?.designId ||
+        masterDNA?.designFingerprint ||
+        masterDNA?.projectID ||
+        null;
+      const projectGeometryForPack =
+        projectContext?.projectGeometry || masterDNA?.projectGeometry || null;
+      let authorityProjectGeometry = projectGeometryForPack;
+      let compiledProjectForPack = resolveCompiledProjectSource({
+        compiledProject:
+          projectContext?.compiledProject || masterDNA?.compiledProject || null,
+        projectGeometry: projectGeometryForPack,
+      });
 
       // ── Fallback: construct minimal CDS from masterDNA if both adapters failed ──
       // This ensures the canonical geometry pack ALWAYS builds, preventing silent
@@ -1436,19 +1824,65 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
         };
       }
 
-      if (isFeatureEnabled("canonicalControlPack") && cdsForPack) {
+      if (!compiledProjectForPack && projectGeometryForPack) {
+        try {
+          compiledProjectForPack = compileProject({
+            projectGeometry: projectGeometryForPack,
+            masterDNA,
+            locationData,
+            projectContext,
+          });
+          logger.info(
+            `   📐 Compiled canonical project geometry into ${compiledProjectForPack.schema_version || "compiled-project"} authority for pack build`,
+          );
+        } catch (compiledProjectErr) {
+          logger.warn(
+            `⚠️ Failed to compile project geometry for canonical pack: ${compiledProjectErr.message}`,
+          );
+        }
+      }
+
+      if (compiledProjectForPack) {
+        const cdsHashForPack =
+          cdsForPack?.hash || canonicalDesignState?.hash || null;
+        compiledProjectForPack = {
+          ...compiledProjectForPack,
+          cdsHash: compiledProjectForPack.cdsHash || cdsHashForPack || null,
+          designFingerprint:
+            compiledProjectForPack.designFingerprint || packDesignFingerprint,
+          designId: compiledProjectForPack.designId || packDesignFingerprint,
+        };
+      }
+
+      const packBuildInput = compiledProjectForPack
+        ? {
+            compiledProject: compiledProjectForPack,
+            designFingerprint: packDesignFingerprint,
+            designId: packDesignFingerprint,
+            hash: cdsForPack?.hash || canonicalDesignState?.hash || null,
+            styleDNA:
+              authorityProjectGeometry?.metadata?.style_dna ||
+              masterDNA?.styleDNA ||
+              masterDNA?.style_dna ||
+              masterDNA?.style ||
+              {},
+          }
+        : null;
+
+      if (isFeatureEnabled("canonicalControlPack") && packBuildInput) {
         logger.info(
-          "📐 STEP 2.7: Building Canonical Geometry Pack from CDS...",
+          "📐 STEP 2.7: Building Canonical Geometry Pack from CompiledProject...",
         );
         logger.info(
-          `   CDS source: ${typesCDS ? "typesCDS (fromLegacyDNA)" : "validation CDS (buildCDSSync)"}`,
+          `   CDS source: ${typesCDS ? "typesCDS (fromLegacyDNA)" : "validation CDS (buildCDSSync)"} | compiledProject=${compiledProjectForPack?.schema_version || compiledProjectForPack?.metadata?.source || "unknown"}`,
         );
         reportProgress("dna", "Building geometry authority pack...", 30);
         try {
-          canonicalPack = buildCanonicalPack(cdsForPack);
+          canonicalPack = buildCanonicalPack(packBuildInput);
           logger.success(
             `✅ Canonical Pack built: ${canonicalPack.panelCount} panels, ` +
-              `geometryHash=${canonicalPack.geometryHash?.substring(0, 8)}...`,
+              `geometryHash=${canonicalPack.geometryHash?.substring(0, 8)}..., ` +
+              `source=${getCanonicalPackSource(canonicalPack) || "unknown"}`,
           );
 
           // Enrich typesCDS with canonical pack results so isReadyForPanelGeneration passes.
@@ -1519,6 +1953,18 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           );
           canonicalPack = null;
         }
+      } else if (isFeatureEnabled("canonicalControlPack")) {
+        const missingCompiledProjectMessage =
+          "No real CompiledProject was available to build the canonical geometry pack.";
+        if (isFeatureEnabled("requireCanonicalPack")) {
+          logger.error(
+            `❌ Canonical Pack build failed: ${missingCompiledProjectMessage}`,
+          );
+          throw new Error(
+            `Canonical geometry pack failed: ${missingCompiledProjectMessage}`,
+          );
+        }
+        logger.warn(`⚠️ ${missingCompiledProjectMessage}`);
       }
 
       // STEP 2.5: Geometry reasoning + baseline (feature-flagged)
@@ -1658,6 +2104,105 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           geometryMaskError.message,
         );
         // Continue without geometry masks - AI will generate from prompt alone
+      }
+
+      if (geometryMasks?.floorMetadata) {
+        try {
+          const promotedLayoutGeometry = buildRuntimeProjectGeometryFromLayout({
+            masterDNA,
+            geometryMasks,
+            baseProjectGeometry: authorityProjectGeometry,
+            designFingerprint: packDesignFingerprint,
+          });
+
+          if (promotedLayoutGeometry?.projectGeometry) {
+            authorityProjectGeometry = promotedLayoutGeometry.projectGeometry;
+            masterDNA.populatedGeometry =
+              promotedLayoutGeometry.populatedGeometry;
+            masterDNA.projectGeometry =
+              authorityProjectGeometry || masterDNA.projectGeometry || null;
+            if (geometryDNA) {
+              geometryDNA.populatedGeometry =
+                promotedLayoutGeometry.populatedGeometry;
+              geometryDNA.floors =
+                promotedLayoutGeometry.populatedGeometry?.floors ||
+                geometryDNA.floors ||
+                [];
+            }
+            masterDNA.geometryDNA = {
+              ...(masterDNA.geometryDNA || {}),
+              ...(geometryDNA || {}),
+              populatedGeometry: promotedLayoutGeometry.populatedGeometry,
+              floors:
+                promotedLayoutGeometry.populatedGeometry?.floors ||
+                geometryDNA?.floors ||
+                [],
+            };
+
+            const promotedCompiledProject = compileProject({
+              projectGeometry: authorityProjectGeometry,
+              masterDNA,
+              locationData,
+              projectContext,
+            });
+            promotedCompiledProject.metadata = {
+              ...(promotedCompiledProject.metadata || {}),
+              authority_context: "runtime_layout_promoted",
+            };
+            promotedCompiledProject.cdsHash =
+              promotedCompiledProject.cdsHash ||
+              cdsForPack?.hash ||
+              canonicalDesignState?.hash ||
+              null;
+            promotedCompiledProject.designFingerprint =
+              promotedCompiledProject.designFingerprint ||
+              packDesignFingerprint;
+            promotedCompiledProject.designId =
+              promotedCompiledProject.designId || packDesignFingerprint;
+
+            if (
+              shouldPreferCompiledProjectAuthority(
+                compiledProjectForPack,
+                promotedCompiledProject,
+              )
+            ) {
+              compiledProjectForPack = promotedCompiledProject;
+              logger.info(
+                `📐 Promoted runtime layout geometry into canonical authority: rooms=${promotedLayoutGeometry.metrics?.roomCount || 0}, walls=${promotedLayoutGeometry.metrics?.wallCount || 0}, openings=${promotedLayoutGeometry.metrics?.openingCount || 0}`,
+              );
+
+              if (isFeatureEnabled("canonicalControlPack")) {
+                const promotedPackInput = {
+                  compiledProject: compiledProjectForPack,
+                  designFingerprint: packDesignFingerprint,
+                  designId: packDesignFingerprint,
+                  hash: cdsForPack?.hash || canonicalDesignState?.hash || null,
+                  styleDNA:
+                    authorityProjectGeometry?.metadata?.style_dna ||
+                    masterDNA?.styleDNA ||
+                    masterDNA?.style_dna ||
+                    masterDNA?.style ||
+                    {},
+                };
+
+                try {
+                  canonicalPack = buildCanonicalPack(promotedPackInput);
+                  logger.success(
+                    `✅ Canonical Pack rebuilt from promoted runtime layout geometry: ${canonicalPack.panelCount} panels, ready=${canonicalPack.metadata?.technicalAuthorityReady === true}`,
+                  );
+                } catch (promotedPackError) {
+                  logger.warn(
+                    `⚠️ Failed to rebuild canonical pack from promoted runtime layout geometry: ${promotedPackError.message}`,
+                  );
+                }
+              }
+            }
+          }
+        } catch (promotedGeometryError) {
+          logger.warn(
+            `⚠️ Failed to promote procedural layout into canonical runtime geometry: ${promotedGeometryError.message}`,
+          );
+        }
       }
 
       // STEP 2.7: Optional Blender 3D rendering (depth maps for ControlNet)
@@ -1832,16 +2377,31 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       // A1v3 P4: Lock canonical palette + fingerprint BEFORE any panel generates.
       // All panel prompts (including hero_3d) read from the same hex values,
       // replacing the legacy post-hero fingerprint-extraction approach.
-      let enrichedProjectContext = projectContext;
+      let enrichedProjectContext = compiledProjectForPack
+        ? {
+            ...(projectContext || {}),
+            compiledProject: compiledProjectForPack,
+            projectGeometry:
+              authorityProjectGeometry ||
+              projectContext?.projectGeometry ||
+              null,
+          }
+        : projectContext;
       if (isFeatureEnabled("useSharedCanonicalPaletteA1v3")) {
         try {
           const sharedCanonicalPalette = getCanonicalMaterialPalette({
             dna: masterDNA,
-            projectGeometry: projectContext?.projectGeometry || null,
+            projectGeometry:
+              authorityProjectGeometry ||
+              projectContext?.projectGeometry ||
+              null,
             facadeGrammar: projectContext?.facadeGrammar || null,
           });
           const sharedFingerprint = buildFingerprintFromDNA(masterDNA, {
-            projectGeometry: projectContext?.projectGeometry || null,
+            projectGeometry:
+              authorityProjectGeometry ||
+              projectContext?.projectGeometry ||
+              null,
             facadeGrammar: projectContext?.facadeGrammar || null,
             portfolioStyle: projectContext?.portfolioStyle || null,
           });
@@ -1849,6 +2409,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             ...(projectContext || {}),
             canonicalPalette: sharedCanonicalPalette,
             designFingerprint: sharedFingerprint,
+            compiledProject: compiledProjectForPack || null,
+            projectGeometry:
+              authorityProjectGeometry ||
+              projectContext?.projectGeometry ||
+              null,
           };
           logger.info(
             `   🎨 [A1v3 P4] Canonical palette locked: ${sharedCanonicalPalette.summary}`,
@@ -1908,6 +2473,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
       let designFingerprint = null;
       let heroReference = null;
       const runId = `run_${Date.now()}`;
+      const strictGeometryRequired =
+        isFeatureEnabled("requireCompleteGeometryDNA") ||
+        isFeatureEnabled("strictNoFallback");
 
       // NEW: Style reference for material consistency (captured from hero_3d)
       // Passed to elevations/sections via IP-Adapter to lock brick colors, window frames, etc.
@@ -1941,6 +2509,12 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           "climate_card",
         ];
         if (DATA_PANELS.includes(job.type)) {
+          logPanelAuthority(job.type, {
+            route: "direct_svg",
+            authority: "data_svg",
+            reason:
+              "data panel is rendered deterministically during composition",
+          });
           logger.info(
             `   📊 [SVG] Skipping FLUX for data panel ${job.type} — will render as SVG during composition`,
           );
@@ -1955,78 +2529,88 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             width: job.width,
             height: job.height,
             dnaSnapshot: job.dnaSnapshot,
-            meta: { ...job.meta, runId, model: "svg", generatorUsed: "svg" },
+            meta: {
+              ...job.meta,
+              runId,
+              model: "svg",
+              generatorUsed: "svg",
+              authorityUsed: "data_svg",
+            },
           };
           generatedPanels.push(panelResult);
           reportProgress("rendering", `${job.type} (SVG)`, panelDonePercent);
           continue;
         }
 
-        // TIER 1: DETERMINISTIC SVG PANELS — skip FLUX entirely
-        // Technical drawings (floor plans, elevations, sections) use canonical
-        // geometry pack SVGs directly. The compose endpoint rasterizes SVG data
-        // URLs via Sharp at 300 DPI. This guarantees geometric consistency since
-        // all drawings derive from the SAME BuildingModel.
-        const TIER1_SVG_PANELS = [
-          "floor_plan_ground",
-          "floor_plan_first",
-          "floor_plan_level2",
-          "floor_plan_level3",
-          "elevation_north",
-          "elevation_south",
-          "elevation_east",
-          "elevation_west",
-          "section_AA",
-          "section_BB",
-        ];
-        if (
-          isFeatureEnabled("threeTierPanelConsistency") &&
-          TIER1_SVG_PANELS.includes(job.type) &&
-          canonicalPack
-        ) {
-          const canonicalParams = getCanonicalInitImageParams(
-            canonicalPack,
-            job.type,
-          );
-          if (canonicalParams?.init_image) {
-            logger.info(
-              `   📐 [TIER 1] Using deterministic SVG for ${job.type} — skipping FLUX`,
-            );
-            const panelResult = {
-              id: job.id,
-              type: job.type,
-              imageUrl: canonicalParams.init_image, // SVG data URL
-              svgPanel: true,
-              runId,
-              seed: job.seed,
-              prompt: job.prompt,
-              width: job.width,
-              height: job.height,
-              dnaSnapshot: job.dnaSnapshot,
-              geometryHash: canonicalPack.geometryHash,
-              cdsHash: cdsForPack?.hash || null,
-              meta: {
-                ...job.meta,
-                runId,
-                model: "canonical_svg",
-                generatorUsed: "canonical_geometry_pack",
-                hadCanonicalControl: true,
-                geometryHash: canonicalPack.geometryHash,
-                tier: 1,
-              },
-            };
-            generatedPanels.push(panelResult);
-            reportProgress(
-              "rendering",
-              `${job.type} (SVG deterministic)`,
-              panelDonePercent,
-            );
-            continue; // No FLUX call, no rate-limit delay
+        const compiledCanonicalParams =
+          isCompiledProjectCanonicalPack(canonicalPack) && canonicalPack
+            ? getCanonicalInitImageParams(canonicalPack, job.type)
+            : null;
+        const directPanelRoute = resolveDirectPanelRoute(job.type, {
+          canonicalPack,
+          hasCompiledCanonicalAsset: Boolean(
+            compiledCanonicalParams?.init_image,
+          ),
+        });
+
+        if (directPanelRoute.direct) {
+          let imageUrl = compiledCanonicalParams?.init_image || null;
+          let generatorUsed = "compiled_project_canonical_pack";
+
+          if (!directPanelRoute.useCompiledCanonicalAsset) {
+            const deterministicAsset = buildDeterministicPanelAsset(job, {
+              siteSnapshot,
+              strictGeometryRequired,
+            });
+            imageUrl = deterministicAsset?.imageUrl || null;
+            generatorUsed =
+              deterministicAsset?.generatorUsed || "deterministic_svg";
           }
-          logger.warn(
-            `   ⚠️ [TIER 1] Canonical pack missing SVG for ${job.type} — falling back to FLUX`,
+
+          if (!imageUrl) {
+            throw new Error(
+              `No deterministic asset available for ${job.type} after routing`,
+            );
+          }
+
+          logPanelAuthority(job.type, directPanelRoute, {
+            detail: generatorUsed,
+          });
+
+          const panelResult = {
+            id: job.id,
+            type: job.type,
+            imageUrl,
+            svgPanel: true,
+            runId,
+            seed: job.seed,
+            prompt: job.prompt,
+            width: job.width,
+            height: job.height,
+            dnaSnapshot: job.dnaSnapshot,
+            geometryHash: canonicalPack?.geometryHash || null,
+            cdsHash: cdsForPack?.hash || null,
+            meta: {
+              ...job.meta,
+              runId,
+              model: directPanelRoute.useCompiledCanonicalAsset
+                ? "canonical_svg"
+                : "deterministic_svg",
+              generatorUsed,
+              hadCanonicalControl: directPanelRoute.useCompiledCanonicalAsset,
+              authorityUsed: directPanelRoute.authority,
+              panelAuthorityReason: directPanelRoute.reason,
+              geometryHash: canonicalPack?.geometryHash || null,
+              tier: 1,
+            },
+          };
+          generatedPanels.push(panelResult);
+          reportProgress(
+            "rendering",
+            `${job.type} (SVG deterministic)`,
+            panelDonePercent,
           );
-          // Falls through to FLUX generation below
+          continue;
         }
 
         try {
@@ -2040,7 +2624,11 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           // Hero renders must keep this geometry anchor even when portfolio
           // style is present, otherwise the 3D panel drifts away from the 2D
           // drawings and no longer depicts the same building.
-          if (canonicalPack && hasCanonicalPack(canonicalPack)) {
+          if (
+            canonicalPack &&
+            hasCanonicalPack(canonicalPack) &&
+            isCompiledProjectCanonicalPack(canonicalPack)
+          ) {
             const canonicalParams = getCanonicalInitImageParams(
               canonicalPack,
               job.type,
@@ -2048,14 +2636,18 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             if (canonicalParams) {
               geometryRender = {
                 url: canonicalParams.init_image,
-                type: "canonical_geometry",
-                model: "buildingmodel_projections2d",
+                type: "compiled_project_canonical_pack",
+                model: "compiled_project_canonical_pack",
               };
               effectiveGeometryStrength = canonicalParams.strength;
               logger.info(
-                `   📐 [Canonical] Using canonical geometry pack for ${job.type} (strength: ${effectiveGeometryStrength})`,
+                `   📐 [Canonical] Using compiled-project canonical control for ${job.type} (strength: ${effectiveGeometryStrength})`,
               );
             }
+          } else if (canonicalPack && hasCanonicalPack(canonicalPack)) {
+            logger.info(
+              `   📐 [Canonical] Ignoring non-compiled canonical pack for ${job.type} (source: ${getCanonicalPackSource(canonicalPack) || "unknown"})`,
+            );
           }
 
           // PRIORITY 1: Use job.meta.controlImage from geometry masks (highest priority for floor plans)
@@ -2234,6 +2826,14 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             );
           }
 
+          const visualAuthority = resolveVisualPanelAuthority(job.type, {
+            canonicalPack,
+            geometryRender,
+          });
+          logPanelAuthority(job.type, visualAuthority, {
+            detail: geometryRender?.type || "none",
+          });
+
           const result = await generateImageFn({
             viewType: job.type,
             prompt: job.prompt,
@@ -2276,7 +2876,9 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
               runId,
               hadGeometryControl: !!geometryRender,
               hadCanonicalControl:
-                geometryRender?.type === "canonical_geometry",
+                geometryRender?.type === "compiled_project_canonical_pack",
+              authorityUsed: visualAuthority.authority,
+              panelAuthorityReason: visualAuthority.reason,
               geometryHash: canonicalPack?.geometryHash || null,
               model: result.model || "flux",
             },

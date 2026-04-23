@@ -18,9 +18,10 @@ describe("svgPlanRenderer Phase 2", () => {
 
     expect(drawing.svg).toContain("<svg");
     expect(drawing.svg).toContain("north-arrow");
-    expect(drawing.svg).toContain("Scale placeholder");
-    expect(drawing.svg).toContain("Site Boundary");
+    expect(drawing.svg).toContain('data-theme="blueprint-monochrome"');
+    expect(drawing.svg).toContain("blueprint-scale-bar");
     expect(drawing.svg).toContain("UP");
     expect(drawing.renderer).toBe("deterministic-plan-svg");
+    expect(drawing.technical_quality_metadata.has_scale_bar).toBe(true);
   });
 });

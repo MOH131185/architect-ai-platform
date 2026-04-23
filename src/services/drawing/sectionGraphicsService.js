@@ -8,7 +8,11 @@ import { truthBucketFromMode } from "./constructionTruthModel.js";
 import { layoutAnnotations } from "./annotationLayoutService.js";
 import { validateAnnotationPlacements } from "./annotationPlacementValidator.js";
 import { buildSectionAnnotations } from "./sectionAnnotationService.js";
-import { getEnvelopeDrawingBounds } from "./drawingBounds.js";
+import {
+  getEnvelopeDrawingBounds,
+  resolveCompiledProjectGeometryInput,
+  resolveCompiledProjectStyleDNA,
+} from "./drawingBounds.js";
 
 function escapeXml(value) {
   return String(value)
@@ -90,7 +94,7 @@ function renderSectionSemanticBlock(width, height, semantics = {}) {
   const y = 52;
   return `
     <g id="phase7-section-semantics">
-      <rect x="${x}" y="${y}" width="260" height="62" fill="#fff" stroke="#333" stroke-width="1"/>
+      <rect x="${x}" y="${y}" width="260" height="62" fill="#fff" stroke="#111" stroke-width="1"/>
       <text x="${x + 12}" y="${y + 18}" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Section focus</text>
       <text x="${x + 12}" y="${y + 34}" font-size="10" font-family="Arial, sans-serif">Usefulness ${Number(semantics.scores?.usefulness || 0).toFixed(2)}</text>
       <text x="${x + 12}" y="${y + 50}" font-size="10" font-family="Arial, sans-serif">${escapeXml(
@@ -108,11 +112,11 @@ export function buildSectionGraphic(
   styleDNA = {},
   options = {},
 ) {
-  const rawGeometryInput =
-    geometryInput?.projectGeometry ||
-    geometryInput?.geometry ||
-    geometryInput ||
-    {};
+  const rawGeometryInput = resolveCompiledProjectGeometryInput(geometryInput);
+  const resolvedStyleDNA =
+    styleDNA && Object.keys(styleDNA).length
+      ? styleDNA
+      : resolveCompiledProjectStyleDNA(geometryInput, styleDNA);
   const geometry = coerceToCanonicalProjectGeometry({
     ...rawGeometryInput,
     metadata: rawGeometryInput?.metadata || {},
@@ -181,7 +185,7 @@ export function buildSectionGraphic(
     height,
     padding,
   );
-  const drawing = renderSectionSvg(geometry, styleDNA, {
+  const drawing = renderSectionSvg(geometry, resolvedStyleDNA, {
     ...options,
     sectionType: sectionProfile.sectionType,
     sectionProfile,
@@ -349,7 +353,10 @@ export function buildSectionGraphic(
     annotationLayout.placements,
     { minimumFontSize: 9 },
   );
-  const sectionAnnotations = isFeatureEnabled("useSectionGraphicsUpgradePhase9")
+  const showSectionCallouts =
+    options.sheetMode !== true &&
+    isFeatureEnabled("useSectionGraphicsUpgradePhase9");
+  const sectionAnnotations = showSectionCallouts
     ? buildSectionAnnotations({
         sectionProfile,
         sectionSemantics: semantics,
@@ -360,11 +367,11 @@ export function buildSectionGraphic(
     : { items: [], markup: "" };
   const svg = replaceSvgTail(
     drawing.svg,
-    `${renderPlacements(annotationLayout.placements)}${renderSectionSemanticBlock(
-      width,
-      height,
-      semantics,
-    )}${sectionAnnotations.markup}`,
+    `${renderPlacements(annotationLayout.placements)}${
+      options.sheetMode === true
+        ? ""
+        : renderSectionSemanticBlock(width, height, semantics)
+    }${sectionAnnotations.markup}`,
   );
 
   return {
@@ -377,6 +384,7 @@ export function buildSectionGraphic(
     annotation_validation: annotationValidation,
     technical_quality_metadata: {
       ...(drawing.technical_quality_metadata || {}),
+      sheet_mode: options.sheetMode === true,
       room_label_count: Math.max(
         Number(drawing.technical_quality_metadata?.room_label_count || 0),
         annotationLayout.placements.length,

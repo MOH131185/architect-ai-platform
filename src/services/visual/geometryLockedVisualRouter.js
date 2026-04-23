@@ -7,10 +7,15 @@ import {
   buildFingerprintFromDNA,
 } from "../design/designFingerprintService.js";
 import { buildMaterialSpecSheet } from "../design/canonicalMaterialPalette.js";
+import {
+  buildHeroGenerationBlockMessage,
+  resolveHeroGenerationDependencies,
+} from "../design/heroDesignAuthorityService.js";
 
 export function validateVisualPackageConsistency(pkg = {}) {
   const warnings = [];
   const errors = [];
+  const generationDependencies = pkg.generationDependencies || {};
 
   if (!pkg.geometrySignature) {
     errors.push("visual package is missing geometrySignature.");
@@ -24,6 +29,17 @@ export function validateVisualPackageConsistency(pkg = {}) {
   if (!pkg.projectSummary?.floor_count) {
     warnings.push("visual package does not include a floor count summary.");
   }
+  if (
+    pkg.viewType === "hero_3d" &&
+    generationDependencies.heroDesignReady !== true
+  ) {
+    errors.push(
+      buildHeroGenerationBlockMessage({
+        blockingReasons: generationDependencies.blockingReasons || [],
+      }),
+    );
+  }
+  warnings.push(...(generationDependencies.warnings || []));
 
   return {
     valid: errors.length === 0,
@@ -38,23 +54,28 @@ export async function buildVisualGenerationPackage(
   viewType = "hero_3d",
   options = {},
 ) {
+  const heroDesignAuthority = resolveHeroGenerationDependencies({
+    projectGeometry,
+    styleDNA,
+    facadeGrammar: options.facadeGrammar || null,
+  });
+  const resolvedFacadeGrammar = heroDesignAuthority.resolvedFacadeGrammar;
   const identitySpec = buildHeroIdentitySpec(styleDNA, {
     projectGeometry,
-    facadeGrammar:
-      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    facadeGrammar: resolvedFacadeGrammar,
     portfolioStyle: options.portfolioStyle || null,
+    heroDesignAuthority,
   });
   const fingerprint = buildFingerprintFromDNA(styleDNA, {
     projectGeometry,
-    facadeGrammar:
-      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    facadeGrammar: resolvedFacadeGrammar,
     portfolioStyle: options.portfolioStyle || null,
+    heroDesignAuthority,
   });
   const materialSpecSheet = buildMaterialSpecSheet({
     dna: styleDNA,
     projectGeometry,
-    facadeGrammar:
-      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    facadeGrammar: resolvedFacadeGrammar,
   });
   const controlReferences = buildControlReferences(
     projectGeometry,
@@ -66,8 +87,7 @@ export async function buildVisualGenerationPackage(
     projectGeometry,
     styleDNA,
     viewType,
-    facadeGrammar:
-      options.facadeGrammar || projectGeometry.metadata?.facade_grammar || null,
+    facadeGrammar: resolvedFacadeGrammar,
     identitySpec,
   });
 
@@ -101,17 +121,28 @@ export async function buildVisualGenerationPackage(
     designFingerprint: fingerprint,
     materialSpecSheet,
     generationDependencies: {
-      canonicalGeometryReady: Boolean(projectGeometry?.project_id),
-      facadeGrammarReady: Boolean(
-        options.facadeGrammar || projectGeometry.metadata?.facade_grammar,
-      ),
-      materialPaletteReady: Boolean(identitySpec?.primaryMaterial),
-      heroGeneratedAfterCanonicalInputs: true,
+      canonicalGeometryReady: heroDesignAuthority.canonicalGeometryFinalized,
+      canonicalGeometryFinalized:
+        heroDesignAuthority.canonicalGeometryFinalized,
+      facadeGrammarReady: Boolean(resolvedFacadeGrammar),
+      facadeSchemaFinalized: heroDesignAuthority.facadeSchemaFinalized,
+      materialPaletteReady: heroDesignAuthority.materialPaletteFinalized,
+      materialPaletteFinalized: heroDesignAuthority.materialPaletteFinalized,
+      openingRhythmReady: heroDesignAuthority.openingRhythmFinalized,
+      openingRhythmFinalized: heroDesignAuthority.openingRhythmFinalized,
+      heroDesignReady: heroDesignAuthority.heroReady,
+      heroGeneratedAfterCanonicalInputs:
+        viewType === "hero_3d" ? heroDesignAuthority.heroReady : true,
       enforcedByPhase8Flag: isFeatureEnabled("useHeroGeneratedLast"),
+      blockingReasons: heroDesignAuthority.blockingReasons,
+      warnings: heroDesignAuthority.warnings,
+      authoritySources: heroDesignAuthority.sources,
+      resolvedOpeningRhythm: heroDesignAuthority.windowRhythm,
       pipelineOrder: [
         "canonical_geometry",
-        "facade_grammar",
+        "facade_schema",
         "material_palette",
+        "opening_rhythm",
         "hero_visual",
       ],
     },

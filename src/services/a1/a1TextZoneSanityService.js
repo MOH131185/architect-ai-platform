@@ -1,5 +1,6 @@
 import { verifyRenderedTextZonesSync } from "./a1RenderedTextVerificationService.js";
 import { buildVerificationState } from "./a1VerificationStateModel.js";
+import { FINAL_SHEET_MIN_FONT_SIZE_PX } from "../../utils/svgFontEmbedder.js";
 
 function unique(items = []) {
   return [...new Set(items.filter(Boolean))];
@@ -22,6 +23,21 @@ function hasStrongRequiredRenderedProof(renderedZone = null) {
     verifiedRequiredCount === requiredZones.length &&
     Number(renderedZone?.confidence || 0) >= 0.48
   );
+}
+
+function collectUndersizedTextFonts(sheetSvg = "") {
+  const svg = String(sheetSvg || "");
+  const matches = [];
+  const regex = /<text\b[^>]*\bfont-size=(["'])([^"']+)\1[^>]*>/gi;
+  let match = regex.exec(svg);
+  while (match) {
+    const fontSize = Number(match[2]);
+    if (Number.isFinite(fontSize) && fontSize < FINAL_SHEET_MIN_FONT_SIZE_PX) {
+      matches.push(fontSize);
+    }
+    match = regex.exec(svg);
+  }
+  return matches;
 }
 
 function resolveRenderedTextEvidenceQuality(renderedZone = null) {
@@ -128,6 +144,12 @@ export function runA1TextZoneSanity({
     if ((svg.match(/<text\b/g) || []).length < 4) {
       warnings.push(
         "Final sheet SVG contains very few text nodes; label-zone coverage may be incomplete.",
+      );
+    }
+    const undersizedFonts = collectUndersizedTextFonts(svg);
+    if (undersizedFonts.length > 0) {
+      blockers.push(
+        `Final sheet SVG contains text below the enforced minimum readable size of ${FINAL_SHEET_MIN_FONT_SIZE_PX}px.`,
       );
     }
   } else {

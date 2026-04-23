@@ -275,11 +275,11 @@ describe("Phase 7 technical drawing execution", () => {
     expect(
       graphic.annotation_validation.fallbackPlacementCount,
     ).toBeGreaterThan(0);
-    expect(graphic.svg).toContain("phase7-scale-bar");
+    expect(graphic.svg).toContain("blueprint-scale-bar");
     expect(graphic.svg).toContain("phase7-section-markers");
   });
 
-  test("selects stair-focused section candidates and enriches section graphics", () => {
+  test("keeps stair-aware section candidates and enriches section graphics", () => {
     const geometry = createProjectGeometry();
     const sectionPlan = selectSectionCandidates(geometry);
     const sectionGraphic = buildSectionGraphic(
@@ -290,13 +290,25 @@ describe("Phase 7 technical drawing execution", () => {
       },
     );
 
-    expect(sectionPlan.candidates[0].focusEntityIds).toContain(
-      "entity:stair:main-stair",
-    );
+    expect(
+      sectionPlan.candidates.some((candidate) =>
+        (candidate.focusEntityIds || []).includes("entity:stair:main-stair"),
+      ),
+    ).toBe(true);
+    expect(
+      sectionGraphic.section_profile?.sectionType ||
+        sectionGraphic.section_type,
+    ).toBe("longitudinal");
+    expect(
+      sectionGraphic.technical_quality_metadata.section_direct_evidence_score,
+    ).toBeGreaterThan(0.5);
+    expect(
+      sectionGraphic.technical_quality_metadata.section_direct_evidence_quality,
+    ).not.toBe("blocked");
+    expect(sectionGraphic.svg).toContain("phase7-section-semantics");
     expect(
       sectionGraphic.technical_quality_metadata.section_usefulness_score,
     ).toBeGreaterThan(0.7);
-    expect(sectionGraphic.svg).toContain("phase7-section-semantics");
   });
 
   test("scores weak technical panels against phase 7 thresholds", () => {

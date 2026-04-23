@@ -20,8 +20,8 @@ const INTER_BOLD_URL =
 export const EMBEDDED_FONT_FAMILY = "ArchiAISans";
 export const EMBEDDED_FONT_STACK =
   "'ArchiAISans', 'DejaVu Sans', 'Segoe UI', Arial, Helvetica, sans-serif";
-export const FINAL_SHEET_MIN_FONT_SIZE_PX = 8;
-export const FINAL_SHEET_AUX_FONT_SIZE_PX = 7;
+export const FINAL_SHEET_MIN_FONT_SIZE_PX = 9;
+export const FINAL_SHEET_AUX_FONT_SIZE_PX = 8;
 const LEGACY_EMBEDDED_FONT_FAMILY = "EmbeddedSans";
 
 const LOCAL_REGULAR_FONT_FILENAMES = [

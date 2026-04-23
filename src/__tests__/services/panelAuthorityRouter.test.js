@@ -1,6 +1,7 @@
 import {
   getCanonicalPackSource,
   isCompiledProjectCanonicalPack,
+  getCompiledCanonicalPackReadiness,
   isTechnicalPanel,
   isBlueprintLikePanel,
   isDirectDeterministicPanel,
@@ -14,6 +15,23 @@ describe("panelAuthorityRouter", () => {
       source: "compiled_project",
       authoritySource: "compiled_project",
       compiledProjectSchemaVersion: "compiled-project-v1",
+      technicalAuthorityReady: true,
+      technicalAuthoritySummary: { ready: true, reasons: [] },
+    },
+  };
+
+  const weakCompiledPack = {
+    metadata: {
+      source: "compiled_project",
+      authoritySource: "compiled_project",
+      compiledProjectSchemaVersion: "compiled-project-v1",
+      technicalAuthorityReady: false,
+      technicalAuthoritySummary: {
+        ready: false,
+        reasons: [
+          "compiled project resolved too few wall segments for technical authority",
+        ],
+      },
     },
   };
 
@@ -28,6 +46,10 @@ describe("panelAuthorityRouter", () => {
   test("detects compiled-project canonical packs", () => {
     expect(getCanonicalPackSource(compiledPack)).toBe("compiled_project");
     expect(isCompiledProjectCanonicalPack(compiledPack)).toBe(true);
+    expect(getCompiledCanonicalPackReadiness(compiledPack).ready).toBe(true);
+    expect(getCompiledCanonicalPackReadiness(weakCompiledPack).ready).toBe(
+      false,
+    );
     expect(isCompiledProjectCanonicalPack(mislabeledPack)).toBe(false);
     expect(isCompiledProjectCanonicalPack(legacyPack)).toBe(false);
   });
@@ -71,6 +93,19 @@ describe("panelAuthorityRouter", () => {
     expect(decision.reason).toMatch(/ignores non-compiled canonical pack/);
   });
 
+  test("routes weak compiled-project technical packs to deterministic SVG", () => {
+    const decision = resolveDirectPanelRoute("section_AA", {
+      canonicalPack: weakCompiledPack,
+      hasCompiledCanonicalAsset: true,
+    });
+
+    expect(decision.direct).toBe(true);
+    expect(decision.useFlux).toBe(false);
+    expect(decision.authority).toBe("deterministic_svg");
+    expect(decision.useCompiledCanonicalAsset).toBe(false);
+    expect(decision.reason).toMatch(/bypasses canonical pack/);
+  });
+
   test("routes blueprint-like panels to deterministic SVG", () => {
     const decision = resolveDirectPanelRoute("site_diagram", {
       canonicalPack: compiledPack,
@@ -106,6 +141,21 @@ describe("panelAuthorityRouter", () => {
 
     expect(decision.route).toBe("flux");
     expect(decision.authority).toBe("geometry_derived:blender_3d");
+  });
+
+  test("ignores weak compiled-project canonical controls for 3D panels", () => {
+    const decision = resolveVisualPanelAuthority("hero_3d", {
+      canonicalPack: weakCompiledPack,
+      geometryRender: {
+        url: "data:image/png;base64,CCC",
+        type: "compiled_project_canonical_pack",
+      },
+    });
+
+    expect(decision.route).toBe("flux");
+    expect(decision.authority).toBe(
+      "geometry_derived:compiled_project_canonical_pack",
+    );
   });
 
   test("marks legacy canonical packs as ignored for visual control authority", () => {

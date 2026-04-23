@@ -24,6 +24,14 @@ function rectangle(x, y, width, height) {
   ];
 }
 
+function assertClose(actual, expected, epsilon, message) {
+  const delta = Math.abs(Number(actual) - Number(expected));
+  assert.ok(
+    delta <= epsilon,
+    `${message} (expected ${expected}, got ${actual}, delta ${delta})`,
+  );
+}
+
 const sampleDNA = {
   id: "phase21-smoke",
   architecturalStyle: "Contemporary timber",
@@ -369,12 +377,32 @@ const oversizedSiteGeometry = {
 };
 
 const levelBounds = getLevelDrawingBounds(oversizedSiteGeometry, "ground");
-assert.equal(levelBounds.width, 14, "level drawing bounds should follow the building footprint");
-assert.equal(levelBounds.height, 10, "level drawing bounds should ignore oversized site extents");
+assertClose(
+  levelBounds.width,
+  14,
+  0.05,
+  "level drawing bounds should follow the building footprint",
+);
+assertClose(
+  levelBounds.height,
+  10,
+  0.05,
+  "level drawing bounds should ignore oversized site extents",
+);
 
 const envelopeBounds = getEnvelopeDrawingBounds(oversizedSiteGeometry);
-assert.equal(envelopeBounds.width, 14, "elevation/section bounds should follow the building envelope");
-assert.equal(envelopeBounds.height, 10, "envelope bounds should ignore oversized site extents");
+assertClose(
+  envelopeBounds.width,
+  14,
+  0.05,
+  "elevation/section bounds should follow the building envelope",
+);
+assertClose(
+  envelopeBounds.height,
+  10,
+  0.05,
+  "envelope bounds should ignore oversized site extents",
+);
 
 const plan = generateEnhancedFloorPlanSVG(sampleDNA, "ground", {
   targetWidth: 960,

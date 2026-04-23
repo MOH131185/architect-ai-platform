@@ -12,6 +12,9 @@ function inferDrawingType(drawing = {}) {
 export function assessAnnotationReliability(drawing = {}, options = {}) {
   const svg = String(drawing.svg || "");
   const drawingType = options.drawingType || inferDrawingType(drawing);
+  const isSheetMode =
+    drawing.technical_quality_metadata?.sheet_mode === true ||
+    options.sheetMode === true;
   const errors = [];
   const warnings = [];
   const textElementCount = countMatches(svg, /<text\b/gi);
@@ -45,7 +48,7 @@ export function assessAnnotationReliability(drawing = {}, options = {}) {
         `Plan annotation density is weak: ${textElementCount} text nodes for ${drawing.room_count || 0} rooms.`,
       );
     }
-    if (!/title-block/i.test(svg)) {
+    if (!/title-block/i.test(svg) && !isSheetMode) {
       warnings.push("Plan title block markup is missing.");
     }
   }

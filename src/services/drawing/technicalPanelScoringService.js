@@ -112,6 +112,7 @@ function computeLabelPresence(
 }
 
 function computePlanDensity(metadata = {}) {
+  const hasSheetCaption = metadata.sheet_mode === true;
   if (Number.isFinite(Number(metadata.plan_density_score))) {
     return clamp(Number(metadata.plan_density_score), 0, 1);
   }
@@ -122,7 +123,7 @@ function computePlanDensity(metadata = {}) {
       (Number(metadata.door_swing_count || 0) > 0 ? 0.08 : 0) +
       (Number(metadata.furniture_hint_count || 0) > 0 ? 0.08 : 0) +
       positiveScore(metadata.has_external_dimensions) * 0.14 +
-      positiveScore(metadata.has_title_block) * 0.1 +
+      (hasSheetCaption ? 0.1 : positiveScore(metadata.has_title_block) * 0.1) +
       positiveScore(metadata.has_north_arrow) * 0.08 +
       (Number(metadata.grid_bubble_count || 0) > 0 ? 0.1 : 0),
     0,
@@ -131,6 +132,7 @@ function computePlanDensity(metadata = {}) {
 }
 
 function computeElevationRichness(metadata = {}) {
+  const hasSheetCaption = metadata.sheet_mode === true;
   if (Number.isFinite(Number(metadata.facade_richness_score))) {
     return clamp(Number(metadata.facade_richness_score), 0, 1);
   }
@@ -144,7 +146,9 @@ function computeElevationRichness(metadata = {}) {
       (Number(metadata.bay_count || 0) > 0 ? 0.1 : 0.02) +
       (Number(metadata.sill_lintel_count || 0) > 0 ? 0.12 : 0.03) +
       (Number(metadata.feature_count || 0) > 0 ? 0.14 : 0.04) +
-      positiveScore(metadata.has_title_block || metadata.has_title) * 0.08,
+      (hasSheetCaption
+        ? 0.08
+        : positiveScore(metadata.has_title_block || metadata.has_title) * 0.08),
     0,
     1,
   );

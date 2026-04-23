@@ -1004,11 +1004,26 @@ function renderOverallDimensions(
   `;
 }
 
-function renderScaleBar(scalePxPerMeter, width, height, layout, theme) {
+function renderScaleBar(
+  scalePxPerMeter,
+  width,
+  height,
+  layout,
+  theme,
+  options = {},
+) {
   const barMeters = chooseScaleBarMeters(scalePxPerMeter);
   const barWidthPx = barMeters * scalePxPerMeter;
   const x = width - layout.right - barWidthPx - 8;
-  const y = height - layout.bottom + 44;
+  const y = Number.isFinite(options.y)
+    ? options.y
+    : height - layout.bottom + 44;
+  const labelYOffset = Number.isFinite(options.labelYOffset)
+    ? options.labelYOffset
+    : 16;
+  const labelFontSize = Number.isFinite(options.fontSize)
+    ? options.fontSize
+    : 10;
   return {
     barMeters,
     markup: `
@@ -1034,8 +1049,8 @@ function renderScaleBar(scalePxPerMeter, width, height, layout, theme) {
           y + 4,
         )}" stroke="${theme.line}" stroke-width="1.6"/>
         <text x="${formatNumber(x + barWidthPx / 2)}" y="${formatNumber(
-          y + 16,
-        )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
+          y + labelYOffset,
+        )}" font-size="${labelFontSize}" font-family="Arial, sans-serif" text-anchor="middle">${escapeXml(
           `${barMeters} m`,
         )}</text>
       </g>
@@ -1102,8 +1117,10 @@ export function renderElevationSvg(
   const width = options.width || 1200;
   const height = options.height || 760;
   const sheetMode = options.sheetMode === true;
+  const showInternalTitleBlock =
+    !sheetMode || options.showInternalTitleBlock === true;
   const layout = sheetMode
-    ? { left: 34, top: 18, right: 38, bottom: 82 }
+    ? { left: 34, top: 18, right: 38, bottom: 64 }
     : { left: 80, top: 62, right: 94, bottom: 118 };
   const availableWidth = Math.max(1, width - layout.left - layout.right);
   const availableHeight = Math.max(1, height - layout.top - layout.bottom);
@@ -1305,7 +1322,16 @@ export function renderElevationSvg(
     };
   }
 
-  const scaleBar = renderScaleBar(scale, width, height, layout, theme);
+  const scaleBar = renderScaleBar(
+    scale,
+    width,
+    height,
+    layout,
+    theme,
+    showInternalTitleBlock
+      ? {}
+      : { y: height - 34, labelYOffset: 14, fontSize: 9 },
+  );
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-theme="${theme.name}" data-bounds-source="${envelope.source}">
   ${buildMaterialPatternDefs(theme)}
@@ -1335,10 +1361,14 @@ export function renderElevationSvg(
     width,
     theme,
   )}
-  ${renderTitleBlock(orientation, width, height, layout, theme, {
-    boundsSource: envelope.source,
-    slotOccupancyRatio,
-  })}
+  ${
+    showInternalTitleBlock
+      ? renderTitleBlock(orientation, width, height, layout, theme, {
+          boundsSource: envelope.source,
+          slotOccupancyRatio,
+        })
+      : ""
+  }
   ${scaleBar.markup}
   ${options.overlayMarkup || ""}
 </svg>`;
@@ -1351,8 +1381,9 @@ export function renderElevationSvg(
     title: `Elevation - ${orientation}`,
     technical_quality_metadata: {
       drawing_type: "elevation",
-      has_title: true,
-      has_title_block: true,
+      sheet_mode: sheetMode,
+      has_title: !sheetMode,
+      has_title_block: showInternalTitleBlock,
       has_scale_bar: true,
       has_overall_dimensions: true,
       geometry_complete: allowWeakFacadeFallback

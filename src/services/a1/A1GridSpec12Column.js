@@ -34,10 +34,10 @@ export const COLUMN_WIDTH = Math.floor(
 
 // Row height percentages (priority zones)
 export const ROW_HEIGHTS = {
-  hero: 0.28, // Row 1: Competition board aesthetics (28%)
-  plans: 0.24, // Row 2: Floor plans (24%)
-  elevations: 0.22, // Row 3: Elevations/sections (22%)
-  schedules: 0.26, // Row 4: Technical/schedules (26%)
+  hero: 0.21, // Row 1: Supporting visuals + data (21%)
+  plans: 0.29, // Row 2: Plans dominate the board (29%)
+  elevations: 0.21, // Row 3: Elevations as secondary evidence (21%)
+  schedules: 0.23, // Row 4: Sections + schedules/title (23%)
 };
 
 // =============================================================================
@@ -45,25 +45,25 @@ export const ROW_HEIGHTS = {
 // =============================================================================
 
 export const MINIMUM_SIZES = {
-  // 3D/Photorealistic panels (competition aesthetic)
-  hero_3d: { width: 2500, height: 1500 },
-  interior_3d: { width: 1500, height: 1000 },
-  axonometric: { width: 1500, height: 1000 },
+  // Supporting visual evidence
+  hero_3d: { width: 1900, height: 1300 },
+  interior_3d: { width: 1400, height: 900 },
+  axonometric: { width: 1400, height: 900 },
 
-  // Floor plans (technical precision)
-  floor_plan_ground: { width: 2000, height: 1400 },
-  floor_plan_first: { width: 2000, height: 1400 },
-  floor_plan_level2: { width: 1800, height: 1200 },
+  // Floor plans (primary technical evidence)
+  floor_plan_ground: { width: 2200, height: 1600 },
+  floor_plan_first: { width: 2200, height: 1600 },
+  floor_plan_level2: { width: 2100, height: 1600 },
 
-  // Elevations (technical precision)
-  elevation_north: { width: 1800, height: 1200 },
-  elevation_south: { width: 1800, height: 1200 },
-  elevation_east: { width: 1800, height: 1200 },
-  elevation_west: { width: 1800, height: 1200 },
+  // Elevations (secondary technical evidence)
+  elevation_north: { width: 1900, height: 1250 },
+  elevation_south: { width: 1900, height: 1250 },
+  elevation_east: { width: 1900, height: 1250 },
+  elevation_west: { width: 1900, height: 1250 },
 
   // Sections (technical precision)
-  section_AA: { width: 2000, height: 1200 },
-  section_BB: { width: 2000, height: 1200 },
+  section_AA: { width: 2100, height: 1350 },
+  section_BB: { width: 2100, height: 1350 },
 
   // Site and context
   site_diagram: { width: 1200, height: 1000 },
@@ -88,39 +88,40 @@ export const TEXT_SIZES = {
 };
 
 // =============================================================================
-// PANEL PRIORITY ORDER (generation sequence)
+// PANEL PRIORITY ORDER (technical-first generation sequence)
 // =============================================================================
 
 /**
  * Fixed priority order for panel generation.
- * hero_3d MUST be generated first to establish design fingerprint.
+ * Technical drawings must be resolved before supporting visual evidence.
  */
 export const PANEL_PRIORITY_ORDER = [
-  "hero_3d", // 1. Hero exterior - establishes fingerprint
-  "floor_plan_ground", // 2. Ground floor plan
-  "floor_plan_first", // 3. First floor plan
+  "floor_plan_ground", // 1. Ground floor plan
+  "floor_plan_first", // 2. First floor plan
+  "floor_plan_level2", // 3. Additional plan level
   "elevation_north", // 4. North elevation
   "elevation_south", // 5. South elevation
   "elevation_east", // 6. East elevation
   "elevation_west", // 7. West elevation
   "section_AA", // 8. Longitudinal section
   "section_BB", // 9. Cross section
-  "interior_3d", // 10. Interior 3D
-  "axonometric", // 11. Axonometric view
-  "site_diagram", // 12. Site plan
-  "material_palette", // 13. Materials
-  "climate_card", // 14. Climate data
-  "schedules_notes", // 15. Schedules/notes
-  "title_block", // 16. Title block
+  "site_diagram", // 10. Site plan/context
+  "hero_3d", // 11. Supporting exterior evidence
+  "interior_3d", // 12. Supporting interior evidence
+  "axonometric", // 13. Supporting axonometric evidence
+  "material_palette", // 14. Materials
+  "climate_card", // 15. Climate data
+  "schedules_notes", // 16. Schedules/notes
+  "title_block", // 17. Title block
 ];
 
 // =============================================================================
-// STYLE ZONES (Hybrid aesthetic)
+// STYLE ZONES (technical-first board styling)
 // =============================================================================
 
 /**
  * Style zones define which panels get which aesthetic treatment:
- * - competition: Bold visuals, photorealistic, artistic presentation
+ * - competition: Supporting visual evidence, subordinate to technical proof
  * - technical: RIBA planning set, orthographic, consistent lineweights
  * - data: Clear typography, tabular layouts, readable info
  */
@@ -165,17 +166,13 @@ export function getStyleZone(panelType) {
  *
  * Layout structure:
  * ┌─────────────────────────────────────────────────────────────────────┐
- * │ Row 1 (28%): site_diagram | hero_3d         | interior_3d | mats   │
- * │              (cols 1-3)   | (cols 4-8)      | (cols 9-11) | (12)   │
+ * │ Row 1 (21%): site_diagram | hero_3d | support visuals | data cards      │
  * ├─────────────────────────────────────────────────────────────────────┤
- * │ Row 2 (24%): floor_plan_ground | floor_plan_first | floor_plan_2   │
- * │              (cols 1-4)        | (cols 5-8)       | (cols 9-12)    │
+ * │ Row 2 (29%): floor_plan_ground | floor_plan_first | floor_plan_2   │
  * ├─────────────────────────────────────────────────────────────────────┤
- * │ Row 3 (22%): elev_N     | elev_S     | elev_E     | elev_W        │
- * │              (cols 1-3) | (cols 4-6) | (cols 7-9) | (cols 10-12)  │
+ * │ Row 3 (21%): elev_N     | elev_S     | elev_E     | elev_W        │
  * ├─────────────────────────────────────────────────────────────────────┤
- * │ Row 4 (26%): section_AA | section_BB | schedules | title_block    │
- * │              (cols 1-4) | (cols 5-8) | (cols 9-10)| (cols 11-12)  │
+ * │ Row 4 (23%): section_AA | section_BB | schedules | title_block    │
  * └─────────────────────────────────────────────────────────────────────┘
  */
 // Re-exported from composeCore.js – DO NOT redefine here.

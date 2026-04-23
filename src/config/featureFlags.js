@@ -1027,7 +1027,7 @@ export const FEATURE_FLAGS = {
   useTechnicalPanelComposeBlockingPhase8: true,
 
   /** Phase 8 optional technical-first board weighting */
-  useTechnicalFirstA1LayoutPhase8: false,
+  useTechnicalFirstA1LayoutPhase8: true,
 
   /** Phase 9 canonical side-facade extraction for east/west credibility */
   useSideFacadeExtractionPhase9: true,
@@ -1530,7 +1530,7 @@ export function resetFeatureFlags() {
   FEATURE_FLAGS.useSectionRendererUpgradePhase8 = true;
   FEATURE_FLAGS.useTechnicalPanelScoringPhase8 = true;
   FEATURE_FLAGS.useTechnicalPanelComposeBlockingPhase8 = true;
-  FEATURE_FLAGS.useTechnicalFirstA1LayoutPhase8 = false;
+  FEATURE_FLAGS.useTechnicalFirstA1LayoutPhase8 = true;
   FEATURE_FLAGS.useSideFacadeExtractionPhase9 = true;
   FEATURE_FLAGS.useElevationRichnessPhase9 = true;
   FEATURE_FLAGS.useSectionSemanticSelectionPhase9 = true;

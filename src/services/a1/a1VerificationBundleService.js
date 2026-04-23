@@ -269,6 +269,34 @@ export function buildA1VerificationBundle({
     finalSheetRegression?.sectionTruthModelVersion ||
     technicalCredibility?.summary?.sectionTruthModelVersion ||
     null;
+  const sectionFaceCredibilityQuality =
+    finalSheetRegression?.sectionFaceCredibilityQuality ||
+    technicalCredibility?.summary?.sectionFaceCredibilityQuality ||
+    "provisional";
+  const sectionFaceCredibilityScore = Number(
+    finalSheetRegression?.sectionFaceCredibilityScore ||
+      technicalCredibility?.summary?.sectionFaceCredibilityScore ||
+      0,
+  );
+  const sectionCutFaceTruthCount = Number(
+    finalSheetRegression?.sectionCutFaceTruthCount ||
+      technicalCredibility?.summary?.sectionCutFaceTruthCount ||
+      0,
+  );
+  const sectionCutProfileTruthCount = Number(
+    finalSheetRegression?.sectionCutProfileTruthCount ||
+      technicalCredibility?.summary?.sectionCutProfileTruthCount ||
+      0,
+  );
+  const sectionAverageProfileContinuity = Number(
+    finalSheetRegression?.sectionAverageProfileContinuity ||
+      technicalCredibility?.summary?.sectionAverageProfileContinuity ||
+      0,
+  );
+  const sectionFaceBundleVersion =
+    finalSheetRegression?.sectionFaceBundleVersion ||
+    technicalCredibility?.summary?.sectionFaceBundleVersion ||
+    null;
   const sectionChosenRationale =
     finalSheetRegression?.chosenSectionRationale ||
     finalSheetRegression?.sectionCandidateQuality?.find(
@@ -288,31 +316,38 @@ export function buildA1VerificationBundle({
       : canonicalDecision(overall, decisive);
 
   const canonicalVerification = {
-    version: sectionTruthModelVersion
-      ? "phase20-a1-verification-v1"
-      : wallSectionClipQuality !== "provisional" ||
-          openingSectionClipQuality !== "provisional" ||
-          stairSectionClipQuality !== "provisional" ||
-          slabSectionClipQuality !== "provisional" ||
-          roofSectionClipQuality !== "provisional" ||
-          foundationSectionClipQuality !== "provisional"
-        ? "phase19-a1-verification-v1"
-        : sectionConstructionEvidenceQuality !== "provisional" ||
-            cutWallTruthQuality !== "provisional" ||
-            cutOpeningTruthQuality !== "provisional" ||
-            stairTruthQuality !== "provisional"
-          ? "phase18-a1-verification-v1"
-          : roofTruthState !== "unsupported" ||
-              foundationTruthState !== "unsupported"
-            ? "phase17-a1-verification-v1"
-            : roofTruthMode !== "missing" || foundationTruthMode !== "missing"
-              ? "phase16-a1-verification-v1"
-              : roofTruthQuality !== "provisional" ||
-                  foundationTruthQuality !== "provisional"
-                ? "phase15-a1-verification-v1"
-                : sectionConstructionTruthQuality !== "provisional"
-                  ? "phase14-a1-verification-v1"
-                  : "phase13-a1-verification-v1",
+    version:
+      sectionFaceBundleVersion ||
+      sectionFaceCredibilityQuality !== "provisional" ||
+      sectionCutFaceTruthCount > 0 ||
+      sectionCutProfileTruthCount > 0
+        ? "phase21-a1-verification-v1"
+        : sectionTruthModelVersion
+          ? "phase20-a1-verification-v1"
+          : wallSectionClipQuality !== "provisional" ||
+              openingSectionClipQuality !== "provisional" ||
+              stairSectionClipQuality !== "provisional" ||
+              slabSectionClipQuality !== "provisional" ||
+              roofSectionClipQuality !== "provisional" ||
+              foundationSectionClipQuality !== "provisional"
+            ? "phase19-a1-verification-v1"
+            : sectionConstructionEvidenceQuality !== "provisional" ||
+                cutWallTruthQuality !== "provisional" ||
+                cutOpeningTruthQuality !== "provisional" ||
+                stairTruthQuality !== "provisional"
+              ? "phase18-a1-verification-v1"
+              : roofTruthState !== "unsupported" ||
+                  foundationTruthState !== "unsupported"
+                ? "phase17-a1-verification-v1"
+                : roofTruthMode !== "missing" ||
+                    foundationTruthMode !== "missing"
+                  ? "phase16-a1-verification-v1"
+                  : roofTruthQuality !== "provisional" ||
+                      foundationTruthQuality !== "provisional"
+                    ? "phase15-a1-verification-v1"
+                    : sectionConstructionTruthQuality !== "provisional"
+                      ? "phase14-a1-verification-v1"
+                      : "phase13-a1-verification-v1",
     phase,
     postComposeVerified: decisive,
     provisional: !decisive,
@@ -347,6 +382,12 @@ export function buildA1VerificationBundle({
     foundationTruthState,
     sideFacadeEvidenceQuality,
     sectionChosenRationale,
+    sectionFaceCredibilityQuality,
+    sectionFaceCredibilityScore,
+    sectionCutFaceTruthCount,
+    sectionCutProfileTruthCount,
+    sectionAverageProfileContinuity,
+    sectionFaceBundleVersion,
     ocrEvidenceQuality: renderedTextZone?.ocrEvidenceQuality || "provisional",
     components: {
       renderedTextZone: renderedTextState,

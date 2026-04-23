@@ -1,6 +1,7 @@
 import {
+  FINAL_SHEET_MIN_FONT_SIZE_PX,
   EMBEDDED_FONT_STACK,
-  embedFontInSVG,
+  prepareFinalSheetSvgForRasterization,
 } from "../../utils/svgFontEmbedder.js";
 
 const FONT_FAMILY = EMBEDDED_FONT_STACK;
@@ -152,7 +153,7 @@ export async function buildSchedulesBuffer(
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
 
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${sectionTitleSize}" font-weight="700" fill="#0f172a" text-anchor="middle">ROOM SCHEDULE</text>
+      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${sectionTitleSize}" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">ROOM SCHEDULE</text>
 
       <text x="${leftMargin}" y="${headerY}" font-family="${FONT_FAMILY}" font-size="8" font-weight="700" fill="#64748b">NO.</text>
       <text x="${leftMargin + 20}" y="${headerY}" font-family="${FONT_FAMILY}" font-size="8" font-weight="700" fill="#64748b">ROOM</text>
@@ -167,7 +168,7 @@ export async function buildSchedulesBuffer(
 
       <line x1="8" y1="${roomsEndY}" x2="${width - 8}" y2="${roomsEndY}" stroke="#e2e8f0" stroke-width="1" />
       <rect x="8" y="${roomsEndY + 4}" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="${roomsEndY + 20}" font-family="${FONT_FAMILY}" font-size="${sectionTitleSize}" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIALS SCHEDULE</text>
+      <text x="${width / 2}" y="${roomsEndY + 20}" font-family="${FONT_FAMILY}" font-size="${sectionTitleSize}" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">MATERIALS SCHEDULE</text>
 
       ${
         matRows ||
@@ -176,7 +177,9 @@ export async function buildSchedulesBuffer(
     </svg>
   `;
 
-  const fontedSvg = await embedFontInSVG(svg);
+  const fontedSvg = await prepareFinalSheetSvgForRasterization(svg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
   return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
@@ -236,7 +239,7 @@ export async function buildMaterialPaletteBuffer(
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
 
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${compactMode ? 12 : 11}" font-weight="700" fill="#0f172a" text-anchor="middle">MATERIAL PALETTE</text>
+      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${compactMode ? 12 : 11}" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">MATERIAL PALETTE</text>
 
       ${
         swatches ||
@@ -245,7 +248,9 @@ export async function buildMaterialPaletteBuffer(
     </svg>
   `;
 
-  const fontedSvg = await embedFontInSVG(svg);
+  const fontedSvg = await prepareFinalSheetSvgForRasterization(svg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
   return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
@@ -324,7 +329,7 @@ export async function buildClimateCardBuffer(
       <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
 
       <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${compactMode ? 12 : 11}" font-weight="700" fill="#0f172a" text-anchor="middle">CLIMATE &amp; ENVIRONMENT</text>
+      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${compactMode ? 12 : 11}" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">CLIMATE &amp; ENVIRONMENT</text>
 
       ${
         dataRows ||
@@ -333,7 +338,9 @@ export async function buildClimateCardBuffer(
     </svg>
   `;
 
-  const fontedSvg = await embedFontInSVG(svg);
+  const fontedSvg = await prepareFinalSheetSvgForRasterization(svg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
   return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {

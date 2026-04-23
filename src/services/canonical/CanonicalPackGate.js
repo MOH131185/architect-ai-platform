@@ -8,6 +8,10 @@
 
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import {
+  COMPILED_PROJECT_PUBLISH_CONSISTENCY_CODES,
+  validateCompiledProjectPublishConsistency,
+} from "../validation/compiledProjectPublishConsistencyGate.js";
 import { getControlForPanel } from "./CanonicalGeometryPackService.js";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +33,7 @@ export const GATE_ERROR_CODES = {
   INCOMPLETE_PACK: "INCOMPLETE_PACK",
   HASH_MISMATCH: "HASH_MISMATCH",
   MISSING_PANELS: "MISSING_PANELS",
+  ...COMPILED_PROJECT_PUBLISH_CONSISTENCY_CODES,
 };
 
 // ---------------------------------------------------------------------------
@@ -60,9 +65,15 @@ export function isCanonicalPackGateEnabled() {
  * @throws {CanonicalPackGateError} in strict mode when validation fails
  */
 export function validateBeforeGeneration(pack, cds, programLock, options = {}) {
-  const { strict = true } = options;
+  const {
+    strict = true,
+    compiledProject = null,
+    compiledProjectGateOptions = {},
+  } = options;
   const errors = [];
   const missing = [];
+  const issues = [];
+  let compiledProjectReport = null;
 
   // 1. Pack must exist
   if (!pack) {
@@ -120,23 +131,63 @@ export function validateBeforeGeneration(pack, cds, programLock, options = {}) {
     errors.push(`Pack is missing required panels: ${missing.join(", ")}`);
   }
 
-  return finish(errors, missing, strict, GATE_ERROR_CODES.INCOMPLETE_PACK);
+  if (compiledProject) {
+    compiledProjectReport = validateCompiledProjectPublishConsistency(
+      compiledProject,
+      {
+        ...compiledProjectGateOptions,
+        canonicalPack: pack,
+        pack,
+        cds,
+      },
+    );
+
+    if (!compiledProjectReport.valid) {
+      issues.push(...compiledProjectReport.issues);
+      errors.push(
+        ...compiledProjectReport.issues.map(formatStructuredIssueForLog),
+      );
+    }
+  }
+
+  return finish(
+    errors,
+    missing,
+    strict,
+    issues[0]?.code || GATE_ERROR_CODES.INCOMPLETE_PACK,
+    {
+      issues,
+      compiledProjectReport,
+    },
+  );
 }
 
 /**
  * Finalize gate result. Throws in strict mode if errors found.
  */
-function finish(errors, missing, strict, code) {
+function finish(errors, missing, strict, code, details = {}) {
   const valid = errors.length === 0;
+  const result = {
+    valid,
+    missing,
+    errors,
+    ...details,
+  };
   if (!valid && strict) {
     throw new CanonicalPackGateError(
       `CanonicalPackGate FAILED: ${errors.length} error(s)\n` +
         errors.map((e, i) => `  ${i + 1}. ${e}`).join("\n"),
       code,
-      { errors, missing },
+      { errors, missing, ...details },
     );
   }
-  return { valid, missing, errors };
+  return result;
+}
+
+function formatStructuredIssueForLog(issue = {}) {
+  const code = issue.code || "UNKNOWN_GATE_ERROR";
+  const message = issue.message || "Compiled-project validation failed.";
+  return `[${code}] ${message}`;
 }
 
 const CanonicalPackGateExports = {

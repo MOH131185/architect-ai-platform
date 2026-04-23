@@ -41,7 +41,7 @@ export {
 };
 
 // Phase 2+: Target board layout (SSOT) for composition
-// Default to strict 12-column hybrid grid (competition top row + technical below).
+// Default to strict 12-column technical-first grid (supporting visuals top row).
 export const TARGET_BOARD_GRID_SPEC = GRID_12COL;
 
 // A1 sheet dimensions at 300 DPI (landscape orientation)
@@ -160,7 +160,7 @@ export const REQUIRED_PANELS = [
  * Valid panel types (derived from GRID_SPEC keys)
  * Export for convenience and type checking
  */
-export const PANEL_TYPES = Object.keys(GRID_SPEC);
+export const PANEL_TYPES = Object.keys(TARGET_BOARD_GRID_SPEC);
 
 /**
  * Get required panels based on floor count
@@ -270,7 +270,8 @@ export const PANEL_SCALES = {
  * Return panel annotation metadata used by composition overlay (caption band)
  */
 export function getPanelAnnotation(panelType) {
-  const label = PANEL_LABELS[panelType] || String(panelType || "").toUpperCase();
+  const label =
+    PANEL_LABELS[panelType] || String(panelType || "").toUpperCase();
   const drawingNumber = DRAWING_NUMBERS[panelType] || "";
   const scale = PANEL_SCALES[panelType] || "NTS";
   return {
@@ -354,7 +355,7 @@ export function toPixelRect(layoutEntry, sheetWidth, sheetHeight) {
  */
 export function validatePanelLayout(panels, options = {}) {
   const {
-    layoutSpec = GRID_SPEC,
+    layoutSpec = TARGET_BOARD_GRID_SPEC,
     floorCount = 2,
     allowUnknownTypes = false,
     enforceMinimumSizes = false,

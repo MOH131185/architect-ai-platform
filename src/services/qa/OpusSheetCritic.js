@@ -7,7 +7,7 @@
  * - Missing or illegible items
  * - Panels requiring regeneration
  * - RIBA compliance
- * - Visual hierarchy (hybrid competition/technical aesthetic)
+ * - Visual hierarchy (technical-first board with supporting visuals)
  *
  * @module services/qa/OpusSheetCritic
  */
@@ -141,7 +141,8 @@ export const SHEET_CRITIC_JSON_SCHEMA = {
           type: "number",
           minimum: 0,
           maximum: 100,
-          description: "Score for hero/3D panels visual impact (0-100)",
+          description:
+            "Score for supporting visual panels without overpowering technical evidence (0-100)",
         },
         technical_clarity: {
           type: "number",
@@ -184,12 +185,12 @@ EVALUATION CRITERIA:
    - Proportionate panel sizes
 
 2. HYBRID STYLE REQUIREMENTS
-   Competition Zone (Top Row): hero_3d, interior_3d, axonometric
-   - Bold, photorealistic rendering
-   - High visual impact
-   - Artistic presentation quality
+   Supporting Visual Zone (Top Row): hero_3d, interior_3d, axonometric
+   - Visuals support the technical argument
+   - Hero must not overpower plans, elevations, or sections
+   - Photorealistic quality is useful, but subordinate to board clarity
 
-   Technical Zone (Plans, Elevations, Sections):
+   Technical Zone (Plans first, Elevations/Sections second):
    - True orthographic projection
    - Consistent lineweights
    - Professional CAD-like appearance
@@ -221,7 +222,7 @@ OUTPUT: You MUST respond with ONLY valid JSON matching the specified schema. No 
 function buildUserPrompt(requiredPanels, options = {}) {
   const { buildingType = "residential", floorCount = 2 } = options;
 
-  const competitionPanels = STYLE_ZONES.competition.join(", ");
+  const supportingVisualPanels = STYLE_ZONES.competition.join(", ");
   const technicalPanels = STYLE_ZONES.technical
     .filter((p) => !p.includes("*"))
     .join(", ");
@@ -237,8 +238,8 @@ BUILDING CONTEXT:
 - Floors: ${floorCount}
 
 STYLE ZONE MAPPING:
-- Competition aesthetic (bold, photorealistic): ${competitionPanels}
-- Technical precision (orthographic, lineweights): ${technicalPanels}
+ - Supporting visuals (subordinate to technical evidence): ${supportingVisualPanels}
+- Technical precision (plans first, then elevations/sections): ${technicalPanels}
 - Data/info (clear typography): ${dataPanels}
 
 EVALUATION TASKS:
