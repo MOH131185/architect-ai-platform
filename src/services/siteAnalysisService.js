@@ -400,6 +400,13 @@ class SiteAnalysisService {
     const maxRetries = 2;
     const baseTimeout = 30000; // 30 seconds base timeout
 
+    if (runtimeEnv.isBrowser) {
+      logger.info(
+        "   🌐 Skipping direct Overpass lookup in browser runtime (preview CORS-safe fallback).",
+      );
+      return null;
+    }
+
     logger.info(
       `🎯 Searching for exact building geometry${retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : ""}`,
     );

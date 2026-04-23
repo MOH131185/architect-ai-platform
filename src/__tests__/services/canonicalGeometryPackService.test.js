@@ -6,6 +6,7 @@ import {
 } from "../../services/canonical/CanonicalGeometryPackService.js";
 import { compileProject } from "../../services/compiler/compiledProjectCompiler.js";
 import * as planRenderer from "../../services/drawing/svgPlanRenderer.js";
+import * as elevationRenderer from "../../services/drawing/svgElevationRenderer.js";
 import * as sectionRenderer from "../../services/drawing/svgSectionRenderer.js";
 
 function rectangle(minX, minY, maxX, maxY) {
@@ -338,6 +339,7 @@ describe("CanonicalGeometryPackService", () => {
 
   test("builds technical panels from compiled project geometry with compiled-project metadata", () => {
     const planSpy = jest.spyOn(planRenderer, "renderPlanSvg");
+    const elevationSpy = jest.spyOn(elevationRenderer, "renderElevationSvg");
     const pack = buildCanonicalPack({
       designFingerprint: "fp-test-pack",
       compiledProject: createCompiledProject(),
@@ -356,6 +358,15 @@ describe("CanonicalGeometryPackService", () => {
     expect(planSpy).toHaveBeenCalled();
     planSpy.mock.calls.forEach((call) => {
       expect(call[1]?.theme).toBeUndefined();
+    });
+    expect(elevationSpy).toHaveBeenCalled();
+    elevationSpy.mock.calls.forEach((call) => {
+      expect(call[2]).toEqual(
+        expect.objectContaining({
+          allowWeakFacadeFallback: true,
+          sheetMode: true,
+        }),
+      );
     });
 
     [

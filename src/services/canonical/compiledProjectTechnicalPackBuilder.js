@@ -557,6 +557,7 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
         height: renderSize.height,
         orientation,
         sheetMode: true,
+        allowWeakFacadeFallback: true,
       });
       const normalized = buildPanelRecord(
         panelType,
