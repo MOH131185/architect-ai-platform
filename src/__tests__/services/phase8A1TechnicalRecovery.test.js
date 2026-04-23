@@ -356,6 +356,7 @@ describe("Phase 8 A1 technical recovery", () => {
         <text x="10" y="42" font-family="Arial, sans-serif" font-size="7">Scale note</text>
       </svg>`,
     );
+    const readiness = getFontEmbeddingReadinessSync();
 
     expect(prepared).toContain("@font-face");
     expect(prepared).toContain("data:font/ttf;base64,");
@@ -364,6 +365,10 @@ describe("Phase 8 A1 technical recovery", () => {
     expect(prepared).toContain('paint-order="stroke fill"');
     expect(prepared).toContain('stroke="#ffffff"');
     expect(prepared).toContain("ArchiAISans");
+    expect(readiness.bundledRegularLoaded).toBe(true);
+    expect(readiness.bundledBoldLoaded).toBe(true);
+    expect(readiness.bundledFontsLoaded).toBe(true);
+    expect(readiness.bundledFontsAvailable).toBe(true);
   });
 
   test("main unified sheet output is font-embedded before export", async () => {

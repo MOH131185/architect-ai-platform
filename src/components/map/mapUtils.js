@@ -1,19 +1,19 @@
 /**
  * mapUtils.js
- * 
+ *
  * Utility functions for map operations and boundary detection
  * Includes auto-boundary detection and API integration helpers
- * 
+ *
  * @module mapUtils
  */
 
-import { getPolygonCentroid } from './GeometryMath.js';
+import { getPolygonCentroid } from "./GeometryMath.js";
 
 /**
  * Fetch auto-detected boundary from address
  * Currently returns a mock rectangular boundary
  * TODO: Integrate with real boundary detection API (e.g., Overpass API, Google Places)
- * 
+ *
  * @param {string} address - Site address
  * @param {{lat: number, lng: number}} center - Center coordinates
  * @returns {Promise<Array<{lat: number, lng: number}>>} Boundary polygon
@@ -21,20 +21,20 @@ import { getPolygonCentroid } from './GeometryMath.js';
 export async function fetchAutoBoundary(address, center) {
   // Mock implementation - returns a rectangular boundary
   // In production, this would call a boundary detection API
-  
+
   return new Promise((resolve) => {
     setTimeout(() => {
       // Create a ~30m x 20m rectangular boundary around center
       const latOffset = 0.00015; // ~15-20m
-      const lngOffset = 0.0002;  // ~15-20m
-      
+      const lngOffset = 0.0002; // ~15-20m
+
       const boundary = [
         { lat: center.lat + latOffset, lng: center.lng - lngOffset },
         { lat: center.lat + latOffset, lng: center.lng + lngOffset },
         { lat: center.lat - latOffset, lng: center.lng + lngOffset },
-        { lat: center.lat - latOffset, lng: center.lng - lngOffset }
+        { lat: center.lat - latOffset, lng: center.lng - lngOffset },
       ];
-      
+
       resolve(boundary);
     }, 500);
   });
@@ -47,8 +47,15 @@ export async function fetchAutoBoundary(address, center) {
  * @returns {Promise<Array<{lat: number, lng: number}>>} Boundary polygon
  */
 export async function fetchBoundaryFromOverpass(center, radius = 50) {
-  const overpassUrl = 'https://overpass-api.de/api/interpreter';
-  
+  if (typeof window !== "undefined") {
+    console.info(
+      "Skipping direct Overpass fetch in browser runtime; using local fallback boundary.",
+    );
+    return fetchAutoBoundary(null, center);
+  }
+
+  const overpassUrl = "https://overpass-api.de/api/interpreter";
+
   const query = `
     [out:json];
     (
@@ -57,36 +64,35 @@ export async function fetchBoundaryFromOverpass(center, radius = 50) {
     );
     out geom;
   `;
-  
+
   try {
     const response = await fetch(overpassUrl, {
-      method: 'POST',
-      body: query
+      method: "POST",
+      body: query,
     });
-    
+
     if (!response.ok) {
-      throw new Error('Overpass API request failed');
+      throw new Error("Overpass API request failed");
     }
-    
+
     const data = await response.json();
-    
+
     if (data.elements && data.elements.length > 0) {
       // Get the first building
       const building = data.elements[0];
-      
+
       if (building.geometry) {
-        return building.geometry.map(node => ({
+        return building.geometry.map((node) => ({
           lat: node.lat,
-          lng: node.lon
+          lng: node.lon,
         }));
       }
     }
-    
+
     // Fallback to mock boundary
     return fetchAutoBoundary(null, center);
-    
   } catch (error) {
-    console.error('Error fetching boundary from Overpass:', error);
+    console.error("Error fetching boundary from Overpass:", error);
     return fetchAutoBoundary(null, center);
   }
 }
@@ -101,27 +107,27 @@ export function calculateBounds(polygon, padding = 0.2) {
   if (!polygon || polygon.length === 0) {
     return null;
   }
-  
+
   let north = -90;
   let south = 90;
   let east = -180;
   let west = 180;
-  
-  polygon.forEach(point => {
+
+  polygon.forEach((point) => {
     north = Math.max(north, point.lat);
     south = Math.min(south, point.lat);
     east = Math.max(east, point.lng);
     west = Math.min(west, point.lng);
   });
-  
+
   const latPadding = (north - south) * padding;
   const lngPadding = (east - west) * padding;
-  
+
   return {
     north: north + latPadding,
     south: south - latPadding,
     east: east + lngPadding,
-    west: west - lngPadding
+    west: west - lngPadding,
   };
 }
 
@@ -133,10 +139,10 @@ export function calculateBounds(polygon, padding = 0.2) {
  */
 export function boundsToGoogleBounds(bounds, google) {
   if (!bounds || !google) return null;
-  
+
   return new google.maps.LatLngBounds(
     { lat: bounds.south, lng: bounds.west },
-    { lat: bounds.north, lng: bounds.east }
+    { lat: bounds.north, lng: bounds.east },
   );
 }
 
@@ -150,21 +156,21 @@ export function findNearestPointOnPolygon(point, polygon) {
   let minDistance = Infinity;
   let nearestPoint = null;
   let segmentIndex = -1;
-  
+
   for (let i = 0; i < polygon.length; i++) {
     const p1 = polygon[i];
     const p2 = polygon[(i + 1) % polygon.length];
-    
+
     const nearest = nearestPointOnSegment(point, p1, p2);
     const distance = distanceBetweenPoints(point, nearest);
-    
+
     if (distance < minDistance) {
       minDistance = distance;
       nearestPoint = nearest;
       segmentIndex = i;
     }
   }
-  
+
   return { point: nearestPoint, segmentIndex, distance: minDistance };
 }
 
@@ -182,22 +188,22 @@ function nearestPointOnSegment(point, segmentStart, segmentEnd) {
   const y1 = segmentStart.lat;
   const x2 = segmentEnd.lng;
   const y2 = segmentEnd.lat;
-  
+
   const A = x - x1;
   const B = y - y1;
   const C = x2 - x1;
   const D = y2 - y1;
-  
+
   const dot = A * C + B * D;
   const lenSq = C * C + D * D;
-  
+
   let param = -1;
   if (lenSq !== 0) {
     param = dot / lenSq;
   }
-  
+
   let xx, yy;
-  
+
   if (param < 0) {
     xx = x1;
     yy = y1;
@@ -208,7 +214,7 @@ function nearestPointOnSegment(point, segmentStart, segmentEnd) {
     xx = x1 + param * C;
     yy = y1 + param * D;
   }
-  
+
   return { lat: yy, lng: xx };
 }
 
@@ -232,19 +238,20 @@ function distanceBetweenPoints(p1, p2) {
  */
 export function isPointInPolygon(point, polygon) {
   let inside = false;
-  
+
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const xi = polygon[i].lng;
     const yi = polygon[i].lat;
     const xj = polygon[j].lng;
     const yj = polygon[j].lat;
-    
-    const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
-      (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
-    
+
+    const intersect =
+      yi > point.lat !== yj > point.lat &&
+      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi;
+
     if (intersect) inside = !inside;
   }
-  
+
   return inside;
 }
 
@@ -256,19 +263,26 @@ export function isPointInPolygon(point, polygon) {
  * @param {number} height - Image height
  * @returns {string} Static map URL
  */
-export function generateMapSnapshotURL(polygon, apiKey, width = 640, height = 480) {
+export function generateMapSnapshotURL(
+  polygon,
+  apiKey,
+  width = 640,
+  height = 480,
+) {
   if (!polygon || polygon.length === 0) return null;
-  
+
   const centroid = getPolygonCentroid(polygon);
-  const pathString = polygon.map(p => `${p.lat},${p.lng}`).join('|');
-  
-  return `https://maps.googleapis.com/maps/api/staticmap?` +
+  const pathString = polygon.map((p) => `${p.lat},${p.lng}`).join("|");
+
+  return (
+    `https://maps.googleapis.com/maps/api/staticmap?` +
     `center=${centroid.lat},${centroid.lng}&` +
     `zoom=18&` +
     `size=${width}x${height}&` +
     `maptype=hybrid&` +
     `path=color:0xff0000ff|weight:2|fillcolor:0xff000033|${pathString}&` +
-    `key=${apiKey}`;
+    `key=${apiKey}`
+  );
 }
 
 /**
@@ -278,7 +292,7 @@ export function generateMapSnapshotURL(polygon, apiKey, width = 640, height = 48
  */
 export function exportPolygonAsBase64(canvas) {
   if (!canvas) return null;
-  return canvas.toDataURL('image/png');
+  return canvas.toDataURL("image/png");
 }
 
 /**
@@ -288,19 +302,23 @@ export function exportPolygonAsBase64(canvas) {
  * @param {boolean} isDragging - Whether vertex is being dragged
  * @returns {Object} Marker options
  */
-export function createVertexMarkerOptions(index, isHovered = false, isDragging = false) {
+export function createVertexMarkerOptions(
+  index,
+  isHovered = false,
+  isDragging = false,
+) {
   let scale = 1;
-  let fillColor = '#3B82F6';
-  let strokeColor = '#FFFFFF';
-  
+  let fillColor = "#3B82F6";
+  let strokeColor = "#FFFFFF";
+
   if (isDragging) {
     scale = 1.5;
-    fillColor = '#EF4444';
+    fillColor = "#EF4444";
   } else if (isHovered) {
     scale = 1.3;
-    fillColor = '#10B981';
+    fillColor = "#10B981";
   }
-  
+
   return {
     path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
     scale: 8 * scale,
@@ -310,8 +328,8 @@ export function createVertexMarkerOptions(index, isHovered = false, isDragging =
     strokeWeight: 2,
     anchor: { x: 0, y: 0 },
     draggable: true,
-    cursor: 'move',
-    zIndex: 1000 + index
+    cursor: "move",
+    zIndex: 1000 + index,
   };
 }
 
@@ -324,12 +342,12 @@ export function createMidpointMarkerOptions(isHovered = false) {
   return {
     path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
     scale: isHovered ? 6 : 5,
-    fillColor: isHovered ? '#10B981' : '#94A3B8',
+    fillColor: isHovered ? "#10B981" : "#94A3B8",
     fillOpacity: isHovered ? 1 : 0.7,
-    strokeColor: '#FFFFFF',
+    strokeColor: "#FFFFFF",
     strokeWeight: 1,
-    cursor: 'pointer',
-    zIndex: 500
+    cursor: "pointer",
+    zIndex: 500,
   };
 }
 
@@ -340,17 +358,17 @@ export function createMidpointMarkerOptions(isHovered = false) {
  * @returns {Object} Polygon options
  */
 export function createPolygonStyleOptions(isEditing = false, isValid = true) {
-  let strokeColor = '#3B82F6';
-  let fillColor = '#3B82F6';
-  
+  let strokeColor = "#3B82F6";
+  let fillColor = "#3B82F6";
+
   if (!isValid) {
-    strokeColor = '#EF4444';
-    fillColor = '#EF4444';
+    strokeColor = "#EF4444";
+    fillColor = "#EF4444";
   } else if (isEditing) {
-    strokeColor = '#10B981';
-    fillColor = '#10B981';
+    strokeColor = "#10B981";
+    fillColor = "#10B981";
   }
-  
+
   return {
     strokeColor,
     strokeOpacity: 1,
@@ -360,7 +378,7 @@ export function createPolygonStyleOptions(isEditing = false, isValid = true) {
     clickable: isEditing,
     draggable: false,
     editable: false,
-    geodesic: true
+    geodesic: true,
   };
 }
 
@@ -380,17 +398,17 @@ export function formatCoordinate(coord, precision = 6) {
  * @returns {{lat: number, lng: number}|null} Parsed coordinate
  */
 export function parseCoordinate(coordString) {
-  const parts = coordString.split(',').map(s => s.trim());
-  
+  const parts = coordString.split(",").map((s) => s.trim());
+
   if (parts.length !== 2) return null;
-  
+
   const lat = parseFloat(parts[0]);
   const lng = parseFloat(parts[1]);
-  
+
   if (isNaN(lat) || isNaN(lng)) return null;
   if (lat < -90 || lat > 90) return null;
   if (lng < -180 || lng > 180) return null;
-  
+
   return { lat, lng };
 }
 
@@ -424,8 +442,7 @@ export function throttle(func, limit) {
     if (!inThrottle) {
       func(...args);
       inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
+      setTimeout(() => (inThrottle = false), limit);
     }
   };
 }
-
