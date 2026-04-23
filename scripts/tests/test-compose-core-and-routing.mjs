@@ -384,6 +384,10 @@ test('18. deterministic compose SVGs use the embedded font stack', async () => {
     new URL('../../api/a1/compose.js', import.meta.url),
     'utf8',
   );
+  const svgFontEmbedderSource = readFileSync(
+    new URL('../../src/utils/svgFontEmbedder.js', import.meta.url),
+    'utf8',
+  );
 
   assert(
     composeDataPanelsSource.includes('EMBEDDED_FONT_STACK'),
@@ -400,6 +404,18 @@ test('18. deterministic compose SVGs use the embedded font stack', async () => {
   assert(
     composeApiSource.includes('prepareFinalSheetSvgForRasterization'),
     'compose.js should preprocess final-sheet SVG overlays before rasterization',
+  );
+  assert(
+    composeApiSource.includes('ensureFontsLoaded'),
+    'compose.js should allow embedded-font fallback when bundled fonts are missing in runtime packaging',
+  );
+  assert(
+    composeApiSource.includes('!fontReadiness.readyForEmbedding'),
+    'compose.js should only hard-fail when no embeddable font can be loaded at all',
+  );
+  assert(
+    svgFontEmbedderSource.includes('bundledOnly: bundledFontsReady'),
+    'final-sheet SVG preparation should prefer bundled fonts but fall back to general embedded fonts when necessary',
   );
   assert(
     !composeApiSource.includes('input: Buffer.from(borderSvg)'),

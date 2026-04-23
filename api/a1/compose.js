@@ -43,6 +43,7 @@ import {
   EMBEDDED_FONT_STACK,
   embedFontInSVG,
   ensureBundledFontsLoaded,
+  ensureFontsLoaded,
   getFontEmbeddingReadinessSync,
   prepareFinalSheetSvgForRasterization,
 } from "../../src/utils/svgFontEmbedder.js";
@@ -527,16 +528,26 @@ async function handleComposeRequest(req, res, trace) {
   // race conditions and avoid system-font drift during Sharp rasterization).
   await ensureBundledFontsLoaded();
 
-  const fontReadiness = getFontEmbeddingReadinessSync();
+  let fontReadiness = getFontEmbeddingReadinessSync();
   if (
     isFeatureEnabled("useA1FontEmbeddingFix") &&
     !fontReadiness.bundledFontsAvailable
+  ) {
+    // Preview/runtime bundles can occasionally miss packaged font files even
+    // though the compose lambda can still embed a safe local or remote font.
+    await ensureFontsLoaded();
+    fontReadiness = getFontEmbeddingReadinessSync();
+  }
+
+  if (
+    isFeatureEnabled("useA1FontEmbeddingFix") &&
+    !fontReadiness.readyForEmbedding
   ) {
     return res.status(500).json({
       success: false,
       error: "BUNDLED_FONTS_UNAVAILABLE",
       message:
-        "Bundled final-sheet fonts are unavailable; compose refuses to rasterize text with system-font assumptions.",
+        "Final-sheet font embedding is unavailable; compose refuses to rasterize text with system-font assumptions.",
       details: {
         fontReadiness,
       },

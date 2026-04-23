@@ -574,8 +574,11 @@ export async function prepareFinalSheetSvgForRasterization(
   svgString,
   options = {},
 ) {
+  await ensureBundledFontsLoaded();
+  const bundledFontsReady = Boolean(resolvedBundledFonts?.regular?.base64);
+
   return embedFontInSVG(svgString, {
-    bundledOnly: true,
+    bundledOnly: bundledFontsReady,
     minimumFontSizePx:
       options.minimumFontSizePx ?? FINAL_SHEET_MIN_FONT_SIZE_PX,
     outlineCriticalText: options.outlineCriticalText ?? true,
@@ -586,8 +589,10 @@ export function prepareFinalSheetSvgForRasterizationSync(
   svgString,
   options = {},
 ) {
+  const bundledFontsReady = Boolean(resolvedBundledFonts?.regular?.base64);
+
   return embedFontInSVGSync(svgString, {
-    bundledOnly: true,
+    bundledOnly: bundledFontsReady,
     minimumFontSizePx:
       options.minimumFontSizePx ?? FINAL_SHEET_MIN_FONT_SIZE_PX,
     outlineCriticalText: options.outlineCriticalText ?? true,
