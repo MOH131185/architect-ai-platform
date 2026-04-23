@@ -125,6 +125,36 @@ function buildWorkflowResult({
   sheetId,
 }) {
   const qualityEvaluation = masterDNA?.qualityEvaluation || null;
+  const finalSheetRegression =
+    compositionResult?.metadata?.finalSheetRegression || null;
+  const postComposeVerification =
+    compositionResult?.metadata?.postComposeVerification || null;
+  const technicalCredibility =
+    compositionResult?.metadata?.technicalCredibility ||
+    postComposeVerification?.technicalCredibility ||
+    null;
+  const publishability =
+    compositionResult?.metadata?.publishability ||
+    postComposeVerification?.publishability ||
+    null;
+  const verificationBundle =
+    postComposeVerification?.verificationBundle ||
+    postComposeVerification?.verificationState ||
+    null;
+  const verification =
+    postComposeVerification?.verification ||
+    verificationBundle?.verification ||
+    null;
+  const renderedTextZone =
+    compositionResult?.metadata?.renderedTextZone ||
+    postComposeVerification?.renderedTextZone ||
+    null;
+  const postComposeVerified = Boolean(
+    publishability?.verificationPhase === "post_compose" ||
+    verification?.phase === "post_compose" ||
+    verificationBundle?.phase === "post_compose",
+  );
+
   return {
     success: true,
     designId,
@@ -153,6 +183,15 @@ function buildWorkflowResult({
     qualityEvaluation,
     spatialGraph: masterDNA?.spatialGraph || null,
     climateData: masterDNA?.climateData || null,
+    finalSheetRegression,
+    postComposeVerification,
+    renderedTextZone,
+    technicalCredibility,
+    publishability,
+    verification,
+    verificationBundle,
+    verificationState: verificationBundle,
+    postComposeVerified,
     metadata: {
       workflow: PIPELINE_MODE.MULTI_PANEL,
       panelCount: generatedPanels.length,
@@ -175,6 +214,14 @@ function buildWorkflowResult({
       qualityScore: qualityEvaluation?.total ?? null,
       qualityGrade: qualityEvaluation?.grade ?? null,
       qualityEvaluation,
+      finalSheetRegression,
+      renderedTextZone,
+      technicalCredibility,
+      publishability,
+      verification,
+      verificationBundle,
+      verificationState: verificationBundle,
+      postComposeVerified,
     },
   };
 }

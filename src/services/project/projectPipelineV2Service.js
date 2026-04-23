@@ -4,8 +4,19 @@ import {
   CANONICAL_PROJECT_GEOMETRY_VERSION,
   rectangleToPolygon,
 } from "../cad/projectGeometrySchema.js";
+import {
+  TECHNICAL_CANONICAL_PANEL_TYPES,
+  TECHNICAL_ELEVATION_PANELS,
+  TECHNICAL_FLOOR_PANEL_TYPES,
+  TECHNICAL_SECTION_PANELS,
+  buildCompiledProjectTechnicalPanels,
+} from "../canonical/compiledProjectTechnicalPackBuilder.js";
 import { compileProject } from "../compiler/index.js";
 import { buildRuntimeProjectGeometryFromLayout } from "../compiler/runtimeProjectGeometryFromLayout.js";
+import {
+  getEnvelopeDrawingBoundsWithSource,
+  getLevelDrawingBoundsWithSource,
+} from "../drawing/drawingBounds.js";
 import { buildProjectQuantityTakeoff } from "./projectQuantityTakeoffService.js";
 import {
   createEvidenceStage,
@@ -34,6 +45,10 @@ function clamp(value, minimum = 0, maximum = 1) {
     return minimum;
   }
   return Math.max(minimum, Math.min(maximum, numeric));
+}
+
+function cloneData(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
 function slugify(value) {
@@ -71,6 +86,522 @@ function inferLevelCountFromSpaces(spaces = []) {
     return Math.max(maxValue, Math.max(0, Math.floor(levelIndex)));
   }, 0);
   return maxLevelIndex + 1;
+}
+
+const ELEVATION_PANEL_TO_ORIENTATION = Object.fromEntries(
+  Object.entries(TECHNICAL_ELEVATION_PANELS).map(([orientation, panelType]) => [
+    panelType,
+    orientation,
+  ]),
+);
+
+const SECTION_PANEL_TO_TYPE = Object.fromEntries(
+  Object.entries(TECHNICAL_SECTION_PANELS).map(([sectionType, panelType]) => [
+    panelType,
+    sectionType,
+  ]),
+);
+
+function uniqueStrings(values = []) {
+  return [...new Set(values.filter(Boolean).map((value) => String(value)))];
+}
+
+function normalizeBounds(bounds = null) {
+  if (!bounds || typeof bounds !== "object") {
+    return null;
+  }
+
+  const minX = Number(bounds.min_x ?? bounds.minX ?? bounds.x);
+  const minY = Number(bounds.min_y ?? bounds.minY ?? bounds.y);
+  const maxX = Number(
+    bounds.max_x ??
+      bounds.maxX ??
+      (Number.isFinite(minX) ? minX + Number(bounds.width || 0) : Number.NaN),
+  );
+  const maxY = Number(
+    bounds.max_y ??
+      bounds.maxY ??
+      (Number.isFinite(minY) ? minY + Number(bounds.height || 0) : Number.NaN),
+  );
+
+  if (
+    !Number.isFinite(minX) ||
+    !Number.isFinite(minY) ||
+    !Number.isFinite(maxX) ||
+    !Number.isFinite(maxY) ||
+    maxX <= minX ||
+    maxY <= minY
+  ) {
+    return null;
+  }
+
+  return {
+    min_x: round(minX),
+    min_y: round(minY),
+    max_x: round(maxX),
+    max_y: round(maxY),
+    width: round(maxX - minX),
+    height: round(maxY - minY),
+  };
+}
+
+function resolveCompiledProjectHeightM(compiledProject = {}) {
+  const levels = Array.isArray(compiledProject?.levels)
+    ? compiledProject.levels
+    : [];
+
+  const levelTop = levels.reduce((maximum, level) => {
+    const bottom = Number(level?.elevation_m ?? level?.bottom_m ?? 0);
+    const height = Number(level?.height_m || 0);
+    return Math.max(maximum, bottom + Math.max(height, 0));
+  }, 0);
+
+  const roofHeight = Number(
+    compiledProject?.roof?.height_m ||
+      compiledProject?.roof?.ridge_height_m ||
+      compiledProject?.roof?.ridgeHeightM ||
+      0,
+  );
+
+  return round(Math.max(levelTop + Math.max(roofHeight, 0), levelTop, 0));
+}
+
+function resolveCompiledProjectSectionProfile(
+  compiledProject = {},
+  sectionType = "longitudinal",
+) {
+  const sectionCuts = compiledProject?.sectionCuts || {};
+  const candidates = Array.isArray(sectionCuts.candidates)
+    ? sectionCuts.candidates
+    : [];
+  const preferredId = sectionCuts.byType?.[sectionType] || null;
+
+  if (preferredId) {
+    const preferredMatch = candidates.find(
+      (candidate) => candidate?.id === preferredId,
+    );
+    if (preferredMatch) {
+      return cloneData(preferredMatch);
+    }
+  }
+
+  const typedMatch = candidates.find(
+    (candidate) => candidate?.sectionType === sectionType,
+  );
+  return typedMatch ? cloneData(typedMatch) : null;
+}
+
+function buildSectionViewBounds(bounds = null, heightM = 0, sectionType = "") {
+  const normalized = normalizeBounds(bounds);
+  if (!normalized) {
+    return null;
+  }
+
+  const horizontalExtent =
+    sectionType === "transverse"
+      ? normalized.height || normalized.width
+      : normalized.width || normalized.height;
+  const verticalExtent = Math.max(heightM, 0.1);
+
+  return {
+    min_x: 0,
+    min_y: 0,
+    max_x: round(horizontalExtent),
+    max_y: round(verticalExtent),
+    width: round(horizontalExtent),
+    height: round(verticalExtent),
+  };
+}
+
+function buildTechnicalPackReadinessSummary(
+  technicalBuild = {},
+  technicalPanels = {},
+) {
+  const validation =
+    technicalBuild?.compiledProjectSource?.validation ||
+    technicalBuild?.compiledProject?.validation ||
+    {};
+  const counts = validation.counts || {};
+  const reasons = [];
+
+  const planPanels = Object.entries(technicalPanels).filter(([panelType]) =>
+    panelType.startsWith("floor_plan_"),
+  );
+  const elevationPanels = Object.entries(technicalPanels).filter(
+    ([panelType]) => panelType.startsWith("elevation_"),
+  );
+  const sectionPanels = Object.entries(technicalPanels).filter(([panelType]) =>
+    panelType.startsWith("section_"),
+  );
+
+  const strongPlanCount = planPanels.filter(([, panel]) => {
+    const quality = panel?.technicalQualityMetadata || {};
+    return (
+      quality.geometry_complete === true &&
+      Number(quality.room_count || 0) >= 1 &&
+      Number(quality.wall_count || 0) >= 4 &&
+      Number(quality.slot_occupancy_ratio || 0) >= 0.38
+    );
+  }).length;
+
+  const strongElevationCount = elevationPanels.filter(([, panel]) => {
+    const quality = panel?.technicalQualityMetadata || {};
+    return (
+      quality.geometry_complete === true &&
+      String(quality.side_facade_status || "").toLowerCase() !== "block" &&
+      Number(quality.window_count || 0) + Number(quality.door_count || 0) >=
+        1 &&
+      Number(quality.facade_richness_score || 0) >= 0.26
+    );
+  }).length;
+
+  const strongSectionCount = sectionPanels.filter(([, panel]) => {
+    const quality = panel?.technicalQualityMetadata || {};
+    return (
+      quality.geometry_complete === true &&
+      (Number(quality.cut_room_count || 0) >= 1 ||
+        Number(quality.section_direct_evidence_count || 0) >= 1) &&
+      Number(quality.section_usefulness_score || 0) >= 0.22
+    );
+  }).length;
+
+  if (Number(counts.room_count || 0) < 3) {
+    reasons.push(
+      "compiled project resolved too few rooms for technical authority",
+    );
+  }
+  if (Number(counts.wall_count || 0) < 6) {
+    reasons.push(
+      "compiled project resolved too few wall segments for technical authority",
+    );
+  }
+  if (Number(counts.opening_count || 0) < 3) {
+    reasons.push(
+      "compiled project resolved too few openings for facade authority",
+    );
+  }
+  if (strongPlanCount === 0) {
+    reasons.push("no floor plan panel met geometry-complete readiness");
+  }
+  if (strongElevationCount === 0) {
+    reasons.push("no elevation met facade-readiness thresholds");
+  }
+  if (strongSectionCount === 0) {
+    reasons.push("no section panel met section-usefulness readiness");
+  }
+  if (validation.valid === false) {
+    reasons.push("compiled project validation reported blockers");
+  }
+
+  const score = round(
+    Math.max(
+      0,
+      Math.min(
+        1,
+        (validation.valid === false ? 0 : 0.18) +
+          Math.min(0.18, Number(counts.room_count || 0) * 0.0225) +
+          Math.min(0.18, Number(counts.wall_count || 0) * 0.0125) +
+          Math.min(0.14, Number(counts.opening_count || 0) * 0.0175) +
+          Math.min(0.16, strongPlanCount * 0.16) +
+          Math.min(0.1, strongElevationCount * 0.05) +
+          Math.min(0.06, strongSectionCount * 0.06),
+      ),
+    ),
+  );
+
+  return {
+    ready: reasons.length === 0,
+    score,
+    reasons,
+    counts: {
+      ...counts,
+      rendered_plan_count: planPanels.length,
+      rendered_elevation_count: elevationPanels.length,
+      rendered_section_count: sectionPanels.length,
+      strong_plan_count: strongPlanCount,
+      strong_elevation_count: strongElevationCount,
+      strong_section_count: strongSectionCount,
+    },
+  };
+}
+
+function buildTechnicalPanelBlockers(panelType, panel = {}) {
+  const quality = panel?.technicalQualityMetadata || {};
+  const blockers = [];
+
+  if (panel?.status && panel.status !== "ready") {
+    blockers.push(`${panelType} status is ${panel.status}`);
+  }
+  if (quality.geometry_complete === false) {
+    blockers.push(`${panelType} geometry is incomplete`);
+  }
+
+  if (panelType.startsWith("floor_plan_")) {
+    if (Number(quality.room_count || 0) <= 0) {
+      blockers.push(`${panelType} contains no rooms`);
+    }
+    if (Number(quality.wall_count || 0) < 4) {
+      blockers.push(`${panelType} contains too few walls`);
+    }
+  }
+
+  if (panelType.startsWith("elevation_")) {
+    if (String(quality.side_facade_status || "").toLowerCase() === "block") {
+      blockers.push(`${panelType} facade authority is blocked`);
+    }
+    if (
+      Number(quality.window_count || 0) + Number(quality.door_count || 0) <=
+      0
+    ) {
+      blockers.push(`${panelType} contains no facade openings`);
+    }
+  }
+
+  if (panelType.startsWith("section_")) {
+    const truthQuality = String(
+      quality.section_construction_truth_quality || "",
+    ).toLowerCase();
+    const directEvidenceQuality = String(
+      quality.section_direct_evidence_quality ||
+        quality.section_evidence_quality ||
+        "",
+    ).toLowerCase();
+
+    if (
+      truthQuality &&
+      ["weak", "blocked", "unsupported", "missing"].includes(truthQuality)
+    ) {
+      blockers.push(`${panelType} lacks exact construction-truth evidence`);
+    }
+    if (
+      directEvidenceQuality &&
+      ["weak", "blocked", "missing"].includes(directEvidenceQuality)
+    ) {
+      blockers.push(`${panelType} lacks direct section evidence`);
+    }
+    if (
+      !Number.isFinite(Number(quality.cut_coordinate_m)) &&
+      !panel?.cutLine &&
+      !panel?.sectionCut
+    ) {
+      blockers.push(`${panelType} is missing section cut metadata`);
+    }
+  }
+
+  return uniqueStrings(blockers);
+}
+
+function buildTechnicalPanelSummary(
+  panelType,
+  panel = {},
+  compiledProject = {},
+  technicalBuild = {},
+) {
+  const quality = panel?.technicalQualityMetadata || {};
+  const levels = Array.isArray(technicalBuild?.compiledProject?.levels)
+    ? technicalBuild.compiledProject.levels
+    : Array.isArray(compiledProject?.levels)
+      ? compiledProject.levels
+      : [];
+  const buildingHeightM = resolveCompiledProjectHeightM(compiledProject);
+
+  let viewBbox = null;
+  let boundsSource = quality.bounds_source || null;
+  let sectionCut = null;
+  let sectionType = null;
+  let orientation = null;
+  let levelId = null;
+
+  if (panelType.startsWith("floor_plan_")) {
+    const levelIndex = TECHNICAL_FLOOR_PANEL_TYPES.indexOf(panelType);
+    const level = levels[levelIndex] || null;
+    levelId = level?.id || null;
+    const levelBounds = getLevelDrawingBoundsWithSource(
+      compiledProject,
+      levelId,
+    );
+    viewBbox = normalizeBounds(levelBounds?.bounds);
+    boundsSource = levelBounds?.source || boundsSource;
+  } else if (panelType.startsWith("elevation_")) {
+    orientation = ELEVATION_PANEL_TO_ORIENTATION[panelType] || null;
+    const envelopeBounds = getEnvelopeDrawingBoundsWithSource(compiledProject);
+    viewBbox = normalizeBounds(envelopeBounds?.bounds);
+    boundsSource = envelopeBounds?.source || boundsSource;
+  } else if (panelType.startsWith("section_")) {
+    sectionType = SECTION_PANEL_TO_TYPE[panelType] || null;
+    const sectionProfile = resolveCompiledProjectSectionProfile(
+      compiledProject,
+      sectionType || "longitudinal",
+    );
+    const envelopeBounds = getEnvelopeDrawingBoundsWithSource(compiledProject);
+    viewBbox = buildSectionViewBounds(
+      envelopeBounds?.bounds,
+      buildingHeightM,
+      sectionType || "longitudinal",
+    );
+    boundsSource = envelopeBounds?.source || boundsSource;
+    sectionCut = cloneData(sectionProfile?.cutLine || null);
+  }
+
+  return {
+    panelType,
+    drawingType: panel?.drawingType || quality.drawing_type || null,
+    status: panel?.status || "ready",
+    readiness: panel?.status === "ready" ? "ready" : "blocked",
+    svgHash: panel?.svgHash || null,
+    canvas: {
+      width: Number(panel?.width || 0) || null,
+      height: Number(panel?.height || 0) || null,
+    },
+    viewBbox,
+    boundsSource,
+    scaleBarMeters: Number(quality.scale_bar_meters || 0) || null,
+    slotOccupancyRatio: round(Number(quality.slot_occupancy_ratio || 0), 4),
+    levelId,
+    orientation,
+    sectionType,
+    cutLine: sectionCut,
+    cutCoordinateM: Number.isFinite(Number(quality.cut_coordinate_m))
+      ? Number(quality.cut_coordinate_m)
+      : null,
+    quality: {
+      geometryComplete: quality.geometry_complete === true,
+      roomCount: Number(quality.room_count || quality.cut_room_count || 0),
+      wallCount: Number(quality.wall_count || quality.wall_cut_count || 0),
+      openingCount: Number(
+        quality.window_count ||
+          quality.door_count ||
+          quality.cut_opening_count ||
+          0,
+      ),
+      sideFacadeStatus: quality.side_facade_status || null,
+      sectionEvidenceQuality:
+        quality.section_direct_evidence_quality ||
+        quality.section_evidence_quality ||
+        null,
+      sectionConstructionTruthQuality:
+        quality.section_construction_truth_quality || null,
+      sectionUsefulnessScore: Number(quality.section_usefulness_score || 0),
+    },
+    blockers: buildTechnicalPanelBlockers(panelType, panel),
+  };
+}
+
+function buildTechnicalPackSummary(compiledProject = {}) {
+  const geometryHash = compiledProject?.geometryHash || null;
+  const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject);
+  const technicalPanels = technicalBuild?.technicalPanels || {};
+  const panelTypes = Object.keys(technicalPanels);
+  const missingPanelTypes = TECHNICAL_CANONICAL_PANEL_TYPES.filter(
+    (panelType) => !panelTypes.includes(panelType),
+  );
+
+  const panelSummaries = Object.fromEntries(
+    panelTypes.map((panelType) => [
+      panelType,
+      buildTechnicalPanelSummary(
+        panelType,
+        technicalPanels[panelType],
+        compiledProject,
+        technicalBuild,
+      ),
+    ]),
+  );
+
+  const readiness = buildTechnicalPackReadinessSummary(
+    technicalBuild,
+    technicalPanels,
+  );
+  const failureMessages = (technicalBuild?.failures || []).map(
+    (failure) => failure?.message || `${failure?.panelType} could not render`,
+  );
+  const panelBlockers = Object.values(panelSummaries).flatMap(
+    (panel) => panel?.blockers || [],
+  );
+  const blockers = uniqueStrings([
+    ...readiness.reasons,
+    ...failureMessages,
+    ...panelBlockers,
+    ...(missingPanelTypes.length
+      ? [`technical pack is missing panel(s): ${missingPanelTypes.join(", ")}`]
+      : []),
+  ]);
+
+  return {
+    geometryHash,
+    source: "compiled_project",
+    fallbackUsed: false,
+    ready:
+      technicalBuild?.ok === true &&
+      missingPanelTypes.length === 0 &&
+      readiness.ready === true,
+    score: readiness.score,
+    panelCount: panelTypes.length,
+    expectedPanelCount: TECHNICAL_CANONICAL_PANEL_TYPES.length,
+    panelTypes,
+    missingPanelTypes,
+    blockers,
+    counts: readiness.counts,
+    panels: panelSummaries,
+  };
+}
+
+function buildLayoutQuality({
+  runtimeBundle = {},
+  programBrief = {},
+  technicalPack = {},
+} = {}) {
+  const requestedSpaceCount = Array.isArray(programBrief?.spaces)
+    ? programBrief.spaces.length
+    : 0;
+  const placedRoomCount = Number(
+    runtimeBundle?.metrics?.roomCount ||
+      runtimeBundle?.projectGeometry?.metadata?.promoted_geometry_summary
+        ?.room_count ||
+      0,
+  );
+  const requestedLevelCount = Number(programBrief?.levelCount || 0);
+  const resolvedLevelCount = Array.isArray(
+    runtimeBundle?.projectGeometry?.levels,
+  )
+    ? runtimeBundle.projectGeometry.levels.length
+    : 0;
+  const placementScore =
+    requestedSpaceCount > 0 ? clamp(placedRoomCount / requestedSpaceCount) : 1;
+  const levelAlignmentScore =
+    requestedLevelCount > 0
+      ? clamp(resolvedLevelCount / Math.max(requestedLevelCount, 1))
+      : 1;
+  const score = round(
+    placementScore * 0.45 +
+      levelAlignmentScore * 0.25 +
+      Number(technicalPack?.score || 0) * 0.3,
+  );
+  const source =
+    runtimeBundle?.projectGeometry?.metadata?.source ||
+    "runtime_layout_geometry";
+  const fallbackUsed = source === "runtime_layout_geometry";
+
+  return {
+    source,
+    fallbackUsed,
+    score,
+    requestedSpaceCount,
+    placedRoomCount,
+    requestedLevelCount,
+    resolvedLevelCount,
+    technicalAuthorityReady: technicalPack?.ready === true,
+    blockers:
+      technicalPack?.ready === true ? [] : technicalPack?.blockers || [],
+    warnings: uniqueStrings(
+      fallbackUsed
+        ? [
+            "Technical panel authority still originates from runtime layout promotion before workflow-level geometry enrichment.",
+          ]
+        : [],
+    ),
+    metrics: runtimeBundle?.metrics || null,
+  };
 }
 
 function buildSourceLabelSet(
@@ -810,6 +1341,17 @@ export async function buildProjectPipelineV2Bundle({
     styleBlendSpec,
     portfolioAnalysis: portfolioStyleEvidence.payload,
   });
+  const technicalPack = buildTechnicalPackSummary(compiledProject);
+  const layoutQuality = buildLayoutQuality({
+    runtimeBundle,
+    programBrief,
+    technicalPack,
+  });
+  const compiledProjectWithDiagnostics = {
+    ...compiledProject,
+    technicalPack,
+    layoutQuality,
+  };
   const takeoff = buildProjectQuantityTakeoff(compiledProject, {
     pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
   });
@@ -844,19 +1386,19 @@ export async function buildProjectPipelineV2Bundle({
     },
     validation: {
       valid:
-        compiledProject?.validation?.valid !== false &&
+        compiledProjectWithDiagnostics?.validation?.valid !== false &&
         siteEvidence.blockers.length === 0 &&
         (programBrief?.blockers || []).length === 0,
       blockers: [
         ...siteEvidence.blockers,
         ...(programBrief?.blockers || []),
-        ...(compiledProject?.validation?.blockers || []),
+        ...(compiledProjectWithDiagnostics?.validation?.blockers || []),
       ],
       warnings: [
         ...siteEvidence.warnings,
         ...localStyleEvidence.warnings,
         ...portfolioStyleEvidence.warnings,
-        ...(compiledProject?.validation?.warnings || []),
+        ...(compiledProjectWithDiagnostics?.validation?.warnings || []),
       ],
     },
     siteEvidence,
@@ -868,7 +1410,9 @@ export async function buildProjectPipelineV2Bundle({
     projectGeometry: runtimeBundle.projectGeometry,
     populatedGeometry: runtimeBundle.populatedGeometry,
     masterDNASeed: runtimeBundle.masterDNA,
-    compiledProject,
+    technicalPack,
+    layoutQuality,
+    compiledProject: compiledProjectWithDiagnostics,
     projectQuantityTakeoff: takeoff,
   };
 }

@@ -2,6 +2,47 @@ import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
 import dnaWorkflowOrchestrator from "../../src/services/dnaWorkflowOrchestrator.js";
 import { buildProjectPipelineV2Bundle } from "../../src/services/project/projectPipelineV2Service.js";
 
+function uniqueStrings(values = []) {
+  return [...new Set(values.filter(Boolean).map((value) => String(value)))];
+}
+
+function resolveVerificationPayload(workflowResult = {}) {
+  return (
+    workflowResult?.verification ||
+    workflowResult?.verificationBundle?.verification ||
+    workflowResult?.verificationState?.verification ||
+    workflowResult?.metadata?.verification ||
+    null
+  );
+}
+
+function buildTechnicalAuthority(bundle = {}, workflowResult = null) {
+  const technicalPack =
+    bundle?.compiledProject?.technicalPack || bundle?.technicalPack || null;
+  const technicalCredibility = workflowResult?.technicalCredibility || null;
+  const readyFromVerification =
+    String(technicalCredibility?.status || "").toLowerCase() === "pass";
+
+  return {
+    geometryHash:
+      technicalPack?.geometryHash ||
+      bundle?.compiledProject?.geometryHash ||
+      null,
+    ready: readyFromVerification || technicalPack?.ready === true,
+    source: readyFromVerification
+      ? "post_compose_verification"
+      : technicalPack?.source || null,
+    fallbackUsed:
+      technicalPack?.fallbackUsed === true ||
+      bundle?.compiledProject?.layoutQuality?.fallbackUsed === true ||
+      bundle?.layoutQuality?.fallbackUsed === true,
+    blockers: uniqueStrings([
+      ...(technicalPack?.blockers || []),
+      ...(technicalCredibility?.blockers || []),
+    ]),
+  };
+}
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
   setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
@@ -42,10 +83,13 @@ export default async function handler(req, res) {
         geometryHash: bundle?.compiledProject?.geometryHash || null,
         confidence: bundle?.confidence || null,
         validation: bundle?.validation || null,
+        technicalAuthority: buildTechnicalAuthority(bundle),
+        verification: null,
         blockers: bundle?.blockers || bundle?.validation?.blockers || [],
       });
     }
 
+    const preComposeTechnicalAuthority = buildTechnicalAuthority(bundle);
     const projectContext = {
       ...projectDetails,
       buildingProgram: projectDetails.program || projectDetails.subType,
@@ -77,6 +121,11 @@ export default async function handler(req, res) {
       projectGeometry: bundle.projectGeometry,
       populatedGeometry: bundle.populatedGeometry,
       compiledProject: bundle.compiledProject,
+      technicalPack:
+        bundle.technicalPack || bundle.compiledProject?.technicalPack,
+      layoutQuality:
+        bundle.layoutQuality || bundle.compiledProject?.layoutQuality || null,
+      technicalAuthority: preComposeTechnicalAuthority,
       projectQuantityTakeoff: bundle.projectQuantityTakeoff,
       blendedStyle: bundle.blendedStyle,
       confidence: bundle.confidence,
@@ -97,14 +146,21 @@ export default async function handler(req, res) {
         baseSeed,
       });
 
+    const technicalAuthority = buildTechnicalAuthority(bundle, workflowResult);
+    const verification = resolveVerificationPayload(workflowResult);
+
     return res.status(200).json({
       success: Boolean(workflowResult?.success !== false),
       pipelineVersion: bundle.pipelineVersion,
       geometryHash: bundle.compiledProject?.geometryHash || null,
       confidence: bundle.confidence,
       validation: bundle.validation,
+      technicalAuthority,
+      verification,
       result: {
         ...workflowResult,
+        technicalAuthority,
+        verification,
         compiledProject: bundle.compiledProject,
         projectQuantityTakeoff: bundle.projectQuantityTakeoff,
       },

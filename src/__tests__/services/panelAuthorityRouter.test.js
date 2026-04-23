@@ -80,30 +80,44 @@ describe("panelAuthorityRouter", () => {
     expect(decision.useCompiledCanonicalAsset).toBe(true);
   });
 
-  test("routes legacy technical packs to deterministic SVG instead of canonical data URLs", () => {
+  test("blocks legacy technical packs instead of falling back to deterministic SVG", () => {
     const decision = resolveDirectPanelRoute("section_AA", {
       canonicalPack: legacyPack,
       hasCompiledCanonicalAsset: true,
     });
 
-    expect(decision.direct).toBe(true);
+    expect(decision.direct).toBe(false);
+    expect(decision.blocked).toBe(true);
     expect(decision.useFlux).toBe(false);
-    expect(decision.authority).toBe("deterministic_svg");
+    expect(decision.authority).toBe("technical_authority_blocked");
     expect(decision.useCompiledCanonicalAsset).toBe(false);
-    expect(decision.reason).toMatch(/ignores non-compiled canonical pack/);
+    expect(decision.reason).toMatch(/compiled-project authority pack/i);
   });
 
-  test("routes weak compiled-project technical packs to deterministic SVG", () => {
+  test("blocks weak compiled-project technical packs", () => {
     const decision = resolveDirectPanelRoute("section_AA", {
       canonicalPack: weakCompiledPack,
       hasCompiledCanonicalAsset: true,
     });
 
-    expect(decision.direct).toBe(true);
+    expect(decision.direct).toBe(false);
+    expect(decision.blocked).toBe(true);
     expect(decision.useFlux).toBe(false);
-    expect(decision.authority).toBe("deterministic_svg");
+    expect(decision.authority).toBe("technical_authority_blocked");
     expect(decision.useCompiledCanonicalAsset).toBe(false);
-    expect(decision.reason).toMatch(/bypasses canonical pack/);
+    expect(decision.reason).toMatch(/too few wall segments/i);
+  });
+
+  test("blocks technical panels when compiled canonical asset is missing", () => {
+    const decision = resolveDirectPanelRoute("floor_plan_ground", {
+      canonicalPack: compiledPack,
+      hasCompiledCanonicalAsset: false,
+    });
+
+    expect(decision.direct).toBe(false);
+    expect(decision.blocked).toBe(true);
+    expect(decision.authority).toBe("technical_authority_blocked");
+    expect(decision.reason).toMatch(/asset is missing/i);
   });
 
   test("routes blueprint-like panels to deterministic SVG", () => {

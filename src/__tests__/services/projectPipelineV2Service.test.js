@@ -47,6 +47,21 @@ describe("projectPipelineV2Service", () => {
     expect(bundle.supported).toBe(true);
     expect(bundle.pipelineVersion).toBe(UK_RESIDENTIAL_V2_PIPELINE_VERSION);
     expect(bundle.compiledProject?.geometryHash).toBeTruthy();
+    expect(bundle.technicalPack?.geometryHash).toBe(
+      bundle.compiledProject?.geometryHash,
+    );
+    expect(bundle.compiledProject?.technicalPack?.geometryHash).toBe(
+      bundle.compiledProject?.geometryHash,
+    );
+    expect(bundle.technicalPack?.panelTypes).toEqual(
+      expect.arrayContaining([
+        "floor_plan_ground",
+        "elevation_north",
+        "section_AA",
+      ]),
+    );
+    expect(bundle.layoutQuality?.source).toBe("runtime_layout_geometry");
+    expect(bundle.compiledProject?.layoutQuality?.fallbackUsed).toBe(true);
     expect(bundle.projectQuantityTakeoff?.items?.length).toBeGreaterThan(0);
     expect(bundle.styleBlendSpec?.approved?.materials).toBeTruthy();
     expect(bundle.validation?.valid).toBe(true);
@@ -90,6 +105,9 @@ describe("projectPipelineV2Service", () => {
 
     expect(bundle.programBrief?.levelCount).toBe(3);
     expect(bundle.projectGeometry?.levels).toHaveLength(3);
+    expect(bundle.technicalPack?.panelTypes).toEqual(
+      expect.arrayContaining(["floor_plan_ground", "floor_plan_first"]),
+    );
   });
 
   test("uses space level label when levelIndex is stale", async () => {

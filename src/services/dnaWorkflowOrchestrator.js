@@ -2553,6 +2553,14 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
           ),
         });
 
+        if (directPanelRoute.blocked) {
+          const blockerText =
+            directPanelRoute.blockers?.join("; ") || directPanelRoute.reason;
+          throw new Error(
+            `Technical authority blocked ${job.type}: ${blockerText}`,
+          );
+        }
+
         if (directPanelRoute.direct) {
           let imageUrl = compiledCanonicalParams?.init_image || null;
           let generatorUsed = "compiled_project_canonical_pack";

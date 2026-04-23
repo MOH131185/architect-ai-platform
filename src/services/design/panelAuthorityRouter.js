@@ -96,44 +96,54 @@ export function resolveDirectPanelRoute(
     };
   }
 
-  if (
-    isTechnicalPanel(panelType) &&
-    getCompiledCanonicalPackReadiness(canonicalPack).ready &&
-    hasCompiledCanonicalAsset
-  ) {
-    return {
-      direct: true,
-      useFlux: false,
-      authority: "compiled_project_canonical_pack",
-      useCompiledCanonicalAsset: true,
-      packSource,
-      reason:
-        "compiled-project canonical SVG is authoritative for technical panels",
-    };
-  }
-
   if (isTechnicalPanel(panelType)) {
     const readiness = getCompiledCanonicalPackReadiness(canonicalPack);
+    if (readiness.ready && hasCompiledCanonicalAsset) {
+      return {
+        direct: true,
+        blocked: false,
+        useFlux: false,
+        authority: "compiled_project_canonical_pack",
+        useCompiledCanonicalAsset: true,
+        packSource,
+        blockers: [],
+        reason:
+          "compiled-project canonical SVG is authoritative for technical panels",
+      };
+    }
+
+    const blockers =
+      readiness.ready && !hasCompiledCanonicalAsset
+        ? [`compiled-project canonical asset is missing for ${panelType}`]
+        : readiness.summary?.reasons?.length
+          ? readiness.summary.reasons
+          : [
+              readiness.reason ||
+                (packSource
+                  ? `technical panel cannot use non-compiled canonical pack source "${packSource}"`
+                  : "technical panel has no compiled-project canonical authority"),
+            ];
+
     return {
-      direct: true,
+      direct: false,
+      blocked: true,
       useFlux: false,
-      authority: "deterministic_svg",
+      authority: "technical_authority_blocked",
       useCompiledCanonicalAsset: false,
       packSource,
-      reason: readiness.summary?.reasons?.length
-        ? `technical panel bypasses canonical pack: ${readiness.summary.reasons[0]}`
-        : packSource
-          ? `technical panel ignores non-compiled canonical pack source "${packSource}"`
-          : "technical panel has no canonical pack authority",
+      blockers,
+      reason: blockers[0],
     };
   }
 
   return {
     direct: true,
+    blocked: false,
     useFlux: false,
     authority: "deterministic_svg",
     useCompiledCanonicalAsset: false,
     packSource,
+    blockers: [],
     reason: "blueprint-like panels stay on deterministic SVG generation",
   };
 }

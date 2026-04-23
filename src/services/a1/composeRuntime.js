@@ -74,6 +74,39 @@ export function collectPanelGeometryHashes(panels = []) {
   return [...new Set(hashes)];
 }
 
+export function isTechnicalComposePanel(panelType) {
+  if (typeof panelType !== "string" || panelType.length === 0) {
+    return false;
+  }
+
+  return (
+    panelType.startsWith("floor_plan_") ||
+    panelType.startsWith("elevation_") ||
+    panelType.startsWith("section_")
+  );
+}
+
+export function collectTechnicalPanelGeometryHashes(panels = []) {
+  return collectPanelGeometryHashes(
+    panels.filter((panel) => isTechnicalComposePanel(panel?.type)),
+  );
+}
+
+export function findTechnicalPanelsMissingGeometryHash(panels = []) {
+  return panels
+    .filter((panel) => isTechnicalComposePanel(panel?.type))
+    .filter((panel) => {
+      const panelHash = normalizeHashValue(
+        panel?.geometryHash ||
+          panel?.geometry_hash ||
+          panel?.meta?.geometryHash ||
+          panel?.meta?.geometry_hash,
+      );
+      return !panelHash;
+    })
+    .map((panel) => panel.type);
+}
+
 export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
   if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
     throw new Error("pngBuffer is required to build PDF");

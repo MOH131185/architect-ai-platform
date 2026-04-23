@@ -57,6 +57,8 @@ import {
 import {
   buildPrintReadyPdfFromPng,
   collectPanelGeometryHashes,
+  collectTechnicalPanelGeometryHashes,
+  findTechnicalPanelsMissingGeometryHash,
   getCrossViewImageValidator,
   getLayoutConstants,
   getOpusSheetCritic,
@@ -825,6 +827,10 @@ async function handleComposeRequest(req, res, trace) {
   const requireHashMetadata =
     requestBody.requireHashMetadata !== false && !skipValidation;
   const panelGeometryHashes = collectPanelGeometryHashes(panels);
+  const technicalPanelGeometryHashes =
+    collectTechnicalPanelGeometryHashes(panels);
+  const technicalPanelsMissingGeometryHash =
+    findTechnicalPanelsMissingGeometryHash(panels);
 
   if (requireHashMetadata) {
     const missingHashFields = Object.entries(requestedHashes)
@@ -855,6 +861,32 @@ async function handleComposeRequest(req, res, trace) {
   }
 
   if (!skipValidation) {
+    if (technicalPanelsMissingGeometryHash.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "MISSING_TECHNICAL_PANEL_GEOMETRY_HASH",
+        message:
+          "Cannot compose A1 sheet - one or more technical panels are missing geometryHash metadata.",
+        details: {
+          technicalPanelsMissingGeometryHash,
+        },
+      });
+    }
+
+    if (technicalPanelGeometryHashes.length > 1) {
+      return res.status(400).json({
+        success: false,
+        error: "TECHNICAL_PANEL_GEOMETRY_HASH_MISMATCH",
+        message:
+          "Cannot compose A1 sheet - technical panels contain multiple geometry hashes.",
+        details: {
+          technicalPanelGeometryHashes,
+          recommendation:
+            "Regenerate floor plans, elevations, and sections from one shared compiled-project technical authority pack.",
+        },
+      });
+    }
+
     if (panelGeometryHashes.length > 1) {
       return res.status(400).json({
         success: false,
@@ -870,6 +902,31 @@ async function handleComposeRequest(req, res, trace) {
     }
 
     if (requestedHashes.geometryHash) {
+      if (technicalPanelGeometryHashes.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "MISSING_TECHNICAL_PANEL_GEOMETRY_HASH",
+          message:
+            "Cannot compose A1 sheet - requested geometryHash was provided but technical panels do not contain geometryHash metadata.",
+          details: {
+            expectedGeometryHash: requestedHashes.geometryHash,
+          },
+        });
+      }
+
+      if (technicalPanelGeometryHashes[0] !== requestedHashes.geometryHash) {
+        return res.status(400).json({
+          success: false,
+          error: "TECHNICAL_GEOMETRY_HASH_MISMATCH",
+          message:
+            "Cannot compose A1 sheet - technical panel geometry hash does not match requested geometryHash.",
+          details: {
+            expectedGeometryHash: requestedHashes.geometryHash,
+            technicalPanelGeometryHash: technicalPanelGeometryHashes[0],
+          },
+        });
+      }
+
       if (panelGeometryHashes.length === 0) {
         return res.status(400).json({
           success: false,
@@ -1883,8 +1940,14 @@ async function handleComposeRequest(req, res, trace) {
       required: requireHashMetadata,
       panelGeometryHashCount: panelGeometryHashes.length,
       panelGeometryHash: panelGeometryHashes[0] || null,
+      technicalPanelGeometryHashCount: technicalPanelGeometryHashes.length,
+      technicalPanelGeometryHash: technicalPanelGeometryHashes[0] || null,
+      technicalPanelsMissingGeometryHash,
       matchedRequestedGeometryHash: requestedHashes.geometryHash
         ? panelGeometryHashes[0] === requestedHashes.geometryHash
+        : null,
+      matchedRequestedTechnicalGeometryHash: requestedHashes.geometryHash
+        ? technicalPanelGeometryHashes[0] === requestedHashes.geometryHash
         : null,
     },
     panelKeys: Object.keys(panelsByKey),
