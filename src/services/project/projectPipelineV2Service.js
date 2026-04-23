@@ -48,6 +48,31 @@ function pick(values = [], fallback = null) {
   return values.find(Boolean) || fallback;
 }
 
+function resolveLockedLevelCount(projectDetails = {}) {
+  if (!projectDetails?.floorCountLocked) {
+    return null;
+  }
+  const parsed = Number.parseInt(projectDetails.floorCount, 10);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.max(1, parsed);
+}
+
+function inferLevelCountFromSpaces(spaces = []) {
+  if (!Array.isArray(spaces) || spaces.length === 0) {
+    return 0;
+  }
+  const maxLevelIndex = spaces.reduce((maxValue, space) => {
+    const levelIndex = Number(space?.levelIndex);
+    if (!Number.isFinite(levelIndex)) {
+      return maxValue;
+    }
+    return Math.max(maxValue, Math.max(0, Math.floor(levelIndex)));
+  }, 0);
+  return maxLevelIndex + 1;
+}
+
 function buildSourceLabelSet(
   locationData = {},
   siteMetrics = {},
@@ -357,6 +382,7 @@ function buildProgramBrief({
   const totalAreaM2 = Number(projectDetails.area || 0);
   const siteAreaM2 = Number(siteEvidence?.payload?.areaM2 || 0);
   const subType = projectDetails.subType || projectDetails.program;
+  const lockedLevelCount = resolveLockedLevelCount(projectDetails);
   if (!isSupportedResidentialV2SubType(subType)) {
     return {
       schema_version: "program-brief-v1",
@@ -373,13 +399,19 @@ function buildProgramBrief({
 
   if (Array.isArray(programSpaces) && programSpaces.length > 0) {
     const normalized = normalizeResidentialProgramSpaces(programSpaces);
+    const generatedBrief = generateResidentialProgramBrief({
+      subType,
+      totalAreaM2,
+      siteAreaM2,
+      entranceDirection: projectDetails.entranceDirection || "S",
+    });
+    const inferredLevelCount = inferLevelCountFromSpaces(normalized);
+    const resolvedLevelCount =
+      lockedLevelCount ||
+      Math.max(1, inferredLevelCount || Number(generatedBrief.levelCount || 1));
     return {
-      ...generateResidentialProgramBrief({
-        subType,
-        totalAreaM2,
-        siteAreaM2,
-        entranceDirection: projectDetails.entranceDirection || "S",
-      }),
+      ...generatedBrief,
+      levelCount: resolvedLevelCount,
       spaces: normalized,
       confidence: {
         score: 0.76,
@@ -392,13 +424,20 @@ function buildProgramBrief({
     };
   }
 
-  return generateResidentialProgramBrief({
+  const generatedBrief = generateResidentialProgramBrief({
     subType,
     totalAreaM2,
     siteAreaM2,
     entranceDirection: projectDetails.entranceDirection || "S",
     customNotes: projectDetails.customNotes,
   });
+  if (!lockedLevelCount) {
+    return generatedBrief;
+  }
+  return {
+    ...generatedBrief,
+    levelCount: lockedLevelCount,
+  };
 }
 
 function buildMasterDNASeed({
@@ -447,11 +486,35 @@ function buildLevelGroups(spaces = [], levelCount = 1) {
   const groups = Object.fromEntries(
     Array.from({ length: levelCount }, (_, index) => [index, []]),
   );
-  spaces.forEach((space) => {
-    const levelIndex = Number(space.levelIndex || 0);
-    if (!groups[levelIndex]) {
-      groups[levelIndex] = [];
+  const highestLevelIndex = Math.max(0, Number(levelCount || 1) - 1);
+  const parseLevelFromName = (levelName) => {
+    const normalized = String(levelName || "")
+      .trim()
+      .toLowerCase();
+    if (!normalized) return null;
+    if (normalized === "ground") return 0;
+    if (normalized === "first") return 1;
+    if (normalized === "second") return 2;
+    if (normalized === "third") return 3;
+    const levelMatch = normalized.match(/^level\s+(\d+)$/);
+    if (levelMatch) {
+      return Number(levelMatch[1]);
     }
+    return null;
+  };
+  spaces.forEach((space) => {
+    const explicitLevelIndex = Number(space.levelIndex);
+    const derivedLevelIndex = parseLevelFromName(space.level);
+    const rawLevelIndex =
+      Number.isFinite(derivedLevelIndex) && derivedLevelIndex >= 0
+        ? derivedLevelIndex
+        : Number.isFinite(explicitLevelIndex)
+          ? explicitLevelIndex
+          : 0;
+    const levelIndex = Math.min(
+      highestLevelIndex,
+      Math.max(0, Math.floor(rawLevelIndex)),
+    );
     groups[levelIndex].push(space);
   });
   return groups;

@@ -2,6 +2,7 @@ import {
   GRID_12COL,
   LENIENT_PANELS,
   STRICT_PANELS,
+  getDefaultMinSlotOccupancy,
   resolveLayout,
 } from "../../services/a1/composeCore.js";
 import { PANEL_PRIORITY_ORDER } from "../../services/a1/A1GridSpec12Column.js";
@@ -61,5 +62,19 @@ describe("composeCore technical-first layout", () => {
     expect(PANEL_PRIORITY_ORDER.indexOf("section_AA")).toBeLessThan(
       PANEL_PRIORITY_ORDER.indexOf("hero_3d"),
     );
+  });
+
+  test("wide floor-plan slots keep occupancy threshold realistic", () => {
+    const thresholdWidePlan = getDefaultMinSlotOccupancy(
+      "floor_plan_ground",
+      2.53,
+    );
+    const thresholdSquarePlan = getDefaultMinSlotOccupancy(
+      "floor_plan_ground",
+      1,
+    );
+
+    expect(thresholdWidePlan).toBeLessThan(0.5);
+    expect(thresholdSquarePlan).toBe(0.58);
   });
 });

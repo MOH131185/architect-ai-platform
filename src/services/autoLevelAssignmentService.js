@@ -11,7 +11,7 @@
  * 4. Ensure upper floors have private/specialized spaces
  */
 
-import logger from '../utils/logger.js';
+import logger from "../utils/logger.js";
 
 /**
  * Sub-type specific coverage ratios
@@ -19,65 +19,65 @@ import logger from '../utils/logger.js';
  */
 const SUBTYPE_COVERAGE_RATIOS = {
   // Residential
-  'detached-house': 0.35,      // More garden space typical
-  'semi-detached-house': 0.40, // Moderate coverage
-  'terraced-house': 0.50,      // Higher coverage, narrower plots
-  'villa': 0.30,               // Large grounds
-  'cottage': 0.25,             // Rural setting
-  'mansion': 0.30,             // Large grounds
-  'multi-family': 0.55,        // Higher density
-  'duplex': 0.45,              // Moderate coverage
-  'apartment-building': 0.60,  // Urban higher density
-  'condominium': 0.55,         // Mid-density
-  'residential-tower': 0.40,   // Small footprint, tall
+  "detached-house": 0.35, // More garden space typical
+  "semi-detached-house": 0.4, // Moderate coverage
+  "terraced-house": 0.5, // Higher coverage, narrower plots
+  villa: 0.3, // Large grounds
+  cottage: 0.25, // Rural setting
+  mansion: 0.3, // Large grounds
+  "multi-family": 0.55, // Higher density
+  duplex: 0.45, // Moderate coverage
+  "apartment-building": 0.6, // Urban higher density
+  condominium: 0.55, // Mid-density
+  "residential-tower": 0.4, // Small footprint, tall
 
   // Healthcare
-  'clinic': 0.50,              // Needs parking + accessibility
-  'dental-clinic': 0.50,
-  'health-center': 0.55,
-  'hospital': 0.45,            // Large campus, lower coverage
-  'pharmacy': 0.60,            // Retail-like
+  clinic: 0.5, // Needs parking + accessibility
+  "dental-clinic": 0.5,
+  "health-center": 0.55,
+  hospital: 0.45, // Large campus, lower coverage
+  pharmacy: 0.6, // Retail-like
 
   // Commercial
-  'office': 0.55,              // Typical office coverage
-  'coworking': 0.55,
-  'retail': 0.65,              // High coverage
-  'shopping-center': 0.60,
-  'restaurant': 0.60,
-  'cafe': 0.60,
+  office: 0.55, // Typical office coverage
+  coworking: 0.55,
+  retail: 0.65, // High coverage
+  "shopping-center": 0.6,
+  restaurant: 0.6,
+  cafe: 0.6,
 
   // Educational
-  'school': 0.40,              // Needs playgrounds/sports fields
-  'kindergarten': 0.35,        // Outdoor play areas essential
-  'training-center': 0.50,
-  'library': 0.50,
+  school: 0.4, // Needs playgrounds/sports fields
+  kindergarten: 0.35, // Outdoor play areas essential
+  "training-center": 0.5,
+  library: 0.5,
 
   // Hospitality
-  'hotel': 0.50,
-  'hostel': 0.55,
-  'bed-breakfast': 0.40,
+  hotel: 0.5,
+  hostel: 0.55,
+  "bed-breakfast": 0.4,
 
   // Industrial
-  'warehouse': 0.70,           // Maximum coverage
-  'factory': 0.65,
-  'workshop': 0.60,
-  'logistics-center': 0.65,
+  warehouse: 0.7, // Maximum coverage
+  factory: 0.65,
+  workshop: 0.6,
+  "logistics-center": 0.65,
 
   // Cultural & Public
-  'museum': 0.45,
-  'gallery': 0.50,
-  'theater': 0.55,
-  'community-center': 0.50,
+  museum: 0.45,
+  gallery: 0.5,
+  theater: 0.55,
+  "community-center": 0.5,
 
   // Sports & Recreation
-  'gym': 0.60,
-  'sports-hall': 0.50,
-  'swimming-pool': 0.55,
+  gym: 0.6,
+  "sports-hall": 0.5,
+  "swimming-pool": 0.55,
 
   // Religious
-  'church': 0.40,
-  'mosque': 0.45,
-  'temple': 0.40
+  church: 0.4,
+  mosque: 0.45,
+  temple: 0.4,
 };
 
 /**
@@ -85,75 +85,74 @@ const SUBTYPE_COVERAGE_RATIOS = {
  */
 const SUBTYPE_MAX_FLOORS = {
   // Residential
-  'detached-house': 3,
-  'semi-detached-house': 3,
-  'terraced-house': 4,
-  'villa': 3,
-  'cottage': 2,
-  'mansion': 3,
-  'multi-family': 6,
-  'duplex': 3,
-  'apartment-building': 8,
-  'condominium': 10,
-  'residential-tower': 20,
+  "detached-house": 3,
+  "semi-detached-house": 3,
+  "terraced-house": 4,
+  villa: 3,
+  cottage: 2,
+  mansion: 3,
+  "multi-family": 6,
+  duplex: 3,
+  "apartment-building": 8,
+  condominium: 10,
+  "residential-tower": 20,
 
   // Healthcare
-  'clinic': 3,
-  'dental-clinic': 2,
-  'health-center': 3,
-  'hospital': 12,
-  'pharmacy': 2,
+  clinic: 3,
+  "dental-clinic": 2,
+  "health-center": 3,
+  hospital: 12,
+  pharmacy: 2,
 
   // Commercial
-  'office': 10,
-  'coworking': 6,
-  'retail': 3,
-  'shopping-center': 4,
-  'restaurant': 2,
-  'cafe': 2,
+  office: 10,
+  coworking: 6,
+  retail: 3,
+  "shopping-center": 4,
+  restaurant: 2,
+  cafe: 2,
 
   // Educational
-  'school': 4,
-  'kindergarten': 2,
-  'training-center': 4,
-  'library': 4,
+  school: 4,
+  kindergarten: 2,
+  "training-center": 4,
+  library: 4,
 
   // Hospitality
-  'hotel': 15,
-  'hostel': 6,
-  'bed-breakfast': 3,
+  hotel: 15,
+  hostel: 6,
+  "bed-breakfast": 3,
 
   // Industrial
-  'warehouse': 2,
-  'factory': 3,
-  'workshop': 2,
-  'logistics-center': 2,
+  warehouse: 2,
+  factory: 3,
+  workshop: 2,
+  "logistics-center": 2,
 
   // Cultural & Public
-  'museum': 4,
-  'gallery': 3,
-  'theater': 3,
-  'community-center': 3,
+  museum: 4,
+  gallery: 3,
+  theater: 3,
+  "community-center": 3,
 
   // Sports & Recreation
-  'gym': 3,
-  'sports-hall': 2,
-  'swimming-pool': 2,
+  gym: 3,
+  "sports-hall": 2,
+  "swimming-pool": 2,
 
   // Religious
-  'church': 2,
-  'mosque': 2,
-  'temple': 2
+  church: 2,
+  mosque: 2,
+  temple: 2,
 };
-
 
 class AutoLevelAssignmentService {
   constructor() {
-    logger.info('🏢 Auto Level Assignment Service initialized');
+    logger.info("🏢 Auto Level Assignment Service initialized");
   }
 
   _getSpaceName(space) {
-    if (!space || typeof space !== 'object') return '';
+    if (!space || typeof space !== "object") return "";
     const candidate =
       space.name ||
       space.label ||
@@ -161,8 +160,8 @@ class AutoLevelAssignmentService {
       space.spaceName ||
       space.spaceType ||
       space.type ||
-      '';
-    return String(candidate || '').trim();
+      "";
+    return String(candidate || "").trim();
   }
 
   /**
@@ -175,22 +174,26 @@ class AutoLevelAssignmentService {
    */
   calculateOptimalLevels(totalProgramArea, siteArea, options = {}) {
     const {
-      buildingType = 'mixed-use',
-      subType = null,  // NEW: Specific sub-type ID for precise ratios
+      buildingType = "mixed-use",
+      subType = null, // NEW: Specific sub-type ID for precise ratios
       maxHeight = Infinity,
       maxFloors = 10,
-      minFloorHeight = 2.7,  // meters
-      typicalFloorHeight = 3.0,  // meters
-      coverageRatio = 0.6,  // 60% default site coverage
-      circulationFactor = 1.15  // 15% circulation allowance
+      minFloorHeight = 2.7, // meters
+      typicalFloorHeight = 3.0, // meters
+      coverageRatio = 0.6, // 60% default site coverage
+      circulationFactor = 1.15, // 15% circulation allowance
     } = options;
 
-    logger.info('Calculating optimal floor count', {
-      programArea: totalProgramArea,
-      siteArea,
-      buildingType,
-      subType
-    }, '🏢');
+    logger.info(
+      "Calculating optimal floor count",
+      {
+        programArea: totalProgramArea,
+        siteArea,
+        buildingType,
+        subType,
+      },
+      "🏢",
+    );
 
     // Step 1: Adjust coverage ratio - prioritize sub-type specific ratio
     let adjustedCoverage = coverageRatio;
@@ -198,14 +201,25 @@ class AutoLevelAssignmentService {
     // First check sub-type specific coverage (most accurate)
     if (subType && SUBTYPE_COVERAGE_RATIOS[subType]) {
       adjustedCoverage = SUBTYPE_COVERAGE_RATIOS[subType];
-      logger.info(`   Using sub-type specific coverage: ${subType} = ${(adjustedCoverage * 100).toFixed(0)}%`);
+      logger.info(
+        `   Using sub-type specific coverage: ${subType} = ${(adjustedCoverage * 100).toFixed(0)}%`,
+      );
     }
     // Fallback to keyword matching for building type
-    else if (buildingType.toLowerCase().includes('house') || buildingType.toLowerCase().includes('villa')) {
+    else if (
+      buildingType.toLowerCase().includes("house") ||
+      buildingType.toLowerCase().includes("villa")
+    ) {
       adjustedCoverage = 0.4; // 40% for low-density residential
-    } else if (buildingType.toLowerCase().includes('retail') || buildingType.toLowerCase().includes('commercial')) {
+    } else if (
+      buildingType.toLowerCase().includes("retail") ||
+      buildingType.toLowerCase().includes("commercial")
+    ) {
       adjustedCoverage = 0.7; // 70% for commercial
-    } else if (buildingType.toLowerCase().includes('apartment') || buildingType.toLowerCase().includes('office')) {
+    } else if (
+      buildingType.toLowerCase().includes("apartment") ||
+      buildingType.toLowerCase().includes("office")
+    ) {
       adjustedCoverage = 0.65; // 65% for medium-density
     }
 
@@ -221,10 +235,14 @@ class AutoLevelAssignmentService {
     const totalAreaWithCirculation = totalProgramArea * circulationFactor;
 
     logger.info(`   Program area: ${totalProgramArea.toFixed(0)}m²`);
-    logger.info(`   With circulation: ${totalAreaWithCirculation.toFixed(0)}m²`);
+    logger.info(
+      `   With circulation: ${totalAreaWithCirculation.toFixed(0)}m²`,
+    );
 
     // Step 4: Calculate minimum floors needed
-    const minFloorsNeeded = Math.ceil(totalAreaWithCirculation / maxFootprintArea);
+    const minFloorsNeeded = Math.ceil(
+      totalAreaWithCirculation / maxFootprintArea,
+    );
 
     logger.info(`   Min floors needed: ${minFloorsNeeded}`);
 
@@ -233,7 +251,10 @@ class AutoLevelAssignmentService {
 
     // First, apply sub-type specific max floors if available (UK typical limits)
     if (subType && SUBTYPE_MAX_FLOORS[subType]) {
-      maxFloorsAllowed = Math.min(maxFloorsAllowed, SUBTYPE_MAX_FLOORS[subType]);
+      maxFloorsAllowed = Math.min(
+        maxFloorsAllowed,
+        SUBTYPE_MAX_FLOORS[subType],
+      );
       logger.info(`   Max floors (sub-type ${subType}): ${maxFloorsAllowed}`);
     }
 
@@ -245,7 +266,10 @@ class AutoLevelAssignmentService {
     }
 
     // Step 6: Determine optimal floor count
-    const optimalFloors = Math.min(Math.max(minFloorsNeeded, 1), maxFloorsAllowed);
+    const optimalFloors = Math.min(
+      Math.max(minFloorsNeeded, 1),
+      maxFloorsAllowed,
+    );
 
     // Step 7: Calculate actual footprint needed
     const actualFootprint = totalAreaWithCirculation / optimalFloors;
@@ -257,7 +281,7 @@ class AutoLevelAssignmentService {
     logger.info(`   Optimal floors: ${optimalFloors}`);
     logger.info(`   Actual footprint: ${actualFootprint.toFixed(0)}m²`);
     logger.info(`   Site coverage: ${siteCoveragePercent.toFixed(1)}%`);
-    logger.info(`   Fits within site: ${fitsWithinSite ? 'YES ✅' : 'NO ❌'}`);
+    logger.info(`   Fits within site: ${fitsWithinSite ? "YES ✅" : "NO ❌"}`);
 
     return {
       optimalFloors,
@@ -269,16 +293,16 @@ class AutoLevelAssignmentService {
       fitsWithinSite,
       floorHeight: typicalFloorHeight,
       totalHeight: optimalFloors * typicalFloorHeight,
-      coverageRatio: adjustedCoverage,  // Include for UI display
-      subType,                           // Include for reference
+      coverageRatio: adjustedCoverage, // Include for UI display
+      subType, // Include for reference
       reasoning: this._generateFloorCountReasoning(
         optimalFloors,
         totalProgramArea,
         siteArea,
         actualFootprint,
         maxFootprintArea,
-        buildingType
-      )
+        buildingType,
+      ),
     };
   }
 
@@ -286,26 +310,45 @@ class AutoLevelAssignmentService {
    * Generate reasoning for floor count decision
    * @private
    */
-  _generateFloorCountReasoning(floors, programArea, siteArea, footprint, maxFootprint, buildingType) {
+  _generateFloorCountReasoning(
+    floors,
+    programArea,
+    siteArea,
+    footprint,
+    maxFootprint,
+    buildingType,
+  ) {
     const reasons = [];
 
-    reasons.push(`${floors} floors optimal to fit ${programArea.toFixed(0)}m² program within ${siteArea.toFixed(0)}m² site`);
+    reasons.push(
+      `${floors} floors optimal to fit ${programArea.toFixed(0)}m² program within ${siteArea.toFixed(0)}m² site`,
+    );
 
     if (footprint > maxFootprint * 0.9) {
-      reasons.push(`Footprint utilization high (${(footprint / maxFootprint * 100).toFixed(0)}%) - efficient site usage`);
+      reasons.push(
+        `Footprint utilization high (${((footprint / maxFootprint) * 100).toFixed(0)}%) - efficient site usage`,
+      );
     } else if (footprint < maxFootprint * 0.5) {
-      reasons.push(`Footprint utilization low (${(footprint / maxFootprint * 100).toFixed(0)}%) - consider reducing floors or increasing program`);
+      reasons.push(
+        `Footprint utilization low (${((footprint / maxFootprint) * 100).toFixed(0)}%) - consider reducing floors or increasing program`,
+      );
     }
 
     if (floors === 1) {
-      reasons.push('Single-story design - ideal for accessibility and horizontal circulation');
+      reasons.push(
+        "Single-story design - ideal for accessibility and horizontal circulation",
+      );
     } else if (floors === 2) {
-      reasons.push('Two-story design - good balance of compactness and accessibility');
+      reasons.push(
+        "Two-story design - good balance of compactness and accessibility",
+      );
     } else if (floors >= 3) {
-      reasons.push(`${floors}-story design - vertical circulation (stairs/lift) required`);
+      reasons.push(
+        `${floors}-story design - vertical circulation (stairs/lift) required`,
+      );
     }
 
-    return reasons.join('. ');
+    return reasons.join(". ");
   }
 
   /**
@@ -315,24 +358,36 @@ class AutoLevelAssignmentService {
    * @param {string} buildingType - Type of building
    * @returns {Array} Program spaces with level assignments
    */
-  autoAssignSpacesToLevels(programSpaces, optimalFloors, buildingType = 'mixed-use') {
+  autoAssignSpacesToLevels(
+    programSpaces,
+    optimalFloors,
+    buildingType = "mixed-use",
+  ) {
     if (!programSpaces || programSpaces.length === 0) {
-      logger.warn('No program spaces to assign');
+      logger.warn("No program spaces to assign");
       return [];
     }
 
-    logger.info('Auto-assigning spaces to levels', {
-      spaceCount: programSpaces.length,
-      floors: optimalFloors,
-      buildingType
-    }, '🏢');
+    logger.info(
+      "Auto-assigning spaces to levels",
+      {
+        spaceCount: programSpaces.length,
+        floors: optimalFloors,
+        buildingType,
+      },
+      "🏢",
+    );
 
     // Step 1: Categorize spaces by priority
-    const categorized = this._categorizeSpacesByPriority(programSpaces, buildingType);
+    const categorized = this._categorizeSpacesByPriority(
+      programSpaces,
+      buildingType,
+    );
 
     // Step 2: Calculate area per floor
-    const totalArea = programSpaces.reduce((sum, space) =>
-      sum + (parseFloat(space.area || 0) * (space.count || 1)), 0
+    const totalArea = programSpaces.reduce(
+      (sum, space) => sum + parseFloat(space.area || 0) * (space.count || 1),
+      0,
     );
     const targetAreaPerFloor = totalArea / optimalFloors;
 
@@ -344,16 +399,19 @@ class AutoLevelAssignmentService {
       categorized,
       levels,
       targetAreaPerFloor,
-      buildingType
+      buildingType,
     );
 
     // Step 4: Log distribution
     levels.forEach((level, idx) => {
-      const spacesOnLevel = assignedSpaces.filter(s => s.level === level);
-      const areaOnLevel = spacesOnLevel.reduce((sum, s) =>
-        sum + (parseFloat(s.area || 0) * (s.count || 1)), 0
+      const spacesOnLevel = assignedSpaces.filter((s) => s.level === level);
+      const areaOnLevel = spacesOnLevel.reduce(
+        (sum, s) => sum + parseFloat(s.area || 0) * (s.count || 1),
+        0,
       );
-      logger.info(`   ${level}: ${spacesOnLevel.length} spaces, ${areaOnLevel.toFixed(0)}m²`);
+      logger.info(
+        `   ${level}: ${spacesOnLevel.length} spaces, ${areaOnLevel.toFixed(0)}m²`,
+      );
     });
 
     return assignedSpaces;
@@ -365,61 +423,100 @@ class AutoLevelAssignmentService {
    */
   _categorizeSpacesByPriority(spaces, buildingType) {
     const categories = {
-      groundPriority: [],    // Must be on ground floor
-      firstPriority: [],     // Prefer first floor
-      upperPriority: [],     // Prefer upper floors
-      flexible: []           // Can be on any floor
+      groundPriority: [], // Must be on ground floor
+      firstPriority: [], // Prefer first floor
+      upperPriority: [], // Prefer upper floors
+      flexible: [], // Can be on any floor
     };
 
-    spaces.forEach(space => {
+    spaces.forEach((space) => {
       const name = this._getSpaceName(space).toLowerCase();
       const type = buildingType.toLowerCase();
 
       // Ground floor priorities (PUBLIC ACCESS, ACCESSIBILITY, HEAVY SERVICES)
       if (
-        name.includes('reception') || name.includes('waiting') || name.includes('lobby') ||
-        name.includes('entrance') || name.includes('foyer') ||
-        name.includes('sales') || name.includes('retail') || name.includes('shop') ||
-        name.includes('restaurant') || name.includes('cafe') || name.includes('dining') ||
-        name.includes('kitchen') || name.includes('laboratory') || name.includes('lab') ||
-        name.includes('treatment') || name.includes('consultation') || name.includes('medical') ||
-        name.includes('pharmacy') || name.includes('emergency') ||
-        name.includes('gym') || name.includes('gymnasium') || name.includes('cafeteria') ||
-        name.includes('library') || (name.includes('toilet') && !name.includes('staff'))
+        name.includes("reception") ||
+        name.includes("waiting") ||
+        name.includes("lobby") ||
+        name.includes("entrance") ||
+        name.includes("foyer") ||
+        name.includes("sales") ||
+        name.includes("retail") ||
+        name.includes("shop") ||
+        name.includes("restaurant") ||
+        name.includes("cafe") ||
+        name.includes("dining") ||
+        name.includes("kitchen") ||
+        name.includes("laboratory") ||
+        name.includes("lab") ||
+        name.includes("treatment") ||
+        name.includes("consultation") ||
+        name.includes("medical") ||
+        name.includes("pharmacy") ||
+        name.includes("emergency") ||
+        name.includes("gym") ||
+        name.includes("gymnasium") ||
+        name.includes("cafeteria") ||
+        name.includes("library") ||
+        (name.includes("toilet") && !name.includes("staff"))
       ) {
         categories.groundPriority.push(space);
       }
       // First floor priorities (SEMI-PRIVATE, ADMINISTRATION)
       else if (
-        name.includes('office') || name.includes('admin') || name.includes('staff room') ||
-        name.includes('meeting') || name.includes('conference') ||
-        name.includes('records') || name.includes('archive') ||
-        name.includes('classroom') || name.includes('study')
+        name.includes("office") ||
+        name.includes("admin") ||
+        name.includes("staff room") ||
+        name.includes("meeting") ||
+        name.includes("conference") ||
+        name.includes("records") ||
+        name.includes("archive") ||
+        name.includes("classroom") ||
+        name.includes("study")
       ) {
         categories.firstPriority.push(space);
       }
       // Upper floor priorities (PRIVATE, RESIDENTIAL)
       else if (
-        name.includes('bedroom') || name.includes('bathroom') || name.includes('ensuite') ||
-        name.includes('master') || name.includes('private') ||
-        name.includes('study') || name.includes('den') || name.includes('loft') ||
-        name.includes('roof') || name.includes('terrace') || name.includes('balcony')
+        name.includes("bedroom") ||
+        name.includes("bathroom") ||
+        name.includes("ensuite") ||
+        name.includes("master") ||
+        name.includes("private") ||
+        name.includes("study") ||
+        name.includes("den") ||
+        name.includes("loft") ||
+        name.includes("roof") ||
+        name.includes("terrace") ||
+        name.includes("balcony")
       ) {
         categories.upperPriority.push(space);
       }
       // Building type specific
-      else if (type.includes('house') || type.includes('villa') || type.includes('residential')) {
+      else if (
+        type.includes("house") ||
+        type.includes("villa") ||
+        type.includes("residential")
+      ) {
         // Residential: Living spaces ground, bedrooms upper
-        if (name.includes('living') || name.includes('lounge') || name.includes('wc')) {
+        if (
+          name.includes("living") ||
+          name.includes("lounge") ||
+          name.includes("wc")
+        ) {
           categories.groundPriority.push(space);
-        } else if (name.includes('bed') || name.includes('bath')) {
+        } else if (name.includes("bed") || name.includes("bath")) {
           categories.upperPriority.push(space);
         } else {
           categories.flexible.push(space);
         }
-      } else if (type.includes('clinic') || type.includes('hospital') || type.includes('medical')) {
+      } else if (
+        type.includes("clinic") ||
+        type.includes("hospital") ||
+        type.includes("medical")
+      ) {
         // Healthcare: Treatment ground, admin upper
-        if (name.includes('patient') || name.includes('ward')) {
+        if (name.includes("patient") || name.includes("ward")) {
           categories.groundPriority.push(space);
         } else {
           categories.flexible.push(space);
@@ -429,7 +526,7 @@ class AutoLevelAssignmentService {
       }
     });
 
-    logger.info('   Categorized spaces:');
+    logger.info("   Categorized spaces:");
     logger.info(`     Ground priority: ${categories.groundPriority.length}`);
     logger.info(`     First priority: ${categories.firstPriority.length}`);
     logger.info(`     Upper priority: ${categories.upperPriority.length}`);
@@ -443,16 +540,16 @@ class AutoLevelAssignmentService {
    * @private
    */
   _generateLevelNames(floorCount) {
-    const levels = ['Ground'];
+    const levels = ["Ground"];
 
     if (floorCount >= 2) {
-      levels.push('First');
+      levels.push("First");
     }
     if (floorCount >= 3) {
-      levels.push('Second');
+      levels.push("Second");
     }
     if (floorCount >= 4) {
-      levels.push('Third');
+      levels.push("Third");
     }
     if (floorCount >= 5) {
       for (let i = 5; i <= floorCount; i++) {
@@ -467,29 +564,41 @@ class AutoLevelAssignmentService {
    * Distribute spaces across levels to balance area
    * @private
    */
-  _distributeSpacesAcrossLevels(categorized, levels, targetAreaPerFloor, buildingType) {
+  _distributeSpacesAcrossLevels(
+    categorized,
+    levels,
+    targetAreaPerFloor,
+    buildingType,
+  ) {
     const assigned = [];
     const floorAreas = levels.map(() => 0);
+    const levelIndexMap = new Map(levels.map((level, index) => [level, index]));
 
     // Helper to calculate space area
-    const getSpaceArea = (space) => parseFloat(space.area || 0) * (space.count || 1);
+    const getSpaceArea = (space) =>
+      parseFloat(space.area || 0) * (space.count || 1);
+    const assignToLevel = (space, level) => ({
+      ...space,
+      level,
+      levelIndex: levelIndexMap.has(level) ? levelIndexMap.get(level) : 0,
+    });
 
     // Step 1: Assign ground priority spaces to ground floor
-    categorized.groundPriority.forEach(space => {
-      assigned.push({ ...space, level: 'Ground' });
+    categorized.groundPriority.forEach((space) => {
+      assigned.push(assignToLevel(space, "Ground"));
       floorAreas[0] += getSpaceArea(space);
     });
 
     // Step 2: Assign first priority spaces to first floor (if exists)
     if (levels.length >= 2) {
-      categorized.firstPriority.forEach(space => {
-        assigned.push({ ...space, level: 'First' });
+      categorized.firstPriority.forEach((space) => {
+        assigned.push(assignToLevel(space, "First"));
         floorAreas[1] += getSpaceArea(space);
       });
     } else {
       // If only 1 floor, add to ground
-      categorized.firstPriority.forEach(space => {
-        assigned.push({ ...space, level: 'Ground' });
+      categorized.firstPriority.forEach((space) => {
+        assigned.push(assignToLevel(space, "Ground"));
         floorAreas[0] += getSpaceArea(space);
       });
     }
@@ -499,26 +608,28 @@ class AutoLevelAssignmentService {
       const upperStartIdx = levels.length >= 3 ? 2 : 1; // Start from Second or First
       let upperIdx = upperStartIdx;
 
-      categorized.upperPriority.forEach(space => {
-        assigned.push({ ...space, level: levels[upperIdx] });
+      categorized.upperPriority.forEach((space) => {
+        assigned.push(assignToLevel(space, levels[upperIdx]));
         floorAreas[upperIdx] += getSpaceArea(space);
 
         // Rotate through upper floors to balance
-        upperIdx = (upperIdx + 1 - upperStartIdx) % (levels.length - upperStartIdx) + upperStartIdx;
+        upperIdx =
+          ((upperIdx + 1 - upperStartIdx) % (levels.length - upperStartIdx)) +
+          upperStartIdx;
       });
     } else {
       // If only 1 floor, add to ground
-      categorized.upperPriority.forEach(space => {
-        assigned.push({ ...space, level: 'Ground' });
+      categorized.upperPriority.forEach((space) => {
+        assigned.push(assignToLevel(space, "Ground"));
         floorAreas[0] += getSpaceArea(space);
       });
     }
 
     // Step 4: Distribute flexible spaces to balance floor areas
-    categorized.flexible.forEach(space => {
+    categorized.flexible.forEach((space) => {
       // Find floor with least area
       const minAreaIdx = floorAreas.indexOf(Math.min(...floorAreas));
-      assigned.push({ ...space, level: levels[minAreaIdx] });
+      assigned.push(assignToLevel(space, levels[minAreaIdx]));
       floorAreas[minAreaIdx] += getSpaceArea(space);
     });
 
@@ -527,17 +638,18 @@ class AutoLevelAssignmentService {
       const hasStaircase = assigned.some((s) => {
         if (s.level !== level) return false;
         const name = this._getSpaceName(s).toLowerCase();
-        return name.includes('stair') || name.includes('circulation');
+        return name.includes("stair") || name.includes("circulation");
       });
 
       if (!hasStaircase && levels.length > 1) {
         // Add staircase/circulation
         const circulationArea = Math.max(8, floorAreas[idx] * 0.15); // 15% or 8m² minimum
         assigned.push({
-          name: idx === 0 ? 'Staircase & Circulation' : 'Circulation',
+          name: idx === 0 ? "Staircase & Circulation" : "Circulation",
           area: circulationArea.toFixed(0),
           count: 1,
-          level
+          level,
+          levelIndex: idx,
         });
       }
     });
@@ -553,28 +665,38 @@ class AutoLevelAssignmentService {
    * @param {Object} constraints - Optional constraints (maxHeight, maxFloors)
    * @returns {Object} Result with assigned spaces and metrics
    */
-  autoAssignComplete(programSpaces, siteArea, buildingType = 'mixed-use', constraints = {}) {
-    logger.info('🤖 AUTO-ASSIGNMENT: Starting complete auto-level assignment', null, '🏢');
+  autoAssignComplete(
+    programSpaces,
+    siteArea,
+    buildingType = "mixed-use",
+    constraints = {},
+  ) {
+    logger.info(
+      "🤖 AUTO-ASSIGNMENT: Starting complete auto-level assignment",
+      null,
+      "🏢",
+    );
 
     // Step 1: Calculate total program area
-    const totalProgramArea = programSpaces.reduce((sum, space) =>
-      sum + (parseFloat(space.area || 0) * (space.count || 1)), 0
+    const totalProgramArea = programSpaces.reduce(
+      (sum, space) => sum + parseFloat(space.area || 0) * (space.count || 1),
+      0,
     );
 
     // Step 2: Calculate optimal floor count
     const floorCalc = this.calculateOptimalLevels(totalProgramArea, siteArea, {
       buildingType,
-      ...constraints
+      ...constraints,
     });
 
     // Step 3: Auto-assign spaces to levels
     const assignedSpaces = this.autoAssignSpacesToLevels(
       programSpaces,
       floorCalc.optimalFloors,
-      buildingType
+      buildingType,
     );
 
-    logger.info('✅ AUTO-ASSIGNMENT: Complete', null, '🏢');
+    logger.info("✅ AUTO-ASSIGNMENT: Complete", null, "🏢");
 
     return {
       success: true,
@@ -588,8 +710,8 @@ class AutoLevelAssignmentService {
         floors: floorCalc.optimalFloors,
         footprint: floorCalc.actualFootprint,
         siteCoverage: floorCalc.siteCoveragePercent,
-        reasoning: floorCalc.reasoning
-      }
+        reasoning: floorCalc.reasoning,
+      },
     };
   }
 }

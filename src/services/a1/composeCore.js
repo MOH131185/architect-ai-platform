@@ -417,7 +417,10 @@ export function getDefaultMinSlotOccupancy(panelType, slotAspect = 1) {
       : 1;
 
   if (panelType.startsWith("floor_plan_")) {
-    return Math.max(0.22, Math.min(0.58, 1.32 / normalizedAspect));
+    // Calibrated lower bound for very wide plan slots (2-floor board layouts):
+    // contain-fit plans with realistic aspect variance were tripping hard gates
+    // around ~50% occupancy when threshold landed at ~52%.
+    return Math.max(0.22, Math.min(0.58, 1.24 / normalizedAspect));
   }
   if (panelType.startsWith("section_")) {
     return 0.5;
