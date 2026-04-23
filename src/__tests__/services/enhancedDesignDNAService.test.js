@@ -111,12 +111,9 @@ describe("EnhancedDesignDNAService", () => {
       );
     });
 
-    it("should fall back across portfolio vision models when a Together model is unavailable", async () => {
+    it("should fall back across portfolio vision models when primary model fails", async () => {
       const mockAnalysis = { style: { name: "Contemporary" } };
       togetherAIReasoningService.chatCompletion
-        .mockRejectedValueOnce(
-          new Error("Together AI API error: 400 - model unavailable"),
-        )
         .mockRejectedValueOnce(
           new Error("Together AI API error: 400 - model unavailable"),
         )
@@ -130,17 +127,14 @@ describe("EnhancedDesignDNAService", () => {
 
       expect(result).toEqual(mockAnalysis);
       expect(togetherAIReasoningService.chatCompletion).toHaveBeenCalledTimes(
-        3,
+        2,
       );
       expect(
         togetherAIReasoningService.chatCompletion.mock.calls[0][1].model,
-      ).toBe("meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo");
+      ).toBe("gpt-4o");
       expect(
         togetherAIReasoningService.chatCompletion.mock.calls[1][1].model,
-      ).toBe("meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo");
-      expect(
-        togetherAIReasoningService.chatCompletion.mock.calls[2][1].model,
-      ).toBe("gpt-4o");
+      ).toBe("gpt-4.1-mini");
     });
   });
 });

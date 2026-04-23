@@ -19,12 +19,25 @@ import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
 import normalizeDNA from "./dnaNormalization.js";
 import logger from "../utils/logger.js";
 
+const INCLUDE_DEDICATED_TOGETHER_VISION_MODELS =
+  String(
+    process.env.REACT_APP_ENABLE_DEDICATED_TOGETHER_VISION_MODELS || "",
+  ).toLowerCase() === "true";
+
+const DEDICATED_TOGETHER_VISION_MODELS = [
+  "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
+  "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
+];
+
+const OPENAI_PORTFOLIO_VISION_MODELS = ["gpt-4o", "gpt-4.1-mini"];
+
 const PORTFOLIO_VISION_MODELS = [
   process.env.REACT_APP_PORTFOLIO_VISION_MODEL,
   process.env.REACT_APP_AI_MODEL_PORTFOLIO,
-  "meta-llama/Llama-3.2-11B-Vision-Instruct-Turbo",
-  "meta-llama/Llama-3.2-90B-Vision-Instruct-Turbo",
-  "gpt-4o",
+  ...OPENAI_PORTFOLIO_VISION_MODELS,
+  ...(INCLUDE_DEDICATED_TOGETHER_VISION_MODELS
+    ? DEDICATED_TOGETHER_VISION_MODELS
+    : []),
 ].filter(
   (model, index, allModels) =>
     typeof model === "string" &&

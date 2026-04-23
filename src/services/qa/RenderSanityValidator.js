@@ -180,7 +180,8 @@ function getContainedExtentRatios(contentAspect, slotAspect) {
  * @returns {Object}
  */
 export function resolvePanelThresholds(panelType, opts = {}) {
-  const thresholds = { ...getBasePanelThresholds(panelType) };
+  const baseThresholds = getBasePanelThresholds(panelType);
+  const thresholds = { ...baseThresholds };
   const slotAspect = getSafeAspectRatio(opts.slotWidth, opts.slotHeight);
   const imageAspect = getSafeAspectRatio(
     opts.originalWidth,
@@ -201,6 +202,22 @@ export function resolvePanelThresholds(panelType, opts = {}) {
   thresholds.minBboxHeightRatio = Math.max(
     thresholds.thinStripHeightThreshold,
     Math.min(thresholds.minBboxHeightRatio, expected.heightRatio * bboxSlack),
+  );
+
+  const expectedAreaRatio = Math.max(
+    0,
+    Math.min(1, expected.widthRatio * expected.heightRatio),
+  );
+  const occupancyFloor = String(panelType).startsWith("floor_plan_")
+    ? 0.02
+    : 0.018;
+  const occupancyScaled =
+    Number(baseThresholds.minOccupancyRatio || MIN_OCCUPANCY_RATIO) *
+    expectedAreaRatio *
+    1.05;
+  thresholds.minOccupancyRatio = Math.max(
+    occupancyFloor,
+    Math.min(baseThresholds.minOccupancyRatio, occupancyScaled),
   );
 
   return thresholds;
