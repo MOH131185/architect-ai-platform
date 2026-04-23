@@ -57,47 +57,47 @@ export function getSectionLineweights({
   return {
     cutPoche: round(
       clamp(
-        3.4 * confidenceMultiplier * faceQualityMultiplier +
+        3.72 * confidenceMultiplier * faceQualityMultiplier +
           draftingBoost +
           faceBoost,
-        2.6,
-        3.85,
+        2.85,
+        4.25,
       ),
     ),
     cutOutline: round(
       clamp(
-        2.05 * confidenceMultiplier * faceQualityMultiplier +
+        2.2 * confidenceMultiplier * faceQualityMultiplier +
           draftingBoost * 0.55 +
           faceBoost * 0.7,
-        1.4,
-        2.38,
+        1.55,
+        2.6,
       ),
     ),
     primary: round(
       clamp(
-        1.45 * confidenceMultiplier + draftingBoost * 0.34 + faceBoost * 0.32,
-        1.1,
-        1.72,
+        1.52 * confidenceMultiplier + draftingBoost * 0.34 + faceBoost * 0.32,
+        1.18,
+        1.84,
       ),
     ),
     secondary: round(
       clamp(
-        1.05 * confidenceMultiplier + draftingBoost * 0.26 + faceBoost * 0.24,
-        0.82,
-        1.28,
+        1.12 * confidenceMultiplier + draftingBoost * 0.26 + faceBoost * 0.24,
+        0.88,
+        1.36,
       ),
     ),
     tertiary: round(
       clamp(
-        0.78 * confidenceMultiplier + draftingBoost * 0.18 + faceBoost * 0.16,
-        0.58,
-        0.98,
+        0.84 * confidenceMultiplier + draftingBoost * 0.18 + faceBoost * 0.16,
+        0.62,
+        1.06,
       ),
     ),
     hatch: round(
       clamp(0.7 * confidenceMultiplier + faceBoost * 0.12, 0.5, 0.84),
     ),
-    datum: round(clamp(1.1 * confidenceMultiplier, 0.88, 1.2)),
+    datum: round(clamp(1.18 * confidenceMultiplier, 0.94, 1.28)),
     guide: round(clamp(0.72 * confidenceMultiplier, 0.55, 0.82)),
     phase21,
   };

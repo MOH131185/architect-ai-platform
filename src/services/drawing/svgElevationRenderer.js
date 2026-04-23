@@ -159,12 +159,58 @@ function getPatternId(hatch = "") {
   return "phase8-elev-render";
 }
 
+function average(values = []) {
+  const finiteValues = (values || [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+  if (!finiteValues.length) {
+    return 0;
+  }
+  return (
+    finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length
+  );
+}
+
+function resolveFacadeZoneSpan(
+  zone = {},
+  index = 0,
+  zoneCount = 1,
+  widthM = 1,
+) {
+  const totalWidthM = Math.max(Number(widthM || 0), 1);
+  const startM = Number(
+    zone.start_m ?? zone.startM ?? zone.start ?? zone.offset_m,
+  );
+  const endM = Number(zone.end_m ?? zone.endM ?? zone.end ?? zone.span_end_m);
+  if (Number.isFinite(startM) && Number.isFinite(endM) && endM > startM) {
+    return {
+      startM: clamp(startM, 0, totalWidthM),
+      endM: clamp(endM, 0, totalWidthM),
+    };
+  }
+  return {
+    startM: (totalWidthM * index) / Math.max(zoneCount, 1),
+    endM: (totalWidthM * (index + 1)) / Math.max(zoneCount, 1),
+  };
+}
+
+function resolveFacadeZoneLabel(zone = {}, palette = {}, index = 0) {
+  const fallback =
+    index === 0
+      ? palette.primary?.name || "Primary facade"
+      : palette.secondary?.name || "Secondary facade";
+  return String(zone.material || zone.name || zone.type || fallback);
+}
+
 function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
   const flatRoof =
     roofLanguage.includes("flat") || roofLanguage.includes("parapet");
   if (flatRoof) {
     return `
       <g id="phase14-section-roof">
+        <rect x="${formatNumber(baseX)}" y="${formatNumber(
+          topY - 18,
+        )}" width="${formatNumber(widthPx)}" height="4" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.2" />
         <rect x="${formatNumber(baseX)}" y="${formatNumber(
           topY - 14,
         )}" width="${formatNumber(widthPx)}" height="14" fill="url(#phase8-elev-roof)" stroke="${theme.line}" stroke-width="1.8" />
@@ -173,18 +219,49 @@ function renderRoof(baseX, topY, widthPx, roofLanguage, theme) {
         )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
           topY - 14,
         )}" stroke="${theme.line}" stroke-width="2.3" />
+        <line x1="${formatNumber(baseX + 4)}" y1="${formatNumber(
+          topY - 6,
+        )}" x2="${formatNumber(baseX + widthPx - 4)}" y2="${formatNumber(
+          topY - 6,
+        )}" stroke="${theme.lineLight}" stroke-width="0.95" />
       </g>
     `;
   }
 
-  const ridgeY = topY - 48;
+  const ridgeY = topY - Math.max(46, Math.min(58, widthPx * 0.14));
+  const undersideY = ridgeY + 12;
   return `
     <g id="phase14-section-roof">
+      <path d="M ${formatNumber(baseX - 6)} ${formatNumber(
+        topY,
+      )} L ${formatNumber(baseX + widthPx / 2)} ${formatNumber(
+        ridgeY,
+      )} L ${formatNumber(baseX + widthPx + 6)} ${formatNumber(
+        topY,
+      )} L ${formatNumber(baseX + widthPx - 10)} ${formatNumber(
+        topY,
+      )} L ${formatNumber(baseX + widthPx / 2)} ${formatNumber(
+        undersideY,
+      )} L ${formatNumber(baseX + 10)} ${formatNumber(
+        topY,
+      )} Z" fill="url(#phase8-elev-roof)" stroke="none" />
       <path d="M ${formatNumber(baseX)} ${formatNumber(topY)} L ${formatNumber(
         baseX + widthPx / 2,
       )} ${formatNumber(ridgeY)} L ${formatNumber(
         baseX + widthPx,
       )} ${formatNumber(topY)}" fill="url(#phase8-elev-roof)" stroke="${theme.line}" stroke-width="2.3" />
+      <path d="M ${formatNumber(baseX + 10)} ${formatNumber(
+        topY,
+      )} L ${formatNumber(baseX + widthPx / 2)} ${formatNumber(
+        undersideY,
+      )} L ${formatNumber(baseX + widthPx - 10)} ${formatNumber(
+        topY,
+      )}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.25" />
+      <line x1="${formatNumber(baseX + widthPx / 2)}" y1="${formatNumber(
+        ridgeY,
+      )}" x2="${formatNumber(baseX + widthPx / 2)}" y2="${formatNumber(
+        ridgeY + 10,
+      )}" stroke="${theme.line}" stroke-width="1.05" />
       <line x1="${formatNumber(baseX + 8)}" y1="${formatNumber(
         topY - 6,
       )}" x2="${formatNumber(baseX + widthPx - 8)}" y2="${formatNumber(
@@ -273,12 +350,31 @@ function renderProjectedOpenings(
       const sillY = projectY(level, windowElement.sill_height_m || 0.9);
       const headY = projectY(level, windowElement.head_height_m || 2.1);
       const heightPx = Math.max(18, sillY - headY);
+      const jambInset = Math.min(6, widthPx * 0.16);
+      const mullionMarkup =
+        widthPx >= 44
+          ? `<line x1="${formatNumber(x + widthPx / 2)}" y1="${formatNumber(
+              headY + 2,
+            )}" x2="${formatNumber(x + widthPx / 2)}" y2="${formatNumber(
+              sillY - 2,
+            )}" stroke="${theme.lineLight}" stroke-width="1" />`
+          : "";
       return `
         <g class="phase8-window">
           <rect x="${formatNumber(x)}" y="${formatNumber(headY)}" width="${formatNumber(
             widthPx,
           )}" height="${formatNumber(heightPx)}" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.45" />
           <line x1="${formatNumber(x)}" y1="${formatNumber(
+            headY,
+          )}" x2="${formatNumber(x)}" y2="${formatNumber(
+            sillY,
+          )}" stroke="${theme.guide}" stroke-width="0.9" />
+          <line x1="${formatNumber(x + widthPx)}" y1="${formatNumber(
+            headY,
+          )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
+            sillY,
+          )}" stroke="${theme.guide}" stroke-width="0.9" />
+          <line x1="${formatNumber(x)}" y1="${formatNumber(
             sillY,
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             sillY,
@@ -288,11 +384,17 @@ function renderProjectedOpenings(
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             headY,
           )}" stroke="${theme.lineMuted}" stroke-width="1.05" />
-          <line x1="${formatNumber(x + widthPx / 2)}" y1="${formatNumber(
-            headY + 2,
-          )}" x2="${formatNumber(x + widthPx / 2)}" y2="${formatNumber(
-            sillY - 2,
-          )}" stroke="${theme.lineLight}" stroke-width="1" />
+          <line x1="${formatNumber(x - 3)}" y1="${formatNumber(
+            sillY + 1.5,
+          )}" x2="${formatNumber(x + widthPx + 3)}" y2="${formatNumber(
+            sillY + 1.5,
+          )}" stroke="${theme.lineLight}" stroke-width="0.95" />
+          <line x1="${formatNumber(x + jambInset)}" y1="${formatNumber(
+            headY + 4,
+          )}" x2="${formatNumber(x + widthPx - jambInset)}" y2="${formatNumber(
+            headY + 4,
+          )}" stroke="${theme.guide}" stroke-width="0.8" />
+          ${mullionMarkup}
         </g>
       `;
     })
@@ -316,9 +418,29 @@ function renderProjectedOpenings(
           )}" height="${formatNumber(heightPx)}" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.6" />
           <line x1="${formatNumber(x)}" y1="${formatNumber(
             headY,
+          )}" x2="${formatNumber(x)}" y2="${formatNumber(
+            baseY,
+          )}" stroke="${theme.guide}" stroke-width="0.9" />
+          <line x1="${formatNumber(x + widthPx)}" y1="${formatNumber(
+            headY,
+          )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
+            baseY,
+          )}" stroke="${theme.guide}" stroke-width="0.9" />
+          <line x1="${formatNumber(x)}" y1="${formatNumber(
+            headY,
           )}" x2="${formatNumber(x + widthPx)}" y2="${formatNumber(
             headY,
           )}" stroke="${theme.lineMuted}" stroke-width="1.05" />
+          <line x1="${formatNumber(x + 4)}" y1="${formatNumber(
+            baseY - 2.5,
+          )}" x2="${formatNumber(x + widthPx - 4)}" y2="${formatNumber(
+            baseY - 2.5,
+          )}" stroke="${theme.lineLight}" stroke-width="0.95" />
+          <line x1="${formatNumber(x + widthPx / 2)}" y1="${formatNumber(
+            headY + 3,
+          )}" x2="${formatNumber(x + widthPx / 2)}" y2="${formatNumber(
+            baseY - 3,
+          )}" stroke="${theme.lineLight}" stroke-width="0.9" />
         </g>
       `;
     })
@@ -333,16 +455,40 @@ function renderProjectedOpenings(
 
 function renderRhythmGuides(
   facadeOrientation = {},
+  sideFacade = {},
   baseX = 0,
   baseY = 0,
   widthPx = 0,
   heightPx = 0,
+  scale = 1,
   theme,
 ) {
   const bays = facadeOrientation?.components?.bays || [];
-  const guides = bays
-    .map((_, index) => {
-      const x = baseX + ((index + 1) * widthPx) / Math.max(bays.length + 1, 2);
+  const guidePositions = bays.length
+    ? Array.from(
+        { length: bays.length },
+        (_, index) =>
+          baseX + ((index + 1) * widthPx) / Math.max(bays.length + 1, 2),
+      )
+    : [
+        ...new Set(
+          [
+            ...(sideFacade.openingGroups || []).map((group) =>
+              roundMetric(
+                (Number(group.spanStartM || 0) + Number(group.spanEndM || 0)) /
+                  2,
+              ),
+            ),
+            ...(sideFacade.projectedOpenings || []).map((opening) =>
+              roundMetric(opening.center_m || 0),
+            ),
+          ]
+            .filter((entry) => Number.isFinite(entry))
+            .sort((left, right) => left - right),
+        ),
+      ].map((centerM) => baseX + centerM * scale);
+  const guides = guidePositions
+    .map((x) => {
       return `<line x1="${formatNumber(x)}" y1="${formatNumber(
         baseY - heightPx,
       )}" x2="${formatNumber(x)}" y2="${formatNumber(
@@ -353,47 +499,99 @@ function renderRhythmGuides(
 
   return {
     markup: `<g id="phase8-elevation-rhythm">${guides}</g>`,
-    count: bays.length,
+    count: guidePositions.length,
   };
 }
 
 function renderMaterialZones(
+  sideFacade = {},
   facadeOrientation = {},
   palette = {},
   baseX = 0,
   baseY = 0,
   widthPx = 0,
   heightPx = 0,
+  scale = 1,
   theme,
 ) {
-  const zones = facadeOrientation?.material_zones || [];
-  if (!zones.length) {
-    return {
-      markup: `<rect x="${formatNumber(baseX)}" y="${formatNumber(
-        baseY - heightPx,
-      )}" width="${formatNumber(widthPx)}" height="${formatNumber(
-        heightPx,
-      )}" fill="url(#${getPatternId(
-        palette.primary?.hatch,
-      )})" stroke="${theme.line}" stroke-width="2" />`,
-      count: 1,
-    };
-  }
-
-  const bandHeight = heightPx / zones.length;
-  const markup = zones
+  const facadeWidthM = Math.max(
+    Number(sideFacade.metrics?.width_m || widthPx / Math.max(scale || 1, 1)),
+    1,
+  );
+  const explicitZones =
+    facadeOrientation?.material_zones?.length > 0
+      ? facadeOrientation.material_zones
+      : (sideFacade.wallZones || []).length > 0
+        ? sideFacade.wallZones
+        : [];
+  const sourceZones = explicitZones.length
+    ? explicitZones
+    : [
+        {
+          material: palette.primary?.name || "Primary facade",
+          start_m: 0,
+          end_m: facadeWidthM,
+        },
+      ];
+  const normalizedZones = sourceZones
+    .map((zone, index) => ({
+      raw: zone,
+      ...resolveFacadeZoneSpan(zone, index, sourceZones.length, facadeWidthM),
+      label: resolveFacadeZoneLabel(zone, palette, index),
+    }))
+    .filter((zone) => zone.endM > zone.startM)
+    .sort((left, right) => left.startM - right.startM || left.endM - right.endM)
+    .filter(
+      (zone, index, zones) =>
+        index === 0 ||
+        Math.abs(zone.startM - zones[index - 1].startM) > 0.18 ||
+        Math.abs(zone.endM - zones[index - 1].endM) > 0.18,
+    );
+  const markup = normalizedZones
     .map((zone, index) => {
-      const y = baseY - heightPx + bandHeight * index;
-      const materialKey = String(zone.material || zone.type || zone.name || "")
+      const x = baseX + zone.startM * scale;
+      const zoneWidthPx = Math.max(16, (zone.endM - zone.startM) * scale);
+      const materialKey = String(zone.label || "")
         .toLowerCase()
         .includes("secondary")
         ? palette.secondary?.hatch
-        : palette.primary?.hatch;
-      return `<rect x="${formatNumber(baseX)}" y="${formatNumber(
-        y,
-      )}" width="${formatNumber(widthPx)}" height="${formatNumber(
-        bandHeight,
-      )}" fill="url(#${getPatternId(materialKey)})" />`;
+        : String(zone.label || "")
+              .toLowerCase()
+              .includes("accent")
+          ? palette.secondary?.hatch
+          : palette.primary?.hatch;
+      const labelText = escapeXml(String(zone.label || "").toUpperCase());
+      const labelWidth = Math.min(
+        zoneWidthPx - 12,
+        Math.max(54, labelText.length * 5.2),
+      );
+      const labelX = x + zoneWidthPx / 2;
+      return `
+        <g class="phase8-elevation-material-zone" data-zone-index="${index}">
+          <rect x="${formatNumber(x)}" y="${formatNumber(
+            baseY - heightPx,
+          )}" width="${formatNumber(zoneWidthPx)}" height="${formatNumber(
+            heightPx,
+          )}" fill="url(#${getPatternId(materialKey)})" fill-opacity="0.96" />
+          <line x1="${formatNumber(x)}" y1="${formatNumber(
+            baseY - heightPx,
+          )}" x2="${formatNumber(x)}" y2="${formatNumber(
+            baseY,
+          )}" stroke="${theme.lineLight}" stroke-width="0.9" />
+          ${
+            zoneWidthPx >= 72
+              ? `<rect x="${formatNumber(
+                  labelX - labelWidth / 2,
+                )}" y="${formatNumber(
+                  baseY - 22,
+                )}" width="${formatNumber(labelWidth)}" height="12" fill="${theme.paper}" fill-opacity="0.92" />
+          <text x="${formatNumber(labelX)}" y="${formatNumber(
+            baseY - 13,
+          )}" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">${labelText}</text>`
+              : ""
+          }
+        </g>
+      `;
     })
     .join("");
 
@@ -408,7 +606,124 @@ function renderMaterialZones(
         )}" fill="none" stroke="${theme.line}" stroke-width="2" />
       </g>
     `,
-    count: zones.length,
+    count: normalizedZones.length,
+  };
+}
+
+function renderFacadeArticulation(
+  sideFacade = {},
+  baseX = 0,
+  baseY = 0,
+  widthPx = 0,
+  heightPx = 0,
+  scale = 1,
+  theme,
+) {
+  const levelProfiles = sideFacade.levelProfiles || [];
+  const openingGroups = sideFacade.openingGroups || [];
+  const projectedOpenings = sideFacade.projectedOpenings || [];
+  const wallZones = sideFacade.wallZones || [];
+  const markup = [];
+  let count = 0;
+  const plinthY = baseY - Math.min(18, Math.max(12, heightPx * 0.12));
+  markup.push(`
+    <rect x="${formatNumber(baseX)}" y="${formatNumber(
+      plinthY,
+    )}" width="${formatNumber(widthPx)}" height="${formatNumber(
+      Math.max(10, baseY - plinthY),
+    )}" fill="${theme.fillSoft}" fill-opacity="0.2" />
+    <line x1="${formatNumber(baseX)}" y1="${formatNumber(
+      plinthY,
+    )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+      plinthY,
+    )}" stroke="${theme.line}" stroke-width="1.35" />
+  `);
+  count += 2;
+
+  levelProfiles.slice(0, -1).forEach((level) => {
+    const y = baseY - Number(level.top_m || 0) * scale;
+    markup.push(
+      `<line x1="${formatNumber(baseX)}" y1="${formatNumber(
+        y,
+      )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+        y,
+      )}" stroke="${theme.lineLight}" stroke-width="0.95" />`,
+    );
+    count += 1;
+  });
+
+  const boundaryPositions = [
+    ...wallZones.flatMap((zone) => [Number(zone.startM), Number(zone.endM)]),
+    ...openingGroups.flatMap((group) => [
+      Number(group.spanStartM),
+      Number(group.spanEndM),
+    ]),
+  ]
+    .filter((entry) => Number.isFinite(entry) && entry > 0)
+    .sort((left, right) => left - right)
+    .filter(
+      (entry, index, values) =>
+        index === 0 || Math.abs(entry - values[index - 1]) > 0.18,
+    );
+
+  boundaryPositions.forEach((positionM) => {
+    const x = baseX + positionM * scale;
+    markup.push(
+      `<line x1="${formatNumber(x)}" y1="${formatNumber(
+        baseY - heightPx + 10,
+      )}" x2="${formatNumber(x)}" y2="${formatNumber(
+        baseY - 2,
+      )}" stroke="${theme.guide}" stroke-width="0.75" stroke-dasharray="4 6" />`,
+    );
+    count += 1;
+  });
+
+  openingGroups.forEach((group) => {
+    const x1 = baseX + Number(group.spanStartM || 0) * scale;
+    const x2 = baseX + Number(group.spanEndM || 0) * scale;
+    if (!(x2 > x1)) {
+      return;
+    }
+    const level = levelProfiles.find((entry) => entry.id === group.levelId);
+    if (!level) {
+      return;
+    }
+    const relatedOpenings = projectedOpenings.filter(
+      (opening) =>
+        opening.levelId === group.levelId &&
+        String(opening.kind || "opening") === String(group.kind || "opening"),
+    );
+    const headHeight =
+      average(relatedOpenings.map((opening) => opening.head_height_m)) ||
+      (String(group.kind || "").toLowerCase() === "door" ? 2.2 : 2.1);
+    const headY = baseY - (Number(level.bottom_m || 0) + headHeight) * scale;
+    markup.push(
+      `<line x1="${formatNumber(x1)}" y1="${formatNumber(
+        headY,
+      )}" x2="${formatNumber(x2)}" y2="${formatNumber(
+        headY,
+      )}" stroke="${theme.lineMuted}" stroke-width="1.05" />`,
+    );
+    count += 1;
+
+    if (String(group.kind || "").toLowerCase() !== "door") {
+      const sillHeight =
+        average(relatedOpenings.map((opening) => opening.sill_height_m)) || 0.9;
+      const sillY = baseY - (Number(level.bottom_m || 0) + sillHeight) * scale;
+      markup.push(
+        `<line x1="${formatNumber(x1)}" y1="${formatNumber(
+          sillY,
+        )}" x2="${formatNumber(x2)}" y2="${formatNumber(
+          sillY,
+        )}" stroke="${theme.lineLight}" stroke-width="0.9" />`,
+      );
+      count += 1;
+    }
+  });
+
+  return {
+    markup: `<g id="phase8-elevation-articulation">${markup.join("")}</g>`,
+    count,
   };
 }
 
@@ -511,6 +826,78 @@ function renderFacadeFeatures(
         )} L ${formatNumber(baseX + widthPx * 0.42 + 42)} ${formatNumber(
           roofY - 24,
         )}" fill="none" stroke="${theme.line}" stroke-width="1.2" />
+      </g>
+    `);
+  }
+
+  if (features.some((entry) => entry.includes("frame"))) {
+    markup.push(`
+      <g id="phase8-feature-frame">
+        <rect x="${formatNumber(baseX + widthPx * 0.16)}" y="${formatNumber(
+          baseY -
+            levelProfiles.reduce(
+              (sum, level) => sum + Number(level.height_m || 3.2),
+              0,
+            ) *
+              scale *
+              0.78,
+        )}" width="${formatNumber(widthPx * 0.68)}" height="${formatNumber(
+          levelProfiles.reduce(
+            (sum, level) => sum + Number(level.height_m || 3.2),
+            0,
+          ) *
+            scale *
+            0.62,
+        )}" fill="none" stroke="${theme.line}" stroke-width="1.2" />
+      </g>
+    `);
+  }
+
+  if (features.some((entry) => entry.includes("projection"))) {
+    markup.push(`
+      <g id="phase8-feature-projection">
+        <path d="M ${formatNumber(baseX + widthPx * 0.24)} ${formatNumber(
+          baseY - 18,
+        )} L ${formatNumber(baseX + widthPx * 0.24)} ${formatNumber(
+          baseY - 74,
+        )} L ${formatNumber(baseX + widthPx * 0.32)} ${formatNumber(
+          baseY - 82,
+        )} L ${formatNumber(baseX + widthPx * 0.68)} ${formatNumber(
+          baseY - 82,
+        )} L ${formatNumber(baseX + widthPx * 0.76)} ${formatNumber(
+          baseY - 74,
+        )} L ${formatNumber(baseX + widthPx * 0.76)} ${formatNumber(
+          baseY - 18,
+        )}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.05" />
+      </g>
+    `);
+  }
+
+  if (features.some((entry) => entry.includes("recess"))) {
+    markup.push(`
+      <g id="phase8-feature-recess">
+        <rect x="${formatNumber(baseX + widthPx * 0.28)}" y="${formatNumber(
+          baseY - 86,
+        )}" width="${formatNumber(widthPx * 0.44)}" height="52" fill="none" stroke="${theme.lineLight}" stroke-width="0.95" stroke-dasharray="5 4" />
+      </g>
+    `);
+  }
+
+  if (features.some((entry) => entry.includes("parapet"))) {
+    const roofY =
+      baseY -
+      levelProfiles.reduce(
+        (sum, level) => sum + Number(level.height_m || 3.2),
+        0,
+      ) *
+        scale;
+    markup.push(`
+      <g id="phase8-feature-parapet">
+        <line x1="${formatNumber(baseX)}" y1="${formatNumber(
+          roofY + 6,
+        )}" x2="${formatNumber(baseX + widthPx)}" y2="${formatNumber(
+          roofY + 6,
+        )}" stroke="${theme.line}" stroke-width="1.35" />
       </g>
     `);
   }
@@ -741,12 +1128,14 @@ export function renderElevationSvg(
       options.facadeGrammar || geometry.metadata?.facade_grammar || null,
   });
   const materialZones = renderMaterialZones(
+    sideFacade,
     facadeOrientation,
     palette,
     baseX,
     baseY,
     widthPx,
     heightPx,
+    scale,
     theme,
   );
   const datums = renderLevelDatums(
@@ -766,10 +1155,21 @@ export function renderElevationSvg(
   );
   const rhythm = renderRhythmGuides(
     facadeOrientation,
+    sideFacade,
     baseX,
     baseY,
     widthPx,
     heightPx,
+    scale,
+    theme,
+  );
+  const articulation = renderFacadeArticulation(
+    sideFacade,
+    baseX,
+    baseY,
+    widthPx,
+    heightPx,
+    scale,
     theme,
   );
   const features = [
@@ -818,6 +1218,7 @@ export function renderElevationSvg(
     openings.windowCount + openings.doorCount + featureMarkup.count > 0 ||
     facadeRhythmSignalCount > 0 ||
     facadeMaterialSignalCount > 0 ||
+    articulation.count > 0 ||
     sideFacade.geometrySource === "explicit_side_walls" ||
     minimalEnvelopeFallback;
   const elevationSemantics = assessElevationSemantics(sideFacade, palette);
@@ -828,6 +1229,7 @@ export function renderElevationSvg(
         (openings.windowCount > 0 ? 0.26 : 0.1) +
           (materialZones.count > 0 ? 0.14 : 0.04) +
           (rhythm.count > 0 ? 0.1 : 0.04) +
+          (articulation.count > 3 ? 0.08 : 0.03) +
           (datums.count > 1 ? 0.14 : 0.06) +
           (featureMarkup.count > 0 ? 0.12 : 0.04) +
           (String(roofLanguage).length > 0 ? 0.1 : 0.04) +
@@ -880,6 +1282,7 @@ export function renderElevationSvg(
         level_label_count: levelProfiles.length,
         material_zone_count: materialZones.count,
         bay_count: rhythm.count,
+        facade_articulation_count: articulation.count,
         feature_count: featureMarkup.count,
         facade_richness_score: facadeRichnessScore,
         side_facade_score: sideFacade.richnessScore,
@@ -915,8 +1318,9 @@ export function renderElevationSvg(
         )}</text>`
   }
   ${renderGroundLine(baseX, baseY, widthPx, theme)}
-  ${roof}
   ${materialZones.markup}
+  ${articulation.markup}
+  ${roof}
   ${rhythm.markup}
   ${datums.markup}
   ${openings.markup}
@@ -961,6 +1365,7 @@ export function renderElevationSvg(
       floor_line_count: levelProfiles.length,
       level_label_count: levelProfiles.length,
       bay_count: rhythm.count,
+      facade_articulation_count: articulation.count,
       shading_count: facadeOrientation?.shading_elements?.length || 0,
       material_zone_count: materialZones.count,
       ffl_marker_count: datums.count,

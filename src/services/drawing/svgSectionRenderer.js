@@ -55,6 +55,17 @@ function formatMeters(value) {
   return `${numeric.toFixed(1)} m`;
 }
 
+function resolveStairTruthLabel(truthState = "direct") {
+  const normalized = String(truthState || "direct").toLowerCase();
+  if (normalized === "contextual") {
+    return "CONTEXTUAL";
+  }
+  if (normalized === "derived") {
+    return "DERIVED";
+  }
+  return "DIRECT CUT";
+}
+
 function chooseScaleBarMeters(scalePxPerMeter = 1) {
   const candidates = [0.5, 1, 2, 5, 10];
   const eligible = candidates.filter(
@@ -283,30 +294,44 @@ function renderOverallSectionDimensions(
   `;
 }
 
-function renderLevelDatums(baseX, baseY, widthPx, levelProfiles, scale) {
+function renderLevelDatums(
+  baseX,
+  baseY,
+  widthPx,
+  levelProfiles,
+  scale,
+  lineweights = {},
+) {
   const lines = [];
   const labels = [];
+  const datumWeight = lineweights.datum || 1.05;
+  const labelStroke = lineweights.guide || 0.78;
   levelProfiles.forEach((level) => {
     const topY = baseY - level.top_m * scale;
     const midY =
       baseY - (level.bottom_m + Number(level.height_m || 3.2) / 2) * scale;
     lines.push(
-      `<line x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="1" />`,
+      `<line x1="${baseX}" y1="${topY}" x2="${baseX + widthPx}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${datumWeight}" stroke-dasharray="10 6" />`,
     );
     labels.push(`
-      <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="0.9" />
-      <text x="${baseX - 58}" y="${topY + 4}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">${escapeXml(
-        `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
-      )}</text>
-      <text x="${baseX - 10}" y="${midY}" font-size="9" font-family="Arial, sans-serif" text-anchor="end">${escapeXml(
-        level.name || `L${level.level_number}`,
-      )}</text>
+      <g class="phase8-section-level-label">
+        <line x1="${baseX - 52}" y1="${topY}" x2="${baseX - 6}" y2="${topY}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}" />
+        <rect x="${baseX - 176}" y="${topY - 11}" width="118" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+        <text x="${baseX - 166}" y="${topY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+          `${level.name || `L${level.level_number}`} +${level.top_m.toFixed(2)}m`,
+        )}</text>
+        <rect x="${baseX - 84}" y="${midY - 9}" width="66" height="14" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.92" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+        <text x="${baseX - 51}" y="${midY + 1}" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+          level.name || `L${level.level_number}`,
+        )}</text>
+      </g>
     `);
   });
 
   labels.push(`
-    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="1" />
-    <text x="${baseX - 58}" y="${baseY + 4}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+    <line x1="${baseX - 52}" y1="${baseY}" x2="${baseX - 6}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
+    <rect x="${baseX - 144}" y="${baseY - 11}" width="86" height="16" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="${labelStroke}" />
+    <text x="${baseX - 134}" y="${baseY + 1}" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
   `);
 
   return {
@@ -399,9 +424,16 @@ function renderFoundation(
         `<line x1="${entry.x}" y1="${baseY - 10}" x2="${entry.x + entry.width}" y2="${baseY - 10}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}"${entry.truthState === "contextual" ? ' stroke-dasharray="6 4" stroke-opacity="0.74"' : ""} data-truth-state="${entry.truthState || "direct"}" />`,
     )
     .join("");
+  const soilBandCount = Math.max(6, Math.round((widthPx + 28) / 44));
+  const soilMarkup = Array.from({ length: soilBandCount }, (_, index) => {
+    const startX = baseX - 14 + (index * (widthPx + 28)) / soilBandCount;
+    const y = baseY + 18 + (index % 2) * 3;
+    return `<path d="M ${startX} ${y} L ${startX + 8} ${y + 4} L ${startX + 16} ${y} L ${startX + 24} ${y + 4}" fill="none" stroke="${SECTION_THEME.guide}" stroke-width="${lineweights.guide || 0.72}" />`;
+  }).join("");
   return `
     <g id="phase8-section-foundation" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
       <rect x="${baseX - 10}" y="${baseY}" width="${widthPx + 20}" height="42" fill="${SECTION_THEME.paper}" fill-opacity="${fillOpacity}" />
+      <rect x="${baseX - 14}" y="${baseY + 12}" width="${widthPx + 28}" height="18" fill="${SECTION_THEME.fillSoft}" fill-opacity="0.24" />
       ${bandMarkup}
       ${directClipMarkup}
       ${zoneMarkup}
@@ -410,8 +442,10 @@ function renderFoundation(
       ${baseWallConditionMarkup}
       ${stepMarkup}
       ${interfaceMarkup}
+      ${soilMarkup}
       <line x1="${baseX - 14}" y1="${baseY}" x2="${baseX + widthPx + 14}" y2="${baseY}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
       <line x1="${baseX - 14}" y1="${baseY + 12}" x2="${baseX + widthPx + 14}" y2="${baseY + 12}" stroke="${SECTION_THEME.guide}" stroke-width="${lineweights.secondary || 1}" stroke-dasharray="6 4" />
+      <text x="${baseX + widthPx - 6}" y="${baseY + 26}" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="${SECTION_THEME.lineLight}">GROUND RELATION</text>
       ${
         contextual
           ? `<text x="${baseX + widthPx - 6}" y="${baseY + 34}" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="${SECTION_THEME.lineLight}">FOUNDATION CONTEXTUAL</text>`
@@ -486,9 +520,11 @@ function renderRoof(
   if (flat) {
     return `
       <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
+      <rect x="${roofX}" y="${topY - 16}" width="${roofWidth}" height="4" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 1}"${dasharray} />
       <rect x="${roofX}" y="${topY - 12}" width="${roofWidth}" height="12" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.45 : quality === "weak" ? 0.68 : 1}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.6}"${dasharray} />
       <line x1="${roofX}" y1="${topY - 12}" x2="${roofX + roofWidth}" y2="${topY - 12}" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
       <line x1="${roofX + 8}" y1="${topY - 7}" x2="${roofX + roofWidth - 8}" y2="${topY - 7}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" />
+      <line x1="${roofX + 8}" y1="${topY - 3}" x2="${roofX + roofWidth - 8}" y2="${topY - 3}" stroke="${SECTION_THEME.lineMuted}" stroke-width="${lineweights.secondary || 1}" />
       ${cutPlaneMarkup}
       ${parapetMarkup}
       ${roofBreakMarkup}
@@ -499,10 +535,14 @@ function renderRoof(
     `;
   }
 
+  const ridgeY = topY - 52;
+  const undersideY = ridgeY + 12;
   return `
     <g id="phase14-section-roof" data-truth="${quality}" data-truth-mode="${truthMode}" data-truth-state="${truthState}">
-    <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${topY - 52} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
-    <path d="M ${roofX + 10} ${topY} L ${roofX + roofWidth / 2} ${topY - 40} L ${roofX + roofWidth - 10} ${topY}" fill="none" stroke="${SECTION_THEME.lineLight}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.secondary || 0.9}"${dasharray} />
+    <path d="M ${roofX - 4} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth + 4} ${topY} L ${roofX + roofWidth - 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + 12} ${topY} Z" fill="${SECTION_THEME.fillSoft}" fill-opacity="${quality === "blocked" ? 0.42 : quality === "weak" ? 0.66 : 0.92}" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.4}"${dasharray} />
+    <path d="M ${roofX} ${topY} L ${roofX + roofWidth / 2} ${ridgeY} L ${roofX + roofWidth} ${topY}" fill="none" stroke="${SECTION_THEME.line}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.cutOutline || 2}"${dasharray} />
+    <path d="M ${roofX + 12} ${topY} L ${roofX + roofWidth / 2} ${undersideY} L ${roofX + roofWidth - 12} ${topY}" fill="none" stroke="${SECTION_THEME.lineMuted}" stroke-opacity="${strokeOpacity}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
+    <line x1="${roofX + roofWidth / 2}" y1="${ridgeY}" x2="${roofX + roofWidth / 2}" y2="${ridgeY + 10}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
     <line x1="${roofX + 10}" y1="${topY - 8}" x2="${roofX + roofWidth - 10}" y2="${topY - 8}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="4 4" />
     ${cutPlaneMarkup}
     ${roofBreakMarkup}
@@ -592,17 +632,57 @@ function renderStairCut(
           Number(stair.depth_m || stair.bbox?.height || 2.8) * scale,
         );
       const treadCount = stair.treadCount || 7;
+      const truthState = String(
+        stair.truthState || stair.clipGeometry?.truthState || "direct",
+      ).toLowerCase();
+      const truthLabel = resolveStairTruthLabel(truthState);
+      const fillOpacity =
+        truthState === "direct"
+          ? 0.92
+          : truthState === "contextual"
+            ? 0.74
+            : 0.56;
+      const strokeDash =
+        truthState === "direct" ? "" : ' stroke-dasharray="6 4"';
       const treadSpacing = heightPx / treadCount;
       const treads = Array.from({ length: treadCount }, (_, index) => {
         const treadY = y + treadSpacing * (index + 1);
-        return `<line x1="${x + 4}" y1="${treadY}" x2="${x + widthPx - 4}" y2="${treadY}" stroke="${SECTION_THEME.lineLight}" stroke-width="0.9" />`;
+        return `<line x1="${x + 4}" y1="${treadY}" x2="${x + widthPx - 4}" y2="${treadY}" stroke="${SECTION_THEME.lineLight}" stroke-width="1.02" />`;
       }).join("");
+      const truthLabelWidth = Math.min(
+        Math.max(54, truthLabel.length * 5.4 + 10),
+        Math.max(54, widthPx - 8),
+      );
+      const arrowStart = {
+        x: x + widthPx * 0.58,
+        y: y + heightPx - 10,
+      };
+      const arrowEnd = {
+        x: x + widthPx * 0.58,
+        y: y + 18,
+      };
+      const arrowHead = `M ${formatNumber(arrowEnd.x)} ${formatNumber(
+        arrowEnd.y - 6,
+      )} L ${formatNumber(arrowEnd.x - 4)} ${formatNumber(
+        arrowEnd.y + 2,
+      )} L ${formatNumber(arrowEnd.x + 4)} ${formatNumber(arrowEnd.y + 2)} Z`;
 
       return `
-        <g id="phase8-section-stair-${escapeXml(stair.id || "stair")}">
-          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" stroke="${SECTION_THEME.line}" stroke-width="1.3" />
+        <g id="phase8-section-stair-${escapeXml(stair.id || "stair")}" data-truth-state="${truthState}">
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.paper}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="1.6"${strokeDash} />
+          <line x1="${x + 3}" y1="${y + 4}" x2="${x + 3}" y2="${y + heightPx - 4}" stroke="${SECTION_THEME.line}" stroke-width="1.15"${strokeDash} />
           ${treads}
-          <text x="${x + widthPx / 2}" y="${y + 17}" font-size="11" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">STAIR</text>
+          <line x1="${formatNumber(arrowStart.x)}" y1="${formatNumber(
+            arrowStart.y,
+          )}" x2="${formatNumber(arrowEnd.x)}" y2="${formatNumber(
+            arrowEnd.y,
+          )}" stroke="${SECTION_THEME.line}" stroke-width="1.2"${strokeDash} />
+          <path d="${arrowHead}" fill="${SECTION_THEME.line}"/>
+          <rect x="${x + (widthPx - truthLabelWidth) / 2}" y="${y + 4}" width="${truthLabelWidth}" height="12" rx="3" ry="3" fill="${SECTION_THEME.paper}" fill-opacity="0.94" stroke="${SECTION_THEME.guide}" stroke-width="0.7" />
+          <text x="${x + widthPx / 2}" y="${y + 13}" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
+            truthLabel,
+          )}</text>
+          <text x="${x + widthPx / 2}" y="${y + 27}" font-size="11" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">STAIR</text>
           <text x="${x + widthPx / 2}" y="${y + heightPx - 7}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">UP</text>
         </g>
       `;
@@ -612,7 +692,10 @@ function renderStairCut(
   return {
     markup: `<g id="phase8-section-stair-cuts">${markup}</g>`,
     count: (stairs || []).length,
-    treadCount: (stairs || []).length * 7,
+    treadCount: (stairs || []).reduce(
+      (sum, stair) => sum + Number(stair.treadCount || 7),
+      0,
+    ),
   };
 }
 
@@ -638,13 +721,17 @@ function renderSlabCuts(
             ? 0.62
             : 0.42;
       const buildUpDepth = Math.max(
-        5,
-        Math.min(12, Number(slab.clipDepthM || 0) * 18),
+        7,
+        Math.min(14, Number(slab.clipDepthM || 0) * 18),
       );
+      const edgeInset = Math.min(6, Math.max(3, slab.width * 0.04));
       return `
         <g id="phase14-section-slab-${escapeXml(slab.level?.id || slab.id)}" data-truth="${quality}" data-truth-state="${truthState}">
           <rect x="${slab.x || 0}" y="${slab.y}" width="${slab.width}" height="${buildUpDepth}" fill="${SECTION_THEME.fillSoft}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${dasharray} />
           <line x1="${slab.x || 0}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 1.8}"${dasharray} />
+          <line x1="${slab.x || 0}" y1="${slab.y}" x2="${slab.x || 0}" y2="${slab.y + buildUpDepth}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
+          <line x1="${(slab.x || 0) + slab.width}" y1="${slab.y}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + buildUpDepth}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.secondary || 1}" />
+          <line x1="${(slab.x || 0) + edgeInset}" y1="${slab.y + buildUpDepth / 2}" x2="${(slab.x || 0) + slab.width - edgeInset}" y2="${slab.y + buildUpDepth / 2}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" stroke-dasharray="5 3" />
           <line x1="${slab.x || 0}" y1="${slab.y + buildUpDepth}" x2="${(slab.x || 0) + slab.width}" y2="${slab.y + buildUpDepth}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.tertiary || 0.8}" />
         </g>`;
     })
@@ -662,6 +749,7 @@ function renderCutWalls(
   baseY = 0,
   scale = 1,
   levelProfiles = [],
+  lineweights = {},
 ) {
   const markup = (walls || [])
     .map((wall, index) => {
@@ -692,7 +780,16 @@ function renderCutWalls(
         truthState === "direct" ? "" : ' stroke-dasharray="7 4"';
 
       return `
-        <rect id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.poche}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="1.2"${strokeDash} data-truth-state="${truthState}" />
+        <g id="phase13-section-cut-wall-${escapeXml(wall.id || index)}" data-truth-state="${truthState}">
+          <rect x="${x}" y="${y}" width="${widthPx}" height="${heightPx}" fill="${SECTION_THEME.poche}" fill-opacity="${fillOpacity}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.cutOutline || 1.8}"${strokeDash} />
+          <line x1="${x}" y1="${y + 3}" x2="${x}" y2="${y + heightPx - 3}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${strokeDash} />
+          <line x1="${x + widthPx}" y1="${y + 3}" x2="${x + widthPx}" y2="${y + heightPx - 3}" stroke="${SECTION_THEME.line}" stroke-width="${lineweights.primary || 1.2}"${strokeDash} />
+          ${
+            widthPx > 14
+              ? `<line x1="${x + widthPx / 2}" y1="${y + 4}" x2="${x + widthPx / 2}" y2="${y + heightPx - 4}" stroke="${SECTION_THEME.lineLight}" stroke-width="${lineweights.hatch || 0.7}" />`
+              : ""
+          }
+        </g>
       `;
     })
     .join("");
@@ -908,6 +1005,7 @@ export function renderSectionSvg(
     horizontalExtent * scale,
     levelProfiles,
     scale,
+    lineweights,
   );
   const foundation = renderFoundation(
     baseX,
@@ -958,6 +1056,7 @@ export function renderSectionSvg(
           baseY,
           scale,
           levelProfiles,
+          lineweights,
         )
     : { markup: "", count: 0 };
   const openingMarkup = useClippedGraphics

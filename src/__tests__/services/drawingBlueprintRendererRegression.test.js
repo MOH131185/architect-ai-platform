@@ -267,7 +267,24 @@ function createCompiledProjectFixture() {
         ],
       },
     ],
-    metadata: {},
+    metadata: {
+      facade_grammar: {
+        orientations: [
+          {
+            side: "south",
+            material_zones: [
+              { material: "primary facade", start_m: 0, end_m: 7.2 },
+              { material: "secondary accent", start_m: 7.2, end_m: 12 },
+            ],
+            opening_rhythm: { opening_count: 2 },
+            components: {
+              bays: [{ id: "south-bay-1" }, { id: "south-bay-2" }],
+              feature_frames: [{ id: "south-frame-1" }],
+            },
+          },
+        ],
+      },
+    },
   };
 
   return {
@@ -383,6 +400,58 @@ describe("Blueprint renderer regressions", () => {
     expect(
       section.technical_quality_metadata.slot_occupancy_ratio,
     ).toBeGreaterThan(0.35);
+  });
+
+  test("renderers emit richer visible technical content across plan elevation and section", () => {
+    const compiled = createCompiledProjectFixture();
+    const sectionOptions = {
+      sheetMode: true,
+      sectionType: "longitudinal",
+      sectionProfile: {
+        id: "section:blueprint-richness",
+        sectionType: "longitudinal",
+        cutLine: {
+          from: { x: 16.2, y: 8 },
+          to: { x: 16.2, y: 16 },
+        },
+        focusEntityIds: ["main-stair", "living"],
+      },
+    };
+
+    const plan = renderPlanSvg(compiled, {
+      levelId: "ground",
+      sheetMode: true,
+    });
+    const elevation = renderElevationSvg(
+      compiled,
+      {},
+      {
+        orientation: "south",
+        sheetMode: true,
+      },
+    );
+    const section = renderSectionSvg(compiled, {}, sectionOptions);
+
+    expect(plan.svg).toContain('id="phase8-plan-furniture"');
+    expect(plan.svg).toContain("LIVING ROOM");
+    expect(plan.svg).toContain("24.0 M2");
+    expect(plan.svg).toContain("6.0 x 4.0 M");
+    expect(
+      plan.technical_quality_metadata.furniture_hint_count,
+    ).toBeGreaterThan(0);
+
+    expect(elevation.svg).toContain('id="phase8-elevation-material-zones"');
+    expect(elevation.svg).toContain('id="phase8-elevation-articulation"');
+    expect(elevation.svg).toContain('id="phase8-elevation-rhythm"');
+    expect(elevation.svg).toContain('id="phase8-feature-frame"');
+    expect(
+      elevation.technical_quality_metadata.facade_articulation_count,
+    ).toBeGreaterThan(0);
+
+    expect(section.svg).toContain("GROUND RELATION");
+    expect(section.svg).toContain("DIRECT CUT");
+    expect(section.svg).toContain('id="phase14-section-slabs"');
+    expect(section.svg).toContain('class="phase8-section-level-label"');
   });
 
   test("renderers remain deterministic for repeated compiled-project renders", () => {

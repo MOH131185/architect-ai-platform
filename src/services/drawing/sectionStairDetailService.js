@@ -30,6 +30,27 @@ function resolveStairTruthKind(stair = {}) {
   );
 }
 
+function resolveStairTruthLabel(truthState = "direct", truthKind = null) {
+  const normalizedState = String(truthState || "direct").toLowerCase();
+  const normalizedKind = String(truthKind || "").toLowerCase();
+  if (normalizedKind === "cut_face") {
+    return "DIRECT CUT";
+  }
+  if (normalizedKind === "cut_profile") {
+    return "DIRECT CUT";
+  }
+  if (
+    normalizedKind === "contextual_profile" ||
+    normalizedState === "contextual"
+  ) {
+    return "CONTEXTUAL";
+  }
+  if (normalizedKind === "derived_profile" || normalizedState === "derived") {
+    return "DERIVED";
+  }
+  return "DIRECT CUT";
+}
+
 export function buildSectionStairDetailMarkup({
   stairs = [],
   lineweights = {},
@@ -81,13 +102,28 @@ export function buildSectionStairDetailMarkup({
             ? ' stroke-dasharray="5 4" stroke-opacity="0.76"'
             : "";
       const fillOpacity = isCutFace ? 1.0 : nearBoolean ? 0.98 : 0.9;
+      const truthLabel = resolveStairTruthLabel(truthState, truthKind);
+      const truthLabelWidth = Math.min(
+        Math.max(52, truthLabel.length * 5.4 + 8),
+        Math.max(stair.width - 10, 52),
+      );
+      const truthFill = isCutFace
+        ? "#ffffff"
+        : contextual
+          ? "#f5f5f5"
+          : "#ffffff";
       return `
         <g id="phase14-section-stair-${escapeXml(stair.id || "stair")}" data-truth-kind="${escapeXml(truthKind || truthState)}">
           <rect x="${stair.x}" y="${stair.y}" width="${stair.width}" height="${stair.height}" fill="#efefef" fill-opacity="${fillOpacity}" stroke="#333" stroke-width="${outlineWeight}"${outlineDash} />
           ${treads}
           ${risers}
           <line x1="${stair.x + 8}" y1="${stair.y + stair.height - 10}" x2="${stair.x + stair.width - 16}" y2="${stair.y + 12}" stroke="#111" stroke-width="${lineweights.secondary || 1}"${contextual && !isCutFace ? ' stroke-dasharray="5 4" stroke-opacity="0.76"' : ""} marker-end="url(#phase14-stair-arrow)" />
-          <text x="${stair.x + stair.width / 2}" y="${stair.y + 16}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" fill="${isCutFace ? "#0f172a" : contextual ? "#4b5563" : "#111"}">STAIR</text>
+          <rect x="${stair.x + (stair.width - truthLabelWidth) / 2}" y="${stair.y + 4}" width="${truthLabelWidth}" height="12" rx="3" ry="3" fill="${truthFill}" fill-opacity="0.94" stroke="#9ca3af" stroke-width="0.7" />
+          <text x="${stair.x + stair.width / 2}" y="${stair.y + 13}" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="${contextual ? "#4b5563" : "#111"}">${escapeXml(
+            truthLabel,
+          )}</text>
+          <text x="${stair.x + stair.width / 2}" y="${stair.y + 27}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" fill="${isCutFace ? "#0f172a" : contextual ? "#4b5563" : "#111"}">STAIR</text>
+          <text x="${stair.x + stair.width / 2}" y="${stair.y + stair.height - 6}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle" fill="${isCutFace ? "#0f172a" : contextual ? "#4b5563" : "#111"}">UP</text>
         </g>`;
     })
     .join("");

@@ -110,6 +110,40 @@ function resolveRoomBBox(room = {}) {
   };
 }
 
+function getRoomDimensionText(room = {}) {
+  const bbox = resolveRoomBBox(room);
+  const width = Number(bbox.max_x) - Number(bbox.min_x);
+  const depth = Number(bbox.max_y) - Number(bbox.min_y);
+  if (!(width > 0 && depth > 0)) {
+    return "";
+  }
+
+  const primary = Math.max(width, depth);
+  const secondary = Math.min(width, depth);
+  return `${primary.toFixed(1)} x ${secondary.toFixed(1)} M`;
+}
+
+function projectRoomRect(room = {}, project) {
+  const bbox = resolveRoomBBox(room);
+  if (
+    !(
+      Number(bbox.max_x) > Number(bbox.min_x) &&
+      Number(bbox.max_y) > Number(bbox.min_y)
+    )
+  ) {
+    return null;
+  }
+
+  const topLeft = project({ x: bbox.min_x, y: bbox.min_y });
+  const bottomRight = project({ x: bbox.max_x, y: bbox.max_y });
+  return {
+    x: Math.min(topLeft.x, bottomRight.x),
+    y: Math.min(topLeft.y, bottomRight.y),
+    width: Math.abs(bottomRight.x - topLeft.x),
+    height: Math.abs(bottomRight.y - topLeft.y),
+  };
+}
+
 function roomPolygon(room = {}) {
   if (Array.isArray(room.polygon) && room.polygon.length >= 3) {
     return room.polygon.map((point) => pointFrom(point));
@@ -284,23 +318,100 @@ function renderRoomLabel(room = {}, project, theme) {
   const name = escapeXml(uppercaseLabel(room.name, "ROOM"));
   const areaValue = Number(room.actual_area || room.target_area_m2 || 0);
   const areaText = `${Number.isFinite(areaValue) ? areaValue.toFixed(1) : "0.0"} M2`;
-  const labelWidth = Math.max(88, name.length * 8.1);
+  const dimensionText = getRoomDimensionText(room);
+  const secondaryLine = dimensionText
+    ? `${areaText} · ${dimensionText}`
+    : areaText;
+  const labelWidth = Math.max(
+    110,
+    name.length * 8.4,
+    secondaryLine.length * 5.6,
+  );
 
   return `
     <g class="plan-room-label">
       <rect x="${formatNumber(labelPoint.x - labelWidth / 2)}" y="${formatNumber(
-        labelPoint.y - 20,
-      )}" width="${formatNumber(labelWidth)}" height="34" fill="${theme.paper}" fill-opacity="0.94" stroke="${theme.guide}" stroke-width="0.9"/>
+        labelPoint.y - 22,
+      )}" width="${formatNumber(labelWidth)}" height="38" fill="${theme.paper}" fill-opacity="0.95" stroke="${theme.guide}" stroke-width="0.95" rx="4" ry="4"/>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
-        labelPoint.y - 5,
+        labelPoint.y - 6,
       )}" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${name}</text>
       <text x="${formatNumber(labelPoint.x)}" y="${formatNumber(
         labelPoint.y + 10,
       )}" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">${escapeXml(
-        areaText,
+        secondaryLine,
       )}</text>
     </g>
   `;
+}
+
+function renderFurnitureHints(rooms = [], project, theme) {
+  const entries = sortByStableKey(rooms).flatMap((room) => {
+    const rect = projectRoomRect(room, project);
+    if (!rect || rect.width < 70 || rect.height < 56) {
+      return [];
+    }
+
+    const name = String(room.name || room.id || "").toLowerCase();
+    const stroke = theme.lineLight;
+    const guide = theme.guide;
+    const furniture = [];
+
+    if (name.includes("living") || name.includes("lounge")) {
+      const sofaW = Math.min(rect.width * 0.42, 72);
+      const sofaH = Math.min(rect.height * 0.2, 26);
+      furniture.push(
+        `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(sofaW)}" height="${formatNumber(sofaH)}" fill="none" stroke="${stroke}" stroke-width="0.95" rx="5" ry="5"/>`,
+        `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(sofaW)}" height="${formatNumber(Math.max(6, sofaH * 0.38))}" fill="none" stroke="${guide}" stroke-width="0.8" rx="4" ry="4"/>`,
+        `<rect x="${formatNumber(rect.x + rect.width * 0.52)}" y="${formatNumber(rect.y + rect.height * 0.56)}" width="${formatNumber(Math.min(30, rect.width * 0.22))}" height="${formatNumber(Math.min(18, rect.height * 0.16))}" fill="none" stroke="${guide}" stroke-width="0.8" rx="3" ry="3"/>`,
+      );
+    } else if (name.includes("kitchen")) {
+      const counterDepth = Math.min(rect.height * 0.16, 16);
+      furniture.push(
+        `<rect x="${formatNumber(rect.x + 6)}" y="${formatNumber(rect.y + 6)}" width="${formatNumber(rect.width - 12)}" height="${formatNumber(counterDepth)}" fill="none" stroke="${stroke}" stroke-width="0.95"/>`,
+        `<rect x="${formatNumber(rect.x + rect.width * 0.22)}" y="${formatNumber(rect.y + rect.height * 0.48)}" width="${formatNumber(Math.min(rect.width * 0.42, 68))}" height="${formatNumber(Math.min(rect.height * 0.2, 20))}" fill="none" stroke="${guide}" stroke-width="0.85" rx="3" ry="3"/>`,
+      );
+    } else if (name.includes("bed")) {
+      const bedW = Math.min(rect.width * 0.46, 74);
+      const bedH = Math.min(rect.height * 0.3, 44);
+      furniture.push(
+        `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(bedW)}" height="${formatNumber(bedH)}" fill="none" stroke="${stroke}" stroke-width="0.95" rx="4" ry="4"/>`,
+        `<line x1="${formatNumber(rect.x + 8 + bedW * 0.5)}" y1="${formatNumber(rect.y + 8)}" x2="${formatNumber(rect.x + 8 + bedW * 0.5)}" y2="${formatNumber(rect.y + 8 + bedH)}" stroke="${guide}" stroke-width="0.8"/>`,
+        `<rect x="${formatNumber(rect.x + bedW + 14)}" y="${formatNumber(rect.y + 10)}" width="${formatNumber(Math.min(16, rect.width * 0.12))}" height="${formatNumber(Math.min(24, rect.height * 0.22))}" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
+      );
+    } else if (name.includes("study") || name.includes("office")) {
+      furniture.push(
+        `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(Math.min(rect.width * 0.42, 64))}" height="${formatNumber(Math.min(rect.height * 0.18, 18))}" fill="none" stroke="${stroke}" stroke-width="0.95"/>`,
+        `<circle cx="${formatNumber(rect.x + rect.width * 0.34)}" cy="${formatNumber(rect.y + rect.height * 0.46)}" r="${formatNumber(Math.min(9, rect.width * 0.07), 1)}" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
+      );
+    } else if (name.includes("dining")) {
+      furniture.push(
+        `<rect x="${formatNumber(rect.x + rect.width * 0.28)}" y="${formatNumber(rect.y + rect.height * 0.28)}" width="${formatNumber(Math.min(rect.width * 0.34, 54))}" height="${formatNumber(Math.min(rect.height * 0.2, 20))}" fill="none" stroke="${stroke}" stroke-width="0.95" rx="3" ry="3"/>`,
+        `<circle cx="${formatNumber(rect.x + rect.width * 0.26)}" cy="${formatNumber(rect.y + rect.height * 0.38)}" r="3.2" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
+        `<circle cx="${formatNumber(rect.x + rect.width * 0.66)}" cy="${formatNumber(rect.y + rect.height * 0.38)}" r="3.2" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
+      );
+    } else if (name.includes("bath")) {
+      furniture.push(
+        `<rect x="${formatNumber(rect.x + 8)}" y="${formatNumber(rect.y + 8)}" width="${formatNumber(Math.min(rect.width * 0.46, 60))}" height="${formatNumber(Math.min(rect.height * 0.22, 22))}" fill="none" stroke="${stroke}" stroke-width="0.95" rx="8" ry="8"/>`,
+        `<rect x="${formatNumber(rect.x + rect.width * 0.64)}" y="${formatNumber(rect.y + 10)}" width="${formatNumber(Math.min(rect.width * 0.18, 18))}" height="${formatNumber(Math.min(rect.height * 0.18, 18))}" fill="none" stroke="${guide}" stroke-width="0.8"/>`,
+      );
+    }
+
+    if (!furniture.length) {
+      return [];
+    }
+
+    return [
+      `<g class="plan-furniture-hint" data-room-id="${escapeXml(room.id || room.name || "")}">${furniture.join("")}</g>`,
+    ];
+  });
+
+  return {
+    markup: entries.length
+      ? `<g id="phase8-plan-furniture">${entries.join("")}</g>`
+      : "",
+    count: entries.length,
+  };
 }
 
 function renderWallMarkup(walls = [], project, theme) {
@@ -317,7 +428,10 @@ function renderWallMarkup(walls = [], project, theme) {
       if (!path) {
         return "";
       }
-      return `<path d="${path}" fill="${theme.poche}" stroke="${theme.line}" stroke-width="${wall.exterior ? 1.9 : 1.35}" stroke-linejoin="miter"/>`;
+      const fill = wall.exterior ? theme.poche : theme.pocheSoft;
+      const stroke = wall.exterior ? theme.line : theme.lineMuted;
+      const strokeWidth = wall.exterior ? 2.05 : 1.28;
+      return `<path d="${path}" fill="${fill}" fill-opacity="${wall.exterior ? "0.98" : "0.76"}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="miter" data-wall-role="${wall.exterior ? "exterior" : "interior"}"/>`;
     })
     .join("");
 }
@@ -387,11 +501,22 @@ function renderWindowMarkup(
             gapWidth,
           )}" stroke-linecap="square"/>
           <line x1="${formatNumber(a1.x)}" y1="${formatNumber(a1.y)}" x2="${formatNumber(
+            a2.x,
+          )}" y2="${formatNumber(a2.y)}" stroke="${theme.guide}" stroke-width="0.95"/>
+          <line x1="${formatNumber(b1.x)}" y1="${formatNumber(b1.y)}" x2="${formatNumber(
+            b2.x,
+          )}" y2="${formatNumber(b2.y)}" stroke="${theme.guide}" stroke-width="0.95"/>
+          <line x1="${formatNumber(a1.x)}" y1="${formatNumber(a1.y)}" x2="${formatNumber(
             b1.x,
-          )}" y2="${formatNumber(b1.y)}" stroke="${theme.lineMuted}" stroke-width="1.1"/>
+          )}" y2="${formatNumber(b1.y)}" stroke="${theme.lineMuted}" stroke-width="1.2"/>
           <line x1="${formatNumber(a2.x)}" y1="${formatNumber(a2.y)}" x2="${formatNumber(
             b2.x,
-          )}" y2="${formatNumber(b2.y)}" stroke="${theme.lineMuted}" stroke-width="1.1"/>
+          )}" y2="${formatNumber(b2.y)}" stroke="${theme.lineMuted}" stroke-width="1.2"/>
+          <line x1="${formatNumber((a1.x + a2.x) / 2)}" y1="${formatNumber(
+            (a1.y + a2.y) / 2,
+          )}" x2="${formatNumber((b1.x + b2.x) / 2)}" y2="${formatNumber(
+            (b1.y + b2.y) / 2,
+          )}" stroke="${theme.lineLight}" stroke-width="0.8"/>
         </g>
       `;
     })
@@ -492,16 +617,24 @@ function renderDoorMarkup(
           )}" stroke-linecap="square"/>
           <line x1="${formatNumber(hingePx.x)}" y1="${formatNumber(
             hingePx.y,
+          )}" x2="${formatNumber(closedPx.x)}" y2="${formatNumber(
+            closedPx.y,
+          )}" stroke="${theme.guide}" stroke-width="0.85"/>
+          <line x1="${formatNumber(hingePx.x)}" y1="${formatNumber(
+            hingePx.y,
           )}" x2="${formatNumber(openPx.x)}" y2="${formatNumber(
             openPx.y,
-          )}" stroke="${theme.line}" stroke-width="1.4"/>
+          )}" stroke="${theme.line}" stroke-width="1.55"/>
           <path d="M ${formatNumber(closedPx.x)} ${formatNumber(
             closedPx.y,
           )} A ${formatNumber(radiusPx)} ${formatNumber(
             radiusPx,
           )} 0 0 ${sweepFlag} ${formatNumber(openPx.x)} ${formatNumber(
             openPx.y,
-          )}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.0"/>
+          )}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.15"/>
+          <circle cx="${formatNumber(hingePx.x)}" cy="${formatNumber(
+            hingePx.y,
+          )}" r="1.8" fill="${theme.line}"/>
         </g>
       `;
     })
@@ -593,17 +726,22 @@ function renderStairMarkup(stairs = [], project, theme) {
             topLeft.y,
           )}" width="${formatNumber(topRight.x - topLeft.x)}" height="${formatNumber(
             bottomLeft.y - topLeft.y,
-          )}" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.2"/>
+          )}" fill="${theme.paper}" stroke="${theme.line}" stroke-width="1.45"/>
           ${treads}
+          <line x1="${formatNumber(topLeft.x + 6)}" y1="${formatNumber(
+            topLeft.y + 6,
+          )}" x2="${formatNumber(topRight.x - 6)}" y2="${formatNumber(
+            topLeft.y + 6,
+          )}" stroke="${theme.guide}" stroke-width="0.85" stroke-dasharray="4 3"/>
           <line x1="${formatNumber(arrowStart.x)}" y1="${formatNumber(
             arrowStart.y,
           )}" x2="${formatNumber(arrowEnd.x)}" y2="${formatNumber(
             arrowEnd.y,
-          )}" stroke="${theme.line}" stroke-width="1.2"/>
+          )}" stroke="${theme.line}" stroke-width="1.35"/>
           <path d="${arrowHead}" fill="${theme.line}"/>
           <text x="${formatNumber(
             (topLeft.x + topRight.x) / 2,
-          )}" y="${formatNumber(bottomLeft.y - 6)}" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">UP</text>
+          )}" y="${formatNumber(bottomLeft.y - 6)}" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">UP</text>
         </g>
       `;
     })
@@ -867,7 +1005,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     ).toFixed(3),
   );
 
-  const roomMarkup = levelRooms
+  const roomFillMarkup = levelRooms
     .map((room) => {
       const path = polygonPath(roomPolygon(room), project);
       if (!path) {
@@ -875,10 +1013,12 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       }
       return `
         <path d="${path}" fill="${theme.paper}" stroke="${theme.lineLight}" stroke-width="0.9"/>
-        ${options.hideRoomLabels ? "" : renderRoomLabel(room, project, theme)}
       `;
     })
     .join("");
+  const roomLabelMarkup = options.hideRoomLabels
+    ? ""
+    : levelRooms.map((room) => renderRoomLabel(room, project, theme)).join("");
   const wallMarkup = renderWallMarkup(levelWalls, project, theme);
   const doorEntries = (geometry.doors || []).filter(
     (door) => door.level_id === level.id,
@@ -937,6 +1077,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
     slotOccupancyRatio,
     boundsSource,
   });
+  const furnitureHints = renderFurnitureHints(levelRooms, project, theme);
   const doorCount = doorEntries.length;
   const windowCount = windowEntries.length;
   const stairCount = stairEntries.length;
@@ -965,11 +1106,13 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       : ""
   }
   ${footprintPath ? `<path d="${footprintPath}" fill="none" stroke="${theme.lineMuted}" stroke-width="1.1"/>` : ""}
-  ${roomMarkup}
+  ${roomFillMarkup}
+  ${furnitureHints.markup}
   <g id="plan-walls">${wallMarkup}</g>
   <g id="plan-openings">${windowMarkup}${doorMarkup}</g>
   ${circulationMarkup ? `<g id="plan-circulation">${circulationMarkup}</g>` : ""}
   ${stairMarkup ? `<g id="plan-stairs">${stairMarkup}</g>` : ""}
+  ${roomLabelMarkup ? `<g id="plan-room-labels">${roomLabelMarkup}</g>` : ""}
   ${dimensionMarkup}
   ${!sheetMode ? renderNorthArrow(width, layout, theme, geometry.site?.north_orientation_deg || 0) : ""}
   ${titleBlock}
@@ -1001,6 +1144,7 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       has_legend: false,
       has_external_dimensions: true,
       has_scale_bar: true,
+      furniture_hint_count: furnitureHints.count,
       door_swing_count: doorCount,
       plan_density_score: Number(roomDensityScore.toFixed(3)),
       bounds_source: boundsSource,
@@ -1009,9 +1153,11 @@ export function renderPlanSvg(geometryInput = {}, options = {}) {
       sheet_occupancy_quality: slotOccupancyRatio >= 0.55 ? "strong" : "weak",
       scale_bar_meters: scaleBar.barMeters,
       line_hierarchy: {
-        wall_poche: 1.6,
+        exterior_wall: 2.05,
+        interior_wall: 1.28,
         room_outline: 0.9,
-        opening_line: 1.1,
+        opening_line: 1.2,
+        furniture_hint: 0.95,
         dimensions: 1.1,
       },
     },
