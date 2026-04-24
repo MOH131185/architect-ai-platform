@@ -17,6 +17,10 @@ export default async function handler(req, res) {
       geometryHash: bundle?.compiledProject?.geometryHash || null,
       confidence: bundle?.confidence || null,
       validation: bundle?.validation || null,
+      authorityReadiness: bundle?.authorityReadiness || null,
+      deliveryStages: bundle?.deliveryStages || null,
+      exportManifest: bundle?.exportManifest || null,
+      reviewSurface: bundle?.reviewSurface || null,
       blockers: bundle?.blockers || [],
       bundle,
     });

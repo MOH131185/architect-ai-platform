@@ -58,6 +58,8 @@ import {
   buildPrintReadyPdfFromPng,
   collectPanelGeometryHashes,
   collectTechnicalPanelGeometryHashes,
+  findPanelsWithDisallowedTechnicalAuthority,
+  findTechnicalPanelsMissingAuthorityMetadata,
   findTechnicalPanelsMissingGeometryHash,
   getCrossViewImageValidator,
   getLayoutConstants,
@@ -503,6 +505,70 @@ function generateBoardSpecStampSvg({
   </svg>`;
 }
 
+function mergeComposeDeliveryStages(deliveryStages, postComposeVerification) {
+  if (!deliveryStages || !Array.isArray(deliveryStages.stages)) {
+    return deliveryStages || null;
+  }
+
+  const publishabilityStatus = String(
+    postComposeVerification?.publishability?.status || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const stages = deliveryStages.stages.map((stage) => {
+    if (stage?.id === "compose_passed") {
+      return {
+        ...stage,
+        status: "pass",
+        detail: "A1 compose completed successfully.",
+      };
+    }
+
+    if (stage?.id === "publishability_passed") {
+      if (!postComposeVerification?.publishability) {
+        return {
+          ...stage,
+          status: "warning",
+          detail:
+            "Compose succeeded, but post-compose publishability was not evaluated.",
+        };
+      }
+
+      return {
+        ...stage,
+        status:
+          publishabilityStatus === "blocked"
+            ? "block"
+            : publishabilityStatus === "warning"
+              ? "warning"
+              : "pass",
+        detail:
+          postComposeVerification?.publishability?.summary ||
+          postComposeVerification?.publishability?.blockers?.[0] ||
+          postComposeVerification?.publishability?.warnings?.[0] ||
+          "Post-compose publishability passed.",
+      };
+    }
+
+    return stage;
+  });
+
+  const overallStatus = stages.some((stage) => stage.status === "block")
+    ? "block"
+    : stages.some((stage) => stage.status === "warning")
+      ? "warning"
+      : stages.every((stage) => ["pass", "ready"].includes(stage.status))
+        ? "ready"
+        : deliveryStages?.overallStatus || "pending";
+
+  return {
+    ...deliveryStages,
+    overallStatus,
+    stages,
+  };
+}
+
 export default async function handler(req, res) {
   applyComposeCors(res);
   const trace = createComposeTrace(req?.body);
@@ -614,6 +680,10 @@ async function handleComposeRequest(req, res, trace) {
     projectContext = null,
     locationData = null,
   } = requestBody;
+  const authorityReadiness = projectContext?.authorityReadiness || null;
+  const deliveryStagesFromRequest = projectContext?.deliveryStages || null;
+  const exportManifestFromRequest = projectContext?.exportManifest || null;
+  const reviewSurfaceFromRequest = projectContext?.reviewSurface || null;
   const requestedHashes = readRequestHashes(requestBody);
   let panels = Array.isArray(requestBody?.panels) ? requestBody.panels : [];
   const regressionContextAvailable = Boolean(
@@ -831,6 +901,10 @@ async function handleComposeRequest(req, res, trace) {
     collectTechnicalPanelGeometryHashes(panels);
   const technicalPanelsMissingGeometryHash =
     findTechnicalPanelsMissingGeometryHash(panels);
+  const technicalPanelsMissingAuthorityMetadata =
+    findTechnicalPanelsMissingAuthorityMetadata(panels);
+  const disallowedTechnicalAuthorityPanels =
+    findPanelsWithDisallowedTechnicalAuthority(panels);
 
   if (requireHashMetadata) {
     const missingHashFields = Object.entries(requestedHashes)
@@ -861,6 +935,16 @@ async function handleComposeRequest(req, res, trace) {
   }
 
   if (!skipValidation) {
+    if (authorityReadiness && authorityReadiness.ready !== true) {
+      return res.status(400).json({
+        success: false,
+        error: "AUTHORITY_READINESS_BLOCKED",
+        message:
+          "Cannot compose A1 sheet - residential authority readiness did not pass.",
+        details: authorityReadiness,
+      });
+    }
+
     if (technicalPanelsMissingGeometryHash.length > 0) {
       return res.status(400).json({
         success: false,
@@ -869,6 +953,32 @@ async function handleComposeRequest(req, res, trace) {
           "Cannot compose A1 sheet - one or more technical panels are missing geometryHash metadata.",
         details: {
           technicalPanelsMissingGeometryHash,
+        },
+      });
+    }
+
+    if (technicalPanelsMissingAuthorityMetadata.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "MISSING_TECHNICAL_PANEL_AUTHORITY_METADATA",
+        message:
+          "Cannot compose A1 sheet - one or more deterministic technical panels are missing authority metadata.",
+        details: {
+          technicalPanelsMissingAuthorityMetadata,
+        },
+      });
+    }
+
+    if (disallowedTechnicalAuthorityPanels.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "DISALLOWED_TECHNICAL_PANEL_AUTHORITY",
+        message:
+          "Cannot compose A1 sheet - technical or site drawing panels were not produced from deterministic compiled authority.",
+        details: {
+          disallowedTechnicalAuthorityPanels,
+          recommendation:
+            "Regenerate floor plans, elevations, sections, and site drawings from compiled-project deterministic authority only.",
         },
       });
     }
@@ -1231,6 +1341,7 @@ async function handleComposeRequest(req, res, trace) {
   // Prepare composite operations
   const composites = [];
   const coordinates = {};
+  const panelMetricsByType = {};
 
   const panelMap = new Map(panels.map((p) => [p.type, p]));
 
@@ -1288,6 +1399,9 @@ async function handleComposeRequest(req, res, trace) {
             mode,
             constants,
             panelType: type,
+            onMetrics: (metrics) => {
+              panelMetricsByType[type] = metrics;
+            },
             qa: {
               enabled: qaEnabled,
               rotateToFit,
@@ -1408,6 +1522,9 @@ async function handleComposeRequest(req, res, trace) {
           mode,
           constants,
           panelType: type, // Pass panel type for debug logging
+          onMetrics: (metrics) => {
+            panelMetricsByType[type] = metrics;
+          },
           qa: {
             enabled: qaEnabled,
             rotateToFit,
@@ -1695,7 +1812,7 @@ async function handleComposeRequest(req, res, trace) {
     "Response headers set: Cache-Control: no-store",
   );
 
-  const panelsByKey = buildPanelsByKey(panels, coordinates);
+  const panelsByKey = buildPanelsByKey(panels, coordinates, panelMetricsByType);
   const panelLabelMap = Object.fromEntries(
     (panels || []).map((panel) => [panel.type, panel.label || panel.type]),
   );
@@ -1765,6 +1882,11 @@ async function handleComposeRequest(req, res, trace) {
       details: postComposeVerification,
     });
   }
+
+  const deliveryStages = mergeComposeDeliveryStages(
+    deliveryStagesFromRequest,
+    postComposeVerification,
+  );
 
   // ====================================================================
   // QA GATES: Run automated quality assurance checks
@@ -1890,8 +2012,31 @@ async function handleComposeRequest(req, res, trace) {
     pdfBytes,
     outputFile,
     pdfOutputFile,
+    panelsByKey,
+    hashValidation: {
+      required: requireHashMetadata,
+      panelGeometryHashCount: panelGeometryHashes.length,
+      panelGeometryHash: panelGeometryHashes[0] || null,
+      technicalPanelGeometryHashCount: technicalPanelGeometryHashes.length,
+      technicalPanelGeometryHash: technicalPanelGeometryHashes[0] || null,
+      technicalPanelsMissingGeometryHash,
+      technicalPanelsMissingAuthorityMetadata,
+      disallowedTechnicalAuthorityPanels,
+      matchedRequestedGeometryHash: requestedHashes.geometryHash
+        ? panelGeometryHashes[0] === requestedHashes.geometryHash
+        : null,
+      matchedRequestedTechnicalGeometryHash: requestedHashes.geometryHash
+        ? technicalPanelGeometryHashes[0] === requestedHashes.geometryHash
+        : null,
+    },
     qaResults,
     critiqueResults,
+    finalSheetRegression,
+    postComposeVerification,
+    authorityReadiness,
+    deliveryStages,
+    exportManifest: exportManifestFromRequest,
+    reviewSurface: reviewSurfaceFromRequest,
   });
   const manifestFile = writeComposeArtifactManifest({
     manifest,
@@ -1943,6 +2088,8 @@ async function handleComposeRequest(req, res, trace) {
       technicalPanelGeometryHashCount: technicalPanelGeometryHashes.length,
       technicalPanelGeometryHash: technicalPanelGeometryHashes[0] || null,
       technicalPanelsMissingGeometryHash,
+      technicalPanelsMissingAuthorityMetadata,
+      disallowedTechnicalAuthorityPanels,
       matchedRequestedGeometryHash: requestedHashes.geometryHash
         ? panelGeometryHashes[0] === requestedHashes.geometryHash
         : null,
@@ -1958,6 +2105,10 @@ async function handleComposeRequest(req, res, trace) {
     renderedTextZone: postComposeVerification?.renderedTextZone || null,
     technicalCredibility: postComposeVerification?.technicalCredibility || null,
     publishability: postComposeVerification?.publishability || null,
+    authorityReadiness,
+    deliveryStages,
+    exportManifest: exportManifestFromRequest,
+    reviewSurface: reviewSurfaceFromRequest,
   };
 
   return res.status(200).json(
@@ -2682,6 +2833,7 @@ async function placePanelImage({
   mode,
   constants,
   panelType = "unknown",
+  onMetrics = null,
   qa = null,
 }) {
   const { LABEL_HEIGHT, LABEL_PADDING } = constants;
@@ -3079,10 +3231,11 @@ async function placePanelImage({
   }
 
   // HARD QA GATE: Render sanity for drawings (detect thin strips / near-empty content).
+  let renderSanity = null;
   if (shouldEnforceOccupancy && qa?.enabled) {
     const sanityModule = await getRenderSanityValidator();
     if (typeof sanityModule?.validateRenderSanity === "function") {
-      const sanity = await sanityModule.validateRenderSanity(
+      renderSanity = await sanityModule.validateRenderSanity(
         finalBuffer,
         panelType,
         {
@@ -3092,9 +3245,10 @@ async function placePanelImage({
           slotHeight: targetHeight,
         },
       );
-      if (sanity && sanity.isValid === false) {
+      if (renderSanity && renderSanity.isValid === false) {
         const err = new Error(
-          sanity.blockerMessage || `Render sanity failed for ${panelType}`,
+          renderSanity.blockerMessage ||
+            `Render sanity failed for ${panelType}`,
         );
         err.code = "DRAWING_RENDER_SANITY_FAILED";
         err.details = {
@@ -3104,11 +3258,40 @@ async function placePanelImage({
           viewBoxRewrite,
           slotOccupancy,
           minSlotOccupancy,
-          sanity,
+          sanity: renderSanity,
         };
         throw err;
       }
     }
+  }
+
+  if (typeof onMetrics === "function") {
+    onMetrics({
+      panelType,
+      fitMode: mode,
+      rotated,
+      isSvgInput,
+      isTechnicalDrawing,
+      slotWidth: targetWidth,
+      slotHeight: targetHeight,
+      sourceWidth: inputWidth,
+      sourceHeight: inputHeight,
+      slotOccupancy: Number(slotOccupancy.toFixed(4)),
+      minSlotOccupancy: shouldEnforceOccupancy
+        ? Number(minSlotOccupancy.toFixed(4))
+        : null,
+      viewBoxRewrite,
+      renderSanity: renderSanity
+        ? {
+            isValid: renderSanity.isValid ?? null,
+            occupancy: renderSanity.occupancy ?? null,
+            bboxWidthRatio: renderSanity.bboxWidthRatio ?? null,
+            bboxHeightRatio: renderSanity.bboxHeightRatio ?? null,
+            blockerCode: renderSanity.blockerCode || null,
+            blockerMessage: renderSanity.blockerMessage || null,
+          }
+        : null,
+    });
   }
 
   return finalBuffer;

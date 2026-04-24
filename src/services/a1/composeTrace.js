@@ -67,7 +67,37 @@ export function buildComposeArtifactManifest({
   pdfOutputFile,
   qaResults,
   critiqueResults,
+  panelsByKey = {},
+  hashValidation = null,
+  finalSheetRegression = null,
+  postComposeVerification = null,
+  authorityReadiness = null,
+  deliveryStages = null,
+  exportManifest = null,
+  reviewSurface = null,
 }) {
+  const sanitizedPanelsByKey = Object.fromEntries(
+    Object.entries(panelsByKey || {}).map(([panelType, panel]) => [
+      panelType,
+      {
+        type: panel?.type || panelType,
+        hasBuffer: panel?.hasBuffer || false,
+        coordinates: panel?.coordinates || null,
+        geometryHash: panel?.geometryHash || null,
+        svgHash: panel?.svgHash || null,
+        sourceType: panel?.sourceType || null,
+        authorityUsed: panel?.authorityUsed || null,
+        authoritySource: panel?.authoritySource || null,
+        panelAuthorityReason: panel?.panelAuthorityReason || null,
+        generatorUsed: panel?.generatorUsed || null,
+        compiledProjectSchemaVersion:
+          panel?.compiledProjectSchemaVersion || null,
+        slotMetrics: panel?.slotMetrics || null,
+        renderSanity: panel?.renderSanity || null,
+      },
+    ]),
+  );
+
   return {
     traceId: trace?.traceId || null,
     runId: trace?.runId || null,
@@ -91,6 +121,8 @@ export function buildComposeArtifactManifest({
       outputFile: outputFile || null,
       pdfOutputFile: pdfOutputFile || null,
     },
+    panelsByKey: sanitizedPanelsByKey,
+    hashValidation,
     qa: qaResults
       ? {
           allPassed: qaResults.allPassed ?? null,
@@ -110,6 +142,12 @@ export function buildComposeArtifactManifest({
           error: critiqueResults.error || null,
         }
       : null,
+    finalSheetRegression,
+    postComposeVerification,
+    authorityReadiness,
+    deliveryStages,
+    exportManifest,
+    reviewSurface,
   };
 }
 

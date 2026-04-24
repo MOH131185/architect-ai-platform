@@ -1,11 +1,12 @@
 /**
- * Genarch Pipeline Service — DORMANT LEGACY BROWSER CLIENT
+ * Genarch Pipeline Service — browser adapter used by the residential review surface.
  *
- * This client currently has no active consumer in the supported React app path.
- * The supported genarch surface is backend-only:
+ * The deployment boundary remains backend-only:
  * browser -> Vercel proxy / Express -> separate genarch deployment.
  *
- * Kept in _legacy for future admin-tool prototyping only.
+ * The `src/services/genarch/genarchPipelineService.js` wrapper is the supported
+ * import path for the React app. This implementation remains here for
+ * compatibility with older import locations.
  *
  * Architecture:
  * - Development: Browser → localhost:3001 (direct, with API key)
@@ -18,7 +19,7 @@
  * - GET /api/genarch/runs/:jobId/* - Download artifacts
  */
 
-import logger from "../core/logger.js";
+import logger from "../services/core/logger.js";
 import {
   GENARCH_CONTRACT_VERSION,
   GENARCH_JOB_DEFAULTS,

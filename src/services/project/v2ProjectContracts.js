@@ -20,6 +20,13 @@ export const STYLE_BLEND_CHANNELS = Object.freeze([
 ]);
 
 export const QUALITY_TIERS = Object.freeze(["baseline", "mid", "premium"]);
+export const DELIVERY_STAGE_STATUS = Object.freeze([
+  "pass",
+  "ready",
+  "warning",
+  "block",
+  "pending",
+]);
 
 function clamp(value, minimum = 0, maximum = 1) {
   const numeric = Number(value);
@@ -128,6 +135,68 @@ export function createStyleBlendSpec({
   };
 }
 
+function normalizeStageStatus(status = "pending") {
+  return DELIVERY_STAGE_STATUS.includes(status) ? status : "pending";
+}
+
+export function createAuthorityReadinessManifest({
+  ready = false,
+  geometryHash = null,
+  authoritySource = "compiled_project",
+  compiledProjectSchemaVersion = null,
+  requested = {},
+  evidence = {},
+  blockers = [],
+  warnings = [],
+} = {}) {
+  return {
+    schema_version: "authority-readiness-v1",
+    ready: ready === true,
+    geometryHash,
+    authoritySource,
+    compiledProjectSchemaVersion,
+    requested: requested || {},
+    evidence: evidence || {},
+    blockers: Array.isArray(blockers) ? blockers.filter(Boolean) : [],
+    warnings: Array.isArray(warnings) ? warnings.filter(Boolean) : [],
+  };
+}
+
+export function createDeliveryStages({
+  stages = [],
+  geometryHash = null,
+  pipelineVersion = UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+} = {}) {
+  const normalizedStages = Array.isArray(stages)
+    ? stages.map((stage, index) => ({
+        id: stage?.id || `stage_${index + 1}`,
+        label: stage?.label || `Stage ${index + 1}`,
+        status: normalizeStageStatus(stage?.status),
+        detail: stage?.detail || null,
+      }))
+    : [];
+
+  const overallStatus = normalizedStages.some(
+    (stage) => stage.status === "block",
+  )
+    ? "block"
+    : normalizedStages.some((stage) => stage.status === "warning")
+      ? "warning"
+      : normalizedStages.every(
+            (stage) => stage.status === "pass" || stage.status === "ready",
+          ) && normalizedStages.length > 0
+        ? "ready"
+        : "pending";
+
+  return {
+    schema_version: "delivery-stages-v1",
+    pipelineVersion,
+    geometryHash,
+    overallStatus,
+    stages: normalizedStages,
+  };
+}
+
 export function createProjectBrief({
   projectType = null,
   targetAreaM2 = 0,
@@ -151,6 +220,10 @@ export function createSheetArtifactManifest({
   panels = {},
   confidence = {},
   validation = {},
+  authorityReadiness = null,
+  deliveryStages = null,
+  exportManifest = null,
+  reviewSurface = null,
 } = {}) {
   return {
     schema_version: "sheet-artifact-manifest-v1",
@@ -158,7 +231,75 @@ export function createSheetArtifactManifest({
     geometryHash,
     confidence: buildConfidenceBundle(confidence),
     validation,
+    authorityReadiness,
+    deliveryStages,
+    exportManifest,
+    reviewSurface,
     panels,
+  };
+}
+
+export function createCompiledExportManifest({
+  geometryHash = null,
+  pipelineVersion = UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+  projectName = "ArchiAI Project",
+  compiledProject = null,
+  projectQuantityTakeoff = null,
+} = {}) {
+  const glbUrl =
+    compiledProject?.artifacts?.glbUrl ||
+    compiledProject?.artifacts?.modelGlb ||
+    compiledProject?.artifacts?.modelUrl ||
+    null;
+  const hasGeometry = Boolean(geometryHash);
+  const hasTakeoff = Boolean(projectQuantityTakeoff?.items?.length);
+
+  return {
+    schema_version: "compiled-export-manifest-v1",
+    geometryHash,
+    pipelineVersion,
+    projectName,
+    exports: {
+      png: {
+        available: true,
+        format: "PNG",
+        source: "a1_compose_output",
+      },
+      pdf: {
+        available: true,
+        format: "PDF",
+        source: "a1_compose_output",
+      },
+      json: {
+        available: hasGeometry,
+        format: "JSON",
+        method: "POST",
+        endpoint: "/api/project/export/json",
+      },
+      dxf: {
+        available: hasGeometry,
+        format: "DXF",
+        method: "POST",
+        endpoint: "/api/project/export/dxf",
+      },
+      ifc: {
+        available: hasGeometry,
+        format: "IFC",
+        method: "POST",
+        endpoint: "/api/project/export/ifc",
+      },
+      xlsx: {
+        available: hasGeometry && hasTakeoff,
+        format: "XLSX",
+        method: "POST",
+        endpoint: "/api/project/export/xlsx",
+      },
+      glb: {
+        available: Boolean(glbUrl),
+        format: "GLB",
+        url: glbUrl,
+      },
+    },
   };
 }
 
@@ -186,11 +327,15 @@ export default {
   SUPPORTED_RESIDENTIAL_V2_SUBTYPES,
   STYLE_BLEND_CHANNELS,
   QUALITY_TIERS,
+  DELIVERY_STAGE_STATUS,
   isSupportedResidentialV2SubType,
   buildConfidenceBundle,
+  createAuthorityReadinessManifest,
+  createDeliveryStages,
   createEvidenceStage,
   createStyleBlendSpec,
   createProjectBrief,
   createSheetArtifactManifest,
+  createCompiledExportManifest,
   createCostWorkbookManifest,
 };

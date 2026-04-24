@@ -1,9 +1,9 @@
 /**
- * @deprecated DORMANT LEGACY BROWSER CLIENT COMPATIBILITY SHIM
+ * Supported genarch browser adapter for the residential review surface.
  *
- * There is no supported browser genarch UI flow in the current React app.
- * This path remains only as a compatibility re-export to the legacy prototype.
- * The supported genarch surface is backend-only via server-side proxy routes.
+ * The production boundary remains browser -> proxy/API -> separate genarch
+ * backend deployment. This ESM path is the supported client entrypoint for
+ * starting and monitoring those review jobs from the React app.
  */
 export { default } from "../../_legacy/genarchPipelineService.js";
 export * from "../../_legacy/genarchPipelineService.js";

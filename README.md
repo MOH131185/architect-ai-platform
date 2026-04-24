@@ -1,13 +1,14 @@
 # Architect AI Platform
 
-AI-powered architectural design platform that generates complete building packages with **98%+ cross-view consistency** using an A1 One-Shot comprehensive sheet workflow.
+AI-powered architectural design platform that generates complete residential building packages with **compiled-project authority**, deterministic technical drawings, and A1 presentation sheets assembled on top of fixed geometry.
 
 ---
 
 ## 🚀 Key Features
 
-- **A1 One-Shot Workflow** - Single comprehensive A1 architectural sheet with all views embedded
+- **Compiled-Authority Residential Workflow** - Intake -> compiled project -> deterministic technical pack -> geometry-locked visuals -> composed A1 sheet
 - **Complete Design Packages** - All views on one sheet: floor plans, elevations, sections, 3D visualizations
+- **CAD/BIM Deliverables** - PNG/PDF plus DXF/IFC/GLB/JSON exports from the same compiled authority bundle
 - **Design DNA System** - Ensures materials, dimensions, and features are consistent across all views
 - **Climate-Responsive Design** - Automatic adaptation to local climate and zoning regulations
 - **Site-Aware Generation** - Draw site boundaries and generate designs that fit perfectly
@@ -17,18 +18,18 @@ AI-powered architectural design platform that generates complete building packag
 
 ---
 
-## 📐 A1 One-Shot Architecture
+## 📐 Residential Authority Pipeline
 
-### What is A1 One-Shot?
+### What the active pipeline does
 
-The A1 One-Shot workflow generates a **single comprehensive A1 architectural sheet** (841×594mm) containing all views, project data, and technical details. This ensures perfect consistency since all views are generated together in one coherent image.
+The active residential path is no longer a true single-image one-shot system. It first compiles a geometry-authoritative residential project, derives deterministic technical drawings from that compiled geometry, then composes the final A1 sheet and export bundle around those authoritative assets.
 
 ### Architecture Flow
 
 ```
-User Input → Location Analysis → Portfolio Analysis → Design DNA → A1 Sheet Generation
-   ↓              (Style/Climate)      (Vision AI)     (Qwen 2.5)      (FLUX.1-dev)
-Site Polygon  →  Blended Style    →    Materials    →  Validated    →  Single Sheet
+User Input -> Residential Brief Lock -> Compiled Project -> Deterministic Technical Pack -> Geometry-Locked Visuals -> A1 Compose + Exports
+   ↓                (site/style/program)     (geometry authority)   (plans/elevations/sections)     (hero/interior/axon)     (PNG/PDF/DXF/IFC/GLB/JSON)
+Site Polygon   ->   Blended Style       ->   geometryHash        ->   SVG + validation gates      ->   fixed-massing renders   ->   publishable board
 ```
 
 ### Benefits
@@ -42,12 +43,14 @@ Site Polygon  →  Blended Style    →    Materials    →  Validated    →  S
 
 ### How to Use
 
-A1 One-Shot is **enabled by default**. Simply click "Generate AI Designs" and the system will automatically:
+The residential flow is **compiled-authority first**. The active path will automatically:
 
 1. Analyze location for architectural style and climate
 2. Blend portfolio style with local context
 3. Generate Master Design DNA with exact specifications
-4. Create single comprehensive A1 sheet with all views
+4. Build a compiled residential project with geometry hash authority
+5. Generate deterministic plans, elevations, and sections
+6. Compose the final A1 sheet and export bundle around that authority
 
 ---
 
@@ -246,7 +249,7 @@ npm run build:active
 - ✓ **[CONSISTENCY_SYSTEM_COMPLETE.md](./CONSISTENCY_SYSTEM_COMPLETE.md)** - 98% consistency details
 - 🔧 **[FIX_SUMMARY.md](./FIX_SUMMARY.md)** - Recent critical fixes
 - 📐 **[A1_SHEET_ONE_SHOT_IMPLEMENTATION.md](./A1_SHEET_ONE_SHOT_IMPLEMENTATION.md)** - A1 workflow details
-- 🛰️ **[docs/GENARCH_OPERATIONS_RUNBOOK.md](./docs/GENARCH_OPERATIONS_RUNBOOK.md)** - Backend-only genarch API operations and contract checks
+- 🛰️ **[docs/GENARCH_OPERATIONS_RUNBOOK.md](./docs/GENARCH_OPERATIONS_RUNBOOK.md)** - Genarch review surface, backend operations, and contract checks
 - 🧱 **[docs/BLENDER_3D_STATUS_SUMMARY.md](./docs/BLENDER_3D_STATUS_SUMMARY.md)** - Nuanced Blender and 3D readiness summary
 - 🗂️ **[docs/ARCHCAD_BACKEND.md](./docs/ARCHCAD_BACKEND.md)** - FastAPI backend module for gated ArchCAD ingestion, indexing, and retrieval
 

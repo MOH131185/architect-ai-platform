@@ -86,6 +86,14 @@ export function isTechnicalComposePanel(panelType) {
   );
 }
 
+export function isDeterministicComposeDrawingPanel(panelType) {
+  return (
+    isTechnicalComposePanel(panelType) ||
+    panelType === "site_diagram" ||
+    panelType === "site_plan"
+  );
+}
+
 export function collectTechnicalPanelGeometryHashes(panels = []) {
   return collectPanelGeometryHashes(
     panels.filter((panel) => isTechnicalComposePanel(panel?.type)),
@@ -105,6 +113,119 @@ export function findTechnicalPanelsMissingGeometryHash(panels = []) {
       return !panelHash;
     })
     .map((panel) => panel.type);
+}
+
+function normalizeAuthorityValue(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function readPanelAuthorityMetadata(panel = {}) {
+  const meta = panel?.meta || {};
+  const authorityUsed = normalizeAuthorityValue(
+    panel?.authorityUsed || meta?.authorityUsed || meta?.authority || null,
+  );
+  const authoritySource = normalizeAuthorityValue(
+    panel?.authoritySource ||
+      meta?.authoritySource ||
+      (authorityUsed?.startsWith("compiled_project")
+        ? "compiled_project"
+        : null),
+  );
+
+  return {
+    authorityUsed,
+    authoritySource,
+    panelAuthorityReason: normalizeAuthorityValue(
+      panel?.panelAuthorityReason || meta?.panelAuthorityReason || null,
+    ),
+    generatorUsed: normalizeAuthorityValue(
+      panel?.generatorUsed || meta?.generatorUsed || null,
+    ),
+    sourceType: normalizeAuthorityValue(
+      panel?.sourceType || meta?.sourceType || null,
+    ),
+    compiledProjectSchemaVersion: normalizeAuthorityValue(
+      panel?.compiledProjectSchemaVersion ||
+        meta?.compiledProjectSchemaVersion ||
+        meta?.compiled_project_schema_version ||
+        null,
+    ),
+    geometryHash: normalizeHashValue(
+      panel?.geometryHash ||
+        panel?.geometry_hash ||
+        meta?.geometryHash ||
+        meta?.geometry_hash,
+    ),
+    svgHash: normalizeHashValue(panel?.svgHash || meta?.svgHash),
+  };
+}
+
+export function findTechnicalPanelsMissingAuthorityMetadata(panels = []) {
+  return panels
+    .filter((panel) => isDeterministicComposeDrawingPanel(panel?.type))
+    .map((panel) => {
+      const authority = readPanelAuthorityMetadata(panel);
+      const missing = [];
+
+      if (!authority.authorityUsed) {
+        missing.push("authorityUsed");
+      }
+      if (!authority.authoritySource) {
+        missing.push("authoritySource");
+      }
+      if (
+        isTechnicalComposePanel(panel?.type) &&
+        !authority.compiledProjectSchemaVersion
+      ) {
+        missing.push("compiledProjectSchemaVersion");
+      }
+
+      return missing.length > 0
+        ? {
+            panelType: panel.type,
+            missing,
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+export function findPanelsWithDisallowedTechnicalAuthority(panels = []) {
+  return panels
+    .filter((panel) => isDeterministicComposeDrawingPanel(panel?.type))
+    .map((panel) => {
+      const authority = readPanelAuthorityMetadata(panel);
+      const isSiteDrawing =
+        panel?.type === "site_diagram" || panel?.type === "site_plan";
+      const allowedAuthorityUsed = isSiteDrawing
+        ? new Set(["deterministic_svg", "compiled_project_canonical_pack"])
+        : new Set(["compiled_project_canonical_pack"]);
+      const allowedAuthoritySource = isSiteDrawing
+        ? new Set(["compiled_project", "deterministic_svg", "site_evidence"])
+        : new Set(["compiled_project"]);
+
+      if (
+        authority.authorityUsed &&
+        authority.authoritySource &&
+        allowedAuthorityUsed.has(authority.authorityUsed) &&
+        allowedAuthoritySource.has(authority.authoritySource)
+      ) {
+        return null;
+      }
+
+      return {
+        panelType: panel.type,
+        authorityUsed: authority.authorityUsed,
+        authoritySource: authority.authoritySource,
+        generatorUsed: authority.generatorUsed,
+        panelAuthorityReason: authority.panelAuthorityReason,
+      };
+    })
+    .filter(Boolean);
 }
 
 export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {

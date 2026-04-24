@@ -65,6 +65,21 @@ describe("projectPipelineV2Service", () => {
     expect(bundle.projectQuantityTakeoff?.items?.length).toBeGreaterThan(0);
     expect(bundle.styleBlendSpec?.approved?.materials).toBeTruthy();
     expect(bundle.validation?.valid).toBe(true);
+    expect(bundle.authorityReadiness?.ready).toBe(true);
+    expect(bundle.authorityReadiness?.authoritySource).toBe("compiled_project");
+    expect(bundle.deliveryStages?.stages?.map((stage) => stage.id)).toEqual(
+      expect.arrayContaining([
+        "brief_locked",
+        "compiled_project_ready",
+        "deterministic_technical_pack_ready",
+        "geometry_locked_visuals_ready",
+        "compose_passed",
+        "publishability_passed",
+      ]),
+    );
+    expect(bundle.exportManifest?.exports?.json?.available).toBe(true);
+    expect(bundle.reviewSurface?.supported).toBe(true);
+    expect(bundle.reviewSurface?.createJob?.endpoint).toBe("/api/genarch/jobs");
   });
 
   test("respects manual floor lock in program brief and geometry", async () => {

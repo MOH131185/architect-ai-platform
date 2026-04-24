@@ -23,6 +23,37 @@ import StepContainer from "../layout/StepContainer.jsx";
 import Button from "../ui/Button.jsx";
 import Card from "../ui/Card.jsx";
 
+const STAGE_STATUS_TONE = {
+  pass: {
+    chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+    border: "border-emerald-500/20",
+  },
+  ready: {
+    chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+    border: "border-emerald-500/20",
+  },
+  warning: {
+    chip: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+    border: "border-amber-500/20",
+  },
+  block: {
+    chip: "border-rose-500/30 bg-rose-500/10 text-rose-200",
+    border: "border-rose-500/20",
+  },
+  pending: {
+    chip: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+    border: "border-white/10",
+  },
+};
+
+function getStageTone(status) {
+  return STAGE_STATUS_TONE[status] || STAGE_STATUS_TONE.pending;
+}
+
+function formatStageStatus(status) {
+  return String(status || "pending").replace(/_/g, " ");
+}
+
 const ResultsStep = ({
   result,
   designId,
@@ -35,6 +66,9 @@ const ResultsStep = ({
   onStartNew,
 }) => {
   const [showExportPanel, setShowExportPanel] = useState(false);
+  const [genarchJob, setGenarchJob] = useState(null);
+  const [genarchBusy, setGenarchBusy] = useState(false);
+  const [genarchReviewError, setGenarchReviewError] = useState(null);
 
   const qualityEvaluation =
     result?.qualityEvaluation ||
@@ -105,6 +139,88 @@ const ResultsStep = ({
     name: result?.projectName || "Building Design",
     address: result?.locationData?.address || "",
     client: result?.client || "",
+  };
+  const authorityReadiness =
+    result?.authorityReadiness ||
+    result?.sheetArtifactManifest?.authorityReadiness ||
+    result?.metadata?.authorityReadiness ||
+    null;
+  const deliveryStages =
+    result?.deliveryStages ||
+    result?.sheetArtifactManifest?.deliveryStages ||
+    result?.metadata?.deliveryStages ||
+    null;
+  const exportManifest =
+    result?.exportManifest ||
+    result?.sheetArtifactManifest?.exportManifest ||
+    result?.metadata?.exportManifest ||
+    null;
+  const reviewSurface =
+    result?.reviewSurface ||
+    result?.sheetArtifactManifest?.reviewSurface ||
+    result?.metadata?.reviewSurface ||
+    null;
+  const publishability =
+    result?.metadata?.publishability ||
+    result?.sheetArtifactManifest?.publishability ||
+    null;
+
+  const handleStartGenarchReview = async () => {
+    if (!reviewSurface?.supported || !reviewSurface?.createJob) {
+      return;
+    }
+
+    setGenarchBusy(true);
+    setGenarchReviewError(null);
+
+    try {
+      const serviceModule =
+        await import("../../services/genarch/genarchPipelineService.js");
+      const response = await serviceModule.createJob({
+        ...(reviewSurface.createJob.defaults || {}),
+        prompt:
+          reviewSurface.createJob.promptSeed ||
+          authorityReadiness?.requested?.residentialSubtype ||
+          "residential project",
+      });
+
+      if (!response?.success || !response?.job) {
+        throw new Error(
+          response?.error || "Genarch review job could not be created",
+        );
+      }
+
+      setGenarchJob(response.job);
+    } catch (error) {
+      setGenarchReviewError(error.message || "Genarch review failed");
+    } finally {
+      setGenarchBusy(false);
+    }
+  };
+
+  const handleRefreshGenarchReview = async () => {
+    if (!genarchJob?.id) {
+      return;
+    }
+
+    setGenarchBusy(true);
+    setGenarchReviewError(null);
+
+    try {
+      const serviceModule =
+        await import("../../services/genarch/genarchPipelineService.js");
+      const response = await serviceModule.getJob(genarchJob.id);
+
+      if (!response?.success || !response?.job) {
+        throw new Error(response?.error || "Genarch review refresh failed");
+      }
+
+      setGenarchJob(response.job);
+    } catch (error) {
+      setGenarchReviewError(error.message || "Genarch review refresh failed");
+    } finally {
+      setGenarchBusy(false);
+    }
   };
 
   // TASK 4: Construct a1SheetData from result.panels for print export
@@ -389,6 +505,216 @@ const ResultsStep = ({
                         </div>
                       </div>
                     )}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
+        {(authorityReadiness || deliveryStages || reviewSurface) && (
+          <motion.div variants={fadeInUp}>
+            <Card variant="glass" padding="md" className="border-white/10">
+              <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-lg font-semibold text-white">
+                      Residential Authority Status
+                    </h3>
+                    {authorityReadiness?.ready !== undefined && (
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                          getStageTone(
+                            authorityReadiness.ready ? "pass" : "block",
+                          ).chip
+                        }`}
+                      >
+                        {authorityReadiness.ready ? "Ready" : "Blocked"}
+                      </span>
+                    )}
+                  </div>
+
+                  {authorityReadiness?.geometryHash && (
+                    <p className="text-xs text-gray-400 break-all">
+                      Geometry authority:{" "}
+                      <span className="font-mono">
+                        {authorityReadiness.geometryHash}
+                      </span>
+                    </p>
+                  )}
+
+                  {deliveryStages?.stages?.length > 0 && (
+                    <div className="grid gap-3">
+                      {deliveryStages.stages.map((stage) => {
+                        const tone = getStageTone(stage.status);
+                        return (
+                          <div
+                            key={stage.id}
+                            className={`rounded-2xl border bg-black/20 p-4 ${tone.border}`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-sm font-semibold text-white">
+                                {stage.label}
+                              </div>
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${tone.chip}`}
+                              >
+                                {formatStageStatus(stage.status)}
+                              </span>
+                            </div>
+                            {stage.detail && (
+                              <p className="mt-2 text-sm text-gray-300">
+                                {stage.detail}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-semibold text-white">
+                      Publishability
+                    </div>
+                    <p className="mt-2 text-sm text-gray-300">
+                      {publishability?.summary ||
+                        publishability?.blockers?.[0] ||
+                        publishability?.warnings?.[0] ||
+                        "Post-compose publishability details will appear here once verification runs."}
+                    </p>
+                  </div>
+
+                  {authorityReadiness?.blockers?.length > 0 && (
+                    <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
+                      <div className="text-sm font-semibold text-rose-200">
+                        Current blocker
+                      </div>
+                      <p className="mt-2 text-sm text-rose-100">
+                        {authorityReadiness.blockers[0]}
+                      </p>
+                    </div>
+                  )}
+
+                  {reviewSurface?.supported && (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-white">
+                            Genarch Review Surface
+                          </div>
+                          <p className="mt-1 text-sm text-gray-300">
+                            Run backend CAD/BIM review jobs from the compiled
+                            residential brief.
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleStartGenarchReview}
+                            disabled={genarchBusy}
+                          >
+                            {genarchBusy ? "Working..." : "Start Review"}
+                          </Button>
+                          {genarchJob?.id && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={handleRefreshGenarchReview}
+                              disabled={genarchBusy}
+                            >
+                              Refresh
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {genarchReviewError && (
+                        <p className="mt-3 text-sm text-rose-300">
+                          {genarchReviewError}
+                        </p>
+                      )}
+
+                      {genarchJob?.id && (
+                        <div className="mt-4 space-y-3">
+                          <div className="text-xs uppercase tracking-wide text-gray-500">
+                            Job {genarchJob.id}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                                getStageTone(
+                                  genarchJob.status === "completed"
+                                    ? "pass"
+                                    : genarchJob.status === "failed" ||
+                                        genarchJob.status === "cancelled"
+                                      ? "block"
+                                      : "warning",
+                                ).chip
+                              }`}
+                            >
+                              {formatStageStatus(genarchJob.status)}
+                            </span>
+                            {typeof genarchJob.progress === "number" && (
+                              <span className="text-xs text-gray-400">
+                                {Math.round(genarchJob.progress)}%
+                              </span>
+                            )}
+                          </div>
+
+                          {genarchJob.status === "completed" &&
+                            Array.isArray(reviewSurface.artifacts) && (
+                              <div className="grid gap-2">
+                                {reviewSurface.artifacts.map((artifact) => (
+                                  <a
+                                    key={artifact.key}
+                                    href={`/api/genarch/runs/${genarchJob.id}/${artifact.relativePath}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="rounded-lg border border-white/10 px-3 py-2 text-sm text-blue-300 transition hover:border-blue-400/40 hover:bg-white/5"
+                                  >
+                                    {artifact.key}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {exportManifest?.exports && (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="text-sm font-semibold text-white">
+                        Deliverables
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        {Object.entries(exportManifest.exports).map(
+                          ([key, entry]) => (
+                            <div
+                              key={key}
+                              className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2 text-gray-300"
+                            >
+                              <span className="uppercase tracking-wide text-xs">
+                                {key}
+                              </span>
+                              <span
+                                className={
+                                  entry?.available
+                                    ? "text-emerald-300"
+                                    : "text-amber-300"
+                                }
+                              >
+                                {entry?.available ? "Ready" : "Pending"}
+                              </span>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>

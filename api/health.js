@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     },
     productSurface: {
       genarchApi: "backend-only",
-      genarchFrontend: "dormant-legacy",
+      genarchFrontend: "supported-residential-review",
     },
     env: {
       RUNPOD_GENARCH_URL: process.env.RUNPOD_GENARCH_URL

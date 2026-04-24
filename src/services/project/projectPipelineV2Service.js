@@ -19,6 +19,9 @@ import {
 } from "../drawing/drawingBounds.js";
 import { buildProjectQuantityTakeoff } from "./projectQuantityTakeoffService.js";
 import {
+  createAuthorityReadinessManifest,
+  createCompiledExportManifest,
+  createDeliveryStages,
   createEvidenceStage,
   createStyleBlendSpec,
   isSupportedResidentialV2SubType,
@@ -29,6 +32,10 @@ import {
   generateResidentialProgramBrief,
   normalizeResidentialProgramSpaces,
 } from "./residentialProgramEngine.js";
+import {
+  GENARCH_ARTIFACT_SPECS,
+  GENARCH_JOB_DEFAULTS,
+} from "../genarch/genarchContract.js";
 
 function round(value, precision = 3) {
   const numeric = Number(value);
@@ -240,7 +247,7 @@ function buildTechnicalPackReadinessSummary(
       quality.geometry_complete === true &&
       Number(quality.room_count || 0) >= 1 &&
       Number(quality.wall_count || 0) >= 4 &&
-      Number(quality.slot_occupancy_ratio || 0) >= 0.38
+      Number(quality.slot_occupancy_ratio || 0) >= 0.3
     );
   }).length;
 
@@ -492,7 +499,16 @@ function buildTechnicalPackSummary(compiledProject = {}) {
   const technicalBuild = buildCompiledProjectTechnicalPanels(compiledProject);
   const technicalPanels = technicalBuild?.technicalPanels || {};
   const panelTypes = Object.keys(technicalPanels);
-  const missingPanelTypes = TECHNICAL_CANONICAL_PANEL_TYPES.filter(
+  const resolvedLevelCount = Math.max(
+    1,
+    Array.isArray(compiledProject?.levels) ? compiledProject.levels.length : 1,
+  );
+  const expectedPanelTypes = [
+    ...TECHNICAL_FLOOR_PANEL_TYPES.slice(0, resolvedLevelCount),
+    ...Object.values(TECHNICAL_ELEVATION_PANELS),
+    ...Object.values(TECHNICAL_SECTION_PANELS),
+  ];
+  const missingPanelTypes = expectedPanelTypes.filter(
     (panelType) => !panelTypes.includes(panelType),
   );
 
@@ -515,13 +531,9 @@ function buildTechnicalPackSummary(compiledProject = {}) {
   const failureMessages = (technicalBuild?.failures || []).map(
     (failure) => failure?.message || `${failure?.panelType} could not render`,
   );
-  const panelBlockers = Object.values(panelSummaries).flatMap(
-    (panel) => panel?.blockers || [],
-  );
   const blockers = uniqueStrings([
     ...readiness.reasons,
     ...failureMessages,
-    ...panelBlockers,
     ...(missingPanelTypes.length
       ? [`technical pack is missing panel(s): ${missingPanelTypes.join(", ")}`]
       : []),
@@ -537,8 +549,9 @@ function buildTechnicalPackSummary(compiledProject = {}) {
       readiness.ready === true,
     score: readiness.score,
     panelCount: panelTypes.length,
-    expectedPanelCount: TECHNICAL_CANONICAL_PANEL_TYPES.length,
+    expectedPanelCount: expectedPanelTypes.length,
     panelTypes,
+    expectedPanelTypes,
     missingPanelTypes,
     blockers,
     counts: readiness.counts,
@@ -602,6 +615,226 @@ function buildLayoutQuality({
     ),
     metrics: runtimeBundle?.metrics || null,
   };
+}
+
+function buildAuthorityReadiness({
+  projectDetails = {},
+  programBrief = {},
+  compiledProject = {},
+  technicalPack = {},
+  layoutQuality = {},
+} = {}) {
+  const validation = compiledProject?.validation || {};
+  const counts = validation?.counts || {};
+  const requestedLevelCount = Math.max(
+    1,
+    Number(
+      programBrief?.levelCount ||
+        projectDetails?.floorCount ||
+        projectDetails?.floors ||
+        1,
+    ) || 1,
+  );
+  const resolvedLevelCount = Array.isArray(compiledProject?.levels)
+    ? compiledProject.levels.length
+    : 0;
+  const geometryHash =
+    compiledProject?.geometryHash || technicalPack?.geometryHash || null;
+  const compiledProjectSchemaVersion =
+    compiledProject?.schema_version || compiledProject?.schemaVersion || null;
+  const controlRenderCount = Object.keys(
+    compiledProject?.renderInputs || {},
+  ).length;
+
+  const blockers = uniqueStrings([
+    ...(programBrief?.blockers || []),
+    ...(validation?.blockers || []),
+    ...(technicalPack?.ready === true ? [] : technicalPack?.blockers || []),
+    ...(geometryHash
+      ? []
+      : ["compiled project is missing geometry hash authority"]),
+    ...(resolvedLevelCount >= requestedLevelCount
+      ? []
+      : [
+          `compiled project resolved ${resolvedLevelCount} level(s) for a ${requestedLevelCount}-level brief`,
+        ]),
+  ]);
+
+  const warnings = uniqueStrings([
+    ...(validation?.warnings || []),
+    ...(layoutQuality?.warnings || []),
+    ...(controlRenderCount > 0
+      ? []
+      : [
+          "compiled project has not produced geometry-locked visual control inputs",
+        ]),
+  ]);
+
+  return createAuthorityReadinessManifest({
+    ready:
+      blockers.length === 0 &&
+      technicalPack?.ready === true &&
+      Boolean(geometryHash),
+    geometryHash,
+    authoritySource: "compiled_project",
+    compiledProjectSchemaVersion,
+    requested: {
+      projectCategory: projectDetails?.category || "residential",
+      residentialSubtype:
+        projectDetails?.subType || projectDetails?.program || null,
+      targetAreaM2: Number(
+        projectDetails?.area || programBrief?.targetAreaM2 || 0,
+      ),
+      floorCount: requestedLevelCount,
+      entranceOrientation: projectDetails?.entranceDirection || "S",
+      programLocked: true,
+      styleChannelsLockedToPresentation: [...STYLE_BLEND_CHANNELS],
+      geometryOverridePolicy:
+        "style prompts may influence massing, roof, openings, materials, and detailing only",
+    },
+    evidence: {
+      roomCount: Number(counts?.room_count || 0),
+      wallCount: Number(counts?.wall_count || 0),
+      openingCount: Number(counts?.opening_count || 0),
+      levelCount: resolvedLevelCount,
+      technicalPanelCount: Number(technicalPack?.panelCount || 0),
+      technicalReady: technicalPack?.ready === true,
+      technicalScore: Number(technicalPack?.score || 0),
+      controlRenderCount,
+      layoutSource: layoutQuality?.source || null,
+      fallbackUsed:
+        technicalPack?.fallbackUsed === true ||
+        layoutQuality?.fallbackUsed === true,
+    },
+    blockers,
+    warnings,
+  });
+}
+
+function buildResidentialReviewSurface({
+  projectDetails = {},
+  programBrief = {},
+  compiledProject = {},
+  authorityReadiness = {},
+} = {}) {
+  const geometryHash =
+    compiledProject?.geometryHash || authorityReadiness?.geometryHash || null;
+  const compiledProjectSchemaVersion =
+    compiledProject?.schema_version ||
+    authorityReadiness?.compiledProjectSchemaVersion ||
+    null;
+  const promptSegments = [
+    projectDetails?.subType || projectDetails?.program || "residential project",
+    projectDetails?.area ? `${projectDetails.area}sqm` : null,
+    programBrief?.levelCount ? `${programBrief.levelCount} floors` : null,
+    projectDetails?.entranceDirection
+      ? `entrance ${projectDetails.entranceDirection}`
+      : null,
+  ].filter(Boolean);
+
+  return {
+    supported: true,
+    surface: "residential_genarch_review",
+    ready: authorityReadiness?.ready === true,
+    backendBoundary: true,
+    geometryHash,
+    compiledProjectSchemaVersion,
+    createJob: {
+      method: "POST",
+      endpoint: "/api/genarch/jobs",
+      defaults: GENARCH_JOB_DEFAULTS,
+      promptSeed: promptSegments.join(", "),
+    },
+    status: {
+      method: "GET",
+      endpointTemplate: "/api/genarch/jobs/:jobId",
+    },
+    cancel: {
+      method: "DELETE",
+      endpointTemplate: "/api/genarch/jobs/:jobId",
+    },
+    artifacts: GENARCH_ARTIFACT_SPECS.map((artifact) => ({
+      key: artifact.key,
+      relativePath: artifact.relativePath,
+      contentType: artifact.contentType,
+      urlTemplate: `/api/genarch/runs/:jobId/${artifact.relativePath}`,
+    })),
+  };
+}
+
+function buildResidentialDeliveryStages({
+  authorityReadiness = {},
+  programBrief = {},
+  compiledProject = {},
+  technicalPack = {},
+} = {}) {
+  const geometryHash =
+    compiledProject?.geometryHash || authorityReadiness?.geometryHash || null;
+  const controlRenderCount = Object.keys(
+    compiledProject?.renderInputs || {},
+  ).length;
+
+  return createDeliveryStages({
+    geometryHash,
+    stages: [
+      {
+        id: "brief_locked",
+        label: "Brief locked",
+        status:
+          (programBrief?.blockers || []).length > 0 ||
+          programBrief?.supportedResidentialSubtype === false
+            ? "block"
+            : "pass",
+        detail:
+          (programBrief?.blockers || []).length > 0
+            ? programBrief.blockers[0]
+            : "Residential brief locked before geometry generation.",
+      },
+      {
+        id: "compiled_project_ready",
+        label: "Compiled project ready",
+        status:
+          compiledProject?.geometryHash &&
+          compiledProject?.validation?.valid !== false
+            ? "pass"
+            : "block",
+        detail: compiledProject?.geometryHash
+          ? "Compiled-project geometry authority is available."
+          : "Compiled-project geometry authority is missing.",
+      },
+      {
+        id: "deterministic_technical_pack_ready",
+        label: "Deterministic technical pack ready",
+        status: technicalPack?.ready === true ? "pass" : "block",
+        detail:
+          technicalPack?.ready === true
+            ? "Technical panels are compiled-geometry deterministic outputs."
+            : technicalPack?.blockers?.[0] ||
+              "Technical authority is incomplete.",
+      },
+      {
+        id: "geometry_locked_visuals_ready",
+        label: "Geometry-locked visuals ready",
+        status: controlRenderCount > 0 ? "ready" : "warning",
+        detail:
+          controlRenderCount > 0
+            ? `${controlRenderCount} compiled visual control render(s) are available.`
+            : "No compiled visual control render was produced yet.",
+      },
+      {
+        id: "compose_passed",
+        label: "Compose passed",
+        status: "pending",
+        detail: "Awaiting A1 compose output.",
+      },
+      {
+        id: "publishability_passed",
+        label: "Publishability passed",
+        status: "pending",
+        detail: "Awaiting final publishability verification.",
+      },
+    ],
+  });
 }
 
 function buildSourceLabelSet(
@@ -1347,13 +1580,47 @@ export async function buildProjectPipelineV2Bundle({
     programBrief,
     technicalPack,
   });
+  const authorityReadiness = buildAuthorityReadiness({
+    projectDetails,
+    programBrief,
+    compiledProject,
+    technicalPack,
+    layoutQuality,
+  });
   const compiledProjectWithDiagnostics = {
     ...compiledProject,
+    authoritySource: "compiled_project",
+    compiledProjectSchemaVersion:
+      compiledProject?.schema_version || compiledProject?.schemaVersion || null,
+    authorityReadiness,
     technicalPack,
     layoutQuality,
   };
   const takeoff = buildProjectQuantityTakeoff(compiledProject, {
     pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+  });
+  const exportManifest = createCompiledExportManifest({
+    geometryHash: compiledProjectWithDiagnostics.geometryHash,
+    pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+    projectName:
+      projectDetails?.projectName ||
+      projectDetails?.name ||
+      projectDetails?.subType ||
+      "ArchiAI Project",
+    compiledProject: compiledProjectWithDiagnostics,
+    projectQuantityTakeoff: takeoff,
+  });
+  const reviewSurface = buildResidentialReviewSurface({
+    projectDetails,
+    programBrief,
+    compiledProject: compiledProjectWithDiagnostics,
+    authorityReadiness,
+  });
+  const deliveryStages = buildResidentialDeliveryStages({
+    authorityReadiness,
+    programBrief,
+    compiledProject: compiledProjectWithDiagnostics,
+    technicalPack,
   });
   const blendedStyle = buildBlendedStyleSummary(
     localStyleEvidence,
@@ -1387,17 +1654,20 @@ export async function buildProjectPipelineV2Bundle({
     validation: {
       valid:
         compiledProjectWithDiagnostics?.validation?.valid !== false &&
+        authorityReadiness.ready === true &&
         siteEvidence.blockers.length === 0 &&
         (programBrief?.blockers || []).length === 0,
       blockers: [
         ...siteEvidence.blockers,
         ...(programBrief?.blockers || []),
+        ...(authorityReadiness?.blockers || []),
         ...(compiledProjectWithDiagnostics?.validation?.blockers || []),
       ],
       warnings: [
         ...siteEvidence.warnings,
         ...localStyleEvidence.warnings,
         ...portfolioStyleEvidence.warnings,
+        ...(authorityReadiness?.warnings || []),
         ...(compiledProjectWithDiagnostics?.validation?.warnings || []),
       ],
     },
@@ -1412,6 +1682,10 @@ export async function buildProjectPipelineV2Bundle({
     masterDNASeed: runtimeBundle.masterDNA,
     technicalPack,
     layoutQuality,
+    authorityReadiness,
+    deliveryStages,
+    exportManifest,
+    reviewSurface,
     compiledProject: compiledProjectWithDiagnostics,
     projectQuantityTakeoff: takeoff,
   };

@@ -103,20 +103,76 @@ function decodePanelImageUrl(imageUrl, svg) {
   }
 }
 
-function buildComposePanels(generatedPanels, dnaRooms) {
+const COMPOSE_META_KEYS = [
+  "geometryHash",
+  "geometry_hash",
+  "cdsHash",
+  "cds_hash",
+  "runId",
+  "roomCount",
+  "wallCount",
+  "openingCount",
+  "svgHash",
+  "authorityUsed",
+  "authoritySource",
+  "panelAuthorityReason",
+  "generatorUsed",
+  "sourceType",
+  "compiledProjectSchemaVersion",
+  "hadCanonicalControl",
+  "hadGeometryControl",
+  "model",
+  "tier",
+  "isDataPanel",
+];
+
+function pickComposeMeta(rawMeta = {}) {
+  const meta = {};
+  COMPOSE_META_KEYS.forEach((key) => {
+    if (rawMeta[key] !== undefined && rawMeta[key] !== null) {
+      meta[key] = rawMeta[key];
+    }
+  });
+  return meta;
+}
+
+function buildComposePanels(
+  generatedPanels,
+  dnaRooms,
+  { projectContext = {}, canonicalPack = null } = {},
+) {
+  const compiledProjectSchemaVersion =
+    projectContext?.compiledProject?.compiledProjectSchemaVersion ||
+    projectContext?.compiledProject?.schema_version ||
+    projectContext?.authorityReadiness?.compiledProjectSchemaVersion ||
+    null;
+  const authoritySource =
+    projectContext?.authorityReadiness?.authoritySource ||
+    projectContext?.compiledProject?.authoritySource ||
+    canonicalPack?.metadata?.authoritySource ||
+    (canonicalPack?.geometryHash ? "compiled_project" : null);
+
   return generatedPanels.map((panel) => {
     const rawMeta = panel.meta || {};
-    const meta = {
-      ...(rawMeta.geometryHash ? { geometryHash: rawMeta.geometryHash } : {}),
-      ...(rawMeta.geometry_hash
-        ? { geometry_hash: rawMeta.geometry_hash }
-        : {}),
-      ...(rawMeta.cdsHash ? { cdsHash: rawMeta.cdsHash } : {}),
-      ...(rawMeta.cds_hash ? { cds_hash: rawMeta.cds_hash } : {}),
-      ...(rawMeta.runId ? { runId: rawMeta.runId } : {}),
-      ...(rawMeta.roomCount ? { roomCount: rawMeta.roomCount } : {}),
-      ...(rawMeta.wallCount ? { wallCount: rawMeta.wallCount } : {}),
-    };
+    const meta = pickComposeMeta({
+      ...rawMeta,
+      geometryHash:
+        rawMeta.geometryHash || panel.geometryHash || panel.geometry_hash,
+      geometry_hash:
+        rawMeta.geometry_hash || panel.geometry_hash || panel.geometryHash,
+      cdsHash: rawMeta.cdsHash || panel.cdsHash,
+      cds_hash: rawMeta.cds_hash || panel.cds_hash,
+      runId: rawMeta.runId || panel.runId,
+      svgHash: rawMeta.svgHash || panel.svgHash,
+      sourceType: rawMeta.sourceType || panel.sourceType || panel.category,
+      authoritySource:
+        rawMeta.authoritySource ||
+        (rawMeta.authorityUsed?.startsWith("compiled_project")
+          ? "compiled_project"
+          : authoritySource),
+      compiledProjectSchemaVersion:
+        rawMeta.compiledProjectSchemaVersion || compiledProjectSchemaVersion,
+    });
 
     if (panel.type?.includes("floor_plan") && !meta.roomCount) {
       const floorIndex =
@@ -138,6 +194,11 @@ function buildComposePanels(generatedPanels, dnaRooms) {
       imageUrl: decodePanelImageUrl(panel.imageUrl, panel.svg),
       label: panel.type.toUpperCase().replace(/_/g, " "),
       runId: meta.runId || panel.runId || null,
+      geometryHash: meta.geometryHash || meta.geometry_hash || null,
+      svgHash: meta.svgHash || null,
+      authorityUsed: meta.authorityUsed || null,
+      authoritySource: meta.authoritySource || null,
+      sourceType: meta.sourceType || null,
       meta,
       ...(panel.svgPanel ? { svgPanel: true } : {}),
     };
@@ -169,7 +230,10 @@ function buildComposePayload({
     dnaHash: masterDNA?.dnaHash || computeCDSHashSync(masterDNA || {}),
     geometryHash: canonicalPack?.geometryHash || null,
     programHash: programLock?.hash || null,
-    panels: buildComposePanels(generatedPanels, dnaRooms),
+    panels: buildComposePanels(generatedPanels, dnaRooms, {
+      projectContext,
+      canonicalPack,
+    }),
     siteOverlay: null,
     layoutConfig: "uk-riba-standard",
     masterDNA: {
@@ -182,6 +246,22 @@ function buildComposePayload({
     projectContext: {
       programSpaces: projectContext?.programSpaces || [],
       buildingProgram: projectContext?.buildingProgram,
+      buildingCategory: projectContext?.buildingCategory || null,
+      buildingSubType: projectContext?.buildingSubType || null,
+      floorCount: projectContext?.floorCount || floorCount || null,
+      geometryHash:
+        canonicalPack?.geometryHash ||
+        projectContext?.compiledProject?.geometryHash ||
+        null,
+      compiledProjectSchemaVersion:
+        projectContext?.compiledProject?.compiledProjectSchemaVersion ||
+        projectContext?.compiledProject?.schema_version ||
+        null,
+      technicalAuthority: projectContext?.technicalAuthority || null,
+      authorityReadiness: projectContext?.authorityReadiness || null,
+      deliveryStages: projectContext?.deliveryStages || null,
+      exportManifest: projectContext?.exportManifest || null,
+      reviewSurface: projectContext?.reviewSurface || null,
     },
     locationData: {
       climate: locationData?.climate || {},

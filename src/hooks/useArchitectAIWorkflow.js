@@ -56,12 +56,21 @@ function buildManifestPanels(multiPanelResult = {}) {
         panel?.metadata?.sourceType ||
         panel?.metadata?.authorityType ||
         "generated_panel",
+      authorityUsed:
+        panel?.authorityUsed || panel?.metadata?.authorityUsed || null,
+      authoritySource:
+        panel?.authoritySource || panel?.metadata?.authoritySource || null,
+      panelAuthorityReason:
+        panel?.panelAuthorityReason ||
+        panel?.metadata?.panelAuthorityReason ||
+        null,
       geometryHash:
         panel?.geometryHash ||
         panel?.metadata?.geometryHash ||
         multiPanelResult?.metadata?.geometryHash ||
         null,
       svgHash: panel?.svgHash || panel?.metadata?.svgHash || null,
+      slotMetrics: panel?.slotMetrics || panel?.metadata?.slotMetrics || null,
       occupancyScore:
         panel?.occupancyScore ?? panel?.metadata?.occupancyScore ?? null,
       validation: panel?.validation || panel?.metadata?.validation || null,
@@ -232,12 +241,36 @@ export function useArchitectAIWorkflow() {
           params.designSpec?.v2Bundle?.validation ||
           compiledProject?.validation ||
           null;
+        const authorityReadiness =
+          multiPanelResult?.metadata?.authorityReadiness ||
+          params.designSpec?.authorityReadiness ||
+          params.designSpec?.v2Bundle?.authorityReadiness ||
+          null;
+        const deliveryStages =
+          multiPanelResult?.metadata?.deliveryStages ||
+          params.designSpec?.deliveryStages ||
+          params.designSpec?.v2Bundle?.deliveryStages ||
+          null;
+        const exportManifest =
+          multiPanelResult?.metadata?.exportManifest ||
+          params.designSpec?.exportManifest ||
+          params.designSpec?.v2Bundle?.exportManifest ||
+          null;
+        const reviewSurface =
+          multiPanelResult?.metadata?.reviewSurface ||
+          params.designSpec?.reviewSurface ||
+          params.designSpec?.v2Bundle?.reviewSurface ||
+          null;
         const sheetArtifactManifest = createSheetArtifactManifest({
           geometryHash,
           pipelineVersion,
           panels: buildManifestPanels(multiPanelResult),
           confidence: confidence || {},
           validation: validation || {},
+          authorityReadiness,
+          deliveryStages,
+          exportManifest,
+          reviewSurface,
         });
 
         const sheetResult = {
@@ -279,6 +312,10 @@ export function useArchitectAIWorkflow() {
             null,
           confidence,
           validation,
+          authorityReadiness,
+          deliveryStages,
+          exportManifest,
+          reviewSurface,
           sheetArtifactManifest,
           panelCoordinates:
             multiPanelResult.panelCoordinates || multiPanelResult.coordinates,
@@ -289,6 +326,10 @@ export function useArchitectAIWorkflow() {
             geometryHash,
             confidence,
             validation,
+            authorityReadiness,
+            deliveryStages,
+            exportManifest,
+            reviewSurface,
             sheetArtifactManifest,
             panelCount:
               multiPanelResult.metadata?.panelCount ||

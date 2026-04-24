@@ -7,8 +7,8 @@ This runbook covers the supported genarch production surface in this repository.
 - `genarch` is a separate backend deployment boundary.
 - The supported access path is `browser -> Vercel/Express proxy -> genarch backend`.
 - `GENARCH_API_KEY` must stay server-side only.
-- There is no supported browser genarch UI flow in the current React app.
-- `src/_legacy/genarchPipelineService.js` is a dormant prototype, not a supported product path.
+- The React app now exposes a supported residential review surface that starts and monitors backend genarch jobs through `/api/genarch/*`.
+- `src/services/genarch/genarchPipelineService.js` is the supported browser adapter for that review surface.
 
 ## Contract Signals
 
@@ -32,7 +32,7 @@ Expected signals:
 
 - `/api/health` includes `contracts.genarchApi`
 - `/api/health` includes `productSurface.genarchApi=backend-only`
-- `/api/health` includes `productSurface.genarchFrontend=dormant-legacy`
+- `/api/health` includes `productSurface.genarchFrontend=supported-residential-review`
 - `/api/genarch/*` responses include `X-Genarch-Contract-Version`
 
 ## Canonical Validation

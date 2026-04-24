@@ -4,17 +4,32 @@
  * the HTTP handler body.
  */
 
-export function buildPanelsByKey(panels, coordinates) {
+import { readPanelAuthorityMetadata } from "./composeRuntime.js";
+
+export function buildPanelsByKey(panels, coordinates, panelMetricsByType = {}) {
   const panelsByKey = {};
   for (const panel of panels || []) {
     if (!panel?.type) {
       continue;
     }
+    const authority = readPanelAuthorityMetadata(panel);
+    const slotMetrics = panelMetricsByType?.[panel.type] || null;
     panelsByKey[panel.type] = {
       type: panel.type,
+      imageUrl: panel.imageUrl || null,
       url: panel.imageUrl || null,
       hasBuffer: !!panel.buffer,
       coordinates: coordinates?.[panel.type] || null,
+      geometryHash: authority.geometryHash,
+      svgHash: authority.svgHash,
+      sourceType: authority.sourceType,
+      authorityUsed: authority.authorityUsed,
+      authoritySource: authority.authoritySource,
+      panelAuthorityReason: authority.panelAuthorityReason,
+      generatorUsed: authority.generatorUsed,
+      compiledProjectSchemaVersion: authority.compiledProjectSchemaVersion,
+      slotMetrics,
+      renderSanity: slotMetrics?.renderSanity || null,
     };
   }
   return panelsByKey;

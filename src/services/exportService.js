@@ -38,6 +38,15 @@ class ExportService {
     );
   }
 
+  resolveSheetArtifactManifest(sheet = {}) {
+    return (
+      sheet?.sheetArtifactManifest ||
+      sheet?.a1Sheet?.sheetArtifactManifest ||
+      sheet?.metadata?.sheetArtifactManifest ||
+      null
+    );
+  }
+
   resolveProjectName(sheet = {}) {
     return (
       sheet?.projectName ||
@@ -79,6 +88,10 @@ class ExportService {
     // Route DXF to CAD export path
     if (fmt === "DXF") {
       return this.exportCAD({ sheet, format: "DXF", env: effectiveEnv });
+    }
+
+    if (fmt === "JSON") {
+      return this.exportJSON({ sheet });
     }
 
     if (fmt === "IFC" || fmt === "RVT") {
@@ -394,6 +407,36 @@ class ExportService {
 
     logger.success("DXF export complete", { filename });
     return { success: true, url, filename, format: "DXF" };
+  }
+
+  async exportJSON({ sheet }) {
+    const compiledProject = this.resolveCompiledProject(sheet);
+    if (!compiledProject?.geometryHash) {
+      throw new Error(
+        "A compiled project is required for JSON authority export.",
+      );
+    }
+
+    const filename = this.generateFilename(sheet, "json");
+    const response = await fetch("/api/project/export/json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        compiledProject,
+        projectQuantityTakeoff: this.resolveProjectQuantityTakeoff(sheet),
+        sheetArtifactManifest: this.resolveSheetArtifactManifest(sheet),
+        projectName: this.resolveProjectName(sheet),
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `JSON export failed: ${response.status}`);
+    }
+
+    const url = await this.downloadResponseBlob(response, filename);
+    logger.success("Compiled-project JSON export complete", { filename });
+    return { success: true, url, filename, format: "JSON" };
   }
 
   /**
