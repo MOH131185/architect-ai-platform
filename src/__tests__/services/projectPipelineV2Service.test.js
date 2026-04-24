@@ -67,6 +67,14 @@ describe("projectPipelineV2Service", () => {
     expect(bundle.validation?.valid).toBe(true);
     expect(bundle.authorityReadiness?.ready).toBe(true);
     expect(bundle.authorityReadiness?.authoritySource).toBe("compiled_project");
+    expect(bundle.compiledProject?.footprint?.area_m2).toBeGreaterThan(60);
+    expect(bundle.compiledProject?.footprint?.area_m2).toBeLessThan(140);
+    expect(
+      bundle.compiledProject?.site?.constraints?.boundary_area_m2,
+    ).toBeGreaterThan(bundle.compiledProject?.footprint?.area_m2);
+    expect(bundle.projectQuantityTakeoff?.summary?.roofAreaM2).toBeLessThan(
+      160,
+    );
     expect(bundle.deliveryStages?.stages?.map((stage) => stage.id)).toEqual(
       expect.arrayContaining([
         "brief_locked",
@@ -120,8 +128,18 @@ describe("projectPipelineV2Service", () => {
 
     expect(bundle.programBrief?.levelCount).toBe(3);
     expect(bundle.projectGeometry?.levels).toHaveLength(3);
+    expect(
+      bundle.programBrief?.spaces?.some((space) => space.levelIndex === 2),
+    ).toBe(true);
+    expect(bundle.projectGeometry?.levels?.[2]?.rooms?.length).toBeGreaterThan(
+      0,
+    );
     expect(bundle.technicalPack?.panelTypes).toEqual(
-      expect.arrayContaining(["floor_plan_ground", "floor_plan_first"]),
+      expect.arrayContaining([
+        "floor_plan_ground",
+        "floor_plan_first",
+        "floor_plan_level2",
+      ]),
     );
   });
 
@@ -162,7 +180,12 @@ describe("projectPipelineV2Service", () => {
     });
 
     const firstFloorRooms = bundle.projectGeometry?.levels?.[1]?.rooms || [];
-    expect(firstFloorRooms).toHaveLength(1);
-    expect(firstFloorRooms[0]?.name).toContain("Bedroom");
+    const groundFloorRooms = bundle.projectGeometry?.levels?.[0]?.rooms || [];
+    expect(
+      firstFloorRooms.some((room) => room?.name?.includes("Bedroom")),
+    ).toBe(true);
+    expect(
+      groundFloorRooms.some((room) => room?.name?.includes("Bedroom")),
+    ).toBe(false);
   });
 });

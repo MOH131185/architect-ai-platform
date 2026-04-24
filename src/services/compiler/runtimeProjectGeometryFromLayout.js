@@ -194,6 +194,26 @@ function resolveDimensions(masterDNA = {}, baseProjectGeometry = {}) {
   };
 }
 
+function normalizePolygonOrFallback(polygon = [], fallback = []) {
+  const points = Array.isArray(polygon)
+    ? polygon
+        .map((point) => normalizePoint(point))
+        .filter(
+          (point) =>
+            Number.isFinite(Number(point.x)) &&
+            Number.isFinite(Number(point.y)),
+        )
+    : [];
+
+  if (points.length >= 3) {
+    return points;
+  }
+
+  return Array.isArray(fallback)
+    ? fallback.map((point) => normalizePoint(point))
+    : [];
+}
+
 function resolveRoofType(masterDNA = {}) {
   const seed = [
     masterDNA?.roof?.type,
@@ -657,13 +677,22 @@ export function buildRuntimeProjectGeometryFromLayout({
   }
 
   const dimensions = resolveDimensions(masterDNA, baseProjectGeometry || {});
-  const footprintPolygon = polygonFromRect(
-    0,
-    0,
-    dimensions.width,
-    dimensions.depth,
+  const footprintPolygon = normalizePolygonOrFallback(
+    baseProjectGeometry?.metadata?.runtime_layout_seed?.footprint_polygon ||
+      baseProjectGeometry?.footprint?.polygon ||
+      baseProjectGeometry?.site?.building_polygon ||
+      [],
+    polygonFromRect(0, 0, dimensions.width, dimensions.depth),
   );
   const footprintBounds = bboxFromPolygon(footprintPolygon);
+  const siteBoundaryPolygon = normalizePolygonOrFallback(
+    baseProjectGeometry?.site?.boundary_polygon || [],
+    footprintPolygon,
+  );
+  const siteBuildablePolygon = normalizePolygonOrFallback(
+    baseProjectGeometry?.site?.buildable_polygon || [],
+    siteBoundaryPolygon,
+  );
   const baseStyleDNA =
     baseProjectGeometry?.metadata?.style_dna ||
     masterDNA?.styleDNA ||
@@ -780,10 +809,14 @@ export function buildRuntimeProjectGeometryFromLayout({
       },
     },
     site: {
-      boundary_polygon: cloneData(footprintPolygon),
-      buildable_polygon: cloneData(footprintPolygon),
+      boundary_polygon: cloneData(siteBoundaryPolygon),
+      buildable_polygon: cloneData(siteBuildablePolygon),
       north_orientation_deg:
-        baseProjectGeometry?.site?.north_orientation_deg || 0,
+        baseProjectGeometry?.site?.north_orientation_deg ||
+        baseProjectGeometry?.site?.orientation_deg ||
+        0,
+      setbacks: cloneData(baseProjectGeometry?.site?.setbacks || {}),
+      area_m2: Number(baseProjectGeometry?.site?.area_m2 || 0),
       climate: cloneData(
         baseProjectGeometry?.site?.climate ||
           masterDNA?.climateData?.climate ||

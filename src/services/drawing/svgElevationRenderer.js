@@ -94,6 +94,22 @@ function metricsFromBounds(
   };
 }
 
+function resolveElevationMetrics(
+  bounds = {},
+  orientation = "south",
+  levelProfiles = [],
+  sideFacade = {},
+) {
+  const fallback = metricsFromBounds(bounds, orientation, levelProfiles);
+  const facadeWidth = Number(sideFacade?.metrics?.width_m || 0);
+  const facadeHeight = Number(sideFacade?.metrics?.total_height_m || 0);
+  return {
+    width_m: facadeWidth > 0 ? facadeWidth : fallback.width_m,
+    total_height_m: facadeHeight > 0 ? facadeHeight : fallback.total_height_m,
+    level_count: Math.max(1, levelProfiles.length || fallback.level_count || 1),
+  };
+}
+
 function normalizeRoofLanguage(
   styleDNA = {},
   facadeOrientation = {},
@@ -1109,10 +1125,11 @@ export function renderElevationSvg(
   const facadeOrientation = sideFacade.facadeOrientation || {};
   const envelope = getEnvelopeDrawingBoundsWithSource(geometry);
   const levelProfiles = sideFacade.levelProfiles || getLevelProfiles(geometry);
-  const metrics = metricsFromBounds(
+  const metrics = resolveElevationMetrics(
     envelope.bounds,
     orientation,
     levelProfiles,
+    sideFacade,
   );
   const width = options.width || 1200;
   const height = options.height || 760;

@@ -138,6 +138,12 @@ function sectionDisplayRange(entry = {}, sectionType = "longitudinal") {
   return projectRoomForSection(entry, sectionType);
 }
 
+function getHorizontalOrigin(bounds = {}, sectionType = "longitudinal") {
+  return sectionAxis(sectionType) === "x"
+    ? Number(bounds.min_y || 0)
+    : Number(bounds.min_x || 0);
+}
+
 function buildFallbackSectionProfile(
   geometry = {},
   sectionType = "longitudinal",
@@ -566,6 +572,7 @@ function renderCutRooms(
   baseX = 0,
   baseY = 0,
   scale = 1,
+  originM = 0,
 ) {
   const markup = cutRooms
     .map((room) => {
@@ -576,9 +583,11 @@ function renderCutRooms(
       }
 
       const projection = room.range || sectionDisplayRange(room, sectionType);
-      const x = room.x ?? baseX + projection.start * scale;
+      const startM = Number(projection.start || 0) - originM;
+      const endM = Number(projection.end || projection.start || 0) - originM;
+      const x = room.x ?? baseX + startM * scale;
       const widthPx =
-        room.width ?? Math.max(18, (projection.end - projection.start) * scale);
+        room.width ?? Math.max(18, Math.abs(endM - startM) * scale);
       const y = room.y ?? baseY - level.top_m * scale;
       const heightPx =
         room.height ?? Math.max(24, Number(level.height_m || 3.2) * scale);
@@ -613,6 +622,7 @@ function renderStairCut(
   baseY = 0,
   scale = 1,
   levelProfiles = [],
+  originM = 0,
 ) {
   const markup = (stairs || [])
     .map((stair) => {
@@ -624,10 +634,11 @@ function renderStairCut(
         return "";
       }
       const projection = stair.range || sectionDisplayRange(stair, sectionType);
-      const x = stair.x ?? baseX + projection.start * scale;
+      const startM = Number(projection.start || 0) - originM;
+      const endM = Number(projection.end || projection.start || 0) - originM;
+      const x = stair.x ?? baseX + startM * scale;
       const widthPx =
-        stair.width ??
-        Math.max(20, (projection.end - projection.start) * scale);
+        stair.width ?? Math.max(20, Math.abs(endM - startM) * scale);
       const y =
         stair.y ??
         baseY - (level.bottom_m + Number(level.height_m || 3.2) * 0.95) * scale;
@@ -756,6 +767,7 @@ function renderCutWalls(
   scale = 1,
   levelProfiles = [],
   lineweights = {},
+  originM = 0,
 ) {
   const markup = (walls || [])
     .map((wall, index) => {
@@ -766,11 +778,13 @@ function renderCutWalls(
         return "";
       }
       const projection = sectionDisplayRange(wall, sectionType);
-      const center = (Number(projection.start) + Number(projection.end)) / 2;
+      const startM = Number(projection.start || 0) - originM;
+      const endM = Number(projection.end || projection.start || 0) - originM;
+      const center = (startM + endM) / 2;
       const widthPx = Math.max(
         8,
         Number(wall.thickness_m || 0.18) * scale,
-        Math.abs(Number(projection.end) - Number(projection.start)) * scale,
+        Math.abs(endM - startM) * scale,
       );
       const x = baseX + center * scale - widthPx / 2;
       const y = baseY - level.top_m * scale;
@@ -813,6 +827,7 @@ function renderCutOpenings(
   baseY = 0,
   scale = 1,
   levelProfiles = [],
+  originM = 0,
 ) {
   const markup = (openings || [])
     .map((opening, index) => {
@@ -825,11 +840,10 @@ function renderCutOpenings(
       const projection = sectionDisplayRange(opening, sectionType);
       const sillHeight = Number(opening.clipGeometry?.sillHeightM || 0.9);
       const headHeight = Number(opening.clipGeometry?.headHeightM || 2.1);
-      const widthPx = Math.max(
-        10,
-        Math.abs(Number(projection.end) - Number(projection.start)) * scale,
-      );
-      const x = baseX + Number(projection.start) * scale;
+      const startM = Number(projection.start || 0) - originM;
+      const endM = Number(projection.end || projection.start || 0) - originM;
+      const widthPx = Math.max(10, Math.abs(endM - startM) * scale);
+      const x = baseX + startM * scale;
       const y = baseY - (level.bottom_m + headHeight) * scale;
       const heightPx = Math.max(10, (headHeight - sillHeight) * scale);
       const truthState = String(opening.truthState || "direct").toLowerCase();
@@ -884,6 +898,7 @@ export function renderSectionSvg(
     !sheetMode || options.showInternalTitleBlock === true;
   const padding = sheetMode ? 34 : 86;
   const bounds = envelopeBounds.bounds || getEnvelopeDrawingBounds(geometry);
+  const horizontalOrigin = getHorizontalOrigin(bounds, sectionType);
   const horizontalExtent =
     sectionAxis(sectionType) === "x"
       ? Number(bounds.height || 10)
@@ -1030,6 +1045,7 @@ export function renderSectionSvg(
     baseX,
     baseY,
     scale,
+    horizontalOrigin,
   );
   const stairMarkup = useDraftingGradeGraphics
     ? buildSectionStairDetailMarkup({
@@ -1045,6 +1061,7 @@ export function renderSectionSvg(
         baseY,
         scale,
         levelProfiles,
+        horizontalOrigin,
       );
   const useClippedGraphics = isFeatureEnabled(
     "useClippedSectionGraphicsPhase13",
@@ -1065,6 +1082,7 @@ export function renderSectionSvg(
           scale,
           levelProfiles,
           lineweights,
+          horizontalOrigin,
         )
     : { markup: "", count: 0 };
   const openingMarkup = useClippedGraphics
@@ -1082,6 +1100,7 @@ export function renderSectionSvg(
           baseY,
           scale,
           levelProfiles,
+          horizontalOrigin,
         )
     : { markup: "", count: 0 };
   const slabMarkup = renderSlabCuts(

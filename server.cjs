@@ -329,6 +329,13 @@ mountDynamicApiRoute('post', '/api/stripe/create-checkout', 'api/stripe/create-c
 mountDynamicApiRoute('get',  '/api/me',                     'api/me.js');
 mountDynamicApiRoute('post', '/api/generations/start',      'api/generations/start.js');
 mountDynamicApiRoute('post', '/api/generations/complete',   'api/generations/complete.js');
+mountDynamicApiRoute('post', '/api/program/compile',        'api/program/compile.js');
+mountDynamicApiRoute('post', '/api/project/compile',        'api/project/compile.js');
+mountDynamicApiRoute('post', '/api/project/generate-sheet', 'api/project/generate-sheet.js');
+mountDynamicApiRoute('post', '/api/project/export/json',    'api/project/export/json.js');
+mountDynamicApiRoute('post', '/api/project/export/dxf',     'api/project/export/dxf.js');
+mountDynamicApiRoute('post', '/api/project/export/ifc',     'api/project/export/ifc.js');
+mountDynamicApiRoute('post', '/api/project/export/xlsx',    'api/project/export/xlsx.js');
 
 // Phase 1/2 architecture backend routes (shared with api/models/* serverless handlers)
 mountDynamicApiRoute('post', '/api/models/generate-style', 'api/models/generate-style.js', [aiApiLimiter]);

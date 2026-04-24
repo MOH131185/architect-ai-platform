@@ -107,4 +107,108 @@ describe("buildRuntimeProjectGeometryFromLayout", () => {
       result.projectGeometry.metadata.promoted_geometry_summary.room_count,
     ).toBe(3);
   });
+
+  test("preserves site envelope while using the seeded building footprint", () => {
+    const result = buildRuntimeProjectGeometryFromLayout({
+      masterDNA: {
+        designFingerprint: "layout-test-envelope",
+        dimensions: {
+          length: 12,
+          width: 8,
+          floors: 1,
+        },
+      },
+      baseProjectGeometry: {
+        site: {
+          boundary_polygon: [
+            { x: 0, y: 0 },
+            { x: 30, y: 0 },
+            { x: 30, y: 24 },
+            { x: 0, y: 24 },
+          ],
+          buildable_polygon: [
+            { x: 2, y: 2 },
+            { x: 28, y: 2 },
+            { x: 28, y: 22 },
+            { x: 2, y: 22 },
+          ],
+          orientation_deg: 14,
+          setbacks: { front: 5, rear: 4 },
+          area_m2: 720,
+        },
+        metadata: {
+          runtime_layout_seed: {
+            footprint_polygon: [
+              { x: 9, y: 8 },
+              { x: 21, y: 8 },
+              { x: 21, y: 16 },
+              { x: 9, y: 16 },
+            ],
+          },
+        },
+      },
+      geometryMasks: {
+        floorMetadata: {
+          0: {
+            rooms: [
+              {
+                name: "Living Room",
+                type: "PUBLIC",
+                zone: "public",
+                polygon: [
+                  { x: 9, y: 8 },
+                  { x: 15, y: 8 },
+                  { x: 15, y: 16 },
+                  { x: 9, y: 16 },
+                ],
+                area: 48,
+                computedArea: 48,
+              },
+              {
+                name: "Kitchen",
+                type: "SEMI_PUBLIC",
+                zone: "service",
+                polygon: [
+                  { x: 15, y: 8 },
+                  { x: 21, y: 8 },
+                  { x: 21, y: 16 },
+                  { x: 15, y: 16 },
+                ],
+                area: 48,
+                computedArea: 48,
+              },
+            ],
+            doors: [],
+            stairCore: null,
+          },
+        },
+      },
+    });
+
+    expect(result.projectGeometry.site.boundary_polygon).toEqual([
+      { x: 0, y: 0 },
+      { x: 30, y: 0 },
+      { x: 30, y: 24 },
+      { x: 0, y: 24 },
+    ]);
+    expect(result.projectGeometry.site.buildable_polygon).toEqual([
+      { x: 2, y: 2 },
+      { x: 28, y: 2 },
+      { x: 28, y: 22 },
+      { x: 2, y: 22 },
+    ]);
+    expect(result.projectGeometry.site.north_orientation_deg).toBe(14);
+    expect(result.projectGeometry.levels[0].footprint).toEqual([
+      { x: 9, y: 8 },
+      { x: 21, y: 8 },
+      { x: 21, y: 16 },
+      { x: 9, y: 16 },
+    ]);
+    expect(result.projectGeometry.roof.polygon).toEqual([
+      { x: 9, y: 8 },
+      { x: 21, y: 8 },
+      { x: 21, y: 16 },
+      { x: 9, y: 16 },
+    ]);
+  });
 });

@@ -21,6 +21,26 @@ describe("residentialProgramEngine", () => {
     ).toBe(true);
   });
 
+  test("enforces per-room minimum areas for repeated residential spaces", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 185,
+      siteAreaM2: 420,
+      entranceDirection: "S",
+    });
+
+    const bedrooms = brief.spaces.filter(
+      (space) => space.spaceType === "bedroom",
+    );
+    const bathrooms = brief.spaces.filter(
+      (space) => space.spaceType === "bathroom",
+    );
+
+    expect(bedrooms.length).toBeGreaterThan(0);
+    expect(bedrooms.every((space) => Number(space.area) >= 9)).toBe(true);
+    expect(bathrooms.every((space) => Number(space.area) >= 5)).toBe(true);
+  });
+
   test("normalizes imported spaces into deterministic program rows", () => {
     const normalized = normalizeResidentialProgramSpaces([
       { name: "Living Room", area: "24", count: "1", level: "Ground" },

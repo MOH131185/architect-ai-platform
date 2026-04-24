@@ -694,7 +694,7 @@ export function generateResidentialProgramBrief({
           )
         : 1;
     const grossArea = Math.max(
-      descriptor.minArea || 0,
+      Number(descriptor.minArea || 0) * Math.max(1, count),
       round(usableArea * Number(descriptor.share || 0)),
     );
     const unitArea = round(grossArea / Math.max(1, count));

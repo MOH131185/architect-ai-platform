@@ -3,6 +3,7 @@ import {
   carriesExplicitConstructionTruth,
   resolveEntryTruthState,
 } from "./constructionTruthModel.js";
+import { getEnvelopeDrawingBoundsWithSource } from "./drawingBounds.js";
 
 function round(value, precision = 3) {
   const factor = 10 ** precision;
@@ -10,7 +11,9 @@ function round(value, precision = 3) {
 }
 
 function getBuildableBounds(geometry = {}) {
+  const envelope = getEnvelopeDrawingBoundsWithSource(geometry);
   return (
+    envelope?.bounds ||
     geometry.site?.buildable_bbox ||
     geometry.site?.boundary_bbox || {
       min_x: 0,
@@ -21,6 +24,12 @@ function getBuildableBounds(geometry = {}) {
       height: 10,
     }
   );
+}
+
+function getHorizontalOrigin(bounds = {}, sectionType = "longitudinal") {
+  return String(sectionType || "longitudinal").toLowerCase() === "longitudinal"
+    ? Number(bounds.min_y || 0)
+    : Number(bounds.min_x || 0);
 }
 
 function projectBboxRange(entry = {}, sectionType = "longitudinal") {
@@ -103,11 +112,11 @@ export function resolveLevelProfileForEntry(entry = {}, levelProfiles = []) {
   );
 }
 
-function projectRangeToPixels(range = {}, baseX = 0, scale = 1) {
+function projectRangeToPixels(range = {}, baseX = 0, scale = 1, origin = 0) {
   const start = Number(range.start || 0);
   const end = Number(range.end || start);
-  const minimum = Math.min(start, end);
-  const maximum = Math.max(start, end);
+  const minimum = Math.min(start, end) - origin;
+  const maximum = Math.max(start, end) - origin;
   return {
     x: round(baseX + minimum * scale),
     width: round(Math.max(8, (maximum - minimum) * scale)),
@@ -132,6 +141,7 @@ export function buildSectionConstructionGeometry({
   levelProfiles = getLevelProfiles(geometry),
 } = {}) {
   const bounds = getBuildableBounds(geometry);
+  const horizontalOrigin = getHorizontalOrigin(bounds, sectionType);
   const horizontalExtent =
     String(sectionType || "longitudinal").toLowerCase() === "longitudinal"
       ? Number(bounds.height || 10)
@@ -176,7 +186,12 @@ export function buildSectionConstructionGeometry({
       const level = resolveLevelProfileForEntry(room, levelProfiles);
       if (!level) return null;
       const range = resolveSectionDisplayRange(room, sectionType);
-      const pixels = projectRangeToPixels(range, baseX, scale);
+      const pixels = projectRangeToPixels(
+        range,
+        baseX,
+        scale,
+        horizontalOrigin,
+      );
       return {
         ...room,
         level,
@@ -196,7 +211,12 @@ export function buildSectionConstructionGeometry({
       const level = resolveLevelProfileForEntry(wall, levelProfiles);
       if (!level) return null;
       const range = resolveSectionDisplayRange(wall, sectionType);
-      const pixels = projectRangeToPixels(range, baseX, scale);
+      const pixels = projectRangeToPixels(
+        range,
+        baseX,
+        scale,
+        horizontalOrigin,
+      );
       const thicknessPx = Math.max(
         8,
         Number(wall.thickness_m || 0.18) * scale,
@@ -221,7 +241,12 @@ export function buildSectionConstructionGeometry({
       const level = resolveLevelProfileForEntry(opening, levelProfiles);
       if (!level) return null;
       const range = resolveSectionDisplayRange(opening, sectionType);
-      const pixels = projectRangeToPixels(range, baseX, scale);
+      const pixels = projectRangeToPixels(
+        range,
+        baseX,
+        scale,
+        horizontalOrigin,
+      );
       const sillHeight = Number(opening.clipGeometry?.sillHeightM || 0.9);
       const headHeight = Number(opening.clipGeometry?.headHeightM || 2.1);
       return {
@@ -245,7 +270,12 @@ export function buildSectionConstructionGeometry({
       const level = resolveLevelProfileForEntry(stair, levelProfiles);
       if (!level) return null;
       const range = resolveSectionDisplayRange(stair, sectionType);
-      const pixels = projectRangeToPixels(range, baseX, scale);
+      const pixels = projectRangeToPixels(
+        range,
+        baseX,
+        scale,
+        horizontalOrigin,
+      );
       const depthM = Number(stair.depth_m || stair.bbox?.height || 2.8);
       const heightPx = Math.max(28, depthM * scale);
       return {
@@ -321,7 +351,12 @@ export function buildSectionConstructionGeometry({
     bands: [...directFoundations, ...directBaseConditions]
       .map((entry, index) => {
         const range = resolveConstructionEntryRange(entry, sectionType);
-        const pixels = projectRangeToPixels(range, baseX, scale);
+        const pixels = projectRangeToPixels(
+          range,
+          baseX,
+          scale,
+          horizontalOrigin,
+        );
         return {
           id: entry.id || `foundation-band:${index}`,
           x: pixels.x,
@@ -340,7 +375,12 @@ export function buildSectionConstructionGeometry({
       .filter((entry) => entry.condition_type === "ground_line")
       .map((entry, index) => {
         const range = resolveConstructionEntryRange(entry, sectionType);
-        const pixels = projectRangeToPixels(range, baseX, scale);
+        const pixels = projectRangeToPixels(
+          range,
+          baseX,
+          scale,
+          horizontalOrigin,
+        );
         return {
           id: entry.id || `ground-line:${index}`,
           x: pixels.x,
@@ -355,7 +395,12 @@ export function buildSectionConstructionGeometry({
       .filter((entry) => entry.condition_type === "plinth_line")
       .map((entry, index) => {
         const range = resolveConstructionEntryRange(entry, sectionType);
-        const pixels = projectRangeToPixels(range, baseX, scale);
+        const pixels = projectRangeToPixels(
+          range,
+          baseX,
+          scale,
+          horizontalOrigin,
+        );
         return {
           id: entry.id || `plinth-line:${index}`,
           x: pixels.x,
@@ -374,7 +419,12 @@ export function buildSectionConstructionGeometry({
       )
       .map((entry, index) => {
         const range = resolveConstructionEntryRange(entry, sectionType);
-        const pixels = projectRangeToPixels(range, baseX, scale);
+        const pixels = projectRangeToPixels(
+          range,
+          baseX,
+          scale,
+          horizontalOrigin,
+        );
         return {
           id: entry.id || `step-line:${index}`,
           x: pixels.x,
@@ -389,7 +439,12 @@ export function buildSectionConstructionGeometry({
       .filter((entry) => entry.condition_type === "slab_ground_interface")
       .map((entry, index) => {
         const range = resolveConstructionEntryRange(entry, sectionType);
-        const pixels = projectRangeToPixels(range, baseX, scale);
+        const pixels = projectRangeToPixels(
+          range,
+          baseX,
+          scale,
+          horizontalOrigin,
+        );
         return {
           id: entry.id || `slab-ground-interface:${index}`,
           x: pixels.x,

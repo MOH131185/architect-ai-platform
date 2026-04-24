@@ -1,3 +1,5 @@
+import { getEnvelopeDrawingBoundsWithSource } from "../drawing/drawingBounds.js";
+
 function tokenizeOrientation(orientation = "south") {
   return String(orientation || "south")
     .trim()
@@ -46,7 +48,9 @@ function orientationToSide(orientation = "south") {
 }
 
 function getBounds(geometry = {}) {
+  const envelope = getEnvelopeDrawingBoundsWithSource(geometry);
   return (
+    envelope?.bounds ||
     geometry.site?.buildable_bbox ||
     geometry.site?.boundary_bbox || {
       min_x: 0,

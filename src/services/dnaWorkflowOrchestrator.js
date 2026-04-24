@@ -2900,22 +2900,40 @@ CRITICAL: All specifications above are EXACT and MANDATORY. No variations allowe
             !panelResult.imageUrl.startsWith("data:")
           ) {
             try {
-              const isDev =
-                window.location.hostname === "localhost" ||
-                window.location.hostname === "127.0.0.1";
-              const proxyBase = isDev ? "/api/proxy/image" : "/api/proxy-image";
+              const isDev = runtimeEnv.isBrowser
+                ? window.location.hostname === "localhost" ||
+                  window.location.hostname === "127.0.0.1"
+                : API_BASE_URL.includes("localhost") ||
+                  API_BASE_URL.includes("127.0.0.1");
+              const proxyBase = runtimeEnv.isBrowser
+                ? isDev
+                  ? "/api/proxy/image"
+                  : "/api/proxy-image"
+                : `${API_BASE_URL}${isDev ? "/api/proxy/image" : "/api/proxy-image"}`;
               const proxyUrl = `${proxyBase}?url=${encodeURIComponent(panelResult.imageUrl)}`;
               const proxyResp = await fetch(proxyUrl);
               if (proxyResp.ok) {
-                const blob = await proxyResp.blob();
-                const dataUrl = await new Promise((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result);
-                  reader.readAsDataURL(blob);
-                });
+                let dataUrl;
+                let artifactSizeKb = 0;
+                if (runtimeEnv.isBrowser) {
+                  const blob = await proxyResp.blob();
+                  artifactSizeKb = blob.size / 1024;
+                  dataUrl = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                  });
+                } else {
+                  const arrayBuffer = await proxyResp.arrayBuffer();
+                  const buffer = Buffer.from(arrayBuffer);
+                  artifactSizeKb = buffer.length / 1024;
+                  const contentType =
+                    proxyResp.headers.get("content-type") || "image/png";
+                  dataUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
+                }
                 panelResult.imageUrl = dataUrl;
                 logger.info(
-                  `   🔗 [CORS] Proxied ${job.type} image to data URL (${(blob.size / 1024).toFixed(0)} KB)`,
+                  `   🔗 [CORS] Proxied ${job.type} image to data URL (${artifactSizeKb.toFixed(0)} KB)`,
                 );
               }
             } catch (proxyErr) {

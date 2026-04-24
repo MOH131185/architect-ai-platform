@@ -36,6 +36,7 @@ import {
   GENARCH_ARTIFACT_SPECS,
   GENARCH_JOB_DEFAULTS,
 } from "../genarch/genarchContract.js";
+import autoLevelAssignmentService from "../autoLevelAssignmentService.js";
 
 function round(value, precision = 3) {
   const numeric = Number(value);
@@ -93,6 +94,69 @@ function inferLevelCountFromSpaces(spaces = []) {
     return Math.max(maxValue, Math.max(0, Math.floor(levelIndex)));
   }, 0);
   return maxLevelIndex + 1;
+}
+
+function stampProgramSpaceMetadata(spaces = [], metadata = {}) {
+  if (!Array.isArray(spaces)) {
+    return [];
+  }
+  spaces._calculatedFloorCount = Number(metadata.floorCount || 0) || 1;
+  spaces._floorMetrics = metadata.floorMetrics || null;
+  return spaces;
+}
+
+function alignProgramSpacesToResolvedLevels({
+  spaces = [],
+  resolvedLevelCount = 1,
+  subType = "",
+  siteAreaM2 = 0,
+} = {}) {
+  const normalizedSpaces = normalizeResidentialProgramSpaces(spaces);
+  const inferredLevelCount = inferLevelCountFromSpaces(normalizedSpaces);
+  const floorCount = Math.max(1, Number(resolvedLevelCount || 1));
+
+  const totalProgramArea = normalizedSpaces.reduce(
+    (sum, space) => sum + Number(space.area || 0) * Number(space.count || 1),
+    0,
+  );
+
+  const floorMetrics =
+    Number.isFinite(Number(siteAreaM2)) && Number(siteAreaM2) > 0
+      ? autoLevelAssignmentService.calculateOptimalLevels(
+          totalProgramArea,
+          Number(siteAreaM2),
+          {
+            buildingType: subType || "residential",
+            subType: subType || null,
+            maxFloors: 4,
+          },
+        )
+      : null;
+
+  if (!normalizedSpaces.length) {
+    return stampProgramSpaceMetadata(normalizedSpaces, {
+      floorCount,
+      floorMetrics,
+    });
+  }
+
+  if (inferredLevelCount === floorCount) {
+    return stampProgramSpaceMetadata(normalizedSpaces, {
+      floorCount,
+      floorMetrics,
+    });
+  }
+
+  const reassigned = autoLevelAssignmentService.autoAssignSpacesToLevels(
+    normalizedSpaces,
+    floorCount,
+    subType || "residential",
+  );
+
+  return stampProgramSpaceMetadata(reassigned, {
+    floorCount,
+    floorMetrics,
+  });
 }
 
 const ELEVATION_PANEL_TO_ORIENTATION = Object.fromEntries(
@@ -1162,26 +1226,37 @@ function buildProgramBrief({
   }
 
   if (Array.isArray(programSpaces) && programSpaces.length > 0) {
-    const normalized = normalizeResidentialProgramSpaces(programSpaces);
     const generatedBrief = generateResidentialProgramBrief({
       subType,
       totalAreaM2,
       siteAreaM2,
       entranceDirection: projectDetails.entranceDirection || "S",
     });
-    const inferredLevelCount = inferLevelCountFromSpaces(normalized);
     const resolvedLevelCount =
       lockedLevelCount ||
-      Math.max(1, inferredLevelCount || Number(generatedBrief.levelCount || 1));
+      Math.max(
+        1,
+        inferLevelCountFromSpaces(programSpaces) ||
+          Number(generatedBrief.levelCount || 1),
+      );
+    const alignedSpaces = alignProgramSpacesToResolvedLevels({
+      spaces: programSpaces,
+      resolvedLevelCount,
+      subType,
+      siteAreaM2,
+    });
     return {
       ...generatedBrief,
       levelCount: resolvedLevelCount,
-      spaces: normalized,
+      spaces: alignedSpaces,
       confidence: {
         score: 0.76,
         sources: [
           "user-reviewed program spaces",
           "uk residential v2 normalization",
+          ...(lockedLevelCount
+            ? ["manual floor-count lock reconciliation"]
+            : []),
         ],
         fallbackReason: null,
       },
@@ -1210,9 +1285,16 @@ function buildMasterDNASeed({
   localStyleEvidence,
   styleBlendSpec,
   programBrief,
+  footprintMetrics = null,
 } = {}) {
   const buildableBbox = buildBoundingBoxFromPolygon(
     siteEvidence?.payload?.buildablePolygon || [],
+  );
+  const footprintWidth = Number(
+    footprintMetrics?.widthM ?? footprintMetrics?.width ?? 0,
+  );
+  const footprintDepth = Number(
+    footprintMetrics?.depthM ?? footprintMetrics?.depth ?? 0,
   );
   return {
     projectID: `v2-${slugify(projectDetails.subType || projectDetails.program || "project")}`,
@@ -1232,8 +1314,8 @@ function buildMasterDNASeed({
       roof_language: programBrief?.recommendedRoof || "gable",
     },
     dimensions: {
-      length: round(buildableBbox.width || 12),
-      width: round(buildableBbox.height || 10),
+      length: round(footprintWidth || buildableBbox.width || 12),
+      width: round(footprintDepth || buildableBbox.height || 10),
       floorCount: Number(programBrief?.levelCount || 2),
     },
     rooms: programBrief?.spaces || [],
@@ -1401,8 +1483,11 @@ function buildRuntimeProjectGeometry({
   styleBlendSpec,
   programBrief,
 }) {
+  const siteBoundaryPolygon =
+    siteEvidence?.payload?.localBoundaryPolygon ||
+    buildFallbackSitePolygon(320);
   const buildablePolygon =
-    siteEvidence?.payload?.buildablePolygon || buildFallbackSitePolygon(320);
+    siteEvidence?.payload?.buildablePolygon || siteBoundaryPolygon;
   const buildableBbox = buildBoundingBoxFromPolygon(buildablePolygon);
   const levelCount = Number(programBrief.levelCount || 2);
   const totalAreaM2 = Number(
@@ -1434,6 +1519,7 @@ function buildRuntimeProjectGeometry({
     buildingWidth,
     buildingDepth,
   );
+  const footprintBbox = buildBoundingBoxFromPolygon(footprintPolygon);
   const levelGroups = buildLevelGroups(programBrief.spaces, levelCount);
   const floorMetadata = {};
 
@@ -1452,10 +1538,8 @@ function buildRuntimeProjectGeometry({
     schema_version: CANONICAL_PROJECT_GEOMETRY_VERSION,
     project_id: `v2-${slugify(projectDetails.subType || projectDetails.program || "project")}`,
     site: {
-      boundary_polygon:
-        siteEvidence?.payload?.localBoundaryPolygon ||
-        buildFallbackSitePolygon(320),
-      buildable_polygon: footprintPolygon,
+      boundary_polygon: siteBoundaryPolygon,
+      buildable_polygon: buildablePolygon,
       setbacks: siteEvidence?.payload?.setbacks || {},
       orientation_deg: Number(siteEvidence?.payload?.orientationDeg || 0),
       area_m2: Number(siteEvidence?.payload?.areaM2 || 0),
@@ -1471,6 +1555,10 @@ function buildRuntimeProjectGeometry({
             styleBlendSpec?.approved?.materials?.portfolioWeight ?? 0.5,
         },
       },
+      runtime_layout_seed: {
+        footprint_polygon: footprintPolygon,
+        footprint_bbox: footprintBbox,
+      },
     },
   };
 
@@ -1480,6 +1568,10 @@ function buildRuntimeProjectGeometry({
     localStyleEvidence,
     styleBlendSpec,
     programBrief,
+    footprintMetrics: {
+      width: buildingWidth,
+      depth: buildingDepth,
+    },
   });
   const promotedGeometry = buildRuntimeProjectGeometryFromLayout({
     masterDNA,

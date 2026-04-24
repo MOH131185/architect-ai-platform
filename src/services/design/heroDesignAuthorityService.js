@@ -18,13 +18,15 @@ function hasNonEmptyValue(value) {
 }
 
 function hasGeometryFootprint(projectGeometry = {}, compiledProject = {}) {
-  if ((projectGeometry.footprints || []).length > 0) {
+  const resolvedProjectGeometry = projectGeometry || {};
+  const resolvedCompiledProject = compiledProject || {};
+  if ((resolvedProjectGeometry.footprints || []).length > 0) {
     return true;
   }
-  if ((projectGeometry.footprint?.polygon || []).length > 0) {
+  if ((resolvedProjectGeometry.footprint?.polygon || []).length > 0) {
     return true;
   }
-  if ((compiledProject.footprint?.polygon || []).length > 0) {
+  if ((resolvedCompiledProject.footprint?.polygon || []).length > 0) {
     return true;
   }
   return false;
@@ -34,12 +36,16 @@ function isGeometryValidationPassing(
   projectGeometry = {},
   compiledProject = {},
 ) {
-  const compiledValid = compiledProject?.validation?.valid;
+  const resolvedProjectGeometry = projectGeometry || {};
+  const resolvedCompiledProject = compiledProject || {};
+  const compiledValid = resolvedCompiledProject?.validation?.valid;
   if (compiledValid === false) {
     return false;
   }
 
-  const status = normalizeText(projectGeometry?.metadata?.status).toLowerCase();
+  const status = normalizeText(
+    resolvedProjectGeometry?.metadata?.status,
+  ).toLowerCase();
   if (!status) {
     return true;
   }

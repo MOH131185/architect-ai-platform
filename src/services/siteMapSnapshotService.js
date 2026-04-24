@@ -11,9 +11,25 @@
  * - Persistent snapshot storage for exact reuse in modifications
  */
 
-import CryptoJS from 'crypto-js';
-import logger from '../utils/logger.js';
+import CryptoJS from "crypto-js";
+import logger from "../utils/logger.js";
 
+async function blobToDataUrl(blob) {
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () =>
+        reject(new Error("Failed to convert map image to base64"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  const arrayBuffer = await blob.arrayBuffer();
+  const mimeType = blob.type || "image/png";
+  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  return `data:${mimeType};base64,${base64}`;
+}
 
 /**
  * Get site snapshot from Google Static Maps API
@@ -25,93 +41,87 @@ import logger from '../utils/logger.js';
  * @param {string} params.mapType - Map type: 'roadmap' (default), 'satellite', 'hybrid', 'terrain'
  * @returns {Promise<string>} Base64 data URL of the map image
  */
-export async function getSiteSnapshot({ 
-  coordinates, 
-  polygon = null, 
-  zoom = 19, 
+export async function getSiteSnapshot({
+  coordinates,
+  polygon = null,
+  zoom = 19,
   size = [640, 400],
-  mapType = 'roadmap'
+  mapType = "roadmap",
 }) {
   if (!coordinates || !coordinates.lat || !coordinates.lng) {
-    throw new Error('Coordinates are required (lat, lng)');
+    throw new Error("Coordinates are required (lat, lng)");
   }
 
   const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
-    logger.warn('⚠️  Google Maps API key not found. Site map snapshot will be skipped.');
+    logger.warn(
+      "⚠️  Google Maps API key not found. Site map snapshot will be skipped.",
+    );
     return null;
   }
 
   const sizeParam = `${size[0]}x${size[1]}`;
-  
+
   // Build polygon path if provided
-  let pathParam = '';
+  let pathParam = "";
   if (polygon && Array.isArray(polygon) && polygon.length > 0) {
-    const pathPoints = polygon
-      .map(({ lat, lng }) => `${lat},${lng}`)
-      .join('|');
-    
+    const pathPoints = polygon.map(({ lat, lng }) => `${lat},${lng}`).join("|");
+
     // Yellow semi-transparent fill with yellow border
     pathParam = `&path=fillcolor:0xFFFF0033|color:0xffcc00ff|weight:4|${pathPoints}`;
   }
 
   // Build visible parameter if polygon provided (auto-fit view to polygon)
-  let visibleParam = '';
+  let visibleParam = "";
   if (polygon && Array.isArray(polygon) && polygon.length > 0) {
     // Use visible parameter to auto-fit map to polygon bounds
     const visiblePoints = polygon
       .map(({ lat, lng }) => `${lat},${lng}`)
-      .join('|');
+      .join("|");
     visibleParam = `&visible=${visiblePoints}`;
   }
 
   // Build Google Static Maps URL
-  const url = `https://maps.googleapis.com/maps/api/staticmap?center=${coordinates.lat},${coordinates.lng}` +
-              (visibleParam ? visibleParam : `&zoom=${zoom}`) +
-              `&size=${sizeParam}` +
-              `&scale=2` + // High-resolution (2x scale)
-              `&format=png` + // PNG format for better quality
-              `&maptype=${mapType}` + // Map type (roadmap for plan mode)
-              pathParam +
-              `&key=${apiKey}`;
+  const url =
+    `https://maps.googleapis.com/maps/api/staticmap?center=${coordinates.lat},${coordinates.lng}` +
+    (visibleParam ? visibleParam : `&zoom=${zoom}`) +
+    `&size=${sizeParam}` +
+    `&scale=2` + // High-resolution (2x scale)
+    `&format=png` + // PNG format for better quality
+    `&maptype=${mapType}` + // Map type (roadmap for plan mode)
+    pathParam +
+    `&key=${apiKey}`;
 
   try {
     logger.info(`🗺️  Fetching site snapshot from Google Static Maps...`);
     logger.info(`   Center: ${coordinates.lat}, ${coordinates.lng}`);
     logger.info(`   Map Type: ${mapType}`);
-    logger.info(`   ${visibleParam ? 'Visible bounds (auto-fit)' : `Zoom: ${zoom}`}`);
+    logger.info(
+      `   ${visibleParam ? "Visible bounds (auto-fit)" : `Zoom: ${zoom}`}`,
+    );
     logger.info(`   Size: ${size[0]}×${size[1]}px`);
-    logger.info(`   Polygon overlay: ${polygon ? `${polygon.length} points` : 'none'}`);
+    logger.info(
+      `   Polygon overlay: ${polygon ? `${polygon.length} points` : "none"}`,
+    );
 
     const response = await fetch(url);
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.error(`❌ Google Static Maps API error: ${response.status} ${response.statusText}`);
+      logger.error(
+        `❌ Google Static Maps API error: ${response.status} ${response.statusText}`,
+      );
       logger.error(`   Response: ${errorText.substring(0, 200)}`);
       throw new Error(`Google Static Maps API error: ${response.status}`);
     }
 
     const blob = await response.blob();
-
-    // Convert blob to base64 data URL
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result;
-        logger.success(` Site snapshot fetched successfully`);
-        logger.info(`   Data URL length: ${dataUrl.length} chars`);
-        resolve(dataUrl);
-      };
-      reader.onerror = () => {
-        logger.error('❌ Failed to convert blob to base64');
-        reject(new Error('Failed to convert map image to base64'));
-      };
-      reader.readAsDataURL(blob);
-    });
-
+    const dataUrl = await blobToDataUrl(blob);
+    logger.success(` Site snapshot fetched successfully`);
+    logger.info(`   Data URL length: ${dataUrl.length} chars`);
+    return dataUrl;
   } catch (error) {
-    logger.error('❌ Site snapshot fetch failed:', error.message);
+    logger.error("❌ Site snapshot fetch failed:", error.message);
     // Return null instead of throwing - allows workflow to continue without site map
     return null;
   }
@@ -126,7 +136,7 @@ export async function getSiteSnapshotWithMetadata(params) {
   // Ensure mapType defaults to 'roadmap' for plan mode
   const dataUrl = await getSiteSnapshot({
     ...params,
-    mapType: params.mapType || 'roadmap'
+    mapType: params.mapType || "roadmap",
   });
 
   if (!dataUrl) {
@@ -135,9 +145,9 @@ export async function getSiteSnapshotWithMetadata(params) {
 
   return {
     dataUrl,
-    attribution: 'Map data © Google',
-    sourceUrl: 'google-static-maps',
-    hasPolygon: params.polygon && params.polygon.length > 0
+    attribution: "Map data © Google",
+    sourceUrl: "google-static-maps",
+    hasPolygon: params.polygon && params.polygon.length > 0,
   };
 }
 
@@ -156,24 +166,31 @@ export async function captureSnapshotForPersistence({
   center = null,
   coordinates = null, // Alias for center
   zoom = 17,
-  mapType = 'hybrid',
+  mapType = "hybrid",
   size = { width: 400, height: 300 },
   polygon = null,
-  polygonStyle = { strokeColor: 'red', strokeWeight: 2, fillColor: 'red', fillOpacity: 0.2 }
+  polygonStyle = {
+    strokeColor: "red",
+    strokeWeight: 2,
+    fillColor: "red",
+    fillOpacity: 0.2,
+  },
 }) {
   // Accept both 'center' and 'coordinates' for backward compatibility
   const resolvedCenter = center || coordinates;
 
   if (!resolvedCenter || !resolvedCenter.lat || !resolvedCenter.lng) {
-    logger.warn('⚠️ No valid center/coordinates provided for site snapshot');
+    logger.warn("⚠️ No valid center/coordinates provided for site snapshot");
     return null;
   }
 
-  logger.info('📸 Capturing site snapshot for persistence...');
-  logger.info(`   Center: ${resolvedCenter.lat.toFixed(6)}, ${resolvedCenter.lng.toFixed(6)}`);
+  logger.info("📸 Capturing site snapshot for persistence...");
+  logger.info(
+    `   Center: ${resolvedCenter.lat.toFixed(6)}, ${resolvedCenter.lng.toFixed(6)}`,
+  );
   logger.info(`   Zoom: ${zoom}, Map type: ${mapType}`);
   logger.info(`   Size: ${size.width}×${size.height}px`);
-  logger.info(`   Polygon: ${polygon ? polygon.length + ' points' : 'none'}`);
+  logger.info(`   Polygon: ${polygon ? polygon.length + " points" : "none"}`);
 
   try {
     // Convert size to array format for getSiteSnapshot
@@ -185,18 +202,18 @@ export async function captureSnapshotForPersistence({
       polygon,
       zoom,
       size: sizeArray,
-      mapType
+      mapType,
     });
 
     if (!dataUrl) {
-      logger.warn('⚠️ Site snapshot capture returned null');
+      logger.warn("⚠️ Site snapshot capture returned null");
       return null;
     }
 
     // Compute SHA256 hash for deduplication
     const sha256 = CryptoJS.SHA256(dataUrl).toString();
 
-    logger.success(' Site snapshot captured with metadata');
+    logger.success(" Site snapshot captured with metadata");
     logger.info(`   Hash: ${sha256.substring(0, 16)}...`);
     logger.info(`   Data URL length: ${dataUrl.length} chars`);
 
@@ -210,11 +227,10 @@ export async function captureSnapshotForPersistence({
       polygon,
       polygonStyle,
       capturedAt: new Date().toISOString(),
-      source: 'google-static-maps-api'
+      source: "google-static-maps-api",
     };
-
   } catch (error) {
-    logger.error('❌ Failed to capture site snapshot for persistence:', error);
+    logger.error("❌ Failed to capture site snapshot for persistence:", error);
     return null;
   }
 }
@@ -222,6 +238,5 @@ export async function captureSnapshotForPersistence({
 export default {
   getSiteSnapshot,
   getSiteSnapshotWithMetadata,
-  captureSnapshotForPersistence
+  captureSnapshotForPersistence,
 };
-
