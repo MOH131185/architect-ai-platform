@@ -143,6 +143,98 @@ function hasDrawingEvidence(drawings) {
   );
 }
 
+function withPanelDefaults(entry, panelType) {
+  return {
+    ...(entry && typeof entry === "object" ? entry : {}),
+    panel_type: entry?.panel_type || panelType,
+    title: entry?.title || panelType.toUpperCase().replace(/_/g, " "),
+  };
+}
+
+function normalizeDrawingsShape(drawings = null) {
+  if (!isNonEmptyObject(drawings)) {
+    return null;
+  }
+
+  const normalized = {
+    plan: Array.isArray(drawings.plan) ? [...drawings.plan] : [],
+    elevation: Array.isArray(drawings.elevation) ? [...drawings.elevation] : [],
+    section: Array.isArray(drawings.section) ? [...drawings.section] : [],
+  };
+
+  Object.entries(drawings).forEach(([panelType, entry]) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return;
+    }
+
+    if (panelType.startsWith("floor_plan_")) {
+      normalized.plan.push({
+        ...withPanelDefaults(entry, panelType),
+        level_id:
+          entry.level_id ||
+          entry.levelId ||
+          panelType.replace(/^floor_plan_/, ""),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("elevation_")) {
+      normalized.elevation.push({
+        ...withPanelDefaults(entry, panelType),
+        orientation:
+          entry.orientation || panelType.replace(/^elevation_/, "").toLowerCase(),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("section_")) {
+      normalized.section.push({
+        ...withPanelDefaults(entry, panelType),
+        section_type: entry.section_type || sectionTypeFromPanelType(panelType),
+      });
+    }
+  });
+
+  return hasDrawingEvidence(normalized) ? normalized : null;
+}
+
+function getDrawingIdentity(family, entry = {}) {
+  if (family === "elevation") {
+    return `elevation:${String(entry.orientation || entry.panel_type || entry.id || "").toLowerCase()}`;
+  }
+  if (family === "section") {
+    return `section:${String(entry.section_type || entry.panel_type || entry.id || "").toLowerCase()}`;
+  }
+  return `plan:${String(entry.level_id || entry.levelId || entry.panel_type || entry.id || "").toLowerCase()}`;
+}
+
+function mergeDrawingEvidence(preferred = null, supplemental = null) {
+  const preferredDrawings = normalizeDrawingsShape(preferred);
+  const supplementalDrawings = normalizeDrawingsShape(supplemental);
+
+  if (!preferredDrawings && !supplementalDrawings) {
+    return null;
+  }
+
+  const merged = { plan: [], elevation: [], section: [] };
+  ["plan", "elevation", "section"].forEach((family) => {
+    const seen = new Set();
+    [
+      ...(preferredDrawings?.[family] || []),
+      ...(supplementalDrawings?.[family] || []),
+    ].forEach((entry) => {
+      const identity = getDrawingIdentity(family, entry);
+      if (!identity || seen.has(identity)) {
+        return;
+      }
+      seen.add(identity);
+      merged[family].push(entry);
+    });
+  });
+
+  return hasDrawingEvidence(merged) ? merged : null;
+}
+
 function getPanelTechnicalMetadata(panel = {}) {
   return (
     panel.technicalQualityMetadata ||
@@ -241,6 +333,21 @@ function deriveDrawingsFromCanonicalPack(canonicalPack = null) {
   });
 
   return hasDrawingEvidence(drawings) ? drawings : null;
+}
+
+function resolveComposeDrawings(projectContext = {}, canonicalPackDrawings = null) {
+  const upstreamDrawings = [
+    projectContext?.drawings,
+    projectContext?.technicalDrawings,
+    projectContext?.compiledProject?.drawings,
+  ].reduce(
+    (resolved, candidate) => mergeDrawingEvidence(resolved, candidate),
+    null,
+  );
+
+  return canonicalPackDrawings
+    ? mergeDrawingEvidence(canonicalPackDrawings, upstreamDrawings)
+    : upstreamDrawings;
 }
 
 function pickComposeMeta(rawMeta = {}) {
@@ -354,12 +461,7 @@ export function buildComposePayload({
     renderIntent: FINAL_A1_RENDER_INTENT,
   });
   const canonicalPackDrawings = deriveDrawingsFromCanonicalPack(canonicalPack);
-  const drawings =
-    projectContext?.drawings ||
-    projectContext?.technicalDrawings ||
-    projectContext?.compiledProject?.drawings ||
-    canonicalPackDrawings ||
-    null;
+  const drawings = resolveComposeDrawings(projectContext, canonicalPackDrawings);
   const technicalPanelQuality =
     projectContext?.technicalPanelQuality ||
     projectContext?.technicalPack?.technicalPanelQuality ||

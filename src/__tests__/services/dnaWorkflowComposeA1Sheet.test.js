@@ -60,8 +60,15 @@ describe("dnaWorkflow composeA1Sheet payload", () => {
       geometryHash: "geometry-123",
       programHash: "program-123",
     });
-    expect(payload.drawings).toEqual({
-      floor_plan_ground: { geometryHash: "geometry-123" },
+    expect(payload.drawings).toMatchObject({
+      plan: [
+        {
+          panel_type: "floor_plan_ground",
+          geometryHash: "geometry-123",
+        },
+      ],
+      elevation: [],
+      section: [],
     });
     expect(payload.technicalPanelQuality).toEqual({ status: "verified" });
     expect(payload.finalSheetSvg).toContain("GROUND FLOOR PLAN");
@@ -190,5 +197,75 @@ describe("dnaWorkflow composeA1Sheet payload", () => {
         "Elevation west is missing from the technical set.",
       ]),
     );
+  });
+
+  test("does not let empty or malformed project drawings suppress canonical evidence", () => {
+    const canonicalPanel = (title, metadata = {}) => ({
+      title,
+      svgString: `<svg><text>${title}</text></svg>`,
+      svgHash: `${title}-hash`,
+      geometryHash: "geometry-123",
+      status: "ready",
+      technicalQualityMetadata: {
+        geometry_complete: true,
+        facade_richness_score: 0.72,
+        section_usefulness_score: 0.74,
+        section_direct_evidence_quality: "verified",
+        section_construction_truth_quality: "verified",
+        ...metadata,
+      },
+      metadata: {
+        authoritySource: "compiled_project",
+        compiledProjectSchemaVersion: "compiled-project-v1",
+      },
+    });
+
+    const payload = buildComposePayload({
+      canonicalPack: {
+        geometryHash: "geometry-123",
+        panels: {
+          elevation_east: canonicalPanel("EAST ELEVATION"),
+          elevation_west: canonicalPanel("WEST ELEVATION"),
+          section_BB: canonicalPanel("SECTION BB", {
+            section_strategy_id: "transverse-b",
+          }),
+        },
+      },
+      designId: "design-123",
+      floorCount: 2,
+      generatedPanels: [
+        {
+          type: "elevation_east",
+          label: "EAST ELEVATION",
+          imageUrl: "<svg><text>EAST ELEVATION</text></svg>",
+          meta: {
+            designFingerprint: "fingerprint-123",
+            geometryHash: "geometry-123",
+            authorityUsed: "compiled_project_canonical_pack",
+            authoritySource: "compiled_project",
+          },
+        },
+      ],
+      locationData: {},
+      masterDNA: { dnaHash: "dna-123", rooms: [] },
+      programLock: { hash: "program-123" },
+      projectContext: {
+        drawings: {},
+        compiledProject: {
+          drawings: {
+            floor_plan_ground: { geometryHash: "stale-shape" },
+          },
+        },
+      },
+      runId: "run-123",
+    });
+
+    expect(payload.drawings.elevation.map((entry) => entry.orientation)).toEqual(
+      expect.arrayContaining(["east", "west"]),
+    );
+    expect(payload.drawings.section[0]).toMatchObject({
+      section_type: "transverse",
+      section_profile: { strategyId: "transverse-b" },
+    });
   });
 });
