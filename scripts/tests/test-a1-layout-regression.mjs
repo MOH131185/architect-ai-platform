@@ -280,10 +280,10 @@ await testAsync("elevation_north produces non-square landscape", async () => {
   assert(elev.width !== elev.height, "elevation should not be square");
 });
 
-await testAsync("material_palette produces portrait dimensions", async () => {
+await testAsync("material_palette follows widened data-card landscape slot", async () => {
   const { getSlotDimensions } = await import("../../src/services/a1/composeCore.js");
   const mat = getSlotDimensions("material_palette");
-  assert(mat.height > mat.width, `material_palette should be portrait: ${mat.width}x${mat.height}`);
+  assert(mat.width > mat.height, `material_palette should be landscape: ${mat.width}x${mat.height}`);
 });
 
 await testAsync("All dimensions are multiples of 64", async () => {

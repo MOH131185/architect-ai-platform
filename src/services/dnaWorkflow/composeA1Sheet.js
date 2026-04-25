@@ -1,4 +1,8 @@
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import {
+  FINAL_A1_RENDER_INTENT,
+  buildSheetTextContract,
+} from "../a1/a1FinalExportContract.js";
 
 function normalizeMaterials(dna) {
   if (!dna) return [];
@@ -192,7 +196,8 @@ function buildComposePanels(
     return {
       type: panel.type,
       imageUrl: decodePanelImageUrl(panel.imageUrl, panel.svg),
-      label: panel.type.toUpperCase().replace(/_/g, " "),
+      label: panel.label || panel.type.toUpperCase().replace(/_/g, " "),
+      drawingNumber: panel.drawingNumber || rawMeta.drawingNumber || null,
       runId: meta.runId || panel.runId || null,
       geometryHash: meta.geometryHash || meta.geometry_hash || null,
       svgHash: meta.svgHash || null,
@@ -205,7 +210,7 @@ function buildComposePanels(
   });
 }
 
-function buildComposePayload({
+export function buildComposePayload({
   canonicalPack,
   designId,
   floorCount,
@@ -216,24 +221,61 @@ function buildComposePayload({
   projectContext,
   runId,
 }) {
+  const safeGeneratedPanels = Array.isArray(generatedPanels)
+    ? generatedPanels
+    : [];
   const dnaRooms = masterDNA?.rooms || masterDNA?.program?.rooms || [];
   const panelFingerprint =
     masterDNA?.designFingerprint ||
-    generatedPanels[0]?.meta?.designFingerprint ||
+    safeGeneratedPanels[0]?.meta?.designFingerprint ||
     designId;
+  const composePanels = buildComposePanels(safeGeneratedPanels, dnaRooms, {
+    projectContext,
+    canonicalPack,
+  });
+  const sheetTextContract = buildSheetTextContract({
+    panels: composePanels,
+    titleBlock: projectContext?.titleBlock || projectContext?.title_block,
+    masterDNA,
+    projectContext,
+    renderIntent: FINAL_A1_RENDER_INTENT,
+  });
+  const drawings =
+    projectContext?.drawings ||
+    projectContext?.technicalDrawings ||
+    projectContext?.compiledProject?.drawings ||
+    null;
+  const technicalPanelQuality =
+    projectContext?.technicalPanelQuality ||
+    projectContext?.technicalPack?.technicalPanelQuality ||
+    projectContext?.compiledProject?.technicalPanelQuality ||
+    null;
+  const finalSheetSvg =
+    typeof projectContext?.finalSheetSvg === "string"
+      ? projectContext.finalSheetSvg
+      : typeof projectContext?.sheetSvg === "string"
+        ? projectContext.sheetSvg
+        : "";
 
   return {
     designId,
     runId: runId || null,
+    renderIntent: FINAL_A1_RENDER_INTENT,
+    printMaster: true,
+    highRes: true,
+    enforcePreComposeVerification: true,
+    enforcePostComposeVerification: true,
+    enforceRenderedText: true,
+    sheetTextContract,
+    drawings,
+    technicalPanelQuality,
+    finalSheetSvg,
     designFingerprint: panelFingerprint,
     floorCount,
     dnaHash: masterDNA?.dnaHash || computeCDSHashSync(masterDNA || {}),
     geometryHash: canonicalPack?.geometryHash || null,
     programHash: programLock?.hash || null,
-    panels: buildComposePanels(generatedPanels, dnaRooms, {
-      projectContext,
-      canonicalPack,
-    }),
+    panels: composePanels,
     siteOverlay: null,
     layoutConfig: "uk-riba-standard",
     masterDNA: {

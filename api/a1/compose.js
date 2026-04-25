@@ -85,6 +85,14 @@ import {
 import { runA1FinalSheetRegression } from "../../src/services/a1/a1FinalSheetRegressionService.js";
 import { runA1PostComposeVerification } from "../../src/services/a1/a1PostComposeVerificationService.js";
 import {
+  buildA1SheetSetPlan,
+  detectA1GlyphIntegrity,
+  evaluateFinalA1ExportGate,
+  normalizeSheetTextContract,
+  resolveA1RenderContract,
+} from "../../src/services/a1/a1FinalExportContract.js";
+import { writeA1OverflowSheetArtifacts } from "../../src/services/a1/a1OverflowSheetComposer.js";
+import {
   buildComposeArtifactManifest,
   buildPublicArtifactUrl,
   createComposeTrace,
@@ -686,8 +694,27 @@ async function handleComposeRequest(req, res, trace) {
   const reviewSurfaceFromRequest = projectContext?.reviewSurface || null;
   const requestedHashes = readRequestHashes(requestBody);
   let panels = Array.isArray(requestBody?.panels) ? requestBody.panels : [];
+  const renderContract = resolveA1RenderContract(requestBody);
+  const sheetTextContract = normalizeSheetTextContract(
+    requestBody.sheetTextContract,
+    {
+      panels,
+      titleBlock,
+      masterDNA,
+      projectContext,
+      renderIntent: renderContract.renderIntent,
+    },
+  );
+  const expectedSheetLabels = [
+    ...new Set([
+      ...(sheetTextContract.requiredLabels || []),
+      ...panels.map((panel) => panel.label || panel.type),
+    ]),
+  ].filter(Boolean);
   const regressionContextAvailable = Boolean(
-    requestBody.drawings || requestBody.technicalPanelQuality,
+    renderContract.isFinalA1 ||
+      requestBody.drawings ||
+      requestBody.technicalPanelQuality,
   );
 
   if (!panels || panels.length === 0) {
@@ -1294,8 +1321,7 @@ async function handleComposeRequest(req, res, trace) {
   // LAYOUT TEMPLATE SELECTION – delegate to shared composeCore (SSOT)
   const layoutTemplateRaw =
     requestBody.layoutTemplate || layoutConfig || "board-v2";
-  const useHighRes =
-    requestBody.highRes === true || requestBody.printMaster === true;
+  const useHighRes = renderContract.highRes;
 
   // Use composeCore for normalisation and grid resolution
   const composeCoreResolved = composeCoreResolveLayout({
@@ -1629,9 +1655,14 @@ async function handleComposeRequest(req, res, trace) {
 
   // Draw panel borders and labels
   const borderSvg = generateOverlaySvg(coordinates, width, height, constants);
-  const borderBuffer = await buildPreparedFinalSheetSvgBuffer(borderSvg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  let preparedBuildStampSvg = "";
+  const preparedBorderSvg = await prepareFinalSheetSvgForRasterization(
+    borderSvg,
+    {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+    },
+  );
+  const borderBuffer = Buffer.from(preparedBorderSvg, "utf8");
   composites.push({
     input: borderBuffer,
     left: 0,
@@ -1645,10 +1676,14 @@ async function handleComposeRequest(req, res, trace) {
     layoutTemplateUsed: layoutTemplate,
     boardSpecVersion,
   });
-  const specStampBuffer = await buildPreparedFinalSheetSvgBuffer(specStampSvg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-    outlineCriticalText: false,
-  });
+  const preparedSpecStampSvg = await prepareFinalSheetSvgForRasterization(
+    specStampSvg,
+    {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      outlineCriticalText: false,
+    },
+  );
+  const specStampBuffer = Buffer.from(preparedSpecStampSvg, "utf8");
   composites.push({
     input: specStampBuffer,
     left: 0,
@@ -1685,13 +1720,14 @@ async function handleComposeRequest(req, res, trace) {
       flags: flagsFromRequest,
       proof: proofFromRequest,
     });
-    const buildStampBuffer = await buildPreparedFinalSheetSvgBuffer(
+    preparedBuildStampSvg = await prepareFinalSheetSvgForRasterization(
       buildStampSvg,
       {
         minimumFontSizePx: FINAL_SHEET_AUX_FONT_SIZE_PX,
         outlineCriticalText: false,
       },
     );
+    const buildStampBuffer = Buffer.from(preparedBuildStampSvg, "utf8");
 
     const resolvedMode = getPipelineModeForStamp(proofFromRequest);
     console.log(
@@ -1748,8 +1784,8 @@ async function handleComposeRequest(req, res, trace) {
     outputFile,
   } = composePayload;
 
-  // Print-ready PDF (A1 landscape) generated alongside high-res PNG exports
-  const includePdf = useHighRes && requestBody.skipPdf !== true;
+  // Print-ready PDF (A1 landscape) is mandatory for final A1 exports.
+  const includePdf = renderContract.includePdf;
   let pdfUrl = null;
   let pdfBytes = 0;
   let pdfOutputFile = null;
@@ -1783,7 +1819,7 @@ async function handleComposeRequest(req, res, trace) {
     } catch (pdfError) {
       console.error("[A1 Compose] PDF generation failed:", pdfError.message);
       // Fail closed for print exports unless explicitly skipping validation
-      if (!skipValidation) {
+      if (renderContract.isFinalA1 || !skipValidation) {
         return res.status(500).json({
           success: false,
           error: "PDF_GENERATION_FAILED",
@@ -1816,16 +1852,31 @@ async function handleComposeRequest(req, res, trace) {
   const panelLabelMap = Object.fromEntries(
     (panels || []).map((panel) => [panel.type, panel.label || panel.type]),
   );
+  const composedSheetSvgEvidence = [
+    typeof requestBody.finalSheetSvg === "string"
+      ? requestBody.finalSheetSvg
+      : "",
+    preparedBorderSvg,
+    preparedSpecStampSvg,
+    preparedBuildStampSvg,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const glyphIntegrity = detectA1GlyphIntegrity({
+    sheetSvg: composedSheetSvgEvidence,
+    sheetTextContract,
+  });
+  const sheetSetPlan = buildA1SheetSetPlan({
+    panels,
+    sheetTextContract,
+  });
   const finalSheetRegression = regressionContextAvailable
     ? runA1FinalSheetRegression({
         drawings: requestBody.drawings || {},
         technicalPanelQuality: requestBody.technicalPanelQuality || null,
-        sheetSvg:
-          typeof requestBody.finalSheetSvg === "string"
-            ? requestBody.finalSheetSvg
-            : "",
+        sheetSvg: composedSheetSvgEvidence,
         fontReadiness: getFontEmbeddingReadinessSync(),
-        expectedLabels: panels.map((panel) => panel.label || panel.type),
+        expectedLabels: expectedSheetLabels,
         coordinates,
         panelLabelMap,
         width,
@@ -1835,8 +1886,9 @@ async function handleComposeRequest(req, res, trace) {
 
   if (
     regressionContextAvailable &&
-    requestBody.enforcePreComposeVerification === true &&
-    isFeatureEnabled("useA1PreComposeVerificationPhase9") &&
+    renderContract.enforcePreComposeVerification === true &&
+    (renderContract.isFinalA1 ||
+      isFeatureEnabled("useA1PreComposeVerificationPhase9")) &&
     finalSheetRegression?.finalSheetRegressionReady === false
   ) {
     return res.status(409).json({
@@ -1850,17 +1902,15 @@ async function handleComposeRequest(req, res, trace) {
 
   const postComposeVerification =
     regressionContextAvailable &&
-    isFeatureEnabled("usePostComposeVerificationPhase10")
+    (renderContract.isFinalA1 ||
+      isFeatureEnabled("usePostComposeVerificationPhase10"))
       ? await runA1PostComposeVerification({
           drawings: requestBody.drawings || {},
           technicalPanelQuality: requestBody.technicalPanelQuality || null,
-          sheetSvg:
-            typeof requestBody.finalSheetSvg === "string"
-              ? requestBody.finalSheetSvg
-              : "",
+          sheetSvg: composedSheetSvgEvidence,
           renderedBuffer: composedBuffer,
           fontReadiness: getFontEmbeddingReadinessSync(),
-          expectedLabels: panels.map((panel) => panel.label || panel.type),
+          expectedLabels: expectedSheetLabels,
           coordinates,
           panelLabelMap,
           width,
@@ -1868,10 +1918,52 @@ async function handleComposeRequest(req, res, trace) {
         })
       : null;
 
+  const sheetSetArtifacts =
+    sheetSetPlan.required && renderContract.isFinalA1
+      ? await writeA1OverflowSheetArtifacts({
+          sharp,
+          width,
+          height,
+          outputDir,
+          publicUrlBase,
+          designId,
+          buildPdfFromPng: buildPrintReadyPdfFromPng,
+          trace,
+          layoutTemplate,
+          renderIntent: renderContract.renderIntent,
+          masterDNA,
+          projectContext,
+          locationData,
+          finalSheetRegression,
+          postComposeVerification,
+          glyphIntegrity,
+          sheetTextContract,
+          sheetSetPlan,
+        })
+      : null;
+  const resolvedSheetSetPlan = {
+    ...sheetSetPlan,
+    generated: sheetSetArtifacts?.generated === true,
+    artifacts: sheetSetArtifacts,
+    sheets: (sheetSetPlan.sheets || []).map((sheet) =>
+      sheet.id === "A1-02" && sheetSetArtifacts?.generated
+        ? {
+            ...sheet,
+            pngUrl: sheetSetArtifacts.pngUrl,
+            pdfUrl: sheetSetArtifacts.pdfUrl,
+            pngBytes: sheetSetArtifacts.pngBytes,
+            pdfBytes: sheetSetArtifacts.pdfBytes,
+          }
+        : sheet,
+    ),
+  };
+
   if (
+    !renderContract.isFinalA1 &&
     regressionContextAvailable &&
-    requestBody.enforcePostComposeVerification === true &&
-    isFeatureEnabled("usePostComposeVerificationPhase10") &&
+    renderContract.enforcePostComposeVerification === true &&
+    (renderContract.isFinalA1 ||
+      isFeatureEnabled("usePostComposeVerificationPhase10")) &&
     postComposeVerification?.publishability?.status === "blocked"
   ) {
     return res.status(409).json({
@@ -1880,6 +1972,32 @@ async function handleComposeRequest(req, res, trace) {
       message:
         "Phase 10 post-compose verification blocked publication of the composed board.",
       details: postComposeVerification,
+    });
+  }
+
+  const finalA1ExportGate = evaluateFinalA1ExportGate({
+    renderContract,
+    pdfUrl,
+    finalSheetRegression,
+    postComposeVerification,
+    glyphIntegrity,
+    sheetSetPlan: resolvedSheetSetPlan,
+  });
+
+  if (finalA1ExportGate.status === "blocked") {
+    return res.status(409).json({
+      success: false,
+      error: "FINAL_A1_EXPORT_VERIFICATION_FAILED",
+      message:
+        "Final A1 export blocked by print-master readability, OCR, glyph, PDF, or sheet-density verification.",
+      details: {
+        finalA1ExportGate,
+        finalSheetRegression,
+        postComposeVerification,
+        glyphIntegrity,
+        sheetSetPlan: resolvedSheetSetPlan,
+        renderIntent: renderContract.renderIntent,
+      },
     });
   }
 
@@ -2037,6 +2155,14 @@ async function handleComposeRequest(req, res, trace) {
     deliveryStages,
     exportManifest: exportManifestFromRequest,
     reviewSurface: reviewSurfaceFromRequest,
+    renderIntent: renderContract.renderIntent,
+    physicalSheetSizeMm: renderContract.physicalSheetSizeMm,
+    pngDimensions: { width, height },
+    sheetTextContract,
+    glyphIntegrity,
+    sheetSetPlan: resolvedSheetSetPlan,
+    sheetSetArtifacts,
+    finalA1ExportGate,
   });
   const manifestFile = writeComposeArtifactManifest({
     manifest,
@@ -2063,10 +2189,14 @@ async function handleComposeRequest(req, res, trace) {
     designId,
     designFingerprint: expectedFingerprint,
     transport,
+    renderIntent: renderContract.renderIntent,
+    physicalSheetSizeMm: renderContract.physicalSheetSizeMm,
+    pngDimensions: { width, height },
     pngBytes,
     estimatedDataUrlBytes,
     sheetUrlBytes,
     outputFile,
+    pdfUrl,
     pdfBytes,
     pdfOutputFile,
     traceId: trace.traceId,
@@ -2103,6 +2233,15 @@ async function handleComposeRequest(req, res, trace) {
     finalSheetRegression,
     postComposeVerification,
     renderedTextZone: postComposeVerification?.renderedTextZone || null,
+    renderedTextZoneStatus:
+      postComposeVerification?.renderedTextZone?.status || null,
+    ocrEvidenceQuality:
+      postComposeVerification?.renderedTextZone?.ocrEvidenceQuality || null,
+    glyphIntegrity,
+    sheetTextContract,
+    sheetSetPlan: resolvedSheetSetPlan,
+    sheetSetArtifacts,
+    finalA1ExportGate,
     technicalCredibility: postComposeVerification?.technicalCredibility || null,
     publishability: postComposeVerification?.publishability || null,
     authorityReadiness,

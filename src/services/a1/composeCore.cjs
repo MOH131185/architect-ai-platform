@@ -170,7 +170,12 @@ function getSlotDimensions(panelType, opts) {
     return { width: 1024, height: 1024, aspect: 1 };
   }
 
-  const aspect = slot.width / slot.height;
+  const effectiveWidth = slot.width * WORKING_WIDTH;
+  const effectiveHeight = Math.max(
+    10,
+    slot.height * WORKING_HEIGHT - LABEL_HEIGHT - LABEL_PADDING,
+  );
+  const aspect = effectiveWidth / effectiveHeight;
   let width;
   let height;
 
@@ -289,7 +294,7 @@ function getDefaultMinSlotOccupancy(panelType, slotAspect) {
       : 1;
 
   if (panelType.startsWith("floor_plan_")) {
-    return Math.max(0.22, Math.min(0.58, 1.32 / normalizedAspect));
+    return Math.max(0.16, Math.min(0.52, 0.95 / normalizedAspect));
   }
   if (panelType.startsWith("section_")) {
     return 0.5;
