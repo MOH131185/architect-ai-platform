@@ -130,6 +130,119 @@ const COMPOSE_META_KEYS = [
   "isDataPanel",
 ];
 
+function isNonEmptyObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasDrawingEvidence(drawings) {
+  return Boolean(
+    drawings &&
+      ((Array.isArray(drawings.plan) && drawings.plan.length > 0) ||
+        (Array.isArray(drawings.elevation) && drawings.elevation.length > 0) ||
+        (Array.isArray(drawings.section) && drawings.section.length > 0)),
+  );
+}
+
+function getPanelTechnicalMetadata(panel = {}) {
+  return (
+    panel.technicalQualityMetadata ||
+    panel.technical_quality_metadata ||
+    panel.metadata?.technicalQualityMetadata ||
+    panel.metadata?.technical_quality_metadata ||
+    {}
+  );
+}
+
+function buildCanonicalDrawingEntry(panelType, panel = {}, canonicalPack = {}) {
+  const technicalMetadata = getPanelTechnicalMetadata(panel);
+  return {
+    id: `canonical:${panelType}`,
+    panel_type: panelType,
+    title: panel.title || panelType.toUpperCase().replace(/_/g, " "),
+    svg: panel.svgString || panel.svg || null,
+    status: panel.status || "ready",
+    geometryHash:
+      panel.geometryHash ||
+      panel.metadata?.geometryHash ||
+      canonicalPack.geometryHash ||
+      null,
+    svgHash: panel.svgHash || panel.metadata?.svgHash || null,
+    source: "compiled_project_canonical_pack",
+    technical_quality_metadata: technicalMetadata,
+    annotation_validation:
+      panel.annotation_validation || technicalMetadata.annotation_validation || null,
+    blocking_reasons: panel.blocking_reasons || panel.blockingReasons || [],
+  };
+}
+
+function sectionTypeFromPanelType(panelType = "") {
+  const normalized = String(panelType || "").toLowerCase();
+  if (normalized.includes("bb") || normalized.includes("b_b")) {
+    return "transverse";
+  }
+  return "longitudinal";
+}
+
+function deriveDrawingsFromCanonicalPack(canonicalPack = null) {
+  const panels = canonicalPack?.panels;
+  if (!isNonEmptyObject(panels)) {
+    return null;
+  }
+
+  const drawings = {
+    plan: [],
+    elevation: [],
+    section: [],
+  };
+
+  Object.entries(panels).forEach(([panelType, panel]) => {
+    if (!panel || typeof panel !== "object") {
+      return;
+    }
+    const entry = buildCanonicalDrawingEntry(panelType, panel, canonicalPack);
+
+    if (panelType.startsWith("floor_plan_")) {
+      drawings.plan.push({
+        ...entry,
+        level_id:
+          panel.metadata?.levelId ||
+          panel.metadata?.level_id ||
+          panelType.replace(/^floor_plan_/, ""),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("elevation_")) {
+      drawings.elevation.push({
+        ...entry,
+        orientation: panelType.replace(/^elevation_/, "").toLowerCase(),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("section_")) {
+      const technicalMetadata = entry.technical_quality_metadata || {};
+      drawings.section.push({
+        ...entry,
+        section_type: sectionTypeFromPanelType(panelType),
+        section_profile:
+          panel.section_profile ||
+          technicalMetadata.section_profile ||
+          (technicalMetadata.section_strategy_id
+            ? {
+                strategyId: technicalMetadata.section_strategy_id,
+                strategyName: technicalMetadata.section_strategy_name || null,
+                sectionCandidateQuality:
+                  technicalMetadata.section_evidence_quality || null,
+              }
+            : null),
+      });
+    }
+  });
+
+  return hasDrawingEvidence(drawings) ? drawings : null;
+}
+
 function pickComposeMeta(rawMeta = {}) {
   const meta = {};
   COMPOSE_META_KEYS.forEach((key) => {
@@ -240,10 +353,12 @@ export function buildComposePayload({
     projectContext,
     renderIntent: FINAL_A1_RENDER_INTENT,
   });
+  const canonicalPackDrawings = deriveDrawingsFromCanonicalPack(canonicalPack);
   const drawings =
     projectContext?.drawings ||
     projectContext?.technicalDrawings ||
     projectContext?.compiledProject?.drawings ||
+    canonicalPackDrawings ||
     null;
   const technicalPanelQuality =
     projectContext?.technicalPanelQuality ||
