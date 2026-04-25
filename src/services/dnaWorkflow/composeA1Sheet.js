@@ -1,4 +1,8 @@
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import {
+  FINAL_A1_RENDER_INTENT,
+  buildSheetTextContract,
+} from "../a1/a1FinalExportContract.js";
 
 function normalizeMaterials(dna) {
   if (!dna) return [];
@@ -126,6 +130,232 @@ const COMPOSE_META_KEYS = [
   "isDataPanel",
 ];
 
+function isNonEmptyObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasDrawingEvidence(drawings) {
+  return Boolean(
+    drawings &&
+    ((Array.isArray(drawings.plan) && drawings.plan.length > 0) ||
+      (Array.isArray(drawings.elevation) && drawings.elevation.length > 0) ||
+      (Array.isArray(drawings.section) && drawings.section.length > 0)),
+  );
+}
+
+function withPanelDefaults(entry, panelType) {
+  return {
+    ...(entry && typeof entry === "object" ? entry : {}),
+    panel_type: entry?.panel_type || panelType,
+    title: entry?.title || panelType.toUpperCase().replace(/_/g, " "),
+  };
+}
+
+function normalizeDrawingsShape(drawings = null) {
+  if (!isNonEmptyObject(drawings)) {
+    return null;
+  }
+
+  const normalized = {
+    plan: Array.isArray(drawings.plan) ? [...drawings.plan] : [],
+    elevation: Array.isArray(drawings.elevation) ? [...drawings.elevation] : [],
+    section: Array.isArray(drawings.section) ? [...drawings.section] : [],
+  };
+
+  Object.entries(drawings).forEach(([panelType, entry]) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return;
+    }
+
+    if (panelType.startsWith("floor_plan_")) {
+      normalized.plan.push({
+        ...withPanelDefaults(entry, panelType),
+        level_id:
+          entry.level_id ||
+          entry.levelId ||
+          panelType.replace(/^floor_plan_/, ""),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("elevation_")) {
+      normalized.elevation.push({
+        ...withPanelDefaults(entry, panelType),
+        orientation:
+          entry.orientation ||
+          panelType.replace(/^elevation_/, "").toLowerCase(),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("section_")) {
+      normalized.section.push({
+        ...withPanelDefaults(entry, panelType),
+        section_type: entry.section_type || sectionTypeFromPanelType(panelType),
+      });
+    }
+  });
+
+  return hasDrawingEvidence(normalized) ? normalized : null;
+}
+
+function getDrawingIdentity(family, entry = {}) {
+  if (family === "elevation") {
+    return `elevation:${String(entry.orientation || entry.panel_type || entry.id || "").toLowerCase()}`;
+  }
+  if (family === "section") {
+    return `section:${String(entry.section_type || entry.panel_type || entry.id || "").toLowerCase()}`;
+  }
+  return `plan:${String(entry.level_id || entry.levelId || entry.panel_type || entry.id || "").toLowerCase()}`;
+}
+
+function mergeDrawingEvidence(preferred = null, supplemental = null) {
+  const preferredDrawings = normalizeDrawingsShape(preferred);
+  const supplementalDrawings = normalizeDrawingsShape(supplemental);
+
+  if (!preferredDrawings && !supplementalDrawings) {
+    return null;
+  }
+
+  const merged = { plan: [], elevation: [], section: [] };
+  ["plan", "elevation", "section"].forEach((family) => {
+    const seen = new Set();
+    [
+      ...(preferredDrawings?.[family] || []),
+      ...(supplementalDrawings?.[family] || []),
+    ].forEach((entry) => {
+      const identity = getDrawingIdentity(family, entry);
+      if (!identity || seen.has(identity)) {
+        return;
+      }
+      seen.add(identity);
+      merged[family].push(entry);
+    });
+  });
+
+  return hasDrawingEvidence(merged) ? merged : null;
+}
+
+function getPanelTechnicalMetadata(panel = {}) {
+  return (
+    panel.technicalQualityMetadata ||
+    panel.technical_quality_metadata ||
+    panel.metadata?.technicalQualityMetadata ||
+    panel.metadata?.technical_quality_metadata ||
+    {}
+  );
+}
+
+function buildCanonicalDrawingEntry(panelType, panel = {}, canonicalPack = {}) {
+  const technicalMetadata = getPanelTechnicalMetadata(panel);
+  return {
+    id: `canonical:${panelType}`,
+    panel_type: panelType,
+    title: panel.title || panelType.toUpperCase().replace(/_/g, " "),
+    svg: panel.svgString || panel.svg || null,
+    status: panel.status || "ready",
+    geometryHash:
+      panel.geometryHash ||
+      panel.metadata?.geometryHash ||
+      canonicalPack.geometryHash ||
+      null,
+    svgHash: panel.svgHash || panel.metadata?.svgHash || null,
+    source: "compiled_project_canonical_pack",
+    technical_quality_metadata: technicalMetadata,
+    annotation_validation:
+      panel.annotation_validation ||
+      technicalMetadata.annotation_validation ||
+      null,
+    blocking_reasons: panel.blocking_reasons || panel.blockingReasons || [],
+  };
+}
+
+function sectionTypeFromPanelType(panelType = "") {
+  const normalized = String(panelType || "").toLowerCase();
+  if (normalized.includes("bb") || normalized.includes("b_b")) {
+    return "transverse";
+  }
+  return "longitudinal";
+}
+
+function deriveDrawingsFromCanonicalPack(canonicalPack = null) {
+  const panels = canonicalPack?.panels;
+  if (!isNonEmptyObject(panels)) {
+    return null;
+  }
+
+  const drawings = {
+    plan: [],
+    elevation: [],
+    section: [],
+  };
+
+  Object.entries(panels).forEach(([panelType, panel]) => {
+    if (!panel || typeof panel !== "object") {
+      return;
+    }
+    const entry = buildCanonicalDrawingEntry(panelType, panel, canonicalPack);
+
+    if (panelType.startsWith("floor_plan_")) {
+      drawings.plan.push({
+        ...entry,
+        level_id:
+          panel.metadata?.levelId ||
+          panel.metadata?.level_id ||
+          panelType.replace(/^floor_plan_/, ""),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("elevation_")) {
+      drawings.elevation.push({
+        ...entry,
+        orientation: panelType.replace(/^elevation_/, "").toLowerCase(),
+      });
+      return;
+    }
+
+    if (panelType.startsWith("section_")) {
+      const technicalMetadata = entry.technical_quality_metadata || {};
+      drawings.section.push({
+        ...entry,
+        section_type: sectionTypeFromPanelType(panelType),
+        section_profile:
+          panel.section_profile ||
+          technicalMetadata.section_profile ||
+          (technicalMetadata.section_strategy_id
+            ? {
+                strategyId: technicalMetadata.section_strategy_id,
+                strategyName: technicalMetadata.section_strategy_name || null,
+                sectionCandidateQuality:
+                  technicalMetadata.section_evidence_quality || null,
+              }
+            : null),
+      });
+    }
+  });
+
+  return hasDrawingEvidence(drawings) ? drawings : null;
+}
+
+function resolveComposeDrawings(
+  projectContext = {},
+  canonicalPackDrawings = null,
+) {
+  const upstreamDrawings = [
+    projectContext?.drawings,
+    projectContext?.technicalDrawings,
+    projectContext?.compiledProject?.drawings,
+  ].reduce(
+    (resolved, candidate) => mergeDrawingEvidence(resolved, candidate),
+    null,
+  );
+
+  return canonicalPackDrawings
+    ? mergeDrawingEvidence(canonicalPackDrawings, upstreamDrawings)
+    : upstreamDrawings;
+}
+
 function pickComposeMeta(rawMeta = {}) {
   const meta = {};
   COMPOSE_META_KEYS.forEach((key) => {
@@ -192,7 +422,8 @@ function buildComposePanels(
     return {
       type: panel.type,
       imageUrl: decodePanelImageUrl(panel.imageUrl, panel.svg),
-      label: panel.type.toUpperCase().replace(/_/g, " "),
+      label: panel.label || panel.type.toUpperCase().replace(/_/g, " "),
+      drawingNumber: panel.drawingNumber || rawMeta.drawingNumber || null,
       runId: meta.runId || panel.runId || null,
       geometryHash: meta.geometryHash || meta.geometry_hash || null,
       svgHash: meta.svgHash || null,
@@ -205,7 +436,7 @@ function buildComposePanels(
   });
 }
 
-function buildComposePayload({
+export function buildComposePayload({
   canonicalPack,
   designId,
   floorCount,
@@ -216,24 +447,61 @@ function buildComposePayload({
   projectContext,
   runId,
 }) {
+  const safeGeneratedPanels = Array.isArray(generatedPanels)
+    ? generatedPanels
+    : [];
   const dnaRooms = masterDNA?.rooms || masterDNA?.program?.rooms || [];
   const panelFingerprint =
     masterDNA?.designFingerprint ||
-    generatedPanels[0]?.meta?.designFingerprint ||
+    safeGeneratedPanels[0]?.meta?.designFingerprint ||
     designId;
+  const composePanels = buildComposePanels(safeGeneratedPanels, dnaRooms, {
+    projectContext,
+    canonicalPack,
+  });
+  const sheetTextContract = buildSheetTextContract({
+    panels: composePanels,
+    titleBlock: projectContext?.titleBlock || projectContext?.title_block,
+    masterDNA,
+    projectContext,
+    renderIntent: FINAL_A1_RENDER_INTENT,
+  });
+  const canonicalPackDrawings = deriveDrawingsFromCanonicalPack(canonicalPack);
+  const drawings = resolveComposeDrawings(
+    projectContext,
+    canonicalPackDrawings,
+  );
+  const technicalPanelQuality =
+    projectContext?.technicalPanelQuality ||
+    projectContext?.technicalPack?.technicalPanelQuality ||
+    projectContext?.compiledProject?.technicalPanelQuality ||
+    null;
+  const finalSheetSvg =
+    typeof projectContext?.finalSheetSvg === "string"
+      ? projectContext.finalSheetSvg
+      : typeof projectContext?.sheetSvg === "string"
+        ? projectContext.sheetSvg
+        : "";
 
   return {
     designId,
     runId: runId || null,
+    renderIntent: FINAL_A1_RENDER_INTENT,
+    printMaster: true,
+    highRes: true,
+    enforcePreComposeVerification: true,
+    enforcePostComposeVerification: true,
+    enforceRenderedText: true,
+    sheetTextContract,
+    drawings,
+    technicalPanelQuality,
+    finalSheetSvg,
     designFingerprint: panelFingerprint,
     floorCount,
     dnaHash: masterDNA?.dnaHash || computeCDSHashSync(masterDNA || {}),
     geometryHash: canonicalPack?.geometryHash || null,
     programHash: programLock?.hash || null,
-    panels: buildComposePanels(generatedPanels, dnaRooms, {
-      projectContext,
-      canonicalPack,
-    }),
+    panels: composePanels,
     siteOverlay: null,
     layoutConfig: "uk-riba-standard",
     masterDNA: {
@@ -335,6 +603,33 @@ function logComposePayloadSize(composePayload, logger) {
   return composeBody;
 }
 
+function collectComposeErrorBlockers(errorBody = {}) {
+  const details = errorBody?.details || {};
+  return [
+    ...(details?.preComposeRegressionPolicy?.hardBlockers || []),
+    ...(details?.finalA1ExportGate?.blockers || []),
+    ...(details?.postComposeVerification?.blockers || []),
+    ...(details?.postComposeVerification?.publishability?.blockers || []),
+    ...(details?.finalSheetRegression?.blockers || []),
+    ...(details?.blockers || []),
+  ].filter(Boolean);
+}
+
+function summarizeComposeError(errorBody = {}) {
+  const base =
+    errorBody?.message || errorBody?.error || JSON.stringify(errorBody || {});
+  const blockers = [...new Set(collectComposeErrorBlockers(errorBody))].slice(
+    0,
+    5,
+  );
+
+  if (!blockers.length) {
+    return base;
+  }
+
+  return `${base} Blockers: ${blockers.join("; ")}`;
+}
+
 function logComposeQuality(compositionResult, logger) {
   if (compositionResult.qa) {
     const qa = compositionResult.qa;
@@ -429,8 +724,7 @@ export async function composeA1Sheet({
     let errorDetail = "";
     try {
       const errorBody = await composeResponse.json();
-      errorDetail =
-        errorBody.message || errorBody.error || JSON.stringify(errorBody);
+      errorDetail = summarizeComposeError(errorBody);
       logger?.error(`❌ Compose API error: ${errorDetail}`);
     } catch {
       // Ignore response parse failures and preserve the original status error.

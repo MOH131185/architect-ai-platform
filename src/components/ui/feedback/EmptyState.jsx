@@ -1,8 +1,15 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { FileX, Search, Inbox, FolderOpen, Image } from 'lucide-react';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import React from "react";
+import { motion } from "framer-motion";
+import {
+  FileX,
+  Search,
+  Inbox,
+  FolderOpen,
+  Image,
+  AlertCircle,
+} from "lucide-react";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -19,74 +26,108 @@ const presetIcons = {
 };
 
 /**
- * Empty state component for when there's no content to display
+ * Empty state component for when there's no content to display.
+ * Variant controls visual weight (compact for in-panel, hero for full-page).
  */
 const EmptyState = ({
   className,
   icon,
-  preset = 'default',
+  preset = "default",
   title,
   description,
   action,
-  size = 'md',
+  size = "md",
+  variant = "default",
   ...props
 }) => {
   const Icon = icon || presetIcons[preset] || presetIcons.default;
 
   const sizes = {
     sm: {
-      icon: 'w-8 h-8',
-      iconContainer: 'w-12 h-12',
-      title: 'text-sm',
-      description: 'text-xs',
-      padding: 'p-4',
+      icon: "w-7 h-7",
+      iconContainer: "w-12 h-12",
+      title: "text-sm",
+      description: "text-xs",
+      padding: "p-4",
     },
     md: {
-      icon: 'w-10 h-10',
-      iconContainer: 'w-16 h-16',
-      title: 'text-base',
-      description: 'text-sm',
-      padding: 'p-6',
+      icon: "w-9 h-9",
+      iconContainer: "w-16 h-16",
+      title: "text-base",
+      description: "text-sm",
+      padding: "p-6",
     },
     lg: {
-      icon: 'w-12 h-12',
-      iconContainer: 'w-20 h-20',
-      title: 'text-lg',
-      description: 'text-base',
-      padding: 'p-8',
+      icon: "w-12 h-12",
+      iconContainer: "w-20 h-20",
+      title: "text-lg",
+      description: "text-base",
+      padding: "p-8",
     },
   };
 
-  const sizeConfig = sizes[size];
+  // Variant overrides — compact suppresses the rounded icon container,
+  // hero scales up icon + title for landing/page-level empty states.
+  const variants = {
+    default: { showIconContainer: true },
+    compact: {
+      showIconContainer: false,
+      padding: "py-6 px-4",
+    },
+    hero: {
+      showIconContainer: true,
+      padding: "p-12",
+      iconScale: "w-24 h-24",
+      iconInnerScale: "w-12 h-12",
+      titleScale: "text-xl",
+    },
+  };
+
+  const sizeConfig = sizes[size] || sizes.md;
+  const variantConfig = variants[variant] || variants.default;
+  const padding = variantConfig.padding || sizeConfig.padding;
 
   return (
     <motion.div
       className={cn(
-        'flex flex-col items-center justify-center text-center',
-        sizeConfig.padding,
-        className
+        "flex flex-col items-center justify-center text-center",
+        padding,
+        className,
       )}
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
       {...props}
     >
-      {/* Icon container */}
-      <div
-        className={cn(
-          'flex items-center justify-center rounded-full bg-gray-100 mb-4',
-          sizeConfig.iconContainer
-        )}
-      >
-        <Icon className={cn('text-gray-400', sizeConfig.icon)} />
-      </div>
+      {/* Icon container (suppressed in compact variant) */}
+      {variantConfig.showIconContainer ? (
+        <div
+          className={cn(
+            "flex items-center justify-center rounded-full bg-white/5 border border-white/10 mb-4",
+            variantConfig.iconScale || sizeConfig.iconContainer,
+          )}
+        >
+          <Icon
+            className={cn(
+              "text-white/40",
+              variantConfig.iconInnerScale || sizeConfig.icon,
+            )}
+            strokeWidth={1.75}
+          />
+        </div>
+      ) : (
+        <Icon
+          className={cn("text-white/40 mb-3", sizeConfig.icon)}
+          strokeWidth={1.75}
+        />
+      )}
 
       {/* Title */}
       {title && (
         <h3
           className={cn(
-            'font-semibold text-gray-900 mb-1',
-            sizeConfig.title
+            "font-semibold text-white/85 mb-1",
+            variantConfig.titleScale || sizeConfig.title,
           )}
         >
           {title}
@@ -96,10 +137,7 @@ const EmptyState = ({
       {/* Description */}
       {description && (
         <p
-          className={cn(
-            'text-gray-500 max-w-sm mb-4',
-            sizeConfig.description
-          )}
+          className={cn("text-white/55 max-w-sm mb-4", sizeConfig.description)}
         >
           {description}
         </p>
@@ -112,11 +150,11 @@ const EmptyState = ({
 };
 
 /**
- * Error state for displaying errors
+ * Error state for displaying errors (dark blueprint surface)
  */
 const ErrorState = ({
   className,
-  title = 'Something went wrong',
+  title = "Something went wrong",
   message,
   onRetry,
   ...props
@@ -124,37 +162,25 @@ const ErrorState = ({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center text-center p-6',
-        className
+        "flex flex-col items-center justify-center text-center p-6",
+        className,
       )}
       {...props}
     >
-      <div className="w-16 h-16 flex items-center justify-center rounded-full bg-error-100 mb-4">
-        <svg
-          className="w-8 h-8 text-error-500"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
+      <div className="w-16 h-16 flex items-center justify-center rounded-full bg-red-500/10 border border-red-500/30 mb-4">
+        <AlertCircle className="w-8 h-8 text-red-300" strokeWidth={1.75} />
       </div>
 
-      <h3 className="font-semibold text-gray-900 mb-1">{title}</h3>
+      <h3 className="font-semibold text-white/90 mb-1">{title}</h3>
 
       {message && (
-        <p className="text-sm text-gray-500 max-w-sm mb-4">{message}</p>
+        <p className="text-sm text-white/60 max-w-sm mb-4">{message}</p>
       )}
 
       {onRetry && (
         <button
           onClick={onRetry}
-          className="px-4 py-2 text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+          className="px-4 py-2 text-sm font-medium text-royal-300 hover:text-royal-200 transition-colors"
         >
           Try again
         </button>
@@ -166,12 +192,7 @@ const ErrorState = ({
 /**
  * No results state for search
  */
-const NoResults = ({
-  className,
-  query,
-  onClear,
-  ...props
-}) => {
+const NoResults = ({ className, query, onClear, ...props }) => {
   return (
     <EmptyState
       className={className}
@@ -186,7 +207,7 @@ const NoResults = ({
         onClear && (
           <button
             onClick={onClear}
-            className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+            className="text-sm font-medium text-royal-300 hover:text-royal-200 transition-colors"
           >
             Clear search
           </button>

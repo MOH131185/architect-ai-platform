@@ -75,6 +75,8 @@ export function buildComposeArtifactManifest({
   deliveryStages = null,
   exportManifest = null,
   reviewSurface = null,
+  sheetSetPlan = null,
+  sheetSetArtifacts = null,
 }) {
   const sanitizedPanelsByKey = Object.fromEntries(
     Object.entries(panelsByKey || {}).map(([panelType, panel]) => [
@@ -144,6 +146,8 @@ export function buildComposeArtifactManifest({
       : null,
     finalSheetRegression,
     postComposeVerification,
+    sheetSetPlan,
+    sheetSetArtifacts,
     authorityReadiness,
     deliveryStages,
     exportManifest,

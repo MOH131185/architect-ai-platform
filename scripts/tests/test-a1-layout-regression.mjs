@@ -17,6 +17,7 @@
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { readFileSync } from "fs";
+import sharp from "sharp";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -280,10 +281,10 @@ await testAsync("elevation_north produces non-square landscape", async () => {
   assert(elev.width !== elev.height, "elevation should not be square");
 });
 
-await testAsync("material_palette produces portrait dimensions", async () => {
+await testAsync("material_palette follows widened data-card landscape slot", async () => {
   const { getSlotDimensions } = await import("../../src/services/a1/composeCore.js");
   const mat = getSlotDimensions("material_palette");
-  assert(mat.height > mat.width, `material_palette should be portrait: ${mat.width}x${mat.height}`);
+  assert(mat.width > mat.height, `material_palette should be landscape: ${mat.width}x${mat.height}`);
 });
 
 await testAsync("All dimensions are multiples of 64", async () => {
@@ -331,6 +332,30 @@ await testAsync("getPanelFitMode returns cover only for photorealistic panels", 
   assertEqual(getPanelFitMode("elevation_north"), "contain");
   assertEqual(getPanelFitMode("section_AA"), "contain");
   assertEqual(getPanelFitMode("material_palette"), "contain");
+});
+
+await testAsync("site_diagram SVG cover crop uses the same adaptive density as metadata", async () => {
+  const { placePanelImage } = await import("../../api/a1/compose.js");
+  const svg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="#ffffff"/>
+      <path d="M 12 12 L 88 12 L 88 88 L 12 88 Z" fill="none" stroke="#111827" stroke-width="3"/>
+      <text x="50" y="52" text-anchor="middle" font-size="8">SITE DIAGRAM</text>
+    </svg>
+  `);
+  const slotRect = { x: 0, y: 0, width: 300, height: 230 };
+  const output = await placePanelImage({
+    sharp,
+    imageBuffer: svg,
+    slotRect,
+    mode: "cover",
+    constants: { LABEL_HEIGHT: 28, LABEL_PADDING: 2 },
+    panelType: "site_diagram",
+    qa: { enabled: true, useHighRes: false, layoutTemplate: "board-v2" },
+  });
+  const metadata = await sharp(output).metadata();
+  assertEqual(metadata.width, slotRect.width);
+  assertEqual(metadata.height, slotRect.height - 28 - 2);
 });
 
 // ============================================================================

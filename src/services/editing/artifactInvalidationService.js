@@ -32,7 +32,6 @@ function buildEntry(currentEntry = {}, signature, overrides = {}) {
   return {
     fresh: currentEntry?.fresh === true,
     stale: currentEntry?.stale !== false,
-    geometry_signature: signature,
     ...(currentEntry || {}),
     ...overrides,
     geometry_signature: signature,

@@ -283,10 +283,11 @@ const LandingPage = ({ onStart, onDemo }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1.5, duration: 0.6 }}
-              className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight"
+              className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight tracking-tight text-balance"
               style={{
                 fontFamily: "'Space Grotesk', 'Inter', sans-serif",
                 color: "rgba(255, 255, 255, 0.95)",
+                textWrap: "balance",
               }}
             >
               <span className="block">AI-Generated Architectural</span>
@@ -338,7 +339,7 @@ const LandingPage = ({ onStart, onDemo }) => {
                     "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)";
                   e.currentTarget.style.transform = "translateY(-2px)";
                   e.currentTarget.style.boxShadow =
-                    "0 8px 28px rgba(37, 99, 235, 0.35)";
+                    "0 0 0 1px rgba(74, 121, 245, 0.5), 0 8px 32px rgba(74, 121, 245, 0.35)";
                 }}
                 onMouseOut={(e) => {
                   e.currentTarget.style.background =
@@ -376,19 +377,29 @@ const LandingPage = ({ onStart, onDemo }) => {
               </button>
             </motion.div>
 
-            {/* Trust Badges */}
+            {/* Trust Badges (chip-styled pills) */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 2.1, duration: 0.5 }}
-              className="flex flex-wrap items-center justify-center gap-8 text-sm"
-              style={{ color: "rgba(255, 255, 255, 0.55)" }}
+              className="flex flex-wrap items-center justify-center gap-3"
             >
               {trustPoints.map((point, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Check className="w-4 h-4" style={{ color: "#60a5fa" }} />
-                  <span>{point}</span>
-                </div>
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 2.2 + index * 0.08, duration: 0.4 }}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm"
+                >
+                  <Check
+                    className="w-3.5 h-3.5 text-royal-300"
+                    strokeWidth={2}
+                  />
+                  <span className="text-xs font-medium text-white/85 tabular-nums">
+                    {point}
+                  </span>
+                </motion.div>
               ))}
             </motion.div>
           </div>
@@ -695,16 +706,21 @@ const LandingPage = ({ onStart, onDemo }) => {
                     "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)",
                   border: "1px solid rgba(96, 165, 250, 0.3)",
                   boxShadow: "0 4px 20px rgba(37, 99, 235, 0.25)",
+                  color: "#ffffff",
                 }}
                 onMouseOver={(e) => {
                   e.target.style.background =
                     "linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)";
                   e.target.style.transform = "translateY(-2px)";
+                  e.target.style.boxShadow =
+                    "0 0 0 1px rgba(74, 121, 245, 0.5), 0 8px 32px rgba(74, 121, 245, 0.35)";
                 }}
                 onMouseOut={(e) => {
                   e.target.style.background =
                     "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)";
                   e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow =
+                    "0 4px 20px rgba(37, 99, 235, 0.25)";
                 }}
               >
                 Start Designing

@@ -129,12 +129,23 @@ export function runA1TextZoneSanity({
             evidenceSource: "metadata",
           }),
         });
+  const verificationPhase =
+    renderedZone?.verificationPhase === "post_compose"
+      ? "post_compose"
+      : "pre_compose";
+  const isPostComposeEvidence = verificationPhase === "post_compose";
 
   if (svg) {
     if (!svg.includes("@font-face") || !svg.includes("data:font/ttf;base64,")) {
-      blockers.push(
-        "Final sheet SVG is missing embedded font-face payloads required for reliable raster text rendering.",
-      );
+      const missingFontMessage =
+        "Final sheet SVG is missing embedded font-face payloads required for reliable raster text rendering.";
+      if (isPostComposeEvidence) {
+        blockers.push(missingFontMessage);
+      } else {
+        warnings.push(
+          `${missingFontMessage} Pre-compose checks treat this as provisional until rendered output is verified.`,
+        );
+      }
     }
     if (!svg.includes("ArchiAISans") && !svg.includes("EmbeddedSans")) {
       warnings.push(
@@ -148,9 +159,14 @@ export function runA1TextZoneSanity({
     }
     const undersizedFonts = collectUndersizedTextFonts(svg);
     if (undersizedFonts.length > 0) {
-      blockers.push(
-        `Final sheet SVG contains text below the enforced minimum readable size of ${FINAL_SHEET_MIN_FONT_SIZE_PX}px.`,
-      );
+      const undersizedFontMessage = `Final sheet SVG contains text below the enforced minimum readable size of ${FINAL_SHEET_MIN_FONT_SIZE_PX}px.`;
+      if (isPostComposeEvidence) {
+        blockers.push(undersizedFontMessage);
+      } else {
+        warnings.push(
+          `${undersizedFontMessage} Pre-compose checks treat this as provisional until rendered output is verified.`,
+        );
+      }
     }
   } else {
     warnings.push(
@@ -177,7 +193,7 @@ export function runA1TextZoneSanity({
         : renderedZone
           ? "phase10-a1-text-zone-sanity-v1"
           : "phase9-a1-text-zone-sanity-v1",
-    verificationPhase: renderedZone?.verificationPhase || "pre_compose",
+    verificationPhase,
     status: blockers.length ? "block" : warnings.length ? "warning" : "pass",
     blockers: unique(blockers),
     warnings: unique(warnings),

@@ -19,6 +19,28 @@ export { default as CompanyLogo } from "./CompanyLogo.jsx";
 export { default as AnimatedBlueprintLogo } from "./AnimatedBlueprintLogo.jsx";
 export { default as BlueprintLogoLoader } from "./BlueprintLogoLoader.jsx";
 
+// Premium polish primitives (added in Pro-Level Frontend pass)
+export { default as ErrorBanner } from "./ErrorBanner.jsx";
+export { default as StatusChip } from "./StatusChip.jsx";
+export { default as ToastProvider, useToastContext } from "./ToastProvider.jsx";
+
+// Feedback primitives (re-exported from ./feedback so call sites use one path)
+export { Toast, ToastContainer, useToast } from "./feedback/Toast.jsx";
+export { EmptyState, ErrorState, NoResults } from "./feedback/EmptyState.jsx";
+export {
+  Tooltip,
+  TooltipProvider,
+  TooltipWrapper,
+} from "./feedback/Tooltip.jsx";
+export {
+  Skeleton,
+  SkeletonGroup,
+  CardSkeleton,
+  PageLoader,
+  InlineLoader,
+  DotsLoader,
+} from "./feedback/Loader.jsx";
+
 // Legacy components (preserved for compatibility)
 export { default as GlassButton } from "./GlassButton.jsx";
 export { default as GlassCard } from "./GlassCard.jsx";

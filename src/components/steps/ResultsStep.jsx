@@ -22,6 +22,23 @@ import GeometryDebugViewer from "../GeometryDebugViewer.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import Button from "../ui/Button.jsx";
 import Card from "../ui/Card.jsx";
+import StatusChip from "../ui/StatusChip.jsx";
+import { Tooltip } from "../ui/feedback/Tooltip.jsx";
+
+// Map upstream stage statuses to StatusChip status keys.
+const STAGE_STATUS_TO_CHIP = {
+  pass: "pass",
+  ready: "ready",
+  warning: "warning",
+  block: "blocked",
+  blocked: "blocked",
+  fail: "fail",
+  pending: "pending",
+};
+
+function stageChipStatus(status) {
+  return STAGE_STATUS_TO_CHIP[status] || "neutral";
+}
 
 const STAGE_STATUS_TONE = {
   pass: {
@@ -400,7 +417,7 @@ const ResultsStep = ({
                   Download A1 Sheet
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="subtle"
                   size="md"
                   onClick={() => setShowExportPanel(!showExportPanel)}
                   icon={<FileCode className="w-5 h-5" />}
@@ -445,21 +462,26 @@ const ResultsStep = ({
               className={`${qualityTone.border} ${qualityTone.bg}`}
             >
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
-                <div className="flex flex-col justify-center rounded-2xl border border-white/10 bg-black/20 p-5 text-center">
-                  <div
-                    className={`text-sm uppercase tracking-[0.2em] ${qualityTone.accent}`}
-                  >
-                    Plan Quality
+                <Tooltip
+                  content="Plan quality score: ≥80 = pass, 60–79 = warning, <60 = block. Combined from adjacency, proportions, circulation, area & light."
+                  side="bottom"
+                >
+                  <div className="flex cursor-help flex-col justify-center rounded-2xl border border-white/10 bg-black/20 p-5 text-center transition-colors hover:border-white/20">
+                    <div
+                      className={`text-sm uppercase tracking-[0.2em] ${qualityTone.accent}`}
+                    >
+                      Plan Quality
+                    </div>
+                    <div className="mt-3 text-5xl font-bold text-white tabular-nums">
+                      {qualityEvaluation.total}
+                    </div>
+                    <div
+                      className={`mt-2 text-lg font-semibold ${qualityTone.accent}`}
+                    >
+                      Grade {qualityEvaluation.grade}
+                    </div>
                   </div>
-                  <div className="mt-3 text-5xl font-bold text-white">
-                    {qualityEvaluation.total}
-                  </div>
-                  <div
-                    className={`mt-2 text-lg font-semibold ${qualityTone.accent}`}
-                  >
-                    Grade {qualityEvaluation.grade}
-                  </div>
-                </div>
+                </Tooltip>
 
                 <div className="space-y-4">
                   {[
@@ -521,15 +543,15 @@ const ResultsStep = ({
                       Residential Authority Status
                     </h3>
                     {authorityReadiness?.ready !== undefined && (
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-                          getStageTone(
-                            authorityReadiness.ready ? "pass" : "block",
-                          ).chip
-                        }`}
-                      >
-                        {authorityReadiness.ready ? "Ready" : "Blocked"}
-                      </span>
+                      <StatusChip
+                        status={authorityReadiness.ready ? "ready" : "blocked"}
+                        size="md"
+                        tooltip={
+                          authorityReadiness.ready
+                            ? "All authority gates passed."
+                            : "One or more authority gates blocked."
+                        }
+                      />
                     )}
                   </div>
 
@@ -555,11 +577,11 @@ const ResultsStep = ({
                               <div className="text-sm font-semibold text-white">
                                 {stage.label}
                               </div>
-                              <span
-                                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${tone.chip}`}
-                              >
-                                {formatStageStatus(stage.status)}
-                              </span>
+                              <StatusChip
+                                status={stageChipStatus(stage.status)}
+                                label={formatStageStatus(stage.status)}
+                                size="sm"
+                              />
                             </div>
                             {stage.detail && (
                               <p className="mt-2 text-sm text-gray-300">
@@ -751,7 +773,9 @@ const ResultsStep = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* A1 Sheet Viewer */}
           <motion.div variants={fadeInUp} className="lg:col-span-2">
-            <A1SheetViewer result={result} designId={designId} />
+            <div className="rounded-2xl border border-white/10 bg-navy-950/50 p-2 shadow-soft-inner backdrop-blur-sm">
+              <A1SheetViewer result={result} designId={designId} />
+            </div>
           </motion.div>
 
           {/* AI Modify Panel */}
