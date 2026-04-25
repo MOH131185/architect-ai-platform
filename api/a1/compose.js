@@ -2266,7 +2266,7 @@ async function handleComposeRequest(req, res, trace) {
   );
 }
 
-function computeSafeCoverCropRect(
+export function computeSafeCoverCropRect(
   sourceW,
   sourceH,
   targetW,
@@ -2286,8 +2286,10 @@ function computeSafeCoverCropRect(
     return null;
   }
 
+  const srcW = Math.max(1, Math.floor(sourceW));
+  const srcH = Math.max(1, Math.floor(sourceH));
   const targetAspect = targetW / targetH;
-  const sourceAspect = sourceW / sourceH;
+  const sourceAspect = srcW / srcH;
 
   const clamp01 = (v) => Math.max(0, Math.min(1, Number(v)));
   const ax = clamp01(xAlign);
@@ -2299,23 +2301,23 @@ function computeSafeCoverCropRect(
 
   if (sourceAspect > targetAspect) {
     // Crop width
-    const cropW = Math.max(1, Math.round(sourceH * targetAspect));
-    const left = Math.round((sourceW - cropW) * ax);
+    const cropW = Math.max(1, Math.min(srcW, Math.round(srcH * targetAspect)));
+    const left = Math.round((srcW - cropW) * ax);
     return {
-      left: Math.max(0, Math.min(sourceW - cropW, left)),
+      left: Math.max(0, Math.min(srcW - cropW, left)),
       top: 0,
       width: cropW,
-      height: sourceH,
+      height: srcH,
     };
   }
 
   // Crop height
-  const cropH = Math.max(1, Math.round(sourceW / targetAspect));
-  const top = Math.round((sourceH - cropH) * ay);
+  const cropH = Math.max(1, Math.min(srcH, Math.round(srcW / targetAspect)));
+  const top = Math.round((srcH - cropH) * ay);
   return {
     left: 0,
-    top: Math.max(0, Math.min(sourceH - cropH, top)),
-    width: sourceW,
+    top: Math.max(0, Math.min(srcH - cropH, top)),
+    width: srcW,
     height: cropH,
   };
 }
@@ -2965,7 +2967,7 @@ function computeAdaptiveSvgDensity(
  * @param {Object} [params.qa] - QA options (occupancy/rotate gates)
  * @returns {Promise<Buffer>} Resized image buffer
  */
-async function placePanelImage({
+export async function placePanelImage({
   sharp,
   imageBuffer,
   slotRect,
@@ -3329,7 +3331,7 @@ async function placePanelImage({
       },
     );
 
-    const pipeline = sharp(processedBuffer, { failOnError: false });
+    const pipeline = sharpForInput(processedBuffer);
     resizedImage = cropRect
       ? await pipeline
           .extract(cropRect)
