@@ -1,5 +1,25 @@
 const BLUEPRINT_LIKE_PANELS = new Set(["site_diagram", "site_plan"]);
 
+function isDisabledEnvValue(value) {
+  return ["0", "false", "no", "off", "disabled"].includes(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
+export function isExternalVisualImageGenerationDisabled() {
+  return (
+    isDisabledEnvValue(process.env.REACT_APP_USE_TOGETHER) ||
+    isDisabledEnvValue(process.env.REACT_APP_USE_EXTERNAL_IMAGE_MODELS) ||
+    ["canonical", "project_graph", "deterministic"].includes(
+      String(process.env.REACT_APP_VISUAL_PANEL_PROVIDER || "")
+        .trim()
+        .toLowerCase(),
+    )
+  );
+}
+
 export function getCanonicalPackSource(canonicalPack) {
   return (
     canonicalPack?.metadata?.source ||
@@ -154,6 +174,8 @@ export function resolveVisualPanelAuthority(
 ) {
   const packSource = getCanonicalPackSource(canonicalPack);
   const readiness = getCompiledCanonicalPackReadiness(canonicalPack);
+  const externalVisualImageGenerationDisabled =
+    isExternalVisualImageGenerationDisabled();
 
   if (isDirectDeterministicPanel(panelType)) {
     return {
@@ -169,19 +191,38 @@ export function resolveVisualPanelAuthority(
     readiness.ready
   ) {
     return {
-      route: "flux",
+      route: externalVisualImageGenerationDisabled
+        ? "canonical_projection"
+        : "flux",
       authority: "compiled_project_canonical_pack",
       packSource,
-      reason: "using compiled-project canonical control render",
+      reason: externalVisualImageGenerationDisabled
+        ? "external image generation disabled; using compiled-project canonical projection"
+        : "using compiled-project canonical control render",
     };
   }
 
   if (geometryRender?.url) {
     return {
-      route: "flux",
+      route: externalVisualImageGenerationDisabled
+        ? "geometry_projection"
+        : "flux",
       authority: `geometry_derived:${geometryRender.type || "unknown"}`,
       packSource,
-      reason: "using geometry-derived control render",
+      reason: externalVisualImageGenerationDisabled
+        ? "external image generation disabled; using geometry-derived projection"
+        : "using geometry-derived control render",
+    };
+  }
+
+  if (externalVisualImageGenerationDisabled) {
+    return {
+      route: "blocked",
+      blocked: true,
+      authority: "visual_authority_blocked",
+      packSource,
+      reason:
+        "external image generation is disabled and no geometry-derived visual projection is available",
     };
   }
 
@@ -211,6 +252,7 @@ export default {
   getCanonicalPackSource,
   isCompiledProjectCanonicalPack,
   getCompiledCanonicalPackReadiness,
+  isExternalVisualImageGenerationDisabled,
   isTechnicalPanel,
   isBlueprintLikePanel,
   isDirectDeterministicPanel,

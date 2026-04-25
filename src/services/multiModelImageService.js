@@ -22,6 +22,7 @@ import {
   PANEL_REGISTRY,
   normalizeToCanonical,
 } from "../config/panelRegistry.js";
+import { isExternalVisualImageGenerationDisabled } from "./design/panelAuthorityRouter.js";
 import { getActiveModel, isModelReady } from "./modelRegistry.js";
 import { extractCannyEdges } from "./cannyEdgeExtractor.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
@@ -50,6 +51,52 @@ function getPanelCategory(viewType) {
 function isElevationOrSection(viewType) {
   const canonical = normalizeToCanonical(viewType) || viewType;
   return canonical.startsWith("elevation_") || canonical.startsWith("section_");
+}
+
+function resolveGeometryProjectionUrl(geometryRender = null) {
+  if (!geometryRender) {
+    return null;
+  }
+  if (typeof geometryRender === "string") {
+    return geometryRender;
+  }
+  return (
+    geometryRender.url || geometryRender.svg || geometryRender.dataUrl || null
+  );
+}
+
+function buildGeometryProjectionResult({
+  viewType,
+  geometryRender = null,
+  seed = null,
+  width = null,
+  height = null,
+  category = "unknown",
+}) {
+  const url = resolveGeometryProjectionUrl(geometryRender);
+  if (!url) {
+    return null;
+  }
+
+  return {
+    url,
+    imageUrls: [url],
+    seedUsed: seed,
+    model: "canonical_geometry_projection",
+    generatorUsed: "canonical_geometry_projection",
+    hadFallback: false,
+    category,
+    provider: "project_graph",
+    metadata: {
+      width,
+      height,
+      provider: "project_graph",
+      model: "canonical_geometry_projection",
+      sourceType: geometryRender?.type || "geometry_projection",
+      viewType,
+      externalImageGenerationDisabled: true,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +166,28 @@ class MultiModelImageService {
     }
 
     logger.info(`🎯 [ROUTING] ${viewType} → category=${category}`);
+
+    if (isExternalVisualImageGenerationDisabled()) {
+      const geometryProjection = buildGeometryProjectionResult({
+        viewType,
+        geometryRender,
+        seed,
+        width,
+        height,
+        category,
+      });
+
+      if (geometryProjection) {
+        logger.info(
+          `📐 [MODEL-FIRST] External image generation disabled for ${viewType}; using canonical geometry projection.`,
+        );
+        return geometryProjection;
+      }
+
+      throw new Error(
+        `External image generation is disabled for ${viewType}, and no canonical geometry projection was available.`,
+      );
+    }
 
     // ------------------------------------------------------------------
     // Try ControlNet first (when enabled).

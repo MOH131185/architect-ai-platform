@@ -68,8 +68,7 @@ describe("a1FinalExportContract", () => {
 
   test("detects literal tofu and square replacement glyphs", () => {
     const glyphIntegrity = detectA1GlyphIntegrity({
-      sheetSvg:
-        '<svg><text x="10" y="20">GROUND FLOOR □□□</text></svg>',
+      sheetSvg: '<svg><text x="10" y="20">GROUND FLOOR □□□</text></svg>',
       sheetTextContract: { requiredLabelCount: 1 },
     });
 
@@ -127,6 +126,79 @@ describe("a1FinalExportContract", () => {
     });
 
     expect(gate.status).toBe("allowed");
+  });
+
+  test("defers pre-compose rendered-text blockers to post-compose evidence", () => {
+    const gate = evaluateFinalA1ExportGate({
+      renderContract: resolveA1RenderContract({ renderIntent: "final_a1" }),
+      pdfUrl: "/api/a1/compose-output/a1.pdf",
+      finalSheetRegression: {
+        finalSheetRegressionReady: false,
+        blockers: [
+          "Rendered text zone panel-header:floor_plan_ground lacks enough evidence for reliable final-sheet labelling.",
+          "Only 0 panel header zone(s) passed rendered verification; fixture minimum is 6.",
+        ],
+        technicalPanelRegression: { blockers: [] },
+        textZoneSanity: {
+          blockers: [
+            "Rendered text zone panel-header:floor_plan_ground lacks enough evidence for reliable final-sheet labelling.",
+          ],
+        },
+        fixtureComparison: {
+          blockers: [
+            "Only 0 panel header zone(s) passed rendered verification; fixture minimum is 6.",
+          ],
+        },
+      },
+      postComposeVerification: {
+        publishability: { status: "publishable", blockers: [] },
+        renderedTextZone: {
+          status: "pass",
+          blockers: [],
+          ocr: { available: true },
+          ocrEvidenceQuality: "verified",
+        },
+      },
+      glyphIntegrity: { status: "pass", blockers: [] },
+      sheetSetPlan: { required: false },
+    });
+
+    expect(gate.status).toBe("allowed");
+    expect(gate.preComposeRegressionPolicy.status).toBe(
+      "deferred_to_post_compose",
+    );
+  });
+
+  test("keeps technical pre-compose blockers fail-closed", () => {
+    const gate = evaluateFinalA1ExportGate({
+      renderContract: resolveA1RenderContract({ renderIntent: "final_a1" }),
+      pdfUrl: "/api/a1/compose-output/a1.pdf",
+      finalSheetRegression: {
+        finalSheetRegressionReady: false,
+        blockers: ["Elevation east is missing canonical drawing evidence."],
+        technicalPanelRegression: {
+          blockers: ["Elevation east is missing canonical drawing evidence."],
+        },
+        textZoneSanity: { blockers: [] },
+        fixtureComparison: { blockers: [] },
+      },
+      postComposeVerification: {
+        publishability: { status: "publishable", blockers: [] },
+        renderedTextZone: {
+          status: "pass",
+          blockers: [],
+          ocr: { available: true },
+          ocrEvidenceQuality: "verified",
+        },
+      },
+      glyphIntegrity: { status: "pass", blockers: [] },
+      sheetSetPlan: { required: false },
+    });
+
+    expect(gate.status).toBe("blocked");
+    expect(gate.blockers).toContain(
+      "Elevation east is missing canonical drawing evidence.",
+    );
   });
 
   test("allows dense final exports when A1-02 companion artifacts are generated", () => {

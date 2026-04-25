@@ -4,6 +4,7 @@ import {
   WORKING_HEIGHT,
   WORKING_WIDTH,
 } from "./composeCore.js";
+import { resolvePreComposeRegressionPolicy } from "./a1PreComposeRegressionPolicy.js";
 
 export const PREVIEW_RENDER_INTENT = "preview";
 export const FINAL_A1_RENDER_INTENT = "final_a1";
@@ -84,8 +85,7 @@ export function resolveA1RenderContract(requestBody = {}) {
       isFinalA1 || requestBody?.enforcePreComposeVerification === true,
     enforcePostComposeVerification:
       isFinalA1 || requestBody?.enforcePostComposeVerification === true,
-    enforceRenderedText:
-      isFinalA1 || requestBody?.enforceRenderedText === true,
+    enforceRenderedText: isFinalA1 || requestBody?.enforceRenderedText === true,
     includePdf: isFinalA1 || (highRes && requestBody?.skipPdf !== true),
     physicalSheetSizeMm: A1_PHYSICAL_SHEET_SIZE_MM,
     pngDimensions: isFinalA1
@@ -277,6 +277,10 @@ export function evaluateFinalA1ExportGate({
 
   const blockers = [];
   const renderedTextZone = postComposeVerification?.renderedTextZone || null;
+  const preComposeRegressionPolicy = resolvePreComposeRegressionPolicy({
+    finalSheetRegression,
+    enforcePostComposeVerification: Boolean(postComposeVerification),
+  });
 
   if (!pdfUrl) {
     blockers.push("Final A1 export requires a print-ready PDF artifact.");
@@ -293,10 +297,12 @@ export function evaluateFinalA1ExportGate({
   if (!finalSheetRegression) {
     blockers.push("Final A1 export requires pre-compose sheet regression.");
   } else if (finalSheetRegression.finalSheetRegressionReady === false) {
-    blockers.push(...(finalSheetRegression.blockers || []));
+    blockers.push(...(preComposeRegressionPolicy.hardBlockers || []));
   }
   if (!postComposeVerification) {
-    blockers.push("Final A1 export requires post-compose rendered verification.");
+    blockers.push(
+      "Final A1 export requires post-compose rendered verification.",
+    );
   } else {
     if (postComposeVerification?.publishability?.status === "blocked") {
       blockers.push(...(postComposeVerification.publishability.blockers || []));
@@ -322,6 +328,7 @@ export function evaluateFinalA1ExportGate({
     status: blockers.length ? "blocked" : "allowed",
     allowed: blockers.length === 0,
     blockers: unique(blockers),
+    preComposeRegressionPolicy,
   };
 }
 

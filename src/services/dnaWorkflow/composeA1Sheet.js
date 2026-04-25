@@ -137,9 +137,9 @@ function isNonEmptyObject(value) {
 function hasDrawingEvidence(drawings) {
   return Boolean(
     drawings &&
-      ((Array.isArray(drawings.plan) && drawings.plan.length > 0) ||
-        (Array.isArray(drawings.elevation) && drawings.elevation.length > 0) ||
-        (Array.isArray(drawings.section) && drawings.section.length > 0)),
+    ((Array.isArray(drawings.plan) && drawings.plan.length > 0) ||
+      (Array.isArray(drawings.elevation) && drawings.elevation.length > 0) ||
+      (Array.isArray(drawings.section) && drawings.section.length > 0)),
   );
 }
 
@@ -182,7 +182,8 @@ function normalizeDrawingsShape(drawings = null) {
       normalized.elevation.push({
         ...withPanelDefaults(entry, panelType),
         orientation:
-          entry.orientation || panelType.replace(/^elevation_/, "").toLowerCase(),
+          entry.orientation ||
+          panelType.replace(/^elevation_/, "").toLowerCase(),
       });
       return;
     }
@@ -262,7 +263,9 @@ function buildCanonicalDrawingEntry(panelType, panel = {}, canonicalPack = {}) {
     source: "compiled_project_canonical_pack",
     technical_quality_metadata: technicalMetadata,
     annotation_validation:
-      panel.annotation_validation || technicalMetadata.annotation_validation || null,
+      panel.annotation_validation ||
+      technicalMetadata.annotation_validation ||
+      null,
     blocking_reasons: panel.blocking_reasons || panel.blockingReasons || [],
   };
 }
@@ -335,7 +338,10 @@ function deriveDrawingsFromCanonicalPack(canonicalPack = null) {
   return hasDrawingEvidence(drawings) ? drawings : null;
 }
 
-function resolveComposeDrawings(projectContext = {}, canonicalPackDrawings = null) {
+function resolveComposeDrawings(
+  projectContext = {},
+  canonicalPackDrawings = null,
+) {
   const upstreamDrawings = [
     projectContext?.drawings,
     projectContext?.technicalDrawings,
@@ -461,7 +467,10 @@ export function buildComposePayload({
     renderIntent: FINAL_A1_RENDER_INTENT,
   });
   const canonicalPackDrawings = deriveDrawingsFromCanonicalPack(canonicalPack);
-  const drawings = resolveComposeDrawings(projectContext, canonicalPackDrawings);
+  const drawings = resolveComposeDrawings(
+    projectContext,
+    canonicalPackDrawings,
+  );
   const technicalPanelQuality =
     projectContext?.technicalPanelQuality ||
     projectContext?.technicalPack?.technicalPanelQuality ||
@@ -594,6 +603,33 @@ function logComposePayloadSize(composePayload, logger) {
   return composeBody;
 }
 
+function collectComposeErrorBlockers(errorBody = {}) {
+  const details = errorBody?.details || {};
+  return [
+    ...(details?.preComposeRegressionPolicy?.hardBlockers || []),
+    ...(details?.finalA1ExportGate?.blockers || []),
+    ...(details?.postComposeVerification?.blockers || []),
+    ...(details?.postComposeVerification?.publishability?.blockers || []),
+    ...(details?.finalSheetRegression?.blockers || []),
+    ...(details?.blockers || []),
+  ].filter(Boolean);
+}
+
+function summarizeComposeError(errorBody = {}) {
+  const base =
+    errorBody?.message || errorBody?.error || JSON.stringify(errorBody || {});
+  const blockers = [...new Set(collectComposeErrorBlockers(errorBody))].slice(
+    0,
+    5,
+  );
+
+  if (!blockers.length) {
+    return base;
+  }
+
+  return `${base} Blockers: ${blockers.join("; ")}`;
+}
+
 function logComposeQuality(compositionResult, logger) {
   if (compositionResult.qa) {
     const qa = compositionResult.qa;
@@ -688,8 +724,7 @@ export async function composeA1Sheet({
     let errorDetail = "";
     try {
       const errorBody = await composeResponse.json();
-      errorDetail =
-        errorBody.message || errorBody.error || JSON.stringify(errorBody);
+      errorDetail = summarizeComposeError(errorBody);
       logger?.error(`❌ Compose API error: ${errorDetail}`);
     } catch {
       // Ignore response parse failures and preserve the original status error.

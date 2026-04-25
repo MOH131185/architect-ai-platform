@@ -10,6 +10,21 @@ import {
 } from "../../services/design/panelAuthorityRouter.js";
 
 describe("panelAuthorityRouter", () => {
+  let previousUseTogether;
+
+  beforeEach(() => {
+    previousUseTogether = process.env.REACT_APP_USE_TOGETHER;
+    process.env.REACT_APP_USE_TOGETHER = "true";
+  });
+
+  afterEach(() => {
+    if (previousUseTogether === undefined) {
+      delete process.env.REACT_APP_USE_TOGETHER;
+    } else {
+      process.env.REACT_APP_USE_TOGETHER = previousUseTogether;
+    }
+  });
+
   const compiledPack = {
     metadata: {
       source: "compiled_project",
@@ -142,6 +157,53 @@ describe("panelAuthorityRouter", () => {
 
     expect(decision.route).toBe("flux");
     expect(decision.authority).toBe("compiled_project_canonical_pack");
+  });
+
+  test("uses canonical projection route when external visual image generation is disabled", () => {
+    const previous = process.env.REACT_APP_USE_TOGETHER;
+    process.env.REACT_APP_USE_TOGETHER = "false";
+
+    try {
+      const decision = resolveVisualPanelAuthority("hero_3d", {
+        canonicalPack: compiledPack,
+        geometryRender: {
+          url: "data:image/svg+xml;base64,AAA",
+          type: "compiled_project_canonical_pack",
+        },
+      });
+
+      expect(decision.route).toBe("canonical_projection");
+      expect(decision.authority).toBe("compiled_project_canonical_pack");
+      expect(decision.reason).toMatch(/external image generation disabled/i);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.REACT_APP_USE_TOGETHER;
+      } else {
+        process.env.REACT_APP_USE_TOGETHER = previous;
+      }
+    }
+  });
+
+  test("blocks prompt-only visual generation when external image models are disabled", () => {
+    const previous = process.env.REACT_APP_USE_TOGETHER;
+    process.env.REACT_APP_USE_TOGETHER = "false";
+
+    try {
+      const decision = resolveVisualPanelAuthority("interior_3d", {
+        canonicalPack: legacyPack,
+        geometryRender: null,
+      });
+
+      expect(decision.route).toBe("blocked");
+      expect(decision.blocked).toBe(true);
+      expect(decision.authority).toBe("visual_authority_blocked");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.REACT_APP_USE_TOGETHER;
+      } else {
+        process.env.REACT_APP_USE_TOGETHER = previous;
+      }
+    }
   });
 
   test("uses geometry-derived controls for 3D panels when compiled-project controls are absent", () => {

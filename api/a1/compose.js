@@ -91,6 +91,10 @@ import {
   normalizeSheetTextContract,
   resolveA1RenderContract,
 } from "../../src/services/a1/a1FinalExportContract.js";
+import {
+  resolvePreComposeRegressionPolicy,
+  summarizeRegressionBlockers,
+} from "../../src/services/a1/a1PreComposeRegressionPolicy.js";
 import { writeA1OverflowSheetArtifacts } from "../../src/services/a1/a1OverflowSheetComposer.js";
 import {
   buildComposeArtifactManifest,
@@ -713,8 +717,8 @@ async function handleComposeRequest(req, res, trace) {
   ].filter(Boolean);
   const regressionContextAvailable = Boolean(
     renderContract.isFinalA1 ||
-      requestBody.drawings ||
-      requestBody.technicalPanelQuality,
+    requestBody.drawings ||
+    requestBody.technicalPanelQuality,
   );
 
   if (!panels || panels.length === 0) {
@@ -1883,21 +1887,46 @@ async function handleComposeRequest(req, res, trace) {
         height,
       })
     : null;
+  const preComposeRegressionPolicy = resolvePreComposeRegressionPolicy({
+    finalSheetRegression,
+    enforcePostComposeVerification:
+      renderContract.enforcePostComposeVerification === true,
+  });
 
   if (
     regressionContextAvailable &&
     renderContract.enforcePreComposeVerification === true &&
     (renderContract.isFinalA1 ||
       isFeatureEnabled("useA1PreComposeVerificationPhase9")) &&
-    finalSheetRegression?.finalSheetRegressionReady === false
+    finalSheetRegression?.finalSheetRegressionReady === false &&
+    preComposeRegressionPolicy.shouldBlockBeforeCompose
   ) {
+    const blockerSummary = summarizeRegressionBlockers(
+      preComposeRegressionPolicy.hardBlockers,
+    );
     return res.status(409).json({
       success: false,
       error: "PRECOMPOSE_VERIFICATION_FAILED",
-      message:
-        "Phase 9 final-sheet regression verification blocked composition.",
-      details: finalSheetRegression,
+      message: blockerSummary
+        ? `Phase 9 final-sheet regression verification blocked composition: ${blockerSummary}`
+        : "Phase 9 final-sheet regression verification blocked composition.",
+      details: {
+        ...finalSheetRegression,
+        preComposeRegressionPolicy,
+      },
     });
+  }
+
+  if (
+    regressionContextAvailable &&
+    finalSheetRegression?.finalSheetRegressionReady === false &&
+    preComposeRegressionPolicy.canDeferToPostCompose
+  ) {
+    logComposeEvent(
+      trace,
+      "info",
+      `Phase 9 pre-compose regression deferred ${preComposeRegressionPolicy.deferredBlockers.length} rendered-evidence blocker(s) to post-compose verification.`,
+    );
   }
 
   const postComposeVerification =
