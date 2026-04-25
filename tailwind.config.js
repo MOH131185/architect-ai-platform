@@ -99,6 +99,7 @@ module.exports = {
           "sans-serif",
         ],
         display: [
+          "Space Grotesk",
           "Inter",
           "-apple-system",
           "BlinkMacSystemFont",
@@ -121,6 +122,17 @@ module.exports = {
         "5xl": ["3rem", { lineHeight: "1" }],
         "6xl": ["3.75rem", { lineHeight: "1" }],
         "7xl": ["4.5rem", { lineHeight: "1" }],
+        // Display scale (Space Grotesk) - for hero + step headings
+        "display-xl": ["4.5rem", { lineHeight: "1", letterSpacing: "-0.04em" }],
+        "display-lg": [
+          "3.75rem",
+          { lineHeight: "1.05", letterSpacing: "-0.035em" },
+        ],
+        "display-md": ["3rem", { lineHeight: "1.1", letterSpacing: "-0.03em" }],
+        "display-sm": [
+          "2.25rem",
+          { lineHeight: "1.15", letterSpacing: "-0.025em" },
+        ],
       },
 
       letterSpacing: {
@@ -185,6 +197,11 @@ module.exports = {
         "brand-sm": "0 4px 14px 0 rgba(41, 98, 255, 0.15)",
         brand: "0 8px 24px 0 rgba(41, 98, 255, 0.2)",
         "brand-lg": "0 12px 32px 0 rgba(41, 98, 255, 0.25)",
+        // Premium polish: hero CTA glow + A1 viewer inner highlight
+        "glow-brand":
+          "0 0 0 1px rgba(74, 121, 245, 0.5), 0 8px 32px rgba(74, 121, 245, 0.35)",
+        "soft-inner":
+          "inset 0 0 0 1px rgba(255, 255, 255, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.04)",
         // Focus ring
         focus: "0 0 0 3px rgba(41, 98, 255, 0.3)",
       },

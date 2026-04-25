@@ -683,6 +683,59 @@ describe("Phase 10 final sheet credibility", () => {
     ).toEqual([]);
   });
 
+  test("pre-compose regression treats missing embedded font payloads as provisional warnings", () => {
+    const regression = runA1FinalSheetRegression({
+      drawings: {
+        elevation: [
+          { orientation: "east", technical_quality_metadata: {} },
+          { orientation: "west", technical_quality_metadata: {} },
+        ],
+        section: [
+          {
+            section_type: "longitudinal",
+            section_profile: { sectionCandidateQuality: "pass" },
+            technical_quality_metadata: {},
+          },
+        ],
+      },
+      sheetSvg: `
+        <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+          <text x="24" y="32" font-size="12">GROUND FLOOR PLAN</text>
+          <text x="24" y="52" font-size="12">EAST ELEVATION</text>
+          <text x="24" y="72" font-size="12">WEST ELEVATION</text>
+          <text x="24" y="92" font-size="12">SECTION AA</text>
+        </svg>
+      `,
+      fontReadiness: { readyForEmbedding: true, fullEmbeddingReady: true },
+      expectedLabels: [
+        "GROUND FLOOR PLAN",
+        "EAST ELEVATION",
+        "WEST ELEVATION",
+        "SECTION AA",
+      ],
+      coordinates: {
+        floor_plan_ground: { x: 0, y: 0, width: 200, height: 180 },
+      },
+      panelLabelMap: {
+        floor_plan_ground: "GROUND FLOOR PLAN",
+      },
+      width: 800,
+      height: 600,
+    });
+
+    expect(regression.verificationPhase).toBe("pre_compose");
+    expect(regression.blockers).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("missing embedded font-face payloads"),
+      ]),
+    );
+    expect(regression.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Pre-compose checks treat this as provisional"),
+      ]),
+    );
+  });
+
   test("compose blocking treats pre-compose publishability as provisional instead of final truth", () => {
     setFeatureFlag("useA1PublishabilityGatePhase10", true);
 

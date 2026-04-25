@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { Sparkles, Loader2, Check } from "lucide-react";
 import Card from "../ui/Card.jsx";
 import IconWrapper from "../ui/IconWrapper.jsx";
+import ErrorBanner from "../ui/ErrorBanner.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import { fadeInUp, staggerChildren, pulse } from "../../styles/animations.js";
 import logger from "../../utils/logger.js";
@@ -63,6 +64,22 @@ const GenerateStep = ({
     const mins = Math.floor(safeSeconds / 60);
     const secs = safeSeconds % 60;
     return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+
+  // ETA estimate: derive remaining time from elapsed × (100/percentage).
+  // Returns null while percentage is too low to be meaningful, or once done.
+  const etaSeconds =
+    percentage > 5 && percentage < 100
+      ? Math.max(
+          0,
+          Math.round((elapsedSeconds * 100) / percentage - elapsedSeconds),
+        )
+      : null;
+  const formatEta = (seconds) => {
+    if (seconds === null) return null;
+    if (seconds < 60) return `~${seconds}s remaining`;
+    const mins = Math.floor(seconds / 60);
+    return `~${mins}m ${seconds % 60}s remaining`;
   };
 
   return (
@@ -147,8 +164,14 @@ const GenerateStep = ({
                 </div>
               </div>
 
-              {/* Stage List */}
-              <div className="space-y-4">
+              {/* Stage Timeline (vertical, with connecting rail + active glow) */}
+              <div className="relative space-y-3">
+                {/* Vertical rail behind the nodes */}
+                <div
+                  className="absolute left-4 top-3 bottom-3 w-px bg-white/10"
+                  aria-hidden="true"
+                />
+
                 {stages.map((stage, index) => {
                   const isActive = stage.key === currentStage;
                   const isCompleted =
@@ -157,35 +180,47 @@ const GenerateStep = ({
                   return (
                     <motion.div
                       key={stage.key}
-                      className="flex items-center gap-4"
-                      initial={{ opacity: 0, x: -20 }}
+                      className={`relative flex items-center gap-4 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
+                        isActive
+                          ? "bg-royal-600/10 border-l-2 border-royal-500"
+                          : "border-l-2 border-transparent"
+                      }`}
+                      initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
+                      transition={{ delay: index * 0.08 }}
                     >
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                           isCompleted
-                            ? "bg-royal-600"
+                            ? "bg-royal-600 shadow-md shadow-royal-600/30"
                             : isActive
-                              ? "bg-gradient-to-br from-royal-600 to-royal-400"
-                              : "bg-navy-800"
+                              ? "bg-gradient-to-br from-royal-600 to-royal-400 shadow-md shadow-royal-500/40"
+                              : "bg-navy-800 border border-white/10"
                         }`}
                       >
                         {isCompleted ? (
-                          <Check className="w-5 h-5 text-white" />
+                          <Check
+                            className="w-4 h-4 text-white"
+                            strokeWidth={2}
+                          />
                         ) : isActive ? (
-                          <Loader2 className="w-5 h-5 text-white animate-spin" />
+                          <Loader2
+                            className="w-4 h-4 text-white animate-spin"
+                            strokeWidth={1.75}
+                          />
                         ) : (
-                          <span className="text-gray-500 text-sm">
+                          <span className="text-white/40 text-sm tabular-nums">
                             {index + 1}
                           </span>
                         )}
                       </div>
                       <span
-                        className={`text-lg ${
+                        className={`text-base ${
                           isActive
                             ? "text-white font-semibold"
-                            : "text-gray-400"
+                            : isCompleted
+                              ? "text-white/70"
+                              : "text-white/45"
                         }`}
                       >
                         {stage.label}
@@ -195,15 +230,20 @@ const GenerateStep = ({
                 })}
               </div>
 
-              {/* Elapsed Time */}
+              {/* Elapsed Time + ETA */}
               {isLoading && (
-                <div className="pt-6 border-t border-navy-700">
-                  <p className="text-center text-gray-400">
-                    Elapsed time:{" "}
-                    <span className="text-white font-semibold">
+                <div className="pt-6 border-t border-white/10 flex items-center justify-center gap-6 text-sm">
+                  <p className="text-white/55">
+                    Elapsed:{" "}
+                    <span className="text-white font-semibold tabular-nums">
                       {formatElapsedTime(elapsedSeconds)}
                     </span>
                   </p>
+                  {etaSeconds !== null && (
+                    <p className="text-royal-300 tabular-nums">
+                      {formatEta(etaSeconds)}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -245,24 +285,13 @@ const GenerateStep = ({
         {/* Error Display */}
         {error && (
           <motion.div variants={fadeInUp}>
-            <Card
-              variant="elevated"
-              padding="lg"
-              className="bg-red-900/50 border-red-700"
-            >
-              <p className="text-white text-center font-semibold mb-2">
-                Generation Error
-              </p>
-              <p className="text-white text-center">{error}</p>
-              {onGenerate && (
-                <button
-                  onClick={onGenerate}
-                  className="mt-4 w-full px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg transition-colors"
-                >
-                  Retry Generation
-                </button>
-              )}
-            </Card>
+            <ErrorBanner
+              variant="error"
+              title="Generation Error"
+              message={error}
+              onRetry={onGenerate}
+              visible={true}
+            />
           </motion.div>
         )}
       </motion.div>

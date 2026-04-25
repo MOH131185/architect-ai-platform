@@ -572,19 +572,33 @@ const A1SheetViewer = ({
                 <motion.div
                   initial={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 flex items-center justify-center bg-navy-900"
+                  className="absolute inset-0 bg-navy-900"
                 >
-                  <div className="text-center">
-                    <Loader2 className="w-12 h-12 text-royal-400 animate-spin mx-auto mb-4" />
-                    <p className="text-gray-400">Loading A1 sheet...</p>
+                  {/* A1-aspect-ratio skeleton: shimmer placeholder matching the
+                      sheet's aspect ratio so layout doesn't jump on load. */}
+                  <div
+                    className="absolute inset-0 bg-[length:200%_100%] bg-gradient-to-r from-white/[0.04] via-white/[0.10] to-white/[0.04] animate-shimmer"
+                    style={{ aspectRatio: "1792 / 1269" }}
+                    aria-hidden="true"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <Loader2
+                        className="w-12 h-12 text-royal-400 animate-spin mx-auto mb-4"
+                        strokeWidth={1.75}
+                      />
+                      <p className="text-white/65">Composing A1 sheet…</p>
+                    </div>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {loadError && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <p className="text-red-400">{loadError}</p>
+              <div className="absolute inset-0 flex items-center justify-center p-6">
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {loadError}
+                </div>
               </div>
             )}
 

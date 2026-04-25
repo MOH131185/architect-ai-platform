@@ -1,22 +1,24 @@
 /**
  * Location Step - Deepgram-Inspired Design
- * 
+ *
  * Step 1: Site selection with blueprint aesthetic
  */
 
-import React from 'react';
-import { motion } from 'framer-motion';
-import { MapPin, Navigation, ArrowRight } from 'lucide-react';
-import { SiteBoundaryEditor } from '../site';
-import Button from '../ui/Button.jsx';
-import Input from '../ui/Input.jsx';
-import Card from '../ui/Card.jsx';
+import React from "react";
+import { motion } from "framer-motion";
+import { MapPin, Navigation, ArrowRight } from "lucide-react";
+import { SiteBoundaryEditor } from "../site";
+import Button from "../ui/Button.jsx";
+import Input from "../ui/Input.jsx";
+import Card from "../ui/Card.jsx";
+import ErrorBanner from "../ui/ErrorBanner.jsx";
+import { Skeleton } from "../ui/feedback/Loader.jsx";
 // BlueprintPanel available from '../ui/BlueprintPanel.jsx' if needed
-import IconWrapper from '../ui/IconWrapper.jsx';
-import StepContainer from '../layout/StepContainer.jsx';
-import { fadeInUp, staggerChildren } from '../../styles/animations.js';
+import IconWrapper from "../ui/IconWrapper.jsx";
+import StepContainer from "../layout/StepContainer.jsx";
+import { fadeInUp, staggerChildren } from "../../styles/animations.js";
 
-import LocationAccuracyBadge from '../ui/LocationAccuracyBadge.jsx';
+import LocationAccuracyBadge from "../ui/LocationAccuracyBadge.jsx";
 
 const LocationStep = ({
   address,
@@ -34,7 +36,11 @@ const LocationStep = ({
   const canProceed = locationData && address;
 
   return (
-    <StepContainer backgroundVariant="blueprint" enableParallax={true} maxWidth="6xl">
+    <StepContainer
+      backgroundVariant="blueprint"
+      enableParallax={true}
+      maxWidth="6xl"
+    >
       <motion.div
         className="space-y-8"
         variants={staggerChildren}
@@ -52,13 +58,18 @@ const LocationStep = ({
             Location Analysis
           </h2>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Enter your project address for intelligent site analysis and climate data
+            Enter your project address for intelligent site analysis and climate
+            data
           </p>
         </motion.div>
 
         {/* Address Input Card */}
         <motion.div variants={fadeInUp}>
-          <Card variant="elevated" padding="lg" className="max-w-3xl mx-auto bg-navy-800 border-navy-700">
+          <Card
+            variant="elevated"
+            padding="lg"
+            className="max-w-3xl mx-auto bg-navy-800 border-navy-700"
+          >
             <div className="space-y-6">
               <Input
                 label="Project Address"
@@ -69,8 +80,6 @@ const LocationStep = ({
                 fullWidth
                 icon={<MapPin className="w-5 h-5" />}
                 disabled={isDetectingLocation}
-                inputClassName="!bg-slate-900 !text-white !border-navy-700"
-                style={{ color: '#FFFFFF', backgroundColor: '#0F172A' }}
               />
 
               <div className="flex flex-col sm:flex-row gap-4">
@@ -100,6 +109,30 @@ const LocationStep = ({
             </div>
           </Card>
         </motion.div>
+
+        {/* Geocoding error */}
+        {error && (
+          <motion.div variants={fadeInUp} className="max-w-3xl mx-auto">
+            <ErrorBanner
+              variant="error"
+              title="Could not analyze location"
+              message={error}
+              visible={true}
+            />
+          </motion.div>
+        )}
+
+        {/* Map skeleton while geocoding (shown until locationData arrives) */}
+        {isDetectingLocation && !locationData && (
+          <motion.div variants={fadeInUp}>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+              <Skeleton
+                variant="card"
+                className="aspect-[16/9] h-auto w-full"
+              />
+            </div>
+          </motion.div>
+        )}
 
         {/* Location Accuracy Badge */}
         {locationAccuracy && (

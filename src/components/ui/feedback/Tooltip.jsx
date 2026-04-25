@@ -1,8 +1,8 @@
-import React from 'react';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
-import { motion, AnimatePresence } from 'framer-motion';
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import React from "react";
+import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { motion, AnimatePresence } from "framer-motion";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 // Utility to merge Tailwind classes
 function cn(...inputs) {
@@ -20,17 +20,15 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = ({
   children,
   content,
-  side = 'top',
-  align = 'center',
+  side = "top",
+  align = "center",
   delayDuration = 300,
   className,
   ...props
 }) => {
   return (
     <TooltipPrimitive.Root delayDuration={delayDuration} {...props}>
-      <TooltipPrimitive.Trigger asChild>
-        {children}
-      </TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
       <AnimatePresence>
         <TooltipPrimitive.Portal>
           <TooltipPrimitive.Content
@@ -41,17 +39,17 @@ const Tooltip = ({
           >
             <motion.div
               className={cn(
-                'z-tooltip px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md shadow-lg',
-                'max-w-xs',
-                className
+                "z-tooltip px-3 py-1.5 text-xs font-medium text-white/90 bg-navy-900/95 backdrop-blur-md border border-white/10 rounded-md shadow-soft-lg",
+                "max-w-xs",
+                className,
               )}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.15 }}
+              initial={{ opacity: 0, scale: 0.95, y: 4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 4 }}
+              transition={{ duration: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
             >
               {content}
-              <TooltipPrimitive.Arrow className="fill-gray-900" />
+              <TooltipPrimitive.Arrow className="fill-navy-900" />
             </motion.div>
           </TooltipPrimitive.Content>
         </TooltipPrimitive.Portal>
@@ -63,11 +61,7 @@ const Tooltip = ({
 /**
  * Simple hover tooltip wrapper
  */
-const TooltipWrapper = ({
-  children,
-  tooltip,
-  ...props
-}) => {
+const TooltipWrapper = ({ children, tooltip, ...props }) => {
   if (!tooltip) return children;
 
   return (
@@ -77,10 +71,6 @@ const TooltipWrapper = ({
   );
 };
 
-export {
-  Tooltip,
-  TooltipProvider,
-  TooltipWrapper,
-};
+export { Tooltip, TooltipProvider, TooltipWrapper };
 
 export default Tooltip;

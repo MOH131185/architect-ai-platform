@@ -5,8 +5,8 @@
  */
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { Check, Zap, ArrowLeft } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Check, Minus, Zap, ArrowLeft, ChevronDown, Quote } from "lucide-react";
 import { PLANS } from "../config/plans.js";
 import {
   AuthSignInButton,
@@ -15,6 +15,8 @@ import {
   clerkAuthConfigured,
   useOptionalAuth,
 } from "../services/auth/clerkFacade.js";
+import ErrorBanner from "./ui/ErrorBanner.jsx";
+import { expand } from "../styles/animations.js";
 
 const PLAN_ORDER = ["free", "starter", "professional", "enterprise"];
 
@@ -43,6 +45,39 @@ const PLAN_FEATURES = {
   ],
 };
 
+// Comparison table: rows = features, cells = per-plan availability.
+// Use null for "not included", string for quantitative cell, true for ✓.
+const COMPARISON_ROWS = [
+  { label: "A1 sheets / month", values: ["2", "5", "20", "Unlimited"] },
+  {
+    label: "DNA-Enhanced pipeline",
+    values: [true, true, true, true],
+  },
+  {
+    label: "All export formats (PDF / DXF / IFC)",
+    values: [null, true, true, true],
+  },
+  { label: "AI Modify workflow", values: [null, null, true, true] },
+  { label: "Priority support", values: [null, true, true, true] },
+  { label: "Dedicated support", values: [null, null, null, true] },
+  { label: "Custom integrations", values: [null, null, null, true] },
+];
+
+const FAQ = [
+  {
+    q: "How many A1 sheets can I generate per month?",
+    a: "Each plan includes a monthly quota — 2 on Free, 5 on Starter, 20 on Professional, and unlimited on Enterprise. Quotas reset on your billing date.",
+  },
+  {
+    q: "What happens to my designs if I cancel?",
+    a: "Your designs are stored locally in your browser (with optional Supabase sync) and remain available after cancellation. Generation is paused until you re-subscribe.",
+  },
+  {
+    q: "Can I switch plans?",
+    a: "Yes — upgrade or downgrade anytime from your account dashboard. Stripe handles proration automatically and the change takes effect immediately.",
+  },
+];
+
 const PricingCard = ({ planKey, onUpgrade, loading }) => {
   const plan = PLANS[planKey];
   const features = PLAN_FEATURES[planKey] || [];
@@ -54,10 +89,10 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative flex flex-col rounded-2xl border p-6 ${
+      className={`relative flex flex-col rounded-2xl border p-6 transition-colors ${
         isPopular
           ? "border-royal-500 bg-navy-900/80 shadow-glow"
-          : "border-navy-700 bg-navy-900/50"
+          : "border-white/10 bg-navy-900/50 hover:border-white/20"
       }`}
     >
       {isPopular && (
@@ -68,29 +103,27 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
 
       <div className="mb-4">
         <h3 className="text-lg font-bold text-white">{plan.label}</h3>
-        <p className="text-sm text-gray-400 mt-1">{plan.description}</p>
+        <p className="text-sm text-white/55 mt-1">{plan.description}</p>
       </div>
 
       <div className="mb-6">
         {isFree ? (
           <span className="text-4xl font-extrabold text-white">Free</span>
-        ) : isEnterprise ? (
-          <span className="text-4xl font-extrabold text-white">
-            ${plan.price}
-            <span className="text-base font-normal text-gray-400">/mo</span>
-          </span>
         ) : (
-          <span className="text-4xl font-extrabold text-white">
+          <span className="text-4xl font-extrabold text-white tabular-nums">
             ${plan.price}
-            <span className="text-base font-normal text-gray-400">/mo</span>
+            <span className="text-base font-normal text-white/55">/mo</span>
           </span>
         )}
       </div>
 
       <ul className="space-y-2 mb-8 flex-1">
         {features.map((f) => (
-          <li key={f} className="flex items-start gap-2 text-sm text-gray-300">
-            <Check className="w-4 h-4 text-royal-400 flex-shrink-0 mt-0.5" />
+          <li key={f} className="flex items-start gap-2 text-sm text-white/75">
+            <Check
+              className="w-4 h-4 text-royal-300 flex-shrink-0 mt-0.5"
+              strokeWidth={2}
+            />
             {f}
           </li>
         ))}
@@ -100,21 +133,21 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
         {!clerkAuthConfigured && !isFree ? (
           <a
             href="mailto:hello@archiaisolution.pro?subject=Subscription Access"
-            className="block w-full text-center py-2 rounded-lg text-sm font-medium bg-navy-800 text-gray-300 hover:bg-navy-700 border border-navy-700 transition-colors"
+            className="block w-full text-center py-2 rounded-lg text-sm font-medium bg-white/5 text-white/85 hover:bg-white/10 border border-white/10 transition-colors"
           >
             Contact us
           </a>
         ) : isFree ? (
           <button
             disabled
-            className="w-full py-2 rounded-lg text-sm font-medium bg-navy-800 text-gray-500 cursor-default border border-navy-700"
+            className="w-full py-2 rounded-lg text-sm font-medium bg-white/5 text-white/40 cursor-default border border-white/10"
           >
             Current free plan
           </button>
         ) : isEnterprise ? (
           <a
             href="mailto:hello@archiaisolution.pro?subject=Enterprise Plan"
-            className="block w-full text-center py-2 rounded-lg text-sm font-medium bg-navy-800 text-gray-300 hover:bg-navy-700 border border-navy-700 transition-colors"
+            className="block w-full text-center py-2 rounded-lg text-sm font-medium bg-white/5 text-white/85 hover:bg-white/10 border border-white/10 transition-colors"
           >
             Contact us
           </a>
@@ -125,7 +158,7 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
             className={`w-full py-2 rounded-lg text-sm font-medium transition-colors ${
               isPopular
                 ? "bg-royal-600 hover:bg-royal-500 text-white"
-                : "bg-navy-800 hover:bg-navy-700 text-white border border-navy-700"
+                : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
             } disabled:opacity-60 disabled:cursor-not-allowed`}
           >
             {loading === planKey ? (
@@ -148,6 +181,130 @@ const PricingCard = ({ planKey, onUpgrade, loading }) => {
         </AuthSignInButton>
       </AuthSignedOut>
     </motion.div>
+  );
+};
+
+const ComparisonCell = ({ value }) => {
+  if (value === true) {
+    return (
+      <Check
+        className="mx-auto h-4 w-4 text-emerald-300"
+        strokeWidth={2}
+        aria-label="Included"
+      />
+    );
+  }
+  if (value === null || value === undefined) {
+    return (
+      <Minus
+        className="mx-auto h-4 w-4 text-white/25"
+        strokeWidth={1.5}
+        aria-label="Not included"
+      />
+    );
+  }
+  return <span className="text-sm text-white/85 tabular-nums">{value}</span>;
+};
+
+const ComparisonTable = () => {
+  const planLabels = PLAN_ORDER.map((key) => PLANS[key].label);
+
+  return (
+    <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden">
+      <h3 className="text-eyebrow px-6 pt-5 pb-3">Plan Comparison</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-white/10">
+              <th className="px-6 py-3 text-xs font-medium uppercase tracking-widest text-white/55">
+                Feature
+              </th>
+              {planLabels.map((label, i) => (
+                <th
+                  key={label}
+                  className={`px-4 py-3 text-center text-xs font-semibold uppercase tracking-widest ${
+                    i === 2 ? "text-royal-300" : "text-white/70"
+                  }`}
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARISON_ROWS.map((row, idx) => (
+              <tr
+                key={row.label}
+                className={`border-b border-white/[0.06] ${
+                  idx % 2 === 0 ? "bg-white/[0.01]" : ""
+                }`}
+              >
+                <td className="px-6 py-3 text-sm text-white/80">{row.label}</td>
+                {row.values.map((v, i) => (
+                  <td key={i} className="px-4 py-3 text-center">
+                    <ComparisonCell value={v} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const FAQItem = ({ q, a, isOpen, onToggle }) => {
+  return (
+    <div className="border-b border-white/8 last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between py-4 text-left text-base font-medium text-white/85 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-royal-500/30 rounded-md"
+        aria-expanded={isOpen}
+      >
+        <span>{q}</span>
+        <motion.span
+          animate={{ rotate: isOpen ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+          className="ml-4 flex-shrink-0"
+        >
+          <ChevronDown className="h-5 w-5 text-white/55" strokeWidth={1.75} />
+        </motion.span>
+      </button>
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            variants={expand}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="overflow-hidden"
+          >
+            <p className="pb-4 text-sm text-white/65 leading-relaxed">{a}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const FaqSection = () => {
+  const [openIndex, setOpenIndex] = useState(0);
+
+  return (
+    <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-2">
+      <h3 className="text-eyebrow pt-3 pb-2">Frequently Asked</h3>
+      {FAQ.map((item, idx) => (
+        <FAQItem
+          key={item.q}
+          q={item.q}
+          a={item.a}
+          isOpen={openIndex === idx}
+          onToggle={() => setOpenIndex(openIndex === idx ? -1 : idx)}
+        />
+      ))}
+    </div>
   );
 };
 
@@ -197,9 +354,9 @@ const PricingPage = ({ onBack }) => {
         {onBack && (
           <button
             onClick={onBack}
-            className="flex items-center gap-2 text-gray-400 hover:text-white mb-8 text-sm transition-colors"
+            className="flex items-center gap-2 text-white/55 hover:text-white mb-8 text-sm transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
             Back to wizard
           </button>
         )}
@@ -210,20 +367,24 @@ const PricingPage = ({ onBack }) => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl font-extrabold text-white mb-3"
+            style={{ fontFamily: "'Space Grotesk', 'Inter', sans-serif" }}
           >
             Simple, transparent pricing
           </motion.h1>
-          <p className="text-gray-400 text-lg">
+          <p className="text-white/65 text-lg">
             Generate professional RIBA-standard A1 architectural sheets with AI.
           </p>
         </div>
 
         {/* Error */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-900/40 border border-red-700 rounded-lg text-red-300 text-sm text-center">
-            {error}
-          </div>
-        )}
+        <div className="mb-6">
+          <ErrorBanner
+            variant="error"
+            message={error}
+            visible={!!error}
+            onDismiss={() => setError(null)}
+          />
+        </div>
 
         {/* Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -237,9 +398,22 @@ const PricingPage = ({ onBack }) => {
           ))}
         </div>
 
-        <p className="text-center text-xs text-gray-500 mt-8">
-          Prices in USD. Cancel anytime. Stripe handles all billing securely.
-        </p>
+        {/* Comparison table */}
+        <ComparisonTable />
+
+        {/* FAQ accordion */}
+        <FaqSection />
+
+        {/* Social proof + footer note */}
+        <div className="mt-12 text-center">
+          <div className="inline-flex items-center gap-2 text-sm text-white/65">
+            <Quote className="h-4 w-4 text-royal-300" strokeWidth={1.75} />
+            Trusted by architects across the UK
+          </div>
+          <p className="text-center text-xs text-white/45 mt-4">
+            Prices in USD. Cancel anytime. Stripe handles all billing securely.
+          </p>
+        </div>
       </div>
     </div>
   );
