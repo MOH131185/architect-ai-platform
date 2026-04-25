@@ -10,9 +10,83 @@
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" crossorigin="use-credentials" />
 
     <title>ArchiAI Solution Ltd. - AI for Architecture & Design</title>
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(0, 122, 255, 0.2), transparent 30rem),
+          linear-gradient(135deg, #06111f 0%, #0a1929 48%, #0f172a 100%);
+        color: #f8fafc;
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+      }
+
+      .deployment-preview-shell {
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+        padding: 40px;
+        box-sizing: border-box;
+      }
+
+      .deployment-preview-card {
+        width: min(920px, 100%);
+        padding: 44px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 28px;
+        background: rgba(8, 19, 33, 0.84);
+        box-shadow: 0 28px 90px rgba(0, 0, 0, 0.38);
+      }
+
+      .deployment-preview-kicker {
+        margin: 0 0 14px;
+        color: #7dd3fc;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      .deployment-preview-title {
+        margin: 0;
+        max-width: 740px;
+        font-size: clamp(42px, 7vw, 82px);
+        line-height: 0.94;
+        letter-spacing: -0.06em;
+      }
+
+      .deployment-preview-copy {
+        margin: 24px 0 0;
+        max-width: 640px;
+        color: #cbd5e1;
+        font-size: clamp(18px, 2vw, 24px);
+        line-height: 1.45;
+      }
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
+    <div id="root">
+      <main class="deployment-preview-shell" aria-label="ArchiAI Solution preview">
+        <section class="deployment-preview-card">
+          <p class="deployment-preview-kicker">ArchiAI Solution</p>
+          <h1 class="deployment-preview-title">AI architecture generation, from site brief to A1 board.</h1>
+          <p class="deployment-preview-copy">
+            Transform a location and programme into coordinated architectural drawings, 3D studies,
+            and presentation-ready project outputs.
+          </p>
+        </section>
+      </main>
+    </div>
   </body>
 </html>
