@@ -82,6 +82,28 @@ function resolveLockedLevelCount(projectDetails = {}) {
   return Math.max(1, parsed);
 }
 
+function resolveExplicitLevelCount(projectDetails = {}, programSpaces = []) {
+  const lockedLevelCount = resolveLockedLevelCount(projectDetails);
+  if (lockedLevelCount) {
+    return lockedLevelCount;
+  }
+
+  const metadataLevelCount = Number(programSpaces?._calculatedFloorCount);
+  if (Number.isFinite(metadataLevelCount) && metadataLevelCount > 0) {
+    return Math.max(1, Math.round(metadataLevelCount));
+  }
+
+  const projectLevelCount = Number.parseInt(
+    projectDetails.floorCount ?? projectDetails.floors,
+    10,
+  );
+  if (Number.isFinite(projectLevelCount) && projectLevelCount > 0) {
+    return Math.max(1, projectLevelCount);
+  }
+
+  return null;
+}
+
 function inferLevelCountFromSpaces(spaces = []) {
   if (!Array.isArray(spaces) || spaces.length === 0) {
     return 0;
@@ -1210,7 +1232,10 @@ function buildProgramBrief({
   const totalAreaM2 = Number(projectDetails.area || 0);
   const siteAreaM2 = Number(siteEvidence?.payload?.areaM2 || 0);
   const subType = projectDetails.subType || projectDetails.program;
-  const lockedLevelCount = resolveLockedLevelCount(projectDetails);
+  const explicitLevelCount = resolveExplicitLevelCount(
+    projectDetails,
+    programSpaces,
+  );
   if (!isSupportedResidentialV2SubType(subType)) {
     return {
       schema_version: "program-brief-v1",
@@ -1230,15 +1255,19 @@ function buildProgramBrief({
       subType,
       totalAreaM2,
       siteAreaM2,
-      levelCountOverride: lockedLevelCount || null,
+      levelCountOverride: explicitLevelCount || null,
       entranceDirection: projectDetails.entranceDirection || "S",
     });
+    const generatedLevelCount = Math.max(
+      1,
+      Number(generatedBrief.levelCount || explicitLevelCount || 1),
+    );
     const resolvedLevelCount =
-      lockedLevelCount ||
+      (explicitLevelCount ? generatedLevelCount : null) ||
       Math.max(
         1,
         inferLevelCountFromSpaces(programSpaces) ||
-          Number(generatedBrief.levelCount || 1),
+          generatedLevelCount,
       );
     const alignedSpaces = alignProgramSpacesToResolvedLevels({
       spaces: programSpaces,
@@ -1255,9 +1284,11 @@ function buildProgramBrief({
         sources: [
           "user-reviewed program spaces",
           "uk residential v2 normalization",
-          ...(lockedLevelCount
+          ...(projectDetails.floorCountLocked
             ? ["manual floor-count lock reconciliation"]
-            : []),
+            : explicitLevelCount
+              ? ["proposed floor-count reconciliation"]
+              : []),
         ],
         fallbackReason: null,
       },
@@ -1268,16 +1299,16 @@ function buildProgramBrief({
     subType,
     totalAreaM2,
     siteAreaM2,
-    levelCountOverride: lockedLevelCount || null,
+    levelCountOverride: explicitLevelCount || null,
     entranceDirection: projectDetails.entranceDirection || "S",
     customNotes: projectDetails.customNotes,
   });
-  if (!lockedLevelCount) {
+  if (!explicitLevelCount) {
     return generatedBrief;
   }
   return {
     ...generatedBrief,
-    levelCount: lockedLevelCount,
+    levelCount: Number(generatedBrief.levelCount || explicitLevelCount),
   };
 }
 

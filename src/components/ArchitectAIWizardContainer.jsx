@@ -26,6 +26,7 @@ import autoLevelAssignmentService from "../services/autoLevelAssignmentService.j
 import logger from "../utils/logger.js";
 import { convertPdfFileToImageFile } from "../utils/pdfToImages.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
+import { getCurrentPipelineMode, PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
   sanitizePromptInput,
   sanitizeDimensionInput,
@@ -1550,6 +1551,26 @@ const ArchitectAIWizardContainer = () => {
           ) || effectiveProgramSpaces;
       }
 
+      const isProjectGraphMode =
+        getCurrentPipelineMode() === PIPELINE_MODE.PROJECT_GRAPH;
+      const portfolioFileSummaries = portfolioFiles.map((file) => ({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        convertedFromPdf: file.convertedFromPdf,
+      }));
+      const portfolioFilesForDesignSpec = isProjectGraphMode
+        ? portfolioFileSummaries
+        : portfolioFiles.map((file) => ({
+            name: file.name,
+            size: file.size,
+            preview: file.preview,
+            dataUrl: file.dataUrl,
+            file: file.file,
+            type: file.type,
+            convertedFromPdf: file.convertedFromPdf,
+          }));
+
       const designSpec = {
         buildingProgram: selectedSubType || projectDetails.category,
         buildingCategory: projectDetails.category,
@@ -1561,6 +1582,7 @@ const ArchitectAIWizardContainer = () => {
           v2Bundle?.programBrief?.levelCount || projectDetails.floorCount || 2,
         floors:
           v2Bundle?.programBrief?.levelCount || projectDetails.floorCount || 2, // Alias for services expecting `floors`
+        floorCountLocked: Boolean(projectDetails.floorCountLocked),
         entranceOrientation: projectDetails.entranceDirection,
         entranceDirection: projectDetails.entranceDirection, // Maintain backward compatibility
         programSpaces: effectiveProgramSpaces,
@@ -1579,40 +1601,36 @@ const ArchitectAIWizardContainer = () => {
         portfolioBlend: {
           materialWeight,
           characteristicWeight,
-          portfolioFiles: portfolioFiles.map((file) => ({
-            name: file.name,
-            size: file.size,
-            preview: file.preview,
-            dataUrl: file.dataUrl, // Base64 for API usage (critical for vision AI)
-            file: file.file,
-            type: file.type,
-            convertedFromPdf: file.convertedFromPdf,
-          })),
+          portfolioFiles: portfolioFilesForDesignSpec,
           localStyle: locationData?.recommendedStyle,
           climateStyle: locationData?.climate?.type,
         },
         siteAnalysis: locationData?.siteAnalysis,
         siteDNA: locationData?.siteDNA,
         localMaterials: locationData?.localMaterials,
-        siteEvidence: v2Bundle?.siteEvidence || null,
-        localStyleEvidence: v2Bundle?.localStyleEvidence || null,
-        portfolioStyleEvidence: v2Bundle?.portfolioStyleEvidence || null,
-        styleBlendSpec: v2Bundle?.styleBlendSpec || null,
         programBrief: v2Bundle?.programBrief || null,
-        projectGeometry: v2Bundle?.projectGeometry || null,
-        populatedGeometry: v2Bundle?.populatedGeometry || null,
-        compiledProject: v2Bundle?.compiledProject || null,
-        projectQuantityTakeoff: v2Bundle?.projectQuantityTakeoff || null,
-        blendedStyle: v2Bundle?.blendedStyle || null,
         confidence: v2Bundle?.confidence || null,
         validation: v2Bundle?.validation || null,
-        v2Bundle,
-        location: {
-          ...locationData,
-          climate: locationData?.climate,
-          sunPath: locationData?.sunPath || locationData?.siteDNA?.solar,
-          wind: locationData?.wind,
-        },
+        ...(isProjectGraphMode
+          ? {}
+          : {
+              siteEvidence: v2Bundle?.siteEvidence || null,
+              localStyleEvidence: v2Bundle?.localStyleEvidence || null,
+              portfolioStyleEvidence: v2Bundle?.portfolioStyleEvidence || null,
+              styleBlendSpec: v2Bundle?.styleBlendSpec || null,
+              projectGeometry: v2Bundle?.projectGeometry || null,
+              populatedGeometry: v2Bundle?.populatedGeometry || null,
+              compiledProject: v2Bundle?.compiledProject || null,
+              projectQuantityTakeoff: v2Bundle?.projectQuantityTakeoff || null,
+              blendedStyle: v2Bundle?.blendedStyle || null,
+              v2Bundle,
+              location: {
+                ...locationData,
+                climate: locationData?.climate,
+                sunPath: locationData?.sunPath || locationData?.siteDNA?.solar,
+                wind: locationData?.wind,
+              },
+            }),
         sheetConfig: {
           size: "A1",
           orientation: "landscape",

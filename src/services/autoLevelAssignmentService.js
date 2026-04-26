@@ -605,7 +605,7 @@ class AutoLevelAssignmentService {
 
     // Step 3: Assign upper priority spaces to upper floors
     if (levels.length >= 2) {
-      const upperStartIdx = levels.length >= 3 ? 2 : 1; // Start from Second or First
+      const upperStartIdx = 1; // Upper residential rooms can occupy First and above.
       let upperIdx = upperStartIdx;
 
       categorized.upperPriority.forEach((space) => {

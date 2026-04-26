@@ -288,7 +288,6 @@ const SpecsStep = ({
                   placeholder="Number of levels"
                   min="1"
                   fullWidth
-                  disabled={!projectDetails.floorCountLocked}
                   icon={<Layers className="w-4 h-4" />}
                 />
 
@@ -527,8 +526,11 @@ const SpecsStep = ({
                 <BuildingProgramTable
                   programSpaces={programSpaces}
                   floorCount={
-                    projectDetails.floorCount ||
-                    projectDetails.autoDetectedFloorCount ||
+                    programSpaces?._calculatedFloorCount ||
+                    (projectDetails.floorCountLocked
+                      ? projectDetails.floorCount
+                      : projectDetails.autoDetectedFloorCount ||
+                        projectDetails.floorCount) ||
                     2
                   }
                   onChange={handleProgramRowChange}

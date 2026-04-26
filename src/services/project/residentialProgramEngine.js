@@ -796,6 +796,67 @@ function getLevelName(levelIndex) {
   return `Level ${levelIndex}`;
 }
 
+function isStairOrVerticalCore(space = {}) {
+  const type = slugify(space.spaceType || space.type || "");
+  const name = slugify(space.name || space.label || "");
+  return (
+    type.includes("stair") ||
+    name.includes("stair") ||
+    name.includes("vertical-circulation")
+  );
+}
+
+function normaliseSpaceLevel(space = {}, levelIndex = 0) {
+  const safeLevelIndex = Math.max(0, Math.floor(Number(levelIndex) || 0));
+  return {
+    ...space,
+    levelIndex: safeLevelIndex,
+    level: getLevelName(safeLevelIndex),
+  };
+}
+
+function rebalanceUpperSpacesAcrossLevels(spaces = [], levelCount = 1) {
+  const floorCount = Math.max(1, Math.floor(Number(levelCount) || 1));
+  if (floorCount <= 1) {
+    return spaces.map((space) => normaliseSpaceLevel(space, 0));
+  }
+
+  const floorAreas = Array.from({ length: floorCount }, () => 0);
+  const fixedSpaces = [];
+  const upperCandidates = [];
+  const areaOf = (space) => Number(space.area || 0) * Number(space.count || 1);
+
+  spaces.forEach((space) => {
+    const currentIndex = clamp(Number(space.levelIndex), 0, floorCount - 1);
+    const nextSpace = normaliseSpaceLevel(space, currentIndex);
+
+    if (currentIndex === 0 || isStairOrVerticalCore(nextSpace)) {
+      fixedSpaces.push(nextSpace);
+      floorAreas[nextSpace.levelIndex] += areaOf(nextSpace);
+      return;
+    }
+
+    upperCandidates.push(nextSpace);
+  });
+
+  upperCandidates
+    .sort((a, b) => areaOf(b) - areaOf(a))
+    .forEach((space) => {
+      let targetLevelIndex = 1;
+      for (let index = 2; index < floorCount; index += 1) {
+        if (floorAreas[index] < floorAreas[targetLevelIndex]) {
+          targetLevelIndex = index;
+        }
+      }
+
+      const assigned = normaliseSpaceLevel(space, targetLevelIndex);
+      fixedSpaces.push(assigned);
+      floorAreas[targetLevelIndex] += areaOf(assigned);
+    });
+
+  return fixedSpaces;
+}
+
 function pushSpace(spaces, descriptor, levelIndex, countIndex, areaM2) {
   const level = getLevelName(levelIndex);
   const suffix =
@@ -895,7 +956,7 @@ export function generateResidentialProgramBrief({
   }
 
   const areaFit = fitSpacesToTargetArea(spaces, totalAreaM2);
-  spaces = areaFit.spaces;
+  spaces = rebalanceUpperSpacesAcrossLevels(areaFit.spaces, levelCount);
 
   const adjacency = [
     ["Entrance Hall", "Living Room"],

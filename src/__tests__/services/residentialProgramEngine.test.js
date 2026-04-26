@@ -74,6 +74,30 @@ describe("residentialProgramEngine", () => {
     expect(brief.spaces.some((space) => space.levelIndex === 1)).toBe(true);
   });
 
+  test("distributes three-level residential programs across all requested upper levels", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 150,
+      siteAreaM2: 147,
+      levelCountOverride: 3,
+      entranceDirection: "S",
+    });
+
+    const occupiedLevels = new Set(
+      brief.spaces.map((space) => Number(space.levelIndex)),
+    );
+
+    expect(brief.levelCount).toBe(3);
+    expect(occupiedLevels.has(0)).toBe(true);
+    expect(occupiedLevels.has(1)).toBe(true);
+    expect(occupiedLevels.has(2)).toBe(true);
+    expect(
+      brief.spaces.every(
+        (space) => space.levelIndex >= 0 && space.levelIndex < brief.levelCount,
+      ),
+    ).toBe(true);
+  });
+
   test("normalizes imported spaces into deterministic program rows", () => {
     const normalized = normalizeResidentialProgramSpaces([
       { name: "Living Room", area: "24", count: "1", level: "Ground" },

@@ -35,6 +35,7 @@ const STAGES = Object.freeze([
   "rendering",
   "finalizing",
 ]);
+const PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS = 750_000;
 
 const getStageForStep = (step) =>
   STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
@@ -152,6 +153,24 @@ function compactPortfolioBlendForRequest(portfolioBlend = {}) {
   };
 }
 
+function compactProgramSpacesForRequest(programSpaces = []) {
+  return (Array.isArray(programSpaces) ? programSpaces : []).map(
+    (space, index) => ({
+      id: space.id || `space-${index}`,
+      name: String(space.name || space.label || `Space ${index + 1}`),
+      label: String(space.label || space.name || `Space ${index + 1}`),
+      spaceType: space.spaceType || space.type || null,
+      area: Number(space.area || 0),
+      count: Math.max(1, Number(space.count || 1)),
+      level: space.level || null,
+      levelIndex: Number.isFinite(Number(space.levelIndex))
+        ? Number(space.levelIndex)
+        : null,
+      notes: space.notes ? String(space.notes).slice(0, 500) : "",
+    }),
+  );
+}
+
 export function buildProjectGraphVerticalSliceRequest(params = {}) {
   const designSpec = params.designSpec || {};
   const projectDetails =
@@ -205,7 +224,7 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       designSpec.sitePolygonMetrics ||
       compactSiteSnapshot?.metadata?.siteMetrics ||
       {},
-    programSpaces,
+    programSpaces: compactProgramSpacesForRequest(programSpaces),
     programBrief: designSpec.programBrief || null,
     portfolioBlend: compactPortfolioBlendForRequest(
       designSpec.portfolioBlend || {},
@@ -276,10 +295,34 @@ async function runProjectGraphVerticalSliceWorkflow({
     message: "Building ProjectGraph source of truth...",
   });
 
+  const requestBody = JSON.stringify(
+    buildProjectGraphVerticalSliceRequest(params),
+  );
+
+  if (
+    requestBody.includes("data:image") ||
+    requestBody.includes(";base64,") ||
+    requestBody.length > PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS
+  ) {
+    logger.error("ProjectGraph request payload failed client-size guard", {
+      chars: requestBody.length,
+      limit: PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS,
+      containsDataImage: requestBody.includes("data:image"),
+      containsBase64Marker: requestBody.includes(";base64,"),
+    });
+    throw new Error(
+      "ProjectGraph vertical slice request is too large after compaction. Remove embedded image data from the request payload.",
+    );
+  }
+
+  logger.info("ProjectGraph vertical slice payload prepared", {
+    chars: requestBody.length,
+  });
+
   const response = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(buildProjectGraphVerticalSliceRequest(params)),
+    body: requestBody,
   });
   const verticalSlice = await response.json().catch(() => ({}));
 

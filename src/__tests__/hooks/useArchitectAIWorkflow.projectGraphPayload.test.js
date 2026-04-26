@@ -16,7 +16,15 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
           { lat: 52.482, lng: -1.892 },
         ],
         siteMetrics: { areaM2: 147, orientationDeg: 10 },
-        programSpaces: [{ name: "Living Room", area: 24, levelIndex: 0 }],
+        programSpaces: [
+          {
+            name: "Living Room",
+            area: 24,
+            levelIndex: 0,
+            dataUrl: largeImage,
+            notes: "a".repeat(700),
+          },
+        ],
         portfolioBlend: {
           materialWeight: 0.6,
           portfolioFiles: [
@@ -49,12 +57,14 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
 
     expect(serialized).not.toContain("data:image");
     expect(serialized).not.toContain("shouldNeverSerialize");
+    expect(serialized).not.toContain('"dataUrl"');
     expect(serialized.length).toBeLessThan(20_000);
     expect(request.siteSnapshot.sha256).toBe("snapshot-hash");
     expect(request.siteMetrics.areaM2).toBe(147);
     expect(request.projectDetails.floorCount).toBe(2);
     expect(request.projectDetails.floorCountLocked).toBe(true);
     expect(request.brief.target_storeys).toBe(2);
+    expect(request.programSpaces[0].notes).toHaveLength(500);
     expect(request.portfolioBlend.portfolioFiles[0]).toEqual({
       name: "portfolio.png",
       type: "image/png",
