@@ -24,8 +24,11 @@ export default async function handler(req, res) {
     status: "ok",
     timestamp: new Date().toISOString(),
     services: {
-      together: !!process.env.TOGETHER_API_KEY,
-      openai: !!process.env.OPENAI_REASONING_API_KEY,
+      openai:
+        !!process.env.OPENAI_API_KEY || !!process.env.OPENAI_REASONING_API_KEY,
+      openaiImages:
+        !!process.env.OPENAI_IMAGES_API_KEY || !!process.env.OPENAI_API_KEY,
+      togetherLegacy: !!process.env.TOGETHER_API_KEY,
       genarch:
         !!process.env.RUNPOD_GENARCH_URL && !!process.env.GENARCH_API_KEY,
     },

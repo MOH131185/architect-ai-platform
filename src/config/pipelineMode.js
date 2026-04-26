@@ -6,8 +6,9 @@
  */
 
 export const PIPELINE_MODE = {
-  // Only MULTI_PANEL is currently implemented; others are retained for
-  // backwards-compatible normalisation and explicit error reporting.
+  // ProjectGraph is the production default. Multi-panel is retained as an
+  // explicit legacy mode for comparison/debugging.
+  PROJECT_GRAPH: "project_graph",
   SINGLE_SHOT: "single_shot",
   MULTI_PANEL: "multi_panel",
   GEOMETRY_FIRST: "geometry_first",
@@ -26,6 +27,8 @@ export const PIPELINE_3D_PANELS = STYLED_3D_PANELS;
 function normaliseMode(raw) {
   if (!raw) return null;
   const s = String(raw).trim().toLowerCase().replace(/[-\s]/g, "_");
+  if (s === "project_graph" || s === "projectgraph" || s === "riba_a1")
+    return PIPELINE_MODE.PROJECT_GRAPH;
   if (s === "single_shot" || s === "singleshot")
     return PIPELINE_MODE.SINGLE_SHOT;
   if (s === "multi_panel" || s === "multipanel")
@@ -47,7 +50,7 @@ export function isOption2Mode(mode) {
  * Priority:
  *   1. REACT_APP_PIPELINE_MODE (browser env via CRA)
  *   2. PIPELINE_MODE (server env / .env)
- *   3. Default: MULTI_PANEL
+ *   3. Default: PROJECT_GRAPH
  */
 export function getCurrentPipelineMode() {
   // Browser (CRA injects REACT_APP_ prefixed vars)
@@ -67,7 +70,7 @@ export function getCurrentPipelineMode() {
   }
 
   // Default
-  return PIPELINE_MODE.MULTI_PANEL;
+  return PIPELINE_MODE.PROJECT_GRAPH;
 }
 
 export function logPipelineConfig() {
@@ -90,9 +93,13 @@ export function logPipelineConfig() {
     console.log(
       `[PipelineMode] Effective PIPELINE_MODE=${effective} (source: ${src})`,
     );
-    if (effective !== PIPELINE_MODE.MULTI_PANEL) {
+    if (
+      ![PIPELINE_MODE.PROJECT_GRAPH, PIPELINE_MODE.MULTI_PANEL].includes(
+        effective,
+      )
+    ) {
       console.warn(
-        `[PipelineMode] WARNING: Only "${PIPELINE_MODE.MULTI_PANEL}" is implemented. ` +
+        `[PipelineMode] WARNING: Supported modes are "${PIPELINE_MODE.PROJECT_GRAPH}" and "${PIPELINE_MODE.MULTI_PANEL}". ` +
           `Current mode "${effective}" will throw UnsupportedPipelineModeError at runtime.`,
       );
     }

@@ -16,6 +16,8 @@ node_modules/
 
 # testing
 /coverage
+.pytest_cache/
+genarch/.pytest_cache/
 
 # Production
 build/
@@ -81,3 +83,21 @@ build_active_*/
 build_active_ci/
 build_phase*/
 genarch/tmp_*/
+.codex-push-gitdata/
+.codex-write-test/
+.codex-git-publish/
+.codex-push-main/
+.codex-push-worktree/
+codex_alt_git/
+codex_git_probe/
+codex_git_writable/
+codex_lock_test.tmp
+codex_publish.index.lock
+codex_publish_gitdir/
+codex_publish_objects/
+codex_plain_git_repo/
+codex_push_gitdata_plain/
+codex_push_worktree_plain/
+codex_test_dir/
+codex_write_regular.tmp
+git-delete-probe.tmp

@@ -49,7 +49,7 @@ export const ServiceName = {
   OPENAI_REASONING: "openai-reasoning",
   OPENAI_IMAGES: "openai-images",
   OPENAI_LEGACY: "openai-legacy",
-  /** @deprecated Replicate removed — Together.ai is primary */
+  /** @deprecated Legacy FLUX/Together path; ProjectGraph V2 uses OpenAI + deterministic geometry */
   TOGETHER_AI: "together-ai",
   MIDJOURNEY: "midjourney",
 };
@@ -82,17 +82,17 @@ const API_KEY_CONFIG = {
           "REACT_APP_OPENAI_API_KEY",
         ]
       : ["OPENAI_REASONING_API_KEY", "REACT_APP_OPENAI_API_KEY"],
-    required: false, // Optional fallback — Together.ai Qwen is primary
+    required: false,
     clientSide: false,
-    description: "OpenAI API for GPT-4 design reasoning (optional fallback)",
+    description: "OpenAI API for model-first RIBA/ProjectGraph reasoning",
   },
   [ServiceName.OPENAI_IMAGES]: {
     envVars: IS_PROD
       ? ["OPENAI_API_KEY", "OPENAI_IMAGES_API_KEY"]
       : ["OPENAI_IMAGES_API_KEY", "REACT_APP_OPENAI_API_KEY"],
-    required: false, // Optional since Together AI can be used
+    required: false,
     clientSide: false,
-    description: "OpenAI API for DALL·E 3 image generation",
+    description: "OpenAI image API for optional presentation imagery",
   },
   [ServiceName.OPENAI_LEGACY]: {
     envVars: ["REACT_APP_OPENAI_API_KEY"],
@@ -100,13 +100,13 @@ const API_KEY_CONFIG = {
     clientSide: true,
     description: "Legacy OpenAI API key (deprecated)",
   },
-  /** @deprecated Replicate removed — Together.ai is primary image service */
+  /** @deprecated Legacy FLUX/Together path; not required for ProjectGraph V2 */
   [ServiceName.TOGETHER_AI]: {
     envVars: ["TOGETHER_API_KEY"],
-    required: true, // PRIMARY — all image generation and reasoning
+    required: false,
     clientSide: false,
     description:
-      "Together AI for FLUX.1 image generation and Qwen reasoning (primary)",
+      "Legacy FLUX/Together provider, disabled unless explicitly opted in",
   },
   [ServiceName.MIDJOURNEY]: {
     envVars: ["MIDJOURNEY_API_KEY"],

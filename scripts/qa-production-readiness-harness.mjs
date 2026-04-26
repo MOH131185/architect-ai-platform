@@ -30,76 +30,76 @@
  * @module scripts/qa-production-readiness-harness
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import sharp from 'sharp';
-import { createRequire } from 'module';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import sharp from "sharp";
+import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '..');
+const PROJECT_ROOT = path.resolve(__dirname, "..");
 
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
 
 const BUILDING_TYPES = [
-  'detached',
-  'semi_detached',
-  'terrace_mid',
-  'apartment_block',
-  'bungalow',
-  'townhouse',
+  "detached",
+  "semi_detached",
+  "terrace_mid",
+  "apartment_block",
+  "bungalow",
+  "townhouse",
 ];
 
 const PANEL_TYPES = [
-  'hero_3d',
-  'interior_3d',
-  'floor_plan_ground',
-  'floor_plan_first',
-  'elevation_north',
-  'elevation_south',
-  'elevation_east',
-  'elevation_west',
-  'section_AA',
-  'section_BB',
-  'site_plan',
+  "hero_3d",
+  "interior_3d",
+  "floor_plan_ground",
+  "floor_plan_first",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+  "site_plan",
 ];
 
 const ACCEPTANCE_CRITERIA = {
-  minSuccessRate: 0.90,  // 90%
+  minSuccessRate: 0.9, // 90%
   maxUnfixableFailures: 0,
   minRuns: 50,
 };
 
 // Real generation thresholds (stricter than synthetic)
 const REAL_THRESHOLDS = {
-  minSSIM: 0.6,      // Cross-panel structural similarity
-  minPHash: 0.55,    // Perceptual hash similarity
-  minEdgeOverlap: 0.15,  // Edge structure consistency
+  minSSIM: 0.6, // Cross-panel structural similarity
+  minPHash: 0.55, // Perceptual hash similarity
+  minEdgeOverlap: 0.15, // Edge structure consistency
 };
 
 // Synthetic generation thresholds (for harness testing)
 const SYNTHETIC_THRESHOLDS = {
   minSSIM: 0.3,
   minPHash: 0.5,
-  minEdgeOverlap: 0,  // Synthetic images may have 0 edges
+  minEdgeOverlap: 0, // Synthetic images may have 0 edges
 };
 
 const DEFAULT_CONFIG = {
   runs: 50,
   maxRuns: 100,
-  buildingType: 'random',
-  outputDir: path.join(PROJECT_ROOT, 'qa_results'),
+  buildingType: "random",
+  outputDir: path.join(PROJECT_ROOT, "qa_results"),
   failFast: false,
   verbose: false,
   dryRun: false,
   retryLimit: 2,
-  timeoutMs: 600000,  // 10 minutes for real generation
-  realGeneration: false,  // NEW: Flag for real API generation
+  timeoutMs: 600000, // 10 minutes for real generation
+  realGeneration: false, // NEW: Flag for real API generation
 };
 
 // =============================================================================
@@ -111,19 +111,19 @@ const DEFAULT_CONFIG = {
  */
 function loadEnv() {
   const envFiles = [
-    path.join(PROJECT_ROOT, '.env'),
-    path.join(PROJECT_ROOT, '.env.local'),
+    path.join(PROJECT_ROOT, ".env"),
+    path.join(PROJECT_ROOT, ".env.local"),
   ];
 
   for (const envFile of envFiles) {
     if (fs.existsSync(envFile)) {
-      const content = fs.readFileSync(envFile, 'utf-8');
-      for (const line of content.split('\n')) {
+      const content = fs.readFileSync(envFile, "utf-8");
+      for (const line of content.split("\n")) {
         const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#')) {
-          const [key, ...valueParts] = trimmed.split('=');
+        if (trimmed && !trimmed.startsWith("#")) {
+          const [key, ...valueParts] = trimmed.split("=");
           if (key && valueParts.length > 0) {
-            const value = valueParts.join('=').replace(/^["']|["']$/g, '');
+            const value = valueParts.join("=").replace(/^["']|["']$/g, "");
             if (!process.env[key]) {
               process.env[key] = value;
             }
@@ -138,16 +138,20 @@ function loadEnv() {
  * Validate required API keys for real generation
  */
 function validateApiKeys() {
-  const required = ['TOGETHER_API_KEY'];
-  const missing = required.filter(key => !process.env[key]);
+  const required = ["OPENAI_API_KEY"];
+  const missing = required.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
-    throw new Error(`Missing required API keys for real generation: ${missing.join(', ')}\nSet them in .env or .env.local`);
+    throw new Error(
+      `Missing required API keys for real generation: ${missing.join(", ")}\nSet them in .env or .env.local`,
+    );
   }
 
   return {
-    togetherApiKey: process.env.TOGETHER_API_KEY,
-    openaiApiKey: process.env.OPENAI_REASONING_API_KEY || null,
+    openaiApiKey: process.env.OPENAI_API_KEY,
+    openaiReasoningApiKey: process.env.OPENAI_REASONING_API_KEY || null,
+    openaiImagesApiKey: process.env.OPENAI_IMAGES_API_KEY || null,
+    togetherApiKey: process.env.TOGETHER_API_KEY || null,
     meshyApiKey: process.env.MESHY_API_KEY || null,
   };
 }
@@ -161,19 +165,19 @@ function parseArgs() {
   const args = process.argv.slice(2);
 
   for (const arg of args) {
-    if (arg.startsWith('--runs=')) {
-      config.runs = Math.min(parseInt(arg.split('=')[1], 10), config.maxRuns);
-    } else if (arg.startsWith('--building-type=')) {
-      config.buildingType = arg.split('=')[1];
-    } else if (arg.startsWith('--output=')) {
-      config.outputDir = arg.split('=')[1];
-    } else if (arg === '--fail-fast') {
+    if (arg.startsWith("--runs=")) {
+      config.runs = Math.min(parseInt(arg.split("=")[1], 10), config.maxRuns);
+    } else if (arg.startsWith("--building-type=")) {
+      config.buildingType = arg.split("=")[1];
+    } else if (arg.startsWith("--output=")) {
+      config.outputDir = arg.split("=")[1];
+    } else if (arg === "--fail-fast") {
       config.failFast = true;
-    } else if (arg === '--verbose') {
+    } else if (arg === "--verbose") {
       config.verbose = true;
-    } else if (arg === '--dry-run') {
+    } else if (arg === "--dry-run") {
       config.dryRun = true;
-    } else if (arg === '--real-generation') {
+    } else if (arg === "--real-generation") {
       config.realGeneration = true;
     }
   }
@@ -202,12 +206,12 @@ async function computeSSIM(bufferA, bufferB) {
 
   const [grayA, grayB] = await Promise.all([
     sharp(bufferA)
-      .resize(width, height, { fit: 'fill', kernel: 'lanczos3' })
+      .resize(width, height, { fit: "fill", kernel: "lanczos3" })
       .grayscale()
       .raw()
       .toBuffer(),
     sharp(bufferB)
-      .resize(width, height, { fit: 'fill', kernel: 'lanczos3' })
+      .resize(width, height, { fit: "fill", kernel: "lanczos3" })
       .grayscale()
       .raw()
       .toBuffer(),
@@ -216,7 +220,8 @@ async function computeSSIM(bufferA, bufferB) {
   const N = width * height;
 
   // Compute means
-  let muX = 0, muY = 0;
+  let muX = 0,
+    muY = 0;
   for (let i = 0; i < N; i++) {
     muX += grayA[i];
     muY += grayB[i];
@@ -225,7 +230,9 @@ async function computeSSIM(bufferA, bufferB) {
   muY /= N;
 
   // Compute variances and covariance
-  let sigmaX2 = 0, sigmaY2 = 0, sigmaXY = 0;
+  let sigmaX2 = 0,
+    sigmaY2 = 0,
+    sigmaXY = 0;
   for (let i = 0; i < N; i++) {
     const dx = grayA[i] - muX;
     const dy = grayB[i] - muY;
@@ -233,16 +240,17 @@ async function computeSSIM(bufferA, bufferB) {
     sigmaY2 += dy * dy;
     sigmaXY += dx * dy;
   }
-  sigmaX2 /= (N - 1);
-  sigmaY2 /= (N - 1);
-  sigmaXY /= (N - 1);
+  sigmaX2 /= N - 1;
+  sigmaY2 /= N - 1;
+  sigmaXY /= N - 1;
 
   // Stability constants
   const C1 = (SSIM_K1 * SSIM_L) ** 2;
   const C2 = (SSIM_K2 * SSIM_L) ** 2;
 
   // SSIM formula
-  const ssim = ((2 * muX * muY + C1) * (2 * sigmaXY + C2)) /
+  const ssim =
+    ((2 * muX * muY + C1) * (2 * sigmaXY + C2)) /
     ((muX ** 2 + muY ** 2 + C1) * (sigmaX2 + sigmaY2 + C2));
 
   return Math.max(0, Math.min(1, ssim));
@@ -255,7 +263,7 @@ async function computePHash(buffer) {
   const HASH_SIZE = 32;
 
   const { data } = await sharp(buffer)
-    .resize(HASH_SIZE, HASH_SIZE, { fit: 'fill', kernel: 'lanczos3' })
+    .resize(HASH_SIZE, HASH_SIZE, { fit: "fill", kernel: "lanczos3" })
     .grayscale()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -295,9 +303,10 @@ async function computePHash(buffer) {
   }
 
   // Convert to hex
-  let hash = '';
+  let hash = "";
   for (let i = 0; i < 64; i += 4) {
-    const nibble = (bits[i] << 3) | (bits[i + 1] << 2) | (bits[i + 2] << 1) | bits[i + 3];
+    const nibble =
+      (bits[i] << 3) | (bits[i + 1] << 2) | (bits[i + 2] << 1) | bits[i + 3];
     hash += nibble.toString(16);
   }
 
@@ -309,14 +318,17 @@ async function computePHash(buffer) {
  */
 function computeDCT2D(matrix) {
   const N = matrix.length;
-  const result = Array(N).fill(null).map(() => Array(N).fill(0));
+  const result = Array(N)
+    .fill(null)
+    .map(() => Array(N).fill(0));
 
   for (let u = 0; u < N; u++) {
     for (let v = 0; v < N; v++) {
       let sum = 0;
       for (let x = 0; x < N; x++) {
         for (let y = 0; y < N; y++) {
-          sum += matrix[x][y] *
+          sum +=
+            matrix[x][y] *
             Math.cos((Math.PI * u * (2 * x + 1)) / (2 * N)) *
             Math.cos((Math.PI * v * (2 * y + 1)) / (2 * N));
         }
@@ -340,7 +352,7 @@ function pHashSimilarity(bitsA, bitsB) {
   }
   return {
     distance,
-    similarity: 1 - (distance / 64),
+    similarity: 1 - distance / 64,
   };
 }
 
@@ -352,20 +364,29 @@ async function getEdgeMap(buffer) {
   const height = COMPARE_SIZE;
 
   const gray = await sharp(buffer)
-    .resize(width, height, { fit: 'fill', kernel: 'lanczos3' })
+    .resize(width, height, { fit: "fill", kernel: "lanczos3" })
     .grayscale()
     .raw()
     .toBuffer();
 
   // Sobel kernels
-  const sobelX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
-  const sobelY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
+  const sobelX = [
+    [-1, 0, 1],
+    [-2, 0, 2],
+    [-1, 0, 1],
+  ];
+  const sobelY = [
+    [-1, -2, -1],
+    [0, 0, 0],
+    [1, 2, 1],
+  ];
 
   const edgeMap = Buffer.alloc(width * height);
 
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      let gx = 0, gy = 0;
+      let gx = 0,
+        gy = 0;
 
       for (let ky = -1; ky <= 1; ky++) {
         for (let kx = -1; kx <= 1; kx++) {
@@ -454,10 +475,26 @@ async function generateSyntheticPanel(panelType, buildingType, seed) {
     interior_3d: { r: 200 + variation, g: 180 + variation, b: 150 + variation },
     floor_plan_ground: { r: 240, g: 240, b: 240 },
     floor_plan_first: { r: 235, g: 235, b: 235 },
-    elevation_north: { r: 180 + variation, g: 160 + variation, b: 140 + variation },
-    elevation_south: { r: 175 + variation, g: 155 + variation, b: 135 + variation },
-    elevation_east: { r: 185 + variation, g: 165 + variation, b: 145 + variation },
-    elevation_west: { r: 170 + variation, g: 150 + variation, b: 130 + variation },
+    elevation_north: {
+      r: 180 + variation,
+      g: 160 + variation,
+      b: 140 + variation,
+    },
+    elevation_south: {
+      r: 175 + variation,
+      g: 155 + variation,
+      b: 135 + variation,
+    },
+    elevation_east: {
+      r: 185 + variation,
+      g: 165 + variation,
+      b: 145 + variation,
+    },
+    elevation_west: {
+      r: 170 + variation,
+      g: 150 + variation,
+      b: 130 + variation,
+    },
     section_AA: { r: 220, g: 220, b: 220 },
     section_BB: { r: 215, g: 215, b: 215 },
     site_plan: { r: 200, g: 220, b: 200 },
@@ -485,7 +522,9 @@ async function generateSyntheticPanel(panelType, buildingType, seed) {
   // Convert to PNG buffer
   const buffer = await sharp(pixels, {
     raw: { width, height, channels },
-  }).png().toBuffer();
+  })
+    .png()
+    .toBuffer();
 
   return buffer;
 }
@@ -533,19 +572,21 @@ async function generateSyntheticPanels(buildingType, runIndex) {
  * Download image from URL to buffer
  */
 async function downloadImage(url) {
-  if (url.startsWith('data:')) {
+  if (url.startsWith("data:")) {
     // Handle data URLs
     const matches = url.match(/^data:image\/\w+;base64,(.+)$/);
     if (matches) {
-      return Buffer.from(matches[1], 'base64');
+      return Buffer.from(matches[1], "base64");
     }
-    throw new Error('Invalid data URL');
+    throw new Error("Invalid data URL");
   }
 
   // Download from URL
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Failed to download image: ${response.status} ${response.statusText}`,
+    );
   }
   return Buffer.from(await response.arrayBuffer());
 }
@@ -555,9 +596,9 @@ async function downloadImage(url) {
  */
 function pathToFileURL(filePath) {
   // On Windows, we need to convert the path to a file:// URL
-  if (process.platform === 'win32') {
+  if (process.platform === "win32") {
     // Convert backslashes to forward slashes and add file:///
-    const urlPath = filePath.replace(/\\/g, '/');
+    const urlPath = filePath.replace(/\\/g, "/");
     return `file:///${urlPath}`;
   }
   return `file://${filePath}`;
@@ -568,7 +609,12 @@ function pathToFileURL(filePath) {
  */
 async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
   // Dynamically import the orchestrator
-  const orchestratorPath = path.join(PROJECT_ROOT, 'src', 'services', 'dnaWorkflowOrchestrator.js');
+  const orchestratorPath = path.join(
+    PROJECT_ROOT,
+    "src",
+    "services",
+    "dnaWorkflowOrchestrator.js",
+  );
   const orchestratorUrl = pathToFileURL(orchestratorPath);
 
   // Check if we can import ES modules
@@ -578,20 +624,22 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
     const module = await import(orchestratorUrl);
     orchestrator = module.default;
   } catch (importError) {
-    console.error('Failed to import orchestrator:', importError.message);
-    throw new Error(`Cannot import dnaWorkflowOrchestrator: ${importError.message}`);
+    console.error("Failed to import orchestrator:", importError.message);
+    throw new Error(
+      `Cannot import dnaWorkflowOrchestrator: ${importError.message}`,
+    );
   }
 
   // Build project context
   const baseSeed = runIndex * 1000 + buildingType.length * 137;
-  const isSingleStorey = buildingType === 'bungalow';
+  const isSingleStorey = buildingType === "bungalow";
   const floors = isSingleStorey ? 1 : 2;
   const floorArea = 150 + (runIndex % 100); // 150-250 m²
   const sitePolygon = [
     { lat: 51.5074, lng: -0.1278 },
     { lat: 51.5074, lng: -0.1272 },
-    { lat: 51.5070, lng: -0.1272 },
-    { lat: 51.5070, lng: -0.1278 },
+    { lat: 51.507, lng: -0.1272 },
+    { lat: 51.507, lng: -0.1278 },
   ];
   const projectContext = {
     buildingType,
@@ -610,31 +658,35 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
   };
 
   const locationData = {
-    address: '123 Test Street, London, UK',
+    address: "123 Test Street, London, UK",
     coordinates: { lat: 51.5074, lng: -0.1278 },
     sitePolygon,
     siteAnalysis: {
       areaM2: Math.max(360, Math.round(floorArea * 1.8)),
       orientationDeg: 180,
     },
-    climate: { type: 'temperate' },
-    zoning: { type: 'residential' },
-    recommendedStyle: 'contemporary',
+    climate: { type: "temperate" },
+    zoning: { type: "residential" },
+    recommendedStyle: "contemporary",
   };
 
   if (verbose) {
-    console.log(`    Building context: ${buildingType}, ${projectContext.floorArea}m², ${projectContext.floors} floors`);
+    console.log(
+      `    Building context: ${buildingType}, ${projectContext.floorArea}m², ${projectContext.floors} floors`,
+    );
   }
 
   const progressHandler = (progress) => {
     if (verbose) {
-      console.log(`    [${progress.stage}] ${progress.message} (${progress.percent}%)`);
+      console.log(
+        `    [${progress.stage}] ${progress.message} (${progress.percent}%)`,
+      );
     }
   };
 
   // Run the active workflow API (runMultiPanelA1Workflow is current primary path)
   let result;
-  if (typeof orchestrator.runA1SheetWorkflow === 'function') {
+  if (typeof orchestrator.runA1SheetWorkflow === "function") {
     result = await orchestrator.runA1SheetWorkflow({
       projectContext,
       locationData,
@@ -643,7 +695,7 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
       seed: baseSeed,
       onProgress: progressHandler,
     });
-  } else if (typeof orchestrator.runMultiPanelA1Workflow === 'function') {
+  } else if (typeof orchestrator.runMultiPanelA1Workflow === "function") {
     result = await orchestrator.runMultiPanelA1Workflow(
       {
         projectContext,
@@ -658,12 +710,12 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
     );
   } else {
     throw new Error(
-      'No supported workflow method found (expected runA1SheetWorkflow or runMultiPanelA1Workflow)',
+      "No supported workflow method found (expected runA1SheetWorkflow or runMultiPanelA1Workflow)",
     );
   }
 
   if (!result.success) {
-    throw new Error(result.error || 'Generation failed');
+    throw new Error(result.error || "Generation failed");
   }
 
   // Extract panels from result
@@ -723,7 +775,9 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
       debugReport.prompts[panelType] = panelInfo.prompt;
       debugReport.seeds[panelType] = panelInfo.seed;
     } catch (downloadError) {
-      console.warn(`    Failed to download panel ${panelType}: ${downloadError.message}`);
+      console.warn(
+        `    Failed to download panel ${panelType}: ${downloadError.message}`,
+      );
     }
   }
 
@@ -739,7 +793,7 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
   }
 
   // Save DEBUG_REPORT.json
-  const debugPath = path.join(runDir, 'DEBUG_REPORT.json');
+  const debugPath = path.join(runDir, "DEBUG_REPORT.json");
   fs.writeFileSync(debugPath, JSON.stringify(debugReport, null, 2));
 
   return { panels, a1Buffer, debugReport };
@@ -751,74 +805,74 @@ async function generateRealPanels(buildingType, runIndex, runDir, verbose) {
 function getDefaultProgramSpaces(buildingType) {
   // Keep program constraints aligned to the current two-pass DNA output profile:
   // compact core set with stable naming and floor distribution.
-  if (buildingType === 'bungalow') {
+  if (buildingType === "bungalow") {
     return [
       {
-        name: 'Living Room',
+        name: "Living Room",
         area: 25,
         area_m2: 25,
-        level: 'Ground',
-        preferredOrientation: 'south',
+        level: "Ground",
+        preferredOrientation: "south",
       },
       {
-        name: 'Kitchen',
+        name: "Kitchen",
         area: 15,
         area_m2: 15,
-        level: 'Ground',
-        preferredOrientation: 'east',
+        level: "Ground",
+        preferredOrientation: "east",
       },
       {
-        name: 'Bedroom 1',
+        name: "Bedroom 1",
         area: 14,
         area_m2: 14,
-        level: 'Ground',
-        preferredOrientation: 'south',
+        level: "Ground",
+        preferredOrientation: "south",
       },
       {
-        name: 'Bathroom',
+        name: "Bathroom",
         area: 8,
         area_m2: 8,
-        level: 'Ground',
-        preferredOrientation: 'any',
+        level: "Ground",
+        preferredOrientation: "any",
       },
     ];
   }
 
   return [
     {
-      name: 'Living Room',
+      name: "Living Room",
       area: 25,
       area_m2: 25,
-      level: 'Ground',
-      preferredOrientation: 'south',
+      level: "Ground",
+      preferredOrientation: "south",
     },
     {
-      name: 'Kitchen',
+      name: "Kitchen",
       area: 15,
       area_m2: 15,
-      level: 'Ground',
-      preferredOrientation: 'east',
+      level: "Ground",
+      preferredOrientation: "east",
     },
     {
-      name: 'Bedroom 1',
+      name: "Bedroom 1",
       area: 15,
       area_m2: 15,
-      level: 'First',
-      preferredOrientation: 'south',
+      level: "First",
+      preferredOrientation: "south",
     },
     {
-      name: 'Bedroom 2',
+      name: "Bedroom 2",
       area: 15,
       area_m2: 15,
-      level: 'First',
-      preferredOrientation: 'south',
+      level: "First",
+      preferredOrientation: "south",
     },
     {
-      name: 'Bathroom',
+      name: "Bathroom",
       area: 8,
       area_m2: 8,
-      level: 'First',
-      preferredOrientation: 'any',
+      level: "First",
+      preferredOrientation: "any",
     },
   ];
 }
@@ -850,7 +904,7 @@ async function composeA1Sheet(panels) {
     const row = Math.floor(i / 4);
 
     const resized = await sharp(panels[i].buffer)
-      .resize(panelWidth - 20, panelHeight - 20, { fit: 'inside' })
+      .resize(panelWidth - 20, panelHeight - 20, { fit: "inside" })
       .toBuffer();
 
     composites.push({
@@ -875,9 +929,18 @@ async function composeA1Sheet(panels) {
 /**
  * Execute a single QA run
  */
-async function executeRun(runIndex, buildingType, outputDir, verbose, realGeneration) {
-  const runDir = path.join(outputDir, `run_${String(runIndex).padStart(3, '0')}`);
-  const panelsDir = path.join(runDir, 'panels');
+async function executeRun(
+  runIndex,
+  buildingType,
+  outputDir,
+  verbose,
+  realGeneration,
+) {
+  const runDir = path.join(
+    outputDir,
+    `run_${String(runIndex).padStart(3, "0")}`,
+  );
+  const panelsDir = path.join(runDir, "panels");
 
   // Create directories
   fs.mkdirSync(panelsDir, { recursive: true });
@@ -895,7 +958,7 @@ async function executeRun(runIndex, buildingType, outputDir, verbose, realGenera
     errors: [],
     warnings: [],
     isProductionReady: false,
-    mode: realGeneration ? 'REAL' : 'SYNTHETIC',
+    mode: realGeneration ? "REAL" : "SYNTHETIC",
     debugReportPath: null,
   };
 
@@ -905,17 +968,24 @@ async function executeRun(runIndex, buildingType, outputDir, verbose, realGenera
 
     if (realGeneration) {
       // REAL GENERATION MODE
-      if (verbose) console.log(`    [REAL] Calling AI APIs for ${buildingType}...`);
+      if (verbose)
+        console.log(`    [REAL] Calling AI APIs for ${buildingType}...`);
 
-      const realResult = await generateRealPanels(buildingType, runIndex, runDir, verbose);
+      const realResult = await generateRealPanels(
+        buildingType,
+        runIndex,
+        runDir,
+        verbose,
+      );
       panels = realResult.panels;
       preComposedA1 = realResult.a1Buffer;
-      result.debugReportPath = path.join(runDir, 'DEBUG_REPORT.json');
+      result.debugReportPath = path.join(runDir, "DEBUG_REPORT.json");
 
       if (verbose) console.log(`    [REAL] Generated ${panels.length} panels`);
     } else {
       // SYNTHETIC MODE
-      if (verbose) console.log(`    Generating ${PANEL_TYPES.length} synthetic panels...`);
+      if (verbose)
+        console.log(`    Generating ${PANEL_TYPES.length} synthetic panels...`);
       panels = await generateSyntheticPanels(buildingType, runIndex);
     }
 
@@ -937,16 +1007,16 @@ async function executeRun(runIndex, buildingType, outputDir, verbose, realGenera
 
     // Define pairs to compare (panels that should be consistent)
     const pairsToCompare = [
-      ['elevation_north', 'elevation_south'],
-      ['elevation_east', 'elevation_west'],
-      ['floor_plan_ground', 'floor_plan_first'],
-      ['section_AA', 'section_BB'],
-      ['hero_3d', 'interior_3d'],
+      ["elevation_north", "elevation_south"],
+      ["elevation_east", "elevation_west"],
+      ["floor_plan_ground", "floor_plan_first"],
+      ["section_AA", "section_BB"],
+      ["hero_3d", "interior_3d"],
     ];
 
     for (const [typeA, typeB] of pairsToCompare) {
-      const panelA = panels.find(p => p.type === typeA);
-      const panelB = panels.find(p => p.type === typeB);
+      const panelA = panels.find((p) => p.type === typeA);
+      const panelB = panels.find((p) => p.type === typeB);
 
       if (panelA && panelB) {
         try {
@@ -962,7 +1032,9 @@ async function executeRun(runIndex, buildingType, outputDir, verbose, realGenera
             hashB: metrics.pHash.hashB,
           });
         } catch (err) {
-          result.errors.push(`Metrics computation failed for ${typeA}/${typeB}: ${err.message}`);
+          result.errors.push(
+            `Metrics computation failed for ${typeA}/${typeB}: ${err.message}`,
+          );
         }
       }
     }
@@ -976,34 +1048,56 @@ async function executeRun(runIndex, buildingType, outputDir, verbose, realGenera
       a1Buffer = await composeA1Sheet(panels);
     }
 
-    const a1Path = path.join(runDir, 'a1_composed.png');
+    const a1Path = path.join(runDir, "a1_composed.png");
     fs.writeFileSync(a1Path, a1Buffer);
     result.a1Path = a1Path;
     result.a1Size = a1Buffer.length;
 
     // 5. Calculate aggregate metrics
-    const allSSIM = result.pairMetrics.map(m => m.ssim);
-    const allPHash = result.pairMetrics.map(m => m.pHashSimilarity);
-    const allEdge = result.pairMetrics.map(m => m.edgeOverlap);
+    const allSSIM = result.pairMetrics.map((m) => m.ssim);
+    const allPHash = result.pairMetrics.map((m) => m.pHashSimilarity);
+    const allEdge = result.pairMetrics.map((m) => m.edgeOverlap);
 
     result.metrics = {
-      avgSSIM: allSSIM.length > 0 ? parseFloat((allSSIM.reduce((a, b) => a + b, 0) / allSSIM.length).toFixed(4)) : null,
+      avgSSIM:
+        allSSIM.length > 0
+          ? parseFloat(
+              (allSSIM.reduce((a, b) => a + b, 0) / allSSIM.length).toFixed(4),
+            )
+          : null,
       minSSIM: allSSIM.length > 0 ? Math.min(...allSSIM) : null,
-      avgPHash: allPHash.length > 0 ? parseFloat((allPHash.reduce((a, b) => a + b, 0) / allPHash.length).toFixed(4)) : null,
+      avgPHash:
+        allPHash.length > 0
+          ? parseFloat(
+              (allPHash.reduce((a, b) => a + b, 0) / allPHash.length).toFixed(
+                4,
+              ),
+            )
+          : null,
       minPHash: allPHash.length > 0 ? Math.min(...allPHash) : null,
-      avgEdgeOverlap: allEdge.length > 0 ? parseFloat((allEdge.reduce((a, b) => a + b, 0) / allEdge.length).toFixed(4)) : null,
+      avgEdgeOverlap:
+        allEdge.length > 0
+          ? parseFloat(
+              (allEdge.reduce((a, b) => a + b, 0) / allEdge.length).toFixed(4),
+            )
+          : null,
       minEdgeOverlap: allEdge.length > 0 ? Math.min(...allEdge) : null,
       panelCount: panels.length,
       pairCount: result.pairMetrics.length,
     };
 
     // 6. Check production readiness criteria
-    const expectedPanelCount = realGeneration ? 5 : PANEL_TYPES.length;  // Real may have fewer
+    const expectedPanelCount = realGeneration ? 5 : PANEL_TYPES.length; // Real may have fewer
     const hasMinPanels = result.panels.length >= expectedPanelCount;
     const hasA1 = result.a1Path !== null;
-    const hasMetrics = result.pairMetrics.length > 0 && result.pairMetrics.every(m =>
-      m.ssim !== null && m.pHashSimilarity !== null && m.edgeOverlap !== null
-    );
+    const hasMetrics =
+      result.pairMetrics.length > 0 &&
+      result.pairMetrics.every(
+        (m) =>
+          m.ssim !== null &&
+          m.pHashSimilarity !== null &&
+          m.edgeOverlap !== null,
+      );
 
     const metricsAboveThreshold =
       result.metrics.minSSIM >= thresholds.minSSIM &&
@@ -1019,41 +1113,56 @@ async function executeRun(runIndex, buildingType, outputDir, verbose, realGenera
       thresholds,
     };
 
-    result.isProductionReady = hasMinPanels && hasA1 && hasMetrics &&
-      metricsAboveThreshold && result.errors.length === 0;
+    result.isProductionReady =
+      hasMinPanels &&
+      hasA1 &&
+      hasMetrics &&
+      metricsAboveThreshold &&
+      result.errors.length === 0;
 
-    result.status = result.isProductionReady ? 'READY' : 'NOT_READY';
-    result.fixableByRegeneration = !result.isProductionReady && result.errors.length <= 2;
-
+    result.status = result.isProductionReady ? "READY" : "NOT_READY";
+    result.fixableByRegeneration =
+      !result.isProductionReady && result.errors.length <= 2;
   } catch (error) {
     result.errors.push(`Run failed: ${error.message}`);
-    result.status = 'FAIL';  // Explicit FAIL for real mode errors
+    result.status = "FAIL"; // Explicit FAIL for real mode errors
     result.isProductionReady = false;
-    result.fixableByRegeneration = false;  // Don't mark as fixable - it's a real failure
+    result.fixableByRegeneration = false; // Don't mark as fixable - it's a real failure
   }
 
   result.endTime = Date.now();
   result.durationMs = result.endTime - result.startTime;
 
   // 7. Save metrics.json
-  const metricsPath = path.join(runDir, 'metrics.json');
-  fs.writeFileSync(metricsPath, JSON.stringify({
-    runIndex,
-    buildingType,
-    mode: result.mode,
-    timestamp: new Date().toISOString(),
-    duration: result.durationMs,
-    status: result.status,
-    isProductionReady: result.isProductionReady,
-    panels: result.panels.map(p => ({ type: p.type, path: p.path, seed: p.seed })),
-    a1Path: result.a1Path,
-    debugReportPath: result.debugReportPath,
-    aggregateMetrics: result.metrics,
-    pairMetrics: result.pairMetrics,
-    checks: result.checks,
-    errors: result.errors,
-    warnings: result.warnings,
-  }, null, 2));
+  const metricsPath = path.join(runDir, "metrics.json");
+  fs.writeFileSync(
+    metricsPath,
+    JSON.stringify(
+      {
+        runIndex,
+        buildingType,
+        mode: result.mode,
+        timestamp: new Date().toISOString(),
+        duration: result.durationMs,
+        status: result.status,
+        isProductionReady: result.isProductionReady,
+        panels: result.panels.map((p) => ({
+          type: p.type,
+          path: p.path,
+          seed: p.seed,
+        })),
+        a1Path: result.a1Path,
+        debugReportPath: result.debugReportPath,
+        aggregateMetrics: result.metrics,
+        pairMetrics: result.pairMetrics,
+        checks: result.checks,
+        errors: result.errors,
+        warnings: result.warnings,
+      },
+      null,
+      2,
+    ),
+  );
 
   return result;
 }
@@ -1074,35 +1183,57 @@ class ResultsTracker {
 
   getSummary() {
     const total = this.runs.length;
-    const successful = this.runs.filter(r => r.isProductionReady).length;
-    const failed = this.runs.filter(r => !r.isProductionReady);
-    const fixable = failed.filter(r => r.fixableByRegeneration).length;
-    const unfixable = failed.filter(r => !r.fixableByRegeneration).length;
+    const successful = this.runs.filter((r) => r.isProductionReady).length;
+    const failed = this.runs.filter((r) => !r.isProductionReady);
+    const fixable = failed.filter((r) => r.fixableByRegeneration).length;
+    const unfixable = failed.filter((r) => !r.fixableByRegeneration).length;
 
     // Aggregate metrics
-    const allAvgSSIM = this.runs.map(r => r.metrics?.avgSSIM).filter(v => v !== null && v !== undefined);
-    const allAvgPHash = this.runs.map(r => r.metrics?.avgPHash).filter(v => v !== null && v !== undefined);
-    const allAvgEdge = this.runs.map(r => r.metrics?.avgEdgeOverlap).filter(v => v !== null && v !== undefined);
+    const allAvgSSIM = this.runs
+      .map((r) => r.metrics?.avgSSIM)
+      .filter((v) => v !== null && v !== undefined);
+    const allAvgPHash = this.runs
+      .map((r) => r.metrics?.avgPHash)
+      .filter((v) => v !== null && v !== undefined);
+    const allAvgEdge = this.runs
+      .map((r) => r.metrics?.avgEdgeOverlap)
+      .filter((v) => v !== null && v !== undefined);
 
     return {
       totalRuns: total,
       successfulRuns: successful,
       failedRuns: failed.length,
-      successRate: total > 0 ? (successful / total) : 0,
-      successRatePercent: total > 0 ? ((successful / total) * 100).toFixed(1) + '%' : '0%',
+      successRate: total > 0 ? successful / total : 0,
+      successRatePercent:
+        total > 0 ? ((successful / total) * 100).toFixed(1) + "%" : "0%",
       fixableFailures: fixable,
       unfixableFailures: unfixable,
-      avgSSIM: allAvgSSIM.length > 0 ? (allAvgSSIM.reduce((a, b) => a + b, 0) / allAvgSSIM.length).toFixed(4) : 'N/A',
-      avgPHash: allAvgPHash.length > 0 ? (allAvgPHash.reduce((a, b) => a + b, 0) / allAvgPHash.length).toFixed(4) : 'N/A',
-      avgEdgeOverlap: allAvgEdge.length > 0 ? (allAvgEdge.reduce((a, b) => a + b, 0) / allAvgEdge.length).toFixed(4) : 'N/A',
+      avgSSIM:
+        allAvgSSIM.length > 0
+          ? (allAvgSSIM.reduce((a, b) => a + b, 0) / allAvgSSIM.length).toFixed(
+              4,
+            )
+          : "N/A",
+      avgPHash:
+        allAvgPHash.length > 0
+          ? (
+              allAvgPHash.reduce((a, b) => a + b, 0) / allAvgPHash.length
+            ).toFixed(4)
+          : "N/A",
+      avgEdgeOverlap:
+        allAvgEdge.length > 0
+          ? (allAvgEdge.reduce((a, b) => a + b, 0) / allAvgEdge.length).toFixed(
+              4,
+            )
+          : "N/A",
       elapsedMs: Date.now() - this.startTime,
     };
   }
 
   getWorstFailures(count = 5) {
     const failures = this.runs
-      .filter(r => !r.isProductionReady)
-      .map(r => ({
+      .filter((r) => !r.isProductionReady)
+      .map((r) => ({
         runIndex: r.runIndex,
         buildingType: r.buildingType,
         status: r.status,
@@ -1133,11 +1264,21 @@ class ResultsTracker {
 // =============================================================================
 
 function printSummaryTable(results) {
-  console.log('\n┌─────────────────────────────────────────────────────────────────────┐');
-  console.log('│                        SUMMARY TABLE                                │');
-  console.log('├──────────────────────┬──────────┬──────────┬──────────┬─────────────┤');
-  console.log('│ Building Type        │ Runs     │ Pass     │ Fail     │ Pass Rate   │');
-  console.log('├──────────────────────┼──────────┼──────────┼──────────┼─────────────┤');
+  console.log(
+    "\n┌─────────────────────────────────────────────────────────────────────┐",
+  );
+  console.log(
+    "│                        SUMMARY TABLE                                │",
+  );
+  console.log(
+    "├──────────────────────┬──────────┬──────────┬──────────┬─────────────┤",
+  );
+  console.log(
+    "│ Building Type        │ Runs     │ Pass     │ Fail     │ Pass Rate   │",
+  );
+  console.log(
+    "├──────────────────────┼──────────┼──────────┼──────────┼─────────────┤",
+  );
 
   // Group by building type
   const byType = {};
@@ -1154,50 +1295,95 @@ function printSummaryTable(results) {
   }
 
   for (const [type, stats] of Object.entries(byType)) {
-    const rate = stats.total > 0 ? ((stats.pass / stats.total) * 100).toFixed(1) + '%' : '0%';
-    console.log(`│ ${type.padEnd(20)} │ ${String(stats.total).padStart(8)} │ ${String(stats.pass).padStart(8)} │ ${String(stats.fail).padStart(8)} │ ${rate.padStart(11)} │`);
+    const rate =
+      stats.total > 0
+        ? ((stats.pass / stats.total) * 100).toFixed(1) + "%"
+        : "0%";
+    console.log(
+      `│ ${type.padEnd(20)} │ ${String(stats.total).padStart(8)} │ ${String(stats.pass).padStart(8)} │ ${String(stats.fail).padStart(8)} │ ${rate.padStart(11)} │`,
+    );
   }
 
-  console.log('├──────────────────────┴──────────┴──────────┴──────────┴─────────────┤');
+  console.log(
+    "├──────────────────────┴──────────┴──────────┴──────────┴─────────────┤",
+  );
 
   const summary = results.getSummary();
-  console.log(`│ TOTAL: ${summary.totalRuns} runs, ${summary.successfulRuns} passed, ${summary.failedRuns} failed (${summary.successRatePercent})`.padEnd(70) + '│');
-  console.log('└─────────────────────────────────────────────────────────────────────┘');
+  console.log(
+    `│ TOTAL: ${summary.totalRuns} runs, ${summary.successfulRuns} passed, ${summary.failedRuns} failed (${summary.successRatePercent})`.padEnd(
+      70,
+    ) + "│",
+  );
+  console.log(
+    "└─────────────────────────────────────────────────────────────────────┘",
+  );
 }
 
 function printMetricsTable(results) {
   const summary = results.getSummary();
 
-  console.log('\n┌─────────────────────────────────────────────────────────────────────┐');
-  console.log('│                        METRICS SUMMARY                              │');
-  console.log('├────────────────────────────────┬────────────────────────────────────┤');
-  console.log(`│ Average SSIM                   │ ${String(summary.avgSSIM).padStart(34)} │`);
-  console.log(`│ Average pHash Similarity       │ ${String(summary.avgPHash).padStart(34)} │`);
-  console.log(`│ Average Edge Overlap           │ ${String(summary.avgEdgeOverlap).padStart(34)} │`);
-  console.log('├────────────────────────────────┼────────────────────────────────────┤');
-  console.log(`│ Fixable Failures               │ ${String(summary.fixableFailures).padStart(34)} │`);
-  console.log(`│ Unfixable Failures             │ ${String(summary.unfixableFailures).padStart(34)} │`);
-  console.log(`│ Total Time                     │ ${String((summary.elapsedMs / 1000).toFixed(1) + 's').padStart(34)} │`);
-  console.log('└────────────────────────────────┴────────────────────────────────────┘');
+  console.log(
+    "\n┌─────────────────────────────────────────────────────────────────────┐",
+  );
+  console.log(
+    "│                        METRICS SUMMARY                              │",
+  );
+  console.log(
+    "├────────────────────────────────┬────────────────────────────────────┤",
+  );
+  console.log(
+    `│ Average SSIM                   │ ${String(summary.avgSSIM).padStart(34)} │`,
+  );
+  console.log(
+    `│ Average pHash Similarity       │ ${String(summary.avgPHash).padStart(34)} │`,
+  );
+  console.log(
+    `│ Average Edge Overlap           │ ${String(summary.avgEdgeOverlap).padStart(34)} │`,
+  );
+  console.log(
+    "├────────────────────────────────┼────────────────────────────────────┤",
+  );
+  console.log(
+    `│ Fixable Failures               │ ${String(summary.fixableFailures).padStart(34)} │`,
+  );
+  console.log(
+    `│ Unfixable Failures             │ ${String(summary.unfixableFailures).padStart(34)} │`,
+  );
+  console.log(
+    `│ Total Time                     │ ${String((summary.elapsedMs / 1000).toFixed(1) + "s").padStart(34)} │`,
+  );
+  console.log(
+    "└────────────────────────────────┴────────────────────────────────────┘",
+  );
 }
 
 function printWorstFailures(failures, realGeneration) {
   if (failures.length === 0) {
-    console.log('\n✅ No failures to report!');
+    console.log("\n✅ No failures to report!");
     return;
   }
 
-  console.log('\n┌─────────────────────────────────────────────────────────────────────┐');
-  console.log('│                      WORST 5 FAILURES                               │');
-  console.log('└─────────────────────────────────────────────────────────────────────┘');
+  console.log(
+    "\n┌─────────────────────────────────────────────────────────────────────┐",
+  );
+  console.log(
+    "│                      WORST 5 FAILURES                               │",
+  );
+  console.log(
+    "└─────────────────────────────────────────────────────────────────────┘",
+  );
 
   for (let i = 0; i < failures.length; i++) {
     const f = failures[i];
-    console.log(`\n[${i + 1}] Run #${f.runIndex} - ${f.buildingType} [${f.mode}]`);
+    console.log(
+      `\n[${i + 1}] Run #${f.runIndex} - ${f.buildingType} [${f.mode}]`,
+    );
     console.log(`    Status: ${f.status}`);
-    console.log(`    Metrics: SSIM=${f.minSSIM?.toFixed(3) || 'N/A'}, pHash=${f.minPHash?.toFixed(3) || 'N/A'}, Edge=${f.minEdge?.toFixed(3) || 'N/A'}`);
+    console.log(
+      `    Metrics: SSIM=${f.minSSIM?.toFixed(3) || "N/A"}, pHash=${f.minPHash?.toFixed(3) || "N/A"}, Edge=${f.minEdge?.toFixed(3) || "N/A"}`,
+    );
     if (f.errors.length > 0) {
-      console.log(`    Errors: ${f.errors.slice(0, 2).join('; ')}`);
+      console.log(`    Errors: ${f.errors.slice(0, 2).join("; ")}`);
     }
     if (f.panelsDir) {
       console.log(`    Panels: ${f.panelsDir}`);
@@ -1216,46 +1402,68 @@ function printWorstFailures(failures, realGeneration) {
 // =============================================================================
 
 async function runProductionReadinessHarness(config) {
-  const mode = config.realGeneration ? 'REAL' : 'SYNTHETIC';
+  const mode = config.realGeneration ? "REAL" : "SYNTHETIC";
 
-  console.log('\n╔═══════════════════════════════════════════════════════════════════════╗');
-  console.log(`║         PRODUCTION READINESS QA HARNESS v3.0 [${mode.padEnd(9)}]             ║`);
-  console.log('║         Real Metrics • Real Panels • Real A1 Composition              ║');
-  console.log('╚═══════════════════════════════════════════════════════════════════════╝\n');
+  console.log(
+    "\n╔═══════════════════════════════════════════════════════════════════════╗",
+  );
+  console.log(
+    `║         PRODUCTION READINESS QA HARNESS v3.0 [${mode.padEnd(9)}]             ║`,
+  );
+  console.log(
+    "║         Real Metrics • Real Panels • Real A1 Composition              ║",
+  );
+  console.log(
+    "╚═══════════════════════════════════════════════════════════════════════╝\n",
+  );
 
   // Load environment and validate API keys if real generation
   if (config.realGeneration) {
-    console.log('Loading environment variables...');
+    console.log("Loading environment variables...");
     loadEnv();
 
-    console.log('Validating API keys...');
+    console.log("Validating API keys...");
     const keys = validateApiKeys();
-    console.log(`  ✓ TOGETHER_API_KEY: ${keys.togetherApiKey ? 'set' : 'MISSING'}`);
-    console.log(`  ○ OPENAI_REASONING_API_KEY: ${keys.openaiApiKey ? 'set' : 'not set (optional)'}`);
-    console.log(`  ○ MESHY_API_KEY: ${keys.meshyApiKey ? 'set' : 'not set (optional)'}`);
-    console.log('');
+    console.log(`  ✓ OPENAI_API_KEY: ${keys.openaiApiKey ? "set" : "MISSING"}`);
+    console.log(
+      `  ○ OPENAI_REASONING_API_KEY: ${keys.openaiReasoningApiKey ? "set" : "not set (optional)"}`,
+    );
+    console.log(
+      `  ○ OPENAI_IMAGES_API_KEY: ${keys.openaiImagesApiKey ? "set" : "not set (optional)"}`,
+    );
+    console.log(
+      `  ○ TOGETHER_API_KEY: ${keys.togetherApiKey ? "set (legacy optional)" : "not set (legacy optional)"}`,
+    );
+    console.log(
+      `  ○ MESHY_API_KEY: ${keys.meshyApiKey ? "set" : "not set (optional)"}`,
+    );
+    console.log("");
   }
 
-  console.log('Configuration:');
+  console.log("Configuration:");
   console.log(`  - Mode: ${mode}`);
   console.log(`  - Runs: ${config.runs}`);
   console.log(`  - Building Type: ${config.buildingType}`);
   console.log(`  - Output: ${config.outputDir}`);
   console.log(`  - Fail Fast: ${config.failFast}`);
   console.log(`  - Dry Run: ${config.dryRun}`);
-  console.log('');
-  console.log('Acceptance Criteria:');
-  console.log(`  - Success Rate: ≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}%`);
-  console.log(`  - Unfixable Failures: ≤${ACCEPTANCE_CRITERIA.maxUnfixableFailures}`);
+  console.log("");
+  console.log("Acceptance Criteria:");
+  console.log(
+    `  - Success Rate: ≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}%`,
+  );
+  console.log(
+    `  - Unfixable Failures: ≤${ACCEPTANCE_CRITERIA.maxUnfixableFailures}`,
+  );
 
   if (config.realGeneration) {
-    console.log('');
-    console.log('Real Generation Thresholds:');
+    console.log("");
+    console.log("Real Generation Thresholds:");
     console.log(`  - Min SSIM: ${REAL_THRESHOLDS.minSSIM}`);
     console.log(`  - Min pHash: ${REAL_THRESHOLDS.minPHash}`);
     console.log(`  - Min Edge Overlap: ${REAL_THRESHOLDS.minEdgeOverlap}`);
   }
-  console.log('');
+  console.log("");
 
   // Ensure output directory
   if (!fs.existsSync(config.outputDir)) {
@@ -1267,11 +1475,14 @@ async function runProductionReadinessHarness(config) {
   // Run generations
   for (let i = 0; i < config.runs; i++) {
     const runNumber = i + 1;
-    const buildingType = config.buildingType === 'random'
-      ? BUILDING_TYPES[Math.floor(Math.random() * BUILDING_TYPES.length)]
-      : config.buildingType;
+    const buildingType =
+      config.buildingType === "random"
+        ? BUILDING_TYPES[Math.floor(Math.random() * BUILDING_TYPES.length)]
+        : config.buildingType;
 
-    console.log(`\n[Run ${runNumber}/${config.runs}] Building type: ${buildingType} [${mode}]`);
+    console.log(
+      `\n[Run ${runNumber}/${config.runs}] Building type: ${buildingType} [${mode}]`,
+    );
 
     if (config.dryRun) {
       console.log(`  [DRY RUN] Would generate panels and compute metrics`);
@@ -1279,7 +1490,7 @@ async function runProductionReadinessHarness(config) {
         runIndex: runNumber,
         buildingType,
         isProductionReady: true,
-        status: 'DRY_RUN',
+        status: "DRY_RUN",
         mode,
         metrics: {},
         panels: [],
@@ -1289,21 +1500,33 @@ async function runProductionReadinessHarness(config) {
     }
 
     try {
-      const result = await executeRun(runNumber, buildingType, config.outputDir, config.verbose, config.realGeneration);
+      const result = await executeRun(
+        runNumber,
+        buildingType,
+        config.outputDir,
+        config.verbose,
+        config.realGeneration,
+      );
       tracker.addRun(result);
 
       if (result.isProductionReady) {
-        console.log(`  ✅ READY (SSIM=${result.metrics.avgSSIM}, pHash=${result.metrics.avgPHash}, Edge=${result.metrics.avgEdgeOverlap})`);
+        console.log(
+          `  ✅ READY (SSIM=${result.metrics.avgSSIM}, pHash=${result.metrics.avgPHash}, Edge=${result.metrics.avgEdgeOverlap})`,
+        );
       } else {
-        console.log(`  ❌ ${result.status}: ${result.errors.length > 0 ? result.errors[0] : 'Metrics below threshold'}`);
+        console.log(
+          `  ❌ ${result.status}: ${result.errors.length > 0 ? result.errors[0] : "Metrics below threshold"}`,
+        );
         if (result.fixableByRegeneration) {
           console.log(`     → Fixable by regeneration`);
         } else if (config.realGeneration) {
-          console.log(`     → UNFIXABLE - check ${result.debugReportPath || 'debug report'}`);
+          console.log(
+            `     → UNFIXABLE - check ${result.debugReportPath || "debug report"}`,
+          );
         }
 
         if (config.failFast) {
-          console.log('\n[FAIL FAST] Stopping after first failure');
+          console.log("\n[FAIL FAST] Stopping after first failure");
           break;
         }
       }
@@ -1311,19 +1534,20 @@ async function runProductionReadinessHarness(config) {
       // Progress
       if (runNumber % 10 === 0 || config.realGeneration) {
         const interim = tracker.getSummary();
-        console.log(`\n--- Progress: ${runNumber}/${config.runs} (${interim.successRatePercent} success) ---\n`);
+        console.log(
+          `\n--- Progress: ${runNumber}/${config.runs} (${interim.successRatePercent} success) ---\n`,
+        );
       }
-
     } catch (error) {
       console.error(`  ❌ FAIL: ${error.message}`);
       tracker.addRun({
         runIndex: runNumber,
         buildingType,
         isProductionReady: false,
-        status: 'FAIL',
+        status: "FAIL",
         mode,
         errors: [error.message],
-        fixableByRegeneration: false,  // Real failures are not auto-fixable
+        fixableByRegeneration: false, // Real failures are not auto-fixable
         metrics: {},
         panels: [],
       });
@@ -1333,7 +1557,7 @@ async function runProductionReadinessHarness(config) {
   }
 
   // Print results
-  console.log('\n');
+  console.log("\n");
   printSummaryTable(tracker);
   printMetricsTable(tracker);
   printWorstFailures(tracker.getWorstFailures(5), config.realGeneration);
@@ -1343,7 +1567,7 @@ async function runProductionReadinessHarness(config) {
   const report = {
     summary,
     mode,
-    runs: tracker.runs.map(r => ({
+    runs: tracker.runs.map((r) => ({
       runIndex: r.runIndex,
       buildingType: r.buildingType,
       status: r.status,
@@ -1360,25 +1584,35 @@ async function runProductionReadinessHarness(config) {
     generatedAt: new Date().toISOString(),
   };
 
-  const reportPath = path.join(config.outputDir, `qa-report-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+  const reportPath = path.join(
+    config.outputDir,
+    `qa-report-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+  );
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
-  const latestPath = path.join(config.outputDir, 'qa-report-latest.json');
+  const latestPath = path.join(config.outputDir, "qa-report-latest.json");
   fs.writeFileSync(latestPath, JSON.stringify(report, null, 2));
 
   // Write index.json aggregating all runs
-  const indexPath = path.join(config.outputDir, 'index.json');
-  fs.writeFileSync(indexPath, JSON.stringify({
-    mode,
-    totalRuns: summary.totalRuns,
-    successRate: summary.successRatePercent,
-    unfixableFailures: summary.unfixableFailures,
-    avgSSIM: summary.avgSSIM,
-    avgPHash: summary.avgPHash,
-    avgEdgeOverlap: summary.avgEdgeOverlap,
-    generatedAt: new Date().toISOString(),
-    reportPath,
-  }, null, 2));
+  const indexPath = path.join(config.outputDir, "index.json");
+  fs.writeFileSync(
+    indexPath,
+    JSON.stringify(
+      {
+        mode,
+        totalRuns: summary.totalRuns,
+        successRate: summary.successRatePercent,
+        unfixableFailures: summary.unfixableFailures,
+        avgSSIM: summary.avgSSIM,
+        avgPHash: summary.avgPHash,
+        avgEdgeOverlap: summary.avgEdgeOverlap,
+        generatedAt: new Date().toISOString(),
+        reportPath,
+      },
+      null,
+      2,
+    ),
+  );
 
   console.log(`\nReport saved to: ${reportPath}`);
   console.log(`Index saved to: ${indexPath}`);
@@ -1388,21 +1622,45 @@ async function runProductionReadinessHarness(config) {
     summary.successRate >= ACCEPTANCE_CRITERIA.minSuccessRate &&
     summary.unfixableFailures <= ACCEPTANCE_CRITERIA.maxUnfixableFailures;
 
-  console.log('\n╔═══════════════════════════════════════════════════════════════════════╗');
+  console.log(
+    "\n╔═══════════════════════════════════════════════════════════════════════╗",
+  );
   if (meetsAcceptance) {
-    console.log(`║  ✅ PRODUCTION READINESS: ACCEPTABLE [${mode}]`.padEnd(72) + '║');
-    console.log(`║     Success Rate: ${summary.successRatePercent} (≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}% required)`.padEnd(72) + '║');
-    console.log(`║     Unfixable Failures: ${summary.unfixableFailures} (≤${ACCEPTANCE_CRITERIA.maxUnfixableFailures} required)`.padEnd(72) + '║');
+    console.log(
+      `║  ✅ PRODUCTION READINESS: ACCEPTABLE [${mode}]`.padEnd(72) + "║",
+    );
+    console.log(
+      `║     Success Rate: ${summary.successRatePercent} (≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}% required)`.padEnd(
+        72,
+      ) + "║",
+    );
+    console.log(
+      `║     Unfixable Failures: ${summary.unfixableFailures} (≤${ACCEPTANCE_CRITERIA.maxUnfixableFailures} required)`.padEnd(
+        72,
+      ) + "║",
+    );
   } else {
-    console.log(`║  ❌ PRODUCTION READINESS: NOT ACCEPTABLE [${mode}]`.padEnd(72) + '║');
+    console.log(
+      `║  ❌ PRODUCTION READINESS: NOT ACCEPTABLE [${mode}]`.padEnd(72) + "║",
+    );
     if (summary.successRate < ACCEPTANCE_CRITERIA.minSuccessRate) {
-      console.log(`║     ⚠ Success Rate: ${summary.successRatePercent} (needs ≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}%)`.padEnd(72) + '║');
+      console.log(
+        `║     ⚠ Success Rate: ${summary.successRatePercent} (needs ≥${ACCEPTANCE_CRITERIA.minSuccessRate * 100}%)`.padEnd(
+          72,
+        ) + "║",
+      );
     }
     if (summary.unfixableFailures > ACCEPTANCE_CRITERIA.maxUnfixableFailures) {
-      console.log(`║     ⚠ Unfixable Failures: ${summary.unfixableFailures} (max ${ACCEPTANCE_CRITERIA.maxUnfixableFailures} allowed)`.padEnd(72) + '║');
+      console.log(
+        `║     ⚠ Unfixable Failures: ${summary.unfixableFailures} (max ${ACCEPTANCE_CRITERIA.maxUnfixableFailures} allowed)`.padEnd(
+          72,
+        ) + "║",
+      );
     }
   }
-  console.log('╚═══════════════════════════════════════════════════════════════════════╝\n');
+  console.log(
+    "╚═══════════════════════════════════════════════════════════════════════╝\n",
+  );
 
   return meetsAcceptance ? 0 : 1;
 }
@@ -1417,7 +1675,7 @@ runProductionReadinessHarness(config)
     process.exit(exitCode);
   })
   .catch((error) => {
-    console.error('\n❌ HARNESS ERROR:', error.message);
+    console.error("\n❌ HARNESS ERROR:", error.message);
     console.error(error.stack);
     process.exit(1);
   });

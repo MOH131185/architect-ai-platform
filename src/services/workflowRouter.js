@@ -27,12 +27,16 @@ export class UnsupportedPipelineModeError extends Error {
 /**
  * Supported modes and their workflow keys.
  *
- * multi_panel    → runs runMultiPanelA1Workflow (default and only supported mode)
+ * project_graph  → handled by the client/API ProjectGraph vertical-slice path
+ * multi_panel    → runs runMultiPanelA1Workflow (legacy explicit mode)
  * single_shot    → NOT IMPLEMENTED → explicit error (no dedicated single-shot path)
  * geometry_first → NOT IMPLEMENTED → explicit error
  * hybrid_openai  → NOT IMPLEMENTED → explicit error
  */
-const IMPLEMENTED_MODES = new Set([PIPELINE_MODE.MULTI_PANEL]);
+const IMPLEMENTED_MODES = new Set([
+  PIPELINE_MODE.PROJECT_GRAPH,
+  PIPELINE_MODE.MULTI_PANEL,
+]);
 
 /**
  * Resolve the current pipeline mode and return the workflow key.
@@ -50,7 +54,10 @@ export function resolveWorkflowByMode(overrideMode) {
 
   return {
     mode,
-    workflowKey: "multi_panel_a1",
+    workflowKey:
+      mode === PIPELINE_MODE.PROJECT_GRAPH
+        ? "project_graph_vertical_slice"
+        : "multi_panel_a1",
   };
 }
 
@@ -72,7 +79,12 @@ export async function executeWorkflow(
 ) {
   const { mode, workflowKey } = resolveWorkflowByMode(overrideMode);
 
-  // All implemented modes currently route to the same orchestrator call.
+  if (mode === PIPELINE_MODE.PROJECT_GRAPH) {
+    throw new Error(
+      "ProjectGraph workflow is API-driven. Call /api/project/generate-vertical-slice instead of the legacy DNA orchestrator.",
+    );
+  }
+
   return orchestrator.runMultiPanelA1Workflow(params, options);
 }
 
@@ -87,8 +99,11 @@ export async function executeWorkflow(
 export function isA1Workflow(workflow) {
   if (!workflow) return false;
   const A1_LABELS = new Set([
+    PIPELINE_MODE.PROJECT_GRAPH,
     PIPELINE_MODE.MULTI_PANEL,
     MODIFY_WORKFLOW,
+    "project-graph",
+    "project-graph-vertical-slice",
     // Legacy labels retained for backwards-compatible UI checks
     "multi-panel-a1",
     "a1-sheet-one-shot",

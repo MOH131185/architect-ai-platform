@@ -89,6 +89,21 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.a1Sheet.svgString).toContain(
       `data-source-model-hash="${result.geometryHash}"`,
     );
+    expect(result.artifacts.a1Pdf.asset_type).toBe("a1_sheet_pdf");
+    expect(result.artifacts.a1Pdf.sheet_size_mm).toEqual({
+      width: 841,
+      height: 594,
+    });
+    expect(result.artifacts.a1Pdf.source_model_hash).toBe(result.geometryHash);
+    expect(result.projectGraph.sheets.sheets[0].exported_pdf_asset_id).toBe(
+      result.artifacts.a1Pdf.asset_id,
+    );
+    expect(result.projectGraph.models3d.models[0].source_model_hash).toBe(
+      result.geometryHash,
+    );
+    expect(result.projectGraph.models3d.models[0].asset_id).toBe(
+      result.artifacts.scene3d.asset_id,
+    );
 
     const programmeIds = new Set(
       result.projectGraph.programme.spaces.map((space) => space.space_id),
@@ -109,6 +124,12 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.projectGraph.sheets.sheets[0].orientation).toBe("landscape");
     expect(result.modelRegistry.DRAWING_2D.deterministicGeometry).toBe(true);
     expect(result.modelRegistry.MODEL_3D.deterministicGeometry).toBe(true);
+    expect(result.qa.checks.map((check) => check.code)).toContain(
+      "A1_PDF_EXPORT_PRESENT_AND_SIZED",
+    );
+    expect(result.qa.checks.map((check) => check.code)).toContain(
+      "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
+    );
   });
 
   test("QA fails when a 2D drawing drifts from the 3D model hash", async () => {

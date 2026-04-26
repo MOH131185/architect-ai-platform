@@ -6,6 +6,7 @@ AI-powered architectural design platform that generates complete residential bui
 
 ## 🚀 Key Features
 
+- **ProjectGraph RIBA A1 Workflow** - Brief -> programme -> ProjectGraph -> deterministic 2D/3D projections -> A1 sheet -> QA report
 - **Compiled-Authority Residential Workflow** - Intake -> compiled project -> deterministic technical pack -> geometry-locked visuals -> composed A1 sheet
 - **Complete Design Packages** - All views on one sheet: floor plans, elevations, sections, 3D visualizations
 - **CAD/BIM Deliverables** - PNG/PDF plus DXF/IFC/GLB/JSON exports from the same compiled authority bundle
@@ -13,23 +14,23 @@ AI-powered architectural design platform that generates complete residential bui
 - **Climate-Responsive Design** - Automatic adaptation to local climate and zoning regulations
 - **Site-Aware Generation** - Draw site boundaries and generate designs that fit perfectly
 - **Portfolio Learning** - Upload your architectural portfolio to influence AI-generated designs
-- **Together.ai Integration** - FLUX.1-dev for photorealistic rendering + Qwen 2.5 72B for architectural reasoning
-- **Together-Only Mode** - All image generation and reasoning via Together.ai (legacy providers removed)
+- **OpenAI Model Configuration** - Base models from environment variables now, with optional fine-tuned model IDs later
+- **Legacy Provider Isolation** - Together/FLUX paths remain explicit legacy/debug modes and are not required for ProjectGraph generation
 
 ---
 
-## 📐 Residential Authority Pipeline
+## 📐 ProjectGraph Authority Pipeline
 
 ### What the active pipeline does
 
-The active residential path is no longer a true single-image one-shot system. It first compiles a geometry-authoritative residential project, derives deterministic technical drawings from that compiled geometry, then composes the final A1 sheet and export bundle around those authoritative assets.
+The active residential path is model-first. It normalises a brief, creates context packs, generates a programme, builds a canonical ProjectGraph / compiled geometry model, then derives 2D drawings, 3D scene data, an A1 sheet, and QA from that same source of truth.
 
 ### Architecture Flow
 
 ```
-User Input -> Residential Brief Lock -> Compiled Project -> Deterministic Technical Pack -> Geometry-Locked Visuals -> A1 Compose + Exports
-   ↓                (site/style/program)     (geometry authority)   (plans/elevations/sections)     (hero/interior/axon)     (PNG/PDF/DXF/IFC/GLB/JSON)
-Site Polygon   ->   Blended Style       ->   geometryHash        ->   SVG + validation gates      ->   fixed-massing renders   ->   publishable board
+Brief -> Programme -> ProjectGraph -> 2D Projection -> 3D Projection -> A1 Sheet -> QA Report
+  ↓          ↓            ↓                ↓               ↓             ↓          ↓
+Site      Spaces      geometryHash    SVG drawings     scene JSON     SVG/PDF    consistency checks
 ```
 
 ### Benefits
@@ -43,14 +44,14 @@ Site Polygon   ->   Blended Style       ->   geometryHash        ->   SVG + vali
 
 ### How to Use
 
-The residential flow is **compiled-authority first**. The active path will automatically:
+The residential flow is **ProjectGraph authority first**. The active path will automatically:
 
-1. Analyze location for architectural style and climate
-2. Blend portfolio style with local context
-3. Generate Master Design DNA with exact specifications
-4. Build a compiled residential project with geometry hash authority
-5. Generate deterministic plans, elevations, and sections
-6. Compose the final A1 sheet and export bundle around that authority
+1. Normalise the brief and site input
+2. Build site, climate, regulation, local-style, and material packs
+3. Generate a programme and canonical ProjectGraph
+4. Derive 2D plans/elevations/sections from the ProjectGraph geometry
+5. Derive the 3D scene from the same geometry hash
+6. Compose the final A1 SVG/PDF sheet and QA report around that authority
 
 ---
 
@@ -59,13 +60,17 @@ The residential flow is **compiled-authority first**. The active path will autom
 ### Prerequisites
 
 - **Node.js** 18+ and npm
-- **Environment Variables** (see `env.template`)
-  - `TOGETHER_API_KEY` - **REQUIRED** for FLUX image generation and Qwen reasoning (Build Tier 2+ with $5-10 credits)
+- **Environment Variables** (see `.env.example`)
+  - `OPENAI_API_KEY` - **REQUIRED** production reasoning/model access
+  - `OPENAI_REASONING_API_KEY` - optional override for reasoning calls
+  - `OPENAI_IMAGES_API_KEY` - optional override for presentation image calls
+  - `OPENAI_REASONING_MODEL`, `OPENAI_FAST_MODEL`, `OPENAI_IMAGE_MODEL` - base model IDs
+  - `STEP_07_PROJECT_GRAPH_MODEL`, `STEP_08_2D_LABEL_MODEL`, `STEP_09_3D_QA_MODEL`, `STEP_12_A1_SHEET_MODEL`, `STEP_13_QA_MODEL` - per-step model IDs
   - `REACT_APP_GOOGLE_MAPS_API_KEY` - **REQUIRED** for geocoding and 3D maps
   - `REACT_APP_OPENWEATHER_API_KEY` - **REQUIRED** for climate data
-  - `OPENAI_REASONING_API_KEY` - **OPTIONAL** fallback for reasoning only (Together.ai is primary)
+  - `TOGETHER_API_KEY` - optional legacy/debug provider key only
 
-**Note:** Legacy providers (DALL-E, Replicate, OpenArt, Maginary) have been removed. All image generation uses Together.ai FLUX.1-dev exclusively.
+**Note:** ProjectGraph generation does not require FLUX/Together. Technical 2D and 3D outputs are derived from the same ProjectGraph geometry rather than independent image prompts.
 
 ### Installation
 
@@ -78,10 +83,10 @@ cd architect-ai-platform
 npm install
 
 # Copy environment template
-cp env.template .env
+cp .env.example .env
 
 # Add your API keys to .env
-# REQUIRED: TOGETHER_API_KEY (get at https://api.together.ai/)
+# REQUIRED: OPENAI_API_KEY
 # REQUIRED: REACT_APP_GOOGLE_MAPS_API_KEY
 # REQUIRED: REACT_APP_OPENWEATHER_API_KEY
 ```
@@ -138,7 +143,7 @@ API proxy runs on `http://localhost:3001`
 
 - `npm test` - Run the CRA/Jest suite in interactive mode
 - `npm run test:coverage` - Run CRA/Jest coverage output
-- `node test-together-api-connection.js` - Manual Together.ai connectivity check
+- `node test-together-api-connection.js` - Legacy Together.ai connectivity check
 - `node scripts/smoke/runA1Smoke.mjs` - Manual smoke workflow for live API debugging, not part of protected CI
 
 ### Validation
@@ -171,22 +176,24 @@ architect-ai-platform/
 │   ├── hooks/
 │   │   └── useArchitectAIWorkflow.js         # Core generation hook
 │   ├── services/                             # AI/logic services
-│   │   ├── dnaWorkflowOrchestrator.js        # Multi-panel A1 orchestration
-│   │   ├── twoPassDNAGenerator.js            # Two-pass DNA (Author+Reviewer)
-│   │   ├── panelOrchestrator.js              # Panel generation orchestration
-│   │   ├── multiModelImageService.js         # FLUX + SDXL image wrapper
-│   │   ├── dnaPromptGenerator.js             # DNA → per-panel prompts
-│   │   ├── dnaValidator.js                   # DNA validation
-│   │   ├── a1/panelPromptBuilders.js         # Specialized panel prompts
+│   │   ├── project/projectGraphVerticalSliceService.js # Brief -> ProjectGraph -> A1/QA
+│   │   ├── modelStepResolver.js              # Env-driven model/provider fallback
+│   │   ├── compiler/index.js                 # Compiled project geometry
+│   │   ├── canonical/compiledProjectTechnicalPackBuilder.js
+│   │   ├── dnaWorkflowOrchestrator.js        # Legacy explicit multi-panel orchestration
 │   │   └── ...
 │   ├── config/
+│   │   ├── pipelineMode.js                   # project_graph default, multi_panel legacy mode
 │   │   ├── featureFlags.js                   # Feature toggle system
-│   │   └── fluxPresets.js                    # FLUX model presets
+│   │   └── fluxPresets.js                    # Legacy FLUX presets
 │   └── _legacy/                              # Quarantined dead code
 ├── api/                                      # Vercel Serverless Functions
-│   ├── together-chat.js
-│   ├── together-image.js
-│   ├── a1/compose.js                         # Server-side A1 composition
+│   ├── project/generate-vertical-slice.js    # Primary ProjectGraph API
+│   ├── openai-chat.js
+│   ├── openai-images.js
+│   ├── together-chat.js                      # Legacy explicit provider route
+│   ├── together-image.js                     # Legacy explicit provider route
+│   ├── a1/compose.js                         # Legacy multi-panel composition
 │   └── ...
 ├── scripts/
 │   ├── check-env.cjs
@@ -202,9 +209,11 @@ architect-ai-platform/
 
 ### Primary Endpoints
 
-**POST `/api/together/chat`** - Together.ai reasoning (Qwen 2.5 72B)
-**POST `/api/together/image`** - FLUX.1-dev image generation
-**POST `/api/openai/chat`** - OpenAI GPT-4o (fallback for reasoning)
+**POST `/api/project/generate-vertical-slice`** - Primary RIBA A1 ProjectGraph pipeline
+**POST `/api/openai/chat`** - OpenAI reasoning/model calls
+**POST `/api/openai/images`** - Optional OpenAI presentation image calls
+**POST `/api/together/chat`** - Legacy explicit Together reasoning route
+**POST `/api/together/image`** - Legacy explicit FLUX route
 
 ### Testing
 
@@ -242,6 +251,7 @@ npm run build:active
 - 📖 **[CLAUDE.md](./CLAUDE.md)** - Complete developer guide (for Claude Code)
 - 📋 **[API_SETUP.md](./API_SETUP.md)** - AI integration reference
 - 🔧 **[VERCEL_ENV_SETUP.md](./VERCEL_ENV_SETUP.md)** - Deployment guide
+- 🧭 **[docs/repo_audit_architecture_pipeline.md](./docs/repo_audit_architecture_pipeline.md)** - ProjectGraph pipeline audit and remaining gaps
 
 ### System Documentation
 

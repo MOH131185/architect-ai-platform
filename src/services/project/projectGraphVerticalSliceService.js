@@ -2,6 +2,7 @@ import {
   polygonToLocalXY,
   computeCentroid as computeGeoCentroid,
 } from "../../utils/geometry.js";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
   CANONICAL_PROJECT_GEOMETRY_VERSION,
   buildBoundingBoxFromPolygon,
@@ -1321,6 +1322,24 @@ function build3DProjection(compiledProject) {
   };
 }
 
+function build3DModelSet({ projectGraphId, scene3d, geometryHash }) {
+  return {
+    models: [
+      {
+        model_id: createStableId("model-3d", projectGraphId, geometryHash),
+        asset_id: scene3d.asset_id,
+        asset_type: scene3d.asset_type,
+        projection_type: "deterministic_3d_scene",
+        model_format: "json_scene",
+        source_project_graph_id: projectGraphId,
+        source_model_hash: geometryHash,
+        geometryHash,
+      },
+    ],
+    source_model_hash: geometryHash,
+  };
+}
+
 function buildSheetSvg({
   projectGraphId,
   brief,
@@ -1421,6 +1440,165 @@ function buildA1Sheet({
   };
 }
 
+const MM_TO_PT = 72 / 25.4;
+
+async function buildA1PdfArtifact({
+  projectGraphId,
+  brief,
+  drawingSet,
+  scene3d,
+  geometryHash,
+  qaStatus = "pending",
+}) {
+  const widthPt = 841 * MM_TO_PT;
+  const heightPt = 594 * MM_TO_PT;
+  const pdfDoc = await PDFDocument.create();
+  const page = pdfDoc.addPage([widthPt, heightPt]);
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const navy = rgb(0.06, 0.09, 0.14);
+  const cream = rgb(0.97, 0.95, 0.9);
+  const panelFill = rgb(1, 0.99, 0.96);
+
+  page.drawRectangle({
+    x: 0,
+    y: 0,
+    width: widthPt,
+    height: heightPt,
+    color: cream,
+  });
+  page.drawRectangle({
+    x: 24 * MM_TO_PT,
+    y: 24 * MM_TO_PT,
+    width: 793 * MM_TO_PT,
+    height: 546 * MM_TO_PT,
+    borderColor: navy,
+    borderWidth: 1,
+  });
+
+  page.drawText(brief.project_name, {
+    x: 36 * MM_TO_PT,
+    y: 540 * MM_TO_PT,
+    size: 22,
+    font: bold,
+    color: navy,
+  });
+  page.drawText(
+    `RIBA Stage 2 ProjectGraph package | model ${geometryHash.slice(0, 12)}`,
+    {
+      x: 36 * MM_TO_PT,
+      y: 525 * MM_TO_PT,
+      size: 9,
+      font: regular,
+      color: navy,
+    },
+  );
+
+  const panels = [
+    ["2D projections", 30, 325, 250, 170],
+    ["3D scene", 300, 325, 240, 170],
+    ["Programme and QA", 560, 325, 235, 170],
+    ["Site, climate, materials", 30, 130, 365, 170],
+    ["Regulation pre-check", 420, 130, 375, 170],
+  ];
+  for (const [label, x, y, w, h] of panels) {
+    page.drawRectangle({
+      x: x * MM_TO_PT,
+      y: y * MM_TO_PT,
+      width: w * MM_TO_PT,
+      height: h * MM_TO_PT,
+      color: panelFill,
+      borderColor: navy,
+      borderWidth: 0.6,
+    });
+    page.drawText(label, {
+      x: (x + 8) * MM_TO_PT,
+      y: (y + h - 18) * MM_TO_PT,
+      size: 11,
+      font: bold,
+      color: navy,
+    });
+  }
+
+  drawingSet.drawings.slice(0, 8).forEach((drawing, index) => {
+    page.drawText(`${drawing.panel_type || drawing.type} | ${drawing.scale}`, {
+      x: 38 * MM_TO_PT,
+      y: (462 - index * 13) * MM_TO_PT,
+      size: 7.5,
+      font: regular,
+      color: navy,
+    });
+  });
+
+  page.drawText(
+    "Same source_model_hash as all plans, sections and elevations.",
+    {
+      x: 312 * MM_TO_PT,
+      y: 462 * MM_TO_PT,
+      size: 8,
+      font: regular,
+      color: navy,
+    },
+  );
+  page.drawText(`3D asset: ${scene3d.asset_id}`, {
+    x: 312 * MM_TO_PT,
+    y: 448 * MM_TO_PT,
+    size: 7,
+    font: regular,
+    color: navy,
+  });
+  page.drawText(`QA status: ${qaStatus}`, {
+    x: 572 * MM_TO_PT,
+    y: 462 * MM_TO_PT,
+    size: 8,
+    font: regular,
+    color: navy,
+  });
+  page.drawText(`Target GIA: ${brief.target_gia_m2} m2`, {
+    x: 572 * MM_TO_PT,
+    y: 448 * MM_TO_PT,
+    size: 8,
+    font: regular,
+    color: navy,
+  });
+  page.drawText(PROFESSIONAL_REVIEW_DISCLAIMER, {
+    x: 432 * MM_TO_PT,
+    y: 268 * MM_TO_PT,
+    size: 7,
+    font: regular,
+    color: navy,
+    maxWidth: 330 * MM_TO_PT,
+  });
+  page.drawText(
+    `ProjectGraph ${projectGraphId} | source_model_hash ${geometryHash}`,
+    {
+      x: 36 * MM_TO_PT,
+      y: 52 * MM_TO_PT,
+      size: 7,
+      font: regular,
+      color: navy,
+    },
+  );
+
+  const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
+  const contentHash = computeCDSHashSync({ pdfDataUri, geometryHash });
+  const assetId = createStableId("asset-a1-pdf", projectGraphId, contentHash);
+
+  return {
+    asset_id: assetId,
+    asset_type: "a1_sheet_pdf",
+    sheet_size_mm: { width: 841, height: 594 },
+    page_size_pt: {
+      width: round(widthPt, 3),
+      height: round(heightPt, 3),
+    },
+    orientation: "landscape",
+    source_model_hash: geometryHash,
+    pdfHash: contentHash,
+    dataUrl: pdfDataUri,
+  };
+}
+
 function buildIssue(code, severity, message, details = {}) {
   return { code, severity, message, details };
 }
@@ -1512,6 +1690,32 @@ export function validateProjectGraphVerticalSlice({
     );
   }
 
+  const graphModel3dHash =
+    projectGraph?.models3d?.models?.[0]?.source_model_hash ||
+    projectGraph?.models_3d?.models?.[0]?.source_model_hash ||
+    null;
+  const graphModel3dHashMatch =
+    Boolean(graphModel3dHash) && graphModel3dHash === geometryHash;
+  addCheck(
+    checks,
+    "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
+    graphModel3dHashMatch,
+    {
+      graphModel3dHash,
+      geometryHash,
+    },
+  );
+  if (!graphModel3dHashMatch) {
+    issues.push(
+      buildIssue(
+        "PROJECT_GRAPH_3D_REFERENCE_MISSING",
+        "error",
+        "ProjectGraph does not reference the 3D projection with the selected design source_model_hash.",
+        { graphModel3dHash, geometryHash },
+      ),
+    );
+  }
+
   const actualGia = Number(
     projectGraph?.programme?.area_summary?.gross_internal_area_m2 || 0,
   );
@@ -1584,6 +1788,34 @@ export function validateProjectGraphVerticalSlice({
     );
   }
 
+  const pdfArtifact = artifacts.a1Pdf || null;
+  const pdfPageOk =
+    pdfArtifact?.asset_type === "a1_sheet_pdf" &&
+    pdfArtifact?.orientation === "landscape" &&
+    Number(pdfArtifact?.sheet_size_mm?.width) === 841 &&
+    Number(pdfArtifact?.sheet_size_mm?.height) === 594 &&
+    pdfArtifact?.source_model_hash === geometryHash;
+  addCheck(checks, "A1_PDF_EXPORT_PRESENT_AND_SIZED", pdfPageOk, {
+    assetType: pdfArtifact?.asset_type || null,
+    sheetSizeMm: pdfArtifact?.sheet_size_mm || null,
+    sourceModelHash: pdfArtifact?.source_model_hash || null,
+    geometryHash,
+  });
+  if (!pdfPageOk) {
+    issues.push(
+      buildIssue(
+        "A1_PDF_EXPORT_MISSING_OR_WRONG_SIZE",
+        "error",
+        "A1 PDF export is missing, wrong size, or not tied to the ProjectGraph source model hash.",
+        {
+          sheetSizeMm: pdfArtifact?.sheet_size_mm || null,
+          sourceModelHash: pdfArtifact?.source_model_hash || null,
+          geometryHash,
+        },
+      ),
+    );
+  }
+
   const errorCount = issues.filter(
     (issue) => issue.severity === "error",
   ).length;
@@ -1612,11 +1844,14 @@ function buildProjectGraph({
   programme,
   selectedDesign,
   drawingSet,
+  model3dSet,
   sheetSet,
   compiledProject,
   modelRegistry,
+  projectGraphId,
 }) {
-  const projectId = createStableId("project-graph", brief.project_name);
+  const projectId =
+    projectGraphId || createStableId("project-graph", brief.project_name);
   const modelVersionId = `model-${compiledProject.geometryHash.slice(0, 12)}`;
   const graph = {
     schema_version: PROJECT_GRAPH_SCHEMA_VERSION,
@@ -1647,6 +1882,7 @@ function buildProjectGraph({
       compiled_project_schema_version: compiledProject.schema_version,
     },
     drawings: drawingSet,
+    models3d: model3dSet,
     sheets: sheetSet,
     qa: null,
     provenance: [
@@ -1745,6 +1981,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       source_project_graph_id: projectGraphId,
     })),
   };
+  const model3dSet = build3DModelSet({
+    projectGraphId,
+    scene3d,
+    geometryHash: compiledProject.geometryHash,
+  });
   const { sheetSet, sheetArtifact } = buildA1Sheet({
     projectGraphId,
     brief,
@@ -1752,6 +1993,23 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     scene3d,
     geometryHash: compiledProject.geometryHash,
   });
+  const pdfArtifact = await buildA1PdfArtifact({
+    projectGraphId,
+    brief,
+    drawingSet: drawingSetWithGraph,
+    scene3d,
+    geometryHash: compiledProject.geometryHash,
+  });
+  const sheetSetWithPdf = {
+    ...sheetSet,
+    sheets: sheetSet.sheets.map((sheet) => ({
+      ...sheet,
+      asset_ids: [
+        ...new Set([...(sheet.asset_ids || []), pdfArtifact.asset_id]),
+      ],
+      exported_pdf_asset_id: pdfArtifact.asset_id,
+    })),
+  };
   const initialGraph = buildProjectGraph({
     brief,
     site,
@@ -1761,9 +2019,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     programme,
     selectedDesign,
     drawingSet: drawingSetWithGraph,
-    sheetSet,
+    model3dSet,
+    sheetSet: sheetSetWithPdf,
     compiledProject,
     modelRegistry,
+    projectGraphId,
   });
   const graphWithStableId = {
     ...initialGraph,
@@ -1773,6 +2033,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     drawings: drawingArtifacts,
     scene3d,
     a1Sheet: sheetArtifact,
+    a1Pdf: pdfArtifact,
     compiledProject,
     projectGeometry,
     technicalBuild: {

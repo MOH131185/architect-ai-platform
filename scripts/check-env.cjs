@@ -1,382 +1,183 @@
 /**
- * Environment Variable Checker - Enhanced Version
+ * Environment Variable Checker
  *
- * Validates that required environment variables are set.
- * Reflects current architecture with Together.ai as primary service.
- * Run with: node scripts/check-env.cjs
+ * Validates the production environment expected by the RIBA A1 ProjectGraph
+ * pipeline. Secrets are never printed; only variable names and status are
+ * reported.
  */
 
-const path = require('path');
-const fs = require('fs');
-const https = require('https');
+const path = require("path");
+const fs = require("fs");
 
-// Load environment variables from .env file if it exists
-const envPath = path.join(__dirname, '..', '.env');
+const envPath = path.join(__dirname, "..", ".env");
 if (fs.existsSync(envPath)) {
-  require('dotenv').config({ path: envPath });
+  require("dotenv").config({ path: envPath });
 }
 
-/**
- * Environment variable configuration
- */
-const ENV_CONFIG = {
-  required: {
-    primary: [
-      {
-        name: 'TOGETHER_API_KEY',
-        description: 'Together.ai API key for FLUX image generation and Qwen reasoning',
-        format: /^tgp_v1_[a-zA-Z0-9]{40,}$/,
-        testEndpoint: 'https://api.together.xyz/v1/models',
-        critical: true
-      }
-    ],
-    client: [
-      {
-        name: 'REACT_APP_GOOGLE_MAPS_API_KEY',
-        description: 'Google Maps API key for geocoding and 3D map display',
-        format: /^AIza[0-9A-Za-z-_]{35}$/,
-        critical: true
-      },
-      {
-        name: 'REACT_APP_OPENWEATHER_API_KEY',
-        description: 'OpenWeather API key for climate data analysis',
-        format: /^[a-f0-9]{32}$/,
-        critical: true
-      }
-    ]
+const REQUIRED = [
+  {
+    name: "OPENAI_API_KEY",
+    description: "OpenAI API key for model-first pipeline steps",
+    format: /^sk-(?:proj-)?[a-zA-Z0-9_-]{20,}$/,
   },
-  auth: [
-    {
-      name: 'REACT_APP_CLERK_PUBLISHABLE_KEY',
-      description: 'Clerk publishable key (client-side auth)',
-      format: /^pk_(test|live)_/,
-      critical: true
-    },
-    {
-      name: 'CLERK_SECRET_KEY',
-      description: 'Clerk secret key (server-side session verification)',
-      format: /^sk_(test|live)_/,
-      critical: true
-    },
-    {
-      name: 'REACT_APP_SUPABASE_URL',
-      description: 'Supabase project URL',
-      format: /^https:\/\/.+\.supabase\.co$/,
-      critical: true
-    },
-    {
-      name: 'SUPABASE_SERVICE_ROLE_KEY',
-      description: 'Supabase service role key (server-only)',
-      format: /^eyJ/,
-      critical: true
-    },
-    {
-      name: 'STRIPE_SECRET_KEY',
-      description: 'Stripe secret key (server-only)',
-      format: /^sk_(test|live)_/,
-      critical: true
-    },
-    {
-      name: 'STRIPE_WEBHOOK_SECRET',
-      description: 'Stripe webhook signing secret',
-      format: /^whsec_/,
-      critical: true
-    },
-    {
-      name: 'STRIPE_PRICE_STARTER',
-      description: 'Stripe price ID for Starter plan',
-      format: /^price_/,
-      critical: false
-    },
-    {
-      name: 'STRIPE_PRICE_PROFESSIONAL',
-      description: 'Stripe price ID for Professional plan',
-      format: /^price_/,
-      critical: false
-    },
-    {
-      name: 'STRIPE_PRICE_ENTERPRISE',
-      description: 'Stripe price ID for Enterprise plan',
-      format: /^price_/,
-      critical: false
-    }
-  ],
-  optional: [
-    {
-      name: 'REACT_APP_OPENAI_API_KEY',
-      description: 'OpenAI API key (fallback for reasoning)',
-      format: /^sk-(?:proj-)?[a-zA-Z0-9_-]{20,}$/
-    },
-    {
-      name: 'REACT_APP_REPLICATE_API_KEY',
-      description: 'Replicate API key (fallback for image generation)',
-      format: /^r8_[a-zA-Z0-9]{37,}$/
-    },
-    {
-      name: 'OPENAI_REASONING_API_KEY',
-      description: 'OpenAI GPT-4 API key (fallback reasoning, Together.ai is primary)',
-      format: /^sk-(?:proj-)?[a-zA-Z0-9_-]{20,}$/
-    }
-  ],
-  deprecated: [
-    'OPENAI_IMAGES_API_KEY',
-    'MIDJOURNEY_API_KEY'
-  ]
-};
+  {
+    name: "OPENAI_REASONING_MODEL",
+    description: "Base reasoning model used before fine-tunes exist",
+  },
+  {
+    name: "OPENAI_FAST_MODEL",
+    description: "Fast base model used for labels and brief parsing",
+  },
+  {
+    name: "OPENAI_IMAGE_MODEL",
+    description: "OpenAI image model for optional presentation imagery",
+  },
+  {
+    name: "STEP_07_PROJECT_GRAPH_MODEL",
+    description: "ProjectGraph synthesis model",
+  },
+  {
+    name: "STEP_08_2D_LABEL_MODEL",
+    description: "2D labels/legend model; geometry remains deterministic",
+  },
+  {
+    name: "STEP_09_3D_QA_MODEL",
+    description: "3D QA model; geometry remains deterministic",
+  },
+  {
+    name: "STEP_12_A1_SHEET_MODEL",
+    description: "A1 sheet narrative/layout support model",
+  },
+  {
+    name: "STEP_13_QA_MODEL",
+    description: "QA/evaluation model",
+  },
+  {
+    name: "PROJECT_GRAPH_REQUIRE_2D_3D_SAME_SOURCE",
+    description: "Blocks independent 2D/3D generation",
+    expected: "true",
+  },
+  {
+    name: "A1_SHEET_WIDTH_MM",
+    description: "A1 landscape width",
+    expected: "841",
+  },
+  {
+    name: "A1_SHEET_HEIGHT_MM",
+    description: "A1 landscape height",
+    expected: "594",
+  },
+];
 
-/**
- * Test API key validity
- */
-async function testAPIKey(envVar) {
-  if (!envVar.testEndpoint || !process.env[envVar.name]) {
-    return null;
-  }
+const CLIENT_REQUIRED = [
+  {
+    name: "REACT_APP_GOOGLE_MAPS_API_KEY",
+    description: "Site lookup and map display",
+  },
+  {
+    name: "REACT_APP_OPENWEATHER_API_KEY",
+    description: "Climate fallback data",
+  },
+];
 
-  return new Promise((resolve) => {
-    const apiKey = process.env[envVar.name];
-    const url = new URL(envVar.testEndpoint);
+const OPTIONAL_DATA = [
+  "OS_DATAHUB_API_KEY",
+  "OS_MAPS_API_KEY",
+  "OS_FEATURES_API_KEY",
+  "OS_NGD_API_KEY",
+  "METOFFICE_DATAHUB_API_KEY",
+  "UKCP_API_KEY",
+  "PLANNING_DATA_API_KEY",
+  "ENVIRONMENT_AGENCY_API_KEY",
+  "OPENAI_IMAGES_API_KEY",
+];
 
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname,
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      }
-    };
+const LEGACY_OPTIONAL = [
+  "TOGETHER_API_KEY",
+  "TOGETHER_FLUX_MODEL",
+  "STABILITY_API_KEY",
+  "REPLICATE_API_TOKEN",
+  "RUNPOD_API_KEY",
+];
 
-    const req = https.request(options, (res) => {
-      resolve(res.statusCode === 200 || res.statusCode === 401);
-    });
-
-    req.on('error', () => resolve(false));
-    req.setTimeout(5000, () => {
-      req.destroy();
-      resolve(false);
-    });
-
-    req.end();
-  });
+function isSet(name) {
+  return Boolean(String(process.env[name] || "").trim());
 }
 
-/**
- * Check environment variables
- */
-async function checkEnvironment() {
-  console.log('🔍 Environment Variable Validation v2.0\n');
-  console.log('═══════════════════════════════════════════════════════════════\n');
+function checkGroup(title, entries, { required = true } = {}) {
+  console.log(`\n${title}`);
+  console.log("─".repeat(title.length));
+  const missing = [];
+  const invalid = [];
 
-  let hasErrors = false;
-  let hasCriticalErrors = false;
-  const results = {
-    required: { present: [], missing: [], invalid: [] },
-    optional: { present: [], missing: [] },
-    deprecated: []
-  };
+  for (const entry of entries) {
+    const value = process.env[entry.name];
+    if (!isSet(entry.name)) {
+      console.log(`  ${required ? "❌" : "○"} ${entry.name}`);
+      if (required) missing.push(entry.name);
+      continue;
+    }
+    if (entry.expected && String(value).toLowerCase() !== entry.expected) {
+      console.log(`  ⚠️  ${entry.name} must be ${entry.expected}`);
+      invalid.push(entry.name);
+      continue;
+    }
+    if (entry.format && !entry.format.test(value)) {
+      console.log(`  ⚠️  ${entry.name} has unexpected format`);
+      invalid.push(entry.name);
+      continue;
+    }
+    console.log(`  ✅ ${entry.name}`);
+  }
 
-  // Check for .env file
+  return { missing, invalid };
+}
+
+function checkOptionalList(title, names) {
+  console.log(`\n${title}`);
+  console.log("─".repeat(title.length));
+  for (const name of names) {
+    console.log(`  ${isSet(name) ? "✅" : "○"} ${name}`);
+  }
+}
+
+function main() {
+  console.log("Environment Variable Validation: RIBA A1 ProjectGraph pipeline");
+  console.log("Secrets are redacted by design.");
+
   if (!fs.existsSync(envPath)) {
-    console.log('⚠️  No .env file found. Using system environment variables.\n');
+    console.log("\n⚠️  No .env file found. Using process environment only.");
   }
 
-  // Check required primary service vars
-  console.log('🚀 PRIMARY SERVICE (Together.ai):');
-  console.log('─────────────────────────────────');
+  const core = checkGroup("Core model-first pipeline", REQUIRED);
+  const client = checkGroup("Client/site services", CLIENT_REQUIRED);
+  checkOptionalList("Optional UK data providers", OPTIONAL_DATA);
+  checkOptionalList("Legacy/optional image providers", LEGACY_OPTIONAL);
 
-  for (const envVar of ENV_CONFIG.required.primary) {
-    const value = process.env[envVar.name];
+  const failures = [
+    ...core.missing,
+    ...core.invalid,
+    ...client.missing,
+    ...client.invalid,
+  ];
 
-    if (!value) {
-      console.log(`  ❌ ${envVar.name}`);
-      console.log(`     └─ ${envVar.description}`);
-      results.required.missing.push(envVar.name);
-      hasErrors = true;
-      if (envVar.critical) hasCriticalErrors = true;
-    } else if (envVar.format && !envVar.format.test(value)) {
-      console.log(`  ⚠️  ${envVar.name} - Invalid format`);
-      console.log(`     └─ Expected format: ${envVar.format}`);
-      results.required.invalid.push(envVar.name);
-      hasErrors = true;
-    } else {
-      // Test API key validity
-      const isValid = await testAPIKey(envVar);
-      if (isValid === false) {
-        console.log(`  ⚠️  ${envVar.name} - Set but may be invalid`);
-        console.log(`     └─ API test failed`);
-      } else {
-        console.log(`  ✅ ${envVar.name}`);
-        if (isValid === true) {
-          console.log(`     └─ API connection verified`);
-        }
-      }
-      results.required.present.push(envVar.name);
-    }
-  }
-
-  // Check auth & billing vars
-  console.log('\n🔐 AUTH & BILLING (Clerk / Supabase / Stripe):');
-  console.log('─────────────────────────────────');
-
-  for (const envVar of ENV_CONFIG.auth) {
-    const value = process.env[envVar.name];
-
-    if (!value) {
-      console.log(`  ${envVar.critical ? '❌' : '○'} ${envVar.name}`);
-      console.log(`     └─ ${envVar.description}`);
-      results.required.missing.push(envVar.name);
-      if (envVar.critical) { hasErrors = true; hasCriticalErrors = true; }
-    } else if (envVar.format && !envVar.format.test(value)) {
-      console.log(`  ⚠️  ${envVar.name} - Invalid format`);
-      results.required.invalid.push(envVar.name);
-      hasErrors = true;
-    } else {
-      console.log(`  ✅ ${envVar.name}`);
-      results.required.present.push(envVar.name);
-    }
-  }
-
-  // Check required client-side vars
-  console.log('\n🌐 CLIENT-SIDE SERVICES:');
-  console.log('─────────────────────────────────');
-
-  for (const envVar of ENV_CONFIG.required.client) {
-    const value = process.env[envVar.name];
-
-    if (!value) {
-      console.log(`  ❌ ${envVar.name}`);
-      console.log(`     └─ ${envVar.description}`);
-      results.required.missing.push(envVar.name);
-      hasErrors = true;
-      if (envVar.critical) hasCriticalErrors = true;
-    } else if (envVar.format && !envVar.format.test(value)) {
-      console.log(`  ⚠️  ${envVar.name} - Invalid format`);
-      results.required.invalid.push(envVar.name);
-      hasErrors = true;
-    } else {
-      console.log(`  ✅ ${envVar.name}`);
-      results.required.present.push(envVar.name);
-    }
-  }
-
-  // Check optional vars
-  console.log('\n⚙️  OPTIONAL SERVICES (Fallbacks):');
-  console.log('─────────────────────────────────');
-
-  for (const envVar of ENV_CONFIG.optional) {
-    const value = process.env[envVar.name];
-
-    if (!value) {
-      console.log(`  ○ ${envVar.name} - Not configured`);
-      results.optional.missing.push(envVar.name);
-    } else if (envVar.format && !envVar.format.test(value)) {
-      console.log(`  ⚠️  ${envVar.name} - Set but invalid format`);
-    } else {
-      console.log(`  ✅ ${envVar.name} - Configured`);
-      results.optional.present.push(envVar.name);
-    }
-  }
-
-  // Check for deprecated vars
-  console.log('\n🚫 DEPRECATED VARIABLES:');
-  console.log('─────────────────────────────────');
-
-  let hasDeprecated = false;
-  for (const varName of ENV_CONFIG.deprecated) {
-    if (process.env[varName]) {
-      console.log(`  ⚠️  ${varName} - Should be removed`);
-      results.deprecated.push(varName);
-      hasDeprecated = true;
-    }
-  }
-
-  if (!hasDeprecated) {
-    console.log('  ✅ No deprecated variables found');
-  }
-
-  // Performance check
-  console.log('\n⚡ PERFORMANCE SETTINGS:');
-  console.log('─────────────────────────────────');
-
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  console.log(`  Environment: ${nodeEnv}`);
-
-  if (nodeEnv === 'production') {
-    console.log('  ✅ Production mode - optimizations enabled');
-  } else if (nodeEnv === 'development') {
-    console.log('  ⚠️  Development mode - debug features enabled');
-  }
-
-  const logLevel = process.env.REACT_APP_LOG_LEVEL || 'DEBUG';
-  console.log(`  Log Level: ${logLevel}`);
-
-  // Summary
-  console.log('\n═══════════════════════════════════════════════════════════════');
-  console.log('📊 VALIDATION SUMMARY:');
-  console.log('─────────────────────────────────');
-
-  const totalRequired = ENV_CONFIG.required.primary.length + ENV_CONFIG.required.client.length + ENV_CONFIG.auth.length;
-  const totalPresent = results.required.present.length;
-  const totalOptional = ENV_CONFIG.optional.length;
-  const optionalPresent = results.optional.present.length;
-
-  console.log(`  Required Variables: ${totalPresent}/${totalRequired}`);
-  console.log(`  Optional Variables: ${optionalPresent}/${totalOptional}`);
-  console.log(`  Invalid Variables:  ${results.required.invalid.length}`);
-  console.log(`  Deprecated:         ${results.deprecated.length}`);
-
-  // Final result
-  console.log('\n═══════════════════════════════════════════════════════════════');
-
-  if (hasCriticalErrors) {
-    console.log('❌ CRITICAL ERRORS FOUND\n');
-    console.log('The following critical variables are missing:');
-    results.required.missing.forEach(varName => {
-      const config = [...ENV_CONFIG.required.primary, ...ENV_CONFIG.required.client]
-        .find(c => c.name === varName);
-      if (config?.critical) {
-        console.log(`  • ${varName}`);
-      }
-    });
-    console.log('\n📝 TO FIX:');
-    console.log('1. Copy .env.example to .env');
-    console.log('2. Add your API keys to the .env file');
-    console.log('3. For Together.ai, ensure you have added credits ($5-10)');
-    console.log('4. Run this script again to verify');
+  console.log("\nSummary");
+  console.log("───────");
+  if (failures.length) {
+    console.log(
+      `❌ Environment validation failed (${failures.length} issue(s)).`,
+    );
+    failures.forEach((name) => console.log(`  • ${name}`));
     process.exit(1);
-  } else if (hasErrors) {
-    console.log('⚠️  VALIDATION PASSED WITH WARNINGS\n');
-    console.log('Some non-critical issues were found:');
-
-    if (results.required.missing.length > 0) {
-      console.log('\nMissing optional features:');
-      results.required.missing.forEach(varName => console.log(`  • ${varName}`));
-    }
-
-    if (results.required.invalid.length > 0) {
-      console.log('\nInvalid format:');
-      results.required.invalid.forEach(varName => console.log(`  • ${varName}`));
-    }
-
-    console.log('\nThe application will work but some features may be limited.');
-    process.exit(0);
-  } else {
-    console.log('✅ ENVIRONMENT VALIDATION PASSED\n');
-    console.log('All required environment variables are properly configured.');
-
-    if (results.deprecated.length > 0) {
-      console.log('\n💡 Recommendation: Remove deprecated variables from your .env file');
-    }
-
-    if (results.optional.missing.length === ENV_CONFIG.optional.length) {
-      console.log('\n💡 Tip: Configure optional services for fallback support');
-    }
-
-    process.exit(0);
   }
+
+  if (isSet("TOGETHER_API_KEY")) {
+    console.log(
+      "⚠️  TOGETHER_API_KEY is set, but it is not required for the ProjectGraph vertical slice.",
+    );
+  }
+
+  console.log("✅ Environment validation passed.");
 }
 
-// Run check
-checkEnvironment().catch(error => {
-  console.error('❌ Error during environment check:', error.message);
-  process.exit(1);
-});
+main();

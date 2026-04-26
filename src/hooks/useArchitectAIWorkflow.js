@@ -25,6 +25,7 @@ import {
   executeWorkflow,
   UnsupportedPipelineModeError,
 } from "../services/workflowRouter.js";
+import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import { createSheetArtifactManifest } from "../services/project/v2ProjectContracts.js";
 
 const STAGES = Object.freeze([
@@ -77,6 +78,188 @@ function buildManifestPanels(multiPanelResult = {}) {
     };
   });
   return entries;
+}
+
+function svgToDataUrl(svgString = "") {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+}
+
+function buildProjectGraphVerticalSliceRequest(params = {}) {
+  const designSpec = params.designSpec || {};
+  const projectDetails =
+    designSpec.projectDetails ||
+    designSpec.specifications ||
+    designSpec.project ||
+    designSpec;
+  const locationData =
+    designSpec.location || params.locationData || params.siteSnapshot || {};
+  const programSpaces =
+    designSpec.programSpaces ||
+    designSpec.programme?.spaces ||
+    designSpec.program?.spaces ||
+    designSpec.rooms ||
+    [];
+
+  return {
+    ...designSpec,
+    projectDetails,
+    locationData,
+    siteSnapshot: params.siteSnapshot || null,
+    programSpaces,
+    brief: designSpec.brief ||
+      designSpec.projectBrief || {
+        project_name:
+          projectDetails.projectName ||
+          projectDetails.name ||
+          designSpec.projectName ||
+          "ArchiAI Project",
+        target_gia_m2:
+          projectDetails.area ||
+          projectDetails.targetAreaM2 ||
+          designSpec.targetAreaM2 ||
+          designSpec.area ||
+          180,
+        target_storeys:
+          projectDetails.floorCount ||
+          designSpec.targetStoreys ||
+          designSpec.floorCount ||
+          2,
+        building_type:
+          projectDetails.buildingType ||
+          projectDetails.subType ||
+          designSpec.buildingType ||
+          "dwelling",
+        required_spaces_text:
+          projectDetails.requiredSpacesText ||
+          designSpec.requiredSpacesText ||
+          "",
+        constraints_text:
+          projectDetails.constraintsText || designSpec.constraintsText || "",
+      },
+  };
+}
+
+async function runProjectGraphVerticalSliceWorkflow({
+  params,
+  env,
+  onProgress,
+  getToken,
+}) {
+  onProgress?.({
+    stage: "analysis",
+    percentage: 10,
+    message: "Normalising brief and site context...",
+  });
+
+  const url =
+    env?.api?.urls?.projectVerticalSlice ||
+    env?.urls?.projectVerticalSlice ||
+    "/api/project/generate-vertical-slice";
+  const headers = { "Content-Type": "application/json" };
+
+  try {
+    const token = typeof getToken === "function" ? await getToken() : null;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    // Anonymous generation is supported; token lookup failure should not block.
+  }
+
+  onProgress?.({
+    stage: "dna",
+    percentage: 30,
+    message: "Building ProjectGraph source of truth...",
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(buildProjectGraphVerticalSliceRequest(params)),
+  });
+  const verticalSlice = await response.json().catch(() => ({}));
+
+  if (!response.ok || !verticalSlice?.success) {
+    const issue = verticalSlice?.qa?.issues?.[0];
+    throw new Error(
+      verticalSlice?.error ||
+        issue?.message ||
+        `ProjectGraph vertical slice failed (${response.status})`,
+    );
+  }
+
+  onProgress?.({
+    stage: "rendering",
+    percentage: 75,
+    message: "Projecting 2D, 3D and A1 sheet from ProjectGraph...",
+  });
+
+  const sheetSvg = verticalSlice.artifacts?.a1Sheet?.svgString || "";
+  const composedSheetUrl = sheetSvg ? svgToDataUrl(sheetSvg) : null;
+  const drawingAssets = verticalSlice.artifacts?.drawings || [];
+  const panelMap = Object.fromEntries(
+    drawingAssets.map((drawing) => {
+      const panelType = drawing.panel_type || drawing.drawing_id;
+      return [
+        panelType,
+        {
+          panelType,
+          url: drawing.svgString ? svgToDataUrl(drawing.svgString) : null,
+          svgString: drawing.svgString || null,
+          sourceType: "project_graph_drawing_svg",
+          authorityUsed: "ProjectGraph",
+          authoritySource: "project_graph",
+          geometryHash: verticalSlice.geometryHash,
+          svgHash: drawing.svgHash || null,
+          metadata: {
+            sourceType: "project_graph_drawing_svg",
+            authorityUsed: "ProjectGraph",
+            authoritySource: "project_graph",
+            geometryHash: verticalSlice.geometryHash,
+            sourceModelHash: drawing.source_model_hash || null,
+          },
+        },
+      ];
+    }),
+  );
+
+  onProgress?.({
+    stage: "finalizing",
+    percentage: 95,
+    message: "Validating ProjectGraph consistency...",
+  });
+
+  return {
+    success: true,
+    workflow: PIPELINE_MODE.PROJECT_GRAPH,
+    composedSheetUrl,
+    url: composedSheetUrl,
+    pdfUrl: verticalSlice.artifacts?.a1Pdf?.dataUrl || null,
+    projectGraph: verticalSlice.projectGraph,
+    projectGraphId: verticalSlice.projectGraph?.project_graph_id || null,
+    geometryHash: verticalSlice.geometryHash,
+    compiledProject: verticalSlice.artifacts?.compiledProject || null,
+    projectGeometry: verticalSlice.artifacts?.projectGeometry || null,
+    panels: panelMap,
+    panelMap,
+    panelsByKey: panelMap,
+    qa: verticalSlice.qa,
+    artifacts: verticalSlice.artifacts,
+    modelRegistry: verticalSlice.modelRegistry,
+    metadata: {
+      workflow: PIPELINE_MODE.PROJECT_GRAPH,
+      pipelineVersion: verticalSlice.pipelineVersion,
+      projectGraphId: verticalSlice.projectGraph?.project_graph_id || null,
+      geometryHash: verticalSlice.geometryHash,
+      panelCount: Object.keys(panelMap).length,
+      sourceOfTruth: "ProjectGraph",
+      sheetSizeMm: verticalSlice.artifacts?.a1Sheet?.sheet_size_mm || {
+        width: 841,
+        height: 594,
+      },
+      qaStatus: verticalSlice.qa?.status || null,
+    },
+  };
 }
 
 /**
@@ -184,18 +367,29 @@ export function useArchitectAIWorkflow() {
 
         let rawMultiPanelResult;
         try {
-          rawMultiPanelResult = await executeWorkflow(
-            dnaWorkflowOrchestrator,
-            {
-              locationData: workflowLocationData,
-              projectContext: params.designSpec,
-              portfolioFiles:
-                params.designSpec?.portfolioBlend?.portfolioFiles || [],
-              siteSnapshot: params.siteSnapshot,
-              baseSeed: params.seed || Date.now(),
-            },
-            { onProgress },
-          );
+          rawMultiPanelResult =
+            resolvedMode === PIPELINE_MODE.PROJECT_GRAPH
+              ? await runProjectGraphVerticalSliceWorkflow({
+                  params: {
+                    ...params,
+                    locationData: workflowLocationData,
+                  },
+                  env: envRef.current,
+                  onProgress,
+                  getToken,
+                })
+              : await executeWorkflow(
+                  dnaWorkflowOrchestrator,
+                  {
+                    locationData: workflowLocationData,
+                    projectContext: params.designSpec,
+                    portfolioFiles:
+                      params.designSpec?.portfolioBlend?.portfolioFiles || [],
+                    siteSnapshot: params.siteSnapshot,
+                    baseSeed: params.seed || Date.now(),
+                  },
+                  { onProgress },
+                );
         } catch (workflowErr) {
           // Release the pending slot on failure so it doesn't count against quota
           if (generationId) {
@@ -207,11 +401,14 @@ export function useArchitectAIWorkflow() {
           throw workflowErr;
         }
 
-        const multiPanelResult = normalizeMultiPanelResult(rawMultiPanelResult);
+        const multiPanelResult =
+          resolvedMode === PIPELINE_MODE.PROJECT_GRAPH
+            ? rawMultiPanelResult
+            : normalizeMultiPanelResult(rawMultiPanelResult);
 
         if (!multiPanelResult?.success || !multiPanelResult?.composedSheetUrl) {
           throw new Error(
-            multiPanelResult?.error || "Multi-panel generation failed",
+            multiPanelResult?.error || "Project generation failed",
           );
         }
 
@@ -418,7 +615,7 @@ export function useArchitectAIWorkflow() {
         }
         // Unsupported pipeline mode — fail fast, do not retry
         if (err instanceof UnsupportedPipelineModeError) {
-          const msg = `Configuration error: ${err.message}. Set PIPELINE_MODE to "multi_panel".`;
+          const msg = `Configuration error: ${err.message}. Use PIPELINE_MODE="project_graph" for the RIBA A1 ProjectGraph path or "multi_panel" for the legacy path.`;
           logger.error(msg);
           setError(msg);
           return null;
@@ -440,7 +637,7 @@ export function useArchitectAIWorkflow() {
           msg.toLowerCase().includes("unauthorized")
         ) {
           setError(
-            "API key invalid or expired. Check your Together.ai configuration.",
+            "API key invalid or expired. Check the OpenAI/Vercel environment configuration.",
           );
         } else if (
           msg.toLowerCase().includes("timeout") ||

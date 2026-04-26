@@ -30,6 +30,7 @@ describe("modelStepResolver", () => {
     expect(config.model).toBe("ft:gpt-4.1-programme-v001");
     expect(config.baseModel).toBe("gpt-5.4");
     expect(config.selectionSource).toBe("fine_tuned");
+    expect(config.provider).toBe("openai");
   });
 
   test("fails closed when fine_tuned mode lacks a step model", () => {

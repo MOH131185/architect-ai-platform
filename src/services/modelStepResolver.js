@@ -192,10 +192,13 @@ function firstEnv(env, keys = []) {
 function inferProvider(model) {
   const lowered = String(model || "").toLowerCase();
   if (
+    lowered.startsWith("ft:gpt-") ||
+    lowered.startsWith("ft:o") ||
     lowered.startsWith("gpt-") ||
     lowered.startsWith("o1") ||
     lowered.startsWith("o3") ||
     lowered.startsWith("o4") ||
+    lowered.startsWith("gpt-image-") ||
     lowered.startsWith("text-embedding-")
   ) {
     return "openai";
