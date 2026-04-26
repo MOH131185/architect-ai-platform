@@ -1,50 +1,63 @@
 /**
- * Force Enable Hybrid A1 Mode
-/**
- * Force Enable Hybrid A1 Mode
- * 
- * Add this component to your App.js to force-enable Hybrid A1 Mode
- * and clear any cached feature flags.
+ * Keep legacy Hybrid A1 flags aligned with the active pipeline mode.
+ *
+ * ProjectGraph is now the production default, so this component must not force
+ * the old multi-panel workflow when the ProjectGraph vertical slice is active.
  */
 
-import { useEffect } from 'react';
-import { setFeatureFlag, isFeatureEnabled, FEATURE_FLAGS } from '../config/featureFlags.js';
-import logger from '../utils/logger.js';
-
+import { useEffect } from "react";
+import {
+  setFeatureFlag,
+  isFeatureEnabled,
+  FEATURE_FLAGS,
+} from "../config/featureFlags.js";
+import { getCurrentPipelineMode, PIPELINE_MODE } from "../config/pipelineMode.js";
+import logger from "../utils/logger.js";
 
 export default function ForceHybridMode() {
-    useEffect(() => {
-        logger.info('🔧 ForceHybridMode component mounted');
+  useEffect(() => {
+    logger.info("ForceHybridMode component mounted");
 
-        // Clear old cached flags
-        sessionStorage.removeItem('featureFlags');
-        logger.info('🗑️ Cleared sessionStorage feature flags');
+    try {
+      sessionStorage.removeItem("featureFlags");
+      logger.info("Cleared sessionStorage feature flags");
+    } catch (error) {
+      logger.warn("Unable to clear sessionStorage feature flags", { error });
+    }
 
-        // Directly modify the FEATURE_FLAGS object
-        FEATURE_FLAGS.hybridA1Mode = true;
-        logger.success(' Set FEATURE_FLAGS.hybridA1Mode = true');
+    const pipelineMode = getCurrentPipelineMode();
 
-        // Also use setFeatureFlag to persist
-        setFeatureFlag('hybridA1Mode', true);
-        logger.success(' Called setFeatureFlag(hybridA1Mode, true)');
+    if (pipelineMode === PIPELINE_MODE.PROJECT_GRAPH) {
+      FEATURE_FLAGS.hybridA1Mode = false;
+      setFeatureFlag("hybridA1Mode", false);
 
-        // Verify multiple ways
-        const isEnabled = isFeatureEnabled('hybridA1Mode');
-        const directValue = FEATURE_FLAGS.hybridA1Mode;
+      logger.info(
+        "ProjectGraph pipeline active; legacy Hybrid A1 forcing is disabled.",
+      );
+      logger.info("Next generation will use the ProjectGraph vertical slice.");
+      return;
+    }
 
-        logger.info('🎯 Hybrid A1 Mode verification:');
-        logger.info('   isFeatureEnabled:', isEnabled);
-        logger.info('   FEATURE_FLAGS.hybridA1Mode:', directValue);
-        logger.info('   sessionStorage:', sessionStorage.getItem('featureFlags'));
+    FEATURE_FLAGS.hybridA1Mode = true;
+    setFeatureFlag("hybridA1Mode", true);
 
-        if (!isEnabled || !directValue) {
-            logger.error('❌ CRITICAL: Failed to enable Hybrid A1 Mode!');
-            logger.error('   This will result in single-view generation instead of multi-panel A1 sheet');
-        } else {
-            logger.success(' SUCCESS: Hybrid A1 Mode is ENABLED');
-            logger.info('   Next generation will use panel-based workflow');
-        }
-    }, []);
+    const isEnabled = isFeatureEnabled("hybridA1Mode");
+    const directValue = FEATURE_FLAGS.hybridA1Mode;
 
-    return null; // This component doesn't render anything
+    logger.info("Hybrid A1 Mode verification:");
+    logger.info("   isFeatureEnabled:", isEnabled);
+    logger.info("   FEATURE_FLAGS.hybridA1Mode:", directValue);
+
+    if (!isEnabled || !directValue) {
+      logger.error("CRITICAL: Failed to enable Hybrid A1 Mode.");
+      logger.error(
+        "This will result in single-view generation instead of multi-panel A1 sheet.",
+      );
+    } else {
+      logger.success("Hybrid A1 Mode is enabled for legacy multi-panel mode.");
+      logger.info("Next generation will use panel-based workflow.");
+    }
+  }, []);
+
+  return null;
 }

@@ -84,7 +84,75 @@ function svgToDataUrl(svgString = "") {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
 }
 
-function buildProjectGraphVerticalSliceRequest(params = {}) {
+function compactSiteSnapshotForRequest(siteSnapshot = null) {
+  if (!siteSnapshot || typeof siteSnapshot !== "object") {
+    return null;
+  }
+
+  return {
+    address: siteSnapshot.address || null,
+    coordinates: siteSnapshot.coordinates || siteSnapshot.center || null,
+    sitePolygon: siteSnapshot.sitePolygon || siteSnapshot.polygon || [],
+    climate: siteSnapshot.climate || null,
+    zoning: siteSnapshot.zoning || null,
+    center: siteSnapshot.center || siteSnapshot.coordinates || null,
+    zoom: siteSnapshot.zoom || null,
+    mapType: siteSnapshot.mapType || null,
+    size: siteSnapshot.size || null,
+    sha256: siteSnapshot.sha256 || null,
+    capturedAt:
+      siteSnapshot.capturedAt || siteSnapshot.metadata?.capturedAt || null,
+    metadata: {
+      siteMetrics: siteSnapshot.metadata?.siteMetrics || null,
+      sunPath: siteSnapshot.metadata?.sunPath || null,
+      wind: siteSnapshot.metadata?.wind || null,
+      climateSummary: siteSnapshot.metadata?.climateSummary || null,
+    },
+  };
+}
+
+function compactLocationDataForRequest(locationData = {}) {
+  if (!locationData || typeof locationData !== "object") {
+    return {};
+  }
+
+  return {
+    address: locationData.address || null,
+    postcode: locationData.postcode || null,
+    coordinates: locationData.coordinates || null,
+    climate: locationData.climate || null,
+    zoning: locationData.zoning || null,
+    sunPath: locationData.sunPath || locationData.siteDNA?.solar || null,
+    wind: locationData.wind || null,
+    recommendedStyle: locationData.recommendedStyle || null,
+    localMaterials: locationData.localMaterials || [],
+    siteAnalysis: locationData.siteAnalysis
+      ? {
+          area: locationData.siteAnalysis.area || null,
+          shape: locationData.siteAnalysis.shape || null,
+          confidence: locationData.siteAnalysis.confidence || null,
+          source: locationData.siteAnalysis.source || null,
+        }
+      : null,
+  };
+}
+
+function compactPortfolioBlendForRequest(portfolioBlend = {}) {
+  return {
+    materialWeight: portfolioBlend.materialWeight ?? null,
+    characteristicWeight: portfolioBlend.characteristicWeight ?? null,
+    localStyle: portfolioBlend.localStyle || null,
+    climateStyle: portfolioBlend.climateStyle || null,
+    portfolioFiles: (portfolioBlend.portfolioFiles || []).map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      convertedFromPdf: Boolean(file.convertedFromPdf),
+    })),
+  };
+}
+
+export function buildProjectGraphVerticalSliceRequest(params = {}) {
   const designSpec = params.designSpec || {};
   const projectDetails =
     designSpec.projectDetails ||
@@ -93,6 +161,9 @@ function buildProjectGraphVerticalSliceRequest(params = {}) {
     designSpec;
   const locationData =
     designSpec.location || params.locationData || params.siteSnapshot || {};
+  const compactSiteSnapshot = compactSiteSnapshotForRequest(
+    params.siteSnapshot || designSpec.siteSnapshot || null,
+  );
   const programSpaces =
     designSpec.programSpaces ||
     designSpec.programme?.spaces ||
@@ -101,11 +172,44 @@ function buildProjectGraphVerticalSliceRequest(params = {}) {
     [];
 
   return {
-    ...designSpec,
-    projectDetails,
-    locationData,
-    siteSnapshot: params.siteSnapshot || null,
+    projectDetails: {
+      category: projectDetails.category || designSpec.buildingCategory || null,
+      subType: projectDetails.subType || designSpec.buildingSubType || null,
+      program:
+        projectDetails.program ||
+        designSpec.buildingProgram ||
+        designSpec.buildingSubType ||
+        null,
+      area: projectDetails.area ?? designSpec.area ?? designSpec.floorArea,
+      floorCount:
+        projectDetails.floorCount ??
+        designSpec.floorCount ??
+        designSpec.floors ??
+        designSpec.targetStoreys,
+      floorCountLocked: Boolean(
+        projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
+      ),
+      customNotes: projectDetails.customNotes || designSpec.buildingNotes || "",
+      entranceDirection:
+        projectDetails.entranceDirection ||
+        designSpec.entranceDirection ||
+        designSpec.entranceOrientation ||
+        null,
+      pipelineVersion: designSpec.pipelineVersion || null,
+    },
+    locationData: compactLocationDataForRequest(locationData),
+    siteSnapshot: compactSiteSnapshot,
+    sitePolygon: designSpec.sitePolygon || compactSiteSnapshot?.sitePolygon || [],
+    siteMetrics:
+      designSpec.siteMetrics ||
+      designSpec.sitePolygonMetrics ||
+      compactSiteSnapshot?.metadata?.siteMetrics ||
+      {},
     programSpaces,
+    programBrief: designSpec.programBrief || null,
+    portfolioBlend: compactPortfolioBlendForRequest(
+      designSpec.portfolioBlend || {},
+    ),
     brief: designSpec.brief ||
       designSpec.projectBrief || {
         project_name:
@@ -114,15 +218,15 @@ function buildProjectGraphVerticalSliceRequest(params = {}) {
           designSpec.projectName ||
           "ArchiAI Project",
         target_gia_m2:
-          projectDetails.area ||
-          projectDetails.targetAreaM2 ||
-          designSpec.targetAreaM2 ||
-          designSpec.area ||
+          projectDetails.area ??
+          projectDetails.targetAreaM2 ??
+          designSpec.targetAreaM2 ??
+          designSpec.area ??
           180,
         target_storeys:
-          projectDetails.floorCount ||
-          designSpec.targetStoreys ||
-          designSpec.floorCount ||
+          projectDetails.floorCount ??
+          designSpec.targetStoreys ??
+          designSpec.floorCount ??
           2,
         building_type:
           projectDetails.buildingType ||
