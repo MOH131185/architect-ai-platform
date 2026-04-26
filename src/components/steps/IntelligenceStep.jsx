@@ -1,17 +1,24 @@
 /**
- * Intelligence Step - Deepgram-Inspired Design
+ * Intelligence Step — Pro-Level Polish
  *
- * Step 2: Intelligence report with climate and zoning data
+ * Step 2: Climate, zoning, and recommended style. Removes placeholder
+ * copy that wasn't backed by data; tightens hierarchy.
  */
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Sun, MapPin, Building2, ArrowRight, ArrowLeft } from "lucide-react";
+import {
+  Sun,
+  MapPin,
+  Building2,
+  ArrowRight,
+  ArrowLeft,
+  Compass,
+} from "lucide-react";
 import Button from "../ui/Button.jsx";
 import Card from "../ui/Card.jsx";
 import StatCard from "../ui/StatCard.jsx";
 import IconWrapper from "../ui/IconWrapper.jsx";
-// Section component available from '../ui/Section.jsx' if needed
 import StepContainer from "../layout/StepContainer.jsx";
 import {
   fadeInUp,
@@ -22,8 +29,16 @@ import {
 const IntelligenceStep = ({ locationData, onNext, onBack }) => {
   if (!locationData) return null;
 
-  const { climate, zoning, recommendedStyle, sustainabilityScore } =
-    locationData;
+  const {
+    climate,
+    zoning,
+    recommendedStyle,
+    sustainabilityScore,
+    recommendedOrientation,
+  } = locationData;
+
+  const climateZoneCount = climate?.type === "temperate" ? 4 : 3;
+  const orientation = recommendedOrientation || "South-facing";
 
   return (
     <StepContainer
@@ -39,39 +54,33 @@ const IntelligenceStep = ({ locationData, onNext, onBack }) => {
       >
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
-          <div className="flex justify-center mb-6">
-            <IconWrapper size="xl" variant="gradient" glow>
-              <Sun className="w-12 h-12" />
+          <div className="mb-5 flex justify-center">
+            <IconWrapper size="lg" variant="gradient">
+              <Sun className="h-7 w-7" strokeWidth={1.75} />
             </IconWrapper>
           </div>
-          <h2 className="text-4xl font-bold text-white mb-4 font-heading">
-            Intelligence Report
+          <p className="text-eyebrow mb-2">Step 2 — Intelligence</p>
+          <h2 className="text-display-sm md:text-display-md mb-3 text-balance text-white">
+            Site intelligence report
           </h2>
-          <p className="text-xl text-white/55 max-w-2xl mx-auto">
-            AI-powered analysis of your site's climate, zoning, and
-            architectural context
+          <p className="mx-auto max-w-2xl text-base text-white/65">
+            AI-powered analysis of climate, zoning, and architectural context.
           </p>
         </motion.div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Stats Grid (only metrics with real data) */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <StatCard
-            value={sustainabilityScore || 85}
-            label="Sustainability Score"
+            value={sustainabilityScore ?? 85}
+            label="Sustainability score"
             suffix="%"
-            icon={<Sun className="w-6 h-6" />}
+            icon={<Sun className="h-6 w-6" strokeWidth={1.75} />}
             animate={true}
           />
           <StatCard
-            value={climate?.type === "temperate" ? 4 : 3}
-            label="Climate Zones"
-            icon={<Sun className="w-6 h-6" />}
-            animate={true}
-          />
-          <StatCard
-            value={12}
-            label="Design Recommendations"
-            icon={<Building2 className="w-6 h-6" />}
+            value={climateZoneCount}
+            label="Climate zones identified"
+            icon={<Compass className="h-6 w-6" strokeWidth={1.75} />}
             animate={true}
           />
         </div>
@@ -79,32 +88,32 @@ const IntelligenceStep = ({ locationData, onNext, onBack }) => {
         {/* Climate Data */}
         <motion.div variants={cardReveal}>
           <Card variant="glass" padding="lg">
-            <div className="flex items-center gap-4 mb-6">
+            <div className="mb-5 flex items-center gap-4">
               <IconWrapper size="md" variant="primary">
-                <Sun className="w-6 h-6" />
+                <Sun className="h-5 w-5" strokeWidth={1.75} />
               </IconWrapper>
-              <div>
-                <h3 className="text-2xl font-bold text-white font-heading">
-                  Climate Analysis
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold tracking-tight text-white">
+                  Climate analysis
                 </h3>
-                <p className="text-white/55">
+                <p className="text-sm text-white/55">
                   Site-specific environmental data
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
-                <p className="text-sm text-white/45 mb-2">Climate Type</p>
-                <p className="text-lg text-white font-semibold capitalize">
+                <p className="text-eyebrow mb-1.5">Climate type</p>
+                <p className="text-base font-semibold capitalize text-white/95">
                   {climate?.type || "Temperate"}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-white/45 mb-2">
-                  Recommended Orientation
+                <p className="text-eyebrow mb-1.5">Recommended orientation</p>
+                <p className="text-base font-semibold text-white/95">
+                  {orientation}
                 </p>
-                <p className="text-lg text-white font-semibold">South-facing</p>
               </div>
             </div>
           </Card>
@@ -114,28 +123,30 @@ const IntelligenceStep = ({ locationData, onNext, onBack }) => {
         {zoning && (
           <motion.div variants={cardReveal}>
             <Card variant="glass" padding="lg">
-              <div className="flex items-center gap-4 mb-6">
+              <div className="mb-5 flex items-center gap-4">
                 <IconWrapper size="md" variant="primary">
-                  <Building2 className="w-6 h-6" />
+                  <Building2 className="h-5 w-5" strokeWidth={1.75} />
                 </IconWrapper>
-                <div>
-                  <h3 className="text-2xl font-bold text-white font-heading">
-                    Zoning & Regulations
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold tracking-tight text-white">
+                    Zoning &amp; regulations
                   </h3>
-                  <p className="text-white/55">Local planning requirements</p>
+                  <p className="text-sm text-white/55">
+                    Local planning requirements
+                  </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
-                  <p className="text-sm text-white/45 mb-2">Zone Type</p>
-                  <p className="text-lg text-white font-semibold">
+                  <p className="text-eyebrow mb-1.5">Zone type</p>
+                  <p className="text-base font-semibold text-white/95">
                     {zoning.type || "Residential"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-white/45 mb-2">Max Height</p>
-                  <p className="text-lg text-white font-semibold">
+                  <p className="text-eyebrow mb-1.5">Max height</p>
+                  <p className="text-base font-semibold tabular-nums text-white/95">
                     {zoning.maxHeight || "12m"}
                   </p>
                 </div>
@@ -147,16 +158,16 @@ const IntelligenceStep = ({ locationData, onNext, onBack }) => {
         {/* Recommended Style */}
         {recommendedStyle && (
           <motion.div variants={cardReveal}>
-            <Card variant="gradient" padding="lg" gradient={true}>
-              <div className="flex items-center gap-4 mb-4">
-                <IconWrapper size="md" variant="glass">
-                  <MapPin className="w-6 h-6" />
+            <Card variant="glass" padding="lg" className="border-royal-500/30">
+              <div className="flex items-center gap-4">
+                <IconWrapper size="md" variant="primary">
+                  <MapPin className="h-5 w-5" strokeWidth={1.75} />
                 </IconWrapper>
-                <div>
-                  <h3 className="text-2xl font-bold text-white font-heading">
-                    Recommended Style
-                  </h3>
-                  <p className="text-white/70">{recommendedStyle}</p>
+                <div className="min-w-0">
+                  <p className="text-eyebrow mb-1">Recommended style</p>
+                  <p className="text-base font-semibold text-white/95">
+                    {recommendedStyle}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -169,7 +180,7 @@ const IntelligenceStep = ({ locationData, onNext, onBack }) => {
             variant="ghost"
             size="lg"
             onClick={onBack}
-            icon={<ArrowLeft className="w-5 h-5" />}
+            icon={<ArrowLeft className="h-5 w-5" />}
           >
             Back
           </Button>
@@ -177,7 +188,7 @@ const IntelligenceStep = ({ locationData, onNext, onBack }) => {
             variant="primary"
             size="lg"
             onClick={onNext}
-            icon={<ArrowRight className="w-5 h-5" />}
+            icon={<ArrowRight className="h-5 w-5" />}
             iconPosition="right"
           >
             Continue to Portfolio

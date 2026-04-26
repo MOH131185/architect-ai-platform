@@ -55,7 +55,8 @@ import GenerateStep from "./steps/GenerateStep.jsx";
 import LandingPage from "./LandingPage.jsx";
 
 // Import new UI components and layout
-import { Card } from "./ui";
+import { Card, Modal } from "./ui";
+import Button from "./ui/Button.jsx";
 import { AppShell, PageTransition } from "./layout";
 import "../styles/deepgram.css";
 import {
@@ -67,61 +68,102 @@ import {
 
 const ResultsStep = lazy(() => import("./steps/ResultsStep.jsx"));
 
-// Step Progress Bar Component
+// Step Progress Bar Component — compact form on mobile, full circles on md+
 const StepProgressBar = ({ steps, currentStep }) => {
+  const total = steps.length;
+  const activeStep = steps[currentStep - 1];
+  const percentage = Math.round((currentStep / total) * 100);
+
   return (
-    <div className="relative">
-      <div className="flex items-center justify-between max-w-4xl mx-auto">
+    <nav aria-label="Wizard progress" className="relative">
+      {/* Mobile: compact "Step X / N — Label" + thin progress bar */}
+      <div className="md:hidden">
+        <div className="mb-2 flex items-baseline justify-between">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/55 tabular-nums">
+            Step {currentStep} of {total}
+          </p>
+          <p className="text-xs tabular-nums text-white/45">{percentage}%</p>
+        </div>
+        <p className="mb-3 text-base font-semibold text-white">
+          {activeStep?.label}
+        </p>
+        <div
+          className="h-1.5 overflow-hidden rounded-full bg-white/8"
+          role="progressbar"
+          aria-valuenow={percentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Step ${currentStep} of ${total}`}
+        >
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-royal-500 to-royal-300"
+            initial={{ width: 0 }}
+            animate={{ width: `${percentage}%` }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          />
+        </div>
+      </div>
+
+      {/* Desktop: full 5-circle row */}
+      <ol className="mx-auto hidden max-w-4xl items-center justify-between md:flex">
         {steps.map((step, index) => {
           const isActive = index + 1 === currentStep;
           const isCompleted = index + 1 < currentStep;
 
           return (
-            <div key={index} className="flex-1 relative">
+            <li
+              key={index}
+              className="relative flex-1"
+              aria-current={isActive ? "step" : undefined}
+            >
               <div className="flex flex-col items-center">
-                {/* Step Circle */}
                 <motion.div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center font-bold transition-all duration-300 ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold transition-all duration-300 ${
                     isActive
-                      ? "bg-gradient-to-br from-royal-600 to-royal-400 text-white shadow-glow"
+                      ? "bg-royal-500 text-white shadow-brand-sm ring-4 ring-royal-500/20"
                       : isCompleted
-                        ? "bg-royal-600 text-white"
-                        : "bg-navy-800 text-gray-500 border border-navy-700"
+                        ? "bg-royal-500 text-white"
+                        : "border border-white/10 bg-navy-900 text-white/45"
                   }`}
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: index * 0.1 }}
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: index * 0.06 }}
                 >
                   {isCompleted ? "✓" : index + 1}
                 </motion.div>
 
-                {/* Step Label */}
-                <div className="mt-2 text-center">
+                <div className="mt-3 text-center">
                   <p
-                    className={`text-sm font-semibold ${isActive ? "text-white" : "text-gray-400"}`}
+                    className={`text-xs font-semibold tracking-tight ${
+                      isActive ? "text-white" : "text-white/55"
+                    }`}
                   >
                     {step.label}
                   </p>
-                  <p className="text-xs text-gray-500">{step.description}</p>
+                  <p className="mt-0.5 text-[11px] text-white/40">
+                    {step.description}
+                  </p>
                 </div>
               </div>
 
-              {/* Connector Line */}
               {index < steps.length - 1 && (
-                <div className="absolute top-6 left-1/2 w-full h-0.5 bg-navy-800">
+                <div
+                  aria-hidden="true"
+                  className="absolute left-[calc(50%+1.375rem)] right-[calc(-50%+1.375rem)] top-[1.375rem] h-px bg-white/10"
+                >
                   <motion.div
-                    className="h-full bg-gradient-to-r from-royal-600 to-royal-400"
-                    initial={{ width: "0%" }}
-                    animate={{ width: isCompleted ? "100%" : "0%" }}
-                    transition={{ duration: 0.5 }}
+                    className="h-full bg-royal-500"
+                    initial={{ scaleX: 0, originX: 0 }}
+                    animate={{ scaleX: isCompleted ? 1 : 0 }}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                   />
                 </div>
               )}
-            </div>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ol>
+    </nav>
   );
 };
 
@@ -210,6 +252,8 @@ const ArchitectAIWizardContainer = () => {
   const [generationElapsedSeconds, setGenerationElapsedSeconds] = useState(0);
   const [isGenerationTimerRunning, setIsGenerationTimerRunning] =
     useState(false);
+  // Surfaces PDF conversion failures via Modal instead of native alert().
+  const [pdfErrorState, setPdfErrorState] = useState(null);
   const residentialV2Enabled = isFeatureEnabled("ukResidentialV2");
   const restrictToResidentialV2 = isFeatureEnabled(
     "hideExperimentalBuildingTypes",
@@ -819,9 +863,10 @@ const ArchitectAIWizardContainer = () => {
               });
             } catch (pdfErr) {
               logger.warn("PDF conversion failed", pdfErr);
-              alert(
-                `Failed to convert PDF: ${originalFile.name}\n${pdfErr.message}`,
-              );
+              setPdfErrorState({
+                fileName: originalFile.name,
+                message: pdfErr?.message || "Unknown error",
+              });
               continue;
             }
           } else if (originalFile.type.startsWith("image/")) {
@@ -1911,6 +1956,39 @@ const ArchitectAIWizardContainer = () => {
               </AuthSignedOut>
             </>
           )}
+
+          {/* PDF conversion error modal (replaces window.alert) */}
+          <Modal
+            open={!!pdfErrorState}
+            onClose={() => setPdfErrorState(null)}
+            title="PDF couldn't be converted"
+            description="We couldn't render this PDF as an image. Try uploading a JPG or PNG instead."
+            size="sm"
+            footer={
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setPdfErrorState(null)}
+              >
+                Got it
+              </Button>
+            }
+          >
+            {pdfErrorState && (
+              <div className="space-y-2">
+                <p>
+                  <span className="text-xs uppercase tracking-wider text-white/50">
+                    File
+                  </span>
+                  <br />
+                  <span className="font-mono text-sm text-white/85">
+                    {pdfErrorState.fileName}
+                  </span>
+                </p>
+                <p className="text-white/60">{pdfErrorState.message}</p>
+              </div>
+            )}
+          </Modal>
 
           {/* Global Error Display */}
           <AnimatePresence>

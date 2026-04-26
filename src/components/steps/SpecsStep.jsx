@@ -161,27 +161,28 @@ const SpecsStep = ({
       >
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
-          <div className="flex justify-center mb-6">
-            <IconWrapper size="xl" variant="gradient" glow>
-              <Settings className="w-12 h-12" />
+          <div className="mb-5 flex justify-center">
+            <IconWrapper size="lg" variant="gradient">
+              <Settings className="h-7 w-7" strokeWidth={1.75} />
             </IconWrapper>
           </div>
-          <h2 className="text-4xl font-bold text-white mb-4 font-heading">
-            Project Specifications
+          <p className="text-eyebrow mb-2">Step 4 — Specifications</p>
+          <h2 className="text-display-sm md:text-display-md mb-3 text-balance text-white">
+            Project specifications
           </h2>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Define building type, entrance, and program spaces
+          <p className="mx-auto max-w-2xl text-base text-white/65">
+            Define building type, entrance, and program spaces.
           </p>
         </motion.div>
 
         {/* Section 1: Building Type & Sub-type */}
         <motion.div variants={fadeInUp}>
           <Card variant="glass" padding="lg">
-            <h3 className="text-xl font-semibold text-white mb-4 font-heading">
-              Building Type
+            <h3 className="mb-4 text-lg font-semibold tracking-tight text-white">
+              Building type
             </h3>
             {restrictToResidentialV2 && (
-              <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-900/10 px-4 py-3 text-sm text-emerald-200">
+              <div className="mb-4 rounded-xl border border-success-500/30 bg-success-500/10 px-4 py-3 text-sm text-success-200">
                 UK Residential V2 is live. Production generation is restricted
                 to supported low-rise residential types, and unsupported types
                 are intentionally marked experimental/off.
@@ -197,7 +198,7 @@ const SpecsStep = ({
               projectDetails.category &&
               projectDetails.subType &&
               !supportedResidentialSubtype && (
-                <p className="mt-4 text-sm text-amber-300">
+                <p className="mt-4 text-sm text-warning-300">
                   This subtype is outside the supported UK Residential V2
                   production scope. Choose a supported residential subtype to
                   continue.
@@ -210,8 +211,8 @@ const SpecsStep = ({
         {projectDetails.category && (
           <motion.div variants={fadeInUp}>
             <Card variant="glass" padding="lg">
-              <h3 className="text-xl font-semibold text-white mb-4 font-heading">
-                Main Entrance Orientation
+              <h3 className="mb-4 text-lg font-semibold tracking-tight text-white">
+                Main entrance orientation
               </h3>
               <EntranceDirectionSelector
                 selectedDirection={projectDetails.entranceDirection}
@@ -229,8 +230,8 @@ const SpecsStep = ({
         {projectDetails.category && projectDetails.subType && (
           <motion.div variants={fadeInUp}>
             <Card variant="glass" padding="lg">
-              <h3 className="text-xl font-semibold text-white mb-6 font-heading">
-                Building Metrics
+              <h3 className="mb-6 text-lg font-semibold tracking-tight text-white">
+                Building metrics
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Input
@@ -291,20 +292,22 @@ const SpecsStep = ({
                   icon={<Layers className="w-4 h-4" />}
                 />
 
-                <div className="flex items-center gap-3 -mt-2">
+                <div className="-mt-2 flex items-center gap-3">
                   {!projectDetails.floorCountLocked && (
-                    <div className="flex-1 px-4 py-3 rounded-lg bg-navy-800/60 border border-navy-700">
+                    <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-white font-semibold">
+                        <span className="font-semibold text-white tabular-nums">
                           {projectDetails.autoDetectedFloorCount ||
                             projectDetails.floorCount ||
                             2}{" "}
                           floors
                         </span>
-                        <span className="text-xs text-gray-400">auto</span>
+                        <span className="text-xs uppercase tracking-wider text-white/45">
+                          auto
+                        </span>
                       </div>
                       {projectDetails.floorMetrics?.reasoning && (
-                        <p className="mt-1 text-xs text-gray-400 line-clamp-2">
+                        <p className="mt-1 line-clamp-2 text-xs text-white/55">
                           {projectDetails.floorMetrics.reasoning}
                         </p>
                       )}
@@ -374,14 +377,14 @@ const SpecsStep = ({
                   projectDetails.autoDetectedFloorCount &&
                   projectDetails.autoDetectedFloorCount !==
                     projectDetails.floorCount && (
-                    <p className="-mt-2 text-xs text-amber-300">
+                    <p className="-mt-2 text-xs text-warning-300">
                       Auto suggests {projectDetails.autoDetectedFloorCount}{" "}
                       levels for this site.
                     </p>
                   )}
 
                 {projectDetails.floorMetrics && (
-                  <div className="-mt-2 text-xs text-gray-400 flex flex-wrap gap-4">
+                  <div className="-mt-2 flex flex-wrap gap-4 text-xs text-white/55">
                     <span>
                       Footprint ~
                       {projectDetails.floorMetrics.actualFootprint?.toFixed?.(
@@ -406,10 +409,14 @@ const SpecsStep = ({
                 )}
               </div>
               <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Custom Notes (Optional)
+                <label
+                  htmlFor="custom-notes"
+                  className="text-eyebrow mb-2 block"
+                >
+                  Custom notes (optional)
                 </label>
                 <textarea
+                  id="custom-notes"
                   value={projectDetails.customNotes || ""}
                   onChange={(e) =>
                     onProjectDetailsChange({
@@ -419,7 +426,7 @@ const SpecsStep = ({
                   }
                   placeholder="Add any special requirements or notes..."
                   rows={3}
-                  className="w-full bg-navy-800/60 border border-navy-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:border-royal-500 focus:ring-1 focus:ring-royal-500 outline-none transition-colors"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-all duration-200 hover:border-white/20 focus:border-royal-500 focus:ring-2 focus:ring-royal-500/20"
                 />
               </div>
             </Card>
@@ -430,8 +437,8 @@ const SpecsStep = ({
         {projectDetails.area && projectDetails.category && (
           <motion.div variants={fadeInUp}>
             <Card variant="glass" padding="lg">
-              <h3 className="text-xl font-semibold text-white mb-4 font-heading">
-                Program Schedule
+              <h3 className="mb-4 text-lg font-semibold tracking-tight text-white">
+                Program schedule
               </h3>
               <div className="flex flex-wrap gap-3 mb-6">
                 <Button
@@ -471,20 +478,39 @@ const SpecsStep = ({
               </div>
 
               {/* Section 5: Program Table */}
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-semibold text-white">
-                  Program Spaces
+              <div className="mb-4 flex items-center justify-between">
+                <h4 className="text-sm font-semibold uppercase tracking-wider text-white/70">
+                  Program spaces
                 </h4>
-                <div className="flex gap-2">
+                <div
+                  role="tablist"
+                  className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-1"
+                >
                   <button
-                    onClick={() => setShowProgramReview(!showProgramReview)}
-                    className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                      showProgramReview
-                        ? "bg-royal-500 text-white"
-                        : "bg-navy-700 text-gray-300 hover:bg-navy-600"
+                    type="button"
+                    role="tab"
+                    aria-selected={!showProgramReview}
+                    onClick={() => setShowProgramReview(false)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      !showProgramReview
+                        ? "bg-white/10 text-white"
+                        : "text-white/55 hover:text-white"
                     }`}
                   >
-                    {showProgramReview ? "📊 Table View" : "🎴 Card View"}
+                    Table
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={showProgramReview}
+                    onClick={() => setShowProgramReview(true)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      showProgramReview
+                        ? "bg-white/10 text-white"
+                        : "text-white/55 hover:text-white"
+                    }`}
+                  >
+                    Cards
                   </button>
                 </div>
               </div>

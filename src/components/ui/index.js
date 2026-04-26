@@ -23,6 +23,9 @@ export { default as BlueprintLogoLoader } from "./BlueprintLogoLoader.jsx";
 export { default as ErrorBanner } from "./ErrorBanner.jsx";
 export { default as StatusChip } from "./StatusChip.jsx";
 export { default as ToastProvider, useToastContext } from "./ToastProvider.jsx";
+export { default as Modal } from "./Modal.jsx";
+export { default as Tabs, TabsList, Tab, TabsPanel } from "./Tabs.jsx";
+export { default as Select } from "./Select.jsx";
 
 // Feedback primitives (re-exported from ./feedback so call sites use one path)
 export { Toast, ToastContainer, useToast } from "./feedback/Toast.jsx";

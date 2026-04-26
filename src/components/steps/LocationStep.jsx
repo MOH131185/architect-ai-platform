@@ -1,7 +1,7 @@
 /**
- * Location Step - Deepgram-Inspired Design
+ * Location Step — Pro-Level Polish
  *
- * Step 1: Site selection with blueprint aesthetic
+ * Step 1: Site selection. Clear input → results separation, calmer hierarchy.
  */
 
 import React from "react";
@@ -13,7 +13,6 @@ import Input from "../ui/Input.jsx";
 import Card from "../ui/Card.jsx";
 import ErrorBanner from "../ui/ErrorBanner.jsx";
 import { Skeleton } from "../ui/feedback/Loader.jsx";
-// BlueprintPanel available from '../ui/BlueprintPanel.jsx' if needed
 import IconWrapper from "../ui/IconWrapper.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import { fadeInUp, staggerChildren } from "../../styles/animations.js";
@@ -34,6 +33,7 @@ const LocationStep = ({
   error,
 }) => {
   const canProceed = locationData && address;
+  const hasResults = !!locationData;
 
   return (
     <StepContainer
@@ -49,28 +49,25 @@ const LocationStep = ({
       >
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
-          <div className="flex justify-center mb-6">
-            <IconWrapper size="xl" variant="gradient" glow>
-              <MapPin className="w-12 h-12" />
+          <div className="mb-5 flex justify-center">
+            <IconWrapper size="lg" variant="gradient">
+              <MapPin className="h-7 w-7" strokeWidth={1.75} />
             </IconWrapper>
           </div>
-          <h2 className="text-4xl font-bold text-white mb-4 font-heading">
-            Location Analysis
+          <p className="text-eyebrow mb-2">Step 1 — Location</p>
+          <h2 className="text-display-sm md:text-display-md mb-3 text-balance text-white">
+            Where is the project?
           </h2>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Enter your project address for intelligent site analysis and climate
-            data
+          <p className="mx-auto max-w-2xl text-base text-white/65">
+            Enter the project address for intelligent site analysis and climate
+            data.
           </p>
         </motion.div>
 
         {/* Address Input Card */}
         <motion.div variants={fadeInUp}>
-          <Card
-            variant="elevated"
-            padding="lg"
-            className="max-w-3xl mx-auto bg-navy-800 border-navy-700"
-          >
-            <div className="space-y-6">
+          <Card variant="glass" padding="lg" className="mx-auto max-w-3xl">
+            <div className="space-y-5">
               <Input
                 label="Project Address"
                 type="text"
@@ -78,32 +75,32 @@ const LocationStep = ({
                 onChange={(e) => onAddressChange(e.target.value)}
                 placeholder="Enter full address..."
                 fullWidth
-                icon={<MapPin className="w-5 h-5" />}
+                icon={<MapPin className="h-5 w-5" strokeWidth={1.75} />}
                 disabled={isDetectingLocation}
               />
 
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Button
-                  variant="gradient"
+                  variant="primary"
                   size="lg"
                   onClick={onAnalyzeLocation}
                   disabled={!address || isDetectingLocation}
                   loading={isDetectingLocation}
                   fullWidth
-                  icon={<ArrowRight className="w-5 h-5" />}
+                  icon={<ArrowRight className="h-5 w-5" />}
                   iconPosition="right"
                 >
-                  Analyze Location
+                  Analyze location
                 </Button>
 
                 <Button
-                  variant="outline"
+                  variant="subtle"
                   size="lg"
                   onClick={onDetectUserLocation}
                   disabled={isDetectingLocation}
-                  icon={<Navigation className="w-5 h-5" />}
+                  icon={<Navigation className="h-5 w-5" strokeWidth={1.75} />}
                 >
-                  Use My Location
+                  Use my location
                 </Button>
               </div>
             </div>
@@ -112,7 +109,7 @@ const LocationStep = ({
 
         {/* Geocoding error */}
         {error && (
-          <motion.div variants={fadeInUp} className="max-w-3xl mx-auto">
+          <motion.div variants={fadeInUp} className="mx-auto max-w-3xl">
             <ErrorBanner
               variant="error"
               title="Could not analyze location"
@@ -131,6 +128,19 @@ const LocationStep = ({
                 className="aspect-[16/9] h-auto w-full"
               />
             </div>
+          </motion.div>
+        )}
+
+        {/* Results section divider — separates input phase from results phase */}
+        {hasResults && (
+          <motion.div
+            variants={fadeInUp}
+            className="flex items-center gap-4"
+            aria-hidden="true"
+          >
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-eyebrow">Site analysis</span>
+            <div className="h-px flex-1 bg-white/10" />
           </motion.div>
         )}
 
@@ -165,10 +175,10 @@ const LocationStep = ({
               variant="primary"
               size="lg"
               onClick={onNext}
-              icon={<ArrowRight className="w-5 h-5" />}
+              icon={<ArrowRight className="h-5 w-5" />}
               iconPosition="right"
             >
-              Continue to Intelligence Report
+              Continue to Intelligence
             </Button>
           </motion.div>
         )}

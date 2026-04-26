@@ -42,23 +42,23 @@ function stageChipStatus(status) {
 
 const STAGE_STATUS_TONE = {
   pass: {
-    chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    border: "border-emerald-500/20",
+    chip: "border-success-500/30 bg-success-500/10 text-success-200",
+    border: "border-success-500/20",
   },
   ready: {
-    chip: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
-    border: "border-emerald-500/20",
+    chip: "border-success-500/30 bg-success-500/10 text-success-200",
+    border: "border-success-500/20",
   },
   warning: {
-    chip: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-    border: "border-amber-500/20",
+    chip: "border-warning-500/30 bg-warning-500/10 text-warning-200",
+    border: "border-warning-500/20",
   },
   block: {
-    chip: "border-rose-500/30 bg-rose-500/10 text-rose-200",
-    border: "border-rose-500/20",
+    chip: "border-error-500/30 bg-error-500/10 text-error-200",
+    border: "border-error-500/20",
   },
   pending: {
-    chip: "border-slate-500/30 bg-slate-500/10 text-slate-200",
+    chip: "border-white/15 bg-white/5 text-white/70",
     border: "border-white/10",
   },
 };
@@ -96,23 +96,23 @@ const ResultsStep = ({
   const qualityTone =
     (qualityEvaluation?.total || 0) >= 80
       ? {
-          border: "border-emerald-500/30",
-          bg: "bg-emerald-900/10",
-          accent: "text-emerald-300",
-          bar: "bg-emerald-400",
+          border: "border-success-500/30",
+          bg: "bg-success-500/[0.06]",
+          accent: "text-success-300",
+          bar: "bg-success-400",
         }
       : (qualityEvaluation?.total || 0) >= 60
         ? {
-            border: "border-amber-500/30",
-            bg: "bg-amber-900/10",
-            accent: "text-amber-300",
-            bar: "bg-amber-400",
+            border: "border-warning-500/30",
+            bg: "bg-warning-500/[0.06]",
+            accent: "text-warning-300",
+            bar: "bg-warning-400",
           }
         : {
-            border: "border-rose-500/30",
-            bg: "bg-rose-900/10",
-            accent: "text-rose-300",
-            bar: "bg-rose-400",
+            border: "border-error-500/30",
+            bg: "bg-error-500/[0.06]",
+            accent: "text-error-300",
+            bar: "bg-error-400",
           };
 
   const formatElapsedTime = (seconds) => {
@@ -372,11 +372,14 @@ const ResultsStep = ({
             <Card
               variant="glass"
               padding="sm"
-              className="border-blue-500/30 bg-blue-900/20"
+              className="border-info-500/30 bg-info-500/10"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-blue-300 flex items-center">
-                  <Eye className="w-4 h-4 mr-2 flex-shrink-0" />
+                <p className="flex items-center text-sm text-info-200">
+                  <Eye
+                    className="mr-2 h-4 w-4 flex-shrink-0"
+                    strokeWidth={1.75}
+                  />
                   Viewing pre-generated demo — real AI output from a 150 m&#178;
                   London home.
                 </p>
@@ -390,17 +393,23 @@ const ResultsStep = ({
 
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
-          <h2 className="text-4xl font-bold text-white mb-4 font-heading">
-            Your Design is Ready
+          <p className="text-eyebrow mb-3">Your design is ready</p>
+          <h2 className="text-display-sm md:text-display-md mb-3 text-balance text-white">
+            Professional A1 sheet, generated
           </h2>
-          <p className="text-xl text-gray-400">
-            Professional A1 sheet with 98%+ consistency
+          <p className="mx-auto max-w-xl text-base text-white/65">
+            UK RIBA-standard output with 98%+ cross-view consistency.
+            {generationElapsedSeconds > 0 && (
+              <>
+                {" "}
+                Generated in{" "}
+                <span className="tabular-nums text-white/85">
+                  {formatElapsedTime(generationElapsedSeconds)}
+                </span>
+                .
+              </>
+            )}
           </p>
-          {generationElapsedSeconds > 0 && (
-            <p className="text-sm text-gray-500 mt-2">
-              Generation time: {formatElapsedTime(generationElapsedSeconds)}
-            </p>
-          )}
         </motion.div>
 
         {/* Action Bar */}
@@ -609,11 +618,11 @@ const ResultsStep = ({
                   </div>
 
                   {authorityReadiness?.blockers?.length > 0 && (
-                    <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
-                      <div className="text-sm font-semibold text-rose-200">
+                    <div className="rounded-2xl border border-error-500/30 bg-error-500/10 p-4">
+                      <div className="text-sm font-semibold text-error-200">
                         Current blocker
                       </div>
-                      <p className="mt-2 text-sm text-rose-100">
+                      <p className="mt-2 text-sm text-error-100/90">
                         {authorityReadiness.blockers[0]}
                       </p>
                     </div>
@@ -654,14 +663,14 @@ const ResultsStep = ({
                       </div>
 
                       {genarchReviewError && (
-                        <p className="mt-3 text-sm text-rose-300">
+                        <p className="mt-3 text-sm text-error-300">
                           {genarchReviewError}
                         </p>
                       )}
 
                       {genarchJob?.id && (
                         <div className="mt-4 space-y-3">
-                          <div className="text-xs uppercase tracking-wide text-gray-500">
+                          <div className="text-xs uppercase tracking-wide text-white/55">
                             Job {genarchJob.id}
                           </div>
                           <div className="flex items-center gap-2">
@@ -695,7 +704,7 @@ const ResultsStep = ({
                                     href={`/api/genarch/runs/${genarchJob.id}/${artifact.relativePath}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="rounded-lg border border-white/10 px-3 py-2 text-sm text-blue-300 transition hover:border-blue-400/40 hover:bg-white/5"
+                                    className="rounded-lg border border-white/10 px-3 py-2 text-sm text-royal-300 transition hover:border-royal-400/40 hover:bg-white/5"
                                   >
                                     {artifact.key}
                                   </a>
@@ -725,8 +734,8 @@ const ResultsStep = ({
                               <span
                                 className={
                                   entry?.available
-                                    ? "text-emerald-300"
-                                    : "text-amber-300"
+                                    ? "text-success-300"
+                                    : "text-warning-300"
                                 }
                               >
                                 {entry?.available ? "Ready" : "Pending"}

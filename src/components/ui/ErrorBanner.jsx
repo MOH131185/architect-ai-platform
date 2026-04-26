@@ -13,30 +13,33 @@ function cn(...inputs) {
  * Distinct from the floating Toast — appears WITHIN page content
  * (e.g. above a form, inside a panel) to surface a contextual message.
  */
+// Semantic color tokens (extended in tailwind.config.js to full 50-900 stops)
+// keep hard-coded references out of this file so the design system stays
+// the single source of truth.
 const VARIANTS = {
   error: {
     icon: AlertCircle,
-    container: "bg-red-500/10 border-red-500/30",
-    iconClass: "text-red-300",
-    titleClass: "text-red-100",
-    messageClass: "text-red-200/80",
-    actionClass: "text-red-200 hover:text-white",
+    container: "bg-error-500/10 border-error-500/30",
+    iconClass: "text-error-300",
+    titleClass: "text-error-100",
+    messageClass: "text-error-200/80",
+    actionClass: "text-error-200 hover:text-white",
   },
   warning: {
     icon: AlertTriangle,
-    container: "bg-amber-500/10 border-amber-500/30",
-    iconClass: "text-amber-300",
-    titleClass: "text-amber-100",
-    messageClass: "text-amber-200/80",
-    actionClass: "text-amber-200 hover:text-white",
+    container: "bg-warning-500/10 border-warning-500/30",
+    iconClass: "text-warning-300",
+    titleClass: "text-warning-100",
+    messageClass: "text-warning-200/80",
+    actionClass: "text-warning-200 hover:text-white",
   },
   info: {
     icon: Info,
-    container: "bg-royal-500/10 border-royal-500/30",
-    iconClass: "text-royal-300",
-    titleClass: "text-royal-100",
-    messageClass: "text-royal-200/80",
-    actionClass: "text-royal-200 hover:text-white",
+    container: "bg-info-500/10 border-info-500/30",
+    iconClass: "text-info-300",
+    titleClass: "text-info-100",
+    messageClass: "text-info-200/80",
+    actionClass: "text-info-200 hover:text-white",
   },
 };
 

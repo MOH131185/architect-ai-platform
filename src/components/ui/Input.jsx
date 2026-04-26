@@ -47,7 +47,7 @@ const Input = forwardRef(
     const containerClasses = `relative ${fullWidth ? "w-full" : ""}`;
 
     const inputBaseClasses =
-      "w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-white/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-royal-500/20 disabled:opacity-50 disabled:cursor-not-allowed";
+      "w-full px-4 py-3 bg-white/5 border rounded-xl text-white placeholder-white/30 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-royal-500/20 disabled:opacity-50 disabled:cursor-not-allowed";
 
     const inputBorderClasses = error
       ? "border-red-500/60 focus:border-red-500 focus:ring-red-500/30"
@@ -72,7 +72,7 @@ const Input = forwardRef(
         <div className="relative">
           {icon && (
             <div
-              className={`absolute ${iconPosition === "left" ? "left-4" : "right-4"} top-1/2 -translate-y-1/2 text-gray-500`}
+              className={`absolute ${iconPosition === "left" ? "left-4" : "right-4"} top-1/2 -translate-y-1/2 text-white/45`}
             >
               {icon}
             </div>
@@ -112,7 +112,7 @@ const Input = forwardRef(
           <motion.p
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`mt-2 text-sm ${error ? "text-red-400" : "text-gray-400"}`}
+            className={`mt-2 text-sm ${error ? "text-red-400" : "text-white/60"}`}
           >
             {error || helperText}
           </motion.p>

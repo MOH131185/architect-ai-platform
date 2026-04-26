@@ -1,10 +1,11 @@
 /**
- * Portfolio Step - Deepgram-Inspired Design
+ * Portfolio Step — Pro-Level Polish
  *
- * Step 3: Upload portfolio for style blending
+ * Step 3: Upload portfolio for style blending. Tighter dropzone with drag-over
+ * state, semantic tokens, unified slider styling.
  */
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Upload,
@@ -36,9 +37,27 @@ const PortfolioStep = ({
   onBack,
   fileInputRef,
 }) => {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragOver(false);
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+  }, []);
+
   const handleDrop = useCallback(
     (e) => {
       e.preventDefault();
+      setIsDragOver(false);
       const files = Array.from(e.dataTransfer.files);
       if (onPortfolioUpload) {
         onPortfolioUpload(files);
@@ -47,24 +66,16 @@ const PortfolioStep = ({
     [onPortfolioUpload],
   );
 
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-  }, []);
-
   const handleFilesSelected = useCallback(
     (files) => {
-      if (onPortfolioUpload) {
-        onPortfolioUpload(files);
-      }
+      if (onPortfolioUpload) onPortfolioUpload(files);
     },
     [onPortfolioUpload],
   );
 
   const handleFileRemove = useCallback(
     (index) => {
-      if (onRemoveFile) {
-        onRemoveFile(index);
-      }
+      if (onRemoveFile) onRemoveFile(index);
     },
     [onRemoveFile],
   );
@@ -83,6 +94,10 @@ const PortfolioStep = ({
     previousFileCount.current = portfolioFiles.length;
   }, [portfolioFiles.length, toast]);
 
+  const sliderTrackStyle = (value) => ({
+    background: `linear-gradient(to right, var(--brand-500) 0%, var(--brand-500) ${value * 100}%, rgba(255,255,255,0.10) ${value * 100}%, rgba(255,255,255,0.10) 100%)`,
+  });
+
   return (
     <StepContainer
       backgroundVariant="default"
@@ -97,16 +112,18 @@ const PortfolioStep = ({
       >
         {/* Header */}
         <motion.div variants={fadeInUp} className="text-center">
-          <div className="flex justify-center mb-6">
-            <IconWrapper size="xl" variant="gradient" glow>
-              <ImageIcon className="w-12 h-12" />
+          <div className="mb-5 flex justify-center">
+            <IconWrapper size="lg" variant="gradient">
+              <ImageIcon className="h-7 w-7" strokeWidth={1.75} />
             </IconWrapper>
           </div>
-          <h2 className="text-4xl font-bold text-white mb-4 font-heading">
-            Portfolio Upload
+          <p className="text-eyebrow mb-2">Step 3 — Portfolio</p>
+          <h2 className="text-display-sm md:text-display-md mb-3 text-balance text-white">
+            Reference designs (optional)
           </h2>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Upload reference designs for AI style blending
+          <p className="mx-auto max-w-2xl text-base text-white/65">
+            Upload reference designs for AI style blending. The system mixes
+            your portfolio with local context for the final output.
           </p>
         </motion.div>
 
@@ -114,21 +131,37 @@ const PortfolioStep = ({
         <motion.div variants={fadeInUp}>
           <Card variant="glass" padding="none" className="overflow-hidden">
             <div
+              role="button"
+              tabIndex={0}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
               onClick={() => fileInputRef.current?.click()}
-              className="p-12 text-center cursor-pointer hover:bg-white/5 transition-all duration-300 border-2 border-dashed border-navy-700 hover:border-royal-600 rounded-2xl"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={`cursor-pointer rounded-2xl border-2 border-dashed p-12 text-center transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-royal-500/40 ${
+                isDragOver
+                  ? "border-royal-400/70 bg-royal-500/[0.08]"
+                  : "border-white/15 hover:border-royal-500/40 hover:bg-white/[0.04]"
+              }`}
             >
               <div className="flex flex-col items-center gap-4">
-                <IconWrapper size="xl" variant="glass">
-                  <Upload className="w-12 h-12" />
+                <IconWrapper size="lg" variant="glass">
+                  <Upload className="h-7 w-7" strokeWidth={1.75} />
                 </IconWrapper>
                 <div>
-                  <p className="text-xl font-semibold text-white mb-2">
-                    Drop files here or click to browse
+                  <p className="mb-2 text-lg font-semibold text-white">
+                    {isDragOver
+                      ? "Drop to upload"
+                      : "Drop files here, or click to browse"}
                   </p>
-                  <p className="text-gray-400">
-                    Images (JPG, PNG) or PDFs • Max 10 files • PDF thumbnails
+                  <p className="text-sm text-white/55">
+                    Images (JPG, PNG) or PDFs · Max 10 files · PDF thumbnails
                     auto-generated
                   </p>
                 </div>
@@ -154,7 +187,7 @@ const PortfolioStep = ({
         {isUploading && portfolioFiles.length === 0 && (
           <motion.div variants={fadeInUp}>
             <Card variant="glass" className="p-6">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <Skeleton
                     key={i}
@@ -171,17 +204,16 @@ const PortfolioStep = ({
         {portfolioFiles.length > 0 && (
           <motion.div variants={fadeInUp}>
             <Card variant="glass" className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-white tabular-nums">
-                  Uploaded Files ({portfolioFiles.length})
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="text-base font-semibold tabular-nums text-white">
+                  Uploaded files ({portfolioFiles.length})
                 </h3>
-                <span className="text-sm text-white/55">
+                <span className="text-xs text-white/55">
                   Click images to view larger
                 </span>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
                 {portfolioFiles.map((file, index) => {
-                  // Safely get preview URL and determine file type
                   let previewUrl = "";
                   const fileName = file.name || file.file?.name || "";
                   const fileType = file.file?.type || file.type || "";
@@ -203,56 +235,65 @@ const PortfolioStep = ({
 
                   return (
                     <div key={index} className="group">
-                      <div className="relative overflow-hidden rounded-xl aspect-square border-2 border-navy-700 hover:border-royal-500 transition-all duration-300 shadow-lg hover:shadow-royal-500/20">
+                      <div className="relative aspect-square overflow-hidden rounded-xl border border-white/10 transition-all duration-200 hover:border-royal-500/40 hover:shadow-soft-lg">
                         {previewUrl ? (
                           <>
                             <img
                               src={previewUrl}
                               alt={
                                 file.name ||
-                                (isPDF ? "PDF Preview" : "Portfolio image")
+                                (isPDF ? "PDF preview" : "Portfolio image")
                               }
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                             />
                             {isPDF && (
-                              <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded-md text-xs font-bold shadow-lg flex items-center gap-1">
-                                <FileText className="w-3 h-3" />
+                              <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md border border-error-500/30 bg-error-500/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-error-200 backdrop-blur-sm">
+                                <FileText
+                                  className="h-3 w-3"
+                                  strokeWidth={1.75}
+                                />
                                 PDF
                               </div>
                             )}
                           </>
                         ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-red-900/20 to-navy-800 p-4">
-                            <FileText className="w-16 h-16 text-red-400 mb-3" />
-                            <span className="text-xs text-red-300 font-semibold">
-                              PDF Document
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-white/[0.03] p-4">
+                            <FileText
+                              className="mb-3 h-12 w-12 text-error-300"
+                              strokeWidth={1.5}
+                            />
+                            <span className="text-xs font-semibold text-error-200">
+                              PDF document
                             </span>
-                            <span className="text-xs text-gray-500 mt-1 text-center px-2 truncate max-w-full">
+                            <span className="mt-1 max-w-full truncate px-2 text-center text-xs text-white/45">
                               {fileName}
                             </span>
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                          <div className="absolute bottom-0 left-0 right-0 p-3">
+                        <div className="absolute inset-0 bg-gradient-to-t from-navy-950/85 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                          <div className="absolute inset-x-3 bottom-3">
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleFileRemove(index);
                               }}
-                              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors duration-200"
+                              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-navy-900/85 px-3 py-2 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-error-500/20 hover:border-error-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error-500/40"
                             >
-                              <X className="w-4 h-4" />
+                              <X className="h-3.5 w-3.5" strokeWidth={2} />
                               Remove
                             </button>
                           </div>
                         </div>
                       </div>
                       <div className="mt-2">
-                        <p className="text-sm text-gray-300 truncate font-medium">
+                        <p className="truncate text-xs font-medium text-white/85">
                           {file.name || `Image ${index + 1}`}
                         </p>
                         {file.size && (
-                          <p className="text-xs text-gray-500">{file.size}</p>
+                          <p className="text-[11px] text-white/45 tabular-nums">
+                            {file.size}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -266,30 +307,34 @@ const PortfolioStep = ({
         {/* Style Blending Controls */}
         {portfolioFiles.length > 0 && (
           <motion.div variants={fadeInUp}>
-            <Card variant="glass" className="space-y-6">
+            <Card variant="glass" padding="lg" className="space-y-6">
               <div>
-                <h3 className="text-xl font-bold text-white mb-2">
-                  Style Blending Configuration
+                <h3 className="text-lg font-semibold tracking-tight text-white">
+                  Style blending
                 </h3>
-                <p className="text-gray-400 text-sm">
-                  Adjust how much your portfolio influences the design vs. local
-                  architectural context
+                <p className="mt-1 text-sm text-white/55">
+                  Adjust how much your portfolio influences the design vs. the
+                  local architectural context.
                 </p>
               </div>
 
               {/* Material Weight Slider */}
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-semibold text-white">
-                    Material Preference
+                <div className="mb-3 flex items-center justify-between">
+                  <label
+                    htmlFor="material-weight"
+                    className="text-sm font-medium text-white/95"
+                  >
+                    Material preference
                   </label>
-                  <span className="text-sm text-royal-400 font-mono bg-royal-600/20 px-3 py-1 rounded-lg">
-                    {Math.round((1 - materialWeight) * 100)}% Local /{" "}
-                    {Math.round(materialWeight * 100)}% Portfolio
+                  <span className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-xs tabular-nums text-white/85">
+                    {Math.round((1 - materialWeight) * 100)}% local /{" "}
+                    {Math.round(materialWeight * 100)}% portfolio
                   </span>
                 </div>
                 <div className="relative py-2">
                   <input
+                    id="material-weight"
                     type="range"
                     min="0"
                     max="1"
@@ -299,30 +344,32 @@ const PortfolioStep = ({
                       onMaterialWeightChange?.(parseFloat(e.target.value))
                     }
                     className="w-full cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, #4579F5 0%, #4579F5 ${materialWeight * 100}%, rgba(100, 116, 139, 0.3) ${materialWeight * 100}%, rgba(100, 116, 139, 0.3) 100%)`,
-                    }}
+                    style={sliderTrackStyle(materialWeight)}
                   />
                 </div>
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span className="font-medium">← 100% Local</span>
-                  <span className="font-medium">100% Portfolio →</span>
+                <div className="mt-1 flex justify-between text-[11px] text-white/45">
+                  <span>← 100% local</span>
+                  <span>100% portfolio →</span>
                 </div>
               </div>
 
               {/* Characteristic Weight Slider */}
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-semibold text-white">
-                    Design Characteristics
+                <div className="mb-3 flex items-center justify-between">
+                  <label
+                    htmlFor="characteristic-weight"
+                    className="text-sm font-medium text-white/95"
+                  >
+                    Design characteristics
                   </label>
-                  <span className="text-sm text-purple-400 font-mono bg-purple-600/20 px-3 py-1 rounded-lg">
-                    {Math.round((1 - characteristicWeight) * 100)}% Local /{" "}
-                    {Math.round(characteristicWeight * 100)}% Portfolio
+                  <span className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-xs tabular-nums text-white/85">
+                    {Math.round((1 - characteristicWeight) * 100)}% local /{" "}
+                    {Math.round(characteristicWeight * 100)}% portfolio
                   </span>
                 </div>
                 <div className="relative py-2">
                   <input
+                    id="characteristic-weight"
                     type="range"
                     min="0"
                     max="1"
@@ -332,22 +379,20 @@ const PortfolioStep = ({
                       onCharacteristicWeightChange?.(parseFloat(e.target.value))
                     }
                     className="w-full cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${characteristicWeight * 100}%, rgba(100, 116, 139, 0.3) ${characteristicWeight * 100}%, rgba(100, 116, 139, 0.3) 100%)`,
-                    }}
+                    style={sliderTrackStyle(characteristicWeight)}
                   />
                 </div>
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span className="font-medium">← 100% Local</span>
-                  <span className="font-medium">100% Portfolio →</span>
+                <div className="mt-1 flex justify-between text-[11px] text-white/45">
+                  <span>← 100% local</span>
+                  <span>100% portfolio →</span>
                 </div>
               </div>
 
-              <div className="p-4 bg-royal-600/10 border border-royal-600/20 rounded-xl">
-                <p className="text-sm text-gray-300">
-                  <span className="font-semibold text-royal-400">Tip:</span> For
-                  balanced results, keep both sliders around 70%. Adjust higher
-                  for portfolio influence or lower for local context emphasis.
+              <div className="rounded-xl border border-royal-500/20 bg-royal-500/[0.06] p-4">
+                <p className="text-sm text-white/75">
+                  <span className="font-semibold text-royal-200">Tip:</span> For
+                  balanced results keep both sliders around 70%. Higher for
+                  portfolio influence; lower for local context emphasis.
                 </p>
               </div>
             </Card>
@@ -360,7 +405,7 @@ const PortfolioStep = ({
             variant="ghost"
             size="lg"
             onClick={onBack}
-            icon={<ArrowLeft className="w-5 h-5" />}
+            icon={<ArrowLeft className="h-5 w-5" />}
           >
             Back
           </Button>
@@ -370,7 +415,7 @@ const PortfolioStep = ({
             onClick={onNext}
             disabled={portfolioFiles.length === 0 || isUploading}
             loading={isUploading}
-            icon={<ArrowRight className="w-5 h-5" />}
+            icon={<ArrowRight className="h-5 w-5" />}
             iconPosition="right"
           >
             Continue to Specifications

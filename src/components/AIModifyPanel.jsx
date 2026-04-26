@@ -135,17 +135,17 @@ const AIModifyPanel = ({ designId, onModify }) => {
           className="relative z-10 h-full flex flex-col"
         >
           {/* Header */}
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-royal-600 to-royal-400 flex items-center justify-center">
-                <Wand2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white font-heading">
-                  AI Modify
-                </h3>
-                <p className="text-sm text-gray-400">Enhance your design</p>
-              </div>
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-royal-500/30 bg-royal-500/10">
+              <Wand2 className="h-5 w-5 text-royal-300" strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold tracking-tight text-white">
+                AI Modify
+              </h3>
+              <p className="text-xs text-white/55">
+                Refine the sheet without losing what works
+              </p>
             </div>
           </div>
 
@@ -275,19 +275,19 @@ const AIModifyPanel = ({ designId, onModify }) => {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="mt-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30"
+                className="mt-4 rounded-xl border border-success-500/30 bg-success-500/10 p-4"
               >
                 <div className="flex items-start gap-3">
                   <Check
-                    className="w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5"
-                    strokeWidth={1.75}
+                    className="mt-0.5 h-5 w-5 flex-shrink-0 text-success-300"
+                    strokeWidth={2}
                   />
-                  <div className="flex-1">
-                    <p className="text-sm text-white font-semibold mb-1">
-                      Modification Complete
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-sm font-semibold text-white">
+                      Modification complete
                     </p>
                     {lastResult.consistencyScore && (
-                      <p className="text-xs text-white/60 tabular-nums">
+                      <p className="text-xs tabular-nums text-white/60">
                         Consistency:{" "}
                         {Math.round(lastResult.consistencyScore * 100)}%
                       </p>

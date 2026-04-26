@@ -476,7 +476,7 @@ const A1SheetViewer = ({
   if (!sheetUrlCandidates.length) {
     return (
       <Card variant="glass" padding="xl" className="text-center">
-        <p className="text-gray-400">No A1 sheet available</p>
+        <p className="text-white/65">No A1 sheet available</p>
       </Card>
     );
   }
@@ -511,7 +511,7 @@ const A1SheetViewer = ({
             <Button variant="ghost" size="sm" onClick={handleFit}>
               <Maximize2 className="w-4 h-4" />
             </Button>
-            <span className="text-sm text-gray-400 ml-2">
+            <span className="text-sm text-white/65 ml-2">
               {Math.round(zoom * 100)}%
             </span>
           </div>
@@ -596,7 +596,10 @@ const A1SheetViewer = ({
 
             {loadError && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <div
+                  role="alert"
+                  className="rounded-xl border border-error-500/30 bg-error-500/10 px-4 py-3 text-sm text-error-200"
+                >
                   {loadError}
                 </div>
               </div>
@@ -617,8 +620,12 @@ const A1SheetViewer = ({
               >
                 <img
                   src={resolvedSheetUrl || sheetUrlCandidates[0]}
-                  alt="A1 Architectural Sheet"
-                  className="w-full h-auto"
+                  alt={
+                    metadata?.projectName
+                      ? `Generated A1 architectural sheet for ${metadata.projectName}${metadata.buildingType ? `, ${metadata.buildingType}` : ""}${metadata.location ? ` in ${metadata.location}` : ""}`
+                      : "Generated A1 architectural sheet — floor plans, elevations, sections, and 3D views"
+                  }
+                  className="h-auto w-full"
                   draggable={false}
                 />
 
@@ -661,7 +668,7 @@ const A1SheetViewer = ({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             {metadata.designId && (
               <div>
-                <p className="text-gray-500 mb-1">Design ID</p>
+                <p className="text-white/55 mb-1">Design ID</p>
                 <p className="text-white font-mono">
                   {metadata.designId.slice(0, 8)}...
                 </p>
@@ -669,19 +676,19 @@ const A1SheetViewer = ({
             )}
             {metadata.seed && (
               <div>
-                <p className="text-gray-500 mb-1">Seed</p>
+                <p className="text-white/55 mb-1">Seed</p>
                 <p className="text-white font-mono">{metadata.seed}</p>
               </div>
             )}
             {metadata.version && (
               <div>
-                <p className="text-gray-500 mb-1">Version</p>
+                <p className="text-white/55 mb-1">Version</p>
                 <p className="text-white font-semibold">v{metadata.version}</p>
               </div>
             )}
             {metadata.timestamp && (
               <div>
-                <p className="text-gray-500 mb-1">Generated</p>
+                <p className="text-white/55 mb-1">Generated</p>
                 <p className="text-white">
                   {new Date(metadata.timestamp).toLocaleDateString()}
                 </p>
