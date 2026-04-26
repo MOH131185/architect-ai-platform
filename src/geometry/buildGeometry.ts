@@ -107,13 +107,18 @@ export function buildGeometryFromDNA(dna: DesignDNA): GeometryModel {
     });
   }
 
-  // Build roof
+  // Build roof — DesignDNA.materials.roof is a Material descriptor (color,
+  // texture, id), not a roof-shape spec, so use safe defaults for shape +
+  // pitch. Roof.material still pulls from the Material's id.
   const roofElevation = floorHeights.reduce((sum, h) => sum + h, 0);
+  const ROOF_TYPE: Roof['type'] = 'gable';
+  const ROOF_PITCH_DEG = 35;
   const roof: Roof = {
     id: 'roof-main',
-    type: dna.materials?.roof?.type || 'gable',
-    pitch: dna.materials?.roof?.pitch || 35,
-    ridgeHeight: roofElevation + (width / 2) * Math.tan((dna.materials?.roof?.pitch || 35) * Math.PI / 180),
+    type: ROOF_TYPE,
+    pitch: ROOF_PITCH_DEG,
+    ridgeHeight:
+      roofElevation + (width / 2) * Math.tan((ROOF_PITCH_DEG * Math.PI) / 180),
     overhang: 0.6,
     material: dna.materials?.roof?.id || 'tiles'
   };
