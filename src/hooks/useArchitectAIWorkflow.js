@@ -171,6 +171,22 @@ function compactProgramSpacesForRequest(programSpaces = []) {
   );
 }
 
+export function normalizeProjectGraphDrawingArtifacts(drawings = []) {
+  if (Array.isArray(drawings)) {
+    return drawings.filter(Boolean);
+  }
+
+  if (!drawings || typeof drawings !== "object") {
+    return [];
+  }
+
+  if (Array.isArray(drawings.drawings)) {
+    return drawings.drawings.filter(Boolean);
+  }
+
+  return Object.values(drawings).filter(Boolean);
+}
+
 export function buildProjectGraphVerticalSliceRequest(params = {}) {
   const designSpec = params.designSpec || {};
   const projectDetails =
@@ -343,31 +359,43 @@ async function runProjectGraphVerticalSliceWorkflow({
 
   const sheetSvg = verticalSlice.artifacts?.a1Sheet?.svgString || "";
   const composedSheetUrl = sheetSvg ? svgToDataUrl(sheetSvg) : null;
-  const drawingAssets = verticalSlice.artifacts?.drawings || [];
+  const drawingAssets = normalizeProjectGraphDrawingArtifacts(
+    verticalSlice.artifacts?.drawings,
+  );
   const panelMap = Object.fromEntries(
-    drawingAssets.map((drawing) => {
-      const panelType = drawing.panel_type || drawing.drawing_id;
-      return [
-        panelType,
-        {
+    drawingAssets
+      .map((drawing) => {
+        const panelType =
+          drawing.panel_type ||
+          drawing.drawing_id ||
+          drawing.asset_id ||
+          drawing.type;
+        if (!panelType) {
+          return null;
+        }
+
+        return [
           panelType,
-          url: drawing.svgString ? svgToDataUrl(drawing.svgString) : null,
-          svgString: drawing.svgString || null,
-          sourceType: "project_graph_drawing_svg",
-          authorityUsed: "ProjectGraph",
-          authoritySource: "project_graph",
-          geometryHash: verticalSlice.geometryHash,
-          svgHash: drawing.svgHash || null,
-          metadata: {
+          {
+            panelType,
+            url: drawing.svgString ? svgToDataUrl(drawing.svgString) : null,
+            svgString: drawing.svgString || null,
             sourceType: "project_graph_drawing_svg",
             authorityUsed: "ProjectGraph",
             authoritySource: "project_graph",
             geometryHash: verticalSlice.geometryHash,
-            sourceModelHash: drawing.source_model_hash || null,
+            svgHash: drawing.svgHash || null,
+            metadata: {
+              sourceType: "project_graph_drawing_svg",
+              authorityUsed: "ProjectGraph",
+              authoritySource: "project_graph",
+              geometryHash: verticalSlice.geometryHash,
+              sourceModelHash: drawing.source_model_hash || null,
+            },
           },
-        },
-      ];
-    }),
+        ];
+      })
+      .filter(Boolean),
   );
 
   onProgress?.({

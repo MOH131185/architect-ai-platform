@@ -1,4 +1,7 @@
-import { buildProjectGraphVerticalSliceRequest } from "../../hooks/useArchitectAIWorkflow.js";
+import {
+  buildProjectGraphVerticalSliceRequest,
+  normalizeProjectGraphDrawingArtifacts,
+} from "../../hooks/useArchitectAIWorkflow.js";
 
 describe("buildProjectGraphVerticalSliceRequest", () => {
   test("strips binary portfolio and map snapshot data before ProjectGraph POST", () => {
@@ -71,5 +74,29 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       size: largeImage.length,
       convertedFromPdf: false,
     });
+  });
+
+  test("normalizes ProjectGraph drawing artifact maps before panel mapping", () => {
+    const drawingMap = {
+      "asset-ground": {
+        asset_id: "asset-ground",
+        panel_type: "floor_plan_ground",
+        svgString: "<svg />",
+      },
+      "asset-north": {
+        asset_id: "asset-north",
+        panel_type: "elevation_north",
+        svgString: "<svg />",
+      },
+    };
+
+    expect(normalizeProjectGraphDrawingArtifacts(drawingMap)).toEqual([
+      drawingMap["asset-ground"],
+      drawingMap["asset-north"],
+    ]);
+    expect(normalizeProjectGraphDrawingArtifacts({ drawings: [drawingMap["asset-ground"]] })).toEqual([
+      drawingMap["asset-ground"],
+    ]);
+    expect(normalizeProjectGraphDrawingArtifacts(null)).toEqual([]);
   });
 });
