@@ -68,7 +68,7 @@
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "build": "react-scripts build",
     "build:active": "node scripts/run-build-active.cjs",
-    "build:vercel": "CI=false react-scripts build",
+    "build:vercel": "CI=false GENERATE_SOURCEMAP=false react-scripts build",
     "test": "react-scripts test",
     "test:compose:routing": "node scripts/tests/test-compose-core-and-routing.mjs",
     "test:dna:pipeline": "node test-dna-pipeline.js",
