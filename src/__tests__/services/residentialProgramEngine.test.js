@@ -41,6 +41,39 @@ describe("residentialProgramEngine", () => {
     expect(bathrooms.every((space) => Number(space.area) >= 5)).toBe(true);
   });
 
+  test("uses site-fit levels and keeps compact programmes near requested area", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 98,
+      siteAreaM2: 2380,
+      entranceDirection: "S",
+    });
+
+    const total = brief.spaces.reduce(
+      (sum, space) => sum + Number(space.area || 0) * Number(space.count || 1),
+      0,
+    );
+
+    expect(brief.levelCount).toBe(1);
+    expect(brief.spaces.every((space) => space.levelIndex === 0)).toBe(true);
+    expect(total).toBeGreaterThanOrEqual(98 * 0.95);
+    expect(total).toBeLessThanOrEqual(98 * 1.05);
+    expect(brief.warnings.length).toBeGreaterThan(0);
+  });
+
+  test("respects explicit level-count override even when site-fit recommends fewer levels", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 98,
+      siteAreaM2: 2380,
+      levelCountOverride: 2,
+      entranceDirection: "S",
+    });
+
+    expect(brief.levelCount).toBe(2);
+    expect(brief.spaces.some((space) => space.levelIndex === 1)).toBe(true);
+  });
+
   test("normalizes imported spaces into deterministic program rows", () => {
     const normalized = normalizeResidentialProgramSpaces([
       { name: "Living Room", area: "24", count: "1", level: "Ground" },

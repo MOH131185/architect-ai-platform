@@ -15,10 +15,17 @@ export default async function handler(req, res) {
       subType = "detached-house",
       totalAreaM2 = 160,
       siteAreaM2 = null,
+      levelCount = null,
+      floorCount = null,
+      floorCountLocked = false,
       entranceDirection = "S",
       qualityTier = "mid",
       customNotes = "",
     } = req.body || {};
+    const requestedLevelCount =
+      floorCountLocked || levelCount || floorCount
+        ? Number(levelCount || floorCount)
+        : null;
 
     const programBrief = generateResidentialProgramBrief({
       subType,
@@ -26,6 +33,10 @@ export default async function handler(req, res) {
       siteAreaM2: Number.isFinite(Number(siteAreaM2))
         ? Number(siteAreaM2)
         : null,
+      levelCountOverride:
+        Number.isFinite(requestedLevelCount) && requestedLevelCount > 0
+          ? requestedLevelCount
+          : null,
       entranceDirection,
       qualityTier,
       customNotes,

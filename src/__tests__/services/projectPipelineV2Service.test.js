@@ -143,6 +143,32 @@ describe("projectPipelineV2Service", () => {
     );
   });
 
+  test("respects manual one-level lock when generating program spaces internally", async () => {
+    const bundle = await buildProjectPipelineV2Bundle({
+      projectDetails: {
+        category: "residential",
+        subType: "detached-house",
+        program: "detached-house",
+        area: 98,
+        floorCount: 1,
+        floorCountLocked: true,
+        entranceDirection: "S",
+      },
+      ...baseInput,
+      siteMetrics: {
+        ...baseInput.siteMetrics,
+        areaM2: 2380,
+      },
+    });
+
+    expect(bundle.programBrief?.levelCount).toBe(1);
+    expect(bundle.programBrief?.spaces?.length).toBeGreaterThan(0);
+    expect(
+      bundle.programBrief?.spaces?.every((space) => space.levelIndex === 0),
+    ).toBe(true);
+    expect(bundle.projectGeometry?.levels).toHaveLength(1);
+  });
+
   test("uses space level label when levelIndex is stale", async () => {
     const bundle = await buildProjectPipelineV2Bundle({
       projectDetails: {

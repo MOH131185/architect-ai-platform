@@ -618,8 +618,163 @@ function resolveCountFromArea(areaM2, thresholds = [], values = []) {
   return values[values.length - 1] || 1;
 }
 
-function resolveLevelCount(subType, totalAreaM2, siteAreaM2 = null) {
+const SUBTYPE_SITE_RULES = {
+  "detached-house": { minLevels: 1, maxLevels: 3, coverageRatio: 0.35 },
+  "semi-detached-house": { minLevels: 1, maxLevels: 3, coverageRatio: 0.4 },
+  "terraced-house": { minLevels: 2, maxLevels: 4, coverageRatio: 0.5 },
+  villa: { minLevels: 1, maxLevels: 3, coverageRatio: 0.3 },
+  cottage: { minLevels: 1, maxLevels: 2, coverageRatio: 0.25 },
+  mansion: { minLevels: 1, maxLevels: 3, coverageRatio: 0.3 },
+  "apartment-building": { minLevels: 2, maxLevels: 4, coverageRatio: 0.6 },
+  "multi-family": { minLevels: 2, maxLevels: 6, coverageRatio: 0.55 },
+  duplex: { minLevels: 2, maxLevels: 3, coverageRatio: 0.45 },
+};
+
+const SITE_SETBACK_FACTOR = 0.85;
+const AREA_TOLERANCE = 0.05;
+const OPTIONAL_SPACE_DROP_ORDER = [
+  "study",
+  "storage",
+  "utility",
+  "dining",
+  "plant_storage",
+];
+
+function getSubtypeRule(subType) {
+  return (
+    SUBTYPE_SITE_RULES[subType] || {
+      minLevels: 1,
+      maxLevels: subType === "apartment-building" ? 4 : 3,
+      coverageRatio: 0.4,
+    }
+  );
+}
+
+function resolveSiteFitLevelCount(subType, totalAreaM2, siteAreaM2) {
+  const targetArea = Number(totalAreaM2);
+  const siteArea = Number(siteAreaM2);
+  if (
+    !Number.isFinite(targetArea) ||
+    targetArea <= 0 ||
+    !Number.isFinite(siteArea) ||
+    siteArea <= 0
+  ) {
+    return null;
+  }
+
+  const rule = getSubtypeRule(subType);
+  const maxFootprint =
+    siteArea * Number(rule.coverageRatio || 0.4) * SITE_SETBACK_FACTOR;
+  if (!Number.isFinite(maxFootprint) || maxFootprint <= 0) {
+    return null;
+  }
+
+  return clamp(
+    Math.ceil(targetArea / maxFootprint),
+    rule.minLevels || 1,
+    rule.maxLevels || 3,
+  );
+}
+
+function calculateProgramArea(spaces) {
+  return (Array.isArray(spaces) ? spaces : []).reduce(
+    (sum, space) => sum + Number(space.area || 0) * Number(space.count || 1),
+    0,
+  );
+}
+
+function isOptionalSpace(space, optionalType) {
+  const type = slugify(space?.spaceType || "");
+  const name = slugify(space?.name || space?.label || "");
+  return type === optionalType || name.includes(optionalType);
+}
+
+function fitSpacesToTargetArea(spaces, targetAreaM2) {
+  const targetArea = Number(targetAreaM2);
+  if (!Number.isFinite(targetArea) || targetArea <= 0 || !spaces.length) {
+    return { spaces, warnings: [] };
+  }
+
+  let fitted = [...spaces];
+  const warnings = [];
+  const maximumArea = targetArea * (1 + AREA_TOLERANCE);
+  let currentArea = calculateProgramArea(fitted);
+
+  for (const optionalType of OPTIONAL_SPACE_DROP_ORDER) {
+    if (currentArea <= maximumArea) break;
+    const index = fitted.findIndex((space) => isOptionalSpace(space, optionalType));
+    if (index === -1) continue;
+
+    const [removed] = fitted.splice(index, 1);
+    warnings.push(
+      `${removed.name || removed.label || optionalType} omitted to keep the programme within the requested area.`,
+    );
+    currentArea = calculateProgramArea(fitted);
+  }
+
+  const minimumArea = targetArea * (1 - AREA_TOLERANCE);
+  if (currentArea < minimumArea) {
+    const deficit = targetArea - currentArea;
+    const eligible = fitted.filter((space) => {
+      const type = slugify(space.spaceType || space.name || "");
+      return (
+        !type.includes("stair") &&
+        !type.includes("circulation") &&
+        !type.includes("wc") &&
+        !type.includes("bathroom")
+      );
+    });
+    const eligibleArea = calculateProgramArea(eligible);
+    if (eligible.length > 0 && eligibleArea > 0 && deficit > 0) {
+      fitted = fitted.map((space) => {
+        if (!eligible.includes(space)) {
+          return space;
+        }
+        const share = Number(space.area || 0) / eligibleArea;
+        return {
+          ...space,
+          area: round(Number(space.area || 0) + deficit * share),
+        };
+      });
+      currentArea = calculateProgramArea(fitted);
+    }
+  }
+
+  if (currentArea > maximumArea) {
+    warnings.push(
+      `Minimum room standards require ${round(currentArea)} m², above the requested ${round(targetArea)} m² target.`,
+    );
+  }
+
+  return { spaces: fitted, warnings };
+}
+
+function resolveLevelCount(
+  subType,
+  totalAreaM2,
+  siteAreaM2 = null,
+  { levelCountOverride = null } = {},
+) {
   const template = resolveTemplate(subType);
+  const rule = getSubtypeRule(subType);
+  const requestedLevelCount = Number(levelCountOverride);
+  if (Number.isFinite(requestedLevelCount) && requestedLevelCount > 0) {
+    return clamp(
+      Math.round(requestedLevelCount),
+      rule.minLevels || 1,
+      rule.maxLevels || 3,
+    );
+  }
+
+  const siteFitLevelCount = resolveSiteFitLevelCount(
+    subType,
+    totalAreaM2,
+    siteAreaM2,
+  );
+  if (siteFitLevelCount) {
+    return siteFitLevelCount;
+  }
+
   let levelCount = template.defaultLevels;
   if (subType === "apartment-building" || subType === "multi-family") {
     if (totalAreaM2 <= 260) levelCount = 2;
@@ -631,16 +786,7 @@ function resolveLevelCount(subType, totalAreaM2, siteAreaM2 = null) {
     levelCount = Math.max(levelCount, 3);
   }
 
-  if (Number.isFinite(Number(siteAreaM2)) && siteAreaM2 > 0) {
-    const ratio = totalAreaM2 / siteAreaM2;
-    if (ratio > 0.85) {
-      levelCount = Math.max(levelCount, 3);
-    } else if (ratio < 0.32) {
-      levelCount = Math.min(levelCount, 2);
-    }
-  }
-
-  return clamp(levelCount, 1, subType === "apartment-building" ? 4 : 3);
+  return clamp(levelCount, rule.minLevels || 1, rule.maxLevels || 3);
 }
 
 function getLevelName(levelIndex) {
@@ -674,14 +820,17 @@ export function generateResidentialProgramBrief({
   subType = "detached-house",
   totalAreaM2 = 160,
   siteAreaM2 = null,
+  levelCountOverride = null,
   entranceDirection = "S",
   qualityTier = "mid",
   customNotes = "",
 } = {}) {
   const template = resolveTemplate(subType);
-  const levelCount = resolveLevelCount(subType, totalAreaM2, siteAreaM2);
+  const levelCount = resolveLevelCount(subType, totalAreaM2, siteAreaM2, {
+    levelCountOverride,
+  });
   const usableArea = round(totalAreaM2 * (1 - template.circulationRatio));
-  const spaces = [];
+  let spaces = [];
 
   template.spaces.forEach((descriptor) => {
     const count = descriptor.maxCount
@@ -707,6 +856,13 @@ export function generateResidentialProgramBrief({
     }
 
     if (descriptor.level === "Upper") {
+      if (levelCount <= 1) {
+        for (let index = 0; index < count; index += 1) {
+          pushSpace(spaces, descriptor, 0, index, unitArea);
+        }
+        return;
+      }
+
       const distribution = distributeCounts(count, Math.max(1, levelCount - 1));
       distribution.forEach((countOnLevel, upperIndex) => {
         for (let index = 0; index < countOnLevel; index += 1) {
@@ -737,6 +893,9 @@ export function generateResidentialProgramBrief({
       );
     }
   }
+
+  const areaFit = fitSpacesToTargetArea(spaces, totalAreaM2);
+  spaces = areaFit.spaces;
 
   const adjacency = [
     ["Entrance Hall", "Living Room"],
@@ -771,7 +930,7 @@ export function generateResidentialProgramBrief({
       levelCount > 1 ? "stacked_vertical_wet_core" : "single_level_wet_core",
     recommendedRoof: template.preferredRoof,
     spaces,
-    warnings: [],
+    warnings: areaFit.warnings,
     blockers: [],
     confidence: {
       score: 0.88,

@@ -1230,6 +1230,7 @@ function buildProgramBrief({
       subType,
       totalAreaM2,
       siteAreaM2,
+      levelCountOverride: lockedLevelCount || null,
       entranceDirection: projectDetails.entranceDirection || "S",
     });
     const resolvedLevelCount =
@@ -1267,6 +1268,7 @@ function buildProgramBrief({
     subType,
     totalAreaM2,
     siteAreaM2,
+    levelCountOverride: lockedLevelCount || null,
     entranceDirection: projectDetails.entranceDirection || "S",
     customNotes: projectDetails.customNotes,
   });

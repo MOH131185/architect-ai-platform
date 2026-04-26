@@ -951,10 +951,30 @@ const ArchitectAIWizardContainer = () => {
       }
 
       if (isSupportedResidentialV2) {
+        const requestedTotalArea = parseFloat(sanitizedArea);
+        const siteFitFloorMetrics =
+          siteArea > 0
+            ? autoLevelAssignmentService.calculateOptimalLevels(
+                requestedTotalArea,
+                siteArea,
+                {
+                  buildingType: sanitizedProgram,
+                  subType,
+                  maxFloors: 4,
+                  circulationFactor: 1.0,
+                },
+              )
+            : null;
+        const siteFitFloorCount = siteFitFloorMetrics?.optimalFloors || null;
+        const levelCountOverride = isFloorCountLocked
+          ? desiredFloorCount
+          : siteFitFloorCount;
+
         const programBrief = generateResidentialProgramBrief({
           subType,
-          totalAreaM2: parseFloat(sanitizedArea),
+          totalAreaM2: requestedTotalArea,
           siteAreaM2: siteArea,
+          levelCountOverride,
           entranceDirection: projectDetails.entranceDirection || "S",
           qualityTier: "mid",
           customNotes: projectDetails.customNotes || "",
@@ -974,7 +994,10 @@ const ArchitectAIWizardContainer = () => {
           }),
         );
 
-        const recommendedFloorCount = Math.max(1, programBrief.levelCount || 1);
+        const recommendedFloorCount = Math.max(
+          1,
+          siteFitFloorCount || programBrief.levelCount || 1,
+        );
         const floorCountToUse = isFloorCountLocked
           ? desiredFloorCount
           : recommendedFloorCount;
@@ -983,7 +1006,7 @@ const ArchitectAIWizardContainer = () => {
             sum + Number(space.area || 0) * Number(space.count || 1),
           0,
         );
-        const floorMetrics =
+        let floorMetrics =
           siteArea > 0
             ? autoLevelAssignmentService.calculateOptimalLevels(
                 totalProgramArea,
@@ -992,12 +1015,25 @@ const ArchitectAIWizardContainer = () => {
                   buildingType: sanitizedProgram,
                   subType,
                   maxFloors: 4,
-                  circulationFactor: programBrief.circulationRatio
-                    ? 1 + Number(programBrief.circulationRatio)
-                    : 1.12,
+                  circulationFactor: 1.0,
                 },
               )
             : null;
+        if (floorMetrics) {
+          const selectedFootprint =
+            totalProgramArea / Math.max(1, floorCountToUse);
+          floorMetrics = {
+            ...floorMetrics,
+            selectedFloors: floorCountToUse,
+            recommendedFloors: recommendedFloorCount,
+            actualFootprint: selectedFootprint,
+            siteCoveragePercent: (selectedFootprint / siteArea) * 100,
+            fitsWithinSite: selectedFootprint <= floorMetrics.maxFootprintArea,
+            reasoning: isFloorCountLocked
+              ? `Manual ${floorCountToUse} level${floorCountToUse === 1 ? "" : "s"} selected; site-fit recommendation is ${recommendedFloorCount}.`
+              : floorMetrics.reasoning,
+          };
+        }
 
         if (floorCountToUse !== recommendedFloorCount && spaces.length > 0) {
           const reassigned =
@@ -1031,6 +1067,7 @@ const ArchitectAIWizardContainer = () => {
           floorCountToUse === recommendedFloorCount
             ? `Recommended ${recommendedFloorCount} levels from program and site-fit rules.`
             : `Program recommended ${recommendedFloorCount} levels, locked to ${floorCountToUse}.`,
+          ...(programBrief.warnings || []),
         ]);
 
         logger.success("Residential V2 program compiled", {
