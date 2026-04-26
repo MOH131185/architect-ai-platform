@@ -1,6 +1,7 @@
 import {
   buildProjectGraphVerticalSliceRequest,
   normalizeProjectGraphDrawingArtifacts,
+  sanitizeProjectGraphSvg,
 } from "../../hooks/useArchitectAIWorkflow.js";
 
 describe("buildProjectGraphVerticalSliceRequest", () => {
@@ -98,5 +99,21 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       drawingMap["asset-ground"],
     ]);
     expect(normalizeProjectGraphDrawingArtifacts(null)).toEqual([]);
+  });
+
+  test("removes invalid SVG path data before browser rendering", () => {
+    const svg = `
+      <svg>
+        <path d="undefined" stroke="red" />
+        <path d="M 0 0 L 10 10" stroke="black" />
+        <path d="M 0 NaN L 5 5" stroke="blue"></path>
+      </svg>
+    `;
+
+    const sanitized = sanitizeProjectGraphSvg(svg);
+
+    expect(sanitized).not.toContain('d="undefined"');
+    expect(sanitized).not.toContain("NaN");
+    expect(sanitized).toContain('d="M 0 0 L 10 10"');
   });
 });

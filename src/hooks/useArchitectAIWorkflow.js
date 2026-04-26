@@ -81,8 +81,31 @@ function buildManifestPanels(multiPanelResult = {}) {
   return entries;
 }
 
+export function sanitizeProjectGraphSvg(svgString = "") {
+  if (typeof svgString !== "string") {
+    return "";
+  }
+
+  return svgString.replace(
+    /<path\b[^>]*\bd=(["'])(.*?)\1[^>]*(?:\/>|>\s*<\/path>)/gi,
+    (match, _quote, pathData) => {
+      const normalizedPathData = String(pathData || "").trim();
+      if (
+        !normalizedPathData ||
+        normalizedPathData === "undefined" ||
+        normalizedPathData === "null" ||
+        normalizedPathData.includes("NaN")
+      ) {
+        return "";
+      }
+      return match;
+    },
+  );
+}
+
 function svgToDataUrl(svgString = "") {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+  const safeSvgString = sanitizeProjectGraphSvg(svgString);
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(safeSvgString)}`;
 }
 
 function compactSiteSnapshotForRequest(siteSnapshot = null) {
