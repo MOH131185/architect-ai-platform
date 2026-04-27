@@ -441,6 +441,35 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.a1Sheet.svgString).toContain("floor_plan_level3");
   });
 
+  test("keeps uneven user programme GIA within tolerance across multi-storey geometry", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.brief.project_name = "Uneven User Programme";
+    briefInput.brief.building_type = "dwelling";
+    briefInput.brief.target_gia_m2 = 300;
+    briefInput.brief.target_storeys = 3;
+    briefInput.programSpaces = [
+      { id: "entrance", name: "Entrance", area: 20, levelIndex: 0 },
+      { id: "living", name: "Living", area: 70, levelIndex: 0 },
+      { id: "kitchen", name: "Kitchen", area: 46.5, levelIndex: 0 },
+      { id: "bed1", name: "Bedroom 1", area: 44.3, levelIndex: 1 },
+      { id: "bed2", name: "Bedroom 2", area: 40, levelIndex: 1 },
+      { id: "studio", name: "Studio", area: 45, levelIndex: 2 },
+      { id: "bed3", name: "Bedroom 3", area: 34.2, levelIndex: 2 },
+    ];
+
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+    const actualGia =
+      result.projectGraph.programme.area_summary.gross_internal_area_m2;
+    const targetGia = result.projectGraph.brief.target_gia_m2;
+    const areaDeltaRatio = Math.abs(actualGia - targetGia) / targetGia;
+
+    expect(result.success).toBe(true);
+    expect(areaDeltaRatio).toBeLessThanOrEqual(0.15);
+    expect(result.qa.issues.map((issue) => issue.code)).not.toContain(
+      "PROGRAMME_AREA_OUTSIDE_TOLERANCE",
+    );
+  });
+
   test("unknown building_type does not silently render as a dwelling and is flagged in template_provenance", async () => {
     const briefInput = createReadingRoomBrief();
     briefInput.brief.building_type = "warehouse";

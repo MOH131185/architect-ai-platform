@@ -1431,6 +1431,43 @@ function balanceBands(spaces = []) {
   return bands.filter((band) => band.spaces.length > 0);
 }
 
+function buildLevelFootprintWithinBase(baseFootprint = [], targetAreaM2 = 0) {
+  const baseBbox = buildBoundingBoxFromPolygon(baseFootprint);
+  const baseWidth = Number(baseBbox.width || 0);
+  const baseHeight = Number(baseBbox.height || 0);
+  const baseArea = baseWidth * baseHeight;
+  const targetArea = Number(targetAreaM2 || 0);
+
+  if (
+    !Array.isArray(baseFootprint) ||
+    baseFootprint.length < 3 ||
+    !(baseWidth > 0) ||
+    !(baseHeight > 0) ||
+    !(targetArea > 0) ||
+    targetArea >= baseArea * 0.995
+  ) {
+    return baseFootprint;
+  }
+
+  const aspect = baseWidth / Math.max(baseHeight, 0.001);
+  let width = Math.sqrt(targetArea * aspect);
+  let height = targetArea / Math.max(width, 0.001);
+
+  if (width > baseWidth) {
+    width = baseWidth;
+    height = targetArea / Math.max(width, 0.001);
+  }
+  if (height > baseHeight) {
+    height = baseHeight;
+    width = targetArea / Math.max(height, 0.001);
+  }
+
+  const x = Number(baseBbox.min_x || 0) + Math.max(0, (baseWidth - width) / 2);
+  const y =
+    Number(baseBbox.min_y || 0) + Math.max(0, (baseHeight - height) / 2);
+  return rectangleToPolygon(x, y, width, height);
+}
+
 function addRoomWallsAndOpenings({
   room,
   levelId,
@@ -1636,8 +1673,7 @@ function buildProjectGeometryFromProgramme({
     scoreOption({ option, brief, site, climate, programme }),
   );
   const selected = selectBestOption(scoredOptions) || scoredOptions[0];
-  const footprint = selected.footprint_polygon;
-  const footprintBbox = selected.footprint_bbox;
+  const baseFootprint = selected.footprint_polygon;
   const levels = [];
   const rooms = [];
   const walls = [];
@@ -1649,6 +1685,14 @@ function buildProjectGeometryFromProgramme({
   for (let levelIndex = 0; levelIndex < levelCount; levelIndex += 1) {
     const levelId = `level-${levelIndex}`;
     const levelRooms = groups[levelIndex] || [];
+    const levelTargetArea = levelRooms.reduce(
+      (sum, space) => sum + Number(space.target_area_m2 || 0),
+      0,
+    );
+    const footprint = levelRooms.length
+      ? buildLevelFootprintWithinBase(baseFootprint, levelTargetArea)
+      : baseFootprint;
+    const footprintBbox = buildBoundingBoxFromPolygon(footprint);
     const layout = layoutRoomsForLevel({
       spaces: levelRooms,
       levelIndex,
@@ -1691,7 +1735,10 @@ function buildProjectGeometryFromProgramme({
     });
   }
 
-  const ridgeY = round((footprintBbox.min_y + footprintBbox.max_y) / 2);
+  const roofFootprint =
+    footprints[footprints.length - 1]?.polygon || baseFootprint;
+  const roofBbox = buildBoundingBoxFromPolygon(roofFootprint);
+  const ridgeY = round((roofBbox.min_y + roofBbox.max_y) / 2);
   const projectGeometry = {
     schema_version: CANONICAL_PROJECT_GEOMETRY_VERSION,
     project_id: createStableId("project", brief.project_name),
@@ -1714,20 +1761,20 @@ function buildProjectGeometryFromProgramme({
     slabs: [],
     roof_primitives: [
       {
-        id: createStableId("roof-plane", footprint),
+        id: createStableId("roof-plane", roofFootprint),
         primitive_family: "roof_plane",
         type: brief.building_type === "community" ? "low_pitch_roof" : "gable",
         support_mode: "explicit_generated",
-        polygon: footprint,
+        polygon: roofFootprint,
         slope_deg: brief.building_type === "community" ? 8 : 35,
         eave_depth_m: 0.35,
       },
       {
-        id: createStableId("roof-ridge", footprint),
+        id: createStableId("roof-ridge", roofFootprint),
         primitive_family: "ridge",
         type: "ridge",
-        start: { x: footprintBbox.min_x, y: ridgeY },
-        end: { x: footprintBbox.max_x, y: ridgeY },
+        start: { x: roofBbox.min_x, y: ridgeY },
+        end: { x: roofBbox.max_x, y: ridgeY },
         ridge_height_m: round(levelCount * 3.2 + 1.4),
       },
     ],
@@ -1735,7 +1782,7 @@ function buildProjectGeometryFromProgramme({
     base_conditions: [],
     roof: {
       type: brief.building_type === "community" ? "low_pitch" : "gable",
-      polygon: footprint,
+      polygon: roofFootprint,
     },
     footprints,
     elevations: [],
