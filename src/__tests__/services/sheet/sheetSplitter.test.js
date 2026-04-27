@@ -125,6 +125,7 @@ describe("multi-sheet integration", () => {
     });
     expect(result.projectGraph.sheets.split_decision.split).toBe(true);
     expect(result.projectGraph.sheets.sheets.length).toBe(3);
+    expect(result.artifacts.sheetSplitDecision.split).toBe(true);
     expect(result.artifacts.sheetSeries.length).toBe(3);
     const sheetNumbers = result.artifacts.sheetSeries.map(
       (s) => s.sheet_number,
@@ -133,6 +134,9 @@ describe("multi-sheet integration", () => {
     // Each sheet must have its own PDF artifact id, and they must differ.
     const pdfIds = result.artifacts.sheetSeries.map((s) => s.pdf_asset_id);
     expect(new Set(pdfIds).size).toBe(3);
+    result.artifacts.sheetSeries.forEach((sheet) => {
+      expect(sheet.pdf_data_url).toMatch(/^data:application\/pdf;base64,/);
+    });
     // Primary export (artifacts.a1Pdf) is the first sheet.
     expect(result.artifacts.a1Pdf.asset_id).toBe(pdfIds[0]);
   });

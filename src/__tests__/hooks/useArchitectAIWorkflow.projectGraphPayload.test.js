@@ -61,7 +61,8 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
 
     expect(serialized).not.toContain("data:image");
     expect(serialized).not.toContain("shouldNeverSerialize");
-    expect(serialized).not.toContain('"dataUrl"');
+    expect(request.siteSnapshot.dataUrl).toBeNull();
+    expect(request.siteSnapshot.metadata.dataUrlOmitted).toBe(true);
     expect(serialized.length).toBeLessThan(20_000);
     expect(request.siteSnapshot.sha256).toBe("snapshot-hash");
     expect(request.siteMetrics.areaM2).toBe(147);
@@ -75,6 +76,30 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       size: largeImage.length,
       convertedFromPdf: false,
     });
+  });
+
+  test("preserves a compact provided site map data URL for ProjectGraph site context", () => {
+    const mapDataUrl =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "community",
+        buildingSubType: "reading-room",
+        area: 320,
+        floorCount: 2,
+      },
+      siteSnapshot: {
+        dataUrl: mapDataUrl,
+        sha256: "snapshot-hash",
+        center: { lat: 52.483, lng: -1.893 },
+        sourceUrl: "provided-site-snapshot",
+        attribution: "Provided site map",
+      },
+    });
+
+    expect(request.siteSnapshot.dataUrl).toBe(mapDataUrl);
+    expect(request.siteSnapshot.sourceUrl).toBe("provided-site-snapshot");
+    expect(JSON.stringify(request).length).toBeLessThan(20_000);
   });
 
   test("normalizes ProjectGraph drawing artifact maps before panel mapping", () => {

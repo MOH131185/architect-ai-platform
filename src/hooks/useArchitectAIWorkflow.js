@@ -36,6 +36,9 @@ const STAGES = Object.freeze([
   "finalizing",
 ]);
 const PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS = 750_000;
+const PROJECT_GRAPH_SITE_SNAPSHOT_DATA_URL_MAX_CHARS = 600_000;
+const SITE_SNAPSHOT_IMAGE_DATA_URL_RE =
+  /^data:image\/(?:png|jpe?g|webp);base64,[a-z0-9+/=\s]+$/i;
 
 const getStageForStep = (step) =>
   STAGES[Math.max(0, Math.min(STAGES.length - 1, Number(step || 0) - 1))] ||
@@ -113,6 +116,19 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
     return null;
   }
 
+  const dataUrl =
+    typeof siteSnapshot.dataUrl === "string" &&
+    SITE_SNAPSHOT_IMAGE_DATA_URL_RE.test(siteSnapshot.dataUrl) &&
+    siteSnapshot.dataUrl.length <=
+      PROJECT_GRAPH_SITE_SNAPSHOT_DATA_URL_MAX_CHARS
+      ? siteSnapshot.dataUrl
+      : null;
+  const sourceLabel =
+    siteSnapshot.sourceUrl ||
+    siteSnapshot.source ||
+    siteSnapshot.metadata?.source ||
+    null;
+
   return {
     address: siteSnapshot.address || null,
     coordinates: siteSnapshot.coordinates || siteSnapshot.center || null,
@@ -124,13 +140,26 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
     mapType: siteSnapshot.mapType || null,
     size: siteSnapshot.size || null,
     sha256: siteSnapshot.sha256 || null,
+    dataUrl,
+    attribution:
+      siteSnapshot.attribution || siteSnapshot.metadata?.attribution || null,
+    sourceUrl:
+      typeof sourceLabel === "string" && !sourceLabel.includes("key=")
+        ? sourceLabel
+        : null,
     capturedAt:
       siteSnapshot.capturedAt || siteSnapshot.metadata?.capturedAt || null,
     metadata: {
+      source:
+        typeof sourceLabel === "string" && !sourceLabel.includes("key=")
+          ? sourceLabel
+          : null,
       siteMetrics: siteSnapshot.metadata?.siteMetrics || null,
       sunPath: siteSnapshot.metadata?.sunPath || null,
       wind: siteSnapshot.metadata?.wind || null,
       climateSummary: siteSnapshot.metadata?.climateSummary || null,
+      dataUrlOmitted:
+        Boolean(siteSnapshot.dataUrl) && dataUrl == null ? true : undefined,
     },
   };
 }
@@ -339,11 +368,7 @@ async function runProjectGraphVerticalSliceWorkflow({
     buildProjectGraphVerticalSliceRequest(params),
   );
 
-  if (
-    requestBody.includes("data:image") ||
-    requestBody.includes(";base64,") ||
-    requestBody.length > PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS
-  ) {
+  if (requestBody.length > PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS) {
     logger.error("ProjectGraph request payload failed client-size guard", {
       chars: requestBody.length,
       limit: PROJECT_GRAPH_REQUEST_SOFT_LIMIT_CHARS,
@@ -441,8 +466,13 @@ async function runProjectGraphVerticalSliceWorkflow({
     composedSheetUrl,
     url: composedSheetUrl,
     pdfUrl: verticalSlice.artifacts?.a1Pdf?.dataUrl || null,
+    sheetSeries: verticalSlice.artifacts?.sheetSeries || [],
+    sheetSplitDecision: verticalSlice.artifacts?.sheetSplitDecision || null,
     projectGraph: verticalSlice.projectGraph,
-    projectGraphId: verticalSlice.projectGraph?.project_graph_id || null,
+    projectGraphId:
+      verticalSlice.projectGraph?.project_graph_id ||
+      verticalSlice.projectGraph?.project_id ||
+      null,
     geometryHash: verticalSlice.geometryHash,
     compiledProject: verticalSlice.artifacts?.compiledProject || null,
     projectGeometry: verticalSlice.artifacts?.projectGeometry || null,
@@ -455,7 +485,10 @@ async function runProjectGraphVerticalSliceWorkflow({
     metadata: {
       workflow: PIPELINE_MODE.PROJECT_GRAPH,
       pipelineVersion: verticalSlice.pipelineVersion,
-      projectGraphId: verticalSlice.projectGraph?.project_graph_id || null,
+      projectGraphId:
+        verticalSlice.projectGraph?.project_graph_id ||
+        verticalSlice.projectGraph?.project_id ||
+        null,
       geometryHash: verticalSlice.geometryHash,
       panelCount: Object.keys(panelMap).length,
       sourceOfTruth: "ProjectGraph",
@@ -463,6 +496,8 @@ async function runProjectGraphVerticalSliceWorkflow({
         width: 841,
         height: 594,
       },
+      sheetSeries: verticalSlice.artifacts?.sheetSeries || [],
+      sheetSplitDecision: verticalSlice.artifacts?.sheetSplitDecision || null,
       qaStatus: verticalSlice.qa?.status || null,
     },
   };

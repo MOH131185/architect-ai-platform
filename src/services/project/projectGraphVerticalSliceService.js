@@ -1059,17 +1059,25 @@ function normalizeProvidedSiteSnapshot(siteSnapshot = null) {
   if (!dataUrl || typeof dataUrl !== "string") {
     return null;
   }
+  const sourceHint =
+    siteSnapshot.sourceUrl ||
+    siteSnapshot.source ||
+    siteSnapshot.metadata?.source ||
+    null;
+  const normalizedSource =
+    typeof sourceHint === "string" &&
+    /google[-_ ]static[-_ ]maps|google[-_ ]maps[-_ ]api/i.test(sourceHint)
+      ? "google-static-maps"
+      : "provided-site-snapshot";
   return {
     dataUrl,
     attribution:
       siteSnapshot.attribution ||
       siteSnapshot.metadata?.attribution ||
-      "Provided site map",
-    sourceUrl:
-      siteSnapshot.sourceUrl ||
-      siteSnapshot.source ||
-      siteSnapshot.metadata?.source ||
-      "provided-site-snapshot",
+      (normalizedSource === "google-static-maps"
+        ? "Map data © Google"
+        : "Provided site map"),
+    sourceUrl: normalizedSource,
     hasPolygon: Boolean(
       (Array.isArray(siteSnapshot.polygon) && siteSnapshot.polygon.length) ||
       (Array.isArray(siteSnapshot.sitePolygon) &&
@@ -1906,6 +1914,15 @@ function buildDrawingSet(compiledProject) {
             width: panel.width,
             height: panel.height,
             svgString: panel.svgString,
+            drawingType: panel.drawingType || drawingTypeForPanel(panelType),
+            technicalQualityMetadata: panel.technicalQualityMetadata || null,
+            metadata: {
+              source: "compiled_project_technical_panel",
+              panelType,
+              expectedPanelType: panelType,
+              drawingType: panel.drawingType || drawingTypeForPanel(panelType),
+              technicalQualityMetadata: panel.technicalQualityMetadata || null,
+            },
           },
         ];
       }),
@@ -2744,9 +2761,24 @@ async function buildA1PdfArtifact({
     sizeBytes: renderedPngBytes.byteLength,
     occupancy,
     panelOccupancy,
+    requiredRenderablePanelCount: panelOccupancy.filter(
+      (panel) => panel.required === true,
+    ).length,
+    requiredReadyPanelCount: panelOccupancy.filter(
+      (panel) => panel.required === true && panel.hasSvg === true,
+    ).length,
+    requiredMissingPanelCount: panelOccupancy.filter(
+      (panel) => panel.required === true && panel.hasSvg !== true,
+    ).length,
+    missingRequiredPanels: panelOccupancy
+      .filter((panel) => panel.required === true && panel.hasSvg !== true)
+      .map((panel) => panel.panelType),
     passed:
       Number(occupancy.nonBackgroundPixelRatio || 0) >=
-      MIN_RENDERED_SHEET_INK_RATIO,
+        MIN_RENDERED_SHEET_INK_RATIO &&
+      panelOccupancy.filter(
+        (panel) => panel.required === true && panel.hasSvg !== true,
+      ).length === 0,
   };
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${brief.project_name} A1 ProjectGraph sheet`);
@@ -2861,6 +2893,39 @@ function svgLooksRenderable(svgString = "") {
   if (svg.length < 200 || svgHasInvalidTokens(svg)) return false;
   return /<(?:path|rect|line|polyline|polygon|circle|ellipse|image|text)\b/i.test(
     svg,
+  );
+}
+
+function expectedDrawingTypeForPanel(panelType = "") {
+  if (String(panelType).startsWith("floor_plan_")) return "plan";
+  if (String(panelType).startsWith("elevation_")) return "elevation";
+  if (String(panelType).startsWith("section_")) return "section";
+  return null;
+}
+
+function technicalPanelIdentityMismatch(panelType, artifact = null) {
+  if (!artifact) return false;
+  const metadata = artifact.metadata || {};
+  const declaredPanelTypes = [
+    artifact.panelType,
+    metadata.panelType,
+    metadata.expectedPanelType,
+    metadata.panel_type,
+  ].filter(Boolean);
+  if (declaredPanelTypes.some((declared) => declared !== panelType)) {
+    return true;
+  }
+  const expectedDrawingType = expectedDrawingTypeForPanel(panelType);
+  const declaredDrawingType =
+    artifact.drawingType ||
+    metadata.drawingType ||
+    artifact.technicalQualityMetadata?.drawing_type ||
+    metadata.technicalQualityMetadata?.drawing_type ||
+    null;
+  return Boolean(
+    expectedDrawingType &&
+    declaredDrawingType &&
+    declaredDrawingType !== expectedDrawingType,
   );
 }
 
@@ -3151,7 +3216,8 @@ export function validateProjectGraphVerticalSlice({
   const renderedProofOk =
     renderedProof?.passed === true &&
     Boolean(renderedProof?.renderedPngHash) &&
-    renderedInkRatio >= MIN_RENDERED_SHEET_INK_RATIO;
+    renderedInkRatio >= MIN_RENDERED_SHEET_INK_RATIO &&
+    Number(renderedProof?.requiredMissingPanelCount || 0) === 0;
   addCheck(
     checks,
     "A1_PDF_RENDER_PROOF_PRESENT",
@@ -3160,6 +3226,11 @@ export function validateProjectGraphVerticalSlice({
       renderedPngHash: renderedProof?.renderedPngHash || null,
       nonBackgroundPixelRatio: renderedInkRatio,
       minimum: MIN_RENDERED_SHEET_INK_RATIO,
+      requiredRenderablePanelCount:
+        renderedProof?.requiredRenderablePanelCount || 0,
+      requiredReadyPanelCount: renderedProof?.requiredReadyPanelCount || 0,
+      requiredMissingPanelCount: renderedProof?.requiredMissingPanelCount || 0,
+      missingRequiredPanels: renderedProof?.missingRequiredPanels || [],
     },
     "graphic",
     0,
@@ -3174,6 +3245,9 @@ export function validateProjectGraphVerticalSlice({
           renderedPngHash: renderedProof?.renderedPngHash || null,
           nonBackgroundPixelRatio: renderedInkRatio,
           minimum: MIN_RENDERED_SHEET_INK_RATIO,
+          requiredMissingPanelCount:
+            renderedProof?.requiredMissingPanelCount || 0,
+          missingRequiredPanels: renderedProof?.missingRequiredPanels || [],
         },
       ),
     );
@@ -3222,7 +3296,22 @@ export function validateProjectGraphVerticalSlice({
       return (
         !svgLooksRenderable(svg) ||
         svg.length < MIN_TECHNICAL_SVG_LENGTH ||
-        svgHasInvalidTokens(svg)
+        svgHasInvalidTokens(svg) ||
+        technicalPanelIdentityMismatch(panelType, artifact)
+      );
+    },
+  );
+  const technicalPanelIdentityFailures = TECHNICAL_A1_PANEL_TYPES.filter(
+    (panelType) => {
+      if (
+        panelType === "floor_plan_first" &&
+        Number(projectGraph?.brief?.target_storeys || 1) <= 1
+      ) {
+        return false;
+      }
+      return technicalPanelIdentityMismatch(
+        panelType,
+        findPanelArtifact(artifacts.drawings || {}, panelType),
       );
     },
   );
@@ -3233,6 +3322,7 @@ export function validateProjectGraphVerticalSlice({
     {
       technicalPanelFailures,
       minimumSvgLength: MIN_TECHNICAL_SVG_LENGTH,
+      technicalPanelIdentityFailures,
     },
     "graphic",
     0,
@@ -3243,9 +3333,19 @@ export function validateProjectGraphVerticalSlice({
         "TECHNICAL_DRAWING_OCCUPANCY_TOO_LOW",
         "error",
         "Technical drawing SVG content is missing, invalid, or too small to be legible.",
-        { technicalPanelFailures },
+        { technicalPanelFailures, technicalPanelIdentityFailures },
       ),
     );
+    if (technicalPanelIdentityFailures.length) {
+      issues.push(
+        buildIssue(
+          "TECHNICAL_DRAWING_PANEL_ID_MISMATCH",
+          "error",
+          "Technical drawing artifact identity does not match its expected panel type.",
+          { technicalPanelIdentityFailures },
+        ),
+      );
+    }
     const invalidSections = technicalPanelFailures.filter((panelType) =>
       panelType.startsWith("section_"),
     );

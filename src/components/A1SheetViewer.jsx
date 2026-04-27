@@ -149,6 +149,20 @@ const A1SheetViewer = ({
     result?.a1Sheet?.pdfUrl ||
     result?.artifacts?.a1Pdf?.dataUrl ||
     null;
+  const sheetSeries = React.useMemo(() => {
+    const rawSeries =
+      result?.sheetSeries ||
+      result?.artifacts?.sheetSeries ||
+      result?.metadata?.sheetSeries ||
+      [];
+    return (Array.isArray(rawSeries) ? rawSeries : [])
+      .map((entry) => ({
+        sheetNumber: entry.sheet_number || entry.sheetNumber || "A1",
+        label: entry.sheet_label || entry.label || "A1 sheet",
+        pdfUrl: entry.pdf_data_url || entry.pdfUrl || null,
+      }))
+      .filter((entry) => entry.pdfUrl);
+  }, [result]);
 
   // Determine proxy base (dev uses localhost:3001, prod uses same origin)
   const proxyBase = React.useMemo(() => {
@@ -602,6 +616,28 @@ const A1SheetViewer = ({
             </Button>
           </div>
         </div>
+        {sheetSeries.length > 1 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+            <span className="text-xs font-semibold uppercase text-white/45">
+              PDF set
+            </span>
+            {sheetSeries.map((entry) => (
+              <a
+                key={`${entry.sheetNumber}-${entry.label}`}
+                href={entry.pdfUrl}
+                download={
+                  `${entry.sheetNumber}-${entry.label}`
+                    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+                    .replace(/^-|-$/g, "")
+                    .toLowerCase() + ".pdf"
+                }
+                className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/75 transition-colors hover:border-royal-400/60 hover:text-white"
+              >
+                {entry.sheetNumber}
+              </a>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* Viewer */}

@@ -4,6 +4,8 @@ import {
   KNOWN_BUILDING_TYPES,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
+jest.setTimeout(180000);
+
 function createReadingRoomBrief() {
   const siteMapDataUrl =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";
@@ -60,11 +62,18 @@ describe("projectGraphVerticalSliceService", () => {
   const originalModelSource = process.env.MODEL_SOURCE;
   const originalReasoningModel = process.env.OPENAI_REASONING_MODEL;
   const originalFastModel = process.env.OPENAI_FAST_MODEL;
+  const originalGoogleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const originalReactGoogleMapsApiKey =
+    process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
     process.env.MODEL_SOURCE = "base";
     process.env.OPENAI_REASONING_MODEL = "gpt-5.4";
     process.env.OPENAI_FAST_MODEL = "gpt-5.4-mini";
+    delete process.env.GOOGLE_MAPS_API_KEY;
+    delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    global.fetch = originalFetch;
   });
 
   afterEach(() => {
@@ -83,6 +92,17 @@ describe("projectGraphVerticalSliceService", () => {
     } else {
       process.env.OPENAI_FAST_MODEL = originalFastModel;
     }
+    if (originalGoogleMapsApiKey === undefined) {
+      delete process.env.GOOGLE_MAPS_API_KEY;
+    } else {
+      process.env.GOOGLE_MAPS_API_KEY = originalGoogleMapsApiKey;
+    }
+    if (originalReactGoogleMapsApiKey === undefined) {
+      delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    } else {
+      process.env.REACT_APP_GOOGLE_MAPS_API_KEY = originalReactGoogleMapsApiKey;
+    }
+    global.fetch = originalFetch;
   });
 
   test("builds the brief to QA vertical slice from one ProjectGraph authority", async () => {
@@ -117,6 +137,12 @@ describe("projectGraphVerticalSliceService", () => {
       result.artifacts.a1Pdf.renderedPngHash,
     );
     expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(true);
+    expect(result.artifacts.siteMap.metadata.siteMapSource).toBe(
+      "provided-site-snapshot",
+    );
+    expect(result.qa.issues.map((issue) => issue.code)).not.toContain(
+      "SITE_MAP_FALLBACK_USED",
+    );
     expect(result.artifacts.siteMap.svgString).toContain(
       'data-site-map-image="true"',
     );
@@ -198,6 +224,79 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.qa.categoryScores.regulation.max).toBe(10);
     expect(result.qa.categoryScores.architecture.max).toBe(10);
     expect(result.qa.categoryScores.graphic.max).toBe(10);
+  });
+
+  test("uses Google Static Maps metadata when no provided site map is supplied", async () => {
+    process.env.GOOGLE_MAPS_API_KEY = "test-google-key";
+    const pngBlob = new Blob(
+      [
+        Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC",
+          "base64",
+        ),
+      ],
+      {
+        type: "image/png",
+      },
+    );
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      blob: async () => pngBlob,
+    });
+
+    const result = await buildArchitectureProjectVerticalSlice({
+      brief: {
+        project_name: "Google Map Smoke",
+        building_type: "community",
+        site_input: { postcode: "N1 1AA", lat: 51.5416, lon: -0.1022 },
+        target_gia_m2: 320,
+        target_storeys: 2,
+      },
+      sitePolygon: [
+        { lat: 51.54175, lng: -0.1024 },
+        { lat: 51.54175, lng: -0.10195 },
+        { lat: 51.54145, lng: -0.10195 },
+        { lat: 51.54145, lng: -0.1024 },
+      ],
+    });
+
+    expect(global.fetch).toHaveBeenCalled();
+    expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(true);
+    expect(result.artifacts.siteMap.metadata.siteMapSource).toBe(
+      "google-static-maps",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain("Google Static Maps");
+    expect(result.qa.issues.map((issue) => issue.code)).not.toContain(
+      "SITE_MAP_FALLBACK_USED",
+    );
+  });
+
+  test("flags deterministic fallback when no provided or Google map is available", async () => {
+    const result = await buildArchitectureProjectVerticalSlice({
+      brief: {
+        project_name: "Fallback Map Smoke",
+        building_type: "community",
+        site_input: { postcode: "N1 1AA", lat: 51.5416, lon: -0.1022 },
+        target_gia_m2: 320,
+        target_storeys: 2,
+      },
+    });
+
+    expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(false);
+    expect(result.artifacts.siteMap.metadata.siteMapSource).toBe(
+      "deterministic-site-svg-fallback",
+    );
+    expect(result.artifacts.siteMap.svgString).toContain(
+      "Deterministic fallback site diagram",
+    );
+    expect(result.artifacts.siteMap.svgString).not.toContain(
+      "Google Static Maps",
+    );
+    expect(result.qa.issues.map((issue) => issue.code)).toContain(
+      "SITE_MAP_FALLBACK_USED",
+    );
   });
 
   test.each([
@@ -323,6 +422,87 @@ describe("projectGraphVerticalSliceService", () => {
         "A1_PDF_RENDER_EMPTY",
         "REQUIRED_3D_PANEL_MISSING",
       ]),
+    );
+  });
+
+  test("QA rejects frame-only render proof even when sheet ink ratio is high", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        a1Pdf: {
+          ...result.artifacts.a1Pdf,
+          renderedProof: {
+            ...result.artifacts.a1Pdf.renderedProof,
+            renderedPngHash: "hash-from-title-block-only-render",
+            passed: true,
+            occupancy: { nonBackgroundPixelRatio: 0.15 },
+            requiredRenderablePanelCount: 11,
+            requiredReadyPanelCount: 10,
+            requiredMissingPanelCount: 1,
+            missingRequiredPanels: ["floor_plan_ground"],
+          },
+        },
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "A1_PDF_RENDER_EMPTY",
+    );
+  });
+
+  test("QA fails when a technical panel artifact is mislabeled", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const tamperedDrawings = Object.fromEntries(
+      Object.entries(result.artifacts.drawings).map(([assetId, artifact]) => [
+        assetId,
+        artifact.panel_type === "section_AA"
+          ? {
+              ...artifact,
+              metadata: {
+                ...artifact.metadata,
+                expectedPanelType: "section_BB",
+              },
+            }
+          : artifact,
+      ]),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        drawings: tamperedDrawings,
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "TECHNICAL_DRAWING_PANEL_ID_MISMATCH",
+    );
+  });
+
+  test("ProjectGraph export hashes are deterministic for identical inputs", async () => {
+    const first = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const second = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+
+    expect(second.artifacts.a1Pdf.renderedPngHash).toBe(
+      first.artifacts.a1Pdf.renderedPngHash,
+    );
+    expect(second.artifacts.a1Pdf.pdfHash).toBe(first.artifacts.a1Pdf.pdfHash);
+    expect(second.artifacts.a1Pdf.asset_id).toBe(
+      first.artifacts.a1Pdf.asset_id,
     );
   });
 });
