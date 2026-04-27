@@ -702,13 +702,9 @@ function fitSpacesToTargetArea(spaces, targetAreaM2) {
 
   for (const optionalType of OPTIONAL_SPACE_DROP_ORDER) {
     if (currentArea <= maximumArea) break;
-<<<<<<< HEAD
-    const index = fitted.findIndex((space) => isOptionalSpace(space, optionalType));
-=======
     const index = fitted.findIndex((space) =>
       isOptionalSpace(space, optionalType),
     );
->>>>>>> e216f80 (feat(residential): site-fit floor-count reconciliation with optional-room drop)
     if (index === -1) continue;
 
     const [removed] = fitted.splice(index, 1);

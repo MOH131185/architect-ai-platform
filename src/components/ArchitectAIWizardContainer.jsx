@@ -26,7 +26,6 @@ import autoLevelAssignmentService from "../services/autoLevelAssignmentService.j
 import logger from "../utils/logger.js";
 import { convertPdfFileToImageFile } from "../utils/pdfToImages.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
-import { getCurrentPipelineMode, PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
   getCurrentPipelineMode,
   PIPELINE_MODE,
