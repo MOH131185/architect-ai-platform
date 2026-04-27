@@ -25,27 +25,86 @@ import Button from "./ui/Button.jsx";
 import Card from "./ui/Card.jsx";
 
 /**
- * Validates that a blob contains valid PNG data by checking magic bytes
- * PNG files start with: 89 50 4E 47 0D 0A 1A 0A
+ * Validates that a blob contains a recognised A1 deliverable by checking
+ * magic bytes for PNG / JPEG / PDF, or a leading <svg / <?xml prologue for
+ * SVG. Plan §6.11: the canonical deliverable is a PDF; PNG and SVG are also
+ * accepted.
  */
 const isValidImageBlob = async (blob) => {
-  if (!blob || blob.size < 8) {
+  if (!blob || blob.size < 4) {
     return false;
   }
   try {
     const header = await blob.slice(0, 8).arrayBuffer();
     const bytes = new Uint8Array(header);
-    // PNG magic bytes: 89 50 4E 47
     const isPNG =
       bytes[0] === 0x89 &&
       bytes[1] === 0x50 &&
       bytes[2] === 0x4e &&
       bytes[3] === 0x47;
-    // JPEG magic bytes: FF D8 FF
     const isJPEG = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    return isPNG || isJPEG;
+    // PDF magic: %PDF
+    const isPDF =
+      bytes[0] === 0x25 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x44 &&
+      bytes[3] === 0x46;
+    if (isPNG || isJPEG || isPDF) return true;
+    // SVG: leading "<svg" or "<?xml" — read first 32 chars as text
+    const head = await blob.slice(0, 32).text();
+    if (/^\s*<\?xml/i.test(head) || /^\s*<svg/i.test(head)) return true;
+    return false;
   } catch {
     return false;
+  }
+};
+
+/**
+ * Decode a data: URL into a Blob with the correct mime type. Handles both
+ * base64-encoded payloads (PNG / PDF / JPEG) and URL-encoded payloads
+ * (image/svg+xml is emitted by useArchitectAIWorkflow.svgToDataUrl).
+ */
+const decodeDataUrlToBlob = (dataUrl) => {
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
+    throw new Error("Invalid data URL: missing payload separator");
+  }
+  const meta = dataUrl.slice(5, commaIndex); // strip "data:"
+  const data = dataUrl.slice(commaIndex + 1);
+  const mime = (meta.split(";")[0] || "application/octet-stream").trim();
+  const isBase64 = /;base64\b/i.test(meta);
+  if (isBase64) {
+    const cleanData = data.replace(/\s/g, "");
+    if (!cleanData) {
+      throw new Error("Invalid data URL: empty base64 payload");
+    }
+    const byteString = atob(cleanData);
+    const buffer = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i += 1) {
+      buffer[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([buffer], { type: mime });
+  }
+  // URL-encoded payload (e.g., data:image/svg+xml;charset=utf-8,<encoded>)
+  const decoded = decodeURIComponent(data);
+  return new Blob([decoded], { type: mime });
+};
+
+const extensionForMime = (mime = "") => {
+  switch (mime) {
+    case "application/pdf":
+      return "pdf";
+    case "image/svg+xml":
+      return "svg";
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    default:
+      return "bin";
   }
 };
 
@@ -81,6 +140,15 @@ const A1SheetViewer = ({
     result?.url ||
     result?.a1Sheet?.composedSheetUrl ||
     result?.a1Sheet?.url;
+
+  // PDF is the canonical RIBA A1 deliverable per plan §6.11; if present,
+  // prefer it for download even though the SVG drives the on-screen viewer.
+  const pdfDownloadUrl =
+    sheet?.pdfUrl ||
+    result?.pdfUrl ||
+    result?.a1Sheet?.pdfUrl ||
+    result?.artifacts?.a1Pdf?.dataUrl ||
+    null;
 
   // Determine proxy base (dev uses localhost:3001, prod uses same origin)
   const proxyBase = React.useMemo(() => {
@@ -346,12 +414,13 @@ const A1SheetViewer = ({
 
   const handleDownload = async () => {
     setIsDownloading(true);
-    const downloadSources = resolvedSheetUrl
-      ? [
-          resolvedSheetUrl,
-          ...sheetUrlCandidates.filter((url) => url !== resolvedSheetUrl),
-        ]
-      : sheetUrlCandidates;
+    // Plan §6.11 / §9: the canonical RIBA A1 deliverable is the vector PDF.
+    // Try it first when present, then fall back to the SVG/PNG candidates.
+    const downloadSources = [
+      pdfDownloadUrl,
+      resolvedSheetUrl,
+      ...sheetUrlCandidates,
+    ].filter((url, index, arr) => Boolean(url) && arr.indexOf(url) === index);
 
     try {
       if (!downloadSources.length) {
@@ -364,33 +433,23 @@ const A1SheetViewer = ({
       );
       if (dataSource) {
         try {
-          const [meta, data] = dataSource.split(",");
-          if (!data) {
-            throw new Error("Invalid data URL: missing base64 data");
-          }
-          const mime = meta.match(/:(.*?);/)?.[1] || "image/png";
-          // Clean the base64 string - remove any URL-encoding or whitespace
-          const cleanData = data
-            .replace(/\s/g, "")
-            .replace(/%[0-9A-Fa-f]{2}/g, "");
-          const byteString = atob(cleanData);
-          const buffer = new Uint8Array(byteString.length);
-          for (let i = 0; i < byteString.length; i += 1) {
-            buffer[i] = byteString.charCodeAt(i);
-          }
-          const blob = new Blob([buffer], { type: mime });
+          const blob = decodeDataUrlToBlob(dataSource);
+          const ext = extensionForMime(blob.type);
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement("a");
-          link.download = `a1-sheet-${designId || Date.now()}.png`;
+          link.download = `a1-sheet-${designId || Date.now()}.${ext}`;
           link.href = url;
+          link.rel = "noopener";
+          document.body.appendChild(link);
           link.click();
+          document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
           setIsDownloading(false);
           return;
-        } catch (base64Error) {
-          // If base64 decoding fails, fall through to fetch-based download
-          logger.warn("Base64 decoding failed, trying fetch instead:", {
-            error: base64Error.message,
+        } catch (decodeError) {
+          // If decoding fails, fall through to fetch-based download
+          logger.warn("Data URL decode failed, trying fetch instead:", {
+            error: decodeError.message,
           });
         }
       }
@@ -431,7 +490,9 @@ const A1SheetViewer = ({
               );
               throw new Error("Server returned an error instead of an image");
             }
-            throw new Error("Response is not a valid PNG/JPEG image");
+            throw new Error(
+              "Response is not a recognised PDF / SVG / PNG / JPEG payload",
+            );
           }
 
           blob = candidateBlob;
@@ -452,14 +513,17 @@ const A1SheetViewer = ({
         );
       }
 
-      // Blob is already validated as a real image - use as-is
-      // If content-type header was wrong but magic bytes are valid, browser will still open it
-
+      // Pick the right file extension from the actual blob mime so SVG and PDF
+      // deliverables don't end up with a misleading .png suffix.
+      const ext = extensionForMime(blob.type) || "bin";
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.download = `a1-sheet-${designId || Date.now()}.png`;
+      link.download = `a1-sheet-${designId || Date.now()}.${ext}`;
       link.href = url;
+      link.rel = "noopener";
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
       logger.error("Download failed:", error);
