@@ -2,7 +2,11 @@ import {
   resolveArchitectureModelRegistry,
   resolveArchitectureStepModel,
 } from "../../services/modelStepResolver.js";
-import { execFileSync } from "child_process";
+
+const {
+  createRouteReport,
+  formatRouteTable,
+} = require("../../../scripts/check-model-routes.cjs");
 
 describe("modelStepResolver", () => {
   test("uses base env models in hybrid mode when fine-tuned IDs are absent", () => {
@@ -108,28 +112,23 @@ describe("modelStepResolver", () => {
     expect(JSON.stringify(registry)).not.toContain("sk-reasoning-do-not-leak");
   });
 
-  test("check:model-routes reports env names without leaking secret values", () => {
-    const output = execFileSync(
-      process.execPath,
-      ["scripts/check-model-routes.cjs", "--json"],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          MODEL_SOURCE: "base",
-          OPENAI_API_KEY: "sk-secret-route-test-value",
-          OPENAI_REASONING_MODEL: "gpt-5.4",
-          OPENAI_FAST_MODEL: "gpt-5.4-mini",
-          STEP_07_PROJECT_GRAPH_MODEL: "project-graph-route-model",
-          STEP_12_A1_SHEET_MODEL: "a1-route-model",
-        },
+  test("check:model-routes reports env names without leaking secret values", async () => {
+    const report = await createRouteReport({
+      env: {
+        ...process.env,
+        MODEL_SOURCE: "base",
+        OPENAI_API_KEY: "sk-secret-route-test-value",
+        OPENAI_REASONING_MODEL: "gpt-5.4",
+        OPENAI_FAST_MODEL: "gpt-5.4-mini",
+        STEP_07_PROJECT_GRAPH_MODEL: "project-graph-route-model",
+        STEP_12_A1_SHEET_MODEL: "a1-route-model",
       },
-    );
-    const parsed = JSON.parse(output);
+    });
+    const serializedReport = JSON.stringify(report);
+    const table = formatRouteTable(report.routes);
 
-    expect(parsed.pipelineMode).toBe("project_graph");
-    expect(parsed.routes).toEqual(
+    expect(report.pipelineMode).toBe("project_graph");
+    expect(report.routes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           stepId: "PROJECT_GRAPH",
@@ -142,7 +141,9 @@ describe("modelStepResolver", () => {
         }),
       ]),
     );
-    expect(output).toContain("OPENAI_API_KEY");
-    expect(output).not.toContain("sk-secret-route-test-value");
+    expect(serializedReport).toContain("OPENAI_API_KEY");
+    expect(table).toContain("OPENAI_API_KEY");
+    expect(serializedReport).not.toContain("sk-secret-route-test-value");
+    expect(table).not.toContain("sk-secret-route-test-value");
   });
 });

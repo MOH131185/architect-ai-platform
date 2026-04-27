@@ -10,11 +10,6 @@ const path = require("path");
 const { pathToFileURL } = require("url");
 
 const rootDir = path.join(__dirname, "..");
-const envPath = path.join(rootDir, ".env");
-
-if (fs.existsSync(envPath)) {
-  require("dotenv").config({ path: envPath, quiet: true });
-}
 
 const PRODUCTION_STEPS = [
   "ROUTER",
@@ -37,8 +32,9 @@ function formatBool(value) {
   return value ? "yes" : "no";
 }
 
-function buildRows(registry) {
-  return PRODUCTION_STEPS.map((stepId) => registry[stepId])
+function buildRows(registry, steps = PRODUCTION_STEPS) {
+  return steps
+    .map((stepId) => registry[stepId])
     .filter(Boolean)
     .map((entry) => ({
       stepId: entry.stepId || entry.step,
@@ -54,7 +50,7 @@ function buildRows(registry) {
     }));
 }
 
-function printTable(rows) {
+function formatRouteTable(rows) {
   const headers = [
     "step",
     "task",
@@ -88,39 +84,69 @@ function printTable(rows) {
       .map((cell, index) => String(cell || "").padEnd(widths[index], " "))
       .join("  ");
 
-  console.log("ProjectGraph model route table");
-  console.log("Secrets redacted: only env variable names are shown.");
-  console.log(formatRow(headers));
-  console.log(formatRow(widths.map((width) => "-".repeat(width))));
-  values.forEach((row) => console.log(formatRow(row)));
+  return [
+    "ProjectGraph model route table",
+    "Secrets redacted: only env variable names are shown.",
+    formatRow(headers),
+    formatRow(widths.map((width) => "-".repeat(width))),
+    ...values.map((row) => formatRow(row)),
+  ].join("\n");
 }
 
-async function main() {
+async function loadModelStepResolver() {
   const resolverPath = path.join(
     rootDir,
     "src",
     "services",
     "modelStepResolver.js",
   );
-  const { resolveArchitectureModelRegistry } = await import(
-    pathToFileURL(resolverPath).href
-  );
+  if (process.env.JEST_WORKER_ID) {
+    return require(resolverPath);
+  }
+  return import(pathToFileURL(resolverPath).href);
+}
+
+async function createRouteReport({
+  env = process.env,
+  steps = PRODUCTION_STEPS,
+  pipelineMode = "project_graph",
+} = {}) {
+  const { resolveArchitectureModelRegistry } = await loadModelStepResolver();
   const registry = resolveArchitectureModelRegistry({
-    steps: PRODUCTION_STEPS,
+    env,
+    steps,
   });
-  const rows = buildRows(registry);
+  const rows = buildRows(registry, steps);
+
+  return { pipelineMode, routes: rows };
+}
+
+async function main() {
+  const envPath = path.join(rootDir, ".env");
+
+  if (fs.existsSync(envPath)) {
+    require("dotenv").config({ path: envPath, quiet: true });
+  }
+
+  const report = await createRouteReport({ env: process.env });
 
   if (process.argv.includes("--json")) {
-    console.log(
-      JSON.stringify({ pipelineMode: "project_graph", routes: rows }, null, 2),
-    );
+    console.log(JSON.stringify(report, null, 2));
     return;
   }
 
-  printTable(rows);
+  console.log(formatRouteTable(report.routes));
 }
 
-main().catch((error) => {
-  console.error(error?.message || error);
-  process.exit(1);
-});
+module.exports = {
+  buildRows,
+  createRouteReport,
+  formatRouteTable,
+};
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error?.message || error);
+    process.exit(1);
+  });
+}
