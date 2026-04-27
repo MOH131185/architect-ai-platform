@@ -1,0 +1,1535 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="841mm" height="594mm" viewBox="0 0 841 594" data-layout-version="projectgraph-a1-real-panels-v1" data-placeholder-only="false" data-project-graph-id="project-graph-1vwf611" data-source-model-hash="e44bb2ac9522601d">
+  <rect width="841" height="594" fill="#f3efe5"/>
+  <rect x="12" y="12" width="817" height="570" fill="none" stroke="#142033" stroke-width="0.7"/>
+  <text x="18" y="25" font-size="14" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Neighbourhood Reading Room</text>
+  <text x="18" y="36" font-size="5.4" font-family="Arial, sans-serif" fill="#52616f">ProjectGraph A1 package | Geometry hash e44bb2ac9522601d | Panels 10</text>
+  <g data-panel-id="site_context" data-source-panel-asset-id="asset-svg-1f4jjla" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="18" y="44" width="184" height="150" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="22" y="49.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Site / Context</text>
+  <text x="198" y="49.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">context | e44bb2ac</text>
+  <svg x="22" y="58" width="176" height="126" viewBox="0 0 1200 780" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  <rect width="1200" height="780" fill="#f7f2e8"/>
+  <rect x="28" y="28" width="724" height="572" fill="#fffdf7" stroke="#142033" stroke-width="3"/>
+  <path d="M 191.54 508 L 508.46 508 L 508.46 12 L 191.54 12 L 191.54 508 Z" fill="#e8efe3" stroke="#142033" stroke-width="4"/>
+  <path d="M 236.86 462.68 L 463.14 462.68 L 463.14 57.32 L 236.86 57.32 Z" fill="none" stroke="#d26a3e" stroke-width="3" stroke-dasharray="18 10"/>
+  <path d="M 655 95 L 655 34 L 634 75 M 655 34 L 676 75" fill="none" stroke="#142033" stroke-width="5" stroke-linecap="round"/>
+  <text x="690" y="58" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#142033">N</text>
+  <rect x="790" y="42" width="370" height="540" fill="#142033"/>
+  <text x="824" y="100" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#fffdf7">Site / Context Pack</text>
+  <text x="824" y="156" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Area: 306.09 m2</text>
+  <text x="824" y="204" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Climate: fallback</text>
+  <text x="824" y="252" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Policy: A, B, F, K</text>
+  <text x="824" y="300" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Materials: clay roof tile, standing seam metal, stone plinth, timber rainscreen</text>
+  <text x="824" y="520" font-family="Arial, sans-serif" font-size="18" fill="#c8d4df">source_model_hash e44bb2ac9522601d</text>
+</svg>
+</g>
+<g data-panel-id="axonometric_3d" data-source-panel-asset-id="asset-svg-1h1bec0" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="18" y="204" width="184" height="150" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="22" y="209.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">3D Axonometric</text>
+  <text x="198" y="209.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">geometry | e44bb2ac</text>
+  <svg x="22" y="218" width="176" height="126" viewBox="0 0 1200 780" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  <rect width="1200" height="780" fill="#eef2ef"/>
+  <path d="M 170 620 L 602 430 L 1030 620" fill="none" stroke="#b7c2c8" stroke-width="2" stroke-dasharray="10 8"/>
+  
+  <text x="48" y="74" font-family="Arial, sans-serif" font-size="36" font-weight="700" fill="#142033">Deterministic 3D Axonometric</text>
+  <text x="48" y="120" font-family="Arial, sans-serif" font-size="22" fill="#142033">Compiled ProjectGraph geometry: e44bb2ac9522601d</text>
+  <text x="48" y="696" font-family="Arial, sans-serif" font-size="20" fill="#52616f">2 levels / 8 room volumes / no independent image prompt</text>
+</svg>
+</g>
+<g data-panel-id="floor_plan_ground" data-source-panel-asset-id="asset-svg-dy64pu" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="212" y="44" width="310" height="210" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="216" y="49.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Ground Floor Plan</text>
+  <text x="518" y="49.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:100 | e44bb2ac</text>
+  <svg x="216" y="58" width="302" height="186" viewBox="0 0 1192 516" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  <rect width="1192" height="516" fill="#ffffff"/>
+  
+  
+  <path d="M 461.96 25.13 L 722.04 25.13 L 722.04 450.87 L 461.96 450.87 Z" fill="none" stroke="#3f4752" stroke-width="1.1"/>
+  
+        <path d="M 642.02 25.13 L 682.03 25.13 L 682.03 251.04 L 642.02 251.04 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+        <path d="M 461.96 251.04 L 631.58 251.04 L 631.58 450.87 L 461.96 450.87 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+        <path d="M 682.03 25.13 L 722.04 25.13 L 722.04 251.04 L 682.03 251.04 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+        <path d="M 461.96 25.13 L 642.02 25.13 L 642.02 251.04 L 461.96 251.04 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+        <path d="M 631.58 251.04 L 722.04 251.04 L 722.04 450.87 L 631.58 450.87 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+  
+  <g id="plan-walls"><path d="M 465.08 251.04 L 465.08 25.13 L 458.83 25.13 L 458.83 251.04 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 682.03 28.25 L 722.04 28.25 L 722.04 22.00 L 682.03 22.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 718.92 251.04 L 718.92 450.87 L 725.17 450.87 L 725.17 251.04 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 465.08 450.87 L 465.08 251.04 L 458.83 251.04 L 458.83 450.87 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 722.04 447.75 L 631.58 447.75 L 631.58 454.00 L 722.04 454.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 642.02 28.25 L 682.03 28.25 L 682.03 22.00 L 642.02 22.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 718.92 25.13 L 718.92 251.04 L 725.17 251.04 L 725.17 25.13 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 461.96 28.25 L 642.02 28.25 L 642.02 22.00 L 461.96 22.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 631.58 447.75 L 461.96 447.75 L 461.96 454.00 L 631.58 454.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 643.85 251.04 L 643.85 25.13 L 640.20 25.13 L 640.20 251.04 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 682.03 249.21 L 642.02 249.21 L 642.02 252.86 L 682.03 252.86 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 683.86 251.04 L 683.86 25.13 L 680.21 25.13 L 680.21 251.04 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 631.58 252.86 L 722.04 252.86 L 722.04 249.21 L 631.58 249.21 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 629.76 251.04 L 629.76 450.87 L 633.40 450.87 L 633.40 251.04 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 680.21 25.13 L 680.21 251.04 L 683.86 251.04 L 683.86 25.13 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 633.40 450.87 L 633.40 251.04 L 629.76 251.04 L 629.76 450.87 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 642.02 249.21 L 461.96 249.21 L 461.96 252.86 L 642.02 252.86 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 461.96 252.86 L 631.58 252.86 L 631.58 249.21 L 461.96 249.21 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 640.20 25.13 L 640.20 251.04 L 643.85 251.04 L 643.85 25.13 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 722.04 249.21 L 682.03 249.21 L 682.03 252.86 L 722.04 252.86 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/></g>
+  <g id="plan-openings">
+        <g class="plan-window" data-window-id="opening-269e87f9ccb2">
+          <line x1="690.32" y1="138.09" x2="713.76" y2="138.09" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="690.32" y1="139.09" x2="690.32" y2="137.09" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="713.76" y1="139.09" x2="713.76" y2="137.09" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="690.32" y1="139.09" x2="713.76" y2="139.09" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="690.32" y1="137.09" x2="713.76" y2="137.09" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="690.32" y1="138.09" x2="713.76" y2="138.09" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-window" data-window-id="opening-4cbc8e1e8f38">
+          <line x1="676.82" y1="335.12" x2="676.82" y2="366.79" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="675.82" y1="335.12" x2="677.82" y2="335.12" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="675.82" y1="366.79" x2="677.82" y2="366.79" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="675.82" y1="335.12" x2="675.82" y2="366.79" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="677.82" y1="335.12" x2="677.82" y2="366.79" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="676.82" y1="335.12" x2="676.82" y2="366.79" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-window" data-window-id="opening-fe5848a25bf1">
+          <line x1="650.31" y1="138.09" x2="673.75" y2="138.09" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="650.31" y1="139.09" x2="650.31" y2="137.09" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="673.75" y1="139.09" x2="673.75" y2="137.09" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="650.31" y1="139.09" x2="673.75" y2="139.09" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="650.31" y1="137.09" x2="673.75" y2="137.09" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="650.31" y1="138.09" x2="673.75" y2="138.09" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-window" data-window-id="opening-1fa65f3fd4e4">
+          <line x1="520.75" y1="138.09" x2="583.26" y2="138.09" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="520.75" y1="139.09" x2="520.75" y2="137.09" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="583.26" y1="139.09" x2="583.26" y2="137.09" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="520.75" y1="139.09" x2="583.26" y2="139.09" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="520.75" y1="137.09" x2="583.26" y2="137.09" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="520.75" y1="138.09" x2="583.26" y2="138.09" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-window" data-window-id="opening-8b5044cb1132">
+          <line x1="576.45" y1="350.96" x2="517.09" y2="350.96" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="576.45" y1="349.96" x2="576.45" y2="351.96" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="517.09" y1="349.96" x2="517.09" y2="351.96" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="576.45" y1="349.96" x2="517.09" y2="349.96" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="576.45" y1="351.96" x2="517.09" y2="351.96" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="576.45" y1="350.96" x2="517.09" y2="350.96" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-d266b2de24a5">
+          <line x1="690.32" y1="25.13" x2="713.76" y2="25.13" stroke="#ffffff" stroke-width="8.75" stroke-linecap="square"/>
+          <line x1="690.32" y1="25.13" x2="713.76" y2="25.13" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="690.32" y1="25.13" x2="690.32" y2="48.57" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 713.76 25.13 A 23.44 23.44 0 0 1 690.32 48.57" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="690.32" cy="25.13" r="1.8" fill="#111111"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-fa8fac306583">
+          <line x1="665.10" y1="251.04" x2="688.55" y2="251.04" stroke="#ffffff" stroke-width="6.15" stroke-linecap="square"/>
+          <line x1="688.55" y1="251.04" x2="665.10" y2="251.04" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="688.55" y1="251.04" x2="688.55" y2="274.48" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 665.10 251.04 A 23.44 23.44 0 0 0 688.55 274.48" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="688.55" cy="251.04" r="1.8" fill="#111111"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-440fcdfc7309">
+          <line x1="535.05" y1="251.04" x2="558.49" y2="251.04" stroke="#ffffff" stroke-width="6.15" stroke-linecap="square"/>
+          <line x1="535.05" y1="251.04" x2="558.49" y2="251.04" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="535.05" y1="251.04" x2="535.05" y2="274.48" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 558.49 251.04 A 23.44 23.44 0 0 1 535.05 274.48" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="535.05" cy="251.04" r="1.8" fill="#111111"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-31d523f3dbae">
+          <line x1="650.31" y1="25.13" x2="673.75" y2="25.13" stroke="#ffffff" stroke-width="8.75" stroke-linecap="square"/>
+          <line x1="650.31" y1="25.13" x2="673.75" y2="25.13" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="650.31" y1="25.13" x2="650.31" y2="48.57" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 673.75 25.13 A 23.44 23.44 0 0 1 650.31 48.57" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="650.31" cy="25.13" r="1.8" fill="#111111"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-a64381cf1707">
+          <line x1="540.28" y1="25.13" x2="563.73" y2="25.13" stroke="#ffffff" stroke-width="8.75" stroke-linecap="square"/>
+          <line x1="540.28" y1="25.13" x2="563.73" y2="25.13" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="540.28" y1="25.13" x2="540.28" y2="48.57" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 563.73 25.13 A 23.44 23.44 0 0 1 540.28 48.57" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="540.28" cy="25.13" r="1.8" fill="#111111"/>
+        </g>
+      </g>
+  
+  <g id="plan-stairs">
+        <g class="plan-stair" data-stair-id="stair-1474d652b7ff">
+          <rect x="685.63" y="76.21" width="36.41" height="109.40" fill="#ffffff" stroke="#111111" stroke-width="1.45"/>
+          <line x1="689.63" y1="91.83" x2="718.04" y2="91.83" stroke="#59616d" stroke-width="0.9"/><line x1="689.63" y1="107.46" x2="718.04" y2="107.46" stroke="#59616d" stroke-width="0.9"/><line x1="689.63" y1="123.09" x2="718.04" y2="123.09" stroke="#59616d" stroke-width="0.9"/><line x1="689.63" y1="138.72" x2="718.04" y2="138.72" stroke="#59616d" stroke-width="0.9"/><line x1="689.63" y1="154.35" x2="718.04" y2="154.35" stroke="#59616d" stroke-width="0.9"/><line x1="689.63" y1="169.98" x2="718.04" y2="169.98" stroke="#59616d" stroke-width="0.9"/>
+          <line x1="691.63" y1="82.21" x2="716.04" y2="82.21" stroke="#7f8a98" stroke-width="0.85" stroke-dasharray="4 3"/>
+          <line x1="703.84" y1="169.61" x2="703.84" y2="94.21" stroke="#111111" stroke-width="1.35"/>
+          <path d="M 703.84 88.21 L 699.84 96.21 L 707.84 96.21 Z" fill="#111111"/>
+          <text x="703.84" y="179.61" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">UP</text>
+        </g>
+      </g>
+  <g id="plan-room-labels">
+    <g class="plan-room-label">
+      <rect x="603.23" y="116.09" width="117.60" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="662.03" y="132.09" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">ACCESSIBLE WC</text>
+      <text x="662.03" y="148.09" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">13.3 M2 · 8.7 x 1.5 M</text>
+    </g>
+  
+    <g class="plan-room-label">
+      <rect x="479.57" y="328.96" width="134.40" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="546.77" y="344.96" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">CAFE AND WELCOME</text>
+      <text x="546.77" y="360.96" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">50.0 M2 · 7.7 x 6.5 M</text>
+    </g>
+  
+    <g class="plan-room-label">
+      <rect x="639.04" y="116.09" width="126.00" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="702.04" y="132.09" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">PLANT AND STORE</text>
+      <text x="702.04" y="148.09" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">13.3 M2 · 8.7 x 1.5 M</text>
+    </g>
+  
+    <g class="plan-room-label">
+      <rect x="476.40" y="116.09" width="151.20" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="552.00" y="132.09" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">COMMUNITY WORKSHOP</text>
+      <text x="552.00" y="148.09" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">60.0 M2 · 8.7 x 6.9 M</text>
+    </g>
+  
+    <g class="plan-room-label">
+      <rect x="601.22" y="328.96" width="151.20" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="676.82" y="344.96" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">GROUND CIRCULATION</text>
+      <text x="676.82" y="360.96" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">26.6 M2 · 7.7 x 3.5 M</text>
+    </g>
+  </g>
+  
+    <g id="external-dimensions">
+      <line x1="458.83" y1="22.00" x2="458.83" y2="6.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="725.17" y1="22.00" x2="725.17" y2="6.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="458.83" y1="6.00" x2="725.17" y2="6.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="458.83" y1="3.00" x2="458.83" y2="9.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="725.17" y1="3.00" x2="725.17" y2="9.00" stroke="#111111" stroke-width="1.1"/>
+      <text x="592.00" y="0.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">10.2 m</text>
+
+      <line x1="725.17" y1="22.00" x2="1186.00" y2="22.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="725.17" y1="454.00" x2="1186.00" y2="454.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="1186.00" y1="22.00" x2="1186.00" y2="454.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="1183.00" y1="22.00" x2="1189.00" y2="22.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="1183.00" y1="454.00" x2="1189.00" y2="454.00" stroke="#111111" stroke-width="1.1"/>
+      <text x="1200.00" y="238.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 1200.00 238.00)" text-anchor="middle">16.6 m</text>
+    </g>
+  
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="1025.76" y1="482.00" x2="1156.00" y2="482.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="1025.76" y1="478.00" x2="1025.76" y2="486.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="1090.88" y1="478.00" x2="1090.88" y2="486.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="1156.00" y1="478.00" x2="1156.00" y2="486.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="1090.88" y="496.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">5 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="floor_plan_first" data-source-panel-asset-id="asset-svg-1ac3j0b" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="212" y="266" width="310" height="204" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="216" y="271.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">First Floor Plan</text>
+  <text x="518" y="271.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:100 | e44bb2ac</text>
+  <svg x="216" y="280" width="302" height="180" viewBox="0 0 1218 516" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  <rect width="1218" height="516" fill="#ffffff"/>
+  
+  
+  <path d="M 474.96 25.13 L 735.04 25.13 L 735.04 450.87 L 474.96 450.87 Z" fill="none" stroke="#3f4752" stroke-width="1.1"/>
+  
+        <path d="M 474.96 233.82 L 645.02 233.82 L 645.02 450.87 L 474.96 450.87 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+        <path d="M 645.02 233.82 L 735.04 233.82 L 735.04 450.87 L 645.02 450.87 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+        <path d="M 474.96 25.13 L 735.04 25.13 L 735.04 233.82 L 474.96 233.82 Z" fill="#ffffff" stroke="#59616d" stroke-width="0.9"/>
+      
+  <g id="phase8-plan-furniture"><g class="plan-furniture-hint" data-room-id="room-3e08851467e3"><rect x="482.96" y="241.82" width="64.00" height="18.00" fill="none" stroke="#59616d" stroke-width="0.95"/><circle cx="532.78" cy="333.66" r="9.0" fill="none" stroke="#7f8a98" stroke-width="0.8"/></g></g>
+  <g id="plan-walls"><path d="M 478.08 450.87 L 478.08 233.82 L 471.83 233.82 L 471.83 450.87 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 731.92 233.82 L 731.92 450.87 L 738.17 450.87 L 738.17 233.82 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 735.04 447.75 L 645.02 447.75 L 645.02 454.00 L 735.04 454.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 731.92 25.13 L 731.92 233.82 L 738.17 233.82 L 738.17 25.13 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 478.08 233.82 L 478.08 25.13 L 471.83 25.13 L 471.83 233.82 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 645.02 447.75 L 474.96 447.75 L 474.96 454.00 L 645.02 454.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 474.96 28.25 L 735.04 28.25 L 735.04 22.00 L 474.96 22.00 Z" fill="#151515" fill-opacity="0.98" stroke="#111111" stroke-width="2.05" stroke-linejoin="miter" data-wall-role="exterior"/><path d="M 645.02 235.64 L 735.04 235.64 L 735.04 232.00 L 645.02 232.00 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 643.20 233.82 L 643.20 450.87 L 646.85 450.87 L 646.85 233.82 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 646.85 450.87 L 646.85 233.82 L 643.20 233.82 L 643.20 450.87 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 474.96 235.64 L 645.02 235.64 L 645.02 232.00 L 474.96 232.00 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/><path d="M 735.04 232.00 L 474.96 232.00 L 474.96 235.64 L 735.04 235.64 Z" fill="#2b3138" fill-opacity="0.76" stroke="#3f4752" stroke-width="1.28" stroke-linejoin="miter" data-wall-role="interior"/></g>
+  <g id="plan-openings">
+        <g class="plan-window" data-window-id="opening-793f07a91639">
+          <line x1="690.03" y1="326.60" x2="690.03" y2="358.12" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="689.03" y1="326.60" x2="691.03" y2="326.60" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="689.03" y1="358.12" x2="691.03" y2="358.12" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="689.03" y1="326.60" x2="689.03" y2="358.12" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="691.03" y1="326.60" x2="691.03" y2="358.12" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="690.03" y1="326.60" x2="690.03" y2="358.12" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-window" data-window-id="opening-00caee0cb463">
+          <line x1="589.76" y1="342.36" x2="530.24" y2="342.36" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="589.76" y1="341.36" x2="589.76" y2="343.36" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="530.24" y1="341.36" x2="530.24" y2="343.36" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="589.76" y1="341.36" x2="530.24" y2="341.36" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="589.76" y1="343.36" x2="530.24" y2="343.36" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="589.76" y1="342.36" x2="530.24" y2="342.36" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-window" data-window-id="opening-7defc526a182">
+          <line x1="573.76" y1="129.47" x2="636.27" y2="129.47" stroke="#ffffff" stroke-width="8.25" stroke-linecap="square"/>
+          <line x1="573.76" y1="130.47" x2="573.76" y2="128.47" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="636.27" y1="130.47" x2="636.27" y2="128.47" stroke="#7f8a98" stroke-width="0.95"/>
+          <line x1="573.76" y1="130.47" x2="636.27" y2="130.47" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="573.76" y1="128.47" x2="636.27" y2="128.47" stroke="#3f4752" stroke-width="1.2"/>
+          <line x1="573.76" y1="129.47" x2="636.27" y2="129.47" stroke="#59616d" stroke-width="0.8"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-61be134fd4ba">
+          <line x1="678.31" y1="233.82" x2="701.75" y2="233.82" stroke="#ffffff" stroke-width="6.15" stroke-linecap="square"/>
+          <line x1="678.31" y1="233.82" x2="701.75" y2="233.82" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="678.31" y1="233.82" x2="678.31" y2="257.26" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 701.75 233.82 A 23.44 23.44 0 0 1 678.31 257.26" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="678.31" cy="233.82" r="1.8" fill="#111111"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-13f31ec76332">
+          <line x1="548.28" y1="233.82" x2="571.72" y2="233.82" stroke="#ffffff" stroke-width="6.15" stroke-linecap="square"/>
+          <line x1="548.28" y1="233.82" x2="571.72" y2="233.82" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="548.28" y1="233.82" x2="548.28" y2="257.26" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 571.72 233.82 A 23.44 23.44 0 0 1 548.28 257.26" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="548.28" cy="233.82" r="1.8" fill="#111111"/>
+        </g>
+      
+        <g class="plan-door" data-door-id="opening-9ed4ec1df536">
+          <line x1="593.29" y1="25.13" x2="616.73" y2="25.13" stroke="#ffffff" stroke-width="8.75" stroke-linecap="square"/>
+          <line x1="593.29" y1="25.13" x2="616.73" y2="25.13" stroke="#7f8a98" stroke-width="0.85"/>
+          <line x1="593.29" y1="25.13" x2="593.29" y2="48.57" stroke="#111111" stroke-width="1.55"/>
+          <path d="M 616.73 25.13 A 23.44 23.44 0 0 1 593.29 48.57" fill="none" stroke="#3f4752" stroke-width="1.15"/>
+          <circle cx="593.29" cy="25.13" r="1.8" fill="#111111"/>
+        </g>
+      </g>
+  
+  
+  <g id="plan-room-labels">
+    <g class="plan-room-label">
+      <rect x="501.20" y="320.36" width="117.60" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="560.00" y="336.36" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">QUIET STUDY</text>
+      <text x="560.00" y="352.36" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">54.4 M2 · 8.3 x 6.5 M</text>
+    </g>
+  
+    <g class="plan-room-label">
+      <rect x="601.83" y="320.36" width="176.40" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="690.03" y="336.36" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">FLEXIBLE MEETING ROOM</text>
+      <text x="690.03" y="352.36" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">28.8 M2 · 8.3 x 3.5 M</text>
+    </g>
+  
+    <g class="plan-room-label">
+      <rect x="525.21" y="107.47" width="159.60" height="38" fill="#ffffff" fill-opacity="0.95" stroke="#7f8a98" stroke-width="0.95" rx="4" ry="4"/>
+      <text x="605.01" y="123.47" font-size="13" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">PUBLIC READING ROOM</text>
+      <text x="605.01" y="139.47" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">80.0 M2 · 10.0 x 8.0 M</text>
+    </g>
+  </g>
+  
+    <g id="external-dimensions">
+      <line x1="471.83" y1="22.00" x2="471.83" y2="6.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="738.17" y1="22.00" x2="738.17" y2="6.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="471.83" y1="6.00" x2="738.17" y2="6.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="471.83" y1="3.00" x2="471.83" y2="9.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="738.17" y1="3.00" x2="738.17" y2="9.00" stroke="#111111" stroke-width="1.1"/>
+      <text x="605.00" y="0.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">10.2 m</text>
+
+      <line x1="738.17" y1="22.00" x2="1212.00" y2="22.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="738.17" y1="454.00" x2="1212.00" y2="454.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="1212.00" y1="22.00" x2="1212.00" y2="454.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="1209.00" y1="22.00" x2="1215.00" y2="22.00" stroke="#111111" stroke-width="1.1"/>
+      <line x1="1209.00" y1="454.00" x2="1215.00" y2="454.00" stroke="#111111" stroke-width="1.1"/>
+      <text x="1226.00" y="238.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 1226.00 238.00)" text-anchor="middle">16.6 m</text>
+    </g>
+  
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="1051.76" y1="482.00" x2="1182.00" y2="482.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="1051.76" y1="478.00" x2="1051.76" y2="486.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="1116.88" y1="478.00" x2="1116.88" y2="486.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="1182.00" y1="478.00" x2="1182.00" y2="486.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="1116.88" y="496.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">5 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="elevation_north" data-source-panel-asset-id="asset-svg-1chu3ym" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="532" y="44" width="139" height="96" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="536" y="49.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Elevation North</text>
+  <text x="667" y="49.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:200 | e44bb2ac</text>
+  <svg x="536" y="58" width="131" height="72" viewBox="0 0 590 364" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  
+    <defs>
+      <pattern id="phase8-elev-brick" width="18" height="12" patternUnits="userSpaceOnUse">
+        <rect width="18" height="12" fill="#f5f6f7" />
+        <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="#3f4752" stroke-width="0.7" />
+      </pattern>
+      <pattern id="phase8-elev-clapboard" width="16" height="10" patternUnits="userSpaceOnUse">
+        <rect width="16" height="10" fill="#ffffff" />
+        <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="#59616d" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-render" width="10" height="10" patternUnits="userSpaceOnUse">
+        <rect width="10" height="10" fill="#ffffff" />
+        <circle cx="2.5" cy="2.5" r="0.8" fill="#c4c9cf" />
+        <circle cx="7.5" cy="5" r="0.8" fill="#c4c9cf" />
+        <circle cx="4" cy="8" r="0.8" fill="#c4c9cf" />
+      </pattern>
+      <pattern id="phase8-elev-timber" width="12" height="16" patternUnits="userSpaceOnUse">
+        <rect width="12" height="16" fill="#ffffff" />
+        <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="#3f4752" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-roof" width="12" height="12" patternUnits="userSpaceOnUse">
+        <rect width="12" height="12" fill="#f5f6f7" />
+        <path d="M 0 12 L 6 0 L 12 12" stroke="#3f4752" stroke-width="0.7" fill="none" />
+      </pattern>
+      <pattern id="phase8-elev-ground" width="16" height="8" patternUnits="userSpaceOnUse">
+        <rect width="16" height="8" fill="#ffffff" />
+        <path d="M 0 8 L 4 4 L 8 8 L 12 4 L 16 8" stroke="#7f8a98" stroke-width="0.8" fill="none" />
+      </pattern>
+    </defs>
+  
+  <rect width="590" height="364" fill="#ffffff" />
+  
+  
+    <g id="phase8-ground-line">
+      <rect x="72.51" y="271.48" width="440.98" height="24" fill="url(#phase8-elev-ground)" />
+      <line x1="68.51" y1="271.48" x2="517.49" y2="271.48" stroke="#111111" stroke-width="1.8" />
+    </g>
+  
+  
+      <g id="phase8-elevation-material-zones">
+        
+        <g class="phase8-elevation-material-zone" data-zone-index="0">
+          <rect x="90.51" y="18.00" width="115.57" height="253.48" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="90.51" y1="18.00" x2="90.51" y2="271.48" stroke="#59616d" stroke-width="0.9" />
+          <rect x="121.30" y="249.48" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="148.30" y="258.48" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="1">
+          <rect x="206.08" y="18.00" width="137.55" height="253.48" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="206.08" y1="18.00" x2="206.08" y2="271.48" stroke="#59616d" stroke-width="0.9" />
+          <rect x="247.86" y="249.48" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="274.86" y="258.48" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">BRICK</text>
+        </g>
+      
+        <rect x="90.51" y="18.00" width="404.98" height="253.48" fill="none" stroke="#111111" stroke-width="2" />
+      </g>
+    
+  <g id="phase8-elevation-articulation">
+    <rect x="90.51" y="253.48" width="404.98" height="18.00" fill="#f5f6f7" fill-opacity="0.2" />
+    <line x1="90.51" y1="253.48" x2="495.49" y2="253.48" stroke="#111111" stroke-width="1.35" />
+  <line x1="90.51" y1="144.74" x2="495.49" y2="144.74" stroke="#59616d" stroke-width="0.95" /><line x1="179.11" y1="28.00" x2="179.11" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="206.08" y1="28.00" x2="206.08" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="269.33" y1="28.00" x2="269.33" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="343.64" y1="28.00" x2="343.64" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="179.11" y1="184.35" x2="269.33" y2="184.35" stroke="#3f4752" stroke-width="1.05" /><line x1="179.11" y1="237.82" x2="269.33" y2="237.82" stroke="#59616d" stroke-width="0.9" /><line x1="179.31" y1="57.61" x2="269.85" y2="57.61" stroke="#3f4752" stroke-width="1.05" /><line x1="179.31" y1="111.08" x2="269.85" y2="111.08" stroke="#59616d" stroke-width="0.9" /></g>
+  
+    <g id="phase14-section-roof">
+      <path d="M 84.51 18.00 L 293.00 -38.70 L 501.49 18.00 L 485.49 18.00 L 293.00 -26.70 L 100.51 18.00 Z" fill="url(#phase8-elev-roof)" stroke="none" />
+      <path d="M 90.51 18.00 L 293.00 -38.70 L 495.49 18.00" fill="url(#phase8-elev-roof)" stroke="#111111" stroke-width="2.3" />
+      <path d="M 100.51 18.00 L 293.00 -26.70 L 485.49 18.00" fill="none" stroke="#3f4752" stroke-width="1.25" />
+      <line x1="293.00" y1="-38.70" x2="293.00" y2="-28.70" stroke="#111111" stroke-width="1.05" />
+      <line x1="98.51" y1="12.00" x2="487.49" y2="12.00" stroke="#59616d" stroke-width="1" stroke-dasharray="5 3" />
+    </g>
+  
+  <g id="phase8-elevation-rhythm"><line x1="224.22" y1="18.00" x2="224.22" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="224.58" y1="18.00" x2="224.58" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /></g>
+  <g id="phase8-elevation-datums"><line x1="90.51" y1="144.74" x2="495.49" y2="144.74" stroke="#3f4752" stroke-width="1.1" /><line x1="90.51" y1="18.00" x2="495.49" y2="18.00" stroke="#3f4752" stroke-width="1.1" />
+      <line x1="44.51" y1="144.74" x2="84.51" y2="144.74" stroke="#3f4752" stroke-width="1" />
+      <text x="38.51" y="148.74" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Ground Floor +3.20m</text>
+      <text x="80.51" y="208.11" font-size="8" font-family="Arial, sans-serif" text-anchor="end">Ground Floor</text>
+    
+      <line x1="44.51" y1="18.00" x2="84.51" y2="18.00" stroke="#3f4752" stroke-width="1" />
+      <text x="38.51" y="22.00" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">First Floor +6.40m</text>
+      <text x="80.51" y="81.37" font-size="8" font-family="Arial, sans-serif" text-anchor="end">First Floor</text>
+    
+    <line x1="44.51" y1="271.48" x2="84.51" y2="271.48" stroke="#111111" stroke-width="1.1" />
+    <text x="38.51" y="275.48" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+  </g>
+  <g id="phase9-elevation-openings">
+        <g class="phase8-window">
+          <rect x="179.09" y="184.35" width="90.26" height="53.47" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="179.09" y1="184.35" x2="179.09" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="269.35" y1="184.35" x2="269.35" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="179.09" y1="237.82" x2="269.35" y2="237.82" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="179.09" y1="184.35" x2="269.35" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="176.09" y1="239.32" x2="272.35" y2="239.32" stroke="#59616d" stroke-width="0.95" />
+          <line x1="185.09" y1="188.35" x2="263.35" y2="188.35" stroke="#7f8a98" stroke-width="0.8" />
+          <line x1="224.22" y1="186.35" x2="224.22" y2="235.82" stroke="#59616d" stroke-width="1" />
+        </g>
+      
+        <g class="phase8-window">
+          <rect x="179.33" y="57.61" width="90.50" height="53.47" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="179.33" y1="57.61" x2="179.33" y2="111.08" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="269.83" y1="57.61" x2="269.83" y2="111.08" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="179.33" y1="111.08" x2="269.83" y2="111.08" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="179.33" y1="57.61" x2="269.83" y2="57.61" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="176.33" y1="112.58" x2="272.83" y2="112.58" stroke="#59616d" stroke-width="0.95" />
+          <line x1="185.33" y1="61.61" x2="263.83" y2="61.61" stroke="#7f8a98" stroke-width="0.8" />
+          <line x1="224.58" y1="59.61" x2="224.58" y2="109.08" stroke="#59616d" stroke-width="1" />
+        </g>
+      </g>
+  <g id="phase8-elevation-features"></g>
+  
+    <g id="phase8-elevation-dimensions">
+      <line x1="90.51" y1="18.00" x2="90.51" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="495.49" y1="18.00" x2="495.49" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="90.51" y1="4.00" x2="495.49" y2="4.00" stroke="#111111" stroke-width="1"/>
+      <line x1="90.51" y1="1.00" x2="90.51" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <line x1="495.49" y1="1.00" x2="495.49" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <text x="293.00" y="-2.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">10.2 m</text>
+
+      <line x1="495.49" y1="18.00" x2="576.00" y2="18.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="495.49" y1="271.48" x2="576.00" y2="271.48" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="576.00" y1="18.00" x2="576.00" y2="271.48" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="18.00" x2="579.00" y2="18.00" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="271.48" x2="579.00" y2="271.48" stroke="#111111" stroke-width="1"/>
+      <text x="590.00" y="144.74" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 590.00 144.74)" text-anchor="middle">6.4 m</text>
+    </g>
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="464.79" y1="330.00" x2="544.00" y2="330.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="464.79" y1="326.00" x2="464.79" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="504.39" y1="326.00" x2="504.39" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="544.00" y1="326.00" x2="544.00" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="504.39" y="344.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">2 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="elevation_south" data-source-panel-asset-id="asset-svg-v02kb" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="682" y="44" width="139" height="96" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="686" y="49.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Elevation South</text>
+  <text x="817" y="49.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:200 | e44bb2ac</text>
+  <svg x="686" y="58" width="131" height="72" viewBox="0 0 590 364" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  
+    <defs>
+      <pattern id="phase8-elev-brick" width="18" height="12" patternUnits="userSpaceOnUse">
+        <rect width="18" height="12" fill="#f5f6f7" />
+        <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="#3f4752" stroke-width="0.7" />
+      </pattern>
+      <pattern id="phase8-elev-clapboard" width="16" height="10" patternUnits="userSpaceOnUse">
+        <rect width="16" height="10" fill="#ffffff" />
+        <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="#59616d" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-render" width="10" height="10" patternUnits="userSpaceOnUse">
+        <rect width="10" height="10" fill="#ffffff" />
+        <circle cx="2.5" cy="2.5" r="0.8" fill="#c4c9cf" />
+        <circle cx="7.5" cy="5" r="0.8" fill="#c4c9cf" />
+        <circle cx="4" cy="8" r="0.8" fill="#c4c9cf" />
+      </pattern>
+      <pattern id="phase8-elev-timber" width="12" height="16" patternUnits="userSpaceOnUse">
+        <rect width="12" height="16" fill="#ffffff" />
+        <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="#3f4752" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-roof" width="12" height="12" patternUnits="userSpaceOnUse">
+        <rect width="12" height="12" fill="#f5f6f7" />
+        <path d="M 0 12 L 6 0 L 12 12" stroke="#3f4752" stroke-width="0.7" fill="none" />
+      </pattern>
+      <pattern id="phase8-elev-ground" width="16" height="8" patternUnits="userSpaceOnUse">
+        <rect width="16" height="8" fill="#ffffff" />
+        <path d="M 0 8 L 4 4 L 8 8 L 12 4 L 16 8" stroke="#7f8a98" stroke-width="0.8" fill="none" />
+      </pattern>
+    </defs>
+  
+  <rect width="590" height="364" fill="#ffffff" />
+  
+  
+    <g id="phase8-ground-line">
+      <rect x="72.51" y="271.48" width="440.98" height="24" fill="url(#phase8-elev-ground)" />
+      <line x1="68.51" y1="271.48" x2="517.49" y2="271.48" stroke="#111111" stroke-width="1.8" />
+    </g>
+  
+  
+      <g id="phase8-elevation-material-zones">
+        
+        <g class="phase8-elevation-material-zone" data-zone-index="0">
+          <rect x="90.51" y="18.00" width="131.45" height="253.48" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="90.51" y1="18.00" x2="90.51" y2="271.48" stroke="#59616d" stroke-width="0.9" />
+          <rect x="129.24" y="249.48" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="156.24" y="258.48" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="1">
+          <rect x="90.51" y="18.00" width="253.13" height="253.48" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="90.51" y1="18.00" x2="90.51" y2="271.48" stroke="#59616d" stroke-width="0.9" />
+          <rect x="190.07" y="249.48" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="217.07" y="258.48" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="2">
+          <rect x="221.97" y="18.00" width="60.84" height="253.48" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="221.97" y1="18.00" x2="221.97" y2="271.48" stroke="#59616d" stroke-width="0.9" />
+          
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="3">
+          <rect x="282.80" y="18.00" width="60.84" height="253.48" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="282.80" y1="18.00" x2="282.80" y2="271.48" stroke="#59616d" stroke-width="0.9" />
+          
+        </g>
+      
+        <rect x="90.51" y="18.00" width="404.98" height="253.48" fill="none" stroke="#111111" stroke-width="2" />
+      </g>
+    
+  <g id="phase8-elevation-articulation">
+    <rect x="90.51" y="253.48" width="404.98" height="18.00" fill="#f5f6f7" fill-opacity="0.2" />
+    <line x1="90.51" y1="253.48" x2="495.49" y2="253.48" stroke="#111111" stroke-width="1.35" />
+  <line x1="90.51" y1="144.74" x2="495.49" y2="144.74" stroke="#59616d" stroke-width="0.95" /><line x1="184.66" y1="28.00" x2="184.66" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="205.41" y1="28.00" x2="205.41" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="221.97" y1="28.00" x2="221.97" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="245.49" y1="28.00" x2="245.49" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="282.80" y1="28.00" x2="282.80" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="340.55" y1="28.00" x2="340.55" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="441.11" y1="28.00" x2="441.11" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="478.14" y1="28.00" x2="478.14" y2="269.48" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="205.41" y1="184.35" x2="479.13" y2="184.35" stroke="#3f4752" stroke-width="1.05" /><line x1="205.77" y1="57.61" x2="441.11" y2="57.61" stroke="#3f4752" stroke-width="1.05" /><line x1="184.66" y1="184.35" x2="478.14" y2="184.35" stroke="#3f4752" stroke-width="1.05" /><line x1="184.66" y1="237.82" x2="478.14" y2="237.82" stroke="#59616d" stroke-width="0.9" /><line x1="245.49" y1="57.61" x2="340.55" y2="57.61" stroke="#3f4752" stroke-width="1.05" /><line x1="245.49" y1="111.08" x2="340.55" y2="111.08" stroke="#59616d" stroke-width="0.9" /></g>
+  
+    <g id="phase14-section-roof">
+      <path d="M 84.51 18.00 L 293.00 -38.70 L 501.49 18.00 L 485.49 18.00 L 293.00 -26.70 L 100.51 18.00 Z" fill="url(#phase8-elev-roof)" stroke="none" />
+      <path d="M 90.51 18.00 L 293.00 -38.70 L 495.49 18.00" fill="url(#phase8-elev-roof)" stroke="#111111" stroke-width="2.3" />
+      <path d="M 100.51 18.00 L 293.00 -26.70 L 485.49 18.00" fill="none" stroke="#3f4752" stroke-width="1.25" />
+      <line x1="293.00" y1="-38.70" x2="293.00" y2="-28.70" stroke="#111111" stroke-width="1.05" />
+      <line x1="98.51" y1="12.00" x2="487.49" y2="12.00" stroke="#59616d" stroke-width="1" stroke-dasharray="5 3" />
+    </g>
+  
+  <g id="phase8-elevation-rhythm"><line x1="224.22" y1="18.00" x2="224.22" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="224.58" y1="18.00" x2="224.58" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="232.18" y1="18.00" x2="232.18" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="293.02" y1="18.00" x2="293.02" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="323.44" y1="18.00" x2="323.44" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="331.40" y1="18.00" x2="331.40" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="342.29" y1="18.00" x2="342.29" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="399.48" y1="18.00" x2="399.48" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="421.98" y1="18.00" x2="421.98" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="422.30" y1="18.00" x2="422.30" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="460.32" y1="18.00" x2="460.32" y2="271.48" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /></g>
+  <g id="phase8-elevation-datums"><line x1="90.51" y1="144.74" x2="495.49" y2="144.74" stroke="#3f4752" stroke-width="1.1" /><line x1="90.51" y1="18.00" x2="495.49" y2="18.00" stroke="#3f4752" stroke-width="1.1" />
+      <line x1="44.51" y1="144.74" x2="84.51" y2="144.74" stroke="#3f4752" stroke-width="1" />
+      <text x="38.51" y="148.74" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Ground Floor +3.20m</text>
+      <text x="80.51" y="208.11" font-size="8" font-family="Arial, sans-serif" text-anchor="end">Ground Floor</text>
+    
+      <line x1="44.51" y1="18.00" x2="84.51" y2="18.00" stroke="#3f4752" stroke-width="1" />
+      <text x="38.51" y="22.00" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">First Floor +6.40m</text>
+      <text x="80.51" y="81.37" font-size="8" font-family="Arial, sans-serif" text-anchor="end">First Floor</text>
+    
+    <line x1="44.51" y1="271.48" x2="84.51" y2="271.48" stroke="#111111" stroke-width="1.1" />
+    <text x="38.51" y="275.48" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+  </g>
+  <g id="phase9-elevation-openings">
+        <g class="phase8-window">
+          <rect x="184.66" y="184.35" width="95.06" height="53.47" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="184.66" y1="184.35" x2="184.66" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="279.71" y1="184.35" x2="279.71" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="184.66" y1="237.82" x2="279.71" y2="237.82" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="184.66" y1="184.35" x2="279.71" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="181.66" y1="239.32" x2="282.71" y2="239.32" stroke="#59616d" stroke-width="0.95" />
+          <line x1="190.66" y1="188.35" x2="273.71" y2="188.35" stroke="#7f8a98" stroke-width="0.8" />
+          <line x1="232.18" y1="186.35" x2="232.18" y2="235.82" stroke="#59616d" stroke-width="1" />
+        </g>
+      
+        <g class="phase8-window">
+          <rect x="245.49" y="57.61" width="95.06" height="53.47" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="245.49" y1="57.61" x2="245.49" y2="111.08" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="340.55" y1="57.61" x2="340.55" y2="111.08" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="245.49" y1="111.08" x2="340.55" y2="111.08" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="245.49" y1="57.61" x2="340.55" y2="57.61" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="242.49" y1="112.58" x2="343.55" y2="112.58" stroke="#59616d" stroke-width="0.95" />
+          <line x1="251.49" y1="61.61" x2="334.55" y2="61.61" stroke="#7f8a98" stroke-width="0.8" />
+          <line x1="293.02" y1="59.61" x2="293.02" y2="109.08" stroke="#59616d" stroke-width="1" />
+        </g>
+      
+        <g class="phase8-window">
+          <rect x="381.66" y="184.35" width="35.65" height="53.47" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="381.66" y1="184.35" x2="381.66" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="417.31" y1="184.35" x2="417.31" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="381.66" y1="237.82" x2="417.31" y2="237.82" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="381.66" y1="184.35" x2="417.31" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="378.66" y1="239.32" x2="420.31" y2="239.32" stroke="#59616d" stroke-width="0.95" />
+          <line x1="387.36" y1="188.35" x2="411.60" y2="188.35" stroke="#7f8a98" stroke-width="0.8" />
+          
+        </g>
+      
+        <g class="phase8-window">
+          <rect x="442.50" y="184.35" width="35.65" height="53.47" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="442.50" y1="184.35" x2="442.50" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="478.14" y1="184.35" x2="478.14" y2="237.82" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="442.50" y1="237.82" x2="478.14" y2="237.82" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="442.50" y1="184.35" x2="478.14" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="439.50" y1="239.32" x2="481.14" y2="239.32" stroke="#59616d" stroke-width="0.95" />
+          <line x1="448.20" y1="188.35" x2="472.44" y2="188.35" stroke="#7f8a98" stroke-width="0.8" />
+          
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="205.41" y="184.35" width="37.63" height="87.13" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="205.41" y1="184.35" x2="205.41" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="243.04" y1="184.35" x2="243.04" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="205.41" y1="184.35" x2="243.04" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="209.41" y1="268.98" x2="239.04" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="224.22" y1="187.35" x2="224.22" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="205.77" y="57.61" width="37.63" height="213.88" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="205.77" y1="57.61" x2="205.77" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="243.39" y1="57.61" x2="243.39" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="205.77" y1="57.61" x2="243.39" y2="57.61" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="209.77" y1="268.98" x2="239.39" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="224.58" y1="60.61" x2="224.58" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="213.37" y="184.35" width="37.63" height="87.13" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="213.37" y1="184.35" x2="213.37" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="251.00" y1="184.35" x2="251.00" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="213.37" y1="184.35" x2="251.00" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="217.37" y1="268.98" x2="247.00" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="232.18" y1="187.35" x2="232.18" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="274.21" y="57.61" width="37.63" height="213.88" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="274.21" y1="57.61" x2="274.21" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="311.83" y1="57.61" x2="311.83" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="274.21" y1="57.61" x2="311.83" y2="57.61" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="278.21" y1="268.98" x2="307.83" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="293.02" y1="60.61" x2="293.02" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="380.67" y="184.35" width="37.63" height="87.13" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="380.67" y1="184.35" x2="380.67" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="418.30" y1="184.35" x2="418.30" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="380.67" y1="184.35" x2="418.30" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="384.67" y1="268.98" x2="414.30" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="399.48" y1="187.35" x2="399.48" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="403.17" y="184.35" width="37.63" height="87.13" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="403.17" y1="184.35" x2="403.17" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="440.79" y1="184.35" x2="440.79" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="403.17" y1="184.35" x2="440.79" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="407.17" y1="268.98" x2="436.79" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="421.98" y1="187.35" x2="421.98" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="403.48" y="57.61" width="37.63" height="213.88" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="403.48" y1="57.61" x2="403.48" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="441.11" y1="57.61" x2="441.11" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="403.48" y1="57.61" x2="441.11" y2="57.61" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="407.48" y1="268.98" x2="437.11" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="422.30" y1="60.61" x2="422.30" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      
+        <g class="phase8-door">
+          <rect x="441.51" y="184.35" width="37.63" height="87.13" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="441.51" y1="184.35" x2="441.51" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="479.13" y1="184.35" x2="479.13" y2="271.48" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="441.51" y1="184.35" x2="479.13" y2="184.35" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="445.51" y1="268.98" x2="475.13" y2="268.98" stroke="#59616d" stroke-width="0.95" />
+          <line x1="460.32" y1="187.35" x2="460.32" y2="268.48" stroke="#59616d" stroke-width="0.9" />
+        </g>
+      </g>
+  <g id="phase8-elevation-features"></g>
+  
+    <g id="phase8-elevation-dimensions">
+      <line x1="90.51" y1="18.00" x2="90.51" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="495.49" y1="18.00" x2="495.49" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="90.51" y1="4.00" x2="495.49" y2="4.00" stroke="#111111" stroke-width="1"/>
+      <line x1="90.51" y1="1.00" x2="90.51" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <line x1="495.49" y1="1.00" x2="495.49" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <text x="293.00" y="-2.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">10.2 m</text>
+
+      <line x1="495.49" y1="18.00" x2="576.00" y2="18.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="495.49" y1="271.48" x2="576.00" y2="271.48" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="576.00" y1="18.00" x2="576.00" y2="271.48" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="18.00" x2="579.00" y2="18.00" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="271.48" x2="579.00" y2="271.48" stroke="#111111" stroke-width="1"/>
+      <text x="590.00" y="144.74" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 590.00 144.74)" text-anchor="middle">6.4 m</text>
+    </g>
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="464.79" y1="330.00" x2="544.00" y2="330.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="464.79" y1="326.00" x2="464.79" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="504.39" y1="326.00" x2="504.39" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="544.00" y1="326.00" x2="544.00" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="504.39" y="344.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">2 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="elevation_east" data-source-panel-asset-id="asset-svg-rloww5" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="532" y="152" width="139" height="96" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="536" y="157.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Elevation East</text>
+  <text x="667" y="157.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:200 | e44bb2ac</text>
+  <svg x="536" y="166" width="131" height="72" viewBox="0 0 590 364" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  
+    <defs>
+      <pattern id="phase8-elev-brick" width="18" height="12" patternUnits="userSpaceOnUse">
+        <rect width="18" height="12" fill="#f5f6f7" />
+        <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="#3f4752" stroke-width="0.7" />
+      </pattern>
+      <pattern id="phase8-elev-clapboard" width="16" height="10" patternUnits="userSpaceOnUse">
+        <rect width="16" height="10" fill="#ffffff" />
+        <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="#59616d" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-render" width="10" height="10" patternUnits="userSpaceOnUse">
+        <rect width="10" height="10" fill="#ffffff" />
+        <circle cx="2.5" cy="2.5" r="0.8" fill="#c4c9cf" />
+        <circle cx="7.5" cy="5" r="0.8" fill="#c4c9cf" />
+        <circle cx="4" cy="8" r="0.8" fill="#c4c9cf" />
+      </pattern>
+      <pattern id="phase8-elev-timber" width="12" height="16" patternUnits="userSpaceOnUse">
+        <rect width="12" height="16" fill="#ffffff" />
+        <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="#3f4752" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-roof" width="12" height="12" patternUnits="userSpaceOnUse">
+        <rect width="12" height="12" fill="#f5f6f7" />
+        <path d="M 0 12 L 6 0 L 12 12" stroke="#3f4752" stroke-width="0.7" fill="none" />
+      </pattern>
+      <pattern id="phase8-elev-ground" width="16" height="8" patternUnits="userSpaceOnUse">
+        <rect width="16" height="8" fill="#ffffff" />
+        <path d="M 0 8 L 4 4 L 8 8 L 12 4 L 16 8" stroke="#7f8a98" stroke-width="0.8" fill="none" />
+      </pattern>
+    </defs>
+  
+  <rect width="590" height="364" fill="#ffffff" />
+  
+  
+    <g id="phase8-ground-line">
+      <rect x="16.00" y="217.89" width="554.00" height="24" fill="url(#phase8-elev-ground)" />
+      <line x1="12.00" y1="217.89" x2="574.00" y2="217.89" stroke="#111111" stroke-width="1.8" />
+    </g>
+  
+  
+      <g id="phase8-elevation-material-zones">
+        
+        <g class="phase8-elevation-material-zone" data-zone-index="0">
+          <rect x="34.00" y="18.00" width="63.34" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="34.00" y1="18.00" x2="34.00" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="1">
+          <rect x="34.00" y="18.00" width="83.99" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="34.00" y1="18.00" x2="34.00" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          <rect x="48.99" y="195.89" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="75.99" y="204.89" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="2">
+          <rect x="97.34" y="18.00" width="260.26" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="97.34" y1="18.00" x2="97.34" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          <rect x="200.47" y="195.89" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="227.47" y="204.89" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="3">
+          <rect x="117.99" y="18.00" width="239.62" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="117.99" y1="18.00" x2="117.99" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          <rect x="210.80" y="195.89" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="237.80" y="204.89" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">BRICK</text>
+        </g>
+      
+        <rect x="34.00" y="18.00" width="518.00" height="199.89" fill="none" stroke="#111111" stroke-width="2" />
+      </g>
+    
+  <g id="phase8-elevation-articulation">
+    <rect x="34.00" y="199.89" width="518.00" height="18.00" fill="#f5f6f7" fill-opacity="0.2" />
+    <line x1="34.00" y1="199.89" x2="552.00" y2="199.89" stroke="#111111" stroke-width="1.35" />
+  <line x1="34.00" y1="117.95" x2="552.00" y2="117.95" stroke="#59616d" stroke-width="0.95" /><line x1="97.34" y1="28.00" x2="97.34" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="117.99" y1="28.00" x2="117.99" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="357.61" y1="28.00" x2="357.61" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="399.24" y1="28.00" x2="399.24" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="409.45" y1="28.00" x2="409.45" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="437.03" y1="28.00" x2="437.03" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="447.43" y1="28.00" x2="447.43" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="399.24" y1="49.23" x2="437.03" y2="49.23" stroke="#3f4752" stroke-width="1.05" /><line x1="399.24" y1="91.40" x2="437.03" y2="91.40" stroke="#59616d" stroke-width="0.9" /><line x1="409.45" y1="149.18" x2="447.43" y2="149.18" stroke="#3f4752" stroke-width="1.05" /><line x1="409.45" y1="191.34" x2="447.43" y2="191.34" stroke="#59616d" stroke-width="0.9" /></g>
+  
+    <g id="phase14-section-roof">
+      <path d="M 28.00 18.00 L 293.00 -40.00 L 558.00 18.00 L 542.00 18.00 L 293.00 -28.00 L 44.00 18.00 Z" fill="url(#phase8-elev-roof)" stroke="none" />
+      <path d="M 34.00 18.00 L 293.00 -40.00 L 552.00 18.00" fill="url(#phase8-elev-roof)" stroke="#111111" stroke-width="2.3" />
+      <path d="M 44.00 18.00 L 293.00 -28.00 L 542.00 18.00" fill="none" stroke="#3f4752" stroke-width="1.25" />
+      <line x1="293.00" y1="-40.00" x2="293.00" y2="-30.00" stroke="#111111" stroke-width="1.05" />
+      <line x1="42.00" y1="12.00" x2="544.00" y2="12.00" stroke="#59616d" stroke-width="1" stroke-dasharray="5 3" />
+    </g>
+  
+  <g id="phase8-elevation-rhythm"><line x1="418.14" y1="18.00" x2="418.14" y2="217.89" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /><line x1="428.44" y1="18.00" x2="428.44" y2="217.89" stroke="#7f8a98" stroke-width="0.95" stroke-dasharray="4 5" /></g>
+  <g id="phase8-elevation-datums"><line x1="34.00" y1="117.95" x2="552.00" y2="117.95" stroke="#3f4752" stroke-width="1.1" /><line x1="34.00" y1="18.00" x2="552.00" y2="18.00" stroke="#3f4752" stroke-width="1.1" />
+      <line x1="-12.00" y1="117.95" x2="28.00" y2="117.95" stroke="#3f4752" stroke-width="1" />
+      <text x="-18.00" y="121.95" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Ground Floor +3.20m</text>
+      <text x="24.00" y="167.92" font-size="8" font-family="Arial, sans-serif" text-anchor="end">Ground Floor</text>
+    
+      <line x1="-12.00" y1="18.00" x2="28.00" y2="18.00" stroke="#3f4752" stroke-width="1" />
+      <text x="-18.00" y="22.00" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">First Floor +6.40m</text>
+      <text x="24.00" y="67.97" font-size="8" font-family="Arial, sans-serif" text-anchor="end">First Floor</text>
+    
+    <line x1="-12.00" y1="217.89" x2="28.00" y2="217.89" stroke="#111111" stroke-width="1.1" />
+    <text x="-18.00" y="221.89" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+  </g>
+  <g id="phase9-elevation-openings">
+        <g class="phase8-window">
+          <rect x="399.24" y="49.23" width="37.79" height="42.16" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="399.24" y1="49.23" x2="399.24" y2="91.40" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="437.03" y1="49.23" x2="437.03" y2="91.40" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="399.24" y1="91.40" x2="437.03" y2="91.40" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="399.24" y1="49.23" x2="437.03" y2="49.23" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="396.24" y1="92.90" x2="440.03" y2="92.90" stroke="#59616d" stroke-width="0.95" />
+          <line x1="405.24" y1="53.23" x2="431.03" y2="53.23" stroke="#7f8a98" stroke-width="0.8" />
+          
+        </g>
+      
+        <g class="phase8-window">
+          <rect x="409.45" y="149.18" width="37.98" height="42.16" fill="#ffffff" stroke="#111111" stroke-width="1.45" />
+          <line x1="409.45" y1="149.18" x2="409.45" y2="191.34" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="447.43" y1="149.18" x2="447.43" y2="191.34" stroke="#7f8a98" stroke-width="0.9" />
+          <line x1="409.45" y1="191.34" x2="447.43" y2="191.34" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="409.45" y1="149.18" x2="447.43" y2="149.18" stroke="#3f4752" stroke-width="1.05" />
+          <line x1="406.45" y1="192.84" x2="450.43" y2="192.84" stroke="#59616d" stroke-width="0.95" />
+          <line x1="415.45" y1="153.18" x2="441.43" y2="153.18" stroke="#7f8a98" stroke-width="0.8" />
+          
+        </g>
+      </g>
+  <g id="phase8-elevation-features"></g>
+  
+    <g id="phase8-elevation-dimensions">
+      <line x1="34.00" y1="18.00" x2="34.00" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="552.00" y1="18.00" x2="552.00" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="34.00" y1="4.00" x2="552.00" y2="4.00" stroke="#111111" stroke-width="1"/>
+      <line x1="34.00" y1="1.00" x2="34.00" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <line x1="552.00" y1="1.00" x2="552.00" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <text x="293.00" y="-2.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">16.6 m</text>
+
+      <line x1="552.00" y1="18.00" x2="576.00" y2="18.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="552.00" y1="217.89" x2="576.00" y2="217.89" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="576.00" y1="18.00" x2="576.00" y2="217.89" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="18.00" x2="579.00" y2="18.00" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="217.89" x2="579.00" y2="217.89" stroke="#111111" stroke-width="1"/>
+      <text x="590.00" y="117.95" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 590.00 117.95)" text-anchor="middle">6.4 m</text>
+    </g>
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="387.83" y1="330.00" x2="544.00" y2="330.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="387.83" y1="326.00" x2="387.83" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="465.92" y1="326.00" x2="465.92" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="544.00" y1="326.00" x2="544.00" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="465.92" y="344.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">5 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="elevation_west" data-source-panel-asset-id="asset-svg-1kdhjc4" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="682" y="152" width="139" height="96" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="686" y="157.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Elevation West</text>
+  <text x="817" y="157.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:200 | e44bb2ac</text>
+  <svg x="686" y="166" width="131" height="72" viewBox="0 0 590 364" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  
+    <defs>
+      <pattern id="phase8-elev-brick" width="18" height="12" patternUnits="userSpaceOnUse">
+        <rect width="18" height="12" fill="#f5f6f7" />
+        <path d="M 0 0 H 18 M 0 6 H 18 M 0 12 H 18 M 9 0 V 6 M 0 6 V 12 M 18 6 V 12" stroke="#3f4752" stroke-width="0.7" />
+      </pattern>
+      <pattern id="phase8-elev-clapboard" width="16" height="10" patternUnits="userSpaceOnUse">
+        <rect width="16" height="10" fill="#ffffff" />
+        <path d="M 0 0 H 16 M 0 5 H 16 M 0 10 H 16" stroke="#59616d" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-render" width="10" height="10" patternUnits="userSpaceOnUse">
+        <rect width="10" height="10" fill="#ffffff" />
+        <circle cx="2.5" cy="2.5" r="0.8" fill="#c4c9cf" />
+        <circle cx="7.5" cy="5" r="0.8" fill="#c4c9cf" />
+        <circle cx="4" cy="8" r="0.8" fill="#c4c9cf" />
+      </pattern>
+      <pattern id="phase8-elev-timber" width="12" height="16" patternUnits="userSpaceOnUse">
+        <rect width="12" height="16" fill="#ffffff" />
+        <path d="M 0 0 V 16 M 6 0 V 16 M 12 0 V 16" stroke="#3f4752" stroke-width="0.8" />
+      </pattern>
+      <pattern id="phase8-elev-roof" width="12" height="12" patternUnits="userSpaceOnUse">
+        <rect width="12" height="12" fill="#f5f6f7" />
+        <path d="M 0 12 L 6 0 L 12 12" stroke="#3f4752" stroke-width="0.7" fill="none" />
+      </pattern>
+      <pattern id="phase8-elev-ground" width="16" height="8" patternUnits="userSpaceOnUse">
+        <rect width="16" height="8" fill="#ffffff" />
+        <path d="M 0 8 L 4 4 L 8 8 L 12 4 L 16 8" stroke="#7f8a98" stroke-width="0.8" fill="none" />
+      </pattern>
+    </defs>
+  
+  <rect width="590" height="364" fill="#ffffff" />
+  
+  
+    <g id="phase8-ground-line">
+      <rect x="16.00" y="217.89" width="554.00" height="24" fill="url(#phase8-elev-ground)" />
+      <line x1="12.00" y1="217.89" x2="574.00" y2="217.89" stroke="#111111" stroke-width="1.8" />
+    </g>
+  
+  
+      <g id="phase8-elevation-material-zones">
+        
+        <g class="phase8-elevation-material-zone" data-zone-index="0">
+          <rect x="34.00" y="18.00" width="63.34" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="34.00" y1="18.00" x2="34.00" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="1">
+          <rect x="34.00" y="18.00" width="83.99" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="34.00" y1="18.00" x2="34.00" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          <rect x="48.99" y="195.89" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="75.99" y="204.89" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">BRICK</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="2">
+          <rect x="97.34" y="18.00" width="260.26" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="97.34" y1="18.00" x2="97.34" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          <rect x="200.47" y="195.89" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="227.47" y="204.89" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <g class="phase8-elevation-material-zone" data-zone-index="3">
+          <rect x="117.99" y="18.00" width="239.62" height="199.89" fill="url(#phase8-elev-brick)" fill-opacity="0.96" />
+          <line x1="117.99" y1="18.00" x2="117.99" y2="217.89" stroke="#59616d" stroke-width="0.9" />
+          <rect x="210.80" y="195.89" width="54.00" height="12" fill="#ffffff" fill-opacity="0.92" />
+          <text x="237.80" y="204.89" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle">TIMBER</text>
+        </g>
+      
+        <rect x="34.00" y="18.00" width="518.00" height="199.89" fill="none" stroke="#111111" stroke-width="2" />
+      </g>
+    
+  <g id="phase8-elevation-articulation">
+    <rect x="34.00" y="199.89" width="518.00" height="18.00" fill="#f5f6f7" fill-opacity="0.2" />
+    <line x1="34.00" y1="199.89" x2="552.00" y2="199.89" stroke="#111111" stroke-width="1.35" />
+  <line x1="34.00" y1="117.95" x2="552.00" y2="117.95" stroke="#59616d" stroke-width="0.95" /><line x1="97.34" y1="28.00" x2="97.34" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="117.99" y1="28.00" x2="117.99" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /><line x1="357.61" y1="28.00" x2="357.61" y2="215.89" stroke="#7f8a98" stroke-width="0.75" stroke-dasharray="4 6" /></g>
+  
+    <g id="phase14-section-roof">
+      <path d="M 28.00 18.00 L 293.00 -40.00 L 558.00 18.00 L 542.00 18.00 L 293.00 -28.00 L 44.00 18.00 Z" fill="url(#phase8-elev-roof)" stroke="none" />
+      <path d="M 34.00 18.00 L 293.00 -40.00 L 552.00 18.00" fill="url(#phase8-elev-roof)" stroke="#111111" stroke-width="2.3" />
+      <path d="M 44.00 18.00 L 293.00 -28.00 L 542.00 18.00" fill="none" stroke="#3f4752" stroke-width="1.25" />
+      <line x1="293.00" y1="-40.00" x2="293.00" y2="-30.00" stroke="#111111" stroke-width="1.05" />
+      <line x1="42.00" y1="12.00" x2="544.00" y2="12.00" stroke="#59616d" stroke-width="1" stroke-dasharray="5 3" />
+    </g>
+  
+  <g id="phase8-elevation-rhythm"></g>
+  <g id="phase8-elevation-datums"><line x1="34.00" y1="117.95" x2="552.00" y2="117.95" stroke="#3f4752" stroke-width="1.1" /><line x1="34.00" y1="18.00" x2="552.00" y2="18.00" stroke="#3f4752" stroke-width="1.1" />
+      <line x1="-12.00" y1="117.95" x2="28.00" y2="117.95" stroke="#3f4752" stroke-width="1" />
+      <text x="-18.00" y="121.95" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">Ground Floor +3.20m</text>
+      <text x="24.00" y="167.92" font-size="8" font-family="Arial, sans-serif" text-anchor="end">Ground Floor</text>
+    
+      <line x1="-12.00" y1="18.00" x2="28.00" y2="18.00" stroke="#3f4752" stroke-width="1" />
+      <text x="-18.00" y="22.00" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">First Floor +6.40m</text>
+      <text x="24.00" y="67.97" font-size="8" font-family="Arial, sans-serif" text-anchor="end">First Floor</text>
+    
+    <line x1="-12.00" y1="217.89" x2="28.00" y2="217.89" stroke="#111111" stroke-width="1.1" />
+    <text x="-18.00" y="221.89" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="end">FFL +0.00m</text>
+  </g>
+  <g id="phase9-elevation-openings"></g>
+  <g id="phase8-elevation-features"></g>
+  
+    <g id="phase8-elevation-dimensions">
+      <line x1="34.00" y1="18.00" x2="34.00" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="552.00" y1="18.00" x2="552.00" y2="4.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="34.00" y1="4.00" x2="552.00" y2="4.00" stroke="#111111" stroke-width="1"/>
+      <line x1="34.00" y1="1.00" x2="34.00" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <line x1="552.00" y1="1.00" x2="552.00" y2="7.00" stroke="#111111" stroke-width="1"/>
+      <text x="293.00" y="-2.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">16.6 m</text>
+
+      <line x1="552.00" y1="18.00" x2="576.00" y2="18.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="552.00" y1="217.89" x2="576.00" y2="217.89" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="576.00" y1="18.00" x2="576.00" y2="217.89" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="18.00" x2="579.00" y2="18.00" stroke="#111111" stroke-width="1"/>
+      <line x1="573.00" y1="217.89" x2="579.00" y2="217.89" stroke="#111111" stroke-width="1"/>
+      <text x="590.00" y="117.95" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 590.00 117.95)" text-anchor="middle">6.4 m</text>
+    </g>
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="387.83" y1="330.00" x2="544.00" y2="330.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="387.83" y1="326.00" x2="387.83" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="465.92" y1="326.00" x2="465.92" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="544.00" y1="326.00" x2="544.00" y2="334.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="465.92" y="344.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">5 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="section_AA" data-source-panel-asset-id="asset-svg-wy37qq" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="532" y="268" width="289" height="96" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="536" y="273.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Section A-A</text>
+  <text x="817" y="273.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:100 | e44bb2ac</text>
+  <svg x="536" y="282" width="281" height="72" viewBox="0 0 766 400" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  <rect width="766" height="400" fill="#ffffff" />
+  
+      <marker id="phase14-stair-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L6,3 z" fill="#111" />
+      </marker>
+    
+  
+  
+    <g id="phase8-section-foundation" data-truth="verified" data-truth-mode="explicit_ground_primitives" data-truth-state="direct">
+      <rect x="24" y="366" width="718" height="42" fill="#ffffff" fill-opacity="1" />
+      <rect x="20" y="378" width="726" height="18" fill="#f5f6f7" fill-opacity="0.24" />
+      
+      <rect x="39.05" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="726.95" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="726.95" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="39.05" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="39.05" y="348" width="687.899" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="39.05" y="348" width="687.899" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="726.95" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="712.219" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="39.05" y="348" width="687.899" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="39.05" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="726.95" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="726.95" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="39.05" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="-217.844" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="470.055" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="470.055" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="-217.844" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="-217.844" y="350" width="687.899" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="-217.844" y="350" width="687.899" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="470.055" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="455.325" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="-217.844" y="350" width="687.899" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="-217.844" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="470.055" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="470.055" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" /><rect x="-217.844" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.612" data-truth-state="direct" />
+      <rect x="-217.844" y="372" width="687.899" height="12" fill="#f5f6f7" stroke="#59616d" stroke-width="1.19" data-truth-state="direct" />
+      <line x1="726.95" y1="378" x2="734.95" y2="378" stroke="#59616d" stroke-width="1.19" data-truth-state="direct" />
+      <line x1="712.219" y1="364" x2="720.219" y2="364" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+      <line x1="-217.844" y1="356" x2="-209.844" y2="356" stroke="#3f4752" stroke-width="1.19" data-truth-state="direct" /><line x1="470.055" y1="356" x2="478.055" y2="356" stroke="#3f4752" stroke-width="1.19" data-truth-state="direct" /><line x1="470.055" y1="356" x2="478.055" y2="356" stroke="#3f4752" stroke-width="1.19" data-truth-state="direct" /><line x1="-217.844" y1="356" x2="-209.844" y2="356" stroke="#3f4752" stroke-width="1.19" data-truth-state="direct" /><line x1="147.17" y1="356" x2="470.05499999999995" y2="356" stroke="#3f4752" stroke-width="1.19" stroke-dasharray="6 4" stroke-opacity="0.74" data-truth-state="contextual" /><line x1="-217.844" y1="356" x2="147.17000000000002" y2="356" stroke="#3f4752" stroke-width="1.19" stroke-dasharray="6 4" stroke-opacity="0.74" data-truth-state="contextual" /><line x1="119.351" y1="356" x2="470.055" y2="356" stroke="#3f4752" stroke-width="1.19" stroke-dasharray="6 4" stroke-opacity="0.74" data-truth-state="contextual" /><line x1="-217.844" y1="356" x2="119.351" y2="356" stroke="#3f4752" stroke-width="1.19" stroke-dasharray="6 4" stroke-opacity="0.74" data-truth-state="contextual" />
+      
+      <line x1="39.05" y1="366" x2="726.949" y2="366" stroke="#111111" stroke-width="2.466" data-truth-state="direct" />
+      <path d="M 20 384 L 28 388 L 36 384 L 44 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 62.705882352941174 387 L 70.70588235294117 391 L 78.70588235294117 387 L 86.70588235294117 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 105.41176470588235 384 L 113.41176470588235 388 L 121.41176470588235 384 L 129.41176470588235 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 148.11764705882354 387 L 156.11764705882354 391 L 164.11764705882354 387 L 172.11764705882354 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 190.8235294117647 384 L 198.8235294117647 388 L 206.8235294117647 384 L 214.8235294117647 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 233.52941176470588 387 L 241.52941176470588 391 L 249.52941176470588 387 L 257.52941176470586 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 276.2352941176471 384 L 284.2352941176471 388 L 292.2352941176471 384 L 300.2352941176471 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 318.94117647058823 387 L 326.94117647058823 391 L 334.94117647058823 387 L 342.94117647058823 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 361.6470588235294 384 L 369.6470588235294 388 L 377.6470588235294 384 L 385.6470588235294 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 404.3529411764706 387 L 412.3529411764706 391 L 420.3529411764706 387 L 428.3529411764706 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 447.05882352941177 384 L 455.05882352941177 388 L 463.05882352941177 384 L 471.05882352941177 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 489.7647058823529 387 L 497.7647058823529 391 L 505.7647058823529 387 L 513.7647058823529 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 532.4705882352941 384 L 540.4705882352941 388 L 548.4705882352941 384 L 556.4705882352941 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 575.1764705882352 387 L 583.1764705882352 391 L 591.1764705882352 387 L 599.1764705882352 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 617.8823529411765 384 L 625.8823529411765 388 L 633.8823529411765 384 L 641.8823529411765 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 660.5882352941177 387 L 668.5882352941177 391 L 676.5882352941177 387 L 684.5882352941177 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 703.2941176470588 384 L 711.2941176470588 388 L 719.2941176470588 384 L 727.2941176470588 388" fill="none" stroke="#7f8a98" stroke-width="0.72" />
+      <line x1="20" y1="366" x2="746" y2="366" stroke="#111111" stroke-width="2.466" />
+      <line x1="20" y1="378" x2="746" y2="378" stroke="#7f8a98" stroke-width="1.19" stroke-dasharray="6 4" />
+      <text x="726" y="392" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="#59616d">GROUND RELATION</text>
+      
+    </g>
+  
+  
+    <g id="phase14-section-roof" data-truth="verified" data-truth-mode="explicit_generated" data-truth-state="direct">
+    <path d="M -221.844 96.64817606270725 L 126.1055 44.64817606270725 L 474.055 96.64817606270725 L 458.055 96.64817606270725 L 126.1055 56.64817606270725 L -205.844 96.64817606270725 Z" fill="#f5f6f7" fill-opacity="0.92" stroke="#3f4752" stroke-opacity="1" stroke-width="1.612" />
+    <path d="M -217.844 96.64817606270725 L 126.1055 44.64817606270725 L 470.055 96.64817606270725" fill="none" stroke="#111111" stroke-opacity="1" stroke-width="2.466" />
+    <path d="M -205.844 96.64817606270725 L 126.1055 56.64817606270725 L 458.055 96.64817606270725" fill="none" stroke="#3f4752" stroke-opacity="1" stroke-width="1.612" />
+    <line x1="126.1055" y1="44.64817606270725" x2="126.1055" y2="54.64817606270725" stroke="#111111" stroke-width="1.19" />
+    <line x1="-207.844" y1="88.64817606270725" x2="460.055" y2="88.64817606270725" stroke="#59616d" stroke-width="0.887" stroke-dasharray="4 4" />
+    <rect x="-217.844" y="66.64817606270725" width="687.899" height="22" fill="#f5f6f7" fill-opacity="0.9" stroke="#3f4752" stroke-width="1.612" data-truth-state="direct" />
+    
+    
+    
+    
+    </g>
+  
+  <g id="phase8-section-datums"><line x1="34" y1="231.32408803135363" x2="732" y2="231.32408803135363" stroke="#3f4752" stroke-width="1.18" stroke-dasharray="10 6" /><line x1="34" y1="96.64817606270725" x2="732" y2="96.64817606270725" stroke="#3f4752" stroke-width="1.18" stroke-dasharray="10 6" />
+      <g class="phase8-section-level-label">
+        <line x1="-18" y1="231.32408803135363" x2="28" y2="231.32408803135363" stroke="#3f4752" stroke-width="1.19" />
+        <rect x="-142" y="220.32408803135363" width="118" height="16" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="-132" y="232.32408803135363" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">Ground Floor +3.20m</text>
+        <rect x="-50" y="289.6620440156768" width="66" height="14" rx="3" ry="3" fill="#ffffff" fill-opacity="0.92" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="-17" y="299.6620440156768" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">Ground Floor</text>
+      </g>
+    
+      <g class="phase8-section-level-label">
+        <line x1="-18" y1="96.64817606270725" x2="28" y2="96.64817606270725" stroke="#3f4752" stroke-width="1.19" />
+        <rect x="-142" y="85.64817606270725" width="118" height="16" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="-132" y="97.64817606270725" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">First Floor +6.40m</text>
+        <rect x="-50" y="154.98613204703042" width="66" height="14" rx="3" ry="3" fill="#ffffff" fill-opacity="0.92" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="-17" y="164.98613204703042" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">First Floor</text>
+      </g>
+    
+    <line x1="-18" y1="366" x2="28" y2="366" stroke="#111111" stroke-width="1.19" />
+    <rect x="-110" y="355" width="86" height="16" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#7f8a98" stroke-width="0.72" />
+    <text x="-100" y="367" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
+  </g>
+  <g id="phase14-section-slabs">
+        <g id="phase14-section-slab-level-af569b1a822f" data-truth="verified" data-truth-state="direct">
+          <rect x="34" y="231.324" width="698" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.612" />
+          <line x1="34" y1="231.324" x2="732" y2="231.324" stroke="#111111" stroke-width="2.466" />
+          <line x1="34" y1="231.324" x2="34" y2="238.324" stroke="#111111" stroke-width="1.19" />
+          <line x1="732" y1="231.324" x2="732" y2="238.324" stroke="#111111" stroke-width="1.19" />
+          <line x1="40" y1="234.824" x2="726" y2="234.824" stroke="#59616d" stroke-width="0.887" stroke-dasharray="5 3" />
+          <line x1="34" y1="238.324" x2="732" y2="238.324" stroke="#59616d" stroke-width="0.887" />
+        </g>
+        <g id="phase14-section-slab-level-ab5456377e33" data-truth="verified" data-truth-state="direct">
+          <rect x="34" y="96.648" width="698" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.612" />
+          <line x1="34" y1="96.648" x2="732" y2="96.648" stroke="#111111" stroke-width="2.466" />
+          <line x1="34" y1="96.648" x2="34" y2="103.648" stroke="#111111" stroke-width="1.19" />
+          <line x1="732" y1="96.648" x2="732" y2="103.648" stroke="#111111" stroke-width="1.19" />
+          <line x1="40" y1="100.148" x2="726" y2="100.148" stroke="#59616d" stroke-width="0.887" stroke-dasharray="5 3" />
+          <line x1="34" y1="103.648" x2="732" y2="103.648" stroke="#59616d" stroke-width="0.887" />
+        </g>
+        <g id="phase14-section-slab-level-ab5456377e33" data-truth="verified" data-truth-state="direct">
+          <rect x="34" y="96.648" width="698" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.612" />
+          <line x1="34" y1="96.648" x2="732" y2="96.648" stroke="#111111" stroke-width="2.466" />
+          <line x1="34" y1="96.648" x2="34" y2="103.648" stroke="#111111" stroke-width="1.19" />
+          <line x1="732" y1="96.648" x2="732" y2="103.648" stroke="#111111" stroke-width="1.19" />
+          <line x1="40" y1="100.148" x2="726" y2="100.148" stroke="#59616d" stroke-width="0.887" stroke-dasharray="5 3" />
+          <line x1="34" y1="103.648" x2="732" y2="103.648" stroke="#59616d" stroke-width="0.887" />
+        </g>
+        <g id="phase14-section-slab-level-af569b1a822f" data-truth="verified" data-truth-state="direct">
+          <rect x="34" y="231.324" width="698" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.612" />
+          <line x1="34" y1="231.324" x2="732" y2="231.324" stroke="#111111" stroke-width="2.466" />
+          <line x1="34" y1="231.324" x2="34" y2="238.324" stroke="#111111" stroke-width="1.19" />
+          <line x1="732" y1="231.324" x2="732" y2="238.324" stroke="#111111" stroke-width="1.19" />
+          <line x1="40" y1="234.824" x2="726" y2="234.824" stroke="#59616d" stroke-width="0.887" stroke-dasharray="5 3" />
+          <line x1="34" y1="238.324" x2="732" y2="238.324" stroke="#59616d" stroke-width="0.887" />
+        </g></g>
+  <g id="phase8-section-cut-rooms">
+        <g class="phase8-cut-room">
+          <rect x="39.05" y="231.324" width="365.014" height="134.676" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="39.05" y1="366" x2="404.064" y2="366" stroke="#111111" stroke-width="2.1" />
+          <line x1="39.05" y1="231.324" x2="39.05" y2="366" stroke="#111111" stroke-width="2.1" />
+          <text x="221.55700000000002" y="294.66200000000003" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">PLANT AND STORE</text>
+          <text x="221.55700000000002" y="309.66200000000003" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">13.3 M2</text>
+        </g>
+      
+        <g class="phase8-cut-room">
+          <rect x="404.064" y="231.324" width="322.885" height="134.676" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="404.064" y1="366" x2="726.9490000000001" y2="366" stroke="#111111" stroke-width="2.1" />
+          <line x1="404.064" y1="231.324" x2="404.064" y2="366" stroke="#111111" stroke-width="2.1" />
+          <text x="565.5065" y="294.66200000000003" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">GROUND CIRCULATION</text>
+          <text x="565.5065" y="309.66200000000003" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">26.6 M2</text>
+        </g>
+      
+        <g class="phase8-cut-room">
+          <rect x="376.245" y="96.648" width="350.704" height="134.676" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="376.245" y1="231.32399999999998" x2="726.9490000000001" y2="231.32399999999998" stroke="#111111" stroke-width="2.1" />
+          <line x1="376.245" y1="96.648" x2="376.245" y2="231.32399999999998" stroke="#111111" stroke-width="2.1" />
+          <text x="551.597" y="159.986" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">FLEXIBLE MEETING ROOM</text>
+          <text x="551.597" y="174.986" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">28.8 M2</text>
+        </g>
+      
+        <g class="phase8-cut-room">
+          <rect x="39.05" y="96.648" width="337.195" height="134.676" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="39.05" y1="231.32399999999998" x2="376.245" y2="231.32399999999998" stroke="#111111" stroke-width="2.1" />
+          <line x1="39.05" y1="96.648" x2="39.05" y2="231.32399999999998" stroke="#111111" stroke-width="2.1" />
+          <text x="207.64749999999998" y="159.986" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">PUBLIC READING ROOM</text>
+          <text x="207.64749999999998" y="174.986" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">80.0 M2</text>
+        </g>
+      </g>
+  <g id="phase13-section-cut-walls">
+        <g id="phase13-section-cut-wall-wall-40eb54603a23" data-truth-kind="cut_face">
+          <rect x="34" y="231.324" width="10.101" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="34" y="231.324" width="10.101" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="35.5" y="232.824" width="7.101000000000001" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="36.0202" y1="231.324" x2="36.0202" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="42.0808" y1="231.324" x2="42.0808" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-456e04281d6c" data-truth-kind="cut_face">
+          <rect x="400.064" y="231.324" width="8" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="400.064" y="231.324" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="401.564" y="232.824" width="5" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="401.66400000000004" y1="231.324" x2="401.66400000000004" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="406.464" y1="231.324" x2="406.464" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-92e33a52b2df" data-truth-kind="cut_face">
+          <rect x="721.9" y="231.324" width="10.101" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="721.9" y="231.324" width="10.101" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="723.4" y="232.824" width="7.101000000000001" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="723.9202" y1="231.324" x2="723.9202" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="729.9807999999999" y1="231.324" x2="729.9807999999999" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-f42a662a8a56" data-truth-kind="cut_face">
+          <rect x="400.064" y="231.324" width="8" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="400.064" y="231.324" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="401.564" y="232.824" width="5" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="401.66400000000004" y1="231.324" x2="401.66400000000004" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="406.464" y1="231.324" x2="406.464" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-2c097a522101" data-truth-kind="cut_face">
+          <rect x="372.245" y="96.648" width="8" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="372.245" y="96.648" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="373.745" y="98.148" width="5" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="373.845" y1="96.648" x2="373.845" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="378.645" y1="96.648" x2="378.645" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-a5238584ef9e" data-truth-kind="cut_face">
+          <rect x="721.9" y="96.648" width="10.101" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="721.9" y="96.648" width="10.101" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="723.4" y="98.148" width="7.101000000000001" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="723.9202" y1="96.648" x2="723.9202" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="729.9807999999999" y1="96.648" x2="729.9807999999999" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-be66124bf79e" data-truth-kind="cut_face">
+          <rect x="372.245" y="96.648" width="8" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="372.245" y="96.648" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="373.745" y="98.148" width="5" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="373.845" y1="96.648" x2="373.845" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="378.645" y1="96.648" x2="378.645" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-f72d9ab57cfd" data-truth-kind="cut_face">
+          <rect x="34" y="96.648" width="10.101" height="134.676" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0085200000000003" />
+          <rect x="34" y="96.648" width="10.101" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="35.5" y="98.148" width="7.101000000000001" height="131.676" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="36.0202" y1="96.648" x2="36.0202" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="42.0808" y1="96.648" x2="42.0808" y2="231.32399999999998" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g></g>
+  <g id="phase13-section-cut-openings"></g>
+  <g id="phase8-section-stair-cuts">
+        <g id="phase14-section-stair-stair-1474d652b7ff" data-truth-kind="cut_face">
+          <rect x="121.581" y="238.058" width="176.762" height="176.762" fill="#efefef" fill-opacity="1" stroke="#333" stroke-width="2.9592" />
+          <line x1="125.581" y1="255.7342" x2="294.343" y2="255.7342" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="273.4104" x2="294.343" y2="273.4104" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="291.0866" x2="294.343" y2="291.0866" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="308.76279999999997" x2="294.343" y2="308.76279999999997" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="326.43899999999996" x2="294.343" y2="326.43899999999996" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="344.1152" x2="294.343" y2="344.1152" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="361.7914" x2="294.343" y2="361.7914" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="379.4676" x2="294.343" y2="379.4676" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="397.1438" x2="294.343" y2="397.1438" stroke="#1f2937" stroke-width="1.1974500000000001" /><line x1="125.581" y1="414.82" x2="294.343" y2="414.82" stroke="#1f2937" stroke-width="1.1974500000000001" />
+          <line x1="134.0191" y1="238.058" x2="134.0191" y2="255.7342" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="150.8953" y1="255.7342" x2="150.8953" y2="273.4104" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="167.7715" y1="273.4104" x2="167.7715" y2="291.0866" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="184.6477" y1="291.0866" x2="184.6477" y2="308.76279999999997" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="201.52390000000003" y1="308.76279999999997" x2="201.52390000000003" y2="326.43899999999996" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="218.4001" y1="326.43899999999996" x2="218.4001" y2="344.1152" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="235.2763" y1="344.1152" x2="235.2763" y2="361.7914" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="252.1525" y1="361.7914" x2="252.1525" y2="379.4676" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="269.0287" y1="379.4676" x2="269.0287" y2="397.1438" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" /><line x1="285.9049" y1="397.1438" x2="285.9049" y2="414.82" stroke="#1f2937" stroke-width="0.84265" stroke-opacity="0.8" />
+          <line x1="129.58100000000002" y1="404.82" x2="282.343" y2="250.058" stroke="#111" stroke-width="1.19" marker-end="url(#phase14-stair-arrow)" />
+          <rect x="178.962" y="242.058" width="62" height="12" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#9ca3af" stroke-width="0.7" />
+          <text x="209.962" y="251.058" font-size="8" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" fill="#111">DIRECT CUT</text>
+          <text x="209.962" y="265.058" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" fill="#0f172a">STAIR</text>
+          <text x="209.962" y="408.82" font-size="9" font-family="Arial, sans-serif" text-anchor="middle" fill="#0f172a">UP</text>
+        </g></g>
+  
+    <g id="phase8-section-dimensions">
+      <line x1="34.00" y1="96.65" x2="34.00" y2="16.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="732.00" y1="96.65" x2="732.00" y2="16.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="34.00" y1="16.00" x2="732.00" y2="16.00" stroke="#111111" stroke-width="1"/>
+      <line x1="34.00" y1="13.00" x2="34.00" y2="19.00" stroke="#111111" stroke-width="1"/>
+      <line x1="732.00" y1="13.00" x2="732.00" y2="19.00" stroke="#111111" stroke-width="1"/>
+      <text x="383.00" y="10.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">16.6 m</text>
+
+      <line x1="732.00" y1="96.65" x2="750.00" y2="96.65" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="732.00" y1="366.00" x2="750.00" y2="366.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="750.00" y1="96.65" x2="750.00" y2="366.00" stroke="#111111" stroke-width="1"/>
+      <line x1="747.00" y1="96.65" x2="753.00" y2="96.65" stroke="#111111" stroke-width="1"/>
+      <line x1="747.00" y1="366.00" x2="753.00" y2="366.00" stroke="#111111" stroke-width="1"/>
+      <text x="764.00" y="231.32" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 764.00 231.32)" text-anchor="middle">6.4 m</text>
+    </g>
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="639.83" y1="366.00" x2="724.00" y2="366.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="639.83" y1="362.00" x2="639.83" y2="370.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="681.91" y1="362.00" x2="681.91" y2="370.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="724.00" y1="362.00" x2="724.00" y2="370.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="681.91" y="380.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">2 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+<g data-panel-id="section_BB" data-source-panel-asset-id="asset-svg-1co6ox5" data-source-model-hash="e44bb2ac9522601d">
+  <rect x="532" y="376" width="289" height="96" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="536" y="381.8" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">Section B-B</text>
+  <text x="817" y="381.8" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">1:100 | e44bb2ac</text>
+  <svg x="536" y="390" width="281" height="72" viewBox="0 0 766 400" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">
+  <rect width="766" height="400" fill="#ffffff" />
+  
+      <marker id="phase14-stair-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L6,3 z" fill="#111" />
+      </marker>
+    
+  
+  
+    <g id="phase8-section-foundation" data-truth="verified" data-truth-mode="explicit_ground_primitives" data-truth-state="direct">
+      <rect x="137.909972299169" y="366" width="490.180055401662" height="42" fill="#ffffff" fill-opacity="1" />
+      <rect x="133.909972299169" y="378" width="498.180055401662" height="18" fill="#f5f6f7" fill-opacity="0.24" />
+      
+      <rect x="612.572" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="612.572" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="459.144" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="459.144" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="459.144" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="612.572" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="153.428" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="612.572" y="348" width="8" height="18" fill="#f5f6f7" fill-opacity="1" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="441.79" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="441.79" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="459.144" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="459.144" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="459.144" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="441.79" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="-17.354" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" /><rect x="441.79" y="350" width="8" height="34" fill="#2b3138" fill-opacity="0.92" stroke="#111111" stroke-width="1.609" data-truth-state="direct" />
+      <rect x="-17.354" y="372" width="459.144" height="12" fill="#f5f6f7" stroke="#59616d" stroke-width="1.188" data-truth-state="direct" />
+      
+      
+      <line x1="441.79" y1="356" x2="449.79" y2="356" stroke="#3f4752" stroke-width="1.188" data-truth-state="direct" /><line x1="-17.354" y1="356" x2="-9.354" y2="356" stroke="#3f4752" stroke-width="1.188" data-truth-state="direct" /><line x1="-17.354" y1="356" x2="-9.354" y2="356" stroke="#3f4752" stroke-width="1.188" data-truth-state="direct" /><line x1="441.79" y1="356" x2="449.79" y2="356" stroke="#3f4752" stroke-width="1.188" data-truth-state="direct" />
+      
+      <line x1="153.428" y1="366" x2="612.572" y2="366" stroke="#111111" stroke-width="2.462" data-truth-state="direct" />
+      <path d="M 133.909972299169 384 L 141.909972299169 388 L 149.909972299169 384 L 157.909972299169 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 179.19906824477465 387 L 187.19906824477465 391 L 195.19906824477465 387 L 203.19906824477465 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 224.48816419038027 384 L 232.48816419038027 388 L 240.48816419038027 384 L 248.48816419038027 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 269.7772601359859 387 L 277.7772601359859 391 L 285.7772601359859 387 L 293.7772601359859 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 315.06635608159155 384 L 323.06635608159155 388 L 331.06635608159155 384 L 339.06635608159155 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 360.3554520271972 387 L 368.3554520271972 391 L 376.3554520271972 387 L 384.3554520271972 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 405.6445479728028 384 L 413.6445479728028 388 L 421.6445479728028 384 L 429.6445479728028 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 450.93364391840845 387 L 458.93364391840845 391 L 466.93364391840845 387 L 474.93364391840845 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 496.2227398640141 384 L 504.2227398640141 388 L 512.2227398640141 384 L 520.2227398640141 388" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 541.5118358096197 387 L 549.5118358096197 391 L 557.5118358096197 387 L 565.5118358096197 391" fill="none" stroke="#7f8a98" stroke-width="0.72" /><path d="M 586.8009317552253 384 L 594.8009317552253 388 L 602.8009317552253 384 L 610.8009317552253 388" fill="none" stroke="#7f8a98" stroke-width="0.72" />
+      <line x1="133.909972299169" y1="366" x2="632.090027700831" y2="366" stroke="#111111" stroke-width="2.462" />
+      <line x1="133.909972299169" y1="378" x2="632.090027700831" y2="378" stroke="#7f8a98" stroke-width="1.188" stroke-dasharray="6 4" />
+      <text x="612.090027700831" y="392" font-size="8" font-family="Arial, sans-serif" text-anchor="end" fill="#59616d">GROUND RELATION</text>
+      
+    </g>
+  
+  
+    <g id="phase14-section-roof" data-truth="verified" data-truth-mode="explicit_generated" data-truth-state="direct">
+    <path d="M -21.354 71.70637119113576 L 212.21800000000002 19.70637119113576 L 445.79 71.70637119113576 L 429.79 71.70637119113576 L 212.21800000000002 31.70637119113576 L -5.353999999999999 71.70637119113576 Z" fill="#f5f6f7" fill-opacity="0.92" stroke="#3f4752" stroke-opacity="1" stroke-width="1.609" />
+    <path d="M -17.354 71.70637119113576 L 212.21800000000002 19.70637119113576 L 441.79 71.70637119113576" fill="none" stroke="#111111" stroke-opacity="1" stroke-width="2.462" />
+    <path d="M -5.353999999999999 71.70637119113576 L 212.21800000000002 31.70637119113576 L 429.79 71.70637119113576" fill="none" stroke="#3f4752" stroke-opacity="1" stroke-width="1.609" />
+    <line x1="212.21800000000002" y1="19.70637119113576" x2="212.21800000000002" y2="29.70637119113576" stroke="#111111" stroke-width="1.188" />
+    <line x1="-7.353999999999999" y1="63.70637119113576" x2="431.79" y2="63.70637119113576" stroke="#59616d" stroke-width="0.886" stroke-dasharray="4 4" />
+    <rect x="-17.354" y="41.70637119113576" width="459.144" height="22" fill="#f5f6f7" fill-opacity="0.9" stroke="#3f4752" stroke-width="1.609" data-truth-state="direct" />
+    
+    
+    
+    
+    </g>
+  
+  <g id="phase8-section-datums"><line x1="147.909972299169" y1="218.85318559556788" x2="618.090027700831" y2="218.85318559556788" stroke="#3f4752" stroke-width="1.18" stroke-dasharray="10 6" /><line x1="147.909972299169" y1="71.70637119113576" x2="618.090027700831" y2="71.70637119113576" stroke="#3f4752" stroke-width="1.18" stroke-dasharray="10 6" />
+      <g class="phase8-section-level-label">
+        <line x1="95.909972299169" y1="218.85318559556788" x2="141.909972299169" y2="218.85318559556788" stroke="#3f4752" stroke-width="1.188" />
+        <rect x="-28.090027700831" y="207.85318559556788" width="118" height="16" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="-18.090027700831" y="219.85318559556788" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">Ground Floor +3.20m</text>
+        <rect x="63.909972299169" y="283.42659279778394" width="66" height="14" rx="3" ry="3" fill="#ffffff" fill-opacity="0.92" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="96.909972299169" y="293.42659279778394" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">Ground Floor</text>
+      </g>
+    
+      <g class="phase8-section-level-label">
+        <line x1="95.909972299169" y1="71.70637119113576" x2="141.909972299169" y2="71.70637119113576" stroke="#3f4752" stroke-width="1.188" />
+        <rect x="-28.090027700831" y="60.70637119113576" width="118" height="16" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="-18.090027700831" y="72.70637119113576" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">First Floor +6.40m</text>
+        <rect x="63.909972299169" y="136.2797783933518" width="66" height="14" rx="3" ry="3" fill="#ffffff" fill-opacity="0.92" stroke="#7f8a98" stroke-width="0.72" />
+        <text x="96.909972299169" y="146.2797783933518" font-size="8.5" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">First Floor</text>
+      </g>
+    
+    <line x1="95.909972299169" y1="366" x2="141.909972299169" y2="366" stroke="#111111" stroke-width="1.188" />
+    <rect x="3.9099722991689987" y="355" width="86" height="16" rx="3" ry="3" fill="#ffffff" fill-opacity="0.94" stroke="#7f8a98" stroke-width="0.72" />
+    <text x="13.909972299168999" y="367" font-size="9" font-family="Arial, sans-serif" font-weight="700" text-anchor="start" class="sheet-critical-label" data-text-role="critical">FFL +0.00m</text>
+  </g>
+  <g id="phase14-section-slabs">
+        <g id="phase14-section-slab-level-af569b1a822f" data-truth="verified" data-truth-state="direct">
+          <rect x="147.909972299169" y="218.853" width="470.18" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.609" />
+          <line x1="147.909972299169" y1="218.853" x2="618.089972299169" y2="218.853" stroke="#111111" stroke-width="2.462" />
+          <line x1="147.909972299169" y1="218.853" x2="147.909972299169" y2="225.853" stroke="#111111" stroke-width="1.188" />
+          <line x1="618.089972299169" y1="218.853" x2="618.089972299169" y2="225.853" stroke="#111111" stroke-width="1.188" />
+          <line x1="153.909972299169" y1="222.353" x2="612.089972299169" y2="222.353" stroke="#59616d" stroke-width="0.886" stroke-dasharray="5 3" />
+          <line x1="147.909972299169" y1="225.853" x2="618.089972299169" y2="225.853" stroke="#59616d" stroke-width="0.886" />
+        </g>
+        <g id="phase14-section-slab-level-ab5456377e33" data-truth="verified" data-truth-state="direct">
+          <rect x="147.909972299169" y="71.706" width="470.18" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.609" />
+          <line x1="147.909972299169" y1="71.706" x2="618.089972299169" y2="71.706" stroke="#111111" stroke-width="2.462" />
+          <line x1="147.909972299169" y1="71.706" x2="147.909972299169" y2="78.706" stroke="#111111" stroke-width="1.188" />
+          <line x1="618.089972299169" y1="71.706" x2="618.089972299169" y2="78.706" stroke="#111111" stroke-width="1.188" />
+          <line x1="153.909972299169" y1="75.206" x2="612.089972299169" y2="75.206" stroke="#59616d" stroke-width="0.886" stroke-dasharray="5 3" />
+          <line x1="147.909972299169" y1="78.706" x2="618.089972299169" y2="78.706" stroke="#59616d" stroke-width="0.886" />
+        </g>
+        <g id="phase14-section-slab-level-ab5456377e33" data-truth="verified" data-truth-state="direct">
+          <rect x="147.909972299169" y="71.706" width="470.18" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.609" />
+          <line x1="147.909972299169" y1="71.706" x2="618.089972299169" y2="71.706" stroke="#111111" stroke-width="2.462" />
+          <line x1="147.909972299169" y1="71.706" x2="147.909972299169" y2="78.706" stroke="#111111" stroke-width="1.188" />
+          <line x1="618.089972299169" y1="71.706" x2="618.089972299169" y2="78.706" stroke="#111111" stroke-width="1.188" />
+          <line x1="153.909972299169" y1="75.206" x2="612.089972299169" y2="75.206" stroke="#59616d" stroke-width="0.886" stroke-dasharray="5 3" />
+          <line x1="147.909972299169" y1="78.706" x2="618.089972299169" y2="78.706" stroke="#59616d" stroke-width="0.886" />
+        </g>
+        <g id="phase14-section-slab-level-af569b1a822f" data-truth="verified" data-truth-state="direct">
+          <rect x="147.909972299169" y="218.853" width="470.18" height="7" fill="#f5f6f7" fill-opacity="0.88" stroke="#111111" stroke-width="1.609" />
+          <line x1="147.909972299169" y1="218.853" x2="618.089972299169" y2="218.853" stroke="#111111" stroke-width="2.462" />
+          <line x1="147.909972299169" y1="218.853" x2="147.909972299169" y2="225.853" stroke="#111111" stroke-width="1.188" />
+          <line x1="618.089972299169" y1="218.853" x2="618.089972299169" y2="225.853" stroke="#111111" stroke-width="1.188" />
+          <line x1="153.909972299169" y1="222.353" x2="612.089972299169" y2="222.353" stroke="#59616d" stroke-width="0.886" stroke-dasharray="5 3" />
+          <line x1="147.909972299169" y1="225.853" x2="618.089972299169" y2="225.853" stroke="#59616d" stroke-width="0.886" />
+        </g></g>
+  <g id="phase8-section-cut-rooms">
+        <g class="phase8-cut-room">
+          <rect x="153.428" y="218.853" width="299.444" height="147.147" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="153.428" y1="366" x2="452.872" y2="366" stroke="#111111" stroke-width="2.1" />
+          <line x1="153.428" y1="218.853" x2="153.428" y2="366" stroke="#111111" stroke-width="2.1" />
+          <text x="303.15" y="288.42650000000003" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">CAFE AND WELCOME</text>
+          <text x="303.15" y="303.42650000000003" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">50.0 M2</text>
+        </g>
+      
+        <g class="phase8-cut-room">
+          <rect x="452.872" y="218.853" width="159.7" height="147.147" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="452.872" y1="366" x2="612.572" y2="366" stroke="#111111" stroke-width="2.1" />
+          <line x1="452.872" y1="218.853" x2="452.872" y2="366" stroke="#111111" stroke-width="2.1" />
+          <text x="532.722" y="288.42650000000003" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">GROUND CIRCULATION</text>
+          <text x="532.722" y="303.42650000000003" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">26.6 M2</text>
+        </g>
+      
+        <g class="phase8-cut-room">
+          <rect x="153.428" y="71.706" width="300.225" height="147.147" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="153.428" y1="218.853" x2="453.653" y2="218.853" stroke="#111111" stroke-width="2.1" />
+          <line x1="153.428" y1="71.706" x2="153.428" y2="218.853" stroke="#111111" stroke-width="2.1" />
+          <text x="303.5405" y="141.27949999999998" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">QUIET STUDY</text>
+          <text x="303.5405" y="156.27949999999998" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">54.4 M2</text>
+        </g>
+      
+        <g class="phase8-cut-room">
+          <rect x="453.653" y="71.706" width="158.919" height="147.147" fill="#ffffff" stroke="#111111" stroke-width="1.6" />
+          <line x1="453.653" y1="218.853" x2="612.572" y2="218.853" stroke="#111111" stroke-width="2.1" />
+          <line x1="453.653" y1="71.706" x2="453.653" y2="218.853" stroke="#111111" stroke-width="2.1" />
+          <text x="533.1125000000001" y="141.27949999999998" font-size="12" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">FLEXIBLE MEETING ROOM</text>
+          <text x="533.1125000000001" y="156.27949999999998" font-size="10" font-family="Arial, sans-serif" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">28.8 M2</text>
+        </g>
+      </g>
+  <g id="phase13-section-cut-walls">
+        <g id="phase13-section-cut-wall-wall-49dc8f6bb5c7" data-truth-kind="cut_face">
+          <rect x="448.872" y="218.853" width="8" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="448.872" y="218.853" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="450.372" y="220.353" width="5" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="450.47200000000004" y1="218.853" x2="450.47200000000004" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="455.272" y1="218.853" x2="455.272" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-514987150682" data-truth-kind="cut_face">
+          <rect x="607.054" y="218.853" width="11.036" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="607.054" y="218.853" width="11.036" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="608.554" y="220.353" width="8.036" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="609.2611999999999" y1="218.853" x2="609.2611999999999" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="615.8828" y1="218.853" x2="615.8828" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-60bbf08f9b29" data-truth-kind="cut_face">
+          <rect x="448.872" y="218.853" width="8" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="448.872" y="218.853" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="450.372" y="220.353" width="5" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="450.47200000000004" y1="218.853" x2="450.47200000000004" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="455.272" y1="218.853" x2="455.272" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-772c2679456d" data-truth-kind="cut_face">
+          <rect x="147.91" y="218.853" width="11.036" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="147.91" y="218.853" width="11.036" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="149.41" y="220.353" width="8.036" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="150.1172" y1="218.853" x2="150.1172" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="156.7388" y1="218.853" x2="156.7388" y2="366" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-383fca510fd8" data-truth-kind="cut_face">
+          <rect x="449.653" y="71.706" width="8" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="449.653" y="71.706" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="451.153" y="73.206" width="5" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="451.25300000000004" y1="71.706" x2="451.25300000000004" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="456.053" y1="71.706" x2="456.053" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-4ed2fe635191" data-truth-kind="cut_face">
+          <rect x="449.653" y="71.706" width="8" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="449.653" y="71.706" width="8" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="451.153" y="73.206" width="5" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="451.25300000000004" y1="71.706" x2="451.25300000000004" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="456.053" y1="71.706" x2="456.053" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-93b5f83fd9fc" data-truth-kind="cut_face">
+          <rect x="147.91" y="71.706" width="11.036" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="147.91" y="71.706" width="11.036" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="149.41" y="73.206" width="8.036" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="150.1172" y1="71.706" x2="150.1172" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="156.7388" y1="71.706" x2="156.7388" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g>
+        <g id="phase13-section-cut-wall-wall-9938c4e18170" data-truth-kind="cut_face">
+          <rect x="607.054" y="71.706" width="11.036" height="147.147" fill="#151515" fill-opacity="0.96" stroke="#111" stroke-width="3.0036400000000003" />
+          <rect x="607.054" y="71.706" width="11.036" height="6" fill="#0b0b0b" fill-opacity="0.55" />
+          <rect x="608.554" y="73.206" width="8.036" height="144.147" fill="none" stroke="#f5f2ec" stroke-width="0.8627999999999999" stroke-opacity="0.54" />
+          <line x1="609.2611999999999" y1="71.706" x2="609.2611999999999" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          <line x1="615.8828" y1="71.706" x2="615.8828" y2="218.853" stroke="#f4f1eb" stroke-width="0.72" stroke-opacity="0.46" />
+          
+        </g></g>
+  <g id="phase13-section-cut-openings">
+        <g id="phase13-section-cut-opening-opening-4cbc8e1e8f38" data-truth-kind="cut_profile">
+          <rect x="612.572" y="264.837" width="10" height="62.078" fill="#ffffff" stroke="#475569" stroke-width="1.188" />
+          
+          
+          <line x1="612.572" y1="264.837" x2="622.572" y2="264.837" stroke="#111" stroke-width="2.5851" />
+          <line x1="612.572" y1="326.91499999999996" x2="622.572" y2="326.91499999999996" stroke="#111" stroke-width="2.5851" />
+          <line x1="614.572" y1="264.837" x2="614.572" y2="326.91499999999996" stroke="#64748b" stroke-width="0.886" stroke-opacity="0.8" />
+          <line x1="620.572" y1="264.837" x2="620.572" y2="326.91499999999996" stroke="#64748b" stroke-width="0.886" stroke-opacity="0.8" />
+          <line x1="614.572" y1="295.876" x2="620.572" y2="295.876" stroke="#94a3b8" stroke-width="0.886" stroke-opacity="0.88" />
+          
+        </g></g>
+  <g id="phase8-section-stair-cuts"></g>
+  
+    <g id="phase8-section-dimensions">
+      <line x1="147.91" y1="71.71" x2="147.91" y2="16.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="618.09" y1="71.71" x2="618.09" y2="16.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="147.91" y1="16.00" x2="618.09" y2="16.00" stroke="#111111" stroke-width="1"/>
+      <line x1="147.91" y1="13.00" x2="147.91" y2="19.00" stroke="#111111" stroke-width="1"/>
+      <line x1="618.09" y1="13.00" x2="618.09" y2="19.00" stroke="#111111" stroke-width="1"/>
+      <text x="383.00" y="10.00" font-size="10" font-family="Arial, sans-serif" font-weight="700" text-anchor="middle">10.2 m</text>
+
+      <line x1="618.09" y1="71.71" x2="750.00" y2="71.71" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="618.09" y1="366.00" x2="750.00" y2="366.00" stroke="#3f4752" stroke-width="0.9"/>
+      <line x1="750.00" y1="71.71" x2="750.00" y2="366.00" stroke="#111111" stroke-width="1"/>
+      <line x1="747.00" y1="71.71" x2="753.00" y2="71.71" stroke="#111111" stroke-width="1"/>
+      <line x1="747.00" y1="366.00" x2="753.00" y2="366.00" stroke="#111111" stroke-width="1"/>
+      <text x="764.00" y="218.85" font-size="10" font-family="Arial, sans-serif" font-weight="700" transform="rotate(90 764.00 218.85)" text-anchor="middle">6.4 m</text>
+    </g>
+  
+  
+  
+      <g id="blueprint-scale-bar">
+        <line x1="632.03" y1="366.00" x2="724.00" y2="366.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="632.03" y1="362.00" x2="632.03" y2="370.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="678.02" y1="362.00" x2="678.02" y2="370.00" stroke="#111111" stroke-width="1.6"/>
+        <line x1="724.00" y1="362.00" x2="724.00" y2="370.00" stroke="#111111" stroke-width="1.6"/>
+        <text x="678.02" y="380.00" font-size="9" font-family="Arial, sans-serif" text-anchor="middle">2 m</text>
+      </g>
+    
+  
+</svg>
+</g>
+  <g data-panel-id="title_block">
+    <rect x="18" y="486" width="803" height="88" fill="#142033"/>
+    <text x="30" y="508" font-size="12" font-family="Arial, sans-serif" font-weight="700" fill="#fffdf7">RIBA Stage 2 ProjectGraph Vertical Slice</text>
+    <text x="30" y="524" font-size="6.5" font-family="Arial, sans-serif" fill="#fffdf7">Drawing A1-01 / Revision P01 / Status pending</text>
+    <text x="30" y="540" font-size="5.4" font-family="Arial, sans-serif" fill="#d7e0e8">All visible panels are deterministic SVG projections or context panels from compiled ProjectGraph geometry. No independent 2D/3D prompts are used as geometry authority.</text>
+    <text x="30" y="556" font-size="4.6" font-family="Arial, sans-serif" fill="#d7e0e8">AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.</text>
+    <text x="812" y="556" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#d7e0e8">source_model_hash e44bb2ac9522601d</text>
+  </g>
+</svg>

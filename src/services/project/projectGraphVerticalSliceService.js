@@ -15,6 +15,24 @@ import { buildCompiledProjectTechnicalPanels } from "../canonical/compiledProjec
 import { compileProject } from "../compiler/index.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
+import { computeSunPath } from "../climate/sunPath.js";
+import { listSourceDocumentsForParts } from "../regulation/sourceRegistry.js";
+import {
+  resolveJurisdiction,
+  getApplicablePartsFor,
+  jurisdictionLimitations,
+} from "../regulation/jurisdictionRouter.js";
+import {
+  runRegulationRules,
+  summarizeRuleResults,
+} from "../regulation/runRules.js";
+import { buildLocalStylePackV2 } from "../style/localStylePack.js";
+import { generateRectangularOptions } from "../design/optionGenerator.js";
+import { scoreOption, selectBestOption } from "../design/optionScorer.js";
+import { runWithRepair } from "../design/repairLoop.js";
+import { detectConflicts } from "../design/constraintPriority.js";
+import { enrichSiteContext } from "../context/contextAggregator.js";
+import { decideSheetSplit } from "../sheet/sheetSplitter.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -22,6 +40,19 @@ export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
 
 const PROFESSIONAL_REVIEW_DISCLAIMER =
   "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.";
+const A1_SHEET_LAYOUT_VERSION = "projectgraph-a1-real-panels-v1";
+const A1_SHEET_SIZE_MM = { width: 841, height: 594 };
+const REQUIRED_A1_PANEL_TYPES = [
+  "floor_plan_ground",
+  "elevation_north",
+  "elevation_south",
+  "elevation_east",
+  "elevation_west",
+  "section_AA",
+  "section_BB",
+  "site_context",
+  "axonometric_3d",
+];
 
 function cloneData(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -66,6 +97,26 @@ function escapeXml(value) {
     .replace(/'/g, "&apos;");
 }
 
+export const KNOWN_BUILDING_TYPES = Object.freeze([
+  "dwelling",
+  "multi_residential",
+  "mixed_use",
+  "community",
+  "office_studio",
+  "education_studio",
+]);
+
+const DWELLING_SYNONYMS = [
+  "detached-house",
+  "semi-detached-house",
+  "terraced-house",
+  "villa",
+  "cottage",
+  "dwelling",
+  "residential",
+  "house",
+];
+
 function normalizeBuildingType(input = {}) {
   const raw = String(
     input.building_type ||
@@ -80,25 +131,56 @@ function normalizeBuildingType(input = {}) {
     .toLowerCase()
     .replace(/_/g, "-");
 
-  if (
-    [
-      "detached-house",
-      "semi-detached-house",
-      "terraced-house",
-      "villa",
-      "cottage",
-      "dwelling",
-      "residential",
-      "house",
-    ].includes(raw)
-  ) {
+  if (DWELLING_SYNONYMS.includes(raw)) {
     return "dwelling";
-  }
-  if (raw.includes("community") || raw.includes("library")) {
-    return "community";
   }
   if (raw.includes("mixed")) {
     return "mixed_use";
+  }
+  if (
+    raw.startsWith("multi") &&
+    (raw.includes("residen") ||
+      raw.includes("dwell") ||
+      raw.includes("family") ||
+      raw.includes("unit"))
+  ) {
+    return "multi_residential";
+  }
+  if (
+    raw.includes("apartment") ||
+    raw.includes("flats") ||
+    raw === "block-of-flats" ||
+    raw === "tenement"
+  ) {
+    return "multi_residential";
+  }
+  if (
+    raw.includes("community") ||
+    raw.includes("library") ||
+    raw.includes("hall") ||
+    raw === "civic"
+  ) {
+    return "community";
+  }
+  if (
+    raw.includes("education") ||
+    raw.includes("school") ||
+    raw.includes("workshop") ||
+    raw.includes("learn") ||
+    raw.includes("classroom") ||
+    raw === "education-studio" ||
+    raw === "education_studio"
+  ) {
+    return "education_studio";
+  }
+  if (
+    raw.includes("office") ||
+    raw.includes("studio") ||
+    raw.includes("workplace") ||
+    raw === "co-working" ||
+    raw === "coworking"
+  ) {
+    return "office_studio";
   }
   return raw || "other";
 }
@@ -272,13 +354,8 @@ function normalizeInputProgramSpaces(programSpaces = [], brief) {
   });
 }
 
-function buildTemplateProgramSpaces(brief) {
-  const target = Number(brief.target_gia_m2 || 180);
-  const upperLevel = Math.min(
-    1,
-    Math.max(0, Number(brief.target_storeys || 1) - 1),
-  );
-  const communityTemplate = [
+function communityProgrammeTemplate(upperLevel) {
+  return [
     [
       "Cafe and welcome",
       "street-facing public arrival and cafe",
@@ -337,7 +414,10 @@ function buildTemplateProgramSpaces(brief) {
       "medium",
     ],
   ];
-  const dwellingTemplate = [
+}
+
+function dwellingProgrammeTemplate(upperLevel) {
+  return [
     [
       "Entrance hall",
       "arrival and vertical circulation",
@@ -391,10 +471,354 @@ function buildTemplateProgramSpaces(brief) {
       "medium",
     ],
   ];
-  const template =
-    brief.building_type === "community" ? communityTemplate : dwellingTemplate;
+}
 
-  return template.map(
+function multiResidentialProgrammeTemplate(upperLevel) {
+  return [
+    ["Communal entrance", "shared arrival lobby", "public", 0.06, 0, "high"],
+    [
+      "Accessible apartment",
+      "ground-floor inclusive home",
+      "private",
+      0.18,
+      0,
+      "high",
+    ],
+    [
+      "Bin and cycle store",
+      "refuse, post and bicycle storage",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Plant and risers",
+      "MEP plant and service risers",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "stair, lift core and corridor",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    ["Apartment 1", "two-bed apartment", "private", 0.18, upperLevel, "high"],
+    ["Apartment 2", "one-bed apartment", "private", 0.13, upperLevel, "high"],
+    ["Apartment 3", "two-bed apartment", "private", 0.18, upperLevel, "high"],
+    [
+      "Upper circulation",
+      "shared landing and corridor",
+      "semi_public",
+      0.07,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Roof terrace store",
+      "roof access and storage",
+      "service",
+      0.04,
+      upperLevel,
+      "low",
+    ],
+  ];
+}
+
+function mixedUseProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Cafe and retail",
+      "street-facing flexible retail",
+      "public",
+      0.2,
+      0,
+      "high",
+    ],
+    ["Back-of-house", "kitchen, store and staff WC", "service", 0.07, 0, "low"],
+    [
+      "Residential lobby",
+      "separate residential entrance",
+      "semi_public",
+      0.05,
+      0,
+      "medium",
+    ],
+    [
+      "Bin and cycle store",
+      "shared waste and cycle storage",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "stair and lift core",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Apartment A",
+      "one-bed apartment above retail",
+      "private",
+      0.2,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Apartment B",
+      "two-bed apartment above retail",
+      "private",
+      0.22,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Upper circulation",
+      "landing and corridor",
+      "semi_public",
+      0.05,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Plant and store",
+      "MEP plant and storage",
+      "service",
+      0.06,
+      upperLevel,
+      "low",
+    ],
+    [
+      "Service riser",
+      "vertical service distribution",
+      "service",
+      0.05,
+      upperLevel,
+      "low",
+    ],
+  ];
+}
+
+function officeStudioProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Reception and breakout",
+      "client arrival and informal meeting",
+      "public",
+      0.1,
+      0,
+      "medium",
+    ],
+    [
+      "Open studio (ground)",
+      "primary collaborative workspace",
+      "semi_public",
+      0.3,
+      0,
+      "high",
+    ],
+    [
+      "Meeting room",
+      "enclosed client meeting",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    ["WC and accessible WC", "inclusive WCs", "service", 0.05, 0, "low"],
+    [
+      "Tea point and store",
+      "kitchenette and storage",
+      "service",
+      0.05,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "stair, corridor and store",
+      "semi_public",
+      0.06,
+      0,
+      "medium",
+    ],
+    [
+      "Open studio (upper)",
+      "additional desk space",
+      "semi_public",
+      0.2,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Workshop or model room",
+      "physical making and prototyping",
+      "private",
+      0.08,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Quiet focus room",
+      "phone and focus booths",
+      "private",
+      0.05,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Upper circulation and store",
+      "landing and storage",
+      "semi_public",
+      0.04,
+      upperLevel,
+      "medium",
+    ],
+  ];
+}
+
+function educationStudioProgrammeTemplate(upperLevel) {
+  return [
+    [
+      "Entrance and showcase",
+      "public arrival and pupil work display",
+      "public",
+      0.1,
+      0,
+      "high",
+    ],
+    [
+      "Workshop (messy)",
+      "primary making space",
+      "semi_public",
+      0.22,
+      0,
+      "high",
+    ],
+    [
+      "Workshop store and prep",
+      "tool and material store",
+      "service",
+      0.07,
+      0,
+      "low",
+    ],
+    ["Accessible WC", "inclusive pupil WC", "service", 0.04, 0, "low"],
+    [
+      "Plant and cleaner store",
+      "MEP plant and cleaner store",
+      "service",
+      0.04,
+      0,
+      "low",
+    ],
+    [
+      "Ground circulation",
+      "stair and corridor",
+      "semi_public",
+      0.07,
+      0,
+      "medium",
+    ],
+    [
+      "Studio (clean)",
+      "drawing and design studio",
+      "semi_public",
+      0.2,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Seminar room",
+      "small group teaching",
+      "semi_public",
+      0.1,
+      upperLevel,
+      "medium",
+    ],
+    [
+      "Quiet study",
+      "focused individual work",
+      "private",
+      0.1,
+      upperLevel,
+      "high",
+    ],
+    [
+      "Upper circulation",
+      "landing and storage",
+      "semi_public",
+      0.06,
+      upperLevel,
+      "medium",
+    ],
+  ];
+}
+
+function getProgrammeTemplate(buildingType, upperLevel) {
+  switch (buildingType) {
+    case "dwelling":
+      return {
+        template: dwellingProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "community":
+      return {
+        template: communityProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "multi_residential":
+      return {
+        template: multiResidentialProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "mixed_use":
+      return {
+        template: mixedUseProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "office_studio":
+      return {
+        template: officeStudioProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    case "education_studio":
+      return {
+        template: educationStudioProgrammeTemplate(upperLevel),
+        fallback: false,
+      };
+    default:
+      // Don't silently render an unknown type as a dwelling; fall back to a
+      // declared community template and surface the substitution in audit.
+      return {
+        template: communityProgrammeTemplate(upperLevel),
+        fallback: true,
+        fallbackFrom: buildingType,
+      };
+  }
+}
+
+function buildTemplateProgramSpaces(brief) {
+  const target = Number(brief.target_gia_m2 || 180);
+  const upperLevel = Math.min(
+    1,
+    Math.max(0, Number(brief.target_storeys || 1) - 1),
+  );
+  const { template, fallback, fallbackFrom } = getProgrammeTemplate(
+    brief.building_type,
+    upperLevel,
+  );
+
+  const spaces = template.map(
     ([name, fn, zone, ratio, levelIndex, daylight], index) => ({
       space_id: createStableId("space", brief.project_name, name, index),
       name,
@@ -418,13 +842,41 @@ function buildTemplateProgramSpaces(brief) {
       qa_status: "unplaced",
     }),
   );
+
+  return {
+    spaces,
+    template_provenance: fallback
+      ? {
+          source: "fallback_template",
+          requested_building_type: fallbackFrom,
+          resolved_template: "community",
+          severity: "warning",
+          message: `building_type "${fallbackFrom}" not in KNOWN_BUILDING_TYPES; using community template as deterministic fallback.`,
+        }
+      : {
+          source: "matched_template",
+          resolved_template: brief.building_type,
+          severity: "info",
+        },
+  };
 }
 
 function buildProgramme({ brief, programSpaces = [] } = {}) {
-  const spaces =
-    normalizeInputProgramSpaces(programSpaces, brief).length > 0
-      ? normalizeInputProgramSpaces(programSpaces, brief)
-      : buildTemplateProgramSpaces(brief);
+  const inputSpaces = normalizeInputProgramSpaces(programSpaces, brief);
+  let spaces;
+  let templateProvenance;
+  if (inputSpaces.length > 0) {
+    spaces = inputSpaces;
+    templateProvenance = {
+      source: "user_supplied",
+      resolved_template: null,
+      severity: "info",
+    };
+  } else {
+    const built = buildTemplateProgramSpaces(brief);
+    spaces = built.spaces;
+    templateProvenance = built.template_provenance;
+  }
   const targetTotal = spaces.reduce(
     (sum, space) => sum + Number(space.target_area_m2 || 0),
     0,
@@ -436,6 +888,7 @@ function buildProgramme({ brief, programSpaces = [] } = {}) {
   return {
     programme_id: createStableId("programme", brief.project_name, targetTotal),
     source_brief_hash: computeCDSHashSync(brief),
+    template_provenance: templateProvenance,
     spaces,
     adjacency_requirements: [
       {
@@ -564,10 +1017,60 @@ function buildSiteContext({ brief, sitePolygon = [], siteMetrics = {} } = {}) {
 }
 
 function buildClimatePack(brief, site) {
+  let sunPath = null;
+  let sunPathError = null;
+  try {
+    sunPath = computeSunPath(site.lat, site.lon);
+  } catch (error) {
+    sunPathError = error?.message || "unknown";
+  }
+  const summerPeak = sunPath?.summer_solstice?.peak?.altitudeDeg ?? null;
   const overheatingRisk =
-    brief.building_type === "community" || Number(brief.target_storeys || 1) > 1
+    summerPeak !== null && summerPeak > 55
       ? "medium"
-      : "low";
+      : brief.building_type === "community" ||
+          Number(brief.target_storeys || 1) > 1
+        ? "medium"
+        : "low";
+  const overheatingDrivers = [
+    "urban infill uncertainty",
+    "glazing ratio to be verified",
+  ];
+  if (summerPeak !== null && summerPeak > 55) {
+    overheatingDrivers.unshift(
+      `summer-solstice peak altitude ${summerPeak}° exceeds 55° — south/west glazing requires shading`,
+    );
+  }
+  const passiveMoves = [
+    "Orient main occupied rooms toward controlled daylight.",
+    "Use opening strategy and shading as geometry constraints, not caption-only claims.",
+  ];
+  if (sunPath?.recommendation?.rationale?.length) {
+    for (const note of sunPath.recommendation.rationale) {
+      passiveMoves.push(note);
+    }
+  }
+  const dataQuality = [
+    {
+      code: "CLIMATE_PACK_WEATHER_FALLBACK",
+      severity: "warning",
+      message: "No live weather source was used in this vertical slice.",
+    },
+  ];
+  if (sunPathError) {
+    dataQuality.push({
+      code: "SUN_PATH_COMPUTATION_FAILED",
+      severity: "warning",
+      message: `Deterministic sun-path could not be computed: ${sunPathError}`,
+    });
+  } else {
+    dataQuality.push({
+      code: "SUN_PATH_DETERMINISTIC",
+      severity: "info",
+      message:
+        "Sun path computed deterministically from site lat/lon via suncalc.",
+    });
+  }
   return {
     lat: site.lat,
     lon: site.lon,
@@ -576,11 +1079,21 @@ function buildClimatePack(brief, site) {
     climate_projection_refs: [
       "UKCP18 reference required before production use",
     ],
-    sun_path: {
-      orientation_note:
-        "Prioritise controlled south/east daylight and avoid unshaded west glazing.",
-      source: "deterministic_fallback",
-    },
+    sun_path: sunPath
+      ? {
+          source: sunPath.source,
+          schema_version: sunPath.schema_version,
+          summer_solstice: sunPath.summer_solstice,
+          winter_solstice: sunPath.winter_solstice,
+          spring_equinox: sunPath.spring_equinox,
+          autumn_equinox: sunPath.autumn_equinox,
+          recommendation: sunPath.recommendation,
+        }
+      : {
+          source: "deterministic_fallback",
+          orientation_note:
+            "Sun-path computation failed; defaulting to UK southern-glazing heuristic.",
+        },
     wind: {
       exposure: "unknown",
       source: "fallback",
@@ -593,87 +1106,97 @@ function buildClimatePack(brief, site) {
       risk_level: overheatingRisk,
       part_o_required: brief.building_type === "dwelling",
       tm59_recommended: brief.building_type === "dwelling",
-      key_drivers: ["urban infill uncertainty", "glazing ratio to be verified"],
+      key_drivers: overheatingDrivers,
       mitigation_moves: [
         "external shading",
         "cross ventilation",
         "high-performance envelope",
       ],
     },
-    passive_design_moves: [
-      "Orient main occupied rooms toward controlled daylight.",
-      "Use opening strategy and shading as geometry constraints, not caption-only claims.",
-    ],
+    passive_design_moves: passiveMoves,
     material_weathering_notes: [
       "Select robust UK external materials and detail exposed edges for rain.",
     ],
-    data_quality: [
-      {
-        code: "CLIMATE_PACK_FALLBACK",
-        severity: "warning",
-        message: "No live weather source was used in this vertical slice.",
-      },
-    ],
+    data_quality: dataQuality,
   };
 }
 
 function buildRegulationPack(brief) {
-  const applicableParts =
-    brief.building_type === "dwelling"
-      ? ["A", "B", "F", "K", "L", "M", "O", "Q", "R", "S"]
-      : ["A", "B", "F", "K", "L", "M", "Regulation 7"];
+  const jurisdiction = resolveJurisdiction(brief);
+  const applicableParts = getApplicablePartsFor(
+    jurisdiction,
+    brief.building_type,
+  );
+  const sourceDocuments = listSourceDocumentsForParts(applicableParts);
+  const generalSource = {
+    source_document_id: "govuk-approved-documents",
+    title: "GOV.UK Approved Documents collection",
+    url: "https://www.gov.uk/government/collections/approved-documents",
+    retrieved_at: null,
+  };
   return {
-    jurisdiction: "england",
+    jurisdiction,
     building_type: brief.building_type,
     riba_stage: "2",
-    source_documents: [
-      {
-        source_document_id: "govuk-approved-documents",
-        title: "GOV.UK Approved Documents collection",
-        url: "https://www.gov.uk/government/collections/approved-documents",
-        retrieved_at: null,
-      },
-    ],
+    source_documents: [generalSource, ...sourceDocuments],
     applicable_parts: applicableParts.map((part) => ({
       part,
-      status: "precheck_required",
+      status: "precheck_pending",
     })),
-    precheck_results: applicableParts.map((part) => ({
-      check_id: `approved-doc-${String(part)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")}`,
-      title: `Approved Document ${part} early-stage flag`,
-      source_document_id: "govuk-approved-documents",
-      source_url:
-        "https://www.gov.uk/government/collections/approved-documents",
-      severity: "needs_consultant",
-      status: "manual_review",
-      applies_to_element_ids: [],
-      summary:
-        "Early-stage design flag only; no certified compliance claim is made.",
-      recommended_action:
-        "Review with the relevant qualified consultant before relying on the design.",
-    })),
-    limitations: [PROFESSIONAL_REVIEW_DISCLAIMER],
+    // precheck_results gets populated by applyRegulationRules() after geometry exists.
+    precheck_results: [],
+    rule_coverage: [],
+    rule_summary: null,
+    limitations: [
+      PROFESSIONAL_REVIEW_DISCLAIMER,
+      ...jurisdictionLimitations(jurisdiction),
+    ],
     last_checked_at: null,
   };
 }
 
-function buildLocalStylePack(brief, site, climate) {
-  const materialPreferences = brief.user_intent.material_preferences;
-  const palette = materialPreferences.length
-    ? materialPreferences
-    : brief.building_type === "community"
-      ? ["warm brick", "timber lining", "standing seam metal"]
-      : ["brick", "timber", "clay tile"];
+function applyRegulationRules(regulations, ctx) {
+  const applicableParts = (regulations?.applicable_parts || [])
+    .map((entry) => entry?.part)
+    .filter(Boolean);
+  const ruleRun = runRegulationRules({
+    ...ctx,
+    applicableParts,
+  });
+  const ruleSummary = summarizeRuleResults(ruleRun.results);
   return {
-    style_pack_id: createStableId("local-style", brief.project_name, palette),
-    primary_style: brief.user_intent.style_keywords.join(", "),
-    material_palette: palette,
-    climate_notes: climate.material_weathering_notes,
-    local_blend_strength: brief.user_intent.local_blend_strength,
-    data_quality: site.data_quality,
+    ...regulations,
+    jurisdiction: ruleRun.jurisdiction || regulations.jurisdiction,
+    applicable_parts: applicableParts.map((part) => {
+      const evaluated = ruleRun.rule_coverage?.find(
+        (entry) => entry.part === part,
+      )?.evaluated;
+      return {
+        part,
+        status: evaluated ? "rule_evaluated" : "manual_review_required",
+      };
+    }),
+    precheck_results: ruleRun.results,
+    rule_coverage: ruleRun.rule_coverage,
+    rule_summary: ruleSummary,
+    limitations: [
+      ...(regulations.limitations || []),
+      ...(ruleRun.limitations || []),
+    ].filter((value, index, arr) => arr.indexOf(value) === index),
+    last_checked_at: new Date(0).toISOString(),
   };
+}
+
+function buildLocalStylePack(brief, site, climate) {
+  // Plan §6.5 weighted blend: local 40 / user 25 / climate 20 / portfolio 15
+  // modulated by user_intent.local_blend_strength and innovation_strength.
+  return buildLocalStylePackV2({
+    brief,
+    site,
+    climate,
+    createStableId,
+    paletteSize: 6,
+  });
 }
 
 function groupSpacesByLevel(spaces, levelCount) {
@@ -885,42 +1408,26 @@ function buildProjectGeometryFromProgramme({
   site,
   programme,
   localStyle,
+  climate = null,
 }) {
   const levelCount = Number(brief.target_storeys || 1);
   const groups = groupSpacesByLevel(programme.spaces, levelCount);
   const levelAreas = Object.values(groups).map((spaces) =>
     spaces.reduce((sum, space) => sum + Number(space.target_area_m2 || 0), 0),
   );
-  const footprintArea = Math.max(
-    24,
-    ...levelAreas,
-    Number(brief.target_gia_m2 || 120) / levelCount,
+  // Plan §6.7: generate ≥3 typological options, score each, and use the
+  // highest-scoring footprint that fits the buildable polygon.
+  const candidateOptions = generateRectangularOptions({
+    brief,
+    site,
+    levelAreas,
+  });
+  const scoredOptions = candidateOptions.map((option) =>
+    scoreOption({ option, brief, site, climate, programme }),
   );
-  const buildableBbox = buildBoundingBoxFromPolygon(site.buildable_polygon);
-  const aspect = brief.building_type === "community" ? 1.45 : 1.25;
-  let footprintWidth = Math.sqrt(footprintArea * aspect);
-  let footprintDepth = footprintArea / Math.max(1, footprintWidth);
-  if (footprintWidth > buildableBbox.width) {
-    footprintWidth = Math.max(8, buildableBbox.width);
-    footprintDepth = footprintArea / footprintWidth;
-  }
-  if (footprintDepth > buildableBbox.height) {
-    footprintDepth = Math.max(8, buildableBbox.height);
-    footprintWidth = footprintArea / footprintDepth;
-  }
-  const footprintX =
-    Number(buildableBbox.min_x || 0) +
-    Math.max(0, (Number(buildableBbox.width || 0) - footprintWidth) / 2);
-  const footprintY =
-    Number(buildableBbox.min_y || 0) +
-    Math.max(0, (Number(buildableBbox.height || 0) - footprintDepth) / 2);
-  const footprint = rectangleToPolygon(
-    footprintX,
-    footprintY,
-    footprintWidth,
-    footprintDepth,
-  );
-  const footprintBbox = buildBoundingBoxFromPolygon(footprint);
+  const selected = selectBestOption(scoredOptions) || scoredOptions[0];
+  const footprint = selected.footprint_polygon;
+  const footprintBbox = selected.footprint_bbox;
   const levels = [];
   const rooms = [];
   const walls = [];
@@ -1045,6 +1552,18 @@ function buildProjectGeometryFromProgramme({
           ridge_count: 1,
         },
       },
+      design_options: scoredOptions.map((opt) => ({
+        option_id: opt.option_id,
+        label: opt.label,
+        typology: opt.typology,
+        aspect: opt.aspect,
+        long_axis: opt.long_axis,
+        fits_buildable: opt.fits_buildable,
+        subscores: opt.subscores,
+        aggregate_score: opt.aggregate_score,
+        selected: opt.option_id === selected.option_id,
+      })),
+      selected_option_id: selected.option_id,
     },
     provenance: {
       source: "project_graph_vertical_slice",
@@ -1340,45 +1859,464 @@ function build3DModelSet({ projectGraphId, scene3d, geometryHash }) {
   };
 }
 
+function formatPanelTitle(panelType) {
+  return String(panelType || "panel")
+    .replace(/^floor_plan_ground$/, "Ground floor plan")
+    .replace(/^floor_plan_first$/, "First floor plan")
+    .replace(/^section_AA$/, "Section A-A")
+    .replace(/^section_BB$/, "Section B-B")
+    .replace(/^site_context$/, "Site / context")
+    .replace(/^axonometric_3d$/, "3D axonometric")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function sanitizeSheetSvgFragment(svgString = "") {
+  return String(svgString || "")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(
+      /<path\b[^>]*\bd=(["'])(.*?)\1[^>]*(?:\/>|>\s*<\/path>)/gi,
+      (match, _quote, pathData) => {
+        const normalizedPathData = String(pathData || "").trim();
+        if (
+          !normalizedPathData ||
+          normalizedPathData === "undefined" ||
+          normalizedPathData === "null" ||
+          normalizedPathData.includes("NaN")
+        ) {
+          return "";
+        }
+        return match;
+      },
+    );
+}
+
+function extractSvgBody(svgString = "") {
+  const sanitized = sanitizeSheetSvgFragment(svgString);
+  const bodyMatch = sanitized.match(/<svg\b[^>]*>([\s\S]*?)<\/svg>/i);
+  return bodyMatch ? bodyMatch[1] : sanitized;
+}
+
+function extractSvgViewBox(
+  svgString = "",
+  fallbackWidth = 1000,
+  fallbackHeight = 700,
+) {
+  const viewBoxMatch = String(svgString).match(/viewBox=["']([^"']+)["']/i);
+  if (viewBoxMatch?.[1]) {
+    return viewBoxMatch[1];
+  }
+  return `0 0 ${round(fallbackWidth, 2)} ${round(fallbackHeight, 2)}`;
+}
+
+function normalizeArtifactCollection(artifacts = {}) {
+  if (Array.isArray(artifacts)) {
+    return artifacts.filter(Boolean);
+  }
+  if (!artifacts || typeof artifacts !== "object") {
+    return [];
+  }
+  return Object.values(artifacts).filter(Boolean);
+}
+
+function buildPanelArtifactIndex(drawingArtifacts = {}) {
+  const byPanelType = new Map();
+  const byAssetId = new Map();
+  normalizeArtifactCollection(drawingArtifacts).forEach((artifact) => {
+    if (artifact.asset_id) {
+      byAssetId.set(artifact.asset_id, artifact);
+    }
+    if (artifact.panel_type) {
+      byPanelType.set(artifact.panel_type, artifact);
+    }
+  });
+  return { byPanelType, byAssetId };
+}
+
+function polygonPath(points = [], bbox, width, height, padding = 12) {
+  if (!Array.isArray(points) || points.length < 3 || !bbox) {
+    return "";
+  }
+  const scale = Math.min(
+    (width - padding * 2) / Math.max(1, Number(bbox.width || 1)),
+    (height - padding * 2) / Math.max(1, Number(bbox.height || 1)),
+  );
+  const offsetX = (width - Number(bbox.width || 0) * scale) / 2;
+  const offsetY = (height - Number(bbox.height || 0) * scale) / 2;
+  return points
+    .map((point, index) => {
+      const x =
+        offsetX + (Number(point.x || 0) - Number(bbox.min_x || 0)) * scale;
+      const y =
+        height -
+        (offsetY + (Number(point.y || 0) - Number(bbox.min_y || 0)) * scale);
+      return `${index === 0 ? "M" : "L"} ${round(x, 2)} ${round(y, 2)}`;
+    })
+    .join(" ")
+    .concat(" Z");
+}
+
+function buildSiteContextPanelArtifact({
+  projectGraphId,
+  site,
+  climate,
+  regulations,
+  localStyle,
+  geometryHash,
+}) {
+  const width = 1200;
+  const height = 780;
+  const bbox = buildBoundingBoxFromPolygon(site.local_boundary_polygon || []);
+  const sitePath = polygonPath(site.local_boundary_polygon, bbox, 700, 520);
+  const buildablePath = polygonPath(site.buildable_polygon, bbox, 700, 520);
+  const policyRefs = (regulations?.applicable_parts || [])
+    .slice(0, 4)
+    .map((part) => part.part || part.code || "policy")
+    .join(", ");
+  const materials = (localStyle?.material_palette || [])
+    .slice(0, 4)
+    .map((entry) => entry.material || entry.name || entry)
+    .join(", ");
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <rect width="${width}" height="${height}" fill="#f7f2e8"/>
+  <rect x="28" y="28" width="724" height="572" fill="#fffdf7" stroke="#142033" stroke-width="3"/>
+  <path d="${sitePath}" fill="#e8efe3" stroke="#142033" stroke-width="4"/>
+  <path d="${buildablePath}" fill="none" stroke="#d26a3e" stroke-width="3" stroke-dasharray="18 10"/>
+  <path d="M 655 95 L 655 34 L 634 75 M 655 34 L 676 75" fill="none" stroke="#142033" stroke-width="5" stroke-linecap="round"/>
+  <text x="690" y="58" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#142033">N</text>
+  <rect x="790" y="42" width="370" height="540" fill="#142033"/>
+  <text x="824" y="100" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#fffdf7">Site / Context Pack</text>
+  <text x="824" y="156" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Area: ${escapeXml(site.area_m2)} m2</text>
+  <text x="824" y="204" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Climate: ${escapeXml(climate?.weather_source || "fallback")}</text>
+  <text x="824" y="252" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Policy: ${escapeXml(policyRefs || "pre-check")}</text>
+  <text x="824" y="300" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Materials: ${escapeXml(materials || "local palette")}</text>
+  <text x="824" y="520" font-family="Arial, sans-serif" font-size="18" fill="#c8d4df">source_model_hash ${escapeXml(geometryHash.slice(0, 16))}</text>
+</svg>`;
+  const svgHash = computeCDSHashSync({ panelType: "site_context", svgString });
+  const assetId = createStableId(
+    "asset-svg",
+    "site_context",
+    geometryHash,
+    svgHash,
+  );
+  return {
+    asset_id: assetId,
+    asset_type: "drawing_svg",
+    panel_type: "site_context",
+    source_model_hash: geometryHash,
+    svgHash,
+    width,
+    height,
+    svgString,
+  };
+}
+
+function isoProject(point, z = 0, scale = 18, originX = 600, originY = 430) {
+  const x = Number(point?.x || 0);
+  const y = Number(point?.y || 0);
+  return {
+    x: originX + (x - y) * scale,
+    y: originY + (x + y) * scale * 0.42 - z * scale,
+  };
+}
+
+function buildAxonometricPanelArtifact({
+  projectGraphId,
+  scene3d,
+  geometryHash,
+}) {
+  const width = 1200;
+  const height = 780;
+  const levels = scene3d?.scene?.levels || [];
+  const levelPolygons = levels
+    .slice(0, 4)
+    .map((level, index) => {
+      const z = Number(level.elevation_m || index * 3.2);
+      const footprint = Array.isArray(level.footprint) ? level.footprint : [];
+      if (footprint.length < 3) return "";
+      const topPoints = footprint.map((point) => isoProject(point, z + 0.18));
+      const bottomPoints = footprint.map((point) => isoProject(point, z));
+      const topPath = topPoints
+        .map(
+          (point, pointIndex) =>
+            `${pointIndex === 0 ? "M" : "L"} ${round(point.x, 2)} ${round(point.y, 2)}`,
+        )
+        .join(" ")
+        .concat(" Z");
+      const edgeLines = topPoints
+        .map(
+          (point, pointIndex) =>
+            `<line x1="${round(bottomPoints[pointIndex].x, 2)}" y1="${round(bottomPoints[pointIndex].y, 2)}" x2="${round(point.x, 2)}" y2="${round(point.y, 2)}" stroke="#52616f" stroke-width="2"/>`,
+        )
+        .join("");
+      return `<g data-level-id="${escapeXml(level.id || `level-${index}`)}">${edgeLines}<path d="${topPath}" fill="${index % 2 === 0 ? "#dfe8de" : "#cfdccc"}" stroke="#142033" stroke-width="3"/></g>`;
+    })
+    .join("");
+  const roomCount = scene3d?.scene?.room_volumes?.length || 0;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="axonometric_3d" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <rect width="${width}" height="${height}" fill="#eef2ef"/>
+  <path d="M 170 620 L 602 430 L 1030 620" fill="none" stroke="#b7c2c8" stroke-width="2" stroke-dasharray="10 8"/>
+  ${levelPolygons}
+  <text x="48" y="74" font-family="Arial, sans-serif" font-size="36" font-weight="700" fill="#142033">Deterministic 3D Axonometric</text>
+  <text x="48" y="120" font-family="Arial, sans-serif" font-size="22" fill="#142033">Compiled ProjectGraph geometry: ${escapeXml(geometryHash.slice(0, 16))}</text>
+  <text x="48" y="696" font-family="Arial, sans-serif" font-size="20" fill="#52616f">${escapeXml(levels.length)} levels / ${escapeXml(roomCount)} room volumes / no independent image prompt</text>
+</svg>`;
+  const svgHash = computeCDSHashSync({
+    panelType: "axonometric_3d",
+    svgString,
+  });
+  const assetId = createStableId(
+    "asset-svg",
+    "axonometric_3d",
+    geometryHash,
+    svgHash,
+  );
+  return {
+    asset_id: assetId,
+    asset_type: "drawing_svg",
+    panel_type: "axonometric_3d",
+    source_model_hash: geometryHash,
+    svgHash,
+    width,
+    height,
+    svgString,
+  };
+}
+
+function buildSheetPanelArtifacts({
+  projectGraphId,
+  site,
+  climate,
+  regulations,
+  localStyle,
+  scene3d,
+  geometryHash,
+}) {
+  const siteContext = buildSiteContextPanelArtifact({
+    projectGraphId,
+    site,
+    climate,
+    regulations,
+    localStyle,
+    geometryHash,
+  });
+  const axonometric = buildAxonometricPanelArtifact({
+    projectGraphId,
+    scene3d,
+    geometryHash,
+  });
+  return {
+    [siteContext.asset_id]: siteContext,
+    [axonometric.asset_id]: axonometric,
+  };
+}
+
+function buildSheetPanelSpecs(targetStoreys = 1) {
+  return [
+    {
+      panelType: "site_context",
+      x: 18,
+      y: 44,
+      width: 184,
+      height: 150,
+      scale: "context",
+      required: true,
+    },
+    {
+      panelType: "axonometric_3d",
+      x: 18,
+      y: 204,
+      width: 184,
+      height: 150,
+      scale: "geometry",
+      required: true,
+    },
+    {
+      panelType: "floor_plan_ground",
+      x: 212,
+      y: 44,
+      width: 310,
+      height: targetStoreys > 1 ? 210 : 426,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "floor_plan_first",
+      x: 212,
+      y: 266,
+      width: 310,
+      height: 204,
+      scale: "1:100",
+      required: false,
+    },
+    {
+      panelType: "elevation_north",
+      x: 532,
+      y: 44,
+      width: 139,
+      height: 96,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "elevation_south",
+      x: 682,
+      y: 44,
+      width: 139,
+      height: 96,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "elevation_east",
+      x: 532,
+      y: 152,
+      width: 139,
+      height: 96,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "elevation_west",
+      x: 682,
+      y: 152,
+      width: 139,
+      height: 96,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "section_AA",
+      x: 532,
+      y: 268,
+      width: 289,
+      height: 96,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "section_BB",
+      x: 532,
+      y: 376,
+      width: 289,
+      height: 96,
+      scale: "1:100",
+      required: true,
+    },
+  ];
+}
+
+function buildPanelPlacements({
+  drawingSet,
+  panelArtifacts,
+  targetStoreys,
+  allowedPanelTypes = null,
+}) {
+  const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
+  const allowed = allowedPanelTypes ? new Set(allowedPanelTypes) : null;
+  const specs = buildSheetPanelSpecs(targetStoreys).filter((spec) =>
+    allowed ? allowed.has(spec.panelType) : true,
+  );
+  return specs
+    .map((slot, index) => {
+      const drawing = (drawingSet.drawings || []).find(
+        (entry) => entry.panel_type === slot.panelType,
+      );
+      const assetId =
+        drawing?.exported_asset_ids?.[0] ||
+        artifactIndex.byPanelType.get(slot.panelType)?.asset_id ||
+        null;
+      const artifact =
+        (assetId && artifactIndex.byAssetId.get(assetId)) ||
+        artifactIndex.byPanelType.get(slot.panelType) ||
+        null;
+      if (!artifact && !slot.required) {
+        return null;
+      }
+      return {
+        slotIndex: index,
+        panelType: slot.panelType,
+        panelId: createStableId("sheet-panel", slot.panelType, index),
+        title: formatPanelTitle(slot.panelType),
+        scale: drawing?.scale || slot.scale,
+        x: slot.x,
+        y: slot.y,
+        width: slot.width,
+        height: slot.height,
+        required: slot.required,
+        sourcePanelAssetId: artifact?.asset_id || assetId,
+        sourceDrawingId: drawing?.drawing_id || null,
+        source_model_hash: artifact?.source_model_hash || null,
+        geometryHash: artifact?.source_model_hash || null,
+        svgHash: artifact?.svgHash || null,
+        status: artifact?.svgString ? "ready" : "missing",
+        empty: !artifact?.svgString,
+      };
+    })
+    .filter(Boolean);
+}
+
+function renderSheetPanel({ placement, artifact }) {
+  const titleY = placement.y + 5.8;
+  const contentX = placement.x + 4;
+  const contentY = placement.y + 14;
+  const contentWidth = placement.width - 8;
+  const contentHeight = placement.height - 24;
+  const svgString = artifact?.svgString || "";
+  const svgBody = extractSvgBody(svgString);
+  const viewBox = extractSvgViewBox(
+    svgString,
+    artifact?.width,
+    artifact?.height,
+  );
+  const content =
+    placement.status === "ready"
+      ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">${svgBody}</svg>`
+      : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
+
+  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}">
+  <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
+  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">${escapeXml(placement.title)}</text>
+  <text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">${escapeXml(placement.scale)} | ${escapeXml((placement.source_model_hash || "").slice(0, 8))}</text>
+  ${content}
+</g>`;
+}
+
 function buildSheetSvg({
   projectGraphId,
   brief,
   geometryHash,
-  drawingViews,
+  panelPlacements,
+  panelArtifacts,
   qaStatus,
 }) {
-  const viewRows = drawingViews
-    .slice(0, 7)
-    .map(
-      (view, index) =>
-        `<text x="36" y="${150 + index * 18}" font-size="8">${escapeXml(view.panel_type)} ${escapeXml(view.scale)}</text>`,
+  const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
+  const panelGroups = panelPlacements
+    .map((placement) =>
+      renderSheetPanel({
+        placement,
+        artifact: artifactIndex.byAssetId.get(placement.sourcePanelAssetId),
+      }),
     )
-    .join("");
-  const styleText = escapeXml(brief.user_intent.style_keywords.join(", "));
+    .join("\n");
+  const sourcePanelAssetIds = panelPlacements
+    .map((placement) => placement.sourcePanelAssetId)
+    .filter(Boolean);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="841mm" height="594mm" viewBox="0 0 841 594" data-template="riba_stage2_concept_a1_landscape" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
-  <rect width="841" height="594" fill="#f8f5ed"/>
-  <rect x="24" y="24" width="793" height="546" fill="none" stroke="#101820" stroke-width="1.2"/>
-  <text x="36" y="54" font-size="18" font-family="Arial, sans-serif" font-weight="700">${escapeXml(brief.project_name)}</text>
-  <text x="36" y="76" font-size="9" font-family="Arial, sans-serif">RIBA Stage 2 / ProjectGraph vertical slice / Geometry hash ${escapeXml(geometryHash.slice(0, 12))}</text>
-  <rect x="30" y="104" width="250" height="170" fill="#fffdf7" stroke="#101820" stroke-width="0.6"/>
-  <text x="36" y="126" font-size="10" font-family="Arial, sans-serif" font-weight="700">2D projections from ProjectGraph</text>
-  ${viewRows}
-  <rect x="300" y="104" width="240" height="170" fill="#eef2ef" stroke="#101820" stroke-width="0.6"/>
-  <text x="312" y="126" font-size="10" font-family="Arial, sans-serif" font-weight="700">3D massing scene</text>
-  <text x="312" y="148" font-size="8" font-family="Arial, sans-serif">Same source_model_hash as all drawings.</text>
-  <text x="312" y="166" font-size="8" font-family="Arial, sans-serif">Geometry controls silhouette, rooms, openings and roof.</text>
-  <rect x="560" y="104" width="235" height="170" fill="#fffdf7" stroke="#101820" stroke-width="0.6"/>
-  <text x="572" y="126" font-size="10" font-family="Arial, sans-serif" font-weight="700">Programme and QA</text>
-  <text x="572" y="148" font-size="8" font-family="Arial, sans-serif">Status: ${escapeXml(qaStatus || "pending")}</text>
-  <text x="572" y="166" font-size="8" font-family="Arial, sans-serif">Target GIA: ${escapeXml(brief.target_gia_m2)} m2</text>
-  <rect x="30" y="300" width="365" height="170" fill="#fffdf7" stroke="#101820" stroke-width="0.6"/>
-  <text x="42" y="322" font-size="10" font-family="Arial, sans-serif" font-weight="700">Climate, site and local material logic</text>
-  <text x="42" y="344" font-size="8" font-family="Arial, sans-serif">${styleText}</text>
-  <rect x="420" y="300" width="375" height="170" fill="#fffdf7" stroke="#101820" stroke-width="0.6"/>
-  <text x="432" y="322" font-size="10" font-family="Arial, sans-serif" font-weight="700">Regulation pre-check</text>
-  <text x="432" y="344" font-size="8" font-family="Arial, sans-serif">${escapeXml(PROFESSIONAL_REVIEW_DISCLAIMER)}</text>
-  <text x="36" y="545" font-size="7" font-family="Arial, sans-serif">All sheet content references ProjectGraph ${escapeXml(projectGraphId)} and source_model_hash ${escapeXml(geometryHash)}.</text>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#f3efe5"/>
+  <rect x="12" y="12" width="817" height="570" fill="none" stroke="#142033" stroke-width="0.7"/>
+  <text x="18" y="25" font-size="14" font-family="Arial, sans-serif" font-weight="700" fill="#142033">${escapeXml(brief.project_name)}</text>
+  <text x="18" y="36" font-size="5.4" font-family="Arial, sans-serif" fill="#52616f">ProjectGraph A1 package | Geometry hash ${escapeXml(geometryHash)} | Panels ${sourcePanelAssetIds.length}</text>
+  ${panelGroups}
+  <g data-panel-id="title_block">
+    <rect x="18" y="486" width="803" height="88" fill="#142033"/>
+    <text x="30" y="508" font-size="12" font-family="Arial, sans-serif" font-weight="700" fill="#fffdf7">RIBA Stage 2 ProjectGraph Vertical Slice</text>
+    <text x="30" y="524" font-size="6.5" font-family="Arial, sans-serif" fill="#fffdf7">Drawing A1-01 / Revision P01 / Status ${escapeXml(qaStatus || "pending")}</text>
+    <text x="30" y="540" font-size="5.4" font-family="Arial, sans-serif" fill="#d7e0e8">All visible panels are deterministic SVG projections or context panels from compiled ProjectGraph geometry. No independent 2D/3D prompts are used as geometry authority.</text>
+    <text x="30" y="556" font-size="4.6" font-family="Arial, sans-serif" fill="#d7e0e8">${escapeXml(PROFESSIONAL_REVIEW_DISCLAIMER)}</text>
+    <text x="812" y="556" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#d7e0e8">source_model_hash ${escapeXml(geometryHash)}</text>
+  </g>
 </svg>`;
 }
 
@@ -1386,25 +2324,56 @@ function buildA1Sheet({
   projectGraphId,
   brief,
   drawingSet,
+  drawingArtifacts,
+  site,
+  climate,
+  regulations,
+  localStyle,
   scene3d,
   geometryHash,
+  sheetPlan = null,
 }) {
+  const supplementalPanelArtifacts = buildSheetPanelArtifacts({
+    projectGraphId,
+    site,
+    climate,
+    regulations,
+    localStyle,
+    scene3d,
+    geometryHash,
+  });
+  const panelArtifacts = {
+    ...drawingArtifacts,
+    ...supplementalPanelArtifacts,
+  };
+  const targetStoreys = Math.max(1, Number(brief.target_storeys || 1));
+  const panelPlacements = buildPanelPlacements({
+    drawingSet,
+    panelArtifacts,
+    targetStoreys,
+    allowedPanelTypes: sheetPlan?.panel_types || null,
+  });
   const drawingIds = drawingSet.drawings.map((drawing) => drawing.drawing_id);
-  const assetIds = [
-    ...drawingSet.drawings.flatMap((drawing) => drawing.exported_asset_ids),
-    scene3d.asset_id,
-  ];
+  const sourcePanelAssetIds = panelPlacements
+    .map((placement) => placement.sourcePanelAssetId)
+    .filter(Boolean);
   const sheetId = createStableId("sheet-a1", projectGraphId, geometryHash);
   const svgString = buildSheetSvg({
     projectGraphId,
     brief,
     geometryHash,
-    drawingViews: drawingSet.drawings,
+    panelPlacements,
+    panelArtifacts,
     qaStatus: "pending",
   });
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
+  const requiredPlacements = panelPlacements.filter((placement) =>
+    REQUIRED_A1_PANEL_TYPES.includes(placement.panelType),
+  );
 
+  const drawingNumber = sheetPlan?.sheet_number || "A1-01";
+  const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Concept";
   return {
     sheetSet: {
       sheets: [
@@ -1412,12 +2381,19 @@ function buildA1Sheet({
           sheet_id: sheetId,
           sheet_size: "A1",
           orientation: "landscape",
-          template_id: "riba_stage2_concept_a1_landscape",
+          template_id: A1_SHEET_LAYOUT_VERSION,
           drawing_ids: drawingIds,
-          asset_ids: [...assetIds, sheetAssetId],
+          asset_ids: [
+            ...new Set([
+              ...sourcePanelAssetIds,
+              scene3d.asset_id,
+              sheetAssetId,
+            ]),
+          ],
           title_block: {
             project_name: brief.project_name,
-            drawing_number: "A1-01",
+            drawing_number: drawingNumber,
+            sheet_label: sheetLabel,
             revision: "P01",
             status: "early_stage_precheck",
             disclaimer: PROFESSIONAL_REVIEW_DISCLAIMER,
@@ -1431,12 +2407,26 @@ function buildA1Sheet({
     sheetArtifact: {
       asset_id: sheetAssetId,
       asset_type: "a1_sheet_svg",
-      sheet_size_mm: { width: 841, height: 594 },
+      sheet_size_mm: A1_SHEET_SIZE_MM,
       orientation: "landscape",
+      layoutVersion: A1_SHEET_LAYOUT_VERSION,
+      panelPlacements,
+      sourcePanelAssetIds,
       source_model_hash: geometryHash,
+      drawing_number: drawingNumber,
+      sheet_label: sheetLabel,
+      quality: {
+        placeholderOnly: false,
+        requiredPanelCount: sheetPlan
+          ? sheetPlan.panel_types.length
+          : REQUIRED_A1_PANEL_TYPES.length,
+        requiredPanelsPlaced: requiredPlacements.length,
+        totalPanelsPlaced: panelPlacements.length,
+      },
       svgHash,
       svgString,
     },
+    sheetPanelArtifacts: supplementalPanelArtifacts,
   };
 }
 
@@ -1445,9 +2435,8 @@ const MM_TO_PT = 72 / 25.4;
 async function buildA1PdfArtifact({
   projectGraphId,
   brief,
-  drawingSet,
-  scene3d,
   geometryHash,
+  sheetArtifact,
   qaStatus = "pending",
 }) {
   const widthPt = 841 * MM_TO_PT;
@@ -1494,80 +2483,56 @@ async function buildA1PdfArtifact({
     },
   );
 
-  const panels = [
-    ["2D projections", 30, 325, 250, 170],
-    ["3D scene", 300, 325, 240, 170],
-    ["Programme and QA", 560, 325, 235, 170],
-    ["Site, climate, materials", 30, 130, 365, 170],
-    ["Regulation pre-check", 420, 130, 375, 170],
-  ];
-  for (const [label, x, y, w, h] of panels) {
+  for (const placement of sheetArtifact.panelPlacements || []) {
     page.drawRectangle({
-      x: x * MM_TO_PT,
-      y: y * MM_TO_PT,
-      width: w * MM_TO_PT,
-      height: h * MM_TO_PT,
+      x: placement.x * MM_TO_PT,
+      y: (594 - placement.y - placement.height) * MM_TO_PT,
+      width: placement.width * MM_TO_PT,
+      height: placement.height * MM_TO_PT,
       color: panelFill,
       borderColor: navy,
       borderWidth: 0.6,
     });
-    page.drawText(label, {
-      x: (x + 8) * MM_TO_PT,
-      y: (y + h - 18) * MM_TO_PT,
-      size: 11,
+    page.drawText(placement.title || placement.panelType, {
+      x: (placement.x + 4) * MM_TO_PT,
+      y: (594 - placement.y - 10) * MM_TO_PT,
+      size: 7.5,
       font: bold,
       color: navy,
     });
+    page.drawText(
+      `${placement.scale || ""} | ${String(placement.source_model_hash || "").slice(0, 12)}`,
+      {
+        x: (placement.x + 4) * MM_TO_PT,
+        y: (594 - placement.y - 20) * MM_TO_PT,
+        size: 5.5,
+        font: regular,
+        color: navy,
+      },
+    );
   }
 
-  drawingSet.drawings.slice(0, 8).forEach((drawing, index) => {
-    page.drawText(`${drawing.panel_type || drawing.type} | ${drawing.scale}`, {
-      x: 38 * MM_TO_PT,
-      y: (462 - index * 13) * MM_TO_PT,
-      size: 7.5,
-      font: regular,
-      color: navy,
-    });
-  });
-
-  page.drawText(
-    "Same source_model_hash as all plans, sections and elevations.",
-    {
-      x: 312 * MM_TO_PT,
-      y: 462 * MM_TO_PT,
-      size: 8,
-      font: regular,
-      color: navy,
-    },
-  );
-  page.drawText(`3D asset: ${scene3d.asset_id}`, {
-    x: 312 * MM_TO_PT,
-    y: 448 * MM_TO_PT,
-    size: 7,
-    font: regular,
-    color: navy,
-  });
   page.drawText(`QA status: ${qaStatus}`, {
-    x: 572 * MM_TO_PT,
-    y: 462 * MM_TO_PT,
+    x: 30 * MM_TO_PT,
+    y: 82 * MM_TO_PT,
     size: 8,
     font: regular,
     color: navy,
   });
-  page.drawText(`Target GIA: ${brief.target_gia_m2} m2`, {
-    x: 572 * MM_TO_PT,
-    y: 448 * MM_TO_PT,
+  page.drawText(`Final board SVG hash: ${sheetArtifact.svgHash}`, {
+    x: 30 * MM_TO_PT,
+    y: 70 * MM_TO_PT,
     size: 8,
     font: regular,
     color: navy,
   });
   page.drawText(PROFESSIONAL_REVIEW_DISCLAIMER, {
-    x: 432 * MM_TO_PT,
-    y: 268 * MM_TO_PT,
+    x: 30 * MM_TO_PT,
+    y: 58 * MM_TO_PT,
     size: 7,
     font: regular,
     color: navy,
-    maxWidth: 330 * MM_TO_PT,
+    maxWidth: 590 * MM_TO_PT,
   });
   page.drawText(
     `ProjectGraph ${projectGraphId} | source_model_hash ${geometryHash}`,
@@ -1579,9 +2544,27 @@ async function buildA1PdfArtifact({
       color: navy,
     },
   );
+  if (
+    typeof pdfDoc.attach === "function" &&
+    typeof TextEncoder !== "undefined"
+  ) {
+    const sourceSvgBytes = new TextEncoder().encode(
+      sheetArtifact.svgString || "",
+    );
+    await pdfDoc.attach(sourceSvgBytes, "projectgraph-a1-sheet.svg", {
+      mimeType: "image/svg+xml",
+      description: "Source SVG used to generate this A1 PDF export.",
+      creationDate: new Date(0),
+      modificationDate: new Date(0),
+    });
+  }
 
   const pdfDataUri = await pdfDoc.saveAsBase64({ dataUri: true });
-  const contentHash = computeCDSHashSync({ pdfDataUri, geometryHash });
+  const contentHash = computeCDSHashSync({
+    sourceSvgHash: sheetArtifact.svgHash,
+    pdfDataUri,
+    geometryHash,
+  });
   const assetId = createStableId("asset-a1-pdf", projectGraphId, contentHash);
 
   return {
@@ -1594,6 +2577,10 @@ async function buildA1PdfArtifact({
     },
     orientation: "landscape",
     source_model_hash: geometryHash,
+    source_svg_asset_id: sheetArtifact.asset_id,
+    source_svg_hash: sheetArtifact.svgHash,
+    sourcePanelAssetIds: sheetArtifact.sourcePanelAssetIds || [],
+    layoutVersion: sheetArtifact.layoutVersion,
     pdfHash: contentHash,
     dataUrl: pdfDataUri,
   };
@@ -1603,12 +2590,69 @@ function buildIssue(code, severity, message, details = {}) {
   return { code, severity, message, details };
 }
 
-function addCheck(checks, code, passed, details = {}) {
+function addCheck(
+  checks,
+  code,
+  passed,
+  details = {},
+  category = null,
+  weight = 0,
+) {
   checks.push({
     code,
     status: passed ? "pass" : "fail",
     details,
+    category,
+    weight,
   });
+}
+
+// RIBA A1 plan §10 scorecard category weights — must total 100.
+export const QA_CATEGORY_WEIGHTS = Object.freeze({
+  programme: 20,
+  consistency_2d_3d: 20,
+  site_context: 15,
+  climate: 15,
+  regulation: 10,
+  architecture: 10,
+  graphic: 10,
+});
+
+function computeCategoryScores(checks) {
+  const earned = {};
+  const max = {};
+  for (const code of Object.keys(QA_CATEGORY_WEIGHTS)) {
+    earned[code] = 0;
+    max[code] = 0;
+  }
+  for (const check of checks) {
+    if (!check.category || !Number.isFinite(check.weight)) continue;
+    if (!(check.category in QA_CATEGORY_WEIGHTS)) continue;
+    max[check.category] += check.weight;
+    if (check.status === "pass") {
+      earned[check.category] += check.weight;
+    }
+  }
+  // Re-normalise per category so the earned points reflect plan §10 weights
+  // even if a category's check set sums to a different number.
+  const breakdown = {};
+  let totalScore = 0;
+  for (const cat of Object.keys(QA_CATEGORY_WEIGHTS)) {
+    const target = QA_CATEGORY_WEIGHTS[cat];
+    const denom = max[cat] || 0;
+    const ratio = denom > 0 ? earned[cat] / denom : 0;
+    const points = Math.round(ratio * target * 100) / 100;
+    breakdown[cat] = {
+      earned: points,
+      max: target,
+      ratio: Math.round(ratio * 1000) / 1000,
+    };
+    totalScore += points;
+  }
+  return {
+    breakdown,
+    totalScore: Math.round(totalScore * 100) / 100,
+  };
 }
 
 export function validateProjectGraphVerticalSlice({
@@ -1637,6 +2681,8 @@ export function validateProjectGraphVerticalSlice({
     {
       missingModelSpaces,
     },
+    "programme",
+    10,
   );
   if (missingModelSpaces.length) {
     issues.push(
@@ -1658,10 +2704,14 @@ export function validateProjectGraphVerticalSlice({
   ];
   const drawingHashMatch =
     drawingHashes.length === 1 && drawingHashes[0] === geometryHash;
-  addCheck(checks, "DRAWINGS_SHARE_MODEL_HASH", drawingHashMatch, {
-    drawingHashes,
-    geometryHash,
-  });
+  addCheck(
+    checks,
+    "DRAWINGS_SHARE_MODEL_HASH",
+    drawingHashMatch,
+    { drawingHashes, geometryHash },
+    "consistency_2d_3d",
+    5,
+  );
   if (!drawingHashMatch) {
     issues.push(
       buildIssue(
@@ -1675,10 +2725,14 @@ export function validateProjectGraphVerticalSlice({
 
   const sceneHash = artifacts.scene3d?.source_model_hash || null;
   const sceneHashMatch = Boolean(sceneHash) && sceneHash === geometryHash;
-  addCheck(checks, "THREE_D_SCENE_SHARES_MODEL_HASH", sceneHashMatch, {
-    sceneHash,
-    geometryHash,
-  });
+  addCheck(
+    checks,
+    "THREE_D_SCENE_SHARES_MODEL_HASH",
+    sceneHashMatch,
+    { sceneHash, geometryHash },
+    "consistency_2d_3d",
+    5,
+  );
   if (!sceneHashMatch) {
     issues.push(
       buildIssue(
@@ -1700,10 +2754,9 @@ export function validateProjectGraphVerticalSlice({
     checks,
     "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
     graphModel3dHashMatch,
-    {
-      graphModel3dHash,
-      geometryHash,
-    },
+    { graphModel3dHash, geometryHash },
+    "consistency_2d_3d",
+    5,
   );
   if (!graphModel3dHashMatch) {
     issues.push(
@@ -1723,12 +2776,19 @@ export function validateProjectGraphVerticalSlice({
   const areaDeltaRatio =
     targetGia > 0 ? Math.abs(actualGia - targetGia) / targetGia : 0;
   const areaOk = targetGia > 0 && areaDeltaRatio <= targetAreaTolerance;
-  addCheck(checks, "GIA_WITHIN_TOLERANCE", areaOk, {
-    actualGia,
-    targetGia,
-    areaDeltaRatio: round(areaDeltaRatio, 4),
-    targetAreaTolerance,
-  });
+  addCheck(
+    checks,
+    "GIA_WITHIN_TOLERANCE",
+    areaOk,
+    {
+      actualGia,
+      targetGia,
+      areaDeltaRatio: round(areaDeltaRatio, 4),
+      targetAreaTolerance,
+    },
+    "programme",
+    10,
+  );
   if (!areaOk) {
     issues.push(
       buildIssue(
@@ -1755,9 +2815,9 @@ export function validateProjectGraphVerticalSlice({
     checks,
     "A1_SHEET_REFERENCES_EXISTING_DRAWINGS",
     missingSheetDrawings.length === 0,
-    {
-      missingSheetDrawings,
-    },
+    { missingSheetDrawings },
+    "graphic",
+    5,
   );
   if (missingSheetDrawings.length) {
     issues.push(
@@ -1773,10 +2833,14 @@ export function validateProjectGraphVerticalSlice({
   const sheetArtifactHash = artifacts.a1Sheet?.source_model_hash || null;
   const sheetHashOk =
     Boolean(sheetArtifactHash) && sheetArtifactHash === geometryHash;
-  addCheck(checks, "A1_SHEET_SHARES_MODEL_HASH", sheetHashOk, {
-    sheetArtifactHash,
-    geometryHash,
-  });
+  addCheck(
+    checks,
+    "A1_SHEET_SHARES_MODEL_HASH",
+    sheetHashOk,
+    { sheetArtifactHash, geometryHash },
+    "consistency_2d_3d",
+    5,
+  );
   if (!sheetHashOk) {
     issues.push(
       buildIssue(
@@ -1795,12 +2859,19 @@ export function validateProjectGraphVerticalSlice({
     Number(pdfArtifact?.sheet_size_mm?.width) === 841 &&
     Number(pdfArtifact?.sheet_size_mm?.height) === 594 &&
     pdfArtifact?.source_model_hash === geometryHash;
-  addCheck(checks, "A1_PDF_EXPORT_PRESENT_AND_SIZED", pdfPageOk, {
-    assetType: pdfArtifact?.asset_type || null,
-    sheetSizeMm: pdfArtifact?.sheet_size_mm || null,
-    sourceModelHash: pdfArtifact?.source_model_hash || null,
-    geometryHash,
-  });
+  addCheck(
+    checks,
+    "A1_PDF_EXPORT_PRESENT_AND_SIZED",
+    pdfPageOk,
+    {
+      assetType: pdfArtifact?.asset_type || null,
+      sheetSizeMm: pdfArtifact?.sheet_size_mm || null,
+      sourceModelHash: pdfArtifact?.source_model_hash || null,
+      geometryHash,
+    },
+    "graphic",
+    5,
+  );
   if (!pdfPageOk) {
     issues.push(
       buildIssue(
@@ -1816,6 +2887,208 @@ export function validateProjectGraphVerticalSlice({
     );
   }
 
+  // Plan §10 site/context category (15 pts)
+  const siteOk = projectGraph?.site || {};
+  const siteHasBoundary = Array.isArray(siteOk.local_boundary_polygon)
+    ? siteOk.local_boundary_polygon.length >= 3
+    : false;
+  addCheck(
+    checks,
+    "SITE_HAS_LOCAL_BOUNDARY",
+    siteHasBoundary,
+    { vertexCount: siteOk.local_boundary_polygon?.length || 0 },
+    "site_context",
+    5,
+  );
+  const siteHasArea = Number(siteOk.area_m2 || 0) > 0;
+  addCheck(
+    checks,
+    "SITE_HAS_AREA",
+    siteHasArea,
+    { areaM2: siteOk.area_m2 || null },
+    "site_context",
+    5,
+  );
+  const siteHasDataQuality = Array.isArray(siteOk.data_quality)
+    ? siteOk.data_quality.length > 0
+    : false;
+  addCheck(
+    checks,
+    "SITE_HAS_DATA_QUALITY",
+    siteHasDataQuality,
+    { dataQualityCount: siteOk.data_quality?.length || 0 },
+    "site_context",
+    5,
+  );
+
+  // Plan §10 climate category (15 pts)
+  const climateOk = projectGraph?.climate || {};
+  const climateHasOverheating =
+    typeof climateOk.overheating?.risk_level === "string" &&
+    climateOk.overheating.risk_level !== "unknown";
+  addCheck(
+    checks,
+    "CLIMATE_HAS_OVERHEATING_RISK",
+    climateHasOverheating,
+    { riskLevel: climateOk.overheating?.risk_level || null },
+    "climate",
+    5,
+  );
+  const climateHasPassiveMoves = Array.isArray(climateOk.passive_design_moves)
+    ? climateOk.passive_design_moves.length > 0
+    : false;
+  addCheck(
+    checks,
+    "CLIMATE_HAS_PASSIVE_DESIGN_MOVES",
+    climateHasPassiveMoves,
+    { moveCount: climateOk.passive_design_moves?.length || 0 },
+    "climate",
+    5,
+  );
+  const climateHasDataQuality = Array.isArray(climateOk.data_quality)
+    ? climateOk.data_quality.length > 0
+    : false;
+  addCheck(
+    checks,
+    "CLIMATE_HAS_DATA_QUALITY",
+    climateHasDataQuality,
+    { dataQualityCount: climateOk.data_quality?.length || 0 },
+    "climate",
+    5,
+  );
+
+  // Plan §10 regulation category (10 pts) — split between metadata presence
+  // (2 pts) and concrete rule evaluation (8 pts) so the score actually
+  // reflects whether rules ran and whether any hard blockers fired.
+  const regOk = projectGraph?.regulations || {};
+  const regHasParts = Array.isArray(regOk.applicable_parts)
+    ? regOk.applicable_parts.length > 0
+    : false;
+  addCheck(
+    checks,
+    "REGULATION_HAS_APPLICABLE_PARTS",
+    regHasParts,
+    { partCount: regOk.applicable_parts?.length || 0 },
+    "regulation",
+    1,
+  );
+  const regHasSources = Array.isArray(regOk.source_documents)
+    ? regOk.source_documents.length > 0
+    : false;
+  addCheck(
+    checks,
+    "REGULATION_HAS_SOURCE_DOCUMENTS",
+    regHasSources,
+    { sourceCount: regOk.source_documents?.length || 0 },
+    "regulation",
+    1,
+  );
+  const regHardBlockers = (regOk.rule_summary?.hard_blocker_count || 0) === 0;
+  addCheck(
+    checks,
+    "REGULATION_NO_HARD_BLOCKERS",
+    regHardBlockers,
+    {
+      hardBlockerCount: regOk.rule_summary?.hard_blocker_count || 0,
+      failedRuleCount: regOk.rule_summary?.fail || 0,
+    },
+    "regulation",
+    4,
+  );
+  const ruleCoverage = Array.isArray(regOk.rule_coverage)
+    ? regOk.rule_coverage
+    : [];
+  const evaluatedPartCount = ruleCoverage.filter(
+    (entry) => entry.evaluated,
+  ).length;
+  addCheck(
+    checks,
+    "REGULATION_RULES_EVALUATED",
+    evaluatedPartCount > 0,
+    {
+      evaluatedPartCount,
+      totalPartCount: ruleCoverage.length,
+      evaluatedParts: ruleCoverage
+        .filter((entry) => entry.evaluated)
+        .map((entry) => entry.part),
+    },
+    "regulation",
+    4,
+  );
+
+  // Plan §10 architecture category (10 pts)
+  const design = projectGraph?.selected_design || {};
+  const targetStoreys = Number(projectGraph?.brief?.target_storeys || 1);
+  const designHasLevels = Array.isArray(design.levels)
+    ? design.levels.length >= targetStoreys
+    : false;
+  addCheck(
+    checks,
+    "DESIGN_HAS_LEVELS_MATCHING_TARGET",
+    designHasLevels,
+    { levelCount: design.levels?.length || 0, targetStoreys },
+    "architecture",
+    3,
+  );
+  const designHasElements = Array.isArray(design.elements)
+    ? design.elements.length > 0
+    : false;
+  addCheck(
+    checks,
+    "DESIGN_HAS_BUILDING_ELEMENTS",
+    designHasElements,
+    { elementCount: design.elements?.length || 0 },
+    "architecture",
+    3,
+  );
+  const designHasOpenings = Array.isArray(design.openings)
+    ? design.openings.length > 0
+    : false;
+  addCheck(
+    checks,
+    "DESIGN_HAS_OPENINGS",
+    designHasOpenings,
+    { openingCount: design.openings?.length || 0 },
+    "architecture",
+    4,
+  );
+
+  // Plan §3.2 constraint-priority audit. Conflicts surface as warnings on the
+  // QA report so the user sees what the engine over-rode, with rationale.
+  const constraintConflicts = detectConflicts({
+    brief: projectGraph?.brief,
+    site: projectGraph?.site,
+    climate: projectGraph?.climate,
+    programme: projectGraph?.programme,
+    regulations: projectGraph?.regulations,
+    localStyle: projectGraph?.local_style,
+  });
+  for (const conflict of constraintConflicts) {
+    issues.push({
+      code: `CONSTRAINT_PRIORITY_${conflict.conflict_id
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "_")}`,
+      severity: conflict.severity,
+      message: conflict.summary,
+      details: conflict,
+    });
+  }
+  const constraintErrors = constraintConflicts.filter(
+    (c) => c.severity === "error",
+  ).length;
+  addCheck(
+    checks,
+    "CONSTRAINT_PRIORITY_RESPECTED",
+    constraintErrors === 0,
+    {
+      conflictCount: constraintConflicts.length,
+      errorConflictCount: constraintErrors,
+      conflictIds: constraintConflicts.map((c) => c.conflict_id),
+    },
+    "architecture",
+    0, // architecture category already has 10 pts allocated; this is informational
+  );
+
   const errorCount = issues.filter(
     (issue) => issue.severity === "error",
   ).length;
@@ -1823,14 +3096,19 @@ export function validateProjectGraphVerticalSlice({
     (issue) => issue.severity === "warning",
   ).length;
   const score = Math.max(0, 100 - errorCount * 18 - warningCount * 6);
+  const { breakdown: categoryScores, totalScore } =
+    computeCategoryScores(checks);
 
   return {
     schema_version: "project-graph-qa-report-v1",
     status: errorCount > 0 ? "fail" : "pass",
     score,
+    totalScore,
+    categoryScores,
     source_model_hash: geometryHash,
     checks,
     issues,
+    constraint_conflicts: constraintConflicts,
     disclaimer: PROFESSIONAL_REVIEW_DISCLAIMER,
   };
 }
@@ -1842,6 +3120,7 @@ function buildProjectGraph({
   regulations,
   localStyle,
   programme,
+  projectGeometry,
   selectedDesign,
   drawingSet,
   model3dSet,
@@ -1853,6 +3132,19 @@ function buildProjectGraph({
   const projectId =
     projectGraphId || createStableId("project-graph", brief.project_name);
   const modelVersionId = `model-${compiledProject.geometryHash.slice(0, 12)}`;
+  const scoredOptions = Array.isArray(projectGeometry?.metadata?.design_options)
+    ? projectGeometry.metadata.design_options.map((opt) => ({
+        ...opt,
+        source_model_hash: opt.selected ? compiledProject.geometryHash : null,
+      }))
+    : [
+        {
+          option_id: "option-001",
+          label: "Deterministic vertical-slice option",
+          selected: true,
+          source_model_hash: compiledProject.geometryHash,
+        },
+      ];
   const graph = {
     schema_version: PROJECT_GRAPH_SCHEMA_VERSION,
     project_id: projectId,
@@ -1860,7 +3152,7 @@ function buildProjectGraph({
     created_at: null,
     updated_at: null,
     riba_stage_target: "2",
-    jurisdiction: "england",
+    jurisdiction: regulations?.jurisdiction || "england",
     brief,
     user_intent: brief.user_intent,
     site,
@@ -1868,14 +3160,7 @@ function buildProjectGraph({
     regulations,
     local_style: localStyle,
     programme,
-    design_options: [
-      {
-        option_id: "option-001",
-        label: "Deterministic vertical-slice option",
-        selected: true,
-        source_model_hash: compiledProject.geometryHash,
-      },
-    ],
+    design_options: scoredOptions,
     selected_design: {
       ...selectedDesign,
       source_model_hash: compiledProject.geometryHash,
@@ -1917,13 +3202,21 @@ function buildProjectGraph({
 
 export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const brief = normalizeBrief(input);
-  const site = buildSiteContext({
+  const deterministicSite = buildSiteContext({
     brief,
     sitePolygon: input.sitePolygon || input.site_boundary || [],
     siteMetrics: input.siteMetrics || {},
   });
+  // Plan §6.2 / §14: opt-in enrichment via Planning Data, EA flood, OSM. The
+  // slice stays offline-safe by default; callers pass fetchImpl or
+  // useDefaultFetch=true to invoke real providers.
+  const site =
+    input.contextProviders &&
+    (input.contextProviders.fetchImpl || input.contextProviders.useDefaultFetch)
+      ? await enrichSiteContext(deterministicSite, input.contextProviders)
+      : deterministicSite;
   const climate = buildClimatePack(brief, site);
-  const regulations = buildRegulationPack(brief);
+  const regulationsMetadata = buildRegulationPack(brief);
   const localStyle = buildLocalStylePack(brief, site, climate);
   const draftProgramme = buildProgramme({
     brief,
@@ -1934,8 +3227,17 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     site,
     programme: draftProgramme,
     localStyle,
+    climate,
   });
   const programme = syncProgrammeActuals(draftProgramme, projectGeometry);
+  // Apply rule engines now that geometry exists; produces concrete pass/fail
+  // RegulationCheckResults rather than blanket manual_review placeholders.
+  const regulations = applyRegulationRules(regulationsMetadata, {
+    brief,
+    climate,
+    programme,
+    projectGeometry,
+  });
   const compiledProject = compileProject({
     projectGeometry,
     masterDNA: {
@@ -1986,29 +3288,49 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     scene3d,
     geometryHash: compiledProject.geometryHash,
   });
-  const { sheetSet, sheetArtifact } = buildA1Sheet({
-    projectGraphId,
-    brief,
-    drawingSet: drawingSetWithGraph,
-    scene3d,
-    geometryHash: compiledProject.geometryHash,
-  });
-  const pdfArtifact = await buildA1PdfArtifact({
-    projectGraphId,
-    brief,
-    drawingSet: drawingSetWithGraph,
-    scene3d,
-    geometryHash: compiledProject.geometryHash,
-  });
+  // Plan §6.11: split into A1-01/02/03 when programme/storey/regulation
+  // density exceeds the legibility threshold; otherwise emit a single sheet.
+  const splitDecision = decideSheetSplit({ brief, programme, regulations });
+  const renderedSheets = [];
+  for (const sheetPlan of splitDecision.sheets) {
+    const sheetResult = buildA1Sheet({
+      projectGraphId,
+      brief,
+      drawingSet: drawingSetWithGraph,
+      drawingArtifacts,
+      site,
+      climate,
+      regulations,
+      localStyle,
+      scene3d,
+      geometryHash: compiledProject.geometryHash,
+      sheetPlan,
+    });
+    const pdf = await buildA1PdfArtifact({
+      projectGraphId,
+      brief,
+      geometryHash: compiledProject.geometryHash,
+      sheetArtifact: sheetResult.sheetArtifact,
+    });
+    renderedSheets.push({
+      sheetPlan,
+      sheet: sheetResult.sheetSet.sheets[0],
+      sheetArtifact: sheetResult.sheetArtifact,
+      pdf,
+    });
+  }
+  // The first rendered sheet is the primary export; the rest are companion
+  // sheets surfaced in sheets[].sheets and artifacts.companionSheets/Pdfs.
+  const primary = renderedSheets[0];
+  const sheetArtifact = primary.sheetArtifact;
+  const pdfArtifact = primary.pdf;
   const sheetSetWithPdf = {
-    ...sheetSet,
-    sheets: sheetSet.sheets.map((sheet) => ({
+    sheets: renderedSheets.map(({ sheet, pdf: rendered }) => ({
       ...sheet,
-      asset_ids: [
-        ...new Set([...(sheet.asset_ids || []), pdfArtifact.asset_id]),
-      ],
-      exported_pdf_asset_id: pdfArtifact.asset_id,
+      asset_ids: [...new Set([...(sheet.asset_ids || []), rendered.asset_id])],
+      exported_pdf_asset_id: rendered.asset_id,
     })),
+    split_decision: splitDecision,
   };
   const initialGraph = buildProjectGraph({
     brief,
@@ -2017,6 +3339,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     regulations,
     localStyle,
     programme,
+    projectGeometry,
     selectedDesign,
     drawingSet: drawingSetWithGraph,
     model3dSet,
@@ -2036,6 +3359,17 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     a1Pdf: pdfArtifact,
     compiledProject,
     projectGeometry,
+    sheetSeries: renderedSheets.map(
+      ({ sheetPlan, sheetArtifact: sa, pdf }) => ({
+        sheet_number: sheetPlan.sheet_number,
+        sheet_label: sheetPlan.label,
+        panel_types: [...sheetPlan.panel_types],
+        sheet_artifact_id: sa.asset_id,
+        pdf_asset_id: pdf.asset_id,
+        pdf_data_url: pdf.dataUrl,
+      }),
+    ),
+    sheetSplitDecision: splitDecision,
     technicalBuild: {
       ok: technicalBuild.ok,
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
@@ -2075,9 +3409,23 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   };
 }
 
+/**
+ * Self-correcting wrapper. Plan §6.13: up to 3 repair passes for non-hard
+ * failures. Hard blockers fail closed with no auto-repair.
+ */
+export async function buildArchitectureProjectVerticalSliceWithRepair(
+  input = {},
+  { maxAttempts = 3 } = {},
+) {
+  return runWithRepair(buildArchitectureProjectVerticalSlice, input, {
+    maxAttempts,
+  });
+}
+
 export default {
   PROJECT_GRAPH_SCHEMA_VERSION,
   PROJECT_GRAPH_VERTICAL_SLICE_VERSION,
   buildArchitectureProjectVerticalSlice,
+  buildArchitectureProjectVerticalSliceWithRepair,
   validateProjectGraphVerticalSlice,
 };

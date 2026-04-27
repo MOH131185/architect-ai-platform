@@ -1,0 +1,55 @@
+{
+  "project_name": "Neighbourhood Reading Room",
+  "building_type": "community",
+  "site_input": {
+    "postcode": "N1 1AA",
+    "lat": 51.5416,
+    "lon": -0.1022,
+    "boundary_geojson": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [-0.102301, 51.541501],
+          [-0.102099, 51.541501],
+          [-0.102099, 51.541699],
+          [-0.102301, 51.541699],
+          [-0.102301, 51.541501]
+        ]
+      ]
+    }
+  },
+  "target_gia_m2": 320,
+  "target_storeys": 2,
+  "client_goals": [
+    "small public reading room",
+    "community workshop",
+    "cafe facing street",
+    "quiet study upstairs",
+    "warm local brick character",
+    "good daylight and low-energy passive design"
+  ],
+  "style_keywords": [
+    "warm brick",
+    "RIBA portfolio",
+    "contextual contemporary",
+    "clear diagrams"
+  ],
+  "material_preferences": [
+    "local stock brick",
+    "warm timber soffits",
+    "low-energy triple glazing"
+  ],
+  "sustainability_ambition": "low_energy",
+  "user_intent": {
+    "portfolio_mood": "riba_stage2",
+    "local_blend_strength": 0.7,
+    "innovation_strength": 0.3,
+    "accessibility_priority": "inclusive",
+    "privacy_level": "public",
+    "avoid_keywords": [
+      "highly reflective glazing",
+      "aggressive sculptural form",
+      "sci-fi futurism"
+    ]
+  }
+}

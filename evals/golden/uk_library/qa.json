@@ -1,0 +1,266 @@
+{
+  "schema_version": "project-graph-qa-report-v1",
+  "status": "pass",
+  "score": 100,
+  "totalScore": 100,
+  "categoryScores": {
+    "programme": {
+      "earned": 20,
+      "max": 20,
+      "ratio": 1
+    },
+    "consistency_2d_3d": {
+      "earned": 20,
+      "max": 20,
+      "ratio": 1
+    },
+    "site_context": {
+      "earned": 15,
+      "max": 15,
+      "ratio": 1
+    },
+    "climate": {
+      "earned": 15,
+      "max": 15,
+      "ratio": 1
+    },
+    "regulation": {
+      "earned": 10,
+      "max": 10,
+      "ratio": 1
+    },
+    "architecture": {
+      "earned": 10,
+      "max": 10,
+      "ratio": 1
+    },
+    "graphic": {
+      "earned": 10,
+      "max": 10,
+      "ratio": 1
+    }
+  },
+  "source_model_hash": "e44bb2ac9522601d",
+  "checks": [
+    {
+      "code": "PROGRAMME_SPACES_IN_MODEL",
+      "status": "pass",
+      "details": {
+        "missingModelSpaces": []
+      },
+      "category": "programme",
+      "weight": 10
+    },
+    {
+      "code": "DRAWINGS_SHARE_MODEL_HASH",
+      "status": "pass",
+      "details": {
+        "drawingHashes": ["e44bb2ac9522601d"],
+        "geometryHash": "e44bb2ac9522601d"
+      },
+      "category": "consistency_2d_3d",
+      "weight": 5
+    },
+    {
+      "code": "THREE_D_SCENE_SHARES_MODEL_HASH",
+      "status": "pass",
+      "details": {
+        "sceneHash": "e44bb2ac9522601d",
+        "geometryHash": "e44bb2ac9522601d"
+      },
+      "category": "consistency_2d_3d",
+      "weight": 5
+    },
+    {
+      "code": "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
+      "status": "pass",
+      "details": {
+        "graphModel3dHash": "e44bb2ac9522601d",
+        "geometryHash": "e44bb2ac9522601d"
+      },
+      "category": "consistency_2d_3d",
+      "weight": 5
+    },
+    {
+      "code": "GIA_WITHIN_TOLERANCE",
+      "status": "pass",
+      "details": {
+        "actualGia": 326.42,
+        "targetGia": 320,
+        "areaDeltaRatio": 0.0201,
+        "targetAreaTolerance": 0.15
+      },
+      "category": "programme",
+      "weight": 10
+    },
+    {
+      "code": "A1_SHEET_REFERENCES_EXISTING_DRAWINGS",
+      "status": "pass",
+      "details": {
+        "missingSheetDrawings": []
+      },
+      "category": "graphic",
+      "weight": 5
+    },
+    {
+      "code": "A1_SHEET_SHARES_MODEL_HASH",
+      "status": "pass",
+      "details": {
+        "sheetArtifactHash": "e44bb2ac9522601d",
+        "geometryHash": "e44bb2ac9522601d"
+      },
+      "category": "consistency_2d_3d",
+      "weight": 5
+    },
+    {
+      "code": "A1_PDF_EXPORT_PRESENT_AND_SIZED",
+      "status": "pass",
+      "details": {
+        "assetType": "a1_sheet_pdf",
+        "sheetSizeMm": {
+          "width": 841,
+          "height": 594
+        },
+        "sourceModelHash": "e44bb2ac9522601d",
+        "geometryHash": "e44bb2ac9522601d"
+      },
+      "category": "graphic",
+      "weight": 5
+    },
+    {
+      "code": "SITE_HAS_LOCAL_BOUNDARY",
+      "status": "pass",
+      "details": {
+        "vertexCount": 5
+      },
+      "category": "site_context",
+      "weight": 5
+    },
+    {
+      "code": "SITE_HAS_AREA",
+      "status": "pass",
+      "details": {
+        "areaM2": 306.09
+      },
+      "category": "site_context",
+      "weight": 5
+    },
+    {
+      "code": "SITE_HAS_DATA_QUALITY",
+      "status": "pass",
+      "details": {
+        "dataQualityCount": 1
+      },
+      "category": "site_context",
+      "weight": 5
+    },
+    {
+      "code": "CLIMATE_HAS_OVERHEATING_RISK",
+      "status": "pass",
+      "details": {
+        "riskLevel": "medium"
+      },
+      "category": "climate",
+      "weight": 5
+    },
+    {
+      "code": "CLIMATE_HAS_PASSIVE_DESIGN_MOVES",
+      "status": "pass",
+      "details": {
+        "moveCount": 5
+      },
+      "category": "climate",
+      "weight": 5
+    },
+    {
+      "code": "CLIMATE_HAS_DATA_QUALITY",
+      "status": "pass",
+      "details": {
+        "dataQualityCount": 2
+      },
+      "category": "climate",
+      "weight": 5
+    },
+    {
+      "code": "REGULATION_HAS_APPLICABLE_PARTS",
+      "status": "pass",
+      "details": {
+        "partCount": 7
+      },
+      "category": "regulation",
+      "weight": 1
+    },
+    {
+      "code": "REGULATION_HAS_SOURCE_DOCUMENTS",
+      "status": "pass",
+      "details": {
+        "sourceCount": 8
+      },
+      "category": "regulation",
+      "weight": 1
+    },
+    {
+      "code": "REGULATION_NO_HARD_BLOCKERS",
+      "status": "pass",
+      "details": {
+        "hardBlockerCount": 0,
+        "failedRuleCount": 0
+      },
+      "category": "regulation",
+      "weight": 4
+    },
+    {
+      "code": "REGULATION_RULES_EVALUATED",
+      "status": "pass",
+      "details": {
+        "evaluatedPartCount": 2,
+        "totalPartCount": 7,
+        "evaluatedParts": ["K", "M"]
+      },
+      "category": "regulation",
+      "weight": 4
+    },
+    {
+      "code": "DESIGN_HAS_LEVELS_MATCHING_TARGET",
+      "status": "pass",
+      "details": {
+        "levelCount": 2,
+        "targetStoreys": 2
+      },
+      "category": "architecture",
+      "weight": 3
+    },
+    {
+      "code": "DESIGN_HAS_BUILDING_ELEMENTS",
+      "status": "pass",
+      "details": {
+        "elementCount": 35
+      },
+      "category": "architecture",
+      "weight": 3
+    },
+    {
+      "code": "DESIGN_HAS_OPENINGS",
+      "status": "pass",
+      "details": {
+        "openingCount": 16
+      },
+      "category": "architecture",
+      "weight": 4
+    },
+    {
+      "code": "CONSTRAINT_PRIORITY_RESPECTED",
+      "status": "pass",
+      "details": {
+        "conflictCount": 0,
+        "errorConflictCount": 0,
+        "conflictIds": []
+      },
+      "category": "architecture",
+      "weight": 0
+    }
+  ],
+  "issues": [],
+  "constraint_conflicts": [],
+  "disclaimer": "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review."
+}

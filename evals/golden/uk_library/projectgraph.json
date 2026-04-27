@@ -1,0 +1,3769 @@
+{
+  "schema_version": "project-graph-v1",
+  "project_id": "project-graph-1vwf611",
+  "model_version_id": "model-e44bb2ac9522",
+  "riba_stage_target": "2",
+  "jurisdiction": "england",
+  "brief": {
+    "project_name": "Neighbourhood Reading Room",
+    "building_type": "community",
+    "client_goals": [
+      "small public reading room",
+      "community workshop",
+      "cafe facing street",
+      "quiet study upstairs",
+      "warm local brick character",
+      "good daylight and low-energy passive design"
+    ],
+    "site_input": {
+      "address": null,
+      "postcode": "N1 1AA",
+      "lat": 51.5416,
+      "lon": -0.1022,
+      "boundary_geojson": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-0.102301, 51.541501],
+            [-0.102099, 51.541501],
+            [-0.102099, 51.541699],
+            [-0.102301, 51.541699],
+            [-0.102301, 51.541501]
+          ]
+        ]
+      }
+    },
+    "target_gia_m2": 320,
+    "target_storeys": 2,
+    "budget_band": "unknown",
+    "sustainability_ambition": "low_energy",
+    "required_spaces_text": "",
+    "constraints_text": "",
+    "user_intent": {
+      "style_keywords": [
+        "warm brick",
+        "RIBA portfolio",
+        "contextual contemporary",
+        "clear diagrams"
+      ],
+      "avoid_keywords": [
+        "highly reflective glazing",
+        "aggressive sculptural form",
+        "sci-fi futurism"
+      ],
+      "portfolio_mood": "riba_stage2",
+      "local_blend_strength": 0.7,
+      "innovation_strength": 0.3,
+      "material_preferences": [
+        "local stock brick",
+        "warm timber soffits",
+        "low-energy triple glazing"
+      ],
+      "accessibility_priority": "inclusive",
+      "privacy_level": "public"
+    }
+  },
+  "user_intent": {
+    "style_keywords": [
+      "warm brick",
+      "RIBA portfolio",
+      "contextual contemporary",
+      "clear diagrams"
+    ],
+    "avoid_keywords": [
+      "highly reflective glazing",
+      "aggressive sculptural form",
+      "sci-fi futurism"
+    ],
+    "portfolio_mood": "riba_stage2",
+    "local_blend_strength": 0.7,
+    "innovation_strength": 0.3,
+    "material_preferences": [
+      "local stock brick",
+      "warm timber soffits",
+      "low-energy triple glazing"
+    ],
+    "accessibility_priority": "inclusive",
+    "privacy_level": "public"
+  },
+  "site": {
+    "site_id": "site-15zul20",
+    "address_normalised": null,
+    "lat": 51.54158,
+    "lon": -0.10222,
+    "boundary": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [-0.102301, 51.541501],
+          [-0.102099, 51.541501],
+          [-0.102099, 51.541699],
+          [-0.102301, 51.541699],
+          [-0.102301, 51.541501]
+        ]
+      ]
+    },
+    "local_boundary_polygon": [
+      {
+        "x": -5.594,
+        "y": -8.755
+      },
+      {
+        "x": 8.391,
+        "y": -8.755
+      },
+      {
+        "x": 8.391,
+        "y": 13.132
+      },
+      {
+        "x": -5.594,
+        "y": 13.132
+      },
+      {
+        "x": -5.594,
+        "y": -8.755
+      }
+    ],
+    "buildable_polygon": [
+      {
+        "x": -3.594,
+        "y": -6.755
+      },
+      {
+        "x": 6.391,
+        "y": -6.755
+      },
+      {
+        "x": 6.391,
+        "y": 11.132
+      },
+      {
+        "x": -3.594,
+        "y": 11.132
+      }
+    ],
+    "north_angle_degrees": 0,
+    "area_m2": 306.09,
+    "access_edges": [
+      {
+        "edge_id": "street-edge-primary",
+        "label": "Assumed primary street edge",
+        "source": "site_polygon"
+      }
+    ],
+    "adjacent_roads": [],
+    "neighbouring_buildings": [],
+    "context_height_stats": {
+      "source": "fallback_context_pack"
+    },
+    "flood_risk": {
+      "status": "unknown",
+      "source": "not_configured"
+    },
+    "heritage_flags": [],
+    "planning_policy_refs": [],
+    "data_quality": [
+      {
+        "code": "SITE_BOUNDARY_PROVIDED",
+        "severity": "info",
+        "message": "Site boundary was supplied by the request."
+      }
+    ]
+  },
+  "climate": {
+    "lat": 51.54158,
+    "lon": -0.10222,
+    "weather_source": "fallback",
+    "weather_file_asset_id": null,
+    "climate_projection_refs": [
+      "UKCP18 reference required before production use"
+    ],
+    "sun_path": {
+      "source": "suncalc-deterministic",
+      "schema_version": "sun-path-v1",
+      "summer_solstice": {
+        "label": "Summer solstice",
+        "iso_date": "2026-06-21",
+        "peak": {
+          "altitudeDeg": 61.89,
+          "azimuthDeg": 178.83,
+          "hour": 12
+        },
+        "samples": [
+          {
+            "hour": 4,
+            "altitudeDeg": 1.21,
+            "azimuthDeg": 52.19
+          },
+          {
+            "hour": 5,
+            "altitudeDeg": 9.1,
+            "azimuthDeg": 63.51
+          },
+          {
+            "hour": 6,
+            "altitudeDeg": 17.8,
+            "azimuthDeg": 74.48
+          },
+          {
+            "hour": 7,
+            "altitudeDeg": 26.97,
+            "azimuthDeg": 85.59
+          },
+          {
+            "hour": 8,
+            "altitudeDeg": 36.28,
+            "azimuthDeg": 97.51
+          },
+          {
+            "hour": 9,
+            "altitudeDeg": 45.3,
+            "azimuthDeg": 111.28
+          },
+          {
+            "hour": 10,
+            "altitudeDeg": 53.39,
+            "azimuthDeg": 128.47
+          },
+          {
+            "hour": 11,
+            "altitudeDeg": 59.44,
+            "azimuthDeg": 150.97
+          },
+          {
+            "hour": 12,
+            "altitudeDeg": 61.89,
+            "azimuthDeg": 178.83
+          },
+          {
+            "hour": 13,
+            "altitudeDeg": 59.79,
+            "azimuthDeg": 206.96
+          },
+          {
+            "hour": 14,
+            "altitudeDeg": 53.96,
+            "azimuthDeg": 229.95
+          },
+          {
+            "hour": 15,
+            "altitudeDeg": 45.99,
+            "azimuthDeg": 247.49
+          },
+          {
+            "hour": 16,
+            "altitudeDeg": 37.02,
+            "azimuthDeg": 261.47
+          },
+          {
+            "hour": 17,
+            "altitudeDeg": 27.71,
+            "azimuthDeg": 273.5
+          },
+          {
+            "hour": 18,
+            "altitudeDeg": 18.52,
+            "azimuthDeg": 284.64
+          },
+          {
+            "hour": 19,
+            "altitudeDeg": 9.77,
+            "azimuthDeg": 295.6
+          },
+          {
+            "hour": 20,
+            "altitudeDeg": 1.81,
+            "azimuthDeg": 306.88
+          },
+          {
+            "hour": 21,
+            "altitudeDeg": -5.03,
+            "azimuthDeg": 318.83
+          }
+        ],
+        "day_length_hours": 16.65
+      },
+      "winter_solstice": {
+        "label": "Winter solstice",
+        "iso_date": "2026-12-21",
+        "peak": {
+          "altitudeDeg": 15.02,
+          "azimuthDeg": 180.33,
+          "hour": 12
+        },
+        "samples": [
+          {
+            "hour": 4,
+            "altitudeDeg": -36.4,
+            "azimuthDeg": 82.31
+          },
+          {
+            "hour": 5,
+            "altitudeDeg": -27.09,
+            "azimuthDeg": 94.25
+          },
+          {
+            "hour": 6,
+            "altitudeDeg": -17.92,
+            "azimuthDeg": 105.36
+          },
+          {
+            "hour": 7,
+            "altitudeDeg": -9.22,
+            "azimuthDeg": 116.33
+          },
+          {
+            "hour": 8,
+            "altitudeDeg": -1.32,
+            "azimuthDeg": 127.64
+          },
+          {
+            "hour": 9,
+            "altitudeDeg": 5.43,
+            "azimuthDeg": 139.64
+          },
+          {
+            "hour": 10,
+            "altitudeDeg": 10.63,
+            "azimuthDeg": 152.5
+          },
+          {
+            "hour": 11,
+            "altitudeDeg": 13.92,
+            "azimuthDeg": 166.17
+          },
+          {
+            "hour": 12,
+            "altitudeDeg": 15.02,
+            "azimuthDeg": 180.33
+          },
+          {
+            "hour": 13,
+            "altitudeDeg": 13.82,
+            "azimuthDeg": 194.48
+          },
+          {
+            "hour": 14,
+            "altitudeDeg": 10.43,
+            "azimuthDeg": 208.11
+          },
+          {
+            "hour": 15,
+            "altitudeDeg": 5.15,
+            "azimuthDeg": 220.93
+          },
+          {
+            "hour": 16,
+            "altitudeDeg": -1.66,
+            "azimuthDeg": 232.89
+          },
+          {
+            "hour": 17,
+            "altitudeDeg": -9.61,
+            "azimuthDeg": 244.18
+          },
+          {
+            "hour": 18,
+            "altitudeDeg": -18.34,
+            "azimuthDeg": 255.14
+          },
+          {
+            "hour": 19,
+            "altitudeDeg": -27.53,
+            "azimuthDeg": 266.27
+          },
+          {
+            "hour": 20,
+            "altitudeDeg": -36.83,
+            "azimuthDeg": 278.27
+          },
+          {
+            "hour": 21,
+            "altitudeDeg": -45.81,
+            "azimuthDeg": 292.19
+          }
+        ],
+        "day_length_hours": 7.82
+      },
+      "spring_equinox": {
+        "label": "Spring equinox",
+        "iso_date": "2026-03-20",
+        "peak": {
+          "altitudeDeg": 38.21,
+          "azimuthDeg": 177.34,
+          "hour": 12
+        },
+        "samples": [
+          {
+            "hour": 4,
+            "altitudeDeg": -19.6,
+            "azimuthDeg": 64.04
+          },
+          {
+            "hour": 5,
+            "altitudeDeg": -10.81,
+            "azimuthDeg": 76.65
+          },
+          {
+            "hour": 6,
+            "altitudeDeg": -1.56,
+            "azimuthDeg": 88.55
+          },
+          {
+            "hour": 7,
+            "altitudeDeg": 7.74,
+            "azimuthDeg": 100.35
+          },
+          {
+            "hour": 8,
+            "altitudeDeg": 16.68,
+            "azimuthDeg": 112.69
+          },
+          {
+            "hour": 9,
+            "altitudeDeg": 24.82,
+            "azimuthDeg": 126.19
+          },
+          {
+            "hour": 10,
+            "altitudeDeg": 31.56,
+            "azimuthDeg": 141.42
+          },
+          {
+            "hour": 11,
+            "altitudeDeg": 36.24,
+            "azimuthDeg": 158.63
+          },
+          {
+            "hour": 12,
+            "altitudeDeg": 38.21,
+            "azimuthDeg": 177.34
+          },
+          {
+            "hour": 13,
+            "altitudeDeg": 37.12,
+            "azimuthDeg": 196.28
+          },
+          {
+            "hour": 14,
+            "altitudeDeg": 33.16,
+            "azimuthDeg": 214.01
+          },
+          {
+            "hour": 15,
+            "altitudeDeg": 26.94,
+            "azimuthDeg": 229.81
+          },
+          {
+            "hour": 16,
+            "altitudeDeg": 19.16,
+            "azimuthDeg": 243.77
+          },
+          {
+            "hour": 17,
+            "altitudeDeg": 10.41,
+            "azimuthDeg": 256.39
+          },
+          {
+            "hour": 18,
+            "altitudeDeg": 1.19,
+            "azimuthDeg": 268.3
+          },
+          {
+            "hour": 19,
+            "altitudeDeg": -8.08,
+            "azimuthDeg": 280.13
+          },
+          {
+            "hour": 20,
+            "altitudeDeg": -17.01,
+            "azimuthDeg": 292.5
+          },
+          {
+            "hour": 21,
+            "altitudeDeg": -25.13,
+            "azimuthDeg": 306.04
+          }
+        ],
+        "day_length_hours": 12.14
+      },
+      "autumn_equinox": {
+        "label": "Autumn equinox",
+        "iso_date": "2026-09-22",
+        "peak": {
+          "altitudeDeg": 38.82,
+          "azimuthDeg": 182.06,
+          "hour": 12
+        },
+        "samples": [
+          {
+            "hour": 4,
+            "altitudeDeg": -16.8,
+            "azimuthDeg": 66.73
+          },
+          {
+            "hour": 5,
+            "altitudeDeg": -7.91,
+            "azimuthDeg": 79.11
+          },
+          {
+            "hour": 6,
+            "altitudeDeg": 1.36,
+            "azimuthDeg": 90.94
+          },
+          {
+            "hour": 7,
+            "altitudeDeg": 10.59,
+            "azimuthDeg": 102.84
+          },
+          {
+            "hour": 8,
+            "altitudeDeg": 19.38,
+            "azimuthDeg": 115.45
+          },
+          {
+            "hour": 9,
+            "altitudeDeg": 27.24,
+            "azimuthDeg": 129.39
+          },
+          {
+            "hour": 10,
+            "altitudeDeg": 33.55,
+            "azimuthDeg": 145.2
+          },
+          {
+            "hour": 11,
+            "altitudeDeg": 37.62,
+            "azimuthDeg": 162.99
+          },
+          {
+            "hour": 12,
+            "altitudeDeg": 38.82,
+            "azimuthDeg": 182.06
+          },
+          {
+            "hour": 13,
+            "altitudeDeg": 36.94,
+            "azimuthDeg": 200.95
+          },
+          {
+            "hour": 14,
+            "altitudeDeg": 32.3,
+            "azimuthDeg": 218.32
+          },
+          {
+            "hour": 15,
+            "altitudeDeg": 25.58,
+            "azimuthDeg": 233.68
+          },
+          {
+            "hour": 16,
+            "altitudeDeg": 17.45,
+            "azimuthDeg": 247.26
+          },
+          {
+            "hour": 17,
+            "altitudeDeg": 8.51,
+            "azimuthDeg": 259.64
+          },
+          {
+            "hour": 18,
+            "altitudeDeg": -0.79,
+            "azimuthDeg": 271.45
+          },
+          {
+            "hour": 19,
+            "altitudeDeg": -10.04,
+            "azimuthDeg": 283.33
+          },
+          {
+            "hour": 20,
+            "altitudeDeg": -18.83,
+            "azimuthDeg": 295.9
+          },
+          {
+            "hour": 21,
+            "altitudeDeg": -26.68,
+            "azimuthDeg": 309.79
+          }
+        ],
+        "day_length_hours": 12.24
+      },
+      "recommendation": {
+        "primary_glazing_orientation": "south",
+        "avoid_orientation": "west",
+        "summer_overheating_risk": "controlled-shading-required",
+        "winter_solar_gain_target": "passive-gain-feasible",
+        "rationale": [
+          "Peak summer altitude 61.89° at 51.54158°N — high overhead sun favours external shading on south-facing glass.",
+          "Peak winter altitude 15.02° — orient occupied rooms to south to capture low-angle gain.",
+          "Avoid uncontrolled west glazing to limit late-afternoon overheating risk."
+        ]
+      }
+    },
+    "wind": {
+      "exposure": "unknown",
+      "source": "fallback"
+    },
+    "rainfall": {
+      "exposure": "uk_temperate_assumption",
+      "source": "fallback"
+    },
+    "overheating": {
+      "risk_level": "medium",
+      "part_o_required": false,
+      "tm59_recommended": false,
+      "key_drivers": [
+        "summer-solstice peak altitude 61.89° exceeds 55° — south/west glazing requires shading",
+        "urban infill uncertainty",
+        "glazing ratio to be verified"
+      ],
+      "mitigation_moves": [
+        "external shading",
+        "cross ventilation",
+        "high-performance envelope"
+      ]
+    },
+    "passive_design_moves": [
+      "Orient main occupied rooms toward controlled daylight.",
+      "Use opening strategy and shading as geometry constraints, not caption-only claims.",
+      "Peak summer altitude 61.89° at 51.54158°N — high overhead sun favours external shading on south-facing glass.",
+      "Peak winter altitude 15.02° — orient occupied rooms to south to capture low-angle gain.",
+      "Avoid uncontrolled west glazing to limit late-afternoon overheating risk."
+    ],
+    "material_weathering_notes": [
+      "Select robust UK external materials and detail exposed edges for rain."
+    ],
+    "data_quality": [
+      {
+        "code": "CLIMATE_PACK_WEATHER_FALLBACK",
+        "severity": "warning",
+        "message": "No live weather source was used in this vertical slice."
+      },
+      {
+        "code": "SUN_PATH_DETERMINISTIC",
+        "severity": "info",
+        "message": "Sun path computed deterministically from site lat/lon via suncalc."
+      }
+    ]
+  },
+  "regulations": {
+    "jurisdiction": "england",
+    "building_type": "community",
+    "riba_stage": "2",
+    "source_documents": [
+      {
+        "source_document_id": "govuk-approved-documents",
+        "title": "GOV.UK Approved Documents collection",
+        "url": "https://www.gov.uk/government/collections/approved-documents"
+      },
+      {
+        "source_document_id": "ad-A-2013",
+        "title": "Approved Document A: Structure",
+        "version": "2013 incorporating 2013 amendments",
+        "url": "https://www.gov.uk/government/publications/structure-approved-document-a"
+      },
+      {
+        "source_document_id": "ad-B-2022",
+        "title": "Approved Document B: Fire safety",
+        "version": "2019 edition incorporating 2020 and 2022 amendments",
+        "url": "https://www.gov.uk/government/publications/fire-safety-approved-document-b"
+      },
+      {
+        "source_document_id": "ad-F-2021",
+        "title": "Approved Document F: Ventilation",
+        "version": "2021 edition",
+        "url": "https://www.gov.uk/government/publications/ventilation-approved-document-f"
+      },
+      {
+        "source_document_id": "ad-K-2013",
+        "title": "Approved Document K: Protection from falling, collision and impact",
+        "version": "2013 edition incorporating 2013 amendments",
+        "url": "https://www.gov.uk/government/publications/protection-from-falling-collision-and-impact-approved-document-k"
+      },
+      {
+        "source_document_id": "ad-L-2021",
+        "title": "Approved Document L: Conservation of fuel and power",
+        "version": "2021 edition (2023 amendments)",
+        "url": "https://www.gov.uk/government/publications/conservation-of-fuel-and-power-approved-document-l"
+      },
+      {
+        "source_document_id": "ad-M-2015",
+        "title": "Approved Document M: Access to and use of buildings",
+        "version": "2015 edition incorporating 2016 amendments",
+        "url": "https://www.gov.uk/government/publications/access-to-and-use-of-buildings-approved-document-m"
+      },
+      {
+        "source_document_id": "regulation-7",
+        "title": "Building Regulations 2010, Regulation 7: Materials and workmanship",
+        "version": "2010 with subsequent amendments",
+        "url": "https://www.gov.uk/government/publications/materials-and-workmanship-approved-document-7"
+      }
+    ],
+    "applicable_parts": [
+      {
+        "part": "A",
+        "status": "manual_review_required"
+      },
+      {
+        "part": "B",
+        "status": "manual_review_required"
+      },
+      {
+        "part": "F",
+        "status": "manual_review_required"
+      },
+      {
+        "part": "K",
+        "status": "rule_evaluated"
+      },
+      {
+        "part": "L",
+        "status": "manual_review_required"
+      },
+      {
+        "part": "M",
+        "status": "rule_evaluated"
+      },
+      {
+        "part": "Regulation 7",
+        "status": "manual_review_required"
+      }
+    ],
+    "precheck_results": [
+      {
+        "check_id": "ad-a-manual",
+        "title": "Approved Document A: Structure",
+        "source_document_id": "ad-A-2013",
+        "source_url": "https://www.gov.uk/government/publications/structure-approved-document-a",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": [],
+        "summary": "Approved Document A requires consultant review at this stage; no automated rule evaluation is configured.",
+        "recommended_action": "Engage a qualified consultant to evaluate against Approved Document A: Structure."
+      },
+      {
+        "check_id": "ad-b-manual",
+        "title": "Approved Document B: Fire safety",
+        "source_document_id": "ad-B-2022",
+        "source_url": "https://www.gov.uk/government/publications/fire-safety-approved-document-b",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": [],
+        "summary": "Approved Document B requires consultant review at this stage; no automated rule evaluation is configured.",
+        "recommended_action": "Engage a qualified consultant to evaluate against Approved Document B: Fire safety."
+      },
+      {
+        "check_id": "ad-f-manual",
+        "title": "Approved Document F: Ventilation",
+        "source_document_id": "ad-F-2021",
+        "source_url": "https://www.gov.uk/government/publications/ventilation-approved-document-f",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": [],
+        "summary": "Approved Document F requires consultant review at this stage; no automated rule evaluation is configured.",
+        "recommended_action": "Engage a qualified consultant to evaluate against Approved Document F: Ventilation."
+      },
+      {
+        "check_id": "ad-K-stair-presence",
+        "title": "Approved Document K — stair geometry between storeys",
+        "source_document_id": "ad-K-2013",
+        "source_url": "https://www.gov.uk/government/publications/protection-from-falling-collision-and-impact-approved-document-k",
+        "severity": "info",
+        "status": "pass",
+        "applies_to_element_ids": ["stair-1iupgwi"],
+        "summary": "1 stair element(s) connect the programmed levels; pitch and rise/going to be verified at Stage 3.",
+        "recommended_action": "At Stage 3, confirm rise (≤220 mm domestic / ≤190 mm public), going (≥220 mm), and pitch (≤42° / ≤38°)."
+      },
+      {
+        "check_id": "ad-K-guarding",
+        "title": "Approved Document K — guarding to falls",
+        "source_document_id": "ad-K-2013",
+        "source_url": "https://www.gov.uk/government/publications/protection-from-falling-collision-and-impact-approved-document-k",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": [],
+        "summary": "Guarding heights, balustrade design, and infill spacing depend on detailed elevations not yet present at this stage.",
+        "recommended_action": "At Stage 4 verify: 900 mm minimum (domestic stair), 1100 mm minimum (balcony / public landing), 100 mm sphere infill rule."
+      },
+      {
+        "check_id": "ad-K-headroom",
+        "title": "Approved Document K — stair headroom",
+        "source_document_id": "ad-K-2013",
+        "source_url": "https://www.gov.uk/government/publications/protection-from-falling-collision-and-impact-approved-document-k",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": ["stair-1iupgwi"],
+        "summary": "Headroom over stairs requires the soffit profile from the level above, which is not yet detailed in the ProjectGraph.",
+        "recommended_action": "Verify 2.0 m minimum headroom along the entire flight at Stage 3 spatial coordination."
+      },
+      {
+        "check_id": "ad-l-manual",
+        "title": "Approved Document L: Conservation of fuel and power",
+        "source_document_id": "ad-L-2021",
+        "source_url": "https://www.gov.uk/government/publications/conservation-of-fuel-and-power-approved-document-l",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": [],
+        "summary": "Approved Document L requires consultant review at this stage; no automated rule evaluation is configured.",
+        "recommended_action": "Engage a qualified consultant to evaluate against Approved Document L: Conservation of fuel and power."
+      },
+      {
+        "check_id": "ad-M-door-width",
+        "title": "Approved Document M — door clear width",
+        "source_document_id": "ad-M-2015",
+        "source_url": "https://www.gov.uk/government/publications/access-to-and-use-of-buildings-approved-document-m",
+        "severity": "info",
+        "status": "pass",
+        "applies_to_element_ids": [],
+        "summary": "All 8 door(s) meet the AD M minimum clear-width pre-check.",
+        "recommended_action": "No action — AD M door-width pre-check satisfied."
+      },
+      {
+        "check_id": "ad-M-accessible-wc",
+        "title": "Approved Document M — accessible WC presence",
+        "source_document_id": "ad-M-2015",
+        "source_url": "https://www.gov.uk/government/publications/access-to-and-use-of-buildings-approved-document-m",
+        "severity": "info",
+        "status": "pass",
+        "applies_to_element_ids": ["space-1idzhuf"],
+        "summary": "Accessible WC programmed: \"Accessible WC\".",
+        "recommended_action": "No action — accessible WC present."
+      },
+      {
+        "check_id": "ad-M-main-entrance",
+        "title": "Approved Document M — principal accessible entrance",
+        "source_document_id": "ad-M-2015",
+        "source_url": "https://www.gov.uk/government/publications/access-to-and-use-of-buildings-approved-document-m",
+        "severity": "warning",
+        "status": "needs_consultant",
+        "applies_to_element_ids": [],
+        "summary": "No door tagged as a main entrance was found; AD M requires a clearly identified accessible principal entrance.",
+        "recommended_action": "Tag the principal accessible entrance and confirm a level threshold and approach."
+      },
+      {
+        "check_id": "ad-M-vertical-access",
+        "title": "Approved Document M — vertical access between storeys",
+        "source_document_id": "ad-M-2015",
+        "source_url": "https://www.gov.uk/government/publications/access-to-and-use-of-buildings-approved-document-m",
+        "severity": "warning",
+        "status": "needs_consultant",
+        "applies_to_element_ids": ["stair-1iupgwi"],
+        "summary": "1 stair element(s) provide vertical access; AD M Category 2/3 dwellings or non-domestic buildings may also require a passenger lift.",
+        "recommended_action": "Confirm whether a lift is required by AD M (Category 2/3 dwellings or non-domestic) and add to the model if so."
+      },
+      {
+        "check_id": "ad-regulation-7-manual",
+        "title": "Building Regulations 2010, Regulation 7: Materials and workmanship",
+        "source_document_id": "regulation-7",
+        "source_url": "https://www.gov.uk/government/publications/materials-and-workmanship-approved-document-7",
+        "severity": "needs_consultant",
+        "status": "manual_review",
+        "applies_to_element_ids": [],
+        "summary": "Approved Document Regulation 7 requires consultant review at this stage; no automated rule evaluation is configured.",
+        "recommended_action": "Engage a qualified consultant to evaluate against Building Regulations 2010, Regulation 7: Materials and workmanship."
+      }
+    ],
+    "rule_coverage": [
+      {
+        "part": "A",
+        "evaluated": false,
+        "reason": "no-rule-module"
+      },
+      {
+        "part": "B",
+        "evaluated": false,
+        "reason": "no-rule-module"
+      },
+      {
+        "part": "F",
+        "evaluated": false,
+        "reason": "no-rule-module"
+      },
+      {
+        "part": "K",
+        "evaluated": true,
+        "rule_count": 3
+      },
+      {
+        "part": "L",
+        "evaluated": false,
+        "reason": "no-rule-module"
+      },
+      {
+        "part": "M",
+        "evaluated": true,
+        "rule_count": 4
+      },
+      {
+        "part": "Regulation 7",
+        "evaluated": false,
+        "reason": "no-rule-module"
+      }
+    ],
+    "rule_summary": {
+      "total": 12,
+      "pass": 3,
+      "fail": 0,
+      "not_applicable": 0,
+      "manual_review": 7,
+      "needs_consultant_count": 7,
+      "hard_blocker_count": 0,
+      "warning_count": 2
+    },
+    "limitations": [
+      "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review."
+    ]
+  },
+  "local_style": {
+    "style_pack_id": "local-style-qrn6y2",
+    "primary_style": "warm brick, RIBA portfolio, contextual contemporary, clear diagrams",
+    "avoid_keywords": [
+      "highly reflective glazing",
+      "aggressive sculptural form",
+      "sci-fi futurism"
+    ],
+    "material_palette": [
+      "clay roof tile",
+      "standing seam metal",
+      "stone plinth",
+      "timber rainscreen",
+      "warm stock brick",
+      "local stock brick"
+    ],
+    "material_palette_with_provenance": [
+      {
+        "material": "clay roof tile",
+        "score": 0.48,
+        "sources": ["local"]
+      },
+      {
+        "material": "standing seam metal",
+        "score": 0.48,
+        "sources": ["local"]
+      },
+      {
+        "material": "stone plinth",
+        "score": 0.48,
+        "sources": ["local"]
+      },
+      {
+        "material": "timber rainscreen",
+        "score": 0.48,
+        "sources": ["local"]
+      },
+      {
+        "material": "warm stock brick",
+        "score": 0.48,
+        "sources": ["local"]
+      },
+      {
+        "material": "local stock brick",
+        "score": 0.2278,
+        "sources": ["user"]
+      }
+    ],
+    "source_palettes": {
+      "local": [
+        "warm stock brick",
+        "stone plinth",
+        "timber rainscreen",
+        "standing seam metal",
+        "clay roof tile"
+      ],
+      "user": [
+        "local stock brick",
+        "warm timber soffits",
+        "low-energy triple glazing",
+        "warm brick"
+      ],
+      "climate": [
+        "external timber screen",
+        "deep brick reveals",
+        "ventilated rainscreen",
+        "warm timber soffit"
+      ],
+      "portfolio": [
+        "restrained brick",
+        "thoughtful timber accent",
+        "neutral lime render",
+        "dark metal flashing"
+      ]
+    },
+    "blend_weights": {
+      "local": 0.48,
+      "user": 0.2278,
+      "climate": 0.1822,
+      "portfolio": 0.11
+    },
+    "blend_rationale": [
+      "local context contributes 48.0% (slider local_blend_strength=0.7)",
+      "user intent contributes 22.8%",
+      "climate suitability contributes 18.2% (overheating risk=medium)",
+      "portfolio mood contributes 11.0% (slider innovation_strength=0.3, mood=riba_stage2)"
+    ],
+    "climate_notes": [
+      "Select robust UK external materials and detail exposed edges for rain."
+    ],
+    "local_blend_strength": 0.7,
+    "innovation_strength": 0.3,
+    "data_quality": [
+      {
+        "code": "SITE_BOUNDARY_PROVIDED",
+        "severity": "info",
+        "message": "Site boundary was supplied by the request."
+      }
+    ]
+  },
+  "programme": {
+    "programme_id": "programme-yl0x26",
+    "source_brief_hash": "1819d25081bbb057",
+    "template_provenance": {
+      "source": "matched_template",
+      "resolved_template": "community",
+      "severity": "info"
+    },
+    "spaces": [
+      {
+        "space_id": "space-1acgda7",
+        "name": "Cafe and welcome",
+        "function": "street-facing public arrival and cafe",
+        "zone": "public",
+        "target_area_m2": 48,
+        "min_area_m2": 40.8,
+        "max_area_m2": 55.2,
+        "target_level": "Ground",
+        "target_level_index": 0,
+        "actual_level_id": "level-0",
+        "required_daylight": "high",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["arrival"],
+        "qa_status": "placed",
+        "actual_area_m2": 49.96,
+        "polygon_ref": "space-1acgda7",
+        "mesh_ref": "space-1acgda7"
+      },
+      {
+        "space_id": "space-f6zwhu",
+        "name": "Community workshop",
+        "function": "flexible making and events room",
+        "zone": "semi_public",
+        "target_area_m2": 57.6,
+        "min_area_m2": 48.96,
+        "max_area_m2": 66.24,
+        "target_level": "Ground",
+        "target_level_index": 0,
+        "actual_level_id": "level-0",
+        "required_daylight": "medium",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["arrival"],
+        "qa_status": "placed",
+        "actual_area_m2": 59.96,
+        "polygon_ref": "space-f6zwhu",
+        "mesh_ref": "space-f6zwhu"
+      },
+      {
+        "space_id": "space-1idzhuf",
+        "name": "Accessible WC",
+        "function": "inclusive visitor WC",
+        "zone": "service",
+        "target_area_m2": 12.8,
+        "min_area_m2": 10.88,
+        "max_area_m2": 14.72,
+        "target_level": "Ground",
+        "target_level_index": 0,
+        "actual_level_id": "level-0",
+        "required_daylight": "low",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["service"],
+        "qa_status": "placed",
+        "actual_area_m2": 13.32,
+        "polygon_ref": "space-1idzhuf",
+        "mesh_ref": "space-1idzhuf"
+      },
+      {
+        "space_id": "space-2l67rh",
+        "name": "Plant and store",
+        "function": "plant, cleaner and equipment storage",
+        "zone": "service",
+        "target_area_m2": 12.8,
+        "min_area_m2": 10.88,
+        "max_area_m2": 14.72,
+        "target_level": "Ground",
+        "target_level_index": 0,
+        "actual_level_id": "level-0",
+        "required_daylight": "low",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["service"],
+        "qa_status": "placed",
+        "actual_area_m2": 13.32,
+        "polygon_ref": "space-2l67rh",
+        "mesh_ref": "space-2l67rh"
+      },
+      {
+        "space_id": "space-1bti507",
+        "name": "Ground circulation",
+        "function": "arrival, stair and horizontal circulation",
+        "zone": "semi_public",
+        "target_area_m2": 25.6,
+        "min_area_m2": 21.76,
+        "max_area_m2": 29.44,
+        "target_level": "Ground",
+        "target_level_index": 0,
+        "actual_level_id": "level-0",
+        "required_daylight": "medium",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["arrival"],
+        "qa_status": "placed",
+        "actual_area_m2": 26.65,
+        "polygon_ref": "space-1bti507",
+        "mesh_ref": "space-1bti507"
+      },
+      {
+        "space_id": "space-1imco3m",
+        "name": "Public reading room",
+        "function": "primary reading space",
+        "zone": "public",
+        "target_area_m2": 80,
+        "min_area_m2": 68,
+        "max_area_m2": 92,
+        "target_level": "First",
+        "target_level_index": 1,
+        "actual_level_id": "level-1",
+        "required_daylight": "high",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["quiet"],
+        "qa_status": "placed",
+        "actual_area_m2": 80,
+        "polygon_ref": "space-1imco3m",
+        "mesh_ref": "space-1imco3m"
+      },
+      {
+        "space_id": "space-5g9nq6",
+        "name": "Quiet study",
+        "function": "focused study and reading",
+        "zone": "private",
+        "target_area_m2": 54.4,
+        "min_area_m2": 46.24,
+        "max_area_m2": 62.56,
+        "target_level": "First",
+        "target_level_index": 1,
+        "actual_level_id": "level-1",
+        "required_daylight": "high",
+        "acoustic_privacy": "high",
+        "accessible": true,
+        "adjacency_tags": ["quiet"],
+        "qa_status": "placed",
+        "actual_area_m2": 54.41,
+        "polygon_ref": "space-5g9nq6",
+        "mesh_ref": "space-5g9nq6"
+      },
+      {
+        "space_id": "space-158xast",
+        "name": "Flexible meeting room",
+        "function": "small group meeting and tutoring room",
+        "zone": "semi_public",
+        "target_area_m2": 28.8,
+        "min_area_m2": 24.48,
+        "max_area_m2": 33.12,
+        "target_level": "First",
+        "target_level_index": 1,
+        "actual_level_id": "level-1",
+        "required_daylight": "medium",
+        "acoustic_privacy": "medium",
+        "accessible": true,
+        "adjacency_tags": ["quiet"],
+        "qa_status": "placed",
+        "actual_area_m2": 28.8,
+        "polygon_ref": "space-158xast",
+        "mesh_ref": "space-158xast"
+      }
+    ],
+    "adjacency_requirements": [
+      {
+        "requirement_id": "adjacency-m8vl90",
+        "from_tags": ["arrival"],
+        "to_tags": ["service"],
+        "priority": "medium"
+      }
+    ],
+    "area_summary": {
+      "net_area_m2": 299.77,
+      "circulation_area_m2": 26.65,
+      "gross_internal_area_m2": 326.42,
+      "efficiency_ratio": 0.918
+    },
+    "locked_by_user": false
+  },
+  "design_options": [
+    {
+      "option_id": "option-bar-ew",
+      "label": "Bar — long axis east-west",
+      "typology": "bar",
+      "aspect": 2,
+      "long_axis": "ew",
+      "fits_buildable": true,
+      "subscores": {
+        "programmeFit": 0.025,
+        "siteFit": 0.95,
+        "climateFit": 1,
+        "daylightPotential": 1,
+        "circulationEfficiency": 0.7,
+        "regulationRisk": 1
+      },
+      "aggregate_score": 0.716,
+      "selected": false,
+      "source_model_hash": null
+    },
+    {
+      "option_id": "option-compact",
+      "label": "Compact block",
+      "typology": "compact",
+      "aspect": 1,
+      "long_axis": "ew",
+      "fits_buildable": true,
+      "subscores": {
+        "programmeFit": 0.025,
+        "siteFit": 0.95,
+        "climateFit": 1,
+        "daylightPotential": 1,
+        "circulationEfficiency": 1,
+        "regulationRisk": 1
+      },
+      "aggregate_score": 0.746,
+      "selected": true,
+      "source_model_hash": "e44bb2ac9522601d"
+    },
+    {
+      "option_id": "option-typology-default",
+      "label": "Programme-fit 1.45 aspect",
+      "typology": "default",
+      "aspect": 1.45,
+      "long_axis": "ew",
+      "fits_buildable": true,
+      "subscores": {
+        "programmeFit": 0.025,
+        "siteFit": 0.95,
+        "climateFit": 1,
+        "daylightPotential": 1,
+        "circulationEfficiency": 0.865,
+        "regulationRisk": 1
+      },
+      "aggregate_score": 0.733,
+      "selected": false,
+      "source_model_hash": null
+    },
+    {
+      "option_id": "option-bar-ns",
+      "label": "Bar — long axis north-south",
+      "typology": "bar_ns",
+      "aspect": 2,
+      "long_axis": "ns",
+      "fits_buildable": true,
+      "subscores": {
+        "programmeFit": 0.025,
+        "siteFit": 0.95,
+        "climateFit": 0.5,
+        "daylightPotential": 1,
+        "circulationEfficiency": 0.7,
+        "regulationRisk": 1
+      },
+      "aggregate_score": 0.616,
+      "selected": false,
+      "source_model_hash": null
+    }
+  ],
+  "selected_design": {
+    "building_id": "building-1ibawz3",
+    "source_programme_id": "programme-yl0x26",
+    "levels": [
+      {
+        "id": "level-af569b1a822f",
+        "sourceId": "level-0",
+        "name": "Ground Floor",
+        "level_number": 0,
+        "elevation_m": 0,
+        "height_m": 3.2,
+        "bottom_m": 0,
+        "top_m": 3.2,
+        "footprint": {
+          "polygon": [
+            {
+              "x": -3.594,
+              "y": -5.984
+            },
+            {
+              "x": 6.391,
+              "y": -5.984
+            },
+            {
+              "x": 6.391,
+              "y": 10.361
+            },
+            {
+              "x": -3.594,
+              "y": 10.361
+            }
+          ],
+          "bbox": {
+            "min_x": -3.594,
+            "min_y": -5.984,
+            "max_x": 6.391,
+            "max_y": 10.361,
+            "width": 9.985,
+            "height": 16.345
+          },
+          "area_m2": 163.205
+        },
+        "roomIds": [
+          "room-204d97c37a9c",
+          "room-277fce23da70",
+          "room-291ad5cb88d8",
+          "room-4821562e6086",
+          "room-fd1aff73dc6d"
+        ],
+        "wallIds": [
+          "wall-203c403b964f",
+          "wall-22a72c93719d",
+          "wall-358d0367ff5e",
+          "wall-40eb54603a23",
+          "wall-450c7c336c63",
+          "wall-456e04281d6c",
+          "wall-49dc8f6bb5c7",
+          "wall-514987150682",
+          "wall-532b182ba407",
+          "wall-60bbf08f9b29",
+          "wall-772c2679456d",
+          "wall-81968717f830",
+          "wall-8f8512a5e250",
+          "wall-92e33a52b2df",
+          "wall-9449ea2ba408",
+          "wall-9be7888d3aa3",
+          "wall-c5e950f5a8dd",
+          "wall-cdaa6ded8645",
+          "wall-f22c79b31b99",
+          "wall-f42a662a8a56"
+        ],
+        "openingIds": [
+          "opening-1fa65f3fd4e4",
+          "opening-269e87f9ccb2",
+          "opening-31d523f3dbae",
+          "opening-440fcdfc7309",
+          "opening-4cbc8e1e8f38",
+          "opening-8b5044cb1132",
+          "opening-a64381cf1707",
+          "opening-d266b2de24a5",
+          "opening-fa8fac306583",
+          "opening-fe5848a25bf1"
+        ],
+        "stairIds": ["stair-1474d652b7ff"],
+        "slabIds": ["slab-19a9f6c279d1"]
+      },
+      {
+        "id": "level-ab5456377e33",
+        "sourceId": "level-1",
+        "name": "First Floor",
+        "level_number": 1,
+        "elevation_m": 3.2,
+        "height_m": 3.2,
+        "bottom_m": 3.2,
+        "top_m": 6.4,
+        "footprint": {
+          "polygon": [
+            {
+              "x": -3.594,
+              "y": -5.984
+            },
+            {
+              "x": 6.391,
+              "y": -5.984
+            },
+            {
+              "x": 6.391,
+              "y": 10.361
+            },
+            {
+              "x": -3.594,
+              "y": 10.361
+            }
+          ],
+          "bbox": {
+            "min_x": -3.594,
+            "min_y": -5.984,
+            "max_x": 6.391,
+            "max_y": 10.361,
+            "width": 9.985,
+            "height": 16.345
+          },
+          "area_m2": 163.205
+        },
+        "roomIds": [
+          "room-3e08851467e3",
+          "room-97cc8b70b9f0",
+          "room-f0144a1e4d16"
+        ],
+        "wallIds": [
+          "wall-2c097a522101",
+          "wall-383fca510fd8",
+          "wall-4ed2fe635191",
+          "wall-93b5f83fd9fc",
+          "wall-97d292bd2f5f",
+          "wall-9938c4e18170",
+          "wall-a5238584ef9e",
+          "wall-be66124bf79e",
+          "wall-d55ea0331426",
+          "wall-d89839414275",
+          "wall-db9209533d10",
+          "wall-f72d9ab57cfd"
+        ],
+        "openingIds": [
+          "opening-00caee0cb463",
+          "opening-13f31ec76332",
+          "opening-61be134fd4ba",
+          "opening-793f07a91639",
+          "opening-7defc526a182",
+          "opening-9ed4ec1df536"
+        ],
+        "stairIds": [],
+        "slabIds": ["slab-0e4547e9ad1e"]
+      }
+    ],
+    "grids": [],
+    "spaces": [
+      {
+        "space_id": "space-1idzhuf",
+        "compiled_room_id": "room-204d97c37a9c",
+        "level_id": "level-af569b1a822f",
+        "boundary_polygon_m": [
+          {
+            "x": 3.319,
+            "y": -5.984
+          },
+          {
+            "x": 4.855,
+            "y": -5.984
+          },
+          {
+            "x": 4.855,
+            "y": 2.689
+          },
+          {
+            "x": 3.319,
+            "y": 2.689
+          }
+        ],
+        "floor_z_m": 0,
+        "ceiling_z_m": 3.2,
+        "area_m2": 13.322,
+        "volume_m3": 42.63,
+        "doors": ["opening-31d523f3dbae"],
+        "windows": ["opening-fe5848a25bf1"],
+        "material_zone": "service"
+      },
+      {
+        "space_id": "space-1acgda7",
+        "compiled_room_id": "room-277fce23da70",
+        "level_id": "level-af569b1a822f",
+        "boundary_polygon_m": [
+          {
+            "x": -3.594,
+            "y": 2.689
+          },
+          {
+            "x": 2.918,
+            "y": 2.689
+          },
+          {
+            "x": 2.918,
+            "y": 10.361
+          },
+          {
+            "x": -3.594,
+            "y": 10.361
+          }
+        ],
+        "floor_z_m": 0,
+        "ceiling_z_m": 3.2,
+        "area_m2": 49.96,
+        "volume_m3": 159.872,
+        "doors": ["opening-440fcdfc7309"],
+        "windows": ["opening-8b5044cb1132"],
+        "material_zone": "public"
+      },
+      {
+        "space_id": "space-2l67rh",
+        "compiled_room_id": "room-291ad5cb88d8",
+        "level_id": "level-af569b1a822f",
+        "boundary_polygon_m": [
+          {
+            "x": 4.855,
+            "y": -5.984
+          },
+          {
+            "x": 6.391,
+            "y": -5.984
+          },
+          {
+            "x": 6.391,
+            "y": 2.689
+          },
+          {
+            "x": 4.855,
+            "y": 2.689
+          }
+        ],
+        "floor_z_m": 0,
+        "ceiling_z_m": 3.2,
+        "area_m2": 13.322,
+        "volume_m3": 42.63,
+        "doors": ["opening-d266b2de24a5"],
+        "windows": ["opening-269e87f9ccb2"],
+        "material_zone": "service"
+      },
+      {
+        "space_id": "space-5g9nq6",
+        "compiled_room_id": "room-3e08851467e3",
+        "level_id": "level-ab5456377e33",
+        "boundary_polygon_m": [
+          {
+            "x": -3.594,
+            "y": 2.028
+          },
+          {
+            "x": 2.935,
+            "y": 2.028
+          },
+          {
+            "x": 2.935,
+            "y": 10.361
+          },
+          {
+            "x": -3.594,
+            "y": 10.361
+          }
+        ],
+        "floor_z_m": 3.2,
+        "ceiling_z_m": 6.4,
+        "area_m2": 54.406,
+        "volume_m3": 174.099,
+        "doors": ["opening-13f31ec76332"],
+        "windows": ["opening-00caee0cb463"],
+        "material_zone": "private"
+      },
+      {
+        "space_id": "space-f6zwhu",
+        "compiled_room_id": "room-4821562e6086",
+        "level_id": "level-af569b1a822f",
+        "boundary_polygon_m": [
+          {
+            "x": -3.594,
+            "y": -5.984
+          },
+          {
+            "x": 3.319,
+            "y": -5.984
+          },
+          {
+            "x": 3.319,
+            "y": 2.689
+          },
+          {
+            "x": -3.594,
+            "y": 2.689
+          }
+        ],
+        "floor_z_m": 0,
+        "ceiling_z_m": 3.2,
+        "area_m2": 59.956,
+        "volume_m3": 191.859,
+        "doors": ["opening-a64381cf1707"],
+        "windows": ["opening-1fa65f3fd4e4"],
+        "material_zone": "semi_public"
+      },
+      {
+        "space_id": "space-158xast",
+        "compiled_room_id": "room-97cc8b70b9f0",
+        "level_id": "level-ab5456377e33",
+        "boundary_polygon_m": [
+          {
+            "x": 2.935,
+            "y": 2.028
+          },
+          {
+            "x": 6.391,
+            "y": 2.028
+          },
+          {
+            "x": 6.391,
+            "y": 10.361
+          },
+          {
+            "x": 2.935,
+            "y": 10.361
+          }
+        ],
+        "floor_z_m": 3.2,
+        "ceiling_z_m": 6.4,
+        "area_m2": 28.799,
+        "volume_m3": 92.157,
+        "doors": ["opening-61be134fd4ba"],
+        "windows": ["opening-793f07a91639"],
+        "material_zone": "semi_public"
+      },
+      {
+        "space_id": "space-1imco3m",
+        "compiled_room_id": "room-f0144a1e4d16",
+        "level_id": "level-ab5456377e33",
+        "boundary_polygon_m": [
+          {
+            "x": -3.594,
+            "y": -5.984
+          },
+          {
+            "x": 6.391,
+            "y": -5.984
+          },
+          {
+            "x": 6.391,
+            "y": 2.028
+          },
+          {
+            "x": -3.594,
+            "y": 2.028
+          }
+        ],
+        "floor_z_m": 3.2,
+        "ceiling_z_m": 6.4,
+        "area_m2": 80,
+        "volume_m3": 256,
+        "doors": ["opening-9ed4ec1df536"],
+        "windows": ["opening-7defc526a182"],
+        "material_zone": "public"
+      },
+      {
+        "space_id": "space-1bti507",
+        "compiled_room_id": "room-fd1aff73dc6d",
+        "level_id": "level-af569b1a822f",
+        "boundary_polygon_m": [
+          {
+            "x": 2.918,
+            "y": 2.689
+          },
+          {
+            "x": 6.391,
+            "y": 2.689
+          },
+          {
+            "x": 6.391,
+            "y": 10.361
+          },
+          {
+            "x": 2.918,
+            "y": 10.361
+          }
+        ],
+        "floor_z_m": 0,
+        "ceiling_z_m": 3.2,
+        "area_m2": 26.645,
+        "volume_m3": 85.264,
+        "doors": ["opening-fa8fac306583"],
+        "windows": ["opening-4cbc8e1e8f38"],
+        "material_zone": "semi_public"
+      }
+    ],
+    "elements": [
+      {
+        "element_id": "wall-203c403b964f",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-203c403b964f",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-22a72c93719d",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-22a72c93719d",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-2c097a522101",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-2c097a522101",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-358d0367ff5e",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-358d0367ff5e",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-383fca510fd8",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-383fca510fd8",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-40eb54603a23",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-40eb54603a23",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-450c7c336c63",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-450c7c336c63",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-456e04281d6c",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-456e04281d6c",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-49dc8f6bb5c7",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-49dc8f6bb5c7",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-4ed2fe635191",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-4ed2fe635191",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-514987150682",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-514987150682",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-532b182ba407",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-532b182ba407",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-60bbf08f9b29",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-60bbf08f9b29",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-772c2679456d",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-772c2679456d",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-81968717f830",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-81968717f830",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-8f8512a5e250",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-8f8512a5e250",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-92e33a52b2df",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-92e33a52b2df",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-93b5f83fd9fc",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-93b5f83fd9fc",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-9449ea2ba408",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-9449ea2ba408",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-97d292bd2f5f",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-97d292bd2f5f",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-9938c4e18170",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-9938c4e18170",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-9be7888d3aa3",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-9be7888d3aa3",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-a5238584ef9e",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-a5238584ef9e",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-be66124bf79e",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-be66124bf79e",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-c5e950f5a8dd",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-c5e950f5a8dd",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-cdaa6ded8645",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-cdaa6ded8645",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-d55ea0331426",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-d55ea0331426",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-d89839414275",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-d89839414275",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-db9209533d10",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-db9209533d10",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "wall-f22c79b31b99",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-f22c79b31b99",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-f42a662a8a56",
+        "type": "wall",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "wall-f42a662a8a56",
+        "material_id": "internal-partition",
+        "fire_relevance": false,
+        "thermal_relevance": false
+      },
+      {
+        "element_id": "wall-f72d9ab57cfd",
+        "type": "wall",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "wall-f72d9ab57cfd",
+        "material_id": "external-wall",
+        "fire_relevance": true,
+        "thermal_relevance": true
+      },
+      {
+        "element_id": "slab-0e4547e9ad1e",
+        "type": "slab",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "slab-0e4547e9ad1e",
+        "material_id": "floor-slab"
+      },
+      {
+        "element_id": "slab-19a9f6c279d1",
+        "type": "slab",
+        "level_ids": ["level-af569b1a822f"],
+        "geometry_ref": "slab-19a9f6c279d1",
+        "material_id": "floor-slab"
+      },
+      {
+        "element_id": "roof-primitive-aa0181407a50",
+        "type": "roof",
+        "level_ids": ["level-ab5456377e33"],
+        "geometry_ref": "roof-primitive-aa0181407a50",
+        "material_id": "roof-finish",
+        "thermal_relevance": true
+      }
+    ],
+    "openings": [
+      {
+        "id": "opening-00caee0cb463",
+        "sourceId": "window-1plesph",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-ab5456377e33",
+        "wallId": "wall-db9209533d10",
+        "roomIds": ["room-3e08851467e3"],
+        "position_m": {
+          "x": -0.329,
+          "y": 6.195
+        },
+        "width_m": 2.285,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-13f31ec76332",
+        "sourceId": "door-1fecj84",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-ab5456377e33",
+        "wallId": "wall-97d292bd2f5f",
+        "roomIds": ["room-3e08851467e3"],
+        "position_m": {
+          "x": -0.329,
+          "y": 2.028
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-1fa65f3fd4e4",
+        "sourceId": "window-10pgjin",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-c5e950f5a8dd",
+        "roomIds": ["room-4821562e6086"],
+        "position_m": {
+          "x": -0.137,
+          "y": -1.647
+        },
+        "width_m": 2.4,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-269e87f9ccb2",
+        "sourceId": "window-ta99xt",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-40eb54603a23",
+        "roomIds": ["room-291ad5cb88d8"],
+        "position_m": {
+          "x": 5.623,
+          "y": -1.647
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-31d523f3dbae",
+        "sourceId": "door-1fvwga7",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-9449ea2ba408",
+        "roomIds": ["room-204d97c37a9c"],
+        "position_m": {
+          "x": 4.087,
+          "y": -5.984
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-440fcdfc7309",
+        "sourceId": "door-hh4yww",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-8f8512a5e250",
+        "roomIds": ["room-277fce23da70"],
+        "position_m": {
+          "x": -0.338,
+          "y": 2.689
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-4cbc8e1e8f38",
+        "sourceId": "window-8qaw1",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-514987150682",
+        "roomIds": ["room-fd1aff73dc6d"],
+        "position_m": {
+          "x": 4.655,
+          "y": 6.525
+        },
+        "width_m": 1.216,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-61be134fd4ba",
+        "sourceId": "door-tpsc86",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-ab5456377e33",
+        "wallId": "wall-2c097a522101",
+        "roomIds": ["room-97cc8b70b9f0"],
+        "position_m": {
+          "x": 4.663,
+          "y": 2.028
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-793f07a91639",
+        "sourceId": "window-5p964n",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-ab5456377e33",
+        "wallId": "wall-9938c4e18170",
+        "roomIds": ["room-97cc8b70b9f0"],
+        "position_m": {
+          "x": 4.663,
+          "y": 6.195
+        },
+        "width_m": 1.21,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-7defc526a182",
+        "sourceId": "window-10k6dt7",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-ab5456377e33",
+        "wallId": "wall-f72d9ab57cfd",
+        "roomIds": ["room-f0144a1e4d16"],
+        "position_m": {
+          "x": 1.399,
+          "y": -1.978
+        },
+        "width_m": 2.4,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-8b5044cb1132",
+        "sourceId": "window-j0v57p",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-cdaa6ded8645",
+        "roomIds": ["room-277fce23da70"],
+        "position_m": {
+          "x": -0.338,
+          "y": 6.525
+        },
+        "width_m": 2.279,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-9ed4ec1df536",
+        "sourceId": "door-165d0b3",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-ab5456377e33",
+        "wallId": "wall-f72d9ab57cfd",
+        "roomIds": ["room-f0144a1e4d16"],
+        "position_m": {
+          "x": 1.399,
+          "y": -5.984
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-a64381cf1707",
+        "sourceId": "door-108oa20",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-c5e950f5a8dd",
+        "roomIds": ["room-4821562e6086"],
+        "position_m": {
+          "x": -0.137,
+          "y": -5.984
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-d266b2de24a5",
+        "sourceId": "door-bq2st3",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-40eb54603a23",
+        "roomIds": ["room-291ad5cb88d8"],
+        "position_m": {
+          "x": 5.623,
+          "y": -5.984
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-fa8fac306583",
+        "sourceId": "door-1o8099u",
+        "type": "door",
+        "kind": "door",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-456e04281d6c",
+        "roomIds": ["room-fd1aff73dc6d"],
+        "position_m": {
+          "x": 4.655,
+          "y": 2.689
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0,
+        "head_height_m": 2.2,
+        "height_m": 2.2,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      },
+      {
+        "id": "opening-fe5848a25bf1",
+        "sourceId": "window-1asrc1l",
+        "type": "window",
+        "kind": "window",
+        "levelId": "level-af569b1a822f",
+        "wallId": "wall-9449ea2ba408",
+        "roomIds": ["room-204d97c37a9c"],
+        "position_m": {
+          "x": 4.087,
+          "y": -1.647
+        },
+        "width_m": 0.9,
+        "sill_height_m": 0.85,
+        "head_height_m": 2.2,
+        "height_m": 1.35,
+        "swing": null,
+        "bbox": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 0,
+          "max_y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "metadata": {
+          "source": "project_geometry",
+          "exact_position": true
+        }
+      }
+    ],
+    "stairs": [
+      {
+        "id": "stair-1474d652b7ff",
+        "sourceId": "stair-1iupgwi",
+        "levelId": "level-af569b1a822f",
+        "type": "straight_run",
+        "polygon": [
+          {
+            "x": 4.993,
+            "y": -4.023
+          },
+          {
+            "x": 6.391,
+            "y": -4.023
+          },
+          {
+            "x": 6.391,
+            "y": 0.177
+          },
+          {
+            "x": 4.993,
+            "y": 0.177
+          }
+        ],
+        "bbox": {
+          "min_x": 4.993,
+          "min_y": -4.023,
+          "max_x": 6.391,
+          "max_y": 0.177,
+          "width": 1.398,
+          "height": 4.2
+        },
+        "width_m": 1.398,
+        "depth_m": 4.2,
+        "connects_to_level": "level-1",
+        "metadata": {
+          "source": "project_geometry"
+        }
+      }
+    ],
+    "circulation": [],
+    "materials": [
+      {
+        "material_id": "external-wall",
+        "label": "brick"
+      },
+      {
+        "material_id": "internal-partition",
+        "label": "painted timber-lined partition"
+      },
+      {
+        "material_id": "roof-finish",
+        "label": "standing seam roof"
+      }
+    ],
+    "site_landscape": [],
+    "model_bounds_m": {
+      "bbox": {
+        "min_x": -3.594,
+        "min_y": -5.984,
+        "max_x": 6.391,
+        "max_y": 10.361,
+        "width": 9.985,
+        "height": 16.345
+      },
+      "width_m": 9.985,
+      "depth_m": 16.345,
+      "height_m": 6.4,
+      "level_count": 2,
+      "min_z_m": 0,
+      "max_z_m": 6.4
+    },
+    "exported_assets": [],
+    "source_model_hash": "e44bb2ac9522601d",
+    "compiled_project_schema_version": "compiled-project-v1"
+  },
+  "drawings": {
+    "model_version_id": "model-e44bb2ac9522",
+    "drawings": [
+      {
+        "drawing_id": "drawing-1f5nx8t",
+        "type": "floor_plan",
+        "panel_type": "floor_plan_ground",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:100",
+        "level_id": null,
+        "cut_plane": null,
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "floor_plan_ground-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-dy64pu"],
+        "svgHash": "d4c9402e32427f4b",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-1wd55fm",
+        "type": "floor_plan",
+        "panel_type": "floor_plan_first",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:100",
+        "level_id": null,
+        "cut_plane": null,
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "floor_plan_first-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-1ac3j0b"],
+        "svgHash": "bb304f3ee8193acb",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-8ywsym",
+        "type": "elevation",
+        "panel_type": "elevation_north",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:200",
+        "level_id": null,
+        "cut_plane": null,
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "elevation_north-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-1chu3ym"],
+        "svgHash": "02322b9373846a9a",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-s5k0p0",
+        "type": "elevation",
+        "panel_type": "elevation_south",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:200",
+        "level_id": null,
+        "cut_plane": null,
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "elevation_south-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-v02kb"],
+        "svgHash": "ba69b92b1b6d52d2",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-iha7km",
+        "type": "elevation",
+        "panel_type": "elevation_east",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:200",
+        "level_id": null,
+        "cut_plane": null,
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "elevation_east-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-rloww5"],
+        "svgHash": "6e703667d67d29a0",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-1hg25jk",
+        "type": "elevation",
+        "panel_type": "elevation_west",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:200",
+        "level_id": null,
+        "cut_plane": null,
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "elevation_west-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-1kdhjc4"],
+        "svgHash": "f70b54d366dd3956",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-8rn3u7",
+        "type": "section",
+        "panel_type": "section_AA",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:100",
+        "level_id": null,
+        "cut_plane": {
+          "section_type": "longitudinal",
+          "source": "compiled_project_section_cuts"
+        },
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "section_AA-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-wy37qq"],
+        "svgHash": "06058792de367f27",
+        "status": "ready"
+      },
+      {
+        "drawing_id": "drawing-772m5p",
+        "type": "section",
+        "panel_type": "section_BB",
+        "source_model_hash": "e44bb2ac9522601d",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "scale": "1:100",
+        "level_id": null,
+        "cut_plane": {
+          "section_type": "transverse",
+          "source": "compiled_project_section_cuts"
+        },
+        "camera": null,
+        "layers": [
+          {
+            "layer_id": "section_BB-geometry",
+            "source": "compiled_project",
+            "entity_ids": [
+              "space-1idzhuf",
+              "space-1acgda7",
+              "space-2l67rh",
+              "space-5g9nq6",
+              "space-f6zwhu",
+              "space-158xast",
+              "space-1imco3m",
+              "space-1bti507",
+              "wall-203c403b964f",
+              "wall-22a72c93719d",
+              "wall-2c097a522101",
+              "wall-358d0367ff5e",
+              "wall-383fca510fd8",
+              "wall-40eb54603a23",
+              "wall-450c7c336c63",
+              "wall-456e04281d6c",
+              "wall-49dc8f6bb5c7",
+              "wall-4ed2fe635191",
+              "wall-514987150682",
+              "wall-532b182ba407",
+              "wall-60bbf08f9b29",
+              "wall-772c2679456d",
+              "wall-81968717f830",
+              "wall-8f8512a5e250",
+              "wall-92e33a52b2df",
+              "wall-93b5f83fd9fc",
+              "wall-9449ea2ba408",
+              "wall-97d292bd2f5f",
+              "wall-9938c4e18170",
+              "wall-9be7888d3aa3",
+              "wall-a5238584ef9e",
+              "wall-be66124bf79e",
+              "wall-c5e950f5a8dd",
+              "wall-cdaa6ded8645",
+              "wall-d55ea0331426",
+              "wall-d89839414275",
+              "wall-db9209533d10",
+              "wall-f22c79b31b99",
+              "wall-f42a662a8a56",
+              "wall-f72d9ab57cfd",
+              "opening-00caee0cb463",
+              "opening-13f31ec76332",
+              "opening-1fa65f3fd4e4",
+              "opening-269e87f9ccb2",
+              "opening-31d523f3dbae",
+              "opening-440fcdfc7309",
+              "opening-4cbc8e1e8f38",
+              "opening-61be134fd4ba",
+              "opening-793f07a91639",
+              "opening-7defc526a182",
+              "opening-8b5044cb1132",
+              "opening-9ed4ec1df536",
+              "opening-a64381cf1707",
+              "opening-d266b2de24a5",
+              "opening-fa8fac306583",
+              "opening-fe5848a25bf1"
+            ]
+          }
+        ],
+        "annotations": [],
+        "exported_asset_ids": ["asset-svg-1co6ox5"],
+        "svgHash": "cac53b69db215714",
+        "status": "ready"
+      }
+    ]
+  },
+  "models3d": {
+    "models": [
+      {
+        "model_id": "model-3d-u3yypq",
+        "asset_id": "asset-3d-scene-1ibawz3",
+        "asset_type": "deterministic_3d_scene_json",
+        "projection_type": "deterministic_3d_scene",
+        "model_format": "json_scene",
+        "source_project_graph_id": "project-graph-1vwf611",
+        "source_model_hash": "e44bb2ac9522601d",
+        "geometryHash": "e44bb2ac9522601d"
+      }
+    ],
+    "source_model_hash": "e44bb2ac9522601d"
+  },
+  "sheets": {
+    "sheets": [
+      {
+        "sheet_id": "sheet-a1-u3yypq",
+        "sheet_size": "A1",
+        "orientation": "landscape",
+        "template_id": "projectgraph-a1-real-panels-v1",
+        "drawing_ids": [
+          "drawing-1f5nx8t",
+          "drawing-1wd55fm",
+          "drawing-8ywsym",
+          "drawing-s5k0p0",
+          "drawing-iha7km",
+          "drawing-1hg25jk",
+          "drawing-8rn3u7",
+          "drawing-772m5p"
+        ],
+        "asset_ids": [
+          "asset-svg-1f4jjla",
+          "asset-svg-1h1bec0",
+          "asset-svg-dy64pu",
+          "asset-svg-1ac3j0b",
+          "asset-svg-1chu3ym",
+          "asset-svg-v02kb",
+          "asset-svg-rloww5",
+          "asset-svg-1kdhjc4",
+          "asset-svg-wy37qq",
+          "asset-svg-1co6ox5",
+          "asset-3d-scene-1ibawz3",
+          "asset-a1-svg-186t4ol",
+          "asset-a1-pdf-1l5b6b3"
+        ],
+        "title_block": {
+          "project_name": "Neighbourhood Reading Room",
+          "drawing_number": "A1-01",
+          "sheet_label": "RIBA Stage 2 Concept",
+          "revision": "P01",
+          "status": "early_stage_precheck",
+          "disclaimer": "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review."
+        },
+        "exported_pdf_asset_id": "asset-a1-pdf-1l5b6b3",
+        "exported_png_asset_id": null,
+        "exported_svg_asset_id": "asset-a1-svg-186t4ol"
+      }
+    ],
+    "split_decision": {
+      "split": false,
+      "triggers": {
+        "programmeSpaceCount": 8,
+        "programmeOverflow": false,
+        "storeys": 2,
+        "storeyOverflow": false,
+        "regulationHotspots": 2,
+        "regulationOverflow": false,
+        "thresholds": {
+          "programmeSpaces": 18,
+          "storeys": 2,
+          "regulationHotspots": 6
+        }
+      },
+      "sheets": [
+        {
+          "sheet_number": "A1-01",
+          "label": "RIBA Stage 2 Concept",
+          "panel_types": [
+            "site_context",
+            "axonometric_3d",
+            "floor_plan_ground",
+            "floor_plan_first",
+            "elevation_north",
+            "elevation_south",
+            "elevation_east",
+            "elevation_west",
+            "section_AA",
+            "section_BB"
+          ],
+          "rationale": "Single-sheet density acceptable; no split required."
+        }
+      ]
+    }
+  },
+  "qa": {
+    "schema_version": "project-graph-qa-report-v1",
+    "status": "pass",
+    "score": 100,
+    "totalScore": 100,
+    "categoryScores": {
+      "programme": {
+        "earned": 20,
+        "max": 20,
+        "ratio": 1
+      },
+      "consistency_2d_3d": {
+        "earned": 20,
+        "max": 20,
+        "ratio": 1
+      },
+      "site_context": {
+        "earned": 15,
+        "max": 15,
+        "ratio": 1
+      },
+      "climate": {
+        "earned": 15,
+        "max": 15,
+        "ratio": 1
+      },
+      "regulation": {
+        "earned": 10,
+        "max": 10,
+        "ratio": 1
+      },
+      "architecture": {
+        "earned": 10,
+        "max": 10,
+        "ratio": 1
+      },
+      "graphic": {
+        "earned": 10,
+        "max": 10,
+        "ratio": 1
+      }
+    },
+    "source_model_hash": "e44bb2ac9522601d",
+    "checks": [
+      {
+        "code": "PROGRAMME_SPACES_IN_MODEL",
+        "status": "pass",
+        "details": {
+          "missingModelSpaces": []
+        },
+        "category": "programme",
+        "weight": 10
+      },
+      {
+        "code": "DRAWINGS_SHARE_MODEL_HASH",
+        "status": "pass",
+        "details": {
+          "drawingHashes": ["e44bb2ac9522601d"],
+          "geometryHash": "e44bb2ac9522601d"
+        },
+        "category": "consistency_2d_3d",
+        "weight": 5
+      },
+      {
+        "code": "THREE_D_SCENE_SHARES_MODEL_HASH",
+        "status": "pass",
+        "details": {
+          "sceneHash": "e44bb2ac9522601d",
+          "geometryHash": "e44bb2ac9522601d"
+        },
+        "category": "consistency_2d_3d",
+        "weight": 5
+      },
+      {
+        "code": "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
+        "status": "pass",
+        "details": {
+          "graphModel3dHash": "e44bb2ac9522601d",
+          "geometryHash": "e44bb2ac9522601d"
+        },
+        "category": "consistency_2d_3d",
+        "weight": 5
+      },
+      {
+        "code": "GIA_WITHIN_TOLERANCE",
+        "status": "pass",
+        "details": {
+          "actualGia": 326.42,
+          "targetGia": 320,
+          "areaDeltaRatio": 0.0201,
+          "targetAreaTolerance": 0.15
+        },
+        "category": "programme",
+        "weight": 10
+      },
+      {
+        "code": "A1_SHEET_REFERENCES_EXISTING_DRAWINGS",
+        "status": "pass",
+        "details": {
+          "missingSheetDrawings": []
+        },
+        "category": "graphic",
+        "weight": 5
+      },
+      {
+        "code": "A1_SHEET_SHARES_MODEL_HASH",
+        "status": "pass",
+        "details": {
+          "sheetArtifactHash": "e44bb2ac9522601d",
+          "geometryHash": "e44bb2ac9522601d"
+        },
+        "category": "consistency_2d_3d",
+        "weight": 5
+      },
+      {
+        "code": "A1_PDF_EXPORT_PRESENT_AND_SIZED",
+        "status": "pass",
+        "details": {
+          "assetType": "a1_sheet_pdf",
+          "sheetSizeMm": {
+            "width": 841,
+            "height": 594
+          },
+          "sourceModelHash": "e44bb2ac9522601d",
+          "geometryHash": "e44bb2ac9522601d"
+        },
+        "category": "graphic",
+        "weight": 5
+      },
+      {
+        "code": "SITE_HAS_LOCAL_BOUNDARY",
+        "status": "pass",
+        "details": {
+          "vertexCount": 5
+        },
+        "category": "site_context",
+        "weight": 5
+      },
+      {
+        "code": "SITE_HAS_AREA",
+        "status": "pass",
+        "details": {
+          "areaM2": 306.09
+        },
+        "category": "site_context",
+        "weight": 5
+      },
+      {
+        "code": "SITE_HAS_DATA_QUALITY",
+        "status": "pass",
+        "details": {
+          "dataQualityCount": 1
+        },
+        "category": "site_context",
+        "weight": 5
+      },
+      {
+        "code": "CLIMATE_HAS_OVERHEATING_RISK",
+        "status": "pass",
+        "details": {
+          "riskLevel": "medium"
+        },
+        "category": "climate",
+        "weight": 5
+      },
+      {
+        "code": "CLIMATE_HAS_PASSIVE_DESIGN_MOVES",
+        "status": "pass",
+        "details": {
+          "moveCount": 5
+        },
+        "category": "climate",
+        "weight": 5
+      },
+      {
+        "code": "CLIMATE_HAS_DATA_QUALITY",
+        "status": "pass",
+        "details": {
+          "dataQualityCount": 2
+        },
+        "category": "climate",
+        "weight": 5
+      },
+      {
+        "code": "REGULATION_HAS_APPLICABLE_PARTS",
+        "status": "pass",
+        "details": {
+          "partCount": 7
+        },
+        "category": "regulation",
+        "weight": 1
+      },
+      {
+        "code": "REGULATION_HAS_SOURCE_DOCUMENTS",
+        "status": "pass",
+        "details": {
+          "sourceCount": 8
+        },
+        "category": "regulation",
+        "weight": 1
+      },
+      {
+        "code": "REGULATION_NO_HARD_BLOCKERS",
+        "status": "pass",
+        "details": {
+          "hardBlockerCount": 0,
+          "failedRuleCount": 0
+        },
+        "category": "regulation",
+        "weight": 4
+      },
+      {
+        "code": "REGULATION_RULES_EVALUATED",
+        "status": "pass",
+        "details": {
+          "evaluatedPartCount": 2,
+          "totalPartCount": 7,
+          "evaluatedParts": ["K", "M"]
+        },
+        "category": "regulation",
+        "weight": 4
+      },
+      {
+        "code": "DESIGN_HAS_LEVELS_MATCHING_TARGET",
+        "status": "pass",
+        "details": {
+          "levelCount": 2,
+          "targetStoreys": 2
+        },
+        "category": "architecture",
+        "weight": 3
+      },
+      {
+        "code": "DESIGN_HAS_BUILDING_ELEMENTS",
+        "status": "pass",
+        "details": {
+          "elementCount": 35
+        },
+        "category": "architecture",
+        "weight": 3
+      },
+      {
+        "code": "DESIGN_HAS_OPENINGS",
+        "status": "pass",
+        "details": {
+          "openingCount": 16
+        },
+        "category": "architecture",
+        "weight": 4
+      },
+      {
+        "code": "CONSTRAINT_PRIORITY_RESPECTED",
+        "status": "pass",
+        "details": {
+          "conflictCount": 0,
+          "errorConflictCount": 0,
+          "conflictIds": []
+        },
+        "category": "architecture",
+        "weight": 0
+      }
+    ],
+    "issues": [],
+    "constraint_conflicts": [],
+    "disclaimer": "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review."
+  },
+  "provenance": [
+    {
+      "record_id": "prov-1h26ayc",
+      "source": "user_brief",
+      "generated_by": "normalizeBrief"
+    },
+    {
+      "record_id": "prov-143vnys",
+      "source": "ProjectGraph",
+      "generated_by": "project-graph-vertical-slice-v1",
+      "geometryHash": "e44bb2ac9522601d"
+    },
+    {
+      "record_id": "prov-1bn95rq",
+      "source": "env_model_registry",
+      "generated_by": "modelStepResolver",
+      "modelRegistry": {
+        "BRIEF": {
+          "step": "BRIEF",
+          "label": "Brief intake",
+          "model": "gpt-5.4-mini",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4-mini",
+          "baseEnvKey": "OPENAI_FAST_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": ["STEP_01_BRIEF_FT_MODEL"],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "SITE": {
+          "step": "SITE",
+          "label": "Site/context pack",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": ["STEP_02_SITE_FT_MODEL"],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "CLIMATE": {
+          "step": "CLIMATE",
+          "label": "Climate pack",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": [
+            "STEP_03_CLIMATE_RFT_MODEL",
+            "STEP_03_CLIMATE_FT_MODEL"
+          ],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "REGS": {
+          "step": "REGS",
+          "label": "Regulation pack",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": [
+            "STEP_04_REGS_RFT_MODEL",
+            "STEP_04_REGS_FT_MODEL"
+          ],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "PROGRAMME": {
+          "step": "PROGRAMME",
+          "label": "Programme generation",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": ["STEP_05_PROGRAMME_FT_MODEL"],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "PROJECT_GRAPH": {
+          "step": "PROJECT_GRAPH",
+          "label": "ProjectGraph synthesis",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": ["STEP_07_PROJECT_GRAPH_FT_MODEL"],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "DRAWING_2D": {
+          "step": "DRAWING_2D",
+          "label": "2D labels and QA",
+          "model": "gpt-5.4-mini",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4-mini",
+          "baseEnvKey": "OPENAI_FAST_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": ["STEP_08_2D_LABEL_FT_MODEL"],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": true,
+          "fineTunedFallbackUsed": false
+        },
+        "MODEL_3D": {
+          "step": "MODEL_3D",
+          "label": "3D validation",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": ["STEP_09_3D_VISION_FT_MODEL"],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": true,
+          "fineTunedFallbackUsed": false
+        },
+        "A1_SHEET": {
+          "step": "A1_SHEET",
+          "label": "A1 sheet composition",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": [
+            "STEP_12_A1_SHEET_DPO_MODEL",
+            "STEP_12_A1_SHEET_FT_MODEL"
+          ],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        },
+        "QA": {
+          "step": "QA",
+          "label": "QA and evals",
+          "model": "gpt-5.4",
+          "provider": "openai",
+          "selectionSource": "base",
+          "modelSource": "base",
+          "fallbackPolicy": "use_base_when_ft_missing",
+          "baseModel": "gpt-5.4",
+          "baseEnvKey": "OPENAI_REASONING_MODEL",
+          "fineTunedModel": null,
+          "fineTunedEnvKey": null,
+          "fineTunedCandidateKeys": [
+            "STEP_13_QA_RFT_MODEL",
+            "STEP_13_QA_SFT_MODEL"
+          ],
+          "apiKeyEnv": "OPENAI_API_KEY",
+          "temperature": null,
+          "deterministicGeometry": false,
+          "fineTunedFallbackUsed": false
+        }
+      }
+    }
+  ],
+  "project_graph_hash": "94556d22778a4c39"
+}

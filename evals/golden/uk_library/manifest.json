@@ -1,0 +1,67 @@
+{
+  "fixture": "fixtures/briefs/uk_small_community_library.json",
+  "description": "Plan §9 acceptance test: Neighbourhood Reading Room. Pass criteria locked here; golden snapshots {projectgraph,sheet,qa}.json are regenerated only by an explicit UPDATE_GOLDENS=1 run.",
+  "tolerances": {
+    "gia_m2": {
+      "target": 320,
+      "max_relative_deviation": 0.15,
+      "rationale": "Plan §9: actual GIA within ±15% of target unless constraints justify otherwise."
+    },
+    "storeys": {
+      "target": 2,
+      "exact": true
+    },
+    "programme_spaces": {
+      "all_placed": true,
+      "qa_status_must_be_one_of": ["placed"],
+      "rationale": "Plan §9: all programme spaces appear in schedule and plan."
+    },
+    "model_hash_uniformity": {
+      "rule": "Every drawings[i].source_model_hash must equal projectGraph.model_version_id",
+      "rationale": "Plan §10 hard fail: 2D and 3D representing different designs."
+    },
+    "a1_page_size_mm": {
+      "width": 841,
+      "height": 594,
+      "tolerance_mm": 1,
+      "rationale": "Plan §6.11: A1 landscape ISO 841×594 mm. Hard fail if missing or wrong size."
+    },
+    "qa_score": {
+      "min_total": 85,
+      "category_weights": {
+        "programme": 20,
+        "consistency_2d_3d": 20,
+        "site_context": 15,
+        "climate": 15,
+        "regulation": 10,
+        "architecture": 10,
+        "graphic": 10
+      },
+      "rationale": "Plan §10: production target 85/100+."
+    },
+    "audit_provenance": {
+      "must_include_source_documents": true,
+      "must_include_data_quality_records": true,
+      "must_include_model_version_id": true,
+      "rationale": "Plan §6.13 / §16.3: every artefact must trace to a ProjectGraph version with sources."
+    },
+    "professional_review_disclaimer": {
+      "must_be_pdf_text_layer": true,
+      "match_substring": "professional review",
+      "rationale": "Plan §12: regulation/compliance content must carry the disclaimer as selectable text."
+    }
+  },
+  "hard_failures": [
+    "model_hash_uniformity violated",
+    "a1_page_size mismatch",
+    "no programme schedule produced",
+    "design ignores site boundary",
+    "captions claim compliance without source"
+  ],
+  "snapshots": {
+    "projectgraph": "evals/golden/uk_library/projectgraph.json",
+    "sheet_svg": "evals/golden/uk_library/sheet.svg",
+    "qa": "evals/golden/uk_library/qa.json",
+    "comparison_strategy": "Plan §17.3: do NOT pixel-compare renders. Diff projectgraph counts/hashes/areas, sheet SVG element counts and bounding boxes, and qa category breakdown. Allow timestamps and ephemeral asset IDs to drift."
+  }
+}

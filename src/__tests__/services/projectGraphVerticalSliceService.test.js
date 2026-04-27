@@ -1,6 +1,7 @@
 import {
   buildArchitectureProjectVerticalSlice,
   validateProjectGraphVerticalSlice,
+  KNOWN_BUILDING_TYPES,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
 function createReadingRoomBrief() {
@@ -130,6 +131,88 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.qa.checks.map((check) => check.code)).toContain(
       "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
     );
+    // Plan §10 RIBA scorecard categories
+    expect(result.qa.totalScore).toBeGreaterThanOrEqual(85);
+    expect(result.qa.categoryScores).toEqual(
+      expect.objectContaining({
+        programme: expect.any(Object),
+        consistency_2d_3d: expect.any(Object),
+        site_context: expect.any(Object),
+        climate: expect.any(Object),
+        regulation: expect.any(Object),
+        architecture: expect.any(Object),
+        graphic: expect.any(Object),
+      }),
+    );
+    // Each plan §10 category must total exactly the prescribed weight
+    expect(result.qa.categoryScores.programme.max).toBe(20);
+    expect(result.qa.categoryScores.consistency_2d_3d.max).toBe(20);
+    expect(result.qa.categoryScores.site_context.max).toBe(15);
+    expect(result.qa.categoryScores.climate.max).toBe(15);
+    expect(result.qa.categoryScores.regulation.max).toBe(10);
+    expect(result.qa.categoryScores.architecture.max).toBe(10);
+    expect(result.qa.categoryScores.graphic.max).toBe(10);
+  });
+
+  test.each([
+    "dwelling",
+    "multi_residential",
+    "mixed_use",
+    "community",
+    "office_studio",
+    "education_studio",
+  ])(
+    "produces a non-empty programme template for known building_type %s",
+    async (buildingType) => {
+      const briefInput = createReadingRoomBrief();
+      briefInput.brief.building_type = buildingType;
+      briefInput.brief.project_name = `Smoke Test ${buildingType}`;
+      const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+      expect(KNOWN_BUILDING_TYPES).toContain(buildingType);
+      expect(
+        result.projectGraph.programme.spaces.length,
+      ).toBeGreaterThanOrEqual(6);
+      expect(result.projectGraph.programme.template_provenance.source).toBe(
+        "matched_template",
+      );
+      expect(
+        result.projectGraph.programme.template_provenance.resolved_template,
+      ).toBe(buildingType);
+      const totalArea = result.projectGraph.programme.spaces.reduce(
+        (sum, space) => sum + Number(space.target_area_m2 || 0),
+        0,
+      );
+      const targetGia = briefInput.brief.target_gia_m2;
+      expect(totalArea).toBeGreaterThan(targetGia * 0.9);
+      expect(totalArea).toBeLessThan(targetGia * 1.1);
+    },
+  );
+
+  test("unknown building_type does not silently render as a dwelling and is flagged in template_provenance", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.brief.building_type = "warehouse";
+    briefInput.brief.project_name = "Unknown Type Smoke";
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+    expect(result.projectGraph.programme.template_provenance.source).toBe(
+      "fallback_template",
+    );
+    expect(
+      result.projectGraph.programme.template_provenance.requested_building_type,
+    ).toBe("warehouse");
+    expect(
+      result.projectGraph.programme.template_provenance.resolved_template,
+    ).toBe("community");
+    const dwellingSpaceNames = new Set([
+      "Principal bedroom",
+      "Bedroom 2",
+      "Bedroom 3 or study",
+    ]);
+    const hasDwellingSpace = result.projectGraph.programme.spaces.some(
+      (space) => dwellingSpaceNames.has(space.name),
+    );
+    expect(hasDwellingSpace).toBe(false);
   });
 
   test("QA fails when a 2D drawing drifts from the 3D model hash", async () => {
