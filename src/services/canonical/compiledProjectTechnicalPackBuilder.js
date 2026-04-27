@@ -16,7 +16,17 @@ export const TECHNICAL_FLOOR_PANEL_TYPES = [
   "floor_plan_first",
   "floor_plan_level2",
   "floor_plan_level3",
+  "floor_plan_level4",
+  "floor_plan_level5",
+  "floor_plan_level6",
+  "floor_plan_level7",
 ];
+
+export function technicalFloorPanelType(levelIndex) {
+  if (levelIndex === 0) return "floor_plan_ground";
+  if (levelIndex === 1) return "floor_plan_first";
+  return `floor_plan_level${levelIndex}`;
+}
 
 export const TECHNICAL_ELEVATION_PANELS = {
   north: "elevation_north",
@@ -810,12 +820,12 @@ export function buildCompiledProjectTechnicalPanels(source = {}, options = {}) {
   const customSectionHeight = Number(options.sectionHeight || options.height);
 
   const levels = Array.isArray(compiledProject.levels)
-    ? compiledProject.levels.slice(0, TECHNICAL_FLOOR_PANEL_TYPES.length)
+    ? compiledProject.levels
     : [];
   const floorCount = Math.max(1, levels.length || 1);
 
   levels.forEach((level, index) => {
-    const panelType = TECHNICAL_FLOOR_PANEL_TYPES[index];
+    const panelType = technicalFloorPanelType(index);
     const slotRenderSize = getTechnicalPanelRenderSize(panelType, floorCount);
     const renderSize = {
       width:

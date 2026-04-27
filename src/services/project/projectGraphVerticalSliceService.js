@@ -45,7 +45,11 @@ const PROFESSIONAL_REVIEW_DISCLAIMER =
   "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.";
 const A1_SHEET_LAYOUT_VERSION = "projectgraph-a1-recovery-panels-v2";
 const A1_SHEET_SIZE_MM = { width: 841, height: 594 };
-const REQUIRED_A1_PANEL_TYPES = [
+const MAX_TARGET_STOREYS = Math.max(
+  1,
+  Number.parseInt(process.env.MAX_TARGET_STOREYS, 10) || 8,
+);
+const REQUIRED_A1_PANEL_TYPES_BASE = [
   "floor_plan_ground",
   "elevation_north",
   "elevation_south",
@@ -55,19 +59,44 @@ const REQUIRED_A1_PANEL_TYPES = [
   "section_BB",
   "site_context",
   "hero_3d",
+  "exterior_render",
   "axonometric",
   "interior_3d",
 ];
-const REQUIRED_3D_A1_PANEL_TYPES = ["hero_3d", "axonometric", "interior_3d"];
-const TECHNICAL_A1_PANEL_TYPES = [
-  "floor_plan_ground",
-  "floor_plan_first",
+const REQUIRED_3D_A1_PANEL_TYPES = [
+  "hero_3d",
+  "exterior_render",
+  "axonometric",
+  "interior_3d",
+];
+const TECHNICAL_A1_PANEL_TYPES_BASE = [
   "elevation_north",
   "elevation_south",
   "elevation_east",
   "elevation_west",
   "section_AA",
   "section_BB",
+];
+
+function buildRequiredA1PanelTypes(targetStoreys = 1) {
+  const dynamicFloorPlans = floorPlanPanelTypes(targetStoreys).filter(
+    (type) => type !== "floor_plan_ground",
+  );
+  return [...REQUIRED_A1_PANEL_TYPES_BASE, ...dynamicFloorPlans];
+}
+
+function buildTechnicalA1PanelTypes(targetStoreys = 1) {
+  return [
+    ...floorPlanPanelTypes(targetStoreys),
+    ...TECHNICAL_A1_PANEL_TYPES_BASE,
+  ];
+}
+
+const REQUIRED_A1_PANEL_TYPES = REQUIRED_A1_PANEL_TYPES_BASE;
+const TECHNICAL_A1_PANEL_TYPES = [
+  "floor_plan_ground",
+  "floor_plan_first",
+  ...TECHNICAL_A1_PANEL_TYPES_BASE,
 ];
 const MIN_RENDERED_SHEET_INK_RATIO = 0.015;
 const MIN_TECHNICAL_SVG_LENGTH = 800;
@@ -208,8 +237,36 @@ function normalizeBuildingType(input = {}) {
 }
 
 function levelName(index) {
-  const names = ["Ground", "First", "Second", "Third"];
+  const names = [
+    "Ground",
+    "First",
+    "Second",
+    "Third",
+    "Fourth",
+    "Fifth",
+    "Sixth",
+    "Seventh",
+  ];
   return names[index] || `Level ${index}`;
+}
+
+function levelOrdinalSlug(index) {
+  if (index === 0) return "ground";
+  if (index === 1) return "first";
+  return `level${index}`;
+}
+
+function floorPlanPanelType(levelIndex) {
+  return `floor_plan_${levelOrdinalSlug(levelIndex)}`;
+}
+
+function floorPlanPanelTypes(targetStoreys = 1) {
+  const count = Math.max(1, Number(targetStoreys) || 1);
+  const result = [];
+  for (let i = 0; i < count; i += 1) {
+    result.push(floorPlanPanelType(i));
+  }
+  return result;
 }
 
 function normalizeBrief(input = {}) {
@@ -238,18 +295,17 @@ function normalizeBrief(input = {}) {
         180,
     ) || 180,
   );
+  const requestedStoreys =
+    Number.parseInt(
+      sourceBrief.target_storeys ??
+        sourceBrief.targetStoreys ??
+        projectDetails.floorCount ??
+        2,
+      10,
+    ) || 2;
   const targetStoreys = Math.max(
     1,
-    Math.min(
-      4,
-      Number.parseInt(
-        sourceBrief.target_storeys ??
-          sourceBrief.targetStoreys ??
-          projectDetails.floorCount ??
-          2,
-        10,
-      ) || 2,
-    ),
+    Math.min(MAX_TARGET_STOREYS, requestedStoreys),
   );
   const projectName =
     sourceBrief.project_name ||
@@ -831,38 +887,58 @@ function getProgrammeTemplate(buildingType, upperLevel) {
 
 function buildTemplateProgramSpaces(brief) {
   const target = Number(brief.target_gia_m2 || 180);
-  const upperLevel = Math.min(
-    1,
-    Math.max(0, Number(brief.target_storeys || 1) - 1),
-  );
+  const totalStoreys = Math.max(1, Number(brief.target_storeys || 1));
+  const upperLevel = Math.max(0, totalStoreys - 1);
+  // Templates carry spaces on level 0 (ground) and a single upper level.
+  // For 3+ storey projects we spread the upper template spaces across all
+  // upper levels (1..upperLevel) round-robin so every chosen floor receives
+  // programme content instead of being left blank.
+  const templateUpperLevel = Math.min(1, upperLevel);
   const { template, fallback, fallbackFrom } = getProgrammeTemplate(
     brief.building_type,
-    upperLevel,
+    templateUpperLevel,
   );
 
+  const upperLevelCount = Math.max(0, totalStoreys - 1);
+  let upperRotation = 0;
+  const remapLevelIndex = (rawLevelIndex) => {
+    if (rawLevelIndex <= 0 || upperLevelCount <= 0) {
+      return 0;
+    }
+    if (upperLevelCount === 1) {
+      return 1;
+    }
+    const assigned = 1 + (upperRotation % upperLevelCount);
+    upperRotation += 1;
+    return assigned;
+  };
+
   const spaces = template.map(
-    ([name, fn, zone, ratio, levelIndex, daylight], index) => ({
-      space_id: createStableId("space", brief.project_name, name, index),
-      name,
-      function: fn,
-      zone,
-      target_area_m2: round(target * ratio, 2),
-      min_area_m2: round(target * ratio * 0.85, 2),
-      max_area_m2: round(target * ratio * 1.15, 2),
-      target_level: levelName(levelIndex),
-      target_level_index: levelIndex,
-      actual_level_id: `level-${levelIndex}`,
-      required_daylight: daylight,
-      acoustic_privacy: zone === "private" ? "high" : "medium",
-      accessible: true,
-      adjacency_tags:
-        zone === "service"
-          ? ["service"]
-          : levelIndex === 0
-            ? ["arrival"]
-            : ["quiet"],
-      qa_status: "unplaced",
-    }),
+    ([name, fn, zone, ratio, levelIndex, daylight], index) => {
+      const remappedLevel = remapLevelIndex(levelIndex);
+      return {
+        space_id: createStableId("space", brief.project_name, name, index),
+        name,
+        function: fn,
+        zone,
+        target_area_m2: round(target * ratio, 2),
+        min_area_m2: round(target * ratio * 0.85, 2),
+        max_area_m2: round(target * ratio * 1.15, 2),
+        target_level: levelName(remappedLevel),
+        target_level_index: remappedLevel,
+        actual_level_id: `level-${remappedLevel}`,
+        required_daylight: daylight,
+        acoustic_privacy: zone === "private" ? "high" : "medium",
+        accessible: true,
+        adjacency_tags:
+          zone === "service"
+            ? ["service"]
+            : levelIndex === 0
+              ? ["arrival"]
+              : ["quiet"],
+        qa_status: "unplaced",
+      };
+    },
   );
 
   return {
@@ -2011,13 +2087,20 @@ function build3DModelSet({ projectGraphId, scene3d, geometryHash }) {
 }
 
 function formatPanelTitle(panelType) {
-  return String(panelType || "panel")
+  const raw = String(panelType || "panel");
+  const levelMatch = raw.match(/^floor_plan_level(\d+)$/);
+  if (levelMatch) {
+    const idx = Number.parseInt(levelMatch[1], 10);
+    return `${levelName(idx)} floor plan`;
+  }
+  return raw
     .replace(/^floor_plan_ground$/, "Ground floor plan")
     .replace(/^floor_plan_first$/, "First floor plan")
     .replace(/^section_AA$/, "Section A-A")
     .replace(/^section_BB$/, "Section B-B")
     .replace(/^site_context$/, "Site / context")
     .replace(/^hero_3d$/, "3D perspective")
+    .replace(/^exterior_render$/, "Exterior render")
     .replace(/^axonometric$/, "3D axonometric")
     .replace(/^interior_3d$/, "Interior / cutaway")
     .replace(/_/g, " ")
@@ -2277,103 +2360,110 @@ function buildSheetPanelArtifacts({
 }
 
 function buildSheetPanelSpecs(targetStoreys = 1) {
-  return [
+  const storeyCount = Math.max(1, Number(targetStoreys) || 1);
+  const overviewRow = [
     {
       panelType: "site_context",
       x: 18,
       y: 44,
-      width: 210,
+      width: 168,
       height: 150,
       scale: "context",
       required: true,
     },
     {
       panelType: "hero_3d",
-      x: 238,
+      x: 196,
       y: 44,
-      width: 260,
+      width: 200,
       height: 150,
       scale: "perspective",
       required: true,
     },
     {
-      panelType: "axonometric",
-      x: 508,
+      panelType: "exterior_render",
+      x: 406,
       y: 44,
-      width: 145,
+      width: 158,
+      height: 150,
+      scale: "render",
+      required: false,
+    },
+    {
+      panelType: "axonometric",
+      x: 574,
+      y: 44,
+      width: 120,
       height: 150,
       scale: "axonometric",
       required: true,
     },
     {
       panelType: "interior_3d",
-      x: 663,
+      x: 704,
       y: 44,
-      width: 158,
+      width: 117,
       height: 150,
       scale: "cutaway",
       required: true,
     },
-    {
-      panelType: "floor_plan_ground",
-      x: 18,
-      y: 204,
-      width: targetStoreys > 1 ? 260 : 480,
-      height: 190,
+  ];
+
+  const floorPlansBlockX = 18;
+  const floorPlansBlockY = 204;
+  const floorPlansBlockWidth = 480;
+  const floorPlansBlockHeight = 190;
+  const floorPlanColumns = Math.min(storeyCount, 3);
+  const floorPlanRows = Math.ceil(storeyCount / floorPlanColumns);
+  const floorPlanGap = 4;
+  const floorPlanCellWidth =
+    (floorPlansBlockWidth - floorPlanGap * (floorPlanColumns - 1)) /
+    floorPlanColumns;
+  const floorPlanCellHeight =
+    (floorPlansBlockHeight - floorPlanGap * (floorPlanRows - 1)) /
+    floorPlanRows;
+  const floorPlans = [];
+  for (let i = 0; i < storeyCount; i += 1) {
+    const col = i % floorPlanColumns;
+    const row = Math.floor(i / floorPlanColumns);
+    floorPlans.push({
+      panelType: floorPlanPanelType(i),
+      x: floorPlansBlockX + col * (floorPlanCellWidth + floorPlanGap),
+      y: floorPlansBlockY + row * (floorPlanCellHeight + floorPlanGap),
+      width: floorPlanCellWidth,
+      height: floorPlanCellHeight,
       scale: "1:100",
-      required: true,
-    },
-    {
-      panelType: "floor_plan_first",
-      x: 288,
-      y: 204,
-      width: 210,
-      height: 190,
-      scale: "1:100",
-      required: false,
-    },
-    {
-      panelType: "elevation_north",
-      x: 508,
-      y: 204,
-      width: 153,
-      height: 80,
-      scale: "1:100",
-      required: true,
-    },
-    {
-      panelType: "elevation_south",
-      x: 668,
-      y: 204,
-      width: 153,
-      height: 80,
-      scale: "1:100",
-      required: true,
-    },
-    {
-      panelType: "elevation_east",
-      x: 508,
-      y: 292,
-      width: 153,
-      height: 80,
-      scale: "1:100",
-      required: true,
-    },
-    {
-      panelType: "elevation_west",
-      x: 668,
-      y: 292,
-      width: 153,
-      height: 80,
-      scale: "1:100",
-      required: true,
-    },
+      required: i === 0,
+    });
+  }
+
+  const elevationsBlockX = 508;
+  const elevationsBlockY = 204;
+  const elevationCellWidth = 153;
+  const elevationCellHeight = 92;
+  const elevationGap = 4;
+  const elevations = [
+    { panelType: "elevation_north", col: 0, row: 0 },
+    { panelType: "elevation_south", col: 1, row: 0 },
+    { panelType: "elevation_east", col: 0, row: 1 },
+    { panelType: "elevation_west", col: 1, row: 1 },
+  ].map(({ panelType, col, row }) => ({
+    panelType,
+    x: elevationsBlockX + col * (elevationCellWidth + elevationGap),
+    y: elevationsBlockY + row * (elevationCellHeight + elevationGap),
+    width: elevationCellWidth,
+    height: elevationCellHeight,
+    scale: "1:100",
+    required: true,
+  }));
+
+  const sectionsRow = [
     {
       panelType: "section_AA",
       x: 18,
       y: 404,
       width: 390,
-      height: 68,
+      height: 76,
       scale: "1:100",
       required: true,
     },
@@ -2382,11 +2472,13 @@ function buildSheetPanelSpecs(targetStoreys = 1) {
       x: 418,
       y: 404,
       width: 403,
-      height: 68,
+      height: 76,
       scale: "1:100",
       required: true,
     },
   ];
+
+  return [...overviewRow, ...floorPlans, ...elevations, ...sectionsRow];
 }
 
 function buildPanelPlacements({
@@ -2472,6 +2564,8 @@ function buildSheetSvg({
   panelPlacements,
   panelArtifacts,
   qaStatus,
+  sheetNumber = "A1-00",
+  sheetLabel = "RIBA Stage 2 Master",
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const panelGroups = panelPlacements
@@ -2494,8 +2588,8 @@ function buildSheetSvg({
   ${panelGroups}
   <g data-panel-id="title_block">
     <rect x="18" y="486" width="803" height="88" fill="#142033"/>
-    <text x="30" y="508" font-size="12" font-family="Arial, sans-serif" font-weight="700" fill="#fffdf7">RIBA Stage 2 ProjectGraph Vertical Slice</text>
-    <text x="30" y="524" font-size="6.5" font-family="Arial, sans-serif" fill="#fffdf7">Drawing A1-01 / Revision P01 / Status ${escapeXml(qaStatus || "pending")}</text>
+    <text x="30" y="508" font-size="12" font-family="Arial, sans-serif" font-weight="700" fill="#fffdf7">${escapeXml(sheetLabel || "RIBA Stage 2 ProjectGraph Vertical Slice")}</text>
+    <text x="30" y="524" font-size="6.5" font-family="Arial, sans-serif" fill="#fffdf7">Drawing ${escapeXml(sheetNumber || "A1-00")} / Revision P01 / Status ${escapeXml(qaStatus || "pending")}</text>
     <text x="30" y="540" font-size="5.4" font-family="Arial, sans-serif" fill="#d7e0e8">All visible panels are deterministic SVG projections or context panels from compiled ProjectGraph geometry. No independent 2D/3D prompts are used as geometry authority.</text>
     <text x="30" y="556" font-size="4.6" font-family="Arial, sans-serif" fill="#d7e0e8">${escapeXml(PROFESSIONAL_REVIEW_DISCLAIMER)}</text>
     <text x="812" y="556" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#d7e0e8">source_model_hash ${escapeXml(geometryHash)}</text>
@@ -2543,7 +2637,14 @@ function buildA1Sheet({
   const sourcePanelAssetIds = panelPlacements
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
-  const sheetId = createStableId("sheet-a1", projectGraphId, geometryHash);
+  const drawingNumber = sheetPlan?.sheet_number || "A1-00";
+  const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
+  const sheetId = createStableId(
+    "sheet-a1",
+    projectGraphId,
+    geometryHash,
+    drawingNumber,
+  );
   const svgString = buildSheetSvg({
     projectGraphId,
     brief,
@@ -2551,15 +2652,15 @@ function buildA1Sheet({
     panelPlacements,
     panelArtifacts,
     qaStatus: "pending",
+    sheetNumber: drawingNumber,
+    sheetLabel,
   });
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
+  const requiredPlacementTypes = buildRequiredA1PanelTypes(targetStoreys);
   const requiredPlacements = panelPlacements.filter((placement) =>
-    REQUIRED_A1_PANEL_TYPES.includes(placement.panelType),
+    requiredPlacementTypes.includes(placement.panelType),
   );
-
-  const drawingNumber = sheetPlan?.sheet_number || "A1-01";
-  const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Concept";
   return {
     sheetSet: {
       sheets: [
@@ -2605,7 +2706,7 @@ function buildA1Sheet({
         placeholderOnly: false,
         requiredPanelCount: sheetPlan
           ? sheetPlan.panel_types.length
-          : REQUIRED_A1_PANEL_TYPES.length,
+          : requiredPlacementTypes.length,
         requiredPanelsPlaced: requiredPlacements.length,
         totalPanelsPlaced: panelPlacements.length,
       },
@@ -2875,10 +2976,7 @@ function addCheck(
 }
 
 function expectedRequiredPanelTypes(targetStoreys = 1) {
-  return [
-    ...REQUIRED_A1_PANEL_TYPES,
-    ...(Number(targetStoreys || 1) > 1 ? ["floor_plan_first"] : []),
-  ];
+  return buildRequiredA1PanelTypes(targetStoreys);
 }
 
 function artifactArray(artifacts = {}) {
@@ -3353,14 +3451,11 @@ export function validateProjectGraphVerticalSlice({
     );
   }
 
-  const technicalPanelFailures = TECHNICAL_A1_PANEL_TYPES.filter(
+  const technicalPanelTypesForStoreys = buildTechnicalA1PanelTypes(
+    projectGraph?.brief?.target_storeys || 1,
+  );
+  const technicalPanelFailures = technicalPanelTypesForStoreys.filter(
     (panelType) => {
-      if (
-        panelType === "floor_plan_first" &&
-        Number(projectGraph?.brief?.target_storeys || 1) <= 1
-      ) {
-        return false;
-      }
       const artifact = findPanelArtifact(artifacts.drawings || {}, panelType);
       const svg = artifact?.svgString || "";
       return (
@@ -3373,57 +3468,30 @@ export function validateProjectGraphVerticalSlice({
       );
     },
   );
-  const technicalPanelIdentityFailures = TECHNICAL_A1_PANEL_TYPES.filter(
-    (panelType) => {
-      if (
-        panelType === "floor_plan_first" &&
-        Number(projectGraph?.brief?.target_storeys || 1) <= 1
-      ) {
-        return false;
-      }
-      return technicalPanelIdentityMismatch(
+  const technicalPanelIdentityFailures = technicalPanelTypesForStoreys.filter(
+    (panelType) =>
+      technicalPanelIdentityMismatch(
         panelType,
         findPanelArtifact(artifacts.drawings || {}, panelType),
-      );
-    },
+      ),
   );
-  const technicalContentBoundsFailures = TECHNICAL_A1_PANEL_TYPES.filter(
+  const technicalContentBoundsFailures = technicalPanelTypesForStoreys.filter(
     (panelType) => {
-      if (
-        panelType === "floor_plan_first" &&
-        Number(projectGraph?.brief?.target_storeys || 1) <= 1
-      ) {
-        return false;
-      }
       const artifact = findPanelArtifact(artifacts.drawings || {}, panelType);
       return !getTechnicalContentBounds(artifact);
     },
   );
-  const technicalUnderscaledPanels = TECHNICAL_A1_PANEL_TYPES.filter(
-    (panelType) => {
-      if (
-        panelType === "floor_plan_first" &&
-        Number(projectGraph?.brief?.target_storeys || 1) <= 1
-      ) {
-        return false;
-      }
-      return technicalContentBoundsTooSmall(
+  const technicalUnderscaledPanels = technicalPanelTypesForStoreys.filter(
+    (panelType) =>
+      technicalContentBoundsTooSmall(
         findPanelArtifact(artifacts.drawings || {}, panelType),
-      );
-    },
+      ),
   );
-  const technicalViewBoxFailures = TECHNICAL_A1_PANEL_TYPES.filter(
-    (panelType) => {
-      if (
-        panelType === "floor_plan_first" &&
-        Number(projectGraph?.brief?.target_storeys || 1) <= 1
-      ) {
-        return false;
-      }
-      return !getTechnicalNormalizedViewBox(
+  const technicalViewBoxFailures = technicalPanelTypesForStoreys.filter(
+    (panelType) =>
+      !getTechnicalNormalizedViewBox(
         findPanelArtifact(artifacts.drawings || {}, panelType),
-      );
-    },
+      ),
   );
   addCheck(
     checks,

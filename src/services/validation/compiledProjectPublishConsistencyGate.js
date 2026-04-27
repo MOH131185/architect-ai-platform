@@ -237,7 +237,7 @@ function resolveVisualPanels(compiledProject = {}) {
   add(compiledProject.visualPackage, compiledProject.visualPackage?.viewType);
   toArray(compiledProject.panels)
     .filter((entry) =>
-      ["hero_3d", "axonometric", "interior_3d"].includes(
+      ["hero_3d", "exterior_render", "axonometric", "interior_3d"].includes(
         String(resolvePanelType(entry, "") || ""),
       ),
     )

@@ -7,7 +7,7 @@ import { buildArchitectureProjectVerticalSlice } from "../../../services/project
 jest.setTimeout(60000);
 
 describe("decideSheetSplit", () => {
-  test("emits a single sheet when programme/storey/regulation density is low", () => {
+  test("emits the A1-00 master sheet when programme/storey/regulation density is low", () => {
     const decision = decideSheetSplit({
       brief: { target_storeys: 2 },
       programme: { spaces: new Array(8).fill({ space_id: "s" }) },
@@ -17,11 +17,12 @@ describe("decideSheetSplit", () => {
     });
     expect(decision.split).toBe(false);
     expect(decision.sheets.length).toBe(1);
-    expect(decision.sheets[0].sheet_number).toBe("A1-01");
+    expect(decision.sheets[0].sheet_number).toBe("A1-00");
+    expect(decision.sheets[0].is_master).toBe(true);
     expect(decision.sheets[0].panel_types.length).toBeGreaterThan(8);
   });
 
-  test("splits into A1-01/02/03 when storeys > 2", () => {
+  test("splits into A1-00/01/02/03 when storeys > 2", () => {
     const decision = decideSheetSplit({
       brief: { target_storeys: 4 },
       programme: { spaces: new Array(8).fill({}) },
@@ -30,14 +31,16 @@ describe("decideSheetSplit", () => {
       },
     });
     expect(decision.split).toBe(true);
-    expect(decision.sheets.length).toBe(3);
+    expect(decision.sheets.length).toBe(4);
     expect(decision.sheets.map((s) => s.sheet_number)).toEqual([
+      "A1-00",
       "A1-01",
       "A1-02",
       "A1-03",
     ]);
+    expect(decision.sheets[0].is_master).toBe(true);
     // The plan/section sheet (A1-02) carries plans + sections only.
-    expect(decision.sheets[1].panel_types).toEqual(
+    expect(decision.sheets[2].panel_types).toEqual(
       expect.arrayContaining([
         "floor_plan_ground",
         "floor_plan_first",
@@ -84,6 +87,17 @@ describe("decideSheetSplit", () => {
     expect(allPanels).toEqual(
       expect.arrayContaining(["site_context", "floor_plan_ground"]),
     );
+    // Master sheet must carry every panel type.
+    const master = decision.sheets.find((s) => s.sheet_number === "A1-00");
+    expect(master.panel_types).toEqual(
+      expect.arrayContaining([
+        "site_context",
+        "hero_3d",
+        "floor_plan_ground",
+        "elevation_north",
+        "section_AA",
+      ]),
+    );
     // Plans should not appear on the elevation sheet.
     const a1_03 = decision.sheets.find((s) => s.sheet_number === "A1-03");
     expect(a1_03.panel_types).not.toContain("floor_plan_ground");
@@ -97,7 +111,7 @@ describe("multi-sheet integration", () => {
     process.env.OPENAI_FAST_MODEL = "gpt-5.4-mini";
   });
 
-  test("Reading Room fixture stays single-sheet", async () => {
+  test("Reading Room fixture stays single-sheet (A1-00 master)", async () => {
     const result = await buildArchitectureProjectVerticalSlice({
       brief: {
         project_name: "Single Sheet Smoke",
@@ -110,10 +124,10 @@ describe("multi-sheet integration", () => {
     expect(result.projectGraph.sheets.split_decision.split).toBe(false);
     expect(result.projectGraph.sheets.sheets.length).toBe(1);
     expect(result.artifacts.sheetSeries.length).toBe(1);
-    expect(result.artifacts.sheetSeries[0].sheet_number).toBe("A1-01");
+    expect(result.artifacts.sheetSeries[0].sheet_number).toBe("A1-00");
   });
 
-  test("4-storey brief triggers a 3-sheet split with distinct PDFs", async () => {
+  test("4-storey brief triggers a 4-sheet set (A1-00 master + 3 split) with distinct PDFs", async () => {
     const result = await buildArchitectureProjectVerticalSlice({
       brief: {
         project_name: "Multi-Sheet Smoke",
@@ -124,20 +138,20 @@ describe("multi-sheet integration", () => {
       },
     });
     expect(result.projectGraph.sheets.split_decision.split).toBe(true);
-    expect(result.projectGraph.sheets.sheets.length).toBe(3);
+    expect(result.projectGraph.sheets.sheets.length).toBe(4);
     expect(result.artifacts.sheetSplitDecision.split).toBe(true);
-    expect(result.artifacts.sheetSeries.length).toBe(3);
+    expect(result.artifacts.sheetSeries.length).toBe(4);
     const sheetNumbers = result.artifacts.sheetSeries.map(
       (s) => s.sheet_number,
     );
-    expect(sheetNumbers).toEqual(["A1-01", "A1-02", "A1-03"]);
+    expect(sheetNumbers).toEqual(["A1-00", "A1-01", "A1-02", "A1-03"]);
     // Each sheet must have its own PDF artifact id, and they must differ.
     const pdfIds = result.artifacts.sheetSeries.map((s) => s.pdf_asset_id);
-    expect(new Set(pdfIds).size).toBe(3);
+    expect(new Set(pdfIds).size).toBe(4);
     result.artifacts.sheetSeries.forEach((sheet) => {
       expect(sheet.pdf_data_url).toMatch(/^data:application\/pdf;base64,/);
     });
-    // Primary export (artifacts.a1Pdf) is the first sheet.
+    // Primary export (artifacts.a1Pdf) is the master sheet (first).
     expect(result.artifacts.a1Pdf.asset_id).toBe(pdfIds[0]);
   });
 });

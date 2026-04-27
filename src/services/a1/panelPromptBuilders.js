@@ -38,8 +38,15 @@ MANDATORY TEXT SIZES:
 const DRAWING_STYLE_SUFFIX = `crisp black vector linework on pure white paper, strict CAD drafting standard, professional architectural blueprint. No shadows, no shading, no gradients, no color fills, no ambient occlusion.
 Drawing must fill 85-95% of the canvas with minimal outer margins; no tiny drawing centered in large white space.
 ${LINEWEIGHT_SPEC}`;
-const RENDER_STYLE_SUFFIX =
-  "same materials and colors as other views, soft neutral sky, no watermark, no text";
+const RENDER_STYLE_SUFFIX = [
+  "architectural visualization, V-Ray + 3ds Max quality, octane-grade physically-based rendering",
+  "photoreal PBR materials with accurate roughness, specular highlights, normal maps, subsurface scattering on render finishes",
+  "HDRI sky lighting with soft volumetric god-rays, realistic ambient occlusion, contact shadows under eaves",
+  "shallow depth of field, subtle chromatic aberration, lens vignette, film grain barely perceptible",
+  "manicured landscape with grass blades, gravel texture, mature trees casting dappled shade",
+  "Dezeen / ArchDaily magazine cover quality, 8K, no watermark, no text, no diagrams",
+  "same materials and colors as other views, soft neutral sky",
+].join(", ");
 
 // Shared anti-3D negative prompt fragments for 2D technical views
 const ANTI_3D_CORE =
@@ -488,6 +495,85 @@ STYLE: ${RENDER_STYLE_SUFFIX}`;
   return {
     prompt,
     negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, housing estate, street of houses, neighborhood, multiple roofs, duplex, apartment block, flats, apartments, townhouses, housing development, cartoon, sketch, overexposed, low detail, wireframe, different building styles, inconsistent design, people, cars, toy model, miniature, diorama, tilt-shift, plastic, CGI render, video game, unreal engine UI, blueprint drawing, line art, flat shading, anime, illustration, ${dims.floors === 1 ? "two storey, second floor, upper floor, balcony, " : ""}${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+  };
+}
+
+/**
+ * Build dedicated exterior photoreal render prompt — frames the building
+ * head-on with a slight angle so it reads as a magazine-cover render rather
+ * than a strict elevation. Uses the same canonical identity as hero_3d so the
+ * two exterior panels stay design-consistent.
+ */
+export function buildExteriorRenderPrompt({
+  masterDNA,
+  locationData,
+  projectContext,
+  consistencyLock,
+  geometryHint,
+}) {
+  const dims = normalizeDimensions(masterDNA);
+  const materials = normalizeMaterials(masterDNA);
+  const style = masterDNA?.architecturalStyle || "Contemporary";
+  const projectType = projectContext?.buildingProgram || "residential";
+  const roofType =
+    masterDNA?.roof?.type ||
+    masterDNA?._structured?.geometry_rules?.roof_type ||
+    "gable";
+  const fingerprintConstraint = injectFingerprintConstraint({
+    masterDNA,
+    projectContext,
+  });
+  const geomConstraint = geometryHint?.type
+    ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
+    : "Keep massing consistent with hero 3D, plans and elevations.";
+  const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+
+  const rawMats =
+    masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
+  const matDescParts = [];
+  if (Array.isArray(rawMats)) {
+    for (const mat of rawMats) {
+      if (mat.name && mat.hexColor) {
+        matDescParts.push(
+          `${mat.name} (${mat.hexColor}) on ${mat.application || "facade"}`,
+        );
+      }
+    }
+  }
+  const matDesc =
+    matDescParts.length > 0 ? matDescParts.join(", ") : materials.join(", ");
+
+  const prompt = `${matDesc}, ${style} ${projectType}, ${identity}
+
+Front-elevation hero render — magazine cover composition, head-on with ~12° angle.
+This shows THE SAME building as the hero 3D and plans.
+
+Building: ${style} ${projectType}
+Dimensions: ${dims.length}m × ${dims.width}m × ${dims.height}m, ${dims.floors} floor(s)
+Materials: ${matDesc}
+Roof type: ${roofType}
+
+${fingerprintConstraint ? `DESIGN FINGERPRINT (match hero exactly):\n${fingerprintConstraint}\n` : ""}
+
+REQUIREMENTS:
+- Photoreal architectural front-elevation render, near-orthographic with very slight rotation
+- Camera 1.6m eye-level, leading-line composition, foreground front garden / driveway
+- Three-point exterior lighting: golden-hour key from south-west, soft fill, rim light catching the eave
+- Material textures legible: brick coursing, render grain, glazing reflections, timber detailing
+- Sky: subtle gradient with thin cirrus, no overexposed highlights
+- Detailed front entrance: door, lighting, threshold, address detail
+- Visible architectural detailing: window reveals (100mm depth), rainwater goods, plinth course, eaves
+- Single freestanding building, no neighbours, no street furniture clutter
+- ${geomConstraint}
+- FLOOR COUNT: EXACTLY ${dims.floors} floor(s).
+- ROOF: ${roofType} roof, profile clearly visible.
+
+${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
+STYLE: ${RENDER_STYLE_SUFFIX}`;
+
+  return {
+    prompt,
+    negativePrompt: `terraced, row houses, semi-detached, attached buildings, shared walls, multiple buildings, neighborhood, cartoon, sketch, wireframe, different building styles, inconsistent design, people, cars in driveway, toy model, plastic, video game, blueprint drawing, line art, flat shading, anime, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 
@@ -1136,11 +1222,11 @@ REQUIREMENTS:
 - ROOF: ${roofType} roof. ${roofType === "flat" ? "Flat horizontal top." : roofType === "gable" ? "Gable ridge line visible." : ""}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
-STYLE: ${hasStyleReference ? RENDER_STYLE_SUFFIX : DRAWING_STYLE_SUFFIX}`;
+STYLE: ${RENDER_STYLE_SUFFIX}`;
 
   return {
     prompt,
-    negativePrompt: `perspective view, vanishing points, photorealistic, context, landscape, people, cars, sketchy, different building, different roof, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
+    negativePrompt: `perspective view, vanishing points, context clutter, people, cars, sketchy, different building, different roof, inconsistent design, ${buildRoofTypeNegatives(roofType)}, ${buildFloorCountNegatives(dims.floors)}`,
   };
 }
 

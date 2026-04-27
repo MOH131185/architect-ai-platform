@@ -30,6 +30,30 @@ const EXTERIOR_VIEW_SPECS = {
       ridge: "#2b241e",
     },
   },
+  exterior_render: {
+    panelType: "exterior_render",
+    width: 1600,
+    height: 1100,
+    padding: 110,
+    yawDeg: -10,
+    pitchDeg: 14,
+    perspective: true,
+    visibleSides: ["south"],
+    title: "Compiled Exterior Render Control",
+    renderKind: "compiled_exterior_front",
+    theme: {
+      background: "#eef1f4",
+      ground: "#d6cfc1",
+      primaryWall: "#c8b89c",
+      secondaryWall: "#a89077",
+      roofPrimary: "#74604c",
+      roofSecondary: "#5b4a3a",
+      glass: "#cbd9e3",
+      door: "#5c4631",
+      stroke: "#1f1a14",
+      ridge: "#181410",
+    },
+  },
   axonometric: {
     panelType: "axonometric",
     width: 1500,
@@ -81,6 +105,7 @@ const INTERIOR_VIEW_SPEC = {
 
 const REQUIRED_3D_VIEW_TYPES = Object.freeze([
   "hero_3d",
+  "exterior_render",
   "axonometric",
   "interior_3d",
 ]);
@@ -1110,6 +1135,74 @@ function surfaceToSvg(projector, surface) {
   return `<polygon points="${points}" ${style} />`;
 }
 
+function buildSceneDecorationDefs(spec) {
+  const isExterior =
+    spec.renderKind?.startsWith("compiled_exterior") ||
+    spec.panelType === "hero_3d" ||
+    spec.panelType === "exterior_render";
+  const isAxonometric = spec.renderKind === "compiled_axonometric";
+  const isInterior = spec.renderKind === "compiled_interior_cutaway";
+  const skyTop = isAxonometric ? spec.theme.background : "#cfdbe6";
+  const skyHorizon = spec.theme.background || "#eef2f6";
+  const groundNear = spec.theme.ground || "#d6cfc1";
+  const groundFar = isAxonometric ? spec.theme.ground : "#bcb4a3";
+  return [
+    `<defs>`,
+    `<linearGradient id="cri-sky" x1="0" y1="0" x2="0" y2="1">`,
+    `<stop offset="0%" stop-color="${escapeXml(skyTop)}"/>`,
+    `<stop offset="100%" stop-color="${escapeXml(skyHorizon)}"/>`,
+    `</linearGradient>`,
+    `<linearGradient id="cri-ground" x1="0" y1="0" x2="0" y2="1">`,
+    `<stop offset="0%" stop-color="${escapeXml(groundFar)}"/>`,
+    `<stop offset="100%" stop-color="${escapeXml(groundNear)}"/>`,
+    `</linearGradient>`,
+    `<radialGradient id="cri-vignette" cx="50%" cy="55%" r="65%">`,
+    `<stop offset="60%" stop-color="rgba(0,0,0,0)"/>`,
+    `<stop offset="100%" stop-color="rgba(0,0,0,0.18)"/>`,
+    `</radialGradient>`,
+    `<filter id="cri-soft-shadow" x="-15%" y="-15%" width="130%" height="130%">`,
+    `<feGaussianBlur in="SourceAlpha" stdDeviation="6"/>`,
+    `<feOffset dx="0" dy="8"/>`,
+    `<feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>`,
+    `<feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>`,
+    `</filter>`,
+    `</defs>`,
+  ]
+    .filter(Boolean)
+    .join("");
+}
+
+function buildSceneBackdrop(spec) {
+  const w = spec.width;
+  const h = spec.height;
+  const isAxonometric = spec.renderKind === "compiled_axonometric";
+  const isInterior = spec.renderKind === "compiled_interior_cutaway";
+  if (isInterior) {
+    return `<rect width="${w}" height="${h}" fill="${escapeXml(spec.theme.background)}"/>`;
+  }
+  if (isAxonometric) {
+    return [
+      `<rect width="${w}" height="${h}" fill="${escapeXml(spec.theme.background)}"/>`,
+      `<rect x="0" y="${Math.round(h * 0.62)}" width="${w}" height="${h - Math.round(h * 0.62)}" fill="url(#cri-ground)" opacity="0.35"/>`,
+    ].join("");
+  }
+  return [
+    `<rect width="${w}" height="${Math.round(h * 0.62)}" fill="url(#cri-sky)"/>`,
+    `<rect x="0" y="${Math.round(h * 0.62)}" width="${w}" height="${h - Math.round(h * 0.62)}" fill="url(#cri-ground)"/>`,
+    `<line x1="0" y1="${Math.round(h * 0.62)}" x2="${w}" y2="${Math.round(h * 0.62)}" stroke="${escapeXml(spec.theme.stroke)}" stroke-width="0.6" opacity="0.18"/>`,
+  ].join("");
+}
+
+function buildSceneOverlay(spec) {
+  const w = spec.width;
+  const h = spec.height;
+  const isInterior = spec.renderKind === "compiled_interior_cutaway";
+  if (isInterior) {
+    return "";
+  }
+  return `<rect width="${w}" height="${h}" fill="url(#cri-vignette)" pointer-events="none"/>`;
+}
+
 function renderSceneToSvg(title, surfaces, sceneGeometry, spec) {
   if (!surfaces.length) return null;
   const projector = createProjector(surfaces, spec, sceneGeometry);
@@ -1140,8 +1233,10 @@ function renderSceneToSvg(title, surfaces, sceneGeometry, spec) {
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${spec.width} ${spec.height}" width="${spec.width}" height="${spec.height}">`,
     `<title>${escapeXml(title)}</title>`,
-    `<rect width="${spec.width}" height="${spec.height}" fill="${escapeXml(spec.theme.background)}" />`,
-    body,
+    buildSceneDecorationDefs(spec),
+    buildSceneBackdrop(spec),
+    `<g filter="url(#cri-soft-shadow)">${body}</g>`,
+    buildSceneOverlay(spec),
     `</svg>`,
   ].join("\n");
 }
@@ -1323,6 +1418,29 @@ export function buildCompiledProjectRenderInputs(
     );
     if (record) {
       renderInputs.hero_3d = record;
+    }
+  }
+
+  if (requestedSet.has("exterior_render")) {
+    const scene = buildExteriorSurfaces(
+      compiledProject,
+      EXTERIOR_VIEW_SPECS.exterior_render,
+    );
+    const svgString = renderSceneToSvg(
+      EXTERIOR_VIEW_SPECS.exterior_render.title,
+      scene.surfaces,
+      scene.geometry,
+      EXTERIOR_VIEW_SPECS.exterior_render,
+    );
+    const record = buildRenderInputRecord(
+      "exterior_render",
+      svgString,
+      EXTERIOR_VIEW_SPECS.exterior_render,
+      geometryHash,
+      scene,
+    );
+    if (record) {
+      renderInputs.exterior_render = record;
     }
   }
 

@@ -52,7 +52,12 @@ const MODEL_CONFIGS = {
   },
 };
 
-const STYLED_PANEL_TYPES = ["hero_3d", "interior_3d", "axonometric"];
+const STYLED_PANEL_TYPES = [
+  "hero_3d",
+  "exterior_render",
+  "interior_3d",
+  "axonometric",
+];
 
 const GEOMETRY_LOCK = Object.freeze({
   silhouette: true,

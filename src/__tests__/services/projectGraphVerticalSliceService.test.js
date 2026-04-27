@@ -148,6 +148,7 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(Object.keys(result.artifacts.visuals3d).sort()).toEqual([
       "axonometric",
+      "exterior_render",
       "hero_3d",
       "interior_3d",
     ]);
@@ -404,6 +405,42 @@ describe("projectGraphVerticalSliceService", () => {
     },
   );
 
+  test("respects manual target_storeys=4 and emits one floor plan panel per level", async () => {
+    const briefInput = createReadingRoomBrief();
+    briefInput.brief.project_name = "Multi-Storey Reading Room";
+    briefInput.brief.target_storeys = 4;
+    // Scale GIA proportionally so programme area balances across the 4 levels.
+    briefInput.brief.target_gia_m2 = 640;
+    briefInput.brief.building_type = "multi_residential";
+    const result = await buildArchitectureProjectVerticalSlice(briefInput);
+
+    // Storey count must round-trip through the brief without silent capping.
+    expect(result.projectGraph.brief.target_storeys).toBe(4);
+    // Technical drawings emit one floor-plan SVG per level.
+    const panelTypes = Object.values(result.artifacts.drawings || {})
+      .map((artifact) => artifact.panel_type)
+      .sort();
+    expect(panelTypes).toEqual(
+      expect.arrayContaining([
+        "floor_plan_ground",
+        "floor_plan_first",
+        "floor_plan_level2",
+        "floor_plan_level3",
+      ]),
+    );
+    // Programme spaces distribute across all 4 storeys, not just ground+first.
+    const levelIndexes = new Set(
+      result.projectGraph.programme.spaces.map(
+        (space) => space.target_level_index,
+      ),
+    );
+    expect(levelIndexes.has(0)).toBe(true);
+    expect(Math.max(...levelIndexes)).toBeGreaterThanOrEqual(2);
+    // Master A1 sheet inlines every floor-plan panel.
+    expect(result.artifacts.a1Sheet.svgString).toContain("floor_plan_level2");
+    expect(result.artifacts.a1Sheet.svgString).toContain("floor_plan_level3");
+  });
+
   test("unknown building_type does not silently render as a dwelling and is flagged in template_provenance", async () => {
     const briefInput = createReadingRoomBrief();
     briefInput.brief.building_type = "warehouse";
@@ -464,9 +501,12 @@ describe("projectGraphVerticalSliceService", () => {
     const strippedPanelArtifacts = Object.fromEntries(
       Object.entries(result.artifacts.panelArtifacts).filter(
         ([, artifact]) =>
-          !["hero_3d", "axonometric", "interior_3d"].includes(
-            artifact.panel_type,
-          ),
+          ![
+            "hero_3d",
+            "exterior_render",
+            "axonometric",
+            "interior_3d",
+          ].includes(artifact.panel_type),
       ),
     );
     const qa = validateProjectGraphVerticalSlice({

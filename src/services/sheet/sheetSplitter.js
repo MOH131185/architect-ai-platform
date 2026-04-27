@@ -21,10 +21,17 @@ export const SPLIT_THRESHOLDS = Object.freeze({
 const ALL_PANELS = Object.freeze([
   "site_context",
   "hero_3d",
+  "exterior_render",
   "axonometric",
   "interior_3d",
   "floor_plan_ground",
   "floor_plan_first",
+  "floor_plan_level2",
+  "floor_plan_level3",
+  "floor_plan_level4",
+  "floor_plan_level5",
+  "floor_plan_level6",
+  "floor_plan_level7",
   "elevation_north",
   "elevation_south",
   "elevation_east",
@@ -37,7 +44,13 @@ const SPLIT_PLAN = Object.freeze([
   {
     sheet_number: "A1-01",
     label: "RIBA Stage 2 Overview",
-    panel_types: ["site_context", "hero_3d", "axonometric", "interior_3d"],
+    panel_types: [
+      "site_context",
+      "hero_3d",
+      "exterior_render",
+      "axonometric",
+      "interior_3d",
+    ],
     rationale: "Site context + compiled 3D views for client orientation.",
   },
   {
@@ -46,6 +59,12 @@ const SPLIT_PLAN = Object.freeze([
     panel_types: [
       "floor_plan_ground",
       "floor_plan_first",
+      "floor_plan_level2",
+      "floor_plan_level3",
+      "floor_plan_level4",
+      "floor_plan_level5",
+      "floor_plan_level6",
+      "floor_plan_level7",
       "section_AA",
       "section_BB",
     ],
@@ -64,14 +83,14 @@ const SPLIT_PLAN = Object.freeze([
   },
 ]);
 
-const SINGLE_PLAN = Object.freeze([
-  {
-    sheet_number: "A1-01",
-    label: "RIBA Stage 2 Concept",
-    panel_types: [...ALL_PANELS],
-    rationale: "Single-sheet density acceptable; no split required.",
-  },
-]);
+const MASTER_PLAN_TEMPLATE = Object.freeze({
+  sheet_number: "A1-00",
+  label: "RIBA Stage 2 Master",
+  panel_types: [...ALL_PANELS],
+  rationale:
+    "Comprehensive A1 master containing every required panel for client preview.",
+  is_master: true,
+});
 
 /**
  * Decide whether to split the A1 deliverable into a multi-sheet series.
@@ -108,10 +127,13 @@ export function decideSheetSplit({ brief, programme, regulations } = {}) {
     triggers.storeyOverflow ||
     triggers.regulationOverflow;
 
+  const masterSheet = cloneSheetPlan([MASTER_PLAN_TEMPLATE])[0];
+  const supplementarySheets = split ? cloneSheetPlan(SPLIT_PLAN) : [];
+
   return {
     split,
     triggers,
-    sheets: split ? cloneSheetPlan(SPLIT_PLAN) : cloneSheetPlan(SINGLE_PLAN),
+    sheets: split ? [masterSheet, ...supplementarySheets] : [masterSheet],
   };
 }
 
