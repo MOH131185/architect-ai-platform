@@ -95,9 +95,11 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
       drawingMap["asset-ground"],
       drawingMap["asset-north"],
     ]);
-    expect(normalizeProjectGraphDrawingArtifacts({ drawings: [drawingMap["asset-ground"]] })).toEqual([
-      drawingMap["asset-ground"],
-    ]);
+    expect(
+      normalizeProjectGraphDrawingArtifacts({
+        drawings: [drawingMap["asset-ground"]],
+      }),
+    ).toEqual([drawingMap["asset-ground"]]);
     expect(normalizeProjectGraphDrawingArtifacts(null)).toEqual([]);
   });
 
