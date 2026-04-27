@@ -257,7 +257,8 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     },
     locationData: compactLocationDataForRequest(locationData),
     siteSnapshot: compactSiteSnapshot,
-    sitePolygon: designSpec.sitePolygon || compactSiteSnapshot?.sitePolygon || [],
+    sitePolygon:
+      designSpec.sitePolygon || compactSiteSnapshot?.sitePolygon || [],
     siteMetrics:
       designSpec.siteMetrics ||
       designSpec.sitePolygonMetrics ||
