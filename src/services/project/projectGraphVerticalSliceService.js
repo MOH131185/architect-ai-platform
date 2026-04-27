@@ -3885,6 +3885,15 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       "QA",
     ],
   });
+  const modelProvenance = Object.values(modelRegistry).map((entry) => ({
+    stepId: entry.stepId || entry.step,
+    model: entry.model,
+    provider: entry.provider,
+    modelSource: entry.modelSource,
+    apiKeyEnv: entry.apiKeyEnv,
+    fallbackUsed: entry.fallbackUsed === true,
+    fineTunedModelUsed: entry.fineTunedModelUsed || null,
+  }));
   const projectGraphId = createStableId(
     "project-graph",
     brief.project_name,
@@ -4011,6 +4020,11 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
       failures: technicalBuild.failures,
     },
+    executionTrace: {
+      source: "modelStepResolver",
+      pipelineMode: "project_graph",
+      modelProvenance,
+    },
   };
   const qa = validateProjectGraphVerticalSlice({
     projectGraph: graphWithStableId,
@@ -4042,6 +4056,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     },
     qa,
     modelRegistry,
+    modelProvenance,
   };
 }
 

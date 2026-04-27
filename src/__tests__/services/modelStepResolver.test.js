@@ -59,4 +59,51 @@ describe("modelStepResolver", () => {
     expect(registry.MODEL_3D.deterministicGeometry).toBe(true);
     expect(registry.A1_SHEET.model).toBe("gpt-5.4");
   });
+
+  test("resolves production step env variables with provenance metadata only", () => {
+    const env = {
+      MODEL_SOURCE: "hybrid",
+      OPENAI_REASONING_MODEL: "fallback-reasoning-model",
+      OPENAI_FAST_MODEL: "fallback-fast-model",
+      STEP_00_ROUTER_MODEL: "router-model",
+      STEP_07_PROJECT_GRAPH_MODEL: "project-graph-model",
+      STEP_08_2D_LABEL_MODEL: "drawing-label-model",
+      STEP_09_3D_QA_MODEL: "model-3d-qa",
+      STEP_12_A1_SHEET_MODEL: "a1-model",
+      STEP_13_QA_MODEL: "qa-model",
+      STEP_13_QA_API_KEY_ENV: "OPENAI_REASONING_API_KEY",
+      OPENAI_API_KEY: "sk-do-not-leak",
+      OPENAI_REASONING_API_KEY: "sk-reasoning-do-not-leak",
+    };
+
+    const registry = resolveArchitectureModelRegistry({
+      env,
+      steps: [
+        "ROUTER",
+        "PROJECT_GRAPH",
+        "DRAWING_2D",
+        "MODEL_3D",
+        "A1_SHEET",
+        "QA",
+      ],
+    });
+
+    expect(registry.ROUTER.model).toBe("router-model");
+    expect(registry.PROJECT_GRAPH.model).toBe("project-graph-model");
+    expect(registry.DRAWING_2D.model).toBe("drawing-label-model");
+    expect(registry.MODEL_3D.model).toBe("model-3d-qa");
+    expect(registry.A1_SHEET.model).toBe("a1-model");
+    expect(registry.QA.model).toBe("qa-model");
+    expect(registry.QA).toEqual(
+      expect.objectContaining({
+        stepId: "QA",
+        apiKeyEnv: "OPENAI_REASONING_API_KEY",
+        modelSource: "hybrid",
+        fallbackUsed: true,
+        fineTunedModelUsed: null,
+      }),
+    );
+    expect(JSON.stringify(registry)).not.toContain("sk-do-not-leak");
+    expect(JSON.stringify(registry)).not.toContain("sk-reasoning-do-not-leak");
+  });
 });

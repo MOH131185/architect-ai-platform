@@ -191,6 +191,28 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.projectGraph.sheets.sheets[0].orientation).toBe("landscape");
     expect(result.modelRegistry.DRAWING_2D.deterministicGeometry).toBe(true);
     expect(result.modelRegistry.MODEL_3D.deterministicGeometry).toBe(true);
+    expect(result.artifacts.executionTrace).toEqual(
+      expect.objectContaining({
+        source: "modelStepResolver",
+        pipelineMode: "project_graph",
+        modelProvenance: expect.arrayContaining([
+          expect.objectContaining({
+            stepId: "PROJECT_GRAPH",
+            provider: "openai",
+            apiKeyEnv: "OPENAI_API_KEY",
+            fallbackUsed: expect.any(Boolean),
+            fineTunedModelUsed: null,
+          }),
+          expect.objectContaining({
+            stepId: "A1_SHEET",
+            provider: "openai",
+          }),
+        ]),
+      }),
+    );
+    expect(JSON.stringify(result.artifacts.executionTrace)).not.toContain(
+      "sk-",
+    );
     expect(result.qa.checks.map((check) => check.code)).toContain(
       "A1_PDF_EXPORT_PRESENT_AND_SIZED",
     );

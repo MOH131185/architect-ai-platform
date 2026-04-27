@@ -3,8 +3,38 @@ import {
   normalizeProjectGraphDrawingArtifacts,
   sanitizeProjectGraphSvg,
 } from "../../hooks/useArchitectAIWorkflow.js";
+import {
+  PIPELINE_MODE,
+  getCurrentPipelineMode,
+} from "../../config/pipelineMode.js";
+import { resolveWorkflowByMode } from "../../services/workflowRouter.js";
+import fs from "fs";
+import path from "path";
 
 describe("buildProjectGraphVerticalSliceRequest", () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  test("defaults the browser workflow to the ProjectGraph vertical-slice endpoint", () => {
+    delete process.env.REACT_APP_PIPELINE_MODE;
+    delete process.env.PIPELINE_MODE;
+
+    expect(getCurrentPipelineMode()).toBe(PIPELINE_MODE.PROJECT_GRAPH);
+    expect(resolveWorkflowByMode()).toEqual({
+      mode: PIPELINE_MODE.PROJECT_GRAPH,
+      workflowKey: "project_graph_vertical_slice",
+    });
+
+    const hookSource = fs.readFileSync(
+      path.join(process.cwd(), "src/hooks/useArchitectAIWorkflow.js"),
+      "utf8",
+    );
+    expect(hookSource).toContain('"/api/project/generate-vertical-slice"');
+  });
+
   test("strips binary portfolio and map snapshot data before ProjectGraph POST", () => {
     const largeImage = `data:image/png;base64,${"a".repeat(900_000)}`;
     const request = buildProjectGraphVerticalSliceRequest({

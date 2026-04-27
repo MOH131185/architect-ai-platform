@@ -6,6 +6,7 @@
  */
 
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+import { rejectLegacyProviderIfDisabled } from "./_shared/legacyProviderGuard.js";
 
 export default async function handler(req, res) {
   // CORS
@@ -21,6 +22,10 @@ export default async function handler(req, res) {
         details: null,
       },
     });
+  }
+
+  if (rejectLegacyProviderIfDisabled(res, req.body || {}, "together-chat")) {
+    return;
   }
 
   const togetherApiKey = process.env.TOGETHER_API_KEY;

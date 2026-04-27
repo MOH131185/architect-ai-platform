@@ -1,7 +1,8 @@
 /**
- * Express server to proxy API calls to Claude, OpenAI, and Together.ai
+ * Express server to proxy API calls for the ProjectGraph production path.
  * This avoids CORS issues when calling from the browser
- * Claude + OpenAI for reasoning, Together.ai for FLUX image generation
+ * OpenAI + deterministic ProjectGraph geometry are primary. Together is
+ * retained only for explicit legacy multi_panel mode.
  */
 
 const fs = require('fs');
@@ -22,6 +23,14 @@ const {
 const { resolveAiApiLimiterMax, resolveImageGenerationLimiterMax } = require('./server/utils/rateLimitConfig.cjs');
 const { genarchAuth, geometryAuth } = require('./server/middleware/apiKeyAuth.cjs');
 const { mountImageProxy } = require('./server/utils/imageProxy.cjs');
+const {
+  rejectLegacyProviderIfDisabled,
+  isLegacyProviderEnabled,
+} = require('./server/utils/legacyProviderGuard.cjs');
+const {
+  resolveOpenAIReasoningApiKey,
+  resolveOpenAIImageApiKey,
+} = require('./server/utils/openaiEnv.cjs');
 
 // Load env vars from the project root regardless of where the server is started from.
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
@@ -94,6 +103,29 @@ try {
   fs.mkdirSync(A1_COMPOSE_OUTPUT_DIR, { recursive: true });
 } catch (e) {
   // best-effort only
+}
+
+function getEffectivePipelineMode() {
+  const raw = (
+    process.env.REACT_APP_PIPELINE_MODE ||
+    process.env.PIPELINE_MODE ||
+    'project_graph'
+  ).trim().toLowerCase().replace(/[-\s]/g, '_');
+  if (raw === 'multipanel') {
+    return 'multi_panel';
+  }
+  if (raw === 'projectgraph' || raw === 'riba_a1') {
+    return 'project_graph';
+  }
+  return raw || 'project_graph';
+}
+
+function getOpenAIReasoningApiKey() {
+  return resolveOpenAIReasoningApiKey(process.env);
+}
+
+function getOpenAIImageApiKey() {
+  return resolveOpenAIImageApiKey(process.env);
 }
 
 // CORS Configuration - Security hardening
@@ -301,13 +333,14 @@ app.get('/api/health', (req, res) => {
   setGenarchContractHeaders(res);
   res.json({
     status: 'ok',
-    // Primary providers
-    together: !!process.env.TOGETHER_API_KEY,
-    claude: !!process.env.ANTHROPIC_API_KEY,
+    pipelineMode: getEffectivePipelineMode(),
+    providers: {
+      openaiReasoning: !!getOpenAIReasoningApiKey(),
+      openaiImages: !!getOpenAIImageApiKey(),
+      togetherLegacy: isLegacyProviderEnabled() && !!process.env.TOGETHER_API_KEY,
+    },
+    // Optional providers
     meshy: !!process.env.MESHY_API_KEY,
-    // Fallback providers
-    openaiReasoning: !!process.env.OPENAI_REASONING_API_KEY,
-    openaiImages: !!process.env.OPENAI_IMAGES_API_KEY,
     // Genarch pipeline
     genarch: genarchAvailable,
     blender: !!process.env.BLENDER_PATH,
@@ -319,6 +352,10 @@ app.get('/api/health', (req, res) => {
       genarchFrontend: 'dormant-legacy',
     },
     // Legacy (deprecated)
+    together: isLegacyProviderEnabled() && !!process.env.TOGETHER_API_KEY,
+    claude: !!process.env.ANTHROPIC_API_KEY,
+    openaiReasoning: !!getOpenAIReasoningApiKey(),
+    openaiImages: !!getOpenAIImageApiKey(),
     openai: !!process.env.REACT_APP_OPENAI_API_KEY,
     replicate: !!process.env.REACT_APP_REPLICATE_API_KEY,
   });
@@ -358,8 +395,8 @@ mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');
 // OpenAI proxy handler for chat completions (reasoning)
 const handleOpenAIChat = async (req, res) => {
   try {
-    // Prefer dedicated reasoning key, fallback to legacy key
-    const apiKey = process.env.OPENAI_REASONING_API_KEY || process.env.REACT_APP_OPENAI_API_KEY;
+    // Keep local Express env resolution aligned with api/openai-chat.js.
+    const apiKey = getOpenAIReasoningApiKey();
 
     if (!apiKey) {
       return res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -768,8 +805,12 @@ app.get(`${GEOMETRY_PUBLIC_ROUTE}/:jobId/:asset`, (req, res) => {
   res.sendFile(filePath);
 });
 
-// Together AI endpoints for GPT-4o reasoning and FLUX.1 image generation
+// Legacy Together AI endpoints. Disabled unless multi_panel/Together opt-in is explicit.
 app.post('/api/together/chat', aiApiLimiter, async (req, res) => {
+  if (rejectLegacyProviderIfDisabled(req, res, 'together-chat')) {
+    return;
+  }
+
   const togetherApiKey = process.env.TOGETHER_API_KEY;
 
   if (!togetherApiKey) {
@@ -807,31 +848,31 @@ app.post('/api/together/chat', aiApiLimiter, async (req, res) => {
 });
 
 // ============================================================================
-// OPENAI GPT-4o REASONING ENDPOINT
-// Primary LLM for DNA generation and architectural reasoning (GPT-4o)
+// OPENAI REASONING ENDPOINT
+// Uses env-driven OpenAI model/key precedence for local Express parity.
 // ============================================================================
 
 app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
-  console.log('📥 [GPT-4o] Received request to /api/openai-reasoning');
+  console.log('📥 [OpenAI Reasoning] Received request to /api/openai-reasoning');
 
-  const openaiApiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_REASONING_API_KEY;
+  const openaiApiKey = getOpenAIReasoningApiKey();
 
   if (!openaiApiKey) {
-    console.error('❌ [GPT-4o] OpenAI API key not configured');
+    console.error('❌ [OpenAI Reasoning] OpenAI API key not configured');
     console.error('   Available env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI')).join(', '));
     return res.status(500).json({
       ok: false,
       error: 'API_KEY_MISSING',
-      details: 'Set OPENAI_API_KEY or OPENAI_REASONING_API_KEY in environment variables',
+      details: 'Set OPENAI_REASONING_API_KEY or OPENAI_API_KEY in environment variables',
     });
   }
 
-  console.log('[GPT-4o] API key present');
+  console.log('[OpenAI Reasoning] API key present');
 
   try {
     const {
       messages,
-      model = 'gpt-4o',
+      model = process.env.OPENAI_REASONING_MODEL || process.env.STEP_00_ORCHESTRATOR_MODEL || 'gpt-5.4',
       max_tokens = 4000,
       temperature = 0.3,
       response_format,
@@ -847,9 +888,9 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
     }
 
     const startTime = Date.now();
-    const traceId = `gpt4o_${startTime}_${Math.random().toString(36).substring(2, 9)}`;
+    const traceId = `openai_reasoning_${startTime}_${Math.random().toString(36).substring(2, 9)}`;
 
-    console.log(`Brain [GPT-4o] Starting ${task_type} (model: ${model})`);
+    console.log(`Brain [OpenAI Reasoning] Starting ${task_type} (model: ${model})`);
 
     // Build request body
     const requestBody = {
@@ -876,7 +917,7 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('[GPT-4o] API error:', data);
+      console.error('[OpenAI Reasoning] API error:', data);
       return res.status(response.status).json({
         ok: false,
         error: 'OPENAI_API_ERROR',
@@ -888,7 +929,7 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
     const latencyMs = Date.now() - startTime;
     const content = data.choices?.[0]?.message?.content || '';
 
-    console.log(`Check [GPT-4o] ${task_type} completed (${latencyMs}ms, ${content.length} chars)`);
+    console.log(`Check [OpenAI Reasoning] ${task_type} completed (${latencyMs}ms, ${content.length} chars)`);
 
     // Parse JSON if response_format was json_object
     let parsedContent = content;
@@ -896,7 +937,7 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
       try {
         parsedContent = JSON.parse(content);
       } catch (parseError) {
-        console.warn('[GPT-4o] Failed to parse JSON response:', parseError.message);
+        console.warn('[OpenAI Reasoning] Failed to parse JSON response:', parseError.message);
       }
     }
 
@@ -911,7 +952,7 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
       task_type,
     });
   } catch (error) {
-    console.error('[GPT-4o] Proxy error:', error);
+    console.error('[OpenAI Reasoning] Proxy error:', error);
     res.status(500).json({
       ok: false,
       error: 'INTERNAL_ERROR',
@@ -1179,8 +1220,12 @@ app.post('/api/openai-image-stylize', imageGenerationLimiter, async (req, res) =
   }
 });
 
-// Together AI image generation endpoint (FLUX.1)
+// Legacy Together AI image generation endpoint.
 app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {
+  if (rejectLegacyProviderIfDisabled(req, res, 'together-image')) {
+    return;
+  }
+
   const togetherApiKey = process.env.TOGETHER_API_KEY;
 
   if (!togetherApiKey) {
@@ -1471,6 +1516,10 @@ app.post('/api/together/image', imageGenerationLimiter, async (req, res) => {
 // ============================================================================
 
 app.post('/api/together/embeddings', aiApiLimiter, async (req, res) => {
+  if (rejectLegacyProviderIfDisabled(req, res, 'together-embeddings')) {
+    return;
+  }
+
   const togetherApiKey = process.env.TOGETHER_API_KEY;
 
   if (!togetherApiKey) {
@@ -2812,16 +2861,19 @@ app.listen(PORT, () => {
   console.log(`ðŸš€ API Proxy Server running on http://localhost:${PORT}`);
   console.log('\nðŸ“¡ API Provider Status:');
   console.log(
-    `   ðŸ§  Claude (Primary Reasoning): ${process.env.ANTHROPIC_API_KEY ? 'Configured âœ…' : 'Missing âŒ'}`
+    `   Pipeline Mode: ${getEffectivePipelineMode()}`
   );
   console.log(
-    `   ðŸŽ¨ Together AI (FLUX Images): ${process.env.TOGETHER_API_KEY ? 'Configured âœ…' : 'Missing âŒ'}`
+    `   OpenAI Reasoning: ${getOpenAIReasoningApiKey() ? 'Configured âœ…' : 'Missing âŒ'}`
+  );
+  console.log(
+    `   OpenAI Images: ${getOpenAIImageApiKey() ? 'Configured âœ…' : 'Optional âšª'}`
+  );
+  console.log(
+    `   Together Legacy: ${isLegacyProviderEnabled() && process.env.TOGETHER_API_KEY ? 'Enabled âœ…' : 'Disabled âšª'}`
   );
   console.log(
     `   ðŸ—ï¸  Meshy (3D Models): ${process.env.MESHY_API_KEY ? 'Configured âœ…' : 'Optional âšª'}`
-  );
-  console.log(
-    `   ðŸ“ OpenAI (Fallback): ${process.env.OPENAI_REASONING_API_KEY ? 'Configured âœ…' : 'Optional âšª'}`
   );
   // Check genarch availability
   const genarchDir = path.join(process.cwd(), 'genarch');
@@ -2833,5 +2885,5 @@ app.listen(PORT, () => {
     console.log(`   GET  /api/genarch/runs/:id/* - Download artifacts`);
   }
 
-  console.log('\n[Architecture Engine] Claude + FLUX + GeometryDNA Pipeline');
+  console.log('\n[Architecture Engine] ProjectGraph + deterministic geometry + OpenAI env routing');
 });

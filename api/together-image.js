@@ -7,6 +7,7 @@
  */
 
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+import { rejectLegacyProviderIfDisabled } from "./_shared/legacyProviderGuard.js";
 
 // Simple in-memory rate limiter for serverless
 let lastRequestTime = 0;
@@ -37,6 +38,10 @@ export default async function handler(req, res) {
   // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed. Use POST." });
+  }
+
+  if (rejectLegacyProviderIfDisabled(res, req.body || {}, "together-image")) {
+    return;
   }
 
   const togetherApiKey = process.env.TOGETHER_API_KEY;

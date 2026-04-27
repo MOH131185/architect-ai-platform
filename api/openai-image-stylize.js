@@ -7,6 +7,9 @@
  * the production plan makes ProjectGraph the geometry authority and uses image
  * models only for optional visual enhancement.
  */
+import openaiEnv from "../server/utils/openaiEnv.cjs";
+
+const { resolveOpenAIImageApiKey } = openaiEnv;
 
 export const runtime = "nodejs";
 export const config = {
@@ -15,12 +18,7 @@ export const config = {
 };
 
 function getOpenAIImageApiKey() {
-  return (
-    process.env.OPENAI_IMAGES_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_REASONING_API_KEY ||
-    ""
-  ).trim();
+  return resolveOpenAIImageApiKey(process.env);
 }
 
 function getOpenAIImageModel(requestModel) {

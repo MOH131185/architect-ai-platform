@@ -12,6 +12,10 @@
  */
 
 import modelSelector from "./modelSelector.js";
+import {
+  assertLegacyModelRouteAllowed,
+  isLegacyModelRouteEnabled,
+} from "./legacyProviderGuard.js";
 import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
 import runtimeEnv from "../utils/runtimeEnv.js";
 import logger from "../utils/logger.js";
@@ -187,13 +191,22 @@ function inferProviderFromModel(model, fallbackProvider = "together") {
  * Check which API keys are available in environment
  */
 function getAvailableProviders() {
+  if (!isLegacyModelRouteEnabled()) {
+    return {
+      together: false,
+      openai: false,
+      claude: false,
+      gpt5: false,
+    };
+  }
+
   // In browser, we can't directly access process.env server keys
   // Instead, we'll try to detect availability through proxy health checks
-  // For now, assume Together is always available (primary), OpenAI optional
+  // Legacy mode probes explicit providers instead of assuming Together.
 
   const available = {
-    together: true, // Always available (primary provider)
-    openai: false, // Will be detected via proxy
+    together: false,
+    openai: false,
     claude: false, // Future support
     gpt5: false, // Future support
   };
@@ -254,6 +267,11 @@ async function detectProviderAvailability() {
     gpt5: false,
   };
 
+  if (!isLegacyModelRouteEnabled()) {
+    cacheAvailability(available);
+    return available;
+  }
+
   // Check Together.ai
   try {
     const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherChat}`, {
@@ -297,13 +315,19 @@ class ModelRouter {
     this.availableProviders = getAvailableProviders();
     this.performanceCache = new Map(); // Track model performance
 
-    logger.info("🧭 ModelRouter initialized");
+    logger.info(
+      isLegacyModelRouteEnabled()
+        ? "🧭 ModelRouter initialized for explicit legacy mode"
+        : "🧭 ModelRouter legacy routes disabled for ProjectGraph mode",
+    );
 
     // Async detection in background
-    detectProviderAvailability().then((providers) => {
-      this.availableProviders = providers;
-      logger.info("🧭 Provider availability detected:", providers);
-    });
+    if (isLegacyModelRouteEnabled()) {
+      detectProviderAvailability().then((providers) => {
+        this.availableProviders = providers;
+        logger.info("🧭 Provider availability detected:", providers);
+      });
+    }
   }
 
   /**
@@ -311,6 +335,10 @@ class ModelRouter {
    * Used by tests, diagnostics, and admin tooling.
    */
   getModelConfig(taskType) {
+    assertLegacyModelRouteAllowed("modelRouter.getModelConfig", {
+      taskType,
+    });
+
     const { requestedTask, resolvedTask } = this.resolveTaskType(taskType);
     const matrixEntry = this.selector.modelMatrix?.[resolvedTask];
 
@@ -409,6 +437,11 @@ class ModelRouter {
   }
 
   buildTaskCandidates(taskType, context = {}) {
+    assertLegacyModelRouteAllowed("modelRouter.buildTaskCandidates", {
+      ...context,
+      taskType,
+    });
+
     const { requestedTask, resolvedTask } = this.resolveTaskType(taskType);
     const matrixEntry = this.selector.modelMatrix?.[resolvedTask];
     if (!matrixEntry || !matrixEntry.primary) {
@@ -483,6 +516,11 @@ class ModelRouter {
     const startTime = Date.now();
 
     try {
+      assertLegacyModelRouteAllowed("modelRouter.callLLM", {
+        ...context,
+        taskType,
+      });
+
       const taskCandidates = this.buildTaskCandidates(taskType, context);
       const selectionTier = context.useEmergency
         ? "emergency"
@@ -642,7 +680,9 @@ class ModelRouter {
       return {
         success: false,
         error: error.message,
+        code: error.code || null,
         metadata: {
+          issueCode: error.code || null,
           taskType,
           latencyMs: latency,
           timestamp: new Date().toISOString(),
@@ -679,6 +719,11 @@ class ModelRouter {
     const startTime = Date.now();
 
     try {
+      assertLegacyModelRouteAllowed("modelRouter.callImage", {
+        ...context,
+        taskType,
+      });
+
       const taskCandidates = this.buildTaskCandidates(taskType, {
         ...context,
         availableProviders: this.availableProviders,
@@ -842,7 +887,9 @@ class ModelRouter {
       return {
         success: false,
         error: error.message,
+        code: error.code || null,
         metadata: {
+          issueCode: error.code || null,
           taskType,
           latencyMs: latency,
           timestamp: new Date().toISOString(),
@@ -855,6 +902,8 @@ class ModelRouter {
    * Call Together.ai chat API
    */
   async callTogetherChat(model, messages, params) {
+    assertLegacyModelRouteAllowed("modelRouter.callTogetherChat");
+
     const response = await fetch(`${API_BASE_URL}${ENDPOINTS.togetherChat}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -879,6 +928,8 @@ class ModelRouter {
    * Call OpenAI chat API
    */
   async callOpenAIChat(model, messages, params) {
+    assertLegacyModelRouteAllowed("modelRouter.callOpenAIChat");
+
     const response = await fetch(`${API_BASE_URL}${ENDPOINTS.openaiChat}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

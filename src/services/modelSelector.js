@@ -1,7 +1,9 @@
 /**
- * Model Selector Service
- * Optimal AI model selection matrix for different architectural tasks
- * Includes cost optimization, quality metrics, and performance tuning
+ * Legacy Model Selector Service
+ *
+ * This matrix is retained for explicit multi_panel/Together compatibility only.
+ * The ProjectGraph production path resolves every active model through
+ * modelStepResolver.js and the STEP_XX_* environment variables.
  */
 
 class ModelSelector {

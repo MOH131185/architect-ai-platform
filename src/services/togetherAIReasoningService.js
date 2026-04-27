@@ -6,6 +6,7 @@
  */
 
 import modelRouter from "./modelRouter.js";
+import { assertLegacyModelRouteAllowed } from "./legacyProviderGuard.js";
 import promptLibrary from "./promptLibrary.js";
 import { safeParseJsonFromLLM } from "../utils/parseJsonFromLLM.js";
 import logger from "../utils/logger.js";
@@ -53,12 +54,12 @@ class TogetherAIReasoningService {
   constructor() {
     // API key is handled server-side via proxy - no client-side key needed
     logger.info(
-      "🧠 Together AI Reasoning Service initialized (using server proxy)",
+      "🧠 Legacy Together AI Reasoning Service initialized (explicit opt-in required)",
     );
     this.chatEndpoints = buildChatEndpoints();
 
-    // Use Qwen 2.5 72B Instruct Turbo - Excellent reasoning, widely available
-    // Good balance of performance and availability across Together AI tiers
+    // Legacy fallback only. ProjectGraph production reasoning resolves models
+    // through modelStepResolver and OpenAI env variables.
     this.defaultModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
   }
 
@@ -67,6 +68,8 @@ class TogetherAIReasoningService {
    * REFACTORED: Uses ModelRouter and promptLibrary
    */
   async generateUpdatedDNA({ currentDNA, changeRequest, projectContext }) {
+    assertLegacyModelRouteAllowed("togetherAIReasoning.generateUpdatedDNA");
+
     try {
       logger.info("🧬 Generating updated DNA via ModelRouter...");
 
@@ -131,6 +134,10 @@ class TogetherAIReasoningService {
    * @returns {Promise<Object>} Design reasoning and recommendations
    */
   async generateDesignReasoning(projectContext) {
+    assertLegacyModelRouteAllowed(
+      "togetherAIReasoning.generateDesignReasoning",
+    );
+
     try {
       const prompt = this.buildDesignPrompt(projectContext);
 

@@ -141,6 +141,7 @@ const STEP_ALIASES = Object.freeze({
   PROGRAMME_GENERATION: "PROGRAMME",
   PROJECTGRAPH: "PROJECT_GRAPH",
   PROJECT_GRAPH_GENERATION: "PROJECT_GRAPH",
+  DNA_GENERATION: "PROJECT_GRAPH",
   "2D": "DRAWING_2D",
   "2D_PROJECTION": "DRAWING_2D",
   DRAWING: "DRAWING_2D",
@@ -148,9 +149,16 @@ const STEP_ALIASES = Object.freeze({
   "3D": "MODEL_3D",
   "3D_PROJECTION": "MODEL_3D",
   MODEL: "MODEL_3D",
+  VISION_QA: "MODEL_3D",
+  TECHNICAL_2D: "DRAWING_2D",
   SHEET: "A1_SHEET",
   A1: "A1_SHEET",
   A1_COMPOSE: "A1_SHEET",
+  A1_SHEET_GENERATION: "A1_SHEET",
+  ARCHITECTURAL_REASONING: "CONCEPT",
+  CLIMATE_LOGIC: "CLIMATE",
+  SITE_ANALYSIS: "SITE",
+  MATERIAL_DETECTION: "MATERIALS",
 });
 
 function normalizeKey(value) {
@@ -253,9 +261,14 @@ export function resolveArchitectureStepModel(
     Boolean(fineTuned.value);
   const resolvedModel = shouldUseFineTuned ? fineTuned.value : baseModel;
   const selectionSource = shouldUseFineTuned ? "fine_tuned" : "base";
+  const baseFallbackUsed =
+    !base.value || (Boolean(base.key) && base.key !== config.baseKeys[0]);
+  const fineTunedFallbackUsed =
+    modelSource === "hybrid" && !fineTuned.value && selectionSource === "base";
 
   return {
     step: normalizedStep,
+    stepId: normalizedStep,
     label: config.label,
     model: resolvedModel,
     provider: inferProvider(resolvedModel),
@@ -266,14 +279,15 @@ export function resolveArchitectureStepModel(
     baseEnvKey: base.key,
     fineTunedModel: fineTuned.value || null,
     fineTunedEnvKey: fineTuned.key,
+    fineTunedModelUsed: shouldUseFineTuned ? fineTuned.value : null,
     fineTunedCandidateKeys: config.fineTunedKeys,
     apiKeyEnv,
+    selectedEnvKey: shouldUseFineTuned ? fineTuned.key : base.key,
     temperature: temperature || null,
     deterministicGeometry: config.deterministicGeometry === true,
-    fineTunedFallbackUsed:
-      modelSource === "hybrid" &&
-      !fineTuned.value &&
-      selectionSource === "base",
+    baseFallbackUsed,
+    fineTunedFallbackUsed,
+    fallbackUsed: baseFallbackUsed || fineTunedFallbackUsed,
   };
 }
 

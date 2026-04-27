@@ -4,6 +4,9 @@
  */
 
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+import openaiEnv from "../server/utils/openaiEnv.cjs";
+
+const { resolveOpenAIReasoningApiKey } = openaiEnv;
 
 export default async function handler(req, res) {
   // CORS
@@ -25,10 +28,7 @@ export default async function handler(req, res) {
 
   try {
     // Keep serverless env resolution aligned with server.cjs.
-    const apiKey =
-      process.env.OPENAI_REASONING_API_KEY ||
-      process.env.OPENAI_API_KEY ||
-      process.env.REACT_APP_OPENAI_API_KEY;
+    const apiKey = resolveOpenAIReasoningApiKey(process.env);
 
     if (!apiKey) {
       console.error("OpenAI API key not found in environment variables");

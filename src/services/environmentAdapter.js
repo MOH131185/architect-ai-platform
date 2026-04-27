@@ -99,11 +99,14 @@ function getApiKeys() {
   return {
     togetherApiKey: process.env.TOGETHER_API_KEY || "",
     openaiApiKey:
-      process.env.OPENAI_API_KEY || process.env.OPENAI_REASONING_API_KEY || "",
+      process.env.OPENAI_REASONING_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.REACT_APP_OPENAI_API_KEY ||
+      "",
     openaiImagesApiKey:
       process.env.OPENAI_IMAGES_API_KEY ||
       process.env.OPENAI_API_KEY ||
-      process.env.OPENAI_REASONING_API_KEY ||
+      process.env.REACT_APP_OPENAI_API_KEY ||
       "",
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "",
     openWeatherApiKey: process.env.REACT_APP_OPENWEATHER_API_KEY || "",

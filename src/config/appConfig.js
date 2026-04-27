@@ -75,21 +75,21 @@ const API_KEY_CONFIG = {
 
   // Server-side keys (never exposed to browser)
   [ServiceName.OPENAI_REASONING]: {
-    envVars: IS_PROD
-      ? [
-          "OPENAI_API_KEY",
-          "OPENAI_REASONING_API_KEY",
-          "REACT_APP_OPENAI_API_KEY",
-        ]
-      : ["OPENAI_REASONING_API_KEY", "REACT_APP_OPENAI_API_KEY"],
+    envVars: [
+      "OPENAI_REASONING_API_KEY",
+      "OPENAI_API_KEY",
+      "REACT_APP_OPENAI_API_KEY",
+    ],
     required: false,
     clientSide: false,
     description: "OpenAI API for model-first RIBA/ProjectGraph reasoning",
   },
   [ServiceName.OPENAI_IMAGES]: {
-    envVars: IS_PROD
-      ? ["OPENAI_API_KEY", "OPENAI_IMAGES_API_KEY"]
-      : ["OPENAI_IMAGES_API_KEY", "REACT_APP_OPENAI_API_KEY"],
+    envVars: [
+      "OPENAI_IMAGES_API_KEY",
+      "OPENAI_API_KEY",
+      "REACT_APP_OPENAI_API_KEY",
+    ],
     required: false,
     clientSide: false,
     description: "OpenAI image API for optional presentation imagery",
@@ -405,7 +405,7 @@ export function getApiBaseUrl(service) {
       return `${baseUrl}/openai`;
     case "openai-images":
       return `${baseUrl}/openai/images`;
-    // replicate removed — Together.ai is primary
+    // Together.ai is legacy-only; ProjectGraph uses OpenAI/deterministic geometry.
     case "together-ai":
       return `${baseUrl}/together`;
     case "midjourney":

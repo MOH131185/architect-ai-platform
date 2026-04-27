@@ -302,9 +302,14 @@ export function getPipelineModeForStamp(proof = null) {
   if (proof?.resolvedMode) {
     return proof.resolvedMode;
   }
+  if (proof?.pipelineMode || proof?.workflow || proof?.metadata?.workflow) {
+    return proof.pipelineMode || proof.workflow || proof.metadata.workflow;
+  }
 
-  // Fallback to env var, defaulting to the only supported mode
-  const raw = (process.env.PIPELINE_MODE || "multi_panel").toLowerCase().trim();
+  // Fallback to env var, defaulting to the ProjectGraph production mode.
+  const raw = (process.env.PIPELINE_MODE || "project_graph")
+    .toLowerCase()
+    .trim();
   return raw;
 }
 

@@ -5,6 +5,7 @@ describe("ModelRouter strict env routing and aliases", () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
+    process.env.REACT_APP_PIPELINE_MODE = "multi_panel";
     jest.restoreAllMocks();
   });
 
@@ -29,6 +30,15 @@ describe("ModelRouter strict env routing and aliases", () => {
 
     expect(() => modelRouter.getModelConfig("PROGRAM_SYNTHESIS")).toThrow(
       /AI_MODEL_PROGRAM_SYNTHESIS/,
+    );
+  });
+
+  test("fails closed by default in ProjectGraph mode", () => {
+    process.env.REACT_APP_PIPELINE_MODE = "project_graph";
+    process.env.REACT_APP_USE_TOGETHER = "false";
+
+    expect(() => modelRouter.getModelConfig("PROGRAM_SYNTHESIS")).toThrow(
+      /LEGACY_MODEL_ROUTE_USED/,
     );
   });
 
