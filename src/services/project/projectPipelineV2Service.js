@@ -1266,8 +1266,12 @@ function buildProgramBrief({
       (explicitLevelCount ? generatedLevelCount : null) ||
       Math.max(
         1,
+<<<<<<< HEAD
         inferLevelCountFromSpaces(programSpaces) ||
           generatedLevelCount,
+=======
+        inferLevelCountFromSpaces(programSpaces) || generatedLevelCount,
+>>>>>>> e216f80 (feat(residential): site-fit floor-count reconciliation with optional-room drop)
       );
     const alignedSpaces = alignProgramSpacesToResolvedLevels({
       spaces: programSpaces,

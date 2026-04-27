@@ -28,6 +28,10 @@ import { convertPdfFileToImageFile } from "../utils/pdfToImages.js";
 import { isFeatureEnabled } from "../config/featureFlags.js";
 import { getCurrentPipelineMode, PIPELINE_MODE } from "../config/pipelineMode.js";
 import {
+  getCurrentPipelineMode,
+  PIPELINE_MODE,
+} from "../config/pipelineMode.js";
+import {
   sanitizePromptInput,
   sanitizeDimensionInput,
 } from "../utils/promptSanitizer.js";
