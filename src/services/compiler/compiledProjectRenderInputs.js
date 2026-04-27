@@ -1146,14 +1146,54 @@ function renderSceneToSvg(title, surfaces, sceneGeometry, spec) {
   ].join("\n");
 }
 
+function summarizeScenePrimitives(surfaces = []) {
+  const byType = {};
+  toArray(surfaces).forEach((surface) => {
+    const type = surface?.type || "polygon";
+    byType[type] = (byType[type] || 0) + 1;
+  });
+  return {
+    primitiveCount: toArray(surfaces).length,
+    surfaceCount: toArray(surfaces).length,
+    polygonCount: byType.polygon || 0,
+    polylineCount: byType.polyline || 0,
+    byType,
+  };
+}
+
+function countSvgScenePrimitives(svgString = "") {
+  return (String(svgString || "").match(/<(?:polygon|polyline|path)\b/gi) || [])
+    .length;
+}
+
+function viewSpecForPanelType(panelType = "") {
+  if (panelType === "interior_3d") {
+    return INTERIOR_VIEW_SPEC;
+  }
+  return EXTERIOR_VIEW_SPECS[panelType] || {};
+}
+
+function cameraMetadataFromSpec(spec = {}) {
+  return {
+    projection: spec.perspective ? "perspective" : "orthographic",
+    yawDeg: spec.yawDeg,
+    pitchDeg: spec.pitchDeg,
+    visibleSides: Array.isArray(spec.visibleSides)
+      ? [...spec.visibleSides]
+      : [],
+  };
+}
+
 function buildRenderInputRecord(
   panelType,
   svgString,
   spec,
   geometryHash = null,
+  scene = {},
 ) {
   if (!svgString) return null;
   const svgHash = computeCDSHashSync({ panelType, svg: svgString });
+  const primitiveSummary = summarizeScenePrimitives(scene.surfaces || []);
   return {
     panelType,
     viewType: panelType,
@@ -1173,6 +1213,9 @@ function buildRenderInputRecord(
       geometryHash: geometryHash || null,
       svgHash,
       deterministic: true,
+      camera: cameraMetadataFromSpec(spec),
+      ...primitiveSummary,
+      sceneGeometry: cloneData(scene.geometry || null),
     },
   };
 }
@@ -1215,6 +1258,12 @@ function normalizeExistingRenderInput(panelType, entry, geometryHash = null) {
   const svgHash = svgString
     ? computeCDSHashSync({ panelType, svg: svgString })
     : entry.svgHash || null;
+  const fallbackSpec = viewSpecForPanelType(panelType);
+  const existingMetadata = cloneData(entry.metadata || {}) || {};
+  const fallbackPrimitiveCount =
+    existingMetadata.primitiveCount ||
+    existingMetadata.surfaceCount ||
+    countSvgScenePrimitives(svgString || "");
   return {
     ...cloneData(entry),
     panelType: entry.panelType || entry.viewType || panelType,
@@ -1225,13 +1274,16 @@ function normalizeExistingRenderInput(panelType, entry, geometryHash = null) {
     sourceType: entry.sourceType || entry.source || "compiled_render_input",
     geometryHash: geometryHash || entry.geometryHash || null,
     metadata: {
-      ...(cloneData(entry.metadata || {}) || {}),
+      ...existingMetadata,
       source: "compiled_project",
       panelType,
       sourceType: entry.sourceType || entry.source || "compiled_render_input",
       geometryHash: geometryHash || entry.geometryHash || null,
       ...(svgHash ? { svgHash } : {}),
       deterministic: true,
+      camera: existingMetadata.camera || cameraMetadataFromSpec(fallbackSpec),
+      primitiveCount: fallbackPrimitiveCount,
+      surfaceCount: existingMetadata.surfaceCount || fallbackPrimitiveCount,
     },
   };
 }
@@ -1267,6 +1319,7 @@ export function buildCompiledProjectRenderInputs(
       svgString,
       EXTERIOR_VIEW_SPECS.hero_3d,
       geometryHash,
+      scene,
     );
     if (record) {
       renderInputs.hero_3d = record;
@@ -1289,6 +1342,7 @@ export function buildCompiledProjectRenderInputs(
       svgString,
       EXTERIOR_VIEW_SPECS.axonometric,
       geometryHash,
+      scene,
     );
     if (record) {
       renderInputs.axonometric = record;
@@ -1308,6 +1362,7 @@ export function buildCompiledProjectRenderInputs(
       svgString,
       INTERIOR_VIEW_SPEC,
       geometryHash,
+      scene,
     );
     if (record) {
       renderInputs.interior_3d = record;

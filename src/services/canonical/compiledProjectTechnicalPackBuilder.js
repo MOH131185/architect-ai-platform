@@ -37,10 +37,24 @@ export const TECHNICAL_CANONICAL_PANEL_TYPES = [
 ];
 
 const TECHNICAL_RENDER_SCALE_FACTOR = 1.4;
+const SVG_NUMBER_PATTERN = /[-+]?(?:\d*\.\d+|\d+)(?:e[-+]?\d+)?/gi;
 
 function roundEven(value, minimum = 0) {
   const numeric = Math.max(minimum, Math.round(Number(value) || 0));
   return numeric % 2 === 0 ? numeric : numeric + 1;
+}
+
+function roundMetric(value, precision = 3) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  const factor = 10 ** precision;
+  return Math.round(numeric * factor) / factor;
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function getTechnicalPanelRenderSize(panelType, floorCount = 1) {
@@ -412,6 +426,284 @@ function normalizeRendererFailure(panelType, result, fallbackMessage) {
   };
 }
 
+function parseSvgAttributes(attributeString = "") {
+  const attributes = {};
+  String(attributeString || "").replace(
+    /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(["'])(.*?)\2/g,
+    (_match, key, _quote, value) => {
+      attributes[key] = value;
+      return _match;
+    },
+  );
+  return attributes;
+}
+
+function numberAttr(attributes = {}, key, fallback = 0) {
+  const numeric = Number(attributes[key]);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function mergePixelBounds(bounds, candidate) {
+  if (!candidate) {
+    return bounds;
+  }
+  const minX = Number(candidate.minX);
+  const minY = Number(candidate.minY);
+  const maxX = Number(candidate.maxX);
+  const maxY = Number(candidate.maxY);
+  if (
+    !Number.isFinite(minX) ||
+    !Number.isFinite(minY) ||
+    !Number.isFinite(maxX) ||
+    !Number.isFinite(maxY) ||
+    maxX <= minX ||
+    maxY <= minY
+  ) {
+    return bounds;
+  }
+  if (!bounds) {
+    return { minX, minY, maxX, maxY };
+  }
+  return {
+    minX: Math.min(bounds.minX, minX),
+    minY: Math.min(bounds.minY, minY),
+    maxX: Math.max(bounds.maxX, maxX),
+    maxY: Math.max(bounds.maxY, maxY),
+  };
+}
+
+function boundsFromNumberPairs(values = []) {
+  const points = [];
+  for (let index = 0; index + 1 < values.length; index += 2) {
+    const x = Number(values[index]);
+    const y = Number(values[index + 1]);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      points.push({ x, y });
+    }
+  }
+  if (!points.length) {
+    return null;
+  }
+  return {
+    minX: Math.min(...points.map((point) => point.x)),
+    minY: Math.min(...points.map((point) => point.y)),
+    maxX: Math.max(...points.map((point) => point.x)),
+    maxY: Math.max(...points.map((point) => point.y)),
+  };
+}
+
+function extractSvgRootSize(
+  svgString = "",
+  fallbackWidth = 0,
+  fallbackHeight = 0,
+) {
+  const viewBoxMatch = String(svgString).match(/viewBox\s*=\s*(["'])(.*?)\1/i);
+  if (viewBoxMatch?.[2]) {
+    const values = viewBoxMatch[2]
+      .match(SVG_NUMBER_PATTERN)
+      ?.map((value) => Number(value));
+    if (values?.length >= 4 && values[2] > 0 && values[3] > 0) {
+      return {
+        x: values[0],
+        y: values[1],
+        width: values[2],
+        height: values[3],
+        viewBox: values.slice(0, 4),
+      };
+    }
+  }
+
+  const widthMatch = String(svgString).match(/\bwidth\s*=\s*(["'])(.*?)\1/i);
+  const heightMatch = String(svgString).match(/\bheight\s*=\s*(["'])(.*?)\1/i);
+  const widthValue = Number(
+    String(widthMatch?.[2] || "").replace(/[^\d.-]/g, ""),
+  );
+  const heightValue = Number(
+    String(heightMatch?.[2] || "").replace(/[^\d.-]/g, ""),
+  );
+  return {
+    x: 0,
+    y: 0,
+    width:
+      Number.isFinite(widthValue) && widthValue > 0
+        ? widthValue
+        : fallbackWidth,
+    height:
+      Number.isFinite(heightValue) && heightValue > 0
+        ? heightValue
+        : fallbackHeight,
+    viewBox: null,
+  };
+}
+
+function looksLikeRootBackgroundRect(attributes = {}, root = {}) {
+  const x = numberAttr(attributes, "x", 0);
+  const y = numberAttr(attributes, "y", 0);
+  const width = numberAttr(attributes, "width", 0);
+  const height = numberAttr(attributes, "height", 0);
+  return (
+    Math.abs(x - Number(root.x || 0)) <= 0.5 &&
+    Math.abs(y - Number(root.y || 0)) <= 0.5 &&
+    width >= Number(root.width || 0) * 0.95 &&
+    height >= Number(root.height || 0) * 0.95
+  );
+}
+
+function analyseTechnicalSvgContentFrame(
+  svgString = "",
+  width = 0,
+  height = 0,
+) {
+  const root = extractSvgRootSize(svgString, width, height);
+  const rootWidth = Number(root.width || width || 0);
+  const rootHeight = Number(root.height || height || 0);
+  if (!(rootWidth > 0 && rootHeight > 0)) {
+    return null;
+  }
+
+  const body = String(svgString || "")
+    .replace(/<defs\b[\s\S]*?<\/defs>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+  let bounds = null;
+
+  body.replace(/<rect\b([^>]*)>/gi, (match, attrs) => {
+    const attributes = parseSvgAttributes(attrs);
+    if (looksLikeRootBackgroundRect(attributes, root)) {
+      return match;
+    }
+    const x = numberAttr(attributes, "x", 0);
+    const y = numberAttr(attributes, "y", 0);
+    const rectWidth = numberAttr(attributes, "width", 0);
+    const rectHeight = numberAttr(attributes, "height", 0);
+    bounds = mergePixelBounds(bounds, {
+      minX: x,
+      minY: y,
+      maxX: x + rectWidth,
+      maxY: y + rectHeight,
+    });
+    return match;
+  });
+
+  body.replace(/<line\b([^>]*)>/gi, (match, attrs) => {
+    const attributes = parseSvgAttributes(attrs);
+    bounds = mergePixelBounds(bounds, {
+      minX: Math.min(
+        numberAttr(attributes, "x1", 0),
+        numberAttr(attributes, "x2", 0),
+      ),
+      minY: Math.min(
+        numberAttr(attributes, "y1", 0),
+        numberAttr(attributes, "y2", 0),
+      ),
+      maxX: Math.max(
+        numberAttr(attributes, "x1", 0),
+        numberAttr(attributes, "x2", 0),
+      ),
+      maxY: Math.max(
+        numberAttr(attributes, "y1", 0),
+        numberAttr(attributes, "y2", 0),
+      ),
+    });
+    return match;
+  });
+
+  body.replace(/<(?:polygon|polyline)\b([^>]*)>/gi, (match, attrs) => {
+    const attributes = parseSvgAttributes(attrs);
+    const values = String(attributes.points || "")
+      .match(SVG_NUMBER_PATTERN)
+      ?.map((value) => Number(value));
+    bounds = mergePixelBounds(bounds, boundsFromNumberPairs(values || []));
+    return match;
+  });
+
+  body.replace(/<(?:circle|ellipse)\b([^>]*)>/gi, (match, attrs) => {
+    const attributes = parseSvgAttributes(attrs);
+    const cx = numberAttr(attributes, "cx", 0);
+    const cy = numberAttr(attributes, "cy", 0);
+    const rx = numberAttr(attributes, "rx", numberAttr(attributes, "r", 0));
+    const ry = numberAttr(attributes, "ry", numberAttr(attributes, "r", 0));
+    bounds = mergePixelBounds(bounds, {
+      minX: cx - rx,
+      minY: cy - ry,
+      maxX: cx + rx,
+      maxY: cy + ry,
+    });
+    return match;
+  });
+
+  body.replace(/<path\b([^>]*)>/gi, (match, attrs) => {
+    const attributes = parseSvgAttributes(attrs);
+    const pathData = String(attributes.d || "").trim();
+    if (
+      !pathData ||
+      pathData.includes("undefined") ||
+      pathData.includes("NaN")
+    ) {
+      return match;
+    }
+    const values = pathData
+      .match(SVG_NUMBER_PATTERN)
+      ?.map((value) => Number(value));
+    bounds = mergePixelBounds(bounds, boundsFromNumberPairs(values || []));
+    return match;
+  });
+
+  if (!bounds) {
+    return null;
+  }
+
+  const contentWidth = bounds.maxX - bounds.minX;
+  const contentHeight = bounds.maxY - bounds.minY;
+  if (!(contentWidth > 0 && contentHeight > 0)) {
+    return null;
+  }
+
+  const padX = clamp(contentWidth * 0.06, 10, rootWidth * 0.08);
+  const padY = clamp(contentHeight * 0.08, 8, rootHeight * 0.1);
+  const normalized = {
+    x: bounds.minX - padX,
+    y: bounds.minY - padY,
+    width: contentWidth + padX * 2,
+    height: contentHeight + padY * 2,
+  };
+  const normalizedViewBox = [
+    roundMetric(normalized.x, 2),
+    roundMetric(normalized.y, 2),
+    roundMetric(normalized.width, 2),
+    roundMetric(normalized.height, 2),
+  ].join(" ");
+  const contentBounds = {
+    x: roundMetric(bounds.minX, 2),
+    y: roundMetric(bounds.minY, 2),
+    width: roundMetric(contentWidth, 2),
+    height: roundMetric(contentHeight, 2),
+    widthRatio: roundMetric(contentWidth / rootWidth, 4),
+    heightRatio: roundMetric(contentHeight / rootHeight, 4),
+    occupancyRatio: roundMetric(
+      (contentWidth * contentHeight) / (rootWidth * rootHeight),
+      4,
+    ),
+  };
+
+  return {
+    contentBounds,
+    normalizedViewBox,
+    originalViewBox: root.viewBox
+      ? root.viewBox.map((value) => roundMetric(value, 2)).join(" ")
+      : `0 0 ${roundMetric(rootWidth, 2)} ${roundMetric(rootHeight, 2)}`,
+    normalization: {
+      mode: "content_bounds_padded",
+      source: "svg_shape_bounds",
+      paddingX: roundMetric(padX, 2),
+      paddingY: roundMetric(padY, 2),
+      tightViewBoxAreaRatio: roundMetric(
+        (normalized.width * normalized.height) / (rootWidth * rootHeight),
+        4,
+      ),
+    },
+  };
+}
+
 function buildPanelRecord(panelType, rendererResult, width, height) {
   const svgString = rendererResult?.svg;
   if (typeof svgString !== "string" || !svgString.trim()) {
@@ -425,6 +717,23 @@ function buildPanelRecord(panelType, rendererResult, width, height) {
     };
   }
 
+  const contentFrame = analyseTechnicalSvgContentFrame(
+    svgString,
+    width,
+    height,
+  );
+  const technicalQualityMetadata = {
+    ...(rendererResult?.technical_quality_metadata || {}),
+    ...(contentFrame
+      ? {
+          contentBounds: contentFrame.contentBounds,
+          normalizedViewBox: contentFrame.normalizedViewBox,
+          originalViewBox: contentFrame.originalViewBox,
+          viewBoxNormalization: contentFrame.normalization,
+        }
+      : {}),
+  };
+
   return {
     ok: true,
     panel: {
@@ -435,11 +744,12 @@ function buildPanelRecord(panelType, rendererResult, width, height) {
       height,
       title: rendererResult?.title || panelType,
       status: rendererResult?.status || "ready",
-      technicalQualityMetadata:
-        rendererResult?.technical_quality_metadata || null,
+      contentBounds: contentFrame?.contentBounds || null,
+      normalizedViewBox: contentFrame?.normalizedViewBox || null,
+      viewBoxNormalization: contentFrame?.normalization || null,
+      technicalQualityMetadata,
       renderer: rendererResult?.renderer || null,
-      drawingType:
-        rendererResult?.technical_quality_metadata?.drawing_type || null,
+      drawingType: technicalQualityMetadata?.drawing_type || null,
     },
   };
 }

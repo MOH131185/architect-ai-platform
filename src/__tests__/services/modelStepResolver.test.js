@@ -2,6 +2,7 @@ import {
   resolveArchitectureModelRegistry,
   resolveArchitectureStepModel,
 } from "../../services/modelStepResolver.js";
+import { execFileSync } from "child_process";
 
 describe("modelStepResolver", () => {
   test("uses base env models in hybrid mode when fine-tuned IDs are absent", () => {
@@ -105,5 +106,43 @@ describe("modelStepResolver", () => {
     );
     expect(JSON.stringify(registry)).not.toContain("sk-do-not-leak");
     expect(JSON.stringify(registry)).not.toContain("sk-reasoning-do-not-leak");
+  });
+
+  test("check:model-routes reports env names without leaking secret values", () => {
+    const output = execFileSync(
+      process.execPath,
+      ["scripts/check-model-routes.cjs", "--json"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          MODEL_SOURCE: "base",
+          OPENAI_API_KEY: "sk-secret-route-test-value",
+          OPENAI_REASONING_MODEL: "gpt-5.4",
+          OPENAI_FAST_MODEL: "gpt-5.4-mini",
+          STEP_07_PROJECT_GRAPH_MODEL: "project-graph-route-model",
+          STEP_12_A1_SHEET_MODEL: "a1-route-model",
+        },
+      },
+    );
+    const parsed = JSON.parse(output);
+
+    expect(parsed.pipelineMode).toBe("project_graph");
+    expect(parsed.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stepId: "PROJECT_GRAPH",
+          model: "project-graph-route-model",
+          apiKeyEnv: "OPENAI_API_KEY",
+        }),
+        expect.objectContaining({
+          stepId: "A1_SHEET",
+          model: "a1-route-model",
+        }),
+      ]),
+    );
+    expect(output).toContain("OPENAI_API_KEY");
+    expect(output).not.toContain("sk-secret-route-test-value");
   });
 });

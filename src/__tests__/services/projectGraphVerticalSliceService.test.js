@@ -155,6 +155,22 @@ describe("projectGraphVerticalSliceService", () => {
       expect(artifact.source_model_hash).toBe(result.geometryHash);
       expect(artifact.authoritySource).toBe("project_graph_compiled_geometry");
       expect(artifact.svgString.length).toBeGreaterThan(1200);
+      expect(artifact.metadata.camera).toEqual(expect.any(Object));
+      expect(artifact.metadata.primitiveCount).toBeGreaterThanOrEqual(5);
+    }
+    for (const artifact of Object.values(result.artifacts.drawings)) {
+      expect(artifact.contentBounds).toEqual(
+        expect.objectContaining({
+          occupancyRatio: expect.any(Number),
+          widthRatio: expect.any(Number),
+          heightRatio: expect.any(Number),
+        }),
+      );
+      expect(artifact.contentBounds.occupancyRatio).toBeGreaterThan(0.08);
+      expect(artifact.normalizedViewBox).toMatch(/^-?\d/);
+      expect(artifact.metadata.normalizedViewBox).toBe(
+        artifact.normalizedViewBox,
+      );
     }
     expect(result.artifacts.panelMap.site_context.url).toContain(
       "data:image/svg+xml",
@@ -208,6 +224,35 @@ describe("projectGraphVerticalSliceService", () => {
             provider: "openai",
           }),
         ]),
+        modelRoutes: expect.arrayContaining([
+          expect.objectContaining({
+            stepId: "PROJECT_GRAPH",
+            apiKeyEnv: "OPENAI_API_KEY",
+          }),
+        ]),
+        providerCalls: expect.arrayContaining([
+          expect.objectContaining({
+            stepId: "PROJECT_GRAPH",
+            status: "route_resolved",
+            secretsRedacted: true,
+          }),
+        ]),
+        geometrySteps: expect.arrayContaining([
+          expect.objectContaining({
+            stepId: "DRAWING_2D",
+            contentBoundsMeasured: true,
+          }),
+          expect.objectContaining({
+            stepId: "MODEL_3D",
+            primitiveCounts: expect.any(Object),
+          }),
+        ]),
+        exportSteps: expect.arrayContaining([
+          expect.objectContaining({
+            stepId: "A1_EXPORT",
+            renderedPngHash: expect.any(String),
+          }),
+        ]),
       }),
     );
     expect(JSON.stringify(result.artifacts.executionTrace)).not.toContain(
@@ -221,6 +266,9 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(result.qa.checks.map((check) => check.code)).toContain(
       "REQUIRED_3D_PANELS_PRESENT",
+    );
+    expect(result.qa.checks.map((check) => check.code)).toContain(
+      "TECHNICAL_DRAWINGS_CONTENT_BOUNDS_TIGHT",
     );
     expect(result.qa.checks.map((check) => check.code)).toContain(
       "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
@@ -443,6 +491,88 @@ describe("projectGraphVerticalSliceService", () => {
       expect.arrayContaining([
         "A1_PDF_RENDER_EMPTY",
         "REQUIRED_3D_PANEL_MISSING",
+      ]),
+    );
+  });
+
+  test("QA fails when required 3D panels are visually empty despite matching names", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const weakHero = {
+      ...result.artifacts.visuals3d.hero_3d,
+      svgString:
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"><text x="20" y="20">placeholder</text></svg>',
+      metadata: {
+        ...result.artifacts.visuals3d.hero_3d.metadata,
+        camera: null,
+        primitiveCount: 0,
+        surfaceCount: 0,
+      },
+    };
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: {
+          ...result.artifacts.visuals3d,
+          hero_3d: weakHero,
+        },
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toContain(
+      "PLACEHOLDER_3D_RENDER_USED",
+    );
+  });
+
+  test("QA fails when technical drawings lack measured content bounds", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const tamperedDrawings = Object.fromEntries(
+      Object.entries(result.artifacts.drawings).map(([assetId, artifact]) => [
+        assetId,
+        artifact.panel_type === "floor_plan_ground"
+          ? {
+              ...artifact,
+              contentBounds: null,
+              normalizedViewBox: null,
+              metadata: {
+                ...artifact.metadata,
+                contentBounds: null,
+                normalizedViewBox: null,
+                technicalQualityMetadata: {
+                  ...(artifact.metadata?.technicalQualityMetadata || {}),
+                  contentBounds: null,
+                  normalizedViewBox: null,
+                },
+              },
+              technicalQualityMetadata: {
+                ...(artifact.technicalQualityMetadata || {}),
+                contentBounds: null,
+                normalizedViewBox: null,
+              },
+            }
+          : artifact,
+      ]),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        drawings: tamperedDrawings,
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining([
+        "TECHNICAL_DRAWING_CONTENT_BOUNDS_MISSING",
+        "TECHNICAL_DRAWING_VIEWBOX_NOT_TIGHT",
       ]),
     );
   });

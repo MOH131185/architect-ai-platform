@@ -71,6 +71,10 @@ const TECHNICAL_A1_PANEL_TYPES = [
 ];
 const MIN_RENDERED_SHEET_INK_RATIO = 0.015;
 const MIN_TECHNICAL_SVG_LENGTH = 800;
+const MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO = 0.08;
+const MIN_TECHNICAL_CONTENT_WIDTH_RATIO = 0.22;
+const MIN_TECHNICAL_CONTENT_HEIGHT_RATIO = 0.14;
+const MIN_3D_PRIMITIVE_COUNT = 5;
 
 function cloneData(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -1890,6 +1894,8 @@ function buildDrawingSet(compiledProject) {
         annotations: [],
         exported_asset_ids: [assetId],
         svgHash: panel.svgHash,
+        contentBounds: panel.contentBounds || null,
+        normalizedViewBox: panel.normalizedViewBox || null,
         status: panel.status || "ready",
       };
     },
@@ -1915,12 +1921,18 @@ function buildDrawingSet(compiledProject) {
             height: panel.height,
             svgString: panel.svgString,
             drawingType: panel.drawingType || drawingTypeForPanel(panelType),
+            contentBounds: panel.contentBounds || null,
+            normalizedViewBox: panel.normalizedViewBox || null,
+            viewBoxNormalization: panel.viewBoxNormalization || null,
             technicalQualityMetadata: panel.technicalQualityMetadata || null,
             metadata: {
               source: "compiled_project_technical_panel",
               panelType,
               expectedPanelType: panelType,
               drawingType: panel.drawingType || drawingTypeForPanel(panelType),
+              contentBounds: panel.contentBounds || null,
+              normalizedViewBox: panel.normalizedViewBox || null,
+              viewBoxNormalization: panel.viewBoxNormalization || null,
               technicalQualityMetadata: panel.technicalQualityMetadata || null,
             },
           },
@@ -2435,11 +2447,11 @@ function renderSheetPanel({ placement, artifact }) {
   const contentHeight = placement.height - 24;
   const svgString = artifact?.svgString || "";
   const svgBody = extractSvgBody(svgString);
-  const viewBox = extractSvgViewBox(
-    svgString,
-    artifact?.width,
-    artifact?.height,
-  );
+  const viewBox =
+    artifact?.normalizedViewBox ||
+    artifact?.metadata?.normalizedViewBox ||
+    artifact?.metadata?.technicalQualityMetadata?.normalizedViewBox ||
+    extractSvgViewBox(svgString, artifact?.width, artifact?.height);
   const content =
     placement.status === "ready"
       ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">${svgBody}</svg>`
@@ -2929,6 +2941,64 @@ function technicalPanelIdentityMismatch(panelType, artifact = null) {
   );
 }
 
+function getTechnicalContentBounds(artifact = null) {
+  return (
+    artifact?.contentBounds ||
+    artifact?.technicalQualityMetadata?.contentBounds ||
+    artifact?.metadata?.contentBounds ||
+    artifact?.metadata?.technicalQualityMetadata?.contentBounds ||
+    null
+  );
+}
+
+function getTechnicalNormalizedViewBox(artifact = null) {
+  return (
+    artifact?.normalizedViewBox ||
+    artifact?.technicalQualityMetadata?.normalizedViewBox ||
+    artifact?.metadata?.normalizedViewBox ||
+    artifact?.metadata?.technicalQualityMetadata?.normalizedViewBox ||
+    null
+  );
+}
+
+function technicalContentBoundsTooSmall(artifact = null) {
+  const bounds = getTechnicalContentBounds(artifact);
+  if (!bounds) return true;
+  return (
+    Number(bounds.occupancyRatio || 0) <
+      MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO ||
+    Number(bounds.widthRatio || 0) < MIN_TECHNICAL_CONTENT_WIDTH_RATIO ||
+    Number(bounds.heightRatio || 0) < MIN_TECHNICAL_CONTENT_HEIGHT_RATIO
+  );
+}
+
+function count3DGeometryElements(svgString = "") {
+  return (String(svgString || "").match(/<(?:polygon|polyline|path)\b/gi) || [])
+    .length;
+}
+
+function visual3DArtifactTooWeak(artifact = null) {
+  if (!artifact) return true;
+  const metadata = artifact.metadata || {};
+  const primitiveCount = Number(
+    metadata.primitiveCount ??
+      metadata.surfaceCount ??
+      metadata.geometryPrimitiveCount ??
+      0,
+  );
+  const hasCamera = Boolean(
+    metadata.camera && typeof metadata.camera === "object",
+  );
+  const geometryElementCount = count3DGeometryElements(
+    artifact.svgString || "",
+  );
+  return (
+    primitiveCount < MIN_3D_PRIMITIVE_COUNT ||
+    !hasCamera ||
+    geometryElementCount < MIN_3D_PRIMITIVE_COUNT
+  );
+}
+
 // RIBA A1 plan §10 scorecard category weights — must total 100.
 export const QA_CATEGORY_WEIGHTS = Object.freeze({
   programme: 20,
@@ -3297,7 +3367,9 @@ export function validateProjectGraphVerticalSlice({
         !svgLooksRenderable(svg) ||
         svg.length < MIN_TECHNICAL_SVG_LENGTH ||
         svgHasInvalidTokens(svg) ||
-        technicalPanelIdentityMismatch(panelType, artifact)
+        technicalPanelIdentityMismatch(panelType, artifact) ||
+        technicalContentBoundsTooSmall(artifact) ||
+        !getTechnicalNormalizedViewBox(artifact)
       );
     },
   );
@@ -3315,6 +3387,44 @@ export function validateProjectGraphVerticalSlice({
       );
     },
   );
+  const technicalContentBoundsFailures = TECHNICAL_A1_PANEL_TYPES.filter(
+    (panelType) => {
+      if (
+        panelType === "floor_plan_first" &&
+        Number(projectGraph?.brief?.target_storeys || 1) <= 1
+      ) {
+        return false;
+      }
+      const artifact = findPanelArtifact(artifacts.drawings || {}, panelType);
+      return !getTechnicalContentBounds(artifact);
+    },
+  );
+  const technicalUnderscaledPanels = TECHNICAL_A1_PANEL_TYPES.filter(
+    (panelType) => {
+      if (
+        panelType === "floor_plan_first" &&
+        Number(projectGraph?.brief?.target_storeys || 1) <= 1
+      ) {
+        return false;
+      }
+      return technicalContentBoundsTooSmall(
+        findPanelArtifact(artifacts.drawings || {}, panelType),
+      );
+    },
+  );
+  const technicalViewBoxFailures = TECHNICAL_A1_PANEL_TYPES.filter(
+    (panelType) => {
+      if (
+        panelType === "floor_plan_first" &&
+        Number(projectGraph?.brief?.target_storeys || 1) <= 1
+      ) {
+        return false;
+      }
+      return !getTechnicalNormalizedViewBox(
+        findPanelArtifact(artifacts.drawings || {}, panelType),
+      );
+    },
+  );
   addCheck(
     checks,
     "TECHNICAL_DRAWINGS_RENDERABLE",
@@ -3323,6 +3433,12 @@ export function validateProjectGraphVerticalSlice({
       technicalPanelFailures,
       minimumSvgLength: MIN_TECHNICAL_SVG_LENGTH,
       technicalPanelIdentityFailures,
+      technicalContentBoundsFailures,
+      technicalUnderscaledPanels,
+      technicalViewBoxFailures,
+      minimumContentOccupancyRatio: MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO,
+      minimumContentWidthRatio: MIN_TECHNICAL_CONTENT_WIDTH_RATIO,
+      minimumContentHeightRatio: MIN_TECHNICAL_CONTENT_HEIGHT_RATIO,
     },
     "graphic",
     0,
@@ -3333,7 +3449,13 @@ export function validateProjectGraphVerticalSlice({
         "TECHNICAL_DRAWING_OCCUPANCY_TOO_LOW",
         "error",
         "Technical drawing SVG content is missing, invalid, or too small to be legible.",
-        { technicalPanelFailures, technicalPanelIdentityFailures },
+        {
+          technicalPanelFailures,
+          technicalPanelIdentityFailures,
+          technicalContentBoundsFailures,
+          technicalUnderscaledPanels,
+          technicalViewBoxFailures,
+        },
       ),
     );
     if (technicalPanelIdentityFailures.length) {
@@ -3343,6 +3465,41 @@ export function validateProjectGraphVerticalSlice({
           "error",
           "Technical drawing artifact identity does not match its expected panel type.",
           { technicalPanelIdentityFailures },
+        ),
+      );
+    }
+    if (technicalContentBoundsFailures.length) {
+      issues.push(
+        buildIssue(
+          "TECHNICAL_DRAWING_CONTENT_BOUNDS_MISSING",
+          "error",
+          "Technical drawing artifacts must expose measured content bounds before A1 composition.",
+          { technicalContentBoundsFailures },
+        ),
+      );
+    }
+    if (technicalUnderscaledPanels.length) {
+      issues.push(
+        buildIssue(
+          "TECHNICAL_DRAWING_CONTENT_UNDERSCALED",
+          "error",
+          "Technical drawing content occupies too little of its render frame to be legible on A1.",
+          {
+            technicalUnderscaledPanels,
+            minimumContentOccupancyRatio: MIN_TECHNICAL_CONTENT_OCCUPANCY_RATIO,
+            minimumContentWidthRatio: MIN_TECHNICAL_CONTENT_WIDTH_RATIO,
+            minimumContentHeightRatio: MIN_TECHNICAL_CONTENT_HEIGHT_RATIO,
+          },
+        ),
+      );
+    }
+    if (technicalViewBoxFailures.length) {
+      issues.push(
+        buildIssue(
+          "TECHNICAL_DRAWING_VIEWBOX_NOT_TIGHT",
+          "error",
+          "Technical drawing artifacts must provide a content-normalized viewBox for readable A1 placement.",
+          { technicalViewBoxFailures },
         ),
       );
     }
@@ -3398,6 +3555,20 @@ export function validateProjectGraphVerticalSlice({
       ),
     );
   }
+  addCheck(
+    checks,
+    "TECHNICAL_DRAWINGS_CONTENT_BOUNDS_TIGHT",
+    technicalContentBoundsFailures.length === 0 &&
+      technicalUnderscaledPanels.length === 0 &&
+      technicalViewBoxFailures.length === 0,
+    {
+      technicalContentBoundsFailures,
+      technicalUnderscaledPanels,
+      technicalViewBoxFailures,
+    },
+    "graphic",
+    0,
+  );
 
   const visuals3d = artifacts.visuals3d || {};
   const missing3dPanels = REQUIRED_3D_A1_PANEL_TYPES.filter((panelType) => {
@@ -3418,7 +3589,8 @@ export function validateProjectGraphVerticalSlice({
       artifact &&
       (artifact.metadata?.source === "placeholder" ||
         svg.length < 1200 ||
-        /1x1|placeholder_3d|geometryRenderService/i.test(svg))
+        /1x1|placeholder_3d|geometryRenderService/i.test(svg) ||
+        visual3DArtifactTooWeak(artifact))
     );
   });
   addCheck(
@@ -3429,6 +3601,7 @@ export function validateProjectGraphVerticalSlice({
       missing3dPanels,
       wrong3dHashPanels,
       expected: REQUIRED_3D_A1_PANEL_TYPES,
+      primitiveMinimum: MIN_3D_PRIMITIVE_COUNT,
     },
     "consistency_2d_3d",
     0,
@@ -3459,7 +3632,10 @@ export function validateProjectGraphVerticalSlice({
         "PLACEHOLDER_3D_RENDER_USED",
         "error",
         "Placeholder 3D output was used where compiled ProjectGraph 3D control renders are required.",
-        { placeholder3dPanels },
+        {
+          placeholder3dPanels,
+          primitiveMinimum: MIN_3D_PRIMITIVE_COUNT,
+        },
       ),
     );
   }
@@ -3894,6 +4070,26 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     fallbackUsed: entry.fallbackUsed === true,
     fineTunedModelUsed: entry.fineTunedModelUsed || null,
   }));
+  const modelRoutes = Object.values(modelRegistry).map((entry) => ({
+    stepId: entry.stepId || entry.step,
+    task: entry.label,
+    provider: entry.provider,
+    model: entry.model,
+    apiKeyEnv: entry.apiKeyEnv,
+    modelSource: entry.modelSource,
+    selectedEnvKey: entry.selectedEnvKey || null,
+    fallbackUsed: entry.fallbackUsed === true,
+    fineTunedModelUsed: entry.fineTunedModelUsed || null,
+    deterministicGeometry: entry.deterministicGeometry === true,
+  }));
+  const providerCalls = modelRoutes.map((route) => ({
+    stepId: route.stepId,
+    provider: route.provider,
+    model: route.model,
+    apiKeyEnv: route.apiKeyEnv,
+    status: "route_resolved",
+    secretsRedacted: true,
+  }));
   const projectGraphId = createStableId(
     "project-graph",
     brief.project_name,
@@ -3963,6 +4159,53 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       )
       .map((artifact) => [artifact.panel_type, artifact]),
   );
+  const geometrySteps = [
+    {
+      stepId: "PROJECT_GRAPH",
+      authoritySource: "project_graph_compiled_geometry",
+      geometryHash: compiledProject.geometryHash,
+      status: "compiled",
+    },
+    {
+      stepId: "DRAWING_2D",
+      authoritySource: "project_graph_compiled_geometry",
+      geometryHash: compiledProject.geometryHash,
+      panelCount: Object.keys(drawingArtifacts || {}).length,
+      contentBoundsMeasured: Object.values(drawingArtifacts || {}).every(
+        (artifact) => Boolean(getTechnicalContentBounds(artifact)),
+      ),
+      status: technicalBuild.ok ? "ready" : "blocked",
+    },
+    {
+      stepId: "MODEL_3D",
+      authoritySource: "project_graph_compiled_geometry",
+      geometryHash: compiledProject.geometryHash,
+      panelTypes: Object.keys(visuals3d).sort(),
+      primitiveCounts: Object.fromEntries(
+        Object.entries(visuals3d).map(([panelType, artifact]) => [
+          panelType,
+          Number(
+            artifact.metadata?.primitiveCount ||
+              artifact.metadata?.surfaceCount ||
+              0,
+          ),
+        ]),
+      ),
+      status: "ready",
+    },
+  ];
+  const exportSteps = renderedSheets.map(
+    ({ sheetPlan, sheetArtifact: renderedSheetArtifact, pdf }) => ({
+      stepId: "A1_EXPORT",
+      sheetNumber: sheetPlan.sheet_number,
+      sheetLabel: sheetPlan.label,
+      svgHash: renderedSheetArtifact.svgHash || null,
+      renderedPngHash: pdf.renderedPngHash || null,
+      pdfHash: pdf.pdfHash || null,
+      requiredPanelSummary: pdf.renderedProof?.panelSummary || [],
+      status: pdf.renderedProof?.passed === true ? "ready" : "blocked",
+    }),
+  );
   const panelMap = buildResultPanelMap(primary.panelArtifacts || {});
   const sheetSetWithPdf = {
     sheets: renderedSheets.map(({ sheet, pdf: rendered }) => ({
@@ -4024,6 +4267,10 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       source: "modelStepResolver",
       pipelineMode: "project_graph",
       modelProvenance,
+      modelRoutes,
+      providerCalls,
+      geometrySteps,
+      exportSteps,
     },
   };
   const qa = validateProjectGraphVerticalSlice({

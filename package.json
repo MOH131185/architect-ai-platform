@@ -78,6 +78,7 @@
     "test:coverage": "react-scripts test --watchAll=false --coverage",
     "eject": "react-scripts eject",
     "check:env": "node scripts/check-env.cjs",
+    "check:model-routes": "node scripts/check-model-routes.cjs",
     "check:contracts": "node scripts/check-contracts.cjs",
     "check:genarch-contracts": "node scripts/check-genarch-contracts.cjs",
     "check:all": "npm run check:env && npm run check:contracts",
