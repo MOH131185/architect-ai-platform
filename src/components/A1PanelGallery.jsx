@@ -10,6 +10,20 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+function svgToDataUrl(svgString = "") {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+}
+
+function panelImageUrl(panel = {}) {
+  return (
+    panel.imageUrl ||
+    panel.url ||
+    panel.dataUrl ||
+    (panel.svgString ? svgToDataUrl(panel.svgString) : null) ||
+    (panel.svg ? svgToDataUrl(panel.svg) : null)
+  );
+}
+
 function extractPanels(result) {
   if (!result) return [];
 
@@ -28,11 +42,15 @@ function extractPanels(result) {
       .map((panel, idx) => ({
         key: panel?.id || panel?.type || `panel_${idx}`,
         label: panel?.label || panel?.name || panel?.type || `Panel ${idx + 1}`,
-        imageUrl: panel?.imageUrl || panel?.url,
+        imageUrl: panelImageUrl(panel),
         seed: panel?.seed,
         prompt: panel?.prompt,
         width: panel?.width,
         height: panel?.height,
+        authoritySource:
+          panel?.authoritySource || panel?.metadata?.authoritySource,
+        sourceType: panel?.sourceType || panel?.metadata?.sourceType,
+        geometryHash: panel?.geometryHash || panel?.metadata?.geometryHash,
       }))
       .filter((p) => p.imageUrl);
   }
@@ -42,11 +60,15 @@ function extractPanels(result) {
       .map(([key, panel]) => ({
         key,
         label: panel?.name || panel?.label || key,
-        imageUrl: panel?.imageUrl || panel?.url,
+        imageUrl: panelImageUrl(panel),
         seed: panel?.seed,
         prompt: panel?.prompt,
         width: panel?.width,
         height: panel?.height,
+        authoritySource:
+          panel?.authoritySource || panel?.metadata?.authoritySource,
+        sourceType: panel?.sourceType || panel?.metadata?.sourceType,
+        geometryHash: panel?.geometryHash || panel?.metadata?.geometryHash,
       }))
       .filter((p) => p.imageUrl);
   }
@@ -246,7 +268,7 @@ const A1PanelGallery = ({ result }) => {
                 <img
                   src={panel.imageUrl}
                   alt={panel.label}
-                  className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  className="w-full h-full object-contain transition-transform duration-200 group-hover:scale-105"
                   loading="lazy"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
@@ -266,6 +288,11 @@ const A1PanelGallery = ({ result }) => {
                 {panel.width && panel.height && (
                   <p className="text-xs text-gray-500">
                     {panel.width} x {panel.height}
+                  </p>
+                )}
+                {(panel.authoritySource || panel.sourceType) && (
+                  <p className="text-[11px] text-blue-200 truncate">
+                    {panel.authoritySource || panel.sourceType}
                   </p>
                 )}
               </div>
@@ -403,6 +430,8 @@ const A1PanelGallery = ({ result }) => {
 
           {/* Bottom info bar */}
           {(selectedPanel.seed !== undefined ||
+            selectedPanel.authoritySource ||
+            selectedPanel.geometryHash ||
             (selectedPanel.width && selectedPanel.height)) && (
             <div
               className="px-4 py-2 bg-black/60 backdrop-blur-sm border-t border-white/10 flex items-center gap-4 text-xs text-gray-400"
@@ -415,6 +444,12 @@ const A1PanelGallery = ({ result }) => {
                 <span>
                   {selectedPanel.width} x {selectedPanel.height}
                 </span>
+              )}
+              {selectedPanel.authoritySource && (
+                <span>{selectedPanel.authoritySource}</span>
+              )}
+              {selectedPanel.geometryHash && (
+                <span>{selectedPanel.geometryHash.slice(0, 12)}</span>
               )}
             </div>
           )}

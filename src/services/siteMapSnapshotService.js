@@ -52,7 +52,9 @@ export async function getSiteSnapshot({
     throw new Error("Coordinates are required (lat, lng)");
   }
 
-  const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+  const apiKey =
+    process.env.GOOGLE_MAPS_API_KEY ||
+    process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     logger.warn(
       "⚠️  Google Maps API key not found. Site map snapshot will be skipped.",

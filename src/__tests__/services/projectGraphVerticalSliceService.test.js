@@ -5,6 +5,8 @@ import {
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
 function createReadingRoomBrief() {
+  const siteMapDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSFIAAAeSAi8BTyQ1AAAAAElFTkSuQmCC";
   return {
     brief: {
       project_name: "Neighbourhood Reading Room",
@@ -39,6 +41,17 @@ function createReadingRoomBrief() {
     siteMetrics: {
       areaM2: 1040,
       orientationDeg: 8,
+    },
+    siteSnapshot: {
+      dataUrl: siteMapDataUrl,
+      sourceUrl: "provided-site-snapshot",
+      attribution: "Provided site map",
+      polygon: [
+        { lat: 51.54175, lng: -0.1024 },
+        { lat: 51.54175, lng: -0.10195 },
+        { lat: 51.54145, lng: -0.10195 },
+        { lat: 51.54145, lng: -0.1024 },
+      ],
     },
   };
 }
@@ -96,6 +109,33 @@ describe("projectGraphVerticalSliceService", () => {
       height: 594,
     });
     expect(result.artifacts.a1Pdf.source_model_hash).toBe(result.geometryHash);
+    expect(result.artifacts.a1Pdf.renderedPngHash).toBeTruthy();
+    expect(
+      result.artifacts.a1Pdf.renderedProof.occupancy.nonBackgroundPixelRatio,
+    ).toBeGreaterThan(0.015);
+    expect(result.artifacts.renderedProof.renderedPngHash).toBe(
+      result.artifacts.a1Pdf.renderedPngHash,
+    );
+    expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(true);
+    expect(result.artifacts.siteMap.svgString).toContain(
+      'data-site-map-image="true"',
+    );
+    expect(Object.keys(result.artifacts.visuals3d).sort()).toEqual([
+      "axonometric",
+      "hero_3d",
+      "interior_3d",
+    ]);
+    for (const artifact of Object.values(result.artifacts.visuals3d)) {
+      expect(artifact.source_model_hash).toBe(result.geometryHash);
+      expect(artifact.authoritySource).toBe("project_graph_compiled_geometry");
+      expect(artifact.svgString.length).toBeGreaterThan(1200);
+    }
+    expect(result.artifacts.panelMap.site_context.url).toContain(
+      "data:image/svg+xml",
+    );
+    expect(result.artifacts.panelMap.hero_3d.geometryHash).toBe(
+      result.geometryHash,
+    );
     expect(result.projectGraph.sheets.sheets[0].exported_pdf_asset_id).toBe(
       result.artifacts.a1Pdf.asset_id,
     );
@@ -127,6 +167,12 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.modelRegistry.MODEL_3D.deterministicGeometry).toBe(true);
     expect(result.qa.checks.map((check) => check.code)).toContain(
       "A1_PDF_EXPORT_PRESENT_AND_SIZED",
+    );
+    expect(result.qa.checks.map((check) => check.code)).toContain(
+      "A1_PDF_RENDER_PROOF_PRESENT",
+    );
+    expect(result.qa.checks.map((check) => check.code)).toContain(
+      "REQUIRED_3D_PANELS_PRESENT",
     );
     expect(result.qa.checks.map((check) => check.code)).toContain(
       "PROJECT_GRAPH_REFERENCES_3D_PROJECTION",
@@ -239,6 +285,44 @@ describe("projectGraphVerticalSliceService", () => {
     expect(qa.status).toBe("fail");
     expect(qa.issues.map((issue) => issue.code)).toContain(
       "SOURCE_MODEL_HASH_MISMATCH_2D",
+    );
+  });
+
+  test("QA fails closed when rendered PDF proof and 3D panels are missing", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const strippedPanelArtifacts = Object.fromEntries(
+      Object.entries(result.artifacts.panelArtifacts).filter(
+        ([, artifact]) =>
+          !["hero_3d", "axonometric", "interior_3d"].includes(
+            artifact.panel_type,
+          ),
+      ),
+    );
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: {},
+        panelArtifacts: strippedPanelArtifacts,
+        a1Pdf: {
+          ...result.artifacts.a1Pdf,
+          renderedProof: {
+            renderedPngHash: null,
+            passed: false,
+            occupancy: { nonBackgroundPixelRatio: 0 },
+          },
+        },
+      },
+    });
+
+    expect(qa.status).toBe("fail");
+    expect(qa.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining([
+        "A1_PDF_RENDER_EMPTY",
+        "REQUIRED_3D_PANEL_MISSING",
+      ]),
     );
   });
 });

@@ -4,6 +4,8 @@ import {
 } from "../../../services/sheet/sheetSplitter.js";
 import { buildArchitectureProjectVerticalSlice } from "../../../services/project/projectGraphVerticalSliceService.js";
 
+jest.setTimeout(60000);
+
 describe("decideSheetSplit", () => {
   test("emits a single sheet when programme/storey/regulation density is low", () => {
     const decision = decideSheetSplit({

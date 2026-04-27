@@ -20,7 +20,9 @@ export const SPLIT_THRESHOLDS = Object.freeze({
 
 const ALL_PANELS = Object.freeze([
   "site_context",
-  "axonometric_3d",
+  "hero_3d",
+  "axonometric",
+  "interior_3d",
   "floor_plan_ground",
   "floor_plan_first",
   "elevation_north",
@@ -35,8 +37,8 @@ const SPLIT_PLAN = Object.freeze([
   {
     sheet_number: "A1-01",
     label: "RIBA Stage 2 Overview",
-    panel_types: ["site_context", "axonometric_3d"],
-    rationale: "Site context + 3D massing for client orientation.",
+    panel_types: ["site_context", "hero_3d", "axonometric", "interior_3d"],
+    rationale: "Site context + compiled 3D views for client orientation.",
   },
   {
     sheet_number: "A1-02",
