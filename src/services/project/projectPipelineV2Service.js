@@ -32,6 +32,7 @@ import {
   generateResidentialProgramBrief,
   normalizeResidentialProgramSpaces,
 } from "./residentialProgramEngine.js";
+import { resolveAuthoritativeFloorCount } from "./floorCountAuthority.js";
 import {
   GENARCH_ARTIFACT_SPECS,
   GENARCH_JOB_DEFAULTS,
@@ -71,37 +72,33 @@ function pick(values = [], fallback = null) {
   return values.find(Boolean) || fallback;
 }
 
-function resolveLockedLevelCount(projectDetails = {}) {
-  if (!projectDetails?.floorCountLocked) {
-    return null;
-  }
-  const parsed = Number.parseInt(projectDetails.floorCount, 10);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return Math.max(1, parsed);
+function hasPositiveCount(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0;
 }
 
-function resolveExplicitLevelCount(projectDetails = {}, programSpaces = []) {
-  const lockedLevelCount = resolveLockedLevelCount(projectDetails);
-  if (lockedLevelCount) {
-    return lockedLevelCount;
+function resolveExplicitLevelCount(projectDetails = {}) {
+  const locked = Boolean(projectDetails?.floorCountLocked);
+  const floorCount = projectDetails.floorCount ?? projectDetails.floors;
+  const hasProjectAuthority =
+    (locked && hasPositiveCount(floorCount)) ||
+    (!locked && hasPositiveCount(projectDetails.autoDetectedFloorCount)) ||
+    (!locked && hasPositiveCount(floorCount));
+
+  if (!hasProjectAuthority) {
+    return null;
   }
 
-  const metadataLevelCount = Number(programSpaces?._calculatedFloorCount);
-  if (Number.isFinite(metadataLevelCount) && metadataLevelCount > 0) {
-    return Math.max(1, Math.round(metadataLevelCount));
-  }
-
-  const projectLevelCount = Number.parseInt(
-    projectDetails.floorCount ?? projectDetails.floors,
-    10,
-  );
-  if (Number.isFinite(projectLevelCount) && projectLevelCount > 0) {
-    return Math.max(1, projectLevelCount);
-  }
-
-  return null;
+  return resolveAuthoritativeFloorCount(
+    {
+      ...projectDetails,
+      floorCount,
+    },
+    {
+      fallback: 2,
+      maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+    },
+  ).floorCount;
 }
 
 function inferLevelCountFromSpaces(spaces = []) {

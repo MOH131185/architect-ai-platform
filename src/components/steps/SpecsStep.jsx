@@ -40,6 +40,55 @@ import {
   syncProgramToFloorCount,
 } from "../../services/project/floorCountAuthority.js";
 
+export function stampProgramFloorAuthorityMetadata(
+  spaces,
+  floorCount,
+  floorMetrics = null,
+) {
+  if (!Array.isArray(spaces)) return [];
+  const safeFloorCount = Math.max(1, Math.floor(Number(floorCount) || 1));
+  spaces._calculatedFloorCount = safeFloorCount;
+  spaces._floorMetrics = floorMetrics ?? spaces._floorMetrics ?? null;
+  return spaces;
+}
+
+export function applyProgramRowChangeForFloorAuthority({
+  programSpaces = [],
+  index,
+  field,
+  value,
+  floorCount,
+  floorMetrics = null,
+} = {}) {
+  const source = Array.isArray(programSpaces) ? programSpaces : [];
+  const updated = [...source];
+  const existingRow = updated[index] || {};
+  const nextRow = { ...existingRow, [field]: value };
+
+  if (field === "label") {
+    nextRow.name = value;
+  }
+  if (field === "name") {
+    nextRow.label = value;
+  }
+  if (field === "level") {
+    const parsedIndex = levelIndexFromLabel(value);
+    const levelIndex = normalizeLevelIndex(parsedIndex, floorCount);
+    nextRow.level = levelName(levelIndex);
+    nextRow.levelIndex = levelIndex;
+    nextRow.level_index = levelIndex;
+  }
+  if (field === "levelIndex" || field === "level_index") {
+    const levelIndex = normalizeLevelIndex(value, floorCount);
+    nextRow.levelIndex = levelIndex;
+    nextRow.level_index = levelIndex;
+    nextRow.level = levelName(levelIndex);
+  }
+
+  updated[index] = nextRow;
+  return stampProgramFloorAuthorityMetadata(updated, floorCount, floorMetrics);
+}
+
 const SpecsStep = ({
   projectDetails,
   programSpaces,
@@ -97,12 +146,15 @@ const SpecsStep = ({
   // dropdown options, and any downstream consumer in this component. Stale
   // programSpaces._calculatedFloorCount must never override the live
   // resolveAuthoritativeFloorCount result.
-  const authoritativeFloorCount = useMemo(
+  const floorAuth = useMemo(
     () =>
-      resolveAuthoritativeFloorCount(projectDetails, { fallback: 2 })
-        .floorCount,
+      resolveAuthoritativeFloorCount(projectDetails, {
+        fallback: 2,
+        maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+      }),
     [projectDetails],
   );
+  const authoritativeFloorCount = floorAuth.floorCount;
 
   // Shared helper used by the manual Number-of-Levels input, the Lock/Unlock
   // button, and the "Use recommended N levels" action. Centralising this means
@@ -143,38 +195,26 @@ const SpecsStep = ({
 
   const handleProgramRowChange = useCallback(
     (index, field, value) => {
-      const updated = [...programSpaces];
-      const nextRow = { ...updated[index], [field]: value };
-      if (field === "label") {
-        nextRow.name = value;
-      }
-      if (field === "name") {
-        nextRow.label = value;
-      }
-      if (field === "level") {
-        const parsedIndex = levelIndexFromLabel(value);
-        const levelIndex = normalizeLevelIndex(
-          parsedIndex,
-          authoritativeFloorCount,
-        );
-        nextRow.level = levelName(levelIndex);
-        nextRow.levelIndex = levelIndex;
-        nextRow.level_index = levelIndex;
-      }
-      if (field === "levelIndex" || field === "level_index") {
-        const levelIndex = normalizeLevelIndex(value, authoritativeFloorCount);
-        nextRow.levelIndex = levelIndex;
-        nextRow.level_index = levelIndex;
-        nextRow.level = levelName(levelIndex);
-      }
-      updated[index] = nextRow;
-
-      updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
-      updated._floorMetrics = programSpaces._floorMetrics;
-
-      onProgramSpacesChange(updated);
+      onProgramSpacesChange(
+        applyProgramRowChangeForFloorAuthority({
+          programSpaces,
+          index,
+          field,
+          value,
+          floorCount: authoritativeFloorCount,
+          floorMetrics:
+            projectDetails?.floorMetrics ??
+            programSpaces?._floorMetrics ??
+            null,
+        }),
+      );
     },
-    [programSpaces, authoritativeFloorCount, onProgramSpacesChange],
+    [
+      programSpaces,
+      authoritativeFloorCount,
+      projectDetails?.floorMetrics,
+      onProgramSpacesChange,
+    ],
   );
 
   const handleAddSpace = useCallback(() => {
@@ -190,20 +230,34 @@ const SpecsStep = ({
       level_index: 0,
       notes: "",
     };
-    const updated = [...programSpaces, newSpace];
-    updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
-    updated._floorMetrics = programSpaces._floorMetrics;
+    const updated = stampProgramFloorAuthorityMetadata(
+      [...programSpaces, newSpace],
+      authoritativeFloorCount,
+      projectDetails?.floorMetrics ?? programSpaces?._floorMetrics ?? null,
+    );
     onProgramSpacesChange(updated);
-  }, [programSpaces, onProgramSpacesChange]);
+  }, [
+    programSpaces,
+    authoritativeFloorCount,
+    projectDetails?.floorMetrics,
+    onProgramSpacesChange,
+  ]);
 
   const handleRemoveSpace = useCallback(
     (index) => {
-      const updated = programSpaces.filter((_, i) => i !== index);
-      updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
-      updated._floorMetrics = programSpaces._floorMetrics;
+      const updated = stampProgramFloorAuthorityMetadata(
+        programSpaces.filter((_, i) => i !== index),
+        authoritativeFloorCount,
+        projectDetails?.floorMetrics ?? programSpaces?._floorMetrics ?? null,
+      );
       onProgramSpacesChange(updated);
     },
-    [programSpaces, onProgramSpacesChange],
+    [
+      programSpaces,
+      authoritativeFloorCount,
+      projectDetails?.floorMetrics,
+      onProgramSpacesChange,
+    ],
   );
 
   const handleReorderSpace = useCallback(
@@ -212,12 +266,20 @@ const SpecsStep = ({
       const [removed] = updated.splice(fromIndex, 1);
       updated.splice(toIndex, 0, removed);
 
-      updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
-      updated._floorMetrics = programSpaces._floorMetrics;
+      stampProgramFloorAuthorityMetadata(
+        updated,
+        authoritativeFloorCount,
+        projectDetails?.floorMetrics ?? programSpaces?._floorMetrics ?? null,
+      );
 
       onProgramSpacesChange(updated);
     },
-    [programSpaces, onProgramSpacesChange],
+    [
+      programSpaces,
+      authoritativeFloorCount,
+      projectDetails?.floorMetrics,
+      onProgramSpacesChange,
+    ],
   );
 
   return (
@@ -324,7 +386,7 @@ const SpecsStep = ({
                 <Input
                   label=""
                   type="number"
-                  value={projectDetails.floorCount || 2}
+                  value={authoritativeFloorCount}
                   onChange={(e) => {
                     const maxFloors =
                       projectDetails.floorMetrics?.maxFloorsAllowed || 10;
@@ -349,7 +411,7 @@ const SpecsStep = ({
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-white tabular-nums">
                           {projectDetails.autoDetectedFloorCount ||
-                            projectDetails.floorCount ||
+                            authoritativeFloorCount ||
                             2}{" "}
                           floors
                         </span>
@@ -374,13 +436,8 @@ const SpecsStep = ({
                       const nextLocked = !currentlyLocked;
 
                       const nextFloorCount = nextLocked
-                        ? Math.max(
-                            1,
-                            parseInt(projectDetails.floorCount, 10) ||
-                              autoFloors ||
-                              2,
-                          )
-                        : autoFloors || projectDetails.floorCount || 2;
+                        ? authoritativeFloorCount
+                        : autoFloors || authoritativeFloorCount || 2;
 
                       applyFloorCountChange({
                         nextLocked,
@@ -402,15 +459,15 @@ const SpecsStep = ({
                 {projectDetails.floorCountLocked &&
                   projectDetails.autoDetectedFloorCount &&
                   projectDetails.autoDetectedFloorCount !==
-                    projectDetails.floorCount && (
+                    authoritativeFloorCount && (
                     <div className="-mt-2 flex flex-wrap items-center gap-3 rounded-lg border border-warning-500/30 bg-warning-500/5 px-3 py-2">
                       <p className="flex-1 text-xs text-warning-200">
                         Manual floor count locked: programme will use{" "}
                         <span className="font-semibold">
-                          {projectDetails.floorCount}
+                          {authoritativeFloorCount}
                         </span>{" "}
                         level
-                        {projectDetails.floorCount === 1 ? "" : "s"}. Auto
+                        {authoritativeFloorCount === 1 ? "" : "s"}. Auto
                         recommendation:{" "}
                         <span className="font-semibold">
                           {projectDetails.autoDetectedFloorCount}
@@ -428,7 +485,8 @@ const SpecsStep = ({
                           })
                         }
                       >
-                        Use {projectDetails.autoDetectedFloorCount} levels
+                        Use recommended {projectDetails.autoDetectedFloorCount}{" "}
+                        levels
                       </Button>
                     </div>
                   )}

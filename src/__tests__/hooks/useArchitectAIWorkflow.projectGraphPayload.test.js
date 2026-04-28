@@ -292,4 +292,32 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.projectDetails.floorCount).toBe(3);
     expect(request.projectDetails.floorCountLocked).toBe(true);
   });
+
+  test("level authority: stale brief target_storeys cannot override current projectDetails", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 200,
+        floorCount: 3,
+        floorCountLocked: true,
+        brief: {
+          target_gia_m2: 200,
+          target_storeys: 2,
+          building_type: "detached-house",
+        },
+        programSpaces: [
+          { name: "Hall", area: 8, count: 1, level: "Ground" },
+          { name: "Bed", area: 30, count: 1, level: "First" },
+          { name: "Study", area: 18, count: 1, level: "Second" },
+        ],
+      },
+    });
+
+    expect(request.projectDetails.floorCount).toBe(3);
+    expect(request.brief.target_storeys).toBe(3);
+    expect(
+      request.programSpaces.map((space) => space.levelIndex).sort(),
+    ).toEqual([0, 1, 2]);
+  });
 });

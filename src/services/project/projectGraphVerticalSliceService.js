@@ -55,6 +55,7 @@ import {
   levelName as canonicalLevelName,
 } from "./levelUtils.js";
 import { runProgramPreflight } from "./programPreflight.js";
+import { resolveAuthoritativeFloorCount } from "./floorCountAuthority.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -494,14 +495,33 @@ function normalizeBrief(input = {}) {
         180,
     ) || 180,
   );
-  const requestedStoreys =
+  const briefRequestedStoreys =
     Number.parseInt(
-      sourceBrief.target_storeys ??
-        sourceBrief.targetStoreys ??
-        projectDetails.floorCount ??
-        2,
+      sourceBrief.target_storeys ?? sourceBrief.targetStoreys ?? 2,
       10,
     ) || 2;
+  const projectFloorCount =
+    projectDetails.floorCount ??
+    projectDetails.floors ??
+    projectDetails.targetStoreys;
+  const hasProjectFloorAuthority =
+    (Boolean(projectDetails.floorCountLocked) &&
+      Number(projectFloorCount) > 0) ||
+    (!projectDetails.floorCountLocked &&
+      Number(projectDetails.autoDetectedFloorCount) > 0) ||
+    (!projectDetails.floorCountLocked && Number(projectFloorCount) > 0);
+  const requestedStoreys = hasProjectFloorAuthority
+    ? resolveAuthoritativeFloorCount(
+        {
+          ...projectDetails,
+          floorCount: projectFloorCount,
+        },
+        {
+          fallback: briefRequestedStoreys,
+          maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+        },
+      ).floorCount
+    : briefRequestedStoreys;
   const targetStoreys = Math.max(
     1,
     Math.min(MAX_TARGET_STOREYS, requestedStoreys),

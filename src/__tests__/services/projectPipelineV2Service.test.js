@@ -264,4 +264,52 @@ describe("projectPipelineV2Service", () => {
       bundle.programBrief?.spaces?.some((space) => space.levelIndex === 2),
     ).toBe(true);
   });
+
+  test("uses autoDetectedFloorCount over stale floorCount and programme metadata", async () => {
+    const programSpaces = [
+      {
+        id: "living-0",
+        name: "Living Room",
+        label: "Living Room",
+        area: 28,
+        count: 1,
+        level: "Ground",
+        levelIndex: 0,
+        spaceType: "living-room",
+      },
+      {
+        id: "bedroom-1",
+        name: "Bedroom 1",
+        label: "Bedroom 1",
+        area: 14,
+        count: 1,
+        level: "First",
+        levelIndex: 1,
+        spaceType: "bedroom",
+      },
+    ];
+    programSpaces._calculatedFloorCount = 2;
+
+    const bundle = await buildProjectPipelineV2Bundle({
+      projectDetails: {
+        category: "residential",
+        subType: "detached-house",
+        program: "detached-house",
+        area: 150,
+        floorCount: 2,
+        floorCountLocked: false,
+        autoDetectedFloorCount: 3,
+        entranceDirection: "S",
+      },
+      programSpaces,
+      ...baseInput,
+    });
+
+    expect(bundle.programBrief?.levelCount).toBe(3);
+    expect(bundle.programBrief?.spaces?._calculatedFloorCount).toBe(3);
+    expect(bundle.projectGeometry?.levels).toHaveLength(3);
+    expect(
+      bundle.programBrief?.spaces?.some((space) => space.levelIndex === 2),
+    ).toBe(true);
+  });
 });

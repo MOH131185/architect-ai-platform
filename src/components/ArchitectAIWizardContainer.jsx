@@ -51,6 +51,7 @@ import {
   resolveAuthoritativeFloorCount,
   syncProgramToFloorCount,
 } from "../services/project/floorCountAuthority.js";
+import { normalizeProgramSpaces } from "../services/project/levelUtils.js";
 import PricingPage from "./PricingPage.jsx";
 
 // Step Components
@@ -459,7 +460,20 @@ const ArchitectAIWizardContainer = () => {
     if (!Number.isFinite(autoCount) || autoCount < 1) return;
     if (!Array.isArray(programSpaces) || programSpaces.length === 0) return;
     const currentCalculated = Number(programSpaces._calculatedFloorCount);
-    if (Number.isFinite(currentCalculated) && currentCalculated === autoCount) {
+    const currentLevels = new Set(
+      programSpaces
+        .map((space) => Number(space?.levelIndex))
+        .filter(Number.isFinite),
+    );
+    const hasEveryAutoLevel = Array.from(
+      { length: autoCount },
+      (_, index) => index,
+    ).every((index) => currentLevels.has(index));
+    if (
+      Number.isFinite(currentCalculated) &&
+      currentCalculated === autoCount &&
+      hasEveryAutoLevel
+    ) {
       return;
     }
     const buildingType =
@@ -970,26 +984,33 @@ const ArchitectAIWizardContainer = () => {
         { maxLength: 120, allowNewlines: false },
       );
       const sanitizedArea = sanitizeDimensionInput(projectDetails.area);
-      const desiredFloorCount = Math.max(
-        1,
-        parseInt(projectDetails.floorCount, 10) || 1,
-      );
       const siteArea = siteMetrics?.areaM2 || 0;
       // Single source of truth for floor count. Every downstream call -
       // residential engine, generic AI prompt, post-gen sync, setProjectDetails -
       // must use this value. Locked > autoDetected > manual > fallback.
       const auth = resolveAuthoritativeFloorCount(projectDetails, {
-        fallback: desiredFloorCount || 2,
+        fallback: 2,
+        maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
       });
       const authoritativeFloorCount = auth.floorCount;
-
-      console.info("[compileProgram] floorCountAuthority", {
+      const compileAuthorityLog = {
         floorCountLocked: !!projectDetails.floorCountLocked,
         floorCount: projectDetails.floorCount,
         autoDetectedFloorCount: projectDetails.autoDetectedFloorCount,
         authoritativeFloorCount,
         authoritySource: auth.source,
-      });
+      };
+
+      console.info(
+        `[compileProgram] Compiling programme using ${authoritativeFloorCount} level${authoritativeFloorCount === 1 ? "" : "s"} from ${
+          auth.source === "auto"
+            ? "auto recommendation"
+            : auth.source === "locked"
+              ? "manual lock"
+              : auth.source
+        }`,
+        compileAuthorityLog,
+      );
 
       if (!sanitizedProgram || !sanitizedArea) {
         setProgramWarnings([
@@ -1105,7 +1126,7 @@ const ArchitectAIWizardContainer = () => {
         spaces._floorMetrics = floorMetrics;
 
         console.info("[compileProgram] generatedProgram", {
-          authoritativeFloorCount,
+          ...compileAuthorityLog,
           generatedProgramLevelCount: programBrief.levelCount,
           finalProgramLevels: Array.from(
             new Set(spaces.map((s) => Number(s.levelIndex) || 0)),
@@ -1228,7 +1249,7 @@ const ArchitectAIWizardContainer = () => {
           category: projectDetails.category,
           subType: projectDetails.subType,
           area: parseFloat(projectDetails.area),
-          floorCount: projectDetails.floorCount || 2,
+          floorCount: floorCountForPrompt,
           climate: locationData?.climate,
           zoning: locationData?.zoning,
         });
@@ -1292,6 +1313,14 @@ const ArchitectAIWizardContainer = () => {
       );
       spaces = syncResult.spaces;
       spaces._floorMetrics = floorMetrics;
+
+      console.info("[compileProgram] generatedProgram", {
+        ...compileAuthorityLog,
+        generatedProgramLevelCount: null,
+        finalProgramLevels: Array.from(
+          new Set(spaces.map((s) => Number(s.levelIndex) || 0)),
+        ).sort((a, b) => a - b),
+      });
 
       setProjectDetails((prev) => {
         const next = { ...prev };
@@ -1357,7 +1386,11 @@ const ArchitectAIWizardContainer = () => {
 
   const handleProgramSpacesChange = useCallback(
     (spaces) => {
-      const normalizedSpaces = (spaces || []).map((space, index) => ({
+      const auth = resolveAuthoritativeFloorCount(projectDetails, {
+        fallback: 2,
+        maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+      });
+      let normalizedSpaces = (spaces || []).map((space, index) => ({
         ...space,
         id: space.id || `space_${Date.now()}_${index}`,
         name: String(space.name || space.label || `Space ${index + 1}`),
@@ -1367,14 +1400,17 @@ const ArchitectAIWizardContainer = () => {
         level: space.level || "Ground",
       }));
 
-      normalizedSpaces._calculatedFloorCount =
-        spaces?._calculatedFloorCount || projectDetails.floorCount || 2;
+      normalizedSpaces = normalizeProgramSpaces(
+        normalizedSpaces,
+        auth.floorCount,
+      );
+      normalizedSpaces._calculatedFloorCount = auth.floorCount;
       normalizedSpaces._floorMetrics =
         spaces?._floorMetrics || projectDetails.floorMetrics || null;
 
       setProgramSpaces(normalizedSpaces);
     },
-    [projectDetails.floorCount, projectDetails.floorMetrics, setProgramSpaces],
+    [projectDetails, setProgramSpaces],
   );
 
   const handleImportProgram = useCallback(async () => {
@@ -1395,7 +1431,7 @@ const ArchitectAIWizardContainer = () => {
           const result = await ProgramImportExportService.importProgram(file);
 
           if (result.success) {
-            const normalizedSpaces = (result.spaces || []).map(
+            let normalizedSpaces = (result.spaces || []).map(
               (space, index) => ({
                 ...space,
                 id: space.id || `space_${Date.now()}_${index}`,
@@ -1408,12 +1444,34 @@ const ArchitectAIWizardContainer = () => {
                 level: space.level || "Ground",
               }),
             );
+            const auth = resolveAuthoritativeFloorCount(projectDetails, {
+              fallback: 2,
+              maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+            });
+            const buildingType =
+              projectDetails.program ||
+              projectDetails.subType ||
+              projectDetails.category ||
+              "mixed-use";
+            const syncResult = syncProgramToFloorCount(
+              normalizedSpaces,
+              auth.floorCount,
+              {
+                buildingType,
+                projectDetails,
+              },
+            );
+            normalizedSpaces = syncResult.spaces;
 
             setProgramSpaces(normalizedSpaces);
             logger.success("Program imported", { count: result.spaces.length });
 
-            if (result.warnings.length > 0) {
-              setProgramWarnings(result.warnings);
+            const importWarnings = [
+              ...(result.warnings || []),
+              ...syncResult.warnings,
+            ];
+            if (importWarnings.length > 0) {
+              setProgramWarnings(importWarnings);
             }
           } else {
             logger.error("Import failed", { errors: result.errors });
@@ -1427,18 +1485,22 @@ const ArchitectAIWizardContainer = () => {
     } catch (err) {
       logger.error("Import failed", err);
     }
-  }, [setProgramSpaces, setProgramWarnings]);
+  }, [projectDetails, setProgramSpaces, setProgramWarnings]);
 
   const handleExportProgram = useCallback(async () => {
     try {
       const ProgramImportExportService = (
         await import("../services/ProgramImportExportService")
       ).default;
+      const auth = resolveAuthoritativeFloorCount(projectDetails, {
+        fallback: 2,
+        maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+      });
 
       const metadata = {
         buildingType: `${projectDetails.category}_${projectDetails.subType}`,
         area: projectDetails.area,
-        floorCount: projectDetails.floorCount,
+        floorCount: auth.floorCount,
       };
 
       await ProgramImportExportService.exportProgram(
@@ -1704,6 +1766,11 @@ const ArchitectAIWizardContainer = () => {
             type: file.type,
             convertedFromPdf: file.convertedFromPdf,
           }));
+      const designFloorAuth = resolveAuthoritativeFloorCount(projectDetails, {
+        fallback: 2,
+        maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+      });
+      const designFloorCount = designFloorAuth.floorCount;
 
       const designSpec = {
         buildingProgram: selectedSubType || projectDetails.category,
@@ -1712,11 +1779,11 @@ const ArchitectAIWizardContainer = () => {
         buildingNotes: projectDetails.customNotes,
         floorArea: parseFloat(projectDetails.area),
         area: parseFloat(projectDetails.area), // Alias for services expecting `area`
-        floorCount:
-          v2Bundle?.programBrief?.levelCount || projectDetails.floorCount || 2,
-        floors:
-          v2Bundle?.programBrief?.levelCount || projectDetails.floorCount || 2, // Alias for services expecting `floors`
+        floorCount: designFloorCount,
+        floors: designFloorCount, // Alias for services expecting `floors`
         floorCountLocked: Boolean(projectDetails.floorCountLocked),
+        autoDetectedFloorCount: projectDetails.autoDetectedFloorCount ?? null,
+        floorCountAuthoritySource: designFloorAuth.source,
         entranceOrientation: projectDetails.entranceDirection,
         entranceDirection: projectDetails.entranceDirection, // Maintain backward compatibility
         programSpaces: effectiveProgramSpaces,

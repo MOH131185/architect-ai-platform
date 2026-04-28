@@ -300,8 +300,47 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       floorCountLocked:
         projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
     },
-    { fallback: 2 },
+    {
+      fallback: 2,
+      maxFloors:
+        projectDetails.floorMetrics?.maxFloorsAllowed ||
+        designSpec.floorMetrics?.maxFloorsAllowed ||
+        null,
+    },
   ).floorCount;
+  const sourceProjectBrief =
+    designSpec.brief || designSpec.projectBrief || null;
+  const resolvedBrief = sourceProjectBrief
+    ? {
+        ...sourceProjectBrief,
+        target_storeys: resolvedFloorCount,
+        targetStoreys: resolvedFloorCount,
+      }
+    : {
+        project_name:
+          projectDetails.projectName ||
+          projectDetails.name ||
+          designSpec.projectName ||
+          "ArchiAI Project",
+        target_gia_m2:
+          projectDetails.area ??
+          projectDetails.targetAreaM2 ??
+          designSpec.targetAreaM2 ??
+          designSpec.area ??
+          180,
+        target_storeys: resolvedFloorCount,
+        building_type:
+          projectDetails.buildingType ||
+          projectDetails.subType ||
+          designSpec.buildingType ||
+          "dwelling",
+        required_spaces_text:
+          projectDetails.requiredSpacesText ||
+          designSpec.requiredSpacesText ||
+          "",
+        constraints_text:
+          projectDetails.constraintsText || designSpec.constraintsText || "",
+      };
 
   return {
     projectDetails: {
@@ -342,32 +381,7 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     portfolioBlend: compactPortfolioBlendForRequest(
       designSpec.portfolioBlend || {},
     ),
-    brief: designSpec.brief ||
-      designSpec.projectBrief || {
-        project_name:
-          projectDetails.projectName ||
-          projectDetails.name ||
-          designSpec.projectName ||
-          "ArchiAI Project",
-        target_gia_m2:
-          projectDetails.area ??
-          projectDetails.targetAreaM2 ??
-          designSpec.targetAreaM2 ??
-          designSpec.area ??
-          180,
-        target_storeys: resolvedFloorCount,
-        building_type:
-          projectDetails.buildingType ||
-          projectDetails.subType ||
-          designSpec.buildingType ||
-          "dwelling",
-        required_spaces_text:
-          projectDetails.requiredSpacesText ||
-          designSpec.requiredSpacesText ||
-          "",
-        constraints_text:
-          projectDetails.constraintsText || designSpec.constraintsText || "",
-      },
+    brief: resolvedBrief,
   };
 }
 

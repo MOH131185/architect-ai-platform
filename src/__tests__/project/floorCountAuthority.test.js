@@ -2,6 +2,12 @@ import {
   resolveAuthoritativeFloorCount,
   syncProgramToFloorCount,
 } from "../../services/project/floorCountAuthority.js";
+import {
+  generateResidentialProgramBrief,
+  normalizeResidentialProgramSpaces,
+} from "../../services/project/residentialProgramEngine.js";
+import { applyProgramRowChangeForFloorAuthority } from "../../components/steps/SpecsStep.jsx";
+import { buildProgramLevelOptions } from "../../components/specs/BuildingProgramTable.jsx";
 
 describe("resolveAuthoritativeFloorCount", () => {
   test("locked floorCount wins outright", () => {
@@ -86,6 +92,45 @@ describe("resolveAuthoritativeFloorCount", () => {
       autoDetectedFloorCount: 3,
     });
     expect(result).toMatchObject({ floorCount: 3, source: "auto" });
+  });
+});
+
+describe("programme UI floor authority", () => {
+  test("row edits use projectDetails authority instead of stale programme metadata", () => {
+    const programSpaces = [
+      {
+        id: "bed-1",
+        name: "Bedroom",
+        label: "Bedroom",
+        area: 12,
+        count: 1,
+        level: "First",
+        levelIndex: 1,
+        level_index: 1,
+      },
+    ];
+    programSpaces._calculatedFloorCount = 2;
+
+    const updated = applyProgramRowChangeForFloorAuthority({
+      programSpaces,
+      index: 0,
+      field: "level",
+      value: "Second",
+      floorCount: 3,
+    });
+
+    expect(updated[0]).toMatchObject({
+      level: "Second",
+      levelIndex: 2,
+      level_index: 2,
+    });
+    expect(updated._calculatedFloorCount).toBe(3);
+  });
+
+  test("table options include Second when authoritative floorCount is 3", () => {
+    expect(buildProgramLevelOptions(3, [])).toEqual(
+      expect.arrayContaining(["Ground", "First", "Second"]),
+    );
   });
 });
 
@@ -242,5 +287,75 @@ describe("syncProgramToFloorCount", () => {
     expect(result.spaces).toHaveLength(0);
     expect(result.spaces._calculatedFloorCount).toBe(2);
     expect(result.changed).toBe(false);
+  });
+
+  test("auto recommendation compile path produces three populated levels from stale floorCount", () => {
+    const projectDetails = {
+      floorCountLocked: false,
+      floorCount: 2,
+      autoDetectedFloorCount: 3,
+      category: "residential",
+      subType: "detached-house",
+    };
+    const auth = resolveAuthoritativeFloorCount(projectDetails, {
+      fallback: 2,
+    });
+    const programBrief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 180,
+      siteAreaM2: 120,
+      levelCountOverride: auth.floorCount,
+    });
+    const synced = syncProgramToFloorCount(
+      normalizeResidentialProgramSpaces(programBrief.spaces),
+      auth.floorCount,
+      {
+        buildingType: "detached-house",
+        projectDetails,
+      },
+    );
+
+    expect(auth).toMatchObject({ floorCount: 3, source: "auto" });
+    expect(synced.spaces._calculatedFloorCount).toBe(3);
+    expect(
+      Array.from(new Set(synced.spaces.map((space) => space.levelIndex))).sort(
+        (a, b) => a - b,
+      ),
+    ).toEqual([0, 1, 2]);
+  });
+
+  test("locked manual compile path preserves three populated levels", () => {
+    const projectDetails = {
+      floorCountLocked: true,
+      floorCount: 3,
+      autoDetectedFloorCount: 2,
+      category: "residential",
+      subType: "detached-house",
+    };
+    const auth = resolveAuthoritativeFloorCount(projectDetails, {
+      fallback: 2,
+    });
+    const programBrief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 180,
+      siteAreaM2: 120,
+      levelCountOverride: auth.floorCount,
+    });
+    const synced = syncProgramToFloorCount(
+      normalizeResidentialProgramSpaces(programBrief.spaces),
+      auth.floorCount,
+      {
+        buildingType: "detached-house",
+        projectDetails,
+      },
+    );
+
+    expect(auth).toMatchObject({ floorCount: 3, source: "locked" });
+    expect(synced.spaces._calculatedFloorCount).toBe(3);
+    expect(
+      Array.from(new Set(synced.spaces.map((space) => space.levelIndex))).sort(
+        (a, b) => a - b,
+      ),
+    ).toEqual([0, 1, 2]);
   });
 });

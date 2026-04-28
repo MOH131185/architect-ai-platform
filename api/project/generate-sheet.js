@@ -1,6 +1,7 @@
 import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
 import dnaWorkflowOrchestrator from "../../src/services/dnaWorkflowOrchestrator.js";
 import { buildProjectPipelineV2Bundle } from "../../src/services/project/projectPipelineV2Service.js";
+import { resolveAuthoritativeFloorCount } from "../../src/services/project/floorCountAuthority.js";
 
 function uniqueStrings(values = []) {
   return [...new Set(values.filter(Boolean).map((value) => String(value)))];
@@ -94,6 +95,10 @@ export default async function handler(req, res) {
     }
 
     const preComposeTechnicalAuthority = buildTechnicalAuthority(bundle);
+    const floorAuth = resolveAuthoritativeFloorCount(projectDetails, {
+      fallback: bundle?.programBrief?.levelCount || 2,
+      maxFloors: projectDetails?.floorMetrics?.maxFloorsAllowed || null,
+    });
     const projectContext = {
       ...projectDetails,
       buildingProgram: projectDetails.program || projectDetails.subType,
@@ -101,10 +106,8 @@ export default async function handler(req, res) {
       buildingSubType: projectDetails.subType,
       floorArea: Number(projectDetails.area || 0),
       area: Number(projectDetails.area || 0),
-      floorCount:
-        bundle?.programBrief?.levelCount || projectDetails.floorCount || 2,
-      floors:
-        bundle?.programBrief?.levelCount || projectDetails.floorCount || 2,
+      floorCount: floorAuth.floorCount,
+      floors: floorAuth.floorCount,
       entranceDirection: projectDetails.entranceDirection || "S",
       programSpaces: bundle?.programBrief?.spaces || programSpaces,
       sitePolygon,

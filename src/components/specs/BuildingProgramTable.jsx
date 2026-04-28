@@ -21,6 +21,38 @@ import {
   normalizeLevelIndex,
 } from "../../services/project/levelUtils.js";
 
+const ordinal = (n) => {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n}st`;
+  if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
+  if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
+  return `${n}th`;
+};
+
+export function buildProgramLevelOptions(floorCount = 2, programSpaces = []) {
+  const normalizedFloorCount = Math.max(1, parseInt(floorCount, 10) || 1);
+  const baseLevelOptions = ["Ground"];
+  if (normalizedFloorCount >= 2) baseLevelOptions.push("First");
+  if (normalizedFloorCount >= 3) baseLevelOptions.push("Second");
+  if (normalizedFloorCount >= 4) baseLevelOptions.push("Third");
+  for (let i = 5; i <= normalizedFloorCount; i += 1) {
+    baseLevelOptions.push(ordinal(i - 1));
+  }
+  baseLevelOptions.push("Basement");
+
+  const source = Array.isArray(programSpaces) ? programSpaces : [];
+  const extraLevels = Array.from(
+    new Set(
+      source
+        .map((s) => s.level)
+        .filter((l) => typeof l === "string" && l.trim()),
+    ),
+  ).filter((level) => !baseLevelOptions.includes(level));
+
+  return [...baseLevelOptions, ...extraLevels];
+}
+
 const BuildingProgramTable = ({
   programSpaces = [],
   floorCount = 2,
@@ -55,36 +87,10 @@ const BuildingProgramTable = ({
 
   const normalizedFloorCount = Math.max(1, parseInt(floorCount, 10) || 1);
 
-  const ordinal = (n) => {
-    const mod10 = n % 10;
-    const mod100 = n % 100;
-    if (mod10 === 1 && mod100 !== 11) return `${n}st`;
-    if (mod10 === 2 && mod100 !== 12) return `${n}nd`;
-    if (mod10 === 3 && mod100 !== 13) return `${n}rd`;
-    return `${n}th`;
-  };
-
-  const baseLevelOptions = (() => {
-    const levels = ["Ground"];
-    if (normalizedFloorCount >= 2) levels.push("First");
-    if (normalizedFloorCount >= 3) levels.push("Second");
-    if (normalizedFloorCount >= 4) levels.push("Third");
-    for (let i = 5; i <= normalizedFloorCount; i++) {
-      levels.push(ordinal(i - 1));
-    }
-    levels.push("Basement");
-    return levels;
-  })();
-
-  const extraLevels = Array.from(
-    new Set(
-      programSpaces
-        .map((s) => s.level)
-        .filter((l) => typeof l === "string" && l.trim()),
-    ),
-  ).filter((level) => !baseLevelOptions.includes(level));
-
-  const levelOptions = [...baseLevelOptions, ...extraLevels];
+  const levelOptions = buildProgramLevelOptions(
+    normalizedFloorCount,
+    programSpaces,
+  );
 
   return (
     <div className="space-y-4">
