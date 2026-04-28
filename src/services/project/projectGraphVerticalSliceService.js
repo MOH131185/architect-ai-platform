@@ -36,6 +36,18 @@ import { runWithRepair } from "../design/repairLoop.js";
 import { detectConflicts } from "../design/constraintPriority.js";
 import { enrichSiteContext } from "../context/contextAggregator.js";
 import { decideSheetSplit } from "../sheet/sheetSplitter.js";
+import {
+  embedFontInSVG,
+  FINAL_SHEET_MIN_FONT_SIZE_PX,
+} from "../../utils/svgFontEmbedder.js";
+import { detectA1GlyphIntegrity } from "../a1/a1FinalExportContract.js";
+import {
+  buildClimateRenderContext,
+  buildStyleRenderContext,
+  buildProgrammeRenderContext,
+  buildReasoningChainBlock,
+} from "../a1/panelPromptBuilders.js";
+import { renderProjectGraphPanelImage } from "../render/projectGraphImageRenderer.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -250,6 +262,106 @@ function levelName(index) {
   return names[index] || `Level ${index}`;
 }
 
+// Condense the compiled programme into the structure that
+// panelPromptBuilders.buildProgrammeRenderContext expects: room counts per
+// named level, level areas, total area, target storeys. Used by Phase 4
+// image-gen prompts so renders reflect the actual programme.
+function buildProgrammeSummaryForRender(brief = {}, programme = null) {
+  if (!programme || typeof programme !== "object") return null;
+  const spaces = Array.isArray(programme.spaces) ? programme.spaces : [];
+  if (spaces.length === 0) return null;
+  const targetStoreys = Math.max(1, Number(brief.target_storeys || 1));
+  const totalArea = spaces.reduce(
+    (sum, sp) => sum + Math.max(0, Number(sp.target_area_m2 || sp.area || 0)),
+    0,
+  );
+  const roomsPerLevel = {};
+  const levelAreas = {};
+  for (const sp of spaces) {
+    const idx = Math.max(
+      0,
+      Math.min(targetStoreys - 1, Number(sp.target_level_index ?? 0)),
+    );
+    const label = levelName(idx);
+    if (!roomsPerLevel[label]) roomsPerLevel[label] = [];
+    if (sp.name) roomsPerLevel[label].push(sp.name);
+    levelAreas[label] =
+      (levelAreas[label] || 0) +
+      Math.max(0, Number(sp.target_area_m2 || sp.area || 0));
+  }
+  return {
+    total_area_m2: Math.round(totalArea),
+    target_storeys: targetStoreys,
+    building_type: brief.building_type || "building",
+    rooms_per_level: roomsPerLevel,
+    level_areas: levelAreas,
+  };
+}
+
+const LEVEL_NAME_TO_INDEX = Object.freeze({
+  basement: -1,
+  "lower ground": -1,
+  ground: 0,
+  "ground floor": 0,
+  "ground level": 0,
+  g: 0,
+  0: 0,
+  first: 1,
+  "first floor": 1,
+  1: 1,
+  "level 1": 1,
+  mezzanine: 1,
+  second: 2,
+  "second floor": 2,
+  2: 2,
+  "level 2": 2,
+  third: 3,
+  "third floor": 3,
+  3: 3,
+  "level 3": 3,
+  fourth: 4,
+  "fourth floor": 4,
+  4: 4,
+  "level 4": 4,
+  fifth: 5,
+  "fifth floor": 5,
+  5: 5,
+  "level 5": 5,
+  sixth: 6,
+  "sixth floor": 6,
+  6: 6,
+  seventh: 7,
+  "seventh floor": 7,
+  7: 7,
+  roof: 999,
+  rooftop: 999,
+});
+
+// Resolve a programme space's target level to a 0-based numeric index.
+// Honour explicit numeric levelIndex first, then the human-readable
+// `level` / `target_level` string from the programme schedule UI, then
+// fall back to ground only as a last resort. Memory rule
+// (feedback_floor_count_autodetect): manual selection must propagate
+// end-to-end without silent caps.
+export function resolveLevelIndex(space, maxLevelIndex) {
+  const numericCandidate = Number.parseInt(
+    space?.levelIndex ?? space?.level_index ?? space?.target_level_index,
+    10,
+  );
+  if (Number.isFinite(numericCandidate)) {
+    return Math.max(0, Math.min(maxLevelIndex, numericCandidate));
+  }
+  const raw = String(space?.level ?? space?.target_level ?? "")
+    .trim()
+    .toLowerCase();
+  if (raw && Object.prototype.hasOwnProperty.call(LEVEL_NAME_TO_INDEX, raw)) {
+    const idx = LEVEL_NAME_TO_INDEX[raw];
+    const resolved = idx === 999 ? maxLevelIndex : idx;
+    return Math.max(0, Math.min(maxLevelIndex, resolved));
+  }
+  return 0;
+}
+
 function levelOrdinalSlug(index) {
   if (index === 0) return "ground";
   if (index === 1) return "first";
@@ -385,7 +497,7 @@ function normalizeBrief(input = {}) {
   };
 }
 
-function normalizeInputProgramSpaces(programSpaces = [], brief) {
+export function normalizeInputProgramSpaces(programSpaces = [], brief) {
   if (!Array.isArray(programSpaces) || programSpaces.length === 0) {
     return [];
   }
@@ -403,13 +515,8 @@ function normalizeInputProgramSpaces(programSpaces = [], brief) {
       4,
       Number(space.target_area_m2 || space.area || 12) * scale,
     );
-    const levelIndex = Math.max(
-      0,
-      Math.min(
-        Number(brief.target_storeys || 1) - 1,
-        Number.parseInt(space.levelIndex ?? space.level_index ?? 0, 10) || 0,
-      ),
-    );
+    const maxLevelIndex = Math.max(0, Number(brief.target_storeys || 1) - 1);
+    const levelIndex = resolveLevelIndex(space, maxLevelIndex);
     return {
       space_id: space.id || createStableId("space", name, index),
       name,
@@ -2330,15 +2437,114 @@ function buildSiteContextPanelArtifact({
   };
 }
 
-function buildVisual3DPanelArtifacts({ compiledProject, geometryHash }) {
+// Build a climate + style + programme aware prompt for image-edit-based
+// 3D panel rendering. Uses panelPromptBuilders.buildReasoningChainBlock
+// so the gpt-image call sees the same upstream drivers (UK temperate,
+// red brick + timber vernacular, 3-storey detached programme, etc.) that
+// the deterministic pipeline already computed.
+function buildProjectGraphRenderPrompt({
+  panelType,
+  brief,
+  compiledProject,
+  climate,
+  localStyle,
+  styleDNA,
+  programmeSummary,
+  region,
+}) {
+  const reasoning = buildReasoningChainBlock({
+    locationData: { climate, region },
+    masterDNA: { localStyle, styleDNA },
+    projectContext: { programmeSummary, targetStoreys: brief?.target_storeys },
+  });
+  const intent =
+    {
+      hero_3d:
+        "Photoreal hero exterior 3D perspective — magazine-cover quality. Match the silhouette of the reference image exactly (same massing, same roof shape, same opening positions, same storey count). Apply the materials, lighting, and detailing from the reasoning chain below.",
+      exterior_render:
+        "Photoreal front-elevation hero render — slight 12° angle, head-on composition. Match the reference silhouette exactly. Render with golden-hour lighting and physically-based materials.",
+      axonometric:
+        "Photoreal axonometric 3D projection (30° isometric) showing roof form and four facades. Match the reference massing, roof, and opening layout exactly. Material textures legible.",
+      interior_3d:
+        "Photoreal interior perspective — main living/kitchen space. Use the SAME materials and palette as the exterior. Match the reference interior volume.",
+    }[panelType] || "Photoreal architectural render.";
+  const buildingType = brief?.building_type || "building";
+  const projectName = brief?.project_name || "project";
+  return [
+    `Project: ${projectName} — ${buildingType}.`,
+    intent,
+    reasoning,
+    "STYLE: V-Ray + 3ds Max quality, octane-grade physically-based rendering, photoreal PBR materials, HDRI sky lighting, shallow depth of field, Dezeen / ArchDaily magazine cover quality, 8K, no watermark, no text, no diagrams. Single freestanding building, no neighbours.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function wrapPngAsSvgPanel(pngBuffer, viewBox, width, height) {
+  const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">
+  <image href="${dataUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice"/>
+</svg>`;
+}
+
+async function buildVisual3DPanelArtifacts({
+  compiledProject,
+  geometryHash,
+  brief = null,
+  climate = null,
+  localStyle = null,
+  styleDNA = null,
+  programmeSummary = null,
+  region = null,
+}) {
   const renderInputs = ensureCompiledProjectRenderInputs(compiledProject, {
     geometryHash,
     views: REQUIRED_3D_A1_PANEL_TYPES,
   });
-  return Object.fromEntries(
-    REQUIRED_3D_A1_PANEL_TYPES.map((panelType) => {
+  const entries = await Promise.all(
+    REQUIRED_3D_A1_PANEL_TYPES.map(async (panelType) => {
       const renderInput = renderInputs[panelType] || {};
-      const svgString = renderInput.svgString || "";
+      const deterministicSvgString = renderInput.svgString || "";
+      const width = renderInput.width || renderInput.metadata?.width || 1500;
+      const height = renderInput.height || renderInput.metadata?.height || 1050;
+      const viewBox =
+        renderInput.metadata?.normalizedViewBox || `0 0 ${width} ${height}`;
+
+      // Phase 4: when PROJECT_GRAPH_IMAGE_GEN_ENABLED=true, anchor a
+      // gpt-image call on the deterministic SVG silhouette and replace
+      // the panel SVG with the photoreal PNG wrapped in an SVG <image>.
+      // Falls back cleanly to the deterministic SVG when disabled or
+      // when the image-gen call fails.
+      let svgString = deterministicSvgString;
+      let renderProvenance = null;
+      if (deterministicSvgString) {
+        const prompt = buildProjectGraphRenderPrompt({
+          panelType,
+          brief,
+          compiledProject,
+          climate,
+          localStyle,
+          styleDNA,
+          programmeSummary,
+          region,
+        });
+        const renderResult = await renderProjectGraphPanelImage({
+          panelType,
+          deterministicSvg: deterministicSvgString,
+          prompt,
+          geometryHash,
+        });
+        if (renderResult?.pngBuffer) {
+          svgString = wrapPngAsSvgPanel(
+            renderResult.pngBuffer,
+            viewBox,
+            width,
+            height,
+          );
+          renderProvenance = renderResult.provenance;
+        }
+      }
+
       const svgHash =
         renderInput.svgHash ||
         computeCDSHashSync({ panelType, svgString, geometryHash });
@@ -2359,30 +2565,38 @@ function buildVisual3DPanelArtifacts({ compiledProject, geometryHash }) {
           geometryHash,
           authoritySource: "project_graph_compiled_geometry",
           svgHash,
-          width: renderInput.width || renderInput.metadata?.width || 1500,
-          height: renderInput.height || renderInput.metadata?.height || 1050,
+          width,
+          height,
           svgString,
           dataUrl: renderInput.dataUrl || null,
           metadata: {
             ...(cloneData(renderInput.metadata || {}) || {}),
-            deterministic: true,
-            source: "compiled_project_render_inputs",
+            deterministic: renderProvenance === null,
+            source: renderProvenance
+              ? "project_graph_image_renderer"
+              : "compiled_project_render_inputs",
             panelType,
             geometryHash,
             svgHash,
+            renderProvenance,
           },
         },
       ];
     }),
   );
+  return Object.fromEntries(entries);
 }
 
-function buildSheetPanelArtifacts({
+async function buildSheetPanelArtifacts({
   projectGraphId,
   site,
   climate,
   regulations,
   localStyle,
+  styleDNA = null,
+  programmeSummary = null,
+  brief = null,
+  region = null,
   compiledProject,
   geometryHash,
   siteSnapshot = null,
@@ -2396,9 +2610,15 @@ function buildSheetPanelArtifacts({
     geometryHash,
     siteSnapshot,
   });
-  const visual3d = buildVisual3DPanelArtifacts({
+  const visual3d = await buildVisual3DPanelArtifacts({
     compiledProject,
     geometryHash,
+    brief,
+    climate,
+    localStyle,
+    styleDNA,
+    programmeSummary,
+    region,
   });
   return {
     [siteContext.asset_id]: siteContext,
@@ -2644,7 +2864,7 @@ function buildSheetSvg({
 </svg>`;
 }
 
-function buildA1Sheet({
+async function buildA1Sheet({
   projectGraphId,
   brief,
   drawingSet,
@@ -2653,18 +2873,25 @@ function buildA1Sheet({
   climate,
   regulations,
   localStyle,
+  styleDNA = null,
+  programmeSummary = null,
+  region = null,
   scene3d,
   compiledProject,
   geometryHash,
   siteSnapshot = null,
   sheetPlan = null,
 }) {
-  const supplementalPanelArtifacts = buildSheetPanelArtifacts({
+  const supplementalPanelArtifacts = await buildSheetPanelArtifacts({
     projectGraphId,
     site,
     climate,
     regulations,
     localStyle,
+    styleDNA,
+    programmeSummary,
+    brief,
+    region,
     compiledProject,
     geometryHash,
     siteSnapshot,
@@ -2692,7 +2919,7 @@ function buildA1Sheet({
     geometryHash,
     drawingNumber,
   );
-  const svgString = buildSheetSvg({
+  const rawSvgString = buildSheetSvg({
     projectGraphId,
     brief,
     geometryHash,
@@ -2702,6 +2929,30 @@ function buildA1Sheet({
     sheetNumber: drawingNumber,
     sheetLabel,
   });
+  // Embed bundled fonts (NotoSans Regular + Bold from public/fonts/)
+  // immediately so every downstream consumer — frontend viewer, PDF
+  // rasteriser, SVG download — works with a single self-contained sheet.
+  // Without this, Sharp/librsvg falls back to whatever font the
+  // serverless image happens to expose and bakes ☐ tofu glyphs into the
+  // rasterised PNG. vercel.json includeFiles ships public/fonts/**/*
+  // with the function bundle.
+  const svgString = await embedFontInSVG(rawSvgString, {
+    bundledOnly: true,
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+  });
+  if (!svgString.includes("@font-face")) {
+    throw new Error(
+      "A1 sheet font embedding failed: bundled fonts at public/fonts/ " +
+        "could not be loaded. Refusing to publish a sheet that would " +
+        "render ☐ tofu glyphs.",
+    );
+  }
+  const sheetGlyphIntegrity = detectA1GlyphIntegrity({ sheetSvg: svgString });
+  if (sheetGlyphIntegrity.status === "blocked") {
+    throw new Error(
+      `A1 sheet glyph integrity check failed: ${sheetGlyphIntegrity.blockers.join("; ")}`,
+    );
+  }
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
   const requiredPlacementTypes = buildRequiredA1PanelTypes(targetStoreys);
@@ -2898,6 +3149,21 @@ async function buildA1PdfArtifact({
 }) {
   const widthPt = 841 * MM_TO_PT;
   const heightPt = 594 * MM_TO_PT;
+
+  // sheetArtifact.svgString must already contain embedded @font-face
+  // (NotoSans Regular + Bold). buildA1Sheet() embeds them; this assertion
+  // catches any regression that would let unembedded SVG reach Sharp,
+  // because Sharp/librsvg cannot resolve missing fonts on the Vercel
+  // serverless runtime and would bake ☐ tofu glyphs into the PNG.
+  const rawSheetSvg = sheetArtifact?.svgString || "";
+  if (!rawSheetSvg.includes("@font-face")) {
+    throw new Error(
+      "A1 sheet SVG reached PDF rasterisation without @font-face — refusing " +
+        "to export to avoid tofu glyphs. buildA1Sheet should have embedded " +
+        "bundled fonts upstream.",
+    );
+  }
+
   const renderedSheet = await rasteriseSheetArtifact({
     sheetArtifact,
     densityDpi: 144,
@@ -4225,9 +4491,19 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   // Plan §6.11: split into A1-01/02/03 when programme/storey/regulation
   // density exceeds the legibility threshold; otherwise emit a single sheet.
   const splitDecision = decideSheetSplit({ brief, programme, regulations });
+  // Phase 4 reasoning chain inputs: condense the programme into a per-level
+  // summary so render prompts can reference room counts + level areas.
+  const programmeSummary = buildProgrammeSummaryForRender(brief, programme);
+  const region =
+    site?.region ||
+    site?.locationProfile?.region ||
+    site?.country ||
+    input?.locationData?.region ||
+    brief?.site_input?.region ||
+    null;
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
-    const sheetResult = buildA1Sheet({
+    const sheetResult = await buildA1Sheet({
       projectGraphId,
       brief,
       drawingSet: drawingSetWithGraph,
@@ -4236,6 +4512,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       climate,
       regulations,
       localStyle,
+      styleDNA: localStyle?.styleDNA || localStyle?.style_dna || null,
+      programmeSummary,
+      region,
       scene3d,
       compiledProject,
       geometryHash: compiledProject.geometryHash,
@@ -4392,6 +4671,83 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     projectGraph: graphWithStableId,
     artifacts,
   });
+
+  // Phase 5: structured reasoning chain — Brief → Site → Climate → Style →
+  // Programme — exposed as both a structured object (for QA / API consumers)
+  // and a single human-readable text block (used to populate the A1 sheet's
+  // schedules_notes / Key Notes panel and surfaced in the response so the
+  // user can read why a render looks the way it does).
+  const reasoningChainText = buildReasoningChainBlock({
+    locationData: { climate, region },
+    masterDNA: {
+      localStyle,
+      styleDNA: localStyle?.styleDNA || localStyle?.style_dna || null,
+    },
+    projectContext: {
+      programmeSummary,
+      targetStoreys: brief?.target_storeys,
+    },
+  });
+  const reasoningChainStructured = {
+    asset_type: "reasoning_chain_json",
+    version: "project-graph-reasoning-chain-v1",
+    source_model_hash: compiledProject.geometryHash,
+    brief: {
+      project_name: brief?.project_name || null,
+      building_type: brief?.building_type || null,
+      target_gia_m2: brief?.target_gia_m2 || null,
+      target_storeys: brief?.target_storeys || null,
+      floorCountLocked:
+        brief?.floorCountLocked ?? brief?.floor_count_locked ?? null,
+    },
+    site: {
+      postcode: brief?.site_input?.postcode || site?.postcode || null,
+      coords: {
+        lat: brief?.site_input?.lat ?? site?.lat ?? null,
+        lon: brief?.site_input?.lon ?? site?.lon ?? null,
+      },
+      region,
+    },
+    climate: climate
+      ? {
+          zone: climate.zone || climate.koppen || null,
+          rainfall_mm:
+            climate.rainfall_mm ||
+            climate.annual_rainfall_mm ||
+            climate.precipitation_mm ||
+            null,
+          sun_path: climate.sun_path || climate.sunPath || null,
+          wind: climate.wind || null,
+          design_recommendations:
+            climate.design_recommendations || climate.recommendations || null,
+        }
+      : null,
+    style: {
+      regional_vernacular:
+        localStyle?.region || localStyle?.region_label || null,
+      facade_language:
+        localStyle?.styleDNA?.facade_language ||
+        localStyle?.facade_language ||
+        null,
+      roof_language:
+        localStyle?.styleDNA?.roof_language ||
+        localStyle?.roof_language ||
+        null,
+      window_language:
+        localStyle?.styleDNA?.window_language ||
+        localStyle?.window_language ||
+        null,
+      massing_language:
+        localStyle?.styleDNA?.massing_language ||
+        localStyle?.massing_language ||
+        null,
+      materials_local:
+        localStyle?.materials_local || localStyle?.local_materials || null,
+    },
+    programme: programmeSummary,
+    text: reasoningChainText,
+  };
+
   const finalGraph = {
     ...graphWithStableId,
     qa,
@@ -4414,6 +4770,14 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
         asset_type: "qa_report_json",
         source_model_hash: qa.source_model_hash,
         qa,
+      },
+      reasoningChain: {
+        asset_id: createStableId(
+          "asset-reasoning-chain",
+          finalGraph.project_id,
+          compiledProject.geometryHash,
+        ),
+        ...reasoningChainStructured,
       },
     },
     qa,

@@ -275,6 +275,298 @@ function buildBuildingTypeDescriptor(buildingType, dims) {
 }
 
 /**
+ * Translate climate analysis (Köppen zone, rainfall, sun path, wind) into a
+ * compact prompt block describing the design-move drivers a render must
+ * respect. Returns "" if no climate data is available — callers should
+ * conditionally include the result.
+ *
+ * @param {Object|null} climate - Climate object from climateService.getClimateData()
+ * @returns {string}
+ */
+export function buildClimateRenderContext(climate = null) {
+  if (!climate || typeof climate !== "object") return "";
+
+  const zone =
+    climate.zone ||
+    climate.koppen ||
+    climate.classification ||
+    climate.label ||
+    "";
+  const rainfallMm = Number(
+    climate.rainfall_mm ||
+      climate.annual_rainfall_mm ||
+      climate.precipitation_mm ||
+      climate.rainfall ||
+      0,
+  );
+  const sun = climate.sun_path || climate.sunPath || {};
+  const wind = climate.wind || {};
+  const recs = Array.isArray(climate.design_recommendations)
+    ? climate.design_recommendations
+    : Array.isArray(climate.recommendations)
+      ? climate.recommendations
+      : [];
+
+  const lines = [];
+  if (zone) lines.push(`Climate zone: ${zone}.`);
+  if (rainfallMm > 0) {
+    const pitch =
+      rainfallMm > 700
+        ? "35-45° pitched roof for wet-climate drainage with deep eaves and visible rainwater goods"
+        : rainfallMm > 400
+          ? "25-35° moderate-pitch roof"
+          : "shallow or flat roof acceptable in dry climate";
+    lines.push(`Annual rainfall ${Math.round(rainfallMm)}mm — ${pitch}.`);
+  }
+  const sunParts = [];
+  if (sun.altitude_summer != null) {
+    sunParts.push(`summer altitude ~${Math.round(sun.altitude_summer)}°`);
+  }
+  if (sun.altitude_winter != null) {
+    sunParts.push(`winter ~${Math.round(sun.altitude_winter)}°`);
+  }
+  if (sun.azimuth_noon != null) {
+    sunParts.push(`noon azimuth ${Math.round(sun.azimuth_noon)}°`);
+  }
+  if (sunParts.length > 0) {
+    lines.push(
+      `Sun path: ${sunParts.join(", ")} — south-facing glazing emphasised, west elevation shaded against summer overheating.`,
+    );
+  }
+  if (wind.prevailing || wind.direction) {
+    const dir = String(wind.prevailing || wind.direction).toUpperCase();
+    const opposite =
+      {
+        N: "S",
+        S: "N",
+        E: "W",
+        W: "E",
+        NE: "SW",
+        NW: "SE",
+        SE: "NW",
+        SW: "NE",
+      }[dir] || "leeward";
+    const speed = wind.speed_kmh
+      ? ` at ${Math.round(wind.speed_kmh)} km/h`
+      : "";
+    lines.push(
+      `Prevailing wind ${dir}${speed} — sheltered ${opposite} entrance, robust detailing on the windward facade.`,
+    );
+  }
+  if (recs.length) {
+    lines.push(`Design moves: ${recs.slice(0, 3).join("; ")}.`);
+  }
+
+  if (lines.length === 0) return "";
+  return `Climate driver:\n${lines.map((l) => `  ${l}`).join("\n")}`;
+}
+
+/**
+ * Translate the resolved local style + Style DNA into a prompt block so the
+ * render reflects regional vernacular (UK contemporary brick + timber, etc.)
+ * rather than generic V-Ray studio aesthetics. Returns "" when no style data
+ * has been resolved.
+ */
+export function buildStyleRenderContext(
+  localStyle = null,
+  styleDNA = null,
+  region = null,
+) {
+  const pickFirst = (...values) => {
+    for (const v of values) {
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    return "";
+  };
+
+  const placeLabel = pickFirst(
+    typeof region === "string" ? region : "",
+    region?.label,
+    region?.name,
+    region?.region,
+    styleDNA?.region,
+    localStyle?.region,
+    localStyle?.region_label,
+  );
+  const facade = pickFirst(
+    styleDNA?.facade_language,
+    localStyle?.facade_language,
+    styleDNA?.facade,
+    localStyle?.facade,
+  );
+  const roof = pickFirst(
+    styleDNA?.roof_language,
+    localStyle?.roof_language,
+    styleDNA?.roof,
+    localStyle?.roof,
+  );
+  const windowLang = pickFirst(
+    styleDNA?.window_language,
+    localStyle?.window_language,
+    styleDNA?.windows,
+    localStyle?.windows,
+  );
+  const massing = pickFirst(
+    styleDNA?.massing_language,
+    localStyle?.massing_language,
+    styleDNA?.massing,
+    localStyle?.massing,
+  );
+  const materials =
+    (Array.isArray(localStyle?.materials_local) &&
+      localStyle.materials_local) ||
+    (Array.isArray(localStyle?.local_materials) &&
+      localStyle.local_materials) ||
+    (Array.isArray(styleDNA?.materials) && styleDNA.materials) ||
+    [];
+  const precedents =
+    (Array.isArray(styleDNA?.precedent_keywords) &&
+      styleDNA.precedent_keywords) ||
+    (Array.isArray(localStyle?.precedent_keywords) &&
+      localStyle.precedent_keywords) ||
+    [];
+
+  const lines = [];
+  if (placeLabel) lines.push(`Regional vernacular: ${placeLabel}.`);
+  if (facade) lines.push(`Facade: ${facade}.`);
+  if (roof) lines.push(`Roof: ${roof}.`);
+  if (windowLang) lines.push(`Windows: ${windowLang}.`);
+  if (massing) lines.push(`Massing: ${massing}.`);
+  if (materials.length) {
+    const matLabels = materials
+      .map((m) => (typeof m === "string" ? m : m?.name || m?.label || ""))
+      .filter(Boolean)
+      .slice(0, 5);
+    if (matLabels.length)
+      lines.push(`Local materials: ${matLabels.join(", ")}.`);
+  }
+  if (precedents.length) {
+    lines.push(`Precedent: ${precedents.slice(0, 3).join(", ")}.`);
+  }
+
+  if (lines.length === 0) return "";
+  return `Regional style:\n${lines.map((l) => `  ${l}`).join("\n")}`;
+}
+
+/**
+ * Translate the programme summary (room counts, level distribution, total
+ * area) into a prompt block so the render proportions and fenestration
+ * reflect the actual programme rather than generic massing.
+ */
+export function buildProgrammeRenderContext(
+  programmeSummary = null,
+  targetStoreys = null,
+) {
+  if (!programmeSummary || typeof programmeSummary !== "object") return "";
+
+  const totalArea = Number(
+    programmeSummary.total_area_m2 ||
+      programmeSummary.totalAreaM2 ||
+      programmeSummary.target_gia_m2 ||
+      0,
+  );
+  const storeys = Number(
+    targetStoreys ||
+      programmeSummary.target_storeys ||
+      programmeSummary.storeys ||
+      programmeSummary.floorCount ||
+      0,
+  );
+  const roomsPerLevel =
+    programmeSummary.rooms_per_level || programmeSummary.roomsPerLevel || {};
+  const levelAreas =
+    programmeSummary.level_areas || programmeSummary.levelAreas || {};
+  const buildingType =
+    programmeSummary.building_type ||
+    programmeSummary.buildingType ||
+    "building";
+
+  const lines = [];
+  if (totalArea && storeys) {
+    lines.push(
+      `Programme: ${Math.round(totalArea)}m² ${storeys}-storey ${buildingType}.`,
+    );
+  } else if (totalArea) {
+    lines.push(`Programme: ${Math.round(totalArea)}m² ${buildingType}.`);
+  }
+
+  const levelEntries = Object.entries(roomsPerLevel);
+  if (levelEntries.length) {
+    for (const [level, rooms] of levelEntries.slice(0, 4)) {
+      const areaVal = Number(levelAreas[level] || 0);
+      const areaText = areaVal > 0 ? ` (${Math.round(areaVal)}m²)` : "";
+      const roomList = Array.isArray(rooms)
+        ? rooms.slice(0, 8).join(", ")
+        : String(rooms);
+      if (roomList) lines.push(`${level}${areaText}: ${roomList}.`);
+    }
+    if (levelEntries.length > 1) {
+      lines.push(
+        `Fenestration logic: ground-floor large openings to public rooms, upper floors regular bedroom rhythm.`,
+      );
+    }
+  }
+
+  if (lines.length === 0) return "";
+  return `Programme:\n${lines.map((l) => `  ${l}`).join("\n")}`;
+}
+
+/**
+ * Combined REASONING CHAIN block for injection into render prompts. Pulls
+ * climate, local style + Style DNA, and programme summary off masterDNA /
+ * locationData / projectContext and emits a single well-labelled block so
+ * gpt-image / FLUX sees the upstream conditioning explicitly. Returns "" if
+ * no inputs resolve, so callers can use it conditionally.
+ */
+export function buildReasoningChainBlock({
+  locationData = null,
+  masterDNA = null,
+  projectContext = null,
+} = {}) {
+  const climate =
+    locationData?.climate ||
+    projectContext?.climate ||
+    masterDNA?.climate ||
+    null;
+  const localStyle =
+    masterDNA?.localStyle ||
+    projectContext?.localStyle ||
+    locationData?.localStyle ||
+    null;
+  const styleDNA =
+    masterDNA?.styleDNA ||
+    projectContext?.styleDNA ||
+    locationData?.styleDNA ||
+    null;
+  const region =
+    locationData?.region ||
+    locationData?.locationProfile?.region ||
+    projectContext?.region ||
+    null;
+  const programmeSummary =
+    projectContext?.programmeSummary || masterDNA?.programmeSummary || null;
+  const targetStoreys =
+    projectContext?.targetStoreys ||
+    projectContext?.target_storeys ||
+    masterDNA?.dimensions?.floorCount ||
+    null;
+
+  const climateBlock = buildClimateRenderContext(climate);
+  const styleBlock = buildStyleRenderContext(localStyle, styleDNA, region);
+  const programmeBlock = buildProgrammeRenderContext(
+    programmeSummary,
+    targetStoreys,
+  );
+
+  const blocks = [climateBlock, styleBlock, programmeBlock].filter(Boolean);
+  if (blocks.length === 0) return "";
+
+  return `=== REASONING CHAIN (every architectural decision below MUST follow these drivers) ===
+${blocks.join("\n")}
+=== END REASONING CHAIN ===`;
+}
+
+/**
  * Build negative prompt additions for floor count enforcement.
  * @private
  */
@@ -400,6 +692,11 @@ export function buildHero3DPrompt({
     masterDNA,
     projectContext,
   );
+  const reasoningChain = buildReasoningChainBlock({
+    locationData,
+    masterDNA,
+    projectContext,
+  });
 
   const storeyDesc =
     dims.floors === 1
@@ -489,6 +786,8 @@ REQUIREMENTS:
 - ARCHITECTURAL DETAILING: visible window reveals (100mm depth), rainwater goods, threshold steps, plinth course, eaves detail
 - DEPTH AND REALISM: depth of field effect, subtle lens flare from sun, reflections in glazing showing sky
 
+${reasoningChain}
+
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${RENDER_STYLE_SUFFIX}`;
 
@@ -527,6 +826,11 @@ export function buildExteriorRenderPrompt({
     ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
     : "Keep massing consistent with hero 3D, plans and elevations.";
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const reasoningChain = buildReasoningChainBlock({
+    locationData,
+    masterDNA,
+    projectContext,
+  });
 
   const rawMats =
     masterDNA?.materials || masterDNA?._structured?.style?.materials || [];
@@ -568,6 +872,8 @@ REQUIREMENTS:
 - FLOOR COUNT: EXACTLY ${dims.floors} floor(s).
 - ROOF: ${roofType} roof, profile clearly visible.
 
+${reasoningChain}
+
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${RENDER_STYLE_SUFFIX}`;
 
@@ -596,6 +902,11 @@ export function buildInterior3DPrompt({
     projectContext,
   });
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const reasoningChain = buildReasoningChainBlock({
+    locationData,
+    masterDNA,
+    projectContext,
+  });
 
   // Build material description with hex colors for interior consistency
   const rawMats =
@@ -633,6 +944,8 @@ REQUIREMENTS:
 - CEILING HEIGHT: ${dims.floors === 1 ? "3.0m ceiling with exposed structure or feature lighting" : "2.7m standard ceiling height"}
 - DETAILING: skirting boards, architraves around doors, window sills, visible radiators or underfloor heating grilles
 - LIGHTING: combination of natural daylight through windows and subtle recessed downlights
+
+${reasoningChain}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}`;
 
@@ -1191,6 +1504,11 @@ export function buildAxonometricPrompt({
     ? `FOLLOW PROVIDED GEOMETRY silhouette (${geometryHint.type}) for massing and roofline.`
     : "Keep massing consistent with plans and elevations.";
   const identity = buildBuildingIdentityBlock(masterDNA, projectContext);
+  const reasoningChain = buildReasoningChainBlock({
+    locationData,
+    masterDNA,
+    projectContext,
+  });
 
   const prompt = `${identity}
 
@@ -1220,6 +1538,8 @@ REQUIREMENTS:
 - ${geomConstraint}
 - FLOOR COUNT: EXACTLY ${dims.floors} floor(s) visible from above. ${dims.floors === 1 ? "SINGLE STOREY — low horizontal massing, NO upper floor." : ""}
 - ROOF: ${roofType} roof. ${roofType === "flat" ? "Flat horizontal top." : roofType === "gable" ? "Gable ridge line visible." : ""}
+
+${reasoningChain}
 
 ${consistencyLock ? `CONSISTENCY LOCK:\n${consistencyLock}` : ""}
 STYLE: ${RENDER_STYLE_SUFFIX}`;

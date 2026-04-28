@@ -205,21 +205,68 @@ function compactPortfolioBlendForRequest(portfolioBlend = {}) {
   };
 }
 
+// Minimal level-string → index lookup mirrored from the backend resolver in
+// projectGraphVerticalSliceService.js. Belt + braces: the backend will
+// resolve from `level` strings on its own, but sending `levelIndex` too
+// keeps request payloads diagnosable when something downstream regresses.
+const FRONTEND_LEVEL_STRING_TO_INDEX = {
+  basement: -1,
+  "lower ground": -1,
+  ground: 0,
+  "ground floor": 0,
+  first: 1,
+  "first floor": 1,
+  mezzanine: 1,
+  second: 2,
+  "second floor": 2,
+  third: 3,
+  "third floor": 3,
+  fourth: 4,
+  "fourth floor": 4,
+  fifth: 5,
+  "fifth floor": 5,
+  sixth: 6,
+  "sixth floor": 6,
+  seventh: 7,
+  "seventh floor": 7,
+};
+
+function deriveLevelIndexFromString(value) {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return null;
+  if (
+    Object.prototype.hasOwnProperty.call(FRONTEND_LEVEL_STRING_TO_INDEX, raw)
+  ) {
+    return FRONTEND_LEVEL_STRING_TO_INDEX[raw];
+  }
+  const numeric = Number.parseInt(raw, 10);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function compactProgramSpacesForRequest(programSpaces = []) {
   return (Array.isArray(programSpaces) ? programSpaces : []).map(
-    (space, index) => ({
-      id: space.id || `space-${index}`,
-      name: String(space.name || space.label || `Space ${index + 1}`),
-      label: String(space.label || space.name || `Space ${index + 1}`),
-      spaceType: space.spaceType || space.type || null,
-      area: Number(space.area || 0),
-      count: Math.max(1, Number(space.count || 1)),
-      level: space.level || null,
-      levelIndex: Number.isFinite(Number(space.levelIndex))
+    (space, index) => {
+      const explicitNumericIndex = Number.isFinite(Number(space.levelIndex))
         ? Number(space.levelIndex)
-        : null,
-      notes: space.notes ? String(space.notes).slice(0, 500) : "",
-    }),
+        : null;
+      const derivedIndex =
+        explicitNumericIndex !== null
+          ? explicitNumericIndex
+          : deriveLevelIndexFromString(space.level);
+      return {
+        id: space.id || `space-${index}`,
+        name: String(space.name || space.label || `Space ${index + 1}`),
+        label: String(space.label || space.name || `Space ${index + 1}`),
+        spaceType: space.spaceType || space.type || null,
+        area: Number(space.area || 0),
+        count: Math.max(1, Number(space.count || 1)),
+        level: space.level || null,
+        levelIndex: derivedIndex,
+        notes: space.notes ? String(space.notes).slice(0, 500) : "",
+      };
+    },
   );
 }
 
