@@ -1,4 +1,5 @@
 import { normalizeInputProgramSpaces } from "../../services/project/projectGraphVerticalSliceService.js";
+import { buildProjectGraphVerticalSliceRequest } from "../../hooks/useArchitectAIWorkflow.js";
 
 describe("ProjectGraph normalizeInputProgramSpaces - level authority", () => {
   test("user-supplied Second floor space resolves to level-2 in a 3-floor brief", () => {
@@ -49,6 +50,33 @@ describe("ProjectGraph normalizeInputProgramSpaces - level authority", () => {
         target_gia_m2: 120,
       }),
     ).toEqual([]);
+  });
+
+  test("stale _calculatedFloorCount metadata does NOT override projectDetails.floorCount in the request payload", () => {
+    // Regression: a programSpaces array carrying _calculatedFloorCount: 2
+    // (left over from a previous 2-floor compile) used to bias the dropdown
+    // and downstream payload to 2 floors even when the user had locked 3.
+    const programSpaces = [
+      { name: "Hall", area: 10, level: "Ground" },
+      { name: "Bed", area: 18, level: "First" },
+      { name: "Study", area: 12, level: "Second" },
+    ];
+    programSpaces._calculatedFloorCount = 2;
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 200,
+        floorCount: 3,
+        floorCountLocked: true,
+        programSpaces,
+      },
+    });
+    expect(request.projectDetails.floorCount).toBe(3);
+    expect(request.brief.target_storeys).toBe(3);
+    expect(
+      request.programSpaces.map((space) => space.levelIndex).sort(),
+    ).toEqual([0, 1, 2]);
   });
 
   test("missing levelIndex but valid string label still routes to correct floor", () => {

@@ -28,7 +28,6 @@ import BuildingProgramTable from "../specs/BuildingProgramTable.jsx";
 import ProgramReviewCards from "../specs/ProgramReviewCards.jsx";
 import StepContainer from "../layout/StepContainer.jsx";
 import { fadeInUp, staggerChildren } from "../../styles/animations.js";
-import autoLevelAssignmentService from "../../services/autoLevelAssignmentService.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { isSupportedResidentialV2SubType } from "../../services/project/v2ProjectContracts.js";
 import {
@@ -36,6 +35,10 @@ import {
   levelName,
   normalizeLevelIndex,
 } from "../../services/project/levelUtils.js";
+import {
+  resolveAuthoritativeFloorCount,
+  syncProgramToFloorCount,
+} from "../../services/project/floorCountAuthority.js";
 
 const SpecsStep = ({
   projectDetails,
@@ -292,11 +295,12 @@ const SpecsStep = ({
                       1,
                       Math.min(maxFloors, parseInt(e.target.value, 10) || 1),
                     );
-                    onProjectDetailsChange({
+                    const nextProjectDetails = {
                       ...projectDetails,
                       floorCount: nextCount,
                       floorCountLocked: true,
-                    });
+                    };
+                    onProjectDetailsChange(nextProjectDetails);
 
                     if (programSpaces?.length > 0) {
                       const buildingType =
@@ -304,18 +308,15 @@ const SpecsStep = ({
                         projectDetails.subType ||
                         projectDetails.category ||
                         "mixed-use";
-                      const reassigned =
-                        autoLevelAssignmentService.autoAssignSpacesToLevels(
-                          programSpaces,
-                          nextCount,
+                      const syncResult = syncProgramToFloorCount(
+                        programSpaces,
+                        nextCount,
+                        {
                           buildingType,
-                        );
-                      reassigned._calculatedFloorCount = nextCount;
-                      reassigned._floorMetrics =
-                        projectDetails.floorMetrics ||
-                        programSpaces._floorMetrics ||
-                        null;
-                      onProgramSpacesChange(reassigned);
+                          projectDetails: nextProjectDetails,
+                        },
+                      );
+                      onProgramSpacesChange(syncResult.spaces);
                     }
                   }}
                   placeholder="Number of levels"
@@ -363,34 +364,32 @@ const SpecsStep = ({
                           )
                         : autoFloors || projectDetails.floorCount || 2;
 
-                      onProjectDetailsChange({
+                      const nextProjectDetails = {
                         ...projectDetails,
                         floorCountLocked: nextLocked,
                         floorCount,
-                      });
+                      };
+                      onProjectDetailsChange(nextProjectDetails);
 
-                      if (
-                        !nextLocked &&
-                        programSpaces?.length > 0 &&
-                        autoFloors
-                      ) {
+                      // When the lock state changes the authoritative count
+                      // can swap (e.g. unlocking with autoDetected !== current).
+                      // Re-sync existing programme rows so upper levels are
+                      // not silently empty.
+                      if (programSpaces?.length > 0) {
                         const buildingType =
                           projectDetails.program ||
                           projectDetails.subType ||
                           projectDetails.category ||
                           "mixed-use";
-                        const reassigned =
-                          autoLevelAssignmentService.autoAssignSpacesToLevels(
-                            programSpaces,
-                            autoFloors,
+                        const syncResult = syncProgramToFloorCount(
+                          programSpaces,
+                          floorCount,
+                          {
                             buildingType,
-                          );
-                        reassigned._calculatedFloorCount = autoFloors;
-                        reassigned._floorMetrics =
-                          projectDetails.floorMetrics ||
-                          programSpaces._floorMetrics ||
-                          null;
-                        onProgramSpacesChange(reassigned);
+                            projectDetails: nextProjectDetails,
+                          },
+                        );
+                        onProgramSpacesChange(syncResult.spaces);
                       }
                     }}
                     icon={
@@ -559,12 +558,9 @@ const SpecsStep = ({
                 <BuildingProgramTable
                   programSpaces={programSpaces}
                   floorCount={
-                    programSpaces?._calculatedFloorCount ||
-                    (projectDetails.floorCountLocked
-                      ? projectDetails.floorCount
-                      : projectDetails.autoDetectedFloorCount ||
-                        projectDetails.floorCount) ||
-                    2
+                    resolveAuthoritativeFloorCount(projectDetails, {
+                      fallback: 2,
+                    }).floorCount
                   }
                   onChange={handleProgramRowChange}
                   onAdd={handleAddSpace}

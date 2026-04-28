@@ -1,4 +1,5 @@
 import { runProgramPreflight } from "../../services/project/programPreflight.js";
+import { syncProgramToFloorCount } from "../../services/project/floorCountAuthority.js";
 
 describe("runProgramPreflight", () => {
   test("ok=true when every required level has at least one space", () => {
@@ -84,6 +85,42 @@ describe("runProgramPreflight", () => {
     expect(result.warnings.some((w) => w.toLowerCase().includes("stair"))).toBe(
       true,
     );
+  });
+
+  test("syncProgramToFloorCount rescues a preflight failure caused by an empty upper level", () => {
+    const programSpaces = [
+      { name: "Hall", area: 8, count: 1, level: "Ground" },
+      { name: "Living", area: 30, count: 1, level: "Ground" },
+      { name: "Kitchen", area: 18, count: 1, level: "Ground" },
+      { name: "Bedroom", area: 14, count: 2, level: "First" },
+      { name: "Bedroom", area: 12, count: 2, level: "First" },
+      { name: "Bathroom", area: 6, count: 1, level: "First" },
+    ];
+    const before = runProgramPreflight({
+      projectDetails: {
+        floorCount: 3,
+        area: 200,
+        category: "residential",
+        subType: "detached-house",
+      },
+      programSpaces,
+    });
+    expect(before.ok).toBe(false);
+    expect(before.errors.some((m) => m.includes("Second"))).toBe(true);
+
+    const synced = syncProgramToFloorCount(programSpaces, 3, {
+      buildingType: "detached-house",
+    });
+    const after = runProgramPreflight({
+      projectDetails: {
+        floorCount: 3,
+        area: 200,
+        category: "residential",
+        subType: "detached-house",
+      },
+      programSpaces: synced.spaces,
+    });
+    expect(after.ok).toBe(true);
   });
 
   test("normalised spaces carry levelIndex + level_index", () => {

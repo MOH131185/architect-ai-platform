@@ -47,6 +47,10 @@ import {
   UK_RESIDENTIAL_V2_PIPELINE_VERSION,
 } from "../services/project/v2ProjectContracts.js";
 import { runProgramPreflight } from "../services/project/programPreflight.js";
+import {
+  resolveAuthoritativeFloorCount,
+  syncProgramToFloorCount,
+} from "../services/project/floorCountAuthority.js";
 import PricingPage from "./PricingPage.jsx";
 
 // Step Components
@@ -441,6 +445,39 @@ const ArchitectAIWizardContainer = () => {
     projectDetails?.floorCountLocked,
     siteMetrics?.areaM2,
     setProjectDetails,
+  ]);
+
+  // When the auto-detected floor count changes and the user has not locked
+  // the count, redistribute any existing programme rows so the schedule
+  // matches the new authoritative count without needing a re-Compile.
+  // We deliberately omit `programSpaces` from the dep array to avoid an
+  // infinite loop (this effect itself calls setProgramSpaces).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (projectDetails?.floorCountLocked) return;
+    const autoCount = Number(projectDetails?.autoDetectedFloorCount);
+    if (!Number.isFinite(autoCount) || autoCount < 1) return;
+    if (!Array.isArray(programSpaces) || programSpaces.length === 0) return;
+    const currentCalculated = Number(programSpaces._calculatedFloorCount);
+    if (Number.isFinite(currentCalculated) && currentCalculated === autoCount) {
+      return;
+    }
+    const buildingType =
+      projectDetails.program ||
+      projectDetails.subType ||
+      projectDetails.category ||
+      "mixed-use";
+    const syncResult = syncProgramToFloorCount(programSpaces, autoCount, {
+      buildingType,
+      projectDetails,
+    });
+    if (syncResult.changed) {
+      setProgramSpaces(syncResult.spaces);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    projectDetails?.autoDetectedFloorCount,
+    projectDetails?.floorCountLocked,
   ]);
 
   // Step definitions
@@ -933,12 +970,18 @@ const ArchitectAIWizardContainer = () => {
         { maxLength: 120, allowNewlines: false },
       );
       const sanitizedArea = sanitizeDimensionInput(projectDetails.area);
-      const isFloorCountLocked = !!projectDetails.floorCountLocked;
       const desiredFloorCount = Math.max(
         1,
         parseInt(projectDetails.floorCount, 10) || 1,
       );
       const siteArea = siteMetrics?.areaM2 || 0;
+      // Single source of truth for floor count. Every downstream call -
+      // residential engine, generic AI prompt, post-gen sync, setProjectDetails -
+      // must use this value. Locked > autoDetected > manual > fallback.
+      const auth = resolveAuthoritativeFloorCount(projectDetails, {
+        fallback: desiredFloorCount || 2,
+      });
+      const authoritativeFloorCount = auth.floorCount;
 
       if (!sanitizedProgram || !sanitizedArea) {
         setProgramWarnings([
@@ -971,15 +1014,13 @@ const ArchitectAIWizardContainer = () => {
               )
             : null;
         const siteFitFloorCount = siteFitFloorMetrics?.optimalFloors || null;
-        const levelCountOverride = isFloorCountLocked
-          ? desiredFloorCount
-          : siteFitFloorCount;
-
+        // The override is ALWAYS the authoritative floor count. siteFit is
+        // informational only and surfaces as a "recommended N" warning.
         const programBrief = generateResidentialProgramBrief({
           subType,
           totalAreaM2: requestedTotalArea,
           siteAreaM2: siteArea,
-          levelCountOverride,
+          levelCountOverride: authoritativeFloorCount,
           entranceDirection: projectDetails.entranceDirection || "S",
           qualityTier: "mid",
           customNotes: projectDetails.customNotes || "",
@@ -1003,9 +1044,6 @@ const ArchitectAIWizardContainer = () => {
           1,
           siteFitFloorCount || programBrief.levelCount || 1,
         );
-        const floorCountToUse = isFloorCountLocked
-          ? desiredFloorCount
-          : recommendedFloorCount;
         const totalProgramArea = spaces.reduce(
           (sum, space) =>
             sum + Number(space.area || 0) * Number(space.count || 1),
@@ -1026,59 +1064,83 @@ const ArchitectAIWizardContainer = () => {
             : null;
         if (floorMetrics) {
           const selectedFootprint =
-            totalProgramArea / Math.max(1, floorCountToUse);
+            totalProgramArea / Math.max(1, authoritativeFloorCount);
           floorMetrics = {
             ...floorMetrics,
-            selectedFloors: floorCountToUse,
+            selectedFloors: authoritativeFloorCount,
             recommendedFloors: recommendedFloorCount,
             actualFootprint: selectedFootprint,
             siteCoveragePercent: (selectedFootprint / siteArea) * 100,
             fitsWithinSite: selectedFootprint <= floorMetrics.maxFootprintArea,
-            reasoning: isFloorCountLocked
-              ? `Manual ${floorCountToUse} level${floorCountToUse === 1 ? "" : "s"} selected; site-fit recommendation is ${recommendedFloorCount}.`
-              : floorMetrics.reasoning,
+            reasoning:
+              auth.source === "locked"
+                ? `Locked at ${authoritativeFloorCount} level${authoritativeFloorCount === 1 ? "" : "s"} (site-fit recommendation is ${recommendedFloorCount}).`
+                : auth.source === "auto"
+                  ? `Using auto-detected ${authoritativeFloorCount} level${authoritativeFloorCount === 1 ? "" : "s"}.`
+                  : floorMetrics.reasoning,
           };
         }
 
-        if (floorCountToUse !== recommendedFloorCount && spaces.length > 0) {
-          const reassigned =
-            autoLevelAssignmentService.autoAssignSpacesToLevels(
-              spaces,
-              floorCountToUse,
-              subType,
-            );
-          reassigned._calculatedFloorCount = floorCountToUse;
-          reassigned._floorMetrics = floorMetrics;
-          spaces = reassigned;
-        } else {
-          spaces._calculatedFloorCount = floorCountToUse;
-          spaces._floorMetrics = floorMetrics;
-        }
+        // Single redistribution path. syncProgramToFloorCount handles all
+        // cases: clamping levelIndex, rebalancing across the requested
+        // floor count, ensuring every upper level has at least one room,
+        // adding stairs/circulation, and stamping diagnostic metadata.
+        const syncResult = syncProgramToFloorCount(
+          spaces,
+          authoritativeFloorCount,
+          {
+            buildingType: subType,
+            projectDetails: { ...projectDetails, floorMetrics },
+          },
+        );
+        spaces = syncResult.spaces;
+        spaces._floorMetrics = floorMetrics;
 
-        setProjectDetails((prev) => ({
-          ...prev,
-          autoDetectedFloorCount: recommendedFloorCount,
-          floorCount: prev.floorCountLocked
-            ? prev.floorCount || floorCountToUse
-            : floorCountToUse,
-          floorMetrics,
-          qualityTier: prev.qualityTier || "mid",
-          program: subType,
-          pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
-        }));
+        setProjectDetails((prev) => {
+          const next = {
+            ...prev,
+            autoDetectedFloorCount: recommendedFloorCount,
+            floorMetrics,
+            qualityTier: prev.qualityTier || "mid",
+            program: subType,
+            pipelineVersion: UK_RESIDENTIAL_V2_PIPELINE_VERSION,
+          };
+          // Only overwrite floorCount when the resolver pulled it from the
+          // auto-detected source. Locked / manual values are the user's
+          // authority and must not be stomped by engine output.
+          if (
+            auth.source === "auto" &&
+            prev.floorCount !== authoritativeFloorCount
+          ) {
+            next.floorCount = authoritativeFloorCount;
+          }
+          return next;
+        });
         setProgramSpaces(spaces);
+        const baseWarnings = [
+          `Compiled deterministic UK residential program with ${spaces.length} spaces across ${authoritativeFloorCount} level${authoritativeFloorCount === 1 ? "" : "s"}.`,
+        ];
+        if (recommendedFloorCount !== authoritativeFloorCount) {
+          baseWarnings.push(
+            `Site-fit recommends ${recommendedFloorCount} level${recommendedFloorCount === 1 ? "" : "s"}; programme uses ${authoritativeFloorCount} (${auth.source}).`,
+          );
+        }
+        if (programBrief.clampedBy === "subtype-max") {
+          baseWarnings.push(
+            `${subType} subtype is limited to ${programBrief.levelCount} levels; programme uses ${programBrief.levelCount} even though ${programBrief.requestedLevelCount} were requested.`,
+          );
+        }
         setProgramWarnings([
-          `Compiled deterministic UK residential program with ${programBrief.spaces.length} spaces.`,
-          floorCountToUse === recommendedFloorCount
-            ? `Recommended ${recommendedFloorCount} levels from program and site-fit rules.`
-            : `Program recommended ${recommendedFloorCount} levels, locked to ${floorCountToUse}.`,
+          ...baseWarnings,
+          ...syncResult.warnings,
           ...(programBrief.warnings || []),
         ]);
 
         logger.success("Residential V2 program compiled", {
           subtype: subType,
           spaces: spaces.length,
-          floors: floorCountToUse,
+          floors: authoritativeFloorCount,
+          source: auth.source,
         });
         return spaces;
       }
@@ -1086,11 +1148,9 @@ const ArchitectAIWizardContainer = () => {
       const togetherAIReasoningService = (
         await import("../services/togetherAIReasoningService")
       ).default;
-      const suggestedFloorCount =
-        projectDetails.autoDetectedFloorCount || desiredFloorCount || 2;
-      const floorCountForPrompt = isFloorCountLocked
-        ? desiredFloorCount
-        : suggestedFloorCount;
+      // Generic AI path uses the same authoritative floor count as the
+      // residential path. Locked > autoDetected > manual > fallback.
+      const floorCountForPrompt = authoritativeFloorCount;
 
       const ordinal = (n) => {
         const mod10 = n % 10;
@@ -1164,11 +1224,11 @@ const ArchitectAIWizardContainer = () => {
         notes: space.notes || "",
       }));
 
-      // Auto level assignment with site area
-      const fallbackFloorCount = Math.max(
-        1,
-        parseInt(projectDetails.floorCount, 10) || 1,
-      );
+      // Auto level assignment. We always run syncProgramToFloorCount with
+      // the authoritative count so that manual floor counts work even when
+      // siteArea is missing (Bug 4 in the hotfix brief).
+      let floorMetrics = projectDetails.floorMetrics || null;
+      let autoFloors = projectDetails.autoDetectedFloorCount || null;
       if (siteArea > 0 && spaces.length > 0) {
         const hasExplicitCirculation = spaces.some((s) => {
           const name = String(s.name || s.label || "").toLowerCase();
@@ -1186,7 +1246,7 @@ const ArchitectAIWizardContainer = () => {
           0,
         );
 
-        const floorMetrics = autoLevelAssignmentService.calculateOptimalLevels(
+        floorMetrics = autoLevelAssignmentService.calculateOptimalLevels(
           totalProgramArea,
           siteArea,
           {
@@ -1196,48 +1256,62 @@ const ArchitectAIWizardContainer = () => {
             circulationFactor: hasExplicitCirculation ? 1.0 : 1.15,
           },
         );
-
-        const autoFloors = floorMetrics.optimalFloors;
-        const floorCountToUse = isFloorCountLocked
-          ? fallbackFloorCount
-          : autoFloors || fallbackFloorCount;
-
-        const assigned = autoLevelAssignmentService.autoAssignSpacesToLevels(
-          spaces,
-          floorCountToUse,
-          sanitizedProgram,
-        );
-
-        assigned._calculatedFloorCount = floorCountToUse;
-        assigned._floorMetrics = floorMetrics;
-        spaces = assigned;
-
-        setProjectDetails((prev) => {
-          const next = {
-            ...prev,
-            autoDetectedFloorCount: autoFloors,
-            floorMetrics,
-          };
-          if (!prev.floorCountLocked) {
-            next.floorCount = floorCountToUse;
-          }
-          return next;
-        });
-
-        setProgramWarnings((prev) => [
-          ...prev,
-          isFloorCountLocked
-            ? `Auto-detected ${autoFloors} levels from ${Math.round(siteArea)} m² site (locked to ${floorCountToUse})`
-            : `Auto-detected ${floorCountToUse} levels from ${Math.round(siteArea)} m² site`,
-        ]);
-      } else {
-        spaces._calculatedFloorCount = fallbackFloorCount;
-        spaces._floorMetrics = projectDetails.floorMetrics || null;
+        autoFloors = floorMetrics?.optimalFloors || autoFloors;
       }
+
+      const syncResult = syncProgramToFloorCount(
+        spaces,
+        authoritativeFloorCount,
+        {
+          buildingType: sanitizedProgram,
+          projectDetails: { ...projectDetails, floorMetrics },
+        },
+      );
+      spaces = syncResult.spaces;
+      spaces._floorMetrics = floorMetrics;
+
+      setProjectDetails((prev) => {
+        const next = { ...prev };
+        if (autoFloors) {
+          next.autoDetectedFloorCount = autoFloors;
+        }
+        if (floorMetrics) {
+          next.floorMetrics = floorMetrics;
+        }
+        // Only auto-source overwrites floorCount; locked/manual are the
+        // user's authority and must not be stomped.
+        if (
+          auth.source === "auto" &&
+          prev.floorCount !== authoritativeFloorCount
+        ) {
+          next.floorCount = authoritativeFloorCount;
+        }
+        return next;
+      });
+
+      const genericWarnings = [];
+      if (autoFloors && autoFloors !== authoritativeFloorCount) {
+        genericWarnings.push(
+          `Site fit recommends ${autoFloors} level${autoFloors === 1 ? "" : "s"}; programme uses ${authoritativeFloorCount} (${auth.source}).`,
+        );
+      } else if (autoFloors) {
+        genericWarnings.push(
+          `Auto-detected ${autoFloors} level${autoFloors === 1 ? "" : "s"} from ${Math.round(siteArea)} m² site.`,
+        );
+      }
+      setProgramWarnings((prev) => [
+        ...prev,
+        ...genericWarnings,
+        ...syncResult.warnings,
+      ]);
 
       setProgramSpaces(spaces);
 
-      logger.success("Program spaces generated", { count: spaces.length });
+      logger.success("Program spaces generated", {
+        count: spaces.length,
+        floors: authoritativeFloorCount,
+        source: auth.source,
+      });
       return spaces; // Return for callers that need immediate access
     } catch (err) {
       logger.error("Space generation failed", err);

@@ -110,4 +110,33 @@ describe("residentialProgramEngine", () => {
     expect(normalized[1].label).toBe("Bedroom");
     expect(normalized[1].count).toBe(2);
   });
+
+  test("manual override with no site area still distributes across requested levels", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "detached-house",
+      totalAreaM2: 200,
+      siteAreaM2: null,
+      levelCountOverride: 3,
+      entranceDirection: "S",
+    });
+    expect(brief.levelCount).toBe(3);
+    expect(brief.spaces.some((space) => space.levelIndex === 2)).toBe(true);
+    // Forensic: the source is the override, not site-fit.
+    expect(brief.levelCountSource).toBe("override");
+    expect(brief.clampedBy).toBeNull();
+  });
+
+  test("subtype-max clamp is reported on the brief output", () => {
+    const brief = generateResidentialProgramBrief({
+      subType: "cottage",
+      totalAreaM2: 120,
+      siteAreaM2: 600,
+      levelCountOverride: 3,
+      entranceDirection: "S",
+    });
+    expect(brief.levelCount).toBe(2); // cottage maxLevels = 2
+    expect(brief.requestedLevelCount).toBe(3);
+    expect(brief.clampedBy).toBe("subtype-max");
+    expect(brief.maxLevels).toBe(2);
+  });
 });

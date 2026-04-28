@@ -756,17 +756,41 @@ function resolveLevelCount(
   subType,
   totalAreaM2,
   siteAreaM2 = null,
+  options = {},
+) {
+  return resolveLevelCountWithMeta(subType, totalAreaM2, siteAreaM2, options)
+    .levelCount;
+}
+
+// Returns the level count plus diagnostic metadata so callers can warn
+// when a user-supplied override was clamped against the subtype's
+// maxLevels (e.g. "cottage" capped at 2 even though the user picked 3).
+// Memory rule (feedback_floor_count_autodetect): silent caps are forbidden.
+function resolveLevelCountWithMeta(
+  subType,
+  totalAreaM2,
+  siteAreaM2 = null,
   { levelCountOverride = null } = {},
 ) {
   const template = resolveTemplate(subType);
   const rule = getSubtypeRule(subType);
+  const minLevels = rule.minLevels || 1;
+  const maxLevels = rule.maxLevels || 3;
   const requestedLevelCount = Number(levelCountOverride);
   if (Number.isFinite(requestedLevelCount) && requestedLevelCount > 0) {
-    return clamp(
-      Math.round(requestedLevelCount),
-      rule.minLevels || 1,
-      rule.maxLevels || 3,
-    );
+    const requested = Math.round(requestedLevelCount);
+    const clamped = clamp(requested, minLevels, maxLevels);
+    let clampedBy = null;
+    if (requested > maxLevels) clampedBy = "subtype-max";
+    else if (requested < minLevels) clampedBy = "subtype-min";
+    return {
+      levelCount: clamped,
+      requestedLevelCount: requested,
+      clampedBy,
+      source: "override",
+      maxLevels,
+      minLevels,
+    };
   }
 
   const siteFitLevelCount = resolveSiteFitLevelCount(
@@ -775,7 +799,14 @@ function resolveLevelCount(
     siteAreaM2,
   );
   if (siteFitLevelCount) {
-    return siteFitLevelCount;
+    return {
+      levelCount: siteFitLevelCount,
+      requestedLevelCount: null,
+      clampedBy: null,
+      source: "site-fit",
+      maxLevels,
+      minLevels,
+    };
   }
 
   let levelCount = template.defaultLevels;
@@ -789,7 +820,14 @@ function resolveLevelCount(
     levelCount = Math.max(levelCount, 3);
   }
 
-  return clamp(levelCount, rule.minLevels || 1, rule.maxLevels || 3);
+  return {
+    levelCount: clamp(levelCount, minLevels, maxLevels),
+    requestedLevelCount: null,
+    clampedBy: null,
+    source: "default",
+    maxLevels,
+    minLevels,
+  };
 }
 
 function getLevelName(levelIndex) {
@@ -890,9 +928,13 @@ export function generateResidentialProgramBrief({
   customNotes = "",
 } = {}) {
   const template = resolveTemplate(subType);
-  const levelCount = resolveLevelCount(subType, totalAreaM2, siteAreaM2, {
-    levelCountOverride,
-  });
+  const levelCountMeta = resolveLevelCountWithMeta(
+    subType,
+    totalAreaM2,
+    siteAreaM2,
+    { levelCountOverride },
+  );
+  const levelCount = levelCountMeta.levelCount;
   const usableArea = round(totalAreaM2 * (1 - template.circulationRatio));
   let spaces = [];
 
@@ -987,6 +1029,11 @@ export function generateResidentialProgramBrief({
     schema_version: "program-brief-v1",
     supportedResidentialSubtype: true,
     levelCount,
+    requestedLevelCount: levelCountMeta.requestedLevelCount,
+    clampedBy: levelCountMeta.clampedBy,
+    levelCountSource: levelCountMeta.source,
+    maxLevels: levelCountMeta.maxLevels,
+    minLevels: levelCountMeta.minLevels,
     entranceDirection,
     circulationRatio: template.circulationRatio,
     adjacency,
