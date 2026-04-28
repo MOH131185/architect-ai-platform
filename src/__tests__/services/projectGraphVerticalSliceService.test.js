@@ -123,6 +123,9 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.a1Sheet.svgString).toContain(
       `data-source-model-hash="${result.geometryHash}"`,
     );
+    expect(result.artifacts.a1Sheet.svgString).toContain("@font-face");
+    expect(result.artifacts.a1Sheet.svgString).toContain("ArchiAISans");
+    expect(result.artifacts.a1Sheet.svgString).toContain("data:font/");
     expect(result.artifacts.a1Pdf.asset_type).toBe("a1_sheet_pdf");
     expect(result.artifacts.a1Pdf.sheet_size_mm).toEqual({
       width: 841,

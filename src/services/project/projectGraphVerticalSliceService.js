@@ -37,8 +37,8 @@ import { detectConflicts } from "../design/constraintPriority.js";
 import { enrichSiteContext } from "../context/contextAggregator.js";
 import { decideSheetSplit } from "../sheet/sheetSplitter.js";
 import {
-  embedFontInSVG,
   FINAL_SHEET_MIN_FONT_SIZE_PX,
+  prepareFinalSheetSvgForRasterization,
 } from "../../utils/svgFontEmbedder.js";
 import { detectA1GlyphIntegrity } from "../a1/a1FinalExportContract.js";
 import {
@@ -3013,15 +3013,11 @@ async function buildA1Sheet({
     sheetNumber: drawingNumber,
     sheetLabel,
   });
-  // Embed bundled fonts (NotoSans Regular + Bold from public/fonts/)
-  // immediately so every downstream consumer — frontend viewer, PDF
-  // rasteriser, SVG download — works with a single self-contained sheet.
-  // Without this, Sharp/librsvg falls back to whatever font the
-  // serverless image happens to expose and bakes ☐ tofu glyphs into the
-  // rasterised PNG. vercel.json includeFiles ships public/fonts/**/*
-  // with the function bundle.
-  const svgString = await embedFontInSVG(rawSvgString, {
-    bundledOnly: true,
+  // Embed fonts immediately so every downstream consumer - frontend viewer,
+  // PDF rasteriser, SVG download - works with a single self-contained sheet.
+  // prepareFinalSheetSvgForRasterization prefers bundled NotoSans from
+  // public/fonts/, then falls back only to an explicitly embedded safe font.
+  const svgString = await prepareFinalSheetSvgForRasterization(rawSvgString, {
     minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
   });
   if (!svgString.includes("@font-face")) {

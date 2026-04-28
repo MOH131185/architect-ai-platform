@@ -5,7 +5,13 @@
   "functions": {
     "api/**/*.js": {
       "maxDuration": 120,
-      "includeFiles": "server/**/*.{js,cjs},src/services/**/*.js,src/config/*.js,src/utils/*.js,public/fonts/**/*"
+      "includeFiles": [
+        "server/**/*.{js,cjs}",
+        "src/services/**/*.js",
+        "src/config/*.js",
+        "src/utils/*.js",
+        "public/fonts/**/*"
+      ]
     }
   },
   "rewrites": [

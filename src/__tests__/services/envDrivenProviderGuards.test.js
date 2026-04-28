@@ -88,4 +88,25 @@ describe("env-driven provider guards", () => {
       expect(text).not.toMatch(legacyPattern);
     }
   });
+
+  test("Vercel packages bundled A1 fonts as discrete function includes", () => {
+    const root = process.cwd();
+    const config = JSON.parse(
+      fs.readFileSync(path.join(root, "vercel.json"), "utf8"),
+    );
+    const apiFunctionConfig = config.functions?.["api/**/*.js"];
+    const includeFiles = apiFunctionConfig?.includeFiles;
+
+    expect(Array.isArray(includeFiles)).toBe(true);
+    expect(includeFiles).toEqual(
+      expect.arrayContaining([
+        "src/utils/*.js",
+        "src/services/**/*.js",
+        "public/fonts/**/*",
+      ]),
+    );
+    expect(includeFiles).not.toContain(
+      "server/**/*.{js,cjs},src/services/**/*.js,src/config/*.js,src/utils/*.js,public/fonts/**/*",
+    );
+  });
 });
