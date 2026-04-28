@@ -2,6 +2,16 @@ import path from "path";
 
 import { PDFDocument } from "pdf-lib";
 
+import { A1_WIDTH, A1_HEIGHT } from "./composeCore.js";
+
+// Phase A close-out: final A1 PDFs must embed a 300 DPI raster of the A1
+// sheet (~9933 x 7016 px). Anything below 95% of that is preview density and
+// must not be tagged or surfaced as a final A1 export.
+const FINAL_A1_PDF_DPI = 300;
+const PREVIEW_A1_PDF_DPI = 144;
+const FINAL_A1_PDF_MIN_DPI = 280;
+const FINAL_A1_PDF_MIN_RATIO = 0.95;
+
 let opusSheetCritic = null;
 let qaGates = null;
 let panelRegistry = null;
@@ -229,38 +239,31 @@ export function findPanelsWithDisallowedTechnicalAuthority(panels = []) {
 }
 
 /**
- * Build a print-ready A1 PDF from a rasterised PNG.
+ * Phase A close-out: validate the requested PDF build and compute the
+ * pdfMetadata shape that `buildPrintReadyPdfFromPng` will return. This is
+ * exported so tests can exercise the intent / dimensions / integrity rules
+ * without going through pdf-lib's PNG embed (which is brittle under jsdom).
  *
- * Phase A: returns `{ pdfBuffer, pdfMetadata }`. The metadata records that the
- * artefact is a single-image raster PDF whose text is vectorised as paths via
- * upstream text-to-path conversion, and that hybrid/vector PDF is a tracked
- * follow-up (`hybridVectorPdfFollowUp: true`).
+ * Throws on the same conditions as `buildPrintReadyPdfFromPng`:
+ *  - rasterIntegrityStatus === "blocked"
+ *  - textRenderMode === "font_face_only"
+ *  - isFinalA1 === true but raster is preview density
  *
- * Throws when:
- *  - `options.rasterIntegrityStatus === "blocked"` — the rendered PNG failed
- *    post-rasterisation tofu QA.
- *  - `options.textRenderMode === "font_face_only"` — Phase A1's defensive
- *    fallback path that should never run after text-to-path is wired
- *    everywhere. Throwing here makes any future regression loud.
- *
- * @param {Buffer} pngBuffer
  * @param {{
  *   widthPx: number,
  *   heightPx: number,
  *   dpi?: number,
  *   textRenderMode?: "font_paths" | "font_face_only" | "unknown",
  *   rasterIntegrityStatus?: "pass" | "warning" | "blocked" | "not_run",
+ *   isFinalA1?: boolean,
  * }} options
- * @returns {Promise<{ pdfBuffer: Buffer, pdfMetadata: object }>}
+ * @returns {{ widthPx, heightPx, widthPt, heightPt, dpi, isFinalA1, textRenderMode, rasterIntegrityStatus, pdfMetadata }}
  */
-export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
-  if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
-    throw new Error("pngBuffer is required to build PDF");
-  }
-
+export function planPrintReadyPdfBuild(options = {}) {
   const widthPx = Number(options.widthPx);
   const heightPx = Number(options.heightPx);
-  const dpi = Number(options.dpi) || 300;
+  const dpi = Number(options.dpi) || FINAL_A1_PDF_DPI;
+  const isFinalA1 = options.isFinalA1 === true;
   if (
     !Number.isFinite(widthPx) ||
     !Number.isFinite(heightPx) ||
@@ -295,37 +298,104 @@ export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
         "(Phase A defensive fallback). Upstream prep must convert text to paths.",
     );
   }
+  if (isFinalA1) {
+    const widthRatio = widthPx / A1_WIDTH;
+    const heightRatio = heightPx / A1_HEIGHT;
+    if (
+      widthRatio < FINAL_A1_PDF_MIN_RATIO ||
+      heightRatio < FINAL_A1_PDF_MIN_RATIO ||
+      dpi < FINAL_A1_PDF_MIN_DPI
+    ) {
+      throw new Error(
+        "buildPrintReadyPdfFromPng refused: isFinalA1=true but raster is " +
+          `preview density. Got ${widthPx}x${heightPx}px at ${dpi} DPI; final ` +
+          `A1 requires at least ${Math.round(
+            A1_WIDTH * FINAL_A1_PDF_MIN_RATIO,
+          )}x${Math.round(
+            A1_HEIGHT * FINAL_A1_PDF_MIN_RATIO,
+          )}px at ≥ ${FINAL_A1_PDF_MIN_DPI} DPI (target ${A1_WIDTH}x${A1_HEIGHT}px @ ${FINAL_A1_PDF_DPI} DPI).`,
+      );
+    }
+  }
 
   const widthPt = (widthPx / dpi) * 72;
   const heightPt = (heightPx / dpi) * 72;
-
-  const pdf = await PDFDocument.create();
-  const page = pdf.addPage([widthPt, heightPt]);
-  const image = await pdf.embedPng(pngBuffer);
-  page.drawImage(image, { x: 0, y: 0, width: widthPt, height: heightPt });
-  const pdfBuffer = Buffer.from(await pdf.save({ useObjectStreams: false }));
-
-  const pdfMetadata = {
-    version: "a1-pdf-metadata-v1",
-    pdfRenderMode:
-      textRenderMode === "font_paths"
+  const pdfRenderMode =
+    textRenderMode === "font_paths"
+      ? isFinalA1
         ? "raster_textpaths_300dpi"
-        : "raster_textembed_300dpi",
-    isRasterPdf: true,
-    isVectorPdf: false,
-    isHybridPdf: false,
-    dpi,
+        : "raster_textpaths_preview_144dpi"
+      : "raster_textembed_300dpi";
+
+  return {
     widthPx,
     heightPx,
     widthPt,
     heightPt,
+    dpi,
+    isFinalA1,
     textRenderMode,
     rasterIntegrityStatus,
-    hybridVectorPdfFollowUp: true,
-    pdfBytes: pdfBuffer.length,
+    pdfMetadata: {
+      version: "a1-pdf-metadata-v1",
+      pdfRenderMode,
+      isRasterPdf: true,
+      isVectorPdf: false,
+      isHybridPdf: false,
+      isFinalA1,
+      renderIntent: isFinalA1 ? "final_a1" : "preview",
+      dpi,
+      widthPx,
+      heightPx,
+      widthPt,
+      heightPt,
+      textRenderMode,
+      rasterIntegrityStatus,
+      hybridVectorPdfFollowUp: true,
+      pdfBytes: 0, // populated after PDF is rendered
+    },
   };
+}
 
-  return { pdfBuffer, pdfMetadata };
+/**
+ * Build a print-ready A1 PDF from a rasterised PNG.
+ *
+ * Validation lives in `planPrintReadyPdfBuild`; this function only does the
+ * actual pdf-lib emission once the plan succeeds.
+ *
+ * @param {Buffer} pngBuffer
+ * @param {{
+ *   widthPx: number,
+ *   heightPx: number,
+ *   dpi?: number,
+ *   textRenderMode?: "font_paths" | "font_face_only" | "unknown",
+ *   rasterIntegrityStatus?: "pass" | "warning" | "blocked" | "not_run",
+ *   isFinalA1?: boolean,
+ * }} options
+ * @returns {Promise<{ pdfBuffer: Buffer, pdfMetadata: object }>}
+ */
+export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
+  if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
+    throw new Error("pngBuffer is required to build PDF");
+  }
+
+  const plan = planPrintReadyPdfBuild(options);
+
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([plan.widthPt, plan.heightPt]);
+  const image = await pdf.embedPng(pngBuffer);
+  page.drawImage(image, {
+    x: 0,
+    y: 0,
+    width: plan.widthPt,
+    height: plan.heightPt,
+  });
+  const pdfBuffer = Buffer.from(await pdf.save({ useObjectStreams: false }));
+
+  return {
+    pdfBuffer,
+    pdfMetadata: { ...plan.pdfMetadata, pdfBytes: pdfBuffer.length },
+  };
 }
 
 export function resolveComposeOutputDir() {

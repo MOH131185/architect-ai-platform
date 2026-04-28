@@ -402,14 +402,23 @@ export async function writeA1OverflowSheetArtifacts({
 
   let pdfBytes = 0;
   let pdfUrl = null;
+  let overflowPdfMetadata = null;
   if (typeof buildPdfFromPng === "function") {
-    const pdfBuffer = await buildPdfFromPng(pngBuffer, {
+    // Phase A close-out: buildPrintReadyPdfFromPng now returns
+    // { pdfBuffer, pdfMetadata }. The overflow sheet (A1-02) is companion
+    // technical content for a final A1, so it inherits isFinalA1: true and
+    // must satisfy the same 300 DPI constraint as the primary A1-01.
+    const pdfResult = await buildPdfFromPng(pngBuffer, {
       widthPx: width,
       heightPx: height,
       dpi,
+      textRenderMode: "font_paths",
+      isFinalA1: dpi >= 280 && width >= Math.round(A1_WIDTH * 0.95),
     });
-    pdfBytes = pdfBuffer.length;
-    fs.writeFileSync(path.join(outputDir, pdfOutputFile), pdfBuffer);
+    const overflowPdfBuffer = pdfResult?.pdfBuffer || pdfResult;
+    overflowPdfMetadata = pdfResult?.pdfMetadata || null;
+    pdfBytes = overflowPdfBuffer.length;
+    fs.writeFileSync(path.join(outputDir, pdfOutputFile), overflowPdfBuffer);
     pdfUrl = `${String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(/\/$/, "")}/${pdfOutputFile}`;
   }
 

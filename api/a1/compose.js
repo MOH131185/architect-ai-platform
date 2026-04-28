@@ -1959,13 +1959,20 @@ async function handleComposeRequest(req, res, trace) {
           : "unknown";
       const pdfRasterIntegrityStatus =
         rasterGlyphIntegrity?.status || "not_run";
+      // Phase A close-out: declare intent to the PDF builder so it can
+      // refuse to embed a preview-density raster on a final A1 page.
+      // Final A1 uses 300 DPI; preview uses 144 DPI so the resulting page
+      // size matches the raster (rather than synthesising a tiny 6-inch
+      // page from a 1792 px preview at 300 DPI).
+      const pdfDpi = renderContract.isFinalA1 ? 300 : 144;
       const { pdfBuffer, pdfMetadata: builtPdfMetadata } =
         await buildPrintReadyPdfFromPng(composedBuffer, {
           widthPx: width,
           heightPx: height,
-          dpi: 300,
+          dpi: pdfDpi,
           textRenderMode: pdfTextRenderMode,
           rasterIntegrityStatus: pdfRasterIntegrityStatus,
+          isFinalA1: renderContract.isFinalA1 === true,
         });
       pdfMetadata = builtPdfMetadata;
 

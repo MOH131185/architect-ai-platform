@@ -3844,13 +3844,23 @@ function buildResultPanelMap(panelArtifacts = {}) {
   );
 }
 
+// Phase A close-out: when the caller declares a final A1 export, the embedded
+// raster must be 300 DPI of the A1 sheet (≈ 9933 × 7016 px). Earlier the
+// rasteriser was hardcoded to 144 DPI, producing 4768 × 3368 px — the PDF
+// page was A1-sized but the pixels were preview density and metadata lied.
+const FINAL_A1_RASTER_DPI = 300;
+const PREVIEW_A1_RASTER_DPI = 144;
+const FINAL_A1_RASTER_MIN_RATIO = 0.95; // tolerance vs expected pixel size
+
 async function buildA1PdfArtifact({
   projectGraphId,
   brief,
   geometryHash,
   sheetArtifact,
   qaStatus = "pending",
+  renderIntent = "final_a1",
 }) {
+  const isFinalA1 = renderIntent === "final_a1";
   const widthPt = 841 * MM_TO_PT;
   const heightPt = 594 * MM_TO_PT;
 
@@ -3873,9 +3883,12 @@ async function buildA1PdfArtifact({
     );
   }
 
+  const targetDensityDpi = isFinalA1
+    ? FINAL_A1_RASTER_DPI
+    : PREVIEW_A1_RASTER_DPI;
   const renderedSheet = await rasteriseSheetArtifact({
     sheetArtifact,
-    densityDpi: 144,
+    densityDpi: targetDensityDpi,
   });
   const renderedPngBytes = normalizeBinaryBytes(
     renderedSheet.pngBuffer,
@@ -3986,6 +3999,37 @@ async function buildA1PdfArtifact({
       ).join("; ")}`,
     );
   }
+  // Final A1 export must embed a 300 DPI raster of the A1 sheet. Compare the
+  // rendered PNG dimensions against A1 at 300 DPI (allow small tolerance for
+  // librsvg rounding) and refuse to emit if the raster is preview density.
+  if (isFinalA1) {
+    const expectedFinalWidth = Math.round(
+      (Number(sheetArtifact?.sheet_size_mm?.width || 841) / 25.4) *
+        FINAL_A1_RASTER_DPI,
+    );
+    const expectedFinalHeight = Math.round(
+      (Number(sheetArtifact?.sheet_size_mm?.height || 594) / 25.4) *
+        FINAL_A1_RASTER_DPI,
+    );
+    const actualWidthPx = renderedWidthPx;
+    const actualHeightPx = renderedHeightPx;
+    const widthRatio =
+      expectedFinalWidth > 0 ? actualWidthPx / expectedFinalWidth : 0;
+    const heightRatio =
+      expectedFinalHeight > 0 ? actualHeightPx / expectedFinalHeight : 0;
+    if (
+      widthRatio < FINAL_A1_RASTER_MIN_RATIO ||
+      heightRatio < FINAL_A1_RASTER_MIN_RATIO
+    ) {
+      throw new Error(
+        `A1 sheet final raster too small for 300 DPI: got ${actualWidthPx}x${actualHeightPx}, expected ≥ ${Math.round(
+          expectedFinalWidth * FINAL_A1_RASTER_MIN_RATIO,
+        )}x${Math.round(
+          expectedFinalHeight * FINAL_A1_RASTER_MIN_RATIO,
+        )} (full target ${expectedFinalWidth}x${expectedFinalHeight}). Final A1 PDFs must embed 300 DPI raster.`,
+      );
+    }
+  }
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${brief.project_name} A1 ProjectGraph sheet`);
   pdfDoc.setSubject(`QA status: ${qaStatus}`);
@@ -4026,15 +4070,27 @@ async function buildA1PdfArtifact({
   });
   const assetId = createStableId("asset-a1-pdf", projectGraphId, contentHash);
 
-  // Phase A: tag the artefact with the PDF metadata schema so the front-end
-  // and downstream QA can decide whether this is a publishable final A1.
+  // Phase A close-out: tag the artefact with metadata that honestly reflects
+  // the actual raster density. Earlier this hardcoded pdfRenderMode to the
+  // "300dpi" string regardless of the underlying raster — that lie has been
+  // removed. pdfRenderMode + dpi are derived from the renderer output, and
+  // isFinalA1 controls the readable mode tag.
+  const actualDpi = Math.round(
+    Number(renderedSheet.metadata?.density_dpi || targetDensityDpi) ||
+      targetDensityDpi,
+  );
+  const pdfRenderMode = isFinalA1
+    ? "raster_textpaths_300dpi"
+    : "raster_textpaths_preview_144dpi";
   const pdfMetadata = {
     version: "a1-pdf-metadata-v1",
-    pdfRenderMode: "raster_textpaths_300dpi",
+    pdfRenderMode,
     isRasterPdf: true,
     isVectorPdf: false,
     isHybridPdf: false,
-    dpi: Math.round((renderedSheet.metadata?.density_dpi || 144) * 1) || 144,
+    isFinalA1,
+    renderIntent: isFinalA1 ? "final_a1" : "preview",
+    dpi: actualDpi,
     widthPx: renderedWidthPx || null,
     heightPx: renderedHeightPx || null,
     widthPt: round(widthPt, 3),
@@ -5474,6 +5530,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       brief,
       geometryHash: compiledProject.geometryHash,
       sheetArtifact: sheetResult.sheetArtifact,
+      renderIntent: "final_a1",
     });
     sheetResult.sheetArtifact.renderProof = pdf.renderedProof;
     sheetResult.sheetArtifact.metadata = {
