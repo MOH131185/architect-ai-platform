@@ -7,6 +7,7 @@ import {
   embedFontInSVG,
   getFontEmbeddingReadinessSync,
   prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
 import { generateUnifiedSheet } from "../../services/unifiedSheetGenerator.js";
 import { buildVisualGenerationPackage } from "../../services/visual/geometryLockedVisualRouter.js";
@@ -369,6 +370,29 @@ describe("Phase 8 A1 technical recovery", () => {
     expect(readiness.bundledBoldLoaded).toBe(true);
     expect(readiness.bundledFontsLoaded).toBe(true);
     expect(readiness.bundledFontsAvailable).toBe(true);
+  });
+
+  test("final sheet raster prep can convert labels to bundled-font paths", async () => {
+    const prepared = await prepareFinalSheetSvgForRasterizationWithReport(
+      `<svg xmlns="http://www.w3.org/2000/svg">
+        <text x="10" y="28" font-family="Arial, sans-serif" font-size="18" font-weight="700">GROUND FLOOR PLAN</text>
+        <text x="10" y="52" font-family="Arial, sans-serif" font-size="10">MATERIAL PALETTE</text>
+      </svg>`,
+      {
+        textToPath: true,
+      },
+    );
+
+    expect(prepared.svgString).toContain('data-raster-text-mode="font-paths"');
+    expect(prepared.svgString).toContain('data-text-path="true"');
+    expect(prepared.svgString).toContain('data-text-value="GROUND FLOOR PLAN"');
+    expect(prepared.svgString).not.toMatch(/<text\b/);
+    expect(prepared.textRenderStatus).toMatchObject({
+      mode: "font_paths",
+      status: "pass",
+      rasterSafe: true,
+      remainingTextElementCount: 0,
+    });
   });
 
   test("main unified sheet output is font-embedded before export", async () => {

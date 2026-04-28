@@ -3,11 +3,19 @@ import {
   rasteriseSheetArtifact,
   __internal,
 } from "../../../services/render/svgRasteriser.js";
+import { analyseRenderedTextProof } from "../../../services/render/renderedTextProof.js";
 
 const SIMPLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
   <rect width="200" height="100" fill="#fff"/>
   <rect x="10" y="10" width="80" height="40" fill="#142033"/>
   <text x="50" y="80" font-size="14" fill="#142033">Hello</text>
+</svg>`;
+const TOFU_RUN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="260" height="80">
+  <rect width="260" height="80" fill="#fff"/>
+  <rect x="24" y="24" width="22" height="22" fill="#fff" stroke="#111" stroke-width="3"/>
+  <rect x="54" y="24" width="22" height="22" fill="#fff" stroke="#111" stroke-width="3"/>
+  <rect x="84" y="24" width="22" height="22" fill="#fff" stroke="#111" stroke-width="3"/>
+  <rect x="114" y="24" width="22" height="22" fill="#fff" stroke="#111" stroke-width="3"/>
 </svg>`;
 
 function isPngBuffer(buf) {
@@ -63,6 +71,19 @@ describe("rasteriseSvgToPng", () => {
     expect(out.metadata.provenance.rasteriser_version).toBe(
       __internal.RASTERISER_VERSION,
     );
+  });
+
+  test("rendered text proof blocks repeated square-glyph runs", async () => {
+    const out = await rasteriseSvgToPng({ svg: TOFU_RUN_SVG, widthPx: 520 });
+    const proof = await analyseRenderedTextProof({
+      pngBuffer: out.pngBuffer,
+      sheetSvg:
+        '<svg xmlns="http://www.w3.org/2000/svg"><text>□□□□</text></svg>',
+      requiredLabels: ["SITE PLAN"],
+    });
+
+    expect(proof.status).toBe("blocked");
+    expect(proof.squareGlyphProof.repeatedSquareRunCount).toBeGreaterThan(0);
   });
 });
 

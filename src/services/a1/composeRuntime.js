@@ -228,6 +228,31 @@ export function findPanelsWithDisallowedTechnicalAuthority(panels = []) {
     .filter(Boolean);
 }
 
+/**
+ * Build a print-ready A1 PDF from a rasterised PNG.
+ *
+ * Phase A: returns `{ pdfBuffer, pdfMetadata }`. The metadata records that the
+ * artefact is a single-image raster PDF whose text is vectorised as paths via
+ * upstream text-to-path conversion, and that hybrid/vector PDF is a tracked
+ * follow-up (`hybridVectorPdfFollowUp: true`).
+ *
+ * Throws when:
+ *  - `options.rasterIntegrityStatus === "blocked"` — the rendered PNG failed
+ *    post-rasterisation tofu QA.
+ *  - `options.textRenderMode === "font_face_only"` — Phase A1's defensive
+ *    fallback path that should never run after text-to-path is wired
+ *    everywhere. Throwing here makes any future regression loud.
+ *
+ * @param {Buffer} pngBuffer
+ * @param {{
+ *   widthPx: number,
+ *   heightPx: number,
+ *   dpi?: number,
+ *   textRenderMode?: "font_paths" | "font_face_only" | "unknown",
+ *   rasterIntegrityStatus?: "pass" | "warning" | "blocked" | "not_run",
+ * }} options
+ * @returns {Promise<{ pdfBuffer: Buffer, pdfMetadata: object }>}
+ */
 export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
   if (!Buffer.isBuffer(pngBuffer) || pngBuffer.length === 0) {
     throw new Error("pngBuffer is required to build PDF");
@@ -245,6 +270,32 @@ export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
     throw new Error("Invalid width/height for PDF");
   }
 
+  const textRenderMode =
+    options.textRenderMode === "font_paths" ||
+    options.textRenderMode === "font_face_only" ||
+    options.textRenderMode === "unknown"
+      ? options.textRenderMode
+      : "unknown";
+  const rasterIntegrityStatus =
+    options.rasterIntegrityStatus === "pass" ||
+    options.rasterIntegrityStatus === "warning" ||
+    options.rasterIntegrityStatus === "blocked" ||
+    options.rasterIntegrityStatus === "not_run"
+      ? options.rasterIntegrityStatus
+      : "not_run";
+
+  if (rasterIntegrityStatus === "blocked") {
+    throw new Error(
+      "buildPrintReadyPdfFromPng refused: rasterIntegrityStatus is blocked.",
+    );
+  }
+  if (textRenderMode === "font_face_only") {
+    throw new Error(
+      "buildPrintReadyPdfFromPng refused: textRenderMode is font_face_only " +
+        "(Phase A defensive fallback). Upstream prep must convert text to paths.",
+    );
+  }
+
   const widthPt = (widthPx / dpi) * 72;
   const heightPt = (heightPx / dpi) * 72;
 
@@ -252,7 +303,29 @@ export async function buildPrintReadyPdfFromPng(pngBuffer, options = {}) {
   const page = pdf.addPage([widthPt, heightPt]);
   const image = await pdf.embedPng(pngBuffer);
   page.drawImage(image, { x: 0, y: 0, width: widthPt, height: heightPt });
-  return Buffer.from(await pdf.save({ useObjectStreams: false }));
+  const pdfBuffer = Buffer.from(await pdf.save({ useObjectStreams: false }));
+
+  const pdfMetadata = {
+    version: "a1-pdf-metadata-v1",
+    pdfRenderMode:
+      textRenderMode === "font_paths"
+        ? "raster_textpaths_300dpi"
+        : "raster_textembed_300dpi",
+    isRasterPdf: true,
+    isVectorPdf: false,
+    isHybridPdf: false,
+    dpi,
+    widthPx,
+    heightPx,
+    widthPt,
+    heightPt,
+    textRenderMode,
+    rasterIntegrityStatus,
+    hybridVectorPdfFollowUp: true,
+    pdfBytes: pdfBuffer.length,
+  };
+
+  return { pdfBuffer, pdfMetadata };
 }
 
 export function resolveComposeOutputDir() {

@@ -11,7 +11,7 @@ import {
 import {
   EMBEDDED_FONT_STACK,
   FINAL_SHEET_MIN_FONT_SIZE_PX,
-  prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
 
 const DEFAULT_PUBLIC_URL_BASE = "/api/a1/compose-output";
@@ -45,7 +45,11 @@ function fontPx(basePx, width = A1_WIDTH) {
 
 function normalizeItems(items = []) {
   return (items || [])
-    .map((item) => String(item || "").replace(/\s+/g, " ").trim())
+    .map((item) =>
+      String(item || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
     .filter(Boolean);
 }
 
@@ -192,16 +196,27 @@ function provenanceLines({
     trace?.runId ? `Run: ${trace.runId}` : null,
     layoutTemplate ? `Layout: ${layoutTemplate}` : null,
     renderIntent ? `Render intent: ${renderIntent}` : null,
-    projectContext?.geometryHash ? `Geometry: ${projectContext.geometryHash}` : null,
+    projectContext?.geometryHash
+      ? `Geometry: ${projectContext.geometryHash}`
+      : null,
     sheetSetPlan?.reason || null,
   ]);
 }
 
 function buildSections(input = {}) {
   return [
-    { title: "Programme Schedule", lines: programmeLines(input.masterDNA, input.projectContext) },
-    { title: "Materials / Construction", lines: materialLines(input.masterDNA, input.projectContext) },
-    { title: "Climate Pack", lines: climateLines(input.locationData, input.projectContext) },
+    {
+      title: "Programme Schedule",
+      lines: programmeLines(input.masterDNA, input.projectContext),
+    },
+    {
+      title: "Materials / Construction",
+      lines: materialLines(input.masterDNA, input.projectContext),
+    },
+    {
+      title: "Climate Pack",
+      lines: climateLines(input.locationData, input.projectContext),
+    },
     { title: "Regulation Pack", lines: regulationLines(input.projectContext) },
     { title: "QA / Verification", lines: verificationLines(input) },
     { title: "Provenance", lines: provenanceLines(input) },
@@ -209,7 +224,9 @@ function buildSections(input = {}) {
 }
 
 function wrapText(text = "", maxChars = 72) {
-  const words = String(text || "").split(/\s+/).filter(Boolean);
+  const words = String(text || "")
+    .split(/\s+/)
+    .filter(Boolean);
   const lines = [];
   let current = "";
   for (const word of words) {
@@ -227,14 +244,7 @@ function wrapText(text = "", maxChars = 72) {
   return lines.length ? lines : [""];
 }
 
-function renderSection({
-  section,
-  x,
-  y,
-  width,
-  sectionIndex,
-  sheetWidth,
-}) {
+function renderSection({ section, x, y, width, sectionIndex, sheetWidth }) {
   const scale = physicalScale(sheetWidth);
   const titleFont = fontPx(42, sheetWidth);
   const bodyFont = fontPx(30, sheetWidth);
@@ -359,9 +369,22 @@ export async function writeA1OverflowSheetArtifacts({
     designId,
     ...svgInput,
   });
-  const preparedSvg = await prepareFinalSheetSvgForRasterization(rawSvg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const { svgString: preparedSvg, textRenderStatus: overflowTextRenderStatus } =
+    await prepareFinalSheetSvgForRasterizationWithReport(rawSvg, {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      textToPath: true,
+    });
+  if (
+    overflowTextRenderStatus?.status === "blocked" ||
+    overflowTextRenderStatus?.rasterSafe === false
+  ) {
+    throw new Error(
+      `A1-02 overflow sheet text-to-path conversion failed: ${
+        (overflowTextRenderStatus.blockers || []).join("; ") ||
+        "raster-safe text conversion unavailable"
+      }`,
+    );
+  }
   const pngBuffer = await sharp(Buffer.from(preparedSvg, "utf8"))
     .png()
     .toBuffer();
@@ -390,7 +413,10 @@ export async function writeA1OverflowSheetArtifacts({
     pdfUrl = `${String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(/\/$/, "")}/${pdfOutputFile}`;
   }
 
-  const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(/\/$/, "");
+  const base = String(publicUrlBase || DEFAULT_PUBLIC_URL_BASE).replace(
+    /\/$/,
+    "",
+  );
   return {
     version: "phase22-a1-overflow-sheet-artifacts-v1",
     generated: true,

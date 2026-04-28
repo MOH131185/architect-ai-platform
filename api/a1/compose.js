@@ -46,6 +46,7 @@ import {
   ensureFontsLoaded,
   getFontEmbeddingReadinessSync,
   prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../src/utils/svgFontEmbedder.js";
 import { isFeatureEnabled } from "../../src/config/featureFlags.js";
 import {
@@ -87,6 +88,7 @@ import { runA1PostComposeVerification } from "../../src/services/a1/a1PostCompos
 import {
   buildA1SheetSetPlan,
   detectA1GlyphIntegrity,
+  detectA1RasterGlyphIntegrity,
   evaluateFinalA1ExportGate,
   normalizeSheetTextContract,
   resolveA1RenderContract,
@@ -126,17 +128,35 @@ const DEFAULT_MAX_DATAURL_BYTES = 4.5 * 1024 * 1024;
 const DEFAULT_PUBLIC_URL_BASE = "/api/a1/compose-output";
 
 /**
- * Fetch image from URL and return buffer
+ * Fetch image from URL and return buffer.
+ *
+ * Phase A: when the URL is raw SVG markup or an svg+xml data URL, run the SVG
+ * through prepareFinalSheetSvgForRasterizationWithReport with textToPath:true
+ * so Sharp/librsvg never has to render glyphs from @font-face. Push the
+ * resulting textRenderStatus into the optional statusAccumulator so the sheet
+ * gate can refuse the PDF when any inline-SVG panel fails text-to-path.
+ *
+ * @param {string} url
+ * @param {{ statusAccumulator?: Array<object> }} [opts]
  */
-async function fetchImageBuffer(url) {
+async function fetchImageBuffer(url, opts = {}) {
   if (!url) {
     throw new Error("Image URL is required");
   }
+  const statusAccumulator = Array.isArray(opts?.statusAccumulator)
+    ? opts.statusAccumulator
+    : null;
 
   // Handle raw SVG markup (sent as string to avoid base64 overhead in request body)
   if (url.startsWith("<svg") || url.startsWith("<?xml")) {
-    const embedded = await embedFontInSVG(url, { bundledOnly: true });
-    return Buffer.from(embedded, "utf8");
+    const { svgString, textRenderStatus } =
+      await prepareFinalSheetSvgForRasterizationWithReport(url, {
+        textToPath: true,
+        bundledOnly: true,
+        minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      });
+    if (statusAccumulator) statusAccumulator.push(textRenderStatus);
+    return Buffer.from(svgString, "utf8");
   }
 
   // Handle data URLs
@@ -146,8 +166,14 @@ async function fetchImageBuffer(url) {
       const svg = url.includes(";base64,")
         ? Buffer.from(payload, "base64").toString("utf8")
         : decodeURIComponent(payload);
-      const embedded = await embedFontInSVG(svg, { bundledOnly: true });
-      return Buffer.from(embedded, "utf8");
+      const { svgString, textRenderStatus } =
+        await prepareFinalSheetSvgForRasterizationWithReport(svg, {
+          textToPath: true,
+          bundledOnly: true,
+          minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+        });
+      if (statusAccumulator) statusAccumulator.push(textRenderStatus);
+      return Buffer.from(svgString, "utf8");
     }
 
     const base64Data = url.split(",")[1];
@@ -174,11 +200,25 @@ async function fetchImageBuffer(url) {
   return buf;
 }
 
-async function buildPreparedFinalSheetSvgBuffer(svgString, options = {}) {
-  const preparedSvg = await prepareFinalSheetSvgForRasterization(
-    svgString,
-    options,
-  );
+/**
+ * Phase A: every final-sheet rasterisation goes through the report-bearing
+ * prep with textToPath:true. The optional statusAccumulator collects per-call
+ * textRenderStatus reports so the sheet-level gate can refuse PDF emission
+ * when any element fails text-to-path conversion.
+ */
+async function buildPreparedFinalSheetSvgBuffer(
+  svgString,
+  options = {},
+  statusAccumulator = null,
+) {
+  const { svgString: preparedSvg, textRenderStatus } =
+    await prepareFinalSheetSvgForRasterizationWithReport(svgString, {
+      textToPath: true,
+      ...options,
+    });
+  if (Array.isArray(statusAccumulator)) {
+    statusAccumulator.push(textRenderStatus);
+  }
   return Buffer.from(preparedSvg, "utf8");
 }
 
@@ -1377,6 +1417,11 @@ async function handleComposeRequest(req, res, trace) {
   const composites = [];
   const coordinates = {};
   const panelMetricsByType = {};
+  // Phase A: collect textRenderStatus reports from every final-sheet SVG prep
+  // call (panel SVGs, overlays, stamps, placeholders, title block). The PDF
+  // emission gate refuses to publish if any element failed text-to-path
+  // conversion, since librsvg renders unconverted glyphs as tofu.
+  const sheetTextRenderStatuses = [];
 
   const panelMap = new Map(panels.map((p) => [p.type, p]));
 
@@ -1426,7 +1471,10 @@ async function handleComposeRequest(req, res, trace) {
       if (panel?.imageUrl || panel?.buffer) {
         try {
           const buffer =
-            panel.buffer || (await fetchImageBuffer(panel.imageUrl));
+            panel.buffer ||
+            (await fetchImageBuffer(panel.imageUrl, {
+              statusAccumulator: sheetTextRenderStatuses,
+            }));
           const resized = await placePanelImage({
             sharp,
             imageBuffer: buffer,
@@ -1444,6 +1492,7 @@ async function handleComposeRequest(req, res, trace) {
               useHighRes,
               layoutTemplate,
             },
+            statusAccumulator: sheetTextRenderStatuses,
           });
           composites.push({
             input: resized,
@@ -1478,6 +1527,7 @@ async function handleComposeRequest(req, res, trace) {
         slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
         { ...(titleBlock || {}), designId: expectedFingerprint },
         constants,
+        sheetTextRenderStatuses,
       );
       composites.push({
         input: titleBuffer,
@@ -1509,6 +1559,7 @@ async function handleComposeRequest(req, res, trace) {
           masterDNA,
           projectContext,
           constants,
+          sheetTextRenderStatuses,
         );
         composites.push({
           input: schedulesBuffer,
@@ -1524,6 +1575,7 @@ async function handleComposeRequest(req, res, trace) {
           svgHeight,
           masterDNA,
           constants,
+          sheetTextRenderStatuses,
         );
         composites.push({
           input: materialBuffer,
@@ -1538,6 +1590,7 @@ async function handleComposeRequest(req, res, trace) {
         svgHeight,
         locationData,
         constants,
+        sheetTextRenderStatuses,
       );
       composites.push({
         input: climateBuffer,
@@ -1549,7 +1602,11 @@ async function handleComposeRequest(req, res, trace) {
 
     if (panel?.imageUrl || panel?.buffer) {
       try {
-        const buffer = panel.buffer || (await fetchImageBuffer(panel.imageUrl));
+        const buffer =
+          panel.buffer ||
+          (await fetchImageBuffer(panel.imageUrl, {
+            statusAccumulator: sheetTextRenderStatuses,
+          }));
         const resized = await placePanelImage({
           sharp,
           imageBuffer: buffer,
@@ -1567,6 +1624,7 @@ async function handleComposeRequest(req, res, trace) {
             useHighRes,
             layoutTemplate,
           },
+          statusAccumulator: sheetTextRenderStatuses,
         });
         composites.push({
           input: resized,
@@ -1610,6 +1668,7 @@ async function handleComposeRequest(req, res, trace) {
       slotRect.height - LABEL_HEIGHT - LABEL_PADDING,
       type,
       constants,
+      sheetTextRenderStatuses,
     );
     composites.push({
       input: placeholder,
@@ -1625,7 +1684,9 @@ async function handleComposeRequest(req, res, trace) {
     const targetHeight = slotRect.height - LABEL_HEIGHT - LABEL_PADDING;
 
     try {
-      const overlayBuffer = await fetchImageBuffer(siteOverlay.imageUrl);
+      const overlayBuffer = await fetchImageBuffer(siteOverlay.imageUrl, {
+        statusAccumulator: sheetTextRenderStatuses,
+      });
 
       // Debug logging for site overlay
       if (DEBUG_RUNS) {
@@ -1665,12 +1726,14 @@ async function handleComposeRequest(req, res, trace) {
   // Draw panel borders and labels
   const borderSvg = generateOverlaySvg(coordinates, width, height, constants);
   let preparedBuildStampSvg = "";
-  const preparedBorderSvg = await prepareFinalSheetSvgForRasterization(
-    borderSvg,
-    {
-      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-    },
-  );
+  const {
+    svgString: preparedBorderSvg,
+    textRenderStatus: borderTextRenderStatus,
+  } = await prepareFinalSheetSvgForRasterizationWithReport(borderSvg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+    textToPath: true,
+  });
+  sheetTextRenderStatuses.push(borderTextRenderStatus);
   const borderBuffer = Buffer.from(preparedBorderSvg, "utf8");
   composites.push({
     input: borderBuffer,
@@ -1685,13 +1748,15 @@ async function handleComposeRequest(req, res, trace) {
     layoutTemplateUsed: layoutTemplate,
     boardSpecVersion,
   });
-  const preparedSpecStampSvg = await prepareFinalSheetSvgForRasterization(
-    specStampSvg,
-    {
-      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-      outlineCriticalText: false,
-    },
-  );
+  const {
+    svgString: preparedSpecStampSvg,
+    textRenderStatus: specStampTextRenderStatus,
+  } = await prepareFinalSheetSvgForRasterizationWithReport(specStampSvg, {
+    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+    outlineCriticalText: false,
+    textToPath: true,
+  });
+  sheetTextRenderStatuses.push(specStampTextRenderStatus);
   const specStampBuffer = Buffer.from(preparedSpecStampSvg, "utf8");
   composites.push({
     input: specStampBuffer,
@@ -1729,13 +1794,16 @@ async function handleComposeRequest(req, res, trace) {
       flags: flagsFromRequest,
       proof: proofFromRequest,
     });
-    preparedBuildStampSvg = await prepareFinalSheetSvgForRasterization(
-      buildStampSvg,
-      {
-        minimumFontSizePx: FINAL_SHEET_AUX_FONT_SIZE_PX,
-        outlineCriticalText: false,
-      },
-    );
+    const {
+      svgString: preparedBuildStampLocal,
+      textRenderStatus: buildStampTextRenderStatus,
+    } = await prepareFinalSheetSvgForRasterizationWithReport(buildStampSvg, {
+      minimumFontSizePx: FINAL_SHEET_AUX_FONT_SIZE_PX,
+      outlineCriticalText: false,
+      textToPath: true,
+    });
+    preparedBuildStampSvg = preparedBuildStampLocal;
+    sheetTextRenderStatuses.push(buildStampTextRenderStatus);
     const buildStampBuffer = Buffer.from(preparedBuildStampSvg, "utf8");
 
     const resolvedMode = getPipelineModeForStamp(proofFromRequest);
@@ -1754,6 +1822,88 @@ async function handleComposeRequest(req, res, trace) {
     .composite(composites)
     .png()
     .toBuffer();
+
+  // Phase A: aggregate every textRenderStatus collected during composition
+  // (panel SVGs, overlays, stamps, placeholders, title block, data panels) and
+  // refuse to emit a final A1 PDF if any element failed text-to-path. The
+  // failure mode we are guarding against: librsvg renders unconverted glyphs
+  // as `.notdef` boxes (tofu) and the existing SVG-source glyph regex is
+  // structurally blind to those.
+  const sheetTextRenderSummary = (() => {
+    const blocked = sheetTextRenderStatuses.filter(
+      (status) => status?.status === "blocked" || status?.rasterSafe === false,
+    );
+    const allRasterSafe =
+      sheetTextRenderStatuses.length > 0 &&
+      sheetTextRenderStatuses.every(
+        (status) =>
+          status?.rasterSafe === true || status?.mode === "font_paths",
+      );
+    return {
+      version: "phase22-a1-sheet-text-render-summary-v1",
+      reportedCount: sheetTextRenderStatuses.length,
+      blockedCount: blocked.length,
+      allRasterSafe,
+      mode: allRasterSafe ? "font_paths" : "mixed",
+      blockers: blocked.flatMap((status) => status?.blockers || []),
+    };
+  })();
+
+  if (renderContract?.isFinalA1 && sheetTextRenderSummary.blockedCount > 0) {
+    console.error(
+      "[A1 Compose] Refusing final A1 PDF: text-to-path blocked",
+      sheetTextRenderSummary,
+    );
+    return res.status(500).json({
+      success: false,
+      error: "A1_TEXT_RENDER_BLOCKED",
+      message:
+        "Final A1 export refused because one or more SVG elements failed text-to-path conversion. Sheet would render tofu glyphs.",
+      details: { textRenderSummary: sheetTextRenderSummary },
+    });
+  }
+
+  // Phase A: post-rasterisation tofu detector — samples the rendered PNG
+  // inside each panel's caption band and refuses final A1 emission if any
+  // band matches the tofu signature (high dark coverage with very low
+  // run-density per row).
+  let rasterGlyphIntegrity = null;
+  try {
+    rasterGlyphIntegrity = await detectA1RasterGlyphIntegrity({
+      pngBuffer: composedBuffer,
+      sharp,
+      panelLabelCoordinates: coordinates,
+      sheetTextContract,
+    });
+  } catch (rasterErr) {
+    console.warn(
+      "[A1 Compose] Raster glyph integrity check threw:",
+      rasterErr?.message,
+    );
+    rasterGlyphIntegrity = {
+      version: "phase22-a1-raster-glyph-integrity-v1",
+      status: "warning",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: [
+        `Raster glyph integrity check failed to run: ${rasterErr?.message || "unknown"}`,
+      ],
+    };
+  }
+  if (renderContract?.isFinalA1 && rasterGlyphIntegrity?.status === "blocked") {
+    console.error(
+      "[A1 Compose] Refusing final A1 PDF: raster glyph integrity blocked",
+      rasterGlyphIntegrity,
+    );
+    return res.status(500).json({
+      success: false,
+      error: "A1_RASTER_GLYPH_INTEGRITY_BLOCKED",
+      message:
+        "Final A1 export refused because the rendered PNG contains tofu-like glyph patterns in panel label bands.",
+      details: { rasterGlyphIntegrity },
+    });
+  }
 
   const maxDataUrlBytes =
     parseInt(process.env.A1_COMPOSE_MAX_DATAURL_BYTES || "", 10) ||
@@ -1798,14 +1948,26 @@ async function handleComposeRequest(req, res, trace) {
   let pdfUrl = null;
   let pdfBytes = 0;
   let pdfOutputFile = null;
+  let pdfMetadata = null;
 
   if (includePdf) {
     try {
-      const pdfBuffer = await buildPrintReadyPdfFromPng(composedBuffer, {
-        widthPx: width,
-        heightPx: height,
-        dpi: 300,
-      });
+      const pdfTextRenderMode = sheetTextRenderSummary.allRasterSafe
+        ? "font_paths"
+        : sheetTextRenderSummary.reportedCount > 0
+          ? "unknown"
+          : "unknown";
+      const pdfRasterIntegrityStatus =
+        rasterGlyphIntegrity?.status || "not_run";
+      const { pdfBuffer, pdfMetadata: builtPdfMetadata } =
+        await buildPrintReadyPdfFromPng(composedBuffer, {
+          widthPx: width,
+          heightPx: height,
+          dpi: 300,
+          textRenderMode: pdfTextRenderMode,
+          rasterIntegrityStatus: pdfRasterIntegrityStatus,
+        });
+      pdfMetadata = builtPdfMetadata;
 
       const safeDesignId =
         String(designId || "unknown")
@@ -2272,6 +2434,9 @@ async function handleComposeRequest(req, res, trace) {
     ocrEvidenceQuality:
       postComposeVerification?.renderedTextZone?.ocrEvidenceQuality || null,
     glyphIntegrity,
+    rasterGlyphIntegrity,
+    sheetTextRenderSummary,
+    pdfMetadata,
     sheetTextContract,
     sheetSetPlan: resolvedSheetSetPlan,
     sheetSetArtifacts,
@@ -3010,6 +3175,7 @@ export async function placePanelImage({
   panelType = "unknown",
   onMetrics = null,
   qa = null,
+  statusAccumulator = null,
 }) {
   const { LABEL_HEIGHT, LABEL_PADDING } = constants;
   const targetWidth = slotRect.width;
@@ -3051,24 +3217,40 @@ export async function placePanelImage({
       })
     : 144;
 
-  // Embed web font into SVG so Sharp/librsvg can render text correctly
+  // Phase A: every per-panel SVG is run through textToPath conversion before
+  // Sharp/librsvg rasterises it, regardless of whether it's a technical or
+  // non-technical panel. This eliminates @font-face fallback failures that
+  // previously produced tofu glyphs.
   if (isSvgInput) {
     try {
-      const fontedSvg = isTechnicalDrawing
-        ? await prepareFinalSheetSvgForRasterization(svgText, {
-            minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-            outlineCriticalText: true,
-          })
-        : await embedFontInSVG(svgText, {
-            bundledOnly: true,
-          });
+      const { svgString: fontedSvg, textRenderStatus } =
+        await prepareFinalSheetSvgForRasterizationWithReport(svgText, {
+          minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+          outlineCriticalText: isTechnicalDrawing,
+          textToPath: true,
+          bundledOnly: true,
+        });
       imageBuffer = Buffer.from(fontedSvg, "utf8");
+      if (Array.isArray(statusAccumulator)) {
+        statusAccumulator.push(textRenderStatus);
+      }
     } catch (fontErr) {
       // Non-fatal: proceed with original SVG
       console.warn(
         `[A1 Compose] Font embedding failed for ${panelType}:`,
         fontErr.message,
       );
+      if (Array.isArray(statusAccumulator)) {
+        statusAccumulator.push({
+          version: "phase22-a1-text-render-status-error-v1",
+          status: "blocked",
+          rasterSafe: false,
+          mode: "unknown",
+          blockers: [
+            `Font embedding failed for ${panelType}: ${fontErr.message}`,
+          ],
+        });
+      }
     }
   }
 
@@ -3472,7 +3654,14 @@ export async function placePanelImage({
   return finalBuffer;
 }
 
-async function buildPlaceholder(sharp, width, height, type, constants) {
+async function buildPlaceholder(
+  sharp,
+  width,
+  height,
+  type,
+  constants,
+  statusAccumulator = null,
+) {
   const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants;
   const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -3483,9 +3672,11 @@ async function buildPlaceholder(sharp, width, height, type, constants) {
         text-anchor="middle" fill="#b91c1c">${(type || "").toUpperCase()}</text>
     </svg>
   `;
-  const preparedSvg = await buildPreparedFinalSheetSvgBuffer(svg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const preparedSvg = await buildPreparedFinalSheetSvgBuffer(
+    svg,
+    { minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX },
+    statusAccumulator,
+  );
   return sharp(preparedSvg)
     .png()
     .resize(width, height, {
@@ -3501,6 +3692,7 @@ async function buildTitleBlockBuffer(
   height,
   titleBlockInput = {},
   constants,
+  statusAccumulator = null,
 ) {
   const { FRAME_STROKE_COLOR, FRAME_RADIUS, buildTitleBlockData } = constants;
 
@@ -3652,9 +3844,11 @@ async function buildTitleBlockBuffer(
     </svg>
   `;
 
-  const preparedSvg = await buildPreparedFinalSheetSvgBuffer(svg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const preparedSvg = await buildPreparedFinalSheetSvgBuffer(
+    svg,
+    { minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX },
+    statusAccumulator,
+  );
   return sharp(preparedSvg)
     .png()
     .resize(width, height, {

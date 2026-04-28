@@ -1,7 +1,7 @@
 import {
   FINAL_SHEET_MIN_FONT_SIZE_PX,
   EMBEDDED_FONT_STACK,
-  prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
 
 const FONT_FAMILY = EMBEDDED_FONT_STACK;
@@ -80,6 +80,7 @@ export async function buildSchedulesBuffer(
   masterDNA,
   projectContext,
   constants,
+  statusAccumulator = null,
 ) {
   const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
   const compactMode = width < 340 || height < 360;
@@ -177,9 +178,14 @@ export async function buildSchedulesBuffer(
     </svg>
   `;
 
-  const fontedSvg = await prepareFinalSheetSvgForRasterization(svg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const { svgString: fontedSvg, textRenderStatus } =
+    await prepareFinalSheetSvgForRasterizationWithReport(svg, {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      textToPath: true,
+    });
+  if (Array.isArray(statusAccumulator)) {
+    statusAccumulator.push(textRenderStatus);
+  }
   return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
@@ -198,6 +204,7 @@ export async function buildMaterialPaletteBuffer(
   height,
   masterDNA,
   constants,
+  statusAccumulator = null,
 ) {
   const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
   const materials = normalizeMaterialsForCompose(masterDNA);
@@ -248,9 +255,14 @@ export async function buildMaterialPaletteBuffer(
     </svg>
   `;
 
-  const fontedSvg = await prepareFinalSheetSvgForRasterization(svg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const { svgString: fontedSvg, textRenderStatus } =
+    await prepareFinalSheetSvgForRasterizationWithReport(svg, {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      textToPath: true,
+    });
+  if (Array.isArray(statusAccumulator)) {
+    statusAccumulator.push(textRenderStatus);
+  }
   return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {
@@ -269,6 +281,7 @@ export async function buildClimateCardBuffer(
   height,
   locationData,
   constants,
+  statusAccumulator = null,
 ) {
   const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
   const compactMode = width < 260 || height < 260;
@@ -338,9 +351,14 @@ export async function buildClimateCardBuffer(
     </svg>
   `;
 
-  const fontedSvg = await prepareFinalSheetSvgForRasterization(svg, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const { svgString: fontedSvg, textRenderStatus } =
+    await prepareFinalSheetSvgForRasterizationWithReport(svg, {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      textToPath: true,
+    });
+  if (Array.isArray(statusAccumulator)) {
+    statusAccumulator.push(textRenderStatus);
+  }
   return sharp(Buffer.from(fontedSvg))
     .png()
     .resize(width, height, {

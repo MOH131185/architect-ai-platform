@@ -152,6 +152,24 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.a1Sheet.svgString).toContain("@font-face");
     expect(result.artifacts.a1Sheet.svgString).toContain("ArchiAISans");
     expect(result.artifacts.a1Sheet.svgString).toContain("data:font/");
+    expect(result.artifacts.a1Sheet.svgString).toContain(
+      'data-raster-text-mode="font-paths"',
+    );
+    expect(result.artifacts.a1Sheet.svgString).not.toMatch(/<text\b/);
+    expect(result.artifacts.a1Sheet.textRenderStatus).toMatchObject({
+      mode: "font_paths",
+      status: "pass",
+      rasterSafe: true,
+      remainingTextElementCount: 0,
+    });
+    expect(result.artifacts.textRenderStatus).toMatchObject({
+      status: "pass",
+      rasterTextMode: "font_paths",
+    });
+    expect(result.artifacts.presentationMode).toBe("deterministic_control");
+    expect(result.artifacts.visualFidelityStatus).toBe(
+      "degraded_control_render",
+    );
     expect(result.artifacts.a1Pdf.asset_type).toBe("a1_sheet_pdf");
     expect(result.artifacts.a1Pdf.sheet_size_mm).toEqual({
       width: 841,
@@ -165,6 +183,12 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.renderedProof.renderedPngHash).toBe(
       result.artifacts.a1Pdf.renderedPngHash,
     );
+    expect(result.artifacts.a1Pdf.renderedProof.textRenderStatus).toMatchObject(
+      {
+        status: "pass",
+        rasterTextMode: "font_paths",
+      },
+    );
     expect(result.artifacts.siteMap.metadata.hasMapImage).toBe(true);
     expect(result.artifacts.siteMap.metadata.siteMapSource).toBe(
       "provided-site-snapshot",
@@ -174,6 +198,9 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(result.artifacts.siteMap.svgString).toContain(
       'data-site-map-image="true"',
+    );
+    expect(result.artifacts.siteMap.svgString).not.toContain(
+      "Site / Context Pack",
     );
     const placementByType = Object.fromEntries(
       result.artifacts.a1Sheet.panelPlacements.map((placement) => [
@@ -214,6 +241,12 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.a1Sheet.svgString).toContain("MATERIAL PALETTE");
     expect(result.artifacts.a1Sheet.svgString).toContain("KEY NOTES");
     expect(result.artifacts.a1Sheet.svgString).toContain("Drawing No.");
+    expect(result.artifacts.panelMap.material_palette.svgString).toContain(
+      "<pattern",
+    );
+    expect(result.artifacts.panelMap.material_palette.svgString).toContain(
+      "data-material-texture",
+    );
     expect(result.artifacts.panelMap.material_palette.geometryHash).toBe(
       result.geometryHash,
     );
@@ -238,6 +271,10 @@ describe("projectGraphVerticalSliceService", () => {
       expect(artifact.metadata.sourceGeometryHash).toBe(result.geometryHash);
       expect(artifact.metadata.referenceSource).toBe("compiled_3d_control_svg");
       expect(artifact.metadata.imageRenderFallback).toBe(true);
+      expect(artifact.metadata.presentationMode).toBe("deterministic_control");
+      expect(artifact.metadata.visualFidelityStatus).toBe(
+        "degraded_control_render",
+      );
     }
     expect(result.qa.issues.map((issue) => issue.code)).toContain(
       "PRESENTATION_RENDER_FALLBACK_USED",

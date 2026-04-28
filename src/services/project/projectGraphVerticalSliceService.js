@@ -37,10 +37,14 @@ import { detectConflicts } from "../design/constraintPriority.js";
 import { enrichSiteContext } from "../context/contextAggregator.js";
 import { decideSheetSplit } from "../sheet/sheetSplitter.js";
 import {
+  EMBEDDED_FONT_STACK,
   FINAL_SHEET_MIN_FONT_SIZE_PX,
-  prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
-import { detectA1GlyphIntegrity } from "../a1/a1FinalExportContract.js";
+import {
+  detectA1GlyphIntegrity,
+  detectA1RasterGlyphIntegrity,
+} from "../a1/a1FinalExportContract.js";
 import {
   buildClimateRenderContext,
   buildStyleRenderContext,
@@ -48,6 +52,7 @@ import {
   buildReasoningChainBlock,
 } from "../a1/panelPromptBuilders.js";
 import { renderProjectGraphPanelImage } from "../render/projectGraphImageRenderer.js";
+import { analyseRenderedTextProof } from "../render/renderedTextProof.js";
 import {
   LEVEL_NAME_TO_INDEX as CANONICAL_LEVEL_NAME_TO_INDEX,
   LEVEL_ROOF_SENTINEL,
@@ -91,6 +96,14 @@ const REQUIRED_3D_A1_PANEL_TYPES = [
   "exterior_render",
   "axonometric",
   "interior_3d",
+];
+const REQUIRED_A1_TEXT_PROOF_LABELS = [
+  "SITE PLAN",
+  "GROUND FLOOR PLAN",
+  "FIRST FLOOR PLAN",
+  "MATERIAL PALETTE",
+  "KEY NOTES",
+  "Drawing No.",
 ];
 const TECHNICAL_A1_PANEL_TYPES_BASE = [
   "elevation_north",
@@ -2459,17 +2472,14 @@ function polygonPath(points = [], bbox, width, height, padding = 12) {
 function buildSiteContextPanelArtifact({
   projectGraphId,
   site,
-  climate,
-  regulations,
-  localStyle,
   geometryHash,
   siteSnapshot = null,
 }) {
-  const width = 1200;
-  const height = 780;
+  const width = 900;
+  const height = 900;
   const bbox = buildBoundingBoxFromPolygon(site.local_boundary_polygon || []);
-  const sitePath = polygonPath(site.local_boundary_polygon, bbox, 700, 520);
-  const buildablePath = polygonPath(site.buildable_polygon, bbox, 700, 520);
+  const sitePath = polygonPath(site.local_boundary_polygon, bbox, 812, 646);
+  const buildablePath = polygonPath(site.buildable_polygon, bbox, 812, 646);
   const hasMapImage = Boolean(siteSnapshot?.dataUrl);
   const mapSource = hasMapImage
     ? siteSnapshot.sourceUrl || siteSnapshot.source || "provided-site-snapshot"
@@ -2483,39 +2493,40 @@ function buildSiteContextPanelArtifact({
   const attribution = hasMapImage
     ? siteSnapshot.attribution || "Map image supplied by request"
     : "No map snapshot available";
-  const policyRefs = (regulations?.applicable_parts || [])
-    .slice(0, 4)
-    .map((part) => part.part || part.code || "policy")
-    .join(", ");
-  const materials = (localStyle?.material_palette || [])
-    .slice(0, 4)
-    .map((entry) => entry.material || entry.name || entry)
-    .join(", ");
   const mapLayer = hasMapImage
-    ? `<image x="28" y="28" width="724" height="572" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
-  <rect x="28" y="28" width="724" height="572" fill="none" stroke="#142033" stroke-width="3"/>
-  <g opacity="0.86">
-    <path d="${sitePath}" fill="#f5d54a55" stroke="#142033" stroke-width="5"/>
-    <path d="${buildablePath}" fill="none" stroke="#d26a3e" stroke-width="4" stroke-dasharray="18 10"/>
+    ? `<image x="28" y="52" width="844" height="676" href="${escapeXml(siteSnapshot.dataUrl)}" preserveAspectRatio="xMidYMid slice"/>
+  <rect x="28" y="52" width="844" height="676" fill="none" stroke="#111111" stroke-width="3"/>
+  <g transform="translate(44 66)" opacity="0.88">
+    <path d="${sitePath}" fill="#a9c58d66" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
   </g>`
-    : `<rect x="28" y="28" width="724" height="572" fill="#fffdf7" stroke="#142033" stroke-width="3"/>
-  <path d="${sitePath}" fill="#e8efe3" stroke="#142033" stroke-width="4"/>
-  <path d="${buildablePath}" fill="none" stroke="#d26a3e" stroke-width="3" stroke-dasharray="18 10"/>`;
+    : `<rect x="28" y="52" width="844" height="676" fill="#f3efe4" stroke="#111111" stroke-width="3"/>
+  <g transform="translate(44 66)">
+    <path d="${sitePath}" fill="#dfe8d0" stroke="#d64d35" stroke-width="5" stroke-dasharray="18 10"/>
+    <path d="${buildablePath}" fill="none" stroke="#111111" stroke-width="3"/>
+  </g>
+  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#c8c8c8" stroke-width="28" opacity="0.55"/>
+  <path d="M 64 642 C 186 600 272 620 354 574 C 440 526 552 540 806 488" fill="none" stroke="#ffffff" stroke-width="18" opacity="0.85"/>`;
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="site_context" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-site-map-source="${escapeXml(mapSource)}" data-site-map-image="${hasMapImage ? "true" : "false"}">
-  <rect width="${width}" height="${height}" fill="#f7f2e8"/>
+  <rect width="${width}" height="${height}" fill="#ffffff"/>
   ${mapLayer}
-  <path d="M 655 95 L 655 34 L 634 75 M 655 34 L 676 75" fill="none" stroke="#142033" stroke-width="5" stroke-linecap="round"/>
-  <text x="690" y="58" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#142033">N</text>
-  <rect x="52" y="552" width="250" height="28" fill="#fffdf7cc" stroke="#142033" stroke-width="1"/>
-  <text x="66" y="571" font-family="Arial, sans-serif" font-size="16" fill="#142033">${escapeXml(mapLabel)}</text>
-  <text x="742" y="626" font-family="Arial, sans-serif" font-size="14" text-anchor="end" fill="#52616f">${escapeXml(attribution)}</text>
-  <rect x="790" y="42" width="370" height="540" fill="#142033"/>
-  <text x="824" y="100" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#fffdf7">Site / Context Pack</text>
-  <text x="824" y="156" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Area: ${escapeXml(site.area_m2)} m2</text>
-  <text x="824" y="204" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Climate: ${escapeXml(climate?.weather_source || "fallback")}</text>
-  <text x="824" y="252" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Policy: ${escapeXml(policyRefs || "pre-check")}</text>
-  <text x="824" y="300" font-family="Arial, sans-serif" font-size="24" fill="#fffdf7">Materials: ${escapeXml(materials || "local palette")}</text>
-  <text x="824" y="520" font-family="Arial, sans-serif" font-size="18" fill="#c8d4df">source_model_hash ${escapeXml(geometryHash.slice(0, 16))}</text>
+  <path d="M 806 142 L 806 70 L 784 116 M 806 70 L 828 116" fill="none" stroke="#111111" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="806" cy="112" r="46" fill="none" stroke="#111111" stroke-width="2"/>
+  <text x="806" y="58" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle" fill="#111111">N</text>
+  <text x="450" y="342" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">Rear Garden</text>
+  <text x="450" y="682" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#333333">Front Garden</text>
+  <text x="82" y="690" font-family="Arial, sans-serif" font-size="20" fill="#333333">Driveway</text>
+  <line x1="48" y1="790" x2="348" y2="790" stroke="#111111" stroke-width="5"/>
+  <line x1="48" y1="780" x2="48" y2="800" stroke="#111111" stroke-width="3"/>
+  <line x1="168" y1="780" x2="168" y2="800" stroke="#111111" stroke-width="3"/>
+  <line x1="288" y1="780" x2="288" y2="800" stroke="#111111" stroke-width="3"/>
+  <text x="48" y="824" font-family="Arial, sans-serif" font-size="18" fill="#111111">0</text>
+  <text x="158" y="824" font-family="Arial, sans-serif" font-size="18" fill="#111111">10</text>
+  <text x="278" y="824" font-family="Arial, sans-serif" font-size="18" fill="#111111">20m</text>
+  <text x="48" y="860" font-family="Arial, sans-serif" font-size="17" fill="#333333">Scale 1:500</text>
+  <text x="852" y="824" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">${escapeXml(mapLabel)}</text>
+  <text x="852" y="852" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">${escapeXml(attribution)}</text>
+  <text x="852" y="878" font-family="Arial, sans-serif" font-size="13" text-anchor="end" fill="#777777">Area ${escapeXml(site.area_m2)} m2 | ${escapeXml(geometryHash.slice(0, 12))}</text>
 </svg>`;
   const svgHash = computeCDSHashSync({ panelType: "site_context", svgString });
   const assetId = createStableId(
@@ -2678,6 +2689,39 @@ function normalizeMaterialPaletteEntries({
   return [...byName.values()].slice(0, 8);
 }
 
+function materialTextureKind(name = "") {
+  const text = String(name || "").toLowerCase();
+  if (/brick|masonry|terracotta/.test(text)) return "brick";
+  if (/timber|wood|oak|cedar|boarding/.test(text)) return "timber";
+  if (/roof|slate|tile|shingle/.test(text)) return "roof_tile";
+  if (/window|glass|glazing|aluminium|metal|zinc/.test(text)) return "metal";
+  if (/stone|paving/.test(text)) return "stone";
+  if (/render|lime|plaster|stucco/.test(text)) return "render";
+  return "woven";
+}
+
+function buildMaterialTexturePattern(material, index) {
+  const id = `material-texture-${index}`;
+  const base = escapeXml(
+    material.hexColor || inferMaterialHex(material.name, index),
+  );
+  const kind = materialTextureKind(material.name);
+  const overlay = {
+    brick: `<path d="M0 12 H64 M0 36 H64 M0 60 H64 M16 0 V12 M48 12 V36 M16 36 V60" stroke="#5b2f25" stroke-width="2" opacity="0.42"/>`,
+    timber: `<path d="M8 0 V72 M24 0 V72 M40 0 V72 M56 0 V72" stroke="#5c3b21" stroke-width="3" opacity="0.38"/><path d="M5 18 C18 8 24 30 40 18 C52 10 58 22 64 16" fill="none" stroke="#f0c88f" stroke-width="1.5" opacity="0.45"/>`,
+    roof_tile: `<path d="M0 10 H72 M0 24 H72 M0 38 H72 M0 52 H72 M0 66 H72" stroke="#15191d" stroke-width="2" opacity="0.52"/><path d="M12 0 L0 72 M36 0 L24 72 M60 0 L48 72" stroke="#60666c" stroke-width="1.4" opacity="0.55"/>`,
+    metal: `<path d="M0 0 L72 72 M-18 18 L54 90 M18 -18 L90 54" stroke="#d6e2e8" stroke-width="3" opacity="0.36"/><rect x="8" y="8" width="56" height="56" fill="none" stroke="#273844" stroke-width="2" opacity="0.42"/>`,
+    stone: `<path d="M8 10 L30 4 L54 12 L66 30 L52 58 L24 66 L4 44 Z" fill="none" stroke="#7f776d" stroke-width="2" opacity="0.5"/><path d="M0 34 H72 M36 0 V72" stroke="#f3eee7" stroke-width="2" opacity="0.45"/>`,
+    render: `<circle cx="12" cy="14" r="2" fill="#ffffff" opacity="0.45"/><circle cx="48" cy="28" r="2.4" fill="#ffffff" opacity="0.35"/><circle cx="30" cy="56" r="1.8" fill="#7c756c" opacity="0.35"/><circle cx="62" cy="62" r="2.1" fill="#7c756c" opacity="0.3"/>`,
+    woven: `<path d="M0 18 H72 M0 54 H72 M18 0 V72 M54 0 V72" stroke="#ffffff" stroke-width="3" opacity="0.28"/>`,
+  }[kind];
+  return {
+    id,
+    kind,
+    svg: `<pattern id="${id}" width="72" height="72" patternUnits="userSpaceOnUse" data-material-texture="${kind}"><rect width="72" height="72" fill="${base}"/>${overlay}</pattern>`,
+  };
+}
+
 function buildMaterialPalettePanelArtifact({
   projectGraphId,
   localStyle,
@@ -2700,6 +2744,9 @@ function buildMaterialPalettePanelArtifact({
   const gapY = 78;
   const startX = 44;
   const startY = 86;
+  const patterns = materials
+    .slice(0, 6)
+    .map((material, index) => buildMaterialTexturePattern(material, index));
   const swatches = materials
     .slice(0, 6)
     .map((material, index) => {
@@ -2707,14 +2754,16 @@ function buildMaterialPalettePanelArtifact({
       const row = Math.floor(index / 3);
       const x = startX + col * (swatchWidth + gapX);
       const y = startY + row * (swatchHeight + gapY);
+      const pattern = patterns[index];
       return `<g data-material-index="${index + 1}">
-  <rect x="${x}" y="${y}" width="${swatchWidth}" height="${swatchHeight}" fill="${escapeXml(material.hexColor)}" stroke="#111111" stroke-width="2"/>
+  <rect x="${x}" y="${y}" width="${swatchWidth}" height="${swatchHeight}" fill="url(#${pattern.id})" stroke="#111111" stroke-width="2" data-material-texture="${escapeXml(pattern.kind)}"/>
   <text x="${x}" y="${y + swatchHeight + 24}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(material.name.toUpperCase())}</text>
   <text x="${x}" y="${y + swatchHeight + 48}" font-size="15" font-family="Arial, sans-serif" fill="#444444">${escapeXml(material.application)}</text>
 </g>`;
     })
     .join("\n");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <defs>${patterns.map((pattern) => pattern.svg).join("")}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
   <line x1="32" y1="58" x2="868" y2="58" stroke="#111111" stroke-width="2"/>
@@ -3028,6 +3077,7 @@ async function buildVisual3DPanelArtifacts({
       // when the image-gen call fails.
       let svgString = deterministicSvgString;
       let renderProvenance = null;
+      let imageRenderFallbackReason = "gate_disabled";
       if (deterministicSvgString) {
         const prompt = buildProjectGraphRenderPrompt({
           panelType,
@@ -3039,12 +3089,24 @@ async function buildVisual3DPanelArtifacts({
           programmeSummary,
           region,
         });
-        const renderResult = await renderProjectGraphPanelImage({
-          panelType,
-          deterministicSvg: deterministicSvgString,
-          prompt,
-          geometryHash,
-        });
+        let renderResult = null;
+        try {
+          renderResult = await renderProjectGraphPanelImage({
+            panelType,
+            deterministicSvg: deterministicSvgString,
+            prompt,
+            geometryHash,
+          });
+        } catch (renderErr) {
+          // The renderer normally returns null on failure, but if it ever
+          // throws we still want to capture the reason for QA.
+          console.warn(
+            `[projectGraphVerticalSlice] image renderer threw for ${panelType}:`,
+            renderErr?.message,
+          );
+          renderResult = null;
+          imageRenderFallbackReason = "openai_error";
+        }
         if (renderResult?.pngBuffer) {
           svgString = wrapPngAsSvgPanel(
             renderResult.pngBuffer,
@@ -3053,8 +3115,28 @@ async function buildVisual3DPanelArtifacts({
             height,
           );
           renderProvenance = renderResult.provenance;
+          imageRenderFallbackReason = null;
+        } else if (
+          renderResult === null &&
+          imageRenderFallbackReason === "gate_disabled"
+        ) {
+          // The renderer returns null both when the env gate is disabled AND
+          // on silent failure. We can't distinguish here, so leave the reason
+          // as "gate_disabled" — Phase C exposes the env flag so callers know.
+          imageRenderFallbackReason = "gate_disabled";
         }
+      } else {
+        imageRenderFallbackReason = "empty_response";
       }
+      const presentationMode = renderProvenance
+        ? "geometry_locked_image_render"
+        : "deterministic_control";
+      const visualFidelityStatus = renderProvenance
+        ? "photoreal_geometry_locked"
+        : "degraded_control_render";
+      const visualRenderMode = renderProvenance
+        ? "photoreal_image_gen"
+        : "deterministic_fallback";
 
       const svgHash =
         renderInput.svgHash ||
@@ -3069,7 +3151,9 @@ async function buildVisual3DPanelArtifacts({
         assetId,
         {
           asset_id: assetId,
-          asset_type: "compiled_3d_control_svg",
+          asset_type: renderProvenance
+            ? "geometry_locked_presentation_svg"
+            : "compiled_3d_control_svg",
           panel_type: panelType,
           panelType,
           source_model_hash: geometryHash,
@@ -3092,8 +3176,12 @@ async function buildVisual3DPanelArtifacts({
             sourceGeometryHash: geometryHash,
             referenceSource: "compiled_3d_control_svg",
             imageRenderFallback: renderProvenance === null,
+            imageRenderFallbackReason,
             imageRenderModel: renderProvenance?.model || null,
             imageRenderSize: renderProvenance?.size || null,
+            presentationMode,
+            visualFidelityStatus,
+            visualRenderMode,
             renderProvenance,
           },
         },
@@ -3357,6 +3445,44 @@ function buildPanelPlacements({
     .filter(Boolean);
 }
 
+function summarizePresentationMode(panelArtifacts = {}) {
+  const visualArtifacts = normalizeArtifactCollection(panelArtifacts).filter(
+    (artifact) => REQUIRED_3D_A1_PANEL_TYPES.includes(artifact.panel_type),
+  );
+  const fallbackPanels = visualArtifacts
+    .filter((artifact) => artifact.metadata?.imageRenderFallback !== false)
+    .map((artifact) => artifact.panel_type);
+  const renderedPanels = visualArtifacts
+    .filter((artifact) => artifact.metadata?.imageRenderFallback === false)
+    .map((artifact) => artifact.panel_type);
+  // Phase A6: aggregate per-panel fallback reasons so the sheet artefact
+  // can clearly say which visual panels are deterministic and why.
+  const fallbackReasons = {};
+  for (const artifact of visualArtifacts) {
+    if (artifact.metadata?.imageRenderFallback === false) continue;
+    fallbackReasons[artifact.panel_type] =
+      artifact.metadata?.imageRenderFallbackReason || "unknown";
+  }
+  let visualPanelsRenderMode = "all_photoreal";
+  if (fallbackPanels.length === visualArtifacts.length) {
+    visualPanelsRenderMode = "all_deterministic";
+  } else if (fallbackPanels.length > 0) {
+    visualPanelsRenderMode = "mixed";
+  }
+  return {
+    presentationMode: fallbackPanels.length
+      ? "deterministic_control"
+      : "geometry_locked_image_render",
+    visualFidelityStatus: fallbackPanels.length
+      ? "degraded_control_render"
+      : "photoreal_geometry_locked",
+    fallbackPanels,
+    renderedPanels,
+    visualPanelsRenderMode,
+    visualPanelsFallbackReasons: fallbackReasons,
+  };
+}
+
 function renderSheetPanel({ placement, artifact }) {
   const titleY = placement.y + 5.8;
   const contentX = placement.x + 4;
@@ -3377,8 +3503,8 @@ function renderSheetPanel({ placement, artifact }) {
 
   return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}">
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
-  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(String(placement.title || "").toUpperCase())}</text>
-  <text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.2" font-family="Arial, sans-serif" text-anchor="end" fill="#444444">${escapeXml(placement.scale)} | ${escapeXml((placement.source_model_hash || "").slice(0, 8))}</text>
+  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${escapeXml(String(placement.title || "").toUpperCase())}</text>
+  <text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${escapeXml(placement.scale)} | ${escapeXml((placement.source_model_hash || "").slice(0, 8))}</text>
   ${content}
 </g>`;
 }
@@ -3488,9 +3614,14 @@ async function buildA1Sheet({
   // PDF rasteriser, SVG download - works with a single self-contained sheet.
   // prepareFinalSheetSvgForRasterization prefers bundled NotoSans from
   // public/fonts/, then falls back only to an explicitly embedded safe font.
-  const svgString = await prepareFinalSheetSvgForRasterization(rawSvgString, {
-    minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
-  });
+  const preparedSheet = await prepareFinalSheetSvgForRasterizationWithReport(
+    rawSvgString,
+    {
+      minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
+      textToPath: true,
+    },
+  );
+  const { svgString, textRenderStatus } = preparedSheet;
   if (!svgString.includes("@font-face")) {
     throw new Error(
       "A1 sheet font embedding failed: bundled fonts at public/fonts/ " +
@@ -3504,6 +3635,12 @@ async function buildA1Sheet({
       `A1 sheet glyph integrity check failed: ${sheetGlyphIntegrity.blockers.join("; ")}`,
     );
   }
+  if (textRenderStatus.status === "blocked" || !textRenderStatus.rasterSafe) {
+    throw new Error(
+      `A1 sheet raster-safe text conversion failed: ${(textRenderStatus.blockers || []).join("; ") || "font path conversion unavailable"}`,
+    );
+  }
+  const presentationSummary = summarizePresentationMode(panelArtifacts);
   const svgHash = computeCDSHashSync({ svg: svgString });
   const sheetAssetId = createStableId("asset-a1-svg", sheetId, svgHash);
   const requiredPlacementTypes = buildRequiredA1PanelTypes(targetStoreys);
@@ -3561,6 +3698,22 @@ async function buildA1Sheet({
       },
       svgHash,
       svgString,
+      textRenderStatus,
+      presentationMode: presentationSummary.presentationMode,
+      visualFidelityStatus: presentationSummary.visualFidelityStatus,
+      visualPanelsRenderMode: presentationSummary.visualPanelsRenderMode,
+      visualPanelsFallbackReasons:
+        presentationSummary.visualPanelsFallbackReasons,
+      metadata: {
+        textRenderStatus,
+        presentationMode: presentationSummary.presentationMode,
+        visualFidelityStatus: presentationSummary.visualFidelityStatus,
+        visualPanelsRenderMode: presentationSummary.visualPanelsRenderMode,
+        visualPanelsFallbackReasons:
+          presentationSummary.visualPanelsFallbackReasons,
+        presentationFallbackPanels: presentationSummary.fallbackPanels,
+        presentationRenderedPanels: presentationSummary.renderedPanels,
+      },
     },
     sheetPanelArtifacts: supplementalPanelArtifacts,
     panelArtifacts,
@@ -3714,6 +3867,11 @@ async function buildA1PdfArtifact({
         "bundled fonts upstream.",
     );
   }
+  if (!rawSheetSvg.includes('data-raster-text-mode="font-paths"')) {
+    throw new Error(
+      "A1 sheet SVG reached PDF rasterisation without raster-safe font paths.",
+    );
+  }
 
   const renderedSheet = await rasteriseSheetArtifact({
     sheetArtifact,
@@ -3730,6 +3888,61 @@ async function buildA1PdfArtifact({
   });
   const occupancy = await analyseRenderedSheetPng(renderedPngBytes);
   const panelOccupancy = buildPanelRenderSummary(sheetArtifact);
+  const textRenderStatus = await analyseRenderedTextProof({
+    pngBuffer: renderedPngBytes,
+    sheetSvg: rawSheetSvg,
+    requiredLabels: REQUIRED_A1_TEXT_PROOF_LABELS,
+  });
+  // Phase A: post-rasterisation tofu QA. Sample each panel's caption band on
+  // the rendered PNG (not the SVG source) and refuse final PDF emission if
+  // any band matches the tofu signature. Coordinates are derived from the
+  // sheet artifact's SVG-space panel placements (mm) scaled to the rendered
+  // PNG pixel dimensions.
+  const renderedWidthPx = Number(renderedSheet.metadata?.width_px || 0);
+  const renderedHeightPx = Number(renderedSheet.metadata?.height_px || 0);
+  let rasterGlyphIntegrity = null;
+  try {
+    const sharpModule = (await import("sharp")).default;
+    const sheetWidthMm = Number(sheetArtifact?.sheet_size_mm?.width || 841);
+    const sheetHeightMm = Number(sheetArtifact?.sheet_size_mm?.height || 594);
+    const scaleX =
+      renderedWidthPx > 0 && sheetWidthMm > 0
+        ? renderedWidthPx / sheetWidthMm
+        : 1;
+    const scaleY =
+      renderedHeightPx > 0 && sheetHeightMm > 0
+        ? renderedHeightPx / sheetHeightMm
+        : 1;
+    const panelLabelCoordinates = {};
+    for (const placement of Array.isArray(sheetArtifact?.panelPlacements)
+      ? sheetArtifact.panelPlacements
+      : []) {
+      if (!placement?.panelType) continue;
+      panelLabelCoordinates[placement.panelType] = {
+        x: Math.round(Number(placement.x || 0) * scaleX),
+        y: Math.round(Number(placement.y || 0) * scaleY),
+        width: Math.round(Number(placement.width || 0) * scaleX),
+        height: Math.round(Number(placement.height || 0) * scaleY),
+        labelHeight: Math.round(8 * scaleY),
+      };
+    }
+    rasterGlyphIntegrity = await detectA1RasterGlyphIntegrity({
+      pngBuffer: Buffer.from(renderedPngBytes),
+      sharp: sharpModule,
+      panelLabelCoordinates,
+    });
+  } catch (err) {
+    rasterGlyphIntegrity = {
+      version: "phase22-a1-raster-glyph-integrity-v1",
+      status: "warning",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: [
+        `Raster glyph integrity check failed to run: ${err?.message || "unknown"}`,
+      ],
+    };
+  }
   const renderedProof = {
     sourceSvgHash: sheetArtifact.svgHash,
     renderedPngHash,
@@ -3737,6 +3950,8 @@ async function buildA1PdfArtifact({
     densityDpi: renderedSheet.metadata?.density_dpi || null,
     sizeBytes: renderedPngBytes.byteLength,
     occupancy,
+    textRenderStatus,
+    rasterGlyphIntegrity,
     panelOccupancy,
     requiredRenderablePanelCount: panelOccupancy.filter(
       (panel) => panel.required === true,
@@ -3753,10 +3968,24 @@ async function buildA1PdfArtifact({
     passed:
       Number(occupancy.nonBackgroundPixelRatio || 0) >=
         MIN_RENDERED_SHEET_INK_RATIO &&
+      textRenderStatus.passed === true &&
+      rasterGlyphIntegrity?.status !== "blocked" &&
       panelOccupancy.filter(
         (panel) => panel.required === true && panel.hasSvg !== true,
       ).length === 0,
   };
+  if (textRenderStatus.status === "blocked") {
+    throw new Error(
+      `A1 sheet rendered text proof failed: ${textRenderStatus.blockers.join("; ")}`,
+    );
+  }
+  if (rasterGlyphIntegrity?.status === "blocked") {
+    throw new Error(
+      `A1 sheet raster glyph integrity blocked: ${(
+        rasterGlyphIntegrity.blockers || []
+      ).join("; ")}`,
+    );
+  }
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(`${brief.project_name} A1 ProjectGraph sheet`);
   pdfDoc.setSubject(`QA status: ${qaStatus}`);
@@ -3797,6 +4026,24 @@ async function buildA1PdfArtifact({
   });
   const assetId = createStableId("asset-a1-pdf", projectGraphId, contentHash);
 
+  // Phase A: tag the artefact with the PDF metadata schema so the front-end
+  // and downstream QA can decide whether this is a publishable final A1.
+  const pdfMetadata = {
+    version: "a1-pdf-metadata-v1",
+    pdfRenderMode: "raster_textpaths_300dpi",
+    isRasterPdf: true,
+    isVectorPdf: false,
+    isHybridPdf: false,
+    dpi: Math.round((renderedSheet.metadata?.density_dpi || 144) * 1) || 144,
+    widthPx: renderedWidthPx || null,
+    heightPx: renderedHeightPx || null,
+    widthPt: round(widthPt, 3),
+    heightPt: round(heightPt, 3),
+    textRenderMode: "font_paths",
+    rasterIntegrityStatus: rasterGlyphIntegrity?.status || "not_run",
+    hybridVectorPdfFollowUp: true,
+  };
+
   return {
     asset_id: assetId,
     asset_type: "a1_sheet_pdf",
@@ -3814,6 +4061,7 @@ async function buildA1PdfArtifact({
     renderedPngHash,
     renderedProof,
     pdfHash: contentHash,
+    pdfMetadata,
     dataUrl: pdfDataUri,
   };
 }
@@ -4249,6 +4497,7 @@ export function validateProjectGraphVerticalSlice({
     renderedProof?.passed === true &&
     Boolean(renderedProof?.renderedPngHash) &&
     renderedInkRatio >= MIN_RENDERED_SHEET_INK_RATIO &&
+    renderedProof?.textRenderStatus?.passed === true &&
     Number(renderedProof?.requiredMissingPanelCount || 0) === 0;
   addCheck(
     checks,
@@ -4263,6 +4512,7 @@ export function validateProjectGraphVerticalSlice({
       requiredReadyPanelCount: renderedProof?.requiredReadyPanelCount || 0,
       requiredMissingPanelCount: renderedProof?.requiredMissingPanelCount || 0,
       missingRequiredPanels: renderedProof?.missingRequiredPanels || [],
+      textRenderStatus: renderedProof?.textRenderStatus?.status || null,
     },
     "graphic",
     0,
@@ -4280,6 +4530,34 @@ export function validateProjectGraphVerticalSlice({
           requiredMissingPanelCount:
             renderedProof?.requiredMissingPanelCount || 0,
           missingRequiredPanels: renderedProof?.missingRequiredPanels || [],
+          textRenderStatus: renderedProof?.textRenderStatus || null,
+        },
+      ),
+    );
+  }
+  const textProofOk =
+    renderedProof?.textRenderStatus?.passed === true &&
+    renderedProof?.textRenderStatus?.rasterTextMode === "font_paths";
+  addCheck(
+    checks,
+    "A1_PDF_TEXT_RENDER_PROOF_PASS",
+    textProofOk,
+    {
+      textRenderStatus: renderedProof?.textRenderStatus || null,
+      sheetTextRenderStatus: artifacts.a1Sheet?.textRenderStatus || null,
+    },
+    "graphic",
+    0,
+  );
+  if (!textProofOk) {
+    issues.push(
+      buildIssue(
+        "A1_PDF_TEXT_RENDER_PROOF_FAILED",
+        "error",
+        "A1 PDF text proof failed; refusing a sheet that may render square/tofu glyphs.",
+        {
+          textRenderStatus: renderedProof?.textRenderStatus || null,
+          sheetTextRenderStatus: artifacts.a1Sheet?.textRenderStatus || null,
         },
       ),
     );
@@ -5197,6 +5475,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       geometryHash: compiledProject.geometryHash,
       sheetArtifact: sheetResult.sheetArtifact,
     });
+    sheetResult.sheetArtifact.renderProof = pdf.renderedProof;
+    sheetResult.sheetArtifact.metadata = {
+      ...(sheetResult.sheetArtifact.metadata || {}),
+      renderProof: pdf.renderedProof,
+      textRenderStatus: pdf.renderedProof?.textRenderStatus,
+    };
     renderedSheets.push({
       sheetPlan,
       sheet: sheetResult.sheetSet.sheets[0],
@@ -5309,6 +5593,9 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     siteMap: siteMapArtifact,
     visuals3d,
     renderedProof: pdfArtifact.renderedProof,
+    textRenderStatus: pdfArtifact.renderedProof?.textRenderStatus,
+    presentationMode: sheetArtifact.presentationMode,
+    visualFidelityStatus: sheetArtifact.visualFidelityStatus,
     compiledProject,
     projectGeometry,
     sheetSeries: renderedSheets.map(

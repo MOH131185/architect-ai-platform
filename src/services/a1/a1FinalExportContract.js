@@ -212,6 +212,305 @@ export function detectA1GlyphIntegrity({
   };
 }
 
+// ---------------------------------------------------------------------------
+// Phase A: post-rasterisation tofu detector
+//
+// detectA1GlyphIntegrity above scans the SVG SOURCE for literal tofu codepoints
+// (`[□▯�]`). Sharp/librsvg renders missing glyphs as `.notdef`
+// boxes that NEVER appear as those codepoints in the source — so the SVG-only
+// gate is structurally blind to that failure mode.
+//
+// detectA1RasterGlyphIntegrity samples the rendered PNG inside the panel
+// caption bands (where labels like SITE PLAN / NORTH ELEVATION live) and
+// flags zones whose pixel pattern matches the tofu signature: high dark
+// coverage + low transition density per row (a few wide solid boxes vs.
+// real text's many narrow strokes).
+// ---------------------------------------------------------------------------
+
+const RASTER_INTEGRITY_VERSION = "phase22-a1-raster-glyph-integrity-v1";
+const DARK_PIXEL_THRESHOLD = 110; // 0-255; below = ink
+// Tofu signature: solid filled rectangles → high dark coverage with very low
+// edge density per dark pixel (each "letter" is one big blob). Real text has
+// many narrow strokes → many transitions per dark pixel.
+const TOFU_DARK_RATIO_MIN = 0.25;
+const TOFU_RUNS_PER_DARK_PIXEL_MAX = 0.05;
+const REAL_TEXT_RUNS_PER_DARK_PIXEL_MIN = 0.08;
+const MIN_DARK_RATIO_FOR_TEXT = 0.005;
+const MIN_ZONE_HEIGHT_PX = 6;
+const MIN_ZONE_WIDTH_PX = 24;
+
+function clampInt(value, min, max) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
+function deriveLabelBandsFromCoordinates(panelLabelCoordinates = {}) {
+  const bands = [];
+  for (const [panelType, coord] of Object.entries(
+    panelLabelCoordinates || {},
+  )) {
+    if (!coord) continue;
+    const labelHeight = Number(coord.labelHeight) || 26;
+    const x = Number(coord.x);
+    const y = Number(coord.y);
+    const width = Number(coord.width);
+    const height = Number(coord.height);
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height)
+    ) {
+      continue;
+    }
+    const bandTop = y + Math.max(0, height - labelHeight);
+    bands.push({
+      panelType,
+      left: x,
+      top: bandTop,
+      width,
+      height: labelHeight,
+    });
+  }
+  return bands;
+}
+
+async function analyseLabelBand(sharp, pngBuffer, band, imageMeta) {
+  const left = clampInt(band.left, 0, imageMeta.width - 1);
+  const top = clampInt(band.top, 0, imageMeta.height - 1);
+  const width = clampInt(band.width, MIN_ZONE_WIDTH_PX, imageMeta.width - left);
+  const height = clampInt(
+    band.height,
+    MIN_ZONE_HEIGHT_PX,
+    imageMeta.height - top,
+  );
+
+  if (width < MIN_ZONE_WIDTH_PX || height < MIN_ZONE_HEIGHT_PX) {
+    return {
+      panelType: band.panelType,
+      bandRect: { left, top, width, height },
+      sampled: false,
+      reason: "zone_too_small",
+    };
+  }
+
+  const raw = await sharp(pngBuffer)
+    .extract({ left, top, width, height })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { data, info } = raw;
+  const stride = info.channels || 1;
+  const w = info.width;
+  const h = info.height;
+  if (!w || !h) {
+    return {
+      panelType: band.panelType,
+      bandRect: { left, top, width, height },
+      sampled: false,
+      reason: "empty_extract",
+    };
+  }
+
+  let darkPixels = 0;
+  let darkRunsTotal = 0;
+  for (let y = 0; y < h; y++) {
+    let inDark = false;
+    for (let x = 0; x < w; x++) {
+      const value = data[(y * w + x) * stride];
+      const isDark = value < DARK_PIXEL_THRESHOLD;
+      if (isDark) {
+        darkPixels += 1;
+        if (!inDark) {
+          darkRunsTotal += 1;
+          inDark = true;
+        }
+      } else if (inDark) {
+        inDark = false;
+      }
+    }
+  }
+  const totalPixels = w * h;
+  const darkRatio = darkPixels / totalPixels;
+  const runsPerRow = darkRunsTotal / h;
+  // Edge density per ink pixel: real text has many narrow strokes (high), tofu
+  // has wide solid runs (low). This is the primary discriminator and is far
+  // more robust than raw runs-per-row across font sizes and panel widths.
+  const runsPerDarkPixel = darkPixels > 0 ? darkRunsTotal / darkPixels : 0;
+  const matchesTofuSignature =
+    darkRatio >= TOFU_DARK_RATIO_MIN &&
+    runsPerDarkPixel < TOFU_RUNS_PER_DARK_PIXEL_MAX;
+  const matchesRealTextSignature =
+    darkRatio >= MIN_DARK_RATIO_FOR_TEXT &&
+    runsPerDarkPixel >= REAL_TEXT_RUNS_PER_DARK_PIXEL_MIN;
+
+  return {
+    panelType: band.panelType,
+    bandRect: { left, top, width, height },
+    sampled: true,
+    darkRatio: Number(darkRatio.toFixed(4)),
+    runsPerRow: Number(runsPerRow.toFixed(2)),
+    runsPerDarkPixel: Number(runsPerDarkPixel.toFixed(4)),
+    darkRunsTotal,
+    matchesTofuSignature,
+    matchesRealTextSignature,
+  };
+}
+
+export async function detectA1RasterGlyphIntegrity({
+  pngBuffer,
+  sharp,
+  panelLabelCoordinates = null,
+  zones = null,
+  sheetTextContract = null,
+} = {}) {
+  if (!pngBuffer || (Buffer.isBuffer(pngBuffer) && pngBuffer.length === 0)) {
+    return {
+      version: RASTER_INTEGRITY_VERSION,
+      status: "not_run",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: [
+        "Raster glyph integrity not run: pngBuffer is empty or missing.",
+      ],
+      requiredLabelCount: sheetTextContract?.requiredLabelCount || 0,
+    };
+  }
+  if (typeof sharp !== "function") {
+    return {
+      version: RASTER_INTEGRITY_VERSION,
+      status: "not_run",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: ["Raster glyph integrity not run: sharp module unavailable."],
+      requiredLabelCount: sheetTextContract?.requiredLabelCount || 0,
+    };
+  }
+
+  let imageMeta = { width: 0, height: 0 };
+  try {
+    imageMeta = await sharp(pngBuffer).metadata();
+  } catch (err) {
+    return {
+      version: RASTER_INTEGRITY_VERSION,
+      status: "not_run",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: [
+        `Raster glyph integrity not run: sharp metadata failed (${err?.message || "unknown"}).`,
+      ],
+      requiredLabelCount: sheetTextContract?.requiredLabelCount || 0,
+    };
+  }
+  if (!imageMeta?.width || !imageMeta?.height) {
+    return {
+      version: RASTER_INTEGRITY_VERSION,
+      status: "not_run",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: [
+        "Raster glyph integrity not run: sharp returned no width/height.",
+      ],
+      requiredLabelCount: sheetTextContract?.requiredLabelCount || 0,
+    };
+  }
+
+  const bands = Array.isArray(zones)
+    ? zones
+    : deriveLabelBandsFromCoordinates(panelLabelCoordinates || {});
+  if (bands.length === 0) {
+    return {
+      version: RASTER_INTEGRITY_VERSION,
+      status: "not_run",
+      passed: false,
+      sampledCount: 0,
+      suspectZones: [],
+      blockers: [
+        "Raster glyph integrity not run: no panel label zones provided.",
+      ],
+      requiredLabelCount: sheetTextContract?.requiredLabelCount || 0,
+    };
+  }
+
+  const results = [];
+  for (const band of bands) {
+    try {
+      const analysis = await analyseLabelBand(
+        sharp,
+        pngBuffer,
+        band,
+        imageMeta,
+      );
+      results.push(analysis);
+    } catch (err) {
+      results.push({
+        panelType: band.panelType,
+        sampled: false,
+        reason: `extract_failed: ${err?.message || "unknown"}`,
+      });
+    }
+  }
+
+  const sampled = results.filter((r) => r.sampled);
+  const suspectZones = sampled.filter((r) => r.matchesTofuSignature);
+  const realTextZones = sampled.filter((r) => r.matchesRealTextSignature);
+  const blockers = [];
+  const warnings = [];
+
+  if (suspectZones.length > 0) {
+    blockers.push(
+      `Rendered PNG has ${suspectZones.length} panel label band(s) matching the tofu signature (high dark coverage with very few transitions). Panel(s): ${suspectZones
+        .map((z) => z.panelType)
+        .join(", ")}.`,
+    );
+  }
+  if (
+    sampled.length > 0 &&
+    realTextZones.length === 0 &&
+    suspectZones.length === 0
+  ) {
+    // Sampled but nothing looks like real text either. Could be a blank/
+    // featureless panel (legitimate when a test fixture renders synthetic
+    // panels with no captions) OR a different rendering failure. Surface as
+    // a warning, not a block, because the genuine tofu failure mode the user
+    // hit is already caught by the suspectZones check above.
+    warnings.push(
+      `Rendered PNG label bands have neither tofu nor real text signatures across ${sampled.length} sampled zone(s); panels appear blank or featureless. Verify visually before publishing.`,
+    );
+  }
+
+  let status = "pass";
+  if (blockers.length > 0) {
+    status = "blocked";
+  } else if (warnings.length > 0 || sampled.length === 0) {
+    status = "warning";
+  }
+
+  return {
+    version: RASTER_INTEGRITY_VERSION,
+    status,
+    passed: status === "pass",
+    sampledCount: sampled.length,
+    suspectZones: suspectZones.map((z) => ({
+      panelType: z.panelType,
+      darkRatio: z.darkRatio,
+      runsPerRow: z.runsPerRow,
+      runsPerDarkPixel: z.runsPerDarkPixel,
+      bandRect: z.bandRect,
+    })),
+    realTextZoneCount: realTextZones.length,
+    bandCount: bands.length,
+    blockers: unique(blockers),
+    warnings: unique(warnings),
+    requiredLabelCount: sheetTextContract?.requiredLabelCount || 0,
+  };
+}
+
 export function buildA1SheetSetPlan({
   panels = [],
   sheetTextContract = null,

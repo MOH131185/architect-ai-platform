@@ -12,6 +12,11 @@
  * @module utils/svgFontEmbedder
  */
 
+import {
+  convertSvgTextToPaths,
+  inspectSvgTextPathStatus,
+} from "./svgTextPathConverter.js";
+
 const INTER_REGULAR_URL =
   "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2";
 const INTER_BOLD_URL =
@@ -570,19 +575,57 @@ export function embedFontInSVGSync(svgString, options = {}) {
   );
 }
 
-export async function prepareFinalSheetSvgForRasterization(
+async function prepareFinalSheetSvgForRasterizationDetailed(
   svgString,
   options = {},
 ) {
   await ensureBundledFontsLoaded();
   const bundledFontsReady = Boolean(resolvedBundledFonts?.regular?.base64);
 
-  return embedFontInSVG(svgString, {
+  let preparedSvg = await embedFontInSVG(svgString, {
     bundledOnly: bundledFontsReady,
     minimumFontSizePx:
       options.minimumFontSizePx ?? FINAL_SHEET_MIN_FONT_SIZE_PX,
     outlineCriticalText: options.outlineCriticalText ?? true,
   });
+  let textRenderStatus = inspectSvgTextPathStatus(preparedSvg);
+
+  if (options.textToPath === true) {
+    const converted = await convertSvgTextToPaths(preparedSvg, {
+      minimumFontSizePx:
+        options.minimumFontSizePx ?? FINAL_SHEET_MIN_FONT_SIZE_PX,
+    });
+    preparedSvg = converted.svgString;
+    textRenderStatus = converted.report;
+  }
+
+  return {
+    svgString: preparedSvg,
+    textRenderStatus: {
+      ...textRenderStatus,
+      bundledFontsReady,
+      fontFamily: EMBEDDED_FONT_FAMILY,
+      rasterSafe: textRenderStatus.mode === "font_paths",
+    },
+  };
+}
+
+export async function prepareFinalSheetSvgForRasterization(
+  svgString,
+  options = {},
+) {
+  const prepared = await prepareFinalSheetSvgForRasterizationDetailed(
+    svgString,
+    options,
+  );
+  return prepared.svgString;
+}
+
+export async function prepareFinalSheetSvgForRasterizationWithReport(
+  svgString,
+  options = {},
+) {
+  return prepareFinalSheetSvgForRasterizationDetailed(svgString, options);
 }
 
 export function prepareFinalSheetSvgForRasterizationSync(
@@ -671,6 +714,7 @@ export default {
   embedFontInSVG,
   embedFontInSVGSync,
   prepareFinalSheetSvgForRasterization,
+  prepareFinalSheetSvgForRasterizationWithReport,
   prepareFinalSheetSvgForRasterizationSync,
   ensureFontsLoaded,
   ensureBundledFontsLoaded,
