@@ -62,7 +62,7 @@ export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
 
 const PROFESSIONAL_REVIEW_DISCLAIMER =
   "AI-generated early-stage architecture package. Regulation checks are preliminary design flags and require professional review.";
-const A1_SHEET_LAYOUT_VERSION = "projectgraph-a1-recovery-panels-v2";
+const A1_SHEET_LAYOUT_VERSION = "projectgraph-a1-reference-board-v1";
 const A1_SHEET_SIZE_MM = { width: 841, height: 594 };
 const MAX_TARGET_STOREYS = Math.max(
   1,
@@ -81,6 +81,9 @@ const REQUIRED_A1_PANEL_TYPES_BASE = [
   "exterior_render",
   "axonometric",
   "interior_3d",
+  "material_palette",
+  "key_notes",
+  "title_block",
 ];
 const REQUIRED_3D_A1_PANEL_TYPES = [
   "hero_3d",
@@ -2336,11 +2339,14 @@ function formatPanelTitle(panelType) {
     .replace(/^floor_plan_first$/, "First floor plan")
     .replace(/^section_AA$/, "Section A-A")
     .replace(/^section_BB$/, "Section B-B")
-    .replace(/^site_context$/, "Site / context")
-    .replace(/^hero_3d$/, "3D perspective")
+    .replace(/^site_context$/, "Site plan")
+    .replace(/^hero_3d$/, "Exterior perspective")
     .replace(/^exterior_render$/, "Exterior render")
-    .replace(/^axonometric$/, "3D axonometric")
-    .replace(/^interior_3d$/, "Interior / cutaway")
+    .replace(/^axonometric$/, "Axonometric view")
+    .replace(/^interior_3d$/, "Interior perspective")
+    .replace(/^material_palette$/, "Material palette")
+    .replace(/^key_notes$/, "Key notes")
+    .replace(/^title_block$/, "Title block")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -2521,6 +2527,407 @@ function buildSiteContextPanelArtifact({
   };
 }
 
+const MATERIAL_HEX_FALLBACKS = [
+  "#b6634a",
+  "#b08455",
+  "#343a40",
+  "#d7d2c8",
+  "#5f7482",
+  "#c1b8aa",
+  "#6f756c",
+  "#8a6f59",
+];
+
+function inferMaterialHex(name = "", index = 0) {
+  const text = String(name || "").toLowerCase();
+  if (/brick|terracotta|masonry/.test(text)) return "#b6634a";
+  if (/timber|wood|oak|cedar|boarding/.test(text)) return "#b08455";
+  if (/slate|dark|roof|tile|metal|zinc|standing seam/.test(text)) {
+    return "#343a40";
+  }
+  if (/render|lime|plaster|stucco/.test(text)) return "#d7d2c8";
+  if (/glass|glazing|aluminium|window/.test(text)) return "#5f7482";
+  if (/stone|paving|natural/.test(text)) return "#c1b8aa";
+  if (/concrete|grc|cement/.test(text)) return "#b8b7ae";
+  return MATERIAL_HEX_FALLBACKS[index % MATERIAL_HEX_FALLBACKS.length];
+}
+
+function inferMaterialApplication(name = "") {
+  const text = String(name || "").toLowerCase();
+  if (/roof|slate|tile|standing seam/.test(text)) return "roof finish";
+  if (/window|glass|glazing|aluminium/.test(text)) return "openings";
+  if (/timber|boarding|screen|soffit/.test(text)) return "facade accent";
+  if (/stone|paving/.test(text)) return "landscape / plinth";
+  if (/render|brick|masonry|concrete|grc/.test(text)) return "external wall";
+  return "finish";
+}
+
+function normalizeMaterialPaletteEntries({
+  localStyle = null,
+  compiledProject = null,
+  styleDNA = null,
+  brief = null,
+} = {}) {
+  const rawEntries = [];
+  const addMaterial = (value, source = "project_graph") => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((entry) => addMaterial(entry, source));
+      return;
+    }
+    if (typeof value === "string") {
+      rawEntries.push({ name: value, source });
+      return;
+    }
+    if (typeof value === "object") {
+      const name =
+        value.name ||
+        value.material ||
+        value.label ||
+        value.type ||
+        value.primary ||
+        value.finish ||
+        null;
+      if (name) {
+        rawEntries.push({
+          name,
+          hexColor: value.hexColor || value.color_hex || value.hex || null,
+          application: value.application || value.use || value.role || null,
+          source,
+        });
+      }
+      if (!name) {
+        Object.entries(value).forEach(([key, nested]) => {
+          if (typeof nested === "string") {
+            rawEntries.push({ name: nested, application: key, source });
+          } else if (nested && typeof nested === "object") {
+            addMaterial(
+              { ...nested, application: nested.application || key },
+              source,
+            );
+          }
+        });
+      }
+    }
+  };
+
+  addMaterial(localStyle?.material_palette_with_provenance, "local_style");
+  addMaterial(localStyle?.material_palette, "local_style");
+  addMaterial(localStyle?.materials_local, "local_style");
+  addMaterial(localStyle?.local_materials, "local_style");
+  addMaterial(styleDNA?.materials, "style_dna");
+  addMaterial(styleDNA?.local_materials, "style_dna");
+  addMaterial(compiledProject?.materials, "compiled_project");
+  addMaterial(brief?.user_intent?.material_preferences, "user_intent");
+
+  const byName = new Map();
+  rawEntries.forEach((entry) => {
+    const normalizedName = String(entry.name || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const key = normalizedName.toLowerCase();
+    if (!key || byName.has(key)) return;
+    const index = byName.size;
+    byName.set(key, {
+      name: normalizedName,
+      hexColor: entry.hexColor || inferMaterialHex(normalizedName, index),
+      application:
+        entry.application || inferMaterialApplication(normalizedName),
+      source: entry.source || "project_graph",
+    });
+  });
+
+  if (byName.size === 0) {
+    [
+      "warm stock brick",
+      "vertical timber cladding",
+      "dark grey roof tiles",
+      "aluminium windows",
+      "light render",
+      "natural stone paving",
+    ].forEach((name, index) => {
+      byName.set(name, {
+        name,
+        hexColor: inferMaterialHex(name, index),
+        application: inferMaterialApplication(name),
+        source: "deterministic_fallback",
+      });
+    });
+  }
+
+  return [...byName.values()].slice(0, 8);
+}
+
+function buildMaterialPalettePanelArtifact({
+  projectGraphId,
+  localStyle,
+  compiledProject,
+  styleDNA,
+  brief,
+  geometryHash,
+}) {
+  const width = 900;
+  const height = 620;
+  const materials = normalizeMaterialPaletteEntries({
+    localStyle,
+    compiledProject,
+    styleDNA,
+    brief,
+  });
+  const swatchWidth = 180;
+  const swatchHeight = 96;
+  const gapX = 32;
+  const gapY = 78;
+  const startX = 44;
+  const startY = 86;
+  const swatches = materials
+    .slice(0, 6)
+    .map((material, index) => {
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      const x = startX + col * (swatchWidth + gapX);
+      const y = startY + row * (swatchHeight + gapY);
+      return `<g data-material-index="${index + 1}">
+  <rect x="${x}" y="${y}" width="${swatchWidth}" height="${swatchHeight}" fill="${escapeXml(material.hexColor)}" stroke="#111111" stroke-width="2"/>
+  <text x="${x}" y="${y + swatchHeight + 24}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(material.name.toUpperCase())}</text>
+  <text x="${x}" y="${y + swatchHeight + 48}" font-size="15" font-family="Arial, sans-serif" fill="#444444">${escapeXml(material.application)}</text>
+</g>`;
+    })
+    .join("\n");
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <rect width="${width}" height="${height}" fill="#ffffff"/>
+  <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
+  <line x1="32" y1="58" x2="868" y2="58" stroke="#111111" stroke-width="2"/>
+  ${swatches}
+</svg>`;
+  const svgHash = computeCDSHashSync({
+    panelType: "material_palette",
+    svgString,
+    geometryHash,
+  });
+  const assetId = createStableId(
+    "asset-svg",
+    "material_palette",
+    geometryHash,
+    svgHash,
+  );
+  return {
+    asset_id: assetId,
+    asset_type: "project_graph_data_panel_svg",
+    panel_type: "material_palette",
+    panelType: "material_palette",
+    source_model_hash: geometryHash,
+    geometryHash,
+    authoritySource: "project_graph_compiled_geometry",
+    svgHash,
+    width,
+    height,
+    svgString,
+    metadata: {
+      deterministic: true,
+      source: "project_graph_material_palette",
+      panelType: "material_palette",
+      geometryHash,
+      materialCount: materials.length,
+      materials,
+    },
+  };
+}
+
+function splitNoteLines(note = "", maxChars = 36) {
+  const words = String(note || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ");
+  const lines = [];
+  let current = "";
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  });
+  if (current) lines.push(current);
+  return lines.slice(0, 3);
+}
+
+function buildKeyNoteItems({ brief, site, climate, regulations, localStyle }) {
+  const notes = [
+    `${brief?.building_type || "Building"} brief: ${brief?.target_gia_m2 || "target"} sq m across ${brief?.target_storeys || 1} storeys.`,
+    site?.area_m2
+      ? `Site area ${site.area_m2} sq m; boundary and context sourced from ProjectGraph site analysis.`
+      : "Site boundary is held in the ProjectGraph site model.",
+    `Sustainability ambition: ${brief?.sustainability_ambition || "low_energy"}.`,
+    climate?.overheating?.risk_level
+      ? `Climate precheck: overheating risk ${climate.overheating.risk_level}.`
+      : "Climate precheck uses deterministic fallback where live data is unavailable.",
+    regulations?.jurisdiction
+      ? `Regulation precheck jurisdiction: ${regulations.jurisdiction}.`
+      : "Regulation checks are preliminary and require professional review.",
+    Array.isArray(localStyle?.material_palette) &&
+    localStyle.material_palette.length
+      ? `Facade palette: ${localStyle.material_palette.slice(0, 3).join(", ")}.`
+      : "Facade palette is derived from local style and user intent.",
+    "All dimensions are in metres unless noted; verify before construction.",
+  ];
+  return notes.filter(Boolean).slice(0, 7);
+}
+
+function buildKeyNotesPanelArtifact({
+  projectGraphId,
+  brief,
+  site,
+  climate,
+  regulations,
+  localStyle,
+  geometryHash,
+}) {
+  const width = 620;
+  const height = 620;
+  const notes = buildKeyNoteItems({
+    brief,
+    site,
+    climate,
+    regulations,
+    localStyle,
+  });
+  let cursorY = 92;
+  const noteGroups = notes
+    .map((note, index) => {
+      const lines = splitNoteLines(note, 42);
+      const groupY = cursorY;
+      cursorY += 34 + lines.length * 22;
+      return `<g data-key-note="${index + 1}">
+  <text x="34" y="${groupY}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${index + 1}.</text>
+  ${lines
+    .map(
+      (line, lineIndex) =>
+        `<text x="72" y="${groupY + lineIndex * 22}" font-size="17" font-family="Arial, sans-serif" fill="#222222">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ")}
+</g>`;
+    })
+    .join("\n");
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="key_notes" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <rect width="${width}" height="${height}" fill="#ffffff"/>
+  <text x="30" y="44" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">KEY NOTES</text>
+  <line x1="30" y1="60" x2="590" y2="60" stroke="#111111" stroke-width="2"/>
+  ${noteGroups}
+</svg>`;
+  const svgHash = computeCDSHashSync({
+    panelType: "key_notes",
+    svgString,
+    geometryHash,
+  });
+  const assetId = createStableId(
+    "asset-svg",
+    "key_notes",
+    geometryHash,
+    svgHash,
+  );
+  return {
+    asset_id: assetId,
+    asset_type: "project_graph_data_panel_svg",
+    panel_type: "key_notes",
+    panelType: "key_notes",
+    source_model_hash: geometryHash,
+    geometryHash,
+    authoritySource: "project_graph_compiled_geometry",
+    svgHash,
+    width,
+    height,
+    svgString,
+    metadata: {
+      deterministic: true,
+      source: "project_graph_key_notes",
+      panelType: "key_notes",
+      geometryHash,
+      noteCount: notes.length,
+    },
+  };
+}
+
+function buildTitleBlockPanelArtifact({
+  projectGraphId,
+  brief,
+  geometryHash,
+  sheetPlan,
+}) {
+  const width = 620;
+  const height = 620;
+  const location =
+    brief?.site_input?.address || brief?.site_input?.postcode || "Project site";
+  const drawingNumber = sheetPlan?.sheet_number || "A1-00";
+  const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
+  const projectTitle = String(brief?.project_name || "ArchiAI Project")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+  const rows = [
+    ["Project", brief?.project_name || "ArchiAI Project"],
+    ["Location", location],
+    ["Stage", sheetLabel],
+    ["Scale", "As shown"],
+    ["Date", "Generated"],
+    ["Drawing No.", drawingNumber],
+  ];
+  const rowSvg = rows
+    .map((row, index) => {
+      const y = 230 + index * 48;
+      return `<g>
+  <line x1="34" y1="${y - 28}" x2="586" y2="${y - 28}" stroke="#999999" stroke-width="1"/>
+  <text x="42" y="${y}" font-size="18" font-family="Arial, sans-serif" fill="#222222">${escapeXml(row[0])}</text>
+  <text x="236" y="${y}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(row[1])}</text>
+</g>`;
+    })
+    .join("\n");
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
+  <rect width="${width}" height="${height}" fill="#ffffff"/>
+  <rect x="18" y="18" width="584" height="584" fill="none" stroke="#111111" stroke-width="3"/>
+  <text x="34" y="70" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#111111">${escapeXml(projectTitle)}</text>
+  <text x="34" y="112" font-family="Arial, sans-serif" font-size="22" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
+  <line x1="34" y1="146" x2="586" y2="146" stroke="#111111" stroke-width="2"/>
+  ${rowSvg}
+  <text x="34" y="560" font-family="Arial, sans-serif" font-size="15" fill="#555555">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
+  <text x="586" y="560" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">ARCHITECT AI PLATFORM</text>
+</svg>`;
+  const svgHash = computeCDSHashSync({
+    panelType: "title_block",
+    svgString,
+    geometryHash,
+  });
+  const assetId = createStableId(
+    "asset-svg",
+    "title_block",
+    geometryHash,
+    svgHash,
+  );
+  return {
+    asset_id: assetId,
+    asset_type: "project_graph_data_panel_svg",
+    panel_type: "title_block",
+    panelType: "title_block",
+    source_model_hash: geometryHash,
+    geometryHash,
+    authoritySource: "project_graph_compiled_geometry",
+    svgHash,
+    width,
+    height,
+    svgString,
+    metadata: {
+      deterministic: true,
+      source: "project_graph_title_block",
+      panelType: "title_block",
+      geometryHash,
+      drawingNumber,
+      sheetLabel,
+    },
+  };
+}
+
 // Build a climate + style + programme aware prompt for image-edit-based
 // 3D panel rendering. Uses panelPromptBuilders.buildReasoningChainBlock
 // so the gpt-image call sees the same upstream drivers (UK temperate,
@@ -2662,6 +3069,11 @@ async function buildVisual3DPanelArtifacts({
             panelType,
             geometryHash,
             svgHash,
+            sourceGeometryHash: geometryHash,
+            referenceSource: "compiled_3d_control_svg",
+            imageRenderFallback: renderProvenance === null,
+            imageRenderModel: renderProvenance?.model || null,
+            imageRenderSize: renderProvenance?.size || null,
             renderProvenance,
           },
         },
@@ -2684,6 +3096,7 @@ async function buildSheetPanelArtifacts({
   compiledProject,
   geometryHash,
   siteSnapshot = null,
+  sheetPlan = null,
 }) {
   const siteContext = buildSiteContextPanelArtifact({
     projectGraphId,
@@ -2693,6 +3106,29 @@ async function buildSheetPanelArtifacts({
     localStyle,
     geometryHash,
     siteSnapshot,
+  });
+  const materialPalette = buildMaterialPalettePanelArtifact({
+    projectGraphId,
+    localStyle,
+    compiledProject,
+    styleDNA,
+    brief,
+    geometryHash,
+  });
+  const keyNotes = buildKeyNotesPanelArtifact({
+    projectGraphId,
+    brief,
+    site,
+    climate,
+    regulations,
+    localStyle,
+    geometryHash,
+  });
+  const titleBlock = buildTitleBlockPanelArtifact({
+    projectGraphId,
+    brief,
+    geometryHash,
+    sheetPlan,
   });
   const visual3d = await buildVisual3DPanelArtifacts({
     compiledProject,
@@ -2706,67 +3142,107 @@ async function buildSheetPanelArtifacts({
   });
   return {
     [siteContext.asset_id]: siteContext,
+    [materialPalette.asset_id]: materialPalette,
+    [keyNotes.asset_id]: keyNotes,
+    [titleBlock.asset_id]: titleBlock,
     ...visual3d,
   };
 }
 
 function buildSheetPanelSpecs(targetStoreys = 1) {
   const storeyCount = Math.max(1, Number(targetStoreys) || 1);
-  const overviewRow = [
+  const specs = [
     {
       panelType: "site_context",
-      x: 18,
-      y: 44,
+      x: 10,
+      y: 12,
+      width: 178,
+      height: 170,
+      scale: "1:500",
+      required: true,
+    },
+    {
+      panelType: "section_AA",
+      x: 10,
+      y: 196,
+      width: 180,
+      height: 128,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "section_BB",
+      x: 196,
+      y: 196,
+      width: 180,
+      height: 128,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "axonometric",
+      x: 382,
+      y: 196,
       width: 168,
-      height: 150,
-      scale: "context",
+      height: 228,
+      scale: "3D",
       required: true,
     },
     {
       panelType: "hero_3d",
-      x: 196,
-      y: 44,
-      width: 200,
-      height: 150,
-      scale: "perspective",
-      required: true,
-    },
-    {
-      panelType: "exterior_render",
-      x: 406,
-      y: 44,
-      width: 158,
-      height: 150,
+      x: 10,
+      y: 432,
+      width: 190,
+      height: 148,
       scale: "render",
-      required: false,
-    },
-    {
-      panelType: "axonometric",
-      x: 574,
-      y: 44,
-      width: 120,
-      height: 150,
-      scale: "axonometric",
       required: true,
     },
     {
       panelType: "interior_3d",
-      x: 704,
-      y: 44,
-      width: 117,
-      height: 150,
-      scale: "cutaway",
+      x: 206,
+      y: 432,
+      width: 252,
+      height: 148,
+      scale: "render",
+      required: true,
+    },
+    {
+      panelType: "material_palette",
+      x: 464,
+      y: 432,
+      width: 130,
+      height: 148,
+      scale: "palette",
+      required: true,
+    },
+    {
+      panelType: "key_notes",
+      x: 600,
+      y: 432,
+      width: 96,
+      height: 148,
+      scale: "notes",
+      required: true,
+    },
+    {
+      panelType: "title_block",
+      x: 702,
+      y: 432,
+      width: 129,
+      height: 148,
+      scale: "A1",
       required: true,
     },
   ];
 
-  const floorPlansBlockX = 18;
-  const floorPlansBlockY = 204;
-  const floorPlansBlockWidth = 480;
-  const floorPlansBlockHeight = 190;
-  const floorPlanColumns = Math.min(storeyCount, 3);
+  const floorPlansBlockX = 196;
+  const floorPlansBlockY = 12;
+  const floorPlansBlockWidth = 354;
+  const floorPlansBlockHeight = 170;
+  const floorPlanColumns =
+    storeyCount <= 2 ? storeyCount : Math.min(storeyCount, 3);
   const floorPlanRows = Math.ceil(storeyCount / floorPlanColumns);
-  const floorPlanGap = 4;
+  const floorPlanGap = 6;
   const floorPlanCellWidth =
     (floorPlansBlockWidth - floorPlanGap * (floorPlanColumns - 1)) /
     floorPlanColumns;
@@ -2788,19 +3264,19 @@ function buildSheetPanelSpecs(targetStoreys = 1) {
     });
   }
 
-  const elevationsBlockX = 508;
-  const elevationsBlockY = 204;
-  const elevationCellWidth = 153;
-  const elevationCellHeight = 92;
-  const elevationGap = 4;
+  const elevationsBlockX = 558;
+  const elevationsBlockY = 12;
+  const elevationCellWidth = 273;
+  const elevationCellHeight = 96;
+  const elevationGap = 5;
   const elevations = [
-    { panelType: "elevation_north", col: 0, row: 0 },
-    { panelType: "elevation_south", col: 1, row: 0 },
-    { panelType: "elevation_east", col: 0, row: 1 },
-    { panelType: "elevation_west", col: 1, row: 1 },
-  ].map(({ panelType, col, row }) => ({
+    "elevation_north",
+    "elevation_south",
+    "elevation_east",
+    "elevation_west",
+  ].map((panelType, row) => ({
     panelType,
-    x: elevationsBlockX + col * (elevationCellWidth + elevationGap),
+    x: elevationsBlockX,
     y: elevationsBlockY + row * (elevationCellHeight + elevationGap),
     width: elevationCellWidth,
     height: elevationCellHeight,
@@ -2808,28 +3284,7 @@ function buildSheetPanelSpecs(targetStoreys = 1) {
     required: true,
   }));
 
-  const sectionsRow = [
-    {
-      panelType: "section_AA",
-      x: 18,
-      y: 404,
-      width: 390,
-      height: 76,
-      scale: "1:100",
-      required: true,
-    },
-    {
-      panelType: "section_BB",
-      x: 418,
-      y: 404,
-      width: 403,
-      height: 76,
-      scale: "1:100",
-      required: true,
-    },
-  ];
-
-  return [...overviewRow, ...floorPlans, ...elevations, ...sectionsRow];
+  return [...specs, ...floorPlans, ...elevations];
 }
 
 function buildPanelPlacements({
@@ -2901,9 +3356,9 @@ function renderSheetPanel({ placement, artifact }) {
       : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
 
   return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}">
-  <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="1.5" fill="#fffdf7" stroke="#142033" stroke-width="0.45"/>
-  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#142033">${escapeXml(placement.title)}</text>
-  <text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#52616f">${escapeXml(placement.scale)} | ${escapeXml((placement.source_model_hash || "").slice(0, 8))}</text>
+  <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
+  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(String(placement.title || "").toUpperCase())}</text>
+  <text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.2" font-family="Arial, sans-serif" text-anchor="end" fill="#444444">${escapeXml(placement.scale)} | ${escapeXml((placement.source_model_hash || "").slice(0, 8))}</text>
   ${content}
 </g>`;
 }
@@ -2931,20 +3386,11 @@ function buildSheetSvg({
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
-  <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#f3efe5"/>
-  <rect x="12" y="12" width="817" height="570" fill="none" stroke="#142033" stroke-width="0.7"/>
-  <text x="18" y="25" font-size="14" font-family="Arial, sans-serif" font-weight="700" fill="#142033">${escapeXml(brief.project_name)}</text>
-  <text x="18" y="36" font-size="5.4" font-family="Arial, sans-serif" fill="#52616f">ProjectGraph A1 package | Geometry hash ${escapeXml(geometryHash)} | Panels ${sourcePanelAssetIds.length}</text>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
+  <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
+  <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
+  <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
   ${panelGroups}
-  <g data-panel-id="title_block">
-    <rect x="18" y="486" width="803" height="88" fill="#142033"/>
-    <text x="30" y="508" font-size="12" font-family="Arial, sans-serif" font-weight="700" fill="#fffdf7">${escapeXml(sheetLabel || "RIBA Stage 2 ProjectGraph Vertical Slice")}</text>
-    <text x="30" y="524" font-size="6.5" font-family="Arial, sans-serif" fill="#fffdf7">Drawing ${escapeXml(sheetNumber || "A1-00")} / Revision P01 / Status ${escapeXml(qaStatus || "pending")}</text>
-    <text x="30" y="540" font-size="5.4" font-family="Arial, sans-serif" fill="#d7e0e8">All visible panels are deterministic SVG projections or context panels from compiled ProjectGraph geometry. No independent 2D/3D prompts are used as geometry authority.</text>
-    <text x="30" y="556" font-size="4.6" font-family="Arial, sans-serif" fill="#d7e0e8">${escapeXml(PROFESSIONAL_REVIEW_DISCLAIMER)}</text>
-    <text x="812" y="556" font-size="4.4" font-family="Arial, sans-serif" text-anchor="end" fill="#d7e0e8">source_model_hash ${escapeXml(geometryHash)}</text>
-  </g>
 </svg>`;
 }
 
@@ -2966,6 +3412,8 @@ async function buildA1Sheet({
   siteSnapshot = null,
   sheetPlan = null,
 }) {
+  const drawingNumber = sheetPlan?.sheet_number || "A1-00";
+  const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const supplementalPanelArtifacts = await buildSheetPanelArtifacts({
     projectGraphId,
     site,
@@ -2979,6 +3427,11 @@ async function buildA1Sheet({
     compiledProject,
     geometryHash,
     siteSnapshot,
+    sheetPlan: {
+      ...(sheetPlan || {}),
+      sheet_number: drawingNumber,
+      label: sheetLabel,
+    },
   });
   const panelArtifacts = {
     ...drawingArtifacts,
@@ -2995,8 +3448,6 @@ async function buildA1Sheet({
   const sourcePanelAssetIds = panelPlacements
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
-  const drawingNumber = sheetPlan?.sheet_number || "A1-00";
-  const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
   const sheetId = createStableId(
     "sheet-a1",
     projectGraphId,
@@ -4097,6 +4548,37 @@ export function validateProjectGraphVerticalSlice({
           placeholder3dPanels,
           primitiveMinimum: MIN_3D_PRIMITIVE_COUNT,
         },
+      ),
+    );
+  }
+  const fallbackPresentationPanels = REQUIRED_3D_A1_PANEL_TYPES.filter(
+    (panelType) => {
+      const artifact =
+        visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
+      return (
+        artifact && artifact.metadata?.source !== "project_graph_image_renderer"
+      );
+    },
+  );
+  addCheck(
+    checks,
+    "PRESENTATION_IMAGE_RENDER_STATUS",
+    fallbackPresentationPanels.length === 0,
+    {
+      fallbackPresentationPanels,
+      expectedSource: "project_graph_image_renderer",
+      fallbackSource: "compiled_project_render_inputs",
+    },
+    "graphic",
+    0,
+  );
+  if (fallbackPresentationPanels.length) {
+    issues.push(
+      buildIssue(
+        "PRESENTATION_RENDER_FALLBACK_USED",
+        "warning",
+        "Photoreal presentation image rendering was unavailable; deterministic ProjectGraph control renders were used instead.",
+        { fallbackPresentationPanels },
       ),
     );
   }

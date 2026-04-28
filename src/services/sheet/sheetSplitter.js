@@ -38,6 +38,9 @@ const ALL_PANELS = Object.freeze([
   "elevation_west",
   "section_AA",
   "section_BB",
+  "material_palette",
+  "key_notes",
+  "title_block",
 ]);
 
 const SPLIT_PLAN = Object.freeze([
@@ -50,6 +53,9 @@ const SPLIT_PLAN = Object.freeze([
       "exterior_render",
       "axonometric",
       "interior_3d",
+      "material_palette",
+      "key_notes",
+      "title_block",
     ],
     rationale: "Site context + compiled 3D views for client orientation.",
   },

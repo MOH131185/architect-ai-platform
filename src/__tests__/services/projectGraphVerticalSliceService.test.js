@@ -58,6 +58,29 @@ function createReadingRoomBrief() {
   };
 }
 
+function expectPanelPlacementsDoNotOverlap(placements) {
+  for (let i = 0; i < placements.length; i += 1) {
+    for (let j = i + 1; j < placements.length; j += 1) {
+      const a = placements[i];
+      const b = placements[j];
+      const overlaps =
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y;
+      expect({
+        a: a.panelType,
+        b: b.panelType,
+        overlaps,
+      }).toEqual({
+        a: a.panelType,
+        b: b.panelType,
+        overlaps: false,
+      });
+    }
+  }
+}
+
 describe("projectGraphVerticalSliceService", () => {
   const originalModelSource = process.env.MODEL_SOURCE;
   const originalReasoningModel = process.env.OPENAI_REASONING_MODEL;
@@ -120,6 +143,9 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.scene3d.source_model_hash).toBe(
       result.geometryHash,
     );
+    expect(result.artifacts.a1Sheet.layoutVersion).toBe(
+      "projectgraph-a1-reference-board-v1",
+    );
     expect(result.artifacts.a1Sheet.svgString).toContain(
       `data-source-model-hash="${result.geometryHash}"`,
     );
@@ -149,6 +175,54 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.siteMap.svgString).toContain(
       'data-site-map-image="true"',
     );
+    const placementByType = Object.fromEntries(
+      result.artifacts.a1Sheet.panelPlacements.map((placement) => [
+        placement.panelType,
+        placement,
+      ]),
+    );
+    expect(
+      result.artifacts.a1Sheet.panelPlacements.map((p) => p.panelType),
+    ).toEqual(
+      expect.arrayContaining([
+        "site_context",
+        "floor_plan_ground",
+        "floor_plan_first",
+        "section_AA",
+        "section_BB",
+        "axonometric",
+        "hero_3d",
+        "interior_3d",
+        "material_palette",
+        "key_notes",
+        "title_block",
+      ]),
+    );
+    expectPanelPlacementsDoNotOverlap(result.artifacts.a1Sheet.panelPlacements);
+    expect(placementByType.site_context.y).toBeLessThan(
+      placementByType.section_AA.y,
+    );
+    expect(placementByType.material_palette.y).toBeGreaterThan(
+      placementByType.section_AA.y,
+    );
+    expect(placementByType.title_block.x).toBeGreaterThan(
+      placementByType.key_notes.x,
+    );
+    expect(result.artifacts.a1Sheet.svgString).toContain(
+      'data-layout-version="projectgraph-a1-reference-board-v1"',
+    );
+    expect(result.artifacts.a1Sheet.svgString).toContain("MATERIAL PALETTE");
+    expect(result.artifacts.a1Sheet.svgString).toContain("KEY NOTES");
+    expect(result.artifacts.a1Sheet.svgString).toContain("Drawing No.");
+    expect(result.artifacts.panelMap.material_palette.geometryHash).toBe(
+      result.geometryHash,
+    );
+    expect(result.artifacts.panelMap.key_notes.geometryHash).toBe(
+      result.geometryHash,
+    );
+    expect(result.artifacts.panelMap.title_block.geometryHash).toBe(
+      result.geometryHash,
+    );
     expect(Object.keys(result.artifacts.visuals3d).sort()).toEqual([
       "axonometric",
       "exterior_render",
@@ -161,7 +235,13 @@ describe("projectGraphVerticalSliceService", () => {
       expect(artifact.svgString.length).toBeGreaterThan(1200);
       expect(artifact.metadata.camera).toEqual(expect.any(Object));
       expect(artifact.metadata.primitiveCount).toBeGreaterThanOrEqual(5);
+      expect(artifact.metadata.sourceGeometryHash).toBe(result.geometryHash);
+      expect(artifact.metadata.referenceSource).toBe("compiled_3d_control_svg");
+      expect(artifact.metadata.imageRenderFallback).toBe(true);
     }
+    expect(result.qa.issues.map((issue) => issue.code)).toContain(
+      "PRESENTATION_RENDER_FALLBACK_USED",
+    );
     for (const artifact of Object.values(result.artifacts.drawings)) {
       expect(artifact.contentBounds).toEqual(
         expect.objectContaining({
