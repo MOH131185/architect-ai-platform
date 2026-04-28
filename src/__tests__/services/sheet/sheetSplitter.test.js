@@ -102,6 +102,91 @@ describe("decideSheetSplit", () => {
     const a1_03 = decision.sheets.find((s) => s.sheet_number === "A1-03");
     expect(a1_03.panel_types).not.toContain("floor_plan_ground");
   });
+
+  describe("Phase B residential override", () => {
+    test("residential 3-storey detached house stays on a single A1-00 master", () => {
+      const decision = decideSheetSplit({
+        brief: { building_type: "detached_house", target_storeys: 3 },
+        programme: { spaces: new Array(8).fill({}) },
+        regulations: { rule_summary: {} },
+      });
+      expect(decision.split).toBe(false);
+      expect(decision.sheets.length).toBe(1);
+      expect(decision.sheets[0].sheet_number).toBe("A1-00");
+      expect(decision.triggers.storeyOverflow).toBe(false);
+      expect(decision.triggers.storeyOverflowSuppressedByPresentation).toBe(
+        true,
+      );
+      expect(decision.triggers.residentialPresentation).toBe(true);
+    });
+
+    test("residential 1-2 storey homes are unaffected by the override", () => {
+      const decision = decideSheetSplit({
+        brief: { building_type: "detached_house", target_storeys: 2 },
+        programme: { spaces: [] },
+        regulations: { rule_summary: {} },
+      });
+      expect(decision.split).toBe(false);
+      // Below threshold anyway, so suppression flag is false (nothing to suppress).
+      expect(decision.triggers.storeyOverflowSuppressedByPresentation).toBe(
+        false,
+      );
+    });
+
+    test("residential 4-storey still splits to A1-00..A1-03", () => {
+      const decision = decideSheetSplit({
+        brief: { building_type: "multi_residential", target_storeys: 4 },
+        programme: { spaces: [] },
+        regulations: { rule_summary: {} },
+      });
+      expect(decision.split).toBe(true);
+      expect(decision.sheets.map((s) => s.sheet_number)).toEqual([
+        "A1-00",
+        "A1-01",
+        "A1-02",
+        "A1-03",
+      ]);
+      expect(decision.triggers.storeyOverflow).toBe(true);
+      expect(decision.triggers.storeyOverflowSuppressedByPresentation).toBe(
+        false,
+      );
+    });
+
+    test("non-residential 3-storey still triggers existing storey overflow split", () => {
+      const decision = decideSheetSplit({
+        brief: { building_type: "office_studio", target_storeys: 3 },
+        programme: { spaces: [] },
+        regulations: { rule_summary: {} },
+      });
+      expect(decision.split).toBe(true);
+      expect(decision.triggers.storeyOverflow).toBe(true);
+      expect(decision.triggers.residentialPresentation).toBe(false);
+    });
+
+    test("residential 5-storey: programme overflow + storey overflow both fire", () => {
+      const decision = decideSheetSplit({
+        brief: { building_type: "apartment", target_storeys: 5 },
+        programme: { spaces: new Array(20).fill({}) },
+        regulations: { rule_summary: {} },
+      });
+      expect(decision.split).toBe(true);
+      expect(decision.triggers.storeyOverflow).toBe(true);
+      expect(decision.triggers.programmeOverflow).toBe(true);
+    });
+
+    test("split companion sheets carry layoutTemplate=board-v2 so technical content stays dense", () => {
+      const decision = decideSheetSplit({
+        brief: { building_type: "multi_residential", target_storeys: 4 },
+        programme: { spaces: [] },
+        regulations: { rule_summary: {} },
+      });
+      const supplementary = decision.sheets.filter((s) => !s.is_master);
+      expect(supplementary.length).toBeGreaterThan(0);
+      for (const sheet of supplementary) {
+        expect(sheet.layoutTemplate).toBe("board-v2");
+      }
+    });
+  });
 });
 
 describe("multi-sheet integration", () => {

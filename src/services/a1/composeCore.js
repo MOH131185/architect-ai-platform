@@ -65,6 +65,40 @@ export const GRID_12COL = {
   title_block: { x: 0.84, y: 0.76, width: 0.145, height: 0.225 },
 };
 
+// ---------------------------------------------------------------------------
+// Presentation v3 (residential default, Phase B)
+// 3-row presentation board:
+//   Row 1 (top):    site plan | ground floor | first floor | N/S elevations stacked
+//   Row 2 (middle): section A-A | section B-B | axonometric | E/W elevations stacked
+//   Row 3 (bottom): exterior persp | interior persp | material palette | key notes | title block
+// ---------------------------------------------------------------------------
+
+export const GRID_PRESENTATION_V3 = {
+  // Row 1 — site + plans + N/S elevations
+  site_diagram: { x: 0.015, y: 0.015, width: 0.21, height: 0.305 },
+  floor_plan_ground: { x: 0.235, y: 0.015, width: 0.21, height: 0.305 },
+  floor_plan_first: { x: 0.455, y: 0.015, width: 0.21, height: 0.305 },
+  elevation_north: { x: 0.675, y: 0.015, width: 0.31, height: 0.145 },
+  elevation_south: { x: 0.675, y: 0.175, width: 0.31, height: 0.145 },
+
+  // Row 2 — sections + axonometric + E/W elevations
+  section_AA: { x: 0.015, y: 0.335, width: 0.21, height: 0.305 },
+  section_BB: { x: 0.235, y: 0.335, width: 0.21, height: 0.305 },
+  axonometric: { x: 0.455, y: 0.335, width: 0.21, height: 0.305 },
+  elevation_east: { x: 0.675, y: 0.335, width: 0.31, height: 0.145 },
+  elevation_west: { x: 0.675, y: 0.495, width: 0.31, height: 0.145 },
+
+  // Row 3 — perspectives + material palette + key notes + title block
+  hero_3d: { x: 0.015, y: 0.655, width: 0.215, height: 0.33 },
+  interior_3d: { x: 0.245, y: 0.655, width: 0.215, height: 0.33 },
+  material_palette: { x: 0.475, y: 0.655, width: 0.18, height: 0.33 },
+  schedules_notes: { x: 0.665, y: 0.655, width: 0.13, height: 0.33 },
+  title_block: { x: 0.805, y: 0.655, width: 0.18, height: 0.33 },
+
+  // floor_plan_level2 is intentionally omitted from the base spec; it is
+  // synthesised by resolveLayout's applyFloorRow only when target_storeys===3.
+};
+
 // Legacy 4-row grid (kept for backward-compat via layoutTemplate="legacy")
 export const GRID_SPEC = {
   site_diagram: { x: 0.02, y: 0.02, width: 0.22, height: 0.22 },
@@ -309,13 +343,21 @@ const LAYOUT_ALIASES = {
   board_v2: "board-v2",
   default: "board-v2",
   "": "board-v2",
+  // Phase B: presentation-v3 is the residential default.
+  presentation_v3: "presentation-v3",
+  "presentation-v3": "presentation-v3",
+  "presentation-board": "presentation-v3",
+  presentation: "presentation-v3",
+  residential: "presentation-v3",
+  "residential-presentation": "presentation-v3",
 };
 
 /**
  * Normalise a layout template identifier to a supported value.
  *
  * @param {string} raw – layoutTemplate or layoutConfig value
- * @returns {string} – one of "board-v2", "legacy", or the raw value lowered
+ * @returns {string} – one of "board-v2", "presentation-v3", "legacy", or the
+ *                     raw value lowered
  */
 export function normalizeLayoutTemplate(raw) {
   const trimmed = String(raw || "")
@@ -335,7 +377,64 @@ export function normalizeLayoutTemplate(raw) {
 
 // ---------------------------------------------------------------------------
 // Grid-spec resolution (combines template + floor count)
+//
+// FLOOR_ROW_DESCRIPTORS owns the per-template floor-row geometry so
+// resolveLayout can re-tile floor plans for 1/2/3 storeys without
+// hardcoding board-v2 coordinates. board-v2's descriptor mirrors the
+// previous inline values exactly so its golden output stays identical.
 // ---------------------------------------------------------------------------
+
+const FLOOR_ROW_DESCRIPTORS = {
+  "board-v2": {
+    y: 0.235,
+    height: 0.29,
+    one: { x: 0.015, width: 0.97 },
+    two: [
+      { x: 0.015, width: 0.475 },
+      { x: 0.5, width: 0.485 },
+    ],
+    // 3-floor row uses GRID_12COL's existing per-floor slots; no override.
+  },
+  "presentation-v3": {
+    y: 0.015,
+    height: 0.305,
+    one: { x: 0.235, width: 0.43 },
+    two: [
+      { x: 0.235, width: 0.21 },
+      { x: 0.455, width: 0.21 },
+    ],
+    three: [
+      { x: 0.235, width: 0.14 },
+      { x: 0.385, width: 0.14 },
+      { x: 0.535, width: 0.14 },
+    ],
+  },
+};
+
+function applyFloorRow(base, descriptor, floorCount) {
+  if (!descriptor) return;
+  const apply = (key, slot, { create = false } = {}) => {
+    if (!slot) return;
+    if (!base[key] && !create) return;
+    base[key] = {
+      x: slot.x,
+      y: descriptor.y,
+      width: slot.width,
+      height: descriptor.height,
+    };
+  };
+  if (floorCount === 1 && descriptor.one) {
+    apply("floor_plan_ground", descriptor.one);
+  } else if (floorCount === 2 && descriptor.two) {
+    apply("floor_plan_ground", descriptor.two[0]);
+    apply("floor_plan_first", descriptor.two[1]);
+  } else if (floorCount === 3 && descriptor.three) {
+    apply("floor_plan_ground", descriptor.three[0]);
+    apply("floor_plan_first", descriptor.three[1]);
+    // presentation-v3 omits floor_plan_level2 from the base spec; synthesise it.
+    apply("floor_plan_level2", descriptor.three[2], { create: true });
+  }
+}
 
 /**
  * Resolve the normalised grid spec for composition.
@@ -353,29 +452,22 @@ export function resolveLayout(opts = {}) {
   const floorCount = Number.isFinite(opts.floorCount) ? opts.floorCount : 1;
   const highRes = opts.highRes === true;
 
-  const base =
-    layoutTemplate === "legacy" ? { ...GRID_SPEC } : { ...GRID_12COL };
+  let base;
+  if (layoutTemplate === "legacy") {
+    base = { ...GRID_SPEC };
+  } else if (layoutTemplate === "presentation-v3") {
+    base = { ...GRID_PRESENTATION_V3 };
+  } else {
+    base = { ...GRID_12COL };
+  }
 
-  // Remove optional floor-plan slots
+  // Remove optional floor-plan slots before re-tiling.
   if (floorCount < 2) delete base.floor_plan_first;
   if (floorCount < 3) delete base.floor_plan_level2;
 
-  // Expand remaining floor plan(s) to fill the row
-  if (floorCount === 1 && base.floor_plan_ground) {
-    base.floor_plan_ground = { x: 0.015, y: 0.235, width: 0.97, height: 0.29 };
-  } else if (
-    floorCount === 2 &&
-    base.floor_plan_ground &&
-    base.floor_plan_first
-  ) {
-    base.floor_plan_ground = {
-      x: 0.015,
-      y: 0.235,
-      width: 0.475,
-      height: 0.29,
-    };
-    base.floor_plan_first = { x: 0.5, y: 0.235, width: 0.485, height: 0.29 };
-  }
+  // Re-tile remaining floor plan(s) per the active template's floor-row
+  // descriptor. board-v2 keeps its previous coordinates byte-identically.
+  applyFloorRow(base, FLOOR_ROW_DESCRIPTORS[layoutTemplate], floorCount);
 
   return {
     layout: base,

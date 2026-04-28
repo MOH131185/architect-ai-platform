@@ -44,6 +44,12 @@ export {
 // Default to strict 12-column technical-first grid (supporting visuals top row).
 export const TARGET_BOARD_GRID_SPEC = GRID_12COL;
 
+// Phase B: presentation-v3 grid (residential default). Re-exported here so
+// downstream callers that read layout constants from a1LayoutConstants can
+// access it without importing from composeCore directly. TARGET_BOARD_GRID_SPEC
+// remains GRID_12COL — choice between the two happens at resolveLayout time.
+export { GRID_PRESENTATION_V3 } from "./composeCore.js";
+
 // A1 sheet dimensions at 300 DPI (landscape orientation)
 export const A1_WIDTH = 9933;
 export const A1_HEIGHT = 7016;

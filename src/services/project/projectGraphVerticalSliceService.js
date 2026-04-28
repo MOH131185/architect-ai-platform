@@ -3257,6 +3257,291 @@ async function buildSheetPanelArtifacts({
   };
 }
 
+// Phase B: residential briefs default to the presentation-v3 layout. We keep
+// the regex/list intentionally permissive so common UK property typologies
+// route to presentation-v3; non-residential (office/civic/community/etc.)
+// falls through to board-v2 (the existing technical-first layout).
+const RESIDENTIAL_BUILDING_TYPES = new Set([
+  "residential",
+  "single_dwelling",
+  "single-dwelling",
+  "single dwelling",
+  "detached",
+  "detached_house",
+  "detached-house",
+  "semi_detached",
+  "semi-detached",
+  "terraced",
+  "terraced_house",
+  "terraced-house",
+  "townhouse",
+  "family_house",
+  "family-house",
+  "dwelling",
+  "house",
+  "multi_residential",
+  "multi-residential",
+  "multi-family",
+  "multi_family",
+  "apartment",
+  "apartments",
+  "flat",
+  "flats",
+  "extension",
+  "loft_conversion",
+  "loft-conversion",
+  "refurb",
+  "refurbishment",
+]);
+
+export function isResidentialBuildingType(buildingType) {
+  if (!buildingType) return false;
+  const normalized = String(buildingType)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+  if (RESIDENTIAL_BUILDING_TYPES.has(normalized)) return true;
+  // Catch sub-types like "residential_estate", "residential-tower", etc.
+  if (normalized.includes("residential")) return true;
+  if (normalized.includes("dwelling")) return true;
+  return false;
+}
+
+export function resolvePresentationLayoutTemplate(brief = {}) {
+  const buildingType =
+    brief?.building_type ||
+    brief?.buildingType ||
+    brief?.building_category ||
+    brief?.buildingCategory ||
+    null;
+  return isResidentialBuildingType(buildingType)
+    ? "presentation-v3"
+    : "board-v2";
+}
+
+// Phase B: presentation-v3 (residential default). Uses absolute mm within the
+// 841×594 A1 sheet; mirrors composeCore's GRID_PRESENTATION_V3 hierarchy:
+//   Row 1: site plan | ground floor | first floor | N/S elevations stacked
+//   Row 2: section A-A | section B-B | axonometric | E/W elevations stacked
+//   Row 3: exterior persp | interior persp | material | key notes | title block
+function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
+  const storeyCount = Math.max(1, Number(targetStoreys) || 1);
+
+  // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins)
+  const ROW1_Y = 10;
+  const ROW1_H = 188;
+  const ROW2_Y = 208;
+  const ROW2_H = 188;
+  const ROW3_Y = 406;
+  const ROW3_H = 178;
+
+  // Top/middle row column ranges
+  const SITE_X = 10;
+  const SITE_W = 180;
+  const PLANS_X = 200;
+  const PLANS_W_TOTAL = 370; // x: 200..570
+  const ELEV_X = 580;
+  const ELEV_W = 251;
+  const ELEV_HALF_H = 92;
+
+  // Row 1 / 2 right-column elevation pairs
+  const elevationsRow1 = [
+    {
+      panelType: "elevation_north",
+      x: ELEV_X,
+      y: ROW1_Y,
+      width: ELEV_W,
+      height: ELEV_HALF_H,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "elevation_south",
+      x: ELEV_X,
+      y: ROW1_Y + ELEV_HALF_H + 4,
+      width: ELEV_W,
+      height: ELEV_HALF_H,
+      scale: "1:100",
+      required: true,
+    },
+  ];
+  const elevationsRow2 = [
+    {
+      panelType: "elevation_east",
+      x: ELEV_X,
+      y: ROW2_Y,
+      width: ELEV_W,
+      height: ELEV_HALF_H,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "elevation_west",
+      x: ELEV_X,
+      y: ROW2_Y + ELEV_HALF_H + 4,
+      width: ELEV_W,
+      height: ELEV_HALF_H,
+      scale: "1:100",
+      required: true,
+    },
+  ];
+
+  // Floor plans across row 1 plan-row segment, scaled to storey count.
+  const planSlots = [];
+  if (storeyCount === 1) {
+    planSlots.push({
+      panelType: "floor_plan_ground",
+      x: PLANS_X,
+      y: ROW1_Y,
+      width: PLANS_W_TOTAL,
+      height: ROW1_H,
+      scale: "1:100",
+      required: true,
+    });
+  } else if (storeyCount === 2) {
+    const cellW = (PLANS_W_TOTAL - 10) / 2; // 180
+    planSlots.push(
+      {
+        panelType: "floor_plan_ground",
+        x: PLANS_X,
+        y: ROW1_Y,
+        width: cellW,
+        height: ROW1_H,
+        scale: "1:100",
+        required: true,
+      },
+      {
+        panelType: "floor_plan_first",
+        x: PLANS_X + cellW + 10,
+        y: ROW1_Y,
+        width: cellW,
+        height: ROW1_H,
+        scale: "1:100",
+        required: true,
+      },
+    );
+  } else {
+    // 3 storeys (4+ goes through sheetSplitter to A1-002 technical sheet).
+    const cellW = (PLANS_W_TOTAL - 20) / 3; // ~116.7
+    planSlots.push(
+      {
+        panelType: "floor_plan_ground",
+        x: PLANS_X,
+        y: ROW1_Y,
+        width: cellW,
+        height: ROW1_H,
+        scale: "1:100",
+        required: true,
+      },
+      {
+        panelType: "floor_plan_first",
+        x: PLANS_X + cellW + 10,
+        y: ROW1_Y,
+        width: cellW,
+        height: ROW1_H,
+        scale: "1:100",
+        required: true,
+      },
+      {
+        panelType: floorPlanPanelType(2),
+        x: PLANS_X + (cellW + 10) * 2,
+        y: ROW1_Y,
+        width: cellW,
+        height: ROW1_H,
+        scale: "1:100",
+        required: true,
+      },
+    );
+  }
+
+  return [
+    {
+      panelType: "site_context",
+      x: SITE_X,
+      y: ROW1_Y,
+      width: SITE_W,
+      height: ROW1_H,
+      scale: "1:500",
+      required: true,
+    },
+    ...planSlots,
+    ...elevationsRow1,
+    {
+      panelType: "section_AA",
+      x: 10,
+      y: ROW2_Y,
+      width: 180,
+      height: ROW2_H,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "section_BB",
+      x: 200,
+      y: ROW2_Y,
+      width: 180,
+      height: ROW2_H,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "axonometric",
+      x: 390,
+      y: ROW2_Y,
+      width: 180,
+      height: ROW2_H,
+      scale: "3D",
+      required: true,
+    },
+    ...elevationsRow2,
+    {
+      panelType: "hero_3d",
+      x: 10,
+      y: ROW3_Y,
+      width: 200,
+      height: ROW3_H,
+      scale: "render",
+      required: true,
+    },
+    {
+      panelType: "interior_3d",
+      x: 220,
+      y: ROW3_Y,
+      width: 200,
+      height: ROW3_H,
+      scale: "render",
+      required: true,
+    },
+    {
+      panelType: "material_palette",
+      x: 430,
+      y: ROW3_Y,
+      width: 140,
+      height: ROW3_H,
+      scale: "palette",
+      required: true,
+    },
+    {
+      panelType: "key_notes",
+      x: 580,
+      y: ROW3_Y,
+      width: 110,
+      height: ROW3_H,
+      scale: "notes",
+      required: true,
+    },
+    {
+      panelType: "title_block",
+      x: 700,
+      y: ROW3_Y,
+      width: 131,
+      height: ROW3_H,
+      scale: "A1",
+      required: true,
+    },
+  ];
+}
+
 function buildSheetPanelSpecs(targetStoreys = 1) {
   const storeyCount = Math.max(1, Number(targetStoreys) || 1);
   const specs = [
@@ -3400,10 +3685,15 @@ function buildPanelPlacements({
   panelArtifacts,
   targetStoreys,
   allowedPanelTypes = null,
+  layoutTemplate = "board-v2",
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const allowed = allowedPanelTypes ? new Set(allowedPanelTypes) : null;
-  const specs = buildSheetPanelSpecs(targetStoreys).filter((spec) =>
+  const baseSpecs =
+    layoutTemplate === "presentation-v3"
+      ? buildPresentationV3SheetPanelSpecs(targetStoreys)
+      : buildSheetPanelSpecs(targetStoreys);
+  const specs = baseSpecs.filter((spec) =>
     allowed ? allowed.has(spec.panelType) : true,
   );
   return specs
@@ -3501,10 +3791,20 @@ function renderSheetPanel({ placement, artifact }) {
       ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">${svgBody}</svg>`
       : `<g data-panel-missing="true"><rect x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" fill="#fff3f0" stroke="#a43f2a" stroke-dasharray="4 3"/><text x="${contentX + 8}" y="${contentY + 22}" font-size="7" fill="#a43f2a">Missing source panel</text></g>`;
 
+  // Phase B caption cleanup: show only title (left) + scale (right). The
+  // geometry hash and source-model-hash were colliding with the title and
+  // adding visual clutter; they remain available on the wrapping <g>
+  // (data-source-model-hash) and on sheet metadata for downstream QA.
+  const titleText = escapeXml(String(placement.title || "").toUpperCase());
+  const scaleText = escapeXml(String(placement.scale || "").trim());
   return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}">
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
-  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${escapeXml(String(placement.title || "").toUpperCase())}</text>
-  <text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${escapeXml(placement.scale)} | ${escapeXml((placement.source_model_hash || "").slice(0, 8))}</text>
+  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
+  ${
+    scaleText
+      ? `<text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${scaleText}</text>`
+      : ""
+  }
   ${content}
 </g>`;
 }
@@ -3518,6 +3818,7 @@ function buildSheetSvg({
   qaStatus,
   sheetNumber = "A1-00",
   sheetLabel = "RIBA Stage 2 Master",
+  layoutTemplate = "board-v2",
 }) {
   const artifactIndex = buildPanelArtifactIndex(panelArtifacts);
   const panelGroups = panelPlacements
@@ -3532,7 +3833,7 @@ function buildSheetSvg({
     .map((placement) => placement.sourcePanelAssetId)
     .filter(Boolean);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${A1_SHEET_SIZE_MM.width}mm" height="${A1_SHEET_SIZE_MM.height}mm" viewBox="0 0 ${A1_SHEET_SIZE_MM.width} ${A1_SHEET_SIZE_MM.height}" data-layout-version="${A1_SHEET_LAYOUT_VERSION}" data-layout-template="${escapeXml(layoutTemplate)}" data-placeholder-only="false" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}" data-sheet-number="${escapeXml(sheetNumber)}" data-sheet-label="${escapeXml(sheetLabel)}" data-qa-status="${escapeXml(qaStatus || "pending")}">
   <rect width="${A1_SHEET_SIZE_MM.width}" height="${A1_SHEET_SIZE_MM.height}" fill="#ffffff"/>
   <rect x="5" y="5" width="831" height="584" fill="none" stroke="#111111" stroke-width="0.7"/>
   <desc>Reference board A1 package for ${escapeXml(brief.project_name)}. Panels ${sourcePanelAssetIds.length}. Geometry hash ${escapeXml(geometryHash)}.</desc>
@@ -3584,11 +3885,18 @@ async function buildA1Sheet({
     ...supplementalPanelArtifacts,
   };
   const targetStoreys = Math.max(1, Number(brief.target_storeys || 1));
+  // Phase B: residential briefs default to presentation-v3; everything else
+  // stays on the technical-first board-v2 layout. The split sheet path
+  // (A1-002) explicitly forces board-v2 via sheetPlan?.layoutTemplate so
+  // technical content keeps its dense grid even on residential projects.
+  const layoutTemplate =
+    sheetPlan?.layoutTemplate || resolvePresentationLayoutTemplate(brief);
   const panelPlacements = buildPanelPlacements({
     drawingSet,
     panelArtifacts,
     targetStoreys,
     allowedPanelTypes: sheetPlan?.panel_types || null,
+    layoutTemplate,
   });
   const drawingIds = drawingSet.drawings.map((drawing) => drawing.drawing_id);
   const sourcePanelAssetIds = panelPlacements
@@ -3609,6 +3917,7 @@ async function buildA1Sheet({
     qaStatus: "pending",
     sheetNumber: drawingNumber,
     sheetLabel,
+    layoutTemplate,
   });
   // Embed fonts immediately so every downstream consumer - frontend viewer,
   // PDF rasteriser, SVG download - works with a single self-contained sheet.
@@ -3683,6 +3992,7 @@ async function buildA1Sheet({
       sheet_size_mm: A1_SHEET_SIZE_MM,
       orientation: "landscape",
       layoutVersion: A1_SHEET_LAYOUT_VERSION,
+      layoutTemplate,
       panelPlacements,
       sourcePanelAssetIds,
       source_model_hash: geometryHash,
