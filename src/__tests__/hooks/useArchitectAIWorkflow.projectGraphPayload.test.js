@@ -173,4 +173,76 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(sanitized).not.toContain("NaN");
     expect(sanitized).toContain('d="M 0 0 L 10 10"');
   });
+
+  test("level authority: 'Second' string with no levelIndex maps to levelIndex 2 in a 3-floor brief", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 200,
+        floorCount: 3,
+        floorCountLocked: true,
+        programSpaces: [
+          { name: "Hall", area: 10, count: 1, level: "Ground" },
+          { name: "Bed", area: 18, count: 1, level: "First" },
+          { name: "Study", area: 12, count: 1, level: "Second" },
+        ],
+      },
+    });
+
+    expect(request.projectDetails.floorCount).toBe(3);
+    expect(request.brief.target_storeys).toBe(3);
+    const [hall, bed, study] = request.programSpaces;
+    expect(hall).toMatchObject({
+      level: "Ground",
+      levelIndex: 0,
+      level_index: 0,
+    });
+    expect(bed).toMatchObject({
+      level: "First",
+      levelIndex: 1,
+      level_index: 1,
+    });
+    expect(study).toMatchObject({
+      level: "Second",
+      levelIndex: 2,
+      level_index: 2,
+    });
+  });
+
+  test("level authority: floorCount 2 clamps a 'Second' row down to First (no out-of-range index)", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 120,
+        floorCount: 2,
+        programSpaces: [
+          { name: "Hall", area: 10, count: 1, level: "Ground" },
+          { name: "Bed", area: 18, count: 1, level: "Second" },
+        ],
+      },
+    });
+
+    expect(request.projectDetails.floorCount).toBe(2);
+    expect(request.brief.target_storeys).toBe(2);
+    expect(request.programSpaces[1].levelIndex).toBe(1);
+    expect(request.programSpaces[1].level).toBe("First");
+  });
+
+  test("level authority: explicit numeric levelIndex wins over string label", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 200,
+        floorCount: 3,
+        programSpaces: [
+          { name: "Bed", area: 14, count: 1, levelIndex: 2, level: "Ground" },
+        ],
+      },
+    });
+    expect(request.programSpaces[0].levelIndex).toBe(2);
+    expect(request.programSpaces[0].level).toBe("Second");
+  });
 });

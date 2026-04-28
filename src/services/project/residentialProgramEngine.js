@@ -1,4 +1,5 @@
 import { createProjectBrief } from "./v2ProjectContracts.js";
+import { levelIndexFromLabel, levelName } from "./levelUtils.js";
 
 function round(value, precision = 2) {
   const numeric = Number(value);
@@ -1005,28 +1006,33 @@ export function generateResidentialProgramBrief({
 
 export function normalizeResidentialProgramSpaces(programSpaces = []) {
   return (Array.isArray(programSpaces) ? programSpaces : []).map(
-    (space, index) => ({
-      id: space.id || `manual-space-${index}`,
-      label: String(space.label || space.name || `Space ${index + 1}`),
-      name: String(space.name || space.label || `Space ${index + 1}`),
-      area: round(space.area || 0),
-      count: Math.max(1, Number(space.count || 1)),
-      level: space.level || "Ground",
-      levelIndex: Number.isFinite(Number(space.levelIndex))
+    (space, index) => {
+      const explicitNumeric = Number.isFinite(Number(space?.levelIndex))
         ? Number(space.levelIndex)
-        : space.level === "Ground"
-          ? 0
-          : space.level === "First"
-            ? 1
-            : space.level === "Second"
-              ? 2
-              : 0,
-      spaceType: slugify(
-        space.spaceType || space.label || space.name || "space",
-      ),
-      wet: Boolean(space.wet),
-      source: space.source || "manual_program",
-    }),
+        : Number.isFinite(Number(space?.level_index))
+          ? Number(space.level_index)
+          : null;
+      const rawIndex =
+        explicitNumeric !== null
+          ? explicitNumeric
+          : levelIndexFromLabel(space?.level);
+      const levelIndex = Math.max(0, Math.floor(rawIndex || 0));
+      return {
+        id: space.id || `manual-space-${index}`,
+        label: String(space.label || space.name || `Space ${index + 1}`),
+        name: String(space.name || space.label || `Space ${index + 1}`),
+        area: round(space.area || 0),
+        count: Math.max(1, Number(space.count || 1)),
+        level: levelName(levelIndex),
+        levelIndex,
+        level_index: levelIndex,
+        spaceType: slugify(
+          space.spaceType || space.label || space.name || "space",
+        ),
+        wet: Boolean(space.wet),
+        source: space.source || "manual_program",
+      };
+    },
   );
 }
 

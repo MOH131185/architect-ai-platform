@@ -27,6 +27,11 @@ import {
 } from "../services/workflowRouter.js";
 import { PIPELINE_MODE } from "../config/pipelineMode.js";
 import { createSheetArtifactManifest } from "../services/project/v2ProjectContracts.js";
+import {
+  levelIndexFromLabel,
+  levelName,
+  normalizeLevelIndex,
+} from "../services/project/levelUtils.js";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -205,56 +210,27 @@ function compactPortfolioBlendForRequest(portfolioBlend = {}) {
   };
 }
 
-// Minimal level-string → index lookup mirrored from the backend resolver in
-// projectGraphVerticalSliceService.js. Belt + braces: the backend will
-// resolve from `level` strings on its own, but sending `levelIndex` too
-// keeps request payloads diagnosable when something downstream regresses.
-const FRONTEND_LEVEL_STRING_TO_INDEX = {
-  basement: -1,
-  "lower ground": -1,
-  ground: 0,
-  "ground floor": 0,
-  first: 1,
-  "first floor": 1,
-  mezzanine: 1,
-  second: 2,
-  "second floor": 2,
-  third: 3,
-  "third floor": 3,
-  fourth: 4,
-  "fourth floor": 4,
-  fifth: 5,
-  "fifth floor": 5,
-  sixth: 6,
-  "sixth floor": 6,
-  seventh: 7,
-  "seventh floor": 7,
-};
-
-function deriveLevelIndexFromString(value) {
-  const raw = String(value ?? "")
-    .trim()
-    .toLowerCase();
-  if (!raw) return null;
-  if (
-    Object.prototype.hasOwnProperty.call(FRONTEND_LEVEL_STRING_TO_INDEX, raw)
-  ) {
-    return FRONTEND_LEVEL_STRING_TO_INDEX[raw];
-  }
-  const numeric = Number.parseInt(raw, 10);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function compactProgramSpacesForRequest(programSpaces = []) {
+// Compaction now delegates level parsing/clamping to the canonical
+// levelUtils module so manual UI selections, CSV imports, and residential
+// templates all round-trip through the same logic. floorCount must be
+// passed in so the clamp matches the brief's target_storeys; the backend
+// in projectGraphVerticalSliceService.js performs an identical clamp via
+// resolveLevelIndex(), but failing to align the two layers is what caused
+// the original "Second collapses to Ground" regression.
+function compactProgramSpacesForRequest(programSpaces = [], floorCount = 1) {
+  const safeFloorCount = Math.max(1, Math.floor(Number(floorCount) || 1));
   return (Array.isArray(programSpaces) ? programSpaces : []).map(
     (space, index) => {
-      const explicitNumericIndex = Number.isFinite(Number(space.levelIndex))
+      const explicitNumeric = Number.isFinite(Number(space?.levelIndex))
         ? Number(space.levelIndex)
-        : null;
-      const derivedIndex =
-        explicitNumericIndex !== null
-          ? explicitNumericIndex
-          : deriveLevelIndexFromString(space.level);
+        : Number.isFinite(Number(space?.level_index))
+          ? Number(space.level_index)
+          : null;
+      const rawIndex =
+        explicitNumeric !== null
+          ? explicitNumeric
+          : levelIndexFromLabel(space?.level);
+      const clampedIndex = normalizeLevelIndex(rawIndex, safeFloorCount);
       return {
         id: space.id || `space-${index}`,
         name: String(space.name || space.label || `Space ${index + 1}`),
@@ -262,8 +238,9 @@ function compactProgramSpacesForRequest(programSpaces = []) {
         spaceType: space.spaceType || space.type || null,
         area: Number(space.area || 0),
         count: Math.max(1, Number(space.count || 1)),
-        level: space.level || null,
-        levelIndex: derivedIndex,
+        level: levelName(clampedIndex),
+        levelIndex: clampedIndex,
+        level_index: clampedIndex,
         notes: space.notes ? String(space.notes).slice(0, 500) : "",
       };
     },
@@ -305,6 +282,17 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     designSpec.rooms ||
     [];
 
+  const resolvedFloorCount = Math.max(
+    1,
+    Number(
+      projectDetails.floorCount ??
+        designSpec.floorCount ??
+        designSpec.floors ??
+        designSpec.targetStoreys ??
+        2,
+    ) || 2,
+  );
+
   return {
     projectDetails: {
       category: projectDetails.category || designSpec.buildingCategory || null,
@@ -315,11 +303,7 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
         designSpec.buildingSubType ||
         null,
       area: projectDetails.area ?? designSpec.area ?? designSpec.floorArea,
-      floorCount:
-        projectDetails.floorCount ??
-        designSpec.floorCount ??
-        designSpec.floors ??
-        designSpec.targetStoreys,
+      floorCount: resolvedFloorCount,
       floorCountLocked: Boolean(
         projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
       ),
@@ -340,7 +324,10 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
       designSpec.sitePolygonMetrics ||
       compactSiteSnapshot?.metadata?.siteMetrics ||
       {},
-    programSpaces: compactProgramSpacesForRequest(programSpaces),
+    programSpaces: compactProgramSpacesForRequest(
+      programSpaces,
+      resolvedFloorCount,
+    ),
     programBrief: designSpec.programBrief || null,
     portfolioBlend: compactPortfolioBlendForRequest(
       designSpec.portfolioBlend || {},
@@ -358,11 +345,7 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
           designSpec.targetAreaM2 ??
           designSpec.area ??
           180,
-        target_storeys:
-          projectDetails.floorCount ??
-          designSpec.targetStoreys ??
-          designSpec.floorCount ??
-          2,
+        target_storeys: resolvedFloorCount,
         building_type:
           projectDetails.buildingType ||
           projectDetails.subType ||

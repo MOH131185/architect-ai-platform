@@ -48,6 +48,13 @@ import {
   buildReasoningChainBlock,
 } from "../a1/panelPromptBuilders.js";
 import { renderProjectGraphPanelImage } from "../render/projectGraphImageRenderer.js";
+import {
+  LEVEL_NAME_TO_INDEX as CANONICAL_LEVEL_NAME_TO_INDEX,
+  LEVEL_ROOF_SENTINEL,
+  levelIndexFromLabel,
+  levelName as canonicalLevelName,
+} from "./levelUtils.js";
+import { runProgramPreflight } from "./programPreflight.js";
 
 export const PROJECT_GRAPH_SCHEMA_VERSION = "project-graph-v1";
 export const PROJECT_GRAPH_VERTICAL_SLICE_VERSION =
@@ -248,18 +255,11 @@ function normalizeBuildingType(input = {}) {
   return raw || "other";
 }
 
+// Local alias around the canonical levelUtils helper. Kept as a named
+// function so existing references inside this file remain readable and the
+// import surface is small.
 function levelName(index) {
-  const names = [
-    "Ground",
-    "First",
-    "Second",
-    "Third",
-    "Fourth",
-    "Fifth",
-    "Sixth",
-    "Seventh",
-  ];
-  return names[index] || `Level ${index}`;
+  return canonicalLevelName(index);
 }
 
 // Condense the compiled programme into the structure that
@@ -298,44 +298,10 @@ function buildProgrammeSummaryForRender(brief = {}, programme = null) {
   };
 }
 
-const LEVEL_NAME_TO_INDEX = Object.freeze({
-  basement: -1,
-  "lower ground": -1,
-  ground: 0,
-  "ground floor": 0,
-  "ground level": 0,
-  g: 0,
-  0: 0,
-  first: 1,
-  "first floor": 1,
-  1: 1,
-  "level 1": 1,
-  mezzanine: 1,
-  second: 2,
-  "second floor": 2,
-  2: 2,
-  "level 2": 2,
-  third: 3,
-  "third floor": 3,
-  3: 3,
-  "level 3": 3,
-  fourth: 4,
-  "fourth floor": 4,
-  4: 4,
-  "level 4": 4,
-  fifth: 5,
-  "fifth floor": 5,
-  5: 5,
-  "level 5": 5,
-  sixth: 6,
-  "sixth floor": 6,
-  6: 6,
-  seventh: 7,
-  "seventh floor": 7,
-  7: 7,
-  roof: 999,
-  rooftop: 999,
-});
+// Backwards-compatible alias around the canonical lookup table in
+// levelUtils.js. Kept named LEVEL_NAME_TO_INDEX so older imports inside
+// this module (and any historical readers) keep working.
+const LEVEL_NAME_TO_INDEX = CANONICAL_LEVEL_NAME_TO_INDEX;
 
 // Resolve a programme space's target level to a 0-based numeric index.
 // Honour explicit numeric levelIndex first, then the human-readable
@@ -344,20 +310,31 @@ const LEVEL_NAME_TO_INDEX = Object.freeze({
 // (feedback_floor_count_autodetect): manual selection must propagate
 // end-to-end without silent caps.
 export function resolveLevelIndex(space, maxLevelIndex) {
+  const safeMax = Math.max(0, Number(maxLevelIndex) || 0);
   const numericCandidate = Number.parseInt(
     space?.levelIndex ?? space?.level_index ?? space?.target_level_index,
     10,
   );
   if (Number.isFinite(numericCandidate)) {
-    return Math.max(0, Math.min(maxLevelIndex, numericCandidate));
+    return Math.max(0, Math.min(safeMax, numericCandidate));
   }
-  const raw = String(space?.level ?? space?.target_level ?? "")
-    .trim()
-    .toLowerCase();
-  if (raw && Object.prototype.hasOwnProperty.call(LEVEL_NAME_TO_INDEX, raw)) {
+  const rawLabel = space?.level ?? space?.target_level;
+  if (rawLabel === null || rawLabel === undefined || rawLabel === "") {
+    return 0;
+  }
+  const raw = String(rawLabel).trim().toLowerCase();
+  if (!raw) return 0;
+  if (Object.prototype.hasOwnProperty.call(LEVEL_NAME_TO_INDEX, raw)) {
     const idx = LEVEL_NAME_TO_INDEX[raw];
-    const resolved = idx === 999 ? maxLevelIndex : idx;
-    return Math.max(0, Math.min(maxLevelIndex, resolved));
+    const resolved = idx === LEVEL_ROOF_SENTINEL ? safeMax : idx;
+    return Math.max(0, Math.min(safeMax, resolved));
+  }
+  // Tolerate "Level 2" / "level-3" style strings via the canonical parser
+  // but only when they describe a known numeric level. Unknown labels
+  // (e.g. "garage") still fall back to Ground.
+  const parsed = levelIndexFromLabel(raw);
+  if (parsed > 0 || /^(?:level\s*-?\d+|-?\d+)$/.test(raw)) {
+    return Math.max(0, Math.min(safeMax, parsed));
   }
   return 0;
 }
@@ -379,6 +356,113 @@ function floorPlanPanelTypes(targetStoreys = 1) {
     result.push(floorPlanPanelType(i));
   }
   return result;
+}
+
+// QA helper: confirms every required level has at least one programme space.
+// Catches the "programme collapsed to Ground" regression at the
+// ProjectGraph layer, in case anything bypasses the UI/service preflight
+// (e.g. legacy callers, integration tests, or future programmes built
+// without input spaces).
+function validateProgrammeLevels(programme, targetStoreys) {
+  const issues = [];
+  const count = Math.max(1, Number(targetStoreys) || 1);
+  const spaces = Array.isArray(programme?.spaces) ? programme.spaces : [];
+  for (let index = 0; index < count; index += 1) {
+    const hasSpace = spaces.some(
+      (space) => Number(space?.target_level_index) === index,
+    );
+    if (!hasSpace) {
+      issues.push({
+        severity: "error",
+        code: "programme_level_empty",
+        levelIndex: index,
+        message: `${canonicalLevelName(index)} floor has no programme spaces.`,
+      });
+    }
+  }
+  return issues;
+}
+
+// QA helper: ensures the compiled project's geometric levels match the
+// programme's target storey count. A mismatch usually means buildProgramme
+// truncated something - we want a hard error rather than a quietly
+// short A1 sheet.
+function validateCompiledProjectLevels(compiledProject, targetStoreys) {
+  const issues = [];
+  const count = Math.max(1, Number(targetStoreys) || 1);
+  const levels = Array.isArray(compiledProject?.levels)
+    ? compiledProject.levels
+    : [];
+  if (levels.length !== count) {
+    issues.push({
+      severity: "error",
+      code: "compiled_level_count_mismatch",
+      message: `Compiled project has ${levels.length} levels but ${count} were requested.`,
+    });
+  }
+  const rooms = Array.isArray(compiledProject?.rooms)
+    ? compiledProject.rooms
+    : [];
+  for (let index = 0; index < count; index += 1) {
+    const expectedId = `level-${index}`;
+    const hasRoom = rooms.some((room) => {
+      const roomLevelId =
+        room?.levelId || room?.level_id || room?.actual_level_id;
+      const roomLevelIndex = Number(
+        room?.target_level_index ?? room?.levelIndex ?? room?.level_index,
+      );
+      return roomLevelId === expectedId || roomLevelIndex === index;
+    });
+    if (!hasRoom) {
+      issues.push({
+        severity: "warning",
+        code: "compiled_level_no_rooms",
+        levelIndex: index,
+        message: `Compiled project ${canonicalLevelName(index)} floor has no rooms.`,
+      });
+    }
+  }
+  return issues;
+}
+
+// Forensic QA: when the user supplied programme spaces, every space
+// collapsing onto Ground after normalisation almost always means a level
+// authority regression. Block with a clear code so future regressions
+// fail loudly instead of producing a single-floor A1 sheet.
+function detectProgrammeGroundCollapse({
+  inputProgramSpaces,
+  programme,
+  targetStoreys,
+}) {
+  if (!Array.isArray(inputProgramSpaces) || inputProgramSpaces.length === 0) {
+    return null;
+  }
+  if (Math.max(1, Number(targetStoreys) || 1) <= 1) {
+    return null;
+  }
+  const spaces = Array.isArray(programme?.spaces) ? programme.spaces : [];
+  if (spaces.length === 0) return null;
+  const allOnGround = spaces.every(
+    (space) => Number(space?.target_level_index) === 0,
+  );
+  if (!allOnGround) return null;
+  // Confirm the input had at least one non-Ground row - otherwise the
+  // collapse is the user's own intent.
+  const inputHadUpperLevel = inputProgramSpaces.some((space) => {
+    const explicit = Number(space?.levelIndex ?? space?.level_index);
+    if (Number.isFinite(explicit) && explicit > 0) return true;
+    const label = String(space?.level || "")
+      .trim()
+      .toLowerCase();
+    return Boolean(label) && label !== "ground" && label !== "ground floor";
+  });
+  if (!inputHadUpperLevel) return null;
+  return {
+    severity: "error",
+    code: "programme_collapsed_to_ground",
+    message:
+      "Programme has user-supplied upper-level spaces but every space resolved to Ground after normalisation.",
+  };
 }
 
 function normalizeBrief(input = {}) {
@@ -4372,6 +4456,40 @@ function buildProjectGraph({
 
 export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const brief = normalizeBrief(input);
+  // Programme preflight gate. Mirrors the UI-layer gate in
+  // ArchitectAIWizardContainer so API-submitted requests cannot bypass
+  // validation. A failure short-circuits with success:false; the route
+  // handler in api/project/generate-vertical-slice.js maps that to 422.
+  const incomingProgrammeSpaces =
+    input.programSpaces || input.programmeSpaces || [];
+  if (
+    Array.isArray(incomingProgrammeSpaces) &&
+    incomingProgrammeSpaces.length > 0
+  ) {
+    const preflight = runProgramPreflight({
+      projectDetails: {
+        ...(input.projectDetails || {}),
+        floorCount: brief.target_storeys,
+        area: input.projectDetails?.area ?? brief.target_gia_m2,
+        category: input.projectDetails?.category,
+        subType: input.projectDetails?.subType,
+      },
+      programSpaces: incomingProgrammeSpaces,
+    });
+    if (!preflight.ok) {
+      return {
+        success: false,
+        error: `Programme preflight failed: ${preflight.errors.join(" ")}`,
+        code: "preflight_failed",
+        preflight: {
+          errors: preflight.errors,
+          warnings: preflight.warnings,
+          floorCount: preflight.floorCount,
+          totalArea: preflight.totalArea,
+        },
+      };
+    }
+  }
   const deterministicSite = buildSiteContext({
     brief,
     sitePolygon: input.sitePolygon || input.site_boundary || [],
@@ -4401,6 +4519,38 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     climate,
   });
   const programme = syncProgrammeActuals(draftProgramme, projectGeometry);
+  // Programme-level QA. Catches both empty levels and the forensic
+  // "every space collapsed to Ground" regression. Errors halt generation
+  // with a structured response so the API surfaces a 422 instead of
+  // producing a misleading single-floor sheet.
+  {
+    const programmeIssues = validateProgrammeLevels(
+      programme,
+      brief.target_storeys,
+    );
+    const collapseIssue = detectProgrammeGroundCollapse({
+      inputProgramSpaces: incomingProgrammeSpaces,
+      programme,
+      targetStoreys: brief.target_storeys,
+    });
+    const allIssues = collapseIssue
+      ? [collapseIssue, ...programmeIssues]
+      : programmeIssues;
+    const fatalProgrammeIssues = allIssues.filter(
+      (issue) => issue.severity === "error",
+    );
+    if (fatalProgrammeIssues.length > 0) {
+      return {
+        success: false,
+        error: fatalProgrammeIssues.map((issue) => issue.message).join(" "),
+        code: fatalProgrammeIssues[0].code,
+        qa: {
+          programmeIssues: allIssues,
+          targetStoreys: brief.target_storeys,
+        },
+      };
+    }
+  }
   // Apply rule engines now that geometry exists; produces concrete pass/fail
   // RegulationCheckResults rather than blanket manual_review placeholders.
   const regulations = applyRegulationRules(regulationsMetadata, {
@@ -4424,6 +4574,28 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       localMaterials: localStyle.material_palette,
     },
   });
+  // Compiled-project QA. Catches geometry layers losing a level (e.g. the
+  // 3-level brief silently producing a 2-level model). The level-count
+  // mismatch is fatal; missing rooms on a level are a warning attached
+  // to the response for downstream visibility.
+  const compiledProjectIssues = validateCompiledProjectLevels(
+    compiledProject,
+    brief.target_storeys,
+  );
+  const fatalCompiledIssues = compiledProjectIssues.filter(
+    (issue) => issue.severity === "error",
+  );
+  if (fatalCompiledIssues.length > 0) {
+    return {
+      success: false,
+      error: fatalCompiledIssues.map((issue) => issue.message).join(" "),
+      code: fatalCompiledIssues[0].code,
+      qa: {
+        compiledProjectIssues,
+        targetStoreys: brief.target_storeys,
+      },
+    };
+  }
   const selectedDesign = buildSelectedDesign(compiledProject, programme);
   const { drawingSet, drawingArtifacts, technicalBuild } =
     buildDrawingSet(compiledProject);

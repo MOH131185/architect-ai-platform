@@ -1,15 +1,25 @@
 /**
  * Building Program Table Component
- * 
+ *
  * Editable table for program spaces with inline editing, reordering, and validation
  */
 
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
-import Button from '../ui/Button.jsx';
-import logger from '../../utils/logger.js';
-
+import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Plus,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  AlertTriangle,
+} from "lucide-react";
+import Button from "../ui/Button.jsx";
+import logger from "../../utils/logger.js";
+import {
+  levelIndexFromLabel,
+  levelName,
+  normalizeLevelIndex,
+} from "../../services/project/levelUtils.js";
 
 const BuildingProgramTable = ({
   programSpaces = [],
@@ -20,7 +30,7 @@ const BuildingProgramTable = ({
   onReorder,
   onImport,
   validationWarnings = [],
-  isReadOnly = false
+  isReadOnly = false,
 }) => {
   const handleFieldChange = (index, field, value) => {
     if (isReadOnly) return;
@@ -40,7 +50,7 @@ const BuildingProgramTable = ({
   };
 
   const totalArea = programSpaces.reduce((sum, space) => {
-    return sum + ((space.area || 0) * (space.count || 1));
+    return sum + (space.area || 0) * (space.count || 1);
   }, 0);
 
   const normalizedFloorCount = Math.max(1, parseInt(floorCount, 10) || 1);
@@ -55,19 +65,23 @@ const BuildingProgramTable = ({
   };
 
   const baseLevelOptions = (() => {
-    const levels = ['Ground'];
-    if (normalizedFloorCount >= 2) levels.push('First');
-    if (normalizedFloorCount >= 3) levels.push('Second');
-    if (normalizedFloorCount >= 4) levels.push('Third');
+    const levels = ["Ground"];
+    if (normalizedFloorCount >= 2) levels.push("First");
+    if (normalizedFloorCount >= 3) levels.push("Second");
+    if (normalizedFloorCount >= 4) levels.push("Third");
     for (let i = 5; i <= normalizedFloorCount; i++) {
       levels.push(ordinal(i - 1));
     }
-    levels.push('Basement');
+    levels.push("Basement");
     return levels;
   })();
 
   const extraLevels = Array.from(
-    new Set(programSpaces.map((s) => s.level).filter((l) => typeof l === 'string' && l.trim()))
+    new Set(
+      programSpaces
+        .map((s) => s.level)
+        .filter((l) => typeof l === "string" && l.trim()),
+    ),
   ).filter((level) => !baseLevelOptions.includes(level));
 
   const levelOptions = [...baseLevelOptions, ...extraLevels];
@@ -121,8 +135,10 @@ const BuildingProgramTable = ({
                   <td className="px-4 py-3">
                     <input
                       type="text"
-                      value={space.label || ''}
-                      onChange={(e) => handleFieldChange(index, 'label', e.target.value)}
+                      value={space.label || ""}
+                      onChange={(e) =>
+                        handleFieldChange(index, "label", e.target.value)
+                      }
                       disabled={isReadOnly}
                       placeholder="e.g., Living Room"
                       className="w-full bg-transparent border-b border-navy-600 focus:border-royal-400 text-white text-sm px-2 py-1 outline-none transition-colors disabled:opacity-50"
@@ -131,8 +147,14 @@ const BuildingProgramTable = ({
                   <td className="px-4 py-3">
                     <input
                       type="number"
-                      value={space.area || ''}
-                      onChange={(e) => handleFieldChange(index, 'area', parseFloat(e.target.value) || 0)}
+                      value={space.area || ""}
+                      onChange={(e) =>
+                        handleFieldChange(
+                          index,
+                          "area",
+                          parseFloat(e.target.value) || 0,
+                        )
+                      }
                       disabled={isReadOnly}
                       placeholder="0"
                       min="0"
@@ -144,7 +166,13 @@ const BuildingProgramTable = ({
                     <input
                       type="number"
                       value={space.count || 1}
-                      onChange={(e) => handleFieldChange(index, 'count', parseInt(e.target.value) || 1)}
+                      onChange={(e) =>
+                        handleFieldChange(
+                          index,
+                          "count",
+                          parseInt(e.target.value) || 1,
+                        )
+                      }
                       disabled={isReadOnly}
                       min="1"
                       className="w-16 bg-transparent border-b border-navy-600 focus:border-royal-400 text-white text-sm px-2 py-1 outline-none transition-colors disabled:opacity-50"
@@ -152,17 +180,22 @@ const BuildingProgramTable = ({
                   </td>
                   <td className="px-4 py-3">
                     <select
-                      value={space.level || 'Ground'}
-                      onChange={(e) => handleFieldChange(index, 'level', e.target.value)}
+                      value={space.level || "Ground"}
+                      onChange={(e) =>
+                        handleFieldChange(index, "level", e.target.value)
+                      }
                       disabled={isReadOnly}
                       className="bg-navy-700 border border-navy-600 focus:border-royal-400 text-white text-sm px-3 py-2 rounded outline-none transition-colors disabled:opacity-50"
-                      style={{ color: '#FFFFFF', backgroundColor: '#1E293B' }}  
+                      style={{ color: "#FFFFFF", backgroundColor: "#1E293B" }}
                     >
                       {levelOptions.map((level) => (
                         <option
                           key={level}
                           value={level}
-                          style={{ backgroundColor: '#1E293B', color: '#FFFFFF' }}
+                          style={{
+                            backgroundColor: "#1E293B",
+                            color: "#FFFFFF",
+                          }}
                         >
                           {level}
                         </option>
@@ -172,8 +205,10 @@ const BuildingProgramTable = ({
                   <td className="px-4 py-3">
                     <input
                       type="text"
-                      value={space.notes || ''}
-                      onChange={(e) => handleFieldChange(index, 'notes', e.target.value)}
+                      value={space.notes || ""}
+                      onChange={(e) =>
+                        handleFieldChange(index, "notes", e.target.value)
+                      }
                       disabled={isReadOnly}
                       placeholder="Optional notes"
                       className="w-full bg-transparent border-b border-navy-600 focus:border-royal-400 text-white text-sm px-2 py-1 outline-none transition-colors disabled:opacity-50"
@@ -221,7 +256,9 @@ const BuildingProgramTable = ({
               <tr className="bg-navy-900/50 font-semibold">
                 <td className="px-4 py-3"></td>
                 <td className="px-4 py-3 text-sm text-white">TOTAL</td>
-                <td className="px-4 py-3 text-sm text-royal-300">{totalArea.toFixed(1)} m²</td>
+                <td className="px-4 py-3 text-sm text-royal-300">
+                  {totalArea.toFixed(1)} m²
+                </td>
                 <td className="px-4 py-3"></td>
                 <td className="px-4 py-3"></td>
                 <td className="px-4 py-3"></td>
@@ -235,7 +272,9 @@ const BuildingProgramTable = ({
         {programSpaces.length === 0 && (
           <div className="p-8 text-center text-gray-400">
             <p className="text-sm">No program spaces defined yet.</p>
-            <p className="text-xs mt-1">Use "Generate Program" or add spaces manually.</p>
+            <p className="text-xs mt-1">
+              Use "Generate Program" or add spaces manually.
+            </p>
           </div>
         )}
       </div>
@@ -259,9 +298,15 @@ const BuildingProgramTable = ({
               variant="ghost"
               size="sm"
               onClick={() => {
-                const csvContent = "data:text/csv;charset=utf-8,"
-                  + "Space Name,Area,Count,Level,Notes\n"
-                  + programSpaces.map(s => `${s.label},${s.area},${s.count},${s.level},${s.notes || ''}`).join("\n");
+                const csvContent =
+                  "data:text/csv;charset=utf-8," +
+                  "Space Name,Area,Count,Level,Notes\n" +
+                  programSpaces
+                    .map(
+                      (s) =>
+                        `${s.label},${s.area},${s.count},${s.level},${s.notes || ""}`,
+                    )
+                    .join("\n");
                 const encodedUri = encodeURI(csvContent);
                 const link = document.createElement("a");
                 link.setAttribute("href", encodedUri);
@@ -285,22 +330,38 @@ const BuildingProgramTable = ({
                   const reader = new FileReader();
                   reader.onload = (evt) => {
                     const text = evt.target.result;
-                    const lines = text.split('\n').slice(1); // Skip header
-                    const newSpaces = lines.map(line => {
-                      const [label, area, count, level, notes] = line.split(',');
-                      if (!label) return null;
-                      return {
-                        label: label.trim(),
-                        area: parseFloat(area) || 0,
-                        count: parseInt(count) || 1,
-                        level: level?.trim() || 'Ground',
-                        notes: notes?.trim() || ''
-                      };
-                    }).filter(Boolean);
+                    const lines = text.split("\n").slice(1); // Skip header
+                    const newSpaces = lines
+                      .map((line) => {
+                        const [label, area, count, level, notes] =
+                          line.split(",");
+                        if (!label) return null;
+                        const parsedIndex = levelIndexFromLabel(
+                          level?.trim() || "Ground",
+                        );
+                        const levelIndex = normalizeLevelIndex(
+                          parsedIndex,
+                          normalizedFloorCount,
+                        );
+                        const trimmedLabel = label.trim();
+                        return {
+                          label: trimmedLabel,
+                          name: trimmedLabel,
+                          area: parseFloat(area) || 0,
+                          count: parseInt(count) || 1,
+                          level: levelName(levelIndex),
+                          levelIndex,
+                          level_index: levelIndex,
+                          notes: notes?.trim() || "",
+                        };
+                      })
+                      .filter(Boolean);
                     if (onImport) {
                       onImport(newSpaces);
                     } else {
-                      logger.warn("onImport prop not provided to BuildingProgramTable");
+                      logger.warn(
+                        "onImport prop not provided to BuildingProgramTable",
+                      );
                     }
                   };
                   reader.readAsText(file);
@@ -322,7 +383,10 @@ const BuildingProgramTable = ({
           className="p-3 rounded-lg bg-amber-900/20 border border-amber-500/50"
         >
           {validationWarnings.map((warning, index) => (
-            <p key={index} className="text-sm text-amber-300 flex items-center gap-2 mb-1 last:mb-0">
+            <p
+              key={index}
+              className="text-sm text-amber-300 flex items-center gap-2 mb-1 last:mb-0"
+            >
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               {warning}
             </p>

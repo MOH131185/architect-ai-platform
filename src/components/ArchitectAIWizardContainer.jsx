@@ -46,6 +46,7 @@ import {
   isSupportedResidentialV2SubType,
   UK_RESIDENTIAL_V2_PIPELINE_VERSION,
 } from "../services/project/v2ProjectContracts.js";
+import { runProgramPreflight } from "../services/project/programPreflight.js";
 import PricingPage from "./PricingPage.jsx";
 
 // Step Components
@@ -1465,6 +1466,35 @@ const ArchitectAIWizardContainer = () => {
         }
       }
 
+      // Programme preflight gate. Blocks generation if levels are empty,
+      // areas are out of tolerance, or any space cannot be normalised onto
+      // the requested floor count. The normalised array is what we ship
+      // downstream so manual level edits do not get re-collapsed.
+      if (effectiveProgramSpaces && effectiveProgramSpaces.length > 0) {
+        const preflight = runProgramPreflight({
+          projectDetails,
+          programSpaces: effectiveProgramSpaces,
+        });
+        if (!preflight.ok) {
+          setProgramWarnings([...preflight.errors, ...preflight.warnings]);
+          logger.warn("Programme preflight blocked generation", {
+            errors: preflight.errors,
+            warnings: preflight.warnings,
+          });
+          setIsGenerationTimerRunning(false);
+          throw new Error(
+            `Programme preflight failed: ${preflight.errors.join(" ")}`,
+          );
+        }
+        if (preflight.warnings.length > 0) {
+          setProgramWarnings(preflight.warnings);
+        }
+        effectiveProgramSpaces = preflight.normalizedProgramSpaces;
+        // Persist the normalised array so the displayed table also reflects
+        // the canonical level/levelIndex values.
+        setProgramSpaces(preflight.normalizedProgramSpaces);
+      }
+
       logger.info("Starting generation workflow", null, "🚀");
 
       let capturedSnapshot = null;
@@ -1678,6 +1708,8 @@ const ArchitectAIWizardContainer = () => {
     restrictToResidentialV2,
     setCurrentStep,
     setGeneratedDesignId,
+    setProgramSpaces,
+    setProgramWarnings,
     siteMetrics,
     sitePolygon,
   ]);

@@ -300,6 +300,20 @@ test('16. resolveLayout widens both floor plans for 2-floor board-v2', () => {
   );
 });
 
+test('16a. floorCount=3 keeps floor_plan_level2 in resolved layout', () => {
+  const r = composeCore.resolveLayout({ layoutTemplate: 'board-v2', floorCount: 3 });
+  assert(r.layout.floor_plan_ground, 'floor_plan_ground should be present');
+  assert(r.layout.floor_plan_first, 'floor_plan_first should be present');
+  assert(r.layout.floor_plan_level2, 'floor_plan_level2 should be present for 3-floor projects');
+});
+
+test('16b. floorCount=2 does NOT include floor_plan_level2', () => {
+  const r = composeCore.resolveLayout({ layoutTemplate: 'board-v2', floorCount: 2 });
+  assert(r.layout.floor_plan_ground, 'floor_plan_ground should be present');
+  assert(r.layout.floor_plan_first, 'floor_plan_first should be present');
+  assert(!r.layout.floor_plan_level2, 'floor_plan_level2 should be removed for 2-floor');
+});
+
 test('17. hero_3d keeps geometry init_image while still activating style lock', async () => {
   const originalFetch = global.fetch;
   let capturedPayload = null;

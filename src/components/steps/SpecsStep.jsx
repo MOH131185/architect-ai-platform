@@ -31,6 +31,11 @@ import { fadeInUp, staggerChildren } from "../../styles/animations.js";
 import autoLevelAssignmentService from "../../services/autoLevelAssignmentService.js";
 import { isFeatureEnabled } from "../../config/featureFlags.js";
 import { isSupportedResidentialV2SubType } from "../../services/project/v2ProjectContracts.js";
+import {
+  levelIndexFromLabel,
+  levelName,
+  normalizeLevelIndex,
+} from "../../services/project/levelUtils.js";
 
 const SpecsStep = ({
   projectDetails,
@@ -95,6 +100,32 @@ const SpecsStep = ({
       if (field === "name") {
         nextRow.label = value;
       }
+      if (field === "level") {
+        // Manual level edits must update both the human label and the numeric
+        // index so downstream consumers (request compactor, ProjectGraph) do
+        // not silently collapse to Ground when only the string is touched.
+        const floorCount =
+          Number(programSpaces?._calculatedFloorCount) ||
+          Number(projectDetails?.floorCount) ||
+          Number(projectDetails?.autoDetectedFloorCount) ||
+          1;
+        const parsedIndex = levelIndexFromLabel(value);
+        const levelIndex = normalizeLevelIndex(parsedIndex, floorCount);
+        nextRow.level = levelName(levelIndex);
+        nextRow.levelIndex = levelIndex;
+        nextRow.level_index = levelIndex;
+      }
+      if (field === "levelIndex" || field === "level_index") {
+        const floorCount =
+          Number(programSpaces?._calculatedFloorCount) ||
+          Number(projectDetails?.floorCount) ||
+          Number(projectDetails?.autoDetectedFloorCount) ||
+          1;
+        const levelIndex = normalizeLevelIndex(value, floorCount);
+        nextRow.levelIndex = levelIndex;
+        nextRow.level_index = levelIndex;
+        nextRow.level = levelName(levelIndex);
+      }
       updated[index] = nextRow;
 
       // Preserve program-level metadata on arrays (used by downstream generators)
@@ -103,7 +134,7 @@ const SpecsStep = ({
 
       onProgramSpacesChange(updated);
     },
-    [programSpaces, onProgramSpacesChange],
+    [programSpaces, projectDetails, onProgramSpacesChange],
   );
 
   const handleAddSpace = useCallback(() => {
@@ -115,6 +146,8 @@ const SpecsStep = ({
       area: 0,
       count: 1,
       level: "Ground",
+      levelIndex: 0,
+      level_index: 0,
       notes: "",
     };
     const updated = [...programSpaces, newSpace];
