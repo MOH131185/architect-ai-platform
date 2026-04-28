@@ -245,4 +245,51 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(request.programSpaces[0].levelIndex).toBe(2);
     expect(request.programSpaces[0].level).toBe("Second");
   });
+
+  test("level authority: unlocked + autoDetectedFloorCount=3 propagates as target_storeys=3 even when floorCount is stale", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 200,
+        floorCount: 2,
+        floorCountLocked: false,
+        autoDetectedFloorCount: 3,
+        programSpaces: [
+          { name: "Hall", area: 8, count: 1, level: "Ground" },
+          { name: "Stair", area: 4, count: 1, level: "Ground" },
+          { name: "Bed", area: 30, count: 1, level: "First" },
+          { name: "Stair", area: 4, count: 1, level: "First" },
+          { name: "Bed", area: 30, count: 1, level: "Second" },
+          { name: "Stair", area: 4, count: 1, level: "Second" },
+        ],
+      },
+    });
+    expect(request.brief.target_storeys).toBe(3);
+    const indices = request.programSpaces
+      .map((s) => Number(s.levelIndex))
+      .sort((a, b) => a - b);
+    expect(indices).toEqual([0, 0, 1, 1, 2, 2]);
+  });
+
+  test("level authority: locked floorCount=3 wins over a lower autoDetectedFloorCount", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 200,
+        floorCount: 3,
+        floorCountLocked: true,
+        autoDetectedFloorCount: 2,
+        programSpaces: [
+          { name: "Hall", area: 8, count: 1, level: "Ground" },
+          { name: "Bed", area: 30, count: 1, level: "First" },
+          { name: "Bed", area: 30, count: 1, level: "Second" },
+        ],
+      },
+    });
+    expect(request.brief.target_storeys).toBe(3);
+    expect(request.projectDetails.floorCount).toBe(3);
+    expect(request.projectDetails.floorCountLocked).toBe(true);
+  });
 });

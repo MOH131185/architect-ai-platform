@@ -23,6 +23,7 @@
  */
 
 import { levelName, normalizeProgramSpaces } from "./levelUtils.js";
+import { resolveAuthoritativeFloorCount } from "./floorCountAuthority.js";
 
 const GROUND_FLOOR_PUBLIC_HINTS = [
   "living",
@@ -87,12 +88,15 @@ function isResidentialCategory(projectDetails = {}) {
 export function runProgramPreflight({
   projectDetails = {},
   programSpaces = [],
+  floorCount,
 } = {}) {
-  const floorCount = Math.max(
-    1,
-    Math.floor(Number(projectDetails?.floorCount) || 1),
-  );
-  const normalised = normalizeProgramSpaces(programSpaces, floorCount);
+  const explicit = Number(floorCount);
+  const resolvedFloorCount =
+    Number.isFinite(explicit) && explicit > 0
+      ? Math.max(1, Math.floor(explicit))
+      : resolveAuthoritativeFloorCount(projectDetails, { fallback: 1 })
+          .floorCount;
+  const normalised = normalizeProgramSpaces(programSpaces, resolvedFloorCount);
   const errors = [];
   const warnings = [];
 
@@ -100,7 +104,7 @@ export function runProgramPreflight({
     errors.push("At least one programme space is required.");
   }
 
-  const levels = Array.from({ length: floorCount }, (_, index) => {
+  const levels = Array.from({ length: resolvedFloorCount }, (_, index) => {
     const spacesOnLevel = normalised.filter(
       (space) => Number(space?.levelIndex) === index,
     );
@@ -127,7 +131,7 @@ export function runProgramPreflight({
     }
   });
 
-  if (floorCount > 1) {
+  if (resolvedFloorCount > 1) {
     const hasCore = normalised.some((space) =>
       spaceMatchesAny(space, STAIR_OR_CORE_HINTS),
     );
@@ -173,7 +177,7 @@ export function runProgramPreflight({
         );
       }
     }
-    if (floorCount >= 2) {
+    if (resolvedFloorCount >= 2) {
       const upperLevels = levels.slice(1);
       const hasPrivate = upperLevels.some((level) =>
         level.spaces.some((space) =>
@@ -193,7 +197,7 @@ export function runProgramPreflight({
     errors,
     warnings,
     normalizedProgramSpaces: normalised,
-    floorCount,
+    floorCount: resolvedFloorCount,
     levels,
     totalArea,
   };

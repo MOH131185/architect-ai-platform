@@ -4,7 +4,7 @@
  * Step 4: Project specifications with building type selector, entrance orientation, and program generator
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Settings,
@@ -93,6 +93,54 @@ const SpecsStep = ({
     [projectDetails, onProjectDetailsChange],
   );
 
+  // Single source of truth for floor count across the row clamp, the table
+  // dropdown options, and any downstream consumer in this component. Stale
+  // programSpaces._calculatedFloorCount must never override the live
+  // resolveAuthoritativeFloorCount result.
+  const authoritativeFloorCount = useMemo(
+    () =>
+      resolveAuthoritativeFloorCount(projectDetails, { fallback: 2 })
+        .floorCount,
+    [projectDetails],
+  );
+
+  // Shared helper used by the manual Number-of-Levels input, the Lock/Unlock
+  // button, and the "Use recommended N levels" action. Centralising this means
+  // every path that mutates floor count also re-syncs the programme rows.
+  const applyFloorCountChange = useCallback(
+    ({ nextLocked, nextFloorCount }) => {
+      const nextProjectDetails = {
+        ...projectDetails,
+        floorCountLocked: nextLocked,
+        floorCount: nextFloorCount,
+      };
+      onProjectDetailsChange(nextProjectDetails);
+
+      if (programSpaces?.length > 0) {
+        const buildingType =
+          projectDetails.program ||
+          projectDetails.subType ||
+          projectDetails.category ||
+          "mixed-use";
+        const syncResult = syncProgramToFloorCount(
+          programSpaces,
+          nextFloorCount,
+          {
+            buildingType,
+            projectDetails: nextProjectDetails,
+          },
+        );
+        onProgramSpacesChange(syncResult.spaces);
+      }
+    },
+    [
+      projectDetails,
+      programSpaces,
+      onProjectDetailsChange,
+      onProgramSpacesChange,
+    ],
+  );
+
   const handleProgramRowChange = useCallback(
     (index, field, value) => {
       const updated = [...programSpaces];
@@ -104,40 +152,29 @@ const SpecsStep = ({
         nextRow.label = value;
       }
       if (field === "level") {
-        // Manual level edits must update both the human label and the numeric
-        // index so downstream consumers (request compactor, ProjectGraph) do
-        // not silently collapse to Ground when only the string is touched.
-        const floorCount =
-          Number(programSpaces?._calculatedFloorCount) ||
-          Number(projectDetails?.floorCount) ||
-          Number(projectDetails?.autoDetectedFloorCount) ||
-          1;
         const parsedIndex = levelIndexFromLabel(value);
-        const levelIndex = normalizeLevelIndex(parsedIndex, floorCount);
+        const levelIndex = normalizeLevelIndex(
+          parsedIndex,
+          authoritativeFloorCount,
+        );
         nextRow.level = levelName(levelIndex);
         nextRow.levelIndex = levelIndex;
         nextRow.level_index = levelIndex;
       }
       if (field === "levelIndex" || field === "level_index") {
-        const floorCount =
-          Number(programSpaces?._calculatedFloorCount) ||
-          Number(projectDetails?.floorCount) ||
-          Number(projectDetails?.autoDetectedFloorCount) ||
-          1;
-        const levelIndex = normalizeLevelIndex(value, floorCount);
+        const levelIndex = normalizeLevelIndex(value, authoritativeFloorCount);
         nextRow.levelIndex = levelIndex;
         nextRow.level_index = levelIndex;
         nextRow.level = levelName(levelIndex);
       }
       updated[index] = nextRow;
 
-      // Preserve program-level metadata on arrays (used by downstream generators)
       updated._calculatedFloorCount = programSpaces._calculatedFloorCount;
       updated._floorMetrics = programSpaces._floorMetrics;
 
       onProgramSpacesChange(updated);
     },
-    [programSpaces, projectDetails, onProgramSpacesChange],
+    [programSpaces, authoritativeFloorCount, onProgramSpacesChange],
   );
 
   const handleAddSpace = useCallback(() => {
@@ -295,29 +332,10 @@ const SpecsStep = ({
                       1,
                       Math.min(maxFloors, parseInt(e.target.value, 10) || 1),
                     );
-                    const nextProjectDetails = {
-                      ...projectDetails,
-                      floorCount: nextCount,
-                      floorCountLocked: true,
-                    };
-                    onProjectDetailsChange(nextProjectDetails);
-
-                    if (programSpaces?.length > 0) {
-                      const buildingType =
-                        projectDetails.program ||
-                        projectDetails.subType ||
-                        projectDetails.category ||
-                        "mixed-use";
-                      const syncResult = syncProgramToFloorCount(
-                        programSpaces,
-                        nextCount,
-                        {
-                          buildingType,
-                          projectDetails: nextProjectDetails,
-                        },
-                      );
-                      onProgramSpacesChange(syncResult.spaces);
-                    }
+                    applyFloorCountChange({
+                      nextLocked: true,
+                      nextFloorCount: nextCount,
+                    });
                   }}
                   placeholder="Number of levels"
                   min="1"
@@ -355,7 +373,7 @@ const SpecsStep = ({
                       const autoFloors = projectDetails.autoDetectedFloorCount;
                       const nextLocked = !currentlyLocked;
 
-                      const floorCount = nextLocked
+                      const nextFloorCount = nextLocked
                         ? Math.max(
                             1,
                             parseInt(projectDetails.floorCount, 10) ||
@@ -364,33 +382,10 @@ const SpecsStep = ({
                           )
                         : autoFloors || projectDetails.floorCount || 2;
 
-                      const nextProjectDetails = {
-                        ...projectDetails,
-                        floorCountLocked: nextLocked,
-                        floorCount,
-                      };
-                      onProjectDetailsChange(nextProjectDetails);
-
-                      // When the lock state changes the authoritative count
-                      // can swap (e.g. unlocking with autoDetected !== current).
-                      // Re-sync existing programme rows so upper levels are
-                      // not silently empty.
-                      if (programSpaces?.length > 0) {
-                        const buildingType =
-                          projectDetails.program ||
-                          projectDetails.subType ||
-                          projectDetails.category ||
-                          "mixed-use";
-                        const syncResult = syncProgramToFloorCount(
-                          programSpaces,
-                          floorCount,
-                          {
-                            buildingType,
-                            projectDetails: nextProjectDetails,
-                          },
-                        );
-                        onProgramSpacesChange(syncResult.spaces);
-                      }
+                      applyFloorCountChange({
+                        nextLocked,
+                        nextFloorCount,
+                      });
                     }}
                     icon={
                       projectDetails.floorCountLocked ? (
@@ -408,10 +403,34 @@ const SpecsStep = ({
                   projectDetails.autoDetectedFloorCount &&
                   projectDetails.autoDetectedFloorCount !==
                     projectDetails.floorCount && (
-                    <p className="-mt-2 text-xs text-warning-300">
-                      Auto suggests {projectDetails.autoDetectedFloorCount}{" "}
-                      levels for this site.
-                    </p>
+                    <div className="-mt-2 flex flex-wrap items-center gap-3 rounded-lg border border-warning-500/30 bg-warning-500/5 px-3 py-2">
+                      <p className="flex-1 text-xs text-warning-200">
+                        Manual floor count locked: programme will use{" "}
+                        <span className="font-semibold">
+                          {projectDetails.floorCount}
+                        </span>{" "}
+                        level
+                        {projectDetails.floorCount === 1 ? "" : "s"}. Auto
+                        recommendation:{" "}
+                        <span className="font-semibold">
+                          {projectDetails.autoDetectedFloorCount}
+                        </span>
+                        .
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          applyFloorCountChange({
+                            nextLocked: false,
+                            nextFloorCount:
+                              projectDetails.autoDetectedFloorCount,
+                          })
+                        }
+                      >
+                        Use {projectDetails.autoDetectedFloorCount} levels
+                      </Button>
+                    </div>
                   )}
 
                 {projectDetails.floorMetrics && (
@@ -557,11 +576,7 @@ const SpecsStep = ({
               ) : (
                 <BuildingProgramTable
                   programSpaces={programSpaces}
-                  floorCount={
-                    resolveAuthoritativeFloorCount(projectDetails, {
-                      fallback: 2,
-                    }).floorCount
-                  }
+                  floorCount={authoritativeFloorCount}
                   onChange={handleProgramRowChange}
                   onAdd={handleAddSpace}
                   onRemove={handleRemoveSpace}

@@ -62,6 +62,31 @@ describe("resolveAuthoritativeFloorCount", () => {
       }),
     ).toMatchObject({ floorCount: 5, clampedFromUser: false });
   });
+
+  // Regression for the row-edit clamp: handleProgramRowChange in
+  // SpecsStep.jsx used to consult programSpaces._calculatedFloorCount as an
+  // authority. The resolver itself never reads that metadata, but this test
+  // documents the contract that ONLY projectDetails fields contribute, so a
+  // stale _calculatedFloorCount on the programme array can never override
+  // the live authority.
+  test("authority is derived from projectDetails only, not from stale programme metadata", () => {
+    const result = resolveAuthoritativeFloorCount({
+      floorCountLocked: true,
+      floorCount: 3,
+      autoDetectedFloorCount: 2,
+      _calculatedFloorCount: 2,
+    });
+    expect(result).toMatchObject({ floorCount: 3, source: "locked" });
+  });
+
+  test("auto recommendation propagates when unlocked even if floorCount is stale", () => {
+    const result = resolveAuthoritativeFloorCount({
+      floorCountLocked: false,
+      floorCount: 2,
+      autoDetectedFloorCount: 3,
+    });
+    expect(result).toMatchObject({ floorCount: 3, source: "auto" });
+  });
 });
 
 describe("syncProgramToFloorCount", () => {

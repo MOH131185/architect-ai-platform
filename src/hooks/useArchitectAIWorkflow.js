@@ -32,6 +32,7 @@ import {
   levelName,
   normalizeLevelIndex,
 } from "../services/project/levelUtils.js";
+import { resolveAuthoritativeFloorCount } from "../services/project/floorCountAuthority.js";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -282,16 +283,25 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     designSpec.rooms ||
     [];
 
-  const resolvedFloorCount = Math.max(
-    1,
-    Number(
-      projectDetails.floorCount ??
+  // Single resolver across the workflow: ensures floorCountLocked /
+  // autoDetectedFloorCount semantics are honoured even on replay/import paths
+  // where projectDetails may have been reconstructed from a saved designSpec.
+  const resolvedFloorCount = resolveAuthoritativeFloorCount(
+    {
+      ...projectDetails,
+      floorCount:
+        projectDetails.floorCount ??
         designSpec.floorCount ??
         designSpec.floors ??
-        designSpec.targetStoreys ??
-        2,
-    ) || 2,
-  );
+        designSpec.targetStoreys,
+      autoDetectedFloorCount:
+        projectDetails.autoDetectedFloorCount ??
+        designSpec.autoDetectedFloorCount,
+      floorCountLocked:
+        projectDetails.floorCountLocked ?? designSpec.floorCountLocked,
+    },
+    { fallback: 2 },
+  ).floorCount;
 
   return {
     projectDetails: {

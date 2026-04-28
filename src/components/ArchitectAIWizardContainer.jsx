@@ -983,6 +983,14 @@ const ArchitectAIWizardContainer = () => {
       });
       const authoritativeFloorCount = auth.floorCount;
 
+      console.info("[compileProgram] floorCountAuthority", {
+        floorCountLocked: !!projectDetails.floorCountLocked,
+        floorCount: projectDetails.floorCount,
+        autoDetectedFloorCount: projectDetails.autoDetectedFloorCount,
+        authoritativeFloorCount,
+        authoritySource: auth.source,
+      });
+
       if (!sanitizedProgram || !sanitizedArea) {
         setProgramWarnings([
           "Provide building type and area to generate a program.",
@@ -1096,6 +1104,14 @@ const ArchitectAIWizardContainer = () => {
         spaces = syncResult.spaces;
         spaces._floorMetrics = floorMetrics;
 
+        console.info("[compileProgram] generatedProgram", {
+          authoritativeFloorCount,
+          generatedProgramLevelCount: programBrief.levelCount,
+          finalProgramLevels: Array.from(
+            new Set(spaces.map((s) => Number(s.levelIndex) || 0)),
+          ).sort((a, b) => a - b),
+        });
+
         setProjectDetails((prev) => {
           const next = {
             ...prev,
@@ -1128,6 +1144,13 @@ const ArchitectAIWizardContainer = () => {
         if (programBrief.clampedBy === "subtype-max") {
           baseWarnings.push(
             `${subType} subtype is limited to ${programBrief.levelCount} levels; programme uses ${programBrief.levelCount} even though ${programBrief.requestedLevelCount} were requested.`,
+          );
+        } else if (
+          Number(programBrief.levelCount) &&
+          Number(programBrief.levelCount) !== authoritativeFloorCount
+        ) {
+          baseWarnings.push(
+            `Programme engine returned ${programBrief.levelCount} levels but authority is ${authoritativeFloorCount} (${auth.source}); spaces have been re-synced.`,
           );
         }
         setProgramWarnings([
@@ -1545,9 +1568,13 @@ const ArchitectAIWizardContainer = () => {
       // the requested floor count. The normalised array is what we ship
       // downstream so manual level edits do not get re-collapsed.
       if (effectiveProgramSpaces && effectiveProgramSpaces.length > 0) {
+        const preflightAuth = resolveAuthoritativeFloorCount(projectDetails, {
+          fallback: 2,
+        });
         const preflight = runProgramPreflight({
           projectDetails,
           programSpaces: effectiveProgramSpaces,
+          floorCount: preflightAuth.floorCount,
         });
         if (!preflight.ok) {
           setProgramWarnings([...preflight.errors, ...preflight.warnings]);

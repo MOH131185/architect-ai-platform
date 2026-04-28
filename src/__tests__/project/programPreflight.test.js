@@ -123,6 +123,44 @@ describe("runProgramPreflight", () => {
     expect(after.ok).toBe(true);
   });
 
+  test("explicit floorCount parameter overrides projectDetails.floorCount", () => {
+    const result = runProgramPreflight({
+      projectDetails: { floorCount: 2, area: 200 },
+      floorCount: 3,
+      programSpaces: [
+        { name: "Hall", area: 8, count: 1, level: "Ground" },
+        { name: "Stair", area: 4, count: 1, level: "Ground" },
+        { name: "Bed", area: 30, count: 1, level: "First" },
+        { name: "Stair", area: 4, count: 1, level: "First" },
+        { name: "Bed", area: 30, count: 1, level: "Second" },
+        { name: "Stair", area: 4, count: 1, level: "Second" },
+      ],
+    });
+    expect(result.floorCount).toBe(3);
+    expect(result.levels).toHaveLength(3);
+  });
+
+  test("falls back to authoritative resolution when floorCount param omitted", () => {
+    const result = runProgramPreflight({
+      projectDetails: {
+        floorCountLocked: false,
+        floorCount: 2,
+        autoDetectedFloorCount: 3,
+        area: 200,
+      },
+      programSpaces: [
+        { name: "Hall", area: 8, count: 1, level: "Ground" },
+        { name: "Stair", area: 4, count: 1, level: "Ground" },
+        { name: "Bed", area: 30, count: 1, level: "First" },
+        { name: "Stair", area: 4, count: 1, level: "First" },
+        { name: "Bed", area: 30, count: 1, level: "Second" },
+        { name: "Stair", area: 4, count: 1, level: "Second" },
+      ],
+    });
+    expect(result.floorCount).toBe(3);
+    expect(result.levels).toHaveLength(3);
+  });
+
   test("normalised spaces carry levelIndex + level_index", () => {
     const result = runProgramPreflight({
       projectDetails: { floorCount: 3, area: 200 },
