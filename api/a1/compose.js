@@ -120,7 +120,9 @@ import {
 export const runtime = "nodejs";
 export const config = {
   runtime: "nodejs",
-  maxDuration: 120,
+  // Phase A close-out: 300 DPI A1 raster (~70M pixels) plus pdf-lib emission
+  // does not fit within the prior 120s budget. Vercel Pro caps at 300s.
+  maxDuration: 300,
 };
 
 const { buildComposeSheetUrl } = a1ComposePayload;

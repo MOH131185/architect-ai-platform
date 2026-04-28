@@ -71,9 +71,15 @@ export async function rasteriseSvgToPng({
     });
   }
 
-  const png = await pipeline.png({ compressionLevel: 9 }).toBuffer({
-    resolveWithObject: true,
-  });
+  // Phase A close-out: compressionLevel 9 with adaptive filtering is ~2-3x
+  // slower than libpng's default level 6 on 70M-pixel A1-at-300DPI buffers.
+  // Level 6 produces ~5-15% larger PNGs but the file size is acceptable for
+  // a server-side intermediate (it gets re-embedded into a PDF anyway).
+  const png = await pipeline
+    .png({ compressionLevel: 6, adaptiveFiltering: false })
+    .toBuffer({
+      resolveWithObject: true,
+    });
 
   return {
     pngBuffer: png.data,

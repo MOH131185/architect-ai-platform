@@ -4,7 +4,7 @@
   "framework": "create-react-app",
   "functions": {
     "api/**/*.js": {
-      "maxDuration": 120,
+      "maxDuration": 300,
       "includeFiles": "{server/**/*.js,server/**/*.cjs,src/services/**/*.js,src/config/*.js,src/utils/*.js,public/fonts/**/*}"
     }
   },

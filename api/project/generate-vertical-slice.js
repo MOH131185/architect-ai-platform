@@ -1,6 +1,16 @@
 import { setCorsHeaders, handlePreflight } from "../_shared/cors.js";
 import { buildArchitectureProjectVerticalSlice } from "../../src/services/project/projectGraphVerticalSliceService.js";
 
+// Phase A close-out: 300 DPI A1 rasterisation + tofu QA + PDF embed needs
+// substantially more than the previous 120s default. Vercel Pro allows up to
+// 300s per function. Force Node runtime because Sharp/librsvg requires
+// native modules that the Edge runtime cannot load.
+export const runtime = "nodejs";
+export const config = {
+  runtime: "nodejs",
+  maxDuration: 300,
+};
+
 export default async function handler(req, res) {
   if (handlePreflight(req, res, { methods: "POST, OPTIONS" })) return;
   setCorsHeaders(req, res, { methods: "POST, OPTIONS" });
