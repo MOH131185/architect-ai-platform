@@ -89,7 +89,7 @@ describe("env-driven provider guards", () => {
     }
   });
 
-  test("Vercel packages bundled A1 fonts as discrete function includes", () => {
+  test("Vercel packages bundled A1 fonts with a schema-valid function include glob", () => {
     const root = process.cwd();
     const config = JSON.parse(
       fs.readFileSync(path.join(root, "vercel.json"), "utf8"),
@@ -97,15 +97,11 @@ describe("env-driven provider guards", () => {
     const apiFunctionConfig = config.functions?.["api/**/*.js"];
     const includeFiles = apiFunctionConfig?.includeFiles;
 
-    expect(Array.isArray(includeFiles)).toBe(true);
-    expect(includeFiles).toEqual(
-      expect.arrayContaining([
-        "src/utils/*.js",
-        "src/services/**/*.js",
-        "public/fonts/**/*",
-      ]),
-    );
-    expect(includeFiles).not.toContain(
+    expect(typeof includeFiles).toBe("string");
+    expect(includeFiles).toContain("src/utils/*.js");
+    expect(includeFiles).toContain("src/services/**/*.js");
+    expect(includeFiles).toContain("public/fonts/**/*");
+    expect(includeFiles).not.toBe(
       "server/**/*.{js,cjs},src/services/**/*.js,src/config/*.js,src/utils/*.js,public/fonts/**/*",
     );
   });
