@@ -94,6 +94,11 @@ const OPTIONAL_DATA = [
 
 const OPTIONAL_PRESENTATION = [
   {
+    name: "PROJECT_GRAPH_OPENAI_REASONING_MODE",
+    description:
+      "OpenAI semantic checkpoint execution mode; defaults to required outside tests",
+  },
+  {
     name: "PROJECT_GRAPH_IMAGE_GEN_ENABLED",
     description:
       "Set true to call OpenAI image generation for ProjectGraph visual panels",
@@ -174,7 +179,7 @@ function main() {
 
   const core = checkGroup("Core model-first pipeline", REQUIRED);
   const client = checkGroup("Client/site services", CLIENT_REQUIRED);
-  checkGroup("Optional ProjectGraph presentation image generation", OPTIONAL_PRESENTATION, {
+  checkGroup("Optional ProjectGraph OpenAI execution controls", OPTIONAL_PRESENTATION, {
     required: false,
   });
   checkOptionalList("Optional UK data providers", OPTIONAL_DATA);
