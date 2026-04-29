@@ -373,6 +373,7 @@ mountDynamicApiRoute('post', '/api/generations/complete',   'api/generations/com
 mountDynamicApiRoute('post', '/api/program/compile',        'api/program/compile.js');
 mountDynamicApiRoute('post', '/api/project/compile',        'api/project/compile.js');
 mountDynamicApiRoute('post', '/api/project/generate-sheet', 'api/project/generate-sheet.js');
+mountDynamicApiRoute('post', '/api/project/generate-vertical-slice', 'api/project/generate-vertical-slice.js');
 mountDynamicApiRoute('post', '/api/project/export/json',    'api/project/export/json.js');
 mountDynamicApiRoute('post', '/api/project/export/dxf',     'api/project/export/dxf.js');
 mountDynamicApiRoute('post', '/api/project/export/ifc',     'api/project/export/ifc.js');
