@@ -3341,27 +3341,37 @@ export function resolvePresentationLayoutTemplate(brief = {}) {
 //   Row 1: site plan | ground floor | first floor | N/S elevations stacked
 //   Row 2: section A-A | section B-B | axonometric | E/W elevations stacked
 //   Row 3: exterior persp | interior persp | material | key notes | title block
-function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
+// Phase B closeout v3: presentation-v3 row 1 metrics depend on storey count.
+// For 3-storey residential (the only multi-plan case that fits on one A1
+// after sheetSplitter forces 4+ to A1-002), shrink row 1 to 130mm and
+// widen the plans column so each plan slot becomes landscape (aspect ≥1.2)
+// and the floor plan SVG actually fills the slot. The recovered 58mm goes
+// to row 2 so sections + axonometric have more vertical room. 1-/2-storey
+// keep the existing 188mm row 1 (their plans already fill well).
+export function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
   const storeyCount = Math.max(1, Number(targetStoreys) || 1);
+  const isMultiStorey = storeyCount >= 3;
 
-  // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins)
+  // Row geometry (mm; A1 landscape = 841×594mm with 10mm side margins).
   const ROW1_Y = 10;
-  const ROW1_H = 188;
-  const ROW2_Y = 208;
-  const ROW2_H = 188;
-  const ROW3_Y = 406;
+  const ROW1_H = isMultiStorey ? 130 : 188;
+  const ROW2_Y = ROW1_Y + ROW1_H + 10;
+  const ROW2_H = isMultiStorey ? 246 : 188;
+  const ROW3_Y = ROW2_Y + ROW2_H + 10;
   const ROW3_H = 178;
 
-  // Top/middle row column ranges
+  // Top-row column ranges. For 3-storey we trade 40mm of site width and
+  // 100mm of elevation width for a wider plans column (510mm vs 370mm)
+  // so each cell can be landscape; elevations stack tighter (62mm each).
   const SITE_X = 10;
-  const SITE_W = 180;
-  const PLANS_X = 200;
-  const PLANS_W_TOTAL = 370; // x: 200..570
-  const ELEV_X = 580;
-  const ELEV_W = 251;
-  const ELEV_HALF_H = 92;
+  const SITE_W = isMultiStorey ? 140 : 180;
+  const PLANS_X = SITE_X + SITE_W + 10;
+  const PLANS_W_TOTAL = isMultiStorey ? 510 : 370;
+  const ELEV_X = PLANS_X + PLANS_W_TOTAL + 10;
+  const ELEV_W = isMultiStorey ? 151 : 251;
+  const ELEV_HALF_H = isMultiStorey ? 62 : 92;
 
-  // Row 1 / 2 right-column elevation pairs
+  // Row 1 right-column N/S elevations (stacked).
   const elevationsRow1 = [
     {
       panelType: "elevation_north",
@@ -3375,27 +3385,7 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
     {
       panelType: "elevation_south",
       x: ELEV_X,
-      y: ROW1_Y + ELEV_HALF_H + 4,
-      width: ELEV_W,
-      height: ELEV_HALF_H,
-      scale: "1:100",
-      required: true,
-    },
-  ];
-  const elevationsRow2 = [
-    {
-      panelType: "elevation_east",
-      x: ELEV_X,
-      y: ROW2_Y,
-      width: ELEV_W,
-      height: ELEV_HALF_H,
-      scale: "1:100",
-      required: true,
-    },
-    {
-      panelType: "elevation_west",
-      x: ELEV_X,
-      y: ROW2_Y + ELEV_HALF_H + 4,
+      y: ROW1_Y + ELEV_HALF_H + (isMultiStorey ? 6 : 4),
       width: ELEV_W,
       height: ELEV_HALF_H,
       scale: "1:100",
@@ -3403,7 +3393,35 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
     },
   ];
 
-  // Floor plans across row 1 plan-row segment, scaled to storey count.
+  // Row 2 right-column E/W elevations. In multi-storey row 2 is 246mm
+  // tall, so each elevation gets ~121mm height (still a comfortable
+  // 2:1+ aspect). Standard rows keep 92mm halves.
+  const ELEV_R2_HALF_H = isMultiStorey ? 121 : 92;
+  const ELEV_R2_X = isMultiStorey ? 580 : ELEV_X;
+  const ELEV_R2_W = isMultiStorey ? 251 : ELEV_W;
+  const elevationsRow2 = [
+    {
+      panelType: "elevation_east",
+      x: ELEV_R2_X,
+      y: ROW2_Y,
+      width: ELEV_R2_W,
+      height: ELEV_R2_HALF_H,
+      scale: "1:100",
+      required: true,
+    },
+    {
+      panelType: "elevation_west",
+      x: ELEV_R2_X,
+      y: ROW2_Y + ELEV_R2_HALF_H + 4,
+      width: ELEV_R2_W,
+      height: ELEV_R2_HALF_H,
+      scale: "1:100",
+      required: true,
+    },
+  ];
+
+  // Floor plans across row 1 plan column, scaled to storey count.
+  const PLAN_GAP = 10;
   const planSlots = [];
   if (storeyCount === 1) {
     planSlots.push({
@@ -3416,7 +3434,7 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
       required: true,
     });
   } else if (storeyCount === 2) {
-    const cellW = (PLANS_W_TOTAL - 10) / 2; // 180
+    const cellW = (PLANS_W_TOTAL - PLAN_GAP) / 2;
     planSlots.push(
       {
         panelType: "floor_plan_ground",
@@ -3429,7 +3447,7 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
       },
       {
         panelType: "floor_plan_first",
-        x: PLANS_X + cellW + 10,
+        x: PLANS_X + cellW + PLAN_GAP,
         y: ROW1_Y,
         width: cellW,
         height: ROW1_H,
@@ -3439,7 +3457,7 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
     );
   } else {
     // 3 storeys (4+ goes through sheetSplitter to A1-002 technical sheet).
-    const cellW = (PLANS_W_TOTAL - 20) / 3; // ~116.7
+    const cellW = (PLANS_W_TOTAL - PLAN_GAP * 2) / 3;
     planSlots.push(
       {
         panelType: "floor_plan_ground",
@@ -3452,7 +3470,7 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
       },
       {
         panelType: "floor_plan_first",
-        x: PLANS_X + cellW + 10,
+        x: PLANS_X + cellW + PLAN_GAP,
         y: ROW1_Y,
         width: cellW,
         height: ROW1_H,
@@ -3461,7 +3479,7 @@ function buildPresentationV3SheetPanelSpecs(targetStoreys = 1) {
       },
       {
         panelType: floorPlanPanelType(2),
-        x: PLANS_X + (cellW + 10) * 2,
+        x: PLANS_X + (cellW + PLAN_GAP) * 2,
         y: ROW1_Y,
         width: cellW,
         height: ROW1_H,
