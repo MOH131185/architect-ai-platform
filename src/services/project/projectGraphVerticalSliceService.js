@@ -3773,19 +3773,149 @@ function summarizePresentationMode(panelArtifacts = {}) {
   };
 }
 
-function renderSheetPanel({ placement, artifact }) {
-  const titleY = placement.y + 5.8;
-  const contentX = placement.x + 4;
-  const contentY = placement.y + 14;
-  const contentWidth = placement.width - 8;
-  const contentHeight = placement.height - 24;
-  const svgString = artifact?.svgString || "";
-  const svgBody = extractSvgBody(svgString);
-  const viewBox =
+// Phase B closeout: per-panel-type fit policy for presentation-v3.
+// Technical drawings cropped tight to contentBounds (with small padding) so
+// drawings fill 80–92% of the slot; site/3D/data panels keep the previous
+// padded normalizedViewBox so legends and decorative space stay visible.
+// board-v2 is unaffected — it always returns the existing viewBox chain.
+const PRESENTATION_V3_PANEL_PADDING = {
+  floor_plan_ground: 0.04,
+  floor_plan_first: 0.04,
+  floor_plan_level2: 0.04,
+  floor_plan_level3: 0.04,
+  floor_plan_level4: 0.04,
+  floor_plan_level5: 0.04,
+  floor_plan_level6: 0.04,
+  floor_plan_level7: 0.04,
+  section_AA: 0.04,
+  section_BB: 0.04,
+  elevation_north: 0.06,
+  elevation_south: 0.06,
+  elevation_east: 0.06,
+  elevation_west: 0.06,
+};
+
+export function selectPanelContentViewBox({
+  panelType,
+  artifact,
+  layoutTemplate = "board-v2",
+}) {
+  const fallbackViewBox =
     artifact?.normalizedViewBox ||
     artifact?.metadata?.normalizedViewBox ||
     artifact?.metadata?.technicalQualityMetadata?.normalizedViewBox ||
-    extractSvgViewBox(svgString, artifact?.width, artifact?.height);
+    extractSvgViewBox(
+      artifact?.svgString || "",
+      artifact?.width,
+      artifact?.height,
+    );
+
+  if (layoutTemplate !== "presentation-v3") return fallbackViewBox;
+
+  const paddingRatio = PRESENTATION_V3_PANEL_PADDING[panelType];
+  if (paddingRatio === undefined) return fallbackViewBox;
+
+  const bounds = getTechnicalContentBounds(artifact);
+  if (!bounds || !(Number(bounds.width) > 0) || !(Number(bounds.height) > 0)) {
+    return fallbackViewBox;
+  }
+  const padX = bounds.width * paddingRatio;
+  const padY = bounds.height * paddingRatio;
+  return [
+    round(bounds.x - padX, 2),
+    round(bounds.y - padY, 2),
+    round(bounds.width + padX * 2, 2),
+    round(bounds.height + padY * 2, 2),
+  ].join(" ");
+}
+
+// Phase B closeout: stack the scale label below the title when the two
+// would visually collide on a narrow slot. Estimates use NotoSans avg
+// glyph advance (caps for the bold title, mixed for the regular scale).
+// board-v2 always returns the inline layout to keep its golden output.
+const CAPTION_TITLE_FONT_SIZE = 5.8;
+const CAPTION_SCALE_FONT_SIZE = 4.2;
+const CAPTION_STACKED_SCALE_FONT_SIZE = 3.4;
+const CAPTION_TITLE_ADVANCE_RATIO = 0.62;
+const CAPTION_SCALE_ADVANCE_RATIO = 0.55;
+const CAPTION_HORIZONTAL_PADDING_MM = 4;
+const CAPTION_MIN_GAP_MM = 8;
+const CAPTION_INLINE_CONTENT_TOP_MM = 14;
+const CAPTION_STACKED_CONTENT_TOP_MM = 16;
+const CAPTION_CONTENT_BOTTOM_PADDING_MM = 10;
+const CAPTION_TITLE_BASELINE_MM = 5.8;
+const CAPTION_STACKED_SCALE_BASELINE_MM = 11.0;
+
+export function computePanelCaptionLayout({
+  title = "",
+  scale = "",
+  panelWidth = 0,
+  layoutTemplate = "board-v2",
+} = {}) {
+  const titleText = String(title || "").toUpperCase();
+  const scaleText = String(scale || "").trim();
+  const inline = {
+    layout: "inline",
+    titleX: CAPTION_HORIZONTAL_PADDING_MM,
+    titleY: CAPTION_TITLE_BASELINE_MM,
+    scaleX: panelWidth - CAPTION_HORIZONTAL_PADDING_MM,
+    scaleY: CAPTION_TITLE_BASELINE_MM,
+    scaleFontSize: CAPTION_SCALE_FONT_SIZE,
+    contentTopOffset: CAPTION_INLINE_CONTENT_TOP_MM,
+    contentBottomPadding: CAPTION_CONTENT_BOTTOM_PADDING_MM,
+  };
+  if (!scaleText || layoutTemplate !== "presentation-v3") {
+    return inline;
+  }
+  const titleWidth =
+    titleText.length * CAPTION_TITLE_FONT_SIZE * CAPTION_TITLE_ADVANCE_RATIO;
+  const scaleWidth =
+    scaleText.length * CAPTION_SCALE_FONT_SIZE * CAPTION_SCALE_ADVANCE_RATIO;
+  const requiredInlineWidth =
+    CAPTION_HORIZONTAL_PADDING_MM +
+    titleWidth +
+    CAPTION_MIN_GAP_MM +
+    scaleWidth +
+    CAPTION_HORIZONTAL_PADDING_MM;
+  if (requiredInlineWidth <= panelWidth) {
+    return inline;
+  }
+  return {
+    layout: "stacked",
+    titleX: CAPTION_HORIZONTAL_PADDING_MM,
+    titleY: CAPTION_TITLE_BASELINE_MM,
+    scaleX: panelWidth - CAPTION_HORIZONTAL_PADDING_MM,
+    scaleY: CAPTION_STACKED_SCALE_BASELINE_MM,
+    scaleFontSize: CAPTION_STACKED_SCALE_FONT_SIZE,
+    contentTopOffset: CAPTION_STACKED_CONTENT_TOP_MM,
+    contentBottomPadding: CAPTION_CONTENT_BOTTOM_PADDING_MM,
+  };
+}
+
+function renderSheetPanel({
+  placement,
+  artifact,
+  layoutTemplate = "board-v2",
+}) {
+  const titleText = escapeXml(String(placement.title || "").toUpperCase());
+  const scaleText = escapeXml(String(placement.scale || "").trim());
+  const caption = computePanelCaptionLayout({
+    title: placement.title,
+    scale: placement.scale,
+    panelWidth: placement.width,
+    layoutTemplate,
+  });
+  const contentX = placement.x + CAPTION_HORIZONTAL_PADDING_MM;
+  const contentY = placement.y + caption.contentTopOffset;
+  const contentWidth = placement.width - CAPTION_HORIZONTAL_PADDING_MM * 2;
+  const contentHeight =
+    placement.height - caption.contentTopOffset - caption.contentBottomPadding;
+  const svgBody = extractSvgBody(artifact?.svgString || "");
+  const viewBox = selectPanelContentViewBox({
+    panelType: placement.panelType,
+    artifact,
+    layoutTemplate,
+  });
   const content =
     placement.status === "ready"
       ? `<svg x="${contentX}" y="${contentY}" width="${contentWidth}" height="${contentHeight}" viewBox="${escapeXml(viewBox)}" preserveAspectRatio="xMidYMid meet" overflow="hidden" data-inlined-panel="true">${svgBody}</svg>`
@@ -3795,14 +3925,12 @@ function renderSheetPanel({ placement, artifact }) {
   // geometry hash and source-model-hash were colliding with the title and
   // adding visual clutter; they remain available on the wrapping <g>
   // (data-source-model-hash) and on sheet metadata for downstream QA.
-  const titleText = escapeXml(String(placement.title || "").toUpperCase());
-  const scaleText = escapeXml(String(placement.scale || "").trim());
-  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}">
+  return `<g data-panel-id="${escapeXml(placement.panelType)}" data-source-panel-asset-id="${escapeXml(placement.sourcePanelAssetId || "")}" data-source-model-hash="${escapeXml(placement.source_model_hash || "")}" data-caption-layout="${caption.layout}">
   <rect x="${placement.x}" y="${placement.y}" width="${placement.width}" height="${placement.height}" rx="0.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>
-  <text x="${placement.x + 4}" y="${titleY}" font-size="5.8" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
+  <text x="${placement.x + caption.titleX}" y="${placement.y + caption.titleY}" font-size="${CAPTION_TITLE_FONT_SIZE}" font-family="${EMBEDDED_FONT_STACK}" font-weight="700" fill="#111111">${titleText}</text>
   ${
     scaleText
-      ? `<text x="${placement.x + placement.width - 4}" y="${titleY}" font-size="4.2" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${scaleText}</text>`
+      ? `<text x="${placement.x + caption.scaleX}" y="${placement.y + caption.scaleY}" font-size="${caption.scaleFontSize}" font-family="${EMBEDDED_FONT_STACK}" text-anchor="end" fill="#444444">${scaleText}</text>`
       : ""
   }
   ${content}
@@ -3826,6 +3954,7 @@ function buildSheetSvg({
       renderSheetPanel({
         placement,
         artifact: artifactIndex.byAssetId.get(placement.sourcePanelAssetId),
+        layoutTemplate,
       }),
     )
     .join("\n");
