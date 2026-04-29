@@ -92,6 +92,29 @@ const OPTIONAL_DATA = [
   "OPENAI_IMAGES_API_KEY",
 ];
 
+const OPTIONAL_PRESENTATION = [
+  {
+    name: "PROJECT_GRAPH_IMAGE_GEN_ENABLED",
+    description:
+      "Set true to call OpenAI image generation for ProjectGraph visual panels",
+  },
+  {
+    name: "OPENAI_STRICT_IMAGE_GEN",
+    description:
+      "Set true to fail visual panels instead of falling back after OpenAI image errors",
+  },
+  {
+    name: "MATERIAL_TEXTURE_THUMBNAILS_ENABLED",
+    description:
+      "Optional material swatch thumbnails; separate from ProjectGraph visual panels",
+  },
+  {
+    name: "OPENAI_ALLOW_REACT_APP_SERVER_KEY",
+    description:
+      "Local-dev only compatibility fallback for REACT_APP_OPENAI_API_KEY",
+  },
+];
+
 const LEGACY_OPTIONAL = [
   "TOGETHER_API_KEY",
   "TOGETHER_FLUX_MODEL",
@@ -151,6 +174,9 @@ function main() {
 
   const core = checkGroup("Core model-first pipeline", REQUIRED);
   const client = checkGroup("Client/site services", CLIENT_REQUIRED);
+  checkGroup("Optional ProjectGraph presentation image generation", OPTIONAL_PRESENTATION, {
+    required: false,
+  });
   checkOptionalList("Optional UK data providers", OPTIONAL_DATA);
   checkOptionalList("Legacy/optional image providers", LEGACY_OPTIONAL);
 

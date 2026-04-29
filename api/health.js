@@ -9,6 +9,7 @@ import {
   GENARCH_CONTRACT_VERSION,
   GENARCH_VERSION_HEADER,
 } from "../src/services/genarch/genarchContract.js";
+import openaiEnv from "../server/utils/openaiEnv.cjs";
 
 export default async function handler(req, res) {
   // CORS
@@ -20,14 +21,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const openaiDiagnostics = openaiEnv.getOpenAIProviderDiagnostics(process.env);
   const health = {
     status: "ok",
     timestamp: new Date().toISOString(),
     services: {
-      openai:
-        !!process.env.OPENAI_API_KEY || !!process.env.OPENAI_REASONING_API_KEY,
-      openaiImages:
-        !!process.env.OPENAI_IMAGES_API_KEY || !!process.env.OPENAI_API_KEY,
+      openai: openaiDiagnostics.openaiConfigured,
+      openaiReasoning: openaiDiagnostics.reasoning.configured,
+      openaiImages: openaiDiagnostics.images.configured,
       togetherLegacy: !!process.env.TOGETHER_API_KEY,
       genarch:
         !!process.env.RUNPOD_GENARCH_URL && !!process.env.GENARCH_API_KEY,
@@ -44,6 +45,19 @@ export default async function handler(req, res) {
         ? "configured"
         : "missing",
       GENARCH_API_KEY: process.env.GENARCH_API_KEY ? "configured" : "missing",
+      OPENAI_REASONING_KEY_SOURCE:
+        openaiDiagnostics.reasoning.keySource || "missing",
+      OPENAI_IMAGES_KEY_SOURCE: openaiDiagnostics.images.keySource || "missing",
+      PROJECT_GRAPH_IMAGE_GEN_ENABLED: openaiDiagnostics.imageGenerationEnabled
+        ? "true"
+        : "false",
+      OPENAI_STRICT_IMAGE_GEN: openaiDiagnostics.strictImageGeneration
+        ? "true"
+        : "false",
+      OPENAI_ORG_ID: openaiDiagnostics.orgConfigured ? "configured" : "missing",
+      OPENAI_PROJECT_ID: openaiDiagnostics.projectConfigured
+        ? "configured"
+        : "missing",
     },
   };
 

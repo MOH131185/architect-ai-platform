@@ -9,17 +9,13 @@
  */
 import openaiEnv from "../server/utils/openaiEnv.cjs";
 
-const { resolveOpenAIImageApiKey } = openaiEnv;
+const { resolveOpenAIImageApiKeyInfo, buildOpenAIRequestHeaders } = openaiEnv;
 
 export const runtime = "nodejs";
 export const config = {
   runtime: "nodejs",
   maxDuration: 120,
 };
-
-function getOpenAIImageApiKey() {
-  return resolveOpenAIImageApiKey(process.env);
-}
 
 function getOpenAIImageModel(requestModel) {
   return (
@@ -90,12 +86,13 @@ export default async function handler(req, res) {
     });
   }
 
-  const apiKey = getOpenAIImageApiKey();
-  if (!apiKey) {
+  const keyInfo = resolveOpenAIImageApiKeyInfo(process.env);
+  if (!keyInfo.hasKey) {
     return res.status(503).json({
       error: "OPENAI_IMAGE_API_KEY_MISSING",
       message:
-        "Set OPENAI_IMAGES_API_KEY or OPENAI_API_KEY. This endpoint does not fall back to FLUX.",
+        "Set OPENAI_IMAGES_API_KEY or OPENAI_API_KEY. OPENAI_REASONING_API_KEY is accepted as a last-resort server-side fallback. This endpoint does not fall back to FLUX.",
+      warning: keyInfo.warning,
     });
   }
 
@@ -104,10 +101,13 @@ export default async function handler(req, res) {
   const useEdit = Boolean(image);
 
   try {
+    console.log(
+      `[OpenAI] START image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize panel=${panelType || "unknown"} model=${resolvedModel} keySource=${keyInfo.keySource}`,
+    );
     const response = useEdit
       ? await fetch("https://api.openai.com/v1/images/edits", {
           method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}` },
+          headers: buildOpenAIRequestHeaders(keyInfo, process.env),
           body: createEditFormData({
             image,
             mask,
@@ -118,10 +118,9 @@ export default async function handler(req, res) {
         })
       : await fetch("https://api.openai.com/v1/images/generations", {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: buildOpenAIRequestHeaders(keyInfo, process.env, {
+            json: true,
+          }),
           body: JSON.stringify({
             model: resolvedModel,
             prompt,
@@ -130,13 +129,21 @@ export default async function handler(req, res) {
           }),
         });
 
+    const requestId =
+      response.headers?.get?.("x-request-id") ||
+      response.headers?.get?.("openai-request-id") ||
+      null;
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      console.warn(
+        `[OpenAI] FAIL image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize status=${response.status} requestId=${requestId || "none"}`,
+      );
       return res.status(response.status).json({
         error: "OPENAI_IMAGE_API_ERROR",
         message:
           data.error?.message ||
           `OpenAI image endpoint failed: ${response.status}`,
+        requestId,
       });
     }
 
@@ -148,6 +155,9 @@ export default async function handler(req, res) {
       });
     }
 
+    console.log(
+      `[OpenAI] OK image ${useEdit ? "edit" : "generation"} route=/api/openai-image-stylize requestId=${requestId || "none"} usage=${JSON.stringify(data.usage || {})}`,
+    );
     return res.status(200).json({
       images: [
         {
@@ -162,6 +172,9 @@ export default async function handler(req, res) {
       mode: useEdit ? "edit" : "generation",
       geometryPreserved: useEdit,
       panelType,
+      requestId,
+      usage: data.usage || null,
+      keySource: keyInfo.keySource,
     });
   } catch (error) {
     return res.status(500).json({

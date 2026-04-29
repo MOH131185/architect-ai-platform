@@ -276,10 +276,8 @@ export default secureApiClient;
  *
  * OLD (INSECURE):
  * ```javascript
- * const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
- * const response = await fetch('https://api.openai.com/v1/chat/completions', {
- *   headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}` }
- * });
+ * // Browser code must call the server-side proxy; never expose OpenAI keys in REACT_APP_*.
+ * const response = await secureApiClient.openaiChat({ model, messages });
  * ```
  *
  * NEW (SECURE):

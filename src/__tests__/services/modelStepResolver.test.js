@@ -112,6 +112,28 @@ describe("modelStepResolver", () => {
     expect(JSON.stringify(registry)).not.toContain("sk-reasoning-do-not-leak");
   });
 
+  test("defaults image step provenance to the server-side OpenAI image key", () => {
+    const route = resolveArchitectureStepModel("image", {
+      env: {
+        MODEL_SOURCE: "base",
+        OPENAI_IMAGE_MODEL: "gpt-image-2",
+        OPENAI_IMAGES_API_KEY: "sk-image-do-not-leak",
+        OPENAI_API_KEY: "sk-base-do-not-leak",
+      },
+    });
+
+    expect(route).toEqual(
+      expect.objectContaining({
+        stepId: "IMAGE",
+        model: "gpt-image-2",
+        provider: "openai",
+        apiKeyEnv: "OPENAI_IMAGES_API_KEY",
+      }),
+    );
+    expect(JSON.stringify(route)).not.toContain("sk-image-do-not-leak");
+    expect(JSON.stringify(route)).not.toContain("sk-base-do-not-leak");
+  });
+
   test("check:model-routes reports env names without leaking secret values", async () => {
     const report = await createRouteReport({
       env: {

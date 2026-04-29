@@ -15,6 +15,7 @@ import { buildCompiledProjectTechnicalPanels } from "../canonical/compiledProjec
 import { compileProject } from "../compiler/index.js";
 import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
+import openaiEnv from "../openaiProviderEnv.cjs";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
@@ -3078,6 +3079,7 @@ async function buildVisual3DPanelArtifacts({
       let svgString = deterministicSvgString;
       let renderProvenance = null;
       let imageRenderFallbackReason = "gate_disabled";
+      let renderResult = null;
       if (deterministicSvgString) {
         const prompt = buildProjectGraphRenderPrompt({
           panelType,
@@ -3089,7 +3091,6 @@ async function buildVisual3DPanelArtifacts({
           programmeSummary,
           region,
         });
-        let renderResult = null;
         try {
           renderResult = await renderProjectGraphPanelImage({
             panelType,
@@ -3098,6 +3099,9 @@ async function buildVisual3DPanelArtifacts({
             geometryHash,
           });
         } catch (renderErr) {
+          if (renderErr?.strictImageGeneration === true) {
+            throw renderErr;
+          }
           // The renderer normally returns null on failure, but if it ever
           // throws we still want to capture the reason for QA.
           console.warn(
@@ -3105,7 +3109,8 @@ async function buildVisual3DPanelArtifacts({
             renderErr?.message,
           );
           renderResult = null;
-          imageRenderFallbackReason = "openai_error";
+          imageRenderFallbackReason =
+            renderErr?.fallbackReason || "openai_error";
         }
         if (renderResult?.pngBuffer) {
           svgString = wrapPngAsSvgPanel(
@@ -3116,14 +3121,8 @@ async function buildVisual3DPanelArtifacts({
           );
           renderProvenance = renderResult.provenance;
           imageRenderFallbackReason = null;
-        } else if (
-          renderResult === null &&
-          imageRenderFallbackReason === "gate_disabled"
-        ) {
-          // The renderer returns null both when the env gate is disabled AND
-          // on silent failure. We can't distinguish here, so leave the reason
-          // as "gate_disabled" — Phase C exposes the env flag so callers know.
-          imageRenderFallbackReason = "gate_disabled";
+        } else if (renderResult?.imageRenderFallbackReason) {
+          imageRenderFallbackReason = renderResult.imageRenderFallbackReason;
         }
       } else {
         imageRenderFallbackReason = "empty_response";
@@ -3179,6 +3178,24 @@ async function buildVisual3DPanelArtifacts({
             imageRenderFallbackReason,
             imageRenderModel: renderProvenance?.model || null,
             imageRenderSize: renderProvenance?.size || null,
+            imageProviderUsed: renderProvenance ? "openai" : "deterministic",
+            openaiConfigured:
+              renderResult?.openaiConfigured ??
+              renderResult?.provenance?.openaiConfigured ??
+              false,
+            openaiImageUsed: Boolean(renderProvenance),
+            openaiRequestId: renderProvenance?.requestId || null,
+            openaiUsage: renderProvenance?.usage || null,
+            openaiKeySource:
+              renderProvenance?.keySource ||
+              renderResult?.keySource ||
+              renderResult?.provenance?.keySource ||
+              null,
+            openaiKeyLast4:
+              renderProvenance?.keyLast4 ||
+              renderResult?.keyLast4 ||
+              renderResult?.provenance?.keyLast4 ||
+              null,
             presentationMode,
             visualFidelityStatus,
             visualRenderMode,
@@ -3753,6 +3770,27 @@ function summarizePresentationMode(panelArtifacts = {}) {
     fallbackReasons[artifact.panel_type] =
       artifact.metadata?.imageRenderFallbackReason || "unknown";
   }
+  const openaiModelsUsed = [
+    ...new Set(
+      visualArtifacts
+        .filter((artifact) => artifact.metadata?.openaiImageUsed === true)
+        .map((artifact) => artifact.metadata?.imageRenderModel)
+        .filter(Boolean),
+    ),
+  ];
+  const openaiRequestIds = [
+    ...new Set(
+      visualArtifacts
+        .map((artifact) => artifact.metadata?.openaiRequestId)
+        .filter(Boolean),
+    ),
+  ];
+  const openaiUsage = visualArtifacts
+    .map((artifact) => artifact.metadata?.openaiUsage)
+    .filter(Boolean);
+  const fallbackReasonValues = [
+    ...new Set(Object.values(fallbackReasons).filter(Boolean)),
+  ];
   let visualPanelsRenderMode = "all_photoreal";
   if (fallbackPanels.length === visualArtifacts.length) {
     visualPanelsRenderMode = "all_deterministic";
@@ -3770,7 +3808,130 @@ function summarizePresentationMode(panelArtifacts = {}) {
     renderedPanels,
     visualPanelsRenderMode,
     visualPanelsFallbackReasons: fallbackReasons,
+    openaiConfigured: visualArtifacts.some(
+      (artifact) => artifact.metadata?.openaiConfigured === true,
+    ),
+    openaiImageUsed: renderedPanels.length > 0,
+    openaiImageFallbackReason:
+      fallbackReasonValues.length === 0
+        ? null
+        : fallbackReasonValues.length === 1
+          ? fallbackReasonValues[0]
+          : "mixed",
+    openaiModelsUsed,
+    openaiRequestIds,
+    openaiUsage,
   };
+}
+
+function buildImageProviderCalls(visuals3d = {}) {
+  return Object.values(visuals3d).map((artifact) => {
+    const metadata = artifact?.metadata || {};
+    const openaiUsed = metadata.openaiImageUsed === true;
+    return {
+      stepId: `IMAGE_${String(artifact.panel_type || artifact.panelType || "panel").toUpperCase()}`,
+      panelType: artifact.panel_type || artifact.panelType || null,
+      provider: "openai",
+      providerUsed: openaiUsed ? "openai" : "deterministic",
+      imageProviderUsed: openaiUsed ? "openai" : "deterministic",
+      model: metadata.imageRenderModel || null,
+      keySource: metadata.openaiKeySource || null,
+      status: openaiUsed ? "ok" : "fallback",
+      fallbackReason: openaiUsed
+        ? null
+        : metadata.imageRenderFallbackReason || "unknown",
+      requestId: metadata.openaiRequestId || null,
+      usage: metadata.openaiUsage || null,
+      openaiUsed,
+      secretsRedacted: true,
+    };
+  });
+}
+
+function buildOpenAIQaMetadata({
+  providerCalls = [],
+  visuals3d = {},
+  env = process.env,
+} = {}) {
+  const diagnostics = openaiEnv.getOpenAIProviderDiagnostics(env);
+  const imageCalls = providerCalls.filter((call) =>
+    String(call.stepId || "").startsWith("IMAGE_"),
+  );
+  const reasoningCalls = providerCalls.filter(
+    (call) =>
+      call.provider === "openai" &&
+      call.openaiUsed === true &&
+      !String(call.stepId || "").startsWith("IMAGE_"),
+  );
+  const openaiImageUsed = imageCalls.some((call) => call.openaiUsed === true);
+  const fallbackReasons = Object.fromEntries(
+    Object.values(visuals3d).map((artifact) => [
+      artifact.panel_type || artifact.panelType,
+      artifact.metadata?.imageRenderFallbackReason || null,
+    ]),
+  );
+  const fallbackReasonValues = [
+    ...new Set(
+      Object.values(fallbackReasons)
+        .filter(Boolean)
+        .filter((reason) => reason !== "none"),
+    ),
+  ];
+  return {
+    openaiConfigured: diagnostics.openaiConfigured,
+    openaiReasoningUsed: reasoningCalls.length > 0,
+    openaiImageUsed,
+    openaiImageFallbackReason:
+      fallbackReasonValues.length === 0
+        ? null
+        : fallbackReasonValues.length === 1
+          ? fallbackReasonValues[0]
+          : "mixed",
+    openaiModelsUsed: [
+      ...new Set(
+        providerCalls
+          .filter((call) => call.openaiUsed === true)
+          .map((call) => call.model)
+          .filter(Boolean),
+      ),
+    ],
+    openaiRequestIds: [
+      ...new Set(providerCalls.map((call) => call.requestId).filter(Boolean)),
+    ],
+    openaiUsage: providerCalls
+      .map((call) => call.usage)
+      .filter((usage) => usage && typeof usage === "object"),
+    openaiDiagnostics: diagnostics,
+    reasoningProviderUsed:
+      reasoningCalls.length > 0 ? "openai" : "deterministic",
+    imageProviderUsed: openaiImageUsed ? "openai" : "deterministic",
+    providerFallbacks: providerCalls
+      .filter((call) => call.fallbackReason)
+      .map((call) => ({
+        stepId: call.stepId,
+        panelType: call.panelType || null,
+        provider: call.provider,
+        providerUsed: call.providerUsed,
+        fallbackReason: call.fallbackReason,
+      })),
+    visualPanelsFallbackReasons: fallbackReasons,
+  };
+}
+
+function logProjectGraphProviderTrace(providerCalls = []) {
+  if (process.env.NODE_ENV === "test") return;
+  for (const call of providerCalls) {
+    const suffix = call.panelType ? ` panel=${call.panelType}` : "";
+    const fallback = call.fallbackReason
+      ? ` fallbackReason=${call.fallbackReason}`
+      : "";
+    const deterministic = call.deterministicReason
+      ? ` deterministicReason=${call.deterministicReason}`
+      : "";
+    console.log(
+      `[OpenAI] STEP ${call.stepId}${suffix} providerRoute=${call.provider} providerUsed=${call.providerUsed || "deterministic"} model=${call.model || "none"} status=${call.status}${fallback}${deterministic}`,
+    );
+  }
 }
 
 // Phase B closeout: per-panel-type fit policy for presentation-v3.
@@ -5909,9 +6070,16 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
   const providerCalls = modelRoutes.map((route) => ({
     stepId: route.stepId,
     provider: route.provider,
+    providerUsed: "deterministic",
+    reasoningProviderUsed: "deterministic",
+    imageProviderUsed: null,
     model: route.model,
     apiKeyEnv: route.apiKeyEnv,
     status: "route_resolved",
+    openaiUsed: false,
+    deterministicFallback: false,
+    deterministicReason: "project_graph_vertical_slice_deterministic",
+    fallbackReason: null,
     secretsRedacted: true,
   }));
   const projectGraphId = createStableId(
@@ -6003,6 +6171,25 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       )
       .map((artifact) => [artifact.panel_type, artifact]),
   );
+  const imageProviderCalls = buildImageProviderCalls(visuals3d);
+  const allProviderCalls = [...providerCalls, ...imageProviderCalls];
+  const openaiQaMetadata = buildOpenAIQaMetadata({
+    providerCalls: allProviderCalls,
+    visuals3d,
+  });
+  logProjectGraphProviderTrace(allProviderCalls);
+  sheetArtifact.openaiConfigured = openaiQaMetadata.openaiConfigured;
+  sheetArtifact.openaiReasoningUsed = openaiQaMetadata.openaiReasoningUsed;
+  sheetArtifact.openaiImageUsed = openaiQaMetadata.openaiImageUsed;
+  sheetArtifact.openaiImageFallbackReason =
+    openaiQaMetadata.openaiImageFallbackReason;
+  sheetArtifact.openaiModelsUsed = openaiQaMetadata.openaiModelsUsed;
+  sheetArtifact.openaiRequestIds = openaiQaMetadata.openaiRequestIds;
+  sheetArtifact.openaiUsage = openaiQaMetadata.openaiUsage;
+  sheetArtifact.metadata = {
+    ...(sheetArtifact.metadata || {}),
+    ...openaiQaMetadata,
+  };
   const geometrySteps = [
     {
       stepId: "PROJECT_GRAPH",
@@ -6092,6 +6279,14 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     textRenderStatus: pdfArtifact.renderedProof?.textRenderStatus,
     presentationMode: sheetArtifact.presentationMode,
     visualFidelityStatus: sheetArtifact.visualFidelityStatus,
+    openai: openaiQaMetadata,
+    openaiConfigured: openaiQaMetadata.openaiConfigured,
+    openaiReasoningUsed: openaiQaMetadata.openaiReasoningUsed,
+    openaiImageUsed: openaiQaMetadata.openaiImageUsed,
+    openaiImageFallbackReason: openaiQaMetadata.openaiImageFallbackReason,
+    openaiModelsUsed: openaiQaMetadata.openaiModelsUsed,
+    openaiRequestIds: openaiQaMetadata.openaiRequestIds,
+    openaiUsage: openaiQaMetadata.openaiUsage,
     compiledProject,
     projectGeometry,
     sheetSeries: renderedSheets.map(
@@ -6115,7 +6310,8 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       pipelineMode: "project_graph",
       modelProvenance,
       modelRoutes,
-      providerCalls,
+      providerCalls: allProviderCalls,
+      providerFallbacks: openaiQaMetadata.providerFallbacks,
       geometrySteps,
       exportSteps,
     },
@@ -6124,6 +6320,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     projectGraph: graphWithStableId,
     artifacts,
   });
+  qa.openai = openaiQaMetadata;
 
   // Phase 5: structured reasoning chain — Brief → Site → Climate → Style →
   // Programme — exposed as both a structured object (for QA / API consumers)

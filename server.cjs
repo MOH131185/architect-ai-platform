@@ -30,6 +30,9 @@ const {
 const {
   resolveOpenAIReasoningApiKey,
   resolveOpenAIImageApiKey,
+  resolveOpenAIReasoningApiKeyInfo,
+  getOpenAIProviderDiagnostics,
+  buildOpenAIRequestHeaders,
 } = require('./server/utils/openaiEnv.cjs');
 
 // Load env vars from the project root regardless of where the server is started from.
@@ -356,7 +359,8 @@ app.get('/api/health', (req, res) => {
     claude: !!process.env.ANTHROPIC_API_KEY,
     openaiReasoning: !!getOpenAIReasoningApiKey(),
     openaiImages: !!getOpenAIImageApiKey(),
-    openai: !!process.env.REACT_APP_OPENAI_API_KEY,
+    openai: !!getOpenAIReasoningApiKey() || !!getOpenAIImageApiKey(),
+    openaiLegacyBrowserKey: !!process.env.REACT_APP_OPENAI_API_KEY,
     replicate: !!process.env.REACT_APP_REPLICATE_API_KEY,
   });
 });
@@ -396,27 +400,42 @@ mountDynamicApiRoute('get', '/api/models/status', 'api/models/status.js');
 const handleOpenAIChat = async (req, res) => {
   try {
     // Keep local Express env resolution aligned with api/openai-chat.js.
-    const apiKey = getOpenAIReasoningApiKey();
+    const keyInfo = resolveOpenAIReasoningApiKeyInfo(process.env);
 
-    if (!apiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!keyInfo.hasKey) {
+      return res.status(500).json({
+        error: 'OpenAI API key not configured',
+        warning: keyInfo.warning,
+      });
     }
 
+    console.log(
+      `[OpenAI] START chat route=/api/openai-chat model=${req.body?.model || 'request-default'} keySource=${keyInfo.keySource}`
+    );
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: buildOpenAIRequestHeaders(keyInfo, process.env, { json: true }),
       body: JSON.stringify(req.body),
     });
 
+    const requestId =
+      response.headers?.get?.('x-request-id') ||
+      response.headers?.get?.('openai-request-id') ||
+      null;
     const data = await response.json();
 
     if (!response.ok) {
+      console.warn(
+        `[OpenAI] FAIL chat route=/api/openai-chat status=${response.status} requestId=${requestId || 'none'}`
+      );
       return res.status(response.status).json(data);
     }
 
+    console.log(
+      `[OpenAI] OK chat route=/api/openai-chat requestId=${requestId || 'none'} usage=${JSON.stringify(data.usage || {})}`
+    );
+    data.requestId = data.requestId || requestId;
+    data.keySource = keyInfo.keySource;
     res.json(data);
   } catch (error) {
     console.error('OpenAI proxy error:', error);
@@ -429,6 +448,10 @@ const handleOpenAIChat = async (req, res) => {
 // /api/openai-chat - Vercel format (matches api/openai-chat.js)
 app.post('/api/openai/chat', aiApiLimiter, handleOpenAIChat);
 app.post('/api/openai-chat', aiApiLimiter, handleOpenAIChat);
+
+// OpenAI image generation endpoint - supports both local and Vercel path formats.
+mountDynamicApiRoute('post', '/api/openai/images', 'api/openai-images.js', [imageGenerationLimiter]);
+mountDynamicApiRoute('post', '/api/openai-images', 'api/openai-images.js', [imageGenerationLimiter]);
 
 // Image proxy endpoint - bypass CORS for canvas processing
 // Supports both /api/proxy/image (dev) and /api/proxy-image (prod alias)
@@ -855,19 +878,20 @@ app.post('/api/together/chat', aiApiLimiter, async (req, res) => {
 app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
   console.log('📥 [OpenAI Reasoning] Received request to /api/openai-reasoning');
 
-  const openaiApiKey = getOpenAIReasoningApiKey();
+  const keyInfo = resolveOpenAIReasoningApiKeyInfo(process.env);
 
-  if (!openaiApiKey) {
+  if (!keyInfo.hasKey) {
     console.error('❌ [OpenAI Reasoning] OpenAI API key not configured');
     console.error('   Available env vars:', Object.keys(process.env).filter(k => k.includes('OPENAI')).join(', '));
     return res.status(500).json({
       ok: false,
       error: 'API_KEY_MISSING',
       details: 'Set OPENAI_REASONING_API_KEY or OPENAI_API_KEY in environment variables',
+      warning: keyInfo.warning,
     });
   }
 
-  console.log('[OpenAI Reasoning] API key present');
+  console.log(`[OpenAI Reasoning] API key present via ${keyInfo.keySource}`);
 
   try {
     const {
@@ -907,29 +931,32 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
+      headers: buildOpenAIRequestHeaders(keyInfo, process.env, { json: true }),
       body: JSON.stringify(requestBody),
     });
 
+    const requestId =
+      response.headers?.get?.('x-request-id') ||
+      response.headers?.get?.('openai-request-id') ||
+      null;
     const data = await response.json();
 
     if (!response.ok) {
       console.error('[OpenAI Reasoning] API error:', data);
+      console.error(`[OpenAI] FAIL reasoning route=/api/openai-reasoning status=${response.status} requestId=${requestId || 'none'}`);
       return res.status(response.status).json({
         ok: false,
         error: 'OPENAI_API_ERROR',
         details: data.error?.message || 'OpenAI API request failed',
         raw: data.error,
+        requestId,
       });
     }
 
     const latencyMs = Date.now() - startTime;
     const content = data.choices?.[0]?.message?.content || '';
 
-    console.log(`Check [OpenAI Reasoning] ${task_type} completed (${latencyMs}ms, ${content.length} chars)`);
+    console.log(`Check [OpenAI Reasoning] ${task_type} completed (${latencyMs}ms, ${content.length} chars, requestId=${requestId || 'none'})`);
 
     // Parse JSON if response_format was json_object
     let parsedContent = content;
@@ -947,6 +974,8 @@ app.post('/api/openai-reasoning', aiApiLimiter, async (req, res) => {
       raw: content,
       model: data.model,
       usage: data.usage || {},
+      requestId,
+      keySource: keyInfo.keySource,
       latencyMs,
       traceId,
       task_type,
@@ -2858,6 +2887,7 @@ process.on('uncaughtException', (error) => {
 });
 
 app.listen(PORT, () => {
+  const openaiDiagnostics = getOpenAIProviderDiagnostics(process.env);
   console.log(`ðŸš€ API Proxy Server running on http://localhost:${PORT}`);
   console.log('\nðŸ“¡ API Provider Status:');
   console.log(
@@ -2869,6 +2899,24 @@ app.listen(PORT, () => {
   console.log(
     `   OpenAI Images: ${getOpenAIImageApiKey() ? 'Configured âœ…' : 'Optional âšª'}`
   );
+  console.log(
+    `   OpenAI Reasoning Key Source: ${openaiDiagnostics.reasoning.keySource || 'none'}`
+  );
+  console.log(
+    `   OpenAI Images Key Source: ${openaiDiagnostics.images.keySource || 'none'}`
+  );
+  console.log(
+    `   ProjectGraph Image Gen: ${openaiDiagnostics.imageGenerationEnabled ? 'enabled' : 'disabled'}`
+  );
+  if (!openaiDiagnostics.imageGenerationEnabled) {
+    console.log('[OpenAI] ProjectGraph image generation disabled: PROJECT_GRAPH_IMAGE_GEN_ENABLED=false');
+  }
+  if (openaiDiagnostics.reasoning.warning) {
+    console.warn(`[OpenAI] Reasoning env warning: ${openaiDiagnostics.reasoning.warning}`);
+  }
+  if (openaiDiagnostics.images.warning) {
+    console.warn(`[OpenAI] Image env warning: ${openaiDiagnostics.images.warning}`);
+  }
   console.log(
     `   Together Legacy: ${isLegacyProviderEnabled() && process.env.TOGETHER_API_KEY ? 'Enabled âœ…' : 'Disabled âšª'}`
   );

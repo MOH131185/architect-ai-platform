@@ -8,15 +8,9 @@
  */
 
 import { setCorsHeaders, handlePreflight } from "./_shared/cors.js";
+import openaiEnv from "../server/utils/openaiEnv.cjs";
 
-function getOpenAIImageApiKey() {
-  return (
-    process.env.OPENAI_IMAGES_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_REASONING_API_KEY ||
-    ""
-  ).trim();
-}
+const { resolveOpenAIImageApiKeyInfo, buildOpenAIRequestHeaders } = openaiEnv;
 
 function getOpenAIImageModel(requestModel) {
   return (
@@ -48,12 +42,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed. Use POST." });
   }
 
-  const apiKey = getOpenAIImageApiKey();
-  if (!apiKey) {
+  const keyInfo = resolveOpenAIImageApiKeyInfo(process.env);
+  if (!keyInfo.hasKey) {
     return res.status(500).json({
       error: "OPENAI_IMAGE_API_KEY_MISSING",
       message:
-        "Set OPENAI_IMAGES_API_KEY or OPENAI_API_KEY in the production environment.",
+        "Set OPENAI_IMAGES_API_KEY or OPENAI_API_KEY in the production environment. OPENAI_REASONING_API_KEY is accepted as a last-resort server-side fallback.",
+      warning: keyInfo.warning,
     });
   }
 
@@ -66,14 +61,16 @@ export default async function handler(req, res) {
   const resolvedSize = normalizeSize(size);
 
   try {
+    console.log(
+      `[OpenAI] START image generation route=/api/openai-images model=${resolvedModel} size=${resolvedSize} keySource=${keyInfo.keySource}`,
+    );
     const response = await fetch(
       "https://api.openai.com/v1/images/generations",
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: buildOpenAIRequestHeaders(keyInfo, process.env, {
+          json: true,
+        }),
         body: JSON.stringify({
           model: resolvedModel,
           prompt,
@@ -83,13 +80,21 @@ export default async function handler(req, res) {
       },
     );
 
+    const requestId =
+      response.headers?.get?.("x-request-id") ||
+      response.headers?.get?.("openai-request-id") ||
+      null;
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      console.warn(
+        `[OpenAI] FAIL image generation route=/api/openai-images status=${response.status} requestId=${requestId || "none"}`,
+      );
       return res.status(response.status).json({
         error: "OPENAI_IMAGE_GENERATION_FAILED",
         message:
           data.error?.message ||
           `OpenAI image generation failed: ${response.status}`,
+        requestId,
       });
     }
 
@@ -106,11 +111,17 @@ export default async function handler(req, res) {
       });
     }
 
+    console.log(
+      `[OpenAI] OK image generation route=/api/openai-images requestId=${requestId || "none"} count=${images.length} usage=${JSON.stringify(data.usage || {})}`,
+    );
     return res.status(200).json({
       images,
       model: resolvedModel,
       size: resolvedSize,
       provider: "openai",
+      requestId,
+      usage: data.usage || null,
+      keySource: keyInfo.keySource,
     });
   } catch (error) {
     return res.status(500).json({

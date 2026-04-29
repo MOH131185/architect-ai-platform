@@ -105,6 +105,7 @@ export const ARCHITECTURE_MODEL_STEP_CONFIG = Object.freeze({
     baseKeys: ["STEP_10_IMAGE_MODEL", "OPENAI_IMAGE_MODEL"],
     fineTunedKeys: [],
     defaultBaseModel: "gpt-image-2",
+    defaultApiKeyEnv: "OPENAI_IMAGES_API_KEY",
   },
   MATERIALS: {
     label: "Material strategy",
@@ -244,7 +245,9 @@ export function resolveArchitectureStepModel(
     readEnv(env, "ARCHIAI_MODEL_FALLBACK_POLICY") ||
     DEFAULT_FALLBACK_POLICY;
   const apiKeyEnv =
-    readEnv(env, `${config.envPrefix}_API_KEY_ENV`) || "OPENAI_API_KEY";
+    readEnv(env, `${config.envPrefix}_API_KEY_ENV`) ||
+    config.defaultApiKeyEnv ||
+    "OPENAI_API_KEY";
   const temperature = readEnv(env, `${config.envPrefix}_TEMPERATURE`);
   const base = firstEnv(env, config.baseKeys);
   const fineTuned = firstEnv(env, config.fineTunedKeys);

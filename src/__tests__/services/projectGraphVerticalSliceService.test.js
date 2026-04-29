@@ -88,12 +88,23 @@ describe("projectGraphVerticalSliceService", () => {
   const originalGoogleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
   const originalReactGoogleMapsApiKey =
     process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+  const originalOpenAIApiKey = process.env.OPENAI_API_KEY;
+  const originalOpenAIImagesApiKey = process.env.OPENAI_IMAGES_API_KEY;
+  const originalOpenAIReasoningApiKey = process.env.OPENAI_REASONING_API_KEY;
+  const originalProjectGraphImageGenEnabled =
+    process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED;
+  const originalOpenAIStrictImageGen = process.env.OPENAI_STRICT_IMAGE_GEN;
   const originalFetch = global.fetch;
 
   beforeEach(() => {
     process.env.MODEL_SOURCE = "base";
     process.env.OPENAI_REASONING_MODEL = "gpt-5.4";
     process.env.OPENAI_FAST_MODEL = "gpt-5.4-mini";
+    process.env.OPENAI_API_KEY = "sk-test-openai-base";
+    process.env.OPENAI_IMAGES_API_KEY = "sk-test-openai-images";
+    delete process.env.OPENAI_REASONING_API_KEY;
+    process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED = "false";
+    process.env.OPENAI_STRICT_IMAGE_GEN = "false";
     delete process.env.GOOGLE_MAPS_API_KEY;
     delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     global.fetch = originalFetch;
@@ -124,6 +135,32 @@ describe("projectGraphVerticalSliceService", () => {
       delete process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
     } else {
       process.env.REACT_APP_GOOGLE_MAPS_API_KEY = originalReactGoogleMapsApiKey;
+    }
+    if (originalOpenAIApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAIApiKey;
+    }
+    if (originalOpenAIImagesApiKey === undefined) {
+      delete process.env.OPENAI_IMAGES_API_KEY;
+    } else {
+      process.env.OPENAI_IMAGES_API_KEY = originalOpenAIImagesApiKey;
+    }
+    if (originalOpenAIReasoningApiKey === undefined) {
+      delete process.env.OPENAI_REASONING_API_KEY;
+    } else {
+      process.env.OPENAI_REASONING_API_KEY = originalOpenAIReasoningApiKey;
+    }
+    if (originalProjectGraphImageGenEnabled === undefined) {
+      delete process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED;
+    } else {
+      process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED =
+        originalProjectGraphImageGenEnabled;
+    }
+    if (originalOpenAIStrictImageGen === undefined) {
+      delete process.env.OPENAI_STRICT_IMAGE_GEN;
+    } else {
+      process.env.OPENAI_STRICT_IMAGE_GEN = originalOpenAIStrictImageGen;
     }
     global.fetch = originalFetch;
   });
@@ -169,6 +206,38 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.presentationMode).toBe("deterministic_control");
     expect(result.artifacts.visualFidelityStatus).toBe(
       "degraded_control_render",
+    );
+    expect(result.artifacts.openaiConfigured).toBe(true);
+    expect(result.artifacts.openaiReasoningUsed).toBe(false);
+    expect(result.artifacts.openaiImageUsed).toBe(false);
+    expect(result.artifacts.openaiImageFallbackReason).toBe("gate_disabled");
+    expect(result.artifacts.openaiModelsUsed).toEqual([]);
+    expect(result.artifacts.openaiRequestIds).toEqual([]);
+    expect(result.artifacts.openaiUsage).toEqual([]);
+    expect(result.artifacts.a1Sheet.metadata).toEqual(
+      expect.objectContaining({
+        openaiConfigured: true,
+        openaiReasoningUsed: false,
+        openaiImageUsed: false,
+        openaiImageFallbackReason: "gate_disabled",
+        openaiModelsUsed: [],
+        openaiRequestIds: [],
+        openaiUsage: [],
+        visualPanelsFallbackReasons: expect.any(Object),
+      }),
+    );
+    expect(
+      Object.values(
+        result.artifacts.a1Sheet.metadata.visualPanelsFallbackReasons,
+      ),
+    ).toEqual(expect.arrayContaining(["gate_disabled"]));
+    expect(result.qa.openai).toEqual(
+      expect.objectContaining({
+        openaiConfigured: true,
+        openaiReasoningUsed: false,
+        openaiImageUsed: false,
+        imageProviderUsed: "deterministic",
+      }),
     );
     expect(result.artifacts.a1Pdf.asset_type).toBe("a1_sheet_pdf");
     expect(result.artifacts.a1Pdf.sheet_size_mm).toEqual({
@@ -271,6 +340,10 @@ describe("projectGraphVerticalSliceService", () => {
       expect(artifact.metadata.sourceGeometryHash).toBe(result.geometryHash);
       expect(artifact.metadata.referenceSource).toBe("compiled_3d_control_svg");
       expect(artifact.metadata.imageRenderFallback).toBe(true);
+      expect(artifact.metadata.imageProviderUsed).toBe("deterministic");
+      expect(artifact.metadata.imageRenderFallbackReason).toBe("gate_disabled");
+      expect(artifact.metadata.openaiConfigured).toBe(true);
+      expect(artifact.metadata.openaiImageUsed).toBe(false);
       expect(artifact.metadata.presentationMode).toBe("deterministic_control");
       expect(artifact.metadata.visualFidelityStatus).toBe(
         "degraded_control_render",
@@ -355,7 +428,22 @@ describe("projectGraphVerticalSliceService", () => {
           expect.objectContaining({
             stepId: "PROJECT_GRAPH",
             status: "route_resolved",
+            providerUsed: "deterministic",
+            openaiUsed: false,
             secretsRedacted: true,
+          }),
+          expect.objectContaining({
+            stepId: "IMAGE_HERO_3D",
+            provider: "openai",
+            providerUsed: "deterministic",
+            fallbackReason: "gate_disabled",
+            openaiUsed: false,
+          }),
+        ]),
+        providerFallbacks: expect.arrayContaining([
+          expect.objectContaining({
+            stepId: "IMAGE_HERO_3D",
+            fallbackReason: "gate_disabled",
           }),
         ]),
         geometrySteps: expect.arrayContaining([

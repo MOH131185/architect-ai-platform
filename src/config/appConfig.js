@@ -75,11 +75,7 @@ const API_KEY_CONFIG = {
 
   // Server-side keys (never exposed to browser)
   [ServiceName.OPENAI_REASONING]: {
-    envVars: [
-      "OPENAI_REASONING_API_KEY",
-      "OPENAI_API_KEY",
-      "REACT_APP_OPENAI_API_KEY",
-    ],
+    envVars: ["OPENAI_REASONING_API_KEY", "OPENAI_API_KEY"],
     required: false,
     clientSide: false,
     description: "OpenAI API for model-first RIBA/ProjectGraph reasoning",
@@ -88,7 +84,7 @@ const API_KEY_CONFIG = {
     envVars: [
       "OPENAI_IMAGES_API_KEY",
       "OPENAI_API_KEY",
-      "REACT_APP_OPENAI_API_KEY",
+      "OPENAI_REASONING_API_KEY",
     ],
     required: false,
     clientSide: false,

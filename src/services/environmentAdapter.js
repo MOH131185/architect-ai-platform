@@ -12,6 +12,7 @@
  */
 
 import runtimeEnv from "../utils/runtimeEnv.js";
+import openaiEnv from "./openaiProviderEnv.cjs";
 
 // In-memory feature flag store (fallback)
 const memoryFeatureFlags = new Map();
@@ -95,19 +96,15 @@ function getApiKeys() {
     return {};
   }
 
-  // Server: Read from environment
+  // Server: Read from environment. REACT_APP_OPENAI_API_KEY is intentionally
+  // not a server-side default; enable OPENAI_ALLOW_REACT_APP_SERVER_KEY=true
+  // only for local development compatibility.
+  const reasoningKey = openaiEnv.resolveOpenAIReasoningApiKey(process.env);
+  const imageKey = openaiEnv.resolveOpenAIImageApiKey(process.env);
   return {
     togetherApiKey: process.env.TOGETHER_API_KEY || "",
-    openaiApiKey:
-      process.env.OPENAI_REASONING_API_KEY ||
-      process.env.OPENAI_API_KEY ||
-      process.env.REACT_APP_OPENAI_API_KEY ||
-      "",
-    openaiImagesApiKey:
-      process.env.OPENAI_IMAGES_API_KEY ||
-      process.env.OPENAI_API_KEY ||
-      process.env.REACT_APP_OPENAI_API_KEY ||
-      "",
+    openaiApiKey: reasoningKey,
+    openaiImagesApiKey: imageKey,
     googleMapsApiKey: process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "",
     openWeatherApiKey: process.env.REACT_APP_OPENWEATHER_API_KEY || "",
   };

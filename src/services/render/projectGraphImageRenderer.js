@@ -27,6 +27,7 @@
  */
 
 import logger from "../../utils/logger.js";
+import openaiEnv from "../openaiProviderEnv.cjs";
 import { rasteriseSvgToPng } from "./svgRasteriser.js";
 
 const RENDERER_VERSION = "project-graph-image-renderer-v1";
@@ -48,26 +49,20 @@ const ALLOWED_OPENAI_SIZES = new Set([
   "1792x1024",
 ]);
 
-function resolveImageGenEnabled() {
-  const flag = String(process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED || "")
-    .trim()
-    .toLowerCase();
-  return flag === "true" || flag === "1" || flag === "yes";
+function resolveImageGenEnabled(env = process.env) {
+  return openaiEnv.isTruthy(
+    openaiEnv.readEnv(env, "PROJECT_GRAPH_IMAGE_GEN_ENABLED"),
+  );
 }
 
-function resolveOpenAIApiKey() {
-  return (
-    process.env.OPENAI_IMAGES_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_REASONING_API_KEY ||
-    ""
-  ).trim();
+function resolveStrictImageGen(env = process.env) {
+  return openaiEnv.isTruthy(openaiEnv.readEnv(env, "OPENAI_STRICT_IMAGE_GEN"));
 }
 
-function resolveImageModel() {
+function resolveImageModel(env = process.env) {
   return (
-    process.env.STEP_10_IMAGE_MODEL ||
-    process.env.OPENAI_IMAGE_MODEL ||
+    openaiEnv.readEnv(env, "STEP_10_IMAGE_MODEL") ||
+    openaiEnv.readEnv(env, "OPENAI_IMAGE_MODEL") ||
     "gpt-image-2"
   ).trim();
 }
@@ -75,6 +70,105 @@ function resolveImageModel() {
 function resolveSize(panelType) {
   const target = PANEL_TYPE_TO_SIZE[panelType] || "1024x1024";
   return ALLOWED_OPENAI_SIZES.has(target) ? target : "1024x1024";
+}
+
+export function getProjectGraphImageProviderConfig(env = process.env) {
+  const keyInfo = openaiEnv.resolveOpenAIImageApiKeyInfo(env);
+  const orgProject = openaiEnv.getOpenAIOrgProjectDiagnostics(env);
+  return {
+    imageGenEnabled: resolveImageGenEnabled(env),
+    strictImageGen: resolveStrictImageGen(env),
+    openaiConfigured: keyInfo.hasKey,
+    keySource: keyInfo.keySource,
+    keyLast4: keyInfo.keyLast4,
+    warning: keyInfo.warning,
+    model: resolveImageModel(env),
+    ...orgProject,
+  };
+}
+
+function createStrictImageError({ panelType, reason, error }) {
+  const message = error?.message || reason;
+  const strictError = new Error(
+    `[OpenAI] strict image generation failed panel=${panelType} reason=${reason}: ${message}`,
+  );
+  strictError.code = "OPENAI_STRICT_IMAGE_GEN_FAILED";
+  strictError.panelType = panelType;
+  strictError.fallbackReason = reason;
+  strictError.strictImageGeneration = true;
+  strictError.cause = error;
+  return strictError;
+}
+
+function createFallbackResult({
+  panelType,
+  geometryHash,
+  reason,
+  config,
+  error,
+}) {
+  return {
+    pngBuffer: null,
+    provider: "openai",
+    providerUsed: "deterministic",
+    imageProviderUsed: "deterministic",
+    imageRenderFallback: true,
+    imageRenderFallbackReason: reason,
+    fallbackReason: reason,
+    openaiConfigured: config.openaiConfigured,
+    keySource: config.keySource,
+    keyLast4: config.keyLast4,
+    orgConfigured: config.orgConfigured,
+    projectConfigured: config.projectConfigured,
+    model: config.model,
+    requestId: error?.requestId || null,
+    usage: error?.usage || null,
+    status: error?.status || null,
+    error: error?.message || null,
+    provenance: {
+      renderer: RENDERER_VERSION,
+      panelType,
+      provider: "openai",
+      providerUsed: "deterministic",
+      imageProviderUsed: "deterministic",
+      imageRenderFallback: true,
+      imageRenderFallbackReason: reason,
+      sourceGeometryHash: geometryHash,
+      referenceSource: "compiled_3d_control_svg",
+      openaiConfigured: config.openaiConfigured,
+      keySource: config.keySource,
+      keyLast4: config.keyLast4,
+      orgConfigured: config.orgConfigured,
+      projectConfigured: config.projectConfigured,
+      model: config.model,
+      requestId: error?.requestId || null,
+      usage: error?.usage || null,
+      error: error?.message || null,
+    },
+  };
+}
+
+function handleFallback({ panelType, geometryHash, reason, config, error }) {
+  logger.warn(`[OpenAI] SKIP image edit panel=${panelType} reason=${reason}`, {
+    panelType,
+    reason,
+    strictImageGen: config.strictImageGen,
+    openaiConfigured: config.openaiConfigured,
+    keySource: config.keySource,
+    orgConfigured: config.orgConfigured,
+    projectConfigured: config.projectConfigured,
+    error: error?.message || null,
+  });
+  if (config.strictImageGen) {
+    throw createStrictImageError({ panelType, reason, error });
+  }
+  return createFallbackResult({
+    panelType,
+    geometryHash,
+    reason,
+    config,
+    error,
+  });
 }
 
 /**
@@ -105,31 +199,64 @@ function buildImageEditFormData({ imageBuffer, prompt, model, size }) {
  * return the rendered PNG bytes. Throws on non-200 or empty response so the
  * caller can fall back to the deterministic SVG.
  */
-async function callOpenAIImageEdit({ imageBuffer, prompt, panelType }) {
-  const apiKey = resolveOpenAIApiKey();
-  if (!apiKey) {
-    throw new Error("OPENAI_IMAGES_API_KEY (or OPENAI_API_KEY) is not set.");
+async function callOpenAIImageEdit({ imageBuffer, prompt, panelType, env }) {
+  const keyInfo = openaiEnv.resolveOpenAIImageApiKeyInfo(env);
+  if (!keyInfo.hasKey) {
+    const error = new Error(
+      "OPENAI_IMAGES_API_KEY, OPENAI_API_KEY, or OPENAI_REASONING_API_KEY is not set.",
+    );
+    error.fallbackReason = "missing_api_key";
+    throw error;
   }
-  const model = resolveImageModel();
+  const model = resolveImageModel(env);
   const size = resolveSize(panelType);
   const form = buildImageEditFormData({ imageBuffer, prompt, model, size });
 
+  logger.info(`[OpenAI] START image edit panel=${panelType} model=${model}`, {
+    panelType,
+    model,
+    size,
+    keySource: keyInfo.keySource,
+    keyLast4: keyInfo.keyLast4,
+    ...openaiEnv.getOpenAIOrgProjectDiagnostics(env),
+  });
+
   const response = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: openaiEnv.buildOpenAIRequestHeaders(keyInfo, env),
     body: form,
   });
 
+  const requestId =
+    response.headers?.get?.("x-request-id") ||
+    response.headers?.get?.("openai-request-id") ||
+    null;
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       `OpenAI images.edit failed (${response.status}): ${data?.error?.message || "unknown"}`,
     );
+    error.status = response.status;
+    error.requestId = requestId;
+    error.usage = data?.usage || null;
+    error.fallbackReason = "openai_error";
+    logger.warn(`[OpenAI] FAIL image edit panel=${panelType}`, {
+      panelType,
+      model,
+      status: response.status,
+      requestId,
+      reason: data?.error?.message || "unknown",
+    });
+    throw error;
   }
 
   const entry = (data.data || [])[0];
   if (!entry?.b64_json && !entry?.url) {
-    throw new Error("OpenAI images.edit returned no image payload.");
+    const error = new Error("OpenAI images.edit returned no image payload.");
+    error.requestId = requestId;
+    error.usage = data?.usage || null;
+    error.fallbackReason = "empty_response";
+    throw error;
   }
 
   let pngBuffer;
@@ -146,11 +273,24 @@ async function callOpenAIImageEdit({ imageBuffer, prompt, panelType }) {
     pngBuffer = Buffer.from(arrayBuffer);
   }
 
+  logger.info(`[OpenAI] OK image edit panel=${panelType}`, {
+    panelType,
+    model,
+    requestId,
+    bytes: pngBuffer.length,
+    usage: data?.usage || null,
+  });
+
   return {
     pngBuffer,
     model,
     size,
     revisedPrompt: entry.revised_prompt || null,
+    requestId,
+    usage: data?.usage || null,
+    keySource: keyInfo.keySource,
+    keyLast4: keyInfo.keyLast4,
+    ...openaiEnv.getOpenAIOrgProjectDiagnostics(env),
   };
 }
 
@@ -172,19 +312,53 @@ export async function renderProjectGraphPanelImage({
   deterministicSvg,
   prompt,
   geometryHash,
+  env = process.env,
 } = {}) {
-  if (!resolveImageGenEnabled()) {
-    return null;
+  const config = getProjectGraphImageProviderConfig(env);
+  if (!config.imageGenEnabled) {
+    logger.info(
+      `[OpenAI] SKIP image edit panel=${panelType || "unknown"} reason=gate_disabled PROJECT_GRAPH_IMAGE_GEN_ENABLED=false`,
+      {
+        panelType,
+        model: config.model,
+        openaiConfigured: config.openaiConfigured,
+        keySource: config.keySource,
+      },
+    );
+    return createFallbackResult({
+      panelType,
+      geometryHash,
+      reason: "gate_disabled",
+      config,
+    });
   }
   if (
     !panelType ||
     typeof deterministicSvg !== "string" ||
     !deterministicSvg.trim()
   ) {
-    return null;
+    return handleFallback({
+      panelType,
+      geometryHash,
+      reason: "missing_control_svg",
+      config,
+    });
   }
   if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-    return null;
+    return handleFallback({
+      panelType,
+      geometryHash,
+      reason: "missing_prompt",
+      config,
+    });
+  }
+  if (!config.openaiConfigured) {
+    return handleFallback({
+      panelType,
+      geometryHash,
+      reason: "missing_api_key",
+      config,
+    });
   }
 
   try {
@@ -203,32 +377,57 @@ export async function renderProjectGraphPanelImage({
       imageBuffer: referencePng,
       prompt,
       panelType,
+      env,
     });
 
     return {
       pngBuffer: result.pngBuffer,
+      provider: "openai",
+      providerUsed: "openai",
+      imageProviderUsed: "openai",
+      imageRenderFallback: false,
+      imageRenderFallbackReason: null,
+      fallbackReason: null,
+      openaiConfigured: true,
+      requestId: result.requestId,
+      usage: result.usage,
       provenance: {
         renderer: RENDERER_VERSION,
         panelType,
+        provider: "openai",
+        providerUsed: "openai",
+        imageProviderUsed: "openai",
+        imageRenderFallback: false,
+        imageRenderFallbackReason: null,
         model: result.model,
         size: result.size,
         revisedPrompt: result.revisedPrompt,
+        requestId: result.requestId,
+        usage: result.usage,
+        keySource: result.keySource,
+        keyLast4: result.keyLast4,
+        orgConfigured: result.orgConfigured,
+        projectConfigured: result.projectConfigured,
         sourceGeometryHash: geometryHash,
         referenceSource: "compiled_3d_control_svg",
       },
     };
   } catch (error) {
-    logger.warn(
-      `[projectGraphImageRenderer] ${panelType} render failed; falling back to deterministic SVG`,
-      { error: error?.message || String(error) },
-    );
-    return null;
+    return handleFallback({
+      panelType,
+      geometryHash,
+      reason: error?.fallbackReason || "openai_error",
+      config,
+      error,
+    });
   }
 }
 
 export const __test = {
   resolveImageGenEnabled,
+  resolveStrictImageGen,
   resolveSize,
   resolveImageModel,
+  getProjectGraphImageProviderConfig,
   PANEL_TYPE_TO_SIZE,
 };
