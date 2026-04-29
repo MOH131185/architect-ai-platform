@@ -1,9 +1,42 @@
 import {
+  buildPresentationV3SheetPanelSpecs,
   computePanelCaptionLayout,
   isResidentialBuildingType,
   resolvePresentationLayoutTemplate,
   selectPanelContentViewBox,
 } from "../../services/project/projectGraphVerticalSliceService.js";
+
+const A1_WIDTH_MM = 841;
+const A1_HEIGHT_MM = 594;
+
+function rectsOverlap(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+function findOverlap(specs) {
+  for (let i = 0; i < specs.length; i += 1) {
+    for (let j = i + 1; j < specs.length; j += 1) {
+      if (rectsOverlap(specs[i], specs[j])) {
+        return { a: specs[i], b: specs[j] };
+      }
+    }
+  }
+  return null;
+}
+
+function withinSheet(spec) {
+  return (
+    spec.x >= 0 &&
+    spec.y >= 0 &&
+    spec.x + spec.width <= A1_WIDTH_MM &&
+    spec.y + spec.height <= A1_HEIGHT_MM
+  );
+}
 
 describe("Phase B residential layout routing", () => {
   test("residential typologies are detected", () => {
@@ -272,5 +305,99 @@ describe("Phase B closeout — caption layout", () => {
     });
     expect(layout.scaleX).toBe(180 - 4);
     expect(layout.titleX).toBe(4);
+  });
+});
+
+describe("Phase B closeout v3 — presentation-v3 slot proportions", () => {
+  test("3-storey residential plan slots have aspect ratio ≥ 1.20 (landscape)", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(3);
+    const planSpecs = specs.filter((s) =>
+      /^floor_plan_(ground|first|level2)$/.test(s.panelType),
+    );
+    expect(planSpecs).toHaveLength(3);
+    for (const plan of planSpecs) {
+      const aspect = plan.width / plan.height;
+      expect(aspect).toBeGreaterThanOrEqual(1.2);
+    }
+  });
+
+  test("3-storey row 1 height shrinks to 130mm so plans fit landscape", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(3);
+    const site = specs.find((s) => s.panelType === "site_context");
+    const ground = specs.find((s) => s.panelType === "floor_plan_ground");
+    const elevationN = specs.find((s) => s.panelType === "elevation_north");
+    expect(site.height).toBe(130);
+    expect(ground.height).toBe(130);
+    // North elevation is half the row height with a small gap above its
+    // bottom sibling — so each elevation cell is ~62mm tall.
+    expect(elevationN.height).toBeLessThanOrEqual(70);
+  });
+
+  test("3-storey row 2 absorbs the recovered vertical space (≥230mm tall)", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(3);
+    const sectionAA = specs.find((s) => s.panelType === "section_AA");
+    const axonometric = specs.find((s) => s.panelType === "axonometric");
+    expect(sectionAA.height).toBeGreaterThanOrEqual(230);
+    expect(axonometric.height).toBeGreaterThanOrEqual(230);
+  });
+
+  test("3-storey layout has no overlapping panels and stays within the A1 sheet", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(3);
+    expect(findOverlap(specs)).toBeNull();
+    for (const spec of specs) {
+      expect(withinSheet(spec)).toBe(true);
+    }
+  });
+
+  test("1-storey layout keeps its 188mm row 1 (plans already fill well)", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(1);
+    const site = specs.find((s) => s.panelType === "site_context");
+    const ground = specs.find((s) => s.panelType === "floor_plan_ground");
+    const sectionAA = specs.find((s) => s.panelType === "section_AA");
+    expect(site.height).toBe(188);
+    expect(ground.height).toBe(188);
+    expect(sectionAA.height).toBe(188);
+    expect(findOverlap(specs)).toBeNull();
+  });
+
+  test("2-storey layout keeps its 188mm row 1 (each plan slot stays square-ish)", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(2);
+    const ground = specs.find((s) => s.panelType === "floor_plan_ground");
+    const first = specs.find((s) => s.panelType === "floor_plan_first");
+    expect(ground.height).toBe(188);
+    expect(first.height).toBe(188);
+    expect(findOverlap(specs)).toBeNull();
+  });
+
+  test("row 3 (perspectives/data/title) is unchanged across storey counts", () => {
+    const oneStorey = buildPresentationV3SheetPanelSpecs(1);
+    const threeStorey = buildPresentationV3SheetPanelSpecs(3);
+    const row3PanelTypes = [
+      "hero_3d",
+      "interior_3d",
+      "material_palette",
+      "key_notes",
+      "title_block",
+    ];
+    for (const panelType of row3PanelTypes) {
+      const a = oneStorey.find((s) => s.panelType === panelType);
+      const b = threeStorey.find((s) => s.panelType === panelType);
+      expect(b.x).toBe(a.x);
+      expect(b.width).toBe(a.width);
+      expect(b.height).toBe(a.height);
+    }
+  });
+
+  test("3-storey plan slot caption stack still triggers (panel < 200mm)", () => {
+    const specs = buildPresentationV3SheetPanelSpecs(3);
+    const ground = specs.find((s) => s.panelType === "floor_plan_ground");
+    expect(ground.width).toBeLessThan(200);
+    const layout = computePanelCaptionLayout({
+      title: "GROUND FLOOR PLAN",
+      scale: "1:100",
+      panelWidth: ground.width,
+      layoutTemplate: "presentation-v3",
+    });
+    expect(layout.layout).toBe("stacked");
   });
 });
