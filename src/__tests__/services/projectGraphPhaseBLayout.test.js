@@ -69,7 +69,7 @@ describe("Phase B closeout — presentation-v3 panel fit", () => {
     normalizedViewBox: "20 10 1160 880",
   };
 
-  test("technical floor plans crop to contentBounds with ~4% padding under presentation-v3", () => {
+  test("technical floor plans crop to contentBounds with ~1.5% padding under presentation-v3", () => {
     const viewBox = selectPanelContentViewBox({
       panelType: "floor_plan_ground",
       artifact: technicalArtifact,
@@ -78,13 +78,13 @@ describe("Phase B closeout — presentation-v3 panel fit", () => {
     const [, , w, h] = viewBox.split(/\s+/).map(Number);
     const contentArea = 1000 * 720;
     const viewBoxArea = w * h;
-    // Floor plan padding (4% on each side) yields ≥0.85 occupancy of viewBox.
-    expect(contentArea / viewBoxArea).toBeGreaterThan(0.85);
-    // Slot occupancy lower bound from the brief (80%).
-    expect(contentArea / viewBoxArea).toBeGreaterThan(0.8);
+    // Floor plan padding (~1.5% per side) keeps content occupying ≥0.92 of
+    // the viewBox so the drawing fills as much of the slot as possible
+    // before aspect-fit kicks in.
+    expect(contentArea / viewBoxArea).toBeGreaterThan(0.92);
   });
 
-  test("technical sections crop to contentBounds with ~4% padding", () => {
+  test("technical sections crop to contentBounds with ~2% padding", () => {
     const viewBox = selectPanelContentViewBox({
       panelType: "section_AA",
       artifact: technicalArtifact,
@@ -92,10 +92,10 @@ describe("Phase B closeout — presentation-v3 panel fit", () => {
     });
     const [, , w, h] = viewBox.split(/\s+/).map(Number);
     const occupancy = (1000 * 720) / (w * h);
-    expect(occupancy).toBeGreaterThan(0.8);
+    expect(occupancy).toBeGreaterThan(0.9);
   });
 
-  test("elevations keep wider padding (~6%) to preserve dimension labels", () => {
+  test("elevations crop to contentBounds with ~2.5% padding (slightly looser to keep dimension labels)", () => {
     const viewBox = selectPanelContentViewBox({
       panelType: "elevation_north",
       artifact: technicalArtifact,
@@ -103,8 +103,8 @@ describe("Phase B closeout — presentation-v3 panel fit", () => {
     });
     const [, , w, h] = viewBox.split(/\s+/).map(Number);
     const occupancy = (1000 * 720) / (w * h);
-    // Elevation occupancy ≥0.75 (matches brief's 75–90% target band).
-    expect(occupancy).toBeGreaterThan(0.75);
+    // Elevation occupancy ≥0.88 (well within the brief's 75–90% band).
+    expect(occupancy).toBeGreaterThan(0.88);
     // Sanity: elevation viewBox is wider than the floor-plan viewBox because
     // padding is larger.
     const planViewBox = selectPanelContentViewBox({
@@ -196,8 +196,42 @@ describe("Phase B closeout — caption layout", () => {
     expect(layout.layout).toBe("stacked");
     expect(layout.scaleY).toBeGreaterThan(layout.titleY);
     expect(layout.scaleFontSize).toBeLessThan(4);
-    // Stacked layout reserves more vertical space for the caption.
-    expect(layout.contentTopOffset).toBeGreaterThan(14);
+    // Stacked layout reserves more vertical space for the caption than the
+    // inline layout (which uses CAPTION_INLINE_CONTENT_TOP_MM = 12).
+    expect(layout.contentTopOffset).toBeGreaterThan(12);
+  });
+
+  test("2-storey plan slot (180mm) stacks even though widths technically fit", () => {
+    // The visible distance between "GROUND FLOOR PLAN" and "1:100" on a
+    // 180mm slot reads as a single merged phrase at A1 scale, so the
+    // closeout v2 narrow threshold forces stacking under 200mm.
+    const layout = computePanelCaptionLayout({
+      title: "GROUND FLOOR PLAN",
+      scale: "1:100",
+      panelWidth: 180,
+      layoutTemplate: "presentation-v3",
+    });
+    expect(layout.layout).toBe("stacked");
+  });
+
+  test("3-storey plan slot (116.7mm) stacks", () => {
+    const layout = computePanelCaptionLayout({
+      title: "SECOND FLOOR PLAN",
+      scale: "1:100",
+      panelWidth: 116.7,
+      layoutTemplate: "presentation-v3",
+    });
+    expect(layout.layout).toBe("stacked");
+  });
+
+  test("wide elevation slot (251mm) stays inline", () => {
+    const layout = computePanelCaptionLayout({
+      title: "NORTH ELEVATION",
+      scale: "1:100",
+      panelWidth: 251,
+      layoutTemplate: "presentation-v3",
+    });
+    expect(layout.layout).toBe("inline");
   });
 
   test("board-v2 always uses inline layout (regression guard)", () => {
@@ -208,6 +242,15 @@ describe("Phase B closeout — caption layout", () => {
       layoutTemplate: "board-v2",
     });
     expect(layout.layout).toBe("inline");
+    // 180mm board-v2 also stays inline even though presentation-v3 would
+    // stack it.
+    const boardWidePanel = computePanelCaptionLayout({
+      title: "GROUND FLOOR PLAN",
+      scale: "1:100",
+      panelWidth: 180,
+      layoutTemplate: "board-v2",
+    });
+    expect(boardWidePanel.layout).toBe("inline");
   });
 
   test("missing scale collapses to inline regardless of width", () => {

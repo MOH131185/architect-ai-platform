@@ -3939,21 +3939,26 @@ function logProjectGraphProviderTrace(providerCalls = []) {
 // drawings fill 80–92% of the slot; site/3D/data panels keep the previous
 // padded normalizedViewBox so legends and decorative space stay visible.
 // board-v2 is unaffected — it always returns the existing viewBox chain.
+// Phase B closeout v2: shrink the safety padding so technical drawings
+// fill more of the slot. Bumped from 4–6% to 1.5–2.5% — contentBounds
+// already excludes the ink-free background rect, and the slot inner is
+// further padded by CAPTION_HORIZONTAL_PADDING_MM, so room labels and
+// dimension callouts still have breathing room.
 const PRESENTATION_V3_PANEL_PADDING = {
-  floor_plan_ground: 0.04,
-  floor_plan_first: 0.04,
-  floor_plan_level2: 0.04,
-  floor_plan_level3: 0.04,
-  floor_plan_level4: 0.04,
-  floor_plan_level5: 0.04,
-  floor_plan_level6: 0.04,
-  floor_plan_level7: 0.04,
-  section_AA: 0.04,
-  section_BB: 0.04,
-  elevation_north: 0.06,
-  elevation_south: 0.06,
-  elevation_east: 0.06,
-  elevation_west: 0.06,
+  floor_plan_ground: 0.015,
+  floor_plan_first: 0.015,
+  floor_plan_level2: 0.015,
+  floor_plan_level3: 0.015,
+  floor_plan_level4: 0.015,
+  floor_plan_level5: 0.015,
+  floor_plan_level6: 0.015,
+  floor_plan_level7: 0.015,
+  section_AA: 0.02,
+  section_BB: 0.02,
+  elevation_north: 0.025,
+  elevation_south: 0.025,
+  elevation_east: 0.025,
+  elevation_west: 0.025,
 };
 
 export function selectPanelContentViewBox({
@@ -3990,22 +3995,28 @@ export function selectPanelContentViewBox({
   ].join(" ");
 }
 
-// Phase B closeout: stack the scale label below the title when the two
-// would visually collide on a narrow slot. Estimates use NotoSans avg
-// glyph advance (caps for the bold title, mixed for the regular scale).
-// board-v2 always returns the inline layout to keep its golden output.
+// Phase B closeout v2: stack the scale label below the title whenever the
+// panel is narrow OR the inline pair would not fit with our gap budget.
+// The narrow threshold catches "GROUND FLOOR PLAN 1:100" reading as one
+// merged phrase on 2-/3-storey plan slots, key-notes, material palette,
+// and the title block. board-v2 always returns the inline layout to keep
+// its golden output.
 const CAPTION_TITLE_FONT_SIZE = 5.8;
 const CAPTION_SCALE_FONT_SIZE = 4.2;
 const CAPTION_STACKED_SCALE_FONT_SIZE = 3.4;
 const CAPTION_TITLE_ADVANCE_RATIO = 0.62;
 const CAPTION_SCALE_ADVANCE_RATIO = 0.55;
 const CAPTION_HORIZONTAL_PADDING_MM = 4;
-const CAPTION_MIN_GAP_MM = 8;
-const CAPTION_INLINE_CONTENT_TOP_MM = 14;
-const CAPTION_STACKED_CONTENT_TOP_MM = 16;
-const CAPTION_CONTENT_BOTTOM_PADDING_MM = 10;
+const CAPTION_MIN_GAP_MM = 12;
+const CAPTION_INLINE_CONTENT_TOP_MM = 12;
+const CAPTION_STACKED_CONTENT_TOP_MM = 14;
+const CAPTION_CONTENT_BOTTOM_PADDING_MM = 6;
 const CAPTION_TITLE_BASELINE_MM = 5.8;
-const CAPTION_STACKED_SCALE_BASELINE_MM = 11.0;
+const CAPTION_STACKED_SCALE_BASELINE_MM = 10.5;
+// Anything narrower than this stacks the scale on a second line, even if
+// the estimated widths technically fit, because the eye reads them as a
+// merged phrase otherwise.
+const CAPTION_NARROW_PANEL_WIDTH_MM = 200;
 
 export function computePanelCaptionLayout({
   title = "",
@@ -4038,7 +4049,8 @@ export function computePanelCaptionLayout({
     CAPTION_MIN_GAP_MM +
     scaleWidth +
     CAPTION_HORIZONTAL_PADDING_MM;
-  if (requiredInlineWidth <= panelWidth) {
+  const isNarrow = panelWidth < CAPTION_NARROW_PANEL_WIDTH_MM;
+  if (!isNarrow && requiredInlineWidth <= panelWidth) {
     return inline;
   }
   return {
