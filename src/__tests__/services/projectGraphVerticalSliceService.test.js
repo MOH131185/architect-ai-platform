@@ -403,6 +403,51 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.artifacts.panelMap.hero_3d.geometryHash).toBe(
       result.geometryHash,
     );
+
+    // Phase D — visual manifest is attached and every visual panel shares
+    // the same manifestHash so OpenAI image generation cannot drift the
+    // building identity between hero_3d / exterior_render / interior_3d /
+    // axonometric. With PROJECT_GRAPH_IMAGE_GEN_ENABLED=false the panels
+    // are deterministic SVG fallbacks, but the lock still applies.
+    expect(result.artifacts.visualManifest).toEqual(
+      expect.objectContaining({
+        version: "visual-manifest-v1",
+        manifestId: expect.any(String),
+        manifestHash: expect.any(String),
+        storeyCount: expect.any(Number),
+        negativeConstraints: expect.arrayContaining([
+          expect.stringContaining("do not invent additional storeys"),
+        ]),
+      }),
+    );
+    expect(result.artifacts.visualManifestHash).toBe(
+      result.artifacts.visualManifest.manifestHash,
+    );
+    expect(result.artifacts.visualManifest.geometryHash).toBe(
+      result.geometryHash,
+    );
+    for (const visualPanelType of [
+      "hero_3d",
+      "exterior_render",
+      "interior_3d",
+      "axonometric",
+    ]) {
+      const visualPanel = result.artifacts.visuals3d[visualPanelType];
+      expect(visualPanel).toBeDefined();
+      expect(visualPanel.metadata.visualManifestHash).toBe(
+        result.artifacts.visualManifest.manifestHash,
+      );
+      expect(visualPanel.metadata.visualManifestId).toBe(
+        result.artifacts.visualManifest.manifestId,
+      );
+      expect(visualPanel.metadata.visualIdentityLocked).toBe(true);
+      // Phase C metadata (gate disabled fallback) must coexist with Phase D
+      // identity lock on the same panel artifact.
+      expect(visualPanel.metadata.imageRenderFallback).toBe(true);
+      expect(visualPanel.metadata.imageRenderFallbackReason).toBe(
+        "gate_disabled",
+      );
+    }
     expect(result.projectGraph.sheets.sheets[0].exported_pdf_asset_id).toBe(
       result.artifacts.a1Pdf.asset_id,
     );
