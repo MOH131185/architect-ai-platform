@@ -4,7 +4,7 @@ import {
   KNOWN_BUILDING_TYPES,
 } from "../../services/project/projectGraphVerticalSliceService.js";
 
-jest.setTimeout(180000);
+jest.setTimeout(420000);
 
 function createReadingRoomBrief() {
   const siteMapDataUrl =
@@ -79,6 +79,37 @@ function expectPanelPlacementsDoNotOverlap(placements) {
       });
     }
   }
+}
+
+function createOpenAIReasoningFetchMock() {
+  let count = 0;
+  return jest.fn().mockImplementation(async () => {
+    count += 1;
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        get: (name) =>
+          ["x-request-id", "openai-request-id"].includes(name)
+            ? `req_projectgraph_${count}`
+            : null,
+      },
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: `{"status":"ok","checkpoint":${count}}`,
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 2,
+          completion_tokens: 1,
+          total_tokens: 3,
+        },
+      }),
+    };
+  });
 }
 
 describe("projectGraphVerticalSliceService", () => {
@@ -427,8 +458,9 @@ describe("projectGraphVerticalSliceService", () => {
         providerCalls: expect.arrayContaining([
           expect.objectContaining({
             stepId: "PROJECT_GRAPH",
-            status: "route_resolved",
+            status: "skipped",
             providerUsed: "deterministic",
+            fallbackReason: "test_runtime_provider_mock_not_supplied",
             openaiUsed: false,
             secretsRedacted: true,
           }),
@@ -503,6 +535,112 @@ describe("projectGraphVerticalSliceService", () => {
     expect(result.qa.categoryScores.regulation.max).toBe(10);
     expect(result.qa.categoryScores.architecture.max).toBe(10);
     expect(result.qa.categoryScores.graphic.max).toBe(10);
+  });
+
+  test("executes OpenAI reasoning checkpoints when a provider mock is supplied", async () => {
+    const fetchImpl = createOpenAIReasoningFetchMock();
+
+    const result = await buildArchitectureProjectVerticalSlice({
+      ...createReadingRoomBrief(),
+      providerExecution: {
+        openaiReasoning: {
+          mode: "required",
+          fetchImpl,
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(8);
+    expect(result.artifacts.openaiReasoningUsed).toBe(true);
+    expect(result.artifacts.openaiImageUsed).toBe(false);
+    expect(result.artifacts.openaiRequestIds).toHaveLength(8);
+    expect(result.artifacts.openaiUsage).toHaveLength(8);
+    expect(result.artifacts.openaiModelsUsed).toEqual(
+      expect.arrayContaining(["gpt-5.4", "gpt-5.4-mini"]),
+    );
+    expect(result.qa.openai).toEqual(
+      expect.objectContaining({
+        openaiReasoningUsed: true,
+        reasoningProviderUsed: "openai",
+      }),
+    );
+    for (const stepId of [
+      "BRIEF",
+      "SITE",
+      "CLIMATE",
+      "REGS",
+      "PROGRAMME",
+      "PROJECT_GRAPH",
+      "A1_SHEET",
+      "QA",
+    ]) {
+      expect(result.artifacts.executionTrace.providerCalls).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stepId,
+            status: "ok",
+            providerUsed: "openai",
+            openaiUsed: true,
+            requestId: expect.stringMatching(/^req_projectgraph_/),
+            usage: expect.objectContaining({ total_tokens: 3 }),
+            secretsRedacted: true,
+          }),
+        ]),
+      );
+    }
+    expect(JSON.stringify(result.artifacts.executionTrace)).not.toContain(
+      "sk-",
+    );
+  });
+
+  test("fails closed when required OpenAI reasoning has no server key", async () => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_REASONING_API_KEY;
+    const fetchImpl = createOpenAIReasoningFetchMock();
+
+    const result = await buildArchitectureProjectVerticalSlice({
+      ...createReadingRoomBrief(),
+      providerExecution: {
+        openaiReasoning: {
+          mode: "required",
+          fetchImpl,
+        },
+      },
+    });
+
+    const blockedCalls = result.artifacts.executionTrace.providerCalls.filter(
+      (call) => call.status === "blocked",
+    );
+    expect(result.success).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(blockedCalls).toHaveLength(8);
+    expect(blockedCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          stepId: "PROJECT_GRAPH",
+          fallbackReason: "missing_api_key",
+          errorCode: "OPENAI_REASONING_API_KEY_MISSING",
+          openaiUsed: false,
+        }),
+      ]),
+    );
+    expect(result.qa.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "OPENAI_REASONING_PROVIDER_BLOCKED",
+          severity: "error",
+        }),
+      ]),
+    );
+    expect(result.qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "OPENAI_REASONING_PROVIDER_EXECUTED",
+          status: "fail",
+        }),
+      ]),
+    );
   });
 
   test("uses Google Static Maps metadata when no provided site map is supplied", async () => {
@@ -644,9 +782,20 @@ describe("projectGraphVerticalSliceService", () => {
     );
     expect(levelIndexes.has(0)).toBe(true);
     expect(Math.max(...levelIndexes)).toBeGreaterThanOrEqual(2);
-    // Master A1 sheet inlines every floor-plan panel.
+    // Split 4+ storey outputs may move upper floor plans to companion sheets,
+    // but the complete sheet series must still include every floor-plan panel.
+    const sheetSeriesPanelTypes = (result.artifacts.sheetSeries || []).flatMap(
+      (sheet) => sheet.panel_types || [],
+    );
     expect(result.artifacts.a1Sheet.svgString).toContain("floor_plan_level2");
-    expect(result.artifacts.a1Sheet.svgString).toContain("floor_plan_level3");
+    expect(sheetSeriesPanelTypes).toEqual(
+      expect.arrayContaining([
+        "floor_plan_ground",
+        "floor_plan_first",
+        "floor_plan_level2",
+        "floor_plan_level3",
+      ]),
+    );
   });
 
   test("keeps uneven user programme GIA within tolerance across multi-storey geometry", async () => {

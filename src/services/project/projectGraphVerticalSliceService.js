@@ -16,6 +16,10 @@ import { compileProject } from "../compiler/index.js";
 import { ensureCompiledProjectRenderInputs } from "../compiler/compiledProjectRenderInputs.js";
 import { resolveArchitectureModelRegistry } from "../modelStepResolver.js";
 import openaiEnv from "../openaiProviderEnv.cjs";
+import {
+  executeProjectGraphReasoningSteps,
+  getBlockedOpenAIReasoningCalls,
+} from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
@@ -3952,6 +3956,53 @@ function logProjectGraphProviderTrace(providerCalls = []) {
   }
 }
 
+function applyOpenAIReasoningBlockersToQa(qa, blockedCalls = []) {
+  if (!blockedCalls.length) return qa;
+  const blockedSteps = blockedCalls.map((call) => call.stepId);
+  const checks = [...(qa.checks || [])];
+  addCheck(
+    checks,
+    "OPENAI_REASONING_PROVIDER_EXECUTED",
+    false,
+    {
+      blockedSteps,
+      blockedCalls: blockedCalls.map((call) => ({
+        stepId: call.stepId,
+        status: call.status,
+        fallbackReason: call.fallbackReason,
+        errorCode: call.errorCode,
+        httpStatus: call.httpStatus || null,
+        requestId: call.requestId || null,
+      })),
+    },
+    "provider",
+    0,
+  );
+  const issues = [
+    ...(qa.issues || []),
+    buildIssue(
+      "OPENAI_REASONING_PROVIDER_BLOCKED",
+      "error",
+      "OpenAI reasoning provider execution failed for required ProjectGraph steps.",
+      { blockedSteps },
+    ),
+  ];
+  const warningCount = issues.filter(
+    (issue) => issue.severity === "warning",
+  ).length;
+  const errorCount = issues.filter(
+    (issue) => issue.severity === "error",
+  ).length;
+  return {
+    ...qa,
+    status: "fail",
+    checks,
+    issues,
+    score: Math.max(0, 100 - errorCount * 18 - warningCount * 6),
+    openaiBlocked: true,
+  };
+}
+
 // Phase B closeout: per-panel-type fit policy for presentation-v3.
 // Technical drawings cropped tight to contentBounds (with small padding) so
 // drawings fill 80–92% of the slot; site/3D/data panels keep the previous
@@ -6097,21 +6148,6 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     fineTunedModelUsed: entry.fineTunedModelUsed || null,
     deterministicGeometry: entry.deterministicGeometry === true,
   }));
-  const providerCalls = modelRoutes.map((route) => ({
-    stepId: route.stepId,
-    provider: route.provider,
-    providerUsed: "deterministic",
-    reasoningProviderUsed: "deterministic",
-    imageProviderUsed: null,
-    model: route.model,
-    apiKeyEnv: route.apiKeyEnv,
-    status: "route_resolved",
-    openaiUsed: false,
-    deterministicFallback: false,
-    deterministicReason: "project_graph_vertical_slice_deterministic",
-    fallbackReason: null,
-    secretsRedacted: true,
-  }));
   const projectGraphId = createStableId(
     "project-graph",
     brief.project_name,
@@ -6201,6 +6237,31 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       )
       .map((artifact) => [artifact.panel_type, artifact]),
   );
+  const openaiReasoningExecution =
+    input.openaiReasoningExecution ||
+    input.providerExecution?.openaiReasoning ||
+    input.contextProviders?.openaiReasoning ||
+    {};
+  const providerCalls = await executeProjectGraphReasoningSteps({
+    modelRoutes,
+    context: {
+      brief,
+      site,
+      climate,
+      regulations,
+      programme,
+      compiledProject,
+      projectGraphId,
+      geometryHash: compiledProject.geometryHash,
+      programmeSummary,
+      splitDecision,
+      primarySheet: sheetArtifact,
+      pdfArtifact,
+      technicalBuild,
+      visualFidelityStatus: sheetArtifact.visualFidelityStatus,
+    },
+    execution: openaiReasoningExecution,
+  });
   const imageProviderCalls = buildImageProviderCalls(visuals3d);
   const allProviderCalls = [...providerCalls, ...imageProviderCalls];
   const openaiQaMetadata = buildOpenAIQaMetadata({
@@ -6346,10 +6407,14 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       exportSteps,
     },
   };
-  const qa = validateProjectGraphVerticalSlice({
+  let qa = validateProjectGraphVerticalSlice({
     projectGraph: graphWithStableId,
     artifacts,
   });
+  qa = applyOpenAIReasoningBlockersToQa(
+    qa,
+    getBlockedOpenAIReasoningCalls(providerCalls),
+  );
   qa.openai = openaiQaMetadata;
 
   // Phase 5: structured reasoning chain — Brief → Site → Climate → Style →
