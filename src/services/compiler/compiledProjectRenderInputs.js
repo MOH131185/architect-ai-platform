@@ -109,6 +109,9 @@ const REQUIRED_3D_VIEW_TYPES = Object.freeze([
   "axonometric",
   "interior_3d",
 ]);
+const MIN_COMPILED_CONTROL_PRIMITIVES = 5;
+const PLACEHOLDER_RENDER_RE =
+  /(?:placeholder|placeholder_3d|geometryRenderService|via\.placeholder|1x1)/i;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -1261,6 +1264,41 @@ function countSvgScenePrimitives(svgString = "") {
     .length;
 }
 
+function renderInputLooksPlaceholder(entry = {}, svgString = "") {
+  const metadata = isPlainObject(entry?.metadata) ? entry.metadata : {};
+  const text = [
+    svgString,
+    entry?.dataUrl,
+    entry?.url,
+    entry?.imageUrl,
+    entry?.sourceType,
+    entry?.source,
+    metadata.source,
+    metadata.sourceType,
+    metadata.model,
+    metadata.renderKind,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return PLACEHOLDER_RENDER_RE.test(text);
+}
+
+function renderInputHasUsableControlSvg(entry = null) {
+  if (!isPlainObject(entry) || typeof entry.svgString !== "string") {
+    return false;
+  }
+  const svgString = entry.svgString.trim();
+  if (!svgString || renderInputLooksPlaceholder(entry, svgString)) {
+    return false;
+  }
+  const primitiveCount = Number(
+    entry.metadata?.primitiveCount ??
+      entry.metadata?.surfaceCount ??
+      countSvgScenePrimitives(svgString),
+  );
+  return primitiveCount >= MIN_COMPILED_CONTROL_PRIMITIVES;
+}
+
 function viewSpecForPanelType(panelType = "") {
   if (panelType === "interior_3d") {
     return INTERIOR_VIEW_SPEC;
@@ -1505,7 +1543,7 @@ export function ensureCompiledProjectRenderInputs(
       renderMap[panelType],
       geometryHash,
     );
-    if (normalized) {
+    if (renderInputHasUsableControlSvg(normalized)) {
       existing[panelType] = normalized;
     }
   });
