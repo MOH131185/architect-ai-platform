@@ -39,8 +39,27 @@ function round(value, precision = 3) {
 export function computeBlendWeights({
   localBlendStrength = 0.5,
   innovationStrength = 0.5,
+  portfolioStyleStrength = null,
 } = {}) {
   const local = clamp01(localBlendStrength, 0.5);
+  const explicitPortfolioStyle = Number(portfolioStyleStrength);
+  if (Number.isFinite(explicitPortfolioStyle)) {
+    const portfolioWeight = clamp01(explicitPortfolioStyle, 0.15);
+    const remaining = Math.max(0, 1 - portfolioWeight);
+    const localShareOfRemaining = 0.25 + 0.5 * local;
+    const localWeight = remaining * localShareOfRemaining;
+    const residual = Math.max(0, remaining - localWeight);
+    const userClimateTotal = PLAN_WEIGHTS.user + PLAN_WEIGHTS.climate;
+    const userWeight = residual * (PLAN_WEIGHTS.user / userClimateTotal);
+    const climateWeight = residual * (PLAN_WEIGHTS.climate / userClimateTotal);
+    return {
+      local: round(localWeight, 4),
+      user: round(userWeight, 4),
+      climate: round(climateWeight, 4),
+      portfolio: round(portfolioWeight, 4),
+    };
+  }
+
   const innovation = clamp01(innovationStrength, 0.5);
 
   // Local share: scaled around the plan default (0.4). Range [0.2, 0.6].
@@ -170,14 +189,27 @@ function localContextPalette(brief, site) {
   const list =
     LOCAL_PALETTES_BY_TYPE[brief.building_type] ||
     LOCAL_PALETTES_BY_TYPE.community;
+  const explicitLocal =
+    clamp01(brief?.user_intent?.local_material_strength, 0) > 0.9 &&
+    Array.isArray(brief?.user_intent?.material_preferences)
+      ? brief.user_intent.material_preferences
+      : [];
   // Heritage flags from site (when populated by Tier 2.2 providers) tighten
   // the palette toward conservation-area materials.
   const heritageFlagged =
     Array.isArray(site?.heritage_flags) && site.heritage_flags.length > 0;
   if (heritageFlagged) {
-    return [...list, "lime mortar", "matched stock brick", "natural slate"];
+    return [
+      ...new Set([
+        ...list,
+        ...explicitLocal,
+        "lime mortar",
+        "matched stock brick",
+        "natural slate",
+      ]),
+    ];
   }
-  return list;
+  return [...new Set([...list, ...explicitLocal])];
 }
 
 function userPalette(brief) {
@@ -200,6 +232,39 @@ function climatePalette(climate) {
 function portfolioPalette(brief) {
   const mood = brief?.user_intent?.portfolio_mood || "riba_stage2";
   return PORTFOLIO_PALETTES[mood] || PORTFOLIO_PALETTES.riba_stage2;
+}
+
+function computeMaterialBlendWeights(brief) {
+  const localMaterial = Number(brief?.user_intent?.local_material_strength);
+  const portfolioMaterial = Number(
+    brief?.user_intent?.portfolio_material_weight,
+  );
+  if (Number.isFinite(localMaterial) || Number.isFinite(portfolioMaterial)) {
+    let local = Number.isFinite(localMaterial)
+      ? clamp01(localMaterial)
+      : 1 - clamp01(portfolioMaterial);
+    let portfolio = Number.isFinite(portfolioMaterial)
+      ? clamp01(portfolioMaterial)
+      : 1 - local;
+    const directTotal = local + portfolio;
+    if (directTotal > 1) {
+      local /= directTotal;
+      portfolio /= directTotal;
+    }
+    const residual = Math.max(0, 1 - local - portfolio);
+    const userClimateTotal = PLAN_WEIGHTS.user + PLAN_WEIGHTS.climate;
+    return {
+      local: round(local, 4),
+      user: round(residual * (PLAN_WEIGHTS.user / userClimateTotal), 4),
+      climate: round(residual * (PLAN_WEIGHTS.climate / userClimateTotal), 4),
+      portfolio: round(portfolio, 4),
+    };
+  }
+
+  return computeBlendWeights({
+    localBlendStrength: brief?.user_intent?.local_blend_strength,
+    innovationStrength: brief?.user_intent?.innovation_strength,
+  });
 }
 
 function normaliseMaterialName(name) {
@@ -225,16 +290,18 @@ export function computeMaterialPalette({
     climate: climatePalette(climate),
     portfolio: portfolioPalette(brief),
   };
-  const weights = computeBlendWeights({
+  const styleWeights = computeBlendWeights({
     localBlendStrength: brief?.user_intent?.local_blend_strength,
     innovationStrength: brief?.user_intent?.innovation_strength,
+    portfolioStyleStrength: brief?.user_intent?.portfolio_style_strength,
   });
+  const materialWeights = computeMaterialBlendWeights(brief);
 
   const scoreByName = new Map();
   const displayByName = new Map();
   const sourcesByName = new Map();
   for (const [sourceKey, palette] of Object.entries(sourcePalettes)) {
-    const w = weights[sourceKey] || 0;
+    const w = materialWeights[sourceKey] || 0;
     for (const raw of palette || []) {
       const key = normaliseMaterialName(raw);
       if (!key) continue;
@@ -258,7 +325,8 @@ export function computeMaterialPalette({
     palette: ranked.slice(0, paletteSize).map((entry) => entry.material),
     palette_with_provenance: ranked.slice(0, paletteSize),
     source_palettes: sourcePalettes,
-    weights,
+    weights: styleWeights,
+    material_weights: materialWeights,
   };
 }
 
@@ -290,11 +358,13 @@ export function buildLocalStylePackV2({
     material_palette_with_provenance: blend.palette_with_provenance,
     source_palettes: blend.source_palettes,
     blend_weights: blend.weights,
+    material_blend_weights: blend.material_weights,
     blend_rationale: [
-      `local context contributes ${(blend.weights.local * 100).toFixed(1)}% (slider local_blend_strength=${brief?.user_intent?.local_blend_strength ?? 0.5})`,
+      `local context contributes ${(blend.weights.local * 100).toFixed(1)}% to style (slider local_blend_strength=${brief?.user_intent?.local_blend_strength ?? 0.5})`,
       `user intent contributes ${(blend.weights.user * 100).toFixed(1)}%`,
       `climate suitability contributes ${(blend.weights.climate * 100).toFixed(1)}% (overheating risk=${climate?.overheating?.risk_level || "unknown"})`,
-      `portfolio mood contributes ${(blend.weights.portfolio * 100).toFixed(1)}% (slider innovation_strength=${brief?.user_intent?.innovation_strength ?? 0.5}, mood=${brief?.user_intent?.portfolio_mood || "riba_stage2"})`,
+      `portfolio mood contributes ${(blend.weights.portfolio * 100).toFixed(1)}% to style (slider innovation_strength=${brief?.user_intent?.innovation_strength ?? 0.5}, mood=${brief?.user_intent?.portfolio_mood || "riba_stage2"})`,
+      `material palette uses ${(blend.material_weights.local * 100).toFixed(1)}% local material and ${(blend.material_weights.portfolio * 100).toFixed(1)}% portfolio material`,
     ],
     climate_notes: Array.isArray(climate?.material_weathering_notes)
       ? climate.material_weathering_notes

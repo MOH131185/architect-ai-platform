@@ -506,6 +506,22 @@ function normalizeBrief(input = {}) {
   const sourceBrief = input.brief || input.projectBrief || input;
   const projectDetails = input.projectDetails || {};
   const locationData = input.locationData || {};
+  const portfolioBlend =
+    input.portfolioBlend || sourceBrief.portfolioBlend || {};
+  const portfolioMaterialWeight = Number(portfolioBlend.materialWeight);
+  const portfolioStyleWeight = Number(portfolioBlend.characteristicWeight);
+  const explicitPortfolioMaterialWeight = Number.isFinite(
+    portfolioMaterialWeight,
+  )
+    ? Math.max(0, Math.min(1, portfolioMaterialWeight))
+    : null;
+  const explicitLocalMaterialStrength =
+    explicitPortfolioMaterialWeight !== null
+      ? round(1 - explicitPortfolioMaterialWeight, 4)
+      : null;
+  const explicitPortfolioStyleStrength = Number.isFinite(portfolioStyleWeight)
+    ? Math.max(0, Math.min(1, portfolioStyleWeight))
+    : null;
   const siteInput = sourceBrief.site_input || sourceBrief.siteInput || {};
   const coordinates =
     locationData.coordinates ||
@@ -624,10 +640,20 @@ function normalizeBrief(input = {}) {
       innovation_strength: Number(
         sourceBrief.user_intent?.innovation_strength ?? 0.35,
       ),
+      portfolio_style_strength:
+        sourceBrief.user_intent?.portfolio_style_strength ??
+        explicitPortfolioStyleStrength,
+      portfolio_material_weight:
+        sourceBrief.user_intent?.portfolio_material_weight ??
+        explicitPortfolioMaterialWeight,
+      local_material_strength:
+        sourceBrief.user_intent?.local_material_strength ??
+        explicitLocalMaterialStrength,
       material_preferences: toArray(
         sourceBrief.material_preferences ||
           sourceBrief.user_intent?.material_preferences ||
           input.materialPreferences ||
+          locationData.localMaterials ||
           [],
       ),
       accessibility_priority:
@@ -2594,11 +2620,11 @@ function buildMaterialPalettePanelArtifact({
       startY: 86,
       labelOffset: 24,
       subLabelOffset: 48,
-      labelFontSize: 18,
-      subLabelFontSize: 15,
+      labelFontSize: 15,
+      subLabelFontSize: 12,
       fontFamily: "Arial, sans-serif",
-      labelMaxChars: 28,
-      subLabelMaxChars: 32,
+      labelMaxChars: 18,
+      subLabelMaxChars: 24,
       strokeWidth: 2,
     },
   });
@@ -2645,7 +2671,7 @@ function buildMaterialPalettePanelArtifact({
   };
 }
 
-function splitNoteLines(note = "", maxChars = 36) {
+function splitNoteLines(note = "", maxChars = 36, maxLines = 3) {
   const words = String(note || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -2662,7 +2688,7 @@ function splitNoteLines(note = "", maxChars = 36) {
     }
   });
   if (current) lines.push(current);
-  return lines.slice(0, 3);
+  return lines.slice(0, maxLines);
 }
 
 function buildKeyNoteItems({ brief, site, climate, regulations, localStyle }) {
@@ -2777,6 +2803,7 @@ function buildTitleBlockPanelArtifact({
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
+  const titleLines = splitNoteLines(projectTitle, 22, 2);
   const rows = [
     ["Project", brief?.project_name || "ArchiAI Project"],
     ["Location", location],
@@ -2788,19 +2815,35 @@ function buildTitleBlockPanelArtifact({
   const rowSvg = rows
     .map((row, index) => {
       const y = 230 + index * 48;
+      const rawValue = String(row[1] || "");
+      const valueMaxChars = index <= 1 ? 34 : 28;
+      const valueLines = splitNoteLines(rawValue, valueMaxChars, 2);
+      const valueFontSize =
+        rawValue.length > 54 ? 13 : rawValue.length > 38 ? 15 : 17;
       return `<g>
   <line x1="34" y1="${y - 28}" x2="586" y2="${y - 28}" stroke="#999999" stroke-width="1"/>
   <text x="42" y="${y}" font-size="18" font-family="Arial, sans-serif" fill="#222222">${escapeXml(row[0])}</text>
-  <text x="236" y="${y}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(row[1])}</text>
+  ${valueLines
+    .map(
+      (line, lineIndex) =>
+        `<text x="236" y="${y + lineIndex * (valueFontSize + 4)}" font-size="${valueFontSize}" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ")}
 </g>`;
     })
     .join("\n");
+  const titleSvg = titleLines
+    .map(
+      (line, index) =>
+        `<text x="34" y="${62 + index * 32}" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#111111">${escapeXml(line)}</text>`,
+    )
+    .join("\n  ");
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="title_block" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="18" y="18" width="584" height="584" fill="none" stroke="#111111" stroke-width="3"/>
-  <text x="34" y="70" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#111111">${escapeXml(projectTitle)}</text>
-  <text x="34" y="112" font-family="Arial, sans-serif" font-size="22" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
-  <line x1="34" y1="146" x2="586" y2="146" stroke="#111111" stroke-width="2"/>
+  ${titleSvg}
+  <text x="34" y="126" font-family="Arial, sans-serif" font-size="20" fill="#333333">${escapeXml((brief?.building_type || "architecture").replace(/_/g, " ").toUpperCase())}</text>
+  <line x1="34" y1="156" x2="586" y2="156" stroke="#111111" stroke-width="2"/>
   ${rowSvg}
   <text x="34" y="560" font-family="Arial, sans-serif" font-size="15" fill="#555555">source_model_hash ${escapeXml(String(geometryHash || "").slice(0, 16))}</text>
   <text x="586" y="560" font-family="Arial, sans-serif" font-size="15" text-anchor="end" fill="#555555">ARCHITECT AI PLATFORM</text>
