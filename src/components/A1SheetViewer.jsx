@@ -20,6 +20,7 @@ import {
 import logger from "../services/core/logger.js";
 import { fadeInUp } from "../styles/animations.js";
 import { normalizeSheetMetadata } from "../types/schemas.js";
+import { sanitizeSvgDataUrl } from "../utils/svgPathSanitizer.js";
 
 import Button from "./ui/Button.jsx";
 import Card from "./ui/Card.jsx";
@@ -108,6 +109,14 @@ const extensionForMime = (mime = "") => {
   }
 };
 
+const sanitizeSheetUrl = (value = "") => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return sanitizeSvgDataUrl(trimmed);
+};
+
 // eslint-disable-next-line no-unused-vars -- onModify, onExport reserved for future toolbar actions
 const A1SheetViewer = ({
   result,
@@ -191,7 +200,7 @@ const A1SheetViewer = ({
       return [];
     }
 
-    const cleanedUrl = rawSheetUrl.trim();
+    const cleanedUrl = sanitizeSheetUrl(rawSheetUrl);
     if (!cleanedUrl) {
       return [];
     }
@@ -213,7 +222,7 @@ const A1SheetViewer = ({
       try {
         const urlMatch = cleanedUrl.match(/[?&]url=([^&]+)/);
         if (urlMatch) {
-          const decoded = decodeURIComponent(urlMatch[1]);
+          const decoded = sanitizeSheetUrl(decodeURIComponent(urlMatch[1]));
           // Check if the decoded URL is a data URL
           if (
             decoded.startsWith("data:image/") ||
@@ -238,7 +247,7 @@ const A1SheetViewer = ({
       try {
         // Try decoding the entire URL to see if it's a data URL
         if (cleanedUrl.includes("%3A") || cleanedUrl.includes("%2F")) {
-          const decoded = decodeURIComponent(cleanedUrl);
+          const decoded = sanitizeSheetUrl(decodeURIComponent(cleanedUrl));
           if (
             decoded.startsWith("data:image/") ||
             decoded.startsWith("data:") ||
@@ -268,13 +277,13 @@ const A1SheetViewer = ({
 
     if (isDataUrl || extractedDataUrl) {
       // Use data URL directly (never proxy)
-      candidates.push(extractedDataUrl || cleanedUrl);
+      candidates.push(sanitizeSheetUrl(extractedDataUrl || cleanedUrl));
     } else if (isAlreadyProxied) {
-      candidates.push(cleanedUrl);
+      candidates.push(sanitizeSheetUrl(cleanedUrl));
     } else if (shouldProxy) {
-      candidates.push(proxied, cleanedUrl);
+      candidates.push(proxied, sanitizeSheetUrl(cleanedUrl));
     } else {
-      candidates.push(cleanedUrl, proxied);
+      candidates.push(sanitizeSheetUrl(cleanedUrl), proxied);
     }
 
     return Array.from(new Set(candidates));

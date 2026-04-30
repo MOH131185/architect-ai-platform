@@ -36,6 +36,9 @@ function decodeSvgDataUrlPayload(meta, payload) {
     if (typeof atob === "function") {
       return atob(payload.replace(/\s/g, ""));
     }
+    if (typeof Buffer !== "undefined" && typeof Buffer.from === "function") {
+      return Buffer.from(payload.replace(/\s/g, ""), "base64").toString("utf8");
+    }
     return "";
   }
   try {
@@ -61,7 +64,12 @@ export function sanitizeSvgDataUrl(value = "") {
   }
   const meta = value.slice(5, commaIndex);
   const payload = value.slice(commaIndex + 1);
-  const svgString = decodeSvgDataUrlPayload(meta, payload);
+  let svgString = "";
+  try {
+    svgString = decodeSvgDataUrlPayload(meta, payload);
+  } catch {
+    return value;
+  }
   return svgToSanitizedDataUrl(svgString);
 }
 
