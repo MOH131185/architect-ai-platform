@@ -966,6 +966,64 @@ describe("projectGraphVerticalSliceService", () => {
     );
   });
 
+  test("QA accepts geometry-locked OpenAI image wrappers with compiled 3D control provenance", async () => {
+    const result = await buildArchitectureProjectVerticalSlice(
+      createReadingRoomBrief(),
+    );
+    const pngPayload = "a".repeat(1600);
+    const imageWrappedVisuals = Object.fromEntries(
+      Object.entries(result.artifacts.visuals3d).map(
+        ([panelType, artifact]) => [
+          panelType,
+          {
+            ...artifact,
+            asset_type: "geometry_locked_presentation_svg",
+            svgString: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${artifact.width} ${artifact.height}" width="${artifact.width}" height="${artifact.height}"><image href="data:image/png;base64,${pngPayload}" x="0" y="0" width="${artifact.width}" height="${artifact.height}" preserveAspectRatio="xMidYMid slice"/></svg>`,
+            metadata: {
+              ...artifact.metadata,
+              source: "project_graph_image_renderer",
+              imageRenderFallback: false,
+              imageRenderFallbackReason: null,
+              imageRenderByteLength: 1200,
+              imageProviderUsed: "openai",
+              openaiImageUsed: true,
+              openaiRequestId: `req_${panelType}`,
+              presentationMode: "geometry_locked_image_render",
+              visualFidelityStatus: "photoreal_geometry_locked",
+              visualRenderMode: "photoreal_image_gen",
+              renderProvenance: {
+                sourceGeometryHash: result.geometryHash,
+                referenceSource: "compiled_3d_control_svg",
+                requestId: `req_${panelType}`,
+              },
+            },
+          },
+        ],
+      ),
+    );
+
+    const qa = validateProjectGraphVerticalSlice({
+      projectGraph: result.projectGraph,
+      artifacts: {
+        ...result.artifacts,
+        visuals3d: imageWrappedVisuals,
+      },
+    });
+
+    expect(qa.status).toBe("pass");
+    expect(qa.issues.map((issue) => issue.code)).not.toContain(
+      "PLACEHOLDER_3D_RENDER_USED",
+    );
+    expect(qa.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "REQUIRED_3D_PANELS_PRESENT",
+          status: "pass",
+        }),
+      ]),
+    );
+  });
+
   test("QA fails when required 3D panels are visually empty despite matching names", async () => {
     const result = await buildArchitectureProjectVerticalSlice(
       createReadingRoomBrief(),

@@ -2936,6 +2936,7 @@ async function buildVisual3DPanelArtifacts({
       // when the image-gen call fails.
       let svgString = deterministicSvgString;
       let renderProvenance = null;
+      let imageRenderByteLength = null;
       let imageRenderFallbackReason = "gate_disabled";
       let renderResult = null;
       if (deterministicSvgString) {
@@ -2972,6 +2973,7 @@ async function buildVisual3DPanelArtifacts({
             renderErr?.fallbackReason || "openai_error";
         }
         if (renderResult?.pngBuffer) {
+          imageRenderByteLength = renderResult.pngBuffer.length;
           svgString = wrapPngAsSvgPanel(
             renderResult.pngBuffer,
             viewBox,
@@ -3037,6 +3039,7 @@ async function buildVisual3DPanelArtifacts({
             imageRenderFallbackReason,
             imageRenderModel: renderProvenance?.model || null,
             imageRenderSize: renderProvenance?.size || null,
+            imageRenderByteLength,
             imageProviderUsed: renderProvenance ? "openai" : "deterministic",
             openaiConfigured:
               renderResult?.openaiConfigured ??
@@ -4794,18 +4797,75 @@ function count3DGeometryElements(svgString = "") {
     .length;
 }
 
-function visual3DArtifactTooWeak(artifact = null) {
-  if (!artifact) return true;
-  const metadata = artifact.metadata || {};
-  const primitiveCount = Number(
+function getVisual3DPrimitiveCount(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  return Number(
     metadata.primitiveCount ??
       metadata.surfaceCount ??
       metadata.geometryPrimitiveCount ??
       0,
   );
-  const hasCamera = Boolean(
-    metadata.camera && typeof metadata.camera === "object",
+}
+
+function visual3DArtifactHasCamera(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  return Boolean(metadata.camera && typeof metadata.camera === "object");
+}
+
+function visual3DArtifactIsGeometryLockedImage(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  return (
+    metadata.source === "project_graph_image_renderer" ||
+    metadata.imageRenderFallback === false ||
+    metadata.openaiImageUsed === true ||
+    metadata.presentationMode === "geometry_locked_image_render" ||
+    metadata.visualRenderMode === "photoreal_image_gen"
   );
+}
+
+function visual3DArtifactHasImagePayload(artifact = null) {
+  const metadata = artifact?.metadata || {};
+  const byteLength = Number(
+    metadata.imageRenderByteLength ?? metadata.renderProvenance?.bytes ?? 0,
+  );
+  return (
+    byteLength > 0 ||
+    /<image\b[^>]+\b(?:href|xlink:href)=["']data:image\/png;base64,/i.test(
+      artifact?.svgString || "",
+    )
+  );
+}
+
+function visual3DArtifactHasCompiledControlEvidence(artifact = null) {
+  if (!artifact) return false;
+  const metadata = artifact.metadata || {};
+  const sourceGeometryHash =
+    metadata.sourceGeometryHash ||
+    metadata.renderProvenance?.sourceGeometryHash ||
+    null;
+  const artifactGeometryHash =
+    artifact.source_model_hash || artifact.geometryHash || null;
+  const hashMatches =
+    Boolean(sourceGeometryHash) &&
+    (!artifactGeometryHash || sourceGeometryHash === artifactGeometryHash);
+  return (
+    metadata.referenceSource === "compiled_3d_control_svg" &&
+    hashMatches &&
+    getVisual3DPrimitiveCount(artifact) >= MIN_3D_PRIMITIVE_COUNT &&
+    visual3DArtifactHasCamera(artifact)
+  );
+}
+
+function visual3DArtifactTooWeak(artifact = null) {
+  if (!artifact) return true;
+  const primitiveCount = getVisual3DPrimitiveCount(artifact);
+  const hasCamera = visual3DArtifactHasCamera(artifact);
+  if (visual3DArtifactIsGeometryLockedImage(artifact)) {
+    return (
+      !visual3DArtifactHasCompiledControlEvidence(artifact) ||
+      !visual3DArtifactHasImagePayload(artifact)
+    );
+  }
   const geometryElementCount = count3DGeometryElements(
     artifact.svgString || "",
   );
@@ -5402,10 +5462,12 @@ export function validateProjectGraphVerticalSlice({
     const artifact =
       visuals3d[panelType] || findPanelArtifact(panelArtifacts, panelType);
     const svg = artifact?.svgString || "";
+    const geometryLockedImage =
+      artifact && visual3DArtifactIsGeometryLockedImage(artifact);
     return (
       artifact &&
       (artifact.metadata?.source === "placeholder" ||
-        svg.length < 1200 ||
+        (!geometryLockedImage && svg.length < 1200) ||
         /1x1|placeholder_3d|geometryRenderService/i.test(svg) ||
         visual3DArtifactTooWeak(artifact))
     );
