@@ -101,3 +101,4 @@ codex_push_worktree_plain/
 codex_test_dir/
 codex_write_regular.tmp
 git-delete-probe.tmp
+.env*.local
