@@ -1712,6 +1712,9 @@ const ArchitectAIWizardContainer = () => {
         );
       }
 
+      const isProjectGraphMode =
+        getCurrentPipelineMode() === PIPELINE_MODE.PROJECT_GRAPH;
+
       if (canUseResidentialV2) {
         v2Bundle = await buildProjectPipelineV2Bundle({
           projectDetails: {
@@ -1734,7 +1737,7 @@ const ArchitectAIWizardContainer = () => {
           );
         }
 
-        if (v2Bundle?.validation?.valid === false) {
+        if (!isProjectGraphMode && v2Bundle?.validation?.valid === false) {
           throw new Error(
             v2Bundle.validation.blockers?.[0] ||
               "Compiled project validation failed before sheet generation.",
@@ -1746,9 +1749,6 @@ const ArchitectAIWizardContainer = () => {
             v2Bundle.programBrief?.spaces || [],
           ) || effectiveProgramSpaces;
       }
-
-      const isProjectGraphMode =
-        getCurrentPipelineMode() === PIPELINE_MODE.PROJECT_GRAPH;
       const portfolioFileSummaries = portfolioFiles.map((file) => ({
         name: file.name,
         size: file.size,
