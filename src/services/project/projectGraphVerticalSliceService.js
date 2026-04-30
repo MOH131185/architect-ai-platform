@@ -22,6 +22,10 @@ import {
 } from "../openaiReasoningExecutor.js";
 import { computeCDSHashSync } from "../validation/cdsHash.js";
 import { rasteriseSheetArtifact } from "../render/svgRasteriser.js";
+import {
+  buildVisualManifest,
+  buildVisualIdentityLockBlock,
+} from "../render/visualManifestService.js";
 import { getSiteSnapshotWithMetadata } from "../siteMapSnapshotService.js";
 import { computeSunPath } from "../climate/sunPath.js";
 import { listSourceDocumentsForParts } from "../regulation/sourceRegistry.js";
@@ -3007,7 +3011,7 @@ function buildTitleBlockPanelArtifact({
 // so the gpt-image call sees the same upstream drivers (UK temperate,
 // red brick + timber vernacular, 3-storey detached programme, etc.) that
 // the deterministic pipeline already computed.
-function buildProjectGraphRenderPrompt({
+export function buildProjectGraphRenderPrompt({
   panelType,
   brief,
   compiledProject,
@@ -3016,6 +3020,7 @@ function buildProjectGraphRenderPrompt({
   styleDNA,
   programmeSummary,
   region,
+  visualManifest = null,
 }) {
   const reasoning = buildReasoningChainBlock({
     locationData: { climate, region },
@@ -3035,7 +3040,13 @@ function buildProjectGraphRenderPrompt({
     }[panelType] || "Photoreal architectural render.";
   const buildingType = brief?.building_type || "building";
   const projectName = brief?.project_name || "project";
+  // Phase D: every visual-panel prompt is prefixed with the visual identity
+  // lock block so all four panels (hero_3d / exterior_render / axonometric /
+  // interior_3d) describe the same building. The block is identical across
+  // panels for the same manifest, so OpenAI image generation cannot drift.
+  const identityLock = buildVisualIdentityLockBlock(visualManifest);
   return [
+    identityLock,
     `Project: ${projectName} — ${buildingType}.`,
     intent,
     reasoning,
@@ -3061,6 +3072,7 @@ async function buildVisual3DPanelArtifacts({
   styleDNA = null,
   programmeSummary = null,
   region = null,
+  visualManifest = null,
 }) {
   const renderInputs = ensureCompiledProjectRenderInputs(compiledProject, {
     geometryHash,
@@ -3094,6 +3106,7 @@ async function buildVisual3DPanelArtifacts({
           styleDNA,
           programmeSummary,
           region,
+          visualManifest,
         });
         try {
           renderResult = await renderProjectGraphPanelImage({
@@ -3204,6 +3217,14 @@ async function buildVisual3DPanelArtifacts({
             visualFidelityStatus,
             visualRenderMode,
             renderProvenance,
+            // Phase D — visual identity lock. Same hash on all four visual
+            // panels means OpenAI image generation cannot drift the building
+            // identity between panels. Even when the image gate is off and
+            // the panel falls back to the deterministic SVG, the lock still
+            // applies (the deterministic source is geometry-bound).
+            visualManifestId: visualManifest?.manifestId || null,
+            visualManifestHash: visualManifest?.manifestHash || null,
+            visualIdentityLocked: Boolean(visualManifest?.manifestHash),
           },
         },
       ];
@@ -3226,6 +3247,7 @@ async function buildSheetPanelArtifacts({
   geometryHash,
   siteSnapshot = null,
   sheetPlan = null,
+  visualManifest = null,
 }) {
   const siteContext = buildSiteContextPanelArtifact({
     projectGraphId,
@@ -3268,6 +3290,7 @@ async function buildSheetPanelArtifacts({
     styleDNA,
     programmeSummary,
     region,
+    visualManifest,
   });
   return {
     [siteContext.asset_id]: siteContext,
@@ -4229,6 +4252,7 @@ async function buildA1Sheet({
   geometryHash,
   siteSnapshot = null,
   sheetPlan = null,
+  visualManifest = null,
 }) {
   const drawingNumber = sheetPlan?.sheet_number || "A1-00";
   const sheetLabel = sheetPlan?.label || "RIBA Stage 2 Master";
@@ -4250,6 +4274,7 @@ async function buildA1Sheet({
       sheet_number: drawingNumber,
       label: sheetLabel,
     },
+    visualManifest,
   });
   const panelArtifacts = {
     ...drawingArtifacts,
@@ -6178,6 +6203,24 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
     input?.locationData?.region ||
     brief?.site_input?.region ||
     null;
+  // Phase D: build the visual identity manifest once per generation. Same
+  // building → same manifestHash on every visual panel → no cross-panel
+  // drift even when OpenAI image generation is enabled. The manifest is
+  // also produced when the gate is off so deterministic-fallback panels
+  // carry the lock too.
+  const styleDNAForManifest =
+    localStyle?.styleDNA || localStyle?.style_dna || null;
+  const visualManifest = buildVisualManifest({
+    compiledProject,
+    projectGraph: { projectGraphId, id: projectGraphId },
+    brief,
+    masterDNA: input?.masterDNA || null,
+    siteSnapshot: siteMapSnapshot,
+    climate,
+    localStyle,
+    styleDNA: styleDNAForManifest,
+    materialPalette: localStyle?.material_palette || null,
+  });
   const renderedSheets = [];
   for (const sheetPlan of splitDecision.sheets) {
     const sheetResult = await buildA1Sheet({
@@ -6197,6 +6240,7 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       geometryHash: compiledProject.geometryHash,
       siteSnapshot: siteMapSnapshot,
       sheetPlan,
+      visualManifest,
     });
     const pdf = await buildA1PdfArtifact({
       projectGraphId,
@@ -6391,6 +6435,12 @@ export async function buildArchitectureProjectVerticalSlice(input = {}) {
       }),
     ),
     sheetSplitDecision: splitDecision,
+    // Phase D: surface the visual identity manifest at the top level so QA,
+    // tests, and downstream consumers can prove every visual panel was
+    // pinned to the same building. Each panel artifact also carries
+    // metadata.visualManifestId / Hash / visualIdentityLocked.
+    visualManifest,
+    visualManifestHash: visualManifest.manifestHash,
     technicalBuild: {
       ok: technicalBuild.ok,
       technicalPanelTypes: technicalBuild.technicalPanelTypes,
