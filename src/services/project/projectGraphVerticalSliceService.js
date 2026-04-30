@@ -55,6 +55,10 @@ import {
   detectA1RasterGlyphIntegrity,
 } from "../a1/a1FinalExportContract.js";
 import {
+  buildMaterialPaletteCards,
+  normalizeMaterialPaletteEntries as normalizeMaterialPaletteEntriesShared,
+} from "../a1/materialTexturePatterns.js";
+import {
   buildClimateRenderContext,
   buildStyleRenderContext,
   buildProgrammeRenderContext,
@@ -2567,170 +2571,6 @@ function buildSiteContextPanelArtifact({
   };
 }
 
-const MATERIAL_HEX_FALLBACKS = [
-  "#b6634a",
-  "#b08455",
-  "#343a40",
-  "#d7d2c8",
-  "#5f7482",
-  "#c1b8aa",
-  "#6f756c",
-  "#8a6f59",
-];
-
-function inferMaterialHex(name = "", index = 0) {
-  const text = String(name || "").toLowerCase();
-  if (/brick|terracotta|masonry/.test(text)) return "#b6634a";
-  if (/timber|wood|oak|cedar|boarding/.test(text)) return "#b08455";
-  if (/slate|dark|roof|tile|metal|zinc|standing seam/.test(text)) {
-    return "#343a40";
-  }
-  if (/render|lime|plaster|stucco/.test(text)) return "#d7d2c8";
-  if (/glass|glazing|aluminium|window/.test(text)) return "#5f7482";
-  if (/stone|paving|natural/.test(text)) return "#c1b8aa";
-  if (/concrete|grc|cement/.test(text)) return "#b8b7ae";
-  return MATERIAL_HEX_FALLBACKS[index % MATERIAL_HEX_FALLBACKS.length];
-}
-
-function inferMaterialApplication(name = "") {
-  const text = String(name || "").toLowerCase();
-  if (/roof|slate|tile|standing seam/.test(text)) return "roof finish";
-  if (/window|glass|glazing|aluminium/.test(text)) return "openings";
-  if (/timber|boarding|screen|soffit/.test(text)) return "facade accent";
-  if (/stone|paving/.test(text)) return "landscape / plinth";
-  if (/render|brick|masonry|concrete|grc/.test(text)) return "external wall";
-  return "finish";
-}
-
-function normalizeMaterialPaletteEntries({
-  localStyle = null,
-  compiledProject = null,
-  styleDNA = null,
-  brief = null,
-} = {}) {
-  const rawEntries = [];
-  const addMaterial = (value, source = "project_graph") => {
-    if (!value) return;
-    if (Array.isArray(value)) {
-      value.forEach((entry) => addMaterial(entry, source));
-      return;
-    }
-    if (typeof value === "string") {
-      rawEntries.push({ name: value, source });
-      return;
-    }
-    if (typeof value === "object") {
-      const name =
-        value.name ||
-        value.material ||
-        value.label ||
-        value.type ||
-        value.primary ||
-        value.finish ||
-        null;
-      if (name) {
-        rawEntries.push({
-          name,
-          hexColor: value.hexColor || value.color_hex || value.hex || null,
-          application: value.application || value.use || value.role || null,
-          source,
-        });
-      }
-      if (!name) {
-        Object.entries(value).forEach(([key, nested]) => {
-          if (typeof nested === "string") {
-            rawEntries.push({ name: nested, application: key, source });
-          } else if (nested && typeof nested === "object") {
-            addMaterial(
-              { ...nested, application: nested.application || key },
-              source,
-            );
-          }
-        });
-      }
-    }
-  };
-
-  addMaterial(localStyle?.material_palette_with_provenance, "local_style");
-  addMaterial(localStyle?.material_palette, "local_style");
-  addMaterial(localStyle?.materials_local, "local_style");
-  addMaterial(localStyle?.local_materials, "local_style");
-  addMaterial(styleDNA?.materials, "style_dna");
-  addMaterial(styleDNA?.local_materials, "style_dna");
-  addMaterial(compiledProject?.materials, "compiled_project");
-  addMaterial(brief?.user_intent?.material_preferences, "user_intent");
-
-  const byName = new Map();
-  rawEntries.forEach((entry) => {
-    const normalizedName = String(entry.name || "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const key = normalizedName.toLowerCase();
-    if (!key || byName.has(key)) return;
-    const index = byName.size;
-    byName.set(key, {
-      name: normalizedName,
-      hexColor: entry.hexColor || inferMaterialHex(normalizedName, index),
-      application:
-        entry.application || inferMaterialApplication(normalizedName),
-      source: entry.source || "project_graph",
-    });
-  });
-
-  if (byName.size === 0) {
-    [
-      "warm stock brick",
-      "vertical timber cladding",
-      "dark grey roof tiles",
-      "aluminium windows",
-      "light render",
-      "natural stone paving",
-    ].forEach((name, index) => {
-      byName.set(name, {
-        name,
-        hexColor: inferMaterialHex(name, index),
-        application: inferMaterialApplication(name),
-        source: "deterministic_fallback",
-      });
-    });
-  }
-
-  return [...byName.values()].slice(0, 8);
-}
-
-function materialTextureKind(name = "") {
-  const text = String(name || "").toLowerCase();
-  if (/brick|masonry|terracotta/.test(text)) return "brick";
-  if (/timber|wood|oak|cedar|boarding/.test(text)) return "timber";
-  if (/roof|slate|tile|shingle/.test(text)) return "roof_tile";
-  if (/window|glass|glazing|aluminium|metal|zinc/.test(text)) return "metal";
-  if (/stone|paving/.test(text)) return "stone";
-  if (/render|lime|plaster|stucco/.test(text)) return "render";
-  return "woven";
-}
-
-function buildMaterialTexturePattern(material, index) {
-  const id = `material-texture-${index}`;
-  const base = escapeXml(
-    material.hexColor || inferMaterialHex(material.name, index),
-  );
-  const kind = materialTextureKind(material.name);
-  const overlay = {
-    brick: `<path d="M0 12 H64 M0 36 H64 M0 60 H64 M16 0 V12 M48 12 V36 M16 36 V60" stroke="#5b2f25" stroke-width="2" opacity="0.42"/>`,
-    timber: `<path d="M8 0 V72 M24 0 V72 M40 0 V72 M56 0 V72" stroke="#5c3b21" stroke-width="3" opacity="0.38"/><path d="M5 18 C18 8 24 30 40 18 C52 10 58 22 64 16" fill="none" stroke="#f0c88f" stroke-width="1.5" opacity="0.45"/>`,
-    roof_tile: `<path d="M0 10 H72 M0 24 H72 M0 38 H72 M0 52 H72 M0 66 H72" stroke="#15191d" stroke-width="2" opacity="0.52"/><path d="M12 0 L0 72 M36 0 L24 72 M60 0 L48 72" stroke="#60666c" stroke-width="1.4" opacity="0.55"/>`,
-    metal: `<path d="M0 0 L72 72 M-18 18 L54 90 M18 -18 L90 54" stroke="#d6e2e8" stroke-width="3" opacity="0.36"/><rect x="8" y="8" width="56" height="56" fill="none" stroke="#273844" stroke-width="2" opacity="0.42"/>`,
-    stone: `<path d="M8 10 L30 4 L54 12 L66 30 L52 58 L24 66 L4 44 Z" fill="none" stroke="#7f776d" stroke-width="2" opacity="0.5"/><path d="M0 34 H72 M36 0 V72" stroke="#f3eee7" stroke-width="2" opacity="0.45"/>`,
-    render: `<circle cx="12" cy="14" r="2" fill="#ffffff" opacity="0.45"/><circle cx="48" cy="28" r="2.4" fill="#ffffff" opacity="0.35"/><circle cx="30" cy="56" r="1.8" fill="#7c756c" opacity="0.35"/><circle cx="62" cy="62" r="2.1" fill="#7c756c" opacity="0.3"/>`,
-    woven: `<path d="M0 18 H72 M0 54 H72 M18 0 V72 M54 0 V72" stroke="#ffffff" stroke-width="3" opacity="0.28"/>`,
-  }[kind];
-  return {
-    id,
-    kind,
-    svg: `<pattern id="${id}" width="72" height="72" patternUnits="userSpaceOnUse" data-material-texture="${kind}"><rect width="72" height="72" fill="${base}"/>${overlay}</pattern>`,
-  };
-}
-
 function buildMaterialPalettePanelArtifact({
   projectGraphId,
   localStyle,
@@ -2741,42 +2581,40 @@ function buildMaterialPalettePanelArtifact({
 }) {
   const width = 900;
   const height = 620;
-  const materials = normalizeMaterialPaletteEntries({
+  const materials = normalizeMaterialPaletteEntriesShared({
     localStyle,
     compiledProject,
     styleDNA,
     brief,
   });
-  const swatchWidth = 180;
-  const swatchHeight = 96;
-  const gapX = 32;
-  const gapY = 78;
-  const startX = 44;
-  const startY = 86;
-  const patterns = materials
-    .slice(0, 6)
-    .map((material, index) => buildMaterialTexturePattern(material, index));
-  const swatches = materials
-    .slice(0, 6)
-    .map((material, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      const x = startX + col * (swatchWidth + gapX);
-      const y = startY + row * (swatchHeight + gapY);
-      const pattern = patterns[index];
-      return `<g data-material-index="${index + 1}">
-  <rect x="${x}" y="${y}" width="${swatchWidth}" height="${swatchHeight}" fill="url(#${pattern.id})" stroke="#111111" stroke-width="2" data-material-texture="${escapeXml(pattern.kind)}"/>
-  <text x="${x}" y="${y + swatchHeight + 24}" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#111111">${escapeXml(material.name.toUpperCase())}</text>
-  <text x="${x}" y="${y + swatchHeight + 48}" font-size="15" font-family="Arial, sans-serif" fill="#444444">${escapeXml(material.application)}</text>
-</g>`;
-    })
-    .join("\n");
+  const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
+    materials,
+    layout: {
+      cols: 3,
+      rows: 2,
+      max: 6,
+      cardWidth: 180,
+      cardHeight: 96,
+      gapX: 32,
+      gapY: 78,
+      startX: 44,
+      startY: 86,
+      labelOffset: 24,
+      subLabelOffset: 48,
+      labelFontSize: 18,
+      subLabelFontSize: 15,
+      fontFamily: "Arial, sans-serif",
+      labelMaxChars: 28,
+      subLabelMaxChars: 32,
+      strokeWidth: 2,
+    },
+  });
   const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" data-panel-id="material_palette" data-project-graph-id="${escapeXml(projectGraphId)}" data-source-model-hash="${escapeXml(geometryHash)}">
-  <defs>${patterns.map((pattern) => pattern.svg).join("")}</defs>
+  <defs>${defs}</defs>
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <text x="32" y="42" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111111">MATERIAL PALETTE</text>
   <line x1="32" y1="58" x2="868" y2="58" stroke="#111111" stroke-width="2"/>
-  ${swatches}
+  ${cards}
 </svg>`;
   const svgHash = computeCDSHashSync({
     panelType: "material_palette",
@@ -2801,6 +2639,7 @@ function buildMaterialPalettePanelArtifact({
     width,
     height,
     svgString,
+    cardMetadata,
     metadata: {
       deterministic: true,
       source: "project_graph_material_palette",
@@ -2808,6 +2647,7 @@ function buildMaterialPalettePanelArtifact({
       geometryHash,
       materialCount: materials.length,
       materials,
+      cardMetadata,
     },
   };
 }

@@ -3,6 +3,11 @@ import {
   EMBEDDED_FONT_STACK,
   prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
+import {
+  buildMaterialPaletteCards,
+  buildMaterialPaletteCardsAsync,
+  normalizeMaterialPaletteEntries as normalizeMaterialPaletteEntriesShared,
+} from "./materialTexturePatterns.js";
 
 const FONT_FAMILY = EMBEDDED_FONT_STACK;
 
@@ -195,8 +200,126 @@ export async function buildSchedulesBuffer(
     .toBuffer();
 }
 
+function resolveMaterialPaletteLayout(width, height) {
+  const compactMode = width < 260 || height < 260;
+  const cols = compactMode ? 2 : 4;
+  const rows = 2;
+  const max = Math.min(cols * rows, 8);
+  const margin = 14;
+  const headerH = 36;
+  const innerWidth = Math.max(20, width - margin * 2);
+  const cardWidth = Math.max(40, Math.floor((innerWidth - (cols - 1) * 12) / cols));
+  const labelBlock = compactMode ? 34 : 40;
+  const innerHeight = Math.max(40, height - headerH - margin * 2);
+  const cardHeight = Math.max(
+    32,
+    Math.floor((innerHeight - (rows - 1) * (labelBlock + 6)) / rows),
+  );
+  return {
+    compactMode,
+    cols,
+    rows,
+    max,
+    cardWidth,
+    cardHeight,
+    gapX: 12,
+    gapY: labelBlock + 6,
+    startX: margin,
+    startY: headerH + 12,
+    labelOffset: compactMode ? 14 : 18,
+    subLabelOffset: compactMode ? 26 : 32,
+    labelFontSize: compactMode ? 10 : 11,
+    subLabelFontSize: compactMode ? 8 : 9,
+    fontFamily: FONT_FAMILY,
+    labelMaxChars: compactMode ? 14 : 22,
+    subLabelMaxChars: compactMode ? 16 : 22,
+    strokeWidth: 1.5,
+  };
+}
+
+function wrapMaterialPaletteSvg({ width, height, defs, cards, constants }) {
+  const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
+  const compactMode = width < 260 || height < 260;
+  const titleFontSize = compactMode ? 12 : 11;
+  const fallbackText = `<text x="${width / 2}" y="${height / 2}" font-family="${FONT_FAMILY}" font-size="10" fill="#9ca3af" text-anchor="middle">No material palette data available</text>`;
+  return `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <defs>${defs}</defs>
+      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
+
+      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
+      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${titleFontSize}" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">MATERIAL PALETTE</text>
+
+      ${cards && cards.trim() ? cards : fallbackText}
+    </svg>
+  `;
+}
+
 /**
- * Deterministic SVG for Material Palette panel.
+ * Build the SVG string for the Material Palette panel using the shared
+ * deterministic texture-card module. Returns both the string and the per-card
+ * provenance metadata so downstream callers (compose runtime, export gate,
+ * etc.) can record `procedural_svg_pattern` vs `ai_texture_thumbnail` source.
+ */
+export function buildMaterialPaletteSvg(width, height, masterDNA, constants) {
+  const layout = resolveMaterialPaletteLayout(width, height);
+  const sourceMaterials = normalizeMaterialsForCompose(masterDNA);
+  const materials = sourceMaterials.length
+    ? sourceMaterials
+    : normalizeMaterialPaletteEntriesShared({ masterDNA });
+  const { defs, cards, cardMetadata } = buildMaterialPaletteCards({
+    materials,
+    layout,
+  });
+  const svgString = wrapMaterialPaletteSvg({
+    width,
+    height,
+    defs,
+    cards,
+    constants,
+  });
+  return { svgString, cardMetadata, layout };
+}
+
+/**
+ * Async variant that may apply the optional AI texture thumbnail overlay when
+ * `MATERIAL_TEXTURE_THUMBNAILS_ENABLED=true` AND a `thumbnailProvider` is
+ * supplied. Falls back to the deterministic procedural pattern on every
+ * failure path. Phase E does not wire any concrete provider; this exists for
+ * future Phase C/D wiring without changing call sites.
+ */
+export async function buildMaterialPaletteSvgAsync(
+  width,
+  height,
+  masterDNA,
+  constants,
+  { thumbnailProvider = null, env = null } = {},
+) {
+  const layout = resolveMaterialPaletteLayout(width, height);
+  const sourceMaterials = normalizeMaterialsForCompose(masterDNA);
+  const materials = sourceMaterials.length
+    ? sourceMaterials
+    : normalizeMaterialPaletteEntriesShared({ masterDNA });
+  const { defs, cards, cardMetadata } = await buildMaterialPaletteCardsAsync({
+    materials,
+    layout,
+    thumbnailProvider,
+    env,
+  });
+  const svgString = wrapMaterialPaletteSvg({
+    width,
+    height,
+    defs,
+    cards,
+    constants,
+  });
+  return { svgString, cardMetadata, layout };
+}
+
+/**
+ * Deterministic PNG buffer for the Material Palette panel. Default Phase E
+ * behaviour: procedural texture cards from the shared module. Always
+ * raster-safe via Phase A text-to-path conversion.
  */
 export async function buildMaterialPaletteBuffer(
   sharp,
@@ -206,57 +329,15 @@ export async function buildMaterialPaletteBuffer(
   constants,
   statusAccumulator = null,
 ) {
-  const { FRAME_STROKE_COLOR, FRAME_RADIUS } = constants || {};
-  const materials = normalizeMaterialsForCompose(masterDNA);
-  const compactMode = width < 260 || height < 260;
-  const displayMats = materials.slice(0, compactMode ? 4 : 8);
-
-  const cols = 2;
-  const margin = 12;
-  const headerH = 36;
-  const swatchW = Math.floor((width - margin * 3) / cols);
-  const swatchH = compactMode ? 34 : 40;
-  const gap = 8;
-
-  let swatches = "";
-  displayMats.forEach((mat, idx) => {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const x = margin + col * (swatchW + margin);
-    const y = headerH + 12 + row * (swatchH + gap + 20);
-
-    const name =
-      typeof mat === "string"
-        ? mat
-        : mat.name || mat.type || `Material ${idx + 1}`;
-    const hexColor = mat.hexColor || "#cccccc";
-    const application = mat.application || "";
-    const secondaryLabel = compactMode
-      ? clampText(application || hexColor, 18)
-      : `${hexColor} - ${clampText(application, 18)}`;
-
-    swatches += `
-      <rect x="${x}" y="${y}" width="${swatchW}" height="${swatchH}" fill="${escapeXml(hexColor)}" stroke="#e2e8f0" stroke-width="1" rx="3" />
-      <text x="${x}" y="${y + swatchH + 12}" font-family="${FONT_FAMILY}" font-size="${compactMode ? 10 : 9}" font-weight="600" fill="#1f2937">${escapeXml(clampText(name, compactMode ? 14 : 20))}</text>
-      <text x="${x}" y="${y + swatchH + 24}" font-family="${FONT_FAMILY}" font-size="8" fill="#64748b">${escapeXml(secondaryLabel)}</text>`;
-  });
-
-  const svg = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff" stroke="${FRAME_STROKE_COLOR || "#cbd5e1"}" stroke-width="2" rx="${FRAME_RADIUS || 4}" ry="${FRAME_RADIUS || 4}" />
-
-      <rect x="8" y="8" width="${width - 16}" height="24" fill="#f1f5f9" rx="2" />
-      <text x="${width / 2}" y="24" font-family="${FONT_FAMILY}" font-size="${compactMode ? 12 : 11}" font-weight="700" fill="#0f172a" text-anchor="middle" class="sheet-critical-label" data-text-role="critical">MATERIAL PALETTE</text>
-
-      ${
-        swatches ||
-        `<text x="${width / 2}" y="${height / 2}" font-family="${FONT_FAMILY}" font-size="10" fill="#9ca3af" text-anchor="middle">No material palette data available</text>`
-      }
-    </svg>
-  `;
+  const { svgString } = buildMaterialPaletteSvg(
+    width,
+    height,
+    masterDNA,
+    constants,
+  );
 
   const { svgString: fontedSvg, textRenderStatus } =
-    await prepareFinalSheetSvgForRasterizationWithReport(svg, {
+    await prepareFinalSheetSvgForRasterizationWithReport(svgString, {
       minimumFontSizePx: FINAL_SHEET_MIN_FONT_SIZE_PX,
       textToPath: true,
     });
