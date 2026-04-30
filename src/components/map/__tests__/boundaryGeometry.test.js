@@ -169,6 +169,25 @@ describe("Ring Operations", () => {
     expect(isRingClosed(result.ring)).toBe(true);
   });
 
+  test("normalizeRing drops non-numeric coordinate pairs before turf metrics run", () => {
+    const malformedRing = [
+      [-122.4, 37.7],
+      [["bad"], 37.71],
+      [-122.39, 37.71],
+      [-122.39, 37.7],
+    ];
+    const result = normalizeRing(malformedRing);
+
+    expect(result.valid).toBe(true);
+    expect(result.ring).toEqual(
+      closeRing([
+        [-122.4, 37.7],
+        [-122.39, 37.71],
+        [-122.39, 37.7],
+      ]),
+    );
+  });
+
   test("ringsEqual compares ring geometry", () => {
     expect(ringsEqual(squareRingClosed, [...squareRingClosed])).toBe(true);
     expect(ringsEqual(squareRingClosed, closeRing([...triangleVertices]))).toBe(
@@ -440,6 +459,24 @@ describe("Format Conversion", () => {
     const ring = latLngArrayToRing(latLngArray);
     expect(ring.length).toBe(5); // Closed
     expect(ring[0]).toEqual([-122.4, 37.7]);
+  });
+
+  test("latLngArrayToRing ignores invalid points from malformed boundary detection", () => {
+    const latLngArray = [
+      { lat: 37.7, lng: -122.4 },
+      { lat: ["bad"], lng: -122.4 },
+      { lat: 37.71, lng: -122.39 },
+      { lat: 37.7, lng: -122.39 },
+    ];
+    const ring = latLngArrayToRing(latLngArray);
+
+    expect(ring).toEqual(
+      closeRing([
+        [-122.4, 37.7],
+        [-122.39, 37.71],
+        [-122.39, 37.7],
+      ]),
+    );
   });
 
   test("ringToLatLngArray converts ring to lat/lng objects", () => {

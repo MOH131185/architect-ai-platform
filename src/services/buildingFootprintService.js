@@ -11,9 +11,83 @@
  * - Validate and clean polygon data
  */
 
-import axios from 'axios';
-import logger from '../utils/logger.js';
+import axios from "axios";
+import logger from "../utils/logger.js";
 
+function isFiniteNumber(value) {
+  return Number.isFinite(Number(value));
+}
+
+function toCoordinatePair(candidate) {
+  if (Array.isArray(candidate) && candidate.length >= 2) {
+    const lng = Number(candidate[0]);
+    const lat = Number(candidate[1]);
+    return isFiniteNumber(lng) && isFiniteNumber(lat) ? [lng, lat] : null;
+  }
+
+  if (candidate && typeof candidate === "object") {
+    const lng = Number(candidate.lng ?? candidate.lon ?? candidate.longitude);
+    const lat = Number(candidate.lat ?? candidate.latitude);
+    return isFiniteNumber(lng) && isFiniteNumber(lat) ? [lng, lat] : null;
+  }
+
+  return null;
+}
+
+function extractCoordinateRing(coordinates) {
+  if (!Array.isArray(coordinates) || coordinates.length === 0) {
+    return [];
+  }
+
+  if (toCoordinatePair(coordinates[0])) {
+    return coordinates;
+  }
+
+  // GeoJSON Polygon: coordinates = [outerRing, holeRing...].
+  if (Array.isArray(coordinates[0]) && toCoordinatePair(coordinates[0][0])) {
+    return coordinates[0];
+  }
+
+  // Some Google responses wrap the display polygon one level deeper.
+  if (
+    Array.isArray(coordinates[0]) &&
+    Array.isArray(coordinates[0][0]) &&
+    toCoordinatePair(coordinates[0][0][0])
+  ) {
+    return coordinates[0][0];
+  }
+
+  return [];
+}
+
+export function normalizeGeoJsonRingCoordinates(coordinates) {
+  const ring = extractCoordinateRing(coordinates);
+  const normalized = ring.map(toCoordinatePair).filter(Boolean);
+
+  if (normalized.length < 3) {
+    return [];
+  }
+
+  const [firstLng, firstLat] = normalized[0];
+  const [lastLng, lastLat] = normalized[normalized.length - 1];
+  if (firstLng !== lastLng || firstLat !== lastLat) {
+    normalized.push([firstLng, firstLat]);
+  }
+
+  return normalized;
+}
+
+function isValidLatLng(point) {
+  return (
+    point &&
+    isFiniteNumber(point.lat) &&
+    isFiniteNumber(point.lng) &&
+    Number(point.lat) >= -90 &&
+    Number(point.lat) <= 90 &&
+    Number(point.lng) >= -180 &&
+    Number(point.lng) <= 180
+  );
+}
 
 /**
  * Fetch building footprint from Google Geocoding API
@@ -23,22 +97,25 @@ import logger from '../utils/logger.js';
  * @returns {Promise<Object>} Footprint data with coordinates and metadata
  */
 export async function fetchBuildingFootprint(placeId, apiKey) {
-  logger.info('🏢 Fetching building footprint for place_id:', placeId);
+  logger.info("🏢 Fetching building footprint for place_id:", placeId);
 
   if (!apiKey) {
-    throw new Error('Google Maps API key is required');
+    throw new Error("Google Maps API key is required");
   }
 
   try {
-    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-      params: {
-        place_id: placeId,
-        extra_computations: 'BUILDING_AND_ENTRANCES',
-        key: apiKey
-      }
-    });
+    const response = await axios.get(
+      "https://maps.googleapis.com/maps/api/geocode/json",
+      {
+        params: {
+          place_id: placeId,
+          extra_computations: "BUILDING_AND_ENTRANCES",
+          key: apiKey,
+        },
+      },
+    );
 
-    if (response.data.status !== 'OK') {
+    if (response.data.status !== "OK") {
       logger.warn(`Building footprint fetch failed: ${response.data.status}`);
       return null;
     }
@@ -48,7 +125,7 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     // Extract building outline from response
     const buildings = result.buildings;
     if (!buildings || buildings.length === 0) {
-      logger.warn('No building data in API response');
+      logger.warn("No building data in API response");
       return null;
     }
 
@@ -56,22 +133,34 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
     const outlines = buildingData.building_outlines;
 
     if (!outlines || outlines.length === 0) {
-      logger.warn('No building outlines found');
+      logger.warn("No building outlines found");
       return null;
     }
 
     const outline = outlines[0];
     const displayPolygon = outline.display_polygon;
 
-    if (!displayPolygon || !displayPolygon.coordinates || displayPolygon.coordinates.length === 0) {
-      logger.warn('Invalid display_polygon structure');
+    if (
+      !displayPolygon ||
+      !displayPolygon.coordinates ||
+      displayPolygon.coordinates.length === 0
+    ) {
+      logger.warn("Invalid display_polygon structure");
       return null;
     }
 
-    // GeoJSON polygon format: coordinates[0] is outer ring as [lng, lat] pairs
-    const geoJsonCoords = displayPolygon.coordinates[0];
+    const geoJsonCoords = normalizeGeoJsonRingCoordinates(
+      displayPolygon.coordinates,
+    );
 
-    logger.success(` Building footprint detected: ${geoJsonCoords.length} vertices`);
+    if (geoJsonCoords.length < 4) {
+      logger.warn("Building outline did not contain a valid polygon ring");
+      return null;
+    }
+
+    logger.success(
+      ` Building footprint detected: ${geoJsonCoords.length - 1} vertices`,
+    );
 
     return {
       geoJsonCoordinates: geoJsonCoords,
@@ -79,16 +168,15 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
       metadata: {
         placeId,
         vertexCount: geoJsonCoords.length,
-        source: 'google_maps_api'
-      }
+        source: "google_maps_api",
+      },
     };
-
   } catch (error) {
-    logger.error('❌ Failed to fetch building footprint:', error);
+    logger.error("❌ Failed to fetch building footprint:", error);
 
     // Check if error is due to API not supporting extra_computations
     if (error.response?.data?.error_message) {
-      logger.warn('API Message:', error.response.data.error_message);
+      logger.warn("API Message:", error.response.data.error_message);
     }
 
     return null;
@@ -102,20 +190,18 @@ export async function fetchBuildingFootprint(placeId, apiKey) {
  * @returns {Array<Object>} Array of {lat, lng} objects
  */
 export function convertGeoJsonToMapCoords(geoJsonCoords) {
-  if (!Array.isArray(geoJsonCoords) || geoJsonCoords.length === 0) {
+  const normalizedRing = normalizeGeoJsonRingCoordinates(geoJsonCoords);
+  if (!Array.isArray(normalizedRing) || normalizedRing.length < 4) {
     return [];
   }
 
   // Convert [lng, lat] to {lat, lng}
-  const coords = geoJsonCoords.map(([lng, lat]) => ({ lat, lng }));
+  const coords = normalizedRing
+    .map(([lng, lat]) => ({ lat, lng }))
+    .filter(isValidLatLng);
 
-  // Ensure polygon is closed (first point === last point)
-  const first = coords[0];
-  const last = coords[coords.length - 1];
-
-  if (first.lat !== last.lat || first.lng !== last.lng) {
-    coords.push({ ...first }); // Close the polygon
-    logger.info('  Closed polygon (added duplicate of first vertex)');
+  if (coords.length < 4) {
+    return [];
   }
 
   return coords;
@@ -131,9 +217,9 @@ export function convertGeoJsonToMapCoords(geoJsonCoords) {
 export function classifyPolygonShape(coords) {
   if (!coords || coords.length < 4) {
     return {
-      name: 'invalid',
-      description: 'Insufficient vertices',
-      vertexCount: coords?.length || 0
+      name: "invalid",
+      description: "Insufficient vertices",
+      vertexCount: coords?.length || 0,
     };
   }
 
@@ -146,31 +232,31 @@ export function classifyPolygonShape(coords) {
 
     if (Math.abs(avgAngle - 90) < 10) {
       return {
-        name: 'rectangle',
-        description: 'Rectangular footprint',
+        name: "rectangle",
+        description: "Rectangular footprint",
         vertexCount,
         angles,
-        isConvex: true
+        isConvex: true,
       };
     }
   } else if (vertexCount === 6) {
     const isLShaped = detectLShape(coords);
     if (isLShaped) {
       return {
-        name: 'L-shape',
-        description: 'L-shaped footprint',
+        name: "L-shape",
+        description: "L-shaped footprint",
         vertexCount,
-        isConvex: false
+        isConvex: false,
       };
     }
   } else if (vertexCount === 8) {
     const isUShaped = detectUShape(coords);
     if (isUShaped) {
       return {
-        name: 'U-shape',
-        description: 'U-shaped footprint',
+        name: "U-shape",
+        description: "U-shaped footprint",
         vertexCount,
-        isConvex: false
+        isConvex: false,
       };
     }
   }
@@ -179,10 +265,10 @@ export function classifyPolygonShape(coords) {
   const isConvex = isPolygonConvex(coords);
 
   return {
-    name: isConvex ? 'convex-polygon' : 'concave-polygon',
-    description: `${isConvex ? 'Convex' : 'Concave'} ${vertexCount}-sided polygon`,
+    name: isConvex ? "convex-polygon" : "concave-polygon",
+    description: `${isConvex ? "Convex" : "Concave"} ${vertexCount}-sided polygon`,
     vertexCount,
-    isConvex
+    isConvex,
   };
 }
 
@@ -276,8 +362,8 @@ function detectLShape(coords) {
   const angles = calculateInternalAngles(coords);
 
   // L-shape typically has 4 right angles (90°) and 2 reflex angles (270°)
-  const rightAngles = angles.filter(a => Math.abs(a - 90) < 15).length;
-  const reflexAngles = angles.filter(a => Math.abs(a - 270) < 15).length;
+  const rightAngles = angles.filter((a) => Math.abs(a - 90) < 15).length;
+  const reflexAngles = angles.filter((a) => Math.abs(a - 270) < 15).length;
 
   return rightAngles >= 4 && reflexAngles >= 2;
 }
@@ -294,8 +380,8 @@ function detectUShape(coords) {
   const angles = calculateInternalAngles(coords);
 
   // U-shape typically has 6 right angles (90°) and 2 reflex angles (270°)
-  const rightAngles = angles.filter(a => Math.abs(a - 90) < 15).length;
-  const reflexAngles = angles.filter(a => Math.abs(a - 270) < 15).length;
+  const rightAngles = angles.filter((a) => Math.abs(a - 90) < 15).length;
+  const reflexAngles = angles.filter((a) => Math.abs(a - 270) < 15).length;
 
   return rightAngles >= 6 && reflexAngles >= 2;
 }
@@ -308,26 +394,27 @@ function detectUShape(coords) {
  * @returns {number} Area in square meters
  */
 export function calculatePolygonArea(coords) {
-  if (!coords || coords.length < 3) return 0;
+  const safeCoords = Array.isArray(coords) ? coords.filter(isValidLatLng) : [];
+  if (safeCoords.length < 3) return 0;
 
   const R = 6371000; // Earth radius in meters
   let area = 0;
 
-  const n = coords.length - 1; // Exclude duplicate last point
+  const n = safeCoords.length - 1; // Exclude duplicate last point
 
   for (let i = 0; i < n; i++) {
-    const p1 = coords[i];
-    const p2 = coords[(i + 1) % n];
+    const p1 = safeCoords[i];
+    const p2 = safeCoords[(i + 1) % n];
 
-    const lat1 = p1.lat * Math.PI / 180;
-    const lat2 = p2.lat * Math.PI / 180;
-    const lng1 = p1.lng * Math.PI / 180;
-    const lng2 = p2.lng * Math.PI / 180;
+    const lat1 = (p1.lat * Math.PI) / 180;
+    const lat2 = (p2.lat * Math.PI) / 180;
+    const lng1 = (p1.lng * Math.PI) / 180;
+    const lng2 = (p2.lng * Math.PI) / 180;
 
     area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
   }
 
-  area = Math.abs(area * R * R / 2);
+  area = Math.abs((area * R * R) / 2);
 
   return area;
 }
@@ -340,15 +427,18 @@ export function calculatePolygonArea(coords) {
  * @returns {Promise<Object>} Complete footprint data with classification
  */
 export async function detectAddressShape(address, apiKey) {
-  logger.info('🔍 Starting address-to-shape detection for:', address);
+  logger.info("🔍 Starting address-to-shape detection for:", address);
 
   try {
     // Step 1: Geocode address to get place_id
-    const geocodeResponse = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-      params: { address, key: apiKey }
-    });
+    const geocodeResponse = await axios.get(
+      "https://maps.googleapis.com/maps/api/geocode/json",
+      {
+        params: { address, key: apiKey },
+      },
+    );
 
-    if (geocodeResponse.data.status !== 'OK') {
+    if (geocodeResponse.data.status !== "OK") {
       throw new Error(`Geocoding failed: ${geocodeResponse.data.status}`);
     }
 
@@ -356,23 +446,37 @@ export async function detectAddressShape(address, apiKey) {
     const placeId = locationResult.place_id;
     const center = locationResult.geometry.location;
 
-    logger.info('  Geocoded to place_id:', placeId);
+    logger.info("  Geocoded to place_id:", placeId);
 
     // Step 2: Fetch building footprint
     const footprint = await fetchBuildingFootprint(placeId, apiKey);
 
     if (!footprint) {
-      logger.warn('⚠️  No building footprint available for this address');
+      logger.warn("⚠️  No building footprint available for this address");
       return {
         success: false,
         center,
         placeId,
-        message: 'Building footprint not available from Google Maps API'
+        message: "Building footprint not available from Google Maps API",
       };
     }
 
     // Step 3: Convert to map coordinates
-    const polygonCoords = convertGeoJsonToMapCoords(footprint.geoJsonCoordinates);
+    const polygonCoords = convertGeoJsonToMapCoords(
+      footprint.geoJsonCoordinates,
+    );
+
+    if (polygonCoords.length < 4) {
+      logger.warn(
+        "⚠️  Building footprint response did not contain a usable polygon",
+      );
+      return {
+        success: false,
+        center,
+        placeId,
+        message: "Building footprint response did not contain a usable polygon",
+      };
+    }
 
     // Step 4: Classify shape
     const shapeClassification = classifyPolygonShape(polygonCoords);
@@ -380,10 +484,10 @@ export async function detectAddressShape(address, apiKey) {
     // Step 5: Calculate area
     const areaM2 = calculatePolygonArea(polygonCoords);
 
-    logger.info('✅ Address-to-shape detection complete:', {
+    logger.info("✅ Address-to-shape detection complete:", {
       shape: shapeClassification.name,
       vertices: shapeClassification.vertexCount,
-      area: `${areaM2.toFixed(1)} m²`
+      area: `${areaM2.toFixed(1)} m²`,
     });
 
     return {
@@ -396,15 +500,14 @@ export async function detectAddressShape(address, apiKey) {
       entrances: footprint.entrances,
       metadata: {
         ...footprint.metadata,
-        detectedAt: new Date().toISOString()
-      }
+        detectedAt: new Date().toISOString(),
+      },
     };
-
   } catch (error) {
-    logger.error('❌ Address-to-shape detection failed:', error);
+    logger.error("❌ Address-to-shape detection failed:", error);
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -414,5 +517,5 @@ export default {
   convertGeoJsonToMapCoords,
   classifyPolygonShape,
   calculatePolygonArea,
-  detectAddressShape
+  detectAddressShape,
 };

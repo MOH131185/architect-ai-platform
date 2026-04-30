@@ -55,6 +55,28 @@ const getStepForStage = (stage) => {
   return index >= 0 ? index + 1 : 0;
 };
 
+const toFiniteCoordinate = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeLatLngPoint = (point) => {
+  if (!point || typeof point !== "object") return null;
+  const lat = toFiniteCoordinate(point.lat);
+  const lng = toFiniteCoordinate(point.lng ?? point.lon);
+  if (lat === null || lng === null) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+};
+
+function compactLatLngPolygon(polygon = []) {
+  if (!Array.isArray(polygon)) {
+    return [];
+  }
+  const normalized = polygon.map(normalizeLatLngPoint).filter(Boolean);
+  return normalized.length >= 3 ? normalized : [];
+}
+
 function buildManifestPanels(multiPanelResult = {}) {
   const entries = {};
   const panelMap =
@@ -138,7 +160,9 @@ function compactSiteSnapshotForRequest(siteSnapshot = null) {
   return {
     address: siteSnapshot.address || null,
     coordinates: siteSnapshot.coordinates || siteSnapshot.center || null,
-    sitePolygon: siteSnapshot.sitePolygon || siteSnapshot.polygon || [],
+    sitePolygon: compactLatLngPolygon(
+      siteSnapshot.sitePolygon || siteSnapshot.polygon || [],
+    ),
     climate: siteSnapshot.climate || null,
     zoning: siteSnapshot.zoning || null,
     center: siteSnapshot.center || siteSnapshot.coordinates || null,
@@ -178,7 +202,7 @@ function compactLocationDataForRequest(locationData = {}) {
   return {
     address: locationData.address || null,
     postcode: locationData.postcode || null,
-    coordinates: locationData.coordinates || null,
+    coordinates: normalizeLatLngPoint(locationData.coordinates) || null,
     climate: locationData.climate || null,
     zoning: locationData.zoning || null,
     sunPath: locationData.sunPath || locationData.siteDNA?.solar || null,
@@ -276,6 +300,7 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
   const compactSiteSnapshot = compactSiteSnapshotForRequest(
     params.siteSnapshot || designSpec.siteSnapshot || null,
   );
+  const compactSitePolygon = compactLatLngPolygon(designSpec.sitePolygon);
   const programSpaces =
     designSpec.programSpaces ||
     designSpec.programme?.spaces ||
@@ -367,7 +392,9 @@ export function buildProjectGraphVerticalSliceRequest(params = {}) {
     locationData: compactLocationDataForRequest(locationData),
     siteSnapshot: compactSiteSnapshot,
     sitePolygon:
-      designSpec.sitePolygon || compactSiteSnapshot?.sitePolygon || [],
+      compactSitePolygon.length >= 3
+        ? compactSitePolygon
+        : compactSiteSnapshot?.sitePolygon || [],
     siteMetrics:
       designSpec.siteMetrics ||
       designSpec.sitePolygonMetrics ||

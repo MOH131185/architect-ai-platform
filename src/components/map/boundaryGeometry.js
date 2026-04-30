@@ -23,6 +23,51 @@ export const MIN_VERTICES = 3;
 export const SNAP_PIXEL_THRESHOLD = 12;
 export const ANGLE_SNAP_DEGREES = 45;
 
+function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function isFiniteCoordPair(coord) {
+  return (
+    Array.isArray(coord) &&
+    coord.length >= 2 &&
+    toFiniteNumber(coord[0]) !== null &&
+    toFiniteNumber(coord[1]) !== null
+  );
+}
+
+function normalizeCoordPair(coord) {
+  if (!isFiniteCoordPair(coord)) {
+    return null;
+  }
+  return [roundCoord(Number(coord[0])), roundCoord(Number(coord[1]))];
+}
+
+function normalizeLatLngPoint(point) {
+  if (!point || typeof point !== "object") {
+    return null;
+  }
+
+  const lng = toFiniteNumber(point.lng);
+  const lat = toFiniteNumber(point.lat);
+  if (lng === null || lat === null) {
+    return null;
+  }
+
+  return [roundCoord(lng), roundCoord(lat)];
+}
+
+function sanitizeRingCoordinates(ring = []) {
+  return (Array.isArray(ring) ? ring : [])
+    .map((coord) =>
+      Array.isArray(coord)
+        ? normalizeCoordPair(coord)
+        : normalizeLatLngPoint(coord),
+    )
+    .filter(Boolean);
+}
+
 // ============================================================
 // COORDINATE PRECISION & NORMALIZATION
 // ============================================================
@@ -45,9 +90,9 @@ export function roundCoord(value, precision = COORDINATE_PRECISION) {
  */
 export function normalizePoint(point) {
   if (Array.isArray(point)) {
-    return [roundCoord(point[0]), roundCoord(point[1])];
+    return normalizeCoordPair(point) || [0, 0];
   }
-  return [roundCoord(point.lng), roundCoord(point.lat)];
+  return normalizeLatLngPoint(point) || [0, 0];
 }
 
 /**
@@ -65,7 +110,7 @@ export function coordToLatLng(coord) {
  * @returns {[number, number]} [lng, lat] array
  */
 export function latLngToCoord(point) {
-  return [roundCoord(point.lng), roundCoord(point.lat)];
+  return normalizeLatLngPoint(point) || [0, 0];
 }
 
 /**
@@ -76,7 +121,7 @@ export function latLngToCoord(point) {
  */
 export function coordsEqual(coordA, coordB) {
   if (coordA === coordB) return true;
-  if (!Array.isArray(coordA) || !Array.isArray(coordB)) return false;
+  if (!isFiniteCoordPair(coordA) || !isFiniteCoordPair(coordB)) return false;
   return (
     roundCoord(coordA[0]) === roundCoord(coordB[0]) &&
     roundCoord(coordA[1]) === roundCoord(coordB[1])
@@ -115,12 +160,9 @@ export function latLngPolygonsEqual(polygonA = [], polygonB = []) {
   if (polygonA.length !== polygonB.length) return false;
 
   for (let i = 0; i < polygonA.length; i++) {
-    const pointA = polygonA[i];
-    const pointB = polygonB[i];
-    if (
-      roundCoord(pointA?.lat) !== roundCoord(pointB?.lat) ||
-      roundCoord(pointA?.lng) !== roundCoord(pointB?.lng)
-    ) {
+    const pointA = normalizeLatLngPoint(polygonA[i]);
+    const pointB = normalizeLatLngPoint(polygonB[i]);
+    if (!pointA || !pointB || !coordsEqual(pointA, pointB)) {
       return false;
     }
   }
@@ -201,7 +243,7 @@ export function normalizeRing(ring) {
   }
 
   // Open the ring for processing
-  let vertices = openRing(ring);
+  let vertices = sanitizeRingCoordinates(openRing(ring));
 
   // Remove duplicates
   vertices = removeDuplicates(vertices);
@@ -816,7 +858,9 @@ export function toCSV(ring) {
 export function latLngArrayToRing(latLngArray) {
   if (!latLngArray || latLngArray.length === 0) return [];
 
-  const coords = latLngArray.map((p) => [roundCoord(p.lng), roundCoord(p.lat)]);
+  const coords = (Array.isArray(latLngArray) ? latLngArray : [])
+    .map(normalizeLatLngPoint)
+    .filter(Boolean);
   return closeRing(coords);
 }
 

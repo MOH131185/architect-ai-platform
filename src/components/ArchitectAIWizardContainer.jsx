@@ -188,6 +188,26 @@ const polygonsEqual = (polygonA = [], polygonB = []) => {
   });
 };
 
+const toFiniteCoordinate = (value) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeLatLngPoint = (point) => {
+  if (!point || typeof point !== "object") return null;
+  const lat = toFiniteCoordinate(point.lat);
+  const lng = toFiniteCoordinate(point.lng ?? point.lon);
+  if (lat === null || lng === null) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+};
+
+const normalizeSitePolygonForUi = (polygon = []) => {
+  if (!Array.isArray(polygon)) return [];
+  const normalized = polygon.map(normalizeLatLngPoint).filter(Boolean);
+  return normalized.length >= 3 ? normalized : [];
+};
+
 const ArchitectAIWizardContainer = () => {
   // Top-level view: 'wizard' | 'pricing'
   const [view, setView] = useState("wizard");
@@ -729,21 +749,36 @@ const ArchitectAIWizardContainer = () => {
               address,
               process.env.REACT_APP_GOOGLE_MAPS_API_KEY,
             );
-          if (footprintResult?.success && footprintResult.polygon?.length > 0) {
-            detectedFootprint = footprintResult.polygon;
+          const normalizedFootprint = normalizeSitePolygonForUi(
+            footprintResult?.polygon,
+          );
+          if (footprintResult?.success && normalizedFootprint.length >= 3) {
+            detectedFootprint = normalizedFootprint;
             detectedShape = footprintResult.shape;
+          } else if (footprintResult?.success) {
+            logger.warn(
+              "Building footprint ignored because polygon is invalid",
+              {
+                vertices: footprintResult?.polygon?.length || 0,
+              },
+            );
           }
         } catch (fpErr) {
           logger.warn("Building footprint detection failed", fpErr);
         }
       }
 
+      const normalizedAnalysisBoundary = normalizeSitePolygonForUi(
+        siteAnalysis.siteBoundary,
+      );
+      const normalizedExistingPolygon = normalizeSitePolygonForUi(sitePolygon);
+
       // Select best polygon: footprint -> analysis boundary -> existing
       const polygon =
         detectedFootprint ||
-        (siteAnalysis.siteBoundary && siteAnalysis.siteBoundary.length > 0
-          ? siteAnalysis.siteBoundary
-          : sitePolygon);
+        (normalizedAnalysisBoundary.length >= 3
+          ? normalizedAnalysisBoundary
+          : normalizedExistingPolygon);
 
       const siteDNA = buildSiteContext({
         location: { address, coordinates },
@@ -825,10 +860,13 @@ const ArchitectAIWizardContainer = () => {
 
   const handleSitePolygonChange = useCallback(
     (polygon) => {
-      setSitePolygon(polygon);
-      if (polygon && polygon.length > 0) {
-        const metrics = computeSiteMetrics(polygon);
+      const normalizedPolygon = normalizeSitePolygonForUi(polygon);
+      setSitePolygon(normalizedPolygon);
+      if (normalizedPolygon.length >= 3) {
+        const metrics = computeSiteMetrics(normalizedPolygon);
         setSiteMetrics(metrics);
+      } else {
+        setSiteMetrics(null);
       }
     },
     [setSiteMetrics, setSitePolygon],
@@ -839,7 +877,7 @@ const ArchitectAIWizardContainer = () => {
     (boundaryData) => {
       if (!boundaryData) return;
 
-      const polygon = boundaryData.polygon || [];
+      const polygon = normalizeSitePolygonForUi(boundaryData.polygon || []);
       if (polygonsEqual(sitePolygon, polygon)) {
         return;
       }

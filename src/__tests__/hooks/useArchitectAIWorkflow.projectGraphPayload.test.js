@@ -132,6 +132,35 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     expect(JSON.stringify(request).length).toBeLessThan(20_000);
   });
 
+  test("drops malformed site polygon coordinates before ProjectGraph POST", () => {
+    const request = buildProjectGraphVerticalSliceRequest({
+      designSpec: {
+        buildingCategory: "residential",
+        buildingSubType: "detached-house",
+        area: 150,
+        floorCount: 2,
+        sitePolygon: [
+          { lat: 52.483, lng: -1.893 },
+          { lat: ["bad"], lng: -1.892 },
+          { lat: 52.482, lng: -1.892 },
+        ],
+      },
+      siteSnapshot: {
+        polygon: [
+          { lat: 52.483, lng: -1.893 },
+          { lat: 52.483, lng: -1.892 },
+          { lat: 52.482, lng: -1.892 },
+        ],
+      },
+    });
+
+    expect(request.sitePolygon).toEqual([
+      { lat: 52.483, lng: -1.893 },
+      { lat: 52.483, lng: -1.892 },
+      { lat: 52.482, lng: -1.892 },
+    ]);
+  });
+
   test("normalizes ProjectGraph drawing artifact maps before panel mapping", () => {
     const drawingMap = {
       "asset-ground": {
