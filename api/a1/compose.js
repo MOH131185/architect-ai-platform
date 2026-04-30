@@ -2211,9 +2211,32 @@ async function handleComposeRequest(req, res, trace) {
     process.env.OPENAI_STRICT_IMAGE_GEN === "true";
   const imageGenEnabled =
     process.env.PROJECT_GRAPH_IMAGE_GEN_ENABLED === "true";
+
+  // Phase F: resolve targetStoreys from the strongest source available, in
+  // priority order. Falls back to the locally-derived `floorCount` (which
+  // already prefers requestBody.floorCount, then panel inference) only when
+  // none of the canonical fields are present.
+  const compiledLevels = Array.isArray(requestBody.compiledProject?.levels)
+    ? requestBody.compiledProject.levels.length
+    : null;
+  const phaseFTargetStoreysCandidates = [
+    requestBody.target_storeys,
+    requestBody.targetStoreys,
+    projectContext?.target_storeys,
+    projectContext?.targetStoreys,
+    requestBody.brief?.target_storeys,
+    projectContext?.brief?.target_storeys,
+    compiledLevels,
+    floorCount,
+  ];
+  const phaseFTargetStoreys =
+    phaseFTargetStoreysCandidates
+      .map((value) => Number(value))
+      .find((value) => Number.isFinite(value) && value > 0) || floorCount;
+
   const phaseFRequiredPanels =
     registry && typeof registry.getRequiredPanels === "function"
-      ? registry.getRequiredPanels(floorCount)
+      ? registry.getRequiredPanels(phaseFTargetStoreys)
       : null;
 
   const finalA1ExportGate = evaluateFinalA1ExportGate({
@@ -2227,7 +2250,7 @@ async function handleComposeRequest(req, res, trace) {
     rasterGlyphIntegrity,
     panels,
     panelRegistry: phaseFRequiredPanels,
-    targetStoreys: floorCount,
+    targetStoreys: phaseFTargetStoreys,
     visualManifest: visualManifestFromRequest,
     visualPanels: visualPanelsFromRequest,
     materialPalette: materialPaletteFromRequest,
