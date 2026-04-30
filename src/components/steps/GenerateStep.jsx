@@ -28,7 +28,7 @@ const STAGES = [
     label: "Planning A1 sheet — floor plans, elevations, sections",
     key: "layout",
   },
-  { label: "Rendering panels with FLUX AI", key: "rendering" },
+  { label: "Rendering panels", key: "rendering" },
   { label: "Composing final A1 architectural sheet", key: "finalizing" },
 ];
 
