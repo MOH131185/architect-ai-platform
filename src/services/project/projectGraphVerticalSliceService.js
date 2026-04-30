@@ -51,6 +51,11 @@ import {
   prepareFinalSheetSvgForRasterizationWithReport,
 } from "../../utils/svgFontEmbedder.js";
 import {
+  sanitizeInvalidSvgPaths,
+  sanitizeSvgDataUrl,
+  svgToSanitizedDataUrl,
+} from "../../utils/svgPathSanitizer.js";
+import {
   detectA1GlyphIntegrity,
   detectA1RasterGlyphIntegrity,
   evaluateFinalA1ExportGate,
@@ -2400,23 +2405,9 @@ function formatPanelTitle(panelType) {
 }
 
 function sanitizeSheetSvgFragment(svgString = "") {
-  return String(svgString || "")
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(
-      /<path\b[^>]*\bd=(["'])(.*?)\1[^>]*(?:\/>|>\s*<\/path>)/gi,
-      (match, _quote, pathData) => {
-        const normalizedPathData = String(pathData || "").trim();
-        if (
-          !normalizedPathData ||
-          normalizedPathData === "undefined" ||
-          normalizedPathData === "null" ||
-          normalizedPathData.includes("NaN")
-        ) {
-          return "";
-        }
-        return match;
-      },
-    );
+  return sanitizeInvalidSvgPaths(
+    String(svgString || "").replace(/<script\b[\s\S]*?<\/script>/gi, ""),
+  );
 }
 
 function extractSvgBody(svgString = "") {
@@ -4360,9 +4351,7 @@ function normalizeBinaryBytes(value, label = "binary data") {
 }
 
 function svgToDataUrl(svgString = "") {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-    String(svgString || ""),
-  )}`;
+  return svgToSanitizedDataUrl(String(svgString || ""));
 }
 
 function buildResultPanelMap(panelArtifacts = {}) {
@@ -4374,6 +4363,12 @@ function buildResultPanelMap(panelArtifacts = {}) {
         const safeSvgString = artifact.svgString
           ? sanitizeSheetSvgFragment(artifact.svgString)
           : null;
+        const safeDataUrl = artifact.dataUrl
+          ? sanitizeSvgDataUrl(artifact.dataUrl)
+          : null;
+        const safeImageUrl = artifact.imageUrl
+          ? sanitizeSvgDataUrl(artifact.imageUrl)
+          : null;
         return [
           panelType,
           {
@@ -4381,9 +4376,10 @@ function buildResultPanelMap(panelArtifacts = {}) {
             label: formatPanelTitle(panelType),
             url:
               (safeSvgString ? svgToDataUrl(safeSvgString) : null) ||
-              artifact.dataUrl ||
-              artifact.imageUrl,
-            dataUrl: artifact.dataUrl || null,
+              safeDataUrl ||
+              safeImageUrl,
+            dataUrl: safeDataUrl,
+            imageUrl: safeImageUrl,
             svgString: safeSvgString || null,
             sourceType: artifact.asset_type || null,
             authoritySource:

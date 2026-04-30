@@ -33,6 +33,10 @@ import {
   normalizeLevelIndex,
 } from "../services/project/levelUtils.js";
 import { resolveAuthoritativeFloorCount } from "../services/project/floorCountAuthority.js";
+import {
+  sanitizeInvalidSvgPaths,
+  sanitizeSvgDataUrl,
+} from "../utils/svgPathSanitizer.js";
 
 const STAGES = Object.freeze([
   "analysis",
@@ -117,26 +121,46 @@ export function sanitizeProjectGraphSvg(svgString = "") {
     return "";
   }
 
-  return svgString.replace(
-    /<path\b[^>]*\bd=(["'])(.*?)\1[^>]*(?:\/>|>\s*<\/path>)/gi,
-    (match, _quote, pathData) => {
-      const normalizedPathData = String(pathData || "").trim();
-      if (
-        !normalizedPathData ||
-        normalizedPathData === "undefined" ||
-        normalizedPathData === "null" ||
-        normalizedPathData.includes("NaN")
-      ) {
-        return "";
-      }
-      return match;
-    },
-  );
+  return sanitizeInvalidSvgPaths(svgString);
 }
 
 function svgToDataUrl(svgString = "") {
   const safeSvgString = sanitizeProjectGraphSvg(svgString);
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(safeSvgString)}`;
+}
+
+export function sanitizeProjectGraphPanelMap(panelMap = {}) {
+  if (!panelMap || typeof panelMap !== "object" || Array.isArray(panelMap)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(panelMap).map(([panelType, panel]) => {
+      const svgString =
+        typeof panel?.svgString === "string"
+          ? sanitizeProjectGraphSvg(panel.svgString)
+          : null;
+      const svg =
+        typeof panel?.svg === "string"
+          ? sanitizeProjectGraphSvg(panel.svg)
+          : null;
+      const url = svgString
+        ? svgToDataUrl(svgString)
+        : sanitizeSvgDataUrl(panel?.url || panel?.imageUrl || panel?.dataUrl);
+
+      return [
+        panelType,
+        {
+          ...panel,
+          url: url || null,
+          imageUrl: panel?.imageUrl ? sanitizeSvgDataUrl(panel.imageUrl) : null,
+          dataUrl: panel?.dataUrl ? sanitizeSvgDataUrl(panel.dataUrl) : null,
+          svgString,
+          svg,
+        },
+      ];
+    }),
+  );
 }
 
 function compactSiteSnapshotForRequest(siteSnapshot = null) {
@@ -492,7 +516,7 @@ async function runProjectGraphVerticalSliceWorkflow({
   const serverPanelMap =
     verticalSlice.artifacts?.panelMap &&
     typeof verticalSlice.artifacts.panelMap === "object"
-      ? verticalSlice.artifacts.panelMap
+      ? sanitizeProjectGraphPanelMap(verticalSlice.artifacts.panelMap)
       : null;
   const drawingAssets = normalizeProjectGraphDrawingArtifacts(
     verticalSlice.artifacts?.drawings,
@@ -510,13 +534,16 @@ async function runProjectGraphVerticalSliceWorkflow({
           if (!panelType) {
             return null;
           }
+          const safeSvgString = drawing.svgString
+            ? sanitizeProjectGraphSvg(drawing.svgString)
+            : null;
 
           return [
             panelType,
             {
               panelType,
-              url: drawing.svgString ? svgToDataUrl(drawing.svgString) : null,
-              svgString: drawing.svgString || null,
+              url: safeSvgString ? svgToDataUrl(safeSvgString) : null,
+              svgString: safeSvgString,
               sourceType: "project_graph_drawing_svg",
               authorityUsed: "ProjectGraph",
               authoritySource: "project_graph",

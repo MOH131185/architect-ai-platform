@@ -9,16 +9,20 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import {
+  sanitizeSvgDataUrl,
+  svgToSanitizedDataUrl,
+} from "../utils/svgPathSanitizer.js";
 
 function svgToDataUrl(svgString = "") {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgString)}`;
+  return svgToSanitizedDataUrl(svgString);
 }
 
 function panelImageUrl(panel = {}) {
   return (
-    panel.imageUrl ||
-    panel.url ||
-    panel.dataUrl ||
+    sanitizeSvgDataUrl(panel.imageUrl) ||
+    sanitizeSvgDataUrl(panel.url) ||
+    sanitizeSvgDataUrl(panel.dataUrl) ||
     (panel.svgString ? svgToDataUrl(panel.svgString) : null) ||
     (panel.svg ? svgToDataUrl(panel.svg) : null)
   );

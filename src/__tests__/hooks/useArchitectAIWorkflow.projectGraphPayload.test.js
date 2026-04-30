@@ -1,6 +1,7 @@
 import {
   buildProjectGraphVerticalSliceRequest,
   normalizeProjectGraphDrawingArtifacts,
+  sanitizeProjectGraphPanelMap,
   sanitizeProjectGraphSvg,
 } from "../../hooks/useArchitectAIWorkflow.js";
 import {
@@ -191,7 +192,11 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     const svg = `
       <svg>
         <path d="undefined" stroke="red" />
+        <path d=undefined stroke="orange" />
+        <path d='null' stroke="purple"></path>
+        <path d="L 0 0 L 10 10" stroke="pink" />
         <path d="M 0 0 L 10 10" stroke="black" />
+        <path d="m 1 1 l 2 2" stroke="green" />
         <path d="M 0 NaN L 5 5" stroke="blue"></path>
       </svg>
     `;
@@ -199,8 +204,38 @@ describe("buildProjectGraphVerticalSliceRequest", () => {
     const sanitized = sanitizeProjectGraphSvg(svg);
 
     expect(sanitized).not.toContain('d="undefined"');
+    expect(sanitized).not.toContain("d=undefined");
+    expect(sanitized).not.toContain("d='null'");
+    expect(sanitized).not.toContain('d="L 0 0 L 10 10"');
     expect(sanitized).not.toContain("NaN");
     expect(sanitized).toContain('d="M 0 0 L 10 10"');
+    expect(sanitized).toContain('d="m 1 1 l 2 2"');
+  });
+
+  test("sanitizes ProjectGraph server panelMap SVG URLs before gallery rendering", () => {
+    const badSvg =
+      '<svg><path d="undefined" stroke="red" /><path d="M 0 0 L 10 10" /></svg>';
+    const encodedBadSvg = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+      badSvg,
+    )}`;
+
+    const sanitized = sanitizeProjectGraphPanelMap({
+      floor_plan_ground: {
+        url: encodedBadSvg,
+        dataUrl: encodedBadSvg,
+        svgString: badSvg,
+      },
+    });
+
+    const panel = sanitized.floor_plan_ground;
+    expect(panel.svgString).not.toContain('d="undefined"');
+    expect(decodeURIComponent(panel.url.split(",")[1])).not.toContain(
+      'd="undefined"',
+    );
+    expect(decodeURIComponent(panel.dataUrl.split(",")[1])).not.toContain(
+      'd="undefined"',
+    );
+    expect(panel.svgString).toContain('d="M 0 0 L 10 10"');
   });
 
   test("level authority: 'Second' string with no levelIndex maps to levelIndex 2 in a 3-floor brief", () => {
